@@ -235,11 +235,34 @@ export async function files_create(content: string | Buffer | Blob, pathStr: str
  * @returns A Promise resolving to true on success, false on failure.
  */
 export async function files_touch(
-  path: string,
+  target: string,
   content?: string | Buffer | Blob
 ): Promise<boolean> {
   const fileContent: string | Buffer | Blob = content ?? new Blob([""]);
-  return await files_create(fileContent, path);
+
+  // CUBE's upload does not replace: uploading over a path that already holds
+  // a file leaves the OLD content in place and still reports success, so a
+  // caller writing content to a file it has written before was silently
+  // keeping the first version forever. Content given for a path that already
+  // exists is a REWRITE, so the file it holds is removed first and the
+  // failure to remove it is reported rather than written over.
+  if (content !== undefined) {
+    const mark: number = errorStack.checkpoint_mark();
+    const existing: Result<number> = await fileId_resolve(target);
+    if (!existing.ok) {
+      // Not being there is the ordinary case, not a fault to report.
+      errorStack.checkpoint_drain(mark);
+    } else {
+      const parent: string = path.posix.dirname(target);
+      const removed: boolean = await files_delete(existing.value, "files", parent);
+      if (!removed) {
+        errorStack.stack_push("error", `Could not rewrite ${target}: the file already there could not be removed.`);
+        return false;
+      }
+    }
+  }
+
+  return await files_create(fileContent, target);
 }
 
 /**

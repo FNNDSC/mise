@@ -985,6 +985,25 @@ export const helpText: Record<string, CommandHelp> = {
     ],
     examples: ['tags list', 'tags search brain', 'tags inspect', 'tag create neuro', 'tag delete 5'],
   },
+  gather: {
+    usage: 'gather <subcommand> [path...]',
+    description: "Hold the set of things this session is working on",
+    options: [
+      'SUBCOMMANDS:',
+      '  list                     Show the cohort (the default)',
+      '  add <path...>            Take series, directories or files into it',
+      '  remove <path|index...>   Drop members, by path or by listed index',
+      '  clear                    Empty it, name and feed included',
+      '  name [<name>]            Read the cohort\'s name, or give it one',
+    ],
+    examples: [
+      'gather',
+      'gather add /net/pacs/queries/qid:3125/Study_1.2.3/Series_4.5.6',
+      'gather add ~/uploads/brain',
+      'gather remove 2',
+      'gather name "sag cohort"',
+    ],
+  },
   group: {
     usage: 'groups <subcommand> [options]',
     description: 'Manage ChRIS user groups',

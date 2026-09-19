@@ -25,12 +25,16 @@ export function mkdir_render(path: string, success: boolean): string {
  * Renders the result of a touch operation.
  * @param path - The path created.
  * @param success - Whether the operation succeeded.
+ * @param wrote - Whether content was written, rather than an empty file made.
  */
-export function touch_render(path: string, success: boolean): string {
+export function touch_render(path: string, success: boolean, wrote: boolean = false): string {
   if (success) {
-    return chalk.green(`Created file: ${path}`);
+    // A touch that carried content WROTE the file, and may have replaced one
+    // that was already there: reporting "Created" for a rewrite told the
+    // operator a file was new when their old content had just been replaced.
+    return chalk.green(`${wrote ? 'Wrote' : 'Created'} file: ${path}`);
   } else {
-    return chalk.red(`Failed to create file: ${path}`);
+    return chalk.red(`Failed to ${wrote ? 'write' : 'create'} file: ${path}`);
   }
 }
 

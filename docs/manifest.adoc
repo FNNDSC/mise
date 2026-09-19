@@ -1,0 +1,280 @@
+= mise Manifests: a workflow that runs, tests and plays
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+0.1, 2026-09-19: Design, grilled and settled
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 3
+:icons: font
+:status: DESIGN
+
+== Status and purpose
+
+This document designs the *manifest*: a plain text file that expresses a workflow — a PACS query, a cohort, a look at the images, a pipeline over the group — such that the same file runs headlessly in CI, runs at an operator's console, and *plays out visually* on the ARGUS surface for someone who was handed it.
+
+It is a DESIGN document: the decisions below were grilled and settled on 2026-09-19, and nothing here is built yet. The build order is in <<build>>.
+
+== Why
+
+Three needs converge on one artefact.
+
+*A test battery.* The repo's live gates are JavaScript exemplars and a CDP smoke suite. Neither reads like the work. A radiologist's actual workflow — query this accession, take the sagittals, pull them, run dcm2niix over the group — cannot be read off either, so the things that break in the field are not the things under test.
+
+*Sharing.* A workflow that took an afternoon to get right is currently transmitted as a conversation. A manifest is a file: it lives in the ChRIS filesystem like any other, and it is shared by the same `setfacl` that shares a directory. Hand someone a path and they have the workflow.
+
+*Demonstration.* Played at reading speed on the surface, a manifest is a demo that cannot drift from the product, because it is the product executing.
+
+== The property that makes this cheap
+
+ARGUS already obeys a law: a verb lowers to a line the operator could have typed. `PULL` on a row runs `pull`; `IMAGE` runs `image <path>`; the DELETE pill puts an `rm` in the transcript. And the kernel's commands emit typed models that the surface renders — `pacs query` fills the PACS pane, `image` opens a viewer, `cd` moves the browser.
+
+Put those together and a file of kernel lines, fed to a session with a surface attached, *already plays out visually*. There is no second execution path to build, no driver, no selector language, and no way for the script and the product to disagree — the script IS the product's own vocabulary. The "in a way similar to playwright" ask is answered without Playwright's central cost: Playwright drives a surface from outside, through a model of the DOM that rots; a manifest drives the *session*, and the surface renders it for the same reason it renders a press.
+
+== Settled decisions
+
+[cols="1,3"]
+|===
+| Manifest form | *Plain kernel lines.* A manifest is a text file of the exact lines an operator would type, with `#` comments and a small `@` header. Not YAML, not a step object model — a second language beside the kernel's would have to be kept in step with it forever, and that is the thing that drifts.
+
+| Self-checking | *`expect` is a kernel verb*, not an external harness and not an enforced comment. A manifest asserts wherever it is played — CI, your console, someone else's browser — so a shared workflow tells its new owner whether it ran right, not merely that it ran.
+
+| Time | *Verbs block by default; `--detach` opts out.* A manifest line means what the operator's line means, so the blocking cannot live only in the runner. No sleeps exist anywhere in the language.
+
+| The lane | *A blocking verb holds its own line, never the session.* It annunciates progress on the progress channel while it waits (the heartbeat already pushes while busy), other panes keep refreshing, and Esc detaches it — printing the handle and returning, which is today's behaviour, on demand. The law _index-movement never holds the lane_ stands.
+
+| Cohort identity | *A path, always.* `gather add <path>` — series, directory and file are all paths, dedupe is by path, and it wears a shell metaphor as the law asks. Unpulled PACS series already have a projection path, so nothing is a special case. Kind, imagery, study and counts are looked up when listed, never stored.
+
+| Cohort truth | *The kernel owns it and annunciates; the surface subscribes.* `gather` emits on a channel the way `feed.created` does. A manifest line, a console line and a press on a row all reach the header band by one route — which is precisely what makes a manifest play rather than run invisibly.
+
+| Authoring | *Record the session.* `record start <file>` … `record stop` writes every line the session ran, typed or minted by a press, and offers `@param` placeholders for the literals that look like identifiers. The workflows worth sharing are the fiddly ones nobody will retype correctly.
+
+| Placement | *A manifest never names a pane.* No splits, no zoom, no pane ids, no "click row 3". It says what to do; the surface places the result by the same rules it uses for a press. One file therefore plays identically on a headless `chell` and in a browser, and a recording made in ARGUS is runnable in CI. See <<shared>> for why view state is nonetheless reachable — it is regard, not placement.
+|===
+
+== The language
+
+=== Shape
+
+A manifest is UTF-8 text. One line, one kernel command. Blank lines and `#` comments are ignored. Lines beginning `@` in the header declare metadata. The conventional extension is `.mise` and the conventional home is `~/flows/` on the ChRIS filesystem, so a manifest is shared, versioned and ACL'd like any other file.
+
+[source]
+----
+@name         sagittal cohort for one patient
+@description  Query PACS for a patient, take the sagittals, pull them, look at one.
+@param        MRN
+@param        LABEL  = sag cohort
+
+pacs query PatientID:${MRN}
+expect pacs series gt 0
+----
+
+`@param NAME` declares a required parameter; `@param NAME = value` gives it a default. Play refuses before running a single line if a required parameter was not supplied — a manifest never gets half way in and then asks.
+
+=== Substitution
+
+`${NAME}` expands a parameter. Beyond parameters, a manifest reaches session truth through a small closed set of *pronouns*, which are not variables and are not stored by the runner — each is a thing the kernel already knows:
+
+[cols="1,3"]
+|===
+| `${gather}` | The cohort, as an operand list. `pull ${gather}` pulls every member.
+| `${gather.1}` | The nth member's path, one-based. `${gather.first}` and `${gather.last}` read the same.
+| `${feed}` | The feed most recently created in this session.
+| `${query}` | The PACS query most recently answered.
+| `${cwd}` | The session's working directory.
+|===
+
+Deliberately absent: general capture (`x = $(...)`). A manifest that assigns is a program, and a program wants control flow, and control flow wants a debugger. The pronouns cover the workflows; when one does not, the honest answer is a plugin, not a language feature.
+
+=== expect
+
+[source]
+----
+expect <subject> <property> <predicate> <value> [--within <duration>]
+----
+
+Subjects are the kernel's own: `pacs`, `gather`, `feed`, `run`, `path`. Predicates are `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `contains`, `matches`. With `--within`, `expect` polls the kernel's status until the claim holds or the deadline passes — `expect` is the only verb in the language that knows about time.
+
+A satisfied expectation prints one confirming line. A failed one prints what it wanted, what it got, and where it was standing, then refuses: play stops at the first refusal (a manifest is a workflow, and the second half of a workflow whose first half failed is noise), and the process exits non-zero.
+
+[source]
+----
+expect gather size eq 14
+expect feed status eq finishedSuccessfully --within 20m
+
+  ✗ expect gather size eq 14
+      wanted  14
+      got     11
+      at      flows/sag-cohort.mise:9
+      cohort  11 series · 1 place
+----
+
+=== play
+
+[source]
+----
+play <manifest> [--param K=V]… [--pace <duration>] [--step] [--dry-run]
+----
+
+`play` reads the file through the VFS and runs its lines in order against the current session. Nothing is special about the execution: each line goes through the same path a typed line goes through, so every attached surface renders each step as it lands.
+
+`--pace` puts a delay between lines, for watching. `--step` waits for a keypress instead, for teaching. `--dry-run` expands parameters and pronouns and prints the lines it would run without running them — the manifest's `--help`.
+
+`play` is itself a kernel verb, so a manifest may play another manifest. One level of nesting is expected (a battery that plays its cases); recursion is refused by name.
+
+=== record
+
+[source]
+----
+record start <manifest>
+record stop
+----
+
+Between them, every line the session runs is appended — typed at the console, or minted by a press on the surface, which is the same thing by law. On `stop` the recorder reads back what it captured and offers parameters for the literals that look like identifiers (an MRN, an accession, a feed name), so the file is shareable rather than personal:
+
+[source]
+----
+record stop
+  wrote ~/flows/sag-cohort.mise · 6 lines
+  offered 1 param:  PatientID:1279049  →  ${MRN}
+----
+
+What is recorded is what the session did. Expectations are not inferred — a recording is a faithful transcript, and a transcript that guessed at assertions would be a fiction. Adding `expect` lines is the author's act, and it is the act that turns a recording into a test.
+
+== Worked examples
+
+=== The cohort workflow
+
+The workflow under discussion: query PACS, take some series, look at one, process the group.
+
+[source]
+----
+@name         sagittal cohort for one patient
+@description  Query a patient, gather the sagittal series, pull them, view one, convert the group.
+@param        MRN
+@param        LABEL = sag cohort
+
+# Ask the PACS. Blocks until the answer is in; the surface fills its PACS pane.
+pacs query PatientID:${MRN}
+expect pacs series gt 0
+
+# Take the sagittals. --shown takes what the filter shows, which is what the operator sees.
+pacs filter sag
+gather add --shown
+expect gather size gt 0
+
+# Bring them home. Blocks until the retrieve settles; the surface's badges turn as each lands.
+pull ${gather}
+expect gather pulled eq ${gather.size}
+
+# Look at one before committing the group to compute.
+image ${gather.first}
+
+# Process the cohort as a group: one feed, one node per member.
+gather process --pipeline pl-dcm2niix --name "${LABEL}"
+expect feed status eq finishedSuccessfully --within 20m
+----
+
+Played in ARGUS, an observer sees: the PACS pane fill; the filter narrow it; the header band's `01-GATHER` face count up; the badges turn as the retrieve lands; a viewer open on the first series; the catalogue compose the run; and `RUNS-02` take the new feed. Played headlessly, the same file prints envelopes and exits 0 or non-zero. Neither run knows which it is.
+
+=== Pull, anonymize, convert to NIfTI
+
+The de-identification workflow, where the expectations carry real weight: a manifest that converts without asserting the anonymization ran is worse than no manifest.
+
+[source]
+----
+@name         anonymize and convert
+@description  Pull a study from PACS, strip identifying tags, convert to NIfTI, keep the result.
+@param        ACC
+@param        SUBJECT                       # the pseudonym the data will carry downstream
+@param        LABEL   = anon-nii
+
+pacs query AccessionNumber:${ACC}
+expect pacs studies eq 1                    # an accession is one study, or the manifest is wrong about the world
+
+gather clear
+gather add --shown
+expect gather size gt 0
+
+pull ${gather} --new-feed "${LABEL} · raw"
+expect feed status eq finishedSuccessfully --within 30m
+
+# Strip the identifying elements. The tag list is the plugin's, not ours; naming it here is the record of what was stripped.
+run pl-pfdicom_tagSub ${feed} \
+    --extension .dcm \
+    --splitToken ',' \
+    --tagStruct 'PatientName,${SUBJECT};PatientID,${SUBJECT};PatientBirthDate,19000101;AccessionNumber,anon;InstitutionName,anon'
+expect run status eq finishedSuccessfully --within 20m
+
+# Prove it, on the data, not on the plugin's word.
+expect path ${feed}/pl-pfdicom_tagSub/data tags PatientID eq ${SUBJECT}
+expect path ${feed}/pl-pfdicom_tagSub/data tags PatientName notContains ${ACC}
+
+# Convert the anonymized output, never the input.
+run pl-dcm2niix ${feed}/pl-pfdicom_tagSub
+expect run status eq finishedSuccessfully --within 20m
+expect path ${feed}/pl-dcm2niix/data count matches '*.nii*' gt 0
+
+# Look at what came out, and keep it.
+image ${feed}/pl-dcm2niix/data
+----
+
+Two things are deliberate. The conversion runs on the anonymization's output node, not on the feed root, so the manifest cannot silently convert identified data. And the anonymization is asserted by reading tags back off the produced files — the one check that survives a plugin changing behind you.
+
+NOTE: `pl-pfdicom_tagSub` and `pl-dcm2niix` are named here as the plugins in common use; the manifest's actual operands must be resolved against the store the session is attached to (`bin`), and the first slice that runs this example confirms the flag spellings against the live plugin rather than against this document.
+
+=== A battery case
+
+A CI case is a manifest with the fixture baked in and the expectations tight. Batteries are manifests that play manifests.
+
+[source]
+----
+@name  battery · cohort
+@description  The cohort workflow against the known fixture, at full speed.
+
+play ~/flows/sag-cohort.mise --param MRN=1279049 --param LABEL="battery sag"
+play ~/flows/anonymize-nii.mise --param ACC=22119730 --param SUBJECT=anon-001
+----
+
+Run headlessly, this is `chell -c 'play ~/flows/battery.mise'`, and its exit status is the gate. Run in a browser with `--pace 2s`, it is the demo. There is one file.
+
+== What plays, and what does not
+
+A manifest can say anything the session can do, which is a great deal: navigate, query, gather, pull, run, view, share, delete. It cannot say where the result goes, because placement is the surface's judgment and encoding it would fork the file into a browser version and a headless version.
+
+The consequence to be honest about: a manifest cannot currently assert anything about the *look* — that the frame opened, that the verbs lit, that the layout held. That is the smoke suite's job, and it stays the smoke suite's job. The two meet at the seam where a manifest is the smoke suite's setup: a scenario that needs a cohort on the band gets one by playing four lines instead of by re-implementing them in CDP.
+
+[[shared]]
+== Shared sessions
+
+A live shared session — two radiologists on one image, same slice, same window level, in real time — is the same machinery seen from another angle, and it is worth stating how they meet because the design should not foreclose it.
+
+A manifest is a *recording* of intents replayed into a session. A shared session is a *stream* of intents mirrored between sessions. AEGIS already carries the parts: `regard` is a session subject in brasa — what the operator indicates, as an address plus model kind — it rides a push channel, calypso already retains and rebroadcasts it with late-attach replay, and a slaved viewer already follows it. A second surface attached to one session therefore already sees what the first one regards.
+
+What is missing for two radiologists is not a protocol but a *subject*: the image pane's view state — layout, slice, window/level, colormap — exists today as `state_get` on the pane (the dormant-group snapshot reads it) but lives only in that surface's memory. Promote it to a session subject beside regard, and following becomes subscription. That is one subject away, and the manifest work pays for the route it travels on.
+
+This also explains why view state is *not* a violation of the placement rule. `image ${path}` says what to look at; a future `regard slice 42` would say what is being indicated *within* it. Both are session truth, both are things an operator does, both are recordable and replayable. "Open a pane to the left and zoom it" is none of those things — it is furniture, and furniture stays out.
+
+Not settled, and deliberately out of scope here: whether a shared session is symmetric (both may write regard) or has a driver and passengers; what the second radiologist's identity is to CUBE; and whether a session is shared by ACL on something, the way a file is. The manifest design commits to none of these.
+
+== Open questions
+
+* *Where `expect path … tags` gets its answer.* Reading a tag back is `dcm tags` over a path; whether `expect` calls that or grows its own accessor is a build decision, not a design one.
+* *Cohort membership after a pull.* A member's path changes when it comes home. Path identity says a pulled member *updates* rather than doubling, and `gather pulled` counts members that are in CUBE — the mechanism that rewrites the member's path needs a slice of its own.
+* *Parameter typing.* `@param MRN` is untyped today. A manifest handed to someone else would benefit from `@param MRN : mrn` so play can refuse a malformed operand before touching the PACS, but no typed-operand vocabulary exists yet.
+* *Secrets.* Nothing in these workflows needs a credential, because the session is already authenticated. A manifest must never grow a way to carry one.
+* *Recording fidelity across a restart.* `record` follows the session; a daemon restart mid-recording ends it. Whether it resumes or refuses is open.
+
+[[build]]
+== Build order
+
+Each slice is shippable and verifiable on its own.
+
+. *`gather` as a kernel subject.* `gather add|list|remove|clear|process|name` over the session file the surface writes today, path-identified, with a `gather.changed` annunciation. The header band becomes a subscriber instead of the owner. No manifest yet — this alone makes the cohort scriptable.
+. *Blocking verbs.* `pull` and `run` block their own line with progress on the progress channel, `--detach` restores today's behaviour, Esc detaches live. The law about the lane gets its enforcement.
+. *`expect`.* The subject/property/predicate grammar, `--within`, the failure readout, the exit status.
+. *`play`.* Header parsing, parameters, pronouns, `--pace`, `--step`, `--dry-run`, refusal on a missing parameter, one level of nesting.
+. *`record`.* Capture of typed and minted lines, parameter offering, write to CFS.
+. *The first battery.* The two worked examples above, run against the live gate, with the plugin flag spellings confirmed.
+
+A surface decision lands in `apps/argus/docs/aegis.adoc` in the same PR as the slice that makes it, per the standing law; slices 1, 2 and 4 each carry one.

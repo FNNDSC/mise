@@ -248,6 +248,46 @@ describe('files_create / touch', () => {
     mockIO.file_upload.mockResolvedValue(true);
     expect(await files_touch('/a/empty')).toBe(true);
   });
+
+  // CUBE's upload does not replace, so a touch carrying content over a file
+  // that already exists kept the OLD content and still reported success: a
+  // session file written twice never changed after its first write.
+  it('files_touch REWRITES a file that is already there', async () => {
+    mockObjCreate.mockResolvedValue(group({
+      resources_getAll: jest.fn().mockResolvedValue({ tableData: [{ id: 7, fname: '/a/held.json' }] }),
+    }));
+    mockIO.file_deleteById.mockResolvedValue(Ok(true));
+    mockIO.file_upload.mockResolvedValue(true);
+
+    expect(await files_touch('/a/held.json', 'new')).toBe(true);
+    expect(mockIO.file_deleteById).toHaveBeenCalledWith(7);
+    expect(mockIO.file_deleteById.mock.invocationCallOrder[0])
+      .toBeLessThan(mockIO.file_upload.mock.invocationCallOrder[0]);
+  });
+
+  it('writes content to a path holding nothing without reporting a miss', async () => {
+    mockObjCreate.mockResolvedValue(group({
+      resources_getAll: jest.fn().mockResolvedValue({ tableData: [] }),
+    }));
+    mockIO.file_upload.mockResolvedValue(true);
+
+    expect(await files_touch('/a/fresh.json', 'new')).toBe(true);
+    expect(mockIO.file_deleteById).not.toHaveBeenCalled();
+    // Nothing being there is the ordinary case, not a fault to report.
+    expect(errorStack.stack_search('not found').length).toBe(0);
+  });
+
+  it('refuses rather than writing over a file it could not remove', async () => {
+    mockObjCreate.mockResolvedValue(group({
+      resources_getAll: jest.fn().mockResolvedValue({ tableData: [{ id: 7, fname: '/a/held.json' }] }),
+    }));
+    mockIO.file_deleteById.mockResolvedValue(Err());
+    mockIO.file_upload.mockResolvedValue(true);
+
+    expect(await files_touch('/a/held.json', 'new')).toBe(false);
+    expect(mockIO.file_upload).not.toHaveBeenCalled();
+    expect(errorStack.stack_search('could not be removed').length).toBeGreaterThan(0);
+  });
 });
 
 describe('files_mkdir / uploadPath / share', () => {

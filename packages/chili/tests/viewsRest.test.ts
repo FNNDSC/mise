@@ -25,6 +25,9 @@ describe('fs views', () => {
     expect(mkdir_render('/d', false)).toContain('Failed to create directory');
     expect(touch_render('/f', true)).toContain('Created file');
     expect(touch_render('/f', false)).toContain('Failed to create file');
+    // A touch that carried content wrote the file, and may have replaced one.
+    expect(touch_render('/f', true, true)).toContain('Wrote file');
+    expect(touch_render('/f', false, true)).toContain('Failed to write file');
     expect(upload_render('/l', '/r', true)).toContain('Successfully uploaded');
     expect(upload_render('/l', '/r', false)).toContain('Failed to upload');
     expect(cat_render('body', '/f')).toBe('body');

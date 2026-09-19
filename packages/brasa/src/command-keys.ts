@@ -22,6 +22,7 @@ export const COMMAND_HANDLERS_KEYS: string[] = [
   'files', 'links', 'dirs',
   'store',
   'tag', 'tags',
+  'gather',
   'group', 'groups',
   'user', 'users',
   'pluginmeta', 'pluginmetas', 'meta', 'metas',

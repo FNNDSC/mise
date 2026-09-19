@@ -68,7 +68,7 @@ export async function touch_run(runOptions: TouchRunOptions): Promise<CommandEnv
       const success: boolean = await chefs_touch_cmd(targetPath, options);
 
       if (success) {
-        rendered += `${touch_render(targetPath, success)}\n`;
+        rendered += `${touch_render(targetPath, success, options.withContents !== undefined || options.withContentsFromFile !== undefined)}\n`;
         outcomes.push({ path: targetPath, created: true });
 
         // Invalidate cache for parent directory

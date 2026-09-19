@@ -23,8 +23,10 @@
 
 # Root a feed on the series and strip the identifying elements. The tag list
 # is named here because a manifest that anonymizes should say what it changed.
+# DOUBLE quotes: a reference inside single quotes is text, as in any shell,
+# so the pseudonym would have been written into the tags as "${SUBJECT}".
 cd ${SERIES}
-${ANON} --fileFilter dcm --tagInfo 'PatientName,${SUBJECT}++PatientID,${SUBJECT}++AccessionNumber,anon++PatientBirthDate,19000101' -- feed_title="${LABEL}"
+${ANON} --fileFilter dcm --tagInfo "PatientName,${SUBJECT}++PatientID,${SUBJECT}++AccessionNumber,anon++PatientBirthDate,19000101" -- feed_title="${LABEL}"
 expect run ${run} status eq finishedSuccessfully
 expect path ${run.place} count --deep gt 0
 
@@ -40,7 +42,7 @@ expect path ${run.place} tags PatientName eq ${SUBJECT}
 cd ${run.place}
 ${CONVERT}
 expect run ${run} status eq finishedSuccessfully
-expect path ${run.place} count --matching '*.nii*' --deep gt 0
+expect path ${run.place} count --matching "*.nii*" --deep gt 0
 
 # Residue-free: the feed goes away with everything in it. Step out of it
 # first — a workflow that deletes the place it is standing in leaves the

@@ -73,6 +73,18 @@ expect pacs series gt 0
 
 === Substitution
 
+Substitution is not the manifest's: it belongs to the session, and every line gets it — typed at a console, played from a file, or minted by a press. One expander, owned by the tokenizer, so quoting is still known when it runs:
+
+* A *bare* reference carrying several values becomes several operands: `pull ${gather}` pulls each member, whatever spaces and brackets their paths hold.
+* A *double-quoted* reference stays one operand however many values it holds.
+* A *single-quoted* `$` is text, as in any shell — which is what makes a JSON blob or a tag list safe to pass through.
+* An expanded value never globs afterwards: a filename with a bracket in it is a filename, not a pattern.
+* The *command word* expands too, so a manifest can name its plugin as a parameter and the same workflow runs on an instance with different builds.
+
+Three sources answer, in order: the session's *reserved pronouns*, then the played manifest's *parameters*, then the *environment*. A manifest that declares a `@param` with a reserved name is refused when the file is read, because `${feed}` meaning two things is a language with a hole in it.
+
+A reference nothing answers *refuses the line* — it does not expand to nothing and does not stand as text. `rm -rf ${DIR}/scratch` with `DIR` unset is how a script deletes the wrong thing. The refusal names the reference and where it looked. The single exception is a dry run, which has run nothing and so leaves a reference to what a later line would produce standing as written.
+
 `${NAME}` expands a parameter. Beyond parameters, a manifest reaches session truth through a small closed set of *pronouns*, which are not variables and are not stored by the runner — each is a thing the kernel already knows:
 
 [cols="1,3"]

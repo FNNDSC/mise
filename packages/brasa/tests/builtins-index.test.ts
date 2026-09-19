@@ -215,6 +215,9 @@ jest.unstable_mockModule('../src/builtins/fs/archive.js', () => ({
   directory_archive: archiveMock,
 }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  // The wait for a run to settle asks for statuses in one batch.
+  jobs_statusBatch: async (ids: number[]): Promise<Map<number, string>> =>
+    new Map(ids.map((id: number): [number, string] => [id, 'finishedSuccessfully'])),
   dicomSeries_summarize: jest.fn(),
   dicomSlice_gray: jest.fn(async () => ({ ok: false })),
   dicomFolder_list: jest.fn(),

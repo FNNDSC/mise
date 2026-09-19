@@ -264,6 +264,7 @@ Not settled, and deliberately out of scope here: whether a shared session is sym
 * *Parameter typing.* `@param MRN` is untyped today. A manifest handed to someone else would benefit from `@param MRN : mrn` so play can refuse a malformed operand before touching the PACS, but no typed-operand vocabulary exists yet.
 * *Secrets.* Nothing in these workflows needs a credential, because the session is already authenticated. A manifest must never grow a way to carry one.
 * *Recording fidelity across a restart.* `record` follows the session; a daemon restart mid-recording ends it. Whether it resumes or refuses is open.
+* *Yielding the lane while waiting.* The blocking verbs hold their own line and annunciate progress, and Esc detaches — but calypso serializes every command in a session through one queue, so while a wait is parked, another command from any surface queues behind it rather than running. Annunciations and pushes are unaffected; commands are not. Satisfying the law properly means a parked wait YIELDING the lane and re-taking it to finish, which is a calypso change with its own question behind it: what it means for a later command to mutate the state a parked waiter is about to report on. Until that slice, a long run is best started with `--detach` when the session has other work to do.
 
 [[build]]
 == Build order

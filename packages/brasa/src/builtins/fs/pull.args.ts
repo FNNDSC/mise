@@ -29,7 +29,7 @@ export interface PullAttachment {
 }
 
 /**
- * Parses `pull` arguments: `--nowait`, `--retry N`, `--new-feed TITLE`, and
+ * Parses `pull` arguments: `--detach` (`--nowait`), `--retry N`, `--new-feed TITLE`, and
  * path operands.
  *
  * @param args - Raw command arguments.
@@ -39,7 +39,9 @@ export function pullArgs_parse(args: string[]): PullArgs {
   const delimiterIndex: number = args.indexOf('--');
   const commandArgs: string[] = delimiterIndex === -1 ? args : args.slice(0, delimiterIndex);
   const forwardedArgs: string[] = delimiterIndex === -1 ? [] : args.slice(delimiterIndex + 1);
-  const nowait: boolean = commandArgs.includes('--nowait');
+  // `--detach` is the language's word for it; `--nowait` is what pull
+  // called it first and still answers to.
+  const nowait: boolean = commandArgs.includes('--nowait') || commandArgs.includes('--detach');
   let retryMax: number = 0;
   let newFeedTitle: string | null = null;
   let parseError: string | null = null;
@@ -47,7 +49,7 @@ export function pullArgs_parse(args: string[]): PullArgs {
   let attachment: PullAttachment | undefined;
 
   for (let i: number = 0; i < commandArgs.length; i++) {
-    if (commandArgs[i] === '--nowait') {
+    if (commandArgs[i] === '--nowait' || commandArgs[i] === '--detach') {
       continue;
     } else if (commandArgs[i] === '--retry') {
       const value: string | undefined = commandArgs[i + 1];

@@ -264,7 +264,16 @@ describe('builtin_pull guards and path resolution', () => {
 
   it('rejects --new-feed with --nowait', async () => {
     await builtin_pull([QUERY_PATH, '--nowait', '--new-feed', 'Brain MRI']);
-    expect(sinkErr).toContain('--new-feed cannot be combined with --nowait');
+    expect(sinkErr).toContain('--new-feed cannot be combined with --detach');
+    expect(mockCollect).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  // `--detach` is the language's word for what pull already did under
+  // `--nowait`, and both must mean the same thing on the same line.
+  it('rejects --new-feed with --detach, the same way', async () => {
+    await builtin_pull([QUERY_PATH, '--detach', '--new-feed', 'Brain MRI']);
+    expect(sinkErr).toContain('--new-feed cannot be combined with --detach');
     expect(mockCollect).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });

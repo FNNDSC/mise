@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/salsa",
-  "version": "3.18.1",
+  "version": "3.18.2",
   "description": "Shared Application Logic and Service Assets for ChRIS",
   "repository": {
     "type": "git",

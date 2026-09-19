@@ -27,6 +27,7 @@ import { path_resolve } from '../utils.js';
 import { session } from '../../session/index.js';
 import { cohort_read, GatherMember, GatherState } from './gather.store.js';
 import { recentFeed_get, recentQuery_get, recentRuns_get } from '../../session/recent.js';
+import { recorder_mute, recorder_unmute } from '../../session/recorder.js';
 import { sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
 
@@ -377,6 +378,9 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   let stoppedAt: number | null = null;
 
   depth += 1;
+  // What a play runs is already written down in the file it is playing: a
+  // recording that captured it too would hold every line twice.
+  recorder_mute();
   try {
     for (const line of manifest.lines) {
       const expanded: Expansion = await line_expand(line.text, values);
@@ -409,6 +413,7 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
       }
     }
   } finally {
+    recorder_unmute();
     depth -= 1;
   }
 

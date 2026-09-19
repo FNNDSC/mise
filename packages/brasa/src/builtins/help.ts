@@ -988,6 +988,28 @@ export const helpText: Record<string, CommandHelp> = {
     ],
     examples: ['tags list', 'tags search brain', 'tags inspect', 'tag create neuro', 'tag delete 5'],
   },
+  record: {
+    usage: 'record <start <manifest>|stop|status>',
+    description: 'Write what this session does down as a manifest',
+    options: [
+      'SUBCOMMANDS:',
+      '  start <manifest>  Begin capturing the lines this session runs',
+      '  stop              Write the manifest and say what it holds',
+      '  status            Whether anything is recording, and how much (the default)',
+      '',
+      'A recording captures typed lines and the lines a surface mints from a press',
+      'alike. It never invents expectations: adding `expect` lines is the author\'s',
+      'act, and the one that turns a recording into a test. Identifiers a PACS line',
+      'wears on its face (PatientID, AccessionNumber, PatientName) are offered as',
+      'parameters, so the file is shareable rather than personal.',
+    ],
+    examples: [
+      'record start ~/flows/sag-cohort.mise',
+      '# … do the work, by hand or by pressing …',
+      'record stop',
+      'play ~/flows/sag-cohort.mise --param MRN=1234567',
+    ],
+  },
   play: {
     usage: 'play <manifest> [--param NAME=value]... [--pace <duration>] [--dry-run]',
     description: "Run a workflow manifest: the lines an operator could have typed",

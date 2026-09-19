@@ -419,8 +419,11 @@ export class GatherPanel {
         label: 'SERIES',
         className: 'gather-cohort-count',
         width: '6em',
-        cell: (): string => String(this.cohort.size()),
-        compare: (): number => this.cohort.size(),
+        // SERIES counts series. A gathered PLACE is not one, and counting
+        // it here said `2 SERIES` over a cohort holding one series and one
+        // directory, while the bar beneath said `1 SERIES · 1 PLACE`.
+        cell: (): string => String(this.series_count()),
+        compare: (): number => this.series_count(),
       },
       {
         key: 'patients',
@@ -565,7 +568,18 @@ export class GatherPanel {
 
   /** How many distinct patients the cohort spans. */
   private patients_count(): number {
-    return new Set([...this.cohort.members_get()].map((entry: GatherSeries): string => entry.patient)).size;
+    // Patients are a fact about SERIES. A place carries its owner in the
+    // same field, and counting that made a cohort of one series and one
+    // directory read as two patients.
+    return new Set(this.cohort.members_get()
+      .filter((entry: GatherSeries): boolean => (entry.kind ?? 'series') === 'series')
+      .map((entry: GatherSeries): string => entry.patient)).size;
+  }
+
+  /** How many of the cohort's members are series. */
+  private series_count(): number {
+    return this.cohort.members_get()
+      .filter((entry: GatherSeries): boolean => (entry.kind ?? 'series') === 'series').length;
   }
 
   /**

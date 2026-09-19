@@ -135,6 +135,16 @@ export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
   listing: 'files.row',
   rules: [
     { name: 'image', label: (): string => 'IMAGE', offered: (f: FileRowFacts): boolean => f.kind === 'seriesFolder' },
+    {
+      // A cohort is what this session is working on, and that is not only
+      // PACS: a directory of inputs belongs in it beside a series. Offered
+      // on a PLACE, never on a file — a cohort's members are things a run
+      // can be given, and a run is given a place.
+      name: 'gather',
+      label: (): string => 'GATHER',
+      offered: (f: FileRowFacts): boolean =>
+        (f.kind === 'directory' || f.kind === 'seriesFolder') && f.projection !== true,
+    },
     // PROCESS acts on a place: a directory outside a feed (a new feed roots
     // on it), or a node's own data inside one (the run appends to the node).
     {
@@ -266,6 +276,8 @@ export const PACS_SERIES_ROSTER: VerbRoster<PacsSeriesFacts> = {
 export interface GatherSeriesFacts {
   /** Whether CUBE has said where the series landed (IMAGE and PROCESS need a folder). */
   folderKnown: boolean;
+  /** Whether the member is imagery at all: IMAGE on a folder of tables cannot act. */
+  imagery?: boolean;
   /**
    * Whether the cohort can still fetch it: it is not home, and it carries
    * the path a pull takes. The cohort's own frame pulls the whole set;
@@ -285,11 +297,16 @@ export const GATHER_SERIES_ROSTER: VerbRoster<GatherSeriesFacts> = {
   rules: [
     { name: 'remove', label: (): string => 'REMOVE', offered: (): boolean => true },
     { name: 'pull', label: (): string => 'PULL', offered: (f: GatherSeriesFacts): boolean => f.pullable === true },
-    { name: 'image', label: (): string => 'IMAGE', offered: (f: GatherSeriesFacts): boolean => f.folderKnown },
+    {
+      name: 'image',
+      label: (): string => 'IMAGE',
+      offered: (f: GatherSeriesFacts): boolean => f.folderKnown && f.imagery !== false,
+    },
     { name: 'process', label: (): string => 'PROCESS', offered: (f: GatherSeriesFacts): boolean => f.folderKnown },
   ],
   states: [
     { name: 'folder named', facts: { folderKnown: true } },
+    { name: 'a place that is not imagery', facts: { folderKnown: true, imagery: false } },
     { name: 'folder not yet named', facts: { folderKnown: false } },
     { name: 'not retrieved yet', facts: { folderKnown: false, pullable: true } },
   ],

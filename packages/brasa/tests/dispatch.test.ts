@@ -51,7 +51,7 @@ const BUILTIN_NAMES = [
   'builtin_cat', 'builtin_cp', 'builtin_mv', 'builtin_upload', 'builtin_pacs',
   'builtin_pipeline', 'builtin_pull', 'builtin_query', 'builtin_cubepath', 'builtin_dcm', 'builtin_image',
   'builtin_rm', 'builtin_touch', 'builtin_mkdir', 'builtin_plugin', 'builtin_feed',
-  'builtin_compute', 'builtin_tag', 'builtin_gather', 'builtin_group', 'builtin_user', 'builtin_pluginmeta',
+  'builtin_compute', 'builtin_tag', 'builtin_expect', 'builtin_gather', 'builtin_group', 'builtin_user', 'builtin_pluginmeta',
   'builtin_plugininstance', 'builtin_workflow', 'builtin_download', 'builtin_edit',
   'builtin_files', 'builtin_links', 'builtin_dirs', 'builtin_context',
   'builtin_parametersofplugin', 'builtin_physicalmode', 'builtin_prompt',

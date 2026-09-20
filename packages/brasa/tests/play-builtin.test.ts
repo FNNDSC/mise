@@ -54,6 +54,24 @@ jest.unstable_mockModule('../src/core/sink.js', () => ({
   sink_errLine: (line: string): void => { output.push(line); },
 }));
 
+/** Parameter scopes play opened, as entry lists. */
+const scopes: Array<Array<[string, string]>> = [];
+/** The parameters currently in scope, as the real resolver would see them. */
+let scope: Map<string, string> = new Map();
+jest.unstable_mockModule('../src/core/expansion.js', () => ({
+  paramScope_run: async (params: Map<string, string>, operation: () => Promise<unknown>): Promise<unknown> => {
+    scopes.push([...params.entries()]);
+    scope = params;
+    return await operation();
+  },
+  reference_isReserved: (name: string): boolean => ['gather', 'feed', 'run', 'query', 'cwd'].includes(name.split('.')[0]),
+  reference_resolve: async (name: string): Promise<{ values: string[] } | null> => {
+    const held: string | undefined = scope.get(name);
+    return held === undefined ? null : { values: [held] };
+  },
+  unresolvedStands_run: async (operation: () => Promise<unknown>): Promise<unknown> => await operation(),
+}));
+
 jest.unstable_mockModule('../src/core/engine.js', () => ({
   line_execute: async (line: string): Promise<Array<{ status: string; rendered: string }>> => {
     ran.push(line);
@@ -78,6 +96,8 @@ beforeEach(() => {
   stored = '';
   members = [];
   missing = false;
+  scopes.length = 0;
+  scope = new Map();
   recent_forget();
   process.exitCode = 0;
 });
@@ -110,67 +130,6 @@ describe('playArgs_parse', () => {
 
   it('refuses --step, which needs a terminal, by name', () => {
     expect(playArgs_parse(['f.mise', '--step']).parseError).toContain('terminal');
-  });
-});
-
-describe('line_expand', () => {
-  it('makes one operand of a path with a space in it', async () => {
-    members = [{ vfsPath: '/net/pacs/queries/q/Series_1.2.3 AX T2', kind: 'series' }];
-    const expanded = await line_expand('pull ${gather}', new Map());
-    expect(expanded).toEqual({ text: "pull '/net/pacs/queries/q/Series_1.2.3 AX T2'" });
-  });
-
-  it('answers the cohort pronouns from the cohort', async () => {
-    members = [{ vfsPath: '/a', kind: 'dir' }, { vfsPath: '/b', kind: 'dir' }];
-    expect(await line_expand('image ${gather.first}', new Map())).toEqual({ text: 'image /a' });
-    expect(await line_expand('image ${gather.last}', new Map())).toEqual({ text: 'image /b' });
-    expect(await line_expand('expect gather size eq ${gather.size}', new Map()))
-      .toEqual({ text: 'expect gather size eq 2' });
-  });
-
-  it('refuses a pronoun the session cannot answer yet, by name', async () => {
-    const expanded = await line_expand('expect feed ${feed} status eq finishedSuccessfully', new Map());
-    expect('refusal' in expanded && expanded.refusal).toContain('${feed}');
-  });
-
-  it('answers ${feed} once something has made one', async () => {
-    recentFeed_note(4599);
-    expect(await line_expand('expect feed ${feed} status eq x', new Map()))
-      .toEqual({ text: 'expect feed 4599 status eq x' });
-  });
-});
-
-describe('pronouns beyond the cohort', () => {
-  it('answers ${run} and ${run.place} once something has run', async () => {
-    recentRuns_note([601164, 601165]);
-    recentRunPlace_note('/home/chris/feeds/feed_1/pl-x_2/data/');
-    expect(await line_expand('expect run ${run} status eq x', new Map()))
-      .toEqual({ text: 'expect run 601165 status eq x' });
-    expect(await line_expand('cd ${run.place}', new Map()))
-      .toEqual({ text: 'cd /home/chris/feeds/feed_1/pl-x_2/data/' });
-  });
-
-  it('answers ${query} and ${cwd}, and refuses ${run.place} before anything has run', async () => {
-    recentQuery_note('/net/pacs/queries/q 1');
-    expect(await line_expand('ls ${query}', new Map())).toEqual({ text: "ls '/net/pacs/queries/q 1'" });
-    expect(await line_expand('pwd ${cwd}', new Map())).toEqual({ text: 'pwd /home/chris/uploads' });
-    const refused = await line_expand('cd ${run.place}', new Map());
-    expect('refusal' in refused && refused.refusal).toContain('${run.place}');
-  });
-
-  it('gives the cohort member\'s PLACE when asked, and refuses when it has none', async () => {
-    members = [{ vfsPath: '/net/pacs/q/Series_1', kind: 'series', folderPath: '/home/chris/SERVICES/s1' }];
-    expect(await line_expand('image ${gather.first.place}', new Map()))
-      .toEqual({ text: 'image /home/chris/SERVICES/s1' });
-
-    members = [{ vfsPath: '/net/pacs/q/Series_2', kind: 'series' }];
-    const refused = await line_expand('image ${gather.first.place}', new Map());
-    expect('refusal' in refused && refused.refusal).toContain('not in CUBE yet');
-  });
-
-  it('refuses a pronoun it has never heard of', async () => {
-    const refused = await line_expand('echo ${weather}', new Map());
-    expect('refusal' in refused && refused.refusal).toContain('${weather}');
   });
 });
 
@@ -217,10 +176,22 @@ describe('play', () => {
     expect(ran).toEqual([]);
   });
 
-  it('takes a default when the operator gives nothing', async () => {
+  // play hands the line over as written: the session expands it, the same
+  // way it expands a typed one. What play owns is that the parameter is IN
+  // SCOPE while the line runs.
+  it('runs the line as written, with the manifest\'s parameters in scope', async () => {
     stored = ['@param LABEL = draft', 'feed create ${LABEL}'].join('\n');
     await builtin_play(['f.mise']);
-    expect(ran).toEqual(['feed create draft']);
+    expect(ran).toEqual(['feed create ${LABEL}']);
+    expect(scopes).toEqual([[['LABEL', 'draft']]]);
+  });
+
+  it('refuses a manifest that takes a name the session answers for', async () => {
+    stored = ['@param feed', 'pwd'].join('\n');
+    const envelope = await builtin_play(['f.mise', '--param', 'feed=1']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('@param feed');
+    expect(ran).toEqual([]);
   });
 
   it('runs the lines in order, showing each one before it runs', async () => {

@@ -24,13 +24,12 @@ import { CommandEnvelope, envelope_ok, envelope_error, errorStack } from '@fnnds
 import type { Result } from '@fnndsc/cumin';
 import { fileContent_get } from '@fnndsc/salsa';
 import { path_resolve } from '../utils.js';
-import { session } from '../../session/index.js';
-import { cohort_read, GatherMember, GatherState } from './gather.store.js';
 import { duration_parse } from '../../lib/duration.js';
-import { recentFeed_get, recentQuery_get, recentRunPlace_get, recentRuns_get } from '../../session/recent.js';
 import { recorder_mute, recorder_unmute } from '../../session/recorder.js';
 import { sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
+import { paramScope_run, reference_isReserved, reference_resolve, unresolvedStands_run } from '../../core/expansion.js';
+import { shellWords_referencesExpand, shellWords_tokenize, type ReferenceExpansion, type ShellWord } from '../../lib/parser.js';
 
 /** The model kind under which a played manifest's outcome travels. */
 export const PLAY_MODEL_KIND: string = 'manifest.played';
@@ -116,140 +115,8 @@ export function manifest_parse(text: string): Manifest {
   return { name, description, params, lines };
 }
 
-/**
- * Quotes a path if it holds anything a line would break on.
- *
- * A PACS series path carries parentheses, commas and spaces: substituted
- * bare, one gathered series becomes several operands and the line means
- * something else.
- *
- * @param value - The value to place in a line.
- * @returns The value, quoted when it needs to be.
- */
-function operand_quote(value: string): string {
-  if (/^[A-Za-z0-9/._:@+-]+$/.test(value)) return value;
-  return `'${value.replace(/'/g, "'\\''")}'`;
-}
 
-/**
- * Resolves one pronoun against the session.
- *
- * @param token - The pronoun, without its `${}`.
- * @returns Its value, or null when the session cannot answer it.
- */
-async function pronoun_resolve(token: string): Promise<string | null> {
-  if (token === 'cwd') return await session.getCWD();
 
-  if (token === 'feed') {
-    const feed: number | null = recentFeed_get();
-    return feed === null ? null : `${feed}`;
-  }
-
-  if (token === 'run') {
-    const runs: number[] = recentRuns_get();
-    return runs.length === 0 ? null : `${runs[runs.length - 1]}`;
-  }
-
-  // Where the last run WRITES, which is what the next act in a chain works
-  // on. Only the kernel knows it: CUBE decides the node's folder, and a
-  // manifest cannot spell it because it holds an instance id it never saw.
-  if (token === 'run.place') {
-    const place: string | null = recentRunPlace_get();
-    return place === null ? null : operand_quote(place);
-  }
-
-  if (token === 'query') {
-    const query: string | null = recentQuery_get();
-    return query === null ? null : operand_quote(query);
-  }
-
-  if (token === 'gather' || token.startsWith('gather.')) {
-    const state: GatherState = await cohort_read();
-    // A member has two addresses and the difference matters: where it was
-    // GATHERED from (what `pull` takes) and where it LANDED (what `image`
-    // and a run take). `.place` asks for the second, and says so when a
-    // member does not have one yet rather than handing over a PACS path
-    // that a viewer will refuse for reasons of its own.
-    const wantsPlace: boolean = token.endsWith('.place');
-    const stem: string = wantsPlace ? token.slice(0, -'.place'.length) : token;
-    const addressOf = (member: GatherMember): string | null => {
-      if (!wantsPlace) return member.vfsPath;
-      const landed: unknown = member.folderPath;
-      if (typeof landed === 'string' && landed.length > 0) return landed;
-      return member.kind === 'series' ? null : member.vfsPath;
-    };
-
-    const members: GatherMember[] = state.series;
-    if (stem === 'gather') {
-      const addresses: Array<string | null> = members.map(addressOf);
-      if (addresses.some((address: string | null): boolean => address === null)) return null;
-      return (addresses as string[]).map(operand_quote).join(' ');
-    }
-
-    const which: string = stem.slice('gather.'.length);
-    if (which === 'size') return `${members.length}`;
-    if (which === 'name') return state.name ?? '';
-
-    const pick = (member: GatherMember | undefined): string | null => {
-      if (member === undefined) return null;
-      const address: string | null = addressOf(member);
-      return address === null ? null : operand_quote(address);
-    };
-    if (which === 'first') return pick(members[0]);
-    if (which === 'last') return pick(members[members.length - 1]);
-    const nth: number = Number(which);
-    if (Number.isInteger(nth) && nth >= 1 && nth <= members.length) return pick(members[nth - 1]);
-    return null;
-  }
-
-  return null;
-}
-
-/** A line with everything filled in, or the reason it could not be. */
-type Expansion = { text: string } | { refusal: string };
-
-/**
- * Fills in a line's parameters and pronouns.
- *
- * @param line - The line as written.
- * @param values - Parameter values, already checked for completeness.
- * @param unresolvedStands - Leave a pronoun the session cannot answer as it
- *   was written, rather than refusing: what a dry run does, since nothing
- *   has run to give it a value.
- * @returns The line to run, or why it cannot be built.
- */
-export async function line_expand(
-  line: string,
-  values: Map<string, string>,
-  unresolvedStands: boolean = false,
-): Promise<Expansion> {
-  const tokens: string[] = [...line.matchAll(/\$\{([^}]+)\}/g)].map((match): string => match[1]);
-  let text: string = line;
-
-  for (const token of tokens) {
-    const asParam: string | undefined = values.get(token);
-    if (asParam !== undefined) {
-      text = text.replace(`\${${token}}`, asParam);
-      continue;
-    }
-    const asPronoun: string | null = await pronoun_resolve(token);
-    if (asPronoun === null) {
-      // A dry run has run nothing, so a pronoun that refers to what an
-      // earlier line WOULD have produced cannot be answered — and refusing
-      // there would make `--dry-run` useless for exactly the manifests that
-      // chain, which is most of them. It stands as written instead.
-      if (unresolvedStands) continue;
-      return {
-        refusal: `\${${token}} — the session has nothing to put there`
-          + (token === 'feed' ? ' (nothing has created a feed yet)' : '')
-          + (token.endsWith('.place') ? ' (a member is not in CUBE yet — pull it first)' : ''),
-      };
-    }
-    text = text.replace(`\${${token}}`, asPronoun);
-  }
-
-  return { text };
-}
 
 /**
  * Sleeps between lines, unless the play is cancelled.
@@ -301,6 +168,27 @@ async function manifestText_read(target: string): Promise<Result<{ text: string;
   } catch {
     return { ok: false };
   }
+}
+
+
+/**
+ * Renders a line as the kernel would expand it, without running it.
+ *
+ * It expands through the SAME resolver the dispatcher uses, so a dry run
+ * cannot disagree with a play; it simply stops before acting.
+ *
+ * @param text - The line as the manifest holds it.
+ * @returns The line with its references filled in.
+ */
+async function line_preview(text: string): Promise<string> {
+  const words: ShellWord[] = shellWords_tokenize(text);
+  const expanded: ReferenceExpansion = await unresolvedStands_run(
+    async (): Promise<ReferenceExpansion> => await shellWords_referencesExpand(words, reference_resolve, true),
+  );
+  if (!expanded.ok) return text;
+  return expanded.words
+    .map((word: ShellWord): string => (/\s/.test(word.value) ? `'${word.value}'` : word.value))
+    .join(' ');
 }
 
 /** How a play was asked for. */
@@ -402,6 +290,19 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
 
   const manifest: Manifest = manifest_parse(source.value.text);
 
+  // A manifest may not take a name the session answers for: shadowing a
+  // pronoun would make ${feed} mean two things in one language, and a reader
+  // of a shared file could not tell which one they were looking at.
+  const shadowed: ManifestParam[] = manifest.params.filter(
+    (param: ManifestParam): boolean => reference_isReserved(param.name),
+  );
+  if (shadowed.length > 0) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(
+      `play: ${parsed.manifest} declares ${shadowed.map((param: ManifestParam): string => `@param ${param.name}`).join(', ')}, which the session already answers for.`,
+    )}\n`);
+  }
+
   // Everything the file needs is settled BEFORE the first line runs: a
   // manifest that gets half way and then asks has already changed the
   // session, and the operator cannot un-ask it.
@@ -438,20 +339,23 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   // recording that captured it too would hold every line twice.
   recorder_mute();
   try {
+    await paramScope_run(values, async (): Promise<void> => {
     for (const line of manifest.lines) {
-      const expanded: Expansion = await line_expand(line.text, values, parsed.dryRun);
-      if ('refusal' in expanded) {
-        sink_errLine(chalk.red(`✗ ${parsed.manifest}:${line.number}: ${expanded.refusal}`));
-        stoppedAt = line.number;
-        break;
+      // A dry run shows what WOULD run, expanded by the kernel's own
+      // expander rather than a second one living here: a reference nothing
+      // can answer yet stands as written, since nothing has run to give it
+      // a value.
+      if (parsed.dryRun) {
+        sink_dataLine(chalk.cyan(`▸ ${await line_preview(line.text)}`));
+        ran += 1;
+        continue;
       }
 
-      // The line is SHOWN before it runs, so a play reads as a session
-      // being driven rather than as output appearing from nowhere.
-      sink_dataLine(chalk.cyan(`▸ ${expanded.text}`));
-      if (parsed.dryRun) { ran += 1; continue; }
+      // The line is SHOWN as written, then handed to the session, which
+      // resolves its references the way it resolves every other line's.
+      sink_dataLine(chalk.cyan(`▸ ${line.text}`));
 
-      const envelopes: CommandEnvelope[] = await line_execute(expanded.text);
+      const envelopes: CommandEnvelope[] = await line_execute(line.text);
       ran += 1;
       const refused: boolean = envelopes.some((envelope: CommandEnvelope): boolean => envelope.status === 'error');
       if (refused || process.exitCode === 1) {
@@ -468,6 +372,7 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
         break;
       }
     }
+    });
   } finally {
     recorder_unmute();
     depth -= 1;

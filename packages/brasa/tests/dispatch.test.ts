@@ -96,7 +96,7 @@ jest.unstable_mockModule('../src/builtins/executable.js', () => ({ pluginExecuta
 const mockSudoCommandRun = jest.fn();
 jest.unstable_mockModule('../src/core/elevation.js', () => ({ sudoCommand_run: mockSudoCommandRun }));
 
-const { command_dispatch, command_dispatchEnvelope, command_executeToEnvelope, envRefs_expand } = await import('../src/core/dispatch.js');
+const { command_dispatch, command_dispatchEnvelope, command_executeToEnvelope } = await import('../src/core/dispatch.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 let errSpy: jest.SpiedFunction<typeof console.error>;
@@ -114,29 +114,6 @@ beforeEach(() => {
   exitSpy = jest.spyOn(process, 'exit').mockImplementation(((): never => {
     throw new Error('__exit__');
   }) as never);
-});
-
-describe('envRefs_expand', () => {
-  it('expands $NAME and ${NAME} forms from the environment', () => {
-    process.env.CHELL_TEST_ACC = '999';
-    expect(envRefs_expand('AccessionNumber:$CHELL_TEST_ACC')).toBe('AccessionNumber:999');
-    expect(envRefs_expand('${CHELL_TEST_ACC}-suffix')).toBe('999-suffix');
-    delete process.env.CHELL_TEST_ACC;
-  });
-
-  it('expands multiple references in one token', () => {
-    process.env.CHELL_TEST_A = 'x';
-    process.env.CHELL_TEST_B = 'y';
-    expect(envRefs_expand('$CHELL_TEST_A,$CHELL_TEST_B')).toBe('x,y');
-    delete process.env.CHELL_TEST_A;
-    delete process.env.CHELL_TEST_B;
-  });
-
-  it('leaves references to unset variables verbatim', () => {
-    delete process.env.CHELL_TEST_UNSET;
-    expect(envRefs_expand('$CHELL_TEST_UNSET/tail')).toBe('$CHELL_TEST_UNSET/tail');
-    expect(envRefs_expand('plain $ text')).toBe('plain $ text');
-  });
 });
 
 describe('command_dispatch', () => {
@@ -209,11 +186,13 @@ describe('command_dispatch', () => {
     expect(mockChiliRun).not.toHaveBeenCalled();
   });
 
-  it('expands environment references in arguments before dispatch', async () => {
-    process.env.CHELL_TEST_DIR = '/home/chris/data with spaces';
-    await command_dispatch('ls', ['$CHELL_TEST_DIR', '-l']);
+  // Expansion belongs to the LINE path now, where quoting is still known.
+  // `command_dispatch` takes words a caller has already split, so it has
+  // nothing left to expand — and nothing in the stack calls it with raw
+  // references.
+  it('takes already-expanded words without expanding again', async () => {
+    await command_dispatch('ls', ['/home/chris/data with spaces', '-l']);
     expect(mockLs).toHaveBeenCalledWith(['/home/chris/data with spaces', '-l']);
-    delete process.env.CHELL_TEST_DIR;
   });
 
   it('runs an exact /bin plugin match via builtin_executePlugin', async () => {

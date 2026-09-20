@@ -6,12 +6,33 @@
  * pathname-expansion meaning is retained.
  */
 
+/**
+ * One piece of a word: literal text, or a reference the line asked for.
+ *
+ * The tokenizer records references rather than resolving them, because
+ * resolving is asynchronous (a pronoun asks the session) and tokenizing is
+ * not. What it must record is the QUOTING, since that is known only here:
+ * inside single quotes a `$` is text, inside double quotes a reference is
+ * one operand however many values it carries, and bare it may become
+ * several — the shell's rule, which the stack claims to wear.
+ */
+export interface ShellSegment {
+  /** Literal text, when this piece is text. */
+  text: string;
+  /** The reference's name, when this piece is one. */
+  ref: string | null;
+  /** Whether the reference stood inside double quotes. */
+  quoted: boolean;
+}
+
 /** A rendered shell word and the glob pattern it may contribute. */
 export interface ShellWord {
   value: string;
   globPattern: string;
   pathnameExpansion: boolean;
   pathnameExpanded: boolean;
+  /** The word's pieces, when it holds a reference; absent when it is plain text. */
+  segments?: ShellSegment[];
 }
 
 /** String arguments with per-operand pathname-expansion provenance. */
@@ -19,6 +40,15 @@ export type ShellArguments = string[] & {
   pathnameExpanded?: readonly boolean[];
   pathnameExpansion?: readonly boolean[];
 };
+
+/**
+ * What a reference looks like: `${name}` or a bare `$NAME`.
+ *
+ * A braced name may carry dots, which is how a session pronoun names part
+ * of what it refers to (`${gather.first.place}`); a bare one may not, so
+ * `$HOME.txt` keeps its extension.
+ */
+const REFERENCE_PATTERN: RegExp = /^\$(?:\{([A-Za-z_][A-Za-z0-9_.]*)\}|([A-Za-z_][A-Za-z0-9_]*))/;
 
 /** Escapes wildcard metacharacters for literal minimatch use. */
 function globLiteral_escape(value: string): string {
@@ -159,24 +189,48 @@ export function shellWords_tokenize(line: string): ShellWord[] {
   let inDouble: boolean = false;
   let escapeNext: boolean = false;
 
+  let segments: ShellSegment[] = [];
+  let pendingText: string = '';
+
+  const text_flush = (): void => {
+    if (pendingText.length === 0) return;
+    segments.push({ text: pendingText, ref: null, quoted: false });
+    pendingText = '';
+  };
   const character_append = (char: string, literal: boolean): void => {
     currentValue += char;
     currentPattern += literal ? globLiteral_escape(char) : char;
     pathnameExpansion ||= !literal && /[*?[\]]/.test(char);
+    pendingText += char;
+    wordStarted = true;
+  };
+  const reference_append = (name: string, raw: string, quoted: boolean): void => {
+    text_flush();
+    segments.push({ text: '', ref: name, quoted });
+    // The value keeps the reference as written: every reader that does not
+    // resolve references (completion, help, the tests) sees the line as the
+    // operator typed it.
+    currentValue += raw;
+    currentPattern += globLiteral_escape(raw);
     wordStarted = true;
   };
   const word_pushCurrent = (): void => {
     if (!wordStarted) return;
+    text_flush();
+    const held: ShellSegment[] = segments;
     tokens.push({
       value: currentValue,
       globPattern: currentPattern,
       pathnameExpansion,
       pathnameExpanded: false,
+      ...(held.some((segment: ShellSegment): boolean => segment.ref !== null) ? { segments: held } : {}),
     });
     currentValue = '';
     currentPattern = '';
     pathnameExpansion = false;
     wordStarted = false;
+    segments = [];
+    pendingText = '';
   };
 
   for (let i = 0; i < line.length; i++) {
@@ -211,6 +265,18 @@ export function shellWords_tokenize(line: string): ShellWord[] {
       continue;
     }
 
+    // A reference, unless it stands in single quotes, where a `$` is text —
+    // which is what makes a quoted DICOM value or a literal price safe.
+    if (char === '$' && !inSingle) {
+      const rest: string = line.slice(i);
+      const match: RegExpMatchArray | null = rest.match(REFERENCE_PATTERN);
+      if (match !== null) {
+        reference_append(match[1] ?? match[2], match[0], inDouble);
+        i += match[0].length - 1;
+        continue;
+      }
+    }
+
     character_append(char, inSingle || inDouble);
   }
 
@@ -226,4 +292,72 @@ export function shellWords_tokenize(line: string): ShellWord[] {
  */
 export function args_tokenize(line: string): string[] {
   return shellWords_tokenize(line).map((word: ShellWord): string => word.value);
+}
+
+/** What a reference turned out to be. */
+export type ReferenceValue = { values: string[] } | null;
+
+/** Answers what a reference refers to, or null when nothing does. */
+export type ReferenceResolver = (name: string) => Promise<ReferenceValue>;
+
+/** How reference expansion went. */
+export type ReferenceExpansion =
+  | { ok: true; words: ShellWord[] }
+  | { ok: false; missing: string };
+
+/**
+ * Resolves the references in a line's words, respecting how they were quoted.
+ *
+ * The shell's rule, kept: a bare reference carrying several values becomes
+ * several operands, a double-quoted one stays a single operand however many
+ * values it holds, and a single-quoted `$` never got here at all. An
+ * expanded value never globs afterwards — a filename with a bracket in it is
+ * a filename, not a pattern.
+ *
+ * @param words - The tokenized words.
+ * @param resolve - Answers what a reference refers to.
+ * @param unresolvedStands - Leave an unanswerable reference as written
+ *   instead of refusing: what a dry run does, having run nothing.
+ * @returns The expanded words, or the reference nothing could answer.
+ */
+export async function shellWords_referencesExpand(
+  words: readonly ShellWord[],
+  resolve: ReferenceResolver,
+  unresolvedStands: boolean = false,
+): Promise<ReferenceExpansion> {
+  const expanded: ShellWord[] = [];
+
+  for (const word of words) {
+    const segments: ShellSegment[] | undefined = word.segments;
+    if (segments === undefined) {
+      expanded.push(word);
+      continue;
+    }
+
+    // A word that is nothing but one bare reference is the list case: it may
+    // leave as several operands. Anything else joins into one word.
+    const lone: boolean = segments.length === 1 && segments[0].ref !== null && !segments[0].quoted;
+    let rendered: string = '';
+    let split: string[] | null = null;
+
+    for (const segment of segments) {
+      if (segment.ref === null) { rendered += segment.text; continue; }
+      const held: ReferenceValue = await resolve(segment.ref);
+      if (held === null) {
+        if (!unresolvedStands) return { ok: false, missing: segment.ref };
+        rendered += `\${${segment.ref}}`;
+        continue;
+      }
+      if (lone && held.values.length !== 1) { split = held.values; continue; }
+      rendered += held.values.join(' ');
+    }
+
+    if (split !== null) {
+      for (const value of split) expanded.push(shellWord_literal(value));
+      continue;
+    }
+    expanded.push(shellWord_literal(rendered));
+  }
+
+  return { ok: true, words: expanded };
 }

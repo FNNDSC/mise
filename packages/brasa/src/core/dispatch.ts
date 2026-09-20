@@ -86,12 +86,14 @@ import { pluginExecutable_handle } from '../builtins/executable.js';
 import { Result, errorStack, Ok, Err, StackMessage, envelope_error } from '@fnndsc/cumin';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { envelopeHandler_wrap, envelope_deliver, sink_get, PipeCaptureSink, sinkScope_run } from './sink.js';
+import { reference_refusal, reference_resolve, unresolvedStands_get } from './expansion.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import {
-  shellArguments_envRefsExpand,
+  shellWords_referencesExpand,
   shellWords_tokenize,
   shellWords_values,
   type ShellArguments,
+  type ReferenceExpansion,
   type ShellWord,
 } from '../lib/parser.js';
 import { surface_get, capability_require } from './surface.js';
@@ -384,28 +386,6 @@ async function binExecutableMatches_get(command: string): Promise<BinExecutableM
   };
 }
 
-/**
- * Expands `$NAME` and `${NAME}` environment references in one token.
- *
- * Applied per token after parsing, so an expanded value can never inject
- * command separators, pipes or redirects (the structural characters were
- * already consumed). References to unset variables are left verbatim —
- * kinder than the shell's silent empty string when a script forgets an
- * export. Shell-escape lines (`!...`) never reach this point; bash does
- * its own expansion there.
- *
- * @param token - A single parsed command token.
- * @returns The token with set environment references substituted.
- */
-export function envRefs_expand(token: string): string {
-  return token.replace(
-    /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g,
-    (match: string, braced: string | undefined, bare: string | undefined) => {
-      const value: string | undefined = process.env[braced ?? bare ?? ''];
-      return value !== undefined ? value : match;
-    },
-  );
-}
 
 /**
  * Reads the current process exit code as a number.
@@ -500,7 +480,6 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
   if (command === 'exit') {
     process.exit(0);
   }
-  args = shellArguments_envRefsExpand(args, envRefs_expand);
 
   if (command === 'sudo') {
     return await sudoCommand_run(args, commandDispatchEnvelope_run);
@@ -615,12 +594,39 @@ async function helpEnvelope_maybe(command: string, args: string[]): Promise<Comm
  * @param args - Parsed argument words.
  * @returns Expanded compatibility arguments with expansion provenance.
  */
+/**
+ * Resolves the references in a whole command line, the command word included.
+ *
+ * A shell runs `$CMD arg`, and a manifest names its plugin as a parameter
+ * (`@param ANON = pl-pfdicom_tagSub-v3.3.4`) for exactly that reason: the
+ * same workflow on another CUBE supplies its own build. Expanding only the
+ * arguments left the command word as written, and the line refused with
+ * "command not found: ${ANON}".
+ *
+ * @param words - The line's tokenized words.
+ * @returns The words with references resolved, or a refusal naming the one
+ *   nothing could answer.
+ */
+async function commandLine_referencesExpand(words: readonly ShellWord[]): Promise<Result<ShellWord[]>> {
+  const expanded: ReferenceExpansion = await shellWords_referencesExpand(
+    words,
+    reference_resolve,
+    unresolvedStands_get(),
+  );
+  if (!expanded.ok) {
+    errorStack.stack_push('error', reference_refusal(expanded.missing));
+    return Err();
+  }
+  return Ok(expanded.words);
+}
+
 async function commandWords_expand(
   command: string,
   args: readonly ShellWord[],
 ): Promise<Result<ShellArguments>> {
   const sudoNestedCommand: ShellWord | undefined = command === 'sudo' ? args[0] : undefined;
   const targetCommand: string = sudoNestedCommand?.value ?? command;
+
   const targetArgs: readonly ShellWord[] = sudoNestedCommand ? args.slice(1) : args;
   const values: string[] = targetArgs.map((word: ShellWord): string => word.value);
   const result: Result<ShellWord[]> = await shellWords_expand(
@@ -651,10 +657,16 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
   const trimmedLine: string = commandLine.trim();
   if (!trimmedLine) return { text: '', buffer: Buffer.alloc(0) };
 
-  const words: ShellWord[] = shellWords_tokenize(trimmedLine);
-  if (words.length === 0) {
+  const tokenized: ShellWord[] = shellWords_tokenize(trimmedLine);
+  if (tokenized.length === 0) {
     return { text: '', buffer: Buffer.alloc(0) };
   }
+  const referenced: Result<ShellWord[]> = await commandLine_referencesExpand(tokenized);
+  if (!referenced.ok) {
+    const lastError: StackMessage | undefined = errorStack.stack_pop();
+    return { text: chalk.red(`${lastError?.message ?? 'unresolved reference'}\n`), buffer: Buffer.from('') };
+  }
+  const words: ShellWord[] = referenced.value;
   const [commandWord, ...argumentWords]: ShellWord[] = words;
   const command: string = commandWord.value;
 
@@ -769,8 +781,16 @@ export async function command_executeToEnvelope(
   startTime: number,
   timingEnabled: boolean,
 ): Promise<CommandEnvelope | null> {
-  const words: ShellWord[] = shellWords_tokenize(trimmedLine);
-  if (words.length === 0) return null;
+  const tokenized: ShellWord[] = shellWords_tokenize(trimmedLine);
+  if (tokenized.length === 0) return null;
+  const referenced: Result<ShellWord[]> = await commandLine_referencesExpand(tokenized);
+  if (!referenced.ok) {
+    const lastError: StackMessage | undefined = errorStack.stack_pop();
+    if (lastError) sink_get().err_write(`${chalk.red(lastError.message)}\n`);
+    process.exitCode = 1;
+    return { status: 'error', rendered: '' };
+  }
+  const words: ShellWord[] = referenced.value;
   const [commandWord, ...argumentWords]: ShellWord[] = words;
   const command: string = commandWord.value;
   const expandResult: Result<ShellArguments> = await commandWords_expand(command, argumentWords);

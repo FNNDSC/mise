@@ -226,6 +226,8 @@ export class GatherPanel {
         {
           traits: this.seriesTraits_declare(),
           key: (row: SeriesRow): string => row.entry.seriesUID,
+          // `gather list` numbers the cohort by each member's address.
+          address: (row: SeriesRow): string | undefined => row.entry.vfsPath,
           // A series is a leaf: a click indicates it and its verbs go to
           // the frame; activating it does nothing.
           actions: { of: (): ReadonlyArray<ListingAction<SeriesRow>> => this.seriesActions },

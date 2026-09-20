@@ -139,6 +139,14 @@ export interface ClientHandlers {
   ambient_receive?: (envelope: WireEnvelope) => void;
   /** A watched subject's liveness changed: live, settled, or stale. */
   watched_receive?: (subject: string, state: WatchState) => void;
+  /**
+   * Which listing the session's numbers currently count.
+   *
+   * A row can be named by the number beside it (`gather add @2,3`), and a
+   * surface lights the index pills on the listing those numbers reach —
+   * pills on any other listing would be numbers nothing would answer to.
+   */
+  numbered_receive?: (numbering: { id: number; source: string; rows: number; values: string[] }) => void;
   close_handle?: () => void;
 }
 
@@ -413,6 +421,15 @@ export class ArgusClient {
       }
       case 'watched': {
         this.handlers.watched_receive?.(message.subject, message.state);
+        break;
+      }
+      case 'numbered': {
+        this.handlers.numbered_receive?.({
+          id: message.id,
+          source: message.source,
+          rows: message.rows,
+          values: message.values,
+        });
         break;
       }
       case 'promptline': {

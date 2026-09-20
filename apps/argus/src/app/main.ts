@@ -31,6 +31,7 @@ import {
 import { ArgusTerminal } from '../console/terminal.js';
 import { consolePalette_publish } from '../console/ansi.js';
 import { ArgusProgress } from '../console/progress.js';
+import { listingNumbering_set } from '../features/roster/listing.js';
 import { FilesPanel, type FileAction, type FsListing, type FsListingEntry, extension_isImage, type PreviewProvider, type GlimpseNode } from '../features/files/panel.js';
 import type { ListingAction } from '../features/roster/row.js';
 import { FILE_ROW_ROSTER, FILES_SELECTION_ROSTER, RUNS_ROW_ROSTER, type FileRowFacts, type FilesSelectionFacts, type RunsRowFacts } from '../features/roster/verbs.js';
@@ -4974,6 +4975,12 @@ async function surface_start(token: string): Promise<void> {
       watched_receive: (subject: string, state: WatchState): void => {
         dagPanel.watched_observe(subject, state);
         for (const panel of dagPanels.values()) panel.watched_observe(subject, state);
+      },
+      // Which listing the session's numbers count. Every listing's index
+      // pills repaint from it, so the rows wearing a number are exactly the
+      // rows `@N` reaches — on whichever pane happens to hold them.
+      numbered_receive: (numbering: { id: number; source: string; rows: number; values: string[] }): void => {
+        listingNumbering_set({ source: numbering.source, values: numbering.values });
       },
       envelope_observe: (envelope: WireEnvelope): void => {
         // The claim rule for console-issued models: a DAG-shaped model goes

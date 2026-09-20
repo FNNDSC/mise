@@ -87,6 +87,7 @@ import { Result, errorStack, Ok, Err, StackMessage, envelope_error } from '@fnnd
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { envelopeHandler_wrap, envelope_deliver, sink_get, PipeCaptureSink, sinkScope_run } from './sink.js';
 import { reference_refusal, reference_resolve, unresolvedStands_get } from './expansion.js';
+import { answer_note, answerConsulted_take, type SessionAnswer } from '../session/answer.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import {
   shellWords_referencesExpand,
@@ -664,7 +665,10 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
   const referenced: Result<ShellWord[]> = await commandLine_referencesExpand(tokenized);
   if (!referenced.ok) {
     const lastError: StackMessage | undefined = errorStack.stack_pop();
-    return { text: chalk.red(`${lastError?.message ?? 'unresolved reference'}\n`), buffer: Buffer.from('') };
+    const message: string = lastError === undefined
+      ? 'unresolved reference'
+      : error_stripDebugPrefix(lastError.message);
+    return { text: chalk.red(`${message}\n`), buffer: Buffer.from('') };
   }
   const words: ShellWord[] = referenced.value;
   const [commandWord, ...argumentWords]: ShellWord[] = words;
@@ -786,11 +790,19 @@ export async function command_executeToEnvelope(
   const referenced: Result<ShellWord[]> = await commandLine_referencesExpand(tokenized);
   if (!referenced.ok) {
     const lastError: StackMessage | undefined = errorStack.stack_pop();
-    if (lastError) sink_get().err_write(`${chalk.red(lastError.message)}\n`);
+    // The refusal is the operator's to read, not the stack's: the debug
+    // prefix names the function that pushed it, which tells them nothing.
+    if (lastError) sink_get().err_write(`${chalk.red(error_stripDebugPrefix(lastError.message))}\n`);
     process.exitCode = 1;
     return { status: 'error', rendered: '' };
   }
   const words: ShellWord[] = referenced.value;
+  // A line that acted on a number says which listing it counted: the rule
+  // that a readout which acts says so, applied to the rows it acted on.
+  const counted: SessionAnswer | null = answerConsulted_take();
+  if (counted !== null) {
+    sink_get().data_write(chalk.gray(`  from: ${counted.source} · ${counted.rows.length} rows\n`));
+  }
   const [commandWord, ...argumentWords]: ShellWord[] = words;
   const command: string = commandWord.value;
   const expandResult: Result<ShellArguments> = await commandWords_expand(command, argumentWords);
@@ -821,10 +833,20 @@ export async function command_executeToEnvelope(
     const result: CommandEnvelope = failed
       ? { ...pluginEnvelope, status: 'error' }
       : pluginEnvelope;
+    if (result.model !== undefined) {
+      answer_note(result.model.kind, result.model.data, trimmedLine);
+    }
     return envelope_drainErrorsInto(checkpoint, result);
   }
 
   const envelope: CommandEnvelope = await command_dispatchEnvelope(command, args);
   command_timingMaybePrint(startTime, timingEnabled);
+  // An answer with rows becomes the thing `@3` counts. Recorded from the
+  // MODEL, not from the rendering, so a console table and a graphical pane
+  // number the same rows — an index that meant different things on
+  // different surfaces would be worse than no index at all.
+  if (envelope.model !== undefined) {
+    answer_note(envelope.model.kind, envelope.model.data, trimmedLine);
+  }
   return envelope;
 }

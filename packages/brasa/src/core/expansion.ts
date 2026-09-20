@@ -26,6 +26,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ReferenceValue } from '../lib/parser.js';
 import { session } from '../session/index.js';
 import { recentFeed_get, recentQuery_get, recentRunPlace_get, recentRuns_get } from '../session/recent.js';
+import { answer_get, answerRow_get, type AnswerRow } from '../session/answer.js';
 
 /** The names the session answers for; a manifest may not take them. */
 export const RESERVED_REFERENCES: ReadonlySet<string> = new Set([
@@ -130,12 +131,54 @@ async function cohort_reference(name: string): Promise<ReferenceValue> {
 }
 
 /**
- * Answers a reference: the session, then the manifest, then the environment.
+ * Reads the numbers an index names: `@2`, `@2,3,6`, `@2-4`.
+ *
+ * @param spec - The index without its sigil.
+ * @returns The 1-based indices, in the order written.
+ */
+export function indices_parse(spec: string): number[] {
+  const indices: number[] = [];
+  for (const part of spec.split(',')) {
+    const range: RegExpMatchArray | null = part.match(/^(\d+)-(\d+)$/);
+    if (range === null) { indices.push(Number(part)); continue; }
+    const from: number = Number(range[1]);
+    const to: number = Number(range[2]);
+    // A range written backwards is still a range: the operator meant those rows.
+    const step: number = from <= to ? 1 : -1;
+    for (let at: number = from; step > 0 ? at <= to : at >= to; at += step) indices.push(at);
+  }
+  return indices;
+}
+
+/**
+ * What the rows an index names are worth, as operands.
+ *
+ * @param name - The index, sigil included.
+ * @returns The rows' values, or null when nothing is numbered or a number
+ *   is past the end of the answer.
+ */
+function index_resolve(name: string): ReferenceValue {
+  const indices: number[] = indices_parse(name.slice(1));
+  if (indices.length === 0) return null;
+  const values: string[] = [];
+  for (const index of indices) {
+    const row: AnswerRow | null = answerRow_get(index);
+    if (row === null) return null;
+    values.push(row.value);
+  }
+  return { values };
+}
+
+/**
+ * Answers a reference: an index, then the session, then the manifest, then
+ * the environment.
  *
  * @param name - The reference's name.
  * @returns What it refers to, or null when nothing does.
  */
 export async function reference_resolve(name: string): Promise<ReferenceValue> {
+  if (name.startsWith('@')) return index_resolve(name);
+
   if (name === 'cwd') return { values: [await session.getCWD()] };
 
   if (name === 'feed') {
@@ -177,6 +220,12 @@ export async function reference_resolve(name: string): Promise<ReferenceValue> {
 export function reference_refusal(name: string): string {
   const scoped: boolean = paramScope.getStore() !== undefined;
   const places: string = scoped ? "the session, this manifest's parameters, the environment" : 'the session, the environment';
+  if (name.startsWith('@')) {
+    const numbered = answer_get();
+    return numbered === null
+      ? `${name}: nothing is numbered yet — list something first.`
+      : `${name}: the last answer (${numbered.source}) holds ${numbered.rows.length} row${numbered.rows.length === 1 ? '' : 's'}.`;
+  }
   const hint: string = reference_isReserved(name)
     ? ` — nothing in this session has one yet`
     : '';

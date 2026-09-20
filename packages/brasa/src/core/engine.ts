@@ -46,6 +46,7 @@ import {
 import { capability_require, surface_get } from './surface.js';
 import { commandCancellation_request, commandCancellation_run } from './cancellation.js';
 import { recorder_note } from '../session/recorder.js';
+import { answerAdapters_register } from '../session/answerAdapters.js';
 import { sink_get } from './sink.js';
 
 /**
@@ -397,6 +398,8 @@ async function vfsProviders_register(): Promise<void> {
  * @returns The engine facade.
  */
 export async function engine_create(): Promise<BrasaEngine> {
+  // What each listing's rows are, so `@3` can name one.
+  answerAdapters_register();
   await session.init();
   await vfsProviders_register();
   return {

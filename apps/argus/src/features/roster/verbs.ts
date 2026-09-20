@@ -137,13 +137,17 @@ export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
     { name: 'image', label: (): string => 'IMAGE', offered: (f: FileRowFacts): boolean => f.kind === 'seriesFolder' },
     {
       // A cohort is what this session is working on, and that is not only
-      // PACS: a directory of inputs belongs in it beside a series. Offered
-      // on a PLACE, never on a file — a cohort's members are things a run
-      // can be given, and a run is given a place.
+      // PACS: a directory of inputs belongs in it beside a series, and so
+      // does a FILE. This was once a place-only verb on the belief that a
+      // run is given a directory — but CUBE's own `unextpath` takes a
+      // comma-separated list of paths, files included (proved live: three
+      // files to pl-dircopy became three link files at the feed's root), so
+      // three-and-only-three files is a cohort a run can be given. Not
+      // offered on a projection: the kernel renders /proc and /net, and a
+      // gathered view is a member nothing could hand over.
       name: 'gather',
       label: (): string => 'GATHER',
-      offered: (f: FileRowFacts): boolean =>
-        (f.kind === 'directory' || f.kind === 'seriesFolder') && f.projection !== true,
+      offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.projection !== true,
     },
     // PROCESS acts on a place: a directory outside a feed (a new feed roots
     // on it), or a node's own data inside one (the run appends to the node).

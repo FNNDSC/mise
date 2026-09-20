@@ -471,17 +471,58 @@ export function listingNumbering_get(): { source: string; values: ReadonlyArray<
 }
 
 /**
- * Paints every index pill on the surface from the current numbering.
+ * Paints every index pill on the surface.
  *
- * A pill on a listing the numbers do not reach carries nothing and reads
- * dim: the addressable rows are the ones that look addressable.
+ * Two numbers can stand in this cell and they are not the same thing. A
+ * row the session's last answer holds wears the number `@N` reaches, LIT:
+ * what you read is what you type. Every other row wears its own place in
+ * the listing, dim — a counter, useful for reading and not a promise that
+ * anything answers to it. The distinction is the hue, not the digits.
+ *
+ * Numbers are zero-padded to the widest in their listing, so the column is
+ * a column rather than a ragged edge, and a row's digits do not shift as
+ * the listing grows past ten.
  */
 export function listingPills_paint(): void {
+  // Grouped by the element each row actually sits in, not by a container
+  // class: a child level mounts its rows in its own group, and a paint that
+  // only knew the root's container left every nested listing unpadded.
+  const groups: Map<HTMLElement, HTMLElement[]> = new Map();
   for (const pill of document.querySelectorAll<HTMLElement>('.listing-index')) {
-    const address: string | undefined = pill.dataset['address'];
-    const number: number | undefined = address === undefined ? undefined : numberByAddress.get(address);
-    pill.textContent = number === undefined ? '' : `${number}`;
-    pill.classList.toggle('numbered', number !== undefined);
+    const row: HTMLElement | null = pill.closest<HTMLElement>('.listing-row');
+    const parent: HTMLElement | null = row?.parentElement ?? null;
+    if (row === null || parent === null) continue;
+    if (row.classList.contains('listing-lead')) {
+      // A lead row stands outside the order — `..` is the way out of the
+      // listing, not the first thing in it — so it keeps the cell, empty.
+      pill.textContent = '';
+      pill.classList.remove('numbered');
+      continue;
+    }
+    const held: HTMLElement[] | undefined = groups.get(parent);
+    if (held === undefined) groups.set(parent, [row]); else held.push(row);
+  }
+
+  for (const rows of groups.values()) {
+    // The widest number this group will show: its own length, or the
+    // highest the session reaches into it, whichever runs further.
+    let widest: number = rows.length;
+    for (const row of rows) {
+      const address: string | undefined = row.querySelector<HTMLElement>('.listing-index')?.dataset['address'];
+      const number: number | undefined = address === undefined ? undefined : numberByAddress.get(address);
+      if (number !== undefined && number > widest) widest = number;
+    }
+    const width: number = `${Math.max(widest, 1)}`.length;
+
+    rows.forEach((row: HTMLElement, at: number): void => {
+      const pill: HTMLElement | null = row.querySelector<HTMLElement>('.listing-index');
+      if (pill === null) return;
+      const address: string | undefined = pill.dataset['address'];
+      const number: number | undefined = address === undefined ? undefined : numberByAddress.get(address);
+      const shown: number = number ?? at + 1;
+      pill.textContent = `${shown}`.padStart(width, '0');
+      pill.classList.toggle('numbered', number !== undefined);
+    });
   }
 }
 
@@ -490,7 +531,7 @@ export function listingPills_paint(): void {
  *
  * @returns The synthesized leading trait.
  */
-function indexTrait_build<T>(address: (row: T) => string | undefined): ListingTrait<T> {
+function indexTrait_build<T>(address?: (row: T) => string | undefined): ListingTrait<T> {
   return {
     key: 'index',
     label: '',
@@ -500,7 +541,7 @@ function indexTrait_build<T>(address: (row: T) => string | undefined): ListingTr
     cell: (row: T): HTMLElement => {
       const pill: HTMLElement = document.createElement('span');
       pill.className = 'listing-index';
-      const held: string | undefined = address(row);
+      const held: string | undefined = address?.(row);
       if (held !== undefined) pill.dataset['address'] = held;
       const number: number | undefined = held === undefined ? undefined : numberByAddress.get(held);
       if (number !== undefined) {
@@ -550,9 +591,11 @@ class Level<T> {
     // façade mints the column so every listing wears it the same way, and
     // so a pane gains it by saying how its rows are addressed rather than
     // by drawing a number itself.
-    declaration = declaration.address === undefined
-      ? declaration
-      : { ...declaration, traits: [indexTrait_build(declaration.address), ...declaration.traits] };
+    // EVERY level leads with the index column: a listing is a numbered
+    // thing whether or not the session can reach into it, and a column
+    // that appeared only on some listings would move the geometry between
+    // panes. What an address buys is the LIT number — the one `@N` takes.
+    declaration = { ...declaration, traits: [indexTrait_build(declaration.address), ...declaration.traits] };
     this.declaration = declaration;
     this.host = host;
     this.select = select;
@@ -787,7 +830,12 @@ class Level<T> {
     });
     this.rowsByKey.set(key, element);
     this.dataByKey.set(key, row);
-    if (lead) this.leadKeys.add(key);
+    if (lead) {
+      this.leadKeys.add(key);
+      // A lead row stands outside the order — `..` is not the first thing
+      // in the listing, it is the way out of it — so the counter skips it.
+      element.classList.add('listing-lead');
+    }
     if (declaration.activatable?.(row) === false) return element;
     element.classList.add('listing-activatable');
     // Only a row with verbs to hide learns the split; one offered none —
@@ -1150,6 +1198,9 @@ export class Listing<T> {
       field.appendChild(section);
     }
     this.level.order.counts_set(shown, total);
+    // The numbers are painted after the rows are placed, so a fold, a sort
+    // or a re-listing renumbers what is actually on stage.
+    listingPills_paint();
     // The rows were rebuilt; the indication is restored onto the new row
     // if it is still on stage, and stood down if the repaint dropped it.
     if (this.claim !== null && !this.claim.restore()) {

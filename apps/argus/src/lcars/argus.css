@@ -2560,14 +2560,24 @@ body[data-header='dag'] #header-dag {
   font: 600 0.78rem/1.3 var(--lcars-font, inherit);
   letter-spacing: 0.04em;
   text-align: center;
-  color: transparent;
-  background: var(--listing-index-empty, rgb(255 255 255 / 6%));
+  color: rgb(255 255 255 / 38%);
+  background: rgb(255 255 255 / 6%);
 }
 
+/* Lit: the number `@N` reaches, in the listing's own hue — a token each
+ * pane sets, so a pill belongs to the listing it stands in rather than to
+ * one colour the whole surface shares. */
 .listing-index.numbered {
-  color: var(--lcars-ground, #000);
-  background: var(--lcars-index, var(--lcars-butter, #ffcc66));
+  color: #000;
+  background: var(--listing-index-hue, var(--butter));
 }
+
+/* The browser's rows are the console's orange; a PACS answer is its own
+ * blue; the cohort keeps the butter its band wears. */
+.pane-files { --listing-index-hue: var(--orange); }
+.pane-pacs, .pacs-panel, [class*='pacs-'] { --listing-index-hue: var(--daybreak); }
+.pane-gather, .gather-rows, #header-gather { --listing-index-hue: var(--butter); }
+.pane-dag, .pane-tags { --listing-index-hue: var(--harvestgold); }
 
 .listing-actions {
   --listing-action-height: 1.35rem;

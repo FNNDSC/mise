@@ -5410,7 +5410,12 @@ body[data-zoom] #header-restore {
   to { filter: brightness(1.28); }
 }
 
-#drawer-toggle,
+/* The console's lid (#drawer-toggle) is NOT in this list, on purpose. It
+ * is the whole bar row, bars 6-10 at full width, and a brightness filter
+ * across it visibly detaches its first segment from the static elbow arm it
+ * joins: the seam pulsed on a live display, and read as the gutter itself
+ * pulsing. The lid breathes at its END BLOCK only — `lid-beckon` on bar-10,
+ * below — which is the rule the lid's own comment already states. */
 #header-restore,
 .mode-strip,
 .mode-fill {
@@ -5435,7 +5440,6 @@ body[data-zoom] #header-restore {
   animation-duration: 2s;
 }
 
-#drawer-toggle:hover,
 #header-restore:hover,
 .mode-strip:hover,
 .mode-fill:hover {
@@ -5445,7 +5449,7 @@ body[data-zoom] #header-restore {
 /* Motion is a preference, and a surface that ignores it is one an operator
  * cannot sit in front of all day. */
 @media (prefers-reduced-motion: reduce) {
-  #drawer-toggle,
+  #drawer.drawer-closed ~ .bar-panel .bar-10,
   #header-restore,
   .mode-strip,
   .mode-fill,

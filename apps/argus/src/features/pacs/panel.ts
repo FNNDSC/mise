@@ -559,6 +559,10 @@ export class PacsPanel {
             {
               traits: this.traits,
               key: (row: SeriesRow): string => row.series.seriesUID,
+              // The kernel numbers a PACS answer by its SERIES, addressed
+              // by VFS path; the patient and study levels above carry no
+              // pill, because a number nothing answers to is a lie.
+              address: (row: SeriesRow): string | undefined => row.series.vfsPath,
               // A series is a leaf: a click indicates it and its verbs
               // (gather it, open it, browse it, pull it) go to the frame;
               // activating it does nothing, since its verbs are the whole

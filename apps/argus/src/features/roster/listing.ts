@@ -208,6 +208,19 @@ export function listingChild_declare<T, C>(
 export interface ListingLevel<T> {
   traits: ReadonlyArray<ListingTrait<T>>;
   key: (row: T) => string;
+  /**
+   * What the KERNEL calls this row — a path, an id — when it is a row the
+   * session can number.
+   *
+   * A row of the session's last answer can be named by the number beside
+   * it (`gather add @2,3`), and a level that says how its rows are
+   * addressed gets an index pill as its leading column. The pill is found
+   * by ADDRESS rather than by counting down the screen, so a sorted or
+   * filtered listing still shows each row the number `@N` would actually
+   * reach. A level that declares none has no pills, which is the honest
+   * default: a row nothing can name must not wear a number.
+   */
+  address?: (row: T) => string | undefined;
   actions?: ListingActions<T>;
   activate?: (row: T) => void;
   activatable?: (row: T) => boolean;
@@ -425,6 +438,121 @@ function leadingCells_of<T>(traits: ReadonlyArray<ListingTrait<T>>): number {
   return count;
 }
 
+
+/** Which listing the session's numbers currently count. */
+let numbering: { source: string; values: ReadonlyArray<string> } | null = null;
+
+/** Address to its 1-based number, rebuilt whenever the numbering changes. */
+let numberByAddress: Map<string, number> = new Map();
+
+/**
+ * Takes the session's numbering, and repaints every pill on the surface.
+ *
+ * @param held - What the kernel says is numbered, or null for nothing.
+ */
+export function listingNumbering_set(
+  held: { source: string; values: ReadonlyArray<string> } | null,
+): void {
+  numbering = held;
+  numberByAddress = new Map();
+  if (held !== null) {
+    held.values.forEach((value: string, at: number): void => {
+      // First wins: a listing that holds the same address twice numbers the
+      // first, which is the one `@N` reaches.
+      if (!numberByAddress.has(value)) numberByAddress.set(value, at + 1);
+    });
+  }
+  listingPills_paint();
+}
+
+/** What the surface believes is numbered, for a readout that says so. */
+export function listingNumbering_get(): { source: string; values: ReadonlyArray<string> } | null {
+  return numbering;
+}
+
+/**
+ * Paints every index pill on the surface.
+ *
+ * Two numbers can stand in this cell and they are not the same thing. A
+ * row the session's last answer holds wears the number `@N` reaches, LIT:
+ * what you read is what you type. Every other row wears its own place in
+ * the listing, dim — a counter, useful for reading and not a promise that
+ * anything answers to it. The distinction is the hue, not the digits.
+ *
+ * Numbers are zero-padded to the widest in their listing, so the column is
+ * a column rather than a ragged edge, and a row's digits do not shift as
+ * the listing grows past ten.
+ */
+export function listingPills_paint(): void {
+  // Grouped by the element each row actually sits in, not by a container
+  // class: a child level mounts its rows in its own group, and a paint that
+  // only knew the root's container left every nested listing unpadded.
+  const groups: Map<HTMLElement, HTMLElement[]> = new Map();
+  for (const pill of document.querySelectorAll<HTMLElement>('.listing-index')) {
+    const row: HTMLElement | null = pill.closest<HTMLElement>('.listing-row');
+    const parent: HTMLElement | null = row?.parentElement ?? null;
+    if (row === null || parent === null) continue;
+    if (row.classList.contains('listing-lead')) {
+      // A lead row stands outside the order — `..` is the way out of the
+      // listing, not the first thing in it — so it keeps the cell, empty.
+      pill.textContent = '';
+      pill.classList.remove('numbered');
+      continue;
+    }
+    const held: HTMLElement[] | undefined = groups.get(parent);
+    if (held === undefined) groups.set(parent, [row]); else held.push(row);
+  }
+
+  for (const rows of groups.values()) {
+    // The widest number this group will show: its own length, or the
+    // highest the session reaches into it, whichever runs further.
+    let widest: number = rows.length;
+    for (const row of rows) {
+      const address: string | undefined = row.querySelector<HTMLElement>('.listing-index')?.dataset['address'];
+      const number: number | undefined = address === undefined ? undefined : numberByAddress.get(address);
+      if (number !== undefined && number > widest) widest = number;
+    }
+    const width: number = `${Math.max(widest, 1)}`.length;
+
+    rows.forEach((row: HTMLElement, at: number): void => {
+      const pill: HTMLElement | null = row.querySelector<HTMLElement>('.listing-index');
+      if (pill === null) return;
+      const address: string | undefined = pill.dataset['address'];
+      const number: number | undefined = address === undefined ? undefined : numberByAddress.get(address);
+      const shown: number = number ?? at + 1;
+      pill.textContent = `${shown}`.padStart(width, '0');
+      pill.classList.toggle('numbered', number !== undefined);
+    });
+  }
+}
+
+/**
+ * The index trait a level with addressable rows leads with.
+ *
+ * @returns The synthesized leading trait.
+ */
+function indexTrait_build<T>(address?: (row: T) => string | undefined): ListingTrait<T> {
+  return {
+    key: 'index',
+    label: '',
+    className: 'listing-index-cell',
+    width: '3.4rem',
+    capped: false,
+    cell: (row: T): HTMLElement => {
+      const pill: HTMLElement = document.createElement('span');
+      pill.className = 'listing-index';
+      const held: string | undefined = address?.(row);
+      if (held !== undefined) pill.dataset['address'] = held;
+      const number: number | undefined = held === undefined ? undefined : numberByAddress.get(held);
+      if (number !== undefined) {
+        pill.textContent = `${number}`;
+        pill.classList.add('numbered');
+      }
+      return pill;
+    },
+  };
+}
+
 /**
  * One level of a listing: its order, its rows on stage, its indication,
  * and the level beneath it. The root listing is one of these with chrome
@@ -459,6 +587,15 @@ class Level<T> {
    * @param depth - How many levels above this one; the root is 0.
    */
   constructor(declaration: ListingLevel<T>, host: LevelHost, capsInRoot: boolean, select: LevelSelect<T>, depth: number = 0) {
+    // A level whose rows the kernel can name leads with an index pill. The
+    // façade mints the column so every listing wears it the same way, and
+    // so a pane gains it by saying how its rows are addressed rather than
+    // by drawing a number itself.
+    // EVERY level leads with the index column: a listing is a numbered
+    // thing whether or not the session can reach into it, and a column
+    // that appeared only on some listings would move the geometry between
+    // panes. What an address buys is the LIT number — the one `@N` takes.
+    declaration = { ...declaration, traits: [indexTrait_build(declaration.address), ...declaration.traits] };
     this.declaration = declaration;
     this.host = host;
     this.select = select;
@@ -693,7 +830,12 @@ class Level<T> {
     });
     this.rowsByKey.set(key, element);
     this.dataByKey.set(key, row);
-    if (lead) this.leadKeys.add(key);
+    if (lead) {
+      this.leadKeys.add(key);
+      // A lead row stands outside the order — `..` is not the first thing
+      // in the listing, it is the way out of it — so the counter skips it.
+      element.classList.add('listing-lead');
+    }
     if (declaration.activatable?.(row) === false) return element;
     element.classList.add('listing-activatable');
     // Only a row with verbs to hide learns the split; one offered none —
@@ -1056,6 +1198,9 @@ export class Listing<T> {
       field.appendChild(section);
     }
     this.level.order.counts_set(shown, total);
+    // The numbers are painted after the rows are placed, so a fold, a sort
+    // or a re-listing renumbers what is actually on stage.
+    listingPills_paint();
     // The rows were rebuilt; the indication is restored onto the new row
     // if it is still on stage, and stood down if the repaint dropped it.
     if (this.claim !== null && !this.claim.restore()) {

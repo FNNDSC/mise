@@ -93,6 +93,14 @@ export interface HostedEngine {
   regard_get?(): Regard | null;
 
   /**
+   * Which listing the session's numbers currently count, for a surface that
+   * attaches after the listing was made.
+   *
+   * @returns The numbering, or null when nothing has listed.
+   */
+  numbering_get?(): { id: number; source: string; rows: number; values: string[] } | null;
+
+  /**
    * Opens or closes a liveness watch on a subject for one owner. Optional:
    * a daemon whose engine lacks it refuses `watch` messages.
    *

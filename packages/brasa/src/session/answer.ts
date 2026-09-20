@@ -19,6 +19,8 @@
  * @module
  */
 
+import { ambient_publish } from '../core/ambient.js';
+
 /** One row of an answer, as something a verb can be given. */
 export interface AnswerRow {
   /** What names the row: a path, an id — whatever its verb takes. */
@@ -47,6 +49,12 @@ let held: SessionAnswer | null = null;
 /** Whether an index has been resolved against the held answer this line. */
 let consulted: boolean = false;
 
+/** Rises with each answer, so a surface can tell newer from older. */
+let sequence: number = 0;
+
+/** Past this many rows the addresses stay in the kernel and off the wire. */
+const VALUES_ON_THE_WIRE_MAX: number = 500;
+
 /**
  * Registers what a model kind's rows are.
  *
@@ -71,7 +79,20 @@ export function answer_note(kind: string, data: unknown, source: string): void {
   // An answer with no rows does not replace one that has them: `ls` on an
   // empty folder should not silently un-number the listing just read.
   if (rows === null || rows.length === 0) return;
+  sequence += 1;
   held = { source, rows };
+  // A surface cannot light the index pills on the right listing unless it is
+  // told which one the numbers now count. Pills that lie are worse than none.
+  ambient_publish({
+    kind: 'numbered',
+    id: sequence,
+    source,
+    rows: rows.length,
+    // A surface matches a row by its address, so the values travel — up to
+    // a cap, past which a listing is numbered in the kernel and unnumbered
+    // on screen rather than flooding the wire.
+    values: rows.length <= VALUES_ON_THE_WIRE_MAX ? rows.map((row: AnswerRow): string => row.value) : [],
+  });
 }
 
 /**
@@ -115,4 +136,22 @@ export function answerConsulted_take(): SessionAnswer | null {
 export function answer_forget(): void {
   held = null;
   consulted = false;
+  sequence = 0;
+}
+
+/**
+ * Which answer is numbered, for a surface attaching late.
+ *
+ * @returns The current numbering, or null when nothing has listed.
+ */
+export function numbering_get(): { id: number; source: string; rows: number; values: string[] } | null {
+  if (held === null) return null;
+  return {
+    id: sequence,
+    source: held.source,
+    rows: held.rows.length,
+    values: held.rows.length <= VALUES_ON_THE_WIRE_MAX
+      ? held.rows.map((row: AnswerRow): string => row.value)
+      : [],
+  };
 }

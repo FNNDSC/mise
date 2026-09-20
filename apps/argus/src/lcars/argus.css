@@ -2537,6 +2537,50 @@ body[data-header='dag'] #header-dag {
  * height is ONE declaration read by the track and by the capsules inside it,
  * so a row reserves exactly what a verb would occupy and cannot change
  * height when one appears. */
+/* The index pill: the number a row answers to.
+ *
+ * A row of the session's last answer can be named by the number beside it
+ * (`gather add @2,3`), so the number is DRAWN beside it — what you read is
+ * what you type. A row the numbers do not reach keeps the column and shows
+ * nothing: the geometry never changes under the operator, only what the
+ * cell holds, which is the same bargain the action track makes. The pill is
+ * found by address, so a sorted or filtered listing keeps each row's own
+ * number rather than renumbering down the screen. */
+.listing-index-cell {
+  display: flex;
+  align-items: center;
+  padding-inline-end: 0.5rem;
+}
+
+.listing-index {
+  box-sizing: border-box;
+  min-width: 2.2rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 0.7rem;
+  font: 600 0.78rem/1.3 var(--lcars-font, inherit);
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: rgb(255 255 255 / 38%);
+  background: rgb(255 255 255 / 6%);
+}
+
+/* Lit: the number `@N` reaches, in the listing's own hue — a token each
+ * pane sets, so a pill belongs to the listing it stands in rather than to
+ * one colour the whole surface shares. */
+.listing-index.numbered {
+  color: #000;
+  background: var(--listing-index-hue, var(--butter));
+}
+
+/* The pill is CHROME, not content: it takes the pane's frame hue and
+ * leaves the row's own colour to the row. In the browser that matters
+ * twice over — an orange pill beside an orange kind glyph reads as one
+ * blob, and the number stops being a number. */
+.pane-files { --listing-index-hue: var(--harvestgold); }
+.pane-pacs, .pacs-panel, [class*='pacs-'] { --listing-index-hue: var(--daybreak); }
+.pane-gather, .gather-rows, #header-gather { --listing-index-hue: var(--butter); }
+.pane-dag, .pane-tags { --listing-index-hue: var(--harvestgold); }
+
 .listing-actions {
   --listing-action-height: 1.35rem;
 

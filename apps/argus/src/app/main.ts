@@ -2468,8 +2468,8 @@ async function surface_start(token: string): Promise<void> {
       },
       dismiss: (): void => {
         // A band is not a pane: there is nothing to close. Sending the face
-        // away is what DISMISS means here, and the cohort it forgot is
-        // already empty by the time this runs.
+        // away is what DISMISS means here, and it forgets nothing: the
+        // cohort is the session's, and stays. Emptying it is CLEAR.
         document.body.dataset['header'] = 'away';
         bandDismissed = true;
         headerGather_annunciate();

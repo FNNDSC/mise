@@ -3595,7 +3595,13 @@ body[data-header='gather'] #header-gather {
 body[data-header='away'] .wrap:not(#gap) {
   position: absolute;
   inset: 0 0 auto 0;
-  translate: 0 calc(-1 * var(--zoom-header-height, 100vh));
+  /* By its OWN height, not a measured distance. The measurement was the
+   * header's last rested extent, and a face that had just grown the band
+   * (the cohort on it) was taller than that when DISMISS sent it away: the
+   * header slid by the old number and its lower rows stayed on stage — an
+   * elbow, a bar, a clipped title, read as ghosts. A percentage is the
+   * element's own box, so it leaves whole whatever its height was. */
+  translate: 0 -100%;
 }
 
 #header-restore {

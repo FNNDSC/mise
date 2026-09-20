@@ -439,11 +439,21 @@ function leadingCells_of<T>(traits: ReadonlyArray<ListingTrait<T>>): number {
 }
 
 
-/** Which listing the session's numbers currently count. */
-let numbering: { source: string; values: ReadonlyArray<string> } | null = null;
+/** One numbered row as the kernel tells it: its kind, its place, its address. */
+export interface NumberedHandle {
+  kind: string;
+  ordinal: number;
+  address: string;
+}
 
-/** Address to its 1-based number, rebuilt whenever the numbering changes. */
-let numberByAddress: Map<string, number> = new Map();
+/** Which listing the session's numbers currently count. */
+let numbering: { source: string; handles: ReadonlyArray<NumberedHandle> } | null = null;
+
+/** Address to the handle that reaches it, rebuilt whenever the numbering changes. */
+let handleByAddress: Map<string, NumberedHandle> = new Map();
+
+/** How wide each kind's sequence runs, so its codes pad alike. */
+let widthByKind: Map<string, number> = new Map();
 
 /**
  * Takes the session's numbering, and repaints every pill on the surface.
@@ -451,23 +461,37 @@ let numberByAddress: Map<string, number> = new Map();
  * @param held - What the kernel says is numbered, or null for nothing.
  */
 export function listingNumbering_set(
-  held: { source: string; values: ReadonlyArray<string> } | null,
+  held: { source: string; handles: ReadonlyArray<NumberedHandle> } | null,
 ): void {
   numbering = held;
-  numberByAddress = new Map();
+  handleByAddress = new Map();
+  widthByKind = new Map();
   if (held !== null) {
-    held.values.forEach((value: string, at: number): void => {
+    for (const handle of held.handles) {
       // First wins: a listing that holds the same address twice numbers the
-      // first, which is the one `@N` reaches.
-      if (!numberByAddress.has(value)) numberByAddress.set(value, at + 1);
-    });
+      // first, which is the one the handle reaches.
+      if (!handleByAddress.has(handle.address)) handleByAddress.set(handle.address, handle);
+      widthByKind.set(handle.kind, Math.max(widthByKind.get(handle.kind) ?? 0, `${handle.ordinal}`.length));
+    }
   }
   listingPills_paint();
 }
 
 /** What the surface believes is numbered, for a readout that says so. */
-export function listingNumbering_get(): { source: string; values: ReadonlyArray<string> } | null {
+export function listingNumbering_get(): { source: string; handles: ReadonlyArray<NumberedHandle> } | null {
   return numbering;
+}
+
+/**
+ * Draws a handle the way the operator types it: the kind, then the place
+ * zero-padded to the width its sequence needs, never fewer than three.
+ *
+ * @param handle - The row's handle.
+ * @returns The code, such as `SER003`.
+ */
+export function handle_render(handle: NumberedHandle): string {
+  const width: number = Math.max(3, widthByKind.get(handle.kind) ?? 0);
+  return `${handle.kind}${`${handle.ordinal}`.padStart(width, '0')}`;
 }
 
 /**
@@ -504,24 +528,18 @@ export function listingPills_paint(): void {
   }
 
   for (const rows of groups.values()) {
-    // The widest number this group will show: its own length, or the
-    // highest the session reaches into it, whichever runs further.
-    let widest: number = rows.length;
-    for (const row of rows) {
-      const address: string | undefined = row.querySelector<HTMLElement>('.listing-index')?.dataset['address'];
-      const number: number | undefined = address === undefined ? undefined : numberByAddress.get(address);
-      if (number !== undefined && number > widest) widest = number;
-    }
-    const width: number = `${Math.max(widest, 1)}`.length;
-
+    // A row the session reaches wears its HANDLE, lit — the code the
+    // operator types. Every other row counts itself, dim, padded to the
+    // group so the column stays a column: a counter, and since a bare
+    // number is nothing the operator can type, plainly not a promise.
+    const width: number = `${Math.max(rows.length, 1)}`.length;
     rows.forEach((row: HTMLElement, at: number): void => {
       const pill: HTMLElement | null = row.querySelector<HTMLElement>('.listing-index');
       if (pill === null) return;
       const address: string | undefined = pill.dataset['address'];
-      const number: number | undefined = address === undefined ? undefined : numberByAddress.get(address);
-      const shown: number = number ?? at + 1;
-      pill.textContent = `${shown}`.padStart(width, '0');
-      pill.classList.toggle('numbered', number !== undefined);
+      const handle: NumberedHandle | undefined = address === undefined ? undefined : handleByAddress.get(address);
+      pill.textContent = handle === undefined ? `${at + 1}`.padStart(width, '0') : handle_render(handle);
+      pill.classList.toggle('numbered', handle !== undefined);
     });
   }
 }
@@ -536,16 +554,16 @@ function indexTrait_build<T>(address?: (row: T) => string | undefined): ListingT
     key: 'index',
     label: '',
     className: 'listing-index-cell',
-    width: '3.4rem',
+    width: '5.2rem',
     capped: false,
     cell: (row: T): HTMLElement => {
       const pill: HTMLElement = document.createElement('span');
       pill.className = 'listing-index';
       const held: string | undefined = address?.(row);
       if (held !== undefined) pill.dataset['address'] = held;
-      const number: number | undefined = held === undefined ? undefined : numberByAddress.get(held);
-      if (number !== undefined) {
-        pill.textContent = `${number}`;
+      const handle: NumberedHandle | undefined = held === undefined ? undefined : handleByAddress.get(held);
+      if (handle !== undefined) {
+        pill.textContent = handle_render(handle);
         pill.classList.add('numbered');
       }
       return pill;

@@ -541,6 +541,9 @@ export class PacsPanel {
         {
           traits: this.studyTraits,
           key: (row: StudyRow): string => row.key,
+          // A study is numbered in its own sequence (`@STD001`) and hands a
+          // verb its series, as the row's own GATHER does.
+          address: (row: StudyRow): string | undefined => row.study.vfsPath,
           // Two intents, two targets: the fold cell unfolds the series (no
           // selection, the field stays lit); the rest of the row indicates
           // the study and puts PULL STUDY in the frame, without folding.

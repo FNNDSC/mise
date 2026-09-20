@@ -17,6 +17,7 @@ import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { commandArgs_process, ParsedArgs, path_resolve } from '../utils.js';
 import {
+  GatherKind,
   GatherMember,
   GatherState,
   cohort_read,
@@ -123,7 +124,11 @@ async function gather_add(operands: string[]): Promise<CommandEnvelope> {
   const incoming: GatherMember[] = [];
   for (const operand of operands) {
     const resolved: string = await path_resolve(operand);
-    const member: GatherMember = { vfsPath: resolved, kind: await pathKind_determine(resolved) };
+    const kind: GatherKind | null = await pathKind_determine(resolved);
+    // A path that names nothing is refused by name, before anything is
+    // taken: a cohort holding a typo is a cohort a run will be refused on.
+    if (kind === null) return gather_error(`gather: ${resolved}: nothing is there.`);
+    const member: GatherMember = { vfsPath: resolved, kind };
     if (member.kind === 'series') {
       const uid: string | undefined = seriesUID_ofPath(resolved);
       if (uid !== undefined) member.seriesUID = uid;

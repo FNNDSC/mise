@@ -98,7 +98,7 @@ export interface HostedEngine {
    *
    * @returns The numbering, or null when nothing has listed.
    */
-  numbering_get?(): { id: number; source: string; rows: number; values: string[] } | null;
+  numbering_get?(): { id: number; source: string; rows: number; handles: Array<{ kind: string; ordinal: number; address: string }> } | null;
 
   /**
    * Opens or closes a liveness watch on a subject for one owner. Optional:

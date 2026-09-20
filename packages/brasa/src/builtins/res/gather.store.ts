@@ -189,15 +189,36 @@ export async function cohort_write(state: GatherState): Promise<void> {
  * filesystem, and what is not a directory is a file.
  *
  * @param address - A resolved VFS path.
- * @returns The member kind to record.
+ * @returns The member kind to record, or null when nothing is at the path.
  */
-export async function pathKind_determine(address: string): Promise<GatherKind> {
+export async function pathKind_determine(address: string): Promise<GatherKind | null> {
   if (address.startsWith('/net/pacs/')) return 'series';
   try {
-    return await files_path_isDirectory(address) ? 'dir' : 'file';
-  } catch {
+    if (await files_path_isDirectory(address)) return 'dir';
+    // Not a directory is not the same as a file: a path that names nothing
+    // must not be gathered as one, or a typo becomes a member a run would
+    // be handed and refused on. Its parent is asked whether it is there.
+    const parent: string = path.posix.dirname(address);
+    const leaf: string = path.posix.basename(address);
+    const listed: Result<string[]> = await folderEntries_list(parent);
+    if (!listed.ok || !listed.value.includes(leaf)) return null;
     return 'file';
+  } catch {
+    return null;
   }
+}
+
+/**
+ * The names a folder holds, files and folders alike.
+ *
+ * @param folder - The folder to list.
+ * @returns Its entries' names, or a refusal when it cannot be listed.
+ */
+async function folderEntries_list(folder: string): Promise<Result<string[]>> {
+  const { vfsDispatcher } = await import('@fnndsc/salsa');
+  const listed = await vfsDispatcher.list(folder);
+  if (!listed.ok) return { ok: false };
+  return { ok: true, value: listed.value.map((item: { name: string }): string => item.name) };
 }
 
 /**

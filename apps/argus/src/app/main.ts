@@ -4979,8 +4979,8 @@ async function surface_start(token: string): Promise<void> {
       // Which listing the session's numbers count. Every listing's index
       // pills repaint from it, so the rows wearing a number are exactly the
       // rows `@N` reaches — on whichever pane happens to hold them.
-      numbered_receive: (numbering: { id: number; source: string; rows: number; values: string[] }): void => {
-        listingNumbering_set({ source: numbering.source, values: numbering.values });
+      numbered_receive: (numbering: { id: number; source: string; rows: number; handles: Array<{ kind: string; ordinal: number; address: string }> }): void => {
+        listingNumbering_set({ source: numbering.source, handles: numbering.handles });
       },
       envelope_observe: (envelope: WireEnvelope): void => {
         // The claim rule for console-issued models: a DAG-shaped model goes

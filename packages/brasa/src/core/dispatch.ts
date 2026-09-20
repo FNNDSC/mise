@@ -86,7 +86,7 @@ import { pluginExecutable_handle } from '../builtins/executable.js';
 import { Result, errorStack, Ok, Err, StackMessage, envelope_error } from '@fnndsc/cumin';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { envelopeHandler_wrap, envelope_deliver, sink_get, PipeCaptureSink, sinkScope_run } from './sink.js';
-import { reference_refusal, reference_resolve, unresolvedStands_get } from './expansion.js';
+import { reference_refusal, reference_resolve, unresolvedStands_get, verbInHand_set } from './expansion.js';
 import { answer_note, answerConsulted_take, type SessionAnswer } from '../session/answer.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import {
@@ -609,11 +609,18 @@ async function helpEnvelope_maybe(command: string, args: string[]): Promise<Comm
  *   nothing could answer.
  */
 async function commandLine_referencesExpand(words: readonly ShellWord[]): Promise<Result<ShellWord[]>> {
+  // The verb is known before its operands expand, so an index can be
+  // refused by KIND: IMAGE given a study says so, instead of resolving to
+  // a path and failing later for a reason that names nothing typed. A
+  // `sudo` line's verb is the one after it.
+  const verb: string | undefined = words[0]?.value === 'sudo' ? words[1]?.value : words[0]?.value;
+  verbInHand_set(verb ?? null);
   const expanded: ReferenceExpansion = await shellWords_referencesExpand(
     words,
     reference_resolve,
     unresolvedStands_get(),
   );
+  verbInHand_set(null);
   if (!expanded.ok) {
     errorStack.stack_push('error', reference_refusal(expanded.missing));
     return Err();

@@ -24,11 +24,23 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   listCache_get: () => ({ cache_invalidate: (p: string): void => { invalidated.push(p); } }),
 }));
 
+/** Files the fake filesystem holds, by parent folder. */
+const filesByFolder: Map<string, string[]> = new Map([
+  ['/home/chris/uploads', ['notes.txt', 'brain']],
+]);
+
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   fileContent_get: async (): Promise<{ ok: boolean; value?: string }> => (
     stored === null ? { ok: false } : { ok: true, value: stored }
   ),
   files_path_isDirectory: async (target: string): Promise<boolean> => directories.has(target),
+  // A file is gathered only when its parent says it is there.
+  vfsDispatcher: {
+    list: async (folder: string): Promise<{ ok: boolean; value?: Array<{ name: string }> }> => {
+      const held: string[] | undefined = filesByFolder.get(folder);
+      return held === undefined ? { ok: false } : { ok: true, value: held.map((name: string) => ({ name })) };
+    },
+  },
 }));
 
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/touch.js', () => ({
@@ -178,5 +190,15 @@ describe('cohort membership', () => {
     const { dropped, missing } = members_drop([{ vfsPath: '/a', kind: 'dir' }], ['/a', '/b']);
     expect(dropped).toBe(1);
     expect(missing).toEqual(['/b']);
+  });
+});
+
+describe('what is not there', () => {
+  it('refuses to gather a path that names nothing, before taking anything', async () => {
+    const envelope = await builtin_gather(['add', '/home/chris/uploads/brain', '/home/chris/uploads/nope.txt']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('nope.txt');
+    expect(envelope.renderedErr).toContain('nothing is there');
+    expect(stored).toBeNull();
   });
 });

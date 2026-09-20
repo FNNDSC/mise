@@ -146,7 +146,7 @@ export interface ClientHandlers {
    * surface lights the index pills on the listing those numbers reach —
    * pills on any other listing would be numbers nothing would answer to.
    */
-  numbered_receive?: (numbering: { id: number; source: string; rows: number; values: string[] }) => void;
+  numbered_receive?: (numbering: { id: number; source: string; rows: number; handles: Array<{ kind: string; ordinal: number; address: string }> }) => void;
   close_handle?: () => void;
 }
 
@@ -428,7 +428,7 @@ export class ArgusClient {
           id: message.id,
           source: message.source,
           rows: message.rows,
-          values: message.values,
+          handles: message.handles,
         });
         break;
       }

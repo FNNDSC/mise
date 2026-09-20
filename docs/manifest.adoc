@@ -81,6 +81,8 @@ Substitution is not the manifest's: it belongs to the session, and every line ge
 * An expanded value never globs afterwards: a filename with a bracket in it is a filename, not a pattern.
 * The *command word* expands too, so a manifest can name its plugin as a parameter and the same workflow runs on an instance with different builds.
 
+A row of the last answer is named by its number: `@3`, `@2,3,6`, `@2-4`. What is numbered is the session's most recent ANSWER — the model, not any rendering of it, so a console table and a graphical pane count the same rows — and the line that acts on a number says which listing it counted. A number past the end refuses and says how many rows there are; `'@2'` in quotes is text, and `user@host` is not an index because only a number at the START of a word is one. What a row is worth differs by listing and each one declares it: a path for files and PACS series, and whatever names a row for the listings that gain adapters later.
+
 Three sources answer, in order: the session's *reserved pronouns*, then the played manifest's *parameters*, then the *environment*. A manifest that declares a `@param` with a reserved name is refused when the file is read, because `${feed}` meaning two things is a language with a hole in it.
 
 A reference nothing answers *refuses the line* — it does not expand to nothing and does not stand as text. `rm -rf ${DIR}/scratch` with `DIR` unset is how a script deletes the wrong thing. The refusal names the reference and where it looked. The single exception is a dry run, which has run nothing and so leaves a reference to what a later line would produce standing as written.

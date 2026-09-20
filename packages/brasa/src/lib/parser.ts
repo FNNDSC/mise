@@ -50,6 +50,15 @@ export type ShellArguments = string[] & {
  */
 const REFERENCE_PATTERN: RegExp = /^\$(?:\{([A-Za-z_][A-Za-z0-9_.]*)\}|([A-Za-z_][A-Za-z0-9_]*))/;
 
+/**
+ * What an index looks like: `@3`, `@2,3,6`, `@2-4`, or a mix of those.
+ *
+ * A row of the session's last answer, named by the number the listing shows
+ * beside it. The sigil is what keeps it unambiguous: a directory called `2`
+ * is a path, and `@2` never is.
+ */
+const INDEX_PATTERN: RegExp = /^@(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)/;
+
 /** Escapes wildcard metacharacters for literal minimatch use. */
 function globLiteral_escape(value: string): string {
   return value.replace(/[\\*?\[\]]/g, '\\$&');
@@ -263,6 +272,19 @@ export function shellWords_tokenize(line: string): ShellWord[] {
     if (!inSingle && !inDouble && /\s/.test(char)) {
       word_pushCurrent();
       continue;
+    }
+
+    // An index into the session's last answer, unless it stands in quotes.
+    // Only at the START of a word: `user@host` is not an index, and neither
+    // is an email address in a tag value.
+    if (char === '@' && !inSingle && !inDouble && !wordStarted) {
+      const rest: string = line.slice(i);
+      const match: RegExpMatchArray | null = rest.match(INDEX_PATTERN);
+      if (match !== null) {
+        reference_append(`@${match[1]}`, match[0], false);
+        i += match[0].length - 1;
+        continue;
+      }
     }
 
     // A reference, unless it stands in single quotes, where a `$` is text —

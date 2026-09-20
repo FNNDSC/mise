@@ -675,6 +675,13 @@ export class CalypsoDaemon {
     void this.promptline_push(surface);
     // Regard is a retained cell: a late attacher receives the current value
     // rather than waiting for the operator's next indication.
+    // The numbering is retained the same way: a surface that attaches after
+    // a listing still knows which rows `@2` would reach, so its index pills
+    // light on the right pane rather than nowhere.
+    const numbering = this.engine.numbering_get?.() ?? null;
+    if (numbering !== null) {
+      this.send(socket, { type: 'numbered', id: numbering.id, source: numbering.source, rows: numbering.rows, values: numbering.values });
+    }
     const retained: Regard | null = this.regard ?? this.engine.regard_get?.() ?? null;
     if (retained !== null) {
       this.send(socket, { type: 'regard', regard: retained });
@@ -716,8 +723,10 @@ export class CalypsoDaemon {
     for (const surface of this.surfaces) {
       if (event.kind === 'envelope') {
         this.send(surface.socket, { type: 'session', surface: DAEMON_SURFACE, envelope: event.envelope });
-      } else {
+      } else if (event.kind === 'watched') {
         this.send(surface.socket, { type: 'watched', subject: event.subject, state: event.state });
+      } else {
+        this.send(surface.socket, { type: 'numbered', id: event.id, source: event.source, rows: event.rows, values: event.values });
       }
     }
   }

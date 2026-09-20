@@ -232,13 +232,45 @@ export const watchedMessageSchema = z.object({
 export type WatchedMessage = z.infer<typeof watchedMessageSchema>;
 
 /**
+ * Which listing the session's numbers currently count.
+ *
+ * A row can be named by the number beside it (`gather add @2,3`), and the
+ * numbers belong to the session's most recent ANSWER. A surface has to know
+ * WHICH listing that is, or it would light the index pills on a pane whose
+ * rows are no longer the ones `@2` would reach — and pills that lie are
+ * worse than no pills. Pushed whenever the answer changes, and to a late
+ * attacher, the way regard is.
+ */
+export const numberedMessageSchema = z.object({
+  type: z.literal('numbered'),
+  /** Rises with each answer, so a surface can tell newer from older. */
+  id: z.number(),
+  /** The line that produced the answer, which is how a pane recognises its own. */
+  source: z.string(),
+  /** How many rows are numbered. */
+  rows: z.number(),
+  /**
+   * What each numbered row IS, in order — a path, an id.
+   *
+   * A surface numbers a row by finding its address here rather than by
+   * counting down the screen, so a sorted or filtered listing still shows
+   * each row the number `@N` would actually reach. Capped: a listing of
+   * thousands is numbered in the kernel and simply unnumbered on screen.
+   */
+  values: z.array(z.string()),
+});
+export type NumberedMessage = z.infer<typeof numberedMessageSchema>;
+
+/**
  * An event the engine originates on its own — a sampler's refreshed model,
- * a watch changing state — rather than in answer to a command. The daemon
- * relays it to every surface; it never enters scrollback.
+ * a watch changing state, the numbering moving to another listing — rather
+ * than in answer to a command. The daemon relays it to every surface; it
+ * never enters scrollback.
  */
 export type AmbientEvent =
   | { kind: 'envelope'; envelope: z.infer<typeof commandEnvelopeSchema> }
-  | { kind: 'watched'; subject: string; state: WatchState };
+  | { kind: 'watched'; subject: string; state: WatchState }
+  | { kind: 'numbered'; id: number; source: string; rows: number; values: string[] };
 
 /** Any message a surface may send to the daemon. */
 export const clientMessageSchema = z.discriminatedUnion('type', [
@@ -669,6 +701,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   deliverMessageSchema,
   regardMessageSchema,
   watchedMessageSchema,
+  numberedMessageSchema,
 ]);
 
 /** A message the daemon sends to a surface. */

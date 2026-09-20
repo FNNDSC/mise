@@ -47,6 +47,7 @@ import { capability_require, surface_get } from './surface.js';
 import { commandCancellation_request, commandCancellation_run } from './cancellation.js';
 import { recorder_note } from '../session/recorder.js';
 import { answerAdapters_register } from '../session/answerAdapters.js';
+import { numbering_get } from '../session/answer.js';
 import { sink_get } from './sink.js';
 
 /**
@@ -132,6 +133,16 @@ export interface BrasaEngine {
    * @returns The retained regard, or null.
    */
   regard_get?(): Regard | null;
+
+  /**
+   * Which listing the session's numbers currently count.
+   *
+   * A surface attaching late lights its index pills from this rather than
+   * waiting for the next listing to be made.
+   *
+   * @returns The numbering, or null when nothing has listed.
+   */
+  numbering_get?(): { id: number; source: string; rows: number; values: string[] } | null;
 
   /**
    * Opens or closes a liveness watch on a subject for one owner (a surface
@@ -410,6 +421,7 @@ export async function engine_create(): Promise<BrasaEngine> {
     file_write,
     regard_note: (regard: Regard): void => session.regard_set(regard),
     regard_get: (): Regard | null => session.regard_get(),
+    numbering_get: (): { id: number; source: string; rows: number; values: string[] } | null => numbering_get(),
     watch_set: (subject: string, owner: string, on: boolean): WatchState | null => {
       const feedID: number | null = watchSubject_parse(subject);
       if (feedID === null) return null;

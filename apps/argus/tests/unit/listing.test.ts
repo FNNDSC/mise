@@ -15,6 +15,7 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import {
   Listing,
+  listingNumbering_set,
   listingChild_declare,
   listingState_compose,
   listingTemplate_of,
@@ -932,5 +933,63 @@ describe('a level beneath a level', () => {
     const lit: HTMLElement | null = mount.querySelector<HTMLElement>('.listing-level .roster-cap.roster-active');
     expect(lit?.dataset['key']).toBe('modality');
     expect(mount.querySelector('.listing-rows > .listing-group > .listing-row .study')?.textContent).toBe('brain');
+  });
+});
+
+describe('the index pill', () => {
+  /** A listing whose rows say how the kernel addresses them. */
+  const numbered_build = (mount: HTMLElement): Listing<Entry> => new Listing<Entry>({
+    mount,
+    traits: ENTRY_TRAITS,
+    key: (entry: Entry): string => entry.name,
+    address: (entry: Entry): string => `/home/chris/${entry.name}`,
+  });
+
+  it('leads with a pill per row, and numbers only the rows the session counts', () => {
+    const mount: HTMLElement = document.createElement('div');
+    document.body.appendChild(mount);
+    listingNumbering_set({
+      source: 'ls /home/chris',
+      values: ['/home/chris/b', '/home/chris/a'],
+    });
+    const listing: Listing<Entry> = numbered_build(mount);
+    listing.rows_set([{ key: '/home/chris', rows: [
+      { name: 'a', kind: 'file', size: 1 },
+      { name: 'b', kind: 'file', size: 2 },
+      { name: 'c', kind: 'file', size: 3 },
+    ] }], { field: '/home/chris' });
+
+    const pills: HTMLElement[] = [...mount.querySelectorAll<HTMLElement>('.listing-index')];
+    expect(pills).toHaveLength(3);
+    // The number is the one `@N` reaches — found by ADDRESS, so it follows
+    // the row rather than counting down the screen.
+    expect(pills.map((pill: HTMLElement): string => pill.textContent ?? '')).toEqual(['2', '1', '']);
+    // A row the numbers do not reach keeps its cell and shows nothing.
+    expect(pills[2].classList.contains('numbered')).toBe(false);
+  });
+
+  it('repaints every pill when the numbering moves to another listing', () => {
+    const mount: HTMLElement = document.createElement('div');
+    document.body.appendChild(mount);
+    listingNumbering_set({ source: 'ls', values: ['/home/chris/a'] });
+    const listing: Listing<Entry> = numbered_build(mount);
+    listing.rows_set([{ key: '/home/chris', rows: [{ name: 'a', kind: 'file', size: 1 }] }], { field: '/home/chris' });
+    expect(mount.querySelector('.listing-index')?.textContent).toBe('1');
+
+    listingNumbering_set({ source: 'pacs query …', values: ['/net/pacs/queries/q/Series_1'] });
+    expect(mount.querySelector('.listing-index')?.textContent).toBe('');
+    expect(mount.querySelector('.listing-index')?.classList.contains('numbered')).toBe(false);
+  });
+
+  it('gives a level that declares no address no pill at all', () => {
+    const mount: HTMLElement = document.createElement('div');
+    document.body.appendChild(mount);
+    const listing: Listing<Entry> = new Listing<Entry>({
+      mount,
+      traits: ENTRY_TRAITS,
+      key: (entry: Entry): string => entry.name,
+    });
+    listing.rows_set([{ key: '/home/chris', rows: [{ name: 'a', kind: 'file', size: 1 }] }], { field: '/home/chris' });
+    expect(mount.querySelector('.listing-index')).toBeNull();
   });
 });

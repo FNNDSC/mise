@@ -208,6 +208,19 @@ export function listingChild_declare<T, C>(
 export interface ListingLevel<T> {
   traits: ReadonlyArray<ListingTrait<T>>;
   key: (row: T) => string;
+  /**
+   * What the KERNEL calls this row — a path, an id — when it is a row the
+   * session can number.
+   *
+   * A row of the session's last answer can be named by the number beside
+   * it (`gather add @2,3`), and a level that says how its rows are
+   * addressed gets an index pill as its leading column. The pill is found
+   * by ADDRESS rather than by counting down the screen, so a sorted or
+   * filtered listing still shows each row the number `@N` would actually
+   * reach. A level that declares none has no pills, which is the honest
+   * default: a row nothing can name must not wear a number.
+   */
+  address?: (row: T) => string | undefined;
   actions?: ListingActions<T>;
   activate?: (row: T) => void;
   activatable?: (row: T) => boolean;
@@ -425,6 +438,80 @@ function leadingCells_of<T>(traits: ReadonlyArray<ListingTrait<T>>): number {
   return count;
 }
 
+
+/** Which listing the session's numbers currently count. */
+let numbering: { source: string; values: ReadonlyArray<string> } | null = null;
+
+/** Address to its 1-based number, rebuilt whenever the numbering changes. */
+let numberByAddress: Map<string, number> = new Map();
+
+/**
+ * Takes the session's numbering, and repaints every pill on the surface.
+ *
+ * @param held - What the kernel says is numbered, or null for nothing.
+ */
+export function listingNumbering_set(
+  held: { source: string; values: ReadonlyArray<string> } | null,
+): void {
+  numbering = held;
+  numberByAddress = new Map();
+  if (held !== null) {
+    held.values.forEach((value: string, at: number): void => {
+      // First wins: a listing that holds the same address twice numbers the
+      // first, which is the one `@N` reaches.
+      if (!numberByAddress.has(value)) numberByAddress.set(value, at + 1);
+    });
+  }
+  listingPills_paint();
+}
+
+/** What the surface believes is numbered, for a readout that says so. */
+export function listingNumbering_get(): { source: string; values: ReadonlyArray<string> } | null {
+  return numbering;
+}
+
+/**
+ * Paints every index pill on the surface from the current numbering.
+ *
+ * A pill on a listing the numbers do not reach carries nothing and reads
+ * dim: the addressable rows are the ones that look addressable.
+ */
+export function listingPills_paint(): void {
+  for (const pill of document.querySelectorAll<HTMLElement>('.listing-index')) {
+    const address: string | undefined = pill.dataset['address'];
+    const number: number | undefined = address === undefined ? undefined : numberByAddress.get(address);
+    pill.textContent = number === undefined ? '' : `${number}`;
+    pill.classList.toggle('numbered', number !== undefined);
+  }
+}
+
+/**
+ * The index trait a level with addressable rows leads with.
+ *
+ * @returns The synthesized leading trait.
+ */
+function indexTrait_build<T>(address: (row: T) => string | undefined): ListingTrait<T> {
+  return {
+    key: 'index',
+    label: '',
+    className: 'listing-index-cell',
+    width: '3.4rem',
+    capped: false,
+    cell: (row: T): HTMLElement => {
+      const pill: HTMLElement = document.createElement('span');
+      pill.className = 'listing-index';
+      const held: string | undefined = address(row);
+      if (held !== undefined) pill.dataset['address'] = held;
+      const number: number | undefined = held === undefined ? undefined : numberByAddress.get(held);
+      if (number !== undefined) {
+        pill.textContent = `${number}`;
+        pill.classList.add('numbered');
+      }
+      return pill;
+    },
+  };
+}
+
 /**
  * One level of a listing: its order, its rows on stage, its indication,
  * and the level beneath it. The root listing is one of these with chrome
@@ -459,6 +546,13 @@ class Level<T> {
    * @param depth - How many levels above this one; the root is 0.
    */
   constructor(declaration: ListingLevel<T>, host: LevelHost, capsInRoot: boolean, select: LevelSelect<T>, depth: number = 0) {
+    // A level whose rows the kernel can name leads with an index pill. The
+    // façade mints the column so every listing wears it the same way, and
+    // so a pane gains it by saying how its rows are addressed rather than
+    // by drawing a number itself.
+    declaration = declaration.address === undefined
+      ? declaration
+      : { ...declaration, traits: [indexTrait_build(declaration.address), ...declaration.traits] };
     this.declaration = declaration;
     this.host = host;
     this.select = select;

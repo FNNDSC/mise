@@ -61,6 +61,7 @@ const listing = new Listing<FsListingEntry>({
   mount: panel,                       // the listing region
   traits: FILE_TRAITS,                // columns, each with a width; an uncapped one leads
   key: (entry) => entry.path,         // one string per row
+  address: (entry) => entry.path,     // what the KERNEL calls it: the row gains an index pill
   chrome: { root: pane, prefix: 'files' },
   rowZone: pane.querySelector('.files-row-zone'),   // the verbs ride the frame: no track
   actions: { of: (entry) => verbs_for(entry) },      // a row offered none keeps one click
@@ -132,6 +133,7 @@ As the roster uses it: one block, the constant field `roster`; a leading control
 | open | `.listing-open` on the row | Activation of a row that has a child level; its level follows it.
 | activatable | `.listing-activatable` on the row | Any row `activatable` does not refuse.
 | filtered | `FILTER ON` on the block, `FILTERED n/m` on the bar | The strip opening; the counts are taken across every block.
+| numbered | `.numbered` on the row's `.listing-index` pill | The session's last answer holding this row's `address`. A level that declares `address` leads with an index pill so a row can be named by the number beside it (`gather add @2,3`); the pill is found BY ADDRESS, so a sorted or filtered listing keeps each row's own number rather than renumbering down the screen. A row the numbers do not reach keeps the column and shows nothing, so the geometry never moves — the bargain the action track already makes. Painted by `listingNumbering_set`, which the surface calls with the kernel's `numbered` message.
 |===
 
 Row state that belongs to the pane (a refused read, an arrival, a status) goes through `row.className` at build or `row_element(key)` between renders; it is a mark on the row, never a column.
@@ -151,6 +153,8 @@ Row state that belongs to the pane (a refused read, an arrival, a status) goes t
 === Stylesheet
 
 A track is a fixed length, or the listing's one expanse (`1fr`). Never a track sized to its content — `auto`, `minmax(0, …)`, `min-content`, `max-content`, `fit-content` — because a row is its own grid, and a content-sized track sizes per row: a short value narrows the track for that row alone and every column after it jogs. A listing that carries progress makes PROGRESS the expanse, right after its description column, with the trailing facts and the verbs after it. Levels beneath a level share the expanse's left edge: the leading tracks are the same widths on every level (or the child's description is widened to make up the difference), so the bars line up level over level. Every row and caps row of one listing shares one font size, since the tracks are in em. The façade refuses a content-sized track at construction (`listingTemplate_of` throws on `auto`, `minmax(0, …)` and the content keywords). The alignment across levels is declared, not computed: a level's leading tracks are given the same widths as its parent's (or its description widened by the difference), and the smoke suite measures the result.
+
+The index pill is `.listing-index` inside the `.listing-index-cell` track: a capsule of the listing's own idiom, carrying the number when the row is numbered and nothing when it is not (its hue is a token the theme sets; the empty state is a faint ground, never a border that moves). A theme may recolour it and may not resize the track, which the façade owns.
 
 A theme may set, per pane: `--roster-gap` and `--roster-pad` on the grid host, the hues of `.listing-indicated` and `.listing-selected` and the framed row's block (`.listing-framed .listing-indicated`: the frame's block colour with black type), and the per-trait cell rules the trait's `className` names (alignment lives there, right-aligned numbers included). The row zone's capsules are `.listing-action` wearing the frame's geometry (`.mode-frame .listing-zone .listing-action`: full width, square, right-aligned, a label that wraps rather than cuts). A control IN a row — a fold cell, the browser's UP and OPEN — is a capsule in the frame's hue, dim at rest, lit on hover, inverted on the indicated block; never a bare glyph. The browser's kind glyphs and per-kind colours are the console's (`--console-<name>`, published by the terminal from its own palette; the Nerd Font icons of `colors.yml`), held equal by a unit test. A theme may not write `--roster-cols` on a converted pane, since the façade owns it; nor size `.listing-action`, whose height is declared once and read by the track that reserves room for it.
 

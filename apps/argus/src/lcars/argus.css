@@ -2572,9 +2572,11 @@ body[data-header='dag'] #header-dag {
   background: var(--listing-index-hue, var(--butter));
 }
 
-/* The browser's rows are the console's orange; a PACS answer is its own
- * blue; the cohort keeps the butter its band wears. */
-.pane-files { --listing-index-hue: var(--orange); }
+/* The pill is CHROME, not content: it takes the pane's frame hue and
+ * leaves the row's own colour to the row. In the browser that matters
+ * twice over — an orange pill beside an orange kind glyph reads as one
+ * blob, and the number stops being a number. */
+.pane-files { --listing-index-hue: var(--harvestgold); }
 .pane-pacs, .pacs-panel, [class*='pacs-'] { --listing-index-hue: var(--daybreak); }
 .pane-gather, .gather-rows, #header-gather { --listing-index-hue: var(--butter); }
 .pane-dag, .pane-tags { --listing-index-hue: var(--harvestgold); }

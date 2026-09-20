@@ -145,8 +145,11 @@ describe('what a listing renders', () => {
  */
 const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
   'files.row': {
-    'a plain file outside a feed': ['DOWNLOAD', 'MOVE', 'COPY', 'DELETE'],
-    'a file inside a feed': ['DOWNLOAD', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
+    // A file can be gathered: CUBE's unextpath takes files as well as
+    // directories, so three-and-only-three files is a cohort a run can
+    // be given. Proved live before the verb was offered.
+    'a plain file outside a feed': ['GATHER', 'DOWNLOAD', 'MOVE', 'COPY', 'DELETE'],
+    'a file inside a feed': ['GATHER', 'DOWNLOAD', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
     // A place can be gathered: a cohort is what the session is working on,
     // and that is not only PACS.
     'a directory': ['GATHER', 'PROCESS', 'MOVE', 'COPY', 'DELETE'],

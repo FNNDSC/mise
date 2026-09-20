@@ -675,10 +675,13 @@ export class GatherPanel {
     if (standing !== null) return standing;
     if (this.cohort.size() === 0) return null;
     // A feed is rooted on a PULL of the cohort's members, and a place is
-    // not pulled: it is already in ChRIS. Rooting a feed on several places
-    // at once is something the kernel cannot do today — `pl-dircopy` takes
-    // one directory — so this refuses BY NAME rather than rooting a feed
-    // on the series and quietly leaving the places out of it.
+    // not pulled: it is already in ChRIS. CUBE CAN root a feed on several
+    // places at once — `pl-dircopy`'s `--dir` is a comma-separated list of
+    // paths, files included, each landing as a link at the root (proved
+    // live) — but the kernel has no verb for it yet: `pull --new-feed`
+    // pulls, and the /bin executable roots on the cwd. Until `gather
+    // process` lands in the kernel this refuses BY NAME rather than rooting
+    // a feed on the series and quietly leaving the places out of it.
     const places: ReadonlyArray<GatherSeries> = this.cohort.members_get().filter(
       (entry: GatherSeries): boolean => (entry.kind ?? 'series') !== 'series',
     );
@@ -686,7 +689,8 @@ export class GatherPanel {
       this.handlers.note(
         `gather: this cohort holds ${places.length} ${places.length === 1 ? 'place' : 'places'} as well as series, `
         + 'and a feed is rooted by pulling its members — a place is already in ChRIS. '
-        + 'PROCESS one place from its own row, or remove them to make a feed of the series.',
+        + 'PROCESS one place from its own row, or remove them to make a feed of the series. '
+        + '(Rooting a feed on the whole cohort, places included, is coming: CUBE takes the list.)',
       );
       return null;
     }

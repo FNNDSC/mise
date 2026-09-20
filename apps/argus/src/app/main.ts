@@ -1708,12 +1708,12 @@ async function surface_start(token: string): Promise<void> {
       download: (): void => { window.open(vfsUrl_build(path), '_blank'); },
       // PROCESS acts on the place: a bound catalogue opens beside this pane.
       process: (): void => process_open(id, { input: path, feed, node: feed === null ? null : nodeOf_path(path) }),
-      // GATHER takes the PLACE into the session's cohort, beside whatever
+      // GATHER takes the row into the session's cohort, beside whatever
       // PACS series are already in it. The member is keyed by its path,
-      // since a directory has no series UID and the path is what a run
-      // would be given.
+      // since a directory or a file has no series UID and the path is what
+      // a run would be given — CUBE's unextpath takes files too.
       gather: (): void => cohort_gather([{
-        kind: 'dir',
+        kind: directory ? 'dir' : 'file',
         seriesUID: path,
         description: entry.name,
         imagery: seriesFolder_is(path, entry.name),

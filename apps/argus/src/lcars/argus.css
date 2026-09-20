@@ -880,6 +880,11 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
      stylesheet's. */
   --roster-gap: 0.8rem;
   --roster-pad: 6px;
+  /* A column, so the field beneath the form can take the pane's remaining
+     height and scroll within it rather than being capped by hand. */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   /* Scroll in both axes: a series row's fixed columns (verbs included) can be
      wider than the pane when PACS sits split at half width beside a viewer,
      and a fixed-column listing must not silently clip its last verb — it
@@ -1531,7 +1536,13 @@ main {
   position: relative;
   display: flex;
   flex-direction: column;
-  max-height: 34vh;
+  /* The field fills whatever its pane leaves it, and scrolls within that.
+   * It was capped at 34vh from the day the PACS workspace stood in the
+   * header row above a console — a cap on the VIEWPORT, not the pane — and
+   * once PACS became a body tile the cap outlived its reason: a full-height
+   * pane showed a third of itself and black beneath, rows cut mid-line. */
+  flex: 1 1 0;
+  min-height: 0;
   padding-right: var(--spine-w);
   margin-bottom: 0.6rem;
 }

@@ -250,14 +250,20 @@ export const numberedMessageSchema = z.object({
   /** How many rows are numbered. */
   rows: z.number(),
   /**
-   * What each numbered row IS, in order — a path, an id.
+   * Each numbered row's handle beside its address.
    *
-   * A surface numbers a row by finding its address here rather than by
-   * counting down the screen, so a sorted or filtered listing still shows
-   * each row the number `@N` would actually reach. Capped: a listing of
-   * thousands is numbered in the kernel and simply unnumbered on screen.
+   * An index says what it counts — `@SER003`, `@STD001`, `@FIL012`,
+   * `@DIR004` — one sequence per kind across the answer. A surface finds
+   * each of its rows by address and draws the code, rather than counting
+   * down the screen, so a sorted or filtered listing still shows each row
+   * the handle that reaches it. Capped: a listing of thousands is numbered
+   * in the kernel and simply unnumbered on screen.
    */
-  values: z.array(z.string()),
+  handles: z.array(z.object({
+    kind: z.string(),
+    ordinal: z.number(),
+    address: z.string(),
+  })),
 });
 export type NumberedMessage = z.infer<typeof numberedMessageSchema>;
 
@@ -270,7 +276,7 @@ export type NumberedMessage = z.infer<typeof numberedMessageSchema>;
 export type AmbientEvent =
   | { kind: 'envelope'; envelope: z.infer<typeof commandEnvelopeSchema> }
   | { kind: 'watched'; subject: string; state: WatchState }
-  | { kind: 'numbered'; id: number; source: string; rows: number; values: string[] };
+  | { kind: 'numbered'; id: number; source: string; rows: number; handles: Array<{ kind: string; ordinal: number; address: string }> };
 
 /** Any message a surface may send to the daemon. */
 export const clientMessageSchema = z.discriminatedUnion('type', [

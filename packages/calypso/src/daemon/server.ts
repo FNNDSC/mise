@@ -680,7 +680,7 @@ export class CalypsoDaemon {
     // light on the right pane rather than nowhere.
     const numbering = this.engine.numbering_get?.() ?? null;
     if (numbering !== null) {
-      this.send(socket, { type: 'numbered', id: numbering.id, source: numbering.source, rows: numbering.rows, values: numbering.values });
+      this.send(socket, { type: 'numbered', id: numbering.id, source: numbering.source, rows: numbering.rows, handles: numbering.handles });
     }
     const retained: Regard | null = this.regard ?? this.engine.regard_get?.() ?? null;
     if (retained !== null) {
@@ -726,7 +726,7 @@ export class CalypsoDaemon {
       } else if (event.kind === 'watched') {
         this.send(surface.socket, { type: 'watched', subject: event.subject, state: event.state });
       } else {
-        this.send(surface.socket, { type: 'numbered', id: event.id, source: event.source, rows: event.rows, values: event.values });
+        this.send(surface.socket, { type: 'numbered', id: event.id, source: event.source, rows: event.rows, handles: event.handles });
       }
     }
   }

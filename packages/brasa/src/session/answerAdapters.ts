@@ -30,7 +30,8 @@ export function answerAdapters_register(): void {
       if (listing === null || typeof listing !== 'object' || !Array.isArray(listing.items)) continue;
       for (const item of listing.items) {
         rows.push({
-          value: path.posix.join(listing.path, item.name),
+          kind: item.type === 'dir' ? 'DIR' : 'FIL',
+          values: [path.posix.join(listing.path, item.name)],
           label: item.name,
         });
       }
@@ -38,24 +39,31 @@ export function answerAdapters_register(): void {
     return rows;
   });
 
-  // A PACS answer's rows are its SERIES, in study order then series order:
-  // the series is what a pull, a gather and a viewer all take, and a study
-  // that holds none contributes its own path so the study is still nameable.
+  // A PACS answer numbers its STUDIES and its SERIES, each in its own
+  // sequence. A study hands over its series — what the surface's GATHER on
+  // a study hands over — so `pull @STD001` and `gather add @STD001` act on
+  // the whole study, while `@SER003` names one series.
   answerAdapter_register('pacs.query', (data: unknown): AnswerRow[] | null => {
     const model: PacsQueryModel | null = data as PacsQueryModel | null;
     if (model === null || !Array.isArray(model.studies)) return null;
     const rows: AnswerRow[] = [];
     for (const study of model.studies as PacsStudy[]) {
       const series: PacsSeries[] = Array.isArray(study.series) ? study.series : [];
-      if (series.length === 0) {
-        if (typeof study.vfsPath === 'string') {
-          rows.push({ value: study.vfsPath, label: study.description || 'study' });
-        }
-        continue;
+      const seriesPaths: string[] = series
+        .map((one: PacsSeries): string | undefined => one.vfsPath)
+        .filter((one: string | undefined): one is string => typeof one === 'string');
+      if (typeof study.vfsPath === 'string') {
+        rows.push({
+          kind: 'STD',
+          // The study's own path leads, as the address a surface matches on;
+          // its series follow, as what a verb is handed.
+          values: [study.vfsPath, ...seriesPaths],
+          label: study.description || 'study',
+        });
       }
       for (const one of series) {
         if (typeof one.vfsPath !== 'string') continue;
-        rows.push({ value: one.vfsPath, label: one.description || one.modality || 'series' });
+        rows.push({ kind: 'SER', values: [one.vfsPath], label: one.description || one.modality || 'series' });
       }
     }
     return rows;
@@ -64,12 +72,13 @@ export function answerAdapters_register(): void {
   // The cohort's rows are its members, which is what makes `gather remove @2`
   // read the same way as every other numbered act.
   answerAdapter_register('gather.cohort', (data: unknown): AnswerRow[] | null => {
-    const state = data as { series?: Array<{ vfsPath?: string; description?: string }> } | null;
+    const state = data as { series?: Array<{ vfsPath?: string; description?: string; kind?: string }> } | null;
     if (state === null || !Array.isArray(state.series)) return null;
     return state.series
       .filter((member): boolean => typeof member.vfsPath === 'string')
       .map((member): AnswerRow => ({
-        value: member.vfsPath as string,
+        kind: member.kind === 'dir' ? 'DIR' : member.kind === 'file' ? 'FIL' : 'SER',
+        values: [member.vfsPath as string],
         label: member.description ?? path.posix.basename(member.vfsPath as string),
       }));
   });

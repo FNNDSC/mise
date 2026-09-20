@@ -51,13 +51,14 @@ export type ShellArguments = string[] & {
 const REFERENCE_PATTERN: RegExp = /^\$(?:\{([A-Za-z_][A-Za-z0-9_.]*)\}|([A-Za-z_][A-Za-z0-9_]*))/;
 
 /**
- * What an index looks like: `@3`, `@2,3,6`, `@2-4`, or a mix of those.
+ * What an index looks like: `@SER3`, `@STD001`, `@FIL2,3,7`, `@DIR2-4`.
  *
- * A row of the session's last answer, named by the number the listing shows
- * beside it. The sigil is what keeps it unambiguous: a directory called `2`
- * is a path, and `@2` never is.
+ * A row of the session's last answer, named by the handle the listing shows
+ * beside it — the KIND it counts, then its place in that kind's sequence.
+ * The sigil keeps it unambiguous: a directory called `SER3` is a path, and
+ * `@SER3` never is.
  */
-const INDEX_PATTERN: RegExp = /^@(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)/;
+const INDEX_PATTERN: RegExp = /^@([A-Z]{3}\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)/;
 
 /** Escapes wildcard metacharacters for literal minimatch use. */
 function globLiteral_escape(value: string): string {

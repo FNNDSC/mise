@@ -26,7 +26,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ReferenceValue } from '../lib/parser.js';
 import { session } from '../session/index.js';
 import { recentFeed_get, recentQuery_get, recentRunPlace_get, recentRuns_get } from '../session/recent.js';
-import { answer_get, answerRow_get, type AnswerRow } from '../session/answer.js';
+import { ANSWER_KINDS, answer_get, answerKind_count, answerRow_get, type AnswerHandle, type AnswerKind, type AnswerRow } from '../session/answer.js';
 
 /** The names the session answers for; a manifest may not take them. */
 export const RESERVED_REFERENCES: ReadonlySet<string> = new Set([
@@ -131,40 +131,96 @@ async function cohort_reference(name: string): Promise<ReferenceValue> {
 }
 
 /**
- * Reads the numbers an index names: `@2`, `@2,3,6`, `@2-4`.
+ * Reads what an index names: `@SER3`, `@STD001`, `@FIL2,3,7`, `@DIR2-4`.
+ *
+ * The kind is written once and the ordinals follow; zero padding is how
+ * the pill draws it, not something the operator must type. A range written
+ * backwards is still a range: the operator meant those rows.
  *
  * @param spec - The index without its sigil.
- * @returns The 1-based indices, in the order written.
+ * @returns The handles, in the order written, or null when the spec is not
+ *   an index.
  */
-export function indices_parse(spec: string): number[] {
-  const indices: number[] = [];
-  for (const part of spec.split(',')) {
+export function indices_parse(spec: string): AnswerHandle[] | null {
+  const match: RegExpMatchArray | null = spec.match(/^([A-Z]{3})(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)$/);
+  if (match === null) return null;
+  const kind: string = match[1];
+  if (!(ANSWER_KINDS as ReadonlyArray<string>).includes(kind)) return null;
+  const handles: AnswerHandle[] = [];
+  for (const part of match[2].split(',')) {
     const range: RegExpMatchArray | null = part.match(/^(\d+)-(\d+)$/);
-    if (range === null) { indices.push(Number(part)); continue; }
+    if (range === null) { handles.push({ kind: kind as AnswerKind, ordinal: Number(part) }); continue; }
     const from: number = Number(range[1]);
     const to: number = Number(range[2]);
-    // A range written backwards is still a range: the operator meant those rows.
     const step: number = from <= to ? 1 : -1;
-    for (let at: number = from; step > 0 ? at <= to : at >= to; at += step) indices.push(at);
+    for (let at: number = from; step > 0 ? at <= to : at >= to; at += step) {
+      handles.push({ kind: kind as AnswerKind, ordinal: at });
+    }
   }
-  return indices;
+  return handles;
 }
+
+/**
+ * What each verb can be handed, by kind.
+ *
+ * A verb that is given the wrong kind refuses BY NAME at expansion —
+ * "IMAGE takes a series or a folder; STD001 is a study" — rather than
+ * resolving to a path and failing three steps later for a reason that
+ * names nothing the operator typed. A verb not listed takes any kind.
+ */
+const VERB_TAKES: ReadonlyMap<string, ReadonlyArray<AnswerKind>> = new Map([
+  ['image', ['SER', 'DIR', 'FIL']],
+  ['dcm', ['SER', 'DIR', 'FIL']],
+  ['pull', ['SER', 'STD']],
+  ['cat', ['FIL']],
+  ['cd', ['DIR', 'SER', 'STD']],
+  ['download', ['FIL']],
+]);
+
+/** The kind a refusal names, in words. */
+const KIND_WORDS: Readonly<Record<AnswerKind, string>> = {
+  STD: 'a study', SER: 'a series', FIL: 'a file', DIR: 'a folder',
+};
+
+/** The verb the line began with, set by the dispatcher before expansion. */
+let verbInHand: string | null = null;
+
+/**
+ * Tells the resolver which verb the line is for, so an index can be
+ * refused by kind.
+ *
+ * @param verb - The command word, or null between lines.
+ */
+export function verbInHand_set(verb: string | null): void {
+  verbInHand = verb;
+}
+
+/** Why the last index was refused, when it was refused by kind. */
+let kindRefusal: string | null = null;
 
 /**
  * What the rows an index names are worth, as operands.
  *
  * @param name - The index, sigil included.
- * @returns The rows' values, or null when nothing is numbered or a number
- *   is past the end of the answer.
+ * @returns The rows' values, or null when nothing is numbered, a number is
+ *   past the end of its kind, or the verb in hand does not take the kind.
  */
 function index_resolve(name: string): ReferenceValue {
-  const indices: number[] = indices_parse(name.slice(1));
-  if (indices.length === 0) return null;
+  kindRefusal = null;
+  const handles: AnswerHandle[] | null = indices_parse(name.slice(1));
+  if (handles === null || handles.length === 0) return null;
+
+  const takes: ReadonlyArray<AnswerKind> | undefined = verbInHand === null ? undefined : VERB_TAKES.get(verbInHand);
   const values: string[] = [];
-  for (const index of indices) {
-    const row: AnswerRow | null = answerRow_get(index);
+  for (const handle of handles) {
+    if (takes !== undefined && !takes.includes(handle.kind)) {
+      kindRefusal = `${verbInHand} takes ${takes.map((kind: AnswerKind): string => KIND_WORDS[kind]).join(' or ')}; `
+        + `${handle.kind}${`${handle.ordinal}`.padStart(3, '0')} is ${KIND_WORDS[handle.kind]}.`;
+      return null;
+    }
+    const row: AnswerRow | null = answerRow_get(handle);
     if (row === null) return null;
-    values.push(row.value);
+    values.push(...row.values);
   }
   return { values };
 }
@@ -221,10 +277,18 @@ export function reference_refusal(name: string): string {
   const scoped: boolean = paramScope.getStore() !== undefined;
   const places: string = scoped ? "the session, this manifest's parameters, the environment" : 'the session, the environment';
   if (name.startsWith('@')) {
+    if (kindRefusal !== null) return `${name}: ${kindRefusal}`;
     const numbered = answer_get();
-    return numbered === null
-      ? `${name}: nothing is numbered yet — list something first.`
-      : `${name}: the last answer (${numbered.source}) holds ${numbered.rows.length} row${numbered.rows.length === 1 ? '' : 's'}.`;
+    if (numbered === null) return `${name}: nothing is numbered yet — list something first.`;
+    const handles: AnswerHandle[] | null = indices_parse(name.slice(1));
+    if (handles === null) {
+      return `${name}: an index says what it counts — @SER3, @STD1, @FIL2, @DIR4 — and may list or range them (@SER2,3 or @SER2-5).`;
+    }
+    const kind: AnswerKind = handles[0].kind;
+    const count: number = answerKind_count(kind);
+    return count === 0
+      ? `${name}: the last answer (${numbered.source}) holds no ${KIND_WORDS[kind]} rows.`
+      : `${name}: the last answer (${numbered.source}) holds ${count} ${kind} row${count === 1 ? '' : 's'}.`;
   }
   const hint: string = reference_isReserved(name)
     ? ` — nothing in this session has one yet`

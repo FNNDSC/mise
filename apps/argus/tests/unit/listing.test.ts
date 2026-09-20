@@ -229,7 +229,7 @@ describe('the grid is one declaration', () => {
     const { listing, mount } = listing_build({ actions: { width: '21em', of: (): [] => [] } });
     listing.rows_set([{ key: '/x', lead: [UP], rows: ENTRIES }], { field: '/x' });
     const template: string = mount.style.getPropertyValue('--roster-cols');
-    expect(template).toBe('3.4rem 1.4em 1fr 6em 21em');
+    expect(template).toBe('5.2rem 1.4em 1fr 6em 21em');
     const rows: HTMLElement[] = rows_onStage(mount);
     expect(rows).toHaveLength(4);
     for (const row of rows) expect(row.children).toHaveLength(tracks_count(template));
@@ -458,8 +458,8 @@ describe('a-row-s-verbs-live-in-the-frame', () => {
   it('mints no track: the grid has only the traits, and no row carries an action cell', () => {
     const { listing, mount } = framed_build({ actions: { of: OPEN_FILES } });
     listing.rows_set([{ key: '/x', lead: [UP], rows: ENTRIES }], { field: '/x' });
-    expect(listing.template_get()).toBe('3.4rem 1.4em 1fr 6em');
-    expect(mount.style.getPropertyValue('--roster-cols')).toBe('3.4rem 1.4em 1fr 6em');
+    expect(listing.template_get()).toBe('5.2rem 1.4em 1fr 6em');
+    expect(mount.style.getPropertyValue('--roster-cols')).toBe('5.2rem 1.4em 1fr 6em');
     expect(mount.querySelector('.listing-actions')).toBeNull();
     expect(rows_onStage(mount).every((row: HTMLElement): boolean => row.children.length === 4)).toBe(true);
     expect(mount.classList.contains('listing-framed')).toBe(true);
@@ -816,11 +816,11 @@ describe('verbs declared after construction', () => {
     listing.rows_set([{ key: '/x', lead: [UP], rows: ENTRIES }], { field: '/x' });
     expect(rows_onStage(mount).every((row: HTMLElement): boolean => row.children.length === 4)).toBe(true);
     listing.actions_declare({ width: '21em', of: (): [] => [] });
-    expect(mount.style.getPropertyValue('--roster-cols')).toBe('3.4rem 1.4em 1fr 6em 21em');
+    expect(mount.style.getPropertyValue('--roster-cols')).toBe('5.2rem 1.4em 1fr 6em 21em');
     expect(rows_onStage(mount).every((row: HTMLElement): boolean => row.children.length === 5)).toBe(true);
     expect(mount.querySelectorAll('.listing-actions')).toHaveLength(4);
     listing.actions_declare(null);
-    expect(mount.style.getPropertyValue('--roster-cols')).toBe('3.4rem 1.4em 1fr 6em');
+    expect(mount.style.getPropertyValue('--roster-cols')).toBe('5.2rem 1.4em 1fr 6em');
     expect(rows_onStage(mount).every((row: HTMLElement): boolean => row.children.length === 4)).toBe(true);
   });
 });
@@ -863,7 +863,7 @@ describe('a level beneath a level', () => {
     await frame();
     const level: HTMLElement | null = mount.querySelector<HTMLElement>('.listing-level');
     expect(level).not.toBeNull();
-    expect((level as HTMLElement).style.getPropertyValue('--roster-cols')).toBe('3.4rem 1fr 4em');
+    expect((level as HTMLElement).style.getPropertyValue('--roster-cols')).toBe('5.2rem 1fr 4em');
     expect((level as HTMLElement).querySelectorAll('.roster-caps')).toHaveLength(1);
     expect((level as HTMLElement).querySelectorAll('.listing-row')).toHaveLength(2);
     expect(mount.querySelectorAll('.roster-caps')).toHaveLength(2);
@@ -900,7 +900,7 @@ describe('a level beneath a level', () => {
       ),
     });
     // A child level leads with the index too, so the levels stay aligned.
-    expect(listing.template_get(1)).toBe('3.4rem 1fr 4em');
+    expect(listing.template_get(1)).toBe('5.2rem 1fr 4em');
     expect((): string => listing.template_get(2)).toThrow(/no listing level/);
     // Blocks set but empty: the field says so. No blocks: it says nothing.
     listing.rows_set([], { field: 'q' });
@@ -954,7 +954,10 @@ describe('the index pill', () => {
     document.body.appendChild(mount);
     listingNumbering_set({
       source: 'ls /home/chris',
-      values: ['/home/chris/b', '/home/chris/a'],
+      handles: [
+        { kind: 'FIL', ordinal: 1, address: '/home/chris/b' },
+        { kind: 'FIL', ordinal: 2, address: '/home/chris/a' },
+      ],
     });
     const listing: Listing<Entry> = numbered_build(mount);
     listing.rows_set([{ key: '/home/chris', rows: [
@@ -967,9 +970,9 @@ describe('the index pill', () => {
     expect(pills).toHaveLength(3);
     // The number is the one `@N` reaches — found by ADDRESS, so it follows
     // the row rather than counting down the screen.
-    // Lit rows wear the number `@N` reaches; a row the session does not
-    // reach still counts itself, dim.
-    expect(pills.map((pill: HTMLElement): string => pill.textContent ?? '')).toEqual(['2', '1', '3']);
+    // Lit rows wear the HANDLE that reaches them — kind and place, padded
+    // to three; a row the session does not reach still counts itself, dim.
+    expect(pills.map((pill: HTMLElement): string => pill.textContent ?? '')).toEqual(['FIL002', 'FIL001', '3']);
     expect(pills.map((pill: HTMLElement): boolean => pill.classList.contains('numbered')))
       .toEqual([true, true, false]);
   });
@@ -977,12 +980,12 @@ describe('the index pill', () => {
   it('repaints every pill when the numbering moves to another listing', () => {
     const mount: HTMLElement = document.createElement('div');
     document.body.appendChild(mount);
-    listingNumbering_set({ source: 'ls', values: ['/home/chris/a'] });
+    listingNumbering_set({ source: 'ls', handles: [{ kind: 'FIL', ordinal: 1, address: '/home/chris/a' }] });
     const listing: Listing<Entry> = numbered_build(mount);
     listing.rows_set([{ key: '/home/chris', rows: [{ name: 'a', kind: 'file', size: 1 }] }], { field: '/home/chris' });
-    expect(mount.querySelector('.listing-index')?.textContent).toBe('1');
+    expect(mount.querySelector('.listing-index')?.textContent).toBe('FIL001');
 
-    listingNumbering_set({ source: 'pacs query …', values: ['/net/pacs/queries/q/Series_1'] });
+    listingNumbering_set({ source: 'pacs query …', handles: [{ kind: 'SER', ordinal: 1, address: '/net/pacs/queries/q/Series_1' }] });
     // The numbers moved to another listing: this row counts itself again.
     expect(mount.querySelector('.listing-index')?.textContent).toBe('1');
     expect(mount.querySelector('.listing-index')?.classList.contains('numbered')).toBe(false);

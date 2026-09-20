@@ -16,10 +16,10 @@ jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({
   cohort_read: async (): Promise<unknown> => ({ version: 1, name: null, feed: null, series: [] }),
 }));
 
-const { answer_note, answer_get, answerRow_get, answerConsulted_take, answer_forget } =
+const { answer_note, answer_get, answerRow_get, answerHandles_get, answerConsulted_take, answer_forget } =
   await import('../src/session/answer.js');
 const { answerAdapters_register } = await import('../src/session/answerAdapters.js');
-const { indices_parse, reference_resolve } = await import('../src/core/expansion.js');
+const { indices_parse, reference_resolve, reference_refusal, verbInHand_set } = await import('../src/core/expansion.js');
 const { shellWords_tokenize, shellWords_referencesExpand } = await import('../src/lib/parser.js');
 
 answerAdapters_register();
@@ -53,20 +53,35 @@ describe('what a listing contributes', () => {
       { path: '/home/chris/a', items: [{ name: 'one.txt' }, { name: 'two.txt' }] },
       { path: '/home/chris/b', items: [{ name: 'three.txt' }] },
     ], 'ls a b');
-    expect(answerRow_get(1)?.value).toBe('/home/chris/a/one.txt');
-    expect(answerRow_get(3)?.value).toBe('/home/chris/b/three.txt');
+    expect(answerRow_get({ kind: 'FIL', ordinal: 1 })?.values).toEqual(['/home/chris/a/one.txt']);
+    expect(answerRow_get({ kind: 'FIL', ordinal: 3 })?.values).toEqual(['/home/chris/b/three.txt']);
   });
 
-  it('numbers a PACS answer by SERIES, which is what a pull takes', () => {
+  it('numbers a PACS answer by STUDY and by SERIES, each in its own sequence', () => {
     answer_note('pacs.query', PACS_ANSWER, 'pacs query PatientID:1');
-    expect(answerRow_get(1)?.value).toBe('/net/pacs/queries/q/Study_1/Series_1');
-    expect(answerRow_get(2)?.label).toBe('AX T2');
+    expect(answerRow_get({ kind: 'SER', ordinal: 1 })?.values).toEqual(['/net/pacs/queries/q/Study_1/Series_1']);
+    expect(answerRow_get({ kind: 'SER', ordinal: 2 })?.label).toBe('AX T2');
+    // A study hands over its series, as the surface's GATHER on a study does.
+    expect(answerRow_get({ kind: 'STD', ordinal: 1 })?.values).toEqual([
+      '/net/pacs/queries/q/Study_1',
+      '/net/pacs/queries/q/Study_1/Series_1',
+      '/net/pacs/queries/q/Study_1/Series_2',
+    ]);
+  });
+
+  it('tells a surface each row\'s handle beside its address', () => {
+    answer_note('pacs.query', PACS_ANSWER, 'pacs query PatientID:1');
+    expect(answerHandles_get()).toEqual([
+      { kind: 'STD', ordinal: 1, address: '/net/pacs/queries/q/Study_1' },
+      { kind: 'SER', ordinal: 1, address: '/net/pacs/queries/q/Study_1/Series_1' },
+      { kind: 'SER', ordinal: 2, address: '/net/pacs/queries/q/Study_1/Series_2' },
+    ]);
   });
 
   it('numbers the cohort, so removing by number reads like every other act', () => {
-    answer_note('gather.cohort', { series: [{ vfsPath: '/a', description: 'SAG' }, { vfsPath: '/b' }] }, 'gather list');
-    expect(answerRow_get(1)?.label).toBe('SAG');
-    expect(answerRow_get(2)?.value).toBe('/b');
+    answer_note('gather.cohort', { series: [{ vfsPath: '/a', description: 'SAG' }, { vfsPath: '/b', kind: 'dir' }] }, 'gather list');
+    expect(answerRow_get({ kind: 'SER', ordinal: 1 })?.label).toBe('SAG');
+    expect(answerRow_get({ kind: 'DIR', ordinal: 1 })?.values).toEqual(['/b']);
   });
 
   it('ignores a model nobody has said how to number', () => {
@@ -82,15 +97,23 @@ describe('what a listing contributes', () => {
 });
 
 describe('indices_parse', () => {
-  it('reads a number, a list and a range', () => {
-    expect(indices_parse('2')).toEqual([2]);
-    expect(indices_parse('2,3,6')).toEqual([2, 3, 6]);
-    expect(indices_parse('2-4')).toEqual([2, 3, 4]);
-    expect(indices_parse('1,3-5')).toEqual([1, 3, 4, 5]);
+  const ser = (ordinal: number) => ({ kind: 'SER', ordinal });
+
+  it('reads a kind with a number, a list and a range', () => {
+    expect(indices_parse('SER2')).toEqual([ser(2)]);
+    expect(indices_parse('SER002')).toEqual([ser(2)]);
+    expect(indices_parse('SER2,3,6')).toEqual([ser(2), ser(3), ser(6)]);
+    expect(indices_parse('SER2-4')).toEqual([ser(2), ser(3), ser(4)]);
+    expect(indices_parse('FIL1,3-5')).toEqual([1, 3, 4, 5].map((n) => ({ kind: 'FIL', ordinal: n })));
   });
 
   it('reads a backwards range as the rows it names', () => {
-    expect(indices_parse('4-2')).toEqual([4, 3, 2]);
+    expect(indices_parse('DIR4-2')).toEqual([4, 3, 2].map((n) => ({ kind: 'DIR', ordinal: n })));
+  });
+
+  it('is not an index without a kind it knows', () => {
+    expect(indices_parse('2')).toBeNull();
+    expect(indices_parse('XYZ1')).toBeNull();
   });
 });
 
@@ -100,20 +123,41 @@ describe('an index on a line', () => {
   });
 
   it('becomes the row it names', async () => {
-    expect(await line_words('gather add @2'))
+    expect(await line_words('gather add @SER2'))
       .toEqual(['gather', 'add', '/net/pacs/queries/q/Study_1/Series_2']);
   });
 
   it('becomes SEVERAL operands when it names several rows', async () => {
-    expect(await line_words('gather add @1,2')).toEqual([
+    expect(await line_words('gather add @SER1,2')).toEqual([
       'gather', 'add',
       '/net/pacs/queries/q/Study_1/Series_1',
       '/net/pacs/queries/q/Study_1/Series_2',
     ]);
   });
 
+  it('hands over a whole study as its series, which is what GATHER on a study does', async () => {
+    expect(await line_words('gather add @STD1')).toEqual([
+      'gather', 'add',
+      '/net/pacs/queries/q/Study_1',
+      '/net/pacs/queries/q/Study_1/Series_1',
+      '/net/pacs/queries/q/Study_1/Series_2',
+    ]);
+  });
+
   it('refuses past the end rather than acting on the wrong row', async () => {
-    expect(await line_words('gather add @9')).toEqual({ missing: '@9' });
+    expect(await line_words('gather add @SER9')).toEqual({ missing: '@SER9' });
+  });
+
+  it('is not an index without its kind: a bare number is a number', async () => {
+    expect(await line_words('gather remove 2')).toEqual(['gather', 'remove', '2']);
+  });
+
+  it('refuses by KIND when the verb in hand does not take it', async () => {
+    verbInHand_set('image');
+    const refused = await line_words('image @STD1');
+    verbInHand_set(null);
+    expect(refused).toEqual({ missing: '@STD1' });
+    expect(reference_refusal('@STD1')).toContain('image takes a series or a folder or a file; STD001 is a study');
   });
 
   it('is not an index inside a word, so an address is left alone', async () => {
@@ -125,10 +169,11 @@ describe('an index on a line', () => {
   });
 
   it('says which listing it counted, once, for the line that used it', async () => {
-    await line_words('gather add @1');
+    await line_words('gather add @SER1');
     const counted = answerConsulted_take();
     expect(counted?.source).toBe('pacs query PatientID:1');
-    expect(counted?.rows).toHaveLength(2);
+    // The study and its two series: three rows, two sequences.
+    expect(counted?.rows).toHaveLength(3);
     // Taken once: the next line did not use an index.
     expect(answerConsulted_take()).toBeNull();
   });

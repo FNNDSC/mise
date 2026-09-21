@@ -8,10 +8,12 @@
  * commands — with each instrument behind its own module.
  *
  * The attach token arrives as a `?token=` query parameter (printed by
- * `chell --daemon`) or is pasted into the attach form. The WebSocket URL
- * defaults to the serving origin, since the daemon serves this bundle and
- * the wire from one port; a `?ws=` parameter overrides it for the dev
- * server case.
+ * `chell --daemon`), is pasted into the attach form, or — behind a door
+ * (`?door`, the porter) — is held by the door and never shown to the page.
+ * The WebSocket URL and the byte route are derived from where the page was
+ * served (see `calypso/routes.ts`): the daemon's root, or a door's
+ * `/s/<identity>/` prefix; a `?ws=` parameter overrides the wire for the
+ * dev server case.
  *
  * @module
  */
@@ -20,6 +22,7 @@ import { DagScene, type SceneNode } from '../scene/dagScene.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
+import { wireUrl_resolve, vfsUrl_build as routeVfsUrl_build, door_isPresent } from '../calypso/routes.js';
 import {
   ArgusClient,
   type AttachInfo,
@@ -191,17 +194,12 @@ function pane_find(mount: HTMLElement, selector: string): HTMLElement {
 }
 
 /**
- * Resolves the daemon WebSocket URL: `?ws=` override first, else the origin
- * that served this page.
+ * Resolves the daemon WebSocket URL from where this page was served.
  *
  * @returns The WebSocket URL.
  */
 function wsUrl_resolve(): string {
-  const override: string | null = new URLSearchParams(window.location.search).get('ws');
-  if (override !== null && override.length > 0) {
-    return override;
-  }
-  return `ws://${window.location.host}`;
+  return wireUrl_resolve(window.location);
 }
 
 /** Files the surface opens as the table they are, not as their bytes. */
@@ -826,9 +824,8 @@ async function surface_start(token: string): Promise<void> {
     pacsStage_relight();
   });
 
-  /** Builds the token-gated /vfs URL serving a path's bytes. */
-  const vfsUrl_build = (path: string): string =>
-    `/vfs?path=${encodeURIComponent(path)}&token=${encodeURIComponent(token)}`;
+  /** Builds the byte route for a path, from where this page was served. */
+  const vfsUrl_build = (path: string): string => routeVfsUrl_build(path, token);
 
   /**
    * Reads at most `maxBytes` of a file's head through the /vfs route,
@@ -5130,6 +5127,7 @@ function page_boot(): void {
   themePill_wire();
   const params: URLSearchParams = new URLSearchParams(window.location.search);
   const urlToken: string | null = params.get('token');
+  const throughDoor: boolean = door_isPresent(window.location.search);
   const attachForm: HTMLElement = element_require('attach-form');
   const attachError: HTMLElement = element_require('attach-error');
 
@@ -5161,6 +5159,11 @@ function page_boot(): void {
     // The token rode the URL; go straight to the session without the form.
     attachForm.classList.add('attach-hidden');
     start(urlToken);
+  } else if (throughDoor) {
+    // A door holds the token and puts it on the attach itself; the page
+    // would only be asking for something it is never shown.
+    attachForm.classList.add('attach-hidden');
+    start('');
   }
 }
 

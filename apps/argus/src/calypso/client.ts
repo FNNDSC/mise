@@ -10,10 +10,11 @@
  * cleanly instead of hanging the session.
  *
  * Boundary rule: this module imports only `@fnndsc/menu` — the
- * published contract — never the execution stack.
+ * published contract — and its own routes; never the execution stack.
  *
  * @module
  */
+import { vfsUrl_build } from './routes.js';
 import { type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry,
   CONTRACT_VERSION,
   serverMessage_parse,
@@ -528,8 +529,7 @@ export class ArgusClient {
     filename: string;
   }): Promise<void> {
     try {
-      const url: string =
-        `/vfs?path=${encodeURIComponent(message.path)}&token=${encodeURIComponent(this.token)}`;
+      const url: string = vfsUrl_build(message.path, this.token);
       const response: Response = await fetch(url);
       if (!response.ok) {
         throw new Error(`calypso refused to serve this file (HTTP ${response.status})`);

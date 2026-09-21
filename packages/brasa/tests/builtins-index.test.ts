@@ -90,6 +90,7 @@ jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
 const dicomPayload = await import('@fnndsc/cumin/dicom-payload');
 const pacsGrammar = await import('@fnndsc/salsa/pacs-grammar');
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  feedStatus_ofCounts: (): string => 'finishedSuccessfully',
   feed_share: jest.fn(async () => ({ ok: true, value: true })),
   plugin_find: jest.fn(async () => null),
   pluginParameters_drain: jest.fn(async () => []),

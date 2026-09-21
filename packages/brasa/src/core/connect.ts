@@ -5,14 +5,15 @@
  * context and validate its token against the server. It carries no terminal
  * output of its own: it returns a status a frontend narrates (the CLI prints
  * progress; a daemon logs or exits). Interactive login (prompting for a URL and
- * password) is a frontend concern and lives with the CLI, not here.
+ * password) is a frontend concern and lives with the CLI, not here. A token a
+ * door already minted is the other headless way in, and it is here too.
  *
  * @module
  */
 
 import { session } from '../session/index.js';
 import { context_getSingle } from '@fnndsc/salsa';
-import { SingleContext, Client } from '@fnndsc/cumin';
+import { SingleContext, Client, chrisContext, Context, type TokenConnectOutcome } from '@fnndsc/cumin';
 
 /**
  * The outcome of a saved-session restore.
@@ -66,4 +67,47 @@ export async function sessionConnect_fromSaved(): Promise<SavedSessionResult> {
     session.offline = true;
     return { status: 'invalid-token', context, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/**
+ * The outcome of a token hand-over.
+ *
+ * - `connected` — the server accepted the token; the session is this identity's.
+ * - `refused` — the server did not; the session is offline and `error` says why.
+ */
+export interface TokenSessionResult {
+  status: 'connected' | 'refused';
+  context: SingleContext;
+  /** What the server said, when the status is `refused`. */
+  error?: string;
+}
+
+/**
+ * Connects a session from a CUBE token a door already minted, without prompting.
+ *
+ * A login front on a shared host exchanges the operator's password for a
+ * token itself and hands the token to the session it spawns; the session
+ * never sees a password. The token is proved against the server before the
+ * context is written, so a refusal changes nothing on disk. On acceptance
+ * the context is set the way a credentialed boot sets it: the identity, and
+ * no feed or plugin — the working directory is the identity's own and is
+ * not touched, so a session that was evicted comes back where it was.
+ *
+ * @param user - The CUBE username the token was minted for.
+ * @param url - The CUBE API base the token was minted against.
+ * @param token - The token.
+ * @returns Connected, or refused with the server's reason.
+ */
+export async function sessionConnect_withToken(user: string, url: string, token: string): Promise<TokenSessionResult> {
+  const outcome: TokenConnectOutcome = await session.connection.connection_connectWithToken({ user, url, token });
+  if (!outcome.connected) {
+    session.offline = true;
+    return { status: 'refused', context: await context_getSingle(), error: outcome.reason };
+  }
+  session.offline = false;
+  await chrisContext.current_set(Context.ChRISuser, user);
+  await chrisContext.current_set(Context.ChRISURL, url);
+  await chrisContext.current_set(Context.ChRISfeed, '');
+  await chrisContext.current_set(Context.ChRISplugin, '');
+  return { status: 'connected', context: await context_getSingle() };
 }

@@ -320,6 +320,8 @@ What tier 2 *adds* on top of tier 1 (all additive):
 * *Lifecycle.* Idle-daemon eviction, token-expiry reaping, crash restart — the
   porter owns the fleet.
 
+The first seam tier 2 needed is in: *the door hands a token*. A session can now be started with a CUBE token rather than a password — cumin `connection_connectWithToken`, brasa `sessionConnect_withToken`, and `chell --daemon <user>@<url> --auth-token-stdin`, which reads the token from stdin (one line, never argv, where `ps` would show it) and refuses by name when it arrives without an identity, beside a password, or not at all. The token is proved against the server before anything is written, so a refused login changes nothing on disk. Off a TTY the daemon no longer tries to end its boot at a console, because a front holding its pipe is not a terminal; it says so and keeps listening. The porter's `spawn` is therefore: exchange the password at CUBE, spawn `chell --daemon` with per-identity XDG directories, write the token to its stdin, watch its stdout for the boot rows.
+
 What tier 2 *reuses* unchanged: the calypso daemon, the engine, the `Berth` concept
 (addr + attach token), the `<user>@<url>` identity key, and — through the resolver
 seam — the surface's attach path (`PorterBerthResolver` replaces

@@ -22,7 +22,7 @@ import { DagScene, type SceneNode } from '../scene/dagScene.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
-import { wireUrl_resolve, vfsUrl_build as routeVfsUrl_build, door_isPresent } from '../calypso/routes.js';
+import { wireUrl_resolve, vfsUrl_build as routeVfsUrl_build, door_isPresent, doorUrl_build } from '../calypso/routes.js';
 import {
   ArgusClient,
   type AttachInfo,
@@ -5119,12 +5119,32 @@ async function surface_start(token: string): Promise<void> {
  * Page entry: use the URL token when present, otherwise show the attach
  * form and start on submit.
  */
+/**
+ * Wires the LOG OUT pill: shown only on a page that came through a door,
+ * it leaves by that door. The session is not touched — a daemon outlives
+ * every surface, and the door's own policy decides when it ends — so the
+ * pill tells the door to forget this browser and goes back to its login.
+ */
+function doorPill_wire(): void {
+  const pill: HTMLElement = element_require('door-pill');
+  if (!door_isPresent(window.location.search)) return;
+  pill.hidden = false;
+  pill.addEventListener('click', (): void => {
+    const logout: string = doorUrl_build(window.location.pathname, 'logout');
+    const login: string = doorUrl_build(window.location.pathname, 'login');
+    void fetch(logout, { method: 'POST', headers: { accept: 'application/json' } })
+      .catch((): void => undefined)
+      .then((): void => { window.location.assign(login); });
+  });
+}
+
 function page_boot(): void {
   cascade = cascade_build();
   headerFaces_wire();
   headerBand_wire();
   audioPill_wire();
   themePill_wire();
+  doorPill_wire();
   const params: URLSearchParams = new URLSearchParams(window.location.search);
   const urlToken: string | null = params.get('token');
   const throughDoor: boolean = door_isPresent(window.location.search);

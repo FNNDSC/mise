@@ -3734,9 +3734,12 @@ body[data-zoom] #header-restore {
 /* -------------------------------------------------------------- audio pill */
 
 /* The control capsules, ritos idiom: labeled LCARS pills. The audio pill's
- * green speaks and red is silent; the theme pill wears the current scheme. */
+ * green speaks and red is silent; the theme pill wears the current scheme;
+ * the door pill stands only on a page that came through a door, in the
+ * frame's own hue, because leaving is chrome and not a state. */
 .audio-pill,
-.theme-pill {
+.theme-pill,
+.door-pill {
   padding: 0.1rem 0.9rem;
   border: none;
   border-radius: 0.8rem;
@@ -3756,8 +3759,13 @@ body[data-zoom] #header-restore {
   background-color: var(--harvestgold);
 }
 
+.door-pill {
+  background-color: var(--orange);
+}
+
 .audio-pill:hover,
-.theme-pill:hover {
+.theme-pill:hover,
+.door-pill:hover {
   filter: brightness(1.3);
   box-shadow: 0 0 8px currentcolor;
 }

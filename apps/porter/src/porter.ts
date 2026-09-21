@@ -26,6 +26,9 @@ async function porter_start(): Promise<void> {
   console.log(`[+] PORTER at http://${config.host}:${config.port}/ for ${config.cubeUrl}`);
   console.log(`    state:  ${config.stateDir}`);
   console.log(`    chell:  ${config.chellEntry}`);
+  if (config.secretGenerated) {
+    console.log('    secret: made up for this run — set PORTER_SECRET so a restart does not ask every browser again');
+  }
   const stop = async (): Promise<void> => {
     await built.app.close();
     process.exit(0);

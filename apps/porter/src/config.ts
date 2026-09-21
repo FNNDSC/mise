@@ -10,6 +10,7 @@
  * @module
  */
 import { createRequire } from 'node:module';
+import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -25,6 +26,12 @@ export interface PorterConfig {
   port: number;
   /** The chell entry to start a session with (`dist/index.js`). */
   chellEntry: string;
+  /** What the door signs its cookie with. */
+  secret: string;
+  /** Whether the secret was made up at start: cookies die with this porter. */
+  secretGenerated: boolean;
+  /** How long a browser stays let in, in hours. */
+  cookieHours: number;
 }
 
 /** The environment variables a porter reads, and no others. */
@@ -34,11 +41,20 @@ export interface PorterEnv {
   PORTER_HOST?: string;
   PORTER_PORT?: string;
   PORTER_CHELL?: string;
+  PORTER_SECRET?: string;
+  PORTER_COOKIE_HOURS?: string;
   XDG_STATE_HOME?: string;
 }
 
 /** The port a porter takes when told none. */
 export const PORTER_DEFAULT_PORT: number = 4180;
+
+/**
+ * How long a browser stays let in when the deployment does not say: a day,
+ * the same span an idle session lives, so a cookie and the session it
+ * names die together. CUBE's tokens carry no expiry of their own to follow.
+ */
+export const PORTER_DEFAULT_COOKIE_HOURS: number = 24;
 
 /**
  * Finds the chell this porter will start sessions with: the one installed
@@ -75,12 +91,26 @@ export function porterConfig_resolve(env: PorterEnv, locateChell: () => string =
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
     throw new Error(`PORTER_PORT is not a port: ${portText}`);
   }
+  const hoursText: string = env.PORTER_COOKIE_HOURS ?? String(PORTER_DEFAULT_COOKIE_HOURS);
+  const cookieHours: number = Number(hoursText);
+  if (!Number.isFinite(cookieHours) || cookieHours <= 0) {
+    throw new Error(`PORTER_COOKIE_HOURS is not a span of hours: ${hoursText}`);
+  }
   const stateBase: string = env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state');
+  // A secret nobody set is made up here: the door still works, but every
+  // browser is asked again when this porter restarts. Said out loud at start.
+  const secretGiven: boolean = env.PORTER_SECRET !== undefined && env.PORTER_SECRET.length >= 20;
+  if (env.PORTER_SECRET !== undefined && !secretGiven) {
+    throw new Error('PORTER_SECRET is too short: give at least 20 characters, or none to have one made up per start');
+  }
   return {
     cubeUrl: cubeUrl.endsWith('/') ? cubeUrl : `${cubeUrl}/`,
     stateDir: env.PORTER_STATE_DIR ?? join(stateBase, 'porter'),
     host: env.PORTER_HOST ?? '127.0.0.1',
     port,
     chellEntry: env.PORTER_CHELL ?? locateChell(),
+    secret: secretGiven ? (env.PORTER_SECRET as string) : randomBytes(32).toString('hex'),
+    secretGenerated: !secretGiven,
+    cookieHours,
   };
 }

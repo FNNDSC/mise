@@ -1,10 +1,14 @@
 /**
- * @file The porter's routes: a session is asked for, watched booting, and
- * reached through.
+ * @file The porter's routes: the door, the boot, and the session behind it.
  *
- * - `POST /sessions` — a username and password. The password goes to CUBE
- *   once and comes back as a token; the token starts (or joins) that
- *   identity's session; the answer is where the session is mounted.
+ * - `GET /login` — the door: a username and a password, nothing else.
+ * - `POST /login` — the password goes to CUBE once and comes back a token;
+ *   the token starts (or joins) that identity's session; the browser is
+ *   given a signed cookie naming the session and sent to it. A JSON caller
+ *   gets the mount back instead of a redirect. Every login checks the
+ *   password even when the session is up: a berth proves the daemon, not
+ *   the human.
+ * - `POST /logout` — the cookie is cleared; the session lives on.
  * - `GET /boot/<key>` — the session's boot as it happens, server-sent, one
  *   event per line the daemon wrote, ending with `ready` or `failed`.
  * - `/s/<key>/…` — the session itself: the argus page and its assets, the
@@ -12,13 +16,16 @@
  *   loopback. The attach token is put on the proxied `/vfs` query and the
  *   proxied upgrade URL by the porter; the browser never holds it.
  *
- * This is the shape without the door: nothing here checks a cookie yet, so
- * a porter at this stage listens on loopback only. The door — the login
- * page, the cookie, LOG OUT — comes next and gates `/s/` and `/boot/`.
+ * The cookie gates everything under `/s/` and `/boot/`: a browser reaches
+ * only the session its cookie names, and a request with none is sent to the
+ * door. TLS is somebody else's — a caddy, an ingress — and `trustProxy`
+ * lets the porter learn from them that the page came over it.
  *
  * @module
  */
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import fastifyCookie, { unsign as cookie_unsign } from '@fastify/cookie';
+import fastifyFormbody from '@fastify/formbody';
 import replyFrom from '@fastify/reply-from';
 import { z } from 'zod';
 import { connect as net_connect, type Socket } from 'node:net';
@@ -29,6 +36,7 @@ import type { PorterConfig } from './config.js';
 import type { SessionHost, Berth, BootLine } from './host/sessionHost.js';
 import { SessionRegistry, type SessionEntry } from './registry.js';
 import { cubeToken_mint, type TokenMint } from './cube/auth.js';
+import { DOOR_COOKIE, doorCookie_options, loginPage_render } from './door.js';
 
 /** What the routes are built over. */
 export interface PorterAppOptions {
@@ -46,7 +54,7 @@ export interface PorterApp {
   registry: SessionRegistry;
 }
 
-const sessionRequestSchema = z.object({
+const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
 });
@@ -96,6 +104,41 @@ export function mountUrl_split(url: string): { key: string; rest: string } | nul
 }
 
 /**
+ * The session key a cookie header names, once its signature is checked.
+ *
+ * @param cookieHeader - The raw `Cookie` header, or undefined.
+ * @param secret - The door's signing secret.
+ * @returns The key, or null when there is no cookie or its signature fails.
+ */
+export function cookieKey_read(cookieHeader: string | undefined, secret: string): string | null {
+  if (cookieHeader === undefined) return null;
+  // The one cookie wanted, out of a header that may carry any number: the
+  // plugin parses only for a request it decorated, and an upgrade has none.
+  let raw: string | undefined;
+  for (const part of cookieHeader.split(';')) {
+    const cut: number = part.indexOf('=');
+    if (cut === -1) continue;
+    if (part.slice(0, cut).trim() !== DOOR_COOKIE) continue;
+    try {
+      raw = decodeURIComponent(part.slice(cut + 1).trim());
+    } catch {
+      return null;
+    }
+    break;
+  }
+  if (raw === undefined) return null;
+  const checked = cookie_unsign(raw, secret);
+  return checked.valid && checked.value !== null && /^[0-9a-f]{16}$/.test(checked.value) ? checked.value : null;
+}
+
+/** Whether a request would rather be answered in JSON than sent somewhere. */
+function request_wantsJson(request: FastifyRequest): boolean {
+  const contentType: string = String(request.headers['content-type'] ?? '');
+  const accept: string = String(request.headers.accept ?? '');
+  return contentType.includes('application/json') || (accept.includes('application/json') && !accept.includes('text/html'));
+}
+
+/**
  * Builds the porter's routes over a host and a config.
  *
  * @param options - The config, the session host, and the seams a test replaces.
@@ -105,20 +148,40 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   const { config, host } = options;
   const mint = options.mint ?? cubeToken_mint;
   const registry: SessionRegistry = new SessionRegistry();
-  const app: FastifyInstance = Fastify({ logger: options.logger ?? false });
+  const app: FastifyInstance = Fastify({ logger: options.logger ?? false, trustProxy: true });
+  await app.register(fastifyCookie, { secret: config.secret });
+  await app.register(fastifyFormbody);
   await app.register(replyFrom);
+
+  /** The key the request's cookie names, or null. */
+  const key_ofRequest = (request: FastifyRequest): string | null => cookieKey_read(request.headers.cookie, config.secret);
 
   app.get('/healthz', async (): Promise<{ ok: true; cube: string; sessions: number }> => ({ ok: true, cube: config.cubeUrl, sessions: registry.all().length }));
 
-  app.post('/sessions', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
-    const parsed = sessionRequestSchema.safeParse(request.body);
+  app.get('/', async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const key: string | null = key_ofRequest(request);
+    const entry: SessionEntry | null = key === null ? null : registry.get(key);
+    await reply.redirect(entry === null ? '/login' : `/s/${entry.key}/?door`, 302);
+  });
+
+  app.get('/login', async (request: FastifyRequest, reply: FastifyReply): Promise<string> => {
+    const reason: unknown = (request.query as { reason?: unknown }).reason;
+    void reply.type('text/html; charset=utf-8');
+    return loginPage_render(config.cubeUrl, typeof reason === 'string' && reason.length > 0 ? reason : null);
+  });
+
+  app.post('/login', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    const wantsJson: boolean = request_wantsJson(request);
+    const refuse = async (status: number, reason: string): Promise<unknown> =>
+      wantsJson ? reply.code(status).send({ error: reason }) : reply.redirect(`/login?reason=${encodeURIComponent(reason)}`, 303);
+    const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: 'a username and a password are required' });
+      return refuse(400, 'a username and a password are required');
     }
     const { username, password } = parsed.data;
     const minted: TokenMint = await mint(config.cubeUrl, username, password);
     if (minted.token === null) {
-      return reply.code(401).send({ error: minted.reason ?? 'refused' });
+      return refuse(401, minted.reason ?? 'refused');
     }
     const identity: string = identity_normalise(username, config.cubeUrl);
     const found: Berth | null = await host.find(identity);
@@ -130,15 +193,28 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
       try {
         berth = await host.spawn(identity, username, config.cubeUrl, minted.token);
       } catch (error: unknown) {
-        return reply.code(502).send({ error: `the session did not start: ${error instanceof Error ? error.message : String(error)}` });
+        return refuse(502, `the session did not start: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     const entry: SessionEntry = registry.note(identity, username, berth);
-    return { key: entry.key, mount: `/s/${entry.key}/`, state };
+    void reply.setCookie(DOOR_COOKIE, entry.key, doorCookie_options(config.cookieHours, request.protocol === 'https'));
+    if (wantsJson) {
+      return { key: entry.key, mount: `/s/${entry.key}/`, state };
+    }
+    return reply.redirect(`/s/${entry.key}/?door`, 303);
+  });
+
+  app.post('/logout', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    void reply.clearCookie(DOOR_COOKIE, { path: '/' });
+    return request_wantsJson(request) ? { ok: true } : reply.redirect('/login', 303);
   });
 
   app.get('/boot/:key', async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
     const key: string = (request.params as { key: string }).key;
+    if (key_ofRequest(request) !== key) {
+      await reply.code(401).send({ error: 'this browser was not let in to that session' });
+      return;
+    }
     const entry: SessionEntry | null = registry.get(key);
     if (entry === null) {
       await reply.code(404).send({ error: 'no session behind that key' });
@@ -178,8 +254,11 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   // The session itself, over HTTP: the page, its assets, and /vfs.
   app.all('/s/:key/*', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const split = mountUrl_split(request.url);
-    const entry: SessionEntry | null = split === null ? null : registry.get(split.key);
-    if (split === null || entry === null) {
+    if (split === null || key_ofRequest(request) !== split.key) {
+      return reply.redirect('/login', 302);
+    }
+    const entry: SessionEntry | null = registry.get(split.key);
+    if (entry === null) {
       return reply.code(404).send({ error: 'no session behind that key' });
     }
     return reply.from(upstreamPath_build(split.rest, entry.berth.token), {
@@ -199,7 +278,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     app.server.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer): void => {
       const split = mountUrl_split(request.url ?? '/');
       const entry: SessionEntry | null = split === null ? null : registry.get(split.key);
-      if (split === null || entry === null) {
+      if (split === null || entry === null || cookieKey_read(request.headers.cookie, config.secret) !== split.key) {
         socket.destroy();
         return;
       }

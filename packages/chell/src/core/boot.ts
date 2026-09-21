@@ -539,6 +539,20 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
     // A `<user>@<url>` target names the identity to attach to; a bare `--remote`
     // resolves the sole/most-suitable berth (identity undefined).
     const identity: string | undefined = cc?.user && cc?.url ? identity_forSession(cc.user, cc.url) : undefined;
+    // A door wins over everything: the terminal logs in there and attaches
+    // to whatever the door mounts, with the door's cookie on the upgrade.
+    if (config.door !== undefined) {
+      const { door_enter } = await import('../remote/door.js');
+      const reach = await door_enter(config.door, cc?.user, config.connectConfig?.password);
+      if (reach === null) {
+        process.exit(1);
+      }
+      await remote_run(reach.identity, config.commandToExecute, { address: reach.url, headers: reach.headers });
+      if (config.commandToExecute !== undefined) {
+        process.exit(process.exitCode ?? 0);
+      }
+      return;
+    }
     // An explicit address wins over identity resolution: a daemon on another
     // machine has no berth in this host's runtime directory to resolve.
     const attach = config.attach !== undefined

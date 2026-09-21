@@ -23,8 +23,10 @@ import { promptFromContext_render } from '../core/prompt/session.js';
 export interface RemoteEngineOptions {
   /** The daemon WebSocket URL, e.g. `ws://127.0.0.1:4300`. */
   url: string;
-  /** The attach token. */
+  /** The attach token; empty when a door holds it and the headers carry the cookie instead. */
   token: string;
+  /** Headers to send on the upgrade — a door's session cookie. */
+  headers?: Record<string, string>;
   /** Called with each session-bus broadcast from another surface. */
   onSession?: (surface: string, envelope: CommandEnvelope) => void;
   /** Answers a prompt the daemon raised during a command (password, confirmation). */
@@ -108,7 +110,7 @@ export class RemoteEngine implements BrasaEngine {
    */
   public static connect(options: RemoteEngineOptions): Promise<RemoteEngine> {
     return new Promise((resolve: (engine: RemoteEngine) => void, reject: (err: Error) => void) => {
-      const ws: WebSocket = new WebSocket(options.url);
+      const ws: WebSocket = new WebSocket(options.url, options.headers !== undefined ? { headers: options.headers } : {});
 
       ws.once('error', (err: Error) => reject(err));
 

@@ -47,6 +47,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { DOOR_COOKIE, doorCookie_options } from './door.js';
 import { loginPage_render, greetPage_render } from './greeter.js';
+import { idleSweep_run } from './sweep.js';
 
 /** What the routes are built over. */
 export interface PorterAppOptions {
@@ -58,6 +59,8 @@ export interface PorterAppOptions {
   logger?: boolean;
   /** One line per thing the door does, for the porter's own terminal. */
   log?: (line: string) => void;
+  /** How often the idle sweep runs, in ms; a minute by default. */
+  sweepMs?: number;
 }
 
 /** A porter application: the Fastify instance and the registry behind it. */
@@ -161,6 +164,16 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   const mint = options.mint ?? cubeToken_mint;
   const registry: SessionRegistry = new SessionRegistry();
   const app: FastifyInstance = Fastify({ logger: options.logger ?? false, trustProxy: true });
+
+  // A porter restarted adopts the sessions its predecessor started: their
+  // berths are in the state directory, and a cookie that names one still
+  // opens it, because the key is the identity's and not this process's.
+  for (const sighting of await host.sessions_adopt()) {
+    if (!sighting.alive) continue;
+    const user: string = sighting.identity.slice(0, sighting.identity.indexOf('@'));
+    registry.note(sighting.identity, user, sighting.berth);
+    options.log?.(`adopted ${user}'s session at ${sighting.berth.url}`);
+  }
   await app.register(fastifyCookie, { secret: config.secret });
   await app.register(fastifyFormbody);
   await app.register(replyFrom);
@@ -298,6 +311,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     if (entry === null) {
       return reply.code(404).send({ error: 'no session behind that key' });
     }
+    registry.activity_note(entry.key);
     return reply.from(upstreamPath_build(split.rest, entry.berth.token), {
       getUpstream: (): string => berthHttp_of(entry.berth),
     });
@@ -320,6 +334,16 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
         return;
       }
       const target: URL = new URL(entry.berth.url);
+      // A wire open is a surface on the session; the idle sweep never ends
+      // a session with one, however quiet it is.
+      registry.wire_count(entry.key, 1);
+      let counted: boolean = true;
+      const wire_release = (): void => {
+        if (!counted) return;
+        counted = false;
+        registry.wire_count(entry.key, -1);
+      };
+      socket.once('close', wire_release);
       const upstream: Socket = net_connect(Number(target.port), target.hostname, (): void => {
         const path: string = upstreamPath_build(split.rest, entry.berth.token);
         const lines: string[] = [`${request.method ?? 'GET'} ${path} HTTP/1.1`];
@@ -332,8 +356,17 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
         upstream.pipe(socket);
       });
       upstream.on('error', (): void => { socket.destroy(); });
+      upstream.once('close', (): void => { wire_release(); socket.destroy(); });
       socket.on('error', (): void => { upstream.destroy(); });
     });
+
+    // The idle sweep, once a minute for as long as the porter listens.
+    const idleMs: number = config.idleHours * 3_600_000;
+    const sweep: NodeJS.Timeout = setInterval((): void => {
+      void idleSweep_run(registry, host, idleMs, options.log ?? ((): void => undefined));
+    }, options.sweepMs ?? 60_000);
+    sweep.unref();
+    app.addHook('onClose', async (): Promise<void> => { clearInterval(sweep); });
   });
 
   return { app, registry };

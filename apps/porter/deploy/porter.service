@@ -1,0 +1,36 @@
+# The mise porter as a system service: one door, one CUBE, on this host.
+#
+#   sudo useradd --system --home /var/lib/porter --create-home --shell /usr/sbin/nologin porter
+#   sudo install -d -o porter -g porter -m 0700 /var/lib/porter
+#   sudo install -m 0600 porter.env /etc/porter.env      # from porter.env.example
+#   sudo cp porter.service /etc/systemd/system/ && sudo systemctl enable --now porter
+#
+# The state directory is precious: every identity's first login boots cold
+# (a minute against CUBE); every later one boots warm from the directory.
+# Never put it on tmpfs.
+[Unit]
+Description=mise porter — the ChRIS login for this host
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=porter
+Group=porter
+EnvironmentFile=/etc/porter.env
+Environment=NODE_ENV=production
+WorkingDirectory=/var/lib/porter
+ExecStart=/usr/bin/node /opt/mise/apps/porter/dist/porter.js
+Restart=on-failure
+RestartSec=3
+# Sessions are children of the porter but must outlive a porter restart:
+# the porter adopts them back from their berths. Killing the whole cgroup
+# on stop would end every session with the door.
+KillMode=process
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/porter
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+# TLS in front of the porter. Caddy holds the certificate (a public name gets
+# one from Let's Encrypt; an internal CA goes in `tls`), speaks HTTPS to the
+# world and plain HTTP to the porter on loopback, which reads
+# X-Forwarded-Proto and marks its cookie Secure. WebSockets pass through
+# reverse_proxy unchanged.
+titan.tch.harvard.edu {
+	reverse_proxy 127.0.0.1:4180
+}

@@ -243,7 +243,7 @@ export async function daemon_launch(
   // another machine, the qualified name still works.
   const displayHost: string = bindHost === '0.0.0.0' ? await hostFqdn_get() : bindHost;
   const url: string = `ws://${displayHost}:${port}`;
-  const berth: Berth = { identity, url, token };
+  const berth: Berth = { identity, url, token, pid: process.pid };
   berth_write(berth);
 
   const attachHint: string = identity === DISCONNECTED_IDENTITY ? '' : ` ${identity}`;

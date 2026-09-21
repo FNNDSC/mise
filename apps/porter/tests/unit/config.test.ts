@@ -51,6 +51,9 @@ describe('porterConfig_resolve', () => {
     expect(given.secret).toBe('a-secret-of-at-least-twenty-characters');
     expect(given.secretGenerated).toBe(false);
     expect(given.cookieHours).toBe(8);
+    expect(made.idleHours).toBe(24);
+    expect(porterConfig_resolve({ PORTER_CUBE_URL: 'https://c/api/v1/', PORTER_IDLE_HOURS: '2' }, locate).idleHours).toBe(2);
+    expect(() => porterConfig_resolve({ PORTER_CUBE_URL: 'https://c/api/v1/', PORTER_IDLE_HOURS: 'never' }, locate)).toThrow('PORTER_IDLE_HOURS is not a span');
   });
 
   it('refuses by name', () => {

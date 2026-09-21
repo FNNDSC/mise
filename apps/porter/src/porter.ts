@@ -11,6 +11,27 @@
 import { porterConfig_resolve, type PorterConfig } from './config.js';
 import { ProcessHost } from './host/processHost.js';
 import { porterApp_build, type PorterApp } from './app.js';
+import type { SessionSighting } from './host/sessionHost.js';
+import { berthKey_compute } from '@fnndsc/calypso/berth';
+
+/**
+ * Lists the sessions the state directory holds, without starting anything.
+ *
+ * @param config - Where the state directory is.
+ */
+async function status_print(config: PorterConfig): Promise<void> {
+  const host: ProcessHost = new ProcessHost({ stateDir: config.stateDir, chellEntry: config.chellEntry });
+  const sightings: SessionSighting[] = await host.sessions_adopt();
+  console.log(`state: ${config.stateDir}`);
+  if (sightings.length === 0) {
+    console.log('no sessions');
+    return;
+  }
+  for (const sighting of sightings) {
+    const state: string = sighting.alive ? 'answering' : 'gone';
+    console.log(`${berthKey_compute(sighting.identity)}  ${state.padEnd(9)}  ${sighting.berth.url.padEnd(24)}  ${sighting.identity}${sighting.berth.pid !== undefined ? `  pid ${sighting.berth.pid}` : ''}`);
+  }
+}
 
 async function porter_start(): Promise<void> {
   let config: PorterConfig;
@@ -20,17 +41,25 @@ async function porter_start(): Promise<void> {
     console.error(`[!] ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   }
+  if (process.argv.includes('--status')) {
+    await status_print(config);
+    return;
+  }
   const host: ProcessHost = new ProcessHost({ stateDir: config.stateDir, chellEntry: config.chellEntry });
+  const sweepText: string | undefined = process.env['PORTER_SWEEP_SECONDS'];
   const built: PorterApp = await porterApp_build({
     config,
     host,
     logger: false,
     log: (line: string): void => { console.log(`[+] ${line}`); },
+    // Not documented: the sweep's cadence only matters to a test of it.
+    ...(sweepText !== undefined && Number(sweepText) > 0 ? { sweepMs: Number(sweepText) * 1000 } : {}),
   });
   await built.app.listen({ host: config.host, port: config.port });
   console.log(`[+] PORTER at http://${config.host}:${config.port}/ for ${config.cubeUrl}`);
   console.log(`    state:  ${config.stateDir}`);
   console.log(`    chell:  ${config.chellEntry}`);
+  console.log(`    idle:   sessions end after ${config.idleHours} h with nobody on them; their state directories stay`);
   if (config.secretGenerated) {
     console.log('    secret: made up for this run — set PORTER_SECRET so a restart does not ask every browser again');
   }

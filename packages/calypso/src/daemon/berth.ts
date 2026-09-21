@@ -40,11 +40,15 @@ const BERTH_SUBDIR: string = 'calypso';
  *   alone.
  * @property url - The daemon's WebSocket address (e.g. `ws://127.0.0.1:54321`).
  * @property token - The attach token gating the daemon's handshake.
+ * @property pid - The daemon's process id, so a host that did not start it
+ *   — a porter restarted under a fleet it adopted — can still end it.
+ *   Absent from berths written before it was recorded.
  */
 export interface Berth {
   identity: string;
   url: string;
   token: string;
+  pid?: number;
 }
 
 /**

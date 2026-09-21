@@ -597,6 +597,17 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   // --- Daemon Mode ---
   // Host the connected engine over WebSocket and stay alive on the server.
   if (config.mode === 'daemon') {
+    // Off a TTY the daemon's stdout is somebody's pipe — a porter's, a
+    // service manager's — and that somebody may go away first. A session
+    // outlives its door: a write to a pipe with no reader is dropped, not
+    // fatal, so the wire and the surfaces on it never notice.
+    if (process.stdout.isTTY !== true) {
+      const pipe_tolerate = (error: NodeJS.ErrnoException): void => {
+        if (error.code !== 'EPIPE') throw error;
+      };
+      process.stdout.on('error', pipe_tolerate);
+      process.stderr.on('error', pipe_tolerate);
+    }
     const warmupFlags: StartupWarmupFlags = {
       plugins: prefetchPlugins,
       feeds: prefetchFeeds,

@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { berth_pathIn } from '@fnndsc/calypso/berth';
-import { ProcessHost, type SpawnedSession, type SessionSpawn } from '../../src/host/processHost.js';
+import { ProcessHost, BOOT_LINES_KEPT, type SpawnedSession, type SessionSpawn } from '../../src/host/processHost.js';
 import type { BootLine } from '../../src/host/sessionHost.js';
 
 const IDENTITY: string = 'chris@https://cube.example.org/api/v1/';
@@ -45,11 +45,11 @@ function host_make(): ProcessHost {
   return new ProcessHost({ stateDir, chellEntry: '/opt/chell/dist/index.js', spawn, alive: async (): Promise<boolean> => alive, bootTimeoutMs: 2_000, pollMs: 20 });
 }
 
-function berth_plant(host: ProcessHost): void {
+function berth_plant(host: ProcessHost, pid?: number): void {
   const runtime: string = host.dirs_of(IDENTITY).runtime;
   const path: string = berth_pathIn(runtime, IDENTITY);
   mkdirSync(join(runtime, 'calypso'), { recursive: true });
-  writeFileSync(path, JSON.stringify({ identity: IDENTITY, url: 'ws://127.0.0.1:4444', token: 'ATTACH' }));
+  writeFileSync(path, JSON.stringify({ identity: IDENTITY, url: 'ws://127.0.0.1:4444', token: 'ATTACH', ...(pid !== undefined ? { pid } : {}) }));
 }
 
 beforeEach(() => {
@@ -154,5 +154,41 @@ describe('ProcessHost', () => {
     expect(await host.evict(IDENTITY)).toBe(true);
     expect(child.killed).toBe('SIGTERM');
     expect(await host.evict(IDENTITY)).toBe(false);
+  });
+});
+
+describe('a porter restarted', () => {
+  it('adopts the sessions its state directory holds, and ends an adopted one by its berth\'s pid', async () => {
+    const killed: Array<{ pid: number; signal: string }> = [];
+    const host: ProcessHost = new ProcessHost({ stateDir, chellEntry: '/opt/chell/dist/index.js', spawn, alive: async (): Promise<boolean> => alive, kill: (pid: number, signal: NodeJS.Signals): void => { killed.push({ pid, signal }); } });
+    berth_plant(host, 31337);
+    const sightings = await host.sessions_adopt();
+    expect(sightings).toEqual([{ identity: IDENTITY, berth: { identity: IDENTITY, url: 'ws://127.0.0.1:4444', token: 'ATTACH', pid: 31337 }, alive: true }]);
+    expect(host.boot_follow(IDENTITY, { line: (): void => undefined, done: (): void => undefined })?.report.state).toBe('ready');
+    expect(await host.evict(IDENTITY)).toBe(true);
+    expect(killed).toEqual([{ pid: 31337, signal: 'SIGTERM' }]);
+  });
+
+  it('lists a berth whose daemon is gone as such, and never signals its pid', async () => {
+    const killed: number[] = [];
+    alive = false;
+    const host: ProcessHost = new ProcessHost({ stateDir, chellEntry: '/opt/chell/dist/index.js', spawn, alive: async (): Promise<boolean> => alive, kill: (pid: number): void => { killed.push(pid); } });
+    berth_plant(host, 31337);
+    expect((await host.sessions_adopt())[0]?.alive).toBe(false);
+    expect(await host.evict(IDENTITY)).toBe(false);
+    expect(killed).toEqual([]);
+  });
+
+  it('keeps only the last boot lines for a late follower', async () => {
+    const host: ProcessHost = host_make();
+    const starting: Promise<unknown> = host.spawn(IDENTITY, 'chris', 'https://cube.example.org/api/v1/', 'MINTED');
+    await new Promise((r) => setTimeout(r, 10));
+    for (let i = 0; i < BOOT_LINES_KEPT + 5; i++) child.stdout.write(`line ${i}\n`);
+    await new Promise((r) => setTimeout(r, 30));
+    const report = host.boot_follow(IDENTITY, { line: (): void => undefined, done: (): void => undefined })?.report;
+    expect(report?.lines.length).toBe(BOOT_LINES_KEPT);
+    expect(report?.lines[0]?.text).toBe('line 5');
+    berth_plant(host);
+    await starting;
   });
 });

@@ -7,15 +7,16 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import { door_normalise, doorWire_build, door_login, doorBoot_follow, bootEvents_read, door_enter, type DoorFetch } from '../src/remote/door.js';
 
-const answer = (status: number, body: unknown, setCookie?: string, text?: string): DoorFetch =>
-  jest.fn(async () => ({
-    ok: status >= 200 && status < 300,
-    status,
-    headers: { get: (name: string): string | null => (name === 'set-cookie' ? setCookie ?? null : null) },
-    json: async () => body,
-    text: async () => text ?? '',
-    body: null,
-  })) as unknown as DoorFetch;
+/** A door that answers every request the same way, and remembers what it was asked. */
+function answer(status: number, body: unknown, setCookie?: string, text?: string): DoorFetch & { calls: Array<[string, RequestInit | undefined]> } {
+  const calls: Array<[string, RequestInit | undefined]> = [];
+  const fetchLike = async (url: string, init?: RequestInit): Promise<Response> => {
+    calls.push([url, init]);
+    const headers: Record<string, string> = setCookie !== undefined ? { 'set-cookie': setCookie } : {};
+    return new Response(text ?? JSON.stringify(body), { status, headers });
+  };
+  return Object.assign(fetchLike, { calls });
+}
 
 describe('door_normalise and doorWire_build', () => {
   it('ends the door in a slash and mounts the wire on the socket scheme', () => {
@@ -28,13 +29,13 @@ describe('door_normalise and doorWire_build', () => {
 
 describe('door_login', () => {
   it('posts the password once and keeps the cookie', async () => {
-    const fetchLike: DoorFetch = answer(200, { key: '0123456789abcdef', mount: '/s/0123456789abcdef/', state: 'starting' }, 'porter_session=abc.sig; Path=/; HttpOnly');
+    const fetchLike = answer(200, { key: '0123456789abcdef', mount: '/s/0123456789abcdef/', state: 'starting' }, 'porter_session=abc.sig; Path=/; HttpOnly');
     const entered = await door_login('http://127.0.0.1:4180', 'chris', 'pw', fetchLike);
     expect(entered).toEqual({ key: '0123456789abcdef', state: 'starting', cookie: 'porter_session=abc.sig' });
-    const [url, init] = (fetchLike as unknown as jest.Mock).mock.calls[0] as [string, { body: string; headers: Record<string, string> }];
+    const [url, init] = fetchLike.calls[0] as [string, RequestInit];
     expect(url).toBe('http://127.0.0.1:4180/login');
-    expect(JSON.parse(init.body)).toEqual({ username: 'chris', password: 'pw' });
-    expect(init.headers.accept).toBe('application/json');
+    expect(JSON.parse(String(init.body))).toEqual({ username: 'chris', password: 'pw' });
+    expect((init.headers as Record<string, string>).accept).toBe('application/json');
   });
 
   it('carries the door\'s refusal', async () => {
@@ -54,18 +55,18 @@ describe('bootEvents_read', () => {
   });
 
   it('follows the boot with the cookie on the request', async () => {
-    const fetchLike: DoorFetch = answer(200, null, undefined, 'event: ready\ndata: {}\n\n');
+    const fetchLike = answer(200, null, undefined, 'event: ready\ndata: {}\n\n');
     const ended = await doorBoot_follow('http://d/', { key: '0123456789abcdef', state: 'starting', cookie: 'porter_session=c' }, (): void => undefined, fetchLike);
     expect(ended).toEqual({ state: 'ready' });
-    const [url, init] = (fetchLike as unknown as jest.Mock).mock.calls[0] as [string, { headers: Record<string, string> }];
+    const [url, init] = fetchLike.calls[0] as [string, RequestInit];
     expect(url).toBe('http://d/boot/0123456789abcdef');
-    expect(init.headers.cookie).toBe('porter_session=c');
+    expect((init.headers as Record<string, string>).cookie).toBe('porter_session=c');
   });
 });
 
 describe('door_enter', () => {
   it('attaches at once to a session already up, with the cookie as the credential', async () => {
-    const fetchLike: DoorFetch = answer(200, { key: '0123456789abcdef', mount: '/s/0123456789abcdef/', state: 'attached' }, 'porter_session=c.s; Path=/');
+    const fetchLike = answer(200, { key: '0123456789abcdef', mount: '/s/0123456789abcdef/', state: 'attached' }, 'porter_session=c.s; Path=/');
     const reach = await door_enter('https://titan/', 'chris', 'pw', fetchLike);
     expect(reach).toEqual({ identity: 'chris through the door at https://titan/', url: 'wss://titan/s/0123456789abcdef/', headers: { cookie: 'porter_session=c.s' } });
   });

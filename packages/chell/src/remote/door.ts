@@ -26,14 +26,7 @@ export interface DoorEntry {
 }
 
 /** The shape of `fetch` this module needs, so a test can stand one in. */
-export type DoorFetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<{
-  ok: boolean;
-  status: number;
-  headers: { get(name: string): string | null; getSetCookie?: () => string[] };
-  json(): Promise<unknown>;
-  text(): Promise<string>;
-  body: ReadableStream<Uint8Array> | null;
-}>;
+export type DoorFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 /**
  * The door's origin with one trailing slash, however it was typed.
@@ -69,7 +62,7 @@ export function doorWire_build(door: string, key: string): string {
  * @param fetchLike - The HTTP client; the global `fetch` by default.
  * @returns The entry, or the door's refusal.
  */
-export async function door_login(door: string, username: string, password: string, fetchLike: DoorFetch = fetch as unknown as DoorFetch): Promise<DoorEntry | { refused: string }> {
+export async function door_login(door: string, username: string, password: string, fetchLike: DoorFetch = fetch): Promise<DoorEntry | { refused: string }> {
   const response = await fetchLike(`${door_normalise(door)}login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -86,7 +79,7 @@ export async function door_login(door: string, username: string, password: strin
     return { refused: reason };
   }
   const body = (await response.json()) as { key?: unknown; state?: unknown };
-  const setCookies: string[] = response.headers.getSetCookie?.() ?? (response.headers.get('set-cookie') !== null ? [response.headers.get('set-cookie') as string] : []);
+  const setCookies: string[] = response.headers.getSetCookie();
   const doorCookie: string | undefined = setCookies.map((line: string): string => line.split(';')[0] ?? '').find((pair: string): boolean => pair.startsWith('porter_session='));
   if (typeof body.key !== 'string' || (body.state !== 'attached' && body.state !== 'starting') || doorCookie === undefined) {
     return { refused: 'the door answered without a session' };
@@ -107,7 +100,7 @@ export async function doorBoot_follow(
   door: string,
   entry: DoorEntry,
   onLine: (text: string) => void,
-  fetchLike: DoorFetch = fetch as unknown as DoorFetch,
+  fetchLike: DoorFetch = fetch,
 ): Promise<{ state: 'ready' } | { state: 'failed'; reason: string }> {
   const response = await fetchLike(`${door_normalise(door)}boot/${entry.key}`, { headers: { cookie: entry.cookie, accept: 'text/event-stream' } });
   if (!response.ok) return { state: 'failed', reason: `the door would not show the boot (${response.status})` };
@@ -195,7 +188,7 @@ export interface DoorReach {
  * @param fetchLike - The HTTP client.
  * @returns The reach, or null when the door refused (already said why).
  */
-export async function door_enter(door: string, username: string | undefined, password: string | undefined, fetchLike: DoorFetch = fetch as unknown as DoorFetch): Promise<DoorReach | null> {
+export async function door_enter(door: string, username: string | undefined, password: string | undefined, fetchLike: DoorFetch = fetch): Promise<DoorReach | null> {
   const doorUrl: string = door_normalise(door);
   const user: string = username ?? (await terminalLine_ask(`Username at ${doorUrl}: `, false));
   const secret: string = password ?? (await terminalLine_ask(`Password for ${user} at ${doorUrl}: `, true));

@@ -246,12 +246,33 @@ export const PROC_LANDED_TTL_MS: number = 10 * 1000;
  * @property status - The feed's own status, derived from its job counts.
  * @property chain - Its plugin names by first appearance, root first: the
  *   shape a pipeline leaves, shared with every feed that ran the same way.
+ * @property groups - Its jobs collapsed by plugin per place in the
+ *   pipeline: the feed's shape with counts for weight, a handful of
+ *   entries however many jobs it holds.
  */
 export interface ProcLandedFeed {
   id: number;
   jobs: number;
   status: string;
   chain: string[];
+  groups: ProcJobGroup[];
+}
+
+/**
+ * One node of a feed's collapsed shape: every job of one plugin hanging
+ * from the same parent group, as one node with a count.
+ *
+ * @property plugin - The plugin name.
+ * @property count - How many jobs the node stands for.
+ * @property status - The worst word among them: an error anywhere is the
+ *   group's, else anything still moving, else finished.
+ * @property parent - The index of the parent group, or null at the root.
+ */
+export interface ProcJobGroup {
+  plugin: string;
+  count: number;
+  status: string;
+  parent: number | null;
 }
 
 /** Availability and freshness states for the persistent process cache. */
@@ -991,7 +1012,7 @@ export class ProcCache {
     for (const { feedID } of recent) {
       const feed: ProcFeed | undefined = this.feed_get(feedID);
       if (feed === undefined) continue;
-      landed.push({ id: feedID, jobs: this.instancesForFeed_count(feedID), status: feedStatus_ofCounts(feed), chain: this.pluginChain_of(feedID) });
+      landed.push({ id: feedID, jobs: this.instancesForFeed_count(feedID), status: feedStatus_ofCounts(feed), chain: this.pluginChain_of(feedID), groups: this.pluginGroups_of(feedID) });
     }
     return landed;
   }
@@ -1021,6 +1042,57 @@ export class ProcCache {
       if (known === undefined || depth < known) firstDepth.set(inst.pluginName, depth);
     }
     return [...firstDepth.entries()].sort((a, b): number => a[1] - b[1] || a[0].localeCompare(b[0])).map(([name]): string => name);
+  }
+
+  /**
+   * A feed's jobs collapsed by plugin per place in the pipeline: the shape
+   * with counts for weight. Jobs of one plugin under one parent group are
+   * one node; a fan of three hundred conversions is a node of 300.
+   *
+   * @param feedID - The feed.
+   * @returns The groups, parents before children, root first.
+   */
+  pluginGroups_of(feedID: number): ProcJobGroup[] {
+    const ids: number[] = this.feedInstanceIDs_get(feedID);
+    const byId: Map<number, ProcInstance> = new Map();
+    for (const id of ids) {
+      const inst: ProcInstance | undefined = this.instance_get(id);
+      if (inst !== undefined) byId.set(id, inst);
+    }
+    const groups: ProcJobGroup[] = [];
+    const groupIndexByKey: Map<string, number> = new Map();
+    const groupOfInstance: Map<number, number> = new Map();
+    const worst = (a: string, b: string): string => {
+      const rank = (word: string): number => (word === 'finishedWithError' ? 3 : (word === 'started' || word === 'scheduled' || word === 'created' || word === 'waiting' || word === 'registeringFiles') ? 2 : word === 'cancelled' ? 1 : 0);
+      return rank(a) >= rank(b) ? a : b;
+    };
+    const status_of = (inst: ProcInstance): string => {
+      const word: string = inst.status ?? 'unknown';
+      return word === 'finishedWithError' || word === 'finishedSuccessfully' || word === 'cancelled' ? word : (word === 'unknown' ? 'finishedSuccessfully' : word);
+    };
+    // Parents before children: a child's group needs its parent's index.
+    const place = (id: number, seen: Set<number>): number | null => {
+      const known: number | undefined = groupOfInstance.get(id);
+      if (known !== undefined) return known;
+      const inst: ProcInstance | undefined = byId.get(id);
+      if (inst === undefined || seen.has(id)) return null;
+      seen.add(id);
+      const parentGroup: number | null = inst.parentID === null ? null : place(inst.parentID, seen);
+      const key: string = `${parentGroup ?? 'root'}|${inst.pluginName}`;
+      let index: number | undefined = groupIndexByKey.get(key);
+      if (index === undefined) {
+        index = groups.length;
+        groups.push({ plugin: inst.pluginName, count: 0, status: status_of(inst), parent: parentGroup });
+        groupIndexByKey.set(key, index);
+      }
+      const group: ProcJobGroup = groups[index] as ProcJobGroup;
+      group.count += 1;
+      group.status = worst(group.status, status_of(inst));
+      groupOfInstance.set(id, index);
+      return index;
+    };
+    for (const id of [...byId.keys()].sort((a, b): number => a - b)) place(id, new Set());
+    return groups;
   }
 
   arrivals_recent(now: number = Date.now()): number[] {

@@ -1,22 +1,28 @@
 /**
- * @file The space of everything run here, drawn as it lands.
+ * @file The space of everything run here: feeds as molecules in a solution.
  *
- * While the job index warms, the session reports each feed as its topology
- * lands: its size, its status, and the shape of its pipeline — the plugin
- * names root first. This builds the graph the RUNS canvas draws from them:
- * one root; a branch per plugin, shared by every feed whose pipeline began
- * the same way; each feed a leaf on the branch its shape ends at, sized by
- * its jobs and hued by its status. Feeds that ran the same pipeline hang
- * from the same twig, so the tree is a taxonomy of what this CUBE does,
- * materialising in the order the index read it.
+ * As the index reads a feed the session says what it is: its jobs collapsed
+ * by plugin per place in the pipeline — a chain is a chain, a fan of three
+ * hundred conversions is one node of 300 — with a status on every node.
+ * This builds the graph the RUNS canvas draws from them: every feed its own
+ * small DAG, floating free, and likeness pulling like together: feeds of
+ * one pipeline shape share an unseen anchor, so the space settles into
+ * constellations of "things run this way". No root, no tree.
  *
- * Every node is real: a plugin that ran, or a feed that exists. Nothing is
- * invented to fill the wait, which is what lets it be a readout rather
- * than a screensaver.
+ * Every node is real: a group of jobs that ran. Nothing is invented to fill
+ * the wait, which is what lets it be a readout rather than a screensaver.
  *
  * @module
  */
 import type { SceneGraph, SceneNode } from '../../scene/dagScene.js';
+
+/** One node of a feed's collapsed shape. */
+export interface LandedGroup {
+  plugin: string;
+  count: number;
+  status: string;
+  parent: number | null;
+}
 
 /** One feed as the session reported it landing. */
 export interface LandedFeed {
@@ -24,54 +30,60 @@ export interface LandedFeed {
   jobs: number;
   status: string;
   chain: string[];
+  groups: LandedGroup[];
 }
 
-/** The root the space hangs from. */
-export const UNIVERSE_ROOT_ID: string = 'universe';
-
-/** The id of the branch a plugin chain ends at. */
-export function branchId_of(chain: string[]): string {
-  return chain.length === 0 ? UNIVERSE_ROOT_ID : `branch:${chain.join('>')}`;
+/**
+ * The signature of a feed's shape: what pulls like feeds together.
+ *
+ * @param feed - The feed.
+ * @returns The plugins in group order with their parent places — the same
+ *   for two feeds that ran the same pipeline, whatever their counts.
+ */
+export function shape_of(feed: LandedFeed): string {
+  return feed.groups.map((group: LandedGroup): string => `${group.parent ?? 'r'}:${group.plugin}`).join('>');
 }
 
-/** The id of a feed's leaf. */
-export function leafId_of(feedId: number): string {
-  return `feed:${feedId}`;
+/** The id of a feed's group node. */
+export function groupId_of(feedId: number, index: number): string {
+  return `feed:${feedId}:${index}`;
+}
+
+/** The id of a shape's unseen anchor. */
+export function anchorId_of(shape: string): string {
+  return `shape:${shape}`;
 }
 
 /**
  * Builds the space from the feeds that have landed so far.
  *
  * @param landed - The feeds, in any order; the graph is the same for any order.
- * @returns The graph: root, branches, leaves.
+ * @returns The graph: every feed's groups, and one ghost anchor per shape
+ *   that each feed's root hangs from — present in the settle, never drawn.
  */
 export function universeGraph_build(landed: ReadonlyArray<LandedFeed>): SceneGraph {
-  const nodes: SceneNode[] = [{ id: UNIVERSE_ROOT_ID, label: '', parentIds: [], joinParentIds: [] }];
-  const branches: Map<string, SceneNode> = new Map();
+  const nodes: SceneNode[] = [];
+  const anchors: Set<string> = new Set();
   const feeds: LandedFeed[] = [...landed].sort((a: LandedFeed, b: LandedFeed): number => a.id - b.id);
   for (const feed of feeds) {
-    let parentId: string = UNIVERSE_ROOT_ID;
-    for (let depth = 1; depth <= feed.chain.length; depth++) {
-      const prefix: string[] = feed.chain.slice(0, depth);
-      const id: string = branchId_of(prefix);
-      let branch: SceneNode | undefined = branches.get(id);
-      if (branch === undefined) {
-        branch = { id, label: prefix[depth - 1] ?? '', parentIds: [parentId], joinParentIds: [], count: 0 };
-        branches.set(id, branch);
-        nodes.push(branch);
-      }
-      // A branch counts the feeds that passed through it, so a shared
-      // beginning reads as the trunk it is.
-      branch.count = (branch.count ?? 0) + 1;
-      parentId = id;
+    if (feed.groups.length === 0) continue;
+    const shape: string = shape_of(feed);
+    const anchor: string = anchorId_of(shape);
+    if (!anchors.has(shape)) {
+      anchors.add(shape);
+      // No mass: an anchor gathers its feeds without carving room of its own.
+      nodes.push({ id: anchor, label: '', parentIds: [], joinParentIds: [], ghost: true, metric: 1 });
     }
-    nodes.push({
-      id: leafId_of(feed.id),
-      label: '',
-      parentIds: [parentId],
-      joinParentIds: [],
-      status: feed.status,
-      metric: Math.max(1, feed.jobs),
+    feed.groups.forEach((group: LandedGroup, index: number): void => {
+      nodes.push({
+        id: groupId_of(feed.id, index),
+        label: group.plugin,
+        parentIds: [group.parent === null ? anchor : groupId_of(feed.id, group.parent)],
+        joinParentIds: [],
+        status: group.status,
+        metric: Math.max(1, group.count),
+        ...(group.count > 1 ? { count: group.count } : {}),
+      });
     });
   }
   return { nodes };
@@ -79,7 +91,7 @@ export function universeGraph_build(landed: ReadonlyArray<LandedFeed>): SceneGra
 
 /**
  * Keeps the feeds the session has reported, one per id, newest report
- * winning: a feed's status can move between one landing and the next.
+ * winning: a feed fills out between one landing and the next.
  */
 export class LandedFeeds {
   private readonly byId: Map<number, LandedFeed> = new Map();
@@ -94,8 +106,8 @@ export class LandedFeeds {
     let changed: boolean = false;
     for (const feed of landed) {
       const known: LandedFeed | undefined = this.byId.get(feed.id);
-      if (known !== undefined && known.status === feed.status && known.jobs === feed.jobs && known.chain.join('>') === feed.chain.join('>')) continue;
-      this.byId.set(feed.id, { ...feed, chain: [...feed.chain] });
+      if (known !== undefined && known.status === feed.status && known.jobs === feed.jobs && JSON.stringify(known.groups) === JSON.stringify(feed.groups)) continue;
+      this.byId.set(feed.id, { ...feed, chain: [...feed.chain], groups: feed.groups.map((group: LandedGroup): LandedGroup => ({ ...group })) });
       changed = true;
     }
     return changed;
@@ -104,6 +116,11 @@ export class LandedFeeds {
   /** How many feeds have landed. */
   public size(): number {
     return this.byId.size;
+  }
+
+  /** How many distinct shapes they run. */
+  public shapes(): number {
+    return new Set([...this.byId.values()].map(shape_of)).size;
   }
 
   /** Every landed feed. */

@@ -1,54 +1,56 @@
 /**
- * @file The space of everything run here: branches by pipeline shape, feeds as leaves.
+ * @file The space of everything run here: every feed its own collapsed DAG,
+ * floating free, like shapes pulled together by an unseen anchor.
  */
 import { describe, it, expect } from '@jest/globals';
-import { universeGraph_build, LandedFeeds, branchId_of, leafId_of, UNIVERSE_ROOT_ID, type LandedFeed } from '../../src/features/dag/universe.js';
+import { universeGraph_build, LandedFeeds, shape_of, groupId_of, anchorId_of, type LandedFeed } from '../../src/features/dag/universe.js';
 
-const a: LandedFeed = { id: 1, jobs: 3, status: 'finished', chain: ['pl-dircopy', 'pl-dcm2niix'] };
-const b: LandedFeed = { id: 2, jobs: 7, status: 'errored', chain: ['pl-dircopy', 'pl-dcm2niix', 'pl-fastsurfer'] };
-const c: LandedFeed = { id: 3, jobs: 1, status: 'running', chain: ['pl-simplefsapp'] };
+const chain: LandedFeed = { id: 1, jobs: 3, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [
+  { plugin: 'pl-dircopy', count: 1, status: 'finishedSuccessfully', parent: null },
+  { plugin: 'pl-dcm2niix', count: 2, status: 'finishedSuccessfully', parent: 0 },
+] };
+const fan: LandedFeed = { id: 2, jobs: 301, status: 'finishedWithError', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [
+  { plugin: 'pl-dircopy', count: 1, status: 'finishedSuccessfully', parent: null },
+  { plugin: 'pl-dcm2niix', count: 300, status: 'finishedWithError', parent: 0 },
+] };
+const other: LandedFeed = { id: 3, jobs: 1, status: 'started', chain: ['pl-simplefsapp'], groups: [
+  { plugin: 'pl-simplefsapp', count: 1, status: 'started', parent: null },
+] };
 
 describe('universeGraph_build', () => {
-  it('shares a trunk between feeds that began the same way', () => {
-    const graph = universeGraph_build([b, a, c]);
-    const ids: string[] = graph.nodes.map((n) => n.id);
-    expect(ids[0]).toBe(UNIVERSE_ROOT_ID);
-    expect(ids.filter((id) => id.startsWith('branch:'))).toEqual([
-      'branch:pl-dircopy', 'branch:pl-dircopy>pl-dcm2niix', 'branch:pl-dircopy>pl-dcm2niix>pl-fastsurfer', 'branch:pl-simplefsapp',
-    ]);
-    const trunk = graph.nodes.find((n) => n.id === branchId_of(['pl-dircopy']));
-    expect(trunk?.parentIds).toEqual([UNIVERSE_ROOT_ID]);
-    expect(trunk?.count).toBe(2);
-    expect(trunk?.label).toBe('pl-dircopy');
+  it('draws every feed as its own collapsed DAG, counts as weight, status as hue', () => {
+    const graph = universeGraph_build([fan]);
+    const root = graph.nodes.find((n) => n.id === groupId_of(2, 0));
+    const conversions = graph.nodes.find((n) => n.id === groupId_of(2, 1));
+    expect(root).toMatchObject({ label: 'pl-dircopy', metric: 1, status: 'finishedSuccessfully' });
+    expect(root?.count).toBeUndefined();
+    expect(conversions).toMatchObject({ label: 'pl-dcm2niix', metric: 300, count: 300, status: 'finishedWithError', parentIds: [groupId_of(2, 0)] });
   });
 
-  it('hangs each feed from the twig its shape ends at, sized and hued by what it is', () => {
-    const graph = universeGraph_build([a, b, c]);
-    const leafB = graph.nodes.find((n) => n.id === leafId_of(2));
-    expect(leafB).toMatchObject({ parentIds: ['branch:pl-dircopy>pl-dcm2niix>pl-fastsurfer'], status: 'errored', metric: 7, label: '' });
-    const leafC = graph.nodes.find((n) => n.id === leafId_of(3));
-    expect(leafC?.parentIds).toEqual(['branch:pl-simplefsapp']);
+  it('hangs feeds of one shape from one unseen anchor, and different shapes apart', () => {
+    const graph = universeGraph_build([chain, fan, other]);
+    const anchors = graph.nodes.filter((n) => n.ghost === true);
+    expect(anchors.map((n) => n.id).sort()).toEqual([anchorId_of(shape_of(chain)), anchorId_of(shape_of(other))].sort());
+    expect(shape_of(chain)).toBe(shape_of(fan));
+    expect(graph.nodes.find((n) => n.id === groupId_of(1, 0))?.parentIds).toEqual([anchorId_of(shape_of(chain))]);
+    expect(graph.nodes.find((n) => n.id === groupId_of(2, 0))?.parentIds).toEqual([anchorId_of(shape_of(chain))]);
+    expect(graph.nodes.find((n) => n.id === groupId_of(3, 0))?.parentIds).toEqual([anchorId_of(shape_of(other))]);
   });
 
-  it('draws the same graph whatever order the feeds landed in', () => {
-    expect(universeGraph_build([c, b, a])).toEqual(universeGraph_build([a, b, c]));
-  });
-
-  it('hangs a feed with no chain from the root', () => {
-    const graph = universeGraph_build([{ id: 9, jobs: 0, status: 'created', chain: [] }]);
-    expect(graph.nodes.find((n) => n.id === leafId_of(9))?.parentIds).toEqual([UNIVERSE_ROOT_ID]);
-    expect(graph.nodes.find((n) => n.id === leafId_of(9))?.metric).toBe(1);
+  it('draws the same graph whatever order the feeds landed in, and skips a feed with no jobs', () => {
+    expect(universeGraph_build([other, fan, chain])).toEqual(universeGraph_build([chain, fan, other]));
+    expect(universeGraph_build([{ id: 9, jobs: 0, status: 'created', chain: [], groups: [] }]).nodes).toEqual([]);
   });
 });
 
 describe('LandedFeeds', () => {
-  it('keeps one report per feed, the newest winning, and says when something moved', () => {
+  it('keeps one report per feed, the newest winning, and counts shapes', () => {
     const feeds: LandedFeeds = new LandedFeeds();
-    expect(feeds.take([a, b])).toBe(true);
-    expect(feeds.take([a, b])).toBe(false);
-    expect(feeds.take([{ ...a, status: 'errored' }])).toBe(true);
-    expect(feeds.size()).toBe(2);
-    expect(feeds.all().find((f) => f.id === 1)?.status).toBe('errored');
+    expect(feeds.take([chain, fan, other])).toBe(true);
+    expect(feeds.take([chain, fan, other])).toBe(false);
+    expect(feeds.shapes()).toBe(2);
+    expect(feeds.take([{ ...fan, groups: [fan.groups[0]!, { ...fan.groups[1]!, count: 301 }] }])).toBe(true);
+    expect(feeds.all().find((f) => f.id === 2)?.groups[1]?.count).toBe(301);
     feeds.clear();
     expect(feeds.size()).toBe(0);
   });

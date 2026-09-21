@@ -1142,9 +1142,7 @@ export class DagPanel {
 
   /** Titles the universe with what it holds and, while live, how far the index is. */
   private universeTitle_paint(): void {
-    const feeds: LandedFeed[] = this.landed.all();
-    const shapes: number = new Set(feeds.map((feed: LandedFeed): string => feed.chain.join('>'))).size;
-    const figure: string = `${feeds.length} FEEDS · ${shapes} SHAPES`;
+    const figure: string = `${this.landed.size()} FEEDS · ${this.landed.shapes()} SHAPES`;
     this.title.textContent = this.universeLive
       ? `UNIVERSE — ${figure}${this.universeWarming.length > 0 ? ` · ${this.universeWarming}` : ' · INDEX WARMING'}`
       : `UNIVERSE — ${figure}`;

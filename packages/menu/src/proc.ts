@@ -55,6 +55,17 @@ export interface ProcLandedPromptFeed {
   jobs: number;
   status: string;
   chain: string[];
+  /** Its jobs collapsed by plugin per place in the pipeline: the shape, with counts. */
+  groups: ProcPromptJobGroup[];
+}
+
+/** One node of a feed's collapsed shape, on the prompt. */
+export interface ProcPromptJobGroup {
+  plugin: string;
+  count: number;
+  status: string;
+  /** The index of the parent group, or null at the root. */
+  parent: number | null;
 }
 
 /**

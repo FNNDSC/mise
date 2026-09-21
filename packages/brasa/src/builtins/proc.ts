@@ -471,7 +471,7 @@ function procUniverse_handle(): Promise<CommandEnvelope> {
     .filter((feedID: number): boolean => cache.topologyLoaded_has(feedID))
     .map((feedID: number): ProcUniverseModel['feeds'][number] => {
       const feed: ProcFeed = cache.feed_get(feedID)!;
-      return { id: feedID, jobs: cache.instancesForFeed_count(feedID), status: feedStatus_ofCounts(feed), chain: cache.pluginChain_of(feedID) };
+      return { id: feedID, jobs: cache.instancesForFeed_count(feedID), status: feedStatus_ofCounts(feed), chain: cache.pluginChain_of(feedID), groups: cache.pluginGroups_of(feedID) };
     });
   const whole: boolean = !cache.warmupProgress_get().active && procTopology_status().state === 'complete';
   const shapes: number = new Set(feeds.map((feed): string => feed.chain.join('>'))).size;

@@ -199,17 +199,26 @@ export const FEED_LIST_MODEL_KIND = 'feed.list' as const;
  * landed — its size, its status, and the shape of its pipeline. A surface
  * draws it as a tree, branches by pipeline shape, feeds as leaves.
  */
+export const procJobGroupSchema = z.object({
+  plugin: z.string(),
+  count: z.number(),
+  status: z.string(),
+  parent: z.number().nullable(),
+});
 export const procUniverseFeedSchema = z.object({
   id: z.number(),
   jobs: z.number(),
   status: z.string(),
   chain: z.array(z.string()),
+  /** The feed's jobs collapsed by plugin per place in the pipeline: its shape, with counts. */
+  groups: z.array(procJobGroupSchema).default([]),
 });
 export const procUniverseModelSchema = z.object({
   feeds: z.array(procUniverseFeedSchema),
   /** Whether the index is whole; false while it still warms. */
   whole: z.boolean(),
 });
+export type ProcJobGroup = z.infer<typeof procJobGroupSchema>;
 export type ProcUniverseFeed = z.infer<typeof procUniverseFeedSchema>;
 export type ProcUniverseModel = z.infer<typeof procUniverseModelSchema>;
 export const PROC_UNIVERSE_MODEL_KIND = 'proc.universe' as const;

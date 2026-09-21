@@ -56,6 +56,7 @@ export type {
   ProcWarmupProgress,
   ProcFeedLoadProgress,
   ProcLandedFeed,
+  ProcJobGroup,
   ProcRosterSyncKind,
   ProcCacheState,
   ProcCacheLifecycle,

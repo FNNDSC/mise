@@ -48,6 +48,12 @@ export interface SceneNode {
   count?: number;
   /** A hue the host assigns (a mode's color, e.g. by compute); errors still win. */
   hue?: string;
+  /**
+   * Present in the settle, never drawn: an anchor that pulls its children
+   * together (the universe hangs feeds of one shape from one), with no
+   * sphere, no edge and no pick of its own.
+   */
+  ghost?: boolean;
 }
 
 /** The normalized graph the scene renders. */
@@ -1038,6 +1044,7 @@ export class DagScene {
     const byId: Map<string, PlacedNode> = new Map(placed.map((p: PlacedNode) => [p.node.id, p]));
 
     for (const { node, position, radius } of placed) {
+      if (node.ghost === true) continue;
       const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
       // 2D is drawn flat: discs, not lit spheres — the schematic reading
       // all the way down. Uniform normals face the camera, so the shared
@@ -1061,9 +1068,10 @@ export class DagScene {
     }
 
     for (const { node, position } of placed) {
+      if (node.ghost === true) continue;
       for (const parentId of node.parentIds) {
         const parent: PlacedNode | undefined = byId.get(parentId);
-        if (parent) this.edge_add(parentId, node.id, parent.position, position, palette.edge, false);
+        if (parent && parent.node.ghost !== true) this.edge_add(parentId, node.id, parent.position, position, palette.edge, false);
       }
       for (const joinId of node.joinParentIds) {
         const parent: PlacedNode | undefined = byId.get(joinId);

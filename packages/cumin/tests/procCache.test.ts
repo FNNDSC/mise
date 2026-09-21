@@ -585,14 +585,31 @@ describe('topology landings', () => {
     cache.feed_add({ ...feed(1), erroredJobs: 1, finishedJobs: 2 });
     cache.instance_add(inst(10, 1, null, 'pl-dircopy'));
     expect(cache.topologyLanded_recent()).toEqual([
-      { id: 1, jobs: 1, status: 'finishedWithError', chain: ['pl-dircopy'] },
+      { id: 1, jobs: 1, status: 'finishedWithError', chain: ['pl-dircopy'], groups: [{ plugin: 'pl-dircopy', count: 1, status: 'scheduled', parent: null }] },
     ]);
     cache.instance_add(inst(11, 1, 10, 'pl-dcm2niix'));
     cache.instance_add(inst(12, 1, 11, 'pl-fastsurfer'));
     cache.instance_add(inst(13, 1, 10, 'pl-dcm2niix'));
     cache.topologyLoaded_mark(1);
     expect(cache.topologyLanded_recent()).toEqual([
-      { id: 1, jobs: 4, status: 'finishedWithError', chain: ['pl-dircopy', 'pl-dcm2niix', 'pl-fastsurfer'] },
+      {
+        id: 1, jobs: 4, status: 'finishedWithError', chain: ['pl-dircopy', 'pl-dcm2niix', 'pl-fastsurfer'],
+        groups: [
+          { plugin: 'pl-dircopy', count: 1, status: 'scheduled', parent: null },
+          { plugin: 'pl-dcm2niix', count: 2, status: 'scheduled', parent: 0 },
+          { plugin: 'pl-fastsurfer', count: 1, status: 'scheduled', parent: 1 },
+        ],
+      },
+    ]);
+  });
+
+  it('collapses a fan into one node with a count, and carries the worst status', () => {
+    cache.feed_add(feed(7));
+    cache.instance_add(inst(70, 7, null, 'pl-dircopy', 'finishedSuccessfully'));
+    for (let i = 0; i < 300; i++) cache.instance_add(inst(100 + i, 7, 70, 'pl-dcm2niix', i === 42 ? 'finishedWithError' : 'finishedSuccessfully'));
+    expect(cache.pluginGroups_of(7)).toEqual([
+      { plugin: 'pl-dircopy', count: 1, status: 'finishedSuccessfully', parent: null },
+      { plugin: 'pl-dcm2niix', count: 300, status: 'finishedWithError', parent: 0 },
     ]);
   });
 
@@ -614,6 +631,6 @@ describe('topology landings', () => {
     cache.topologyLoaded_mark(4, t0 + 2000);
     cache.topologyLoaded_mark(3, t0 + 1000);
     expect(cache.topologyLanded_recent(t0 + 2500).map((f) => f.id)).toEqual([3, 4]);
-    expect(cache.topologyLanded_recent(t0 + 2500)[0]).toEqual({ id: 3, jobs: 0, status: 'finishedSuccessfully', chain: [] });
+    expect(cache.topologyLanded_recent(t0 + 2500)[0]).toEqual({ id: 3, jobs: 0, status: 'finishedSuccessfully', chain: [], groups: [] });
   });
 });

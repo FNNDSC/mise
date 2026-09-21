@@ -19,6 +19,10 @@ export interface SessionEntry {
   identity: string;
   user: string;
   berth: Berth;
+  /** When something last reached the session through the door, epoch ms. */
+  activeAt: number;
+  /** How many wires — relayed WebSockets — stand open on it right now. */
+  wires: number;
 }
 
 /** A session the door has admitted but whose berth has not answered yet. */
@@ -32,6 +36,11 @@ interface PendingEntry {
 export class SessionRegistry {
   private readonly byKey: Map<string, SessionEntry> = new Map();
   private readonly pending: Map<string, PendingEntry> = new Map();
+  private readonly clock: () => number;
+
+  constructor(clock: () => number = (): number => Date.now()) {
+    this.clock = clock;
+  }
 
   /**
    * The key an identity is addressed by.
@@ -43,11 +52,39 @@ export class SessionRegistry {
     return berthKey_compute(identity);
   }
 
-  /** Records an identity and the berth it answers at. */
+  /** Records an identity and the berth it answers at; a known one keeps its wires. */
   public note(identity: string, user: string, berth: Berth): SessionEntry {
-    const entry: SessionEntry = { key: this.key_of(identity), identity, user, berth };
-    this.byKey.set(entry.key, entry);
+    const key: string = this.key_of(identity);
+    const known: SessionEntry | undefined = this.byKey.get(key);
+    const entry: SessionEntry = { key, identity, user, berth, activeAt: this.clock(), wires: known?.wires ?? 0 };
+    this.byKey.set(key, entry);
     return entry;
+  }
+
+  /** Something reached the session through the door just now. */
+  public activity_note(key: string): void {
+    const entry: SessionEntry | undefined = this.byKey.get(key);
+    if (entry !== undefined) entry.activeAt = this.clock();
+  }
+
+  /** A wire opened on the session, or closed. */
+  public wire_count(key: string, delta: 1 | -1): void {
+    const entry: SessionEntry | undefined = this.byKey.get(key);
+    if (entry === undefined) return;
+    entry.wires = Math.max(0, entry.wires + delta);
+    entry.activeAt = this.clock();
+  }
+
+  /**
+   * The sessions nobody has touched for longer than the span: no wire open,
+   * nothing through the door since.
+   *
+   * @param idleMs - The span.
+   * @returns The idle entries.
+   */
+  public idle_list(idleMs: number): SessionEntry[] {
+    const now: number = this.clock();
+    return [...this.byKey.values()].filter((entry: SessionEntry): boolean => entry.wires === 0 && now - entry.activeAt > idleMs);
   }
 
   /** Records an identity whose session is booting; the berth comes later. */

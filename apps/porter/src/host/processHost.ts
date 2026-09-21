@@ -17,10 +17,13 @@
  * @module
  */
 import { spawn as childSpawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { berthKey_compute, berth_pathIn, berthUrl_isAlive } from '@fnndsc/calypso/berth';
-import type { Berth, BootLine, BootListener, BootReport, SessionHost } from './sessionHost.js';
+import type { Berth, BootLine, BootListener, BootReport, SessionHost, SessionSighting } from './sessionHost.js';
+
+/** How many boot lines a session keeps for late followers. */
+export const BOOT_LINES_KEPT: number = 2_000;
 
 /** The four directories a session owns. */
 export interface SessionDirs {
@@ -61,12 +64,16 @@ export interface ProcessHostOptions {
   bootTimeoutMs?: number;
   /** How often to look for the berth while booting, in ms. */
   pollMs?: number;
+  /** How to signal a process this host did not start; `process.kill` by default. */
+  kill?: (pid: number, signal: NodeJS.Signals) => void;
 }
 
 /** One session this host knows about. */
 interface SessionRecord {
   identity: string;
   child: SpawnedSession | null;
+  /** The daemon's pid when adopted from its berth rather than started here. */
+  adoptedPid: number | null;
   lines: BootLine[];
   state: 'booting' | 'ready' | 'failed';
   reason?: string;
@@ -112,6 +119,7 @@ export class ProcessHost implements SessionHost {
   private readonly alive: LivenessProbe;
   private readonly bootTimeoutMs: number;
   private readonly pollMs: number;
+  private readonly kill: (pid: number, signal: NodeJS.Signals) => void;
   private readonly sessions: Map<string, SessionRecord> = new Map();
 
   constructor(options: ProcessHostOptions) {
@@ -121,6 +129,7 @@ export class ProcessHost implements SessionHost {
     this.alive = options.alive ?? ((url: string): Promise<boolean> => berthUrl_isAlive(url));
     this.bootTimeoutMs = options.bootTimeoutMs ?? 120_000;
     this.pollMs = options.pollMs ?? 250;
+    this.kill = options.kill ?? ((pid: number, signal: NodeJS.Signals): void => { process.kill(pid, signal); });
   }
 
   /**
@@ -139,19 +148,53 @@ export class ProcessHost implements SessionHost {
     };
   }
 
-  /** Reads an identity's berth from its own runtime directory, if written. */
-  private berth_read(identity: string): Berth | null {
-    const path: string = berth_pathIn(this.dirs_of(identity).runtime, identity);
+  /** Reads a berth file, if well formed. */
+  private berthFile_read(path: string): Berth | null {
     if (!existsSync(path)) return null;
     try {
       const parsed: Partial<Berth> = JSON.parse(readFileSync(path, 'utf-8')) as Partial<Berth>;
       if (typeof parsed.url === 'string' && typeof parsed.token === 'string' && typeof parsed.identity === 'string') {
-        return { identity: parsed.identity, url: parsed.url, token: parsed.token };
+        return { identity: parsed.identity, url: parsed.url, token: parsed.token, ...(typeof parsed.pid === 'number' ? { pid: parsed.pid } : {}) };
       }
     } catch {
       // A half-written berth reads as none; the next poll reads it whole.
     }
     return null;
+  }
+
+  /** Reads an identity's berth from its own runtime directory, if written. */
+  private berth_read(identity: string): Berth | null {
+    return this.berthFile_read(berth_pathIn(this.dirs_of(identity).runtime, identity));
+  }
+
+  /** @inheritdoc */
+  public async sessions_adopt(): Promise<SessionSighting[]> {
+    const sightings: SessionSighting[] = [];
+    if (!existsSync(this.stateDir)) return sightings;
+    for (const entry of readdirSync(this.stateDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const berthDir: string = join(this.stateDir, entry.name, 'run', 'calypso');
+      if (!existsSync(berthDir)) continue;
+      for (const name of readdirSync(berthDir)) {
+        if (!name.startsWith('berth-') || !name.endsWith('.json')) continue;
+        const berth: Berth | null = this.berthFile_read(join(berthDir, name));
+        if (berth === null) continue;
+        const alive: boolean = await this.alive(berth.url);
+        sightings.push({ identity: berth.identity, berth, alive });
+        if (alive && !this.sessions.has(berth.identity)) {
+          this.sessions.set(berth.identity, {
+            identity: berth.identity,
+            child: null,
+            adoptedPid: berth.pid ?? null,
+            lines: [],
+            state: 'ready',
+            listeners: new Set(),
+            starting: null,
+          });
+        }
+      }
+    }
+    return sightings;
   }
 
   /** @inheritdoc */
@@ -168,6 +211,7 @@ export class ProcessHost implements SessionHost {
     const record: SessionRecord = {
       identity,
       child: null,
+      adoptedPid: null,
       lines: [],
       state: 'booting',
       listeners: new Set(),
@@ -206,6 +250,9 @@ export class ProcessHost implements SessionHost {
     const line_note = (channel: 'out' | 'err', text: string): void => {
       const line: BootLine = { channel, text };
       record.lines.push(line);
+      // A daemon writes for as long as it lives; a follower wants the boot,
+      // not the year. The earliest lines go first.
+      if (record.lines.length > BOOT_LINES_KEPT) record.lines.splice(0, record.lines.length - BOOT_LINES_KEPT);
       for (const listener of record.listeners) listener.line(line);
     };
     stream_lines(child.stdout, (text: string): void => line_note('out', text));
@@ -253,14 +300,20 @@ export class ProcessHost implements SessionHost {
   /** @inheritdoc */
   public async evict(identity: string): Promise<boolean> {
     const record: SessionRecord | undefined = this.sessions.get(identity);
+    this.sessions.delete(identity);
     if (record?.child && record.child.exitCode === null) {
       record.child.kill('SIGTERM');
-      this.sessions.delete(identity);
       return true;
     }
-    // A session this porter did not start — an earlier porter's, still up —
-    // is found by its berth but not owned; there is no pid to signal.
-    this.sessions.delete(identity);
+    // A session an earlier porter started is known by its berth, and the
+    // berth carries the pid. It is signalled only while the berth answers:
+    // a pid whose daemon is gone may be somebody else's by now.
+    const berth: Berth | null = this.berth_read(identity);
+    const pid: number | null = record?.adoptedPid ?? berth?.pid ?? null;
+    if (berth !== null && pid !== null && (await this.alive(berth.url))) {
+      this.kill(pid, 'SIGTERM');
+      return true;
+    }
     return false;
   }
 }

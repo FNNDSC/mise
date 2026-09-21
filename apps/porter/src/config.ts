@@ -32,6 +32,8 @@ export interface PorterConfig {
   secretGenerated: boolean;
   /** How long a browser stays let in, in hours. */
   cookieHours: number;
+  /** How long a session may stand with no surface on it before it is ended, in hours. */
+  idleHours: number;
 }
 
 /** The environment variables a porter reads, and no others. */
@@ -43,6 +45,7 @@ export interface PorterEnv {
   PORTER_CHELL?: string;
   PORTER_SECRET?: string;
   PORTER_COOKIE_HOURS?: string;
+  PORTER_IDLE_HOURS?: string;
   XDG_STATE_HOME?: string;
 }
 
@@ -55,6 +58,14 @@ export const PORTER_DEFAULT_PORT: number = 4180;
  * names die together. CUBE's tokens carry no expiry of their own to follow.
  */
 export const PORTER_DEFAULT_COOKIE_HOURS: number = 24;
+
+/**
+ * How long a session stands with nobody on it before the porter ends it:
+ * a day, the same as the cookie, so the two die together. Ending is the
+ * process only — the identity's state directory stays, and the next login
+ * boots warm from it.
+ */
+export const PORTER_DEFAULT_IDLE_HOURS: number = 24;
 
 /**
  * Finds the chell this porter will start sessions with: the one installed
@@ -96,6 +107,11 @@ export function porterConfig_resolve(env: PorterEnv, locateChell: () => string =
   if (!Number.isFinite(cookieHours) || cookieHours <= 0) {
     throw new Error(`PORTER_COOKIE_HOURS is not a span of hours: ${hoursText}`);
   }
+  const idleText: string = env.PORTER_IDLE_HOURS ?? String(PORTER_DEFAULT_IDLE_HOURS);
+  const idleHours: number = Number(idleText);
+  if (!Number.isFinite(idleHours) || idleHours <= 0) {
+    throw new Error(`PORTER_IDLE_HOURS is not a span of hours: ${idleText}`);
+  }
   const stateBase: string = env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state');
   // A secret nobody set is made up here: the door still works, but every
   // browser is asked again when this porter restarts. Said out loud at start.
@@ -112,5 +128,6 @@ export function porterConfig_resolve(env: PorterEnv, locateChell: () => string =
     secret: secretGiven ? (env.PORTER_SECRET as string) : randomBytes(32).toString('hex'),
     secretGenerated: !secretGiven,
     cookieHours,
+    idleHours,
   };
 }

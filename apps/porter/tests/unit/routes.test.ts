@@ -19,6 +19,7 @@ const config: PorterConfig = {
   secret: 'a-secret-of-at-least-twenty-characters',
   secretGenerated: false,
   cookieHours: 24,
+  idleHours: 24,
 };
 
 /** The door's cookie as a browser would send it back, from a login reply. */
@@ -31,6 +32,8 @@ function cookie_of(response: { headers: Record<string, unknown> }): string {
 /** A host that remembers what it was asked and answers from a script. */
 class FakeHost implements SessionHost {
   public found: Berth | null = null;
+  public sightings: Array<{ identity: string; berth: Berth; alive: boolean }> = [];
+  async sessions_adopt(): Promise<Array<{ identity: string; berth: Berth; alive: boolean }>> { return this.sightings; }
   public spawned: Array<{ identity: string; user: string; token: string }> = [];
   public spawnError: string | null = null;
   public report: BootReport | null = null;
@@ -259,6 +262,21 @@ describe('the mount', () => {
   });
 });
 
+describe('a porter restarted', () => {
+  it('adopts the sessions its state directory holds that still answer', async () => {
+    const adopting: FakeHost = new FakeHost();
+    adopting.sightings = [
+      { identity: 'chris@https://cube.example.org/api/v1/', berth: { identity: 'chris@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4444', token: 'A' }, alive: true },
+      { identity: 'jane@https://cube.example.org/api/v1/', berth: { identity: 'jane@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4445', token: 'B' }, alive: false },
+    ];
+    const said: string[] = [];
+    const restarted: PorterApp = await porterApp_build({ config, host: adopting, mint: async () => ({ token: 'x' }), log: (line: string): void => { said.push(line); } });
+    expect(restarted.registry.all().map((e) => e.user)).toEqual(['chris']);
+    expect(said).toEqual(["adopted chris's session at ws://127.0.0.1:4444"]);
+    await restarted.app.close();
+  });
+});
+
 describe('the registry', () => {
   it('lists what the door let through, and forgets on request', async () => {
     host.found = { identity: 'chris@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4444', token: 'ATTACH' };
@@ -323,7 +341,11 @@ describe('the wire through the mount', () => {
     client.send('hello');
     expect(await echoed).toBe('echo:hello');
     expect(seenUrl).toBe('/?door=&token=ATTACH');
+    // A wire open counts as a surface on the session; closed, it does not.
+    expect(built.registry.get(key)?.wires).toBe(1);
     client.close();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(built.registry.get(key)?.wires).toBe(0);
   });
 
   it('drops an upgrade without the cookie, even for a known key', async () => {

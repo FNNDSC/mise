@@ -39,8 +39,24 @@ export interface BootListener {
   done(state: 'ready' | 'failed', reason?: string): void;
 }
 
+/** One session a host knows of, for a listing. */
+export interface SessionSighting {
+  identity: string;
+  berth: Berth;
+  alive: boolean;
+}
+
 /** Where sessions run. */
 export interface SessionHost {
+  /**
+   * Finds every session this host holds a berth for, alive or not, and
+   * takes the live ones under its wing — a porter restarted adopts the
+   * fleet its predecessor started rather than starting rivals.
+   *
+   * @returns Every berth found, with whether its daemon answers.
+   */
+  sessions_adopt(): Promise<SessionSighting[]>;
+
   /**
    * Finds an identity's live session.
    *

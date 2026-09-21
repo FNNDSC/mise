@@ -61,7 +61,7 @@ BRANCH = $(shell git branch --show-current)
 
 .DEFAULT_GOAL := help
 .PHONY: help shop prep cook taste taste-flight serve scrub run binaries \
-        login connect daemon remote taco meal install build test clean link all \
+        login connect daemon remote porter porter-status taco meal install build test clean link all \
         branch save push pr ci-watch merge publish vp-approve verify-npm \
         lockfile ci-dispatch release-dispatch sync tidy
 
@@ -87,6 +87,10 @@ help:
 	@echo "                       override: make login CUBE_URL=... CUBE_USER=..."
 	@echo "  make daemon        - Build and run the CALYPSO session daemon"
 	@echo "  make remote        - Build and attach to a running daemon"
+	@echo "  make porter        - Build and open the door: the PORTER display manager"
+	@echo "                       on http://127.0.0.1:4180/login (override:"
+	@echo "                       make porter CUBE_URL=... PORTER_PORT=...)"
+	@echo "  make porter-status - What sessions the porter's state directory holds"
 	@echo "  make binaries      - Build standalone chell executables (no Node needed)"
 	@echo ""
 	@echo "Front of house (git + GitHub; needs an authenticated 'gh'):"
@@ -195,6 +199,24 @@ daemon: cook
 remote: cook
 	@echo "Attaching to the CALYPSO daemon as a remote surface..."
 	node packages/chell/dist/index.js --remote
+
+# --- Porter (build + open the door) ---
+# The display manager: a login page that trades a CUBE password for a session
+# on this host and shows the browser to ARGUS under /s/<key>/, holding the
+# attach token itself. One CUBE per porter, named by CUBE_URL (the same
+# variable `make login` uses). Sessions and their state live under
+# PORTER_STATE_DIR; the first login of an identity boots cold against CUBE,
+# every later one boots warm from that directory. Loopback by default: put
+# TLS in front before binding wider (apps/porter/deploy/).
+PORTER_PORT      ?= 4180
+PORTER_STATE_DIR ?= $(HOME)/.local/state/porter
+porter: cook
+	@echo "Opening the door for $(CUBE_URL) on http://127.0.0.1:$(PORTER_PORT)/login ..."
+	PORTER_CUBE_URL=$(CUBE_URL) PORTER_PORT=$(PORTER_PORT) PORTER_STATE_DIR=$(PORTER_STATE_DIR) \
+		node apps/porter/dist/porter.js
+
+porter-status:
+	@PORTER_CUBE_URL=$(CUBE_URL) PORTER_STATE_DIR=$(PORTER_STATE_DIR) node apps/porter/dist/porter.js --status
 
 # --- Binaries (standalone executables, no Node required on the target) ---
 binaries: cook

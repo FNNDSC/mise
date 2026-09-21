@@ -1,11 +1,17 @@
 /**
  * @file The PACS workspace: query, retrieve, gather, materialize.
  *
- * Pull is selection, not the destination. The operator roams the search
- * space query by query, pulling series into a **gather** — a cohort under
- * construction. The tray reviews and curates it; materializing writes a
- * `~/gather/<name>` manifest and can root a new feed on the cohort in one
- * command — PACS Q/R as the front door of the data-state machine.
+ * Pull is a FETCH, and gather is a CHOICE, and they are not the same
+ * gesture. Pulling brings a series home to CUBE; gathering puts it in the
+ * session's cohort, which the header band shows and a run is given. When
+ * the cohort was this pane's own tray, pulling doubled as selecting; once
+ * the cohort became the session's — shared by every pane and by the
+ * kernel's own `gather` — a fetch that also selected was a cross-coupling
+ * the operator caught ("PULLING something does not mean it's gathered").
+ * The cohort is built only by GATHER: a row's, a study's, the table's, or
+ * the kernel verb's. Materializing writes a `~/gather/<name>` manifest and
+ * can root a new feed on the cohort in one command — PACS Q/R as the front
+ * door of the data-state machine.
  *
  * Everything lowers to commands: the form regenerates an *editable*
  * `pacs query ...` line (run as edited); a series' PULL runs
@@ -956,9 +962,10 @@ export class PacsPanel {
           const vfsPath: string | undefined = row.study.vfsPath;
           if (vfsPath === undefined) return;
           this.handlers.command_run(`pull ${vfsPath}`);
+          // Pulling FETCHES; it does not choose. The series are queued on
+          // their badges and nothing enters the cohort — that is GATHER's.
           for (const series of row.study.series) {
             if (series.vfsPath !== undefined && series.pulled !== true) {
-              this.gather_note(row.study, series);
               this.badgeState_set(series.seriesUID, { status: 'queued' });
             }
           }
@@ -968,8 +975,8 @@ export class PacsPanel {
         // A study is gathered by gathering the series CUBE already holds.
         // The ones that are not home are not swept up silently: the row
         // says what it took and what it could not, because a set says what
-        // became of every member. Pulling is the other verb, and pulling
-        // gathers what it pulls as it goes.
+        // became of every member. Pulling is the other verb, and it is a
+        // fetch, not a choice: it puts nothing in the cohort.
         label: verbRule_get(PACS_STUDY_ROSTER, 'gather').label({ addressable: true, allInCube: false, anyInCube: true }),
         offered: (row: StudyRow): boolean => row.study.series.some(
           (series: PacsSeries): boolean => seriesVerbs_offered(series).gather,
@@ -1075,8 +1082,8 @@ export class PacsPanel {
           const vfsPath: string | undefined = row.series.vfsPath;
           if (vfsPath === undefined) return;
           this.handlers.command_run(`pull ${vfsPath}`);
+          // A fetch, not a choice: the badge queues, the cohort is untouched.
           this.badgeState_set(row.series.seriesUID, { status: 'queued' });
-          this.gather_note(row.study, row.series);
         },
       },
     ];

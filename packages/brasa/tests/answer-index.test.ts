@@ -24,9 +24,13 @@ const { shellWords_tokenize, shellWords_referencesExpand } = await import('../sr
 
 answerAdapters_register();
 
-/** A PACS answer holding one study of two series. */
+/** A PACS answer holding one study of two series, asked of two patients — one a miss. */
 const PACS_ANSWER: unknown = {
   queryId: 1, vfsPath: '/net/pacs/queries/q', pacsName: 'PACSDCM', expression: 'PatientID:1',
+  patients: [
+    { patientId: '1', server: 'PACSDCM', patientName: 'X', status: 'found', studyCount: 1, seriesCount: 2 },
+    { patientId: '2', server: 'PACSDCM', status: 'none', studyCount: 0, seriesCount: 0 },
+  ],
   studies: [{
     description: 'MR Brain', patientName: 'X', patientId: '1', date: '', modalities: 'MR',
     accession: 'A', vfsPath: '/net/pacs/queries/q/Study_1',
@@ -69,9 +73,24 @@ describe('what a listing contributes', () => {
     ]);
   });
 
+  it('numbers a PATIENT in its own sequence, hands a verb every series of theirs, and skips a miss', () => {
+    answer_note('pacs.query', PACS_ANSWER, 'pacs query PatientID:1,2');
+    const handles = answerHandles_get().filter((h) => h.kind === 'PAT');
+    expect(handles).toEqual([{ kind: 'PAT', ordinal: 1, address: 'pacs:patient:PACSDCM:1' }]);
+    expect(answerRow_get({ kind: 'PAT', ordinal: 1 })?.values).toEqual(['/net/pacs/queries/q/Study_1/Series_1', '/net/pacs/queries/q/Study_1/Series_2']);
+    expect(answerRow_get({ kind: 'PAT', ordinal: 2 })).toBeNull();
+  });
+
+  it('derives a patient per study when the answer names none, so a single question numbers its patient too', () => {
+    const single = { ...(PACS_ANSWER as Record<string, unknown>), patients: undefined };
+    answer_note('pacs.query', single, 'pacs query AccessionNumber:A');
+    expect(answerHandles_get().filter((h) => h.kind === 'PAT')).toEqual([{ kind: 'PAT', ordinal: 1, address: 'pacs:patient:-:1' }]);
+  });
+
   it('tells a surface each row\'s handle beside its address', () => {
     answer_note('pacs.query', PACS_ANSWER, 'pacs query PatientID:1');
     expect(answerHandles_get()).toEqual([
+      { kind: 'PAT', ordinal: 1, address: 'pacs:patient:PACSDCM:1' },
       { kind: 'STD', ordinal: 1, address: '/net/pacs/queries/q/Study_1' },
       { kind: 'SER', ordinal: 1, address: '/net/pacs/queries/q/Study_1/Series_1' },
       { kind: 'SER', ordinal: 2, address: '/net/pacs/queries/q/Study_1/Series_2' },
@@ -172,8 +191,8 @@ describe('an index on a line', () => {
     await line_words('gather add @SER1');
     const counted = answerConsulted_take();
     expect(counted?.source).toBe('pacs query PatientID:1');
-    // The study and its two series: three rows, two sequences.
-    expect(counted?.rows).toHaveLength(3);
+    // The patient, the study and its two series: four rows, three sequences.
+    expect(counted?.rows).toHaveLength(4);
     // Taken once: the next line did not use an index.
     expect(answerConsulted_take()).toBeNull();
   });

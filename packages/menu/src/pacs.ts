@@ -210,3 +210,16 @@ export const PACS_SERVERS_MODEL_KIND = 'pacs.servers' as const;
 
 /** The model's envelope kind. */
 export const PACS_QUERY_MODEL_KIND = 'pacs.query' as const;
+
+/**
+ * The address a patient row answers to: what a surface matches a numbered
+ * handle on, and what the kernel puts on a `PAT` row. A patient has no
+ * path of its own — its series do — so the address is minted from what
+ * names it in the answer: the identifier as asked, and the PACS asked.
+ *
+ * @param patient - The patient, as the answer carries it.
+ * @returns A stable string no path could be.
+ */
+export function patientAddress_of(patient: { patientId: string; server?: string | undefined }): string {
+  return `pacs:patient:${patient.server ?? '-'}:${patient.patientId}`;
+}

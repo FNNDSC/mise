@@ -53,6 +53,26 @@ export function contentType_forPath(filePath: string): string {
 }
 
 /**
+ * The `content-disposition` that makes a browser SAVE one file rather than
+ * show it.
+ *
+ * A browser shown a CSV or a PNG at a URL displays it; told the same bytes
+ * are an attachment it puts them on the operator's disk under the file's
+ * own name. The name travels twice, as RFC 6266 asks: a quoted ASCII
+ * fallback (anything outside printable ASCII, and the quote and backslash
+ * that would end or escape it, replaced) and an RFC 8187 `filename*` that
+ * carries the real name percent-encoded in UTF-8.
+ *
+ * @param filePath - The ChRIS path whose basename names the download.
+ * @returns The header value.
+ */
+export function contentDisposition_forPath(filePath: string): string {
+  const name: string = path.basename(filePath);
+  const ascii: string = name.replace(/[^\x20-\x7e]|["\\]/g, '_');
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
+/**
  * How long a browser may keep one file.
  *
  * The bundle is two kinds of file with opposite needs. The assets carry a

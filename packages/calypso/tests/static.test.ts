@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { WebSocket } from 'ws';
 import { CalypsoDaemon } from '../src/daemon/server';
-import { bundledWebRoot_find, cacheControl_forPath, webRoot_resolve, webRootVersion_read } from '../src/daemon/static';
+import { bundledWebRoot_find, cacheControl_forPath, contentDisposition_forPath, webRoot_resolve, webRootVersion_read } from '../src/daemon/static';
 import type { HostedEngine } from '../src/daemon/engine';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
 import type { CommandEnvelope } from '@fnndsc/cumin';
@@ -22,7 +22,7 @@ function stubEngine_create(): HostedEngine {
 }
 
 /** Fetches a URL and resolves with status, headers, and body. */
-function http_get(url: string): Promise<{ status: number; type: string; cache: string; body: string }> {
+function http_get(url: string): Promise<{ status: number; type: string; cache: string; disposition: string; body: string }> {
   return new Promise((resolve, reject) => {
     get(url, (response: IncomingMessage) => {
       const chunks: Buffer[] = [];
@@ -32,6 +32,7 @@ function http_get(url: string): Promise<{ status: number; type: string; cache: s
           status: response.statusCode ?? 0,
           type: String(response.headers['content-type'] ?? ''),
           cache: String(response.headers['cache-control'] ?? ''),
+          disposition: String(response.headers['content-disposition'] ?? ''),
           body: Buffer.concat(chunks).toString('utf-8'),
         }),
       );
@@ -199,6 +200,17 @@ describe('CalypsoDaemon static serving', () => {
   });
 });
 
+describe('contentDisposition_forPath', () => {
+  it('names the attachment after the file, twice', () => {
+    expect(contentDisposition_forPath('/home/demo/a b.csv')).toBe(`attachment; filename="a b.csv"; filename*=UTF-8''a%20b.csv`);
+  });
+  it('keeps the real name in filename* and a safe one in filename', () => {
+    expect(contentDisposition_forPath('/home/demo/résumé "q".txt')).toBe(
+      `attachment; filename="r_sum_ _q_.txt"; filename*=UTF-8''r%C3%A9sum%C3%A9%20%22q%22.txt`,
+    );
+  });
+});
+
 describe('CalypsoDaemon /vfs route', () => {
   let daemon: CalypsoDaemon;
   let port: number;
@@ -239,6 +251,19 @@ describe('CalypsoDaemon /vfs route', () => {
       `http://127.0.0.1:${port}/vfs?path=${encodeURIComponent('/home/demo/brain.png')}&token=wrong`,
     );
     expect(reply.status).toBe(404);
+  });
+
+  it('shows the bytes unless asked for a download', async () => {
+    const shown = await http_get(
+      `http://127.0.0.1:${port}/vfs?path=${encodeURIComponent('/home/demo/brain.png')}&token=${TOKEN}`,
+    );
+    expect(shown.disposition).toBe('');
+    const saved = await http_get(
+      `http://127.0.0.1:${port}/vfs?path=${encodeURIComponent('/home/demo/brain.png')}&token=${TOKEN}&download=1`,
+    );
+    expect(saved.status).toBe(200);
+    expect(saved.body).toBe('png-bytes');
+    expect(saved.disposition).toBe(`attachment; filename="brain.png"; filename*=UTF-8''brain.png`);
   });
 
   it('404s a read failure', async () => {

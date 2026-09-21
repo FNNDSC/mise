@@ -2299,6 +2299,12 @@ async function surface_start(token: string): Promise<void> {
       process_open: (folderPath: string): void => process_open(id, { input: folderPath, feed: null, node: null }),
       name_ask: (suggest: string): Promise<string | null> =>
         ask_onPane(id, { message: 'Cohort name: ', kind: 'text', suggest, commit: 'NAME IT' }),
+      // On the pane, where the press was: CLEAR asks before throwing away
+      // a cohort that was never saved.
+      confirm_ask: async (message: string): Promise<'y' | 'n' | null> => {
+        const answered: string | null = await ask_onPane(id, { message, kind: 'confirm' });
+        return answered === 'y' || answered === 'n' ? answered : null;
+      },
       changed: (): void => pacsStage_relight(),
       dismiss: (): void => {
         if (!layout.leaf_close(id)) home_apply();
@@ -2460,6 +2466,15 @@ async function surface_start(token: string): Promise<void> {
         });
         noted(answered);
         return answered;
+      },
+      // A yes-or-no on the band, where the press was: CLEAR asks it before
+      // throwing away a cohort that was never saved.
+      confirm_ask: async (message: string): Promise<'y' | 'n' | null> => {
+        const face: HTMLElement = element_require('header-gather');
+        const noted: (answer: string | null) => void = terminal.ask_note(`${message} `);
+        const answered: string | null = await paneAsk_open(face, { message, kind: 'confirm' });
+        noted(answered);
+        return answered === 'y' || answered === 'n' ? answered : null;
       },
       changed: (): void => {
         pacsStage_relight();

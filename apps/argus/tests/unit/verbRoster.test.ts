@@ -183,7 +183,7 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
     'a study with none': [],
     // A study with something home can be gathered; one with everything home
     // can also be processed as a folder. A study with nothing home is
-    // pulled, and pulling gathers what it pulls as it goes.
+    // pulled — and pulling is a fetch, not a choice: it gathers nothing.
     'a study wholly home': ['PULL STUDY', 'GATHER', 'PROCESS'],
     'a study partly home': ['PULL STUDY', 'GATHER'],
   },

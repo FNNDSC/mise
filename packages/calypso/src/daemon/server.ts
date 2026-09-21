@@ -29,7 +29,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { HostedEngine, CompletionResult } from './engine.js';
-import { staticRequest_handle, contentType_forPath } from './static.js';
+import { staticRequest_handle, contentDisposition_forPath, contentType_forPath } from './static.js';
 import { token_matches } from './token.js';
 import { RequestBroker } from './broker.js';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
@@ -415,6 +415,11 @@ export class CalypsoDaemon {
    * and requires the hosted engine to provide `file_read`; refusals and
    * failures answer 404 so the response does not confirm what exists.
    *
+   * With `download=1` the same bytes come down as an attachment named for
+   * the file, which is how a browser is told to save rather than show: a
+   * surface's DOWNLOAD is this URL behind an anchor, so a file reaches the
+   * operator's disk the way every other download does.
+   *
    * @param request - The incoming HTTP request.
    * @param response - The response to write.
    */
@@ -444,10 +449,14 @@ export class CalypsoDaemon {
     }
     try {
       const bytes: Buffer = await read(filePath);
-      response.writeHead(200, {
+      const headers: Record<string, string | number> = {
         'content-type': contentType_forPath(filePath),
         'content-length': bytes.length,
-      });
+      };
+      if (query.get('download') === '1') {
+        headers['content-disposition'] = contentDisposition_forPath(filePath);
+      }
+      response.writeHead(200, headers);
       response.end(request.method === 'HEAD' ? undefined : bytes);
     } catch {
       refuse(404, 'not found');

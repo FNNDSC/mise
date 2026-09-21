@@ -78,6 +78,20 @@ export function vfsUrl_build(path: string, token: string): string {
 }
 
 /**
+ * Builds the URL that brings one path's bytes DOWN as a file: the same
+ * route as `vfsUrl_build`, asked for an attachment, which the daemon
+ * names after the file. Put behind an anchor's `download`, the browser
+ * saves rather than shows.
+ *
+ * @param path - The ChRIS path whose bytes are wanted on the operator's disk.
+ * @param token - The attach token, or the empty string when a door holds it.
+ * @returns A URL the browser resolves against the page's own location.
+ */
+export function downloadUrl_build(path: string, token: string): string {
+  return `${vfsUrl_build(path, token)}&download=1`;
+}
+
+/**
  * Whether the page came through a door that holds its token.
  *
  * The porter sends a logged-in browser to `…/?door`: no token in the URL,

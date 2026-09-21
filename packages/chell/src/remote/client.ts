@@ -79,12 +79,16 @@ export function berth_fromAddress(address: string, token?: string): Berth | null
  * @param berth - The daemon to fetch from, carrying its URL and attach token.
  * @returns A fetch bound to that daemon.
  */
-function berthBytes_fetch(berth: Berth): (filePath: string) => Promise<Buffer> {
+function berthBytes_fetch(berth: Berth, headers: Record<string, string> = {}): (filePath: string) => Promise<Buffer> {
   return async (filePath: string): Promise<Buffer> => {
-    const base: string = berth.url.replace(/^ws/, 'http');
-    const url: string =
-      `${base}/vfs?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(berth.token)}`;
-    const response: Response = await fetch(url);
+    // A berth is `ws://host:port`; a door's is `wss://host/s/<key>/`. Either
+    // way the byte route is `vfs` beside the wire, and a door puts the token
+    // on for a cookie it recognises.
+    const base: string = berth.url.replace(/^ws/, 'http').replace(/\/$/, '');
+    const url: string = berth.token.length > 0
+      ? `${base}/vfs?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(berth.token)}`
+      : `${base}/vfs?path=${encodeURIComponent(filePath)}`;
+    const response: Response = await fetch(url, { headers });
     if (!response.ok) {
       throw new Error(`calypso refused to serve ${filePath} (HTTP ${response.status})`);
     }
@@ -188,9 +192,16 @@ async function berth_select(identity: string | undefined): Promise<Berth | null>
 export async function remote_run(
   identity?: string,
   commandToExecute?: string,
-  attach?: { address: string; token?: string },
+  attach?: { address: string; token?: string; headers?: Record<string, string> },
 ): Promise<void> {
-  const addressed: Berth | null = attach ? berth_fromAddress(attach.address, attach.token) : null;
+  // Through a door there is no token to carry: the cookie in the headers is
+  // the credential, and the door puts the token on the daemon's side.
+  const addressed: Berth | null = attach
+    ? (attach.headers !== undefined
+      ? { identity: identity ?? attach.address, url: attach.address, token: '' }
+      : berth_fromAddress(attach.address, attach.token))
+    : null;
+  const headers: Record<string, string> = attach?.headers ?? {};
   // An address names no identity; a caller that knows one (the daemon
   // console attaching to its own daemon) says so, and the surface greets
   // with it rather than with the address twice.
@@ -207,6 +218,7 @@ export async function remote_run(
     engine = await RemoteEngine.connect({
       url: berth.url,
       token: berth.token,
+      ...(Object.keys(headers).length > 0 ? { headers } : {}),
       onSession: commandToExecute === undefined
         ? (surface: string, envelope: CommandEnvelope): void => {
             if (envelope.rendered.length > 0) {
@@ -248,7 +260,7 @@ export async function remote_run(
   if (commandToExecute !== undefined) {
     const progressRenderer: TerminalProgressRenderer = new TerminalProgressRenderer();
     sink_set(new StdoutSink(progressRenderer));
-    surface_set(cliSurface_create(undefined, berthBytes_fetch(berth)));
+    surface_set(cliSurface_create(undefined, berthBytes_fetch(berth, headers)));
     try {
       const envelopes: CommandEnvelope[] = await surfaceLine_execute(engine, commandToExecute);
       process.exitCode = envelopes.some((envelope: CommandEnvelope): boolean => envelope.status === 'error') ? 1 : 0;
@@ -302,7 +314,7 @@ export async function remote_run(
     promptText: (): string => engine.promptLine() || 'chell(remote) ❯ ',
     // The engine is on the daemon, so this surface fetches bytes from it
     // rather than reading a file it has no access to.
-    bytesFetch: berthBytes_fetch(berth),
+    bytesFetch: berthBytes_fetch(berth, headers),
   });
   await repl.start();
 }

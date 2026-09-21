@@ -8,7 +8,7 @@
  * @module
  */
 import { describe, it, expect } from '@jest/globals';
-import { pageMount_of, wireUrl_resolve, vfsUrl_build, door_isPresent, doorUrl_build, type PageLocation } from '../../src/calypso/routes.js';
+import { pageMount_of, wireUrl_resolve, vfsUrl_build, downloadUrl_build, door_isPresent, doorUrl_build, type PageLocation } from '../../src/calypso/routes.js';
 
 const atRoot: PageLocation = { protocol: 'http:', host: '127.0.0.1:41785', pathname: '/', search: '?token=abc' };
 const behindDoor: PageLocation = { protocol: 'https:', host: 'titan.tch.harvard.edu', pathname: '/s/chris@cube/', search: '?door' };
@@ -42,6 +42,13 @@ describe('vfsUrl_build', () => {
   });
   it('carries no token when a door holds it', () => {
     expect(vfsUrl_build('/home/chris/a.txt', '')).toBe('vfs?path=%2Fhome%2Fchris%2Fa.txt');
+  });
+});
+
+describe('downloadUrl_build', () => {
+  it('is the bytes route asked for an attachment', () => {
+    expect(downloadUrl_build('/home/chris/a.csv', 'abc')).toBe('vfs?path=%2Fhome%2Fchris%2Fa.csv&token=abc&download=1');
+    expect(downloadUrl_build('/home/chris/a.csv', '')).toBe('vfs?path=%2Fhome%2Fchris%2Fa.csv&download=1');
   });
 });
 

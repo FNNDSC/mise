@@ -3179,8 +3179,14 @@ body[data-header='dag'] #header-dag {
 .files-content-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 0.5rem;
+}
+
+/* The path takes the width; the pills sit together at the right. With
+   space-between, a second pill stood alone in the middle of the header. */
+.files-content-header > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .files-close-pill {
@@ -5968,6 +5974,12 @@ button.launcher-row:hover {
 /* RAW stands beside CLOSE: the bytes as written, for when the quoting is
    the thing being read. */
 .files-raw-pill {
+  background-color: var(--october-sunset);
+}
+
+/* DOWNLOAD beside CLOSE on a file view's header: the file on stage, saved
+   to the operator's disk by the browser's own gesture. */
+.files-download-pill {
   background-color: var(--october-sunset);
 }
 

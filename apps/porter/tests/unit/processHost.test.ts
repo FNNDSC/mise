@@ -77,7 +77,7 @@ describe('ProcessHost', () => {
     const call = spawnCalls[0];
     expect(call).toBeDefined();
     expect(call?.command).toBe(process.execPath);
-    expect(call?.args).toEqual(['/opt/chell/dist/index.js', 'chris@https://cube.example.org/api/v1/', '--daemon', '--auth-token-stdin']);
+    expect(call?.args).toEqual(['/opt/chell/dist/index.js', 'chris@https://cube.example.org/api/v1/', '--daemon', '--auth-token-stdin', '--no-logo']);
     expect(call?.args.join(' ')).not.toContain('MINTED');
     expect(child.stdinText).toBe('MINTED\n');
     const dirs = host.dirs_of(IDENTITY);
@@ -135,6 +135,15 @@ describe('ProcessHost', () => {
     const [one, two] = await Promise.all([first, second]);
     expect(two).toEqual(one);
     expect(spawnCalls.length).toBe(1);
+  });
+
+  it('begins a boot without holding anyone, and records how it ended', async () => {
+    const host: ProcessHost = host_make();
+    host.spawn_begin(IDENTITY, 'chris', 'https://cube.example.org/api/v1/', 'BAD');
+    await new Promise((r) => setTimeout(r, 10));
+    child.exit(1);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(host.boot_follow(IDENTITY, { line: (): void => undefined, done: (): void => undefined })?.report).toMatchObject({ state: 'failed', reason: 'the session exited during boot (code 1)' });
   });
 
   it('evicts a session it started, and says so', async () => {

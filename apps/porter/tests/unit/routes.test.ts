@@ -41,6 +41,9 @@ class FakeHost implements SessionHost {
     if (this.spawnError !== null) throw new Error(this.spawnError);
     return { identity, url: 'ws://127.0.0.1:4444', token: 'ATTACH' };
   }
+  spawn_begin(identity: string, user: string, cubeUrl: string, token: string): void {
+    void this.spawn(identity, user, cubeUrl, token).catch((): void => undefined);
+  }
   boot_follow(_identity: string, listener: BootListener): { report: BootReport; release: () => void } | null {
     if (this.report === null) return null;
     this.listener = listener;
@@ -63,11 +66,11 @@ beforeEach(async () => {
 });
 
 describe('POST /login', () => {
-  it('trades the password for a token and starts the session with it', async () => {
+  it('trades the password for a token, starts the session with it, and answers at once', async () => {
     const response = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'right' } });
     expect(response.statusCode).toBe(200);
     const body = response.json() as { key: string; mount: string; state: string };
-    expect(body.state).toBe('started');
+    expect(body.state).toBe('starting');
     expect(body.mount).toBe(`/s/${body.key}/`);
     expect(body.key).toMatch(/^[0-9a-f]{16}$/);
     expect(host.spawned).toEqual([{ identity: 'chris@https://cube.example.org/api/v1/', user: 'chris', token: 'TOKEN-chris' }]);
@@ -86,11 +89,18 @@ describe('POST /login', () => {
     expect(raw).toContain('Secure');
   });
 
-  it('takes a form from the door and sends the browser to the session', async () => {
+  it('takes a form from the door and sends the browser to the greet while the session boots', async () => {
+    const response = await built.app.inject({ method: 'POST', url: '/login', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'text/html' }, payload: 'username=chris&password=right' });
+    expect(response.statusCode).toBe(303);
+    expect(response.headers.location).toMatch(/^\/greet\/[0-9a-f]{16}$/);
+    expect(cookie_of(response).startsWith('porter_session=')).toBe(true);
+  });
+
+  it('sends a form straight to a session already up', async () => {
+    host.found = { identity: 'chris@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4444', token: 'ATTACH' };
     const response = await built.app.inject({ method: 'POST', url: '/login', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'text/html' }, payload: 'username=chris&password=right' });
     expect(response.statusCode).toBe(303);
     expect(response.headers.location).toMatch(/^\/s\/[0-9a-f]{16}\/\?door$/);
-    expect(cookie_of(response).startsWith('porter_session=')).toBe(true);
   });
 
   it('sends a refused form back to the door with the reason', async () => {
@@ -116,24 +126,33 @@ describe('POST /login', () => {
     expect(bad.statusCode).toBe(400);
   });
 
-  it('says when the session did not start', async () => {
+  it('surfaces a boot that failed through the boot stream, not the login', async () => {
     host.spawnError = 'the session exited during boot (code 1)';
+    host.report = { lines: [], state: 'failed', reason: 'the session exited during boot (code 1)' };
     const response = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'right' } });
-    expect(response.statusCode).toBe(502);
-    expect((response.json() as { error: string }).error).toContain('exited during boot');
+    expect(response.statusCode).toBe(200);
+    const key: string = (response.json() as { key: string }).key;
+    const boot = await built.app.inject({ method: 'GET', url: `/boot/${key}`, headers: { cookie: cookie_of(response) } });
+    expect(boot.body).toContain('event: failed\ndata: {"reason":"the session exited during boot (code 1)"}');
+    // No berth ever answered, so the mount still refuses.
+    expect((await built.app.inject({ method: 'GET', url: `/s/${key}/`, headers: { cookie: cookie_of(response) } })).statusCode).toBe(404);
   });
 });
 
 describe('GET /boot/:key', () => {
-  it('replays the boot so far and closes on a settled state', async () => {
+  it('replays the boot so far, closes on a settled state, and admits the session to its mount', async () => {
     host.report = { lines: [{ channel: 'out', text: '[ OK ] Connect' }], state: 'ready' };
     const session = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'right' } });
     const key: string = (session.json() as { key: string }).key;
+    // Booting: the mount refuses until the berth answers.
+    expect((await built.app.inject({ method: 'GET', url: `/s/${key}/`, headers: { cookie: cookie_of(session) } })).statusCode).toBe(404);
+    host.found = { identity: 'chris@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4444', token: 'ATTACH' };
     const boot = await built.app.inject({ method: 'GET', url: `/boot/${key}`, headers: { cookie: cookie_of(session) } });
     expect(boot.statusCode).toBe(200);
     expect(boot.headers['content-type']).toBe('text/event-stream');
     expect(boot.body).toContain('event: line\ndata: {"channel":"out","text":"[ OK ] Connect"}');
     expect(boot.body).toContain('event: ready');
+    expect(built.registry.get(key)?.berth.token).toBe('ATTACH');
   });
 
   it('follows a boot still under way: lines as they come, then the end', async () => {
@@ -169,18 +188,42 @@ describe('GET /boot/:key', () => {
 });
 
 describe('the door', () => {
-  it('shows the login page, with the reason when there is one', async () => {
+  it('shows the login page with the brain at rest, and the reason when there is one', async () => {
     const page = await built.app.inject({ method: 'GET', url: '/login' });
     expect(page.statusCode).toBe(200);
     expect(page.headers['content-type']).toContain('text/html');
     expect(page.body).toContain('name="password"');
     expect(page.body).toContain('https://cube.example.org/api/v1/');
+    expect(page.body).toContain("./greeter/brain.js");
+    expect(page.body).toContain('brain_draw(0, true)');
     const refused = await built.app.inject({ method: 'GET', url: '/login?reason=CUBE%20refused%20the%20login' });
     expect(refused.body).toContain('CUBE refused the login');
   });
 
+  it('serves the greeter\'s two modules from the wire package, and nothing else', async () => {
+    const brain = await built.app.inject({ method: 'GET', url: '/greeter/brain.js' });
+    expect(brain.statusCode).toBe(200);
+    expect(brain.headers['content-type']).toContain('text/javascript');
+    expect(brain.body).toContain('export function logo_frameRender');
+    const ansi = await built.app.inject({ method: 'GET', url: '/greeter/ansi.js' });
+    expect(ansi.body).toContain('export function ansi_toHtml');
+    expect((await built.app.inject({ method: 'GET', url: '/greeter/other.js' })).statusCode).toBe(404);
+  });
+
+  it('shows the greet to the browser whose cookie names the key, and the door to any other', async () => {
+    const session = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'right' } });
+    const key: string = (session.json() as { key: string }).key;
+    const greet = await built.app.inject({ method: 'GET', url: `/greet/${key}`, headers: { cookie: cookie_of(session) } });
+    expect(greet.statusCode).toBe(200);
+    expect(greet.body).toContain(`new EventSource("../boot/${key}")`);
+    expect(greet.body).toContain(`"../s/${key}/?door"`);
+    expect(greet.body).toContain("from '../greeter/brain.js'");
+    expect((await built.app.inject({ method: 'GET', url: `/greet/${key}` })).statusCode).toBe(302);
+  });
+
   it('sends the root to the session when let in, else to the login', async () => {
     expect((await built.app.inject({ method: 'GET', url: '/' })).headers.location).toBe('/login');
+    host.found = { identity: 'chris@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4444', token: 'ATTACH' };
     const session = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'right' } });
     const key: string = (session.json() as { key: string }).key;
     expect((await built.app.inject({ method: 'GET', url: '/', headers: { cookie: cookie_of(session) } })).headers.location).toBe(`/s/${key}/?door`);
@@ -218,6 +261,7 @@ describe('the mount', () => {
 
 describe('the registry', () => {
   it('lists what the door let through, and forgets on request', async () => {
+    host.found = { identity: 'chris@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4444', token: 'ATTACH' };
     await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'right' } });
     const all = built.registry.all();
     expect(all.length).toBe(1);

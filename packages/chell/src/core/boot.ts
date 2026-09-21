@@ -520,8 +520,11 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
 
   // --- Common Initialization ---
 
-  if (isInteractiveSession) {
-    logo_print(showLogo && !useAsciiBoot);
+  // `--no-logo` hides the logo; it does not print it uncoloured. Off a TTY
+  // the flag is implied, so a host reading this boot off a pipe — the
+  // porter's greeter, which draws the brain itself — gets rows and no art.
+  if (isInteractiveSession && showLogo) {
+    logo_print(!useAsciiBoot);
   }
 
   await settings_load();

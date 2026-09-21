@@ -21,7 +21,12 @@ async function porter_start(): Promise<void> {
     process.exit(1);
   }
   const host: ProcessHost = new ProcessHost({ stateDir: config.stateDir, chellEntry: config.chellEntry });
-  const built: PorterApp = await porterApp_build({ config, host, logger: false });
+  const built: PorterApp = await porterApp_build({
+    config,
+    host,
+    logger: false,
+    log: (line: string): void => { console.log(`[+] ${line}`); },
+  });
   await built.app.listen({ host: config.host, port: config.port });
   console.log(`[+] PORTER at http://${config.host}:${config.port}/ for ${config.cubeUrl}`);
   console.log(`    state:  ${config.stateDir}`);

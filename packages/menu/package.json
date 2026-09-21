@@ -26,6 +26,10 @@
       "import": "./dist/logo/brain.js",
       "types": "./dist/logo/brain.d.ts"
     },
+    "./ansi": {
+      "import": "./dist/ansi/ansi.js",
+      "types": "./dist/ansi/ansi.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

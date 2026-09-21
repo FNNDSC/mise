@@ -1,6 +1,10 @@
 /**
  * @file The greeter: the door's face, before and during a boot.
  *
+ * The face says ChRIS. An operator is logging in to ChRIS and could not
+ * care less what the program at the door is called; "porter" is this
+ * repository's word for it and appears nowhere a user reads.
+ *
  * One shell, two acts. At the door the brain rests at its end state beside
  * a name and a password. Once the password is taken the browser is sent to
  * the greet, where the brain wakes — the same frames a terminal boot draws,
@@ -59,7 +63,7 @@ function shell_render(shell: GreeterShell): string {
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #000; color: var(--ink); font-family: "Share Tech Mono", ui-monospace, monospace; }
   main { display: grid; gap: 1rem; width: min(64rem, 94vw); padding: 1.4rem 1.6rem 1.6rem; border-left: 0.6rem solid var(--frame); border-radius: 0 1.6rem 1.6rem 0; background: #05121c; }
   header { display: flex; align-items: baseline; gap: 1rem; }
-  h1 { margin: 0; font-size: 1.1rem; letter-spacing: 0.25em; color: var(--lit); }
+  h1 { margin: 0; font-size: 1.1rem; letter-spacing: 0.12em; color: var(--lit); }
   .cube { font-size: 0.75rem; color: var(--dim); overflow-wrap: anywhere; }
   #brain { margin: 0; font-size: 0.62rem; line-height: 1.05; white-space: pre; overflow-x: auto; color: #9cf; }
   form { display: grid; gap: 0.8rem; width: min(22rem, 100%); }
@@ -76,7 +80,7 @@ function shell_render(shell: GreeterShell): string {
 </head>
 <body>
 <main>
-  <header><h1>PORTER</h1><div class="cube" id="cube"></div></header>
+  <header><h1>ChRIS</h1><div class="cube" id="cube"></div></header>
   <pre id="brain" aria-hidden="true"></pre>
   ${shell.body}
 </main>
@@ -102,7 +106,7 @@ ${shell.script}
 export function loginPage_render(cubeUrl: string, reason: string | null): string {
   const notice: string = reason === null ? '' : `<p class="reason" role="alert">${attribute_escape(reason)}</p>`;
   return shell_render({
-    title: 'PORTER',
+    title: 'ChRIS · login',
     root: './',
     body: `<form method="post" action="login">
     ${notice}
@@ -124,9 +128,9 @@ brain_draw(0, true);`,
  */
 export function greetPage_render(cubeUrl: string, key: string): string {
   return shell_render({
-    title: 'PORTER · booting',
+    title: 'ChRIS · starting your session',
     root: '../',
-    body: `<div id="state">booting</div>
+    body: `<div id="state">starting your session</div>
   <pre id="rows"></pre>
   <a class="pill" id="again" href="../login" hidden>BACK TO THE DOOR</a>`,
     script: `document.getElementById('cube').textContent = ${JSON.stringify(cubeUrl)};
@@ -148,7 +152,7 @@ const settle = (name, reason) => {
   awake = false;
   clearInterval(pulse);
   brain_draw(0, true);
-  state.textContent = name === 'ready' ? 'ready' : ('failed' + (reason ? ' — ' + reason : ''));
+  state.textContent = name === 'ready' ? 'your session is ready' : ('your session did not start' + (reason ? ' — ' + reason : ''));
   state.className = name;
   if (name === 'ready') {
     setTimeout(() => { window.location.assign(${JSON.stringify(`../s/${key}/?door`)}); }, 700);

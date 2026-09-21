@@ -63,6 +63,18 @@ export interface SessionHost {
   spawn(identity: string, user: string, cubeUrl: string, token: string): Promise<Berth>;
 
   /**
+   * Starts an identity's session and returns at once: the boot is followed
+   * through {@link boot_follow}, and its end — ready, or failed with a
+   * reason — is recorded there rather than thrown to anyone.
+   *
+   * @param identity - The normalised `<user>@<url>`.
+   * @param user - The CUBE username.
+   * @param cubeUrl - The CUBE API base.
+   * @param token - The CUBE token the door minted.
+   */
+  spawn_begin(identity: string, user: string, cubeUrl: string, token: string): void;
+
+  /**
    * Reads what a session's boot has said so far, and follows it.
    *
    * @param identity - The normalised `<user>@<url>`.

@@ -178,6 +178,13 @@ export class ProcessHost implements SessionHost {
     return record.starting;
   }
 
+  /** @inheritdoc */
+  public spawn_begin(identity: string, user: string, cubeUrl: string, token: string): void {
+    // The failure is already on the boot record for whoever follows it; the
+    // promise's own rejection has nobody left to reach.
+    void this.spawn(identity, user, cubeUrl, token).catch((): void => undefined);
+  }
+
   /** Starts the child and waits for its berth to answer. */
   private async boot_run(record: SessionRecord, user: string, cubeUrl: string, token: string): Promise<Berth> {
     const dirs: SessionDirs = this.dirs_of(record.identity);
@@ -192,7 +199,9 @@ export class ProcessHost implements SessionHost {
       // would; chalk sees no TTY here and would strip the colour.
       FORCE_COLOR: '3',
     };
-    const child: SpawnedSession = this.spawner(process.execPath, [this.chellEntry, `${user}@${cubeUrl}`, '--daemon', '--auth-token-stdin'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    // The greeter draws the brain itself, from the same frames; the boot's
+    // own copy on stdout would stand a second, still brain under the rows.
+    const child: SpawnedSession = this.spawner(process.execPath, [this.chellEntry, `${user}@${cubeUrl}`, '--daemon', '--auth-token-stdin', '--no-logo'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
     record.child = child;
     const line_note = (channel: 'out' | 'err', text: string): void => {
       const line: BootLine = { channel, text };

@@ -4,10 +4,17 @@
  * - `GET /login` — the door: a username and a password, nothing else.
  * - `POST /login` — the password goes to CUBE once and comes back a token;
  *   the token starts (or joins) that identity's session; the browser is
- *   given a signed cookie naming the session and sent to it. A JSON caller
- *   gets the mount back instead of a redirect. Every login checks the
- *   password even when the session is up: a berth proves the daemon, not
- *   the human.
+ *   given a signed cookie naming the session. A session already up is
+ *   entered at once; one that has to boot is watched from the greet, which
+ *   the door answers with immediately — a browser is never held for a
+ *   boot. A JSON caller gets the mount and the state (`attached` or
+ *   `starting`) instead of a redirect. Every login checks the password
+ *   even when the session is up: a berth proves the daemon, not the human.
+ * - `GET /greet/<key>` — the greeter: the brain awake and the boot rows
+ *   arriving, until `ready` hands the browser to the session.
+ * - `GET /greeter/brain.js`, `/greeter/ansi.js` — the wire package's own
+ *   modules, served from where they are installed, so the greeter draws
+ *   the brain and the rows from the same source the console does.
  * - `POST /logout` — the cookie is cleared; the session lives on.
  * - `GET /boot/<key>` — the session's boot as it happens, server-sent, one
  *   event per line the daemon wrote, ending with `ready` or `failed`.
@@ -36,7 +43,10 @@ import type { PorterConfig } from './config.js';
 import type { SessionHost, Berth, BootLine } from './host/sessionHost.js';
 import { SessionRegistry, type SessionEntry } from './registry.js';
 import { cubeToken_mint, type TokenMint } from './cube/auth.js';
-import { DOOR_COOKIE, doorCookie_options, loginPage_render } from './door.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { DOOR_COOKIE, doorCookie_options } from './door.js';
+import { loginPage_render, greetPage_render } from './greeter.js';
 
 /** What the routes are built over. */
 export interface PorterAppOptions {
@@ -46,6 +56,8 @@ export interface PorterAppOptions {
   mint?: (cubeUrl: string, username: string, password: string) => Promise<TokenMint>;
   /** Fastify's logger switch. */
   logger?: boolean;
+  /** One line per thing the door does, for the porter's own terminal. */
+  log?: (line: string) => void;
 }
 
 /** A porter application: the Fastify instance and the registry behind it. */
@@ -185,23 +197,45 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     }
     const identity: string = identity_normalise(username, config.cubeUrl);
     const found: Berth | null = await host.find(identity);
-    const state: 'attached' | 'started' = found !== null ? 'attached' : 'started';
-    let berth: Berth;
+    const key: string = registry.key_of(identity);
+    void reply.setCookie(DOOR_COOKIE, key, doorCookie_options(config.cookieHours, request.protocol === 'https'));
     if (found !== null) {
-      berth = found;
-    } else {
-      try {
-        berth = await host.spawn(identity, username, config.cubeUrl, minted.token);
-      } catch (error: unknown) {
-        return refuse(502, `the session did not start: ${error instanceof Error ? error.message : String(error)}`);
-      }
+      registry.note(identity, username, found);
+      options.log?.(`attached ${username} to the session up at ${found.url}`);
+      return wantsJson ? { key, mount: `/s/${key}/`, state: 'attached' } : reply.redirect(`/s/${key}/?door`, 303);
     }
-    const entry: SessionEntry = registry.note(identity, username, berth);
-    void reply.setCookie(DOOR_COOKIE, entry.key, doorCookie_options(config.cookieHours, request.protocol === 'https'));
-    if (wantsJson) {
-      return { key: entry.key, mount: `/s/${entry.key}/`, state };
+    // The boot is watched, not waited for: the door answers now, and the
+    // greet follows the rows until the berth answers. The berth reaches the
+    // registry when the boot ends, so the mount refuses until then.
+    registry.pending_note(identity, username);
+    host.spawn_begin(identity, username, config.cubeUrl, minted.token);
+    options.log?.(`starting a session for ${username}`);
+    return wantsJson ? { key, mount: `/s/${key}/`, state: 'starting' } : reply.redirect(`/greet/${key}`, 303);
+  });
+
+  app.get('/greet/:key', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    const key: string = (request.params as { key: string }).key;
+    if (key_ofRequest(request) !== key) {
+      return reply.redirect('/login', 302);
     }
-    return reply.redirect(`/s/${entry.key}/?door`, 303);
+    void reply.type('text/html; charset=utf-8');
+    return greetPage_render(config.cubeUrl, key);
+  });
+
+  // The greeter's two modules: the wire package's own, from where they are
+  // installed. Read once; a porter does not restart for a menu upgrade.
+  const greeterModules: Record<string, string> = {
+    'brain.js': readFileSync(fileURLToPath(import.meta.resolve('@fnndsc/menu/logo')), 'utf-8'),
+    'ansi.js': readFileSync(fileURLToPath(import.meta.resolve('@fnndsc/menu/ansi')), 'utf-8'),
+  };
+  app.get('/greeter/:name', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    const name: string = (request.params as { name: string }).name;
+    const source: string | undefined = greeterModules[name];
+    if (source === undefined) {
+      return reply.code(404).send({ error: 'no such greeter module' });
+    }
+    void reply.type('text/javascript; charset=utf-8');
+    return source;
   });
 
   app.post('/logout', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
@@ -215,8 +249,8 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
       await reply.code(401).send({ error: 'this browser was not let in to that session' });
       return;
     }
-    const entry: SessionEntry | null = registry.get(key);
-    if (entry === null) {
+    const identity: string | null = registry.identity_of(key);
+    if (identity === null) {
       await reply.code(404).send({ error: 'no session behind that key' });
       return;
     }
@@ -228,11 +262,13 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     const event_send = (name: string, data: unknown): void => {
       reply.raw.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
     };
-    const followed = host.boot_follow(entry.identity, {
+    const followed = host.boot_follow(identity, {
       line: (line: BootLine): void => event_send('line', line),
       done: (state: 'ready' | 'failed', reason?: string): void => {
-        event_send(state, { reason: reason ?? null });
-        reply.raw.end();
+        void registry.settle(identity, host).then((): void => {
+          event_send(state, { reason: reason ?? null });
+          reply.raw.end();
+        });
       },
     });
     if (followed === null) {
@@ -244,6 +280,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     }
     for (const line of followed.report.lines) event_send('line', line);
     if (followed.report.state !== 'booting') {
+      await registry.settle(identity, host);
       event_send(followed.report.state, { reason: followed.report.reason ?? null });
       reply.raw.end();
       return;

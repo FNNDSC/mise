@@ -120,6 +120,36 @@ describe('connection_connect', () => {
   });
 });
 
+describe('connection_connectWithToken', () => {
+  const options = { user: 'chris', url: 'https://cube/api/v1/', token: 'MINTED' };
+
+  it('proves the token, then saves it and takes the identity', async () => {
+    const store: FakeStore = { files: {} };
+    const conn: ChRISConnection = connection_make(store);
+    const getUser: jest.Mock = jest.fn(async () => ({ username: 'chris' }));
+    mockClientCreate.mockReturnValue({ getUser });
+    await expect(conn.connection_connectWithToken(options)).resolves.toEqual({ connected: true });
+    expect(mockClientCreate).toHaveBeenCalledWith('https://cube/api/v1/', 'MINTED');
+    expect(getUser).toHaveBeenCalled();
+    expect(store.files['/cfg/token']).toBe('MINTED');
+    expect(conn.connection_isConnected()).toBe(true);
+    expect(mockAuthToken).not.toHaveBeenCalled();
+  });
+
+  it('refuses in the outcome, writes nothing, and leaves the error stack clean', async () => {
+    const store: FakeStore = { files: {} };
+    const conn: ChRISConnection = connection_make(store);
+    mockClientCreate.mockReturnValue({ getUser: jest.fn(async () => { throw new Error('401 Unauthorized'); }) });
+    const outcome = await conn.connection_connectWithToken(options);
+    expect(outcome.connected).toBe(false);
+    expect(outcome.reason).toContain('refused the token for chris');
+    expect(outcome.reason).toContain('401 Unauthorized');
+    expect(store.files).toEqual({});
+    expect(conn.connection_isConnected()).toBe(false);
+    expect(errorStack.messagesOfType_has('error')).toBe(false);
+  });
+});
+
 describe('token and URL access', () => {
   it('loads the token from storage on demand', async () => {
     const conn: ChRISConnection = connection_make({ files: { '/cfg/token': 'STORED' } });

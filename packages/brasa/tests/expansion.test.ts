@@ -20,7 +20,7 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
 }));
 
 const { shellWords_tokenize, shellWords_referencesExpand } = await import('../src/lib/parser.js');
-const { reference_resolve, paramScope_run, unresolvedStands_run, reference_isReserved } =
+const { reference_resolve, paramScope_run, unresolvedStands_run, reference_isReserved, reference_refusal } =
   await import('../src/core/expansion.js');
 const { recentFeed_note, recentRunPlace_note, recentRuns_note, recent_forget } =
   await import('../src/session/recent.js');
@@ -146,5 +146,21 @@ describe('an expanded value is a value', () => {
     );
     expect(expanded.ok && expanded.words[1].pathnameExpansion).toBe(false);
     expect(expanded.ok && expanded.words[1].value).toBe('/home/chris/uploads/scan[1].dcm');
+  });
+});
+
+describe('a refusal says where it looked', () => {
+  it('names the session and the environment outside a manifest', () => {
+    expect(reference_refusal('NOWHERE')).toBe('${NOWHERE}: nothing to put there. Looked in the session, the environment.');
+  });
+
+  it('adds the manifest parameters inside one, and says a pronoun is not yet filled', async () => {
+    const text: string = await paramScope_run(new Map(), async (): Promise<string> => reference_refusal('feed'));
+    expect(text).toContain('nothing in this session has one yet');
+    expect(text).toContain("this manifest's parameters");
+  });
+
+  it('tells an index that nothing is numbered yet', () => {
+    expect(reference_refusal('@SER1')).toBe('@SER1: nothing is numbered yet — list something first.');
   });
 });

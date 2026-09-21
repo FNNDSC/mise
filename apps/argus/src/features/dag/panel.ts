@@ -867,19 +867,31 @@ export class DagPanel {
   public promptContext_observe(context: PromptContext): void {
     const landings: LandedFeed[] = context.procWarmup?.landed ?? [];
     if (landings.length > 0) this.universeLandings_take(landings);
+    // The universe's title carries the warm-up figure whenever it is live,
+    // however the pane arrived — the refusal or the dashboard's tile.
+    if (this.universeShown && this.universeLive) {
+      const warm = context.procWarmup;
+      if (warm?.total !== undefined && warm.total > 0 && warm.sweeping !== false) {
+        const percent: number = Math.floor((warm.loaded / warm.total) * 100);
+        const warming: string = `INDEX WARMING ${warm.loaded.toLocaleString()}/${warm.total.toLocaleString()} (${percent}%)`;
+        if (warming !== this.universeWarming) {
+          this.universeWarming = warming;
+          this.universeTitle_paint();
+        }
+      } else if (warm === undefined || warm.sweeping === false || warm.state === 'cached') {
+        // The index came whole under a universe opened from the tile: it
+        // stands, and says so.
+        this.universeLive = false;
+        this.universeWarming = '';
+        this.universe_request();
+      }
+    }
     if (this.rosterProgress !== null && this.rosterProgress.isConnected) {
       const warm = context.procWarmup;
       if (warm?.total !== undefined && warm.total > 0 && warm.sweeping !== false) {
         const percent: number = Math.floor((warm.loaded / warm.total) * 100);
         this.rosterProgress.textContent =
           `INDEX WARMING \u2014 ${warm.loaded}/${warm.total} (${percent}%). The roster opens when the index is whole.`;
-        const warming: string = `INDEX WARMING ${warm.loaded.toLocaleString()}/${warm.total.toLocaleString()} (${percent}%)`;
-        if (warming !== this.universeWarming) {
-          this.universeWarming = warming;
-          // The figure in the title moves with the prompt even when no
-          // feed landed since the last frame.
-          if (this.universeShown && this.universeLive) this.universeTitle_paint();
-        }
       }
       if (warm === undefined || warm.sweeping === false || warm.state === 'cached') {
         // The index came whole: ask again on the operator's behalf.

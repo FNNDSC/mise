@@ -37,6 +37,35 @@ export interface ProcPromptProgress {
   roster?: 'delta' | 'full';
   /** Feeds the roster gained (created or shared) in the last half minute. */
   arrived?: number[];
+  /** Feeds whose topology landed in the index lately, each as it stands there. */
+  landed?: ProcLandedPromptFeed[];
+}
+
+/**
+ * One feed as it landed in the index, on the prompt: enough for a surface
+ * to place it in the space of everything run here without asking.
+ *
+ * @property id - The feed.
+ * @property jobs - How many plugin instances it holds.
+ * @property status - The feed's own status.
+ * @property chain - Its plugin names, root first: the shape its pipeline left.
+ */
+export interface ProcLandedPromptFeed {
+  id: number;
+  jobs: number;
+  status: string;
+  chain: string[];
+  /** Its jobs collapsed by plugin per place in the pipeline: the shape, with counts. */
+  groups: ProcPromptJobGroup[];
+}
+
+/** One node of a feed's collapsed shape, on the prompt. */
+export interface ProcPromptJobGroup {
+  plugin: string;
+  count: number;
+  status: string;
+  /** The index of the parent group, or null at the root. */
+  parent: number | null;
 }
 
 /**

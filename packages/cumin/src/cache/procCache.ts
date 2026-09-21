@@ -208,8 +208,72 @@ export interface RosterFolders {
   public?: string;
 }
 
+/**
+ * A feed's status from its job counts: an error anywhere is the feed's
+ * error; else anything still moving is the feed moving; else it finished.
+ *
+ * @param feed - The feed's counts.
+ * @returns A DAG status word: `finishedWithError`, `started`, `scheduled`, `created`, `cancelled` or `finishedSuccessfully`.
+ */
+export function feedStatus_ofCounts(feed: ProcFeed): string {
+  // The words are a node's own (the DAG status vocabulary), so a feed on
+  // a surface wears the hue its jobs would.
+  if (feed.erroredJobs > 0) return 'finishedWithError';
+  if (feed.startedJobs > 0) return 'started';
+  if (feed.scheduledJobs > 0) return 'scheduled';
+  if (feed.createdJobs > 0) return 'created';
+  if (feed.cancelledJobs > 0 && feed.finishedJobs === 0) return 'cancelled';
+  return 'finishedSuccessfully';
+}
+
 /** How long a roster arrival stays annunciated after it lands. */
 export const PROC_ARRIVAL_TTL_MS: number = 30 * 1000;
+
+/**
+ * How long a feed whose topology just landed stays reported as landed.
+ * The prompt is pushed about once a second while the index moves, so a
+ * surface that reads every push sees each landing several times and keeps
+ * one; a surface that missed a push still sees it on the next.
+ */
+export const PROC_LANDED_TTL_MS: number = 10 * 1000;
+
+/**
+ * One feed as it landed in the index: enough to place it in the space of
+ * everything run here, and nothing a surface would have to ask for.
+ *
+ * @property id - The feed.
+ * @property jobs - How many plugin instances it holds.
+ * @property status - The feed's own status, derived from its job counts.
+ * @property chain - Its plugin names by first appearance, root first: the
+ *   shape a pipeline leaves, shared with every feed that ran the same way.
+ * @property groups - Its jobs collapsed by plugin per place in the
+ *   pipeline: the feed's shape with counts for weight, a handful of
+ *   entries however many jobs it holds.
+ */
+export interface ProcLandedFeed {
+  id: number;
+  jobs: number;
+  status: string;
+  chain: string[];
+  groups: ProcJobGroup[];
+}
+
+/**
+ * One node of a feed's collapsed shape: every job of one plugin hanging
+ * from the same parent group, as one node with a count.
+ *
+ * @property plugin - The plugin name.
+ * @property count - How many jobs the node stands for.
+ * @property status - The worst word among them: an error anywhere is the
+ *   group's, else anything still moving, else finished.
+ * @property parent - The index of the parent group, or null at the root.
+ */
+export interface ProcJobGroup {
+  plugin: string;
+  count: number;
+  status: string;
+  parent: number | null;
+}
 
 /** Availability and freshness states for the persistent process cache. */
 export type ProcCacheState = 'empty' | 'restored' | 'reconciling' | 'current' | 'failed';
@@ -314,6 +378,14 @@ export class ProcCache {
 
   /** Feeds the roster gained (created or shared) with the moment they landed. */
   private arrivals: Map<number, number> = new Map();
+
+  /**
+   * Feeds the index read something of lately, by when it last did: a feed
+   * lands when its first instance is seen and lands again as more are, so
+   * a surface drawing the space sees each feed appear and fill out while
+   * the global sweep pages through everything.
+   */
+  private landed: Map<number, number> = new Map();
 
   /**
    * Folder listings whose membership changes when a feed arrives or
@@ -491,6 +563,7 @@ export class ProcCache {
    * Adds a plugin instance to the topology cache.
    */
   instance_add(inst: ProcInstance): void {
+    this.landed.set(inst.feedID, Date.now());
     this.instances.set(inst.id, inst);
     if (inst.parentID === null) {
       const roots: number[] = this.feedRoots.get(inst.feedID) ?? [];
@@ -688,7 +761,11 @@ export class ProcCache {
 
   // ── Topology loaded tracking ───────────────────────────────────────────────
 
-  topologyLoaded_mark(feedID: number): void {
+  topologyLoaded_mark(feedID: number, at: number = Date.now()): void {
+    // Completing is a landing too — a feed with no instances lands only
+    // here — but a feed marked again (a re-sweep) is not news, and a restore
+    // from a checkpoint marks without landing at all.
+    if (!this.topologyLoaded.has(feedID)) this.landed.set(feedID, at);
     this.topologyLoaded.add(feedID);
     this.change_emit({ scope: 'feed', feedID });
   }
@@ -916,6 +993,108 @@ export class ProcCache {
    * @param now - The current time (default now).
    * @returns Feed ids that arrived within {@link PROC_ARRIVAL_TTL_MS}.
    */
+  /**
+   * The feeds the index read something of in the last while, each as it
+   * stands now: its size so far, its status, and the shape of its pipeline
+   * so far.
+   *
+   * @param now - The clock, for the window.
+   * @returns The landed feeds, earliest landing first.
+   */
+  topologyLanded_recent(now: number = Date.now()): ProcLandedFeed[] {
+    const recent: Array<{ feedID: number; at: number }> = [];
+    for (const [feedID, at] of this.landed) {
+      if (now - at > PROC_LANDED_TTL_MS) this.landed.delete(feedID);
+      else recent.push({ feedID, at });
+    }
+    recent.sort((a, b): number => a.at - b.at);
+    const landed: ProcLandedFeed[] = [];
+    for (const { feedID } of recent) {
+      const feed: ProcFeed | undefined = this.feed_get(feedID);
+      if (feed === undefined) continue;
+      landed.push({ id: feedID, jobs: this.instancesForFeed_count(feedID), status: feedStatus_ofCounts(feed), chain: this.pluginChain_of(feedID), groups: this.pluginGroups_of(feedID) });
+    }
+    return landed;
+  }
+
+  /**
+   * A feed's plugin names by first appearance, root first — the shape its
+   * pipeline left. A feed that ran dircopy, then dcm2niix, then fastsurfer
+   * shares its first two names with every feed that began the same way.
+   *
+   * @param feedID - The feed.
+   * @returns The names, in order of the shallowest instance that bore each.
+   */
+  pluginChain_of(feedID: number): string[] {
+    const ids: number[] = this.feedInstanceIDs_get(feedID);
+    const depth_of = (id: number, seen: Set<number> = new Set()): number => {
+      const inst: ProcInstance | undefined = this.instance_get(id);
+      if (inst === undefined || inst.parentID === null || seen.has(id)) return 0;
+      seen.add(id);
+      return 1 + depth_of(inst.parentID, seen);
+    };
+    const firstDepth: Map<string, number> = new Map();
+    for (const id of ids) {
+      const inst: ProcInstance | undefined = this.instance_get(id);
+      if (inst === undefined) continue;
+      const depth: number = depth_of(id);
+      const known: number | undefined = firstDepth.get(inst.pluginName);
+      if (known === undefined || depth < known) firstDepth.set(inst.pluginName, depth);
+    }
+    return [...firstDepth.entries()].sort((a, b): number => a[1] - b[1] || a[0].localeCompare(b[0])).map(([name]): string => name);
+  }
+
+  /**
+   * A feed's jobs collapsed by plugin per place in the pipeline: the shape
+   * with counts for weight. Jobs of one plugin under one parent group are
+   * one node; a fan of three hundred conversions is a node of 300.
+   *
+   * @param feedID - The feed.
+   * @returns The groups, parents before children, root first.
+   */
+  pluginGroups_of(feedID: number): ProcJobGroup[] {
+    const ids: number[] = this.feedInstanceIDs_get(feedID);
+    const byId: Map<number, ProcInstance> = new Map();
+    for (const id of ids) {
+      const inst: ProcInstance | undefined = this.instance_get(id);
+      if (inst !== undefined) byId.set(id, inst);
+    }
+    const groups: ProcJobGroup[] = [];
+    const groupIndexByKey: Map<string, number> = new Map();
+    const groupOfInstance: Map<number, number> = new Map();
+    const worst = (a: string, b: string): string => {
+      const rank = (word: string): number => (word === 'finishedWithError' ? 3 : (word === 'started' || word === 'scheduled' || word === 'created' || word === 'waiting' || word === 'registeringFiles') ? 2 : word === 'cancelled' ? 1 : 0);
+      return rank(a) >= rank(b) ? a : b;
+    };
+    const status_of = (inst: ProcInstance): string => {
+      const word: string = inst.status ?? 'unknown';
+      return word === 'finishedWithError' || word === 'finishedSuccessfully' || word === 'cancelled' ? word : (word === 'unknown' ? 'finishedSuccessfully' : word);
+    };
+    // Parents before children: a child's group needs its parent's index.
+    const place = (id: number, seen: Set<number>): number | null => {
+      const known: number | undefined = groupOfInstance.get(id);
+      if (known !== undefined) return known;
+      const inst: ProcInstance | undefined = byId.get(id);
+      if (inst === undefined || seen.has(id)) return null;
+      seen.add(id);
+      const parentGroup: number | null = inst.parentID === null ? null : place(inst.parentID, seen);
+      const key: string = `${parentGroup ?? 'root'}|${inst.pluginName}`;
+      let index: number | undefined = groupIndexByKey.get(key);
+      if (index === undefined) {
+        index = groups.length;
+        groups.push({ plugin: inst.pluginName, count: 0, status: status_of(inst), parent: parentGroup });
+        groupIndexByKey.set(key, index);
+      }
+      const group: ProcJobGroup = groups[index] as ProcJobGroup;
+      group.count += 1;
+      group.status = worst(group.status, status_of(inst));
+      groupOfInstance.set(id, index);
+      return index;
+    };
+    for (const id of [...byId.keys()].sort((a, b): number => a - b)) place(id, new Set());
+    return groups;
+  }
+
   arrivals_recent(now: number = Date.now()): number[] {
     const recent: number[] = [];
     for (const [feedID, at] of this.arrivals) {
@@ -1075,6 +1254,7 @@ export class ProcCache {
    * Clears all cache data. Called before a full rebuild.
    */
   cache_clear(): void {
+    this.landed.clear();
     listingInvalidation_reset();
     this.feeds.clear();
     this.instances.clear();

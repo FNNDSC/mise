@@ -279,6 +279,9 @@ try {
       }
     return document.querySelector('.feedlist-loading') ? 'loading' : 'silent-empty';`);
   check('RUNS-02 answers with roster, refusal, or visible wait', runs !== 'silent-empty', runs);
+  // A refusal keeps its words; the count belongs to the live figure beneath it.
+  const refusalText = await evalIn(`return document.querySelector('.feedlist-refusal')?.textContent ?? '';`);
+  check('a refused roster repeats no frozen count', !/\(\s*[\d,]+\/[\d,]+/.test(refusalText), refusalText);
   }
 
   if (stage('console-grammar')) {

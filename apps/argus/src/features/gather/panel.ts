@@ -104,6 +104,8 @@ export interface GatherPanelHandlers {
   process_open: (folderPath: string) => void;
   /** Asks the cohort's name, once, with a suggestion to hand; null when abandoned. */
   name_ask: (suggest: string) => Promise<string | null>;
+  /** Asks a yes-or-no on the band: 'y', 'n', or null when abandoned. */
+  confirm_ask: (message: string) => Promise<'y' | 'n' | null>;
   /** Membership changed: the host re-lights what depends on it (the PACS rows' GATHER). */
   changed: () => void;
   /** DISMISS: forget the cohort on the surface — the host closes the pane. */
@@ -199,7 +201,12 @@ export class GatherPanel {
     // A view repaints when the set changes, whoever changed it — the band
     // and a pane showing the same cohort stay in step without either one
     // telling the other.
-    cohort.watch((): void => this.render());
+    cohort.watch((): void => {
+      // Anything the cohort does after a SAVE is unsaved again; CLEAR
+      // asks before it throws that away.
+      this.unsaved = true;
+      this.render();
+    });
     this.title = root.querySelector<HTMLElement>('.gather-title');
     this.cohortActions = this.cohortActions_declare();
     this.seriesActions = this.seriesActions_declare();
@@ -246,11 +253,13 @@ export class GatherPanel {
     // CUBE does not hold yet, in ONE command over many operands.
     this.pullBlock = root.querySelector<HTMLButtonElement>('.gather-pull');
     this.pullBlock?.addEventListener('click', (): void => this.cohort_pull());
-    // REMOVE on a row takes one series out; the frame's takes them all.
+    // REMOVE on a row takes one series out; the frame's block is CLEAR, and
+    // takes them all — the same word as the kernel's `gather clear`, so the
+    // operator who read it on the frame can type it at a console.
     // Emptying a cohort one row at a time is not a gesture anyone wants,
     // and DISMISS is a different act — it forgets the cohort entirely.
     this.emptyBlock = root.querySelector<HTMLButtonElement>('.gather-remove');
-    this.emptyBlock?.addEventListener('click', (): void => this.cohort_empty());
+    this.emptyBlock?.addEventListener('click', (): void => { void this.cohort_clear(); });
     // The whole listing's PROCESS, beside the whole listing's PULL.
     this.processBlock = root.querySelector<HTMLButtonElement>('.gather-process');
     this.processBlock?.addEventListener('click', (): void => { void this.cohort_process(); });
@@ -260,8 +269,17 @@ export class GatherPanel {
   /** The frame's PULL block, when the pane's markup carries one. */
   private readonly pullBlock: HTMLButtonElement | null = null;
 
-  /** The frame's REMOVE block: the whole cohort, not one row. */
+  /** The frame's CLEAR block: the whole cohort, not one row. */
   private readonly emptyBlock: HTMLButtonElement | null = null;
+
+  /**
+   * Whether the cohort has changed since it was last SAVEd as a manifest.
+   *
+   * The session's working file is not a save — it is what lets the cohort
+   * outlive a reload — so a cohort that was never named is unsaved, and
+   * CLEAR on it is a question before it is an act.
+   */
+  private unsaved: boolean = false;
 
   /** The frame's PROCESS block: the whole cohort. */
   private readonly processBlock: HTMLButtonElement | null = null;
@@ -272,6 +290,32 @@ export class GatherPanel {
     this.cohort.clear();
     this.handlers.changed();
     this.render();
+  }
+
+  /**
+   * CLEAR: empties the cohort as one visible line — `gather clear`, the
+   * kernel's own verb — and the surface's copy with it.
+   *
+   * Once cleared it is gone, so a cohort that has changed since it was last
+   * SAVEd is asked about first: YES saves it (and a name abandoned there
+   * abandons the clear too — nothing is thrown away on the way to a save
+   * that did not happen), NO clears, Esc leaves everything standing.
+   *
+   * Two owners of one file, for one more slice: the kernel writes the file
+   * empty, and the surface's in-memory cohort must be emptied too, or its
+   * next debounced write would put every member back.
+   */
+  private async cohort_clear(): Promise<void> {
+    if (this.cohort.size() === 0) return;
+    if (this.unsaved) {
+      const answer: 'y' | 'n' | null = await this.handlers.confirm_ask(
+        `Save the cohort first? (${this.cohort.size()} ${this.cohort.size() === 1 ? 'member' : 'members'}, unsaved)`,
+      );
+      if (answer === null) return;
+      if (answer === 'y' && !await this.manifest_save()) return;
+    }
+    this.handlers.command_show('gather clear');
+    this.cohort_empty();
   }
 
   /** The cohort's members CUBE does not hold yet. */
@@ -381,7 +425,7 @@ export class GatherPanel {
     }
     if (this.emptyBlock !== null) {
       this.emptyBlock.hidden = this.cohort.size() === 0;
-      this.emptyBlock.textContent = `REMOVE ${this.cohort.size()}`;
+      this.emptyBlock.textContent = `CLEAR ${this.cohort.size()}`;
     }
     if (this.processBlock !== null) this.processBlock.hidden = this.cohort.size() === 0;
     if (!this.greeted) {
@@ -626,10 +670,10 @@ export class GatherPanel {
   }
 
   /** Writes the cohort manifest to `~/gather/<name>.json`, one visible command. */
-  private async manifest_save(): Promise<void> {
-    if (this.cohort.size() === 0) return;
+  private async manifest_save(): Promise<boolean> {
+    if (this.cohort.size() === 0) return false;
     const name: string | null = await this.name_ensure();
-    if (name === null) return;
+    if (name === null) return false;
     const manifest: string = JSON.stringify({
       name,
       gatheredAt: new Date().toISOString(),
@@ -643,6 +687,8 @@ export class GatherPanel {
     });
     this.handlers.command_run('mkdir ~/gather');
     this.handlers.command_show(`touch --withContents '${manifest}' ~/gather/${name}.json`);
+    this.unsaved = false;
+    return true;
   }
 
   /**

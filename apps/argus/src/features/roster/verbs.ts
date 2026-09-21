@@ -336,8 +336,9 @@ export interface GatherCohortFacts {
 /**
  * The cohort row's verbs: what the gather tray's head used to carry, now
  * on the row they act on. SAVE writes the manifest, EXPORT CSV the table,
- * CREATE FEED roots a feed on the cohort; DISMISS forgets it on the
- * surface only (a saved manifest is a file in ~/gather).
+ * CREATE FEED roots a feed on the cohort; DISMISS sends the band's FACE
+ * away and forgets nothing — the cohort is the session's, and emptying it
+ * is the frame's CLEAR block, which is `gather clear`.
  */
 export const GATHER_COHORT_ROSTER: VerbRoster<GatherCohortFacts> = {
   listing: 'gather.cohort',

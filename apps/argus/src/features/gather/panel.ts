@@ -246,11 +246,13 @@ export class GatherPanel {
     // CUBE does not hold yet, in ONE command over many operands.
     this.pullBlock = root.querySelector<HTMLButtonElement>('.gather-pull');
     this.pullBlock?.addEventListener('click', (): void => this.cohort_pull());
-    // REMOVE on a row takes one series out; the frame's takes them all.
+    // REMOVE on a row takes one series out; the frame's block is CLEAR, and
+    // takes them all — the same word as the kernel's `gather clear`, so the
+    // operator who read it on the frame can type it at a console.
     // Emptying a cohort one row at a time is not a gesture anyone wants,
     // and DISMISS is a different act — it forgets the cohort entirely.
     this.emptyBlock = root.querySelector<HTMLButtonElement>('.gather-remove');
-    this.emptyBlock?.addEventListener('click', (): void => this.cohort_empty());
+    this.emptyBlock?.addEventListener('click', (): void => this.cohort_clear());
     // The whole listing's PROCESS, beside the whole listing's PULL.
     this.processBlock = root.querySelector<HTMLButtonElement>('.gather-process');
     this.processBlock?.addEventListener('click', (): void => { void this.cohort_process(); });
@@ -260,7 +262,7 @@ export class GatherPanel {
   /** The frame's PULL block, when the pane's markup carries one. */
   private readonly pullBlock: HTMLButtonElement | null = null;
 
-  /** The frame's REMOVE block: the whole cohort, not one row. */
+  /** The frame's CLEAR block: the whole cohort, not one row. */
   private readonly emptyBlock: HTMLButtonElement | null = null;
 
   /** The frame's PROCESS block: the whole cohort. */
@@ -272,6 +274,20 @@ export class GatherPanel {
     this.cohort.clear();
     this.handlers.changed();
     this.render();
+  }
+
+  /**
+   * CLEAR: empties the cohort as one visible line — `gather clear`, the
+   * kernel's own verb — and the surface's copy with it.
+   *
+   * Two owners of one file, for one more slice: the kernel writes the file
+   * empty, and the surface's in-memory cohort must be emptied too, or its
+   * next debounced write would put every member back.
+   */
+  private cohort_clear(): void {
+    if (this.cohort.size() === 0) return;
+    this.handlers.command_show('gather clear');
+    this.cohort_empty();
   }
 
   /** The cohort's members CUBE does not hold yet. */
@@ -381,7 +397,7 @@ export class GatherPanel {
     }
     if (this.emptyBlock !== null) {
       this.emptyBlock.hidden = this.cohort.size() === 0;
-      this.emptyBlock.textContent = `REMOVE ${this.cohort.size()}`;
+      this.emptyBlock.textContent = `CLEAR ${this.cohort.size()}`;
     }
     if (this.processBlock !== null) this.processBlock.hidden = this.cohort.size() === 0;
     if (!this.greeted) {

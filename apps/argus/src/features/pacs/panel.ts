@@ -41,6 +41,7 @@ import {
   type PacsServer,
   type PacsStudy,
   type WireEnvelope,
+  patientAddress_of,
 } from '@fnndsc/menu';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { Listing, listingChild_declare, type ListingStateParts } from '../roster/listing.js';
@@ -531,6 +532,10 @@ export class PacsPanel {
       // A patient with no studies has nothing to unfold, and a glyph
       // promising otherwise is a control that cannot act.
       activatable: (row: PatientRow): boolean => row.studies.length > 0,
+      // A patient is numbered in its own sequence (`@PAT001`) and hands a
+      // verb every series of theirs; one the PACS answered nothing for has
+      // nothing to hand and counts itself dim.
+      address: (row: PatientRow): string | undefined => (row.studies.length > 0 ? patientAddress_of(row.patient) : undefined),
       // Navigating is not selecting: the fold cell folds, the row selects.
       control: 'fold',
       row: {

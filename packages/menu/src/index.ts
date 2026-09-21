@@ -177,6 +177,7 @@ export {
   pacsServersModelSchema,
   PACS_QUERY_MODEL_KIND,
   PACS_SERVERS_MODEL_KIND,
+  patientAddress_of,
   type PacsSeries,
   type PacsStudy,
   type PacsProvenance,

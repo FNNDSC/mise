@@ -30,10 +30,10 @@ import { ambient_publish } from '../core/ambient.js';
  * kind across the whole answer, so the code is a handle rather than a
  * position, and a sorted listing does not renumber it.
  */
-export type AnswerKind = 'STD' | 'SER' | 'FIL' | 'DIR';
+export type AnswerKind = 'PAT' | 'STD' | 'SER' | 'FIL' | 'DIR';
 
 /** Every kind an answer may carry, for a refusal that lists them. */
-export const ANSWER_KINDS: ReadonlyArray<AnswerKind> = ['STD', 'SER', 'FIL', 'DIR'];
+export const ANSWER_KINDS: ReadonlyArray<AnswerKind> = ['PAT', 'STD', 'SER', 'FIL', 'DIR'];
 
 /** One row of an answer, as something a verb can be given. */
 export interface AnswerRow {
@@ -46,6 +46,12 @@ export interface AnswerRow {
    * address, which is what a surface matches on.
    */
   values: string[];
+  /**
+   * What a surface matches the row on, when it is not the first value: a
+   * patient has no path of its own, only its series' paths to hand over,
+   * so its address is minted from what names it.
+   */
+  address?: string;
   /** What to call it in a readout. */
   label: string;
 }
@@ -178,7 +184,7 @@ export function answerHandles_get(): NumberedHandle[] {
   return held.rows.map((row: AnswerRow): NumberedHandle => {
     const ordinal: number = (seen.get(row.kind) ?? 0) + 1;
     seen.set(row.kind, ordinal);
-    return { kind: row.kind, ordinal, address: row.values[0] ?? '' };
+    return { kind: row.kind, ordinal, address: row.address ?? row.values[0] ?? '' };
   });
 }
 

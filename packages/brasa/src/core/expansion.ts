@@ -171,7 +171,7 @@ export function indices_parse(spec: string): AnswerHandle[] | null {
 const VERB_TAKES: ReadonlyMap<string, ReadonlyArray<AnswerKind>> = new Map([
   ['image', ['SER', 'DIR', 'FIL']],
   ['dcm', ['SER', 'DIR', 'FIL']],
-  ['pull', ['SER', 'STD']],
+  ['pull', ['SER', 'STD', 'PAT']],
   ['cat', ['FIL']],
   ['cd', ['DIR', 'SER', 'STD']],
   ['download', ['FIL']],
@@ -179,7 +179,7 @@ const VERB_TAKES: ReadonlyMap<string, ReadonlyArray<AnswerKind>> = new Map([
 
 /** The kind a refusal names, in words. */
 const KIND_WORDS: Readonly<Record<AnswerKind, string>> = {
-  STD: 'a study', SER: 'a series', FIL: 'a file', DIR: 'a folder',
+  PAT: 'a patient', STD: 'a study', SER: 'a series', FIL: 'a file', DIR: 'a folder',
 };
 
 /** The verb the line began with, set by the dispatcher before expansion. */

@@ -8,7 +8,7 @@
  * @module
  */
 import path from 'path';
-import type { PacsQueryModel, PacsSeries, PacsStudy } from '@fnndsc/menu';
+import { patientAddress_of, type PacsQueryModel, type PacsSeries, type PacsStudy } from '@fnndsc/menu';
 import { AnswerRow, answerAdapter_register } from './answer.js';
 
 /** One target's listing, as `fs.listing` carries it. */
@@ -39,14 +39,39 @@ export function answerAdapters_register(): void {
     return rows;
   });
 
-  // A PACS answer numbers its STUDIES and its SERIES, each in its own
-  // sequence. A study hands over its series — what the surface's GATHER on
-  // a study hands over — so `pull @STD001` and `gather add @STD001` act on
-  // the whole study, while `@SER003` names one series.
+  // A PACS answer numbers its PATIENTS, its STUDIES and its SERIES, each in
+  // its own sequence. A patient hands over every series of every study of
+  // theirs, a study hands over its series — what the surface's GATHER on
+  // each hands over — so `pull @PAT001` and `gather add @STD001` act on the
+  // whole of it, while `@SER003` names one series. A patient the PACS
+  // answered nothing for has nothing to hand and wears no number.
   answerAdapter_register('pacs.query', (data: unknown): AnswerRow[] | null => {
     const model: PacsQueryModel | null = data as PacsQueryModel | null;
     if (model === null || !Array.isArray(model.studies)) return null;
     const rows: AnswerRow[] = [];
+    // An answer that names its patients is taken at its word; one that does
+    // not (a single question, an older daemon) has a patient for every
+    // study's patient, in the studies' order — the same rows the surface
+    // derives, so the numbers land on them.
+    const patients: Array<{ patientId: string; server?: string; patientName?: string }> =
+      Array.isArray(model.patients) && model.patients.length > 0
+        ? model.patients
+        : (model.studies as PacsStudy[]).reduce((seen: Array<{ patientId: string; server?: string; patientName?: string }>, study: PacsStudy) => {
+          if (!seen.some((one): boolean => one.patientId === study.patientId)) {
+            seen.push({ patientId: study.patientId, ...(study.patientName !== undefined ? { patientName: study.patientName } : {}) });
+          }
+          return seen;
+        }, []);
+    for (const patient of patients) {
+      const theirs: PacsStudy[] = (model.studies as PacsStudy[]).filter((study: PacsStudy): boolean =>
+        study.patientId === patient.patientId && (patient.server === undefined || study.server === undefined || study.server === patient.server));
+      const seriesPaths: string[] = theirs
+        .flatMap((study: PacsStudy): PacsSeries[] => (Array.isArray(study.series) ? study.series : []))
+        .map((one: PacsSeries): string | undefined => one.vfsPath)
+        .filter((one: string | undefined): one is string => typeof one === 'string');
+      if (seriesPaths.length === 0) continue;
+      rows.push({ kind: 'PAT', address: patientAddress_of(patient), values: seriesPaths, label: patient.patientName || patient.patientId });
+    }
     for (const study of model.studies as PacsStudy[]) {
       const series: PacsSeries[] = Array.isArray(study.series) ? study.series : [];
       const seriesPaths: string[] = series

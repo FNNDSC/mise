@@ -38,6 +38,12 @@ export interface ChellCLIConfig {
   attach?: string;
   /** The attach token, when the {@link attach} URL does not carry one. */
   attachToken?: string;
+  /**
+   * `--door <url>`: come through a porter — log in there with a password,
+   * follow the boot, attach to the session it mounts. No token reaches the
+   * terminal; the door's cookie does.
+   */
+  door?: string;
   /** `--host-control [tiers]` as typed (true for bare). */
   hostControl?: string | boolean;
   /** `--expose-host-control`. */
@@ -74,6 +80,7 @@ export interface CliActionOptions {
   remote?: boolean;
   attach?: string;
   token?: string;
+  door?: string;
   authTokenStdin?: boolean;
   info?: boolean;
 }
@@ -125,6 +132,13 @@ export function cliConfig_fromArgs(
     }
     if (options.token !== undefined) {
       config.attachToken = options.token;
+    }
+    // A door takes a name and a password rather than an address and a token;
+    // `-u` and `-p` reach it without a `<user>@<url>` target, which names a
+    // CUBE the door already knows.
+    if (options.door !== undefined) {
+      config.door = options.door;
+      config.connectConfig = { ...(config.connectConfig ?? {}), ...(options.user !== undefined ? { user: options.user } : {}), ...(options.password !== undefined ? { password: options.password } : {}) };
     }
     if (options.command !== undefined) {
       config.commandToExecute = options.command;
@@ -268,6 +282,7 @@ ${chalk.bold.cyan('DESCRIPTION')}
     .option('--remote', 'Attach to a running calypso as a remote surface')
     .option('--attach <url>', 'Address of calypso on another machine; accepts the URL it prints, token and all')
     .option('--token <token>', 'Attach token, when the --attach URL does not carry one')
+    .option('--door <url>', 'With --remote: come through a porter — log in there (-u, -p, or be asked), and attach to the session it mounts')
     .option('--auth-token-stdin', 'Log in with a CUBE auth token read from stdin (one line) instead of a password; needs <user>@<url>')
     .option('--info', 'Show a detailed table of the stack packages, roles, and versions, then exit')
     .addHelpText('after', `

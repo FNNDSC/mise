@@ -44,6 +44,15 @@ describe('cliConfig_fromArgs', () => {
     expect(c.connectConfig?.url).toBe('https://secure.org');
   });
 
+  it('takes a door with -u and -p, needing no user@url target', () => {
+    const c = cliConfig_fromArgs(undefined, { remote: true, door: 'https://titan/', user: 'chris', password: 'pw' }, noFile);
+    expect(c.mode).toBe('remote');
+    expect(c.door).toBe('https://titan/');
+    expect(c.connectConfig).toEqual({ user: 'chris', password: 'pw' });
+    const bare = cliConfig_fromArgs(undefined, { remote: true, door: 'https://titan/' }, noFile);
+    expect(bare.connectConfig).toEqual({});
+  });
+
   it('carries --auth-token-stdin beside the identity, and without one', () => {
     const withIdentity = cliConfig_fromArgs('chris@https://cube.example.org/api/v1/', { daemon: true, authTokenStdin: true }, noFile);
     expect(withIdentity.mode).toBe('daemon');

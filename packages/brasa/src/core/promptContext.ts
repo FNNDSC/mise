@@ -24,6 +24,7 @@ import { type ProcFeed, pace_get, type CubePace, type ProcRosterSyncKind,
   type ProcPromptProgress,
   type ProcPromptState,
   type ProcWarmupProgress,
+  type ProcLandedFeed,
 } from '@fnndsc/cumin';
 
 /**
@@ -120,12 +121,15 @@ export async function sessionPromptContext_build(
     id: load.feedID, loaded: load.loaded, total: load.total, ...(load.failed !== undefined ? { failed: load.failed } : {}),
   }));
   const arrived: number[] = procCache_get().arrivals_recent();
+  // Feeds whose topology just landed, each with its shape: the space of
+  // everything run here, materialising on a surface as the index reads it.
+  const landed: ProcLandedFeed[] = procCache_get().topologyLanded_recent();
   const roster: ProcRosterSyncKind | null = procCache_get().rosterSync_get();
   const sweeping: boolean =
     warmupRaw.active || lifecycle.state === 'reconciling' || lifecycle.state === 'failed';
   const warmupFailures: WarmupFailure[] = warmupFailures_list();
   const procWarmup: ProcPromptProgress | undefined =
-    sweeping || feedLoad !== null || arrived.length > 0 || roster !== null
+    sweeping || feedLoad !== null || arrived.length > 0 || landed.length > 0 || roster !== null
       ? {
           loaded: warmupRaw.loaded,
           total: warmupRaw.total,
@@ -134,6 +138,7 @@ export async function sessionPromptContext_build(
           sweeping,
           ...(feedLoad !== null ? { feed: feeds[0], feeds } : {}),
           ...(arrived.length > 0 ? { arrived } : {}),
+          ...(landed.length > 0 ? { landed } : {}),
           ...(roster !== null ? { roster } : {}),
         }
       : undefined;

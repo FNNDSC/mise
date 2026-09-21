@@ -20,6 +20,9 @@ import {
   feedIndexingModelSchema,
   type FeedIndexingModel,
   feedListModelSchema,
+  procUniverseModelSchema,
+  PROC_UNIVERSE_MODEL_KIND,
+  type ProcUniverseModel,
   DAG_MODEL_KINDS,
   FEED_LIST_MODEL_KIND,
   type FeedDagModel,
@@ -34,6 +37,7 @@ import { Listing, type ListingStateParts } from '../roster/listing.js';
 import { progressCell_build, type ListingProgress, type ListingTrait, type ListingAction } from '../roster/row.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
+import { LandedFeeds, universeGraph_build, type LandedFeed } from './universe.js';
 
 /** What the pane asks of its host. */
 export interface DagPanelHandlers {
@@ -489,10 +493,16 @@ export class DagPanel {
    * @param envelope - Any envelope crossing the session.
    */
   public envelope_observe(envelope: WireEnvelope): void {
+    if (envelope.model?.kind === PROC_UNIVERSE_MODEL_KIND) {
+      const universe = procUniverseModelSchema.safeParse(envelope.model.data);
+      if (universe.success) this.universe_show(universe.data);
+      return;
+    }
     if (envelope.model?.kind === FEED_LIST_MODEL_KIND) {
       this.rosterPending = false;
       const roster = feedListModelSchema.safeParse(envelope.model.data);
       if (roster.success) {
+        this.universe_end(true);
         this.chooser_show(roster.data.feeds);
       }
       return;
@@ -508,6 +518,9 @@ export class DagPanel {
       // keep the warming figure honest below it.
       this.rosterPending = false;
       this.rosterRefusal_show(envelope);
+      // The wait is drawn with what is known: the space of everything run
+      // here, as it lands. Cache-resident, so the ask costs the lane nothing.
+      this.universe_request();
       return;
     }
     if (envelope.model?.kind === DAG_MODEL_KINDS.feedIndexing) {
@@ -541,6 +554,7 @@ export class DagPanel {
       // The operator asked for this one by hand: pin it.
       this.pinnedFeedId = model.feedId;
     }
+    this.universe_end(false);
     this.shownFeedId = model.feedId;
     this.pendingFeedId = null;
     this.stateSpan?.classList.remove('state-wait');
@@ -851,12 +865,21 @@ export class DagPanel {
    * @param context - The pushed prompt context.
    */
   public promptContext_observe(context: PromptContext): void {
+    const landings: LandedFeed[] = context.procWarmup?.landed ?? [];
+    if (landings.length > 0) this.universeLandings_take(landings);
     if (this.rosterProgress !== null && this.rosterProgress.isConnected) {
       const warm = context.procWarmup;
       if (warm?.total !== undefined && warm.total > 0 && warm.sweeping !== false) {
         const percent: number = Math.floor((warm.loaded / warm.total) * 100);
         this.rosterProgress.textContent =
           `INDEX WARMING \u2014 ${warm.loaded}/${warm.total} (${percent}%). The roster opens when the index is whole.`;
+        const warming: string = `INDEX WARMING ${warm.loaded.toLocaleString()}/${warm.total.toLocaleString()} (${percent}%)`;
+        if (warming !== this.universeWarming) {
+          this.universeWarming = warming;
+          // The figure in the title moves with the prompt even when no
+          // feed landed since the last frame.
+          if (this.universeShown && this.universeLive) this.universeTitle_paint();
+        }
       }
       if (warm === undefined || warm.sweeping === false || warm.state === 'cached') {
         // The index came whole: ask again on the operator's behalf.
@@ -1048,6 +1071,110 @@ export class DagPanel {
 
   /** The live progress line of a refused roster, fed by the prompt. */
   private rosterProgress: HTMLElement | null = null;
+
+  /** The feeds the session has reported landing, for the universe. */
+  private readonly landed: LandedFeeds = new LandedFeeds();
+  /** Whether the universe — the space of everything run here — is on the canvas. */
+  private universeShown: boolean = false;
+  /** Whether the universe still grows with the prompt's landings (the index warming). */
+  private universeLive: boolean = false;
+  /** A repaint of the universe waiting its turn, so landings never repaint faster than once a second. */
+  private universeRepaint: number | null = null;
+  /** The layout the operator had before the universe took the molecule, to give back. */
+  private universeStrategyWas: LayoutStrategy | null = null;
+  /** The warm-up figure the universe's title carries while live. */
+  private universeWarming: string = '';
+
+  /**
+   * Asks for the space of everything run here (the dashboard's UNIVERSE
+   * gesture, and the wait's own theater): every feed the index holds, as
+   * it landed. Cache-resident, answered at once whole or not.
+   */
+  public universe_request(): void {
+    this.handlers.command_run('proc universe');
+  }
+
+  /**
+   * Puts the universe on the canvas: branches by pipeline shape, feeds as
+   * leaves, sized by their jobs and hued by their status. While the index
+   * warms it keeps growing with each landing the prompt reports; whole,
+   * it stands.
+   *
+   * @param model - Every feed the index holds so far, and whether it is whole.
+   */
+  public universe_show(model: ProcUniverseModel): void {
+    this.landed.clear();
+    this.landed.take(model.feeds);
+    this.universeLive = !model.whole;
+    if (!this.universeShown) {
+      this.universeShown = true;
+      this.universeStrategyWas = this.scene.strategy_get();
+      // A taxonomy is a molecule, not a rank order: gravity pulls the
+      // branches into a crown, and shared trunks read as the trunks they are.
+      this.scene.strategy_set('molecule');
+      this.scene.physics_set({ gravity: true });
+    }
+    this.roster_show(false);
+    this.pendingFeedId = null;
+    this.pinnedFeedId = null;
+    this.empty.style.display = 'none';
+    this.canvas.style.display = 'block';
+    this.universe_paint();
+  }
+
+  /** Repaints the universe from what has landed, and titles it honestly. */
+  private universe_paint(): void {
+    this.scene.graph_set(universeGraph_build(this.landed.all()), { wave: false });
+    this.universeTitle_paint();
+  }
+
+  /** Titles the universe with what it holds and, while live, how far the index is. */
+  private universeTitle_paint(): void {
+    const feeds: LandedFeed[] = this.landed.all();
+    const shapes: number = new Set(feeds.map((feed: LandedFeed): string => feed.chain.join('>'))).size;
+    const figure: string = `${feeds.length} FEEDS · ${shapes} SHAPES`;
+    this.title.textContent = this.universeLive
+      ? `UNIVERSE — ${figure}${this.universeWarming.length > 0 ? ` · ${this.universeWarming}` : ' · INDEX WARMING'}`
+      : `UNIVERSE — ${figure}`;
+    if (this.stateSpan !== null) {
+      this.stateSpan.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
+      this.stateSpan.classList.add(this.universeLive ? 'state-wait' : 'state-settled');
+      this.stateSpan.textContent = this.universeLive ? 'LANDING' : 'WHOLE';
+    }
+  }
+
+  /** Takes the prompt's landings into the universe, repainting at most once a second. */
+  private universeLandings_take(landed: ReadonlyArray<LandedFeed>): void {
+    if (!this.universeShown || !this.universeLive) return;
+    if (!this.landed.take(landed) || this.universeRepaint !== null) return;
+    this.universeRepaint = window.setTimeout((): void => {
+      this.universeRepaint = null;
+      if (this.universeShown) this.universe_paint();
+    }, 1000);
+  }
+
+  /**
+   * Takes the universe off the canvas: the roster, or a feed, takes its place.
+   *
+   * @param hideCanvas - Whether the canvas goes dark too (the roster's case).
+   */
+  private universe_end(hideCanvas: boolean): void {
+    if (!this.universeShown) return;
+    this.universeShown = false;
+    this.universeLive = false;
+    this.universeWarming = '';
+    if (this.universeRepaint !== null) {
+      window.clearTimeout(this.universeRepaint);
+      this.universeRepaint = null;
+    }
+    this.landed.clear();
+    if (this.universeStrategyWas !== null) {
+      this.scene.strategy_set(this.universeStrategyWas);
+      this.universeStrategyWas = null;
+    }
+    this.scene.selection_clear();
+    if (hideCanvas) this.canvas.style.display = 'none';
+  }
 
   /**
    * Paints the roster refusal in place of the loading row: the daemon's

@@ -3708,6 +3708,10 @@ async function surface_start(token: string): Promise<void> {
       const parsed = feedListModelSchema.safeParse(model.data);
       if (parsed.success) feeds = parsed.data.feeds as RosterFeed[];
     }
+    // A roster refused for warming is not an empty roster: the tiles say
+    // the index is warming rather than counting feeds that are not yet known.
+    const rosterWarming: boolean = feeds.length === 0 && roster.envelopes.some((envelope): boolean => envelope.status === 'error');
+    const feedsFigure: string = rosterWarming ? 'INDEX WARMING' : `${feeds.length} FEEDS`;
     const errored: number = feeds.filter((feed: RosterFeed): boolean => /error/i.test(feed.status)).length;
     const live: number = feeds.filter((feed: RosterFeed): boolean => /running|scheduled|created|started/i.test(feed.status)).length;
     let entries: FsListingEntry[] = [];
@@ -3724,10 +3728,17 @@ async function surface_start(token: string): Promise<void> {
     const folders: FsListingEntry[] = entries.filter((entry: FsListingEntry): boolean => entry.type === 'dir');
     const desktops: GroupSnapshot[] = dormant.list();
 
+    const universe: LauncherTile = {
+      key: 'universe', name: 'UNIVERSE', hue: '--honey', numeral: '',
+      figures: [{ text: feedsFigure }],
+      rows: [{ text: 'every feed as it landed — branches by pipeline, feeds as leaves', open: (): void => universe_show() }],
+      verb: 'SEE THE SPACE',
+      enter: (): void => universe_show(),
+    };
     const analyses: LauncherTile = {
       key: 'analyses', name: 'ANALYSES', hue: '--october-sunset', numeral: '3',
       figures: [
-        { text: `${feeds.length} FEEDS` },
+        { text: feedsFigure },
         ...(live > 0 ? [{ text: `${live} RUNNING` }] : []),
         ...(errored > 0 ? [{ text: `${errored} ERRORED`, errored: true, open: (): void => runs_show('status:error') }] : []),
       ],
@@ -3780,8 +3791,8 @@ async function surface_start(token: string): Promise<void> {
       enter: (): void => { domain_enter('panes'); panesPanel.render(); layout.focus_set('panes'); },
     };
     // The block with the most to say takes the wide seat.
-    const rest: LauncherTile[] = [files, pacs, panes];
-    return feeds.length >= entries.length ? [analyses, ...rest] : [files, analyses, pacs, panes];
+    const rest: LauncherTile[] = [files, pacs, panes, universe];
+    return feeds.length >= entries.length ? [analyses, ...rest] : [files, analyses, pacs, panes, universe];
   };
 
   const launcherPanel: LauncherPanel = new LauncherPanel(launcherMount, {
@@ -4473,6 +4484,13 @@ async function surface_start(token: string): Promise<void> {
     dagPanel.list_reset();
     dagPanel.roster_filter(filter);
     dagPanel.feedsChooser_request();
+    layout.focus_set('dag');
+    consoleFocused_set(false);
+  };
+  /** UNIVERSE: the space of everything run here, on the RUNS canvas. */
+  const universe_show = (): void => {
+    domain_enter('dag');
+    dagPanel.universe_request();
     layout.focus_set('dag');
     consoleFocused_set(false);
   };

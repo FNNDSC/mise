@@ -193,3 +193,23 @@ export type FeedListModel = z.infer<typeof feedListModelSchema>;
 
 /** The chooser model's envelope kind. */
 export const FEED_LIST_MODEL_KIND = 'feed.list' as const;
+
+/**
+ * The space of everything run here: every feed the index holds, as it
+ * landed — its size, its status, and the shape of its pipeline. A surface
+ * draws it as a tree, branches by pipeline shape, feeds as leaves.
+ */
+export const procUniverseFeedSchema = z.object({
+  id: z.number(),
+  jobs: z.number(),
+  status: z.string(),
+  chain: z.array(z.string()),
+});
+export const procUniverseModelSchema = z.object({
+  feeds: z.array(procUniverseFeedSchema),
+  /** Whether the index is whole; false while it still warms. */
+  whole: z.boolean(),
+});
+export type ProcUniverseFeed = z.infer<typeof procUniverseFeedSchema>;
+export type ProcUniverseModel = z.infer<typeof procUniverseModelSchema>;
+export const PROC_UNIVERSE_MODEL_KIND = 'proc.universe' as const;

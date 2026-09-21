@@ -559,6 +559,12 @@ export const promptContextSchema = z.object({
       failed: z.string().optional(),
     })).optional(),
     arrived: z.array(z.number()).optional(),
+    landed: z.array(z.object({
+      id: z.number(),
+      jobs: z.number(),
+      status: z.string(),
+      chain: z.array(z.string()),
+    })).optional(),
     roster: z.enum(['delta', 'full']).optional(),
   }).optional(),
   procIndex: z.object({

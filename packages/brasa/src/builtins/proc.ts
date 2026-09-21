@@ -4,8 +4,8 @@
  */
 import chalk from 'chalk';
 import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procFeed_refreshStart, type FeedTopologyReadiness, procRoster_sync, procRoster_syncStart, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
-import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
-import { FEED_LIST_MODEL_KIND, type FeedListModel } from '@fnndsc/menu';
+import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, feedStatus_ofCounts, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { FEED_LIST_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, type FeedListModel, type ProcUniverseModel } from '@fnndsc/menu';
 import { spinner } from '../lib/spinner.js';
 import { commandArgs_process, type ParsedArgs } from './utils.js';
 import { builtin_cd } from './fs/cd.js';
@@ -455,6 +455,35 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
 }
 
 /**
+ * The space of everything run here: every feed whose topology the index
+ * holds, as it landed — size, status, and the shape of its pipeline.
+ *
+ * Answered from the cache at once, whole or not: while the index warms
+ * the answer is what has landed so far and says so, and a surface that
+ * draws it keeps drawing as the prompt reports more. No guard, because
+ * the answer is honest about its own extent.
+ *
+ * @returns The universe model, rendered as a count and a whole/warming word.
+ */
+function procUniverse_handle(): Promise<CommandEnvelope> {
+  const cache: ProcCache = procCache_get();
+  const feeds: ProcUniverseModel['feeds'] = cache.feedIDs_get()
+    .filter((feedID: number): boolean => cache.topologyLoaded_has(feedID))
+    .map((feedID: number): ProcUniverseModel['feeds'][number] => {
+      const feed: ProcFeed = cache.feed_get(feedID)!;
+      return { id: feedID, jobs: cache.instancesForFeed_count(feedID), status: feedStatus_ofCounts(feed), chain: cache.pluginChain_of(feedID) };
+    });
+  const whole: boolean = !cache.warmupProgress_get().active && procTopology_status().state === 'complete';
+  const shapes: number = new Set(feeds.map((feed): string => feed.chain.join('>'))).size;
+  const rendered: string =
+    `${chalk.cyan('universe:')} ${feeds.length} feeds across ${shapes} pipeline shapes` +
+    `${whole ? '' : chalk.yellow(' — the index is still warming; this is what has landed so far')}
+`;
+  const model: ProcUniverseModel = { feeds, whole };
+  return Promise.resolve(envelope_ok(rendered, { kind: PROC_UNIVERSE_MODEL_KIND, data: model }));
+}
+
+/**
  * A feed's settled and total job counts, from CUBE's own counters.
  *
  * These come with the feed row rather than needing resident topology, so a
@@ -623,6 +652,9 @@ export async function builtin_proc(args: string[]): Promise<CommandEnvelope> {
   }
   if (subcommand === 'feeds') {
     return procFeeds_handle(args);
+  }
+  if (subcommand === 'universe') {
+    return procUniverse_handle();
   }
   if (subcommand === 'stat') {
     return procStat_handle(args);

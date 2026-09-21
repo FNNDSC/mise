@@ -4,7 +4,7 @@ import {
   ProcFeed,
   ProcInstance,
   status_isTerminal,
-  PROC_ARRIVAL_TTL_MS, PROC_FEED_LOAD_FAILURE_TTL_MS,
+  PROC_ARRIVAL_TTL_MS, PROC_FEED_LOAD_FAILURE_TTL_MS, PROC_LANDED_TTL_MS,
 } from '../src/cache/procCache';
 import { listCache_get } from '../src/cache/listCache';
 import { listingInvalidation_flush, listingInvalidation_reset } from '../src/cache/listingInvalidation';
@@ -571,5 +571,49 @@ describe('proc movement reaches the folder listings', () => {
     expect(listCache_get().cache_get('/home/someone/feeds/feed_6')).toBeNull();
     expect(listCache_get().cache_get('/home/someone/feeds/feed_6/pl-a_1/data')).toBeNull();
     expect(listCache_get().cache_get('/home/someone/feeds/feed_5')).not.toBeNull();
+  });
+});
+
+describe('topology landings', () => {
+  let cache: ProcCache;
+  beforeEach(() => {
+    cache = procCache_get();
+    cache.cache_clear();
+  });
+
+  it('reports a feed as the index reads it, with its size, status and pipeline shape so far', () => {
+    cache.feed_add({ ...feed(1), erroredJobs: 1, finishedJobs: 2 });
+    cache.instance_add(inst(10, 1, null, 'pl-dircopy'));
+    expect(cache.topologyLanded_recent()).toEqual([
+      { id: 1, jobs: 1, status: 'finishedWithError', chain: ['pl-dircopy'] },
+    ]);
+    cache.instance_add(inst(11, 1, 10, 'pl-dcm2niix'));
+    cache.instance_add(inst(12, 1, 11, 'pl-fastsurfer'));
+    cache.instance_add(inst(13, 1, 10, 'pl-dcm2niix'));
+    cache.topologyLoaded_mark(1);
+    expect(cache.topologyLanded_recent()).toEqual([
+      { id: 1, jobs: 4, status: 'finishedWithError', chain: ['pl-dircopy', 'pl-dcm2niix', 'pl-fastsurfer'] },
+    ]);
+  });
+
+  it('forgets a landing after its while, and never re-lands a feed marked again', () => {
+    cache.feed_add(feed(2));
+    cache.instance_add(inst(20, 2, null, 'pl-simplefsapp'));
+    cache.topologyLoaded_mark(2);
+    expect(cache.topologyLanded_recent().map((f) => f.id)).toEqual([2]);
+    const later: number = Date.now() + PROC_LANDED_TTL_MS + 1;
+    expect(cache.topologyLanded_recent(later)).toEqual([]);
+    cache.topologyLoaded_mark(2, later);
+    expect(cache.topologyLanded_recent(later + 1)).toEqual([]);
+  });
+
+  it('orders landings by when they landed; a feed with no instances lands when it completes', () => {
+    cache.feed_add(feed(3));
+    cache.feed_add(feed(4));
+    const t0: number = Date.now();
+    cache.topologyLoaded_mark(4, t0 + 2000);
+    cache.topologyLoaded_mark(3, t0 + 1000);
+    expect(cache.topologyLanded_recent(t0 + 2500).map((f) => f.id)).toEqual([3, 4]);
+    expect(cache.topologyLanded_recent(t0 + 2500)[0]).toEqual({ id: 3, jobs: 0, status: 'finishedSuccessfully', chain: [] });
   });
 });

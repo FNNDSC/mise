@@ -15,6 +15,7 @@ export {
   type ProcPromptState,
   type ProcPromptProgress,
   type ProcFeedPromptProgress,
+  type ProcLandedPromptFeed,
 } from './proc.js';
 export {
   PROGRESS_OPERATIONS,
@@ -148,6 +149,11 @@ export {
   FEED_LIST_MODEL_KIND,
   type FeedListEntry,
   type FeedListModel,
+  procUniverseFeedSchema,
+  procUniverseModelSchema,
+  PROC_UNIVERSE_MODEL_KIND,
+  type ProcUniverseFeed,
+  type ProcUniverseModel,
 } from './dag.js';
 export {
   pluginParameterSchema,

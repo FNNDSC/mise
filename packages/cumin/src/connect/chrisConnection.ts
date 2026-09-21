@@ -38,6 +38,19 @@ interface ConnectOptions {
   url: string;
 }
 
+/** What a login door hands over: an identity and a CUBE token minted for it. */
+export interface TokenConnectOptions {
+  user: string;
+  url: string;
+  token: string;
+}
+
+/** Whether a handed-over token was accepted, and if not, what the server said. */
+export interface TokenConnectOutcome {
+  connected: boolean;
+  reason?: string;
+}
+
 /** Credentials used to obtain a short-lived elevated CUBE token. */
 export interface ElevationCredentials {
   username: string;
@@ -157,6 +170,44 @@ export class ChRISConnection {
       }
       process.exit(1);
     }
+  }
+
+  /**
+   * Establishes a connection from a CUBE token somebody else already minted.
+   *
+   * The password path exchanges a password for a token and saves it. A front
+   * that authenticated the operator itself — a login door on a shared host —
+   * holds the token and never the password, so it hands the token over as
+   * it is. The token is proved against the server BEFORE anything is
+   * written: a refused token leaves the saved context and the last-user
+   * pointer exactly as they were. Nothing here exits the process, and
+   * nothing lands on the error stack; the refusal travels in the outcome,
+   * because the caller is a boot that has its own row to write.
+   *
+   * @param options - The identity the token was minted for, and the token.
+   * @returns Connected, or refused with the server's reason.
+   */
+  async connection_connectWithToken(options: TokenConnectOptions): Promise<TokenConnectOutcome> {
+    const { user, url, token }: TokenConnectOptions = options;
+    if (this.storageProvider) {
+      await config_init(this.storageProvider);
+      this._config = connectionConfig;
+    }
+    const client: Client = client_create(url, token);
+    try {
+      await client.getUser();
+    } catch (error: unknown) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      return { connected: false, reason: `${url} refused the token for ${user}: ${reason}` };
+    }
+    this.user = user;
+    this.chrisURL = url;
+    await this._config!.context_set(user, url);
+    this.tokenFile = this._config!.tokenFilepath;
+    this.authToken = token;
+    this.client = client;
+    await this.token_saveToFile(this.tokenFile, token);
+    return { connected: true };
   }
 
   /**

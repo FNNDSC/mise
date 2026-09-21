@@ -1,9 +1,10 @@
 /**
  * @file Characterization tests for the brain art and its frame renderer.
  *
- * The renderer moved here from chell so any surface (the chell boot screen,
- * the calypso console face) can draw it. The golden fixture was captured
- * before the move; matching it proves the relocation is behaviour-preserving.
+ * The renderer moved from chell to brasa so any surface (the chell boot
+ * screen, the calypso console face) could draw it, and from brasa to the wire
+ * package so a browser can. The golden fixture was captured before the first
+ * move; matching it proves each relocation is behaviour-preserving.
  *
  * @module
  */

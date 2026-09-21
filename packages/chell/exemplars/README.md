@@ -53,6 +53,7 @@ node exemplars/ts/dist/02_fsRoundtrip.js
 node exemplars/ts/dist/03_feedDcm2niix.js   # pull → dircopy → dcm2niix → verify .nii → cleanup
 node exemplars/ts/dist/04_pacsQR.js         # query → verify existing OR pull fresh → cleanup owned artifacts
 node exemplars/ts/dist/05_calypsoDaemon.js  # live daemon WS surface → restart/context rehydrate
+node exemplars/ts/dist/14_tokenLogin.js     # daemon started with a CUBE token on stdin, off a TTY → berth answers; a bad token is refused
 ```
 
 Each prints ✓/✗ per check and exits 0 only if all passed.

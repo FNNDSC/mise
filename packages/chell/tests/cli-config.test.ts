@@ -44,6 +44,17 @@ describe('cliConfig_fromArgs', () => {
     expect(c.connectConfig?.url).toBe('https://secure.org');
   });
 
+  it('carries --auth-token-stdin beside the identity, and without one', () => {
+    const withIdentity = cliConfig_fromArgs('chris@https://cube.example.org/api/v1/', { daemon: true, authTokenStdin: true }, noFile);
+    expect(withIdentity.mode).toBe('daemon');
+    expect(withIdentity.authTokenStdin).toBe(true);
+    expect(withIdentity.connectConfig).toEqual({ user: 'chris', password: undefined, url: 'https://cube.example.org/api/v1/' });
+    // The flag survives a target-less invocation so the boot can refuse it by name.
+    const alone = cliConfig_fromArgs(undefined, { daemon: true, authTokenStdin: true }, noFile);
+    expect(alone.authTokenStdin).toBe(true);
+    expect(alone.connectConfig).toBeUndefined();
+  });
+
   it('applies startup preference toggles', () => {
     const c = cliConfig_fromArgs(undefined, { prefetchFeeds: false, logo: false, asciiBoot: true }, noFile);
     expect(c.prefetchFeeds).toBe(false);

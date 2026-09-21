@@ -42,6 +42,13 @@ export interface ChellCLIConfig {
   hostControl?: string | boolean;
   /** `--expose-host-control`. */
   exposeHostControl?: boolean;
+  /**
+   * `--auth-token-stdin`: the CUBE token comes in on stdin, one line, from a
+   * front that authenticated the operator itself. It rides beside the
+   * `<user>@<url>` target rather than inside it, so a target-less invocation
+   * can still be refused by name.
+   */
+  authTokenStdin?: boolean;
   output?: string; // For help/version text
 }
 
@@ -67,6 +74,7 @@ export interface CliActionOptions {
   remote?: boolean;
   attach?: string;
   token?: string;
+  authTokenStdin?: boolean;
   info?: boolean;
 }
 
@@ -140,6 +148,10 @@ export function cliConfig_fromArgs(
     config = { mode: 'connect', physicalFS: options.physicalFS, connectConfig };
   } else {
     config = { mode: 'interactive', physicalFS: options.physicalFS };
+  }
+
+  if (options.authTokenStdin) {
+    config.authTokenStdin = true;
   }
 
   // Apply startup preference toggles when provided
@@ -256,6 +268,7 @@ ${chalk.bold.cyan('DESCRIPTION')}
     .option('--remote', 'Attach to a running calypso as a remote surface')
     .option('--attach <url>', 'Address of calypso on another machine; accepts the URL it prints, token and all')
     .option('--token <token>', 'Attach token, when the --attach URL does not carry one')
+    .option('--auth-token-stdin', 'Log in with a CUBE auth token read from stdin (one line) instead of a password; needs <user>@<url>')
     .option('--info', 'Show a detailed table of the stack packages, roles, and versions, then exit')
     .addHelpText('after', `
 ${chalk.bold.cyan('INTERACTIVE COMMANDS')}

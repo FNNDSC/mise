@@ -34,7 +34,9 @@ import { bootFlags_compute, type BootFlags } from './bootFlags.js';
 import { context_getSingle } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
 import { engine_create, stopOnError_set, type BrasaEngine } from '@fnndsc/brasa';
-import { sessionConnect_fromSaved, type SavedSessionResult } from '@fnndsc/brasa';
+import { sessionConnect_fromSaved, sessionConnect_withToken, type SavedSessionResult, type TokenSessionResult } from '@fnndsc/brasa';
+import { stdinLine_read } from '../lib/stdinLine.js';
+import type { DaemonConsoleTarget } from './daemonConsole.js';
 import { surface_set } from '@fnndsc/brasa';
 import { cliSurface_create } from './cliSurface.js';
 import { surfaceLine_execute } from './surfaceDispatch.js';
@@ -294,6 +296,52 @@ async function connection_fromArgs(
 }
 
 /**
+ * Connect with a CUBE token read from stdin. Returns Err() on any refusal.
+ *
+ * This is how a login front hands a session its identity: the front
+ * exchanged the operator's password for a token itself, so the session
+ * gets the token and never the password — and not on argv, where `ps`
+ * would show it to the host. Refusals are by name: the flag without an
+ * identity, the flag beside a password, a stream with no line on it, and
+ * a token the server will not have.
+ */
+async function connection_fromToken(
+  config: ChellCLIConfig,
+  boot: BootLogger | null,
+): Promise<Result<SingleContext>> {
+  const user: string | undefined = config.connectConfig?.user;
+  const url: string | undefined = config.connectConfig?.url;
+  if (!user || !url) {
+    console.error(chalk.red('Error: --auth-token-stdin needs a <user>@<url> target to say whose token it is.'));
+    return Err();
+  }
+  if (config.connectConfig?.password !== undefined) {
+    console.error(chalk.red('Error: --auth-token-stdin and --password are two logins; give one.'));
+    return Err();
+  }
+  const token: string | null = await stdinLine_read();
+  if (token === null || token.length === 0) {
+    console.error(chalk.red('Error: --auth-token-stdin read no token: stdin ended before a line arrived.'));
+    boot?.log('fail', 'Connect', 'No token on stdin');
+    return Err();
+  }
+
+  spinner.start(`Establishing uplink to ${url}`);
+  const result: TokenSessionResult = await sessionConnect_withToken(user, url, token);
+  spinner.stop();
+  if (result.status === 'refused') {
+    console.error(chalk.red(`[!] Connection refused: ${result.error ?? 'the server did not accept the token'}`));
+    boot?.log('fail', 'Connect', result.error ?? 'Token refused');
+    return Err();
+  }
+  if (config.mode !== 'execute' && config.mode !== 'script') {
+    console.log(chalk.green('[+] Connection established.'));
+  }
+  boot?.log('ok', 'Connect', `Connected to ${url} (token)`);
+  return Ok(result.context);
+}
+
+/**
  * Restore a saved session from disk. Always succeeds — falls back to offline mode.
  */
 async function connection_fromSavedSession(
@@ -357,6 +405,9 @@ async function connection_establish(
   config: ChellCLIConfig,
   boot: BootLogger | null,
 ): Promise<Result<SingleContext>> {
+  if (config.authTokenStdin) {
+    return await connection_fromToken(config, boot);
+  }
   if (config.connectConfig) {
     return await connection_fromArgs(config, boot);
   }
@@ -369,6 +420,15 @@ async function connection_establish(
     }
   }
   return Ok(ctx);
+}
+
+/**
+ * Stands in for the daemon console where no terminal can hold one.
+ *
+ * @param target - The daemon, for the one line that says how to reach it.
+ */
+async function daemonConsole_skip(target: DaemonConsoleTarget): Promise<void> {
+  console.log(chalk.gray(`[+] No terminal here; the daemon keeps listening. Attach a surface with: chell --remote ${target.identity}`));
 }
 
 /**
@@ -548,6 +608,12 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
       boot ?? bootLogger_create('ChELL Boot', useAsciiBoot),
       undefined,
       { flag: config.hostControl, env: process.env['CALYPSO_HOST_CONTROL'], exposed: config.exposeHostControl === true },
+      // A boot ends at a login only where there is a terminal to log in on.
+      // Off a TTY — a service manager, a login front holding the pipe — a
+      // console spawned onto stdin would attach a surface to nothing and
+      // wait for an Enter that cannot come; the daemon just keeps listening,
+      // the same as the standalone `calypso` binary already does.
+      process.stdin.isTTY === true && process.stdout.isTTY === true ? undefined : daemonConsole_skip,
     );
     return;
   }

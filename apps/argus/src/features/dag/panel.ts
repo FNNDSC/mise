@@ -33,6 +33,7 @@ import { DagScene, type LayoutStrategy, type PhysicsTerms, type SceneNode } from
 import { Listing, type ListingStateParts } from '../roster/listing.js';
 import { progressCell_build, type ListingProgress, type ListingTrait, type ListingAction } from '../roster/row.js';
 import type { ProgressMessage } from '../../calypso/client.js';
+import { refusalReason_strip } from './refusal.js';
 
 /** What the pane asks of its host. */
 export interface DagPanelHandlers {
@@ -1055,14 +1056,10 @@ export class DagPanel {
    * @param envelope - The error envelope that answered `proc feeds`.
    */
   private rosterRefusal_show(envelope: WireEnvelope): void {
-    const raw: string = (envelope.renderedErr || envelope.rendered || '').replace(
-      // eslint-disable-next-line no-control-regex
-      /\u001b\[[0-9;]*m/g,
-      '',
-    );
-    const reason: string =
-      raw.split('\n').find((line: string): boolean => line.trim().length > 0)?.trim() ??
-      'the roster request was refused';
+    // The daemon's reason froze the count as it stood; the figure beneath
+    // moves with the prompt, so the reason keeps only its words.
+    const stripped: string = refusalReason_strip(envelope.renderedErr || envelope.rendered || '');
+    const reason: string = stripped.length > 0 ? stripped : 'the roster request was refused';
     const refusal: HTMLDivElement = document.createElement('div');
     refusal.className = 'feedlist-refusal';
     refusal.textContent = reason;

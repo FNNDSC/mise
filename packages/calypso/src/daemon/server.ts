@@ -363,7 +363,7 @@ export class CalypsoDaemon {
         },
       );
       const wss: WebSocketServer = new WebSocketServer({ server: httpServer });
-      wss.on('connection', (socket: WebSocket) => this.connection_handle(socket));
+      wss.on('connection', (socket: WebSocket, request: IncomingMessage) => this.connection_handle(socket, request));
       httpServer.on('error', reject);
       httpServer.listen(this.port, this.host, () => {
         resolve((httpServer.address() as AddressInfo).port);
@@ -520,8 +520,12 @@ export class CalypsoDaemon {
    *
    * @param socket - The connected surface.
    */
-  private connection_handle(socket: WebSocket): void {
+  private connection_handle(socket: WebSocket, request?: IncomingMessage): void {
     let surface: Surface | null = null;
+    // A front that holds the token for a browser — the porter — puts it on
+    // the upgrade URL it proxies, the way `/vfs?token=` already travels; the
+    // page then attaches with an empty token and is judged by the URL's.
+    const urlToken: string = new URL(request?.url ?? '/', 'http://localhost').searchParams.get('token') ?? '';
 
     socket.on('message', (data: RawData) => {
       let parsed: unknown;
@@ -534,7 +538,7 @@ export class CalypsoDaemon {
       }
 
       if (!surface) {
-        surface = this.attach_handle(socket, parsed);
+        surface = this.attach_handle(socket, parsed, urlToken);
         return;
       }
 
@@ -633,16 +637,18 @@ export class CalypsoDaemon {
    *
    * @param socket - The connecting surface.
    * @param raw - The first message received.
+   * @param urlToken - A token that rode the upgrade URL, or the empty string.
    * @returns The registered surface, or null when the attach was refused.
    */
-  private attach_handle(socket: WebSocket, raw: unknown): Surface | null {
+  private attach_handle(socket: WebSocket, raw: unknown, urlToken: string = ''): Surface | null {
     const attach = attach_parse(raw);
     if (!attach.ok || attach.value === undefined) {
       this.send(socket, { type: 'error', reason: attach.error ?? 'invalid attach' });
       socket.close();
       return null;
     }
-    if (!token_matches(this.token, attach.value.token)) {
+    const presented: string = attach.value.token.length > 0 ? attach.value.token : urlToken;
+    if (!token_matches(this.token, presented)) {
       this.send(socket, { type: 'error', reason: 'invalid token' });
       socket.close();
       return null;

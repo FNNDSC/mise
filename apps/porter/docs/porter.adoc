@@ -1,0 +1,48 @@
+= PORTER: the mise display manager
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+
+[abstract]
+== Abstract
+
+PORTER is to ARGUS what gdm is to a desktop: the thing that logs a human in, finds or starts their session, and shows them to the surface. It is not a surface (it attaches to nothing) and not the session (calypso is); it is the door. This document is its design log, kept the way `apps/argus/docs/aegis.adoc` keeps ARGUS's: every decision lands here in the pull request that makes it.
+
+== Status
+
+Grilled and settled 2026-09-21; built in slices from that day. Tier 2 of link:../../../docs/session-supervisor.adoc[the session supervisor] — the porter that document reserved a name for in 2026-07, arriving now that the web surface exists.
+
+== Decisions
+
+[cols="1,3"]
+|===
+| 2026-09-21 (a porter at the door) | Slice 3, the shape without the door. `apps/porter` is an app, not a package, because it is what gdm is to GNOME Shell: its own program with its own face, sibling of the DE, importing calypso for berths and nothing of argus. Fastify, with `@fastify/reply-from` for the HTTP proxy and the porter's own upgrade relay for the wire — `@fastify/http-proxy` routes to ONE upstream and cannot rewrite an attach, and every identity is its own upstream. `POST /sessions` takes a username and a password, trades the password at CUBE's `auth-token/` for a token, and starts (or joins) that identity's session with the token on stdin — `chell --daemon <user>@<url> --auth-token-stdin` — in four directories of its own under the state dir, keyed by the berth key; the password is held for the length of one HTTP call and lands nowhere. The session is mounted at `/s/<key>/`, the key being calypso's berth key for the identity — sixteen hex characters, stable across porter restarts, carrying no URL of anyone's into the URL bar. Under the mount the page, its assets and `/vfs` are proxied to the daemon on loopback, the attach token put on the proxied `/vfs` query and the proxied upgrade URL by the porter (calypso reads it there since this slice); the browser holds no token and is sent to `…/?door`. `GET /boot/<key>` is the session's boot as server-sent events — one per line the daemon wrote, ANSI and all, replayed for a late attacher — ending in `ready` or `failed`: the greeter's feed, and the same text the terminal boot shows. Nothing checks a cookie yet, so a porter at this slice binds loopback; the door itself (login page, cookie, LOG OUT) is the next slice and gates `/s/` and `/boot/`. Every login re-checks the password at CUBE even when the session is up: a berth proves the daemon, not the human.
+| 2026-09-21 (settled at the grill) | One CUBE per porter, from config, never a field. `SessionHost` seam: `ProcessHost` on titan first, `KubernetesHost` on argentum when titan has users. Cookie TTL = CUBE's if it has one, else 24 h, aligned with a 24 h idle eviction. TLS external — caddy or nginx on titan, an Ingress on argentum; the porter trusts `X-Forwarded-Proto` and never terminates. The greeter shows the SAME boot the terminal shows: the ASCII brain (`@fnndsc/menu/logo`, paced by the greeter) beside the boot rows off the daemon's stdout. No `--host-control` on titan, where every session shares one uid; it returns with pods, where a shell in one's own container is one's own. Fastify rather than FastAPI because the porter imports calypso's berth resolver, brasa's token connect and chell's entry — a Python front would shell out to every one of them.
+|===
+
+== Routes
+
+[cols="1,3",options="header"]
+|===
+| Route | What it does
+| `GET /healthz` | The CUBE this door serves and how many sessions it knows.
+| `POST /sessions` | `{username, password}` → `{key, mount, state}`; `state` is `started` or `attached`. 401 with CUBE's word on a refusal; 502 when a session does not come up.
+| `GET /boot/<key>` | Server-sent events: `line` (`{channel, text}`), then `ready` or `failed` (`{reason}`).
+| `/s/<key>/…` | The session: page, assets, `/vfs`, and the WebSocket wire, proxied to that identity's daemon on loopback with the token added by the porter.
+|===
+
+== Configuration
+
+Environment only, read once at start.
+
+[cols="1,3",options="header"]
+|===
+| Variable | Meaning
+| `PORTER_CUBE_URL` | Required. The one CUBE this door serves, API base (a trailing slash is added).
+| `PORTER_STATE_DIR` | Where each identity's `config`, `run`, `cache`, `tmp` live. Default `$XDG_STATE_HOME/porter`, else `~/.local/state/porter`.
+| `PORTER_HOST`, `PORTER_PORT` | Bind address; default `127.0.0.1:4180`.
+| `PORTER_CHELL` | The chell entry to start sessions with; default the `@fnndsc/chell` installed beside the porter.
+|===

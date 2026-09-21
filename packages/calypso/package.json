@@ -1,7 +1,7 @@
 {
   "name": "@fnndsc/calypso",
   "version": "0.15.2",
-  "description": "CALYPSO: the ChRIS session daemon — hosts a brasa engine for attached surfaces over a WebSocket",
+  "description": "CALYPSO: the ChRIS session daemon \u2014 hosts a brasa engine for attached surfaces over a WebSocket",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/FNNDSC/mise.git",
@@ -25,6 +25,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./berth": {
+      "import": "./dist/daemon/berth.js",
+      "types": "./dist/daemon/berth.d.ts"
     },
     "./package.json": "./package.json"
   },

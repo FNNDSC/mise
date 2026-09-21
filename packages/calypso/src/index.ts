@@ -113,6 +113,7 @@ export {
   berthKey_compute,
   berthDir_path,
   berth_path,
+  berth_pathIn,
   berth_write,
   berth_read,
   berthAll_read,

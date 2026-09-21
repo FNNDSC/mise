@@ -91,3 +91,20 @@ export function vfsUrl_build(path: string, token: string): string {
 export function door_isPresent(search: string): boolean {
   return new URLSearchParams(search).has('door');
 }
+
+/**
+ * The address of one of the door's own routes, from where the page is.
+ *
+ * A door mounts a session two segments below itself — `/s/<key>/` under
+ * `/` — so its `login` and `logout` stand two directories up from the
+ * page's mount, wherever a front has put the door itself.
+ *
+ * @param pathname - The page's path.
+ * @param leaf - The door route wanted: `login` or `logout`.
+ * @returns An absolute path on this origin.
+ */
+export function doorUrl_build(pathname: string, leaf: 'login' | 'logout'): string {
+  const parts: string[] = pageMount_of(pathname).split('/').filter((part: string): boolean => part.length > 0);
+  const above: string[] = parts.slice(0, -2);
+  return `/${above.length > 0 ? `${above.join('/')}/` : ''}${leaf}`;
+}

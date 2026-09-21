@@ -132,7 +132,22 @@ function berthDir_ensure(): void {
  * @returns The berth file path (may not exist).
  */
 export function berth_path(identity: string): string {
-  return join(berthDir_path(), `${BERTH_FILE_PREFIX}${berthKey_compute(identity)}.json`);
+  return berth_pathIn(process.env.XDG_RUNTIME_DIR || tmpdir(), identity);
+}
+
+/**
+ * The path of one identity's berth file under a given runtime directory.
+ *
+ * A host that keeps several daemons, each in a runtime directory of its
+ * own — the porter, one directory per identity — reads their berths from
+ * where it put them rather than from its own environment.
+ *
+ * @param runtimeDir - The runtime directory the daemon was started with.
+ * @param identity - A normalised identity from {@link identity_normalise}.
+ * @returns The berth file path (may not exist).
+ */
+export function berth_pathIn(runtimeDir: string, identity: string): string {
+  return join(runtimeDir, BERTH_SUBDIR, `${BERTH_FILE_PREFIX}${berthKey_compute(identity)}.json`);
 }
 
 /**

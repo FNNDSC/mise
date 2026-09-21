@@ -8,7 +8,7 @@
  * @module
  */
 import { describe, it, expect } from '@jest/globals';
-import { pageMount_of, wireUrl_resolve, vfsUrl_build, door_isPresent, type PageLocation } from '../../src/calypso/routes.js';
+import { pageMount_of, wireUrl_resolve, vfsUrl_build, door_isPresent, doorUrl_build, type PageLocation } from '../../src/calypso/routes.js';
 
 const atRoot: PageLocation = { protocol: 'http:', host: '127.0.0.1:41785', pathname: '/', search: '?token=abc' };
 const behindDoor: PageLocation = { protocol: 'https:', host: 'titan.tch.harvard.edu', pathname: '/s/chris@cube/', search: '?door' };
@@ -51,5 +51,15 @@ describe('door_isPresent', () => {
     expect(door_isPresent('?door=1&x=y')).toBe(true);
     expect(door_isPresent('?token=abc')).toBe(false);
     expect(door_isPresent('')).toBe(false);
+  });
+});
+
+describe('doorUrl_build', () => {
+  it('finds the door two directories above the mount', () => {
+    expect(doorUrl_build('/s/0123456789abcdef/', 'logout')).toBe('/logout');
+    expect(doorUrl_build('/s/0123456789abcdef/index.html', 'login')).toBe('/login');
+  });
+  it('keeps whatever a front put in front of the door', () => {
+    expect(doorUrl_build('/porter/s/0123456789abcdef/', 'logout')).toBe('/porter/logout');
   });
 });

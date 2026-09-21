@@ -120,6 +120,8 @@ try {
       if (m && m.textContent.includes('READY')) return true; }
     return false;`);
   check('session reaches READY', ready === true);
+  // The LOG OUT pill leaves by a door; at a daemon's root there is none.
+  check('the LOG OUT pill stands only behind a door', await evalIn(`return document.getElementById('door-pill')?.hidden === true;`) === true);
   if (!ready) throw new Error('no session');
 
   if (stage('drawer-everywhere (files, runs, pacs)')) {

@@ -1,0 +1,52 @@
+{
+  "name": "@fnndsc/porter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PORTER: the mise display manager \u2014 logs an operator in, finds or starts their calypso, and shows them to argus",
+  "type": "module",
+  "main": "dist/porter.js",
+  "bin": {
+    "porter": "dist/porter.js"
+  },
+  "scripts": {
+    "build": "rm -fr dist && tsc && chmod +x ./dist/porter.js",
+    "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --coverage",
+    "start": "node dist/porter.js"
+  },
+  "author": "Rudolph Pienaar",
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/formbody": "^9.0.0",
+    "@fastify/reply-from": "^12.6.5",
+    "@fnndsc/calypso": "^0.15.2",
+    "@fnndsc/chell": "^5.8.1",
+    "fastify": "^5.12.5",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.2.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.12",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.5",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FNNDSC/mise.git",
+    "directory": "apps/porter"
+  },
+  "keywords": [
+    "chris",
+    "mise",
+    "porter",
+    "login",
+    "display-manager"
+  ]
+}

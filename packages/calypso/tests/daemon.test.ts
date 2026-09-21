@@ -108,6 +108,27 @@ describe('CalypsoDaemon', () => {
     expect(typeof msg.session).toBe('string');
   });
 
+  it('takes the attach token from the upgrade URL when the attach carries none', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/?token=${TOKEN}`);
+    await new Promise<void>((resolve, reject) => { ws.once('open', () => resolve()); ws.once('error', reject); });
+    clients.push(ws);
+    const acked = message_next(ws);
+    send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: '', capabilities: { shellCommands: false, hiddenInput: false, localEdit: false, pipeSegments: false } });
+    const msg = await acked;
+    expect(msg.type).toBe('attached');
+  });
+
+  it('refuses an empty attach token when the URL carries a wrong one', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/?token=wrong`);
+    await new Promise<void>((resolve, reject) => { ws.once('open', () => resolve()); ws.once('error', reject); });
+    clients.push(ws);
+    const errored = message_next(ws);
+    send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: '', capabilities: { shellCommands: false, hiddenInput: false, localEdit: false, pipeSegments: false } });
+    const msg = await errored;
+    expect(msg.type).toBe('error');
+    expect(msg.reason).toBe('invalid token');
+  });
+
   it('refuses an attach with a wrong token and closes', async () => {
     const ws = await client_open(port);
     clients.push(ws);

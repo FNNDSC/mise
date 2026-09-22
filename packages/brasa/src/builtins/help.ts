@@ -751,14 +751,14 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['fortune'],
   },
   weather: {
-    usage: 'weather [place] [-c|--celsius] [-d|--days N]',
+    usage: 'weather [place] [-u|--units metric|imperial] [-d|--days N]',
     summary: 'The weather at a place, now and the next few days',
-    description: 'Reports the current conditions and a short forecast for a place, from Open-Meteo (no key, no account). The place is found by name; with none given it is Boston. Fahrenheit and mph unless -c asks for Celsius and km/h. The call is made from the session host, so it needs that host to reach the internet.',
+    description: 'Reports the current conditions and a short forecast for a place, from Open-Meteo (no key, no account). The place is found by name; with none given it is Boston. Metric (°C, km/h) unless --units imperial asks for °F and mph. The call is made from the session host, so it needs that host to reach the internet.',
     options: [
-      '  -c, --celsius     Celsius and km/h rather than Fahrenheit and mph',
+      '  -u, --units SYS   metric (default: °C, km/h) or imperial (°F, mph)',
       '  -d, --days N      Days of forecast to show (default 3, at most 16)',
     ],
-    examples: ['weather', 'weather Cape Town', 'weather Boston -c', 'weather Paris -d 7'],
+    examples: ['weather', 'weather Cape Town', 'weather Boston --units imperial', 'weather Paris -d 7'],
   },
   date: {
     usage: 'date [-u] [+FORMAT]',

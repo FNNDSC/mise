@@ -613,6 +613,32 @@ describe('topology landings', () => {
     ]);
   });
 
+  it('takes a shape from the leaves when a sweep meets them before the root', () => {
+    // CUBE lists instances newest first: a cold sweep reads a feed's last
+    // jobs long before its first. The shape must not wait for the root.
+    cache.feed_add(feed(9));
+    cache.instance_add(inst(93, 9, 92, 'pl-fastsurfer'));
+    cache.instance_add(inst(92, 9, 91, 'pl-dcm2niix'));
+    expect(cache.instancesForFeed_count(9)).toBe(2);
+    expect(cache.pluginChain_of(9)).toEqual(['pl-dcm2niix', 'pl-fastsurfer']);
+    expect(cache.pluginGroups_of(9)).toEqual([
+      { plugin: 'pl-dcm2niix', count: 1, status: 'scheduled', parent: null },
+      { plugin: 'pl-fastsurfer', count: 1, status: 'scheduled', parent: 0 },
+    ]);
+    // The root lands last, and the shape settles onto it.
+    cache.instance_add(inst(91, 9, null, 'pl-dircopy'));
+    expect(cache.pluginChain_of(9)).toEqual(['pl-dircopy', 'pl-dcm2niix', 'pl-fastsurfer']);
+    expect(cache.pluginGroups_of(9)).toEqual([
+      { plugin: 'pl-dircopy', count: 1, status: 'scheduled', parent: null },
+      { plugin: 'pl-dcm2niix', count: 1, status: 'scheduled', parent: 0 },
+      { plugin: 'pl-fastsurfer', count: 1, status: 'scheduled', parent: 1 },
+    ]);
+    // The roll follows removals too.
+    cache.instance_remove(93);
+    expect(cache.feedInstanceIDs_all(9)).toEqual([91, 92]);
+    expect(cache.instancesForFeed_count(9)).toBe(2);
+  });
+
   it('forgets a landing after its while, and never re-lands a feed marked again', () => {
     cache.feed_add(feed(2));
     cache.instance_add(inst(20, 2, null, 'pl-simplefsapp'));

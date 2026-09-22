@@ -750,6 +750,16 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Prints a random fortune — the classic UNIX fortune cookie, bundled and self-contained.',
     examples: ['fortune'],
   },
+  weather: {
+    usage: 'weather [place] [-c|--celsius] [-d|--days N]',
+    summary: 'The weather at a place, now and the next few days',
+    description: 'Reports the current conditions and a short forecast for a place, from Open-Meteo (no key, no account). The place is found by name; with none given it is Boston. Fahrenheit and mph unless -c asks for Celsius and km/h. The call is made from the session host, so it needs that host to reach the internet.',
+    options: [
+      '  -c, --celsius     Celsius and km/h rather than Fahrenheit and mph',
+      '  -d, --days N      Days of forecast to show (default 3, at most 16)',
+    ],
+    examples: ['weather', 'weather Cape Town', 'weather Boston -c', 'weather Paris -d 7'],
+  },
   date: {
     usage: 'date [-u] [+FORMAT]',
     summary: 'Print the current date and time',
@@ -1636,7 +1646,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
     PACS: ['pacs', 'pacsservers', 'pacsqueries', 'pacsretrieve'],
     Administration: ['sudo', 'user'],
     'Shell Settings': ['physicalmode', 'prompt', 'timing', 'debug'],
-    General: ['help', 'date', 'cal', 'fortune', 'exit', '!'],
+    General: ['help', 'date', 'cal', 'fortune', 'weather', 'exit', '!'],
   };
 
   // Display commands by category

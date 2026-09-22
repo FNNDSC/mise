@@ -1,0 +1,132 @@
+import { jest, describe, it, expect } from '@jest/globals';
+import type { CommandEnvelope } from '@fnndsc/cumin';
+import type { WeatherFetch, WeatherReport } from '../src/builtins/sys/weather.js';
+
+// The real cumin graph overflows jest's CommonJS export lexer under ESM;
+// the builtin needs only its two envelope makers, so those are stubbed
+// the way the other sys builtin suites stub them.
+jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  envelope_ok: (rendered: string, model?: unknown) =>
+    model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
+  envelope_error: (rendered: string) => ({ status: 'error', rendered }),
+}));
+
+const { builtin_weather, compass_ofDegrees, condition_ofCode, report_render, weatherArgs_parse } =
+  await import('../src/builtins/sys/weather.js');
+
+/** A geocoder answer for Boston, as Open-Meteo gives it. */
+const GEOCODE_BOSTON = {
+  results: [{ name: 'Boston', admin1: 'Massachusetts', country: 'United States', latitude: 42.35843, longitude: -71.05977, timezone: 'America/New_York' }],
+};
+
+/** A forecast answer, as Open-Meteo gives it. */
+const FORECAST = {
+  current: { time: '2026-09-21T14:00', temperature_2m: 58.3, apparent_temperature: 55.1, relative_humidity_2m: 62, weather_code: 2, wind_speed_10m: 9.4, wind_direction_10m: 310 },
+  daily: { time: ['2026-09-21', '2026-09-22', '2026-09-23'], weather_code: [2, 61, 0], temperature_2m_max: [63.1, 60.2, 66.0], temperature_2m_min: [48.0, 50.4, 45.2] },
+};
+
+/** A fetch that answers from a table of URL prefixes and records what was asked. */
+function fetch_stub(answers: Record<string, unknown>, asked: string[] = []): WeatherFetch {
+  return async (url: string): Promise<Response> => {
+    asked.push(url);
+    const key: string | undefined = Object.keys(answers).find((prefix: string): boolean => url.startsWith(prefix));
+    if (key === undefined) return new Response('not found', { status: 404 });
+    return new Response(JSON.stringify(answers[key]), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+}
+
+describe('weatherArgs_parse', () => {
+  it('asks about Boston with no words', () => {
+    expect(weatherArgs_parse([])).toEqual({ place: 'Boston', celsius: false, days: 3 });
+  });
+  it('takes a place in several words, and the unit and day flags', () => {
+    expect(weatherArgs_parse(['Cape', 'Town', '-c', '-d', '7'])).toEqual({ place: 'Cape Town', celsius: true, days: 7 });
+    expect(weatherArgs_parse(['--celsius', '--days', '1', 'Paris'])).toEqual({ place: 'Paris', celsius: true, days: 1 });
+  });
+  it('refuses an unknown flag by name, and a bad day count', () => {
+    expect(weatherArgs_parse(['--metric'])).toMatch(/unknown option '--metric'/);
+    expect(weatherArgs_parse(['-d', 'lots'])).toMatch(/-d takes a number of days/);
+    expect(weatherArgs_parse(['-d', '40'])).toMatch(/1 to 16/);
+  });
+});
+
+describe('condition_ofCode and compass_ofDegrees', () => {
+  it('words the WMO codes and says an unknown one by number', () => {
+    expect(condition_ofCode(0)).toBe('clear sky');
+    expect(condition_ofCode(95)).toBe('thunderstorm');
+    expect(condition_ofCode(42)).toBe('conditions code 42');
+  });
+  it('names the eight points', () => {
+    expect(compass_ofDegrees(0)).toBe('N');
+    expect(compass_ofDegrees(310)).toBe('NW');
+    expect(compass_ofDegrees(359)).toBe('N');
+    expect(compass_ofDegrees(-90)).toBe('W');
+  });
+});
+
+describe('builtin_weather', () => {
+  it('geocodes the place, asks the forecast in Fahrenheit, and renders now plus the days', async () => {
+    const asked: string[] = [];
+    const envelope: CommandEnvelope = await builtin_weather([], fetch_stub({ 'https://geocoding-api.open-meteo.com/': GEOCODE_BOSTON, 'https://api.open-meteo.com/': FORECAST }, asked));
+    expect(envelope.status).toBe('ok');
+    expect(asked[0]).toContain('name=Boston');
+    expect(asked[1]).toContain('latitude=42.35843');
+    expect(asked[1]).toContain('temperature_unit=fahrenheit');
+    expect(asked[1]).toContain('forecast_days=3');
+    expect(envelope.rendered).toBe([
+      'Boston, Massachusetts, United States · 2026-09-21 14:00',
+      '  now       58°F (feels 55°F) · partly cloudy · wind 9 mph NW · humidity 62%',
+      '  today     48–63°F · partly cloudy',
+      '  Tue 09-22 50–60°F · light rain',
+      '  Wed 09-23 45–66°F · clear sky',
+      '',
+    ].join('\n'));
+    expect(envelope.model?.kind).toBe('sys.weather');
+    const report: WeatherReport = envelope.model?.data as WeatherReport;
+    expect(report.units).toBe('F');
+    expect(report.now.windDirection).toBe('NW');
+    expect(report.days).toHaveLength(3);
+  });
+
+  it('asks in Celsius and km/h when told', async () => {
+    const asked: string[] = [];
+    const envelope: CommandEnvelope = await builtin_weather(['Boston', '-c'], fetch_stub({ 'https://geocoding-api.open-meteo.com/': GEOCODE_BOSTON, 'https://api.open-meteo.com/': FORECAST }, asked));
+    expect(envelope.status).toBe('ok');
+    expect(asked[1]).toContain('temperature_unit=celsius');
+    expect(asked[1]).toContain('wind_speed_unit=kmh');
+    expect(envelope.rendered).toContain('°C');
+    expect(envelope.rendered).toContain('km/h');
+  });
+
+  it('says when the place is not found', async () => {
+    const envelope: CommandEnvelope = await builtin_weather(['Nowhereville'], fetch_stub({ 'https://geocoding-api.open-meteo.com/': { results: [] } }));
+    expect(envelope.status).toBe('error');
+    expect(envelope.rendered).toBe("weather: no such place 'Nowhereville'\n");
+  });
+
+  it('says when the service cannot be reached, in one line', async () => {
+    const down: WeatherFetch = async (): Promise<Response> => { throw new Error('getaddrinfo ENOTFOUND api.open-meteo.com'); };
+    const envelope: CommandEnvelope = await builtin_weather([], down);
+    expect(envelope.status).toBe('error');
+    expect(envelope.rendered).toBe('weather: getaddrinfo ENOTFOUND api.open-meteo.com\n');
+    const refused: CommandEnvelope = await builtin_weather([], fetch_stub({}));
+    expect(refused.rendered).toBe('weather: open-meteo answered 404\n');
+  });
+
+  it('refuses an unknown flag without asking anyone', async () => {
+    const asked: string[] = [];
+    const envelope: CommandEnvelope = await builtin_weather(['--metric'], fetch_stub({}, asked));
+    expect(envelope.status).toBe('error');
+    expect(asked).toHaveLength(0);
+  });
+
+  it('renders a report without a region or country', () => {
+    const report: WeatherReport = {
+      place: { name: 'Atlantis', region: '', country: '', latitude: 0, longitude: 0, timezone: 'UTC' },
+      units: 'C',
+      now: { time: '2026-01-01T00:00', temperature: 20, apparent: 20, humidity: 50, code: 0, condition: 'clear sky', windSpeed: 0, windDirection: 'N' },
+      days: [],
+    };
+    expect(report_render(report).split('\n')[0]).toBe('Atlantis · 2026-01-01 00:00');
+  });
+});

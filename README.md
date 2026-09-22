@@ -19,7 +19,7 @@
 [![codecov](https://codecov.io/gh/FNNDSC/mise/branch/main/graph/badge.svg)](https://codecov.io/gh/FNNDSC/mise)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-`menu` · `cumin` · `salsa` · `chili` · `brasa` · `chell` · `calypso`
+`menu` · `cumin` · `salsa` · `chili` · `brasa` · `chell` · `calypso` · `argus` · `porter`
 
 <br>
 
@@ -96,17 +96,19 @@ built this way, and how the layers fit, is a paper of its own:
 
 ## What you run
 
-Three things, all driving the same engine.
+Four things, all driving the same engine.
 
 | | what it is |
 |---|---|
 | **`chell`** | The shell. A terminal that holds the engine in-process. This is the deliverable most people want. |
 | **`calypso`** | The daemon. Holds one engine as a long-lived **session** that surfaces attach to over a WebSocket. `chell --daemon` and the `calypso` binary run the same host code. |
 | **`argus`** | The web surface: an LCARS console over a `calypso` session, with panes for files, feeds, the job graph, PACS, and a DICOM viewer. Ships with the stack — see [below](#argus-and-its-two-faces). |
+| **`porter`** | The display manager: a login page for one CUBE that starts (or rejoins) your session on its host and shows your browser to `argus` — no tokens, no URLs to copy. What gdm is to a desktop. See [below](#log-in-through-the-door-porter). |
 
-`chell` is a *surface*; `calypso` is a *host*. That is the whole distinction. Detail —
-running modes, attaching, host control, scripting — is in
-**[docs/chell.adoc](docs/chell.adoc)**.
+`chell` is a *surface*; `calypso` is a *host*; `porter` is the *door* to a host.
+That is the whole distinction. Detail — running modes, attaching, host control,
+scripting — is in **[docs/chell.adoc](docs/chell.adoc)**; the door is in
+**[apps/porter/docs/porter.adoc](apps/porter/docs/porter.adoc)**.
 
 ---
 
@@ -141,11 +143,13 @@ The way to develop, and to run an unreleased `argus`:
 ```bash
 git clone https://github.com/FNNDSC/mise && cd mise
 make prep     # install dependencies (npm workspaces)
-make cook     # build every package in dependency order
+make cook     # build every package in dependency order (argus and porter included)
 make serve    # link `chell` globally, so it runs from anywhere
 ```
 
-`make taco` does the full course: scrub, prep, cook, taste, serve.
+`make taco` does the full course: scrub, prep, cook, taste, serve. From here
+`make run` is the shell, `make daemon` a session, and `make porter` the door —
+a browser login for a CUBE, [below](#log-in-through-the-door-porter).
 
 **On versions:** the packages do not release in step, and they do not need to.
 `chell` depends on version *ranges*, so installing the latest `chell` pulls the
@@ -242,6 +246,74 @@ CALYPSO_BIND=0.0.0.0 chell --daemon --host-control --expose-host-control
 
 `--expose-host-control` is the deliberate second yes: a non-loopback bind plus
 host control means handing a shell on this machine to anyone holding the URL.
+
+---
+
+## Log in through the door (`porter`)
+
+Everything above hands you a URL with a token in it. **`porter`** is the other
+way in: a login page. It serves one CUBE. You give it your CUBE name and
+password; it trades the password for a token at CUBE, starts your `calypso`
+session on its host (or rejoins the one already running), and shows your
+browser to `argus` at `/s/<key>/` — the porter holds the attach token, the
+browser holds a cookie, and nothing sensitive is ever in the URL bar. It is what
+gdm is to a desktop: the thing between "the machine is on" and "you are at your
+session".
+
+**From the checkout.** Point it at a CUBE and open the door:
+
+```bash
+make porter CUBE_URL=https://cube.example.org/api/v1/
+```
+
+```text
+[+] PORTER at http://127.0.0.1:4180/ for https://cube.example.org/api/v1/
+    state:  /home/you/.local/state/porter
+    chell:  /home/you/src/mise/packages/chell/dist/index.js
+    idle:   sessions end after 24 h with nobody on them; their state directories stay
+    secret: made up for this run — set PORTER_SECRET so a restart does not ask every browser again
+```
+
+Open that address, log in with your CUBE credentials, and watch the greeter: the
+brain wakes while your session boots, the boot report scrolls beneath it, and
+when the session answers you land in `argus`. **The first login of an identity on
+a host is a cold boot** — the engine indexes your feeds and PACS from CUBE, which
+takes a minute or more on a large CUBE. Every later login is warm: the porter
+keeps each identity's state under `~/.local/state/porter/<key>/`, and a session
+that is still running is simply rejoined. `LOG OUT` in `argus` clears the cookie
+and leaves the session running; the porter ends a session on its own after a day
+with no browser and no terminal on it.
+
+Without `make`, the same thing is one environment variable and the binary:
+
+```bash
+PORTER_CUBE_URL=https://cube.example.org/api/v1/ node apps/porter/dist/porter.js
+node apps/porter/dist/porter.js --status      # what sessions the state directory holds
+```
+
+**A terminal through the same door.** `chell` can log in the way the browser does,
+so a TTY and a browser share one session without anyone copying a token:
+
+```bash
+chell --remote --door http://127.0.0.1:4180/        # asks for a name and a password
+```
+
+**Settings**, all environment, read once at start:
+
+| variable | meaning |
+|---|---|
+| `PORTER_CUBE_URL` | Required. The one CUBE this door serves. `make porter` passes `CUBE_URL`. |
+| `PORTER_STATE_DIR` | Where sessions keep their state. Default `~/.local/state/porter`. Precious: a fresh directory means every identity boots cold again. |
+| `PORTER_HOST`, `PORTER_PORT` | Bind address, default `127.0.0.1:4180`. |
+| `PORTER_SECRET` | Signs the cookie; at least twenty characters. Without it the porter makes one up per start, and every browser is asked to log in again after a restart. Only the porter needs it. |
+| `PORTER_COOKIE_HOURS`, `PORTER_IDLE_HOURS` | How long a browser stays let in, and how long an unused session stands, each 24 by default. |
+| `PORTER_CHELL` | The `chell` that starts sessions; default the one in this checkout. |
+
+The porter listens on loopback. **To serve it to other machines, put TLS in
+front** rather than binding wider: the cookie is the credential, and it must
+travel over HTTPS. A systemd unit, an env file and a Caddyfile that do exactly
+that are in [`apps/porter/deploy/`](apps/porter/deploy/), and the reasoning is in
+[`apps/porter/docs/porter.adoc`](apps/porter/docs/porter.adoc).
 
 ---
 
@@ -355,7 +427,8 @@ mise/
 │   ├── calypso/ @fnndsc/calypso  session daemon + `calypso` bin
 │   └── chell/   @fnndsc/chell    the CLI surface + `--remote` client
 └── apps/
-    └── argus/   @fnndsc/argus    the LCARS web surface (private: not published)
+    ├── argus/   @fnndsc/argus    the LCARS web surface (private: not published)
+    └── porter/  @fnndsc/porter   the display manager: login page + session host (private)
 ```
 
 Each package directory carries its **own full git history** (preserved through

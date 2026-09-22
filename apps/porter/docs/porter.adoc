@@ -70,7 +70,7 @@ chell --remote --door https://titan.tch.harvard.edu/ -u chris -c "pwd"
 
 == Running it
 
-`porter` starts the door; `porter --status` lists the sessions the state directory holds — key, identity, address, and whether each answers — without starting anything.
+`porter` starts the door; `porter --status` lists the sessions the state directory holds — key, identity, address, and whether each answers — without starting anything, and asks for nothing but `PORTER_STATE_DIR` (the CUBE, the port and the secret belong to a door, not a listing).
 
 == Deploying on titan
 

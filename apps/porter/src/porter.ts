@@ -8,7 +8,7 @@
  *
  * @module
  */
-import { porterConfig_resolve, type PorterConfig } from './config.js';
+import { porterConfig_resolve, porterStateDir_resolve, chellEntry_locate, type PorterConfig } from './config.js';
 import { ProcessHost } from './host/processHost.js';
 import { porterApp_build, type PorterApp } from './app.js';
 import type { SessionSighting } from './host/sessionHost.js';
@@ -17,12 +17,15 @@ import { berthKey_compute } from '@fnndsc/calypso/berth';
 /**
  * Lists the sessions the state directory holds, without starting anything.
  *
- * @param config - Where the state directory is.
+ * Needs only the state directory (and the chell the host is built around,
+ * which a listing never runs): no CUBE, no port, no secret.
+ *
+ * @param stateDir - Where the state directory is.
  */
-async function status_print(config: PorterConfig): Promise<void> {
-  const host: ProcessHost = new ProcessHost({ stateDir: config.stateDir, chellEntry: config.chellEntry });
+async function status_print(stateDir: string): Promise<void> {
+  const host: ProcessHost = new ProcessHost({ stateDir, chellEntry: process.env['PORTER_CHELL'] ?? chellEntry_locate() });
   const sightings: SessionSighting[] = await host.sessions_adopt();
-  console.log(`state: ${config.stateDir}`);
+  console.log(`state: ${stateDir}`);
   if (sightings.length === 0) {
     console.log('no sessions');
     return;
@@ -34,16 +37,16 @@ async function status_print(config: PorterConfig): Promise<void> {
 }
 
 async function porter_start(): Promise<void> {
+  if (process.argv.includes('--status')) {
+    await status_print(porterStateDir_resolve(process.env));
+    return;
+  }
   let config: PorterConfig;
   try {
     config = porterConfig_resolve(process.env);
   } catch (error: unknown) {
     console.error(`[!] ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
-  }
-  if (process.argv.includes('--status')) {
-    await status_print(config);
-    return;
   }
   const host: ProcessHost = new ProcessHost({ stateDir: config.stateDir, chellEntry: config.chellEntry });
   const sweepText: string | undefined = process.env['PORTER_SWEEP_SECONDS'];

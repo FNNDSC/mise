@@ -79,6 +79,21 @@ export function chellEntry_locate(): string {
 }
 
 /**
+ * Where the porter keeps its sessions' state, from the environment alone.
+ *
+ * Asked separately because `porter --status` reads the directory and
+ * starts nothing: it has no business demanding the CUBE, the port or a
+ * secret it will not use.
+ *
+ * @param env - The environment; `process.env` in production.
+ * @returns The state directory.
+ */
+export function porterStateDir_resolve(env: PorterEnv): string {
+  const stateBase: string = env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state');
+  return env.PORTER_STATE_DIR ?? join(stateBase, 'porter');
+}
+
+/**
  * Resolves the porter's configuration from the environment.
  *
  * @param env - The environment; `process.env` in production.
@@ -112,7 +127,6 @@ export function porterConfig_resolve(env: PorterEnv, locateChell: () => string =
   if (!Number.isFinite(idleHours) || idleHours <= 0) {
     throw new Error(`PORTER_IDLE_HOURS is not a span of hours: ${idleText}`);
   }
-  const stateBase: string = env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state');
   // A secret nobody set is made up here: the door still works, but every
   // browser is asked again when this porter restarts. Said out loud at start.
   const secretGiven: boolean = env.PORTER_SECRET !== undefined && env.PORTER_SECRET.length >= 20;
@@ -121,7 +135,7 @@ export function porterConfig_resolve(env: PorterEnv, locateChell: () => string =
   }
   return {
     cubeUrl: cubeUrl.endsWith('/') ? cubeUrl : `${cubeUrl}/`,
-    stateDir: env.PORTER_STATE_DIR ?? join(stateBase, 'porter'),
+    stateDir: porterStateDir_resolve(env),
     host: env.PORTER_HOST ?? '127.0.0.1',
     port,
     chellEntry: env.PORTER_CHELL ?? locateChell(),

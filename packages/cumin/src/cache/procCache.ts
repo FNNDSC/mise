@@ -359,6 +359,14 @@ export class ProcCache {
   private instances: Map<number, ProcInstance> = new Map();
   private feedRoots: Map<number, number[]> = new Map();
   private children: Map<number, number[]> = new Map();
+  /**
+   * Every instance known for a feed, root or not. The root walk above is
+   * the feed's TOPOLOGY; this is its ROLL, and it is what a landing reads:
+   * CUBE lists instances newest first, so a cold sweep meets a feed's
+   * leaves before its root, and a shape walked from roots stayed empty
+   * for the whole of a big feed until its oldest instance arrived.
+   */
+  private byFeed: Map<number, Set<number>> = new Map();
 
   /** Feed IDs whose instance topology has been fully fetched. */
   private topologyLoaded: Set<number> = new Set();
@@ -565,6 +573,12 @@ export class ProcCache {
   instance_add(inst: ProcInstance): void {
     this.landed.set(inst.feedID, Date.now());
     this.instances.set(inst.id, inst);
+    let roll: Set<number> | undefined = this.byFeed.get(inst.feedID);
+    if (roll === undefined) {
+      roll = new Set();
+      this.byFeed.set(inst.feedID, roll);
+    }
+    roll.add(inst.id);
     if (inst.parentID === null) {
       const roots: number[] = this.feedRoots.get(inst.feedID) ?? [];
       if (!roots.includes(inst.id)) {
@@ -608,11 +622,18 @@ export class ProcCache {
   }
 
   instancesForFeed_count(feedID: number): number {
-    let n: number = 0;
-    for (const inst of this.instances.values()) {
-      if (inst.feedID === feedID) n++;
-    }
-    return n;
+    return this.byFeed.get(feedID)?.size ?? 0;
+  }
+
+  /**
+   * Every instance the cache holds for a feed, whether or not its parent
+   * has arrived: the roll, in id order.
+   *
+   * @param feedID - The feed.
+   * @returns The instance ids, ascending.
+   */
+  feedInstanceIDs_all(feedID: number): number[] {
+    return [...(this.byFeed.get(feedID) ?? [])].sort((a: number, b: number): number => a - b);
   }
 
   children_get(parentID: number): number[] {
@@ -644,6 +665,7 @@ export class ProcCache {
     const inst: ProcInstance | undefined = this.instances.get(id);
     if (!inst) return;
     this.instances.delete(id);
+    this.byFeed.get(inst.feedID)?.delete(id);
     if (inst.parentID === null) {
       const roots: number[] = this.feedRoots.get(inst.feedID) ?? [];
       this.feedRoots.set(inst.feedID, roots.filter((r: number) => r !== id));
@@ -1022,11 +1044,15 @@ export class ProcCache {
    * pipeline left. A feed that ran dircopy, then dcm2niix, then fastsurfer
    * shares its first two names with every feed that began the same way.
    *
+   * Read from the feed's roll, not its root walk: while a sweep is still
+   * bringing a feed in, an instance whose parent has not arrived counts as
+   * depth zero, and the chain settles as the parents land.
+   *
    * @param feedID - The feed.
    * @returns The names, in order of the shallowest instance that bore each.
    */
   pluginChain_of(feedID: number): string[] {
-    const ids: number[] = this.feedInstanceIDs_get(feedID);
+    const ids: number[] = this.feedInstanceIDs_all(feedID);
     const depth_of = (id: number, seen: Set<number> = new Set()): number => {
       const inst: ProcInstance | undefined = this.instance_get(id);
       if (inst === undefined || inst.parentID === null || seen.has(id)) return 0;
@@ -1053,7 +1079,10 @@ export class ProcCache {
    * @returns The groups, parents before children, root first.
    */
   pluginGroups_of(feedID: number): ProcJobGroup[] {
-    const ids: number[] = this.feedInstanceIDs_get(feedID);
+    // The roll, not the root walk: an instance whose parent has not landed
+    // yet is grouped as a root of its own until it has, so a feed takes a
+    // shape from its first instance rather than from its last.
+    const ids: number[] = this.feedInstanceIDs_all(feedID);
     const byId: Map<number, ProcInstance> = new Map();
     for (const id of ids) {
       const inst: ProcInstance | undefined = this.instance_get(id);
@@ -1258,6 +1287,7 @@ export class ProcCache {
     listingInvalidation_reset();
     this.feeds.clear();
     this.instances.clear();
+    this.byFeed.clear();
     this.feedRoots.clear();
     this.children.clear();
     this.topologyLoaded.clear();

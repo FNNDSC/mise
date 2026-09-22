@@ -2952,6 +2952,11 @@ async function surface_start(token: string): Promise<void> {
   paneInstance_adopt(filesPrimary);
   const dagPrimary: PaneInstance = dagInstance_build('dag', true);
   paneInstance_adopt(dagPrimary);
+  // The UNIVERSE is a stage of its own, like RUNS or PACS: one primary pane
+  // the layout raises whole. Split beside a browser it read as a fragment
+  // of a workspace, and the browser had to be closed to see the space.
+  const universePrimary: PaneInstance = universeInstance_build('universe');
+  paneInstance_adopt(universePrimary);
   // PANES is a gutter domain like FILES/RUNS/PACS: its mount is a primary the
   // layout can raise, its card grid wired once the dormant set and restore
   // exist below.
@@ -3235,6 +3240,7 @@ async function surface_start(token: string): Promise<void> {
     element_require('layout-root'),
     new Map([
       ['dag', dagPrimary.mount],
+      ['universe', universePrimary.mount],
       ['files', filesPrimary.mount],
       ['pacs', element_require('pacs-workspace')],
       ['launcher', launcherMount],
@@ -3255,6 +3261,8 @@ async function surface_start(token: string): Promise<void> {
   layout.preset_register('pacs', (): LayoutNode => ({ pane: 'pacs' }));
   // RUNS-02 is a full-workspace preset like PACS-03, not a split variation.
   layout.preset_register('dag', (): LayoutNode => ({ pane: 'dag' }));
+  // The UNIVERSE owns the stage the same way.
+  layout.preset_register('universe', (): LayoutNode => ({ pane: 'universe' }));
   // PANES-06 is a full-workspace preset too: the grid of dormant groups.
   layout.preset_register('panes', (): LayoutNode => ({ pane: 'panes' }));
   // The launcher owns the stage as well: it is where a session begins, and
@@ -3586,7 +3594,7 @@ async function surface_start(token: string): Promise<void> {
       // the launcher is one of them, and disposing it left the word that
       // opens it pointing at a pane that no longer existed (an empty stage).
       if (instance.id === 'files' || instance.id === 'dag' || instance.id === 'pacs'
-        || instance.id === 'panes' || instance.id === 'launcher') continue;
+        || instance.id === 'panes' || instance.id === 'launcher' || instance.id === 'universe') continue;
       paneInstance_dispose(instance.id);
       layout.mount_remove(instance.id);
     }
@@ -4173,6 +4181,7 @@ async function surface_start(token: string): Promise<void> {
   };
   pane_chrome_wire('files', 'files', filesPrimary.mount);
   pane_chrome_wire('dag', 'dag', dagPrimary.mount);
+  pane_chrome_wire('universe', 'universe', universePrimary.mount);
   pane_chrome_wire('pacs', 'pacs', element_require('pacs-workspace'));
   pane_chrome_wire('launcher', 'launcher', launcherMount);
   pane_chrome_wire('panes', 'panes', panesMount);
@@ -4570,30 +4579,14 @@ async function surface_start(token: string): Promise<void> {
     consoleFocused_set(false);
   };
   /** UNIVERSE: the space of everything run here, on the RUNS canvas. */
-  // The UNIVERSE: one pane of its own kind on stage. A shown one is
-  // focused; otherwise one is split beside the errand host and asked for
-  // the space. Never the RUNS pane: that stays a feed viewer.
+  // The UNIVERSE takes the stage: its own preset, its one primary pane,
+  // raised whole and asked for the space. Never the RUNS pane: that stays
+  // a feed viewer.
   const universe_show = (): void => {
-    launcher_yield();
-    const shown: Set<string> = new Set(layout.panes_shown());
-    for (const id of universePanels.keys()) {
-      if (shown.has(id)) {
-        layout.focus_set(id);
-        consoleFocused_set(false);
-        return;
-      }
-    }
-    const host: string | null = errandHost_find();
-    if (host === null) return;
-    const spawned: PaneInstance = instance_spawn('universe');
-    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
-      paneInstance_dispose(spawned.id);
-      layout.mount_remove(spawned.id);
-      return;
-    }
-    birth_record(spawned.id, host, 'col', false);
-    universePanels.get(spawned.id)?.request();
-    layout.focus_set(spawned.id);
+    domain_enter('universe');
+    const panel: UniversePanel | undefined = universePanels.get('universe');
+    if (panel !== undefined && !panel.shown_get()) panel.request();
+    layout.focus_set('universe');
     consoleFocused_set(false);
   };
   element_require('gutter-runs').addEventListener('click', (): void => domainPress('dag', (): void => runs_show()));

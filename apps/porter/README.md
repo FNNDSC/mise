@@ -11,4 +11,9 @@ curl -s -c jar -X POST localhost:4180/login -H 'content-type: application/json' 
 curl -b jar -N localhost:4180/boot/<key>
 ```
 
-Not published; runs from a checkout or an image.
+```sh
+npm install -g @fnndsc/porter        # brings chell, calypso and argus beneath it
+PORTER_CUBE_URL=https://cube.example.org/api/v1/ porter
+```
+
+Or from the checkout: `make porter CUBE_URL=…`. Deployment (systemd, env file, Caddyfile) in [`deploy/`](deploy/).

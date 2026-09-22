@@ -260,10 +260,26 @@ browser holds a cookie, and nothing sensitive is ever in the URL bar. It is what
 gdm is to a desktop: the thing between "the machine is on" and "you are at your
 session".
 
+**From npm.** The porter brings the whole stack beneath it — `chell`, `calypso`, `argus` — so one install is the full login experience:
+
+```bash
+npm install -g @fnndsc/porter
+PORTER_CUBE_URL=https://cube.example.org/api/v1/ porter
+```
+
 **From the checkout.** Point it at a CUBE and open the door:
 
 ```bash
 make porter CUBE_URL=https://cube.example.org/api/v1/
+```
+
+That is `make cook` and then the binary with `PORTER_CUBE_URL`, `PORTER_PORT` and
+`PORTER_STATE_DIR` set; every other setting below passes through from the
+environment, so to reach it from another machine with a secret that survives a
+restart:
+
+```bash
+PORTER_HOST=0.0.0.0 PORTER_SECRET=any-twenty-characters-or-more make porter CUBE_URL=https://cube.example.org/api/v1/
 ```
 
 ```text
@@ -427,8 +443,8 @@ mise/
 │   ├── calypso/ @fnndsc/calypso  session daemon + `calypso` bin
 │   └── chell/   @fnndsc/chell    the CLI surface + `--remote` client
 └── apps/
-    ├── argus/   @fnndsc/argus    the LCARS web surface (private: not published)
-    └── porter/  @fnndsc/porter   the display manager: login page + session host (private)
+    ├── argus/   @fnndsc/argus    the LCARS web surface (served by calypso)
+    └── porter/  @fnndsc/porter   the display manager: login page + session host
 ```
 
 Each package directory carries its **own full git history** (preserved through

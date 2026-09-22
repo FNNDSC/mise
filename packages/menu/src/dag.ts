@@ -202,6 +202,8 @@ export const FEED_LIST_MODEL_KIND = 'feed.list' as const;
 export const procJobGroupSchema = z.object({
   plugin: z.string(),
   count: z.number(),
+  /** How many of the count ended in error; zero from a daemon that predates it. */
+  errored: z.number().default(0),
   status: z.string(),
   parent: z.number().nullable(),
 });

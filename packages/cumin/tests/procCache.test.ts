@@ -585,7 +585,7 @@ describe('topology landings', () => {
     cache.feed_add({ ...feed(1), erroredJobs: 1, finishedJobs: 2 });
     cache.instance_add(inst(10, 1, null, 'pl-dircopy'));
     expect(cache.topologyLanded_recent()).toEqual([
-      { id: 1, title: 'feed 1', jobs: 1, status: 'finishedWithError', chain: ['pl-dircopy'], groups: [{ plugin: 'pl-dircopy', count: 1, status: 'scheduled', parent: null }] },
+      { id: 1, title: 'feed 1', jobs: 1, status: 'finishedWithError', chain: ['pl-dircopy'], groups: [{ plugin: 'pl-dircopy', count: 1, errored: 0, status: 'scheduled', parent: null }] },
     ]);
     cache.instance_add(inst(11, 1, 10, 'pl-dcm2niix'));
     cache.instance_add(inst(12, 1, 11, 'pl-fastsurfer'));
@@ -595,9 +595,9 @@ describe('topology landings', () => {
       {
         id: 1, title: 'feed 1', jobs: 4, status: 'finishedWithError', chain: ['pl-dircopy', 'pl-dcm2niix', 'pl-fastsurfer'],
         groups: [
-          { plugin: 'pl-dircopy', count: 1, status: 'scheduled', parent: null },
-          { plugin: 'pl-dcm2niix', count: 2, status: 'scheduled', parent: 0 },
-          { plugin: 'pl-fastsurfer', count: 1, status: 'scheduled', parent: 1 },
+          { plugin: 'pl-dircopy', count: 1, errored: 0, status: 'scheduled', parent: null },
+          { plugin: 'pl-dcm2niix', count: 2, errored: 0, status: 'scheduled', parent: 0 },
+          { plugin: 'pl-fastsurfer', count: 1, errored: 0, status: 'scheduled', parent: 1 },
         ],
       },
     ]);
@@ -608,8 +608,8 @@ describe('topology landings', () => {
     cache.instance_add(inst(70, 7, null, 'pl-dircopy', 'finishedSuccessfully'));
     for (let i = 0; i < 300; i++) cache.instance_add(inst(100 + i, 7, 70, 'pl-dcm2niix', i === 42 ? 'finishedWithError' : 'finishedSuccessfully'));
     expect(cache.pluginGroups_of(7)).toEqual([
-      { plugin: 'pl-dircopy', count: 1, status: 'finishedSuccessfully', parent: null },
-      { plugin: 'pl-dcm2niix', count: 300, status: 'finishedWithError', parent: 0 },
+      { plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null },
+      { plugin: 'pl-dcm2niix', count: 300, errored: 1, status: 'finishedWithError', parent: 0 },
     ]);
   });
 
@@ -622,16 +622,16 @@ describe('topology landings', () => {
     expect(cache.instancesForFeed_count(9)).toBe(2);
     expect(cache.pluginChain_of(9)).toEqual(['pl-dcm2niix', 'pl-fastsurfer']);
     expect(cache.pluginGroups_of(9)).toEqual([
-      { plugin: 'pl-dcm2niix', count: 1, status: 'scheduled', parent: null },
-      { plugin: 'pl-fastsurfer', count: 1, status: 'scheduled', parent: 0 },
+      { plugin: 'pl-dcm2niix', count: 1, errored: 0, status: 'scheduled', parent: null },
+      { plugin: 'pl-fastsurfer', count: 1, errored: 0, status: 'scheduled', parent: 0 },
     ]);
     // The root lands last, and the shape settles onto it.
     cache.instance_add(inst(91, 9, null, 'pl-dircopy'));
     expect(cache.pluginChain_of(9)).toEqual(['pl-dircopy', 'pl-dcm2niix', 'pl-fastsurfer']);
     expect(cache.pluginGroups_of(9)).toEqual([
-      { plugin: 'pl-dircopy', count: 1, status: 'scheduled', parent: null },
-      { plugin: 'pl-dcm2niix', count: 1, status: 'scheduled', parent: 0 },
-      { plugin: 'pl-fastsurfer', count: 1, status: 'scheduled', parent: 1 },
+      { plugin: 'pl-dircopy', count: 1, errored: 0, status: 'scheduled', parent: null },
+      { plugin: 'pl-dcm2niix', count: 1, errored: 0, status: 'scheduled', parent: 0 },
+      { plugin: 'pl-fastsurfer', count: 1, errored: 0, status: 'scheduled', parent: 1 },
     ]);
     // The roll follows removals too.
     cache.instance_remove(93);

@@ -273,6 +273,8 @@ export interface ProcLandedFeed {
 export interface ProcJobGroup {
   plugin: string;
   count: number;
+  /** How many of them ended in error, so a surface can hue by share rather than by the worst. */
+  errored: number;
   status: string;
   parent: number | null;
 }
@@ -1113,11 +1115,12 @@ export class ProcCache {
       let index: number | undefined = groupIndexByKey.get(key);
       if (index === undefined) {
         index = groups.length;
-        groups.push({ plugin: inst.pluginName, count: 0, status: status_of(inst), parent: parentGroup });
+        groups.push({ plugin: inst.pluginName, count: 0, errored: 0, status: status_of(inst), parent: parentGroup });
         groupIndexByKey.set(key, index);
       }
       const group: ProcJobGroup = groups[index] as ProcJobGroup;
       group.count += 1;
+      if (status_of(inst) === 'finishedWithError') group.errored += 1;
       group.status = worst(group.status, status_of(inst));
       groupOfInstance.set(id, index);
       return index;

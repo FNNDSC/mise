@@ -49,6 +49,12 @@ export interface SceneNode {
   /** A hue the host assigns (a mode's color, e.g. by compute); errors still win. */
   hue?: string;
   /**
+   * The share of a collapsed group that ended in error, 0..1. Hues the
+   * sphere between done and error by that share rather than painting a
+   * group of eighty thousand red for one failure; absent for a clean group.
+   */
+  share?: number;
+  /**
    * Present in the settle, never drawn: an anchor that pulls its children
    * together (the universe hangs feeds of one shape from one), with no
    * sphere, no edge and no pick of its own.
@@ -197,6 +203,11 @@ function nodeColor_pick(
   palette: ReturnType<typeof palette_read>,
   isRoot: boolean,
 ): THREE.Color {
+  if (node.share !== undefined && node.status !== 'cancelled') {
+    if (node.share >= 1) return palette.error;
+    // Square root so a small share still shows as a trace of red.
+    return palette.done.clone().lerp(palette.error, Math.sqrt(Math.max(0, node.share)));
+  }
   if (node.status === 'finishedWithError' || node.status === 'cancelled') return palette.error;
   if (node.hue !== undefined) return hueColor_get(node.hue);
   if (isRoot) return palette.root;

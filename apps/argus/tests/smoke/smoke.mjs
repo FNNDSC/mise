@@ -152,7 +152,7 @@ try {
       const state = first?.querySelector('.pane-state')?.textContent?.trim() ?? '';
       const canvas = first?.querySelector('.universe-canvas canvas');
       const drawn = canvas !== null && canvas !== undefined && canvas.offsetWidth > 0 && getComputedStyle(first.querySelector('.universe-canvas')).display !== 'none';
-      const framed = ['.field-rule', '.mode-strip', '.mode-elbow', '.mode-frame .universe-projection', '.mode-frame .universe-refresh']
+      const framed = ['.field-rule', '.mode-strip', '.mode-elbow', '.mode-frame .universe-projection', '.mode-frame .universe-scale', '.mode-frame .universe-refresh']
         .every((sel) => first?.querySelector(sel) !== null);
       const runsIsFeedViewer = (document.querySelector('.pane-dag .dag-title')?.textContent ?? '').startsWith('UNIVERSE') === false;
       // Press the tile again: the same pane, focused, not a second one.

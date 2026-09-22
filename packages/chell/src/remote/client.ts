@@ -22,10 +22,11 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 import { REPL } from '../core/repl.js';
 import { RemoteEngine, type DaemonStack } from './remoteEngine.js';
 import { LocalBerthResolver, type Berth } from '@fnndsc/calypso';
-import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, stackBanner_rows, stackBannerRow_paint, fortune_random } from '@fnndsc/brasa';
+import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, stackBanner_rows, stackBannerRow_paint } from '@fnndsc/brasa';
 import { cliSurface_create } from '../core/cliSurface.js';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { TerminalProgressRenderer } from '../core/progressRenderer.js';
+import { greeting_print } from '../core/greeting.js';
 import { surfaceLine_execute } from '../core/surfaceDispatch.js';
 
 /**
@@ -305,8 +306,10 @@ export async function remote_run(
     console.log(chalk.yellow(`[!] HOST CONTROL: ${hostControl.join(' ')} — \`!\` and pipes run on calypso's host, upload/download reach ITS disk`));
   }
   console.log(chalk.gray("    Type 'exit' to detach.\n"));
-  console.log(chalk.gray(fortune_random(4)));
-  console.log('');
+  // The session greets: who you are, what you hold, what is running — the
+  // kernel's `motd`, the same greeting a browser shows, with the fortune
+  // that used to stand here inside it.
+  await greeting_print(engine);
 
   // The daemon pushes the themed prompt string; the REPL renders whatever the
   // daemon last sent, falling back until the first push arrives.

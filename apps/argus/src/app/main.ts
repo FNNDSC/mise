@@ -22,6 +22,7 @@ import { DagScene, type SceneNode } from '../scene/dagScene.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
+import { logo_linesRender } from '@fnndsc/menu/logo';
 import { wireUrl_resolve, vfsUrl_build as routeVfsUrl_build, downloadUrl_build as routeDownloadUrl_build, door_isPresent, doorUrl_build } from '../calypso/routes.js';
 import {
   ArgusClient,
@@ -81,12 +82,17 @@ import { LayoutManager, type LayoutNode } from './layout.js';
 // not, the type falls back and the frame is unchanged.
 import '../lcars/argus.css';
 
-/** The greeting written above the first prompt. */
-const BANNER_LINES: string[] = [
-  '\x1b[38;5;214mARGUS\x1b[0m — LCARS web console for mise',
-  '\x1b[38;5;245mtwo projections of one CALYPSO session: type below, watch the instruments\x1b[0m',
-  '',
-];
+/**
+ * What the console shows above the first prompt: the ChRIS brain at rest,
+ * the same art a TTY boot and the porter's greeter draw, with the
+ * session's own greeting beside it from the kernel's `motd` — who you
+ * are, what you hold, what is running, a fortune. Nothing written here
+ * about projections: the brain says ChRIS, the pane's title says ARGUS.
+ */
+const SPLASH_BRAIN: string[] = logo_linesRender(true);
+
+/** What this surface calls itself in the greeting. */
+const SURFACE_NAME: string = 'ARGUS';
 
 /** The localStorage key remembering the operator's audio choice. */
 const AUDIO_STORAGE_KEY: string = 'argus-audio';
@@ -5104,9 +5110,22 @@ async function surface_start(token: string): Promise<void> {
   headerGather_annunciate();
   void cohort_restore();
   mode_show('READY');
-  terminal.banner_write(BANNER_LINES);
+  terminal.splash_write(SPLASH_BRAIN);
   terminal.prompt_draw();
   terminal.focus_take();
+  // The greeting is the session's to give: asked once, silently, and
+  // written beneath the brain as it arrives. An older daemon without
+  // `motd`, or a refused ask, leaves the brain alone rather than an error.
+  void client.line_execute(`motd ${SURFACE_NAME}`, { silent: true, observe: false })
+    .then((outcome: ExecuteOutcome): void => {
+      const text: string = outcome.envelopes
+        .filter((envelope: WireEnvelope): boolean => envelope.status === 'ok')
+        .map((envelope: WireEnvelope): string => envelope.rendered)
+        .join('')
+        .trimEnd();
+      if (text.length > 0) terminal.greeting_write(text.split('\n'));
+    })
+    .catch((): void => undefined);
 
   consoleClosed_set = drawer_wire(
     element_require('drawer'),

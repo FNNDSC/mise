@@ -1873,6 +1873,7 @@ async function surface_start(token: string): Promise<void> {
         empty: pane_find(mount, '.universe-empty'),
         projectionPill: mount.querySelector<HTMLElement>('.universe-projection'),
         refreshPill: mount.querySelector<HTMLElement>('.universe-refresh'),
+        scalePill: mount.querySelector<HTMLElement>('.universe-scale'),
       },
       {
         command_run: (line: string): void => {

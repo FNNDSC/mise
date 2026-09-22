@@ -185,12 +185,13 @@ image::images/universe-pane-anatomy.svg[Universe pane anatomy,1180]
 | bar | `.pane-handle` | `.universe-title` `UNIVERSE — n FEEDS · m SHAPES`, and while the index warms `· INDEX WARMING loaded/total (p%)`; `.pane-state` `LANDING` while the space still grows, `WHOLE` once the index is.
 | frame | `.field-rule` `.mode-strip` `.mode-elbow` `.mode-frame` | The mode frame every pane wears; a strip at rest.
 | projection block | `.universe-projection` | Cycles 3D and 2D.
+| scale block | `.universe-scale` | Cycles JOBS (a sphere's radius by the log of the jobs it stands for) and FEEDS (every sphere alike; the field reads by shape alone).
 | refresh block | `.universe-refresh` | Asks the session for the space again (`proc universe`).
 | field | `.universe-canvas` | The scene's mount; holds the canvas and the tip, never a control.
-| sphere | (scene) | One plugin group inside one feed: size the jobs it stands for, colour the worst status; `×N` on a fan.
+| sphere | (scene) | One plugin group inside one feed: size the log of the jobs it stands for (JOBS) or alike (FEEDS); colour done shading to error by the share of its jobs that failed, red outright when all did; `×N` on a fan.
 | molecule | (scene) | One feed: its spheres joined by edges.
 | cluster | (scene) | The feeds of one shape, gathered by an unseen anchor with no mass of its own; not drawn.
-| tip | `.dag-node-tip` | Over a sphere: `<plugin> ×N · <status> · feed <id> · <title>`.
+| tip | `.dag-node-tip` | Over a sphere: `<plugin> ×N · <status> · feed <id> · <title>`, the status read as `<n> errored` on a fan with failures.
 | empty | `.universe-empty` | Before the first space arrives.
 |===
 

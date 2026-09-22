@@ -565,7 +565,7 @@ export const promptContextSchema = z.object({
       jobs: z.number(),
       status: z.string(),
       chain: z.array(z.string()),
-      groups: z.array(z.object({ plugin: z.string(), count: z.number(), status: z.string(), parent: z.number().nullable() })).default([]),
+      groups: z.array(z.object({ plugin: z.string(), count: z.number(), errored: z.number().default(0), status: z.string(), parent: z.number().nullable() })).default([]),
     })).optional(),
     roster: z.enum(['delta', 'full']).optional(),
   }).optional(),

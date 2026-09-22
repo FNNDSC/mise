@@ -65,8 +65,8 @@ const mockCache = {
   topologyLoaded_has: jest.fn((): boolean => true),
   pluginChain_of: jest.fn((id: number): string[] => (id === 1 ? ['pl-dircopy', 'pl-dcm2niix'] : ['pl-dircopy'])),
   pluginGroups_of: jest.fn((id: number) => (id === 1
-    ? [{ plugin: 'pl-dircopy', count: 1, status: 'finishedSuccessfully', parent: null }, { plugin: 'pl-dcm2niix', count: 2, status: 'finishedSuccessfully', parent: 0 }]
-    : [{ plugin: 'pl-dircopy', count: 1, status: 'finishedWithError', parent: null }])),
+    ? [{ plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null }, { plugin: 'pl-dcm2niix', count: 2, errored: 0, status: 'finishedSuccessfully', parent: 0 }]
+    : [{ plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedWithError', parent: null }])),
   feedInstanceIDs_get: jest.fn((): number[] => []),
   warmupProgress_get: jest.fn(() => ({ ...mockWarmup })),
   lifecycle_get: jest.fn(() => ({ ...mockLifecycle })),
@@ -569,7 +569,7 @@ describe('proc universe', () => {
     const model = envelope.model?.data as { feeds: Array<{ id: number; chain: string[]; status: string; jobs: number }>; whole: boolean };
     expect(model.whole).toBe(false);
     expect(model.feeds.map((f) => f.id)).toEqual([1, 2]);
-    expect(model.feeds[0]).toEqual({ id: 1, title: 'a', jobs: 2, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [{ plugin: 'pl-dircopy', count: 1, status: 'finishedSuccessfully', parent: null }, { plugin: 'pl-dcm2niix', count: 2, status: 'finishedSuccessfully', parent: 0 }] });
+    expect(model.feeds[0]).toEqual({ id: 1, title: 'a', jobs: 2, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [{ plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null }, { plugin: 'pl-dcm2niix', count: 2, errored: 0, status: 'finishedSuccessfully', parent: 0 }] });
     expect(model.feeds[1]?.status).toBe('finishedWithError');
     expect(envelope.rendered).toContain('2 feeds across 2 pipeline shapes');
     expect(envelope.rendered).toContain('still warming');

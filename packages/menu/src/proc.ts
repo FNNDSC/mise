@@ -65,6 +65,8 @@ export interface ProcLandedPromptFeed {
 export interface ProcPromptJobGroup {
   plugin: string;
   count: number;
+  /** How many of the count ended in error. */
+  errored: number;
   status: string;
   /** The index of the parent group, or null at the root. */
   parent: number | null;

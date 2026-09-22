@@ -20,7 +20,7 @@
 import type { PromptContext, WireEnvelope } from '@fnndsc/menu';
 import { PROC_UNIVERSE_MODEL_KIND, procUniverseModelSchema, type ProcUniverseModel } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../../scene/dagScene.js';
-import { LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse, type LandedFeed } from '../dag/universe.js';
+import { LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse, type LandedFeed, type UniverseScale } from '../dag/universe.js';
 import type { KeyStore } from '../../app/dormant.js';
 
 /** What the pane asks of its host. */
@@ -37,6 +37,7 @@ export interface UniversePanelMount {
   empty: HTMLElement;
   projectionPill: HTMLElement | null;
   refreshPill: HTMLElement | null;
+  scalePill: HTMLElement | null;
 }
 
 /** How far a sphere's repulsion reaches while the space is small: a molecule hugs itself at this bound. */
@@ -80,6 +81,8 @@ export class UniversePanel {
   private arrivalsKey: string = '';
   private feedsCount: number | null = null;
   private disposed: boolean = false;
+  /** What sizes a sphere: its jobs (log) or nothing. */
+  private scale: UniverseScale = 'jobs';
   /** The reach the scene was last given; undefined until the first paint. */
   private reach: number | undefined | null = null;
 
@@ -105,6 +108,11 @@ export class UniversePanel {
       if (mount.projectionPill !== null) mount.projectionPill.textContent = next.toUpperCase();
     });
     mount.refreshPill?.addEventListener('click', (): void => this.request());
+    mount.scalePill?.addEventListener('click', (): void => {
+      this.scale = this.scale === 'jobs' ? 'feeds' : 'jobs';
+      if (mount.scalePill !== null) mount.scalePill.textContent = this.scale.toUpperCase();
+      if (this.shown) this.paint();
+    });
     this.canvas.style.display = 'none';
     this.title_paint();
   }
@@ -213,7 +221,7 @@ export class UniversePanel {
   }
 
   private paint(): void {
-    const graph = universeGraph_build(this.landed.all());
+    const graph = universeGraph_build(this.landed.all(), this.scale);
     // Hug while small, spread when a crowd: the bound that keeps a lone
     // molecule together would pack seven hundred feeds into one ball.
     // Set only when it changes: physics_set settles the old graph again.

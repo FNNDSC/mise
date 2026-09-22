@@ -3,18 +3,18 @@
  * floating free, like shapes pulled together by an unseen anchor.
  */
 import { describe, it, expect } from '@jest/globals';
-import { universeGraph_build, LandedFeeds, shape_of, groupId_of, anchorId_of, universeTip_of, universeStoreKey_of, storedPositions_parse, type LandedFeed } from '../../src/features/dag/universe.js';
+import { universeGraph_build, LandedFeeds, shape_of, groupId_of, anchorId_of, universeTip_of, universeStoreKey_of, storedPositions_parse, jobsMetric_of, erroredShare_of, type LandedFeed } from '../../src/features/dag/universe.js';
 
 const chain: LandedFeed = { id: 1, title: 'chain', jobs: 3, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [
-  { plugin: 'pl-dircopy', count: 1, status: 'finishedSuccessfully', parent: null },
-  { plugin: 'pl-dcm2niix', count: 2, status: 'finishedSuccessfully', parent: 0 },
+  { plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null },
+  { plugin: 'pl-dcm2niix', count: 2, errored: 0, status: 'finishedSuccessfully', parent: 0 },
 ] };
 const fan: LandedFeed = { id: 2, title: 'shot-cohort', jobs: 301, status: 'finishedWithError', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [
-  { plugin: 'pl-dircopy', count: 1, status: 'finishedSuccessfully', parent: null },
-  { plugin: 'pl-dcm2niix', count: 300, status: 'finishedWithError', parent: 0 },
+  { plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null },
+  { plugin: 'pl-dcm2niix', count: 300, errored: 12, status: 'finishedWithError', parent: 0 },
 ] };
 const other: LandedFeed = { id: 3, title: '', jobs: 1, status: 'started', chain: ['pl-simplefsapp'], groups: [
-  { plugin: 'pl-simplefsapp', count: 1, status: 'started', parent: null },
+  { plugin: 'pl-simplefsapp', count: 1, errored: 0, status: 'started', parent: null },
 ] };
 
 describe('universeGraph_build', () => {
@@ -22,9 +22,10 @@ describe('universeGraph_build', () => {
     const graph = universeGraph_build([fan]);
     const root = graph.nodes.find((n) => n.id === groupId_of(2, 0));
     const conversions = graph.nodes.find((n) => n.id === groupId_of(2, 1));
-    expect(root).toMatchObject({ label: 'pl-dircopy', metric: 1, status: 'finishedSuccessfully' });
+    expect(root).toMatchObject({ label: 'pl-dircopy', metric: jobsMetric_of(1), status: 'finishedSuccessfully' });
     expect(root?.count).toBeUndefined();
-    expect(conversions).toMatchObject({ label: 'pl-dcm2niix', metric: 300, count: 300, status: 'finishedWithError', parentIds: [groupId_of(2, 0)] });
+    expect(root?.share).toBeUndefined();
+    expect(conversions).toMatchObject({ label: 'pl-dcm2niix', metric: jobsMetric_of(300), count: 300, status: 'finishedWithError', parentIds: [groupId_of(2, 0)], share: 12 / 300 });
   });
 
   it('hangs feeds of one shape from one unseen anchor, and different shapes apart', () => {
@@ -60,7 +61,7 @@ describe('universeTip_of', () => {
   it('names the group and the feed a sphere stands for, and nothing for an anchor', () => {
     const feeds: LandedFeeds = new LandedFeeds();
     feeds.take([fan, other]);
-    expect(universeTip_of(groupId_of(2, 1), feeds)).toBe('pl-dcm2niix ×300 · finishedWithError · feed 2 · shot-cohort');
+    expect(universeTip_of(groupId_of(2, 1), feeds)).toBe('pl-dcm2niix ×300 · 12 errored · feed 2 · shot-cohort');
     expect(universeTip_of(groupId_of(2, 0), feeds)).toBe('pl-dircopy · finishedSuccessfully · feed 2 · shot-cohort');
     // A feed without a name is named by its number alone.
     expect(universeTip_of(groupId_of(3, 0), feeds)).toBe('pl-simplefsapp · started · feed 3');
@@ -80,5 +81,24 @@ describe('remembered positions', () => {
     expect(storedPositions_parse('[1,2,3]')).toEqual({});
     expect(storedPositions_parse(JSON.stringify({ 'feed:1:0': [1, 2.5, -3], bad: [1, 2], worse: ['a', 'b', 'c'], nan: [1, 2, null] })))
       .toEqual({ 'feed:1:0': [1, 2.5, -3] });
+  });
+});
+
+describe('a sphere weighs its jobs honestly', () => {
+  it('sizes on a log scale, so a giant is a few times a fan rather than hundreds', () => {
+    expect(jobsMetric_of(1)).toBeCloseTo(1);
+    expect(jobsMetric_of(300) / jobsMetric_of(1)).toBeLessThan(10);
+    expect(jobsMetric_of(80000) / jobsMetric_of(300)).toBeLessThan(2.5);
+    expect(jobsMetric_of(0)).toBe(jobsMetric_of(1));
+  });
+  it('hues by the errored share, and not at all when clean', () => {
+    expect(erroredShare_of({ plugin: 'p', count: 80000, errored: 12, status: 'finishedWithError', parent: null })).toBeCloseTo(12 / 80000);
+    expect(erroredShare_of({ plugin: 'p', count: 3, errored: 3, status: 'finishedWithError', parent: null })).toBe(1);
+    expect(erroredShare_of({ plugin: 'p', count: 3, errored: 0, status: 'finishedSuccessfully', parent: null })).toBeUndefined();
+  });
+  it('on the feeds scale every sphere weighs the same', () => {
+    const graph = universeGraph_build([fan, chain], 'feeds');
+    expect(graph.nodes.filter((n) => n.ghost !== true).every((n) => n.metric === 1)).toBe(true);
+    expect(universeGraph_build([fan], 'jobs').nodes.find((n) => n.id === groupId_of(2, 1))?.metric).toBeCloseTo(jobsMetric_of(300));
   });
 });

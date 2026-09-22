@@ -20,6 +20,8 @@ import type { SceneGraph, SceneNode } from '../../scene/dagScene.js';
 export interface LandedGroup {
   plugin: string;
   count: number;
+  /** How many of the count ended in error; zero from an older daemon. */
+  errored: number;
   status: string;
   parent: number | null;
 }
@@ -63,7 +65,39 @@ export function anchorId_of(shape: string): string {
  * @returns The graph: every feed's groups, and one ghost anchor per shape
  *   that each feed's root hangs from — present in the settle, never drawn.
  */
-export function universeGraph_build(landed: ReadonlyArray<LandedFeed>): SceneGraph {
+/**
+ * What sizes a sphere: the jobs it stands for, on a log scale, or nothing
+ * (every sphere alike, so the field reads by shape alone).
+ */
+export type UniverseScale = 'jobs' | 'feeds';
+
+/**
+ * A sphere's weight on the jobs scale. Logarithmic, because a group of
+ * eighty thousand beside groups of three hundred left everything but the
+ * giant at the smallest radius and the giant at the heart of gravity — a
+ * fat caterpillar where a field should be.
+ *
+ * @param count - The jobs the group stands for.
+ * @returns The metric the settle sizes by.
+ */
+export function jobsMetric_of(count: number): number {
+  return Math.log2(Math.max(1, count) + 1);
+}
+
+/**
+ * The share of a group that ended in error, 0..1, or undefined when none
+ * did: what hues the sphere. A group is not red because one job in eighty
+ * thousand failed; it is as red as its failures are many.
+ *
+ * @param group - The group.
+ * @returns The share, or undefined for a clean group.
+ */
+export function erroredShare_of(group: LandedGroup): number | undefined {
+  if (group.errored <= 0 || group.count <= 0) return undefined;
+  return Math.min(1, group.errored / group.count);
+}
+
+export function universeGraph_build(landed: ReadonlyArray<LandedFeed>, scale: UniverseScale = 'jobs'): SceneGraph {
   const nodes: SceneNode[] = [];
   const anchors: Set<string> = new Set();
   const feeds: LandedFeed[] = [...landed].sort((a: LandedFeed, b: LandedFeed): number => a.id - b.id);
@@ -77,14 +111,16 @@ export function universeGraph_build(landed: ReadonlyArray<LandedFeed>): SceneGra
       nodes.push({ id: anchor, label: '', parentIds: [], joinParentIds: [], ghost: true, metric: 1 });
     }
     feed.groups.forEach((group: LandedGroup, index: number): void => {
+      const share: number | undefined = erroredShare_of(group);
       nodes.push({
         id: groupId_of(feed.id, index),
         label: group.plugin,
         parentIds: [group.parent === null ? anchor : groupId_of(feed.id, group.parent)],
         joinParentIds: [],
         status: group.status,
-        metric: Math.max(1, group.count),
+        metric: scale === 'jobs' ? jobsMetric_of(group.count) : 1,
         ...(group.count > 1 ? { count: group.count } : {}),
+        ...(share !== undefined ? { share } : {}),
       });
     });
   }
@@ -157,7 +193,11 @@ export function universeTip_of(nodeId: string, feeds: LandedFeeds): string | nul
   if (feed === undefined || group === undefined) return null;
   const count: string = group.count > 1 ? ` ×${group.count.toLocaleString('en-US')}` : '';
   const name: string = feed.title.length > 0 ? ` · ${feed.title}` : '';
-  return `${group.plugin}${count} · ${group.status} · feed ${feed.id}${name}`;
+  // A fan with failures is said by its count of them, not by the worst word.
+  const how: string = group.errored > 0 && group.count > 1
+    ? `${group.errored.toLocaleString('en-US')} errored`
+    : group.status;
+  return `${group.plugin}${count} · ${how} · feed ${feed.id}${name}`;
 }
 
 /** Where a universe's remembered positions are kept, per identity. */

@@ -1,5 +1,15 @@
 # @fnndsc/porter
 
+## 0.3.0
+
+### Minor Changes
+
+- b58f4da: porter: published. `npm install -g @fnndsc/porter` brings the whole stack beneath it, and `PORTER_CUBE_URL=… porter` is the full login experience from one install. `@fnndsc/menu` is a declared dependency, since the greeter serves its brain and ANSI modules from where menu is installed.
+
+### Patch Changes
+
+- 2b18178: porter: `porter --status` asks for nothing but the state directory. It read the full configuration first and refused without `PORTER_CUBE_URL`, a fact a listing never uses.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,5 +1,22 @@
 # @fnndsc/argus
 
+## 0.12.0
+
+### Minor Changes
+
+- de26df4: argus: a cluster has a handle. Every shape's anchor in the UNIVERSE is drawn as a halo sized by the feeds it gathers; hover names the shape and its count, a click brings the cluster into view (the shape lit, the rest dimmed, the camera framing it), BACK or Esc returns; `universe cluster <feed>` from the console. A feed entered from a cluster climbs back to the cluster.
+- 637c819: argus: the descent into a feed. A click on a sphere in the UNIVERSE flies into its molecule, unfolds the feed into its graph in place (the kernel's own collapse as the budget) while the rest of the space dims, and frames it; inside, a node's facts and verbs (ENTER NODE, PROCESS), OPEN FEED into a RUNS pane, Esc or BACK to climb out. `universe enter <feed> | back | open` from the console.
+- c82f514: argus: the UNIVERSE is its own pane. Opened from the dashboard's tile beside the errand host, one per stage; RUNS-02 stays a feed viewer. Hover over a sphere names the plugin group and the feed it belongs to. The space breathes after the index is whole (arrivals drift in, status changes recolour, gone feeds leave), hugs a lone molecule instead of scattering it, and remembers where its molecules settled per identity across reopen and reload.
+
+### Patch Changes
+
+- dac2d96: argus: the console opens on the ChRIS brain at rest and the session's greeting from `motd ARGUS` — name, feeds, jobs, failure rate, what is running, a fortune — in place of "two projections of one CALYPSO session".
+- 50f8a4e: argus: a sphere in the universe weighs its jobs on a log scale and is hued by the share of them that failed, not by the worst one; the tip says how many errored; a SCALE block (JOBS / FEEDS) joins the frame. An 80,000-job group with a dozen failures no longer eats the field as one red giant.
+- Updated dependencies [dac2d96]
+- Updated dependencies [50f8a4e]
+- Updated dependencies [c82f514]
+  - @fnndsc/menu@0.11.0
+
 ## 0.11.0
 
 ### Minor Changes

@@ -1,5 +1,23 @@
 # @fnndsc/brasa
 
+## 0.25.0
+
+### Minor Changes
+
+- dac2d96: brasa: `motd [surface]`, the greeting a session gives on arrival — who you are, how many feeds you hold, how many jobs have run and what share failed, what is running now, from the session's own index at no cost; "so far" while the index warms; ends with a fortune. A surface may name itself (`motd ARGUS`).
+
+### Patch Changes
+
+- c82f514: brasa: `proc universe` names each feed.
+- Updated dependencies [247bf09]
+- Updated dependencies [dac2d96]
+- Updated dependencies [50f8a4e]
+- Updated dependencies [50f8a4e]
+- Updated dependencies [c82f514]
+- Updated dependencies [c82f514]
+  - @fnndsc/cumin@3.23.1
+  - @fnndsc/menu@0.11.0
+
 ## 0.24.0
 
 ### Minor Changes

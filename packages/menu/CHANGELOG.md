@@ -1,5 +1,16 @@
 # @fnndsc/menu
 
+## 0.11.0
+
+### Minor Changes
+
+- dac2d96: menu: the `session.motd` model — who arrived, feeds by scope, jobs by state, the failure rate, how far the index has come, and a fortune.
+
+### Patch Changes
+
+- 50f8a4e: menu: `errored` on a job group in the prompt's landings and in `proc.universe` (zero from an older daemon).
+- c82f514: menu: `title` on a landed feed in the prompt context and on a `proc.universe` feed (empty from an older daemon).
+
 ## 0.10.0
 
 ### Minor Changes

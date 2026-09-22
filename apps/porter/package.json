@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/porter",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "PORTER: the mise display manager — logs an operator in, finds or starts their calypso, and shows them to argus",
   "type": "module",
   "main": "dist/porter.js",
@@ -18,9 +18,9 @@
     "@fastify/cookie": "^11.1.2",
     "@fastify/formbody": "^9.0.0",
     "@fastify/reply-from": "^12.6.5",
-    "@fnndsc/calypso": "^0.16.0",
-    "@fnndsc/chell": "^5.9.0",
-    "@fnndsc/menu": "^0.10.0",
+    "@fnndsc/calypso": "^0.16.1",
+    "@fnndsc/chell": "^5.9.1",
+    "@fnndsc/menu": "^0.11.0",
     "fastify": "^5.12.5",
     "ws": "^8.18.0",
     "zod": "^3.23.8"

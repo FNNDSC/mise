@@ -1,5 +1,23 @@
 # @fnndsc/chell
 
+## 5.9.1
+
+### Patch Changes
+
+- dac2d96: chell: the shell and the remote client greet through the kernel's `motd chell` where the fortune used to print, so a TTY and a browser on one session say the same thing. A session that cannot answer is left alone.
+- Updated dependencies [247bf09]
+- Updated dependencies [dac2d96]
+- Updated dependencies [dac2d96]
+- Updated dependencies [50f8a4e]
+- Updated dependencies [50f8a4e]
+- Updated dependencies [c82f514]
+- Updated dependencies [c82f514]
+- Updated dependencies [c82f514]
+  - @fnndsc/cumin@3.23.1
+  - @fnndsc/brasa@0.25.0
+  - @fnndsc/menu@0.11.0
+  - @fnndsc/calypso@0.16.1
+
 ## 5.9.0
 
 ### Minor Changes

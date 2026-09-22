@@ -1,5 +1,17 @@
 # @fnndsc/cumin
 
+## 3.23.1
+
+### Patch Changes
+
+- 247bf09: cumin: a feed takes its shape from the instances the index holds, not from a walk down from its root. CUBE lists plugin instances newest first, so a cold sweep meets a feed's leaves long before its root, and the landing shape a surface draws — the UNIVERSE — stayed empty for the whole of a large feed until its oldest instance arrived. Per-feed roll kept on `instance_add`/`instance_remove`; `pluginChain_of`, `pluginGroups_of` and `instancesForFeed_count` read it; an instance whose parent has not landed stands as a root until it has.
+- 50f8a4e: cumin: a job group carries `errored`, how many of its count ended in error.
+- c82f514: cumin: a landed feed carries its title, so a surface can name the molecule it draws.
+- Updated dependencies [dac2d96]
+- Updated dependencies [50f8a4e]
+- Updated dependencies [c82f514]
+  - @fnndsc/menu@0.11.0
+
 ## 3.23.0
 
 ### Minor Changes

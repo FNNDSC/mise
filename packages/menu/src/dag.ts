@@ -207,6 +207,8 @@ export const procJobGroupSchema = z.object({
 });
 export const procUniverseFeedSchema = z.object({
   id: z.number(),
+  /** The feed's name; empty from a daemon that predates it. */
+  title: z.string().default(''),
   jobs: z.number(),
   status: z.string(),
   chain: z.array(z.string()),

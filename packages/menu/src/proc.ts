@@ -52,6 +52,8 @@ export interface ProcPromptProgress {
  */
 export interface ProcLandedPromptFeed {
   id: number;
+  /** The feed's name. */
+  title: string;
   jobs: number;
   status: string;
   chain: string[];

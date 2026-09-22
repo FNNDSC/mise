@@ -3,17 +3,17 @@
  * floating free, like shapes pulled together by an unseen anchor.
  */
 import { describe, it, expect } from '@jest/globals';
-import { universeGraph_build, LandedFeeds, shape_of, groupId_of, anchorId_of, type LandedFeed } from '../../src/features/dag/universe.js';
+import { universeGraph_build, LandedFeeds, shape_of, groupId_of, anchorId_of, universeTip_of, universeStoreKey_of, storedPositions_parse, type LandedFeed } from '../../src/features/dag/universe.js';
 
-const chain: LandedFeed = { id: 1, jobs: 3, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [
+const chain: LandedFeed = { id: 1, title: 'chain', jobs: 3, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [
   { plugin: 'pl-dircopy', count: 1, status: 'finishedSuccessfully', parent: null },
   { plugin: 'pl-dcm2niix', count: 2, status: 'finishedSuccessfully', parent: 0 },
 ] };
-const fan: LandedFeed = { id: 2, jobs: 301, status: 'finishedWithError', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [
+const fan: LandedFeed = { id: 2, title: 'shot-cohort', jobs: 301, status: 'finishedWithError', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [
   { plugin: 'pl-dircopy', count: 1, status: 'finishedSuccessfully', parent: null },
   { plugin: 'pl-dcm2niix', count: 300, status: 'finishedWithError', parent: 0 },
 ] };
-const other: LandedFeed = { id: 3, jobs: 1, status: 'started', chain: ['pl-simplefsapp'], groups: [
+const other: LandedFeed = { id: 3, title: '', jobs: 1, status: 'started', chain: ['pl-simplefsapp'], groups: [
   { plugin: 'pl-simplefsapp', count: 1, status: 'started', parent: null },
 ] };
 
@@ -39,7 +39,7 @@ describe('universeGraph_build', () => {
 
   it('draws the same graph whatever order the feeds landed in, and skips a feed with no jobs', () => {
     expect(universeGraph_build([other, fan, chain])).toEqual(universeGraph_build([chain, fan, other]));
-    expect(universeGraph_build([{ id: 9, jobs: 0, status: 'created', chain: [], groups: [] }]).nodes).toEqual([]);
+    expect(universeGraph_build([{ id: 9, title: 'empty', jobs: 0, status: 'created', chain: [], groups: [] }]).nodes).toEqual([]);
   });
 });
 
@@ -53,5 +53,32 @@ describe('LandedFeeds', () => {
     expect(feeds.all().find((f) => f.id === 2)?.groups[1]?.count).toBe(301);
     feeds.clear();
     expect(feeds.size()).toBe(0);
+  });
+});
+
+describe('universeTip_of', () => {
+  it('names the group and the feed a sphere stands for, and nothing for an anchor', () => {
+    const feeds: LandedFeeds = new LandedFeeds();
+    feeds.take([fan, other]);
+    expect(universeTip_of(groupId_of(2, 1), feeds)).toBe('pl-dcm2niix ×300 · finishedWithError · feed 2 · shot-cohort');
+    expect(universeTip_of(groupId_of(2, 0), feeds)).toBe('pl-dircopy · finishedSuccessfully · feed 2 · shot-cohort');
+    // A feed without a name is named by its number alone.
+    expect(universeTip_of(groupId_of(3, 0), feeds)).toBe('pl-simplefsapp · started · feed 3');
+    expect(universeTip_of(anchorId_of(shape_of(fan)), feeds)).toBeNull();
+    expect(universeTip_of(groupId_of(99, 0), feeds)).toBeNull();
+  });
+});
+
+describe('remembered positions', () => {
+  it('keys the memory by identity', () => {
+    expect(universeStoreKey_of('chris', 'https://cube/api/v1/')).toBe('argus.universe.chris@https://cube/api/v1/');
+  });
+  it('reads what was written and nothing that was not', () => {
+    expect(storedPositions_parse(null)).toEqual({});
+    expect(storedPositions_parse('')).toEqual({});
+    expect(storedPositions_parse('not json')).toEqual({});
+    expect(storedPositions_parse('[1,2,3]')).toEqual({});
+    expect(storedPositions_parse(JSON.stringify({ 'feed:1:0': [1, 2.5, -3], bad: [1, 2], worse: ['a', 'b', 'c'], nan: [1, 2, null] })))
+      .toEqual({ 'feed:1:0': [1, 2.5, -3] });
   });
 });

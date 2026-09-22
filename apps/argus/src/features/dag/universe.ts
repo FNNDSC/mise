@@ -27,6 +27,8 @@ export interface LandedGroup {
 /** One feed as the session reported it landing. */
 export interface LandedFeed {
   id: number;
+  /** The feed's name, for the tip; empty from a daemon that predates it. */
+  title: string;
   jobs: number;
   status: string;
   chain: string[];
@@ -128,8 +130,64 @@ export class LandedFeeds {
     return [...this.byId.values()];
   }
 
+  public get(id: number): LandedFeed | undefined {
+    return this.byId.get(id);
+  }
+
   /** Forgets everything: the index came whole and the roster takes over. */
   public clear(): void {
     this.byId.clear();
+  }
+}
+
+/**
+ * The words a hover over one sphere gives: the group it stands for and the
+ * feed it belongs to. A sphere is a plugin group, never a feed, and a
+ * pointer over it should learn both without a click.
+ *
+ * @param nodeId - The scene node under the pointer.
+ * @param feeds - What has landed.
+ * @returns The tip, or null for a node the universe does not name (an anchor).
+ */
+export function universeTip_of(nodeId: string, feeds: LandedFeeds): string | null {
+  const match: RegExpMatchArray | null = nodeId.match(/^feed:(\d+):(\d+)$/);
+  if (match === null) return null;
+  const feed: LandedFeed | undefined = feeds.get(Number(match[1]));
+  const group: LandedGroup | undefined = feed?.groups[Number(match[2])];
+  if (feed === undefined || group === undefined) return null;
+  const count: string = group.count > 1 ? ` ×${group.count.toLocaleString('en-US')}` : '';
+  const name: string = feed.title.length > 0 ? ` · ${feed.title}` : '';
+  return `${group.plugin}${count} · ${group.status} · feed ${feed.id}${name}`;
+}
+
+/** Where a universe's remembered positions are kept, per identity. */
+export function universeStoreKey_of(user: string, uri: string): string {
+  return `argus.universe.${user}@${uri}`;
+}
+
+/** Positions as they are kept: node id to a rounded triple. */
+export type StoredPositions = Record<string, [number, number, number]>;
+
+/**
+ * Reads remembered positions, tolerating anything that is not what was
+ * written (another version, a hand edit, an empty store).
+ *
+ * @param text - The stored text, or null.
+ * @returns The positions, empty when there are none to trust.
+ */
+export function storedPositions_parse(text: string | null): StoredPositions {
+  if (text === null || text.length === 0) return {};
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: StoredPositions = {};
+    for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (Array.isArray(value) && value.length === 3 && value.every((n: unknown): boolean => typeof n === 'number' && Number.isFinite(n))) {
+        out[id] = [value[0] as number, value[1] as number, value[2] as number];
+      }
+    }
+    return out;
+  } catch {
+    return {};
   }
 }

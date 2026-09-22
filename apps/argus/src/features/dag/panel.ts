@@ -37,7 +37,7 @@ import { Listing, type ListingStateParts } from '../roster/listing.js';
 import { progressCell_build, type ListingProgress, type ListingTrait, type ListingAction } from '../roster/row.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
-import { LandedFeeds, universeGraph_build, type LandedFeed } from './universe.js';
+import { LandedFeeds, universeGraph_build, universeTip_of, type LandedFeed } from './universe.js';
 
 /** What the pane asks of its host. */
 export interface DagPanelHandlers {
@@ -375,6 +375,9 @@ export class DagPanel {
       select: (node: SceneNode): void => this.facts_show(node),
       activate: (node: SceneNode): void => this.node_activate(node),
       deselect: (): void => this.facts.replaceChildren(),
+      // While the wait's theater is up, a sphere is a plugin group in a
+      // feed and the tip says both; a feed's own graph keeps its labels.
+      tip: (node: SceneNode): string | null => (this.universeShown ? universeTip_of(node.id, this.landed) : null),
     });
     strategyPill.addEventListener('click', (): void => {
       const next: LayoutStrategy = this.scene.strategy_get() === 'ranked' ? 'molecule' : 'ranked';

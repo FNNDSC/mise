@@ -1872,10 +1872,20 @@ main {
   white-space: nowrap;
 }
 
-.dag-canvas canvas {
+.dag-canvas canvas,
+.universe-canvas canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
+}
+
+/* The UNIVERSE pane's field: the scene, framed like the DAG's. Its own
+   pane kind, so RUNS-02 stays a feed viewer and the space keeps its camera. */
+.universe-canvas {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  position: relative; /* anchors the hover tip */
 }
 
 /* A zoomed tree pane takes the whole region: its siblings and the
@@ -2177,6 +2187,7 @@ body[data-zoom]:not([data-zoom='console'])
 .image-body,
 .tags-body,
 .dag-canvas,
+.universe-canvas,
 .dag-roster,
 .gather-listing,
 .header-gather-field,

@@ -585,7 +585,7 @@ describe('topology landings', () => {
     cache.feed_add({ ...feed(1), erroredJobs: 1, finishedJobs: 2 });
     cache.instance_add(inst(10, 1, null, 'pl-dircopy'));
     expect(cache.topologyLanded_recent()).toEqual([
-      { id: 1, jobs: 1, status: 'finishedWithError', chain: ['pl-dircopy'], groups: [{ plugin: 'pl-dircopy', count: 1, status: 'scheduled', parent: null }] },
+      { id: 1, title: 'feed 1', jobs: 1, status: 'finishedWithError', chain: ['pl-dircopy'], groups: [{ plugin: 'pl-dircopy', count: 1, status: 'scheduled', parent: null }] },
     ]);
     cache.instance_add(inst(11, 1, 10, 'pl-dcm2niix'));
     cache.instance_add(inst(12, 1, 11, 'pl-fastsurfer'));
@@ -593,7 +593,7 @@ describe('topology landings', () => {
     cache.topologyLoaded_mark(1);
     expect(cache.topologyLanded_recent()).toEqual([
       {
-        id: 1, jobs: 4, status: 'finishedWithError', chain: ['pl-dircopy', 'pl-dcm2niix', 'pl-fastsurfer'],
+        id: 1, title: 'feed 1', jobs: 4, status: 'finishedWithError', chain: ['pl-dircopy', 'pl-dcm2niix', 'pl-fastsurfer'],
         groups: [
           { plugin: 'pl-dircopy', count: 1, status: 'scheduled', parent: null },
           { plugin: 'pl-dcm2niix', count: 2, status: 'scheduled', parent: 0 },
@@ -657,6 +657,6 @@ describe('topology landings', () => {
     cache.topologyLoaded_mark(4, t0 + 2000);
     cache.topologyLoaded_mark(3, t0 + 1000);
     expect(cache.topologyLanded_recent(t0 + 2500).map((f) => f.id)).toEqual([3, 4]);
-    expect(cache.topologyLanded_recent(t0 + 2500)[0]).toEqual({ id: 3, jobs: 0, status: 'finishedSuccessfully', chain: [], groups: [] });
+    expect(cache.topologyLanded_recent(t0 + 2500)[0]).toEqual({ id: 3, title: 'feed 3', jobs: 0, status: 'finishedSuccessfully', chain: [], groups: [] });
   });
 });

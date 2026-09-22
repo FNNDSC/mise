@@ -289,6 +289,7 @@ LINT_CHECKS['a-component-lands-with-its-reference'] = () => {
   const COMPONENT_SOURCES = [
     'apps/argus/src/features/roster/listing.ts',
     'apps/argus/src/features/image/panel.ts',
+    'apps/argus/src/features/universe/panel.ts',
   ];
   if (!existsSync('apps/argus/docs/components.adoc')) {
     fail('a-component-lands-with-its-reference', 'apps/argus/docs/components.adoc is missing');

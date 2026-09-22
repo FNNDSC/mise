@@ -44,6 +44,7 @@ import { Cohort } from '../features/gather/cohort.js';
 import { LauncherPanel, type LauncherTile, type LauncherRow } from '../features/launcher/panel.js';
 import { runLine_compose, runLine_executable, runLine_flagGet, runLine_flagSet, runLine_hasTitle, runLine_titleAppend, pipelineNode_selector, type RunFlagValue } from '../features/files/runLine.js';
 import { DagPanel } from '../features/dag/panel.js';
+import { UniversePanel } from '../features/universe/panel.js';
 import { paneAsk_open, paneAsk_abandon, type PaneAskRequest } from '../features/ask/paneAsk.js';
 import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
@@ -815,6 +816,8 @@ async function surface_start(token: string): Promise<void> {
   /** The GATHER panes on stage, by pane id (one cohort each). */
   const gatherPanels: Map<string, GatherPanel> = new Map();
   const dagPanels: Map<string, DagPanel> = new Map();
+  /** The UNIVERSE panes on stage, by pane id: normally one. */
+  const universePanels: Map<string, UniversePanel> = new Map();
 
   // The subject bus: pane linkage as hub-and-spoke subjects. Every regard
   // write also flows to the daemon as session truth (the two-layer model).
@@ -1859,6 +1862,42 @@ async function surface_start(token: string): Promise<void> {
   // mise's frame (docs/aegis.adoc: an-instruments-field-is-foreign,
   // focus-stays-in-the-field).
   const imagePanels: Map<string, ImagePanel> = new Map();
+  // The UNIVERSE pane: the space of everything run here, its own kind.
+  const universeInstance_build = (id: string): PaneInstance => {
+    const mount: HTMLElement = template_stamp('tpl-pane-universe');
+    const panel: UniversePanel = new UniversePanel(
+      {
+        canvas: pane_find(mount, '.universe-canvas'),
+        title: pane_find(mount, '.universe-title'),
+        state: mount.querySelector<HTMLElement>('.pane-state'),
+        empty: pane_find(mount, '.universe-empty'),
+        projectionPill: mount.querySelector<HTMLElement>('.universe-projection'),
+        refreshPill: mount.querySelector<HTMLElement>('.universe-refresh'),
+      },
+      {
+        command_run: (line: string): void => {
+          void client
+            .line_execute(line, { silent: true, observe: false })
+            .then((outcome: ExecuteOutcome): void => {
+              for (const envelope of outcome.envelopes) panel.envelope_observe(envelope);
+            });
+        },
+      },
+      localKeyStore(),
+    );
+    universePanels.set(id, panel);
+    return {
+      id,
+      kind: 'universe',
+      mount,
+      dispose: (): void => {
+        universePanels.delete(id);
+        subjects.pane_leave(id);
+        panel.dispose();
+      },
+    };
+  };
+
   const imageInstance_build = (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-image');
     const panel: ImagePanel = new ImagePanel(mount, {
@@ -4427,6 +4466,7 @@ async function surface_start(token: string): Promise<void> {
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
   paneFactory_register('catalogue', (id: string): PaneInstance => filesInstance_build(id, false, true));
   paneFactory_register('dag', (id: string): PaneInstance => dagInstance_build(id, false));
+  paneFactory_register('universe', universeInstance_build);
   paneFactory_register('view', viewInstance_build);
   paneFactory_register('image', imageInstance_build);
   paneFactory_register('tags', tagsInstance_build);
@@ -4498,10 +4538,30 @@ async function surface_start(token: string): Promise<void> {
     consoleFocused_set(false);
   };
   /** UNIVERSE: the space of everything run here, on the RUNS canvas. */
+  // The UNIVERSE: one pane of its own kind on stage. A shown one is
+  // focused; otherwise one is split beside the errand host and asked for
+  // the space. Never the RUNS pane: that stays a feed viewer.
   const universe_show = (): void => {
-    domain_enter('dag');
-    dagPanel.universe_request();
-    layout.focus_set('dag');
+    launcher_yield();
+    const shown: Set<string> = new Set(layout.panes_shown());
+    for (const id of universePanels.keys()) {
+      if (shown.has(id)) {
+        layout.focus_set(id);
+        consoleFocused_set(false);
+        return;
+      }
+    }
+    const host: string | null = errandHost_find();
+    if (host === null) return;
+    const spawned: PaneInstance = instance_spawn('universe');
+    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+      paneInstance_dispose(spawned.id);
+      layout.mount_remove(spawned.id);
+      return;
+    }
+    birth_record(spawned.id, host, 'col', false);
+    universePanels.get(spawned.id)?.request();
+    layout.focus_set(spawned.id);
     consoleFocused_set(false);
   };
   element_require('gutter-runs').addEventListener('click', (): void => domainPress('dag', (): void => runs_show()));
@@ -4986,6 +5046,7 @@ async function surface_start(token: string): Promise<void> {
         indexInstrument.promptContext_show(context);
         cascade?.promptContext_observe(context);
         dagPanel.promptContext_observe(context);
+        for (const universe of universePanels.values()) universe.promptContext_observe(context);
       },
       telemetry_receive: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry; state?: JobsStateTelemetry }): void => {
         indexInstrument.counts_show(index);

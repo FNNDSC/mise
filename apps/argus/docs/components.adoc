@@ -162,6 +162,73 @@ A theme may set, per pane: `--roster-gap` and `--roster-pad` on the grid host, t
 
 Do not size a track to its content, and do not put the expanse at the end of the row: a bar packed against the right edge after every fact is a readout nobody scans. Do not append a cell to a row outside the traits and the declared actions: a row one cell short or long shifts every cell of every row after it. Do not hold a row's element across a render; `rows_set` rebuilds the field, so ask `row_element(key)` again. Do not clear the selection from a pane; name the field and let the façade decide. Do not put a verb in a column; a verb answers to no cap and lives in the track or, on a framed listing, in the row zone. Do not find the row zone by prefix; declare it, since declaring it changes the grid. Do not use a painter to add a column; a painter replaces the grid, it does not extend it.
 
+== Universe pane
+
+Source: `apps/argus/src/features/universe/panel.ts` (the pane), over `features/dag/universe.ts` (the graph built from landed feeds, the tip, the memory) and `scene/dagScene.ts` (the scene, shared with the DAG pane).
+
+Status: on stage since 2026-09-22 (slice 1 of the universe descent). Opens from the dashboard's UNIVERSE tile; the wait's theater in the DAG pane (a universe drawn while the roster is refused) shares its graph and its tip but is not this pane.
+
+=== Purpose
+
+The universe pane shows the space of everything run on this CUBE: every feed the session's index holds, each drawn as its own small molecule — one sphere per plugin group, sized by the jobs it stands for and hued by the worst status among them — and pulled toward the feeds that share its pipeline shape, so the field reads as what this lab runs, how much of each, and where the red is. It is its own pane kind: RUNS-02 stays a feed viewer, and the universe keeps its camera and its memory. It breathes with the index (landings while it warms, arrivals and status changes once it is whole) and remembers where its molecules settled, per identity.
+
+=== Anatomy
+
+.The universe pane, numbered: the bar (1), the rule (2), the elbow (3), the spine widened into the frame (4) with its blocks (5), the field of molecules in clusters (6), and the tip over a sphere (7)
+image::images/universe-pane-anatomy.svg[Universe pane anatomy,1180]
+
+[cols="1,1,3"]
+|===
+| Part | Class | Holds
+
+| pane | `.pane-universe` | The pane; one per stage as a rule (the tile focuses a shown one rather than opening another).
+| bar | `.pane-handle` | `.universe-title` `UNIVERSE — n FEEDS · m SHAPES`, and while the index warms `· INDEX WARMING loaded/total (p%)`; `.pane-state` `LANDING` while the space still grows, `WHOLE` once the index is.
+| frame | `.field-rule` `.mode-strip` `.mode-elbow` `.mode-frame` | The mode frame every pane wears; a strip at rest.
+| projection block | `.universe-projection` | Cycles 3D and 2D.
+| refresh block | `.universe-refresh` | Asks the session for the space again (`proc universe`).
+| field | `.universe-canvas` | The scene's mount; holds the canvas and the tip, never a control.
+| sphere | (scene) | One plugin group inside one feed: size the jobs it stands for, colour the worst status; `×N` on a fan.
+| molecule | (scene) | One feed: its spheres joined by edges.
+| cluster | (scene) | The feeds of one shape, gathered by an unseen anchor with no mass of its own; not drawn.
+| tip | `.dag-node-tip` | Over a sphere: `<plugin> ×N · <status> · feed <id> · <title>`.
+| empty | `.universe-empty` | Before the first space arrives.
+|===
+
+=== Declaration
+
+[source,ts]
+----
+const panel = new UniversePanel(
+  { canvas, title, state, empty, projectionPill, refreshPill },   // the template's parts
+  { command_run: (line) => client.line_execute(line, { silent: true }).then(o => o.envelopes.forEach(panel.envelope_observe)) },
+  localKeyStore(),                                                 // where the molecules' places are remembered
+);
+panel.request();                          // asks `proc universe`; the answer arrives through envelope_observe
+panel.promptContext_observe(context);     // every pushed prompt: landings, the warming figure, arrivals, identity
+----
+
+The pane asks one kernel command, `proc universe`, and reads one prompt field, `procWarmup.landed`; it never walks a feed itself. While the index warms each landing adds or reshapes a molecule (repaint at most once a second); once whole, a feed arriving through the roster delta or the feed count moving re-asks for the space (at most once in five seconds), so a new feed drifts in and a gone one leaves. Positions are written to the store under `argus.universe.<user>@<uri>` a few seconds after each settle and seed the next settle, so a reopened pane finds its molecules where they were.
+
+=== States
+
+* `.pane-state` `LANDING`: the index is still warming; the space grows with each landing.
+* `.pane-state` `WHOLE`: the index is whole; the space stands, and moves only when the lab does.
+* `.universe-canvas` hidden and `.universe-empty` shown: no space has arrived yet.
+
+=== Laws
+
+`a-control-lives-where-it-acts` (the pane's modes on its frame; a sphere's verbs will ride its overlay), `surface-never-shadows-the-session` (`proc universe` is the kernel's), `index-movement-never-holds-the-lane` (cache-resident asks only), `field-is-content`, `frame-retracts-to-a-strip`, `drawer-everywhere`.
+
+=== Stylesheet
+
+A theme may set the field's background and the tip's face. It may not put a control inside `.universe-canvas`, nor size the canvas other than 100% of its mount.
+
+=== Do not
+
+* Do not open the universe in the DAG pane: RUNS-02 is a feed viewer, and the tile focuses a shown universe rather than opening another.
+* Do not walk feeds from the surface to draw a molecule: the shape comes from the index, landed or whole.
+* Do not repaint on every prompt: landings are batched to a second, re-asks to five.
+
 == Image pane
 
 Source: `apps/argus/src/features/image/panel.ts` (the pane), over `engine.ts` (the seam), `cornerstoneEngine.ts` (DICOM series on Cornerstone3D) and `niivueEngine.ts` (NIfTI and MGZ on niivue).

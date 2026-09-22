@@ -19,8 +19,14 @@ const GEOCODE_BOSTON = {
   results: [{ name: 'Boston', admin1: 'Massachusetts', country: 'United States', latitude: 42.35843, longitude: -71.05977, timezone: 'America/New_York' }],
 };
 
-/** A forecast answer, as Open-Meteo gives it. */
-const FORECAST = {
+/** A forecast answer in metric, as Open-Meteo gives it. */
+const FORECAST_METRIC = {
+  current: { time: '2026-09-21T14:00', temperature_2m: 14.6, apparent_temperature: 12.8, relative_humidity_2m: 62, weather_code: 2, wind_speed_10m: 15.1, wind_direction_10m: 310 },
+  daily: { time: ['2026-09-21', '2026-09-22', '2026-09-23'], weather_code: [2, 61, 0], temperature_2m_max: [17.3, 15.7, 18.9], temperature_2m_min: [8.9, 10.2, 7.3] },
+};
+
+/** The same forecast asked in imperial. */
+const FORECAST_IMPERIAL = {
   current: { time: '2026-09-21T14:00', temperature_2m: 58.3, apparent_temperature: 55.1, relative_humidity_2m: 62, weather_code: 2, wind_speed_10m: 9.4, wind_direction_10m: 310 },
   daily: { time: ['2026-09-21', '2026-09-22', '2026-09-23'], weather_code: [2, 61, 0], temperature_2m_max: [63.1, 60.2, 66.0], temperature_2m_min: [48.0, 50.4, 45.2] },
 };
@@ -36,15 +42,18 @@ function fetch_stub(answers: Record<string, unknown>, asked: string[] = []): Wea
 }
 
 describe('weatherArgs_parse', () => {
-  it('asks about Boston with no words', () => {
-    expect(weatherArgs_parse([])).toEqual({ place: 'Boston', celsius: false, days: 3 });
+  it('asks about Boston in metric with no words', () => {
+    expect(weatherArgs_parse([])).toEqual({ place: 'Boston', units: 'metric', days: 3 });
   });
-  it('takes a place in several words, and the unit and day flags', () => {
-    expect(weatherArgs_parse(['Cape', 'Town', '-c', '-d', '7'])).toEqual({ place: 'Cape Town', celsius: true, days: 7 });
-    expect(weatherArgs_parse(['--celsius', '--days', '1', 'Paris'])).toEqual({ place: 'Paris', celsius: true, days: 1 });
+  it('takes a place in several words, and the units and day flags', () => {
+    expect(weatherArgs_parse(['Cape', 'Town', '-u', 'imperial', '-d', '7'])).toEqual({ place: 'Cape Town', units: 'imperial', days: 7 });
+    expect(weatherArgs_parse(['--units=imperial', '--days', '1', 'Paris'])).toEqual({ place: 'Paris', units: 'imperial', days: 1 });
+    expect(weatherArgs_parse(['--units', 'metric'])).toEqual({ place: 'Boston', units: 'metric', days: 3 });
   });
-  it('refuses an unknown flag by name, and a bad day count', () => {
-    expect(weatherArgs_parse(['--metric'])).toMatch(/unknown option '--metric'/);
+  it('refuses an unknown flag by name, a bad unit system, and a bad day count', () => {
+    expect(weatherArgs_parse(['--celsius'])).toMatch(/unknown option '--celsius'/);
+    expect(weatherArgs_parse(['--units', 'kelvin'])).toMatch(/--units takes metric or imperial, not 'kelvin'/);
+    expect(weatherArgs_parse(['--units'])).toMatch(/--units takes metric or imperial/);
     expect(weatherArgs_parse(['-d', 'lots'])).toMatch(/-d takes a number of days/);
     expect(weatherArgs_parse(['-d', '40'])).toMatch(/1 to 16/);
   });
@@ -65,37 +74,39 @@ describe('condition_ofCode and compass_ofDegrees', () => {
 });
 
 describe('builtin_weather', () => {
-  it('geocodes the place, asks the forecast in Fahrenheit, and renders now plus the days', async () => {
+  it('geocodes the place, asks the forecast in metric, and renders now plus the days', async () => {
     const asked: string[] = [];
-    const envelope: CommandEnvelope = await builtin_weather([], fetch_stub({ 'https://geocoding-api.open-meteo.com/': GEOCODE_BOSTON, 'https://api.open-meteo.com/': FORECAST }, asked));
+    const envelope: CommandEnvelope = await builtin_weather([], fetch_stub({ 'https://geocoding-api.open-meteo.com/': GEOCODE_BOSTON, 'https://api.open-meteo.com/': FORECAST_METRIC }, asked));
     expect(envelope.status).toBe('ok');
     expect(asked[0]).toContain('name=Boston');
     expect(asked[1]).toContain('latitude=42.35843');
-    expect(asked[1]).toContain('temperature_unit=fahrenheit');
+    expect(asked[1]).toContain('temperature_unit=celsius');
+    expect(asked[1]).toContain('wind_speed_unit=kmh');
     expect(asked[1]).toContain('forecast_days=3');
     expect(envelope.rendered).toBe([
       'Boston, Massachusetts, United States · 2026-09-21 14:00',
-      '  now       58°F (feels 55°F) · partly cloudy · wind 9 mph NW · humidity 62%',
-      '  today     48–63°F · partly cloudy',
-      '  Tue 09-22 50–60°F · light rain',
-      '  Wed 09-23 45–66°F · clear sky',
+      '  now       15°C (feels 13°C) · partly cloudy · wind 15 km/h NW · humidity 62%',
+      '  today     9–17°C · partly cloudy',
+      '  Tue 09-22 10–16°C · light rain',
+      '  Wed 09-23 7–19°C · clear sky',
       '',
     ].join('\n'));
     expect(envelope.model?.kind).toBe('sys.weather');
     const report: WeatherReport = envelope.model?.data as WeatherReport;
-    expect(report.units).toBe('F');
+    expect(report.units).toBe('C');
     expect(report.now.windDirection).toBe('NW');
     expect(report.days).toHaveLength(3);
   });
 
-  it('asks in Celsius and km/h when told', async () => {
+  it('asks in Fahrenheit and mph when told --units imperial', async () => {
     const asked: string[] = [];
-    const envelope: CommandEnvelope = await builtin_weather(['Boston', '-c'], fetch_stub({ 'https://geocoding-api.open-meteo.com/': GEOCODE_BOSTON, 'https://api.open-meteo.com/': FORECAST }, asked));
+    const envelope: CommandEnvelope = await builtin_weather(['Boston', '--units', 'imperial'], fetch_stub({ 'https://geocoding-api.open-meteo.com/': GEOCODE_BOSTON, 'https://api.open-meteo.com/': FORECAST_IMPERIAL }, asked));
     expect(envelope.status).toBe('ok');
-    expect(asked[1]).toContain('temperature_unit=celsius');
-    expect(asked[1]).toContain('wind_speed_unit=kmh');
-    expect(envelope.rendered).toContain('°C');
-    expect(envelope.rendered).toContain('km/h');
+    expect(asked[1]).toContain('temperature_unit=fahrenheit');
+    expect(asked[1]).toContain('wind_speed_unit=mph');
+    expect(envelope.rendered).toContain('58°F (feels 55°F)');
+    expect(envelope.rendered).toContain('wind 9 mph NW');
+    expect((envelope.model?.data as WeatherReport).units).toBe('F');
   });
 
   it('says when the place is not found', async () => {

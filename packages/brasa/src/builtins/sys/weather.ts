@@ -5,7 +5,7 @@
  * days — from Open-Meteo, which needs no key and no account. A place is
  * geocoded by name through the same service, so `weather Boston` and
  * `weather Cape Town` both work, and a bare `weather` asks about Boston,
- * where the lab is.
+ * where the lab is — in metric, as the lab reads, unless `--units imperial`.
  *
  * The report is a kernel fact like `date` or `fortune`: it renders once and
  * every surface shows the same text, and the typed model beneath it carries
@@ -22,6 +22,12 @@ export const WEATHER_DEFAULT_PLACE: string = 'Boston';
 
 /** Days of forecast shown when none are asked for. */
 const DAYS_DEFAULT: number = 3;
+
+/** The two unit systems `--units` takes. */
+export type WeatherUnits = 'metric' | 'imperial';
+
+/** The system used when none is asked for: the lab reports in metric. */
+export const WEATHER_UNITS_DEFAULT: WeatherUnits = 'metric';
 
 /** The most forecast days Open-Meteo answers. */
 const DAYS_MAX: number = 16;
@@ -149,7 +155,7 @@ interface ForecastAnswer {
 /** The words a call line was parsed into. */
 interface WeatherArgs {
   place: string;
-  celsius: boolean;
+  units: WeatherUnits;
   days: number;
 }
 
@@ -195,20 +201,25 @@ function string_read(value: unknown): string {
 }
 
 /**
- * Parses the call line: a place in as many words as it takes, `-c` for
- * Celsius, `-d N` for the days shown. Any other flag is refused by name.
+ * Parses the call line: a place in as many words as it takes, `--units`
+ * for the system, `-d N` for the days shown. Any other flag is refused by
+ * name.
  *
  * @param args - The words after `weather`.
  * @returns The parsed call, or the refusal to print.
  */
 export function weatherArgs_parse(args: string[]): WeatherArgs | string {
   const words: string[] = [];
-  let celsius: boolean = false;
+  let units: WeatherUnits = WEATHER_UNITS_DEFAULT;
   let days: number = DAYS_DEFAULT;
   for (let i: number = 0; i < args.length; i++) {
     const arg: string = args[i];
-    if (arg === '-c' || arg === '--celsius') {
-      celsius = true;
+    if (arg === '-u' || arg === '--units' || arg.startsWith('--units=')) {
+      const value: string = arg.startsWith('--units=') ? arg.slice('--units='.length) : (args[++i] ?? '');
+      if (value !== 'metric' && value !== 'imperial') {
+        return `weather: --units takes metric or imperial, not '${value}'`;
+      }
+      units = value;
     } else if (arg === '-d' || arg === '--days') {
       const value: number = parseInt(args[i + 1] ?? '', 10);
       if (!Number.isFinite(value) || value < 1 || value > DAYS_MAX) {
@@ -217,12 +228,12 @@ export function weatherArgs_parse(args: string[]): WeatherArgs | string {
       days = value;
       i++;
     } else if (arg.startsWith('-')) {
-      return `weather: unknown option '${arg}' (usage: weather [place] [-c|--celsius] [-d|--days N])`;
+      return `weather: unknown option '${arg}' (usage: weather [place] [-u|--units metric|imperial] [-d|--days N])`;
     } else {
       words.push(arg);
     }
   }
-  return { place: words.length > 0 ? words.join(' ') : WEATHER_DEFAULT_PLACE, celsius, days };
+  return { place: words.length > 0 ? words.join(' ') : WEATHER_DEFAULT_PLACE, units, days };
 }
 
 /**
@@ -269,7 +280,7 @@ export async function place_find(fetchFn: WeatherFetch, name: string): Promise<W
  *
  * @param fetchFn - The fetch to go through.
  * @param place - Where.
- * @param celsius - Celsius and km/h rather than Fahrenheit and mph.
+ * @param units - Metric (°C, km/h) or imperial (°F, mph).
  * @param days - How many days of forecast.
  * @returns The report.
  * @throws {Error} When the service cannot be reached or answers without the
@@ -278,9 +289,10 @@ export async function place_find(fetchFn: WeatherFetch, name: string): Promise<W
 export async function report_fetch(
   fetchFn: WeatherFetch,
   place: WeatherPlace,
-  celsius: boolean,
+  units: WeatherUnits,
   days: number,
 ): Promise<WeatherReport> {
+  const celsius: boolean = units === 'metric';
   const query: string = [
     `latitude=${place.latitude}`,
     `longitude=${place.longitude}`,
@@ -363,7 +375,7 @@ export function report_render(report: WeatherReport): string {
 /**
  * Reports the weather at a place.
  *
- * @param args - `[place…] [-c|--celsius] [-d|--days N]`.
+ * @param args - `[place…] [-u|--units metric|imperial] [-d|--days N]`.
  * @param fetchFn - The fetch to go through; the global one unless a test
  *   hands in its own.
  * @returns An envelope carrying the rendered report and the typed report
@@ -379,7 +391,7 @@ export async function builtin_weather(
   try {
     const place: WeatherPlace | null = await place_find(fetchFn, parsed.place);
     if (place === null) return envelope_error(`weather: no such place '${parsed.place}'\n`);
-    const report: WeatherReport = await report_fetch(fetchFn, place, parsed.celsius, parsed.days);
+    const report: WeatherReport = await report_fetch(fetchFn, place, parsed.units, parsed.days);
     return envelope_ok(report_render(report), { kind: 'sys.weather', data: report });
   } catch (error: unknown) {
     const reason: string = error instanceof Error ? error.message : String(error);

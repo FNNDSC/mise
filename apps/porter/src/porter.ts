@@ -32,7 +32,13 @@ async function status_print(stateDir: string): Promise<void> {
   }
   for (const sighting of sightings) {
     const state: string = sighting.alive ? 'answering' : 'gone';
-    console.log(`${berthKey_compute(sighting.identity)}  ${state.padEnd(9)}  ${sighting.berth.url.padEnd(24)}  ${sighting.identity}${sighting.berth.pid !== undefined ? `  pid ${sighting.berth.pid}` : ''}`);
+    // The pid is what the daemon wrote when it started. On a gone row it
+    // names a process that is not there — a berth outlives a daemon killed
+    // with -9 — and printed bare it read as one the listing had just made.
+    const pid: string = sighting.berth.pid === undefined
+      ? ''
+      : sighting.alive ? `  pid ${sighting.berth.pid}` : `  pid ${sighting.berth.pid} (stale: the berth outlived it)`;
+    console.log(`${berthKey_compute(sighting.identity)}  ${state.padEnd(9)}  ${sighting.berth.url.padEnd(24)}  ${sighting.identity}${pid}`);
   }
 }
 

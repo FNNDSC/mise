@@ -144,7 +144,7 @@ The way to develop, and to run an unreleased `argus`:
 git clone https://github.com/FNNDSC/mise && cd mise
 make prep     # install dependencies (npm workspaces)
 make cook     # build every package in dependency order (argus and porter included)
-make serve    # link `chell` globally, so it runs from anywhere
+make serve    # link `chell` and `porter` globally, so they run from anywhere
 ```
 
 `make taco` does the full course: scrub, prep, cook, taste, serve. From here

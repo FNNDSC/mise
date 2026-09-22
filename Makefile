@@ -12,7 +12,7 @@
 #   make prep    - Install dependencies (one install links all workspaces)
 #   make cook    - Build all packages in dependency order (menu->cumin->salsa->chili->brasa->calypso->chell)
 #   make taste   - Run the full test suite (all workspaces)
-#   make serve   - Link `chell` globally so you can run it from anywhere
+#   make serve   - Link `chell` and `porter` globally so you can run them from anywhere
 #   make scrub   - Clean the kitchen (remove dist/ and node_modules)
 #
 # The Special:
@@ -74,7 +74,7 @@ help:
 	@echo "  make cook          - Build all packages in dependency order"
 	@echo "  make plate         - Build just the web surface (argus)"
 	@echo "  make taste         - Run the full test suite"
-	@echo "  make serve         - Link 'chell' globally"
+	@echo "  make serve         - Link 'chell' and 'porter' globally"
 	@echo "  make scrub         - Clean dist/ and node_modules everywhere"
 	@echo ""
 	@echo "The Special:"
@@ -162,9 +162,10 @@ taste-flight:
 
 # --- Serve (link chell globally) ---
 serve:
-	@echo "Serving — linking 'chell' globally..."
+	@echo "Serving — linking 'chell' and 'porter' globally..."
 	cd packages/chell && npm link
-	@echo "Done. Run 'chell' from anywhere."
+	cd apps/porter && npm link
+	@echo "Done. Run 'chell' or 'porter' from anywhere."
 
 # --- Scrub (clean) ---
 scrub:

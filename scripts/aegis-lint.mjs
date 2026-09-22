@@ -373,6 +373,21 @@ if (!lawsTable) {
   }
 }
 
+// A merge that left its markers behind is not a design decision. The doc
+// is prose in a table, so nothing else here trips on `<<<<<<<`: PR #666
+// merged four marker lines through a green run.
+LINT_CHECKS['doc-carries-no-markers'] = () => {
+  const marker = /^(<<<<<<< |=======$|>>>>>>> |\|\|\|\|\|\|\| )/;
+  for (const [path, text] of [
+    ['apps/argus/docs/aegis.adoc', aegis],
+    ['apps/argus/docs/components.adoc', readFileSync('apps/argus/docs/components.adoc', 'utf8')],
+  ]) {
+    text.split('\n').forEach((line, index) => {
+      if (marker.test(line)) fail('doc-carries-no-markers', `${path}:${index + 1} is a merge conflict marker`);
+    });
+  }
+};
+
 for (const [name, run] of Object.entries(LINT_CHECKS)) {
   try { run(); } catch (error) { fail(name, `check crashed: ${error.message}`); }
 }

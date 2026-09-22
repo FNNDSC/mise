@@ -290,6 +290,11 @@ export class UniversePanel {
     return this.inside?.feedId ?? null;
   }
 
+  /** Whether a space has arrived, for a host deciding whether to ask. */
+  public shown_get(): boolean {
+    return this.shown;
+  }
+
   /** Releases the scene. */
   public dispose(): void {
     this.disposed = true;

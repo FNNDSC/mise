@@ -505,7 +505,14 @@ export function procCheckpoint_watch(
     const wait: number = Math.max(delayMs, earliest - Date.now());
     const timer: NodeJS.Timeout = setTimeout((): void => {
       timers.delete(key);
-      lastWrite.set(key, Date.now());
+      const now: number = Date.now();
+      lastWrite.set(key, now);
+      // A whole write is every shard written: each one's floor starts now,
+      // or the next touch of a feed just written would write it again at once.
+      if (key === 'all') {
+        lastWrite.set('roster', now);
+        for (const feedID of procCache_get().feedIDs_get()) lastWrite.set(feedID, now);
+      }
       void shard_write(key).catch((): void => { /* next mutation retries */ });
     }, wait);
     timer.unref();
@@ -514,7 +521,19 @@ export function procCheckpoint_watch(
 
   const listener_remove: () => void = procCache_get().changeListener_add((change: ProcCacheChange): void => {
     if (procCache_get().lifecycle_get().state !== 'current') return;
-    if (change.scope === 'lifecycle') return;
+    if (change.scope === 'lifecycle') {
+      // The cache has just become current: the sweep that built it emitted
+      // its reconcile and every feed it marked BEFORE this moment, and all
+      // of that was dropped above as not-yet-current. Nothing else will
+      // announce the finished index — a quiet CUBE mutates nothing for
+      // hours — so the roster and every shard are written whole now. A
+      // session whose sweep ended at 16:47 and was killed at 18:30 had
+      // fifty-six shards and no roster, and its next boot was cold.
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+      shard_schedule('all');
+      return;
+    }
     if (change.scope === 'all') {
       for (const timer of timers.values()) clearTimeout(timer);
       timers.clear();

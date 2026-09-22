@@ -153,6 +153,29 @@ it('refuses to write a roster that lost feeds whose topology is loaded', async (
   expect(await readFile(join(dir, 'roster.json'), 'utf8')).toBe(before);
 });
 
+it('the watcher writes the whole checkpoint when the sweep makes the cache current', async () => {
+  const watch_stop: () => void = procCheckpoint_watch(identity, root, 5, 20);
+  // A cold sweep: the cache reconciles, feeds and instances land, the
+  // reconcile emits its `all`, feeds are marked loaded — none of it current.
+  procCache_get().lifecycle_set('reconciling');
+  procCache_get().feed_add(feed_create(9));
+  procCache_get().feed_add(feed_create(10));
+  procCache_get().instance_add({ id: 90, feedID: 9, parentID: null, pluginName: 'pl-root', params: null, status: 'finishedSuccessfully' });
+  procCache_get().instance_add({ id: 100, feedID: 10, parentID: null, pluginName: 'pl-root', params: null, status: 'finishedSuccessfully' });
+  procCache_get().topology_reconcile(new Set([90, 100]));
+  procCache_get().topologyLoaded_mark(9);
+  procCache_get().topologyLoaded_mark(10);
+  await sleep(40);
+  expect(await shardNames().catch((): string[] => [])).toEqual([]);
+  // The sweep ends. Nothing else will happen on a quiet night.
+  procCache_get().warmup_complete();
+  await sleep(40);
+  expect(await readFile(join(dir, 'roster.json'), 'utf8')).toContain('feed 10');
+  expect(await shardNames()).toEqual(['feed-10.json', 'feed-9.json']);
+  expect(await procCheckpoint_restore(identity, root)).toMatchObject({ restored: true, count: 2 });
+  watch_stop();
+});
+
 it('the watcher writes only the shard a mutation touched', async () => {
   const watch_stop: () => void = procCheckpoint_watch(identity, root, 5, 20);
   procCache_get().lifecycle_set('current');

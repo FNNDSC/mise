@@ -164,7 +164,10 @@ taste-flight:
 serve:
 	@echo "Serving — linking 'chell' and 'porter' globally..."
 	cd packages/chell && npm link
-	cd apps/porter && npm link
+	# From the root, workspace-aware: `npm link` run inside apps/porter treated
+	# it as a lone package, installed a stray node_modules there, and took the
+	# brasa and calypso dists with it.
+	npm link -w @fnndsc/porter
 	@echo "Done. Run 'chell' or 'porter' from anywhere."
 
 # --- Scrub (clean) ---

@@ -40,7 +40,8 @@ import type { DaemonConsoleTarget } from './daemonConsole.js';
 import { surface_set } from '@fnndsc/brasa';
 import { cliSurface_create } from './cliSurface.js';
 import { surfaceLine_execute } from './surfaceDispatch.js';
-import { versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, fortune_random, type PackageInfo } from '@fnndsc/brasa';
+import { greeting_print } from './greeting.js';
+import { versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, type PackageInfo } from '@fnndsc/brasa';
 import {
   daemonSession_run,
   queryCheckpoint_flush,
@@ -484,8 +485,8 @@ async function interactiveSession_run(
     }
     console.log(chalk.gray("Tip: type 'help' for available commands."));
     console.log('');
-    console.log(chalk.gray(fortune_random(4)));
-    console.log('');
+    // The session greets through the kernel's `motd`, fortune included.
+    await greeting_print(engine);
   }
 
   const repl: REPL = new REPL(engine);

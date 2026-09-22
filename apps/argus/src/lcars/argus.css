@@ -4212,6 +4212,38 @@ body[data-zoom] #header-restore {
   opacity: 0.9;
 }
 
+/* The splash: the brain at rest, small, and the session's greeting beside
+   it. Sized so the whole of it fits the console's visible rows: the brain
+   is twenty-five rows of art, drawn at under half the transcript's size so
+   it stands about eleven lines tall. */
+.argus-splash {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.argus-splash-brain {
+  flex: none;
+  margin: 0;
+  font-size: 0.42em;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: pre;
+  opacity: 0.9;
+}
+
+.argus-splash-greeting {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The greeting reads as the session's own voice. */
+.argus-greeting-line {
+  white-space: pre-wrap;
+  min-height: 1em;
+}
+
 .dim {
   opacity: 0.45;
 }

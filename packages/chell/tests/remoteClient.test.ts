@@ -212,12 +212,30 @@ describe('remote_run', () => {
     expect(error_spy).toHaveBeenCalledWith(expect.stringContaining('daemon rejected command'));
   });
 
-  it('keeps the existing interactive REPL path when no command is given', async () => {
+  it('keeps the existing interactive REPL path when no command is given, greeting first', async () => {
+    const log_spy = jest.spyOn(console, 'log').mockImplementation((): void => undefined);
+    surfaceLineExecute_mock.mockResolvedValue([{ status: 'ok', rendered: 'Welcome to chell, chris.\n412 feeds\n' }]);
     await remote_run(berth.identity);
 
     expect(replStart_mock).toHaveBeenCalledTimes(1);
-    expect(surfaceLineExecute_mock).not.toHaveBeenCalled();
+    // The one line executed before the REPL is the session's greeting, the
+    // kernel's `motd` naming this surface; no operator command ran.
+    expect(surfaceLineExecute_mock).toHaveBeenCalledTimes(1);
+    expect(surfaceLineExecute_mock.mock.calls[0]?.[1]).toBe('motd chell');
+    expect(log_spy.mock.calls.some((call) => String(call[0]).includes('Welcome to chell, chris.'))).toBe(true);
     expect(remoteClose_mock).not.toHaveBeenCalled();
+    log_spy.mockRestore();
+  });
+
+  it('greets nothing, and says nothing, when the session cannot answer motd', async () => {
+    const log_spy = jest.spyOn(console, 'log').mockImplementation((): void => undefined);
+    surfaceLineExecute_mock.mockRejectedValue(new Error('unknown command: motd'));
+    await remote_run(berth.identity);
+
+    expect(replStart_mock).toHaveBeenCalledTimes(1);
+    // The surface's own welcome line still prints; the session's greeting does not.
+    expect(log_spy.mock.calls.some((call) => String(call[0]).includes('Welcome to chell'))).toBe(false);
+    log_spy.mockRestore();
   });
 
   it('banners the daemon-reported stack on interactive attach', async () => {

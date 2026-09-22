@@ -121,6 +121,8 @@ export interface AskRequest {
  */
 export class ArgusTerminal {
   private readonly output: HTMLElement;
+  /** The splash's greeting column, once a splash is written. */
+  private splashGreeting: HTMLDivElement | null = null;
   /** Live progress rows, between the transcript and the prompt. */
   private readonly progressRegion: HTMLElement;
   private readonly promptBar: HTMLElement;
@@ -256,6 +258,51 @@ export class ArgusTerminal {
     for (const line of lines) {
       this.block_append('argus-banner-line', ansi_toHtml(line));
     }
+  }
+
+  /**
+   * Writes the splash: the brain at rest, small, with room beside it for
+   * the session's greeting. One block, two columns, sized to fit the
+   * console's few visible rows — a brain written as twenty-five transcript
+   * lines scrolled itself out of sight before the greeting arrived, which
+   * made a splash nobody saw.
+   *
+   * @param brainLines - The art's lines (ANSI colour).
+   */
+  public splash_write(brainLines: string[]): void {
+    const splash: HTMLDivElement = document.createElement('div');
+    splash.className = 'argus-line argus-splash';
+    const brain: HTMLPreElement = document.createElement('pre');
+    brain.className = 'argus-splash-brain';
+    brain.innerHTML = brainLines.map((line: string): string => ansi_toHtml(line)).join('\n');
+    const greeting: HTMLDivElement = document.createElement('div');
+    greeting.className = 'argus-splash-greeting';
+    splash.append(brain, greeting);
+    this.output.appendChild(splash);
+    this.splashGreeting = greeting;
+  }
+
+  /**
+   * Writes the session's greeting beside the brain. The prompt is its own
+   * bar under the transcript, so a greeting that arrives a moment after
+   * the splash still lands where it belongs; without a splash it is
+   * written as banner lines.
+   *
+   * @param lines - The greeting's lines.
+   */
+  public greeting_write(lines: string[]): void {
+    const column: HTMLDivElement | null = this.splashGreeting;
+    if (column === null) {
+      for (const line of lines) this.block_append('argus-banner-line argus-greeting-line', ansi_toHtml(line));
+    } else {
+      for (const line of lines) {
+        const block: HTMLDivElement = document.createElement('div');
+        block.className = 'argus-greeting-line';
+        block.innerHTML = ansi_toHtml(line);
+        column.appendChild(block);
+      }
+    }
+    this.size_fit();
   }
 
   /**

@@ -3,7 +3,7 @@
  * floating free, like shapes pulled together by an unseen anchor.
  */
 import { describe, it, expect } from '@jest/globals';
-import { universeGraph_build, LandedFeeds, shape_of, groupId_of, anchorId_of, universeTip_of, universeStoreKey_of, storedPositions_parse, jobsMetric_of, erroredShare_of, enteredFeed_build, descendedGraph_build, sphereIds_of, instanceId_of, type LandedFeed } from '../../src/features/dag/universe.js';
+import { universeGraph_build, LandedFeeds, shape_of, groupId_of, anchorId_of, universeTip_of, universeStoreKey_of, storedPositions_parse, jobsMetric_of, erroredShare_of, enteredFeed_build, descendedGraph_build, sphereIds_of, instanceId_of, shapeWords_of, shapeWords_brief, clusterTip_of, clusterIds_of, clusterGraph_build, type LandedFeed } from '../../src/features/dag/universe.js';
 import type { FeedDagModel } from '@fnndsc/menu';
 
 const chain: LandedFeed = { id: 1, title: 'chain', jobs: 3, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [
@@ -124,7 +124,7 @@ describe('the descent into a feed', () => {
     expect(entered.nodes[2]?.parentIds).toEqual([instanceId_of(2, '11')]);
     expect(entered.payloads.get(instanceId_of(2, '11'))?.instanceId).toBe(11);
   });
-  it('replaces the entered feed molecule and dims every other feed, anchors untouched', () => {
+  it('replaces the entered feed molecule and dims every other feed, halos included', () => {
     const entered = enteredFeed_build(model);
     const graph = descendedGraph_build([chain, fan, other], 2, entered);
     expect(graph.nodes.some((n) => n.id.startsWith('feed:2:'))).toBe(false);
@@ -132,7 +132,41 @@ describe('the descent into a feed', () => {
     const others = graph.nodes.filter((n) => n.id.startsWith('feed:'));
     expect(others.length).toBeGreaterThan(0);
     expect(others.every((n) => n.dim === true)).toBe(true);
-    expect(graph.nodes.filter((n) => n.ghost === true).every((n) => n.dim !== true)).toBe(true);
+    // The halos dim with the feeds they gather: inside a feed, nothing else is lit.
+    expect(graph.nodes.filter((n) => n.ghost === true).every((n) => n.dim === true)).toBe(true);
     expect(sphereIds_of(2, fan)).toEqual([groupId_of(2, 0), groupId_of(2, 1)]);
+  });
+});
+
+describe('a cluster has a handle', () => {
+  it('draws every anchor as a halo counting the feeds of its shape', () => {
+    const graph = universeGraph_build([chain, fan, other]);
+    const halo = graph.nodes.find((n) => n.id === anchorId_of(shape_of(fan)));
+    expect(halo).toMatchObject({ ghost: true, halo: true, count: 2, label: 'pl-dircopy > pl-dcm2niix' });
+    expect(graph.nodes.find((n) => n.id === anchorId_of(shape_of(other)))).toMatchObject({ halo: true, count: 1 });
+  });
+  it('says a shape in words, each plugin once in pipeline order', () => {
+    expect(shapeWords_of(shape_of(fan))).toBe('pl-dircopy > pl-dcm2niix');
+    expect(shapeWords_of('r:pl-a>0:pl-b>0:pl-b>2:pl-c')).toBe('pl-a > pl-b > pl-c');
+    expect(shapeWords_brief('r:pl-a>0:pl-b>0:pl-b>2:pl-c')).toBe('pl-a > pl-b > pl-c');
+    expect(shapeWords_brief('r:a>0:b>1:c>2:d>3:e')).toBe('a > b > c … +2');
+  });
+  it('tips a halo with the shape and its count, and nothing else', () => {
+    const feeds: LandedFeeds = new LandedFeeds();
+    feeds.take([chain, fan, other]);
+    expect(clusterTip_of(anchorId_of(shape_of(fan)), feeds)).toBe('pl-dircopy > pl-dcm2niix · 2 feeds');
+    expect(clusterTip_of(anchorId_of(shape_of(other)), feeds)).toBe('pl-simplefsapp · 1 feed');
+    expect(clusterTip_of(groupId_of(2, 0), feeds)).toBeNull();
+  });
+  it('gathers the spheres of a shape, and lights only them in the cluster view', () => {
+    const feeds: LandedFeeds = new LandedFeeds();
+    feeds.take([chain, fan, other]);
+    const ids = clusterIds_of(shape_of(fan), feeds);
+    expect(ids.sort()).toEqual([groupId_of(1, 0), groupId_of(1, 1), groupId_of(2, 0), groupId_of(2, 1)].sort());
+    const graph = clusterGraph_build([chain, fan, other], shape_of(fan));
+    const lit = graph.nodes.filter((n) => n.dim !== true).map((n) => n.id).sort();
+    expect(lit).toEqual([anchorId_of(shape_of(fan)), ...ids].sort());
+    expect(graph.nodes.find((n) => n.id === groupId_of(3, 0))?.dim).toBe(true);
+    expect(graph.nodes.find((n) => n.id === anchorId_of(shape_of(other)))?.dim).toBe(true);
   });
 });

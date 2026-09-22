@@ -49,6 +49,12 @@ export interface SceneNode {
   /** A hue the host assigns (a mode's color, e.g. by compute); errors still win. */
   hue?: string;
   /**
+   * A ghost drawn as a halo: a translucent sphere at the anchor's place,
+   * sized by `count`, that names a cluster on hover and takes a click
+   * when no solid sphere is under the pointer. Never edged.
+   */
+  halo?: boolean;
+  /**
    * Drawn faint: the rest of a field while one part of it is entered.
    * Present in the settle and drawn, but at a fraction of its opacity, and
    * its edges with it.
@@ -121,6 +127,20 @@ const NODE_RADIUS: number = 0.55;
 
 /** How faint a dimmed node and its edges are drawn. */
 const DIM_OPACITY: number = 0.16;
+
+/** How faint a cluster's halo is drawn. */
+const HALO_OPACITY: number = 0.09;
+
+/**
+ * A halo's radius by the feeds it gathers: room for a few, more for a crowd,
+ * never so much it swallows the neighbouring cluster.
+ *
+ * @param count - The feeds of the shape.
+ * @returns The radius in scene units.
+ */
+function haloRadius_of(count: number): number {
+  return 1.6 + 0.45 * Math.sqrt(Math.max(1, count));
+}
 
 /** Vertical distance between ranked tiers. */
 const TIER_SPACING: number = 2.6;
@@ -1184,7 +1204,23 @@ export class DagScene {
     const byId: Map<string, PlacedNode> = new Map(placed.map((p: PlacedNode) => [p.node.id, p]));
 
     for (const { node, position, radius } of placed) {
-      if (node.ghost === true) continue;
+      if (node.ghost === true && node.halo !== true) continue;
+      if (node.halo === true) {
+        // A cluster's handle: translucent, unlit, written last so the
+        // spheres inside it show through; picked only when nothing solid is.
+        const haloGeometry: THREE.SphereGeometry = new THREE.SphereGeometry(haloRadius_of(node.count ?? 1), 24, 18);
+        const haloMaterial: THREE.MeshBasicMaterial = new THREE.MeshBasicMaterial({
+          color: palette.edge, transparent: true, opacity: node.dim === true ? HALO_OPACITY * 0.4 : HALO_OPACITY, depthWrite: false,
+        });
+        const halo: THREE.Mesh = new THREE.Mesh(haloGeometry, haloMaterial);
+        halo.position.copy(position);
+        halo.renderOrder = 1;
+        halo.userData['nodeId'] = node.id;
+        halo.userData['halo'] = true;
+        this.group.add(halo);
+        this.meshes.set(node.id, halo);
+        continue;
+      }
       const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
       // 2D is drawn flat: discs, not lit spheres — the schematic reading
       // all the way down. Uniform normals face the camera, so the shared
@@ -1465,7 +1501,11 @@ export class DagScene {
     this.group.updateMatrixWorld(true);
     this.raycaster.setFromCamera(pointer, this.camera);
     const hits: THREE.Intersection[] = this.raycaster.intersectObjects([...this.meshes.values()]);
-    const object: THREE.Object3D | undefined = hits[0]?.object;
+    // A halo wraps its cluster, so its surface is hit before the spheres
+    // inside it: a solid hit anywhere along the ray wins, the halo only
+    // when the pointer is over nothing solid.
+    const solid: THREE.Intersection | undefined = hits.find((hit: THREE.Intersection): boolean => hit.object.userData['halo'] !== true);
+    const object: THREE.Object3D | undefined = (solid ?? hits[0])?.object;
     return object instanceof THREE.Mesh ? object : null;
   }
 

@@ -4252,9 +4252,18 @@ body[data-zoom] #header-restore {
 /* The descent's blocks stand on the frame only while a feed is entered;
    the facts overlay hides until a node is indicated. */
 .pane-universe:not(.universe-inside) .universe-open,
-.pane-universe:not(.universe-inside) .universe-back,
+.pane-universe:not(.universe-inside):not(.universe-cluster) .universe-back,
 .universe-facts[hidden] {
   display: none;
+}
+
+/* A title that cannot widen the pane: what does not fit is cut, never
+   pushed past the split. */
+.universe-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .universe-node-verbs {

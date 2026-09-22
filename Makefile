@@ -216,7 +216,7 @@ porter: cook
 		node apps/porter/dist/porter.js
 
 porter-status:
-	@PORTER_CUBE_URL=$(CUBE_URL) PORTER_STATE_DIR=$(PORTER_STATE_DIR) node apps/porter/dist/porter.js --status
+	@PORTER_STATE_DIR=$(PORTER_STATE_DIR) node apps/porter/dist/porter.js --status
 
 # --- Binaries (standalone executables, no Node required on the target) ---
 binaries: cook

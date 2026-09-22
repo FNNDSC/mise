@@ -2,7 +2,7 @@
  * @file A porter's configuration: one CUBE, sensible defaults, refusals by name.
  */
 import { describe, it, expect } from '@jest/globals';
-import { porterConfig_resolve, chellEntry_locate, PORTER_DEFAULT_PORT } from '../../src/config.js';
+import { porterConfig_resolve, porterStateDir_resolve, chellEntry_locate, PORTER_DEFAULT_PORT } from '../../src/config.js';
 
 const locate = (): string => '/opt/chell/dist/index.js';
 
@@ -70,3 +70,16 @@ describe('chellEntry_locate', () => {
     expect(chellEntry_locate()).toMatch(/chell\/dist\/index\.js$/);
   });
 });
+
+describe('porterStateDir_resolve', () => {
+  it('answers from the environment alone, with no CUBE in sight', () => {
+    expect(porterStateDir_resolve({ PORTER_STATE_DIR: '/var/lib/porter' })).toBe('/var/lib/porter');
+    expect(porterStateDir_resolve({ XDG_STATE_HOME: '/state' })).toBe('/state/porter');
+    expect(porterStateDir_resolve({}).endsWith('/.local/state/porter')).toBe(true);
+  });
+  it('is the directory the full configuration uses', () => {
+    const env = { PORTER_CUBE_URL: 'https://c/api/v1/', PORTER_STATE_DIR: '/srv/porter' };
+    expect(porterConfig_resolve(env, () => '/chell').stateDir).toBe(porterStateDir_resolve(env));
+  });
+});
+

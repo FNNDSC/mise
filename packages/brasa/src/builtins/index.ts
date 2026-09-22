@@ -36,6 +36,7 @@ export * from './sys/cal.js';
 export * from './sys/date.js';
 export * from './sys/fortune.js';
 export * from './sys/weather.js';
+export * from './sys/motd.js';
 export * from './sys/timing.js';
 export * from './sys/version.js';
 export * from './sys/whoami.js';

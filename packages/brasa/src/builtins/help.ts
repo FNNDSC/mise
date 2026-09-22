@@ -760,6 +760,12 @@ export const helpText: Record<string, CommandHelp> = {
     ],
     examples: ['weather', 'weather Cape Town', 'weather Boston --units imperial', 'weather Paris -d 7'],
   },
+  motd: {
+    usage: 'motd [surface]',
+    summary: 'The greeting a session gives on arrival',
+    description: 'Says who you are, how many feeds you hold, how many jobs have run and what share of them failed, and what is running now — from the session\'s own index, at no cost. While the index is still warming it says what it holds so far. A surface may name itself (motd ARGUS) and the greeting says where you arrived. Ends with a short fortune.',
+    examples: ['motd', 'motd ARGUS'],
+  },
   date: {
     usage: 'date [-u] [+FORMAT]',
     summary: 'Print the current date and time',
@@ -1646,7 +1652,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
     PACS: ['pacs', 'pacsservers', 'pacsqueries', 'pacsretrieve'],
     Administration: ['sudo', 'user'],
     'Shell Settings': ['physicalmode', 'prompt', 'timing', 'debug'],
-    General: ['help', 'date', 'cal', 'fortune', 'weather', 'exit', '!'],
+    General: ['help', 'motd', 'date', 'cal', 'fortune', 'weather', 'exit', '!'],
   };
 
   // Display commands by category

@@ -206,3 +206,10 @@ export {
   type DicomSeriesModel,
   type ImageViewModel,
 } from './dicom.js';
+export {
+  SESSION_MOTD_MODEL_KIND,
+  motdIndexSchema,
+  sessionMotdSchema,
+  type MotdIndex,
+  type SessionMotd,
+} from './motd.js';

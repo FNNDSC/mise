@@ -5931,6 +5931,12 @@ button.launcher-row:hover {
   min-height: 0;
   padding-right: var(--spine-w);
   transition: padding-right 0.22s ease-out;
+  /* The pane's body carries `--mode-frame-top` for ITS frame — the offset
+   * to the pane's own path header — and the table's field, a descendant,
+   * inherited it: its rule, strip, elbow and frame were drawn against the
+   * pane rather than the field, the spine climbing into the header over
+   * CLOSE. A field owns its frame's top. */
+  --mode-frame-top: 0px;
 }
 
 .files-table-rows {

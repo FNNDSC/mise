@@ -1,5 +1,95 @@
 # @fnndsc/calypso
 
+## 0.16.0
+
+### Minor Changes
+
+- 3a8cd1b: A porter at the door: the mise display manager, slice 3 — the shape without the door.
+
+  `apps/porter` logs an operator into one CUBE, trades the password for a token, starts or joins that identity's calypso (`chell --daemon --auth-token-stdin`, the token on stdin, four directories of its own under the porter's state) and mounts the session at `/s/<key>/`: page, assets, `/vfs` and the WebSocket wire proxied to the daemon on loopback with the attach token added by the porter, so the browser holds none. `GET /boot/<key>` streams the session's boot as server-sent events, one per line the daemon wrote, replayed for a late attacher. `POST /sessions` re-checks the password at CUBE every time, even when the session is up.
+
+  calypso: the attach token may ride the upgrade URL (`?token=`), the way `/vfs?token=` already does, so a front that holds the token for a browser can put it on the proxied upgrade and the page attaches with an empty one; and `berth_pathIn(runtimeDir, identity)` names a berth under a runtime directory that is not the process's own.
+
+  No cookie yet: this porter binds loopback. The door — login page, cookie, LOG OUT — is the next slice.
+
+- 1bdf876: A row wears the number it answers to.
+
+  A row of the session's last answer can be named by the number beside it — `gather add @2,3,6`, `image @1` — so the number is now DRAWN beside it. The listing façade mints a leading index pill for any level that says how its rows are addressed, and no pane draws a number itself.
+
+  What is numbered is the kernel's ANSWER rather than a rendering of it, so a console table and a graphical pane count the same rows. The lit number is found BY ADDRESS, not by counting down the screen, so a sorted or filtered listing keeps each row's own number instead of renumbering under the operator.
+
+  Every listing leads with the column and every row counts itself; only the rows the kernel reaches wear a LIT number. In a PACS answer that is the series, while the patient and study levels above count themselves dim — the distinction is the hue, never the digits, so a number nothing answers to cannot be mistaken for one that does. Numbers are zero-padded to the widest in their group, so a fourteen-series answer reads 01…14 and the column stays a column. The lit hue is the pane's FRAME hue (`--listing-index-hue`, set per pane), because the pill is chrome and not content: an orange pill beside the browser's orange kind glyph read as one blob and the number stopped being a number.
+
+  The surface learns which listing is numbered from a retained `numbered` message: brasa announces it as the answer changes, calypso relays it and replays it to a surface attaching late, and the addresses travel with it (capped, past which a long listing is numbered in the kernel and unnumbered on screen). The same shape regard already travels in.
+
+  Law: `a-row-wears-the-number-it-answers-to`.
+
+- 5b520c7: An index says what it counts.
+
+  `@2` said nothing about what it counted — in a PACS answer every study read "1", being the only study under its patient — so a bare number is no longer an index. A handle names its KIND and its place in that kind's sequence: `@SER3`, `@STD001`, `@FIL2,3,7`, `@DIR2-4`. One sequence per kind runs across the whole answer, so a handle is a name rather than a position and a sorted listing does not renumber it; zero padding is how the pill draws it, not something to type.
+
+  What a row hands over differs by kind. A series, a file or a folder hands over its path; a STUDY hands over its series — what the surface's GATHER on a study hands over — so `gather add @STD001` and `pull @STD001` act on the whole study from a console exactly as a press does. A verb refuses a kind it does not take, by name and at expansion: `image @STD001` says "image takes a series or a folder or a file; STD001 is a study" instead of resolving to a path and failing three steps later for a reason that names nothing typed.
+
+  On the surface the pill draws the handle, lit in the pane's frame hue on the rows the session reaches, and a study row wears `STD001` where it read a meaningless "1". The `numbered` message carries each row's kind, place and address, so a pane finds its rows by address and draws the code the operator would type.
+
+### Patch Changes
+
+- d1a1c0d: calypso: `/vfs?path=…&download=1` answers the file's bytes as an attachment named for the file (`content-disposition`, the name as ASCII and as UTF-8), so a browser surface can save a file rather than show it.
+- 4ee180c: A session outlives its door: the porter's lifecycle.
+
+  porter: a restarted porter adopts the sessions its predecessor started, from their berths under the state directory, rather than starting rivals. Idle sessions — no wire open, nothing through the door for `PORTER_IDLE_HOURS` (a day, like the cookie) — are ended by a sweep every minute: the process only; the state directory stays and the next login boots warm. `porter --status` lists the state directory's sessions and whether each answers. `deploy/` carries a systemd unit (a `porter` user, `KillMode=process` so a stopped door keeps its sessions), an env file example, and a Caddyfile for TLS in front. Boot lines kept per session are capped at 2000.
+
+  calypso: a berth records the daemon's pid, so a host that did not start a daemon can still end it.
+
+  chell: a daemon off a TTY tolerates EPIPE on its stdout and stderr — the porter that started it may stop first, and a session outlives its door.
+
+- Updated dependencies [e74ce1d]
+- Updated dependencies [1b2f7f7]
+- Updated dependencies [50f358b]
+- Updated dependencies [3320487]
+- Updated dependencies [149957f]
+- Updated dependencies [161e54d]
+- Updated dependencies [07f3783]
+- Updated dependencies [f94480e]
+- Updated dependencies [2322151]
+- Updated dependencies [0f3deaa]
+- Updated dependencies [d1a1c0d]
+- Updated dependencies [fa26e17]
+- Updated dependencies [77c73aa]
+- Updated dependencies [cd7714d]
+- Updated dependencies [a010cb0]
+- Updated dependencies [369b20d]
+- Updated dependencies [8a8dc25]
+- Updated dependencies [b748002]
+- Updated dependencies [a8e0f87]
+- Updated dependencies [dc369d3]
+- Updated dependencies [d3a8335]
+- Updated dependencies [03e0f87]
+- Updated dependencies [1bdf876]
+- Updated dependencies [854ba2e]
+- Updated dependencies [80ddce6]
+- Updated dependencies [9cc1514]
+- Updated dependencies [3bbc65a]
+- Updated dependencies [1cb8d03]
+- Updated dependencies [4ce1ddc]
+- Updated dependencies [5b520c7]
+- Updated dependencies [9339853]
+- Updated dependencies [acbade9]
+- Updated dependencies [3c6a0d3]
+- Updated dependencies [ca3e39b]
+- Updated dependencies [7bba167]
+- Updated dependencies [21f8d21]
+- Updated dependencies [9c5a7c2]
+- Updated dependencies [1c169d7]
+- Updated dependencies [fc4eb7e]
+- Updated dependencies [43b9440]
+- Updated dependencies [d78447d]
+- Updated dependencies [38fbdb9]
+  - @fnndsc/brasa@0.24.0
+  - @fnndsc/argus@0.11.0
+  - @fnndsc/menu@0.10.0
+  - @fnndsc/cumin@3.23.0
+
 ## 0.15.2
 
 ### Patch Changes

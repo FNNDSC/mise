@@ -1,5 +1,65 @@
 # @fnndsc/chell
 
+## 5.9.0
+
+### Minor Changes
+
+- c1178a0: A terminal comes through the door: `chell --remote --door <url>`.
+
+  The porter lets a browser in with a password and a cookie; a terminal can come the same way. `chell --remote --door https://titan/` asks for a username and a password (or takes `-u` and `-p`), logs in at the door once, prints the session's boot rows as it boots if it has to, and attaches to the session's wire — `wss://titan/s/<key>/` — with the door's cookie on the upgrade. No attach token reaches the terminal; the door holds it, as it does for a browser. Same login, same session, same idle rules, from a shell: a `-c` one-shot works too.
+
+- 7bba167: The door hands a token: a session can be started by a front that already logged the operator in.
+
+  Today a session is started by the operator, at a terminal, with a password: `chell user@url -p … --daemon`. A login front on a shared host — the porter, the display manager the browser surface needs — exchanges the password for a CUBE token itself and holds the token, never the password. This is the seam that lets it start a session with what it holds.
+
+  - cumin `connection_connectWithToken({ user, url, token })`: proves the token against the server BEFORE writing anything, so a refusal leaves the saved context alone; never exits the process; the refusal travels in the outcome, not on the error stack.
+  - brasa `sessionConnect_withToken(user, url, token)`: the headless connect beside `sessionConnect_fromSaved`, setting the context the way a credentialed boot does and leaving the working directory as it was.
+  - chell `--auth-token-stdin`: the token comes in on stdin, one line, never on argv where `ps` shows it to the host. Refuses by name: without a `<user>@<url>`, beside `--password`, or with no line on the stream. The boot row reads `Connect  Connected to <url> (token)`.
+  - chell `--daemon` off a TTY no longer spawns a console onto its pipe — a boot ends at a login only where there is a terminal to log in on; otherwise the daemon says so and keeps listening, as the standalone `calypso` binary already did.
+  - menu `@fnndsc/menu/logo`: the mise brain and its frame renderer move from the kernel to the wire package, decoding with `atob` and touching no Node builtin, so a browser can draw the same brain a terminal boot does. brasa re-exports it; chell and calypso keep their import.
+
+  Exemplar `14_tokenLogin` starts a daemon this way against a live CUBE, off a TTY, in isolated directories, and proves the Connect row and a live berth.
+
+### Patch Changes
+
+- 4ee180c: A session outlives its door: the porter's lifecycle.
+
+  porter: a restarted porter adopts the sessions its predecessor started, from their berths under the state directory, rather than starting rivals. Idle sessions — no wire open, nothing through the door for `PORTER_IDLE_HOURS` (a day, like the cookie) — are ended by a sweep every minute: the process only; the state directory stays and the next login boots warm. `porter --status` lists the state directory's sessions and whether each answers. `deploy/` carries a systemd unit (a `porter` user, `KillMode=process` so a stopped door keeps its sessions), an env file example, and a Caddyfile for TLS in front. Boot lines kept per session are capped at 2000.
+
+  calypso: a berth records the daemon's pid, so a host that did not start a daemon can still end it.
+
+  chell: a daemon off a TTY tolerates EPIPE on its stdout and stderr — the porter that started it may stop first, and a session outlives its door.
+
+- 810f3ba: chell: `--no-logo` hides the logo. It used to print it anyway, uncoloured — the flag only chose the colour — so a boot read off a pipe carried a still brain above its rows. Off a TTY the flag is implied.
+- Updated dependencies [e74ce1d]
+- Updated dependencies [1b2f7f7]
+- Updated dependencies [3320487]
+- Updated dependencies [e74ce1d]
+- Updated dependencies [d1a1c0d]
+- Updated dependencies [a010cb0]
+- Updated dependencies [8a8dc25]
+- Updated dependencies [3a8cd1b]
+- Updated dependencies [03e0f87]
+- Updated dependencies [1bdf876]
+- Updated dependencies [854ba2e]
+- Updated dependencies [4ee180c]
+- Updated dependencies [80ddce6]
+- Updated dependencies [3320487]
+- Updated dependencies [a010cb0]
+- Updated dependencies [5b520c7]
+- Updated dependencies [3c6a0d3]
+- Updated dependencies [ca3e39b]
+- Updated dependencies [7bba167]
+- Updated dependencies [1c169d7]
+- Updated dependencies [fc4eb7e]
+- Updated dependencies [43b9440]
+  - @fnndsc/brasa@0.24.0
+  - @fnndsc/salsa@3.18.2
+  - @fnndsc/calypso@0.16.0
+  - @fnndsc/menu@0.10.0
+  - @fnndsc/chili@3.6.7
+  - @fnndsc/cumin@3.23.0
+
 ## 5.8.1
 
 ### Patch Changes

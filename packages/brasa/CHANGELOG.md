@@ -1,5 +1,166 @@
 # @fnndsc/brasa
 
+## 0.24.0
+
+### Minor Changes
+
+- e74ce1d: brasa: the pronouns a chain needs, and claims that look where a plugin files its output.
+
+  Built while writing the first battery of manifests, and each one is a thing a real workflow could not say before:
+
+  `${run.place}` — where the last run writes. A chain works on what the previous act produced, and only the kernel knows where CUBE put it; a manifest cannot spell a path that holds an instance id it never saw. With it, `cd ${run.place}` chains one plugin onto another's output.
+
+  `expect path <p> count --deep` and a tag claim that looks beneath the path it was given. A plugin files its output in a tree — pfdicom writes under `share/incoming/<input tree>` — so a claim made at the node's own folder was false about a run that had worked perfectly. `--deep` is declared a boolean flag, because undeclared it took the comparison as its value and the claim lost its predicate.
+
+  A dry run leaves a pronoun it cannot know as it was written, rather than refusing: nothing has run to give `${run}` a value, and refusing there made `--dry-run` useless for exactly the manifests that chain. `play` also reads a manifest from the engine's own disk when the ChRIS filesystem has no such file, which is how a repository's battery runs without uploading itself first — and it drains the CFS miss it went looking for, which was otherwise left behind and made a clean play exit non-zero.
+
+  A claim now prints as it was MADE, narrowing included: a ✓ reading `count gt 0` for a claim about `*.nii*` says the wrong thing held, and a battery is read by people who were not there.
+
+- 1b2f7f7: brasa: `expect` — a claim the session can refuse.
+
+  A workflow that only acts is a demonstration. `expect` is what makes one a test: it states a claim about the session and refuses, non-zero, when the claim does not hold. Because it is a verb rather than a harness, a workflow asserts wherever it is played — in CI, at a console, or in someone else's browser after they were handed the file.
+
+  `expect gather size eq 14`, `expect feed 4599 status eq finishedSuccessfully`, `expect run 601152 status eq finishedSuccessfully --within 20m`, `expect path <p> count --matching '*.nii*' gt 0`, `expect path <p> tags PatientID eq anon-001`. Comparisons are `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `contains`, `notContains` and `matches`.
+
+  Time lives in this verb and nowhere else: `--within` keeps asking until the claim holds or the deadline passes, which is why no other verb needs a timeout and why the language has no sleep — a sleep asserts nothing and lies about how long the work took. A failed claim prints what it wanted, what it got, and how long it waited.
+
+  Two decisions worth naming. A subject that cannot answer — a feed this session has never indexed, a path holding no readable DICOM — is reported as NOT KNOWING rather than as a false claim, because those are different facts. And a DICOM tag that varies across a folder answers with every value it takes, so a claim about "the" value cannot pass by reading only the first file; that is what makes the tag check an honest proof that an anonymization ran.
+
+  Third slice of the manifest work (`docs/manifest.adoc`).
+
+- 3320487: brasa: the cohort is a kernel subject.
+
+  `gather list|add|remove|clear|name` holds the set a session is working on, so building a cohort no longer requires a surface to press on. Membership is keyed by PATH: a PACS series still at the modality, a directory of uploads and a single file are all addressable, so one identity rule covers every kind, gathering the same thing twice merges rather than doubles, and `gather remove` takes the same operand whatever it is removing — or the index the operator just read back.
+
+  The cohort lives where the surface already kept it, `~/gather/current.json`, in the shape the surface already wrote, so the two read each other's cohorts with no migration: the kernel fills in what an older record left out (a member written before kinds existed is a series; one written before paths were identity carries its address in `seriesUID`), and preserves the fields it has no name for, because a surface knows things about a series that the kernel does not and a kernel write must not quietly forget them. What a gathered path IS is asked of the filesystem rather than guessed from its spelling, and the holding directory is made and its listing invalidated on every write — a cohort the next `ls` cannot see is the staleness a CSV export already taught once.
+
+  This is the first slice of the manifest work (`docs/manifest.adoc`): a workflow can now gather.
+
+- a010cb0: brasa: `play` — a manifest runs, and plays.
+
+  A manifest is a text file of the lines an operator could have typed. `play` reads it and feeds those lines to the session one at a time, through the same path a typed line takes — there is no second runtime, no driver and no selector language. Because every verb lowers to a line and every line's answer is a typed model the surface renders, a manifest played at a surface PLAYS: the PACS pane fills, the cohort's face counts up, a viewer opens. Played headlessly the same file prints the same envelopes and exits 0 or non-zero. Neither run knows which it is.
+
+  A file says what it is (`@name`, `@description`) and what it needs (`@param NAME`, `@param NAME = default`). Everything it needs is settled BEFORE the first line runs: a manifest that gets half way and then asks has already changed the session. Lines may refer to what the session just did through a closed set of pronouns — `${gather}`, `${gather.first}`, `${gather.3}`, `${gather.size}`, `${feed}`, `${run}`, `${query}`, `${cwd}` — and a pronoun the session cannot answer refuses by name rather than expanding to nothing.
+
+  A member of a cohort has two addresses and the difference matters: where it was gathered FROM, which `pull` takes, and where it LANDED, which `image` and a run take. `${gather.first}` is the first; `${gather.first.place}` is the second, and says so when a member is not in CUBE yet.
+
+  `--pace` waits between lines, for watching a play at a surface. `--dry-run` expands everything and shows the lines without running them. `--step` is refused by name, because a keypress needs a terminal and a daemon has none. A refused line stops the play, naming the file and line, and the play exits non-zero — the second half of a workflow whose first half failed is noise.
+
+  Fourth slice of the manifest work (`docs/manifest.adoc`).
+
+- 8a8dc25: A patient answers to a number: `@PAT001`.
+
+  A PACS answer asked of two patients showed `1` beside each — the patient level had no kind, so it counted itself dim per group. Patients are now a kind of their own: `PAT001`, `PAT002` in their own sequence, lit on the pane, and `pull @PAT001` or `gather add @PAT001` hands a verb every series of every study of theirs, as the row's own GATHER does. A patient has no path of its own, so its address is minted from what names it (`patientAddress_of`, in the wire package, the same string on both sides); a patient the PACS answered nothing for has nothing to hand and wears no number.
+
+- 03e0f87: brasa: a row can be named by its number.
+
+  An operator reads a listing and wants the third row. Saying which row meant repeating its address — for a PACS series, a line of text nobody types by hand — so acting on what you can see was a surface gesture, and a scripted session could not do it at all.
+
+  Now a command that answers with rows records them as the session's last answer, and `@3` names one: `gather add @2,3,6`, `image @1`, `gather remove @15,16`. Lists and ranges read as they look (`@2-4`), and because the index is resolved by the one expander, every verb takes one without knowing anything about it.
+
+  What gets numbered is the MODEL, not a rendering of it, so a console table and a graphical pane count the same rows — an index that meant different things on different surfaces would be worse than no index. What a row is worth is declared per listing (`fs.listing` and a PACS answer give paths; the cohort gives its members' paths), so a verb receives the operand it already takes.
+
+  The sigil is what keeps it honest: a directory called `2` is a path and `@2` never is, `'@2'` in quotes is text, and `user@host` is not an index because only a number at the start of a word is one. A line that acts on a number says which listing it counted (`from: ls ~/uploads · 7 rows`), and a number past the end refuses with how many rows there are rather than acting on the wrong one. An answer with no rows does not replace one that has them: an empty `ls` should not un-number the listing just read.
+
+  Numbering lives as long as the session, so at a daemon it spans commands and at `chell -c` it spans the one line — `ls ~/uploads; gather add @1` is the one-shot form.
+
+- 1bdf876: A row wears the number it answers to.
+
+  A row of the session's last answer can be named by the number beside it — `gather add @2,3,6`, `image @1` — so the number is now DRAWN beside it. The listing façade mints a leading index pill for any level that says how its rows are addressed, and no pane draws a number itself.
+
+  What is numbered is the kernel's ANSWER rather than a rendering of it, so a console table and a graphical pane count the same rows. The lit number is found BY ADDRESS, not by counting down the screen, so a sorted or filtered listing keeps each row's own number instead of renumbering under the operator.
+
+  Every listing leads with the column and every row counts itself; only the rows the kernel reaches wear a LIT number. In a PACS answer that is the series, while the patient and study levels above count themselves dim — the distinction is the hue, never the digits, so a number nothing answers to cannot be mistaken for one that does. Numbers are zero-padded to the widest in their group, so a fourteen-series answer reads 01…14 and the column stays a column. The lit hue is the pane's FRAME hue (`--listing-index-hue`, set per pane), because the pill is chrome and not content: an orange pill beside the browser's orange kind glyph read as one blob and the number stopped being a number.
+
+  The surface learns which listing is numbered from a retained `numbered` message: brasa announces it as the answer changes, calypso relays it and replays it to a surface attaching late, and the addresses travel with it (capped, past which a long listing is numbered in the kernel and unnumbered on screen). The same shape regard already travels in.
+
+  Law: `a-row-wears-the-number-it-answers-to`.
+
+- 854ba2e: brasa: a verb that starts work waits for it.
+
+  A run returned the moment CUBE accepted it, which reads as completion and is not: the next line of a script worked on output that did not exist yet, and the only way to sequence work was a sleep — a lie about time. Running a plugin from `/bin`, `plugin run` and `pipeline run` now wait until every node they scheduled reaches a status it does not leave, and report what happened: how long it took, and which node failed when one did (a failed run exits non-zero, so a script can be believed).
+
+  `--detach` asks for the handle instead, which is what these verbs did before; `pull` gained `--detach` as the language's word for the `--nowait` it already had, and still answers to both. A cancellation — Esc at a surface, Ctrl-C at a console — DETACHES rather than kills: the run continues and its handle is printed, which is `--detach` asked for later. Progress goes out on the progress channel throughout, so a surface shows the work moving rather than a frozen line, and losing touch with CUBE is reported as not knowing rather than as failure, because a run whose status cannot be read has not failed.
+
+  A pipeline schedules several nodes at once, so a wait is over the SET: it ends when all of them have settled, not when the first does.
+
+  Second slice of the manifest work (`docs/manifest.adoc`).
+
+- 80ddce6: brasa: `record` — a session writes itself down as a manifest.
+
+  The workflows worth sharing are the fiddly ones nobody will retype correctly. `record start <manifest>` … `record stop` captures the lines the session runs and writes them as a manifest someone else can play. It costs almost nothing because the lowering was already the law: a press on a surface and a line at a console arrive at the same place, so both are captured alike.
+
+  A recording is a TRANSCRIPT and stays one. It never invents expectations — a file that guessed at assertions would be a fiction, and adding `expect` lines is the author's act, the one that turns a recording into a test. It does not film its own camera (`record` and `play` lines are not captured), and it does not capture the lines a played manifest runs, which are already written down in the file being played.
+
+  What makes a recording personal is its identifiers, so the ones a PACS line wears on its face — `PatientID`, `AccessionNumber`, `PatientName` — are offered as parameters, written as defaults so the file still plays exactly as recorded. The same value gets one name wherever it appears and a second distinct value gets a name of its own, so a workflow over two patients does not collapse into one. A value stops at an underscore or a slash: a query's projection folder is `PatientID:1279049_qid:3125_owner`, and a looser match would have parameterized the query id along with the MRN.
+
+  Fifth slice of the manifest work (`docs/manifest.adoc`).
+
+- 5b520c7: An index says what it counts.
+
+  `@2` said nothing about what it counted — in a PACS answer every study read "1", being the only study under its patient — so a bare number is no longer an index. A handle names its KIND and its place in that kind's sequence: `@SER3`, `@STD001`, `@FIL2,3,7`, `@DIR2-4`. One sequence per kind runs across the whole answer, so a handle is a name rather than a position and a sorted listing does not renumber it; zero padding is how the pill draws it, not something to type.
+
+  What a row hands over differs by kind. A series, a file or a folder hands over its path; a STUDY hands over its series — what the surface's GATHER on a study hands over — so `gather add @STD001` and `pull @STD001` act on the whole study from a console exactly as a press does. A verb refuses a kind it does not take, by name and at expansion: `image @STD001` says "image takes a series or a folder or a file; STD001 is a study" instead of resolving to a path and failing three steps later for a reason that names nothing typed.
+
+  On the surface the pill draws the handle, lit in the pane's frame hue on the rows the session reaches, and a study row wears `STD001` where it read a meaningless "1". The `numbered` message carries each row's kind, place and address, so a pane finds its rows by address and draws the code the operator would type.
+
+- ca3e39b: brasa: one expander, owned by the tokenizer.
+
+  There were two, over one syntax. The dispatcher substituted the environment AFTER tokenizing, so a single-quoted `$HOME` expanded anyway and quoting could protect nothing. `play` substituted parameters and session pronouns BEFORE tokenizing, so a gathered path with a space had to be quoted by hand and an unresolved pronoun could fall through to the other expander. Two sources of truth that composed by accident.
+
+  Now the tokenizer records references with the quoting they were written in, and one resolver answers them: the session's reserved pronouns (`gather`, `gather.first.place`, `feed`, `run`, `run.place`, `query`, `cwd`), then the played manifest's parameters, then the environment. `play` no longer substitutes anything; a manifest that declares a `@param` with a reserved name is refused when the file is read.
+
+  The shell's rules, kept, because the stack claims to wear them: a bare reference carrying several values becomes several operands, a double-quoted one stays a single operand, a single-quoted `$` is text, and an expanded value never globs afterwards. The command word expands too — a manifest names its plugin as a parameter so the same workflow runs where the builds differ.
+
+  A reference nothing answers now REFUSES the line, naming it and where it looked, rather than expanding to nothing or standing as text: `rm -rf ${DIR}/scratch` with `DIR` unset is how a script deletes the wrong thing. A dry run is the one exception, having run nothing yet.
+
+  Behaviour changes worth knowing: `'$HOME'` in single quotes no longer expands (it did, wrongly), and an unset reference refuses where it used to be left as literal text.
+
+- 7bba167: The door hands a token: a session can be started by a front that already logged the operator in.
+
+  Today a session is started by the operator, at a terminal, with a password: `chell user@url -p … --daemon`. A login front on a shared host — the porter, the display manager the browser surface needs — exchanges the password for a CUBE token itself and holds the token, never the password. This is the seam that lets it start a session with what it holds.
+
+  - cumin `connection_connectWithToken({ user, url, token })`: proves the token against the server BEFORE writing anything, so a refusal leaves the saved context alone; never exits the process; the refusal travels in the outcome, not on the error stack.
+  - brasa `sessionConnect_withToken(user, url, token)`: the headless connect beside `sessionConnect_fromSaved`, setting the context the way a credentialed boot does and leaving the working directory as it was.
+  - chell `--auth-token-stdin`: the token comes in on stdin, one line, never on argv where `ps` shows it to the host. Refuses by name: without a `<user>@<url>`, beside `--password`, or with no line on the stream. The boot row reads `Connect  Connected to <url> (token)`.
+  - chell `--daemon` off a TTY no longer spawns a console onto its pipe — a boot ends at a login only where there is a terminal to log in on; otherwise the daemon says so and keeps listening, as the standalone `calypso` binary already did.
+  - menu `@fnndsc/menu/logo`: the mise brain and its frame renderer move from the kernel to the wire package, decoding with `atob` and touching no Node builtin, so a browser can draw the same brain a terminal boot does. brasa re-exports it; chell and calypso keep their import.
+
+  Exemplar `14_tokenLogin` starts a daemon this way against a live CUBE, off a TTY, in isolated directories, and proves the Connect row and a live berth.
+
+- fc4eb7e: brasa: `weather [place] [-u|--units metric|imperial] [-d|--days N]` — the conditions now and a short forecast for a place, from Open-Meteo (no key, no account), geocoded by name; Boston when no place is given, metric unless `--units imperial`. A kernel command, so a TTY and ARGUS show the same report; the typed `sys.weather` model carries the numbers beneath it. Unknown flags refused by name; an unreachable service or an unknown place answers in one line.
+- 43b9440: The space of everything run here: the wait is drawn with what is known, and UNIVERSE is a face.
+
+  While the job index warms, RUNS-02 had nothing to show but a refusal and a moving figure. Now the session reports each feed as the index reads it — its jobs collapsed by plugin per place in its pipeline (a fan of three hundred conversions is one node of 300), with a status on every node — on the prompt context (`procWarmup.landed`), and the pane draws them as they arrive: every feed its own small DAG, floating free like molecules in a solution, counts as weight and status as hue, feeds of one pipeline shape pulled together by an unseen anchor so the space settles into constellations. Every node is real. When the index is whole the roster takes over, as before.
+
+  `proc universe` answers the same picture from the cache at any time, whole or warming, and says which; the dashboard's UNIVERSE tile opens it on the RUNS canvas. A feed's status words are now the DAG's own (`finishedWithError`, `started`, …) wherever cumin derives them from counts, so a feed on a surface wears the hue its jobs would.
+
+### Patch Changes
+
+- 3c6a0d3: ARGUS and kernel: the gather gesture is reachable, and an exported table is visible where it landed.
+
+  Three faults found by running the operator's own flow against a live PACS.
+
+  **GATHER SHOWN was invisible.** It was put on the results mode frame, which is the closed spine at rest: measured live, 22px wide and `visibility: hidden`. It now stands beside EXPORT CSV on the command row, where the verbs that act on the whole answer already live.
+
+  **GATHER was offered only once a series was home**, so on a fresh answer, where nothing is home, the gesture did not exist. A cohort is a set of targets and the feed it roots is made by a pull over its members, so a series is gatherable once it can be named: a PACS path, or the fact that it has landed. Query, filter, take what matched, fetch it as a set. PULL still means bring this one now.
+
+  **The export was not broken; the listing was stale.** The CSV writer wrote straight to CUBE and never invalidated the folder's cached listing, which every other fs verb does — so `cat` returned the file while `ls` and every browser showed the folder without it. The write now invalidates the folder it wrote into, and the one that shows a folder it had to create. The WROTE readout also opens that folder when pressed.
+
+- Updated dependencies [e74ce1d]
+- Updated dependencies [8a8dc25]
+- Updated dependencies [1bdf876]
+- Updated dependencies [3320487]
+- Updated dependencies [a010cb0]
+- Updated dependencies [5b520c7]
+- Updated dependencies [7bba167]
+- Updated dependencies [1c169d7]
+- Updated dependencies [43b9440]
+  - @fnndsc/salsa@3.18.2
+  - @fnndsc/menu@0.10.0
+  - @fnndsc/chili@3.6.7
+  - @fnndsc/cumin@3.23.0
+
 ## 0.23.2
 
 ### Patch Changes

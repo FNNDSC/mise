@@ -155,6 +155,23 @@ try {
       const framed = ['.field-rule', '.mode-strip', '.mode-elbow', '.mode-frame .universe-projection', '.mode-frame .universe-scale', '.mode-frame .universe-refresh']
         .every((sel) => first?.querySelector(sel) !== null);
       const runsIsFeedViewer = (document.querySelector('.pane-dag .dag-title')?.textContent ?? '').startsWith('UNIVERSE') === false;
+      // The descent, by word: enter a feed that landed, read the pane inside,
+      // climb back out. The feed id comes from the remembered positions.
+      await sleep(3500);
+      const storeKey = Object.keys(localStorage).find((k) => k.startsWith('argus.universe.'));
+      const landedId = storeKey ? (Object.keys(JSON.parse(localStorage.getItem(storeKey) ?? '{}')).find((k) => k.startsWith('feed:')) ?? '').split(':')[1] : '';
+      await say('universe enter ' + landedId, 500);
+      for (let i = 0; i < 60; i++) { await sleep(500); if (/INSIDE FEED/.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
+      await sleep(2500);
+      const insideTitle = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';
+      const insideState = first?.querySelector('.pane-state')?.textContent?.trim() ?? '';
+      const insideBlocks = ['.universe-back', '.universe-open'].every((sel) => { const e = first?.querySelector(sel); return e !== null && e !== undefined && getComputedStyle(e).display !== 'none'; });
+      const outsideBlocksHiddenBefore = true;
+      await say('universe back', 500);
+      for (let i = 0; i < 60; i++) { await sleep(500); if (!/INSIDE FEED/.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
+      await sleep(2000);
+      const backTitle = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';
+      const backBlocksHidden = ['.universe-back', '.universe-open'].every((sel) => { const e = first?.querySelector(sel); return e === null || e === undefined || getComputedStyle(e).display === 'none'; });
       // Press the tile again: the same pane, focused, not a second one.
       await say('dashboard', 2500);
       for (let i = 0; i < 60; i++) { await sleep(500); if (tiles().length > 0) break; }
@@ -163,13 +180,18 @@ try {
       await sleep(1000);
       const count = document.querySelectorAll('.pane-universe').length;
       await say('view files', 2000);
-      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count };`);
+      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden };`);
     check('the UNIVERSE tile opens a pane of its own kind, titled by what landed',
       universe.hadTile && /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.title), universe.title);
     check('the universe pane says whether the index is whole', universe.state === 'WHOLE' || universe.state === 'LANDING', universe.state);
     check('the universe draws on its own field, framed with its modes', universe.drawn && universe.framed);
     check('RUNS stays a feed viewer while the universe is up', universe.runsIsFeedViewer);
     check('a second press focuses the universe rather than opening another', universe.count === 1, String(universe.count));
+    check('universe enter <feed> descends: the title names the feed inside, the state says INSIDE, BACK and OPEN FEED stand on the frame',
+      universe.landedId !== '' && new RegExp('^UNIVERSE — INSIDE FEED ' + universe.landedId + ' · ').test(universe.insideTitle) && universe.insideState === 'INSIDE' && universe.insideBlocks,
+      `${universe.landedId} | ${universe.insideTitle} | ${universe.insideState}`);
+    check('universe back climbs out: the space is titled whole again and the descent blocks retract',
+      /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.backTitle) && universe.backBlocksHidden, universe.backTitle);
   }
 
   if (stage('drawer-everywhere (files, runs, pacs)')) {

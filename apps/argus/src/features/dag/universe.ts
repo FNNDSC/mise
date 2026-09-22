@@ -15,6 +15,7 @@
  * @module
  */
 import type { SceneGraph, SceneNode } from '../../scene/dagScene.js';
+import type { FeedDagModel, FeedDagNode } from '@fnndsc/menu';
 
 /** One node of a feed's collapsed shape. */
 export interface LandedGroup {
@@ -230,4 +231,83 @@ export function storedPositions_parse(text: string | null): StoredPositions {
   } catch {
     return {};
   }
+}
+
+/** The scene id of one instance node inside an entered feed. */
+export function instanceId_of(feedId: number, nodeId: string): string {
+  return `inst:${feedId}:${nodeId}`;
+}
+
+/** An entered feed's graph: its nodes, and what each stands for. */
+export interface EnteredFeed {
+  nodes: SceneNode[];
+  payloads: Map<string, FeedDagNode>;
+}
+
+/**
+ * The nodes of one feed as the kernel's `feed.dag` gives them, ready for
+ * the scene. The kernel already collapses a fan into one node with a
+ * tally, which is the budget the descent keeps: a group past it stays a
+ * `×N` sphere with its count and its errored share, and the true numbers
+ * ride the payload for the facts. Roots hang from nothing: an entered
+ * feed keeps its place by its seed, not by a link — its shape anchor may
+ * stand a hundred units off across the cluster, and a root linked to it
+ * at full strength dragged the whole feed there as it unfolded.
+ *
+ * @param model - The kernel's graph of the feed.
+ * @returns The scene nodes and their payloads.
+ */
+export function enteredFeed_build(model: FeedDagModel): EnteredFeed {
+  const known: Set<string> = new Set(model.nodes.map((node: FeedDagNode): string => node.id));
+  const nodes: SceneNode[] = [];
+  const payloads: Map<string, FeedDagNode> = new Map();
+  for (const node of model.nodes) {
+    const id: string = instanceId_of(model.feedId, node.id);
+    const parents: string[] = node.parentIds.filter((parent: string): boolean => known.has(parent)).map((parent: string): string => instanceId_of(model.feedId, parent));
+    const count: number = node.tally?.count ?? 1;
+    const errored: number = node.tally?.error ?? (node.status === 'finishedWithError' ? 1 : 0);
+    const share: number | undefined = errored > 0 && count > 0 ? Math.min(1, errored / count) : undefined;
+    nodes.push({
+      id,
+      label: node.pluginName,
+      parentIds: parents,
+      joinParentIds: node.joinParentIds.filter((parent: string): boolean => known.has(parent)).map((parent: string): string => instanceId_of(model.feedId, parent)),
+      status: node.status,
+      metric: jobsMetric_of(count),
+      ...(count > 1 ? { count } : {}),
+      ...(share !== undefined ? { share } : {}),
+    });
+    payloads.set(id, node);
+  }
+  return { nodes, payloads };
+}
+
+/**
+ * The universe with one feed entered: that feed's molecule replaced by its
+ * graph, every other feed dimmed, the anchors as they were.
+ *
+ * @param landed - What has landed.
+ * @param feedId - The feed entered.
+ * @param entered - Its graph.
+ * @param scale - What sizes the other spheres.
+ * @returns The scene graph.
+ */
+export function descendedGraph_build(landed: ReadonlyArray<LandedFeed>, feedId: number, entered: EnteredFeed, scale: UniverseScale = 'jobs'): SceneGraph {
+  const whole: SceneGraph = universeGraph_build(landed, scale);
+  const prefix: string = `feed:${feedId}:`;
+  const nodes: SceneNode[] = whole.nodes
+    .filter((node: SceneNode): boolean => !node.id.startsWith(prefix))
+    .map((node: SceneNode): SceneNode => (node.ghost === true ? node : { ...node, dim: true }));
+  return { nodes: [...nodes, ...entered.nodes] };
+}
+
+/**
+ * The scene ids of one feed's spheres in the universe as drawn.
+ *
+ * @param feedId - The feed.
+ * @param feed - Its landing.
+ * @returns The ids, one per group.
+ */
+export function sphereIds_of(feedId: number, feed: LandedFeed): string[] {
+  return feed.groups.map((_group: LandedGroup, index: number): string => groupId_of(feedId, index));
 }

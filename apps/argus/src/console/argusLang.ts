@@ -51,6 +51,7 @@ export interface ArgusHost {
   image_control(paneId: string, verb: string, args: string[]): Promise<string>;
   /** Drives a tags pane's verbs (redact, filter); returns the console line. */
   tags_control(paneId: string, verb: string, args: string[]): string;
+  universe_control(paneId: string | null, verb: string, args: string[]): string;
   /** Toggles the console's full-screen zoom (the bar carries no control). */
   consoleZoom_toggle(): void;
   /** Opens the launcher, the place a session begins when nothing is open. */
@@ -70,7 +71,7 @@ interface Sentence {
 
 /** Subjects this language owns; all other lines belong to the session. */
 const SUBJECTS: ReadonlySet<string> = new Set([
-  'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'image', 'tags', 'header', 'console', 'back', 'desktop', 'dashboard', 'launcher', 'attach', 'argus',
+  'pane', 'view', 'runs', 'node', 'dag', 'universe', 'file', 'pacs', 'image', 'tags', 'header', 'console', 'back', 'desktop', 'dashboard', 'launcher', 'attach', 'argus',
 ]);
 
 /**
@@ -513,6 +514,11 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   if (subject === 'tags') {
     if (paneId === null) return 'tags: no pane in focus';
     return host.tags_control(paneId, verb, words.slice(1));
+  }
+
+  if (subject === 'universe') {
+    // The descent by word: enter a feed, climb back, open the feed in RUNS.
+    return host.universe_control(paneId, verb, words.slice(1));
   }
 
   if (subject === 'node') {

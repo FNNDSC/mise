@@ -3,7 +3,8 @@
  * floating free, like shapes pulled together by an unseen anchor.
  */
 import { describe, it, expect } from '@jest/globals';
-import { universeGraph_build, LandedFeeds, shape_of, groupId_of, anchorId_of, universeTip_of, universeStoreKey_of, storedPositions_parse, jobsMetric_of, erroredShare_of, type LandedFeed } from '../../src/features/dag/universe.js';
+import { universeGraph_build, LandedFeeds, shape_of, groupId_of, anchorId_of, universeTip_of, universeStoreKey_of, storedPositions_parse, jobsMetric_of, erroredShare_of, enteredFeed_build, descendedGraph_build, sphereIds_of, instanceId_of, type LandedFeed } from '../../src/features/dag/universe.js';
+import type { FeedDagModel } from '@fnndsc/menu';
 
 const chain: LandedFeed = { id: 1, title: 'chain', jobs: 3, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [
   { plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null },
@@ -100,5 +101,38 @@ describe('a sphere weighs its jobs honestly', () => {
     const graph = universeGraph_build([fan, chain], 'feeds');
     expect(graph.nodes.filter((n) => n.ghost !== true).every((n) => n.metric === 1)).toBe(true);
     expect(universeGraph_build([fan], 'jobs').nodes.find((n) => n.id === groupId_of(2, 1))?.metric).toBeCloseTo(jobsMetric_of(300));
+  });
+});
+
+describe('the descent into a feed', () => {
+  const model: FeedDagModel = {
+    feedId: 2,
+    feedName: 'shot-cohort',
+    nodes: [
+      { id: '10', label: 'pl-dircopy', parentIds: [], joinParentIds: [], instanceId: 10, pluginName: 'pl-dircopy', status: 'finishedSuccessfully', vfsPath: '/proc/jobs/feed_2/pl-dircopy_10/data' },
+      { id: '11', label: 'pl-dcm2niix', parentIds: ['10'], joinParentIds: [], instanceId: 11, pluginName: 'pl-dcm2niix', status: 'finishedWithError', vfsPath: '/proc/jobs/feed_2/pl-dircopy_10/pl-dcm2niix_11/data',
+        tally: { count: 300, done: 288, error: 12, running: 0, other: 0 } },
+      { id: '12', label: 'pl-fastsurfer', parentIds: ['11', '99'], joinParentIds: [], instanceId: 12, pluginName: 'pl-fastsurfer', status: 'started', vfsPath: '/proc/jobs/feed_2/x/pl-fastsurfer_12/data' },
+    ],
+  };
+  it('turns the kernel graph into scene nodes: ids by feed, the fan kept ×N with its share, roots free of any anchor', () => {
+    const entered = enteredFeed_build(model);
+    expect(entered.nodes.map((n) => n.id)).toEqual([instanceId_of(2, '10'), instanceId_of(2, '11'), instanceId_of(2, '12')]);
+    expect(entered.nodes[0]).toMatchObject({ label: 'pl-dircopy', parentIds: [], metric: jobsMetric_of(1) });
+    expect(entered.nodes[1]).toMatchObject({ parentIds: [instanceId_of(2, '10')], count: 300, share: 12 / 300, metric: jobsMetric_of(300) });
+    // A parent the model does not carry is dropped, not invented.
+    expect(entered.nodes[2]?.parentIds).toEqual([instanceId_of(2, '11')]);
+    expect(entered.payloads.get(instanceId_of(2, '11'))?.instanceId).toBe(11);
+  });
+  it('replaces the entered feed molecule and dims every other feed, anchors untouched', () => {
+    const entered = enteredFeed_build(model);
+    const graph = descendedGraph_build([chain, fan, other], 2, entered);
+    expect(graph.nodes.some((n) => n.id.startsWith('feed:2:'))).toBe(false);
+    expect(graph.nodes.filter((n) => n.id.startsWith('inst:2:'))).toHaveLength(3);
+    const others = graph.nodes.filter((n) => n.id.startsWith('feed:'));
+    expect(others.length).toBeGreaterThan(0);
+    expect(others.every((n) => n.dim === true)).toBe(true);
+    expect(graph.nodes.filter((n) => n.ghost === true).every((n) => n.dim !== true)).toBe(true);
+    expect(sphereIds_of(2, fan)).toEqual([groupId_of(2, 0), groupId_of(2, 1)]);
   });
 });

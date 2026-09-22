@@ -49,6 +49,12 @@ export interface SceneNode {
   /** A hue the host assigns (a mode's color, e.g. by compute); errors still win. */
   hue?: string;
   /**
+   * Drawn faint: the rest of a field while one part of it is entered.
+   * Present in the settle and drawn, but at a fraction of its opacity, and
+   * its edges with it.
+   */
+  dim?: boolean;
+  /**
    * The share of a collapsed group that ended in error, 0..1. Hues the
    * sphere between done and error by that share rather than painting a
    * group of eighty thousand red for one failure; absent for a clean group.
@@ -112,6 +118,9 @@ interface PlacedNode {
 
 /** Base node radius in scene units. */
 const NODE_RADIUS: number = 0.55;
+
+/** How faint a dimmed node and its edges are drawn. */
+const DIM_OPACITY: number = 0.16;
 
 /** Vertical distance between ranked tiers. */
 const TIER_SPACING: number = 2.6;
@@ -269,6 +278,7 @@ function layout_molecule(
   dimensions: 2 | 3 = 3,
   seed: Map<string, THREE.Vector3> = new Map(),
   physics: PhysicsTerms = PHYSICS_DEFAULT,
+  frozen: ReadonlySet<string> = new Set(),
 ): PlacedNode[] {
   const degree: Map<string, number> = new Map();
   const links: Array<{ source: string; target: string }> = [];
@@ -293,18 +303,22 @@ function layout_molecule(
 
   // Warm start: a re-projection (a metric flip) morphs from where the
   // graph stands instead of re-rolling a new equilibrium.
-  const simNodes: Array<{ id: string; x?: number; y?: number; z?: number }> = nodes.map(
+  // A frozen node stands where its seed put it and pushes on nothing: the
+  // rest of a field holds still while one part of it settles.
+  const simNodes: Array<{ id: string; x?: number; y?: number; z?: number; fx?: number; fy?: number; fz?: number }> = nodes.map(
     (n: SceneNode) => {
       const from: THREE.Vector3 | undefined = seed.get(n.id);
-      return from === undefined ? { id: n.id } : { id: n.id, x: from.x, y: from.y, z: from.z };
+      if (from === undefined) return { id: n.id };
+      if (frozen.has(n.id)) return { id: n.id, x: from.x, y: from.y, z: from.z, fx: from.x, fy: from.y, fz: from.z };
+      return { id: n.id, x: from.x, y: from.y, z: from.z };
     },
   );
   // In 2D the simulation itself is two-dimensional: a 3D settle flattened
   // afterwards piles nodes that resolved their overlaps in depth.
   const charge = forceManyBody().strength(
     physics.charge
-      ? (d: { id: string }): number => -6 * ((radiusOf.get(d.id) ?? NODE_RADIUS) / NODE_RADIUS) ** 2
-      : -6,
+      ? (d: { id: string }): number => (frozen.has(d.id) ? 0 : -6 * ((radiusOf.get(d.id) ?? NODE_RADIUS) / NODE_RADIUS) ** 2)
+      : (d: { id: string }): number => (frozen.has(d.id) ? 0 : -6),
   );
   if (physics.reach !== undefined) charge.distanceMax(physics.reach);
   const simulation = forceSimulation(simNodes, dimensions)
@@ -322,8 +336,14 @@ function layout_molecule(
     )
     // Repulsion scales with cross-section: a heavy node carves its room.
     .force('charge', charge)
-    .force('center', dimensions === 2 ? forceCenter(0, 0) : forceCenter(0, 0, 0))
     .stop();
+  // Centering shifts every free node by the mean of ALL nodes each tick;
+  // with most of the field frozen that mean never settles and the few free
+  // nodes stream away from where they were seeded. A settle with frozen
+  // nodes keeps its centre where it is.
+  if (frozen.size === 0) {
+    simulation.force('center', dimensions === 2 ? forceCenter(0, 0) : forceCenter(0, 0, 0));
+  }
   if (physics.collide) {
     simulation.force('collide', forceCollide().radius((d: { id: string }): number => (radiusOf.get(d.id) ?? NODE_RADIUS) * 1.2));
   }
@@ -361,6 +381,10 @@ export class DagScene {
 
   /** Where the last projection left every node — the next settle's seed. */
   private lastPositions: Map<string, THREE.Vector3> = new Map();
+  /** Nodes held still through the current settle. */
+  private frozen: Set<string> = new Set();
+  /** Physics for the current settle alone, over the standing terms. */
+  private physicsOnce: Partial<PhysicsTerms> | undefined = undefined;
 
   /** CENSUS: render every member of every ×N group as an instanced point. */
   private census: boolean = false;
@@ -605,9 +629,17 @@ export class DagScene {
    *
    * @param graph - The normalized graph.
    */
-  public graph_set(graph: SceneGraph, options: { wave?: boolean } = {}): void {
+  public graph_set(graph: SceneGraph, options: { wave?: boolean; fit?: boolean; frozen?: ReadonlyArray<string>; physics?: Partial<PhysicsTerms> } = {}): void {
     this.graph = graph;
-    this.rebuild();
+    // Nodes to hold still through this settle, and physics for it alone:
+    // a descent settles one feed while the field around it stands, with
+    // no gravity — gravity pulls to the origin, and a feed unfolding far
+    // from it would stream there instead of opening where it stood.
+    this.frozen = new Set(options.frozen ?? []);
+    this.physicsOnce = options.physics;
+    // A graph arriving under a flight keeps the camera where the flight
+    // put it (`fit: false`); every other arrival is framed whole.
+    this.rebuild(options.fit !== false);
     // An ARRIVING graph gets one wave; a local re-projection (a scale or
     // layout flip) must not fire one — an unasked pulse reads as a glitch.
     if (options.wave !== false) this.wave_start();
@@ -708,6 +740,63 @@ export class DagScene {
       startedAt: Date.now(),
       durationMs: 700,
       onDone: onArrived,
+    };
+  }
+
+  /**
+   * Flies the camera to frame a set of nodes: the fit `camera_fit` would
+   * give those nodes alone, reached by a flight from where the camera
+   * stands rather than a cut. A descent into one feed frames that feed;
+   * the climb back frames everything. Never holds: picking goes on.
+   *
+   * @param ids - The nodes to frame; every drawn node when empty.
+   * @param durationMs - The flight's length.
+   * @param onDone - Called when the camera arrives.
+   */
+  public camera_flyToFit(ids: ReadonlyArray<string>, durationMs: number, onDone: () => void): void {
+    const wanted: Set<string> = new Set(ids);
+    const points: THREE.Vector3[] = [];
+    let radiusMax: number = 0;
+    this.group.updateMatrixWorld(true);
+    for (const [id, mesh] of this.meshes) {
+      if (wanted.size > 0 && !wanted.has(id)) continue;
+      points.push(mesh.getWorldPosition(new THREE.Vector3()));
+      const sphere: THREE.BufferGeometry = mesh.geometry;
+      sphere.computeBoundingSphere();
+      radiusMax = Math.max(radiusMax, sphere.boundingSphere?.radius ?? NODE_RADIUS);
+    }
+    if (points.length === 0) {
+      onDone();
+      return;
+    }
+    const center: THREE.Vector3 = new THREE.Vector3();
+    for (const point of points) center.add(point);
+    center.divideScalar(points.length);
+    let radius: number = 1;
+    for (const point of points) radius = Math.max(radius, center.distanceTo(point) + radiusMax);
+    const fov: number = (this.camera.fov * Math.PI) / 180;
+    const fitH: number = radius / Math.tan(fov / 2);
+    const fitW: number = radius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
+    const distance: number = Math.max(6, Math.max(fitH, fitW) * 1.15);
+    // Approach along the line the camera already looks down, so the flight
+    // reads as a dolly and never a swing round the field.
+    const heading: THREE.Vector3 = this.camera.position.clone().sub(center);
+    if (heading.lengthSq() < 0.0001) heading.set(0, 0, 1);
+    heading.normalize();
+    const toPos: THREE.Vector3 = center.clone().add(heading.multiplyScalar(distance));
+    const aim: THREE.Camera = this.camera.clone();
+    aim.position.copy(toPos);
+    aim.lookAt(center);
+    this.camera.far = Math.max(this.camera.far, (distance + radius) * 2);
+    this.camera.updateProjectionMatrix();
+    this.flight = {
+      fromPos: this.camera.position.clone(),
+      toPos,
+      fromQuat: this.camera.quaternion.clone(),
+      toQuat: aim.quaternion.clone(),
+      startedAt: Date.now(),
+      durationMs,
+      onDone,
     };
   }
 
@@ -1058,7 +1147,7 @@ export class DagScene {
   }
 
   /** Rebuilds meshes and edges from the current graph and strategy. */
-  private rebuild(): void {
+  private rebuild(fit: boolean = true): void {
     this.group.clear();
     this.meshes = new Map();
     this.edges = [];
@@ -1073,7 +1162,13 @@ export class DagScene {
     this.pulseColor = palette.pulse;
     const placed: PlacedNode[] =
       this.strategy === 'molecule'
-        ? layout_molecule(this.graph.nodes, this.projection === '2d' ? 2 : 3, this.lastPositions, this.physics)
+        ? layout_molecule(
+            this.graph.nodes,
+            this.projection === '2d' ? 2 : 3,
+            this.lastPositions,
+            this.physicsOnce !== undefined ? { ...this.physics, ...this.physicsOnce } : this.physics,
+            this.frozen,
+          )
         : layout_ranked(this.graph.nodes);
     this.lastPositions = new Map(placed.map((p: PlacedNode): [string, THREE.Vector3] => [p.node.id, p.position.clone()]));
     if (this.projection === '2d') {
@@ -1085,7 +1180,7 @@ export class DagScene {
       this.censusBuild(placed, palette);
       return;
     }
-    if (!this.ambient) this.camera_fit(placed);
+    if (!this.ambient && fit) this.camera_fit(placed);
     const byId: Map<string, PlacedNode> = new Map(placed.map((p: PlacedNode) => [p.node.id, p]));
 
     for (const { node, position, radius } of placed) {
@@ -1104,6 +1199,7 @@ export class DagScene {
         metalness: 0.15,
         emissive: node.id === this.selectedId ? new THREE.Color('#ffffff') : new THREE.Color('#000000'),
         emissiveIntensity: node.id === this.selectedId ? 0.35 : 0,
+        ...(node.dim === true ? { transparent: true, opacity: DIM_OPACITY } : {}),
       });
       const mesh: THREE.Mesh = new THREE.Mesh(geometry, material);
       mesh.position.copy(position);
@@ -1116,11 +1212,11 @@ export class DagScene {
       if (node.ghost === true) continue;
       for (const parentId of node.parentIds) {
         const parent: PlacedNode | undefined = byId.get(parentId);
-        if (parent && parent.node.ghost !== true) this.edge_add(parentId, node.id, parent.position, position, palette.edge, false);
+        if (parent && parent.node.ghost !== true) this.edge_add(parentId, node.id, parent.position, position, palette.edge, false, node.dim === true || parent.node.dim === true);
       }
       for (const joinId of node.joinParentIds) {
         const parent: PlacedNode | undefined = byId.get(joinId);
-        if (parent) this.edge_add(joinId, node.id, parent.position, position, palette.join, true);
+        if (parent) this.edge_add(joinId, node.id, parent.position, position, palette.join, true, node.dim === true || parent.node.dim === true);
       }
     }
 
@@ -1134,18 +1230,19 @@ export class DagScene {
     to: THREE.Vector3,
     color: THREE.Color,
     dashed: boolean,
+    dim: boolean = false,
   ): void {
     const geometry: THREE.BufferGeometry = new THREE.BufferGeometry().setFromPoints([from, to]);
     let line: THREE.Line;
     if (dashed) {
       const material: THREE.LineDashedMaterial = new THREE.LineDashedMaterial({
-        color, dashSize: 0.25, gapSize: 0.18, transparent: true, opacity: 0.9,
+        color, dashSize: 0.25, gapSize: 0.18, transparent: true, opacity: dim ? DIM_OPACITY : 0.9,
       });
       line = new THREE.Line(geometry, material);
       line.computeLineDistances();
     } else {
       const material: THREE.LineBasicMaterial = new THREE.LineBasicMaterial({
-        color, transparent: true, opacity: 0.75,
+        color, transparent: true, opacity: dim ? DIM_OPACITY : 0.75,
       });
       line = new THREE.Line(geometry, material);
     }

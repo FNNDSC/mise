@@ -4249,6 +4249,20 @@ body[data-zoom] #header-restore {
   min-width: 0;
 }
 
+/* The descent's blocks stand on the frame only while a feed is entered;
+   the facts overlay hides until a node is indicated. */
+.pane-universe:not(.universe-inside) .universe-open,
+.pane-universe:not(.universe-inside) .universe-back,
+.universe-facts[hidden] {
+  display: none;
+}
+
+.universe-node-verbs {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
 /* The greeting reads as the session's own voice. */
 .argus-greeting-line {
   white-space: pre-wrap;

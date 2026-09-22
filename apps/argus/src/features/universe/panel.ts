@@ -17,16 +17,36 @@
  *
  * @module
  */
-import type { PromptContext, WireEnvelope } from '@fnndsc/menu';
+import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope } from '@fnndsc/menu';
 import { PROC_UNIVERSE_MODEL_KIND, procUniverseModelSchema, type ProcUniverseModel } from '@fnndsc/menu';
-import { DagScene, type SceneNode } from '../../scene/dagScene.js';
-import { LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse, type LandedFeed, type UniverseScale } from '../dag/universe.js';
+import { DagScene, type SceneGraph, type SceneNode } from '../../scene/dagScene.js';
+import {
+  LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse,
+  enteredFeed_build, descendedGraph_build, sphereIds_of,
+  type LandedFeed, type UniverseScale, type EnteredFeed,
+} from '../dag/universe.js';
 import type { KeyStore } from '../../app/dormant.js';
 
 /** What the pane asks of its host. */
 export interface UniversePanelHandlers {
   /** Runs a session command whose envelopes come back through `envelope_observe`. */
   command_run: (line: string) => void;
+  /** The kernel's graph of one feed (`feed diagram`), or null when it cannot be had. */
+  feed_dag?: (feedId: number) => Promise<FeedDagModel | null>;
+  /** The operator enters a node's data: the session's cwd moves there. */
+  node_enter?: (vfsPath: string) => void;
+  /** PROCESS on a node: a catalogue bound to its data. */
+  node_process?: (node: { vfsPath: string; instanceId: number; label: string }) => void;
+  /** OPEN: the feed in a RUNS pane of its own. */
+  feed_open?: (feedId: number) => void;
+}
+
+/** One feed entered: what was asked for, and what came. */
+interface EnteredState {
+  feedId: number;
+  title: string;
+  entered: EnteredFeed;
+  ids: Set<string>;
 }
 
 /** The pane's mount points inside its template. */
@@ -38,6 +58,12 @@ export interface UniversePanelMount {
   projectionPill: HTMLElement | null;
   refreshPill: HTMLElement | null;
   scalePill: HTMLElement | null;
+  /** The facts overlay on the field: the selected node's payload and verbs. */
+  facts: HTMLElement | null;
+  /** BACK, on the frame while a feed is entered. */
+  backPill: HTMLElement | null;
+  /** OPEN FEED, on the frame while a feed is entered. */
+  openPill: HTMLElement | null;
 }
 
 /** How far a sphere's repulsion reaches while the space is small: a molecule hugs itself at this bound. */
@@ -59,6 +85,12 @@ const REASK_MS: number = 5000;
 
 /** The least time between two writes of remembered positions. */
 const REMEMBER_MS: number = 3000;
+
+/** How long the camera takes to reach a molecule, and to frame its feed. */
+const DESCENT_MS: number = 650;
+
+/** How long the climb back out takes. */
+const ASCENT_MS: number = 650;
 
 export class UniversePanel {
   private readonly scene: DagScene;
@@ -83,6 +115,15 @@ export class UniversePanel {
   private disposed: boolean = false;
   /** What sizes a sphere: its jobs (log) or nothing. */
   private scale: UniverseScale = 'jobs';
+  /** The feed entered, while one is. */
+  private inside: EnteredState | null = null;
+  /** A descent or an ascent in flight: clicks wait. */
+  private flying: boolean = false;
+  private readonly facts: HTMLElement | null;
+  private readonly backPill: HTMLElement | null;
+  private readonly openPill: HTMLElement | null;
+  private readonly pane: HTMLElement | null;
+  private readonly escape_listen: (event: KeyboardEvent) => void;
   /** The reach the scene was last given; undefined until the first paint. */
   private reach: number | undefined | null = null;
 
@@ -93,10 +134,31 @@ export class UniversePanel {
     this.empty = mount.empty;
     this.handlers = handlers;
     this.store = store;
+    this.facts = mount.facts;
+    this.backPill = mount.backPill;
+    this.openPill = mount.openPill;
+    this.pane = mount.canvas.closest<HTMLElement>('.workspace-pane');
     this.scene = new DagScene(mount.canvas, {
-      // A sphere is a plugin group inside a feed; the tip says both.
-      tip: (node: SceneNode): string | null => universeTip_of(node.id, this.landed),
+      // A sphere is a plugin group inside a feed; the tip says both. Inside
+      // a feed the nodes are its own and carry their labels.
+      tip: (node: SceneNode): string | null => (this.inside === null ? universeTip_of(node.id, this.landed) : null),
+      // Outside: a click on a sphere descends into its feed. Inside: a
+      // click on one of the feed's nodes shows its facts and its verbs.
+      select: (node: SceneNode): void => this.node_select(node),
+      deselect: (): void => this.facts_clear(),
     });
+    mount.backPill?.addEventListener('click', (): void => this.ascend());
+    mount.openPill?.addEventListener('click', (): void => {
+      if (this.inside !== null) this.handlers.feed_open?.(this.inside.feedId);
+    });
+    // Esc climbs out, one press, one level — the same key that leaves a
+    // node overlay in the DAG pane.
+    this.escape_listen = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || this.inside === null || this.flying) return;
+      if (this.pane !== null && this.pane.offsetParent === null) return;
+      this.ascend();
+    };
+    window.addEventListener('keydown', this.escape_listen);
     // A taxonomy is a molecule, not a rank order: gravity pulls the
     // clusters into a crown, and a bounded reach lets a lone molecule hug
     // itself rather than spread across the field as dots.
@@ -183,9 +245,45 @@ export class UniversePanel {
     this.scene.size_fit();
   }
 
+  /**
+   * The console's verbs on this pane: `universe enter <feed>`, `universe
+   * back`, `universe open`. A surface can be asked what it can be pressed.
+   *
+   * @param verb - The verb.
+   * @param args - Its words.
+   * @returns What happened, for the console.
+   */
+  public control(verb: string, args: string[]): string {
+    if (verb === 'enter') {
+      const feedId: number = parseInt(args[0] ?? '', 10);
+      if (!Number.isFinite(feedId)) return 'universe enter <feed id>';
+      if (this.landed.get(feedId) === undefined) return `universe enter: feed ${feedId} has not landed here`;
+      if (this.inside !== null) return `universe enter: already inside feed ${this.inside.feedId}; universe back first`;
+      this.descend(feedId);
+      return `entering feed ${feedId}`;
+    }
+    if (verb === 'back') {
+      if (this.inside === null) return 'universe back: not inside a feed';
+      this.ascend();
+      return 'climbing out';
+    }
+    if (verb === 'open') {
+      if (this.inside === null) return 'universe open: not inside a feed';
+      this.handlers.feed_open?.(this.inside.feedId);
+      return `opening feed ${this.inside.feedId}`;
+    }
+    return 'universe enter <feed>|back|open';
+  }
+
+  /** Whether a feed is entered, for a host that asks. */
+  public inside_get(): number | null {
+    return this.inside?.feedId ?? null;
+  }
+
   /** Releases the scene. */
   public dispose(): void {
     this.disposed = true;
+    window.removeEventListener('keydown', this.escape_listen);
     if (this.repaintTimer !== null) window.clearTimeout(this.repaintTimer);
     if (this.rememberTimer !== null) window.clearTimeout(this.rememberTimer);
     this.remember_now();
@@ -208,19 +306,22 @@ export class UniversePanel {
     if (this.whole) this.warming = '';
     this.empty.style.display = 'none';
     this.canvas.style.display = 'block';
-    this.paint();
+    // A space arriving while a feed is entered is taken, not drawn: the
+    // descent stands until the climb, which paints what has landed since.
+    if (this.inside === null) this.paint();
+    else this.title_paint();
   }
 
   /** Takes landings into the space, repainting at most once a second. */
   private landings_take(landed: ReadonlyArray<LandedFeed>): void {
-    if (!this.landed.take(landed) || this.repaintTimer !== null) return;
+    if (!this.landed.take(landed) || this.repaintTimer !== null || this.inside !== null) return;
     this.repaintTimer = window.setTimeout((): void => {
       this.repaintTimer = null;
       if (!this.disposed) this.paint();
     }, REPAINT_MS);
   }
 
-  private paint(): void {
+  private paint(fit: boolean = true): void {
     const graph = universeGraph_build(this.landed.all(), this.scale);
     // Hug while small, spread when a crowd: the bound that keeps a lone
     // molecule together would pack seven hundred feeds into one ball.
@@ -230,13 +331,146 @@ export class UniversePanel {
       this.reach = reach;
       this.scene.physics_set({ reach });
     }
-    this.scene.graph_set(graph, { wave: false });
+    this.scene.graph_set(graph, { wave: false, fit });
     this.title_paint();
     this.remember_later();
   }
 
+  /**
+   * Descends into one feed: the camera flies to its molecule, the kernel's
+   * graph of the feed is asked for, the molecule unfolds into it in place
+   * while the rest of the space dims, and the camera frames the feed.
+   *
+   * @param feedId - The feed.
+   */
+  private descend(feedId: number): void {
+    const feed: LandedFeed | undefined = this.landed.get(feedId);
+    const ask = this.handlers.feed_dag;
+    if (feed === undefined || ask === undefined || this.flying || this.inside !== null) return;
+    this.flying = true;
+    this.facts_clear();
+    const spheres: string[] = sphereIds_of(feedId, feed);
+    this.scene.camera_flyToFit(spheres, DESCENT_MS, (): void => {
+      void ask(feedId).then((model: FeedDagModel | null): void => {
+        if (this.disposed) return;
+        if (model === null) {
+          this.flying = false;
+          return;
+        }
+        const entered: EnteredFeed = enteredFeed_build(model);
+        // The feed unfolds from where its molecule stood: every new node
+        // starts at the molecule's centre and settles out from it.
+        const positions = this.scene.positions_get();
+        const centre: [number, number, number] = [0, 0, 0];
+        let counted: number = 0;
+        for (const id of spheres) {
+          const at = positions[id];
+          if (at === undefined) continue;
+          centre[0] += at[0]; centre[1] += at[1]; centre[2] += at[2]; counted += 1;
+        }
+        if (counted > 0) { centre[0] /= counted; centre[1] /= counted; centre[2] /= counted; }
+        for (const node of entered.nodes) {
+          positions[node.id] = [centre[0] + (Math.random() - 0.5) * 0.5, centre[1] + (Math.random() - 0.5) * 0.5, centre[2] + (Math.random() - 0.5) * 0.5];
+        }
+        this.scene.positions_seed(positions);
+        const graph: SceneGraph = descendedGraph_build(this.landed.all(), feedId, entered, this.scale);
+        // Only the feed settles: the rest of the space holds still and
+        // pushes on nothing, and the feed hugs itself where the molecule
+        // stood rather than exploding into a crowd's charge.
+        const enteredIds: Set<string> = new Set(entered.nodes.map((node: SceneNode): string => node.id));
+        const frozen: string[] = graph.nodes.filter((node: SceneNode): boolean => !enteredIds.has(node.id)).map((node: SceneNode): string => node.id);
+        this.scene.graph_set(graph, { wave: false, fit: false, frozen, physics: { reach: UNIVERSE_REACH, gravity: false } });
+        this.inside = { feedId, title: model.feedName, entered, ids: new Set(entered.nodes.map((node: SceneNode): string => node.id)) };
+        this.pane?.classList.add('universe-inside');
+        this.title_paint();
+        this.scene.camera_flyToFit([...this.inside.ids], DESCENT_MS, (): void => { this.flying = false; });
+      });
+    });
+  }
+
+  /** Climbs back out: the space as it has landed since, framed whole. */
+  private ascend(): void {
+    if (this.inside === null || this.flying) return;
+    this.inside = null;
+    this.flying = true;
+    this.facts_clear();
+    this.pane?.classList.remove('universe-inside');
+    this.paint(false);
+    this.scene.camera_flyToFit([], ASCENT_MS, (): void => { this.flying = false; });
+  }
+
+  /** A click: descend from a sphere outside, show facts on a node inside. */
+  private node_select(node: SceneNode): void {
+    if (this.flying) return;
+    if (this.inside === null) {
+      const match: RegExpMatchArray | null = node.id.match(/^feed:(\d+):\d+$/);
+      if (match !== null) this.descend(Number(match[1]));
+      return;
+    }
+    const payload: FeedDagNode | undefined = this.inside.entered.payloads.get(node.id);
+    if (payload !== undefined) this.facts_show(node, payload);
+  }
+
+  /** The selected node's facts and verbs, on the field's overlay. */
+  private facts_show(node: SceneNode, payload: FeedDagNode): void {
+    if (this.facts === null) return;
+    this.facts.replaceChildren();
+    const tally = payload.tally;
+    const rows: Array<[string, string]> = [
+      ['PLUGIN', payload.pluginName],
+      [tally ? 'REP. INSTANCE' : 'INSTANCE', String(payload.instanceId)],
+      ['STATUS', payload.status],
+      ...(tally ? ([['COUNT', `×${tally.count} — ${tally.done} done, ${tally.error} err, ${tally.running} live`]] as Array<[string, string]>) : []),
+      ['DATA', payload.vfsPath],
+    ];
+    for (const [label, value] of rows) {
+      const row: HTMLDivElement = document.createElement('div');
+      row.className = 'telemetry-row';
+      const name: HTMLSpanElement = document.createElement('span');
+      name.className = 'telemetry-label';
+      name.textContent = label;
+      const figure: HTMLSpanElement = document.createElement('span');
+      figure.className = 'telemetry-value';
+      figure.textContent = value;
+      row.append(name, figure);
+      this.facts.append(row);
+    }
+    // The node's verbs ride its facts: a control lives where it acts.
+    const verbs: HTMLDivElement = document.createElement('div');
+    verbs.className = 'universe-node-verbs';
+    const enter: HTMLButtonElement = document.createElement('button');
+    enter.className = 'pacs-capsule universe-node-enter';
+    enter.textContent = 'ENTER NODE';
+    enter.title = 'the session moves to this node\'s data';
+    enter.addEventListener('click', (): void => this.handlers.node_enter?.(payload.vfsPath));
+    const process: HTMLButtonElement = document.createElement('button');
+    process.className = 'pacs-capsule universe-node-process';
+    process.textContent = 'PROCESS';
+    process.title = 'a catalogue bound to this node\'s data';
+    process.addEventListener('click', (): void => this.handlers.node_process?.({ vfsPath: payload.vfsPath, instanceId: payload.instanceId, label: node.label }));
+    verbs.append(enter, process);
+    this.facts.append(verbs);
+    this.facts.hidden = false;
+  }
+
+  private facts_clear(): void {
+    if (this.facts === null) return;
+    this.facts.replaceChildren();
+    this.facts.hidden = true;
+  }
+
   /** Titles the space with what it holds and, while warming, how far the index is. */
   private title_paint(): void {
+    if (this.inside !== null) {
+      const jobs: number = this.inside.entered.nodes.reduce((sum: number, node: SceneNode): number => sum + (node.count ?? 1), 0);
+      this.title.textContent = `UNIVERSE — INSIDE FEED ${this.inside.feedId} · ${this.inside.title} · ${jobs.toLocaleString('en-US')} JOBS`;
+      if (this.state !== null) {
+        this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
+        this.state.classList.add('state-live');
+        this.state.textContent = 'INSIDE';
+      }
+      return;
+    }
     const figure: string = `${this.landed.size()} FEEDS · ${this.landed.shapes()} SHAPES`;
     this.title.textContent = this.whole
       ? `UNIVERSE — ${figure}`

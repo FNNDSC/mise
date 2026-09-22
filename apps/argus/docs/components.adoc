@@ -187,11 +187,14 @@ image::images/universe-pane-anatomy.svg[Universe pane anatomy,1180]
 | projection block | `.universe-projection` | Cycles 3D and 2D.
 | scale block | `.universe-scale` | Cycles JOBS (a sphere's radius by the log of the jobs it stands for) and FEEDS (every sphere alike; the field reads by shape alone).
 | refresh block | `.universe-refresh` | Asks the session for the space again (`proc universe`).
+| open block | `.universe-open` | While a feed is entered: the feed in a RUNS pane of its own (`feed diagram`).
+| back block | `.universe-back` | While a feed is entered: climb out to the whole space (Esc does the same).
+| facts | `.universe-facts` (a `.dag-facts`) | Inside a feed, the indicated node's payload — PLUGIN, INSTANCE, STATUS, COUNT on a fan, DATA — and its verbs, ENTER NODE and PROCESS, as `.universe-node-verbs`; hidden until a node is indicated.
 | field | `.universe-canvas` | The scene's mount; holds the canvas and the tip, never a control.
 | sphere | (scene) | One plugin group inside one feed: size the log of the jobs it stands for (JOBS) or alike (FEEDS); colour done shading to error by the share of its jobs that failed, red outright when all did; `×N` on a fan.
 | molecule | (scene) | One feed: its spheres joined by edges.
 | cluster | (scene) | The feeds of one shape, gathered by an unseen anchor with no mass of its own; not drawn.
-| tip | `.dag-node-tip` | Over a sphere: `<plugin> ×N · <status> · feed <id> · <title>`, the status read as `<n> errored` on a fan with failures.
+| tip | `.dag-node-tip` | Over a sphere: `<plugin> ×N · <status> · feed <id> · <title>`, the status read as `<n> errored` on a fan with failures. Inside a feed, a node's own label.
 | empty | `.universe-empty` | Before the first space arrives.
 |===
 
@@ -206,7 +209,10 @@ const panel = new UniversePanel(
 );
 panel.request();                          // asks `proc universe`; the answer arrives through envelope_observe
 panel.promptContext_observe(context);     // every pushed prompt: landings, the warming figure, arrivals, identity
+panel.control('enter', ['4299']);         // the console's `universe enter 4299`; also `back` and `open`
 ----
+
+The descent: a click on a sphere (or `universe enter <feed>`) flies the camera to that molecule, asks the host for the feed's graph (`feed_dag`, the kernel's `feed diagram`, which already collapses a fan into one node with a tally — the budget), unfolds the molecule into that graph in place with every other feed dimmed, and frames the feed. Inside, a click on a node shows its facts and verbs; Esc, BACK or `universe back` climbs out to the space as it has landed since; OPEN FEED puts the feed in a RUNS pane (`feed_open`). Landings and re-asks are taken while inside and drawn on the climb.
 
 The pane asks one kernel command, `proc universe`, and reads one prompt field, `procWarmup.landed`; it never walks a feed itself. While the index warms each landing adds or reshapes a molecule (repaint at most once a second); once whole, a feed arriving through the roster delta or the feed count moving re-asks for the space (at most once in five seconds), so a new feed drifts in and a gone one leaves. Positions are written to the store under `argus.universe.<user>@<uri>` a few seconds after each settle and seed the next settle, so a reopened pane finds its molecules where they were.
 
@@ -215,6 +221,7 @@ The pane asks one kernel command, `proc universe`, and reads one prompt field, `
 * `.pane-state` `LANDING`: the index is still warming; the space grows with each landing.
 * `.pane-state` `WHOLE`: the index is whole; the space stands, and moves only when the lab does.
 * `.universe-canvas` hidden and `.universe-empty` shown: no space has arrived yet.
+* `.universe-inside` on the pane, `.pane-state` `INSIDE`: a feed is entered; the title reads `INSIDE FEED <id> · <name> · <n> JOBS`; the OPEN FEED and BACK blocks stand on the frame.
 
 === Laws
 
@@ -229,6 +236,8 @@ A theme may set the field's background and the tip's face. It may not put a cont
 * Do not open the universe in the DAG pane: RUNS-02 is a feed viewer, and the tile focuses a shown universe rather than opening another.
 * Do not walk feeds from the surface to draw a molecule: the shape comes from the index, landed or whole.
 * Do not repaint on every prompt: landings are batched to a second, re-asks to five.
+* Do not unfold a feed past the kernel's own collapse: a fan stays one `×N` sphere inside; the facts carry the true count.
+* Do not invent a verb inside a feed: a node offers what the DAG pane's node offers.
 
 == Image pane
 

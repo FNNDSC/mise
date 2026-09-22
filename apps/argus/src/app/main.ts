@@ -17,7 +17,7 @@
  *
  * @module
  */
-import { feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
+import { feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type FeedDagModel, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { DagScene, type SceneNode } from '../scene/dagScene.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
@@ -1874,6 +1874,9 @@ async function surface_start(token: string): Promise<void> {
         projectionPill: mount.querySelector<HTMLElement>('.universe-projection'),
         refreshPill: mount.querySelector<HTMLElement>('.universe-refresh'),
         scalePill: mount.querySelector<HTMLElement>('.universe-scale'),
+        facts: mount.querySelector<HTMLElement>('.universe-facts'),
+        backPill: mount.querySelector<HTMLElement>('.universe-back'),
+        openPill: mount.querySelector<HTMLElement>('.universe-open'),
       },
       {
         command_run: (line: string): void => {
@@ -1882,6 +1885,34 @@ async function surface_start(token: string): Promise<void> {
             .then((outcome: ExecuteOutcome): void => {
               for (const envelope of outcome.envelopes) panel.envelope_observe(envelope);
             });
+        },
+        // The descent asks the kernel for the feed's graph: the same
+        // `feed diagram` the RUNS pane draws, taken silently here.
+        feed_dag: async (feedId: number): Promise<FeedDagModel | null> => {
+          const outcome: ExecuteOutcome = await client.line_execute(`feed diagram feed_${feedId}`, { silent: true, observe: false });
+          for (const envelope of outcome.envelopes) {
+            if (envelope.model?.kind !== DAG_MODEL_KINDS.feedDag) continue;
+            const parsed = feedDagModelSchema.safeParse(envelope.model.data);
+            if (parsed.success) return parsed.data;
+          }
+          return null;
+        },
+        node_enter: (vfsPath: string): void => {
+          terminal.line_run(`cd "${vfsPath}"`);
+        },
+        node_process: (node: { vfsPath: string; instanceId: number; label: string }): void => {
+          const feed: number | null = feedOf_path(node.vfsPath)
+            ?? (/\/feed_(\d+)(?:\/|$)/.exec(node.vfsPath) === null
+              ? null
+              : Number((/\/feed_(\d+)(?:\/|$)/.exec(node.vfsPath) as RegExpExecArray)[1]));
+          const input: string = promptUser === null
+            ? node.vfsPath
+            : node.vfsPath.replace(/^\/proc\/jobs\//, `/home/${promptUser}/feeds/`);
+          process_open(id, { input, feed, node: node.instanceId });
+        },
+        feed_open: (feedId: number): void => {
+          runs_show();
+          dagPanel.feed_enter(feedId);
         },
       },
       localKeyStore(),
@@ -4725,6 +4756,15 @@ async function surface_start(token: string): Promise<void> {
         return imageId === undefined ? 'image tags: no image pane' : tagsPane_open(imageId);
       }
       return 'image <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> | wl preset <name> · colormap <name> · save';
+    },
+    universe_control: (paneId: string | null, verb: string, args: string[]): string => {
+      // The universe in focus, or the one on stage: the console addresses
+      // the space, not a pane number.
+      const shown: Set<string> = new Set(layout.panes_shown());
+      const panel: UniversePanel | undefined = (paneId !== null ? universePanels.get(paneId) : undefined)
+        ?? [...universePanels.entries()].find(([id]): boolean => shown.has(id))?.[1];
+      if (panel === undefined) return 'universe: no universe pane on stage (press the dashboard tile)';
+      return panel.control(verb, args);
     },
     tags_control: (paneId: string, verb: string, args: string[]): string => {
       const shown: Set<string> = new Set(layout.panes_shown());

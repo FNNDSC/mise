@@ -561,6 +561,7 @@ export const promptContextSchema = z.object({
     arrived: z.array(z.number()).optional(),
     landed: z.array(z.object({
       id: z.number(),
+      title: z.string().default(''),
       jobs: z.number(),
       status: z.string(),
       chain: z.array(z.string()),

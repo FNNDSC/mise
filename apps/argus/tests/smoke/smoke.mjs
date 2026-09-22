@@ -124,6 +124,54 @@ try {
   check('the LOG OUT pill stands only behind a door', await evalIn(`return document.getElementById('door-pill')?.hidden === true;`) === true);
   if (!ready) throw new Error('no session');
 
+  if (stage('universe-pane')) {
+    // The UNIVERSE is its own pane kind: pressing the dashboard's tile
+    // opens one beside the errand host and asks the session for the space;
+    // the title says what landed and whether the index is whole; a second
+    // press focuses the same pane rather than opening another. The hover
+    // tip on a sphere names the group and its feed (unit-tested; a pointer
+    // over a settling sphere is not something a smoke can aim).
+    const universe = await evalIn(`
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      const say = async (line, ms) => { input.value = line;
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      const tiles = () => [...document.querySelectorAll('.launcher-tile')];
+      document.getElementById('gutter-dashboard')?.click();
+      for (let i = 0; i < 60; i++) { await sleep(500); if (tiles().length > 0) break; }
+      const tile = tiles().find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE');
+      const verb = tile?.querySelector('.launcher-verb');
+      verb?.click();
+      const panes = () => [...document.querySelectorAll('.pane-universe')].filter((p) => p.offsetParent !== null);
+      // Wait for a space with something in it: the smoke's cache is warm, so
+      // a title still reading 0 FEEDS after this is a space that never came.
+      for (let i = 0; i < 120; i++) { await sleep(500); if (panes().length > 0 && /[1-9]\\d* FEEDS/.test(panes()[0].querySelector('.universe-title')?.textContent ?? '')) break; }
+      await sleep(2000);
+      const first = panes()[0] ?? null;
+      const title = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';
+      const state = first?.querySelector('.pane-state')?.textContent?.trim() ?? '';
+      const canvas = first?.querySelector('.universe-canvas canvas');
+      const drawn = canvas !== null && canvas !== undefined && canvas.offsetWidth > 0 && getComputedStyle(first.querySelector('.universe-canvas')).display !== 'none';
+      const framed = ['.field-rule', '.mode-strip', '.mode-elbow', '.mode-frame .universe-projection', '.mode-frame .universe-refresh']
+        .every((sel) => first?.querySelector(sel) !== null);
+      const runsIsFeedViewer = (document.querySelector('.pane-dag .dag-title')?.textContent ?? '').startsWith('UNIVERSE') === false;
+      // Press the tile again: the same pane, focused, not a second one.
+      await say('dashboard', 2500);
+      for (let i = 0; i < 60; i++) { await sleep(500); if (tiles().length > 0) break; }
+      tiles().find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
+      for (let i = 0; i < 40; i++) { await sleep(500); if (panes().length > 0) break; }
+      await sleep(1000);
+      const count = document.querySelectorAll('.pane-universe').length;
+      await say('view files', 2000);
+      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count };`);
+    check('the UNIVERSE tile opens a pane of its own kind, titled by what landed',
+      universe.hadTile && /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.title), universe.title);
+    check('the universe pane says whether the index is whole', universe.state === 'WHOLE' || universe.state === 'LANDING', universe.state);
+    check('the universe draws on its own field, framed with its modes', universe.drawn && universe.framed);
+    check('RUNS stays a feed viewer while the universe is up', universe.runsIsFeedViewer);
+    check('a second press focuses the universe rather than opening another', universe.count === 1, String(universe.count));
+  }
+
   if (stage('drawer-everywhere (files, runs, pacs)')) {
   for (const preset of ['gutter-files', 'gutter-runs', 'gutter-tools']) {
     const result = await evalIn(`

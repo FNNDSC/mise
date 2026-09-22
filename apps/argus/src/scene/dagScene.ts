@@ -70,6 +70,8 @@ export interface SceneHandlers {
   activate?: (node: SceneNode) => void;
   /** A click on empty space cleared the selection. */
   deselect?: () => void;
+  /** The words the hover tip shows for a node; null for the node's label. */
+  tip?: (node: SceneNode) => string | null;
 }
 
 /** The physics terms the molecule settle may honor (expert knobs; GRAVITY is a meaning). */
@@ -78,6 +80,13 @@ export interface PhysicsTerms {
   link: boolean;
   collide: boolean;
   gravity: boolean;
+  /**
+   * How far a node's repulsion reaches, in scene units; unbounded when
+   * absent. A sparse graph settles as wide as its charge carries, so six
+   * spheres spread across a field and read as dots: bounding the reach
+   * lets a small molecule hug itself while a crowd still spreads.
+   */
+  reach?: number;
 }
 
 export const PHYSICS_DEFAULT: PhysicsTerms = { charge: true, link: true, collide: true, gravity: false };
@@ -281,6 +290,12 @@ function layout_molecule(
   );
   // In 2D the simulation itself is two-dimensional: a 3D settle flattened
   // afterwards piles nodes that resolved their overlaps in depth.
+  const charge = forceManyBody().strength(
+    physics.charge
+      ? (d: { id: string }): number => -6 * ((radiusOf.get(d.id) ?? NODE_RADIUS) / NODE_RADIUS) ** 2
+      : -6,
+  );
+  if (physics.reach !== undefined) charge.distanceMax(physics.reach);
   const simulation = forceSimulation(simNodes, dimensions)
     .force(
       'link',
@@ -295,14 +310,7 @@ function layout_molecule(
         ),
     )
     // Repulsion scales with cross-section: a heavy node carves its room.
-    .force(
-      'charge',
-      forceManyBody().strength(
-        physics.charge
-          ? (d: { id: string }): number => -6 * ((radiusOf.get(d.id) ?? NODE_RADIUS) / NODE_RADIUS) ** 2
-          : -6,
-      ),
-    )
+    .force('charge', charge)
     .force('center', dimensions === 2 ? forceCenter(0, 0) : forceCenter(0, 0, 0))
     .stop();
   if (physics.collide) {
@@ -607,6 +615,32 @@ export class DagScene {
   /** @returns Whether the wave is looping. */
   public waveLoop_get(): boolean {
     return this.waveLooping;
+  }
+
+  /**
+   * Where every node settled last, by id, for a caller that remembers.
+   *
+   * @returns Rounded positions, node id to [x, y, z].
+   */
+  public positions_get(): Record<string, [number, number, number]> {
+    const out: Record<string, [number, number, number]> = {};
+    for (const [id, position] of this.lastPositions) {
+      out[id] = [Math.round(position.x * 100) / 100, Math.round(position.y * 100) / 100, Math.round(position.z * 100) / 100];
+    }
+    return out;
+  }
+
+  /**
+   * Seeds the next settle from remembered positions: a node that was here
+   * before starts where it stood, a new one starts fresh. Takes effect on
+   * the next `graph_set`.
+   *
+   * @param positions - Node id to [x, y, z].
+   */
+  public positions_seed(positions: Record<string, [number, number, number]>): void {
+    this.lastPositions = new Map(
+      Object.entries(positions).map(([id, [x, y, z]]): [string, THREE.Vector3] => [id, new THREE.Vector3(x, y, z)]),
+    );
   }
 
   /**
@@ -1368,7 +1402,7 @@ export class DagScene {
       return;
     }
     const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
-    this.tip.textContent = node.label;
+    this.tip.textContent = this.handlers.tip?.(node) ?? node.label;
     this.tip.style.left = `${event.clientX - bounds.left + 14}px`;
     this.tip.style.top = `${event.clientY - bounds.top + 10}px`;
     this.tip.hidden = false;

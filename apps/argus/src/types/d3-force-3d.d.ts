@@ -32,6 +32,7 @@ declare module 'd3-force-3d' {
   }
   export interface ManyBodyForce {
     strength(value: number | ((d: { id: string }) => number)): ManyBodyForce;
+    distanceMax(value: number): ManyBodyForce;
   }
   export interface CollideForce {
     radius(value: number | ((d: { id: string }) => number)): CollideForce;

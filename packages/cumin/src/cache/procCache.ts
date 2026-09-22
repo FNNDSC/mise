@@ -252,6 +252,8 @@ export const PROC_LANDED_TTL_MS: number = 10 * 1000;
  */
 export interface ProcLandedFeed {
   id: number;
+  /** The feed's name, for a surface that names what it draws. */
+  title: string;
   jobs: number;
   status: string;
   chain: string[];
@@ -1034,7 +1036,7 @@ export class ProcCache {
     for (const { feedID } of recent) {
       const feed: ProcFeed | undefined = this.feed_get(feedID);
       if (feed === undefined) continue;
-      landed.push({ id: feedID, jobs: this.instancesForFeed_count(feedID), status: feedStatus_ofCounts(feed), chain: this.pluginChain_of(feedID), groups: this.pluginGroups_of(feedID) });
+      landed.push({ id: feedID, title: feed.title, jobs: this.instancesForFeed_count(feedID), status: feedStatus_ofCounts(feed), chain: this.pluginChain_of(feedID), groups: this.pluginGroups_of(feedID) });
     }
     return landed;
   }

@@ -1,5 +1,31 @@
 # @fnndsc/salsa
 
+## 3.18.2
+
+### Patch Changes
+
+- e74ce1d: salsa: a new feed's output path belongs to the feed's owner, not the input's.
+
+  Rooting a feed on data somebody else owns — a PACS retrieve lives under `/SERVICES/PACS/<server>/…` — predicted an output path of `/home/PACS/feeds/feed_N/…`, because the owner was read off the third segment of the INPUT path. The feed itself sat in the caller's own home, so the predicted folder was one nobody could list, and anything that followed the prediction looked at nothing.
+
+  The owner now comes from the created feed, falling back to the old reading only when CUBE does not say. Found by a manifest that anonymized a PACS series and then asked what it had produced.
+
+- 3320487: salsa: a touch carrying content REWRITES the file it finds.
+
+  CUBE's upload does not replace. Uploading over a path that already held a file left the OLD content in place and still reported success, so anything written to the same path twice kept its first version forever — the surface's own cohort file was written on every change and had not changed since the first one. Content given for a path that already exists is a rewrite: the file there is removed first, and a removal that fails is reported instead of written over.
+
+  chili's readout was the second half of the same lie. A touch that carried content now says it WROTE the file rather than created it, so replacing an operator's file never reads as making a new one.
+
+- a010cb0: salsa: an absent annotations folder is an answer, not a fault.
+
+  Summarizing a series looks for annotations under the series UID. Most series have none and the folder does not exist, which the summary already handled — but the failed listing was left on the error stack, and the dispatch boundary reads a command that leaves errors behind as a command that failed. So `dcm series` printed a complete, correct readout and exited non-zero.
+
+  Found by playing a manifest: a workflow that reads a header stopped dead on a line that had just worked. The lookup now drains the miss it went looking for.
+
+- Updated dependencies [7bba167]
+- Updated dependencies [43b9440]
+  - @fnndsc/cumin@3.23.0
+
 ## 3.18.1
 
 ### Patch Changes

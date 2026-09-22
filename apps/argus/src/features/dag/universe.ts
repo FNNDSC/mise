@@ -102,14 +102,22 @@ export function universeGraph_build(landed: ReadonlyArray<LandedFeed>, scale: Un
   const nodes: SceneNode[] = [];
   const anchors: Set<string> = new Set();
   const feeds: LandedFeed[] = [...landed].sort((a: LandedFeed, b: LandedFeed): number => a.id - b.id);
+  const perShape: Map<string, number> = new Map();
+  for (const feed of feeds) {
+    if (feed.groups.length === 0) continue;
+    const shape: string = shape_of(feed);
+    perShape.set(shape, (perShape.get(shape) ?? 0) + 1);
+  }
   for (const feed of feeds) {
     if (feed.groups.length === 0) continue;
     const shape: string = shape_of(feed);
     const anchor: string = anchorId_of(shape);
     if (!anchors.has(shape)) {
       anchors.add(shape);
-      // No mass: an anchor gathers its feeds without carving room of its own.
-      nodes.push({ id: anchor, label: '', parentIds: [], joinParentIds: [], ghost: true, metric: 1 });
+      // No mass: an anchor gathers its feeds without carving room of its
+      // own — but it is drawn as a halo, the cluster's handle, sized by
+      // how many feeds share the shape.
+      nodes.push({ id: anchor, label: shapeWords_of(shape), parentIds: [], joinParentIds: [], ghost: true, halo: true, metric: 1, count: perShape.get(shape) ?? 1 });
     }
     feed.groups.forEach((group: LandedGroup, index: number): void => {
       const share: number | undefined = erroredShare_of(group);
@@ -297,7 +305,7 @@ export function descendedGraph_build(landed: ReadonlyArray<LandedFeed>, feedId: 
   const prefix: string = `feed:${feedId}:`;
   const nodes: SceneNode[] = whole.nodes
     .filter((node: SceneNode): boolean => !node.id.startsWith(prefix))
-    .map((node: SceneNode): SceneNode => (node.ghost === true ? node : { ...node, dim: true }));
+    .map((node: SceneNode): SceneNode => ({ ...node, dim: true }));
   return { nodes: [...nodes, ...entered.nodes] };
 }
 
@@ -310,4 +318,83 @@ export function descendedGraph_build(landed: ReadonlyArray<LandedFeed>, feedId: 
  */
 export function sphereIds_of(feedId: number, feed: LandedFeed): string[] {
   return feed.groups.map((_group: LandedGroup, index: number): string => groupId_of(feedId, index));
+}
+
+/**
+ * A shape in words: its plugins in pipeline order, each once.
+ *
+ * @param shape - The shape string (`r:pl-a>0:pl-b>0:pl-b`).
+ * @returns `pl-a > pl-b`.
+ */
+export function shapeWords_of(shape: string): string {
+  const seen: string[] = [];
+  for (const part of shape.split('>')) {
+    const plugin: string = part.slice(part.indexOf(':') + 1);
+    if (plugin.length > 0 && !seen.includes(plugin)) seen.push(plugin);
+  }
+  return seen.join(' > ');
+}
+
+/**
+ * A shape in few words, for a title: the first plugins and how many more.
+ *
+ * @param shape - The shape string.
+ * @param keep - How many plugins to name.
+ * @returns `pl-a > pl-b > pl-c … +8` or the whole when it is short.
+ */
+export function shapeWords_brief(shape: string, keep: number = 3): string {
+  const words: string[] = shapeWords_of(shape).split(' > ');
+  if (words.length <= keep) return words.join(' > ');
+  return `${words.slice(0, keep).join(' > ')} … +${words.length - keep}`;
+}
+
+/**
+ * The words a hover over a cluster's halo gives: the shape and how many
+ * feeds share it.
+ *
+ * @param nodeId - The anchor under the pointer.
+ * @param feeds - What has landed.
+ * @returns The tip, or null for a node that is not an anchor.
+ */
+export function clusterTip_of(nodeId: string, feeds: LandedFeeds): string | null {
+  if (!nodeId.startsWith('shape:')) return null;
+  const shape: string = nodeId.slice('shape:'.length);
+  const count: number = feeds.all().filter((feed: LandedFeed): boolean => shape_of(feed) === shape).length;
+  return `${shapeWords_of(shape)} · ${count} feed${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * The spheres of every feed that shares a shape.
+ *
+ * @param shape - The shape.
+ * @param feeds - What has landed.
+ * @returns Their scene ids.
+ */
+export function clusterIds_of(shape: string, feeds: LandedFeeds): string[] {
+  const ids: string[] = [];
+  for (const feed of feeds.all()) {
+    if (shape_of(feed) !== shape) continue;
+    ids.push(...sphereIds_of(feed.id, feed));
+  }
+  return ids;
+}
+
+/**
+ * The universe with one cluster in view: every feed outside the shape
+ * dimmed, the anchors as they were.
+ *
+ * @param landed - What has landed.
+ * @param shape - The shape in view.
+ * @param scale - What sizes the spheres.
+ * @returns The scene graph.
+ */
+export function clusterGraph_build(landed: ReadonlyArray<LandedFeed>, shape: string, scale: UniverseScale = 'jobs'): SceneGraph {
+  const whole: SceneGraph = universeGraph_build(landed, scale);
+  const inside: Set<number> = new Set(landed.filter((feed: LandedFeed): boolean => shape_of(feed) === shape).map((feed: LandedFeed): number => feed.id));
+  const nodes: SceneNode[] = whole.nodes.map((node: SceneNode): SceneNode => {
+    if (node.ghost === true) return node.id === anchorId_of(shape) ? node : { ...node, dim: true };
+    const match: RegExpMatchArray | null = node.id.match(/^feed:(\d+):/);
+    return match !== null && inside.has(Number(match[1])) ? node : { ...node, dim: true };
+  });
+  return { nodes };
 }

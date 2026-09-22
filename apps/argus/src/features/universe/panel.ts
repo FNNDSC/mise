@@ -22,7 +22,7 @@ import { PROC_UNIVERSE_MODEL_KIND, procUniverseModelSchema, type ProcUniverseMod
 import { DagScene, type SceneGraph, type SceneNode } from '../../scene/dagScene.js';
 import {
   LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse,
-  enteredFeed_build, descendedGraph_build, sphereIds_of,
+  enteredFeed_build, descendedGraph_build, sphereIds_of, clusterTip_of, clusterIds_of, clusterGraph_build, shapeWords_of, shapeWords_brief, shape_of,
   type LandedFeed, type UniverseScale, type EnteredFeed,
 } from '../dag/universe.js';
 import type { KeyStore } from '../../app/dormant.js';
@@ -117,6 +117,8 @@ export class UniversePanel {
   private scale: UniverseScale = 'jobs';
   /** The feed entered, while one is. */
   private inside: EnteredState | null = null;
+  /** The cluster in view, while one is: a shape and its spheres. */
+  private cluster: { shape: string; ids: string[] } | null = null;
   /** A descent or an ascent in flight: clicks wait. */
   private flying: boolean = false;
   private readonly facts: HTMLElement | null;
@@ -141,7 +143,7 @@ export class UniversePanel {
     this.scene = new DagScene(mount.canvas, {
       // A sphere is a plugin group inside a feed; the tip says both. Inside
       // a feed the nodes are its own and carry their labels.
-      tip: (node: SceneNode): string | null => (this.inside === null ? universeTip_of(node.id, this.landed) : null),
+      tip: (node: SceneNode): string | null => (this.inside === null ? (universeTip_of(node.id, this.landed) ?? clusterTip_of(node.id, this.landed)) : null),
       // Outside: a click on a sphere descends into its feed. Inside: a
       // click on one of the feed's nodes shows its facts and its verbs.
       select: (node: SceneNode): void => this.node_select(node),
@@ -154,7 +156,7 @@ export class UniversePanel {
     // Esc climbs out, one press, one level — the same key that leaves a
     // node overlay in the DAG pane.
     this.escape_listen = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape' || this.inside === null || this.flying) return;
+      if (event.key !== 'Escape' || (this.inside === null && this.cluster === null) || this.flying) return;
       if (this.pane !== null && this.pane.offsetParent === null) return;
       this.ascend();
     };
@@ -262,8 +264,16 @@ export class UniversePanel {
       this.descend(feedId);
       return `entering feed ${feedId}`;
     }
+    if (verb === 'cluster') {
+      const feedId: number = parseInt(args[0] ?? '', 10);
+      const feed: LandedFeed | undefined = Number.isFinite(feedId) ? this.landed.get(feedId) : undefined;
+      if (feed === undefined) return 'universe cluster <feed id>: the cluster of a feed that landed here';
+      if (this.inside !== null) return `universe cluster: inside feed ${this.inside.feedId}; universe back first`;
+      this.cluster_enter(shape_of(feed));
+      return `viewing the cluster of feed ${feedId}: ${shapeWords_of(shape_of(feed))}`;
+    }
     if (verb === 'back') {
-      if (this.inside === null) return 'universe back: not inside a feed';
+      if (this.inside === null && this.cluster === null) return 'universe back: not inside a feed or a cluster';
       this.ascend();
       return 'climbing out';
     }
@@ -272,7 +282,7 @@ export class UniversePanel {
       this.handlers.feed_open?.(this.inside.feedId);
       return `opening feed ${this.inside.feedId}`;
     }
-    return 'universe enter <feed>|back|open';
+    return 'universe enter <feed>|cluster <feed>|back|open';
   }
 
   /** Whether a feed is entered, for a host that asks. */
@@ -308,13 +318,13 @@ export class UniversePanel {
     this.canvas.style.display = 'block';
     // A space arriving while a feed is entered is taken, not drawn: the
     // descent stands until the climb, which paints what has landed since.
-    if (this.inside === null) this.paint();
+    if (this.inside === null && this.cluster === null) this.paint();
     else this.title_paint();
   }
 
   /** Takes landings into the space, repainting at most once a second. */
   private landings_take(landed: ReadonlyArray<LandedFeed>): void {
-    if (!this.landed.take(landed) || this.repaintTimer !== null || this.inside !== null) return;
+    if (!this.landed.take(landed) || this.repaintTimer !== null || this.inside !== null || this.cluster !== null) return;
     this.repaintTimer = window.setTimeout((): void => {
       this.repaintTimer = null;
       if (!this.disposed) this.paint();
@@ -388,15 +398,54 @@ export class UniversePanel {
     });
   }
 
-  /** Climbs back out: the space as it has landed since, framed whole. */
+  /**
+   * Climbs back out one level: from a feed to the cluster it was entered
+   * from (or the whole space), from a cluster to the whole space, framed.
+   */
   private ascend(): void {
-    if (this.inside === null || this.flying) return;
-    this.inside = null;
+    if (this.flying) return;
+    if (this.inside !== null) {
+      this.inside = null;
+      this.facts_clear();
+      this.pane?.classList.remove('universe-inside');
+      if (this.cluster !== null) {
+        this.cluster_show(this.cluster.shape);
+        return;
+      }
+    } else if (this.cluster === null) {
+      return;
+    } else {
+      this.cluster = null;
+      this.pane?.classList.remove('universe-cluster');
+    }
     this.flying = true;
-    this.facts_clear();
-    this.pane?.classList.remove('universe-inside');
     this.paint(false);
     this.scene.camera_flyToFit([], ASCENT_MS, (): void => { this.flying = false; });
+  }
+
+  /**
+   * Brings one cluster into view: every feed of the shape lit, the rest
+   * dimmed where they stand, the camera flown to frame the cluster. The
+   * fsv reading one level up from a feed: a directory of feeds alike.
+   *
+   * @param shape - The shape.
+   */
+  private cluster_enter(shape: string): void {
+    if (this.flying || this.inside !== null) return;
+    this.cluster_show(shape);
+  }
+
+  private cluster_show(shape: string): void {
+    const ids: string[] = clusterIds_of(shape, this.landed);
+    if (ids.length === 0) return;
+    this.flying = true;
+    this.cluster = { shape, ids };
+    this.pane?.classList.add('universe-cluster');
+    const graph: SceneGraph = clusterGraph_build(this.landed.all(), shape, this.scale);
+    // Nothing moves: the field stands and only the light changes.
+    this.scene.graph_set(graph, { wave: false, fit: false, frozen: graph.nodes.map((node: SceneNode): string => node.id) });
+    this.title_paint();
+    this.scene.camera_flyToFit(ids, DESCENT_MS, (): void => { this.flying = false; });
   }
 
   /** A click: descend from a sphere outside, show facts on a node inside. */
@@ -405,6 +454,7 @@ export class UniversePanel {
     if (this.inside === null) {
       const match: RegExpMatchArray | null = node.id.match(/^feed:(\d+):\d+$/);
       if (match !== null) this.descend(Number(match[1]));
+      else if (node.id.startsWith('shape:')) this.cluster_enter(node.id.slice('shape:'.length));
       return;
     }
     const payload: FeedDagNode | undefined = this.inside.entered.payloads.get(node.id);
@@ -468,6 +518,18 @@ export class UniversePanel {
         this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
         this.state.classList.add('state-live');
         this.state.textContent = 'INSIDE';
+      }
+      return;
+    }
+    if (this.cluster !== null) {
+      const count: number = this.landed.all().filter((feed: LandedFeed): boolean => shape_of(feed) === this.cluster?.shape).length;
+      // The bar is not the place for eleven plugin names: the first few and
+      // the count, the whole shape on the halo's tip.
+      this.title.textContent = `UNIVERSE — SHAPE ${shapeWords_brief(this.cluster.shape)} · ${count} FEED${count === 1 ? '' : 'S'}`;
+      if (this.state !== null) {
+        this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
+        this.state.classList.add('state-live');
+        this.state.textContent = 'CLUSTER';
       }
       return;
     }

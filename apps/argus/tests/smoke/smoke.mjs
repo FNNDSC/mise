@@ -172,6 +172,18 @@ try {
       await sleep(2000);
       const backTitle = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';
       const backBlocksHidden = ['.universe-back', '.universe-open'].every((sel) => { const e = first?.querySelector(sel); return e === null || e === undefined || getComputedStyle(e).display === 'none'; });
+      // The cluster, by word: the shape of that feed in view, the rest dimmed,
+      // BACK on the frame; and the climb out.
+      await say('universe cluster ' + landedId, 500);
+      for (let i = 0; i < 60; i++) { await sleep(500); if (/SHAPE /.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
+      await sleep(2000);
+      const clusterTitle = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';
+      const clusterState = first?.querySelector('.pane-state')?.textContent?.trim() ?? '';
+      const clusterBack = (() => { const e = first?.querySelector('.universe-back'); return e !== null && e !== undefined && getComputedStyle(e).display !== 'none'; })();
+      await say('universe back', 500);
+      for (let i = 0; i < 60; i++) { await sleep(500); if (!/SHAPE /.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
+      await sleep(1500);
+      const clusterBackTitle = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';
       // Press the tile again: the same pane, focused, not a second one.
       await say('dashboard', 2500);
       for (let i = 0; i < 60; i++) { await sleep(500); if (tiles().length > 0) break; }
@@ -180,7 +192,7 @@ try {
       await sleep(1000);
       const count = document.querySelectorAll('.pane-universe').length;
       await say('view files', 2000);
-      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden };`);
+      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle };`);
     check('the UNIVERSE tile opens a pane of its own kind, titled by what landed',
       universe.hadTile && /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.title), universe.title);
     check('the universe pane says whether the index is whole', universe.state === 'WHOLE' || universe.state === 'LANDING', universe.state);
@@ -192,6 +204,11 @@ try {
       `${universe.landedId} | ${universe.insideTitle} | ${universe.insideState}`);
     check('universe back climbs out: the space is titled whole again and the descent blocks retract',
       /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.backTitle) && universe.backBlocksHidden, universe.backTitle);
+    check('universe cluster <feed> brings its shape into view: the title names the shape and its count, the state says CLUSTER, BACK stands',
+      /^UNIVERSE — SHAPE .+ · [1-9]\d* FEEDS?$/.test(universe.clusterTitle) && universe.clusterState === 'CLUSTER' && universe.clusterBack,
+      `${universe.clusterTitle} | ${universe.clusterState}`);
+    check('universe back from a cluster returns to the whole space',
+      /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.clusterBackTitle), universe.clusterBackTitle);
   }
 
   if (stage('drawer-everywhere (files, runs, pacs)')) {

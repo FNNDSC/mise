@@ -166,7 +166,7 @@ Do not size a track to its content, and do not put the expanse at the end of the
 
 Source: `apps/argus/src/features/universe/panel.ts` (the pane), over `features/dag/universe.ts` (the graph built from landed feeds, the tip, the memory) and `scene/dagScene.ts` (the scene, shared with the DAG pane).
 
-Status: on stage since 2026-09-22 (slice 1 of the universe descent). Opens from the dashboard's UNIVERSE tile; the wait's theater in the DAG pane (a universe drawn while the roster is refused) shares its graph and its tip but is not this pane.
+Status: on stage since 2026-09-22 (slice 1 of the universe descent). Opens from the dashboard's UNIVERSE tile as a stage of its own (the `universe` preset, one primary pane raised whole, like RUNS and PACS); the wait's theater in the DAG pane (a universe drawn while the roster is refused) shares its graph and its tip but is not this pane.
 
 === Purpose
 
@@ -181,7 +181,7 @@ image::images/universe-pane-anatomy.svg[Universe pane anatomy,1180]
 |===
 | Part | Class | Holds
 
-| pane | `.pane-universe` | The pane; one per stage as a rule (the tile focuses a shown one rather than opening another).
+| pane | `.pane-universe` | The primary pane `universe`, the whole of its stage; the tile enters the stage and asks for the space once.
 | bar | `.pane-handle` | `.universe-title` `UNIVERSE — n FEEDS · m SHAPES`, and while the index warms `· INDEX WARMING loaded/total (p%)`; `.pane-state` `LANDING` while the space still grows, `WHOLE` once the index is.
 | frame | `.field-rule` `.mode-strip` `.mode-elbow` `.mode-frame` | The mode frame every pane wears; a strip at rest.
 | projection block | `.universe-projection` | Cycles 3D and 2D.
@@ -236,7 +236,7 @@ A theme may set the field's background and the tip's face. It may not put a cont
 
 === Do not
 
-* Do not open the universe in the DAG pane: RUNS-02 is a feed viewer, and the tile focuses a shown universe rather than opening another.
+* Do not open the universe in the DAG pane, nor split it beside a browser: RUNS-02 is a feed viewer, and the universe is a stage, entered whole.
 * Do not walk feeds from the surface to draw a molecule: the shape comes from the index, landed or whole.
 * Do not repaint on every prompt: landings are batched to a second, re-asks to five.
 * Do not unfold a feed past the kernel's own collapse: a fan stays one `×N` sphere inside; the facts carry the true count.

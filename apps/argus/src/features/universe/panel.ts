@@ -19,7 +19,7 @@
  */
 import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope } from '@fnndsc/menu';
 import { PROC_UNIVERSE_MODEL_KIND, procUniverseModelSchema, type ProcUniverseModel } from '@fnndsc/menu';
-import { DagScene, type SceneGraph, type SceneNode } from '../../scene/dagScene.js';
+import { DagScene, PHYSICS_DEFAULT, type PhysicsTerms, type SceneGraph, type SceneNode } from '../../scene/dagScene.js';
 import {
   LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse,
   enteredFeed_build, descendedGraph_build, sphereIds_of, clusterTip_of, clusterGraph_build, clusterIds_of, shapeWords_of, shapeWords_brief, shape_of,
@@ -61,6 +61,8 @@ export interface UniversePanelMount {
   scalePill: HTMLElement | null;
   /** VIEW: every feed its own molecule, or the shapes folded. */
   viewPill: HTMLElement | null;
+  /** GRAVITY: the mass-weighted centring that gathers the clusters; a knob for play. */
+  gravityPill: HTMLElement | null;
   /** The facts overlay on the field: the selected node's payload and verbs. */
   facts: HTMLElement | null;
   /** BACK, on the frame while a feed is entered. */
@@ -132,6 +134,9 @@ export class UniversePanel {
   private flying: boolean = false;
   private readonly facts: HTMLElement | null;
   private viewPill: HTMLElement | null = null;
+  private gravityPill: HTMLElement | null = null;
+  /** The settle's terms as the operator has them; gravity on by default here. */
+  private physics: PhysicsTerms = { ...PHYSICS_DEFAULT, gravity: true };
   private readonly backPill: HTMLElement | null;
   private readonly openPill: HTMLElement | null;
   private readonly pane: HTMLElement | null;
@@ -175,7 +180,7 @@ export class UniversePanel {
     // clusters into a crown, and a bounded reach lets a lone molecule hug
     // itself rather than spread across the field as dots.
     this.scene.strategy_set('molecule');
-    this.scene.physics_set({ gravity: true });
+    this.scene.physics_set(this.physics);
     mount.projectionPill?.addEventListener('click', (): void => {
       const next: '3d' | '2d' = this.scene.projection_get() === '3d' ? '2d' : '3d';
       this.scene.projection_set(next);
@@ -189,6 +194,8 @@ export class UniversePanel {
     });
     mount.viewPill?.addEventListener('click', (): void => this.view_set(this.view === 'feeds' ? 'shapes' : 'feeds'));
     this.viewPill = mount.viewPill;
+    this.gravityPill = mount.gravityPill;
+    mount.gravityPill?.addEventListener('click', (): void => { this.physics_set('gravity', !this.physics.gravity); });
     this.canvas.style.display = 'none';
     this.title_paint();
   }
@@ -276,6 +283,13 @@ export class UniversePanel {
       this.descend(feedId);
       return `entering feed ${feedId}`;
     }
+    if (verb === 'physics') {
+      const term: string = (args[0] ?? '').toLowerCase();
+      if (term === 'reset') return this.physics_reset();
+      if (!['charge', 'link', 'collide', 'gravity'].includes(term)) return 'universe physics charge|link|collide|gravity [on|off] | reset';
+      const on: boolean = (args[1] ?? 'on').toLowerCase() !== 'off';
+      return this.physics_set(term as keyof PhysicsTerms, on);
+    }
     if (verb === 'view') {
       const wanted: string = (args[0] ?? '').toLowerCase();
       if (wanted !== 'feeds' && wanted !== 'shapes') return 'universe view feeds|shapes';
@@ -302,7 +316,39 @@ export class UniversePanel {
       this.handlers.feed_open?.(this.inside.feedId);
       return `opening feed ${this.inside.feedId}`;
     }
-    return 'universe enter <feed>|cluster <feed>|view feeds|shapes|back|open';
+    return 'universe enter <feed>|cluster <feed>|view feeds|shapes|physics <term> on|off|reset|back|open';
+  }
+
+  /**
+   * Sets one physics term of the settle and re-settles the top of the
+   * universe. Refused while inside a feed or a cluster: their settle is
+   * the descent's own.
+   *
+   * @param term - The term.
+   * @param on - Its new state.
+   * @returns What happened, for the console.
+   */
+  private physics_set(term: keyof PhysicsTerms, on: boolean): string {
+    if (this.inside !== null || this.cluster !== null) return 'universe physics: climb out first (universe back)';
+    if (term === 'reach') return 'universe physics: reach is the pane\'s own';
+    this.physics = { ...this.physics, [term]: on };
+    this.physics_apply();
+    return `physics ${term} ${on ? 'on' : 'off'}`;
+  }
+
+  /** Puts every term back as the universe wants them. */
+  private physics_reset(): string {
+    if (this.inside !== null || this.cluster !== null) return 'universe physics: climb out first (universe back)';
+    this.physics = { ...PHYSICS_DEFAULT, gravity: true };
+    this.physics_apply();
+    return 'physics reset';
+  }
+
+  private physics_apply(): void {
+    if (this.gravityPill !== null) this.gravityPill.textContent = this.physics.gravity ? 'GRAVITY ON' : 'GRAVITY OFF';
+    // The reach rides on top of the operator's terms, chosen per paint.
+    this.scene.physics_set({ ...this.physics, reach: this.reach ?? undefined });
+    this.title_paint();
   }
 
   /** Switches the top of the universe between every feed and the folded shapes. */

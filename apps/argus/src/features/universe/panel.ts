@@ -36,6 +36,8 @@ export interface UniversePanelHandlers {
   feed_dag?: (feedId: number) => Promise<FeedDagModel | null>;
   /** The operator enters a node's data: the session's cwd moves there. */
   node_enter?: (vfsPath: string) => void;
+  /** The fly-in: the camera into the node, its data browsable inside; Esc back out. */
+  node_dive?: (vfsPath: string) => void;
   /** PROCESS on a node: a catalogue bound to its data. */
   node_process?: (node: { vfsPath: string; instanceId: number; label: string }) => void;
   /** OPEN: the feed in a RUNS pane of its own. */
@@ -167,6 +169,8 @@ export class UniversePanel {
       // Outside: a click on a sphere descends into its feed. Inside: a
       // click on one of the feed's nodes shows its facts and its verbs.
       select: (node: SceneNode): void => this.node_select(node),
+      // A double click inside a feed flies into the node, as in the DAG pane.
+      activate: (node: SceneNode): void => this.node_dive(node),
       deselect: (): void => this.facts_clear(),
     });
     mount.backPill?.addEventListener('click', (): void => this.ascend());
@@ -176,7 +180,8 @@ export class UniversePanel {
     // Esc climbs out, one press, one level — the same key that leaves a
     // node overlay in the DAG pane.
     this.escape_listen = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape' || (this.inside === null && this.cluster === null) || this.flying) return;
+      // Inside a node (the overlay up) Esc is the overlay's: it flies back out.
+      if (event.key !== 'Escape' || (this.inside === null && this.cluster === null) || this.flying || this.scene.holding_get()) return;
       if (this.pane !== null && this.pane.offsetParent === null) return;
       this.ascend();
     };
@@ -290,6 +295,12 @@ export class UniversePanel {
       this.descend(feedId);
       return `entering feed ${feedId}`;
     }
+    if (verb === 'node') {
+      const instanceID: number = parseInt(args[0] ?? '', 10);
+      if (!Number.isFinite(instanceID)) return 'universe node <instance id>: fly into the entered feed\'s node that hosts it';
+      if (this.inside === null) return 'universe node: not inside a feed (universe enter <feed> first)';
+      return this.node_flyTo(instanceID) ? `flying into instance ${instanceID}` : `universe node: no node of feed ${this.inside.feedId} hosts instance ${instanceID}`;
+    }
     if (verb === 'density') {
       const wanted: string = (args[0] ?? '').toLowerCase();
       if (wanted !== 'shape' && wanted !== 'census') return 'universe density shape|census';
@@ -328,7 +339,7 @@ export class UniversePanel {
       this.handlers.feed_open?.(this.inside.feedId);
       return `opening feed ${this.inside.feedId}`;
     }
-    return 'universe enter <feed>|cluster <feed>|view feeds|shapes|density shape|census|physics <term> on|off|reset|back|open';
+    return 'universe enter <feed>|node <instance>|cluster <feed>|view feeds|shapes|density shape|census|physics <term> on|off|reset|back|open';
   }
 
   /**
@@ -604,6 +615,43 @@ export class UniversePanel {
     this.scene.camera_flyToFit(memberIds, DESCENT_MS, (): void => { this.flying = false; });
   }
 
+  /**
+   * Flies into one of the entered feed's nodes: the camera dollies to the
+   * sphere and the host opens the node's data inside it.
+   *
+   * @param node - The node.
+   */
+  private node_dive(node: SceneNode): void {
+    const payload: FeedDagNode | undefined = this.inside?.entered.payloads.get(node.id);
+    const dive = this.handlers.node_dive;
+    if (payload === undefined || dive === undefined || this.flying) return;
+    this.scene.flight_into(node.id, (): void => dive(payload.vfsPath));
+  }
+
+  /** Flies back out of a node, for the host closing the overlay. */
+  public flight_back(onDone: () => void): void {
+    this.scene.flight_back(onDone);
+  }
+
+  /**
+   * Flies into the entered feed's node that hosts an instance: the
+   * immersive hop from inside one node to a descendant.
+   *
+   * @param instanceID - The plugin instance.
+   * @returns Whether a node of the entered feed hosts it.
+   */
+  public node_flyTo(instanceID: number): boolean {
+    if (this.inside === null) return false;
+    for (const [sceneId, payload] of this.inside.entered.payloads) {
+      if (payload.instanceId !== instanceID) continue;
+      const dive = this.handlers.node_dive;
+      if (dive === undefined) return false;
+      this.scene.flight_into(sceneId, (): void => dive(payload.vfsPath));
+      return true;
+    }
+    return false;
+  }
+
   /** A click: descend from a sphere outside, show facts on a node inside. */
   private node_select(node: SceneNode): void {
     if (this.flying) return;
@@ -649,8 +697,11 @@ export class UniversePanel {
     const enter: HTMLButtonElement = document.createElement('button');
     enter.className = 'pacs-capsule universe-node-enter';
     enter.textContent = 'ENTER NODE';
-    enter.title = 'the session moves to this node\'s data';
-    enter.addEventListener('click', (): void => this.handlers.node_enter?.(payload.vfsPath));
+    enter.title = 'fly into the node: its data, browsable inside (Esc flies out)';
+    enter.addEventListener('click', (): void => {
+      if (this.handlers.node_dive !== undefined) this.node_dive(node);
+      else this.handlers.node_enter?.(payload.vfsPath);
+    });
     const process: HTMLButtonElement = document.createElement('button');
     process.className = 'pacs-capsule universe-node-process';
     process.textContent = 'PROCESS';

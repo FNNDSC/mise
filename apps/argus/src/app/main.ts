@@ -1903,6 +1903,11 @@ async function surface_start(token: string): Promise<void> {
         node_enter: (vfsPath: string): void => {
           terminal.line_run(`cd "${vfsPath}"`);
         },
+        // ENTER NODE flies in: the camera into the sphere, a rooted browser
+        // of the node's data inside it, Esc back out — the DAG pane's dive.
+        node_dive: (vfsPath: string): void => {
+          nodeOverlay_open(id, vfsPath.replace(/\/data$/, ''));
+        },
         node_process: (node: { vfsPath: string; instanceId: number; label: string }): void => {
           const feed: number | null = feedOf_path(node.vfsPath)
             ?? (/\/feed_(\d+)(?:\/|$)/.exec(node.vfsPath) === null
@@ -2719,9 +2724,13 @@ async function surface_start(token: string): Promise<void> {
   const nodeOverlays: Map<string, { element: HTMLElement; panel: FilesPanel; history: string[] }> =
     new Map();
 
+  /** The scene a pane flies in: the DAG pane's or the universe's. */
+  const flier_of = (id: string): { flight_back: (onDone: () => void) => void; node_flyTo: (instanceID: number) => boolean } | undefined =>
+    dagPanels.get(id) ?? universePanels.get(id);
+
   const nodeOverlay_open = (id: string, vfsPath: string): void => {
     const mount: HTMLElement | undefined = paneInstance_get(id)?.mount;
-    const canvas: HTMLElement | null = mount?.querySelector<HTMLElement>('.dag-canvas') ?? null;
+    const canvas: HTMLElement | null = mount?.querySelector<HTMLElement>('.dag-canvas, .universe-canvas') ?? null;
     // A record whose element is no longer in the document is a ghost: the
     // pane was rebuilt (a layout change, a preset) while a node was open,
     // which takes the overlay's DOM with it and leaves this map holding a
@@ -2741,7 +2750,7 @@ async function surface_start(token: string): Promise<void> {
       terminal.line_note(
         `dag: ${vfsPath}: ${canvas === null ? 'this pane has no scene to fly in' : 'a node is already open here'} — flew back out`,
       );
-      dagPanels.get(id)?.flight_back((): void => undefined);
+      flier_of(id)?.flight_back((): void => undefined);
       return;
     }
     const element: HTMLElement = document.createElement('div');
@@ -2770,7 +2779,7 @@ async function surface_start(token: string): Promise<void> {
         if (instMatch !== null) {
           const instanceID: number = parseInt(instMatch[1] ?? '', 10);
           nodeOverlay_close(id, (): void => {
-            if (dagPanels.get(id)?.node_flyTo(instanceID) !== true) {
+            if (flier_of(id)?.node_flyTo(instanceID) !== true) {
               // Not a node of this graph after all: fall back to descent.
               nodeOverlay_open(id, action.path);
             }
@@ -2844,7 +2853,7 @@ async function surface_start(token: string): Promise<void> {
       record.element.remove();
       onDone?.();
     };
-    const panel: DagPanel | undefined = dagPanels.get(id);
+    const panel = flier_of(id);
     if (panel !== undefined) {
       panel.flight_back(finish);
     } else {

@@ -192,7 +192,7 @@ image::images/universe-pane-anatomy.svg[Universe pane anatomy,1180]
 | refresh block | `.universe-refresh` | Asks the session for the space again (`proc universe`).
 | open block | `.universe-open` | While a feed is entered: the feed in a RUNS pane of its own (`feed diagram`).
 | back block | `.universe-back` | While a feed is entered: climb out to the whole space (Esc does the same).
-| facts | `.universe-facts` (a `.dag-facts`) | Inside a feed, the indicated node's payload — PLUGIN, INSTANCE, STATUS, COUNT on a fan, DATA — and its verbs, ENTER NODE and PROCESS, as `.universe-node-verbs`; hidden until a node is indicated.
+| facts | `.universe-facts` (a `.dag-facts`) | Inside a feed, the indicated node's payload — PLUGIN, INSTANCE, STATUS, COUNT on a fan, DATA — and its verbs, ENTER NODE (flies into the node: the camera dollies into the sphere and the node's data opens inside it as a rooted browser, the DAG pane's overlay; Esc flies out; a double click on the node does the same) and PROCESS, as `.universe-node-verbs`; hidden until a node is indicated. `universe node <instance>` flies in by word.
 | field | `.universe-canvas` | The scene's mount; holds the canvas and the tip, never a control.
 | sphere | (scene) | One plugin group inside one feed: size the log of the jobs it stands for (JOBS) or alike (ALIKE); colour done shading to error by the share of its jobs that failed, red outright when all did; `×N` on a fan.
 | folded stage | (scene) | In SHAPES: one stage of a shape across every feed that ran it; size the log of the feeds folded (ALIKE) or of the jobs across them (JOBS); colour by the share of those feeds that erred at the stage; `×N` the feeds folded.

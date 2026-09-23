@@ -1922,6 +1922,7 @@ async function surface_start(token: string): Promise<void> {
           runs_show();
           dagPanel.feed_enter(feedId);
         },
+        note: (line: string): void => terminal.line_note(line),
       },
       localKeyStore(),
     );

@@ -160,6 +160,20 @@ try {
       await sleep(3500);
       const storeKey = Object.keys(localStorage).find((k) => k.startsWith('argus.universe.'));
       const landedId = storeKey ? (Object.keys(JSON.parse(localStorage.getItem(storeKey) ?? '{}')).find((k) => k.startsWith('feed:')) ?? '').split(':')[1] : '';
+      // A click does not resettle the space: wheel the camera in, click the
+      // empty corner of the field, and neither the scene's own framing
+      // count nor the remembered settle moves.
+      const fitsBefore = canvas?.dataset.fits ?? '';
+      const settledBefore = storeKey ? localStorage.getItem(storeKey) : '';
+      const rect = canvas.getBoundingClientRect();
+      canvas.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -240, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 }));
+      await sleep(300);
+      for (const type of ['pointerdown', 'pointerup', 'click']) canvas.dispatchEvent(new (type === 'click' ? MouseEvent : PointerEvent)(type, { bubbles: true, clientX: rect.left + 6, clientY: rect.top + 6, button: 0 }));
+      await sleep(4500);
+      const fitsAfter = canvas?.dataset.fits ?? '';
+      const settledAfter = storeKey ? localStorage.getItem(storeKey) : '';
+      const clickTitle = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';
+      const clickKept = fitsBefore !== '' && fitsBefore === fitsAfter && settledBefore === settledAfter && !/INSIDE|ENTERING/.test(clickTitle);
       await say('universe enter ' + landedId, 500);
       for (let i = 0; i < 60; i++) { await sleep(500); if (/INSIDE FEED/.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
       await sleep(2500);
@@ -215,13 +229,15 @@ try {
       await sleep(1000);
       const count = document.querySelectorAll('.pane-universe').length;
       await say('view files', 2000);
-      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle, viewPill, unfoldTitle, viewPillBack, gravityOff, gravityReset, densityCensus, censusTitle, densityShape };`);
+      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle, viewPill, unfoldTitle, viewPillBack, gravityOff, gravityReset, densityCensus, censusTitle, densityShape, clickKept, fitsBefore, fitsAfter, clickTitle };`);
     check('the UNIVERSE tile opens a pane of its own kind, titled by what landed',
       universe.hadTile && /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.title), universe.title);
     check('the universe pane says whether the index is whole', universe.state === 'WHOLE' || universe.state === 'LANDING', universe.state);
     check('the universe draws on its own field, framed with its modes', universe.drawn && universe.framed);
     check('RUNS stays a feed viewer while the universe is up', universe.runsIsFeedViewer);
     check('a second press focuses the universe rather than opening another', universe.count === 1, String(universe.count));
+    check('a click keeps the camera: a wheeled-in camera and the settled space stand through a click on the field',
+      universe.clickKept, `fits ${universe.fitsBefore} -> ${universe.fitsAfter} | ${universe.clickTitle}`);
     check('universe enter <feed> descends: the title names the feed inside, the state says INSIDE, BACK and OPEN FEED stand on the frame',
       universe.landedId !== '' && new RegExp('^UNIVERSE — INSIDE FEED ' + universe.landedId + ' · ').test(universe.insideTitle) && universe.insideState === 'INSIDE' && universe.insideBlocks,
       `${universe.landedId} | ${universe.insideTitle} | ${universe.insideState}`);

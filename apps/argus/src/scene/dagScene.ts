@@ -1056,8 +1056,11 @@ export class DagScene {
    * branched filaments over the shell — the cell-surface reading.
    */
   private censusBuild(placed: PlacedNode[], palette: ReturnType<typeof palette_read>): void {
+    // A ghost (a cluster's anchor, drawn as a halo in shape) is nobody's
+    // job: it carries the feeds it gathers as a count, and a census of it
+    // would draw a shell of nothing.
     let total: number = 0;
-    for (const item of placed) total += Math.max(1, item.node.count ?? 1);
+    for (const item of placed) if (item.node.ghost !== true) total += Math.max(1, item.node.count ?? 1);
     const geometry: THREE.IcosahedronGeometry = new THREE.IcosahedronGeometry(1, 1);
     const material: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({
       color: '#ffffff',
@@ -1075,6 +1078,7 @@ export class DagScene {
     center.divideScalar(Math.max(1, placed.length));
 
     for (const { node, position, radius } of placed) {
+      if (node.ghost === true) continue;
       const n: number = Math.max(1, node.count ?? 1);
       const shellRadius: number = n === 1 ? 0 : radius * (1.6 + 0.55 * Math.cbrt(n));
       const memberRadius: number =
@@ -1539,7 +1543,9 @@ export class DagScene {
   /** Names the node under the pointer in the hover tip, or hides it. */
   private hover_handle(event: PointerEvent): void {
     if (this.tip === null) return;
-    const nodeId: unknown = this.mesh_under(event)?.userData['nodeId'];
+    // In census the spheres are members of one instanced mesh: the group
+    // under the pointer is what the tip names, as a click would pick.
+    const nodeId: unknown = this.census ? this.censusNode_under(event) : this.mesh_under(event)?.userData['nodeId'];
     const node: SceneNode | undefined =
       typeof nodeId === 'string'
         ? this.graph.nodes.find((n: SceneNode) => n.id === nodeId)

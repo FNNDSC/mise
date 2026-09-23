@@ -63,6 +63,8 @@ export interface UniversePanelMount {
   viewPill: HTMLElement | null;
   /** GRAVITY: the mass-weighted centring that gathers the clusters; a knob for play. */
   gravityPill: HTMLElement | null;
+  /** DENSITY: a sphere per stage (SHAPE), or a point per job (CENSUS). */
+  densityPill: HTMLElement | null;
   /** The facts overlay on the field: the selected node's payload and verbs. */
   facts: HTMLElement | null;
   /** BACK, on the frame while a feed is entered. */
@@ -135,6 +137,9 @@ export class UniversePanel {
   private readonly facts: HTMLElement | null;
   private viewPill: HTMLElement | null = null;
   private gravityPill: HTMLElement | null = null;
+  private densityPill: HTMLElement | null = null;
+  /** SHAPE draws a stage as one sphere with its count; CENSUS every job of it as a point. */
+  private density: 'shape' | 'census' = 'shape';
   /** The settle's terms as the operator has them; gravity on by default here. */
   private physics: PhysicsTerms = { ...PHYSICS_DEFAULT, gravity: true };
   private readonly backPill: HTMLElement | null;
@@ -196,6 +201,8 @@ export class UniversePanel {
     this.viewPill = mount.viewPill;
     this.gravityPill = mount.gravityPill;
     mount.gravityPill?.addEventListener('click', (): void => { this.physics_set('gravity', !this.physics.gravity); });
+    this.densityPill = mount.densityPill;
+    mount.densityPill?.addEventListener('click', (): void => { this.density_set(this.density === 'shape' ? 'census' : 'shape'); });
     this.canvas.style.display = 'none';
     this.title_paint();
   }
@@ -283,6 +290,11 @@ export class UniversePanel {
       this.descend(feedId);
       return `entering feed ${feedId}`;
     }
+    if (verb === 'density') {
+      const wanted: string = (args[0] ?? '').toLowerCase();
+      if (wanted !== 'shape' && wanted !== 'census') return 'universe density shape|census';
+      return this.density_set(wanted);
+    }
     if (verb === 'physics') {
       const term: string = (args[0] ?? '').toLowerCase();
       if (term === 'reset') return this.physics_reset();
@@ -316,7 +328,7 @@ export class UniversePanel {
       this.handlers.feed_open?.(this.inside.feedId);
       return `opening feed ${this.inside.feedId}`;
     }
-    return 'universe enter <feed>|cluster <feed>|view feeds|shapes|physics <term> on|off|reset|back|open';
+    return 'universe enter <feed>|cluster <feed>|view feeds|shapes|density shape|census|physics <term> on|off|reset|back|open';
   }
 
   /**
@@ -334,6 +346,22 @@ export class UniversePanel {
     this.physics = { ...this.physics, [term]: on };
     this.physics_apply();
     return `physics ${term} ${on ? 'on' : 'off'}`;
+  }
+
+  /**
+   * Draws every job of the space as its own point (CENSUS), or a stage as
+   * one sphere with its count (SHAPE). The counts already ride the
+   * groups, so a census costs no data and no call: the scene shells each
+   * group's members around it in one instanced mesh.
+   *
+   * @param density - Which.
+   * @returns What happened, for the console.
+   */
+  private density_set(density: 'shape' | 'census'): string {
+    this.density = density;
+    if (this.densityPill !== null) this.densityPill.textContent = density.toUpperCase();
+    this.scene.census_set(density === 'census');
+    return density === 'census' ? 'every job its own point' : 'a stage one sphere, with its count';
   }
 
   /** Puts every term back as the universe wants them. */

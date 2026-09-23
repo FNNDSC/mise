@@ -152,7 +152,7 @@ try {
       const state = first?.querySelector('.pane-state')?.textContent?.trim() ?? '';
       const canvas = first?.querySelector('.universe-canvas canvas');
       const drawn = canvas !== null && canvas !== undefined && canvas.offsetWidth > 0 && getComputedStyle(first.querySelector('.universe-canvas')).display !== 'none';
-      const framed = ['.field-rule', '.mode-strip', '.mode-elbow', '.mode-frame .universe-projection', '.mode-frame .universe-view', '.mode-frame .universe-scale', '.mode-frame .universe-gravity', '.mode-frame .universe-refresh']
+      const framed = ['.field-rule', '.mode-strip', '.mode-elbow', '.mode-frame .universe-projection', '.mode-frame .universe-view', '.mode-frame .universe-scale', '.mode-frame .universe-density', '.mode-frame .universe-gravity', '.mode-frame .universe-refresh']
         .every((sel) => first?.querySelector(sel) !== null);
       const runsIsFeedViewer = (document.querySelector('.pane-dag .dag-title')?.textContent ?? '').startsWith('UNIVERSE') === false;
       // The descent, by word: enter a feed that landed, read the pane inside,
@@ -201,6 +201,12 @@ try {
       const gravityOff = first?.querySelector('.universe-gravity')?.textContent?.trim() ?? '';
       await say('universe physics reset', 2000);
       const gravityReset = first?.querySelector('.universe-gravity')?.textContent?.trim() ?? '';
+      // Every job its own point, and back to a sphere per stage.
+      await say('universe density census', 4000);
+      const densityCensus = first?.querySelector('.universe-density')?.textContent?.trim() ?? '';
+      const censusTitle = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';
+      await say('universe density shape', 3000);
+      const densityShape = first?.querySelector('.universe-density')?.textContent?.trim() ?? '';
       // Press the tile again: the same pane, focused, not a second one.
       await say('dashboard', 2500);
       for (let i = 0; i < 60; i++) { await sleep(500); if (tiles().length > 0) break; }
@@ -209,7 +215,7 @@ try {
       await sleep(1000);
       const count = document.querySelectorAll('.pane-universe').length;
       await say('view files', 2000);
-      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle, viewPill, unfoldTitle, viewPillBack, gravityOff, gravityReset };`);
+      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle, viewPill, unfoldTitle, viewPillBack, gravityOff, gravityReset, densityCensus, censusTitle, densityShape };`);
     check('the UNIVERSE tile opens a pane of its own kind, titled by what landed',
       universe.hadTile && /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.title), universe.title);
     check('the universe pane says whether the index is whole', universe.state === 'WHOLE' || universe.state === 'LANDING', universe.state);
@@ -231,6 +237,9 @@ try {
       `${universe.viewPill} | ${universe.unfoldTitle} | ${universe.viewPillBack}`);
     check('universe physics gravity off turns the GRAVITY block off, and reset turns it back on',
       universe.gravityOff === 'GRAVITY OFF' && universe.gravityReset === 'GRAVITY ON', `${universe.gravityOff} | ${universe.gravityReset}`);
+    check('universe density census draws every job and the block says so; shape brings the spheres back',
+      universe.densityCensus === 'CENSUS' && /FEEDS · [1-9]\d* SHAPES/.test(universe.censusTitle) && universe.densityShape === 'SHAPE',
+      `${universe.densityCensus} | ${universe.censusTitle} | ${universe.densityShape}`);
   }
 
   if (stage('drawer-everywhere (files, runs, pacs)')) {

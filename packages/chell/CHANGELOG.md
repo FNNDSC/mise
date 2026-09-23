@@ -1,5 +1,15 @@
 # @fnndsc/chell
 
+## 5.9.2
+
+### Patch Changes
+
+- c71418c: chell: `--door` takes a door typed without a scheme (`localhost:4180` is `http://localhost:4180`), asks for the username when the login config holds an empty one (it used to ask "Password for at …"), and says in one line when a door cannot be reached or is not an HTTP(S) address instead of dying with a stack trace.
+- 99c17d8: chell: `--door` shows its "Username at …" question. The label was written beside readline's empty prompt, and readline's repaint erased it, so the question looked like a blank line. An empty answer is now refused by name instead of reaching the door as a login for nobody.
+- Updated dependencies [7b89dcc]
+  - @fnndsc/brasa@0.26.0
+  - @fnndsc/calypso@0.16.3
+
 ## 5.9.1
 
 ### Patch Changes

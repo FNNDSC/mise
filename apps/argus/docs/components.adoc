@@ -170,7 +170,7 @@ Status: on stage since 2026-09-22 (slice 1 of the universe descent). Opens from 
 
 === Purpose
 
-The universe pane shows the space of everything run on this CUBE: every feed the session's index holds, each drawn as its own small molecule — one sphere per plugin group, sized by the jobs it stands for and hued by the worst status among them — and pulled toward the feeds that share its pipeline shape, so the field reads as what this lab runs, how much of each, and where the red is. It is its own pane kind: RUNS-02 stays a feed viewer, and the universe keeps its camera and its memory. It breathes with the index (landings while it warms, arrivals and status changes once it is whole) and remembers where its molecules settled, per identity.
+The universe pane shows the space of everything run on this CUBE: every feed the session's index holds, each drawn as its own small molecule — one sphere per plugin group, sized by the jobs it stands for and hued by the share of them that failed — pulled toward the feeds that share its pipeline shape, so the field reads as what this lab runs, how much of each, and where the red is. That is the FEEDS view, the default: the whole compute structure. The SHAPES view folds it: one molecule per pipeline shape, its spheres the shape's stages, each sized by the feeds folded under it and hued by how many of those feeds erred there — a thousand feeds of one bespoke pipeline as one molecule, `×1,000`; a click unfolds a shape into its members in place. In either view a click on a feed's sphere descends into the feed. It is its own pane kind: RUNS-02 stays a feed viewer, and the universe keeps its camera and its memory. It breathes with the index (landings while it warms, arrivals and status changes once it is whole) and remembers where its molecules settled, per identity.
 
 === Anatomy
 
@@ -185,16 +185,18 @@ image::images/universe-pane-anatomy.svg[Universe pane anatomy,1180]
 | bar | `.pane-handle` | `.universe-title` `UNIVERSE — n FEEDS · m SHAPES`, and while the index warms `· INDEX WARMING loaded/total (p%)`; `.pane-state` `LANDING` while the space still grows, `WHOLE` once the index is.
 | frame | `.field-rule` `.mode-strip` `.mode-elbow` `.mode-frame` | The mode frame every pane wears; a strip at rest.
 | projection block | `.universe-projection` | Cycles 3D and 2D.
-| scale block | `.universe-scale` | Cycles JOBS (a sphere's radius by the log of the jobs it stands for) and FEEDS (every sphere alike; the field reads by shape alone).
+| view block | `.universe-view` | Cycles FEEDS (every feed its own molecule, the default) and SHAPES (the shapes folded, one molecule each).
+| scale block | `.universe-scale` | Cycles JOBS (a sphere's radius by the log of the jobs it stands for; in SHAPES, of the jobs across the folded feeds) and ALIKE (every sphere alike; the field reads by shape alone).
 | refresh block | `.universe-refresh` | Asks the session for the space again (`proc universe`).
 | open block | `.universe-open` | While a feed is entered: the feed in a RUNS pane of its own (`feed diagram`).
 | back block | `.universe-back` | While a feed is entered: climb out to the whole space (Esc does the same).
 | facts | `.universe-facts` (a `.dag-facts`) | Inside a feed, the indicated node's payload — PLUGIN, INSTANCE, STATUS, COUNT on a fan, DATA — and its verbs, ENTER NODE and PROCESS, as `.universe-node-verbs`; hidden until a node is indicated.
 | field | `.universe-canvas` | The scene's mount; holds the canvas and the tip, never a control.
-| sphere | (scene) | One plugin group inside one feed: size the log of the jobs it stands for (JOBS) or alike (FEEDS); colour done shading to error by the share of its jobs that failed, red outright when all did; `×N` on a fan.
+| sphere | (scene) | One plugin group inside one feed: size the log of the jobs it stands for (JOBS) or alike (ALIKE); colour done shading to error by the share of its jobs that failed, red outright when all did; `×N` on a fan.
+| folded stage | (scene) | In SHAPES: one stage of a shape across every feed that ran it; size the log of the feeds folded (ALIKE) or of the jobs across them (JOBS); colour by the share of those feeds that erred at the stage; `×N` the feeds folded.
 | molecule | (scene) | One feed: its spheres joined by edges.
-| cluster | (scene) | The feeds of one shape, gathered by an anchor with no mass of its own, drawn as a HALO: a translucent sphere at the anchor's place sized by the feeds it gathers, the cluster's handle — hover names the shape and its count, a click brings the cluster into view. A solid sphere under the pointer always wins the pick over the halo around it.
-| tip | `.dag-node-tip` | Over a sphere: `<plugin> ×N · <status> · feed <id> · <title>`, the status read as `<n> errored` on a fan with failures. Over a halo: `<plugin> > <plugin> · <n> feeds`. Inside a feed, a node's own label.
+| cluster | (scene) | The feeds of one shape. In FEEDS its members are gathered by an anchor with no mass of its own, drawn as a HALO (a translucent sphere sized by the feeds it gathers; hover names the shape and its count; a solid sphere under the pointer always wins the pick; a click lights the cluster). In SHAPES it IS the folded molecule, and a click unfolds it.
+| tip | `.dag-node-tip` | Over a folded stage: `<plugin> · <n> feeds · <m> with errors · <shape>`. Over a member sphere: `<plugin> ×N · <status> · feed <id> · <title>`, the status read as `<n> errored` on a fan with failures. Over a halo: `<plugin> > <plugin> · <n> feeds`. Inside a feed, a node's own label.
 | empty | `.universe-empty` | Before the first space arrives.
 |===
 
@@ -212,7 +214,7 @@ panel.promptContext_observe(context);     // every pushed prompt: landings, the 
 panel.control('enter', ['4299']);         // the console's `universe enter 4299`; also `cluster <feed>`, `back` and `open`
 ----
 
-The cluster view: a click on a halo (or `universe cluster <feed>`, the cluster of that feed) lights every feed of the shape where it stands, dims the rest without moving anything, and flies the camera to frame the cluster; BACK, Esc or `universe back` returns to the whole. A descent from a cluster climbs back to the cluster, not past it.
+The cluster: in FEEDS a click on a halo (or `universe cluster <feed>`) lights the shape's feeds where they stand, dims the rest without moving anything, and flies the camera to frame them. In SHAPES the same click unfolds the folded molecule in place into its member feeds — each starting at the fold's centre and settling out, the rest frozen and dim, the settle a feed's descent uses. BACK, Esc or `universe back` climbs one level; a feed entered from a cluster climbs back to the cluster. `universe view feeds|shapes` switches the top; it refuses while inside.
 
 The descent: a click on a sphere (or `universe enter <feed>`) flies the camera to that molecule, asks the host for the feed's graph (`feed_dag`, the kernel's `feed diagram`, which already collapses a fan into one node with a tally — the budget), unfolds the molecule into that graph in place with every other feed dimmed, and frames the feed. Inside, a click on a node shows its facts and verbs; Esc, BACK or `universe back` climbs out to the space as it has landed since; OPEN FEED puts the feed in a RUNS pane (`feed_open`). Landings and re-asks are taken while inside and drawn on the climb.
 

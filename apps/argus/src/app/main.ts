@@ -1874,6 +1874,7 @@ async function surface_start(token: string): Promise<void> {
         projectionPill: mount.querySelector<HTMLElement>('.universe-projection'),
         refreshPill: mount.querySelector<HTMLElement>('.universe-refresh'),
         scalePill: mount.querySelector<HTMLElement>('.universe-scale'),
+        viewPill: mount.querySelector<HTMLElement>('.universe-view'),
         facts: mount.querySelector<HTMLElement>('.universe-facts'),
         backPill: mount.querySelector<HTMLElement>('.universe-back'),
         openPill: mount.querySelector<HTMLElement>('.universe-open'),

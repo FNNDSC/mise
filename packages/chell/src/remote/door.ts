@@ -31,12 +31,55 @@ export type DoorFetch = (url: string, init?: RequestInit) => Promise<Response>;
 /**
  * The door's origin with one trailing slash, however it was typed.
  *
- * @param door - The door's URL as given: `https://titan/`, `http://titan:4180`.
+ * A door typed without a scheme — `localhost:4180`, `titan` — is reached
+ * over plain HTTP, the way porter listens on loopback; a URL parser would
+ * otherwise read `localhost:4180` as the scheme `localhost:` and the fetch
+ * would die on it. A door is HTTP or HTTPS and nothing else.
+ *
+ * @param door - The door's URL as given: `https://titan/`, `http://titan:4180`, `localhost:4180`.
  * @returns The URL ending in `/`.
+ * @throws Error naming the door when it is not an HTTP(S) address.
  */
 export function door_normalise(door: string): string {
-  const parsed: URL = new URL(door);
+  const typed: string = door.trim();
+  const withScheme: string = /^[a-z][a-z0-9+.-]*:\/\//i.test(typed) ? typed : `http://${typed}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(withScheme);
+  } catch {
+    throw new Error(`not a door address: ${door}`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`not a door address: ${door} (a door is http:// or https://)`);
+  }
   return parsed.pathname.endsWith('/') ? parsed.href : `${parsed.href}/`;
+}
+
+/**
+ * Whether a credential still has to be asked for. An empty one has: the
+ * login config hands over an empty user when none was given, and asking
+ * the password of nobody reads as `Password for  at …`.
+ *
+ * @param value - The credential as given, if at all.
+ * @returns True when it is missing or empty.
+ */
+export function doorCredential_missing(value: string | undefined): value is undefined {
+  return value === undefined || value.trim() === '';
+}
+
+/**
+ * Why a request to the door did not get an answer, in one line: the
+ * network's own code (`ECONNREFUSED`, `ENOTFOUND`) when it gave one.
+ *
+ * @param error - What the fetch threw.
+ * @returns The reason.
+ */
+export function doorUnreached_reason(error: unknown): string {
+  const cause: unknown = error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined;
+  const code: unknown = typeof cause === 'object' && cause !== null ? (cause as { code?: unknown }).code : undefined;
+  if (typeof code === 'string') return code;
+  if (cause instanceof Error && cause.message !== '') return cause.message;
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -189,17 +232,39 @@ export interface DoorReach {
  * @returns The reach, or null when the door refused (already said why).
  */
 export async function door_enter(door: string, username: string | undefined, password: string | undefined, fetchLike: DoorFetch = fetch): Promise<DoorReach | null> {
-  const doorUrl: string = door_normalise(door);
-  const user: string = username ?? (await terminalLine_ask(`Username at ${doorUrl}: `, false));
-  const secret: string = password ?? (await terminalLine_ask(`Password for ${user} at ${doorUrl}: `, true));
-  const entered = await door_login(doorUrl, user, secret, fetchLike);
+  let doorUrl: string;
+  try {
+    doorUrl = door_normalise(door);
+  } catch (error: unknown) {
+    console.error(chalk.red(`[!] ${error instanceof Error ? error.message : String(error)}`));
+    return null;
+  }
+  const user: string = doorCredential_missing(username) ? await terminalLine_ask(`Username at ${doorUrl}: `, false) : username;
+  const secret: string = doorCredential_missing(password) ? await terminalLine_ask(`Password for ${user} at ${doorUrl}: `, true) : password;
+  // A door that cannot be reached — porter down, a wrong port, a name that
+  // does not resolve — is one line naming the door, never a stack trace.
+  const unreached = (error: unknown): null => {
+    console.error(chalk.red(`[!] The door at ${doorUrl} could not be reached: ${doorUnreached_reason(error)}`));
+    return null;
+  };
+  let entered: DoorEntry | { refused: string };
+  try {
+    entered = await door_login(doorUrl, user, secret, fetchLike);
+  } catch (error: unknown) {
+    return unreached(error);
+  }
   if ('refused' in entered) {
     console.error(chalk.red(`[!] The door refused: ${entered.refused}`));
     return null;
   }
   if (entered.state === 'starting') {
     console.log(chalk.gray(`[+] Starting your session at ${doorUrl} — the boot as it happens:`));
-    const ended = await doorBoot_follow(doorUrl, entered, (text: string): void => { console.log(text); }, fetchLike);
+    let ended: { state: 'ready' } | { state: 'failed'; reason: string };
+    try {
+      ended = await doorBoot_follow(doorUrl, entered, (text: string): void => { console.log(text); }, fetchLike);
+    } catch (error: unknown) {
+      return unreached(error);
+    }
     if (ended.state === 'failed') {
       console.error(chalk.red(`[!] The session did not start: ${ended.reason}`));
       return null;

@@ -204,9 +204,15 @@ export function terminalLine_ask(label: string, hidden: boolean): Promise<string
       },
     }), { muted: false });
     const rl: readline.Interface = readline.createInterface({ input: process.stdin, output, terminal: true });
-    process.stdout.write(label);
-    output.muted = hidden;
-    rl.question('', (line: string): void => {
+    // The label is readline's own prompt: written beside it, readline's
+    // repaint of an empty prompt (column one, clear to the end) erased it,
+    // and the username question showed as a blank line. A hidden answer
+    // writes the label first and then mutes what follows.
+    if (hidden) {
+      process.stdout.write(label);
+      output.muted = true;
+    }
+    rl.question(hidden ? '' : label, (line: string): void => {
       rl.close();
       if (hidden) console.log('');
       resolve(line.trim());
@@ -240,6 +246,12 @@ export async function door_enter(door: string, username: string | undefined, pas
     return null;
   }
   const user: string = doorCredential_missing(username) ? await terminalLine_ask(`Username at ${doorUrl}: `, false) : username;
+  // An empty answer is refused here, by name: the door would only refuse it
+  // after a password asked for nobody.
+  if (doorCredential_missing(user)) {
+    console.error(chalk.red('[!] A username is required to come through the door (give -u <user>, or answer the question).'));
+    return null;
+  }
   const secret: string = doorCredential_missing(password) ? await terminalLine_ask(`Password for ${user} at ${doorUrl}: `, true) : password;
   // A door that cannot be reached — porter down, a wrong port, a name that
   // does not resolve — is one line naming the door, never a stack trace.

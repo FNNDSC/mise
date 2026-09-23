@@ -1395,8 +1395,8 @@ try {
     await settle(() => !/STALE/.test(bar()));
     const homeBar = bar();
     const home = names();
-    // Not the updir: it goes up.
-    const folder = fp.querySelector('.files-row.files-type-dir:not(.files-lead-up)');
+    // Not a lead row: .. goes up and ~ goes home.
+    const folder = fp.querySelector('.files-row.files-type-dir:not(.files-lead-up):not(.files-lead-home)');
     const into = folder?.querySelector('.files-name')?.textContent.trim() ?? '';
     // A directory's OPEN control enters it; its body would select it.
     folder?.querySelector('.listing-control')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -2092,6 +2092,51 @@ try {
   check('a cwd inside a feed does not paint its graph over the roster',
     settles.error === undefined && settles.rosterUp === true, JSON.stringify({ rosterUp: settles.rosterUp }));
   }
+  if (stage('home-trail')) {
+  // The way home is one press: a `~` lead row above `..` anywhere but home,
+  // and the path line a trail whose every segment but the last goes there.
+  const trail = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); };
+    document.getElementById('gutter-files').click();
+    const fp = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
+    const here = () => fp()?.querySelector('.files-crumbs .files-crumb-here')?.dataset.path ?? '';
+    const crumbs = () => [...(fp()?.querySelectorAll('.files-crumbs .files-crumb') ?? [])].map(c => c.textContent);
+    const leads = () => [...(fp()?.querySelectorAll('.files-row') ?? [])].slice(0, 2).map(r => r.classList.contains('files-lead-home') ? '~' : r.classList.contains('files-lead-up') ? '..' : 'row');
+    const settle = async (want) => { for (let i = 0; i < 60; i++) { await sleep(250); if (want()) return true; } return false; };
+    await say('cd ~');
+    await settle(() => crumbs().length === 1 && crumbs()[0] === '~');
+    const home = here();
+    const atHome = { crumbs: crumbs(), leads: leads() };
+    // One level down, into the first folder home holds.
+    const folder = [...fp().querySelectorAll('.files-row.files-type-dir:not(.files-lead-up):not(.files-lead-home) .files-name')][0]?.textContent.trim() ?? '';
+    await say('cd "' + home + '/' + folder + '"');
+    await settle(() => here() === home + '/' + folder);
+    const below = { crumbs: crumbs(), leads: leads(), here: here() };
+    // The ~ row goes home.
+    fp().querySelector('.files-row.files-lead-home .listing-control')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await settle(() => here() === home);
+    const homeAgain = here();
+    // Outside home the trail starts at the root; its / segment goes there.
+    await say('cd /bin');
+    await settle(() => here() === '/bin');
+    const bin = { crumbs: crumbs(), leads: leads() };
+    fp().querySelector('.files-crumbs button.files-crumb')?.click();
+    await settle(() => here() === '/');
+    const root = { here: here(), leads: leads() };
+    await say('cd ~');
+    await settle(() => here() === home);
+    return { home, folder, atHome, below, homeAgain, bin, root };`);
+  check('at home the trail is ~ alone and no ~ row leads the listing',
+    trail.atHome.crumbs.join('|') === '~' && trail.atHome.leads[0] !== '~', JSON.stringify(trail.atHome));
+  check('below home the trail reads ~/<folder> and the ~ row leads above ..',
+    trail.folder !== '' && trail.below.crumbs.join('|') === '~|' + trail.folder && trail.below.leads.join('|') === '~|..', JSON.stringify(trail.below));
+  check('the ~ row goes home', trail.homeAgain === trail.home, trail.homeAgain);
+  check('outside home the trail starts at /, and its / segment goes to the root',
+    trail.bin.crumbs.join('|') === '/|bin' && trail.root.here === '/' && trail.root.leads[0] === '~', `${JSON.stringify(trail.bin)} | ${JSON.stringify(trail.root)}`);
+  }
+
   if (stage('enter-place')) {
   // ENTER always lands in a place: from the roster pick, ENTER FEED moves the
   // session (and so the cwd-following browser) into /proc/jobs/feed_N.

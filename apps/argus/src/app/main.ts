@@ -1837,6 +1837,9 @@ async function surface_start(token: string): Promise<void> {
       },
     );
     filesPanels.set(id, panel);
+    // Home is the session's: the trail starts at `~` under it and the `~`
+    // row goes there. A pane opened after the prompt arrived learns it here.
+    if (promptUser !== null && promptUser !== '') panel.home_set(`/home/${promptUser}`);
     rootedHistory.set(id, []);
     filesFollow.set(id, primary);
     cwdBind_sync(id);
@@ -5094,6 +5097,7 @@ async function surface_start(token: string): Promise<void> {
         cascade?.promptContext_observe(context);
         dagPanel.promptContext_observe(context);
         for (const universe of universePanels.values()) universe.promptContext_observe(context);
+        for (const panel of filesPanels.values()) panel.home_set(context.user === '' ? null : `/home/${context.user}`);
       },
       telemetry_receive: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry; state?: JobsStateTelemetry }): void => {
         indexInstrument.counts_show(index);

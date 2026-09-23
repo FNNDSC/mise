@@ -2847,14 +2847,14 @@ body[data-header='dag'] #header-dag {
 /* UP is navigation and can never be the block, so it stays lit: rows
  * recede, navigation does not. HERE is a row that can be the block and
  * obeys the row rule. */
-.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated):not(.files-lead-up) {
+.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated):not(.files-lead-up):not(.files-lead-home) {
   /* A quarter: the operator's call after seeing 45%, which still left
    * the field competing with the block. */
   opacity: 0.25;
   transition: opacity 0.12s ease-out;
 }
 
-.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated):not(.files-lead-up):hover {
+.listing-framed:not(.listing-selecting):has(.listing-indicated) .listing-row:not(.listing-indicated):not(.files-lead-up):not(.files-lead-home):hover {
   opacity: 1;
 }
 
@@ -2990,6 +2990,35 @@ body[data-header='dag'] #header-dag {
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+/* The path line is a trail of places: each segment but the last goes
+   there. A segment reads as the path it is — the line's own face — and
+   answers the pointer the way a row does, never as a button's box. */
+.files-crumb {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  background: none;
+  border: 0;
+  padding: 0 0.1em;
+  margin: 0;
+  border-radius: 0.3em;
+}
+
+button.files-crumb {
+  cursor: pointer;
+}
+
+button.files-crumb:hover,
+button.files-crumb:focus-visible {
+  background: var(--orange);
+  color: #000;
+  outline: none;
+}
+
+.files-crumb-here {
+  color: var(--honey, var(--orange));
 }
 
 .files-content-header {

@@ -50,7 +50,7 @@ import {
   queryTerms_parse,
 } from './query.fanout.js';
 import { sink_get } from '../../core/sink.js';
-import { csvFile_write, pacsAnswer_toCsv, type CsvWrite } from './query.csv.js';
+import { csvFile_write, pacsAnswer_toCsv, pacsAnswer_toTable, type CsvWrite, type PacsAnswerLevel } from './query.csv.js';
 import { series_cubePathGet } from './pacsUtils.js';
 import { screen } from '@fnndsc/chili/screen/screen.js';
 import { spinner } from '../../lib/spinner.js';
@@ -302,61 +302,6 @@ function queryResult_render(decoded: PACSQueryDecodedResult): string | null {
   lines.unshift('');
 
   return lines.join('\n');
-}
-
-/**
- * Renders decoded PACS query JSON as a per-study table with one row per series.
- *
- * Columns: Study, #, Description, Modality, Files.
- *
- * @param decoded - Decoded query result from `pacsQuery_resultDecode`.
- * @param title - Optional title shown above the table.
- * @returns Formatted table string, or null if no displayable content.
- */
-function queryResult_renderTable(decoded: PACSQueryDecodedResult, title?: string): string | null {
-  const payload: unknown = decoded.json;
-  if (!payload || typeof payload !== 'object') return null;
-
-  const tagVal = (v: unknown): string => {
-    if (v && typeof v === 'object' && 'value' in (v as Record<string, unknown>)) {
-      return String((v as Record<string, unknown>).value ?? '');
-    }
-    return String(v ?? '');
-  };
-
-  type TableRow = Record<string, string>;
-  const rows: TableRow[] = [];
-  const payloadArr: unknown[] = Array.isArray(payload) ? payload : [payload];
-
-  payloadArr.forEach((studyRaw: unknown, sIdx: number) => {
-    if (!studyRaw || typeof studyRaw !== 'object') return;
-    const study: Record<string, unknown> = studyRaw as Record<string, unknown>;
-    const studyLabel: string = tagVal(study.StudyDescription ?? `Study ${sIdx + 1}`);
-    const accession: string = tagVal(study.AccessionNumber ?? '');
-    const studyDisplay: string = accession ? `${studyLabel} [${accession}]` : studyLabel;
-
-    const seriesArr: unknown[] =
-      Array.isArray(study.series)   ? study.series :
-      Array.isArray(study.Series)   ? study.Series :
-      Array.isArray(study.results)  ? study.results :
-      [];
-
-    seriesArr.forEach((seriesRaw: unknown, rIdx: number) => {
-      if (!seriesRaw || typeof seriesRaw !== 'object') return;
-      const series: Record<string, unknown> = seriesRaw as Record<string, unknown>;
-      rows.push({
-        Study:       studyDisplay,
-        '#':         String(rIdx + 1),
-        Description: tagVal(series.SeriesDescription ?? ''),
-        Modality:    tagVal(series.Modality ?? ''),
-        Files:       tagVal(series.NumberOfSeriesRelatedInstances ?? ''),
-      });
-    });
-  });
-
-  if (rows.length === 0) return null;
-
-  return screen.table_output(rows, { title: { title: title ?? 'Query Results' } });
 }
 
 /**
@@ -987,12 +932,20 @@ function cohort_render(patients: ReadonlyArray<PacsPatient>): string {
     const server: string = manyServers ? server_of(patient).padEnd(serverWidth) : '';
     lines.push(`  ${hue(patient.patientId.padEnd(18))}${server}${counts[0].padEnd(10)}${counts[1].padEnd(9)}${note}`);
   }
+  return `${lines.join('\n')}\n${cohortTally_render(patients)}`;
+}
+
+/**
+ * The cohort's closing tally: found, none, unasked.
+ *
+ * @param patients - Every patient asked.
+ * @returns The tally line with a blank line either side, or '' when no patient was asked.
+ */
+function cohortTally_render(patients: ReadonlyArray<PacsPatient>): string {
+  if (patients.length === 0) return '';
   const tally = (state: PacsPatient['status']): number =>
     patients.filter((patient: PacsPatient): boolean => patient.status === state).length;
-  lines.push('');
-  lines.push(`  ${chalk.green(`FOUND ${tally('found')}`)} ${chalk.gray('·')} ${chalk.gray(`NONE ${tally('none')}`)} ${chalk.gray('·')} ${chalk.red(`UNASKED ${tally('unasked')}`)}`);
-  lines.push('');
-  return lines.join('\n');
+  return `  ${chalk.green(`FOUND ${tally('found')}`)} ${chalk.gray('·')} ${chalk.gray(`NONE ${tally('none')}`)} ${chalk.gray('·')} ${chalk.red(`UNASKED ${tally('unasked')}`)}\n\n`;
 }
 
 
@@ -1020,8 +973,10 @@ async function csv_deliver(
   destination: string | null,
   ask: boolean = false,
   force: boolean = false,
+  level: PacsAnswerLevel = 'study',
+  table: boolean = false,
 ): Promise<{ ok: true; rendered: string } | { ok: false; message: string }> {
-  const csv: string = pacsAnswer_toCsv(model);
+  const csv: string = pacsAnswer_toCsv(model, level);
   let target: string | null = destination;
   if (target === null && ask) {
     // Asked only once there is something to write: a question raised before
@@ -1044,7 +999,10 @@ async function csv_deliver(
   const gone: string = written.replaced === true
     ? `${chalk.gray(`  replaced the table that was there`)}\n`
     : '';
-  return { ok: true, rendered: `${made}${gone}${chalk.green(`✓ wrote ${written.path}`)}\n` };
+  // The file went where it was sent; the screen, asked for the table,
+  // shows the same rows beside the word that they were written.
+  const shown: string = table ? `\n${pacsAnswer_toTable(model, level)}` : '';
+  return { ok: true, rendered: `${made}${gone}${chalk.green(`✓ wrote ${written.path}`)}\n${shown}` };
 }
 
 
@@ -1112,6 +1070,10 @@ async function cohort_answer(
     force: boolean;
     /** True to stand in for what the answers say about a person. */
     anon: boolean;
+    /** One row per study, or per series. */
+    level: PacsAnswerLevel;
+    /** True to show the answer's rows as an aligned table. */
+    table: boolean;
   },
 ): Promise<CommandEnvelope> {
   spinner.start(`Querying PACS for ${asks.length} questions...`, true);
@@ -1133,7 +1095,7 @@ async function cohort_answer(
   ).length;
 
   if (facts.csv || facts.csvTo !== null || facts.csvToAsk) {
-    const delivered = await csv_deliver(model, facts.csvTo, facts.csvToAsk, facts.force);
+    const delivered = await csv_deliver(model, facts.csvTo, facts.csvToAsk, facts.force, facts.level, facts.table);
     if (!delivered.ok) {
       process.exitCode = 1;
       // The ANSWER stands: only the writing of it did not happen. An
@@ -1149,9 +1111,14 @@ async function cohort_answer(
   }
   // A fan-out over something other than patients has no audit table to
   // show; its studies are the answer, and they are already in the model.
-  const rendered: string = patients.length > 0
-    ? cohort_render(patients)
-    : `${chalk.green(`✓ ${asks.length} queries complete — ${model.studies.length} studies`)}\n`;
+  // Asked for the table, the cohort shows its rows — the audit's own
+  // facts (a patient with none, a question unasked) ride them as rows with
+  // their STATUS, and the tally still closes it.
+  const rendered: string = facts.table
+    ? `\n${pacsAnswer_toTable(model, facts.level)}${cohortTally_render(patients)}`
+    : patients.length > 0
+      ? cohort_render(patients)
+      : `${chalk.green(`✓ ${asks.length} queries complete — ${model.studies.length} studies`)}\n`;
 
   // Every question failing is a failure of the command; some failing is an
   // answer with holes in it, which the table states and the operator reads.
@@ -1199,6 +1166,8 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
    * carries somebody's name and record number onto the screen.
    */
   let anon: boolean = false;
+  /** One row per study (the default), or per series (`--series`). */
+  let level: PacsAnswerLevel = 'study';
   const positional: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -1230,10 +1199,29 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       fresh = true;
     } else if (args[i] === '--anon') {
       anon = true;
-    } else if (!args[i].startsWith('--')) {
+    } else if (args[i] === '--series') {
+      level = 'series';
+    } else if (args[i].startsWith('--')) {
+      // A flag this command does not know is refused by name. Dropped in
+      // silence, `--series` on a build without it answered at the study
+      // level and looked like it had been heard.
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(`query: unknown flag ${args[i]} (see pacs query --help)`)}\n`);
+    } else {
       positional.push(args[i]);
     }
   }
+
+  // Two renderings for one screen: CSV is the answer's text, the table is
+  // its rows aligned. Asked for both, neither is guessed; writing the CSV
+  // to a file (`--csv-to`) leaves the screen free for the table.
+  if (csv && tableMode) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red('query: --csv and --table are two formats for one screen; pick one (or --csv-to <cfs-path> --table: the file gets the CSV, the screen the table)')}\n`);
+  }
+  // A level is a property of rows: asked for series with no format named,
+  // the answer is the series table.
+  if (level === 'series' && !csv) tableMode = true;
 
   if (positional.length === 0 && patientsArg === null) {
     process.exitCode = 1;
@@ -1348,7 +1336,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       // The model names the server the way CUBE does. `--pacsserver 1` and
       // `--pacsserver PACSDCM` are the same server, and a table that says
       // "1" tells an operator nothing about which PACS answered.
-      title, pacsserver: identifier, owner, fresh, csv, csvTo, csvToAsk, force, anon,
+      title, pacsserver: identifier, owner, fresh, csv, csvTo, csvToAsk, force, anon, level, table: tableMode,
       expression: anon ? expression_standIn(patientsArg === null ? queryExpr : `${queryExpr} --patients ${patientsArg}`.trim(), asks)
         : (patientsArg === null ? queryExpr : `${queryExpr} --patients ${patientsArg}`.trim()),
     });
@@ -1408,9 +1396,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   // What the operator typed, said in the same tokens the rows carry.
   const shownExpr: string = anon ? criteria_toExpression(criteria_standIn(criteria)) : askExpr;
 
-  const renderedResult: string | null = tableMode
-    ? queryResult_renderTable(result.decoded, title !== `Query ${Date.now()}` ? title : undefined)
-    : queryResult_render(result.decoded);
+  let renderedResult: string | null = tableMode ? null : queryResult_render(result.decoded);
 
 
   const model: PacsQueryModel = pacsQueryModel_build(result.decoded, {
@@ -1426,9 +1412,12 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   // Mark what CUBE already holds: a surface then offers gather instead of
   // pull for series that are already home. One bounded sweep, no retries.
   await modelPulledState_fill(model);
+  // The table reads the model, pulled state and all, so it is rendered
+  // once the model knows what CUBE already holds.
+  if (tableMode && model.studies.length > 0) renderedResult = `\n${pacsAnswer_toTable(model, level)}`;
 
   if (csv || csvTo !== null || csvToAsk) {
-    const delivered = await csv_deliver(model, csvTo, csvToAsk, force);
+    const delivered = await csv_deliver(model, csvTo, csvToAsk, force, level, tableMode);
     if (!delivered.ok) {
       process.exitCode = 1;
       // The answer stands; only the writing of it did not happen.

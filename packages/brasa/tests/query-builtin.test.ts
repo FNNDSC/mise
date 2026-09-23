@@ -54,6 +54,7 @@ jest.unstable_mockModule('../src/session/index.js', () => ({ session: { getCWD: 
 // own behaviour is pinned in query-csv.test.ts.
 jest.unstable_mockModule('../src/builtins/net/query.csv.js', () => ({
   pacsAnswer_toCsv: (): string => '"MRN"\n"1234"\n',
+  pacsAnswer_toTable: (_model: unknown, level: string = 'study'): string => `TABLE ${level}\n`,
   csvFile_write: (csv: string, destination: string): Promise<{ ok: boolean; path?: string; message?: string }> =>
     mockFilesCreate(csv, destination).then((written: boolean) => (
       written ? { ok: true, path: destination } : { ok: false, message: `could not write ${destination}` })),
@@ -220,18 +221,37 @@ describe('builtin_query', () => {
     expect(output).toContain('/net/pacs/queries/PatientID:X_qid:9_chris');
   });
 
-  it('renders a table with --table', async () => {
+  it('renders the answer\'s rows as a table with --table, one per study', async () => {
     mockCurrentGet.mockResolvedValue('PACSDCM');
     mockCreate.mockResolvedValue(ok({ id: 9 }));
     mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
     mockDecode.mockResolvedValue(ok({ json: studyPayload }));
     const envelope = await builtin_query(['PatientID:X', '--table', '--title', 'My Query']);
-    expect(mockTable).toHaveBeenCalledWith(
-      [expect.objectContaining({ Description: 'T1 MPRAGE', Modality: 'MR', Files: '176' })],
-      expect.anything(),
-    );
-    expect(envelope.rendered).toContain('TABLE_OUT');
+    expect(envelope.rendered).toContain('TABLE study');
     expect(mockCreate).toHaveBeenCalledWith('PACSDCM', expect.objectContaining({ title: 'My Query' }));
+  });
+
+  it('answers one row per series with --series, the series table when no format is named', async () => {
+    mockCurrentGet.mockResolvedValue('PACSDCM');
+    mockCreate.mockResolvedValue(ok({ id: 9 }));
+    mockQueryGet.mockResolvedValue(ok({ status: 'succeeded' }));
+    mockDecode.mockResolvedValue(ok({ json: studyPayload }));
+    const envelope = await builtin_query(['PatientID:X', '--series']);
+    expect(envelope.rendered).toContain('TABLE series');
+  });
+
+  it('refuses a flag it does not know, by name', async () => {
+    const envelope = await builtin_query(['PatientID:X', '--sereis']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr ?? envelope.rendered).toContain('unknown flag --sereis');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('refuses --csv with --table: two formats for one screen', async () => {
+    const envelope = await builtin_query(['PatientID:X', '--csv', '--table']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr ?? envelope.rendered).toContain('--csv and --table are two formats');
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('honours a --pacsserver override', async () => {

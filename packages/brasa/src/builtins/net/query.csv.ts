@@ -9,18 +9,37 @@
  * the PACS answer is the first thing to use it.
  *
  * The shape is settled by doctrine rather than by convenience: a row per
- * STUDY, and a row for every patient that owns none. The MRNs that come
+ * STUDY (or, asked with `--series`, per series), and a row for every
+ * patient that owns none. The MRNs that come
  * back are the ones with imaging, so a table built from studies alone
  * would quietly drop exactly the rows an audit is asking about.
  *
  * @module
  */
-import type { PacsPatient, PacsQueryModel, PacsStudy } from '@fnndsc/menu';
+import type { PacsPatient, PacsQueryModel, PacsSeries, PacsStudy } from '@fnndsc/menu';
 
-/** The columns of a PACS answer's table, in reading order. */
-const CSV_COLUMNS: ReadonlyArray<string> = [
+/**
+ * How far down an answer's rows go: one per STUDY (the audit's grain, and
+ * the default), or one per SERIES, each carrying its study's columns so a
+ * row stands on its own in a spreadsheet.
+ */
+export type PacsAnswerLevel = 'study' | 'series';
+
+/** The columns of a study-level table, in reading order. */
+const STUDY_COLUMNS: ReadonlyArray<string> = [
   'MRN', 'PATIENT', 'SERVER', 'STATUS', 'STUDY', 'DATE',
   'ACCESSION', 'MODALITY', 'SERIES', 'ANSWERED',
+];
+
+/**
+ * The columns of a series-level table. The study's own columns lead; the
+ * series follows under names that cannot be read as the study's — SERIES
+ * is a count at study level, so here the series is SERIES# and SERIES
+ * DESCRIPTION, and MODALITY is the series' own.
+ */
+const SERIES_COLUMNS: ReadonlyArray<string> = [
+  'MRN', 'PATIENT', 'SERVER', 'STATUS', 'STUDY', 'DATE', 'ACCESSION',
+  'SERIES#', 'SERIES DESCRIPTION', 'MODALITY', 'FILES', 'PULLED', 'ANSWERED',
 ];
 
 /**
@@ -37,17 +56,27 @@ function cell_quote(value: unknown): string {
   return `"${String(value ?? '').split('"').join('""')}"`;
 }
 
+/** The facts a row takes from its patient rather than its study. */
+interface RowFacts {
+  mrn: string;
+  server: string;
+  status: string;
+  answeredAt: string;
+}
+
 /**
- * Renders one answer as CSV.
+ * The rows of an answer at a level, header first — the one table every
+ * rendering of the answer reads, so the CSV and the screen cannot differ.
  *
- * ANSWERED carries the ISO timestamp rather than `3 MONTHS AGO`: a
- * spreadsheet sorts and subtracts dates, and the phrase a surface reads out
- * is for a human glance, not for a column of data.
+ * A patient who owns no study still has a row (the audit is usually about
+ * exactly them), and at series level a study with no series still has
+ * one: a row per series would otherwise drop the study in silence.
  *
  * @param model - The answer.
- * @returns The CSV text, header row first.
+ * @param level - One row per study, or per series.
+ * @returns The columns and the rows, cells as text.
  */
-export function pacsAnswer_toCsv(model: PacsQueryModel): string {
+export function pacsAnswer_rows(model: PacsQueryModel, level: PacsAnswerLevel = 'study'): { columns: ReadonlyArray<string>; rows: string[][] } {
   const rows: string[][] = [];
   const patients: ReadonlyArray<PacsPatient> = model.patients ?? [];
   const studiesOf = (patient: PacsPatient): PacsStudy[] =>
@@ -55,21 +84,30 @@ export function pacsAnswer_toCsv(model: PacsQueryModel): string {
       study.patientId === patient.patientId
       && (patient.server === undefined || study.server === undefined || study.server === patient.server));
 
-  const study_row = (
-    study: PacsStudy,
-    facts: { mrn: string; server: string; status: string; answeredAt: string },
-  ): string[] => [
-    facts.mrn,
-    study.patientName,
-    facts.server,
-    facts.status,
-    study.description,
-    study.date,
-    study.accession,
-    study.modalities,
-    String(study.series.length),
-    facts.answeredAt,
-  ];
+  const study_rows = (study: PacsStudy, facts: RowFacts): string[][] => {
+    if (level === 'study') {
+      return [[
+        facts.mrn, study.patientName, facts.server, facts.status, study.description, study.date,
+        study.accession, study.modalities, String(study.series.length), facts.answeredAt,
+      ]];
+    }
+    const lead: string[] = [facts.mrn, study.patientName, facts.server, facts.status, study.description, study.date, study.accession];
+    if (study.series.length === 0) return [[...lead, '', '', '', '', '', facts.answeredAt]];
+    return study.series.map((series: PacsSeries, index: number): string[] => [
+      ...lead,
+      String(index + 1),
+      series.description,
+      series.modality,
+      series.fileCount === undefined ? '' : String(series.fileCount),
+      series.pulled === undefined ? '' : (series.pulled ? 'yes' : 'no'),
+      facts.answeredAt,
+    ]);
+  };
+
+  const patient_row = (patient: PacsPatient, server: string, answeredAt: string): string[] =>
+    level === 'study'
+      ? [patient.patientId, patient.patientName ?? '', server, patient.status, '', '', '', '', '0', answeredAt]
+      : [patient.patientId, patient.patientName ?? '', server, patient.status, '', '', '', '', '', '', '', '', answeredAt];
 
   if (patients.length > 0) {
     for (const patient of patients) {
@@ -80,21 +118,16 @@ export function pacsAnswer_toCsv(model: PacsQueryModel): string {
         // The row that cannot be derived from studies, and the one an
         // audit is usually about: a patient with no imaging, or one whose
         // question could not be asked at all.
-        rows.push([
-          patient.patientId, patient.patientName ?? '', server, patient.status,
-          '', '', '', '', '0', answeredAt,
-        ]);
+        rows.push(patient_row(patient, server, answeredAt));
         continue;
       }
       for (const study of owned) {
-        rows.push(study_row(study, {
-          mrn: patient.patientId, server, status: patient.status, answeredAt,
-        }));
+        rows.push(...study_rows(study, { mrn: patient.patientId, server, status: patient.status, answeredAt }));
       }
     }
   } else {
     for (const study of model.studies) {
-      rows.push(study_row(study, {
+      rows.push(...study_rows(study, {
         mrn: study.patientId,
         server: study.server ?? model.pacsName,
         status: 'found',
@@ -102,10 +135,49 @@ export function pacsAnswer_toCsv(model: PacsQueryModel): string {
       }));
     }
   }
+  return { columns: level === 'study' ? STUDY_COLUMNS : SERIES_COLUMNS, rows };
+}
 
-  const lines: string[] = [CSV_COLUMNS.map(cell_quote).join(',')];
+/**
+ * Renders one answer as CSV.
+ *
+ * ANSWERED carries the ISO timestamp rather than `3 MONTHS AGO`: a
+ * spreadsheet sorts and subtracts dates, and the phrase a surface reads out
+ * is for a human glance, not for a column of data.
+ *
+ * @param model - The answer.
+ * @param level - One row per study (the default), or per series.
+ * @returns The CSV text, header row first.
+ */
+export function pacsAnswer_toCsv(model: PacsQueryModel, level: PacsAnswerLevel = 'study'): string {
+  const { columns, rows } = pacsAnswer_rows(model, level);
+  const lines: string[] = [columns.map(cell_quote).join(',')];
   for (const row of rows) lines.push(row.map(cell_quote).join(','));
   return `${lines.join('\n')}\n`;
+}
+
+/**
+ * Renders one answer as an aligned table: the CSV's rows and columns, for
+ * a screen. Nothing is cut: a column is as wide as its widest cell, and a
+ * narrow terminal wraps rather than loses a description. ANSWERED is left
+ * off — the line above the table already says when the PACS answered, and
+ * an ISO stamp on every row would push the rest off the screen.
+ *
+ * @param model - The answer.
+ * @param level - One row per study (the default), or per series.
+ * @returns The table, header and rule first, uncoloured.
+ */
+export function pacsAnswer_toTable(model: PacsQueryModel, level: PacsAnswerLevel = 'study'): string {
+  const { columns, rows } = pacsAnswer_rows(model, level);
+  const shown: number[] = columns.map((_: string, index: number): number => index).filter((index: number): boolean => columns[index] !== 'ANSWERED');
+  const widths: number[] = shown.map((index: number): number =>
+    Math.max(columns[index]?.length ?? 0, ...rows.map((row: string[]): number => (row[index] ?? '').length)));
+  const line = (cells: ReadonlyArray<string>): string =>
+    `  ${shown.map((index: number, at: number): string => (cells[index] ?? '').padEnd(widths[at] ?? 0)).join('  ').trimEnd()}`;
+  const out: string[] = [line(columns), `  ${widths.map((width: number): string => '─'.repeat(width)).join('  ')}`];
+  for (const row of rows) out.push(line(row));
+  out.push('', `  ${rows.length} row${rows.length === 1 ? '' : 's'}, one per ${level}`);
+  return `${out.join('\n')}\n`;
 }
 
 /** Where a written table landed, or why it did not. */

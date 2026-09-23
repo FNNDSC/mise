@@ -8,7 +8,7 @@
  * studies alone drops exactly the rows an audit is asking about.
  */
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
-import { pacsAnswer_toCsv } from '../src/builtins/net/query.csv.js';
+import { pacsAnswer_toCsv, pacsAnswer_toTable } from '../src/builtins/net/query.csv.js';
 
 /** One study, with the fields the table reads. */
 function study_make(extra: Record<string, unknown> = {}): Record<string, unknown> {
@@ -109,6 +109,60 @@ describe('pacsAnswer_toCsv', () => {
 
   it('renders an answer that found nothing as a header and no rows', () => {
     expect(rows_of(pacsAnswer_toCsv(model_make()))).toHaveLength(1);
+  });
+});
+
+describe('an answer at series level', () => {
+  const twoSeries = (): never => model_make({
+    studies: [study_make({ series: [
+      { seriesUID: 's1', description: 'T1, sagittal', modality: 'MR', fileCount: 176, pulled: true },
+      { seriesUID: 's2', description: 'DWI', modality: 'MR', fileCount: 30, pulled: false },
+    ] })],
+  });
+
+  it('gives each series a row carrying its study, under names that cannot be read as the study\'s', () => {
+    const rows: string[][] = rows_of(pacsAnswer_toCsv(twoSeries(), 'series'));
+    expect(rows[0]).toEqual(['MRN', 'PATIENT', 'SERVER', 'STATUS', 'STUDY', 'DATE', 'ACCESSION', 'SERIES#', 'SERIES DESCRIPTION', 'MODALITY', 'FILES', 'PULLED', 'ANSWERED']);
+    expect(rows.length).toBe(3);
+    expect(rows[1]?.slice(4, 12)).toEqual(['Brain MRI', '20240101', 'A100', '1', 'T1, sagittal', 'MR', '176', 'yes']);
+    expect(rows[2]?.slice(7, 12)).toEqual(['2', 'DWI', 'MR', '30', 'no']);
+  });
+
+  it('keeps a study with no series as a row, and a patient with no studies', () => {
+    const csv: string = pacsAnswer_toCsv(model_make({
+      studies: [study_make({ series: [] })],
+      patients: [
+        { patientId: '1234', status: 'found', studyCount: 1, seriesCount: 0 },
+        { patientId: '9999', status: 'none', studyCount: 0, seriesCount: 0 },
+      ],
+    }), 'series');
+    const rows: string[][] = rows_of(csv);
+    expect(rows.length).toBe(3);
+    expect(rows[1]?.[4]).toBe('Brain MRI');
+    expect(rows[1]?.[7]).toBe('');
+    expect(rows[2]?.[0]).toBe('9999');
+    expect(rows[2]?.[3]).toBe('none');
+  });
+});
+
+describe('pacsAnswer_toTable', () => {
+  it('aligns the CSV\'s columns without ANSWERED, cuts nothing, and says what a row is', () => {
+    const long: string = 'A study description far longer than any column would ever want to be';
+    const table: string = pacsAnswer_toTable(model_make({ studies: [study_make({ description: long })], provenance: { replayed: false, answeredAt: '2026-09-10T14:48:39Z' } }));
+    const lines: string[] = table.trimEnd().split('\n');
+    expect(lines[0]).toMatch(/^  MRN +PATIENT +SERVER +STATUS +STUDY +DATE +ACCESSION +MODALITY +SERIES$/);
+    expect(table).not.toContain('ANSWERED');
+    expect(table).not.toContain('2026-09-10');
+    expect(table).toContain(long);
+    // Every column starts where its header does.
+    expect(lines[2]?.indexOf('20240101')).toBe(lines[0]?.indexOf('DATE'));
+    expect(lines[lines.length - 1]).toBe('  1 row, one per study');
+  });
+
+  it('renders at series level when asked', () => {
+    const table: string = pacsAnswer_toTable(model_make({ studies: [study_make()] }), 'series');
+    expect(table.split('\n')[0]).toContain('SERIES DESCRIPTION');
+    expect(table).toContain('1 row, one per series');
   });
 });
 

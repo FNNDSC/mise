@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/calypso",
-  "version": "0.16.2",
+  "version": "0.16.3",
   "description": "CALYPSO: the ChRIS session daemon — hosts a brasa engine for attached surfaces over a WebSocket",
   "repository": {
     "type": "git",
@@ -55,12 +55,12 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@fnndsc/brasa": "^0.25.0",
+    "@fnndsc/brasa": "^0.26.0",
     "@fnndsc/cumin": "^3.23.2",
     "chalk": "^4.1.2",
     "ws": "^8.18.0",
     "zod": "^3.23.8",
     "@fnndsc/menu": "^0.11.0",
-    "@fnndsc/argus": "^0.13.0"
+    "@fnndsc/argus": "^0.14.0"
   }
 }

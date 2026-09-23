@@ -1,5 +1,19 @@
 # @fnndsc/argus
 
+## 0.14.0
+
+### Minor Changes
+
+- f3f68e3: argus: every job in the universe. A DENSITY block on the universe frame (and `universe density shape|census`) draws every job of every stage as its own point in one instanced mesh, shelled around its stage; hover and click still name the stage beneath the pointer. A cluster's halo is never shelled as jobs.
+
+### Patch Changes
+
+- b254ee4: argus: a click in the universe no longer re-settles the space. Selecting a node only paints it (it used to rebuild the scene and refit the camera — the zoom-out and pause before every descent); the dimmed field behind an entered feed takes no pointer, so a click or double click inside always lands on the feed's own node; a space re-arriving keeps a camera the operator has placed and is held during a descent; the bar reads ENTERING FEED n with the pill ASKING while `feed diagram` runs, and an ask that yields nothing says so on the console; inside a giant feed the camera frames the bulk of the nodes, not the outliers.
+- 11a0dd1: argus: inside a feed in the universe, ENTER NODE (and a double click on a node, and `universe node <instance>`) flies into the node and opens its data inside it as a rooted browser; Esc flies out. It used to move the session's cwd, which said nothing on the field.
+- cb76c3b: argus: the universe turns about what the camera looks at. The idle spin, the orbit, the wheel and the pan pivot on a focus set by every fit and flight, so an entered feed stays in the middle of the frame when the spin resumes. Entering a feed or unfolding a shape no longer freezes the page: the settle simulates only the nodes that move and spheres share geometry (about 10 s down to about 1 s). A pull on a sphere moves only its own molecule, and a dimmed halo inside a feed takes no pointer.
+- f2b6a80: argus: the universe pane gains a GRAVITY block and `universe physics charge|link|collide|gravity on|off` / `universe physics reset` by word, the DAG pane's knobs for the space.
+- f297468: argus: the file browser's way home is one press. A `~` row leads the listing above `..` anywhere but home, showing the home path beside it, and the path line above the listing is a trail whose every segment but the last goes there (starting at `~` under home, `/` elsewhere). Both move the browser exactly as a directory press does.
+
 ## 0.13.0
 
 ### Minor Changes

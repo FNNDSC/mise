@@ -19,7 +19,7 @@
  */
 import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope } from '@fnndsc/menu';
 import { PROC_UNIVERSE_MODEL_KIND, procUniverseModelSchema, type ProcUniverseModel } from '@fnndsc/menu';
-import { DagScene, PHYSICS_DEFAULT, type PhysicsTerms, type SceneGraph, type SceneNode } from '../../scene/dagScene.js';
+import { DagScene, PHYSICS_DEFAULT, type PhysicsTerms, type SceneGraph, type SceneNode, type SettleMode } from '../../scene/dagScene.js';
 import {
   LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse,
   enteredFeed_build, descendedGraph_build, sphereIds_of, clusterTip_of, clusterGraph_build, clusterIds_of, shapeWords_of, shapeWords_brief, shape_of,
@@ -27,6 +27,7 @@ import {
   type LandedFeed, type UniverseScale, type EnteredFeed,
 } from '../dag/universe.js';
 import type { KeyStore } from '../../app/dormant.js';
+import { WaitProgress } from '../wait/progress.js';
 
 /** What the pane asks of its host. */
 export interface UniversePanelHandlers {
@@ -108,6 +109,10 @@ const DESCENT_BULK: number = 0.8;
 
 export class UniversePanel {
   private readonly scene: DagScene;
+  /** The wait over the field: the session asked, or a settle in slices. */
+  private readonly wait: WaitProgress;
+  /** Whether `proc universe` has been asked and not yet answered. */
+  private asking: boolean = false;
   private readonly landed: LandedFeeds = new LandedFeeds();
   private readonly canvas: HTMLElement;
   private readonly title: HTMLElement;
@@ -169,7 +174,11 @@ export class UniversePanel {
     this.backPill = mount.backPill;
     this.openPill = mount.openPill;
     this.pane = mount.canvas.closest<HTMLElement>('.workspace-pane');
+    this.wait = new WaitProgress(mount.canvas);
     this.scene = new DagScene(mount.canvas, {
+      // A space of thousands settles in slices, and says how far it has
+      // come: the page never sits frozen behind a settle.
+      progress: (done: number, total: number, nodes: number): void => this.settle_progress(done, total, nodes),
       // A sphere is a plugin group inside a feed; the tip says both. Inside
       // a feed the nodes are its own and carry their labels.
       tip: (node: SceneNode): string | null => (this.inside === null ? (foldTip_of(node.id, this.landed) ?? universeTip_of(node.id, this.landed) ?? clusterTip_of(node.id, this.landed)) : null),
@@ -207,7 +216,8 @@ export class UniversePanel {
     mount.scalePill?.addEventListener('click', (): void => {
       this.scale = this.scale === 'jobs' ? 'feeds' : 'jobs';
       if (mount.scalePill !== null) mount.scalePill.textContent = this.scale === 'jobs' ? 'JOBS' : 'ALIKE';
-      if (this.shown) this.paint();
+      // The spheres change size: every one of them settles again.
+      if (this.shown) this.paint(true, 'full');
     });
     mount.viewPill?.addEventListener('click', (): void => this.view_set(this.view === 'feeds' ? 'shapes' : 'feeds'));
     this.viewPill = mount.viewPill;
@@ -224,7 +234,26 @@ export class UniversePanel {
    * Cache-resident, answered at once whole or not.
    */
   public request(): void {
+    this.asking = true;
+    // The first ask is the whole wait: nothing is on the field yet, so the
+    // field says what it is waiting on. A re-ask under a drawn space is
+    // the lab moving and says nothing.
+    if (!this.shown) this.wait.show('ASKING THE SESSION FOR THE SPACE', null);
+    this.title_paint();
     this.handlers.command_run('proc universe');
+  }
+
+  /**
+   * A settle's progress, from the scene: the bar while it runs, gone at
+   * its end — and the positions remembered only once they stand.
+   */
+  private settle_progress(done: number, total: number, nodes: number): void {
+    if (done >= total) {
+      this.wait.hide();
+      this.remember_later();
+      return;
+    }
+    this.wait.show(`SETTLING ${nodes.toLocaleString('en-US')} SPHERES`, total === 0 ? 1 : done / total);
   }
 
   /**
@@ -401,7 +430,7 @@ export class UniversePanel {
   private view_set(view: 'feeds' | 'shapes'): void {
     this.view = view;
     if (this.viewPill !== null) this.viewPill.textContent = view.toUpperCase();
-    if (this.shown && this.inside === null && this.cluster === null) this.paint();
+    if (this.shown && this.inside === null && this.cluster === null) this.paint(true, 'full');
   }
 
   /** Whether a feed is entered, for a host that asks. */
@@ -430,6 +459,8 @@ export class UniversePanel {
    * so far and grows from here.
    */
   private space_show(model: ProcUniverseModel): void {
+    this.asking = false;
+    this.wait.hide();
     this.whole = model.whole;
     if (!this.shown) {
       this.shown = true;
@@ -458,7 +489,16 @@ export class UniversePanel {
     }, REPAINT_MS);
   }
 
-  private paint(fit: boolean = true): void {
+  /**
+   * Draws the top of the universe.
+   *
+   * @param fit - Frame the space whole.
+   * @param settle - `new` (the default): what already stands holds still and
+   *   only newcomers settle, so a landing or a climb back out moves nothing
+   *   the operator has seen; `full` when the spheres themselves change (a
+   *   scale or a view), which re-settles all of them.
+   */
+  private paint(fit: boolean = true, settle: SettleMode = 'new'): void {
     // The top of the universe: every feed (the structure itself), or the
     // shapes folded when the operator asks for it.
     const graph = this.view === 'shapes' ? foldedGraph_build(this.landed.all(), this.scale) : universeGraph_build(this.landed.all(), this.scale);
@@ -468,9 +508,11 @@ export class UniversePanel {
     const reach: number | undefined = graph.nodes.length <= UNIVERSE_HUG_NODES ? UNIVERSE_REACH : undefined;
     if (reach !== this.reach) {
       this.reach = reach;
-      this.scene.physics_set({ reach });
+      // The graph below settles under the new reach; settling the old one
+      // first cost a whole second settle.
+      this.scene.physics_set({ reach }, false);
     }
-    this.scene.graph_set(graph, { wave: false, fit });
+    this.scene.graph_set(graph, { wave: false, fit, settle });
     this.title_paint();
     this.remember_later();
   }
@@ -771,6 +813,17 @@ export class UniversePanel {
         this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
         this.state.classList.add('state-live');
         this.state.textContent = 'CLUSTER';
+      }
+      return;
+    }
+    if (this.asking && !this.shown) {
+      // Nothing has been told yet: say that, not "0 FEEDS", which reads
+      // as an empty lab.
+      this.title.textContent = 'UNIVERSE — ASKING THE SESSION …';
+      if (this.state !== null) {
+        this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
+        this.state.classList.add('state-wait');
+        this.state.textContent = 'ASKING';
       }
       return;
     }

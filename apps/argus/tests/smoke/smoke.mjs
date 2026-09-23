@@ -143,6 +143,17 @@ try {
       const verb = tile?.querySelector('.launcher-verb');
       verb?.click();
       const panes = () => [...document.querySelectorAll('.pane-universe')].filter((p) => p.offsetParent !== null);
+      // A wait over two seconds shows its progress: sampled from the press,
+      // the pane either has its space or says what it is waiting on, and a
+      // settle's percentage climbs.
+      const waited = [];
+      for (let i = 0; i < 40; i++) {
+        await sleep(100);
+        const p = panes()[0];
+        const w = p?.querySelector('.wait-progress');
+        const drawn = /[1-9]\d* FEEDS/.test(p?.querySelector('.universe-title')?.textContent ?? '') && !(w && !w.hidden);
+        waited.push([i * 100 + 100, drawn ? 'DRAWN' : (w && !w.hidden ? w.textContent : '')]);
+      }
       // Wait for a space with something in it: the smoke's cache is warm, so
       // a title still reading 0 FEEDS after this is a space that never came.
       for (let i = 0; i < 120; i++) { await sleep(500); if (panes().length > 0 && /[1-9]\\d* FEEDS/.test(panes()[0].querySelector('.universe-title')?.textContent ?? '')) break; }
@@ -229,13 +240,22 @@ try {
       await sleep(1000);
       const count = document.querySelectorAll('.pane-universe').length;
       await say('view files', 2000);
-      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle, viewPill, unfoldTitle, viewPillBack, gravityOff, gravityReset, densityCensus, censusTitle, densityShape, clickKept, fitsBefore, fitsAfter, clickTitle };`);
+      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle, viewPill, unfoldTitle, viewPillBack, gravityOff, gravityReset, densityCensus, censusTitle, densityShape, clickKept, fitsBefore, fitsAfter, clickTitle, waited };`);
     check('the UNIVERSE tile opens a pane of its own kind, titled by what landed',
       universe.hadTile && /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.title), universe.title);
     check('the universe pane says whether the index is whole', universe.state === 'WHOLE' || universe.state === 'LANDING', universe.state);
     check('the universe draws on its own field, framed with its modes', universe.drawn && universe.framed);
     check('RUNS stays a feed viewer while the universe is up', universe.runsIsFeedViewer);
     check('a second press focuses the universe rather than opening another', universe.count === 1, String(universe.count));
+    {
+      // From half a second on, never a blank field: the space, or what it waits on.
+      const blank = universe.waited.filter(([t, s]) => t >= 500 && !(s === 'DRAWN' || /ASKING|SETTLING/.test(s)));
+      const percents = universe.waited.map(([, s]) => (s.match(/SETTLING .* (\d+)%$/) ?? [])[1]).filter((v) => v !== undefined).map(Number);
+      const climbs = percents.length < 2 || percents[percents.length - 1] > percents[0];
+      check('a wait over two seconds shows its progress: from the press the universe is drawn or says what it waits on, and a settle climbs',
+        blank.length === 0 && climbs,
+        JSON.stringify(universe.waited.filter((_, i) => i % 5 === 0)));
+    }
     check('a click keeps the camera: a wheeled-in camera and the settled space stand through a click on the field',
       universe.clickKept, `fits ${universe.fitsBefore} -> ${universe.fitsAfter} | ${universe.clickTitle}`);
     check('universe enter <feed> descends: the title names the feed inside, the state says INSIDE, BACK and OPEN FEED stand on the frame',

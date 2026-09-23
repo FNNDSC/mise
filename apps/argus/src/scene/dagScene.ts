@@ -90,6 +90,12 @@ export interface SceneHandlers {
   deselect?: () => void;
   /** The words the hover tip shows for a node; null for the node's label. */
   tip?: (node: SceneNode) => string | null;
+  /**
+   * A settle too big for one frame is run in slices, and each slice says
+   * how far it has come; `done === total` is the settle's end. A scene
+   * given this handler never holds the page for a whole settle.
+   */
+  progress?: (done: number, total: number, nodes: number) => void;
 }
 
 /** The physics terms the molecule settle may honor (expert knobs; GRAVITY is a meaning). */
@@ -296,6 +302,28 @@ function layout_ranked(nodes: SceneNode[]): PlacedNode[] {
  * the metric (degree when no metric arrived). The graph finds its own
  * shape; scale carries meaning.
  */
+/**
+ * A molecule settle that can be run in slices: the simulation built, its
+ * ticks counted, stepped as the caller has time, and placed at the end.
+ *
+ * @property total - The ticks this settle runs; zero when nothing moves.
+ * @property moving - How many nodes the simulation moves.
+ * @property step - Runs up to `ticks` more ticks.
+ * @property place - Where every node stands now.
+ */
+interface MoleculeSettle {
+  total: number;
+  /** Nodes the simulation moves: pinned ones cost nothing. */
+  moving: number;
+  step: (ticks: number) => void;
+  place: () => PlacedNode[];
+}
+
+/**
+ * Lays out a molecule in one go — {@link molecule_prepare} run to its end.
+ *
+ * @returns Every node placed.
+ */
 function layout_molecule(
   nodes: SceneNode[],
   dimensions: 2 | 3 = 3,
@@ -303,6 +331,28 @@ function layout_molecule(
   physics: PhysicsTerms = PHYSICS_DEFAULT,
   frozen: ReadonlySet<string> = new Set(),
 ): PlacedNode[] {
+  const settle: MoleculeSettle = molecule_prepare(nodes, dimensions, seed, physics, frozen);
+  settle.step(settle.total);
+  return settle.place();
+}
+
+/**
+ * Builds a molecule settle without running it.
+ *
+ * @param nodes - The graph's nodes.
+ * @param dimensions - 2 or 3.
+ * @param seed - Where nodes stood last; a seeded node starts there.
+ * @param physics - The terms of this settle.
+ * @param frozen - Nodes that stand where their seed put them.
+ * @returns The settle, ready to step.
+ */
+function molecule_prepare(
+  nodes: SceneNode[],
+  dimensions: 2 | 3 = 3,
+  seed: Map<string, THREE.Vector3> = new Map(),
+  physics: PhysicsTerms = PHYSICS_DEFAULT,
+  frozen: ReadonlySet<string> = new Set(),
+): MoleculeSettle {
   const degree: Map<string, number> = new Map();
   const links: Array<{ source: string; target: string }> = [];
   for (const node of nodes) {
@@ -394,17 +444,42 @@ function layout_molecule(
     simulation.force('gx', forceX(0).strength(pull)).force('gy', forceY(0).strength(pull));
     if (dimensions === 3) simulation.force('gz', forceZ(0).strength(pull));
   }
-  if (simulated.length > 0) for (let tick: number = 0; tick < (seed.size > 0 ? 90 : 150); tick++) simulation.tick();
-
-  return nodes.map((node: SceneNode, index: number): PlacedNode => {
-    const sim = simNodes[index];
-    return {
-      node,
-      position: new THREE.Vector3(sim?.x ?? 0, sim?.y ?? 0, sim?.z ?? 0),
-      radius: radii[index] ?? NODE_RADIUS,
-    };
-  });
+  const total: number = simulated.length === 0 ? 0 : (seed.size > 0 ? 90 : 150);
+  let done: number = 0;
+  return {
+    total,
+    moving: simulated.length,
+    step: (ticks: number): void => {
+      for (let tick: number = 0; tick < ticks && done < total; tick++, done++) simulation.tick();
+    },
+    place: (): PlacedNode[] => nodes.map((node: SceneNode, index: number): PlacedNode => {
+      const sim = simNodes[index];
+      return {
+        node,
+        position: new THREE.Vector3(sim?.x ?? 0, sim?.y ?? 0, sim?.z ?? 0),
+        radius: radii[index] ?? NODE_RADIUS,
+      };
+    }),
+  };
 }
+
+/**
+ * How a rebuild settles the graph it draws.
+ *
+ * - `full`: every node settles (seeded nodes start where they stood).
+ * - `new`: nodes that already stood somewhere hold still; only nodes new to
+ *   the scene settle among them — a landing adds a molecule without moving
+ *   three thousand spheres.
+ * - `hold`: nothing settles when every node already stands somewhere (a
+ *   census toggle, a palette change, a space re-shown as it was); any new
+ *   node settles as under `new`.
+ */
+export type SettleMode = 'full' | 'new' | 'hold';
+
+/** Settles smaller than this many ticks × nodes run in one go. */
+const SLICE_MIN_WORK: number = 90 * 400;
+/** Time a settle may take from one frame before it yields to the next. */
+const SLICE_BUDGET_MS: number = 12;
 
 /**
  * One live DAG rendering bound to a container element.
@@ -434,9 +509,12 @@ export class DagScene {
   private physics: PhysicsTerms = { ...PHYSICS_DEFAULT };
 
   /** Sets physics terms and re-settles (warm-started, so it morphs). */
-  public physics_set(terms: Partial<PhysicsTerms>): void {
+  public physics_set(terms: Partial<PhysicsTerms>, resettle: boolean = true): void {
     this.physics = { ...this.physics, ...terms };
-    this.rebuild();
+    // A caller about to set a new graph anyway changes the terms without
+    // settling the old one first: the first paint of a space used to
+    // settle three thousand spheres twice.
+    if (resettle) this.rebuild();
   }
 
   public physics_get(): PhysicsTerms {
@@ -460,7 +538,8 @@ export class DagScene {
   public census_set(on: boolean): void {
     if (this.census === on) return;
     this.census = on;
-    this.rebuild();
+    // The census shells what stands; it moves nothing.
+    this.rebuild(true, 'hold');
   }
 
   public census_get(): boolean {
@@ -700,7 +779,7 @@ export class DagScene {
    *
    * @param graph - The normalized graph.
    */
-  public graph_set(graph: SceneGraph, options: { wave?: boolean; fit?: boolean; frozen?: ReadonlyArray<string>; physics?: Partial<PhysicsTerms> } = {}): void {
+  public graph_set(graph: SceneGraph, options: { wave?: boolean; fit?: boolean; frozen?: ReadonlyArray<string>; physics?: Partial<PhysicsTerms>; settle?: SettleMode } = {}): void {
     this.graph = graph;
     // Nodes to hold still through this settle, and physics for it alone:
     // a descent settles one feed while the field around it stands, with
@@ -710,7 +789,7 @@ export class DagScene {
     this.physicsOnce = options.physics;
     // A graph arriving under a flight keeps the camera where the flight
     // put it (`fit: false`); every other arrival is framed whole.
-    this.rebuild(options.fit !== false);
+    this.rebuild(options.fit !== false, options.settle ?? 'full');
     // An ARRIVING graph gets one wave; a local re-projection (a scale or
     // layout flip) must not fire one — an unasked pulse reads as a glitch.
     if (options.wave !== false) this.wave_start();
@@ -1110,7 +1189,7 @@ export class DagScene {
 
   /** Re-reads the palette (the THEME pill changed) and repaints. */
   public palette_refresh(): void {
-    this.rebuild();
+    this.rebuild(true, 'hold');
   }
 
   /** Fits the renderer to the container's current box. */
@@ -1279,8 +1358,69 @@ export class DagScene {
     return geometry;
   }
 
-  /** Rebuilds meshes and edges from the current graph and strategy. */
-  private rebuild(fit: boolean = true): void {
+  /** Counts rebuilds, so a sliced settle overtaken by a newer one stops. */
+  private rebuildGen: number = 0;
+
+  /**
+   * Rebuilds meshes and edges from the current graph and strategy.
+   *
+   * @param fit - Frame the result.
+   * @param mode - How the graph settles; see {@link SettleMode}.
+   */
+  private rebuild(fit: boolean = true, mode: SettleMode = 'full'): void {
+    const generation: number = ++this.rebuildGen;
+    if (this.strategy !== 'molecule') {
+      this.draw(layout_ranked(this.graph.nodes), fit);
+      return;
+    }
+    let frozen: ReadonlySet<string> = this.frozen;
+    if (mode !== 'full' && frozen.size === 0) {
+      const standing: string[] = this.graph.nodes.map((node: SceneNode): string => node.id).filter((id: string): boolean => this.lastPositions.has(id));
+      if (standing.length > 0) frozen = new Set(standing);
+    }
+    const settle: MoleculeSettle = molecule_prepare(
+      this.graph.nodes,
+      this.projection === '2d' ? 2 : 3,
+      this.lastPositions,
+      this.physicsOnce !== undefined ? { ...this.physics, ...this.physicsOnce } : this.physics,
+      frozen,
+    );
+    // A settle too big for one frame runs in slices when someone is told
+    // how far it has come: the page keeps drawing the scene that stands,
+    // the operator sees a bar move, and the new scene replaces it at the
+    // end. Without a listener, and for a small settle, it runs in one go.
+    const nodes: number = this.graph.nodes.length;
+    const progress = this.handlers.progress;
+    // The work is the ticks times the nodes that move: a descent settles a
+    // handful among thousands and must land in the same call, since the
+    // flight that follows reads the meshes it draws.
+    if (progress === undefined || settle.total * settle.moving < SLICE_MIN_WORK) {
+      settle.step(settle.total);
+      this.draw(settle.place(), fit);
+      return;
+    }
+    let done: number = 0;
+    progress(0, settle.total, nodes);
+    const slice = (): void => {
+      if (generation !== this.rebuildGen || this.disposed) return;
+      const started: number = performance.now();
+      while (done < settle.total && performance.now() - started < SLICE_BUDGET_MS) {
+        settle.step(1);
+        done += 1;
+      }
+      if (done < settle.total) {
+        progress(done, settle.total, nodes);
+        window.requestAnimationFrame(slice);
+        return;
+      }
+      this.draw(settle.place(), fit);
+      progress(settle.total, settle.total, nodes);
+    };
+    window.requestAnimationFrame(slice);
+  }
+
+  /** Draws placed nodes as the scene: meshes, edges, census, the frame. */
+  private draw(placed: PlacedNode[], fit: boolean): void {
     this.group.clear();
     this.meshes = new Map();
     this.edges = [];
@@ -1293,16 +1433,6 @@ export class DagScene {
     this.drag = null;
     const palette = palette_read();
     this.pulseColor = palette.pulse;
-    const placed: PlacedNode[] =
-      this.strategy === 'molecule'
-        ? layout_molecule(
-            this.graph.nodes,
-            this.projection === '2d' ? 2 : 3,
-            this.lastPositions,
-            this.physicsOnce !== undefined ? { ...this.physics, ...this.physicsOnce } : this.physics,
-            this.frozen,
-          )
-        : layout_ranked(this.graph.nodes);
     this.lastPositions = new Map(placed.map((p: PlacedNode): [string, THREE.Vector3] => [p.node.id, p.position.clone()]));
     if (this.projection === '2d') {
       // The molecule already settled in-plane; ranked drops only its

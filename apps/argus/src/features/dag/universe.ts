@@ -398,3 +398,115 @@ export function clusterGraph_build(landed: ReadonlyArray<LandedFeed>, shape: str
   });
   return { nodes };
 }
+
+/** The scene id of one stage of a folded shape. */
+export function foldId_of(shape: string, index: number): string {
+  return `fold:${shape}:${index}`;
+}
+
+/**
+ * The universe folded across feeds: one molecule per pipeline shape, its
+ * spheres the shape's stages, each sized by the feeds the shape holds and
+ * hued by how many of those feeds erred at that stage. A thousand feeds of
+ * one bespoke pipeline are one molecule, `×1,000`, rather than a blob of a
+ * thousand; a click unfolds it into its members. Folding is the descent one
+ * level up, and the shape string is its key: two feeds fold together
+ * exactly when the kernel gave them the same groups in the same places.
+ *
+ * @param landed - What has landed.
+ * @param scale - `feeds` sizes by the feeds held (the fold's own measure);
+ *   `jobs` by the jobs at the stage across them, both on the log.
+ * @returns The scene graph.
+ */
+export function foldedGraph_build(landed: ReadonlyArray<LandedFeed>, scale: UniverseScale = 'jobs'): SceneGraph {
+  const byShape: Map<string, LandedFeed[]> = new Map();
+  for (const feed of [...landed].sort((a: LandedFeed, b: LandedFeed): number => a.id - b.id)) {
+    if (feed.groups.length === 0) continue;
+    const shape: string = shape_of(feed);
+    const members: LandedFeed[] = byShape.get(shape) ?? [];
+    members.push(feed);
+    byShape.set(shape, members);
+  }
+  const nodes: SceneNode[] = [];
+  for (const [shape, members] of byShape) {
+    const first: LandedFeed = members[0] as LandedFeed;
+    first.groups.forEach((group: LandedGroup, index: number): void => {
+      let jobs: number = 0;
+      let erred: number = 0;
+      for (const member of members) {
+        const stage: LandedGroup | undefined = member.groups[index];
+        if (stage === undefined) continue;
+        jobs += stage.count;
+        if (stage.errored > 0) erred += 1;
+      }
+      const share: number | undefined = erred > 0 ? Math.min(1, erred / members.length) : undefined;
+      nodes.push({
+        id: foldId_of(shape, index),
+        label: group.plugin,
+        parentIds: group.parent === null ? [] : [foldId_of(shape, group.parent)],
+        joinParentIds: [],
+        status: erred === members.length ? 'finishedWithError' : 'finishedSuccessfully',
+        metric: scale === 'feeds' ? jobsMetric_of(members.length) : jobsMetric_of(jobs),
+        ...(members.length > 1 ? { count: members.length } : {}),
+        ...(share !== undefined ? { share } : {}),
+      });
+    });
+  }
+  return { nodes };
+}
+
+/**
+ * The words a hover over a folded stage gives: the stage, the feeds folded
+ * under it, how many of them erred there, and the shape.
+ *
+ * @param nodeId - The node under the pointer.
+ * @param feeds - What has landed.
+ * @returns The tip, or null for a node that is not a folded stage.
+ */
+export function foldTip_of(nodeId: string, feeds: LandedFeeds): string | null {
+  const match: RegExpMatchArray | null = nodeId.match(/^fold:(.+):(\d+)$/);
+  if (match === null) return null;
+  const shape: string = match[1] as string;
+  const index: number = Number(match[2]);
+  const members: LandedFeed[] = feeds.all().filter((feed: LandedFeed): boolean => shape_of(feed) === shape);
+  const plugin: string | undefined = members[0]?.groups[index]?.plugin;
+  if (plugin === undefined) return null;
+  const erred: number = members.filter((feed: LandedFeed): boolean => (feed.groups[index]?.errored ?? 0) > 0).length;
+  const count: string = `${members.length.toLocaleString('en-US')} feed${members.length === 1 ? '' : 's'}`;
+  const errors: string = erred > 0 ? ` · ${erred.toLocaleString('en-US')} with errors` : '';
+  return `${plugin} · ${count}${errors} · ${shapeWords_brief(shape)}`;
+}
+
+/** The shape a folded stage's id names, or null. */
+export function foldShape_of(nodeId: string): string | null {
+  const match: RegExpMatchArray | null = nodeId.match(/^fold:(.+):\d+$/);
+  return match === null ? null : (match[1] as string);
+}
+
+/** The scene ids of a folded shape's stages, as drawn. */
+export function foldIds_of(shape: string, feeds: LandedFeeds): string[] {
+  const first: LandedFeed | undefined = feeds.all().find((feed: LandedFeed): boolean => shape_of(feed) === shape);
+  return first === undefined ? [] : first.groups.map((_group: LandedGroup, index: number): string => foldId_of(shape, index));
+}
+
+/**
+ * The universe with one shape unfolded: that shape's feeds as their own
+ * molecules, every other shape still folded and dimmed. The fold's
+ * descent, one level above a feed's.
+ *
+ * @param landed - What has landed.
+ * @param shape - The shape unfolded.
+ * @param scale - What sizes the spheres.
+ * @returns The scene graph, and the ids of the members' spheres.
+ */
+export function unfoldedGraph_build(landed: ReadonlyArray<LandedFeed>, shape: string, scale: UniverseScale = 'jobs'): { graph: SceneGraph; memberIds: string[] } {
+  const members: LandedFeed[] = landed.filter((feed: LandedFeed): boolean => shape_of(feed) === shape);
+  const others: LandedFeed[] = landed.filter((feed: LandedFeed): boolean => shape_of(feed) !== shape);
+  const folded: SceneGraph = foldedGraph_build(others, scale);
+  const open: SceneGraph = universeGraph_build(members, scale);
+  const memberIds: string[] = open.nodes.filter((node: SceneNode): boolean => node.ghost !== true).map((node: SceneNode): string => node.id);
+  return {
+    graph: { nodes: [...folded.nodes.map((node: SceneNode): SceneNode => ({ ...node, dim: true })), ...open.nodes] },
+    memberIds,
+  };
+}

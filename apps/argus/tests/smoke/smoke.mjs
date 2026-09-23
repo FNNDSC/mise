@@ -152,7 +152,7 @@ try {
       const state = first?.querySelector('.pane-state')?.textContent?.trim() ?? '';
       const canvas = first?.querySelector('.universe-canvas canvas');
       const drawn = canvas !== null && canvas !== undefined && canvas.offsetWidth > 0 && getComputedStyle(first.querySelector('.universe-canvas')).display !== 'none';
-      const framed = ['.field-rule', '.mode-strip', '.mode-elbow', '.mode-frame .universe-projection', '.mode-frame .universe-scale', '.mode-frame .universe-refresh']
+      const framed = ['.field-rule', '.mode-strip', '.mode-elbow', '.mode-frame .universe-projection', '.mode-frame .universe-view', '.mode-frame .universe-scale', '.mode-frame .universe-refresh']
         .every((sel) => first?.querySelector(sel) !== null);
       const runsIsFeedViewer = (document.querySelector('.pane-dag .dag-title')?.textContent ?? '').startsWith('UNIVERSE') === false;
       // The descent, by word: enter a feed that landed, read the pane inside,
@@ -184,6 +184,18 @@ try {
       for (let i = 0; i < 60; i++) { await sleep(500); if (!/SHAPE /.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
       await sleep(1500);
       const clusterBackTitle = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';
+      // The fold: SHAPES view, the same cluster unfolds from its molecule, and back.
+      await say('universe view shapes', 2500);
+      const viewPill = first?.querySelector('.universe-view')?.textContent?.trim() ?? '';
+      await say('universe cluster ' + landedId, 500);
+      for (let i = 0; i < 60; i++) { await sleep(500); if (/SHAPE /.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
+      await sleep(2500);
+      const unfoldTitle = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';
+      await say('universe back', 500);
+      for (let i = 0; i < 60; i++) { await sleep(500); if (!/SHAPE /.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
+      await sleep(2000);
+      await say('universe view feeds', 2500);
+      const viewPillBack = first?.querySelector('.universe-view')?.textContent?.trim() ?? '';
       // Press the tile again: the same pane, focused, not a second one.
       await say('dashboard', 2500);
       for (let i = 0; i < 60; i++) { await sleep(500); if (tiles().length > 0) break; }
@@ -192,7 +204,7 @@ try {
       await sleep(1000);
       const count = document.querySelectorAll('.pane-universe').length;
       await say('view files', 2000);
-      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle };`);
+      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle, viewPill, unfoldTitle, viewPillBack };`);
     check('the UNIVERSE tile opens a pane of its own kind, titled by what landed',
       universe.hadTile && /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.title), universe.title);
     check('the universe pane says whether the index is whole', universe.state === 'WHOLE' || universe.state === 'LANDING', universe.state);
@@ -209,6 +221,9 @@ try {
       `${universe.clusterTitle} | ${universe.clusterState}`);
     check('universe back from a cluster returns to the whole space',
       /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.clusterBackTitle), universe.clusterBackTitle);
+    check('universe view shapes folds the top, a folded shape unfolds into its members, and the view comes back to feeds',
+      universe.viewPill === 'SHAPES' && /^UNIVERSE — SHAPE .+ · [1-9]\d* FEEDS?$/.test(universe.unfoldTitle) && universe.viewPillBack === 'FEEDS',
+      `${universe.viewPill} | ${universe.unfoldTitle} | ${universe.viewPillBack}`);
   }
 
   if (stage('drawer-everywhere (files, runs, pacs)')) {

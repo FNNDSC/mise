@@ -22,7 +22,8 @@ import { PROC_UNIVERSE_MODEL_KIND, procUniverseModelSchema, type ProcUniverseMod
 import { DagScene, type SceneGraph, type SceneNode } from '../../scene/dagScene.js';
 import {
   LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse,
-  enteredFeed_build, descendedGraph_build, sphereIds_of, clusterTip_of, clusterIds_of, clusterGraph_build, shapeWords_of, shapeWords_brief, shape_of,
+  enteredFeed_build, descendedGraph_build, sphereIds_of, clusterTip_of, clusterGraph_build, clusterIds_of, shapeWords_of, shapeWords_brief, shape_of,
+  foldedGraph_build, foldTip_of, foldShape_of, foldIds_of, unfoldedGraph_build,
   type LandedFeed, type UniverseScale, type EnteredFeed,
 } from '../dag/universe.js';
 import type { KeyStore } from '../../app/dormant.js';
@@ -58,6 +59,8 @@ export interface UniversePanelMount {
   projectionPill: HTMLElement | null;
   refreshPill: HTMLElement | null;
   scalePill: HTMLElement | null;
+  /** VIEW: every feed its own molecule, or the shapes folded. */
+  viewPill: HTMLElement | null;
   /** The facts overlay on the field: the selected node's payload and verbs. */
   facts: HTMLElement | null;
   /** BACK, on the frame while a feed is entered. */
@@ -115,6 +118,12 @@ export class UniversePanel {
   private disposed: boolean = false;
   /** What sizes a sphere: its jobs (log) or nothing. */
   private scale: UniverseScale = 'jobs';
+  /**
+   * What the top of the universe shows: every feed as its own molecule
+   * (the whole compute structure, the default), or the shapes folded, one
+   * molecule per pipeline for when a thousand runs of one are in the way.
+   */
+  private view: 'feeds' | 'shapes' = 'feeds';
   /** The feed entered, while one is. */
   private inside: EnteredState | null = null;
   /** The cluster in view, while one is: a shape and its spheres. */
@@ -122,6 +131,7 @@ export class UniversePanel {
   /** A descent or an ascent in flight: clicks wait. */
   private flying: boolean = false;
   private readonly facts: HTMLElement | null;
+  private viewPill: HTMLElement | null = null;
   private readonly backPill: HTMLElement | null;
   private readonly openPill: HTMLElement | null;
   private readonly pane: HTMLElement | null;
@@ -143,7 +153,7 @@ export class UniversePanel {
     this.scene = new DagScene(mount.canvas, {
       // A sphere is a plugin group inside a feed; the tip says both. Inside
       // a feed the nodes are its own and carry their labels.
-      tip: (node: SceneNode): string | null => (this.inside === null ? (universeTip_of(node.id, this.landed) ?? clusterTip_of(node.id, this.landed)) : null),
+      tip: (node: SceneNode): string | null => (this.inside === null ? (foldTip_of(node.id, this.landed) ?? universeTip_of(node.id, this.landed) ?? clusterTip_of(node.id, this.landed)) : null),
       // Outside: a click on a sphere descends into its feed. Inside: a
       // click on one of the feed's nodes shows its facts and its verbs.
       select: (node: SceneNode): void => this.node_select(node),
@@ -174,9 +184,11 @@ export class UniversePanel {
     mount.refreshPill?.addEventListener('click', (): void => this.request());
     mount.scalePill?.addEventListener('click', (): void => {
       this.scale = this.scale === 'jobs' ? 'feeds' : 'jobs';
-      if (mount.scalePill !== null) mount.scalePill.textContent = this.scale.toUpperCase();
+      if (mount.scalePill !== null) mount.scalePill.textContent = this.scale === 'jobs' ? 'JOBS' : 'ALIKE';
       if (this.shown) this.paint();
     });
+    mount.viewPill?.addEventListener('click', (): void => this.view_set(this.view === 'feeds' ? 'shapes' : 'feeds'));
+    this.viewPill = mount.viewPill;
     this.canvas.style.display = 'none';
     this.title_paint();
   }
@@ -264,6 +276,14 @@ export class UniversePanel {
       this.descend(feedId);
       return `entering feed ${feedId}`;
     }
+    if (verb === 'view') {
+      const wanted: string = (args[0] ?? '').toLowerCase();
+      if (wanted !== 'feeds' && wanted !== 'shapes') return 'universe view feeds|shapes';
+      if (this.inside !== null || this.cluster !== null) return 'universe view: climb out first (universe back)';
+      this.view_set(wanted);
+      return wanted === 'feeds' ? 'every feed its own molecule' : 'the shapes folded, one molecule each';
+    }
+    if (this.flying && (verb === 'enter' || verb === 'cluster' || verb === 'back')) return 'universe: still moving; ask again';
     if (verb === 'cluster') {
       const feedId: number = parseInt(args[0] ?? '', 10);
       const feed: LandedFeed | undefined = Number.isFinite(feedId) ? this.landed.get(feedId) : undefined;
@@ -282,12 +302,24 @@ export class UniversePanel {
       this.handlers.feed_open?.(this.inside.feedId);
       return `opening feed ${this.inside.feedId}`;
     }
-    return 'universe enter <feed>|cluster <feed>|back|open';
+    return 'universe enter <feed>|cluster <feed>|view feeds|shapes|back|open';
+  }
+
+  /** Switches the top of the universe between every feed and the folded shapes. */
+  private view_set(view: 'feeds' | 'shapes'): void {
+    this.view = view;
+    if (this.viewPill !== null) this.viewPill.textContent = view.toUpperCase();
+    if (this.shown && this.inside === null && this.cluster === null) this.paint();
   }
 
   /** Whether a feed is entered, for a host that asks. */
   public inside_get(): number | null {
     return this.inside?.feedId ?? null;
+  }
+
+  /** Whether a space has arrived, for a host deciding whether to ask. */
+  public shown_get(): boolean {
+    return this.shown;
   }
 
   /** Releases the scene. */
@@ -332,7 +364,9 @@ export class UniversePanel {
   }
 
   private paint(fit: boolean = true): void {
-    const graph = universeGraph_build(this.landed.all(), this.scale);
+    // The top of the universe: every feed (the structure itself), or the
+    // shapes folded when the operator asks for it.
+    const graph = this.view === 'shapes' ? foldedGraph_build(this.landed.all(), this.scale) : universeGraph_build(this.landed.all(), this.scale);
     // Hug while small, spread when a crowd: the bound that keeps a lone
     // molecule together would pack seven hundred feeds into one ball.
     // Set only when it changes: physics_set settles the old graph again.
@@ -368,22 +402,37 @@ export class UniversePanel {
           return;
         }
         const entered: EnteredFeed = enteredFeed_build(model);
-        // The feed unfolds from where its molecule stood: every new node
-        // starts at the molecule's centre and settles out from it.
+        // The feed unfolds from where its molecule stood — or, entered by
+        // word from the folded top, from where its shape's fold stands:
+        // every new node starts at that centre and settles out from it.
         const positions = this.scene.positions_get();
         const centre: [number, number, number] = [0, 0, 0];
         let counted: number = 0;
-        for (const id of spheres) {
+        for (const id of [...spheres, ...foldIds_of(shape_of(feed), this.landed)]) {
           const at = positions[id];
           if (at === undefined) continue;
           centre[0] += at[0]; centre[1] += at[1]; centre[2] += at[2]; counted += 1;
+          if (counted === spheres.length && spheres.some((sphere: string): boolean => positions[sphere] !== undefined)) break;
         }
         if (counted > 0) { centre[0] /= counted; centre[1] /= counted; centre[2] /= counted; }
         for (const node of entered.nodes) {
           positions[node.id] = [centre[0] + (Math.random() - 0.5) * 0.5, centre[1] + (Math.random() - 0.5) * 0.5, centre[2] + (Math.random() - 0.5) * 0.5];
         }
         this.scene.positions_seed(positions);
-        const graph: SceneGraph = descendedGraph_build(this.landed.all(), feedId, entered, this.scale);
+        // The base is what stands behind the feed: every feed, or its own
+        // shape unfolded with the rest still folded; the feed's molecule
+        // replaced by its graph, everything but the graph dimmed.
+        const prefix: string = `feed:${feedId}:`;
+        const graph: SceneGraph = this.view === 'feeds'
+          ? descendedGraph_build(this.landed.all(), feedId, entered, this.scale)
+          : {
+              nodes: [
+                ...unfoldedGraph_build(this.landed.all(), shape_of(feed), this.scale).graph.nodes
+                  .filter((node: SceneNode): boolean => !node.id.startsWith(prefix))
+                  .map((node: SceneNode): SceneNode => ({ ...node, dim: true })),
+                ...entered.nodes,
+              ],
+            };
         // Only the feed settles: the rest of the space holds still and
         // pushes on nothing, and the feed hugs itself where the molecule
         // stood rather than exploding into a crowd's charge.
@@ -436,16 +485,49 @@ export class UniversePanel {
   }
 
   private cluster_show(shape: string): void {
-    const ids: string[] = clusterIds_of(shape, this.landed);
-    if (ids.length === 0) return;
+    if (this.view === 'feeds') {
+      // Every feed is already drawn: the cluster is lit where it stands,
+      // the rest dimmed, nothing moved, the camera flown to frame it.
+      const ids: string[] = clusterIds_of(shape, this.landed);
+      if (ids.length === 0) return;
+      this.flying = true;
+      this.cluster = { shape, ids };
+      this.pane?.classList.add('universe-cluster');
+      const lit: SceneGraph = clusterGraph_build(this.landed.all(), shape, this.scale);
+      this.scene.graph_set(lit, { wave: false, fit: false, frozen: lit.nodes.map((node: SceneNode): string => node.id) });
+      this.title_paint();
+      this.scene.camera_flyToFit(ids, DESCENT_MS, (): void => { this.flying = false; });
+      return;
+    }
+    const { graph, memberIds } = unfoldedGraph_build(this.landed.all(), shape, this.scale);
+    if (memberIds.length === 0) return;
     this.flying = true;
-    this.cluster = { shape, ids };
+    this.cluster = { shape, ids: memberIds };
     this.pane?.classList.add('universe-cluster');
-    const graph: SceneGraph = clusterGraph_build(this.landed.all(), shape, this.scale);
-    // Nothing moves: the field stands and only the light changes.
-    this.scene.graph_set(graph, { wave: false, fit: false, frozen: graph.nodes.map((node: SceneNode): string => node.id) });
+    // The members unfold from where the folded molecule stood: each starts
+    // at its centre and settles out, the rest of the field frozen, no
+    // gravity to the origin, no centering — the feed descent's settle.
+    const positions = this.scene.positions_get();
+    const foldIds: string[] = foldIds_of(shape, this.landed);
+    const centre: [number, number, number] = [0, 0, 0];
+    let counted: number = 0;
+    for (const id of foldIds) {
+      const at = positions[id];
+      if (at === undefined) continue;
+      centre[0] += at[0]; centre[1] += at[1]; centre[2] += at[2]; counted += 1;
+    }
+    if (counted > 0) { centre[0] /= counted; centre[1] /= counted; centre[2] /= counted; }
+    const memberSet: Set<string> = new Set(memberIds);
+    for (const node of graph.nodes) {
+      if (memberSet.has(node.id) || node.ghost === true) {
+        positions[node.id] = [centre[0] + (Math.random() - 0.5) * 0.5, centre[1] + (Math.random() - 0.5) * 0.5, centre[2] + (Math.random() - 0.5) * 0.5];
+      }
+    }
+    this.scene.positions_seed(positions);
+    const frozen: string[] = graph.nodes.filter((node: SceneNode): boolean => !memberSet.has(node.id) && node.ghost !== true).map((node: SceneNode): string => node.id);
+    this.scene.graph_set(graph, { wave: false, fit: false, frozen, physics: { reach: UNIVERSE_REACH, gravity: false } });
     this.title_paint();
-    this.scene.camera_flyToFit(ids, DESCENT_MS, (): void => { this.flying = false; });
+    this.scene.camera_flyToFit(memberIds, DESCENT_MS, (): void => { this.flying = false; });
   }
 
   /** A click: descend from a sphere outside, show facts on a node inside. */
@@ -453,7 +535,9 @@ export class UniversePanel {
     if (this.flying) return;
     if (this.inside === null) {
       const match: RegExpMatchArray | null = node.id.match(/^feed:(\d+):\d+$/);
+      const folded: string | null = foldShape_of(node.id);
       if (match !== null) this.descend(Number(match[1]));
+      else if (folded !== null) this.cluster_enter(folded);
       else if (node.id.startsWith('shape:')) this.cluster_enter(node.id.slice('shape:'.length));
       return;
     }

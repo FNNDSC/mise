@@ -1,5 +1,15 @@
 # @fnndsc/argus
 
+## 0.13.0
+
+### Minor Changes
+
+- 5b78288: argus: the universe can fold across feeds. A VIEW block on the frame (and `universe view feeds|shapes`) switches the top between every feed as its own molecule (the default, the whole compute structure) and one molecule per pipeline shape, sized by the feeds folded under it and reddened by how many of them erred at each stage; a click on a folded shape unfolds it into its members in place. The scale block's second word is now ALIKE.
+
+### Patch Changes
+
+- 5a95cac: argus: the UNIVERSE takes the stage — its own preset and primary pane, entered whole from the dashboard tile rather than split beside a browser — and its frame opens to the bar's width like every other field's, so the blocks stay on screen.
+
 ## 0.12.0
 
 ### Minor Changes

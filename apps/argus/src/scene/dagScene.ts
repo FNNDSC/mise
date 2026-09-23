@@ -150,6 +150,9 @@ const SIBLING_SPACING: number = 2.0;
 
 /** Idle rotation speed, radians per frame. */
 const SPIN_INTERACTIVE: number = 0.0022;
+
+/** The world's up: the axis the idle spin and a sideways orbit turn about. */
+const WORLD_UP: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
 const SPIN_AMBIENT: number = 0.006;
 
 /**
@@ -333,6 +336,24 @@ function layout_molecule(
       return { id: n.id, x: from.x, y: from.y, z: from.z };
     },
   );
+  // Only what moves is simulated. A frozen node with a place stands there
+  // and pushes on nothing, so a settle with most of the field frozen (a
+  // descent into one feed among three thousand spheres) simulates the free
+  // nodes and whatever they link to, not the field: the whole-field settle
+  // held the page for seconds and flights caught under it arrived in one
+  // frame.
+  const pinned = (d: { id: string; fx?: number }): boolean => frozen.has(d.id) && d.fx !== undefined;
+  let simulated: typeof simNodes = simNodes;
+  let simLinks: typeof links = links;
+  if (frozen.size > 0) {
+    const free: Set<string> = new Set(simNodes.filter((d): boolean => !pinned(d)).map((d): string => d.id));
+    simLinks = links.filter((link): boolean => free.has(link.source) || free.has(link.target));
+    const kept: Set<string> = new Set(free);
+    for (const link of simLinks) { kept.add(link.source); kept.add(link.target); }
+    simulated = simNodes.filter((d): boolean => kept.has(d.id));
+    const present: Set<string> = new Set(simulated.map((d): string => d.id));
+    simLinks = simLinks.filter((link): boolean => present.has(link.source) && present.has(link.target));
+  }
   // In 2D the simulation itself is two-dimensional: a 3D settle flattened
   // afterwards piles nodes that resolved their overlaps in depth.
   const charge = forceManyBody().strength(
@@ -341,10 +362,10 @@ function layout_molecule(
       : (d: { id: string }): number => (frozen.has(d.id) ? 0 : -6),
   );
   if (physics.reach !== undefined) charge.distanceMax(physics.reach);
-  const simulation = forceSimulation(simNodes, dimensions)
+  const simulation = forceSimulation(simulated, dimensions)
     .force(
       'link',
-      forceLink(links)
+      forceLink(simLinks)
         .id((d: { id: string }) => d.id)
         // Edges reach surface to surface: a hub's children orbit its skin.
         .distance(
@@ -373,7 +394,7 @@ function layout_molecule(
     simulation.force('gx', forceX(0).strength(pull)).force('gy', forceY(0).strength(pull));
     if (dimensions === 3) simulation.force('gz', forceZ(0).strength(pull));
   }
-  for (let tick: number = 0; tick < (seed.size > 0 ? 90 : 150); tick++) simulation.tick();
+  if (simulated.length > 0) for (let tick: number = 0; tick < (seed.size > 0 ? 90 : 150); tick++) simulation.tick();
 
   return nodes.map((node: SceneNode, index: number): PlacedNode => {
     const sim = simNodes[index];
@@ -491,6 +512,21 @@ export class DagScene {
    */
   private touched: boolean = false;
 
+  /**
+   * The world point the camera looks at: the pivot of the idle spin and the
+   * orbit, the target of the wheel's dolly, carried by a pan. A flight to a
+   * feed or a cluster moves it there, so the space turns about what the
+   * operator is looking at instead of swinging it out of view.
+   */
+  private readonly focus: THREE.Vector3 = new THREE.Vector3();
+
+  /** Turns the graph about an axis through the focus. */
+  private turn_about(axis: THREE.Vector3, angle: number): void {
+    const q: THREE.Quaternion = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+    this.group.position.sub(this.focus).applyQuaternion(q).add(this.focus);
+    this.group.quaternion.premultiply(q);
+  }
+
   /** Times the scene has framed the graph itself (`camera_fit`). */
   private fits: number = 0;
   private strategy: LayoutStrategy = 'ranked';
@@ -585,9 +621,13 @@ export class DagScene {
           this.camera.position.addScaledVector(heading, -event.deltaY * speed);
           return;
         }
+        // Dolly toward the focus, not the world's origin: after a flight to
+        // a feed the camera looks at the feed, and the wheel must close on it.
+        const offset: THREE.Vector3 = this.camera.position.clone().sub(this.focus);
+        const eye: number = offset.length();
         const factor: number = Math.exp(event.deltaY * 0.001);
-        const next: number = Math.min(Math.max(eyeDistance * factor, 3), Math.max(40, this.camera.far * 0.45));
-        this.camera.position.multiplyScalar(next / Math.max(0.0001, eyeDistance));
+        const next: number = Math.min(Math.max(eye * factor, 1.5), Math.max(40, this.camera.far * 0.45));
+        this.camera.position.copy(this.focus).addScaledVector(offset, next / Math.max(0.0001, eye));
       }, { passive: false });
       // Right-drag pans; the browser menu would eat the gesture.
       this.renderer.domElement.addEventListener('contextmenu', (event: Event): void =>
@@ -623,7 +663,7 @@ export class DagScene {
           this.flight === null &&
           this.projection === '3d'
         ) {
-          this.group.rotation.y += SPIN_INTERACTIVE;
+          this.turn_about(WORLD_UP, SPIN_INTERACTIVE);
         }
         // The reaction simulation runs while hot: during a grab, and cooling
         // after release until it settles.
@@ -824,6 +864,7 @@ export class DagScene {
     const aim: THREE.Camera = this.camera.clone();
     aim.position.copy(toPos);
     aim.lookAt(center);
+    this.focus.copy(center);
     this.camera.far = Math.max(this.camera.far, (distance + radius) * 2);
     this.camera.updateProjectionMatrix();
     this.flight = {
@@ -1039,7 +1080,7 @@ export class DagScene {
   public projection_set(projection: '3d' | '2d'): void {
     this.projection = projection;
     if (projection === '2d') {
-      this.group.rotation.set(0, 0, 0);
+      this.group.quaternion.identity();
     }
     this.rebuild();
   }
@@ -1183,7 +1224,8 @@ export class DagScene {
       const fitH: number = cloudRadius / Math.tan(fov / 2);
       const fitW: number = cloudRadius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
       const distance: number = Math.max(8, Math.max(fitH, fitW) * 1.15);
-      this.group.position.set(-center.x, -center.y, -center.z);
+      this.group.position.copy(center).applyQuaternion(this.group.quaternion).negate();
+      this.focus.set(0, 0, 0);
       // A census cloud grown from near-planar anchors reads edge-on from
       // the axis; open on a three-quarter orbit so the shells read as
       // volume from the first frame.
@@ -1212,13 +1254,29 @@ export class DagScene {
     const fitH: number = radius / Math.tan(fov / 2);
     const fitW: number = radius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
     const distance: number = Math.max(8, Math.max(fitH, fitW) * 1.15);
-    this.group.position.set(-center.x, -center.y, -center.z);
+    this.group.position.copy(center).applyQuaternion(this.group.quaternion).negate();
+    this.focus.set(0, 0, 0);
     this.camera.position.set(0, 0, distance);
     // The far plane always clears the framed graph: the fixed 200 clipped
     // sprawling molecules into black voids (and swallowed 2D whole).
     this.camera.far = Math.max(200, (distance + radius) * 2);
     this.camera.updateProjectionMatrix();
     this.camera.lookAt(0, 0, 0);
+  }
+
+  /** Sphere geometries by radius, shared: a node's geometry is never mutated. */
+  private readonly spheres: Map<number, THREE.SphereGeometry> = new Map();
+
+  /** A sphere of a radius, shared across nodes and rebuilds. */
+  private sphere_of(radius: number): THREE.SphereGeometry {
+    const key: number = Math.round(radius * 1000);
+    let geometry: THREE.SphereGeometry | undefined = this.spheres.get(key);
+    if (geometry === undefined) {
+      geometry = new THREE.SphereGeometry(key / 1000, 24, 18);
+      geometry.computeBoundingSphere();
+      this.spheres.set(key, geometry);
+    }
+    return geometry;
   }
 
   /** Rebuilds meshes and edges from the current graph and strategy. */
@@ -1272,6 +1330,8 @@ export class DagScene {
         halo.renderOrder = 1;
         halo.userData['nodeId'] = node.id;
         halo.userData['halo'] = true;
+        // A dimmed halo is scenery like a dimmed sphere: it takes no pointer.
+        halo.userData['dim'] = node.dim === true;
         this.group.add(halo);
         this.meshes.set(node.id, halo);
         continue;
@@ -1283,7 +1343,7 @@ export class DagScene {
       const geometry: THREE.BufferGeometry =
         this.projection === '2d'
           ? new THREE.CircleGeometry(radius, 36)
-          : new THREE.SphereGeometry(radius, 24, 18);
+          : this.sphere_of(radius);
       const material: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({
         color: nodeColor_pick(node, palette, isRoot),
         roughness: 0.35,
@@ -1427,15 +1487,38 @@ export class DagScene {
    * force, or the pull would fight a recentering spring.
    */
   private dragSim_begin(nodeId: string): void {
-    const links: Array<{ source: string; target: string }> = [];
+    // A pull moves the grabbed node's own molecule — the nodes joined to it
+    // by edges, never across a cluster's halo, never a dimmed one — and
+    // leaves the rest of the field where it stands. Pulling one feed in a
+    // universe of seven hundred re-settled all of them under physics that
+    // were not the universe's own.
+    const halo = (id: string): boolean => this.meshes.get(id)?.userData['halo'] === true;
+    const dim = (id: string): boolean => this.meshes.get(id)?.userData['dim'] === true;
+    const all: Array<{ source: string; target: string }> = [];
+    const around: Map<string, string[]> = new Map();
     for (const node of this.graph.nodes) {
       for (const parentId of [...node.parentIds, ...node.joinParentIds]) {
-        if (this.meshes.has(parentId)) links.push({ source: parentId, target: node.id });
+        if (!this.meshes.has(parentId) || !this.meshes.has(node.id) || halo(parentId) || halo(node.id)) continue;
+        all.push({ source: parentId, target: node.id });
+        around.set(parentId, [...(around.get(parentId) ?? []), node.id]);
+        around.set(node.id, [...(around.get(node.id) ?? []), parentId]);
       }
     }
-    this.dragSimNodes = [...this.meshes.entries()].map(([id, mesh]) => ({
-      id, x: mesh.position.x, y: mesh.position.y, z: mesh.position.z,
-    }));
+    const molecule: Set<string> = new Set([nodeId]);
+    const queue: string[] = [nodeId];
+    while (queue.length > 0) {
+      const at: string = queue.pop() as string;
+      for (const next of around.get(at) ?? []) {
+        if (molecule.has(next) || dim(next)) continue;
+        molecule.add(next);
+        queue.push(next);
+      }
+    }
+    const links: Array<{ source: string; target: string }> = all.filter((link): boolean => molecule.has(link.source) && molecule.has(link.target));
+    this.dragSimNodes = [...molecule].map((id: string) => {
+      const mesh: THREE.Mesh = this.meshes.get(id) as THREE.Mesh;
+      return { id, x: mesh.position.x, y: mesh.position.y, z: mesh.position.z };
+    });
     this.dragSim = forceSimulation(this.dragSimNodes, this.projection === '2d' ? 2 : 3)
       .force('link', forceLink(links).id((d: { id: string }) => d.id).distance(2.2))
       .force('charge', forceManyBody().strength(-6))
@@ -1506,15 +1589,18 @@ export class DagScene {
     if (!this.viewDrag.moved) return;
     if (this.viewDrag.pan || this.projection === '2d') {
       // Screen-proportional pan: the graph follows the pointer.
-      const factor: number = this.camera.position.z * 0.0016;
-      this.camera.position.x -= dx * factor;
-      this.camera.position.y += dy * factor;
+      // Screen-proportional pan in the camera's own plane; the focus rides
+      // along, so the next turn pivots on what is now in the middle.
+      const factor: number = this.camera.position.distanceTo(this.focus) * 0.0016;
+      const shift: THREE.Vector3 = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).multiplyScalar(-dx * factor)
+        .add(new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1).multiplyScalar(dy * factor));
+      this.camera.position.add(shift);
+      this.focus.add(shift);
     } else {
-      this.group.rotation.y += dx * 0.005;
-      this.group.rotation.x = Math.min(
-        1.2,
-        Math.max(-1.2, this.group.rotation.x + dy * 0.005),
-      );
+      // Orbit about the focus: across turns about the world's up, along
+      // turns about the camera's right — the pivot is what is looked at.
+      this.turn_about(WORLD_UP, dx * 0.005);
+      this.turn_about(new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).normalize(), dy * 0.005);
     }
   }
 

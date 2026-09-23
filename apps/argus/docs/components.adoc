@@ -187,6 +187,7 @@ image::images/universe-pane-anatomy.svg[Universe pane anatomy,1180]
 | projection block | `.universe-projection` | Cycles 3D and 2D.
 | view block | `.universe-view` | Cycles FEEDS (every feed its own molecule, the default) and SHAPES (the shapes folded, one molecule each).
 | scale block | `.universe-scale` | Cycles JOBS (a sphere's radius by the log of the jobs it stands for; in SHAPES, of the jobs across the folded feeds) and ALIKE (every sphere alike; the field reads by shape alone).
+| gravity block | `.universe-gravity` | GRAVITY ON / OFF: the mass-weighted centring that gathers the clusters. A knob for play, with the rest by word: `universe physics charge\|link\|collide\|gravity on\|off`, `universe physics reset`; refused while inside a feed or a cluster.
 | refresh block | `.universe-refresh` | Asks the session for the space again (`proc universe`).
 | open block | `.universe-open` | While a feed is entered: the feed in a RUNS pane of its own (`feed diagram`).
 | back block | `.universe-back` | While a feed is entered: climb out to the whole space (Esc does the same).

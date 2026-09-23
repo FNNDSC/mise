@@ -1,5 +1,12 @@
 # @fnndsc/porter
 
+## 0.3.2
+
+### Patch Changes
+
+- 05b9b41: porter: `porter --status` marks the pid on a gone row as stale. The berth outlives a daemon killed with -9, and the bare number read as a process the listing had just made.
+  - @fnndsc/calypso@0.16.2
+
 ## 0.3.1
 
 ### Patch Changes

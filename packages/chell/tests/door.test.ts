@@ -5,7 +5,7 @@
  * @module
  */
 import { describe, it, expect, jest } from '@jest/globals';
-import { door_normalise, doorWire_build, door_login, doorBoot_follow, bootEvents_read, door_enter, type DoorFetch } from '../src/remote/door.js';
+import { door_normalise, doorWire_build, door_login, doorBoot_follow, bootEvents_read, door_enter, doorCredential_missing, doorUnreached_reason, type DoorFetch } from '../src/remote/door.js';
 
 /** A door that answers every request the same way, and remembers what it was asked. */
 function answer(status: number, body: unknown, setCookie?: string, text?: string): DoorFetch & { calls: Array<[string, RequestInit | undefined]> } {
@@ -24,6 +24,33 @@ describe('door_normalise and doorWire_build', () => {
     expect(door_normalise('http://127.0.0.1:4180/')).toBe('http://127.0.0.1:4180/');
     expect(doorWire_build('https://titan.tch.harvard.edu', '0123456789abcdef')).toBe('wss://titan.tch.harvard.edu/s/0123456789abcdef/');
     expect(doorWire_build('http://127.0.0.1:4180/', '0123456789abcdef')).toBe('ws://127.0.0.1:4180/s/0123456789abcdef/');
+  });
+});
+
+describe('a door typed by hand', () => {
+  it('reaches a door typed without a scheme over plain HTTP', () => {
+    expect(door_normalise('localhost:4180')).toBe('http://localhost:4180/');
+    expect(door_normalise('titan')).toBe('http://titan/');
+    expect(door_normalise(' 127.0.0.1:4180 ')).toBe('http://127.0.0.1:4180/');
+    expect(doorWire_build('localhost:4180', '0123456789abcdef')).toBe('ws://localhost:4180/s/0123456789abcdef/');
+  });
+
+  it('refuses a door that is not HTTP(S), by name', () => {
+    expect(() => door_normalise('ftp://titan')).toThrow('not a door address: ftp://titan');
+  });
+
+  it('asks for an empty credential as for a missing one', () => {
+    expect(doorCredential_missing(undefined)).toBe(true);
+    expect(doorCredential_missing('')).toBe(true);
+    expect(doorCredential_missing('  ')).toBe(true);
+    expect(doorCredential_missing('chris')).toBe(false);
+  });
+
+  it('names why a door was not reached by the network\'s own code', () => {
+    const refused: Error = Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:4180'), { code: 'ECONNREFUSED' }) });
+    expect(doorUnreached_reason(refused)).toBe('ECONNREFUSED');
+    expect(doorUnreached_reason(Object.assign(new TypeError('fetch failed'), { cause: new Error('unknown scheme') }))).toBe('unknown scheme');
+    expect(doorUnreached_reason(new Error('boom'))).toBe('boom');
   });
 });
 
@@ -69,6 +96,25 @@ describe('door_enter', () => {
     const fetchLike = answer(200, { key: '0123456789abcdef', mount: '/s/0123456789abcdef/', state: 'attached' }, 'porter_session=c.s; Path=/');
     const reach = await door_enter('https://titan/', 'chris', 'pw', fetchLike);
     expect(reach).toEqual({ identity: 'chris through the door at https://titan/', url: 'wss://titan/s/0123456789abcdef/', headers: { cookie: 'porter_session=c.s' } });
+  });
+
+  it('says in one line when the door cannot be reached, never a stack trace', async () => {
+    const said: string[] = [];
+    const errSpy = jest.spyOn(console, 'error').mockImplementation((line: string): void => { said.push(String(line)); });
+    const down: DoorFetch = async (): Promise<Response> => {
+      throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }) });
+    };
+    expect(await door_enter('localhost:4180', 'chris', 'pw', down)).toBeNull();
+    expect(said[0]).toContain('The door at http://localhost:4180/ could not be reached: ECONNREFUSED');
+    errSpy.mockRestore();
+  });
+
+  it('refuses a door that is not an HTTP(S) address before asking anything', async () => {
+    const said: string[] = [];
+    const errSpy = jest.spyOn(console, 'error').mockImplementation((line: string): void => { said.push(String(line)); });
+    expect(await door_enter('ftp://titan', undefined, undefined, answer(200, {}))).toBeNull();
+    expect(said[0]).toContain('not a door address: ftp://titan');
+    errSpy.mockRestore();
   });
 
   it('says why when the door refuses', async () => {

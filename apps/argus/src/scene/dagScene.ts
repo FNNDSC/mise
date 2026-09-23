@@ -483,6 +483,16 @@ export class DagScene {
   private flightHome: { position: THREE.Vector3; quaternion: THREE.Quaternion } | null = null;
   /** While inside a node (overlay up), the spin and picking hold still. */
   private holding: boolean = false;
+
+  /**
+   * Whether the operator has moved the camera (wheel or drag) since the
+   * scene last framed the graph itself. A caller repainting the same space
+   * asks this before refitting: a refit under a placed camera is a reset.
+   */
+  private touched: boolean = false;
+
+  /** Times the scene has framed the graph itself (`camera_fit`). */
+  private fits: number = 0;
   private strategy: LayoutStrategy = 'ranked';
   private selectedId: string | null = null;
   private frameHandle: number | null = null;
@@ -562,6 +572,7 @@ export class DagScene {
       this.renderer.domElement.addEventListener('wheel', (event: WheelEvent): void => {
         event.preventDefault();
         this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+        this.touched = true;
         // Dolly along the eye ray, not the z axis: census parks the camera
         // off-axis (and far beyond the old 3..40 clamp), where a z-only
         // dolly slid the whole cloud diagonally off screen.
@@ -772,8 +783,13 @@ export class DagScene {
    * @param ids - The nodes to frame; every drawn node when empty.
    * @param durationMs - The flight's length.
    * @param onDone - Called when the camera arrives.
+   * @param bulk - The share of the nodes the frame must hold, 0..1: at 1
+   *   every outlier is inside the frame; at 0.85 the farthest few spill,
+   *   and the bulk is close enough to touch. A large feed's settle throws
+   *   a few nodes far out, and a frame that held them all put the feed at
+   *   the centre as a starburst of two-pixel spheres nobody could click.
    */
-  public camera_flyToFit(ids: ReadonlyArray<string>, durationMs: number, onDone: () => void): void {
+  public camera_flyToFit(ids: ReadonlyArray<string>, durationMs: number, onDone: () => void, bulk: number = 1): void {
     const wanted: Set<string> = new Set(ids);
     const points: THREE.Vector3[] = [];
     let radiusMax: number = 0;
@@ -792,8 +808,9 @@ export class DagScene {
     const center: THREE.Vector3 = new THREE.Vector3();
     for (const point of points) center.add(point);
     center.divideScalar(points.length);
-    let radius: number = 1;
-    for (const point of points) radius = Math.max(radius, center.distanceTo(point) + radiusMax);
+    const distances: number[] = points.map((point: THREE.Vector3): number => center.distanceTo(point)).sort((a: number, b: number): number => a - b);
+    const kept: number = Math.max(1, Math.min(distances.length, Math.ceil(distances.length * Math.min(1, Math.max(0.1, bulk)))));
+    const radius: number = Math.max(1, (distances[kept - 1] ?? 1) + radiusMax);
     const fov: number = (this.camera.fov * Math.PI) / 180;
     const fitH: number = radius / Math.tan(fov / 2);
     const fitW: number = radius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
@@ -818,6 +835,17 @@ export class DagScene {
       durationMs,
       onDone,
     };
+  }
+
+  /**
+   * Whether the operator has placed the camera since the scene last framed
+   * the graph: a wheel or a drag. A repaint of the same space keeps a
+   * placed camera; a fresh space is framed whole.
+   *
+   * @returns True once the operator has wheeled or dragged since the last fit.
+   */
+  public camera_touched(): boolean {
+    return this.touched;
   }
 
   /**
@@ -972,6 +1000,24 @@ export class DagScene {
   /** Clears the node selection (a new graph owes nothing to the old one). */
   public selection_clear(): void {
     this.selectedId = null;
+    this.selection_paint();
+  }
+
+  /**
+   * Lights the selected sphere and dims the rest, touching materials only.
+   * Selection used to rebuild the scene: every click re-ran the settle of
+   * every node (seconds, on three thousand) and refitted the camera to
+   * the whole graph, so a click on a sphere the operator had dollied up
+   * to threw them back out to the whole space before anything else
+   * happened, and a double click could never land. A selection is paint.
+   */
+  private selection_paint(): void {
+    for (const [id, mesh] of this.meshes) {
+      if (!(mesh.material instanceof THREE.MeshStandardMaterial)) continue;
+      const on: boolean = id === this.selectedId;
+      mesh.material.emissive.set(on ? '#ffffff' : '#000000');
+      mesh.material.emissiveIntensity = on ? 0.35 : 0;
+    }
   }
 
   /** @returns The active layout strategy. */
@@ -1150,6 +1196,11 @@ export class DagScene {
 
   private camera_fit(placed: PlacedNode[]): void {
     if (placed.length === 0) return;
+    this.touched = false;
+    // How many times the scene has framed the graph itself, on the canvas:
+    // a smoke reads it to prove a click did not refit a placed camera.
+    this.fits += 1;
+    this.renderer.domElement.dataset['fits'] = String(this.fits);
     const center: THREE.Vector3 = new THREE.Vector3();
     for (const item of placed) center.add(item.position);
     center.divideScalar(placed.length);
@@ -1244,6 +1295,10 @@ export class DagScene {
       const mesh: THREE.Mesh = new THREE.Mesh(geometry, material);
       mesh.position.copy(position);
       mesh.userData['nodeId'] = node.id;
+      // A dimmed node is scenery: it is drawn behind the graph in hand and
+      // takes no pointer, so a hover or a click through a feed's nodes
+      // never lands on the field they stand in.
+      mesh.userData['dim'] = node.dim === true;
       this.group.add(mesh);
       this.meshes.set(node.id, mesh);
     }
@@ -1446,6 +1501,7 @@ export class DagScene {
         Math.abs(event.clientY - this.viewDrag.startY) > DRAG_THRESHOLD_PX
     ) {
       this.viewDrag.moved = true;
+      this.touched = true;
     }
     if (!this.viewDrag.moved) return;
     if (this.viewDrag.pan || this.projection === '2d') {
@@ -1504,7 +1560,9 @@ export class DagScene {
     // fresh meshes still carry identity matrices; bring them current.
     this.group.updateMatrixWorld(true);
     this.raycaster.setFromCamera(pointer, this.camera);
-    const hits: THREE.Intersection[] = this.raycaster.intersectObjects([...this.meshes.values()]);
+    const hits: THREE.Intersection[] = this.raycaster
+      .intersectObjects([...this.meshes.values()])
+      .filter((hit: THREE.Intersection): boolean => hit.object.userData['dim'] !== true);
     // A halo wraps its cluster, so its surface is hit before the spheres
     // inside it: a solid hit anywhere along the ray wins, the halo only
     // when the pointer is over nothing solid.
@@ -1570,7 +1628,6 @@ export class DagScene {
       // Empty space is the natural off switch for the node detail.
       if (kind === 'select' && this.selectedId !== null) {
         this.selection_clear();
-        if (!this.census) this.rebuild();
         this.handlers.deselect?.();
       }
       return;
@@ -1579,7 +1636,7 @@ export class DagScene {
     if (!node) return;
     if (kind === 'select') {
       this.selectedId = nodeId;
-      if (!this.census) this.rebuild();
+      if (!this.census) this.selection_paint();
       this.handlers.select?.(node);
     } else {
       this.handlers.activate?.(node);

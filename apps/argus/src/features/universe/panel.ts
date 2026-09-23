@@ -42,6 +42,8 @@ export interface UniversePanelHandlers {
   node_process?: (node: { vfsPath: string; instanceId: number; label: string }) => void;
   /** OPEN: the feed in a RUNS pane of its own. */
   feed_open?: (feedId: number) => void;
+  /** A line for the console: what the pane is waiting for, or why it refused. */
+  note?: (line: string) => void;
 }
 
 /** One feed entered: what was asked for, and what came. */
@@ -101,6 +103,9 @@ const DESCENT_MS: number = 650;
 /** How long the climb back out takes. */
 const ASCENT_MS: number = 650;
 
+/** The share of an entered feed's nodes the camera frames; the rest may spill. */
+const DESCENT_BULK: number = 0.8;
+
 export class UniversePanel {
   private readonly scene: DagScene;
   private readonly landed: LandedFeeds = new LandedFeeds();
@@ -136,6 +141,8 @@ export class UniversePanel {
   private cluster: { shape: string; ids: string[] } | null = null;
   /** A descent or an ascent in flight: clicks wait. */
   private flying: boolean = false;
+  /** The feed whose graph is being asked for, while it is. */
+  private entering: number | null = null;
   private readonly facts: HTMLElement | null;
   private viewPill: HTMLElement | null = null;
   private gravityPill: HTMLElement | null = null;
@@ -433,18 +440,21 @@ export class UniversePanel {
     if (this.whole) this.warming = '';
     this.empty.style.display = 'none';
     this.canvas.style.display = 'block';
-    // A space arriving while a feed is entered is taken, not drawn: the
-    // descent stands until the climb, which paints what has landed since.
-    if (this.inside === null && this.cluster === null) this.paint();
+    // A space arriving while a feed is entered (or being entered) is taken,
+    // not drawn: the descent stands until the climb, which paints what has
+    // landed since. Drawn, it keeps a camera the operator has placed: a
+    // re-ask is the lab moving, not a reason to fly the operator out.
+    if (this.inside === null && this.cluster === null && this.entering === null && !this.flying) this.paint(!this.scene.camera_touched());
     else this.title_paint();
   }
 
   /** Takes landings into the space, repainting at most once a second. */
   private landings_take(landed: ReadonlyArray<LandedFeed>): void {
-    if (!this.landed.take(landed) || this.repaintTimer !== null || this.inside !== null || this.cluster !== null) return;
+    if (!this.landed.take(landed) || this.repaintTimer !== null || this.inside !== null || this.cluster !== null || this.entering !== null) return;
     this.repaintTimer = window.setTimeout((): void => {
       this.repaintTimer = null;
-      if (!this.disposed) this.paint();
+      if (this.disposed || this.entering !== null || this.inside !== null || this.cluster !== null || this.flying) return;
+      this.paint(!this.scene.camera_touched());
     }, REPAINT_MS);
   }
 
@@ -479,11 +489,21 @@ export class UniversePanel {
     this.flying = true;
     this.facts_clear();
     const spheres: string[] = sphereIds_of(feedId, feed);
+    // The ask can take seconds on a large feed, and can be refused: the bar
+    // says which feed is being entered while it waits, and the console
+    // says why when nothing comes. A descent that yields nothing must not
+    // be silent — the operator's click did happen.
+    this.entering = feedId;
+    this.title_paint();
+    const asked: number = Date.now();
     this.scene.camera_flyToFit(spheres, DESCENT_MS, (): void => {
       void ask(feedId).then((model: FeedDagModel | null): void => {
         if (this.disposed) return;
+        this.entering = null;
         if (model === null) {
           this.flying = false;
+          this.title_paint();
+          this.handlers.note?.(`universe: feed ${feedId}: the session gave no graph for it (feed diagram feed_${feedId} refused or answered nothing after ${Math.round((Date.now() - asked) / 1000)}s)`);
           return;
         }
         const entered: EnteredFeed = enteredFeed_build(model);
@@ -527,7 +547,9 @@ export class UniversePanel {
         this.inside = { feedId, title: model.feedName, entered, ids: new Set(entered.nodes.map((node: SceneNode): string => node.id)) };
         this.pane?.classList.add('universe-inside');
         this.title_paint();
-        this.scene.camera_flyToFit([...this.inside.ids], DESCENT_MS, (): void => { this.flying = false; });
+        // Frame the bulk of the feed, not its outliers: a node must be wide
+        // enough to hover and click, and the wheel reaches the rest.
+        this.scene.camera_flyToFit([...this.inside.ids], DESCENT_MS, (): void => { this.flying = false; }, DESCENT_BULK);
       });
     });
   }
@@ -720,6 +742,16 @@ export class UniversePanel {
 
   /** Titles the space with what it holds and, while warming, how far the index is. */
   private title_paint(): void {
+    if (this.entering !== null && this.inside === null) {
+      const feed: LandedFeed | undefined = this.landed.get(this.entering);
+      this.title.textContent = `UNIVERSE — ENTERING FEED ${this.entering}${feed !== undefined && feed.title.length > 0 ? ` · ${feed.title}` : ''} …`;
+      if (this.state !== null) {
+        this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
+        this.state.classList.add('state-wait');
+        this.state.textContent = 'ASKING';
+      }
+      return;
+    }
     if (this.inside !== null) {
       const jobs: number = this.inside.entered.nodes.reduce((sum: number, node: SceneNode): number => sum + (node.count ?? 1), 0);
       this.title.textContent = `UNIVERSE — INSIDE FEED ${this.inside.feedId} · ${this.inside.title} · ${jobs.toLocaleString('en-US')} JOBS`;

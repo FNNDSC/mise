@@ -1553,7 +1553,7 @@ export class DagScene {
    * groups pair members by index, so chains of ×N groups render as
    * branched filaments over the shell — the cell-surface reading.
    */
-  private censusBuild(placed: PlacedNode[], palette: ReturnType<typeof palette_read>): void {
+  private censusBuild(placed: PlacedNode[], palette: ReturnType<typeof palette_read>, fit: boolean = true): void {
     // A ghost (a cluster's anchor, drawn as a halo in shape) is nobody's
     // job: it carries the feeds it gathers as a count, and a census of it
     // would draw a shell of nothing.
@@ -1647,7 +1647,10 @@ export class DagScene {
       this.group.add(lines);
     }
 
-    if (!this.ambient) {
+    // The census parks the camera only when a framing was asked for: a
+    // descent redraws under a camera the flight has placed, and re-parking
+    // it there was the view resetting under every click.
+    if (!this.ambient && fit) {
       const fov: number = (this.camera.fov * Math.PI) / 180;
       const fitH: number = cloudRadius / Math.tan(fov / 2);
       const fitW: number = cloudRadius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
@@ -1899,7 +1902,11 @@ export class DagScene {
       for (const item of placed) item.position.z = 0;
     }
     if (this.census) {
-      this.censusBuild(placed, palette);
+      // The census shells every job but the feed the operator is at: an
+      // entered feed stays solid spheres in its tubes, whatever the density.
+      const solidOnes: PlacedNode[] = placed.filter((item: PlacedNode): boolean => item.node.solid === true && item.node.ghost !== true);
+      this.censusBuild(placed.filter((item: PlacedNode): boolean => item.node.solid !== true), palette, fit);
+      if (solidOnes.length > 0) this.solid_draw(solidOnes, palette);
       return;
     }
     if (!this.ambient && fit) this.camera_fit(placed);
@@ -2691,8 +2698,39 @@ export class DagScene {
    * group), a solid sphere, or a star (or nebula) when nothing solid is.
    */
   private node_under(event: MouseEvent): string | null {
+    // A solid sphere wins: the entered feed stands in the census as spheres.
+    const solid: string | null = this.meshNode_under(event);
+    if (solid !== null) return solid;
     if (this.census && this.censusMesh !== null) return this.censusNode_under(event);
-    return this.meshNode_under(event) ?? this.starNode_under(event);
+    return this.starNode_under(event);
+  }
+
+  /**
+   * Draws nodes as lit spheres joined by tubes, among a census: the feed the
+   * operator entered, which the census's points would otherwise swallow.
+   *
+   * @param solidOnes - The nodes to draw solid.
+   * @param palette - The palette.
+   */
+  private solid_draw(solidOnes: ReadonlyArray<PlacedNode>, palette: ReturnType<typeof palette_read>): void {
+    for (const item of solidOnes) {
+      this.placedById.set(item.node.id, item);
+      const isRoot: boolean = item.node.parentIds.length === 0 && item.node.joinParentIds.length === 0;
+      const mesh: THREE.Mesh = new THREE.Mesh(this.sphere_of(item.radius), new THREE.MeshStandardMaterial({
+        color: nodeColor_pick(item.node, palette, isRoot), roughness: 0.35, metalness: 0.15,
+      }));
+      mesh.position.copy(item.position);
+      mesh.userData['nodeId'] = item.node.id;
+      mesh.userData['dim'] = false;
+      this.group.add(mesh);
+      this.meshes.set(item.node.id, mesh);
+    }
+    const ids: string[] = solidOnes.map((item: PlacedNode): string => item.node.id);
+    const entered: HandoffGroup = {
+      entries: ids.map((id: string): StarEntry => ({ id, position: new THREE.Vector3(), radius: 0, color: new THREE.Color(), dim: false, ember: false })),
+      center: new THREE.Vector3(), maxRadius: 0, mix: 1, target: 1, meshes: [], lines: [], tubes: null, threadSegments: [],
+    };
+    this.tubes_build(entered, new Set(ids), palette);
   }
 
   /** The node id behind a shape-mode mesh under the pointer. */

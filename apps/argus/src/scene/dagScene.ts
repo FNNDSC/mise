@@ -102,6 +102,12 @@ export interface SceneHandlers {
    * given this handler never holds the page for a whole settle.
    */
   progress?: (done: number, total: number, nodes: number) => void;
+  /**
+   * The feed a node belongs to, for the hand-off: while the scene draws
+   * stars, a feed near enough to read turns solid as a whole. No key, or no
+   * handler, and a node stays a star.
+   */
+  handoffKey?: (node: SceneNode) => string | null;
 }
 
 /** The physics terms the molecule settle may honor (expert knobs; GRAVITY is a meaning). */
@@ -548,6 +554,32 @@ interface StarEntry {
   color: THREE.Color;
   dim: boolean;
   ember: boolean;
+  /** Which layer draws it (0 glow, 1 ember) and its slot there, once drawn. */
+  layer?: number;
+  slot?: number;
+}
+
+/** A feed switches to solid when its largest sphere spans this many CSS pixels… */
+const HANDOFF_SOLID_PX: number = 7;
+/** …and back to stars below this: the gap keeps a feed at the edge from flickering. */
+const HANDOFF_STAR_PX: number = 5;
+/** The crossfade between a feed's stars and its spheres. */
+const HANDOFF_FADE_MS: number = 300;
+
+/**
+ * One feed (or folded shape) in the hand-off: its stars, where it stands,
+ * how far it is between stars (0) and spheres (1), and the spheres and
+ * edges that exist only while it is solid.
+ */
+interface HandoffGroup {
+  entries: StarEntry[];
+  center: THREE.Vector3;
+  maxRadius: number;
+  mix: number;
+  target: number;
+  meshes: THREE.Mesh[];
+  lines: THREE.Line[];
+  threadSegments: number[];
 }
 
 /** A soft radial glow, shared by every nebula. */
@@ -707,6 +739,16 @@ export class DagScene {
   private nebulae: Array<{ id: string; position: THREE.Vector3; radius: number }> = [];
   /** The star materials, whose pixel scale follows the camera each frame. */
   private starMaterials: THREE.ShaderMaterial[] = [];
+  /** Each star layer's alpha attribute and the alphas it was drawn with. */
+  private starLayers: Array<{ alpha: THREE.BufferAttribute; base: Float32Array }> = [];
+  /** The thread batch's colours and the colours it was drawn with. */
+  private threadColor: { attribute: THREE.BufferAttribute; base: Float32Array } | null = null;
+  /** Feeds in the hand-off, by key. */
+  private handoff: Map<string, HandoffGroup> = new Map();
+  /** Placed nodes by id, for the spheres a solid feed draws. */
+  private placedById: Map<string, PlacedNode> = new Map();
+  /** When the hand-off last stepped. */
+  private handoffAt: number = 0;
 
   /** Times the scene has framed the graph itself (`camera_fit`). */
   private fits: number = 0;
@@ -871,6 +913,7 @@ export class DagScene {
         this.flight_animate();
       }
       this.starScale_update();
+      this.handoff_step();
       this.renderer.render(this.scene, this.camera);
       this.frameHandle = window.requestAnimationFrame(animate);
     };
@@ -1583,6 +1626,10 @@ export class DagScene {
     this.starIndex = new Map();
     this.nebulae = [];
     this.starMaterials = [];
+    this.starLayers = [];
+    this.threadColor = null;
+    this.handoff = new Map();
+    this.placedById = new Map();
     const palette = palette_read();
     this.pulseColor = palette.pulse;
     this.lastPositions = new Map(placed.map((p: PlacedNode): [string, THREE.Vector3] => [p.node.id, p.position.clone()]));
@@ -1602,6 +1649,7 @@ export class DagScene {
     // nebula; they are drawn in batches after this loop.
     const starring: boolean = this.drawMode === 'stars';
     const starred: StarEntry[] = [];
+    const handoffKey = starring ? this.handlers.handoffKey : undefined;
     for (const { node, position, radius } of placed) {
       if (node.ghost === true && node.halo !== true) continue;
       if (starring && node.solid !== true) {
@@ -1666,15 +1714,20 @@ export class DagScene {
     }
 
     if (starred.length > 0) this.stars_draw(starred);
+    for (const item of placed) this.placedById.set(item.node.id, item);
+    if (handoffKey !== undefined) this.handoff_gather(starred, handoffKey);
     // An edge between two solid nodes is a line as ever; an edge touching a
     // star is a thread, all of them one batch.
     const threads: number[] = [];
     const threadColors: number[] = [];
     const solid = (item: PlacedNode): boolean => !starring || item.node.solid === true;
-    const thread_add = (from: THREE.Vector3, to: THREE.Vector3, color: THREE.Color, dim: boolean): void => {
+    const thread_add = (from: THREE.Vector3, to: THREE.Vector3, color: THREE.Color, dim: boolean, owner: SceneNode): void => {
       const k: number = dim ? 0.35 : 1;
+      const segment: number = threads.length / 6;
       threads.push(from.x, from.y, from.z, to.x, to.y, to.z);
       threadColors.push(color.r * k, color.g * k, color.b * k, color.r * k, color.g * k, color.b * k);
+      const key: string | null = dim || handoffKey === undefined ? null : handoffKey(owner);
+      if (key !== null) this.handoff.get(key)?.threadSegments.push(segment);
     };
     for (const item of placed) {
       const { node, position } = item;
@@ -1684,25 +1737,154 @@ export class DagScene {
         if (!parent || parent.node.ghost === true) continue;
         const dim: boolean = node.dim === true || parent.node.dim === true;
         if (solid(item) && solid(parent)) this.edge_add(parentId, node.id, parent.position, position, palette.edge, false, dim);
-        else thread_add(parent.position, position, palette.edge, dim);
+        else thread_add(parent.position, position, palette.edge, dim, node);
       }
       for (const joinId of node.joinParentIds) {
         const parent: PlacedNode | undefined = byId.get(joinId);
         if (!parent) continue;
         const dim: boolean = node.dim === true || parent.node.dim === true;
         if (solid(item) && solid(parent)) this.edge_add(joinId, node.id, parent.position, position, palette.join, true, dim);
-        else thread_add(parent.position, position, palette.join, dim);
+        else thread_add(parent.position, position, palette.join, dim, node);
       }
     }
     if (threads.length > 0) {
       const geometry: THREE.BufferGeometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(threads, 3));
-      geometry.setAttribute('color', new THREE.Float32BufferAttribute(threadColors, 3));
+      const colors: THREE.Float32BufferAttribute = new THREE.Float32BufferAttribute(threadColors, 3);
+      geometry.setAttribute('color', colors);
+      this.threadColor = { attribute: colors, base: Float32Array.from(threadColors) };
       this.group.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({
         vertexColors: true, transparent: true, opacity: THREAD_OPACITY, blending: THREE.AdditiveBlending, depthWrite: false,
       })));
     }
 
+  }
+
+  /**
+   * Gathers the drawn stars into feeds for the hand-off. A dimmed star is
+   * scenery and never turns solid; a star with no feed stays a star.
+   */
+  private handoff_gather(starred: StarEntry[], keyOf: (node: SceneNode) => string | null): void {
+    const byId: Map<string, SceneNode> = new Map(this.graph.nodes.map((node: SceneNode): [string, SceneNode] => [node.id, node]));
+    for (const entry of starred) {
+      if (entry.dim) continue;
+      const node: SceneNode | undefined = byId.get(entry.id);
+      const key: string | null = node === undefined ? null : keyOf(node);
+      if (key === null) continue;
+      let group: HandoffGroup | undefined = this.handoff.get(key);
+      if (group === undefined) {
+        group = { entries: [], center: new THREE.Vector3(), maxRadius: 0, mix: 0, target: 0, meshes: [], lines: [], threadSegments: [] };
+        this.handoff.set(key, group);
+      }
+      group.entries.push(entry);
+      group.maxRadius = Math.max(group.maxRadius, entry.radius);
+    }
+    for (const group of this.handoff.values()) {
+      for (const entry of group.entries) group.center.add(entry.position);
+      group.center.divideScalar(Math.max(1, group.entries.length));
+    }
+  }
+
+  /**
+   * Steps the hand-off once a frame: a feed whose largest sphere spans
+   * more than a few pixels turns solid, crossfading, its threads rising
+   * to edges; one that shrinks back goes to stars and its spheres are let go.
+   */
+  private handoff_step(): void {
+    if (this.handoff.size === 0) return;
+    const now: number = performance.now();
+    const dt: number = this.handoffAt === 0 ? 0 : Math.min(100, now - this.handoffAt);
+    this.handoffAt = now;
+    const height: number = this.renderer.domElement.clientHeight || 1;
+    const perUnit: number = height / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
+    this.group.updateMatrixWorld(true);
+    this.camera.updateMatrixWorld();
+    const view: THREE.Matrix4 = new THREE.Matrix4().multiplyMatrices(this.camera.matrixWorldInverse, this.group.matrixWorld);
+    const v: number[] = view.elements;
+    let starsTouched: boolean = false;
+    let threadsTouched: boolean = false;
+    for (const group of this.handoff.values()) {
+      const c: THREE.Vector3 = group.center;
+      const depth: number = -(v[2]! * c.x + v[6]! * c.y + v[10]! * c.z + v[14]!);
+      const px: number = depth <= 0 ? 0 : (2 * group.maxRadius * perUnit) / depth;
+      if (group.target === 0 && px > HANDOFF_SOLID_PX) group.target = 1;
+      else if (group.target === 1 && px < HANDOFF_STAR_PX) group.target = 0;
+      if (group.mix === group.target) continue;
+      const step: number = dt === 0 ? 1 : dt / HANDOFF_FADE_MS;
+      group.mix = group.target > group.mix ? Math.min(1, group.mix + step) : Math.max(0, group.mix - step);
+      if (group.mix > 0 && group.meshes.length === 0) this.handoffSolid_build(group);
+      for (const mesh of group.meshes) {
+        if (mesh.material instanceof THREE.MeshStandardMaterial) mesh.material.opacity = group.mix;
+      }
+      for (const line of group.lines) {
+        if (line.material instanceof THREE.LineBasicMaterial) line.material.opacity = 0.75 * group.mix;
+      }
+      for (const entry of group.entries) {
+        const layer = entry.layer === undefined ? undefined : this.starLayers[entry.layer];
+        if (layer === undefined || entry.slot === undefined) continue;
+        layer.alpha.setX(entry.slot, (layer.base[entry.slot] ?? 1) * (1 - group.mix));
+        starsTouched = true;
+      }
+      if (this.threadColor !== null && group.threadSegments.length > 0) {
+        const colors = this.threadColor.attribute.array as Float32Array;
+        const base: Float32Array = this.threadColor.base;
+        for (const segment of group.threadSegments) {
+          for (let k = segment * 6; k < segment * 6 + 6; k++) colors[k] = (base[k] ?? 0) * (1 - group.mix);
+        }
+        threadsTouched = true;
+      }
+      if (group.mix === 0) this.handoffSolid_release(group);
+    }
+    if (starsTouched) for (const layer of this.starLayers) layer.alpha.needsUpdate = true;
+    if (threadsTouched && this.threadColor !== null) this.threadColor.attribute.needsUpdate = true;
+  }
+
+  /** Draws a feed's spheres and edges for its time as solid. */
+  private handoffSolid_build(group: HandoffGroup): void {
+    const palette = palette_read();
+    const members: Set<string> = new Set(group.entries.map((entry: StarEntry): string => entry.id));
+    for (const entry of group.entries) {
+      const placed: PlacedNode | undefined = this.placedById.get(entry.id);
+      if (placed === undefined) continue;
+      const node: SceneNode = placed.node;
+      const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
+      const mesh: THREE.Mesh = new THREE.Mesh(this.sphere_of(placed.radius), new THREE.MeshStandardMaterial({
+        color: nodeColor_pick(node, palette, isRoot), roughness: 0.35, metalness: 0.15, transparent: true, opacity: group.mix,
+      }));
+      mesh.position.copy(placed.position);
+      mesh.userData['nodeId'] = node.id;
+      mesh.userData['dim'] = false;
+      this.group.add(mesh);
+      this.meshes.set(node.id, mesh);
+      group.meshes.push(mesh);
+      for (const parentId of [...node.parentIds, ...node.joinParentIds]) {
+        const parent: PlacedNode | undefined = this.placedById.get(parentId);
+        if (parent === undefined || !members.has(parentId)) continue;
+        const line: THREE.Line = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([parent.position, placed.position]),
+          new THREE.LineBasicMaterial({ color: palette.edge, transparent: true, opacity: 0.75 * group.mix }),
+        );
+        this.group.add(line);
+        group.lines.push(line);
+      }
+    }
+  }
+
+  /** Lets a feed's spheres go once it is stars again. */
+  private handoffSolid_release(group: HandoffGroup): void {
+    for (const mesh of group.meshes) {
+      this.group.remove(mesh);
+      if (mesh.material instanceof THREE.Material) mesh.material.dispose();
+      const id: unknown = mesh.userData['nodeId'];
+      if (typeof id === 'string' && this.meshes.get(id) === mesh) this.meshes.delete(id);
+    }
+    for (const line of group.lines) {
+      this.group.remove(line);
+      line.geometry.dispose();
+      if (line.material instanceof THREE.Material) line.material.dispose();
+    }
+    group.meshes = [];
+    group.lines = [];
   }
 
   /**
@@ -1725,6 +1907,8 @@ export class DagScene {
       const radii: Float32Array = new Float32Array(layer.length);
       const alphas: Float32Array = new Float32Array(layer.length);
       layer.forEach((entry: StarEntry, i: number): void => {
+        entry.layer = this.starLayers.length;
+        entry.slot = i;
         positions.set([entry.position.x, entry.position.y, entry.position.z], i * 3);
         tints.set([entry.color.r, entry.color.g, entry.color.b], i * 3);
         radii[i] = entry.radius;
@@ -1734,7 +1918,9 @@ export class DagScene {
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       geometry.setAttribute('tint', new THREE.BufferAttribute(tints, 3));
       geometry.setAttribute('radius', new THREE.BufferAttribute(radii, 1));
-      geometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
+      const alphaAttribute: THREE.BufferAttribute = new THREE.BufferAttribute(alphas, 1);
+      geometry.setAttribute('alpha', alphaAttribute);
+      this.starLayers.push({ alpha: alphaAttribute, base: Float32Array.from(alphas) });
       const material: THREE.ShaderMaterial = new THREE.ShaderMaterial({
         uniforms: { scale: { value: 1 }, floorPx: { value: STAR_FLOOR_PX * window.devicePixelRatio } },
         vertexShader: STAR_VERTEX,

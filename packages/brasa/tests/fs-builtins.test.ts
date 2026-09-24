@@ -26,6 +26,12 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   },
 }));
 
+// Which folders stand: mkdir asks before it makes one.
+const standing: Set<string> = new Set(['/home/chris']);
+jest.unstable_mockModule('../src/builtins/fs/folderExists.js', () => ({
+  folder_checkExists: jest.fn(async (p: string): Promise<boolean> => standing.has(p)),
+}));
+
 const mockMkdirCmd = jest.fn();
 const mockMkdirRender = jest.fn((p: string, ok: boolean) => `mkdir:${p}:${ok}`);
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/mkdir.js', () => ({ files_mkdir: mockMkdirCmd }));
@@ -54,7 +60,7 @@ jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({
   mv_render: jest.fn((s: string, d: string, ok: boolean) => `mv:${s}->${d}:${ok}`),
 }));
 
-const { builtin_mkdir } = await import('../src/builtins/fs/mkdir.js');
+const { builtin_mkdir, mkdirArgs_parse } = await import('../src/builtins/fs/mkdir.js');
 const { builtin_touch } = await import('../src/builtins/fs/touch.js');
 const { builtin_cp } = await import('../src/builtins/fs/cp.js');
 const { builtin_mv } = await import('../src/builtins/fs/mv.js');
@@ -83,12 +89,76 @@ describe('builtin_mkdir', () => {
     expect(mockInvalidate).toHaveBeenCalledWith('/home/chris');
   });
 
+  it('refuses an option it does not have by name, creating nothing', async () => {
+    const envelope: CommandEnvelope = await builtin_mkdir(['-v', 'x']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain("mkdir: invalid option -- 'v'");
+    expect(mockMkdirCmd).not.toHaveBeenCalled();
+    const long: CommandEnvelope = await builtin_mkdir(['--mode=700', 'x']);
+    expect(long.renderedErr).toContain("mkdir: unrecognized option '--mode=700'");
+  });
+
+  it('never takes -p for a folder name', () => {
+    expect(mkdirArgs_parse(['-p', 'a/b'])).toEqual({ paths: ['a/b'], parents: true });
+    expect(mkdirArgs_parse(['--parents', 'a'])).toEqual({ paths: ['a'], parents: true });
+    expect(mkdirArgs_parse(['--', '-p'])).toEqual({ paths: ['-p'], parents: false });
+  });
+
+  it('without -p, a missing parent is No such file or directory', async () => {
+    const envelope: CommandEnvelope = await builtin_mkdir(['a/b']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain("mkdir: cannot create directory 'a/b': No such file or directory");
+    expect(mockMkdirCmd).not.toHaveBeenCalled();
+  });
+
+  it('with -p, a missing parent is made along the way', async () => {
+    mockMkdirCmd.mockResolvedValue(true);
+    const envelope: CommandEnvelope = await builtin_mkdir(['-p', 'a/b']);
+    expect(envelope.status).toBe('ok');
+    expect(mockMkdirCmd).toHaveBeenCalledWith('/home/chris/a/b');
+  });
+
+  it('without -p, an existing folder is File exists; with -p it is done', async () => {
+    standing.add('/home/chris/here');
+    try {
+      const plain: CommandEnvelope = await builtin_mkdir(['here']);
+      expect(plain.status).toBe('error');
+      expect(plain.renderedErr).toContain("mkdir: cannot create directory 'here': File exists");
+      const parents: CommandEnvelope = await builtin_mkdir(['-p', 'here']);
+      expect(parents.status).toBe('ok');
+      expect(mockMkdirCmd).not.toHaveBeenCalled();
+    } finally {
+      standing.delete('/home/chris/here');
+    }
+  });
+
   it('reports a per-path error without aborting the loop', async () => {
     mockMkdirCmd.mockRejectedValueOnce(new Error('exists')).mockResolvedValueOnce(true);
     const envelope: CommandEnvelope = await builtin_mkdir(['a', 'b']);
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('exists');
     expect(mockMkdirCmd).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('unknown options', () => {
+  it('cp, mv and touch refuse an option they do not have, by name', async () => {
+    const cp: CommandEnvelope = await builtin_cp(['-x', 'a', 'b']);
+    expect(cp.renderedErr).toContain("cp: invalid option -- 'x'");
+    const mv: CommandEnvelope = await builtin_mv(['--force', 'a', 'b']);
+    expect(mv.renderedErr).toContain("mv: unrecognized option '--force'");
+    const touch: CommandEnvelope = await builtin_touch(['-p', 'a']);
+    expect(touch.renderedErr).toContain("touch: invalid option -- 'p'");
+    expect(mockCpCmd).not.toHaveBeenCalled();
+    expect(mockMvCmd).not.toHaveBeenCalled();
+    expect(mockTouchCmd).not.toHaveBeenCalled();
+  });
+
+  it('cp --recursive keeps the operand that follows it', async () => {
+    mockCpCmd.mockResolvedValue(true);
+    await builtin_cp(['--recursive', 'src', 'dest']);
+    expect(mockCpCmd).toHaveBeenCalled();
+    expect(JSON.stringify(mockCpCmd.mock.calls[0])).toContain('/home/chris/src');
   });
 });
 

@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import path from 'path';
 import { CommandEnvelope, listCache_get, envelope_ok, envelope_error, errorStack } from '@fnndsc/cumin';
 import type { ListCache, StackMessage } from '@fnndsc/cumin';
-import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
+import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
 import { destination_ask, destination_missing } from './destination.js';
 import { files_cp as chefs_cp_cmd } from '@fnndsc/chili/commands/fs/cp.js';
 import { cp_render } from '@fnndsc/chili/views/fs.js';
@@ -34,7 +34,9 @@ export interface CpModelData {
  *   whose model carries per-source outcomes.
  */
 export async function builtin_cp(args: string[]): Promise<CommandEnvelope> {
-  const parsed: ParsedArgs = commandArgs_process(args);
+  const parsed: ParsedArgs = commandArgs_process(args, { booleanLongOptions: ['recursive'] });
+  const refusal: string | null = optionsUnknown_refusal('cp', parsed, ['t', 'r', 'recursive']);
+  if (refusal !== null) return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
   const pathArgs: string[] = parsed._ as string[];
 
   // `-t <dir>` names the TARGET DIRECTORY, so every operand is a source —

@@ -1528,7 +1528,7 @@ try {
 
     // A scenario starts from nothing of its own.
     await say('rm -r ~/smoke-verbs', 2500);
-    await say('mkdir ~/smoke-verbs', 2500);
+    await say('mkdir -p ~/smoke-verbs', 2500);
     await say('cd ~/smoke-verbs', 2500);
     const chooser = fp().querySelector('.files-upload-input');
     const dt = new DataTransfer();
@@ -1673,7 +1673,7 @@ try {
     const settle = async (want, n = 140) => { for (let i = 0; i < n; i++) { await sleep(500); if (want()) return true; } return false; };
 
     await say('rm -r ~/smoke-process', 2500);
-    await say('mkdir ~/smoke-process', 2500);
+    await say('mkdir -p ~/smoke-process', 2500);
     await say('cd ~/smoke-process', 2500);
     const chooser = fp().querySelector('.files-upload-input');
     const dt = new DataTransfer();
@@ -1751,7 +1751,7 @@ try {
       .find(r => r.querySelector('.telemetry-label')?.textContent === flag)?.querySelector('.telemetry-input');
 
     await say('rm -r ~/smoke-form', 2500);
-    await say('mkdir ~/smoke-form', 2500);
+    await say('mkdir -p ~/smoke-form', 2500);
     await say('cd ~', 2500);
     await settle(() => named(fp(), 'smoke-form'));
     click(named(fp(), 'smoke-form').querySelector('.files-name')); await sleep(600);
@@ -1821,7 +1821,7 @@ try {
     const catalogue = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null && /smoke-desk/.test(p.querySelector('.files-binding')?.textContent ?? ''));
 
     await say('rm -r ~/smoke-desk', 2500);
-    await say('mkdir ~/smoke-desk', 2500);
+    await say('mkdir -p ~/smoke-desk', 2500);
     await say('cd ~', 2500);
     await settle(() => named(fp(), 'smoke-desk'));
     click(named(fp(), 'smoke-desk').querySelector('.files-name')); await sleep(600);
@@ -1984,7 +1984,7 @@ try {
     // A scenario starts from nothing of its own: a folder left by a run that
     // failed part-way would put yesterday's files under today's names.
     await say('rm -r ~/smoke-select', 2500);
-    await say('mkdir ~/smoke-select', 2500);
+    await say('mkdir -p ~/smoke-select', 2500);
     await say('cd ~/smoke-select', 2500);
     // Two files to gather, put there by the surface's own delivery.
     const chooser = fp().querySelector('.files-upload-input');
@@ -2113,7 +2113,7 @@ try {
       term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms);
       return [...outEl.children].slice(b).map(e => e.textContent).join('\\n'); };
     await say('rm -r ~/smoke-roster', 2000);
-    await say('mkdir ~/smoke-roster', 2000);
+    await say('mkdir -p ~/smoke-roster', 2000);
     await say('cd ~/smoke-roster', 2000);
     await say('touch --withContents "roster" input.txt', 2500);
     const ran = await say('pl-simpledsapp-v2.1.5 -- feed_title="smoke roster"', 12000);

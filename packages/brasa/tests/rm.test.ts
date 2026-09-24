@@ -33,7 +33,7 @@ jest.unstable_mockModule('../src/core/sink.js', () => ({
   sink_get: (): unknown => ({ data_write: mockSinkWrite, err_write: mockSinkWrite }),
 }));
 
-const { rmArgs_parse, rmSummary_format, rm_run } = await import('../src/builtins/fs/rm.js');
+const { rmArgs_parse, rmSummary_format, rm_run, builtin_rm, rmFailure_reason } = await import('../src/builtins/fs/rm.js');
 const { files_rm } = await import('@fnndsc/chili/commands/fs/rm.js');
 
 describe('rmArgs_parse', () => {
@@ -47,13 +47,42 @@ describe('rmArgs_parse', () => {
   it('treats everything after -- as a path', () => {
     expect(rmArgs_parse(['--', '-weird-name', '-r'])).toEqual({ recursive: false, force: false, interactive: false, once: false, paths: ['-weird-name', '-r'] });
   });
-  it('ignores unknown flags and collects bare paths', () => {
-    expect(rmArgs_parse(['-x', 'foo', 'bar'])).toEqual({ recursive: false, force: false, interactive: false, once: false, paths: ['foo', 'bar'] });
+  it('refuses an unknown option by name', () => {
+    expect(rmArgs_parse(['-x', 'foo']).refused).toBe("rm: invalid option -- 'x'");
+    expect(rmArgs_parse(['--verbose', 'foo']).refused).toBe("rm: unrecognized option '--verbose'");
+  });
+  it('reads long options whole, never letter by letter', () => {
+    expect(rmArgs_parse(['--force', 'a'])).toEqual({ recursive: false, force: true, interactive: false, once: false, paths: ['a'] });
+    expect(rmArgs_parse(['--recursive', 'a']).recursive).toBe(true);
+  });
+  it('builtin_rm removes nothing when an option is refused', async () => {
+    (files_rm as jest.Mock).mockClear();
+    const envelope = await builtin_rm(['-v', 'a']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain("rm: invalid option -- 'v'");
+    expect(files_rm).not.toHaveBeenCalled();
   });
 
   it('reads -I as one question for the whole list, distinct from -i', () => {
     expect(rmArgs_parse(['-I', 'a', 'b'])).toEqual({ recursive: false, force: false, interactive: false, once: true, paths: ['a', 'b'] });
     expect(rmArgs_parse(['-rI', 'a'])).toEqual({ recursive: true, force: false, interactive: false, once: true, paths: ['a'] });
+  });
+});
+
+describe('rmFailure_reason', () => {
+  it('speaks as rm does on Linux', () => {
+    expect(rmFailure_reason({ success: false, path: '/x', type: 'dir', error: "Cannot remove directory '/x': is a directory (use -r for recursive delete)" }, false)).toBe('Is a directory');
+    expect(rmFailure_reason({ success: false, path: '/x', type: null, error: 'No such file or directory: /x' }, false)).toBe('No such file or directory');
+    expect(rmFailure_reason({ success: false, path: '/x', type: 'file', error: 'Failed to delete file: /x' }, false)).toBe('Failed to delete file: /x');
+  });
+});
+
+describe('rm -f on a missing operand', () => {
+  it('says nothing and succeeds, as on Linux', async () => {
+    (files_rm as jest.Mock).mockResolvedValueOnce({ success: true, path: '/home/me/gone', type: null } as never);
+    const envelope = await rm_run({ recursive: false, force: true, interactive: false, once: false, paths: ['gone'] });
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toBe('');
   });
 });
 

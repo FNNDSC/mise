@@ -94,9 +94,11 @@ export interface ChellApi {
    * Creates one or more directories.
    *
    * @param paths - Directory path or paths, absolute or cwd-relative.
+   * @param options - `parents`: make missing parents and accept a folder
+   *   already there (`mkdir -p`); without it both are errors.
    * @returns Envelope whose `fs.mkdir` model lists per-target outcomes.
    */
-  mkdir(paths: string | string[]): Promise<TypedEnvelope<'fs.mkdir'>>;
+  mkdir(paths: string | string[], options?: { parents?: boolean }): Promise<TypedEnvelope<'fs.mkdir'>>;
 
   /**
    * Creates a file, optionally with content.
@@ -174,8 +176,8 @@ export async function chellApi_create(): Promise<ChellApi> {
     cd: (path?: string): Promise<TypedEnvelope<'fs.cwd'>> =>
       cd_run({ path }).then(envelope_typed<'fs.cwd'>),
 
-    mkdir: (paths: string | string[]): Promise<TypedEnvelope<'fs.mkdir'>> =>
-      mkdir_run({ paths: Array.isArray(paths) ? paths : [paths] }).then(envelope_typed<'fs.mkdir'>),
+    mkdir: (paths: string | string[], options: { parents?: boolean } = {}): Promise<TypedEnvelope<'fs.mkdir'>> =>
+      mkdir_run({ paths: Array.isArray(paths) ? paths : [paths], parents: options.parents === true }).then(envelope_typed<'fs.mkdir'>),
 
     touch: (path: string, options?: TouchApiOptions): Promise<TypedEnvelope<'fs.touch'>> =>
       touch_run({

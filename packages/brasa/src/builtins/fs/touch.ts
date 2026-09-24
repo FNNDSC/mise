@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import path from 'path';
 import { CommandEnvelope, listCache_get, errorStack, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import type { ListCache, StackMessage } from '@fnndsc/cumin';
-import { ParsedArgs, commandArgs_process, path_resolve, error_stripDebugPrefix } from '../utils.js';
+import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { files_touch as chefs_touch_cmd, TouchOptions } from '@fnndsc/chili/commands/fs/touch.js';
 import { touch_render } from '@fnndsc/chili/views/fs.js';
 
@@ -109,6 +109,8 @@ export async function touch_run(runOptions: TouchRunOptions): Promise<CommandEnv
  */
 export async function builtin_touch(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args);
+  const refusal: string | null = optionsUnknown_refusal('touch', parsed, ['withContents', 'withContentsFromFile']);
+  if (refusal !== null) return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
   return touch_run({
     paths: parsed._ as string[],
     contents: parsed['withContents'] !== undefined ? String(parsed['withContents']) : undefined,

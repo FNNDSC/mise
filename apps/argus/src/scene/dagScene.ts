@@ -18,6 +18,7 @@
  * @module
  */
 import * as THREE from 'three';
+import type { HierarchyArrangement, HierarchyNode, HierarchyPositions } from './hierarchy.js';
 import {
   rankedLayout_compute,
   type RankedLayout,
@@ -332,6 +333,26 @@ interface MoleculeSettle {
 }
 
 /**
+ * Each node's radius, as the molecule settle sizes it: the metric (degree
+ * when none arrived) against the graph's peak.
+ *
+ * @param nodes - The graph's nodes.
+ * @returns Radius by id.
+ */
+function moleculeRadii_of(nodes: ReadonlyArray<SceneNode>): Map<string, number> {
+  const degree: Map<string, number> = new Map();
+  for (const node of nodes) {
+    for (const parentId of [...node.parentIds, ...node.joinParentIds]) {
+      degree.set(parentId, (degree.get(parentId) ?? 0) + 1);
+      degree.set(node.id, (degree.get(node.id) ?? 0) + 1);
+    }
+  }
+  const metrics: number[] = nodes.map((n: SceneNode): number => n.metric ?? degree.get(n.id) ?? 1);
+  const peak: number = Math.max(...metrics, 1);
+  return new Map(nodes.map((n: SceneNode, i: number): [string, number] => [n.id, NODE_RADIUS * (0.5 + ((metrics[i] ?? 1) / peak) * 1.2)]));
+}
+
+/**
  * Lays out a molecule in one go — {@link molecule_prepare} run to its end.
  *
  * @returns Every node placed.
@@ -498,6 +519,8 @@ export type DrawMode = 'spheres' | 'stars';
 
 /** A star's smallest size on screen, in CSS pixels: no node ever vanishes. */
 const STAR_FLOOR_PX: number = 2;
+/** A star never swells past this many CSS pixels: near the camera a feed is spheres, not a glow. */
+const STAR_CAP_PX: number = 28;
 /** A star's sprite spans this many times its sphere's diameter: core plus glow. */
 const STAR_GLOW: number = 1.8;
 /** Threads (edges) while the scene draws stars: faint, so the light leads. */
@@ -511,13 +534,14 @@ attribute float alpha;
 attribute vec3 tint;
 uniform float scale;
 uniform float floorPx;
+uniform float capPx;
 varying vec3 vTint;
 varying float vAlpha;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
   float px = ${STAR_GLOW.toFixed(1)} * 2.0 * radius * scale / max(0.0001, -mv.z);
-  gl_PointSize = max(px, floorPx);
+  gl_PointSize = min(max(px, floorPx), capPx);
   vTint = tint;
   vAlpha = alpha;
 }`;
@@ -565,6 +589,66 @@ const HANDOFF_SOLID_PX: number = 7;
 const HANDOFF_STAR_PX: number = 5;
 /** The crossfade between a feed's stars and its spheres. */
 const HANDOFF_FADE_MS: number = 300;
+/** A pulse's trip along one tube; a live edge repeats it. */
+const PULSE_TRIP_MS: number = 1200;
+
+const TUBE_VERTEX: string = `
+attribute vec3 aColor;
+attribute float aMode;
+attribute float aStart;
+varying vec3 vColor;
+varying float vMode;
+varying float vStart;
+varying float vAlong;
+varying vec3 vNormal;
+varying vec3 vView;
+void main() {
+  vAlong = position.y + 0.5;
+  vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+  vView = -mv.xyz;
+  vNormal = normalize(normalMatrix * mat3(instanceMatrix) * normal);
+  vColor = aColor;
+  vMode = aMode;
+  vStart = aStart;
+  gl_Position = projectionMatrix * mv;
+}`;
+
+/**
+ * A tube lit by its facing, carrying a pulse from parent (its foot) to
+ * child (its head): mode 1 streams (live), mode 2 fires once from vStart
+ * (the arrival wave), mode 0 rests.
+ */
+const TUBE_FRAGMENT: string = `
+uniform float time;
+uniform float opacity;
+varying vec3 vColor;
+varying float vMode;
+varying float vStart;
+varying float vAlong;
+varying vec3 vNormal;
+varying vec3 vView;
+void main() {
+  float facing = abs(dot(normalize(vNormal), normalize(vView)));
+  vec3 base = vColor * (0.35 + 0.65 * facing);
+  float pulse = 0.0;
+  if (vMode > 0.5 && vMode < 1.5) {
+    float head = fract(time / ${PULSE_TRIP_MS.toFixed(1)});
+    pulse = smoothstep(0.14, 0.0, abs(vAlong - head));
+  } else if (vMode > 1.5) {
+    float head = (time - vStart) / ${(PULSE_TRIP_MS / 2).toFixed(1)};
+    if (head > -0.1 && head < 1.2) pulse = smoothstep(0.14, 0.0, abs(vAlong - head));
+  }
+  gl_FragColor = vec4(base + vec3(1.0, 0.95, 0.8) * pulse * 1.3, opacity);
+}`;
+
+/** The tube every solid edge wears, stretched and turned per edge. */
+let tubeGeometry: THREE.CylinderGeometry | null = null;
+
+/** A unit tube, one high along y, centred: its foot at -0.5, its head at +0.5. */
+function tubeGeometry_get(): THREE.CylinderGeometry {
+  if (tubeGeometry === null) tubeGeometry = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true);
+  return tubeGeometry;
+}
 
 /**
  * One feed (or folded shape) in the hand-off: its stars, where it stands,
@@ -579,6 +663,7 @@ interface HandoffGroup {
   target: number;
   meshes: THREE.Mesh[];
   lines: THREE.Line[];
+  tubes: THREE.InstancedMesh | null;
   threadSegments: number[];
 }
 
@@ -749,6 +834,8 @@ export class DagScene {
   private placedById: Map<string, PlacedNode> = new Map();
   /** When the hand-off last stepped. */
   private handoffAt: number = 0;
+  /** The tube materials on stage, whose pulses follow the clock. */
+  private tubeMaterials: THREE.ShaderMaterial[] = [];
 
   /** Times the scene has framed the graph itself (`camera_fit`). */
   private fits: number = 0;
@@ -914,6 +1001,13 @@ export class DagScene {
       }
       this.starScale_update();
       this.handoff_step();
+      if (this.tubeMaterials.length > 0) {
+        const now: number = performance.now();
+        for (const material of this.tubeMaterials) {
+          const time = material.uniforms['time'];
+          if (time !== undefined) time.value = now;
+        }
+      }
       this.renderer.render(this.scene, this.camera);
       this.frameHandle = window.requestAnimationFrame(animate);
     };
@@ -1367,6 +1461,8 @@ export class DagScene {
   /** Tears the scene down and releases the GL context. */
   public dispose(): void {
     this.disposed = true;
+    this.layoutWorker?.terminate();
+    this.layoutWorker = null;
     if (this.frameHandle !== null) window.cancelAnimationFrame(this.frameHandle);
     this.renderer.dispose();
     this.renderer.domElement.remove();
@@ -1505,10 +1601,12 @@ export class DagScene {
     const center: THREE.Vector3 = new THREE.Vector3();
     for (const item of placed) center.add(item.position);
     center.divideScalar(placed.length);
-    let radius: number = 1;
-    for (const item of placed) {
-      radius = Math.max(radius, center.distanceTo(item.position) + item.radius);
-    }
+    // A space of molecules (a host that names them) is framed by its bulk:
+    // a few bodies flung far out would otherwise shrink the galaxies to a
+    // speck. A single graph is framed whole.
+    const reaches: number[] = placed.map((item: PlacedNode): number => center.distanceTo(item.position) + item.radius).sort((a: number, b: number): number => a - b);
+    const share: number = this.handlers.handoffKey !== undefined ? 0.95 : 1;
+    const radius: number = Math.max(1, reaches[Math.max(0, Math.ceil(reaches.length * share) - 1)] ?? 1);
     const fov: number = (this.camera.fov * Math.PI) / 180;
     const fitH: number = radius / Math.tan(fov / 2);
     const fitW: number = radius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
@@ -1583,7 +1681,16 @@ export class DagScene {
     // The work is the ticks times the nodes that move: a descent settles a
     // handful among thousands and must land in the same call, since the
     // flight that follows reads the meshes it draws.
-    if (progress === undefined || settle.total * settle.moving < SLICE_MIN_WORK) {
+    const small: boolean = settle.total * settle.moving < SLICE_MIN_WORK;
+    // A host that names its molecules (the universe) settles a big space
+    // as a hierarchy in a worker: molecules alone, then molecules as bodies.
+    // SPOKES and CLUMPS exist only there, at any size; a small galaxy
+    // settles on the page as it always has.
+    if ((!small || this.arrangement !== 'galaxy') && progress !== undefined && this.handlers.handoffKey !== undefined && this.frozen.size === 0) {
+      this.hierarchy_run(generation, fit, frozen, progress);
+      return;
+    }
+    if (progress === undefined || small) {
       settle.step(settle.total);
       this.draw(settle.place(), fit);
       return;
@@ -1610,6 +1717,85 @@ export class DagScene {
     window.requestAnimationFrame(slice);
   }
 
+  /** The layout worker, made on the first big settle and kept. */
+  private layoutWorker: Worker | null = null;
+  /** How a hierarchy sits molecules around their anchor. */
+  private arrangement: HierarchyArrangement = 'galaxy';
+  /** Where each arrangement's spheres stood, for a return to it. */
+  private arrangementMemory: Map<HierarchyArrangement, Map<string, THREE.Vector3>> = new Map();
+
+  /**
+   * Arranges molecules as clumps or spokes. The space is laid out afresh:
+   * a remembered shape would keep the old arrangement.
+   *
+   * @param arrangement - The arrangement.
+   */
+  public arrangement_set(arrangement: HierarchyArrangement, remembered?: Record<string, [number, number, number]>): void {
+    if (arrangement === this.arrangement) return;
+    // Each arrangement keeps where its spheres stood: going back to one
+    // already seen redraws it, and only a first visit pays its settle.
+    this.arrangementMemory.set(this.arrangement, new Map(this.lastPositions));
+    this.arrangement = arrangement;
+    let kept: Map<string, THREE.Vector3> | undefined = this.arrangementMemory.get(arrangement);
+    if (kept === undefined && remembered !== undefined && Object.keys(remembered).length > 0) {
+      kept = new Map(Object.entries(remembered).map(([id, [x, y, z]]): [string, THREE.Vector3] => [id, new THREE.Vector3(x, y, z)]));
+    }
+    this.lastPositions = kept ?? new Map();
+    this.rebuild(true, kept === undefined ? 'full' : 'hold');
+  }
+
+  /** @returns How a hierarchy sits molecules round their hubs. */
+  public arrangement_get(): HierarchyArrangement {
+    return this.arrangement;
+  }
+
+  /**
+   * Settles the graph as a hierarchy in the worker, reporting progress, and
+   * draws the answer if no newer rebuild has overtaken it.
+   */
+  private hierarchy_run(generation: number, fit: boolean, frozen: ReadonlySet<string>, progress: (done: number, total: number, nodes: number) => void): void {
+    const keyOf = this.handlers.handoffKey;
+    if (keyOf === undefined) return;
+    const radii: Map<string, number> = moleculeRadii_of(this.graph.nodes);
+    const nodes: HierarchyNode[] = this.graph.nodes.map((node: SceneNode): HierarchyNode => {
+      const seed: THREE.Vector3 | undefined = this.lastPositions.get(node.id);
+      return {
+        id: node.id,
+        parents: [...node.parentIds, ...node.joinParentIds],
+        radius: radii.get(node.id) ?? NODE_RADIUS,
+        group: node.ghost === true ? null : keyOf(node),
+        ...(seed === undefined ? {} : { seed: [seed.x, seed.y, seed.z] as [number, number, number] }),
+        ...(frozen.has(node.id) ? { frozen: true } : {}),
+      };
+    });
+    const total: number = 1000;
+    const count: number = nodes.length;
+    this.slicing = true;
+    progress(0, total, count);
+    if (this.layoutWorker === null) {
+      this.layoutWorker = new Worker(new URL('./layoutWorker.ts', import.meta.url), { type: 'module' });
+    }
+    const worker: Worker = this.layoutWorker;
+    const physics = this.physicsOnce !== undefined ? { ...this.physics, ...this.physicsOnce } : this.physics;
+    worker.onmessage = (event: MessageEvent<{ generation: number; type: 'progress' | 'done'; fraction?: number; positions?: HierarchyPositions }>): void => {
+      const answer = event.data;
+      if (answer.generation !== this.rebuildGen || this.disposed) return;
+      if (answer.type === 'progress') {
+        progress(Math.min(total - 1, Math.floor((answer.fraction ?? 0) * total)), total, count);
+        return;
+      }
+      const positions: HierarchyPositions = answer.positions ?? {};
+      const placed: PlacedNode[] = this.graph.nodes.map((node: SceneNode): PlacedNode => {
+        const at: [number, number, number] = positions[node.id] ?? [0, 0, 0];
+        return { node, position: new THREE.Vector3(at[0], at[1], at[2]), radius: radii.get(node.id) ?? NODE_RADIUS };
+      });
+      this.slicing = false;
+      this.draw(placed, fit);
+      progress(total, total, count);
+    };
+    worker.postMessage({ generation, nodes, physics, arrangement: this.arrangement });
+  }
+
   /** Draws placed nodes as the scene: meshes, edges, census, the frame. */
   private draw(placed: PlacedNode[], fit: boolean): void {
     this.group.clear();
@@ -1630,6 +1816,7 @@ export class DagScene {
     this.threadColor = null;
     this.handoff = new Map();
     this.placedById = new Map();
+    this.tubeMaterials = [];
     const palette = palette_read();
     this.pulseColor = palette.pulse;
     this.lastPositions = new Map(placed.map((p: PlacedNode): [string, THREE.Vector3] => [p.node.id, p.position.clone()]));
@@ -1736,15 +1923,27 @@ export class DagScene {
         const parent: PlacedNode | undefined = byId.get(parentId);
         if (!parent || parent.node.ghost === true) continue;
         const dim: boolean = node.dim === true || parent.node.dim === true;
-        if (solid(item) && solid(parent)) this.edge_add(parentId, node.id, parent.position, position, palette.edge, false, dim);
+        if (solid(item) && solid(parent)) { if (!starring) this.edge_add(parentId, node.id, parent.position, position, palette.edge, false, dim); }
         else thread_add(parent.position, position, palette.edge, dim, node);
       }
       for (const joinId of node.joinParentIds) {
         const parent: PlacedNode | undefined = byId.get(joinId);
         if (!parent) continue;
         const dim: boolean = node.dim === true || parent.node.dim === true;
-        if (solid(item) && solid(parent)) this.edge_add(joinId, node.id, parent.position, position, palette.join, true, dim);
+        if (solid(item) && solid(parent)) { if (!starring) this.edge_add(joinId, node.id, parent.position, position, palette.join, true, dim); }
         else thread_add(parent.position, position, palette.join, dim, node);
+      }
+    }
+    // Under stars, the solid nodes (a feed the operator entered) wear the
+    // same tubes a near feed does, and fire the same arrival wave.
+    if (starring) {
+      const solidIds: string[] = placed.filter((item: PlacedNode): boolean => item.node.solid === true && item.node.ghost !== true).map((item: PlacedNode): string => item.node.id);
+      if (solidIds.length > 0) {
+        const entered: HandoffGroup = {
+          entries: solidIds.map((id: string): StarEntry => ({ id, position: new THREE.Vector3(), radius: 0, color: new THREE.Color(), dim: false, ember: false })),
+          center: new THREE.Vector3(), maxRadius: 0, mix: 1, target: 1, meshes: [], lines: [], tubes: null, threadSegments: [],
+        };
+        this.tubes_build(entered, new Set(solidIds), palette);
       }
     }
     if (threads.length > 0) {
@@ -1773,7 +1972,7 @@ export class DagScene {
       if (key === null) continue;
       let group: HandoffGroup | undefined = this.handoff.get(key);
       if (group === undefined) {
-        group = { entries: [], center: new THREE.Vector3(), maxRadius: 0, mix: 0, target: 0, meshes: [], lines: [], threadSegments: [] };
+        group = { entries: [], center: new THREE.Vector3(), maxRadius: 0, mix: 0, target: 0, meshes: [], lines: [], tubes: null, threadSegments: [] };
         this.handoff.set(key, group);
       }
       group.entries.push(entry);
@@ -1804,9 +2003,15 @@ export class DagScene {
     let starsTouched: boolean = false;
     let threadsTouched: boolean = false;
     for (const group of this.handoff.values()) {
-      const c: THREE.Vector3 = group.center;
-      const depth: number = -(v[2]! * c.x + v[6]! * c.y + v[10]! * c.z + v[14]!);
-      const px: number = depth <= 0 ? 0 : (2 * group.maxRadius * perUnit) / depth;
+      // Its nearest sphere decides: a sprawling feed with one sphere at the
+      // camera turns solid, rather than leaving that sphere a swelling star.
+      let depth: number = Infinity;
+      for (const entry of group.entries) {
+        const p: THREE.Vector3 = entry.position;
+        const d: number = -(v[2]! * p.x + v[6]! * p.y + v[10]! * p.z + v[14]!);
+        if (d > 0 && d < depth) depth = d;
+      }
+      const px: number = depth === Infinity ? 0 : (2 * group.maxRadius * perUnit) / depth;
       if (group.target === 0 && px > HANDOFF_SOLID_PX) group.target = 1;
       else if (group.target === 1 && px < HANDOFF_STAR_PX) group.target = 0;
       if (group.mix === group.target) continue;
@@ -1818,6 +2023,10 @@ export class DagScene {
       }
       for (const line of group.lines) {
         if (line.material instanceof THREE.LineBasicMaterial) line.material.opacity = 0.75 * group.mix;
+      }
+      if (group.tubes !== null && group.tubes.material instanceof THREE.ShaderMaterial) {
+        const opacity = group.tubes.material.uniforms['opacity'];
+        if (opacity !== undefined) opacity.value = group.mix;
       }
       for (const entry of group.entries) {
         const layer = entry.layer === undefined ? undefined : this.starLayers[entry.layer];
@@ -1857,17 +2066,84 @@ export class DagScene {
       this.group.add(mesh);
       this.meshes.set(node.id, mesh);
       group.meshes.push(mesh);
-      for (const parentId of [...node.parentIds, ...node.joinParentIds]) {
+    }
+    this.tubes_build(group, members, palette);
+  }
+
+  /**
+   * A solid feed's edges as tubes, each carrying pulses from parent to
+   * child: a tube into a running or waiting stage streams (data is moving
+   * there now); a finished feed fires once as it turns solid, stage by
+   * stage in the order it ran, and rests; a tube into a failed stage is
+   * red, and the wave stops there as the run did.
+   */
+  private tubes_build(group: HandoffGroup, members: ReadonlySet<string>, palette: ReturnType<typeof palette_read>): void {
+    const edges: Array<{ from: PlacedNode; to: PlacedNode }> = [];
+    for (const entry of group.entries) {
+      const child: PlacedNode | undefined = this.placedById.get(entry.id);
+      if (child === undefined) continue;
+      for (const parentId of [...child.node.parentIds, ...child.node.joinParentIds]) {
         const parent: PlacedNode | undefined = this.placedById.get(parentId);
-        if (parent === undefined || !members.has(parentId)) continue;
-        const line: THREE.Line = new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints([parent.position, placed.position]),
-          new THREE.LineBasicMaterial({ color: palette.edge, transparent: true, opacity: 0.75 * group.mix }),
-        );
-        this.group.add(line);
-        group.lines.push(line);
+        if (parent !== undefined && members.has(parentId)) edges.push({ from: parent, to: child });
       }
     }
+    if (edges.length === 0) return;
+    // A stage's depth in its feed: the wave reaches it that many steps in.
+    const depth: Map<string, number> = new Map();
+    const depth_of = (id: string, seen: Set<string> = new Set()): number => {
+      const known: number | undefined = depth.get(id);
+      if (known !== undefined) return known;
+      if (seen.has(id)) return 0;
+      seen.add(id);
+      const placed: PlacedNode | undefined = this.placedById.get(id);
+      const parents: string[] = placed === undefined ? [] : [...placed.node.parentIds, ...placed.node.joinParentIds].filter((p: string): boolean => members.has(p));
+      const d: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((p: string): number => depth_of(p, seen)));
+      depth.set(id, d);
+      return d;
+    };
+    const fired = (node: SceneNode): boolean => node.status === 'finishedSuccessfully' || node.status === 'finishedWithError' || (node.share !== undefined && node.status !== undefined && !RUNNING_STATUSES.has(node.status));
+    const now: number = performance.now();
+    const colors: Float32Array = new Float32Array(edges.length * 3);
+    const modes: Float32Array = new Float32Array(edges.length);
+    const starts: Float32Array = new Float32Array(edges.length);
+    const bright: THREE.Color = palette.edge.clone().lerp(new THREE.Color('#ffffff'), 0.45);
+    const mesh: THREE.InstancedMesh = new THREE.InstancedMesh(tubeGeometry_get(), new THREE.ShaderMaterial({
+      uniforms: { time: { value: now }, opacity: { value: group.mix } },
+      vertexShader: TUBE_VERTEX,
+      fragmentShader: TUBE_FRAGMENT,
+      transparent: true,
+    }), edges.length);
+    const up: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
+    const carrier: THREE.Object3D = new THREE.Object3D();
+    edges.forEach(({ from, to }: { from: PlacedNode; to: PlacedNode }, i: number): void => {
+      const along: THREE.Vector3 = to.position.clone().sub(from.position);
+      const length: number = along.length();
+      const width: number = Math.max(0.03, Math.min(from.radius, to.radius) * 0.16);
+      carrier.position.copy(from.position).addScaledVector(along, 0.5);
+      carrier.quaternion.setFromUnitVectors(up, length > 0 ? along.clone().divideScalar(length) : up);
+      carrier.scale.set(width, length, width);
+      carrier.updateMatrix();
+      mesh.setMatrixAt(i, carrier.matrix);
+      const failed: boolean = to.node.status === 'finishedWithError' || (to.node.share !== undefined && to.node.share >= 1);
+      const color: THREE.Color = failed ? palette.error : bright;
+      colors.set([color.r, color.g, color.b], i * 3);
+      const live: boolean = to.node.status !== undefined && RUNNING_STATUSES.has(to.node.status);
+      modes[i] = live ? 1 : (fired(to.node) ? 2 : 0);
+      starts[i] = now + depth_of(from.node.id) * WAVE_STEP_MS;
+    });
+    mesh.geometry = tubeGeometry_get();
+    mesh.instanceMatrix.needsUpdate = true;
+    // Instanced attributes ride a clone of the shared tube, so each feed's
+    // tubes carry their own colours and pulses.
+    const geometry: THREE.BufferGeometry = tubeGeometry_get().clone();
+    geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
+    geometry.setAttribute('aMode', new THREE.InstancedBufferAttribute(modes, 1));
+    geometry.setAttribute('aStart', new THREE.InstancedBufferAttribute(starts, 1));
+    mesh.geometry = geometry;
+    mesh.frustumCulled = false;
+    this.group.add(mesh);
+    group.tubes = mesh;
+    if (mesh.material instanceof THREE.ShaderMaterial) this.tubeMaterials.push(mesh.material);
   }
 
   /** Lets a feed's spheres go once it is stars again. */
@@ -1882,6 +2158,16 @@ export class DagScene {
       this.group.remove(line);
       line.geometry.dispose();
       if (line.material instanceof THREE.Material) line.material.dispose();
+    }
+    if (group.tubes !== null) {
+      this.group.remove(group.tubes);
+      group.tubes.geometry.dispose();
+      if (group.tubes.material instanceof THREE.ShaderMaterial) {
+        const material: THREE.ShaderMaterial = group.tubes.material;
+        this.tubeMaterials = this.tubeMaterials.filter((m: THREE.ShaderMaterial): boolean => m !== material);
+        material.dispose();
+      }
+      group.tubes = null;
     }
     group.meshes = [];
     group.lines = [];
@@ -1922,7 +2208,7 @@ export class DagScene {
       geometry.setAttribute('alpha', alphaAttribute);
       this.starLayers.push({ alpha: alphaAttribute, base: Float32Array.from(alphas) });
       const material: THREE.ShaderMaterial = new THREE.ShaderMaterial({
-        uniforms: { scale: { value: 1 }, floorPx: { value: STAR_FLOOR_PX * window.devicePixelRatio } },
+        uniforms: { scale: { value: 1 }, floorPx: { value: STAR_FLOOR_PX * window.devicePixelRatio }, capPx: { value: STAR_CAP_PX * window.devicePixelRatio } },
         vertexShader: STAR_VERTEX,
         fragmentShader: ember ? STAR_FRAGMENT_EMBER : STAR_FRAGMENT_GLOW,
         transparent: true,

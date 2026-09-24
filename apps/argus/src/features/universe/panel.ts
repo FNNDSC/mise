@@ -74,6 +74,8 @@ export interface UniversePanelMount {
   densityPill: HTMLElement | null;
   /** DRAW: every node a point of light (STARS), or a lit sphere (SPHERES). */
   drawPill?: HTMLElement | null;
+  /** LAYOUT: the space's own emergent shape (GALAXY), molecules as spokes round their hub (SPOKES), or packed (CLUMPS). */
+  arrangementPill?: HTMLElement | null;
   /** The facts overlay on the field: the selected node's payload and verbs. */
   facts: HTMLElement | null;
   /** BACK, on the frame while a feed is entered. */
@@ -117,6 +119,8 @@ export class UniversePanel {
   private readonly wait: WaitProgress;
   /** Whether `proc universe` has been asked and not yet answered. */
   private asking: boolean = false;
+  /** The space last taken, as a key: a repeat answer is not a new space. */
+  private spaceKey: string = '';
   private readonly landed: LandedFeeds = new LandedFeeds();
   private readonly canvas: HTMLElement;
   private readonly title: HTMLElement;
@@ -161,6 +165,9 @@ export class UniversePanel {
   /** How the space is drawn: stars by default, lit spheres by choice. */
   private drawMode: DrawMode = 'stars';
   private drawPill: HTMLElement | null = null;
+  /** How molecules sit round their anchor. */
+  private arrangement: 'galaxy' | 'spokes' | 'clumps' = 'galaxy';
+  private arrangementPill: HTMLElement | null = null;
   private scalePill: HTMLElement | null = null;
   /** The settle's terms as the operator has them; gravity on by default here. */
   private physics: PhysicsTerms = { ...PHYSICS_DEFAULT, gravity: true };
@@ -245,6 +252,10 @@ export class UniversePanel {
     this.drawPill = mount.drawPill ?? null;
     this.scalePill = mount.scalePill;
     mount.drawPill?.addEventListener('click', (): void => { this.draw_set(this.drawMode === 'stars' ? 'spheres' : 'stars'); });
+    this.arrangementPill = mount.arrangementPill ?? null;
+    mount.arrangementPill?.addEventListener('click', (): void => {
+      this.arrangement_set(this.arrangement === 'galaxy' ? 'spokes' : this.arrangement === 'spokes' ? 'clumps' : 'galaxy');
+    });
     this.scene.draw_set(this.drawMode);
     this.canvas.style.display = 'none';
     this.title_paint();
@@ -358,6 +369,11 @@ export class UniversePanel {
       if (this.inside === null) return 'universe node: not inside a feed (universe enter <feed> first)';
       return this.node_flyTo(instanceID) ? `flying into instance ${instanceID}` : `universe node: no node of feed ${this.inside.feedId} hosts instance ${instanceID}`;
     }
+    if (verb === 'layout') {
+      const wanted: string = (args[0] ?? '').toLowerCase();
+      if (wanted !== 'galaxy' && wanted !== 'spokes' && wanted !== 'clumps') return 'universe layout galaxy|spokes|clumps';
+      return this.arrangement_set(wanted);
+    }
     if (verb === 'draw') {
       const wanted: string = (args[0] ?? '').toLowerCase();
       if (wanted !== 'stars' && wanted !== 'spheres') return 'universe draw stars|spheres';
@@ -401,7 +417,7 @@ export class UniversePanel {
       this.handlers.feed_open?.(this.inside.feedId);
       return `opening feed ${this.inside.feedId}`;
     }
-    return 'universe enter <feed>|node <instance>|cluster <feed>|view feeds|shapes|density shape|census|draw stars|spheres|physics <term> on|off|reset|back|open';
+    return 'universe enter <feed>|node <instance>|cluster <feed>|view feeds|shapes|density shape|census|draw stars|spheres|layout galaxy|spokes|clumps|physics <term> on|off|reset|back|open';
   }
 
   /**
@@ -435,6 +451,24 @@ export class UniversePanel {
     return mode === 'stars' ? 'every sphere a point of light' : 'every sphere lit and solid';
   }
 
+  /**
+   * Arranges the molecules round their anchors: spokes or clumps. The space
+   * is laid out afresh, with its readout.
+   *
+   * @param arrangement - The arrangement.
+   * @returns What happened, for the console.
+   */
+  private arrangement_set(arrangement: 'galaxy' | 'spokes' | 'clumps'): string {
+    this.arrangement = arrangement;
+    if (this.arrangementPill !== null) this.arrangementPill.textContent = arrangement.toUpperCase();
+    this.remember_now();
+    if (this.inside === null && this.cluster === null) this.scene.arrangement_set(arrangement, this.positions_recalled(arrangement));
+    this.settings_save();
+    return arrangement === 'galaxy'
+      ? 'the space finds its own shape: every sphere pushing, every edge holding'
+      : arrangement === 'spokes' ? 'each molecule a spoke round its hub' : 'molecules packed round their hub';
+  }
+
   /** Where this identity's frame choices are kept. */
   private settingsKey_get(): string | null {
     return this.storeKey === null ? null : this.storeKey.replace(/^argus\.universe\./, 'argus.universe.settings.');
@@ -445,7 +479,7 @@ export class UniversePanel {
     const key: string | null = this.settingsKey_get();
     if (this.store === undefined || key === null) return;
     try {
-      this.store.setItem(key, JSON.stringify(universeSettings_of(this.drawMode, this.view, this.scale, this.density)));
+      this.store.setItem(key, JSON.stringify(universeSettings_of(this.drawMode, this.view, this.scale, this.density, this.arrangement)));
     } catch {
       // A full or refused store forgets; the choices still hold for now.
     }
@@ -471,6 +505,9 @@ export class UniversePanel {
     this.view = kept.view;
     this.scale = kept.scale;
     this.density = kept.density;
+    this.arrangement = kept.arrangement;
+    if (this.arrangementPill !== null) this.arrangementPill.textContent = kept.arrangement.toUpperCase();
+    this.scene.arrangement_set(kept.arrangement, this.positions_recalled(kept.arrangement));
     if (this.drawPill !== null) this.drawPill.textContent = kept.draw.toUpperCase();
     if (this.viewPill !== null) this.viewPill.textContent = kept.view.toUpperCase();
     if (this.scalePill !== null) this.scalePill.textContent = kept.scale === 'jobs' ? 'JOBS' : 'ALIKE';
@@ -547,6 +584,14 @@ export class UniversePanel {
    */
   private space_show(model: ProcUniverseModel): void {
     this.asking = false;
+    // The same space twice (two asks crossed: the tile's and the pane's) is
+    // taken once: a second paint would throw away the settle under way.
+    const spaceKey: string = `${model.whole ? 'W' : 'L'}|${model.feeds.map((feed: LandedFeed): string => `${feed.id}:${feed.jobs}:${feed.status}`).join(',')}`;
+    if (this.shown && spaceKey === this.spaceKey) {
+      this.title_paint();
+      return;
+    }
+    this.spaceKey = spaceKey;
     this.wait.hide();
     this.whole = model.whole;
     if (!this.shown) {
@@ -943,10 +988,32 @@ export class UniversePanel {
   }
 
   /** Seeds the next settle from the remembered positions, if any. */
+  /**
+   * Where an arrangement's positions are kept: a galaxy under the key the
+   * universe always used, each other arrangement beside it.
+   */
+  private positionsKey_of(arrangement: 'galaxy' | 'spokes' | 'clumps'): string | null {
+    if (this.storeKey === null) return null;
+    return arrangement === 'galaxy' ? this.storeKey : `${this.storeKey}.${arrangement}`;
+  }
+
+  /** The positions kept for an arrangement, or none. */
+  private positions_recalled(arrangement: 'galaxy' | 'spokes' | 'clumps'): Record<string, [number, number, number]> | undefined {
+    const key: string | null = this.positionsKey_of(arrangement);
+    if (this.store === undefined || key === null) return undefined;
+    try {
+      const positions = storedPositions_parse(this.store.getItem(key));
+      return Object.keys(positions).length > 0 ? positions : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** @returns Whether any positions were remembered and seeded. */
   private seed_recall(): boolean {
-    if (this.store === undefined || this.storeKey === null) return false;
-    const positions = storedPositions_parse(this.store.getItem(this.storeKey));
+    const key: string | null = this.positionsKey_of(this.arrangement);
+    if (this.store === undefined || key === null) return false;
+    const positions = storedPositions_parse(this.store.getItem(key));
     if (Object.keys(positions).length === 0) return false;
     this.scene.positions_seed(positions);
     return true;
@@ -964,7 +1031,8 @@ export class UniversePanel {
   private remember_now(): void {
     if (this.store === undefined || this.storeKey === null || !this.shown) return;
     try {
-      this.store.setItem(this.storeKey, JSON.stringify(this.scene.positions_get()));
+      const key: string | null = this.positionsKey_of(this.scene.arrangement_get());
+      if (key !== null) this.store.setItem(key, JSON.stringify(this.scene.positions_get()));
     } catch {
       // A full or refused store forgets; the space still draws.
     }

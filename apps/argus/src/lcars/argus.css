@@ -1902,6 +1902,12 @@ main {
   border-radius: 0.8rem 0.25rem 0.8rem 0.25rem;
 }
 
+/* Hidden means gone: the display above would otherwise outrank the
+ * browser's own [hidden] rule and leave the last percentage standing. */
+.wait-progress[hidden] {
+  display: none;
+}
+
 .wait-progress-label {
   color: var(--butter);
   font-family: var(--face-label);

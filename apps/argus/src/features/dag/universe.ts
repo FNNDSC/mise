@@ -220,18 +220,19 @@ export interface UniverseSettings {
   view: 'feeds' | 'shapes';
   scale: 'jobs' | 'feeds';
   density: 'shape' | 'census';
+  arrangement: 'galaxy' | 'spokes' | 'clumps';
 }
 
-/** What a first visit gets: stars, every feed, sized by jobs, a sphere per stage. */
-export const UNIVERSE_SETTINGS_DEFAULT: UniverseSettings = { draw: 'stars', view: 'feeds', scale: 'jobs', density: 'shape' };
+/** What a first visit gets: stars, every feed, sized by jobs, a sphere per stage, the space a galaxy. */
+export const UNIVERSE_SETTINGS_DEFAULT: UniverseSettings = { draw: 'stars', view: 'feeds', scale: 'jobs', density: 'shape', arrangement: 'galaxy' };
 
 /**
  * The record kept for the frame's choices.
  *
  * @returns The record.
  */
-export function universeSettings_of(draw: UniverseSettings['draw'], view: UniverseSettings['view'], scale: UniverseSettings['scale'], density: UniverseSettings['density']): UniverseSettings {
-  return { draw, view, scale, density };
+export function universeSettings_of(draw: UniverseSettings['draw'], view: UniverseSettings['view'], scale: UniverseSettings['scale'], density: UniverseSettings['density'], arrangement: UniverseSettings['arrangement'] = UNIVERSE_SETTINGS_DEFAULT.arrangement): UniverseSettings {
+  return { draw, view, scale, density, arrangement };
 }
 
 /**
@@ -256,6 +257,7 @@ export function universeSettings_parse(text: string | null): UniverseSettings {
     view: pick(raw['view'], ['feeds', 'shapes'] as const, UNIVERSE_SETTINGS_DEFAULT.view),
     scale: pick(raw['scale'], ['jobs', 'feeds'] as const, UNIVERSE_SETTINGS_DEFAULT.scale),
     density: pick(raw['density'], ['shape', 'census'] as const, UNIVERSE_SETTINGS_DEFAULT.density),
+    arrangement: pick(raw['arrangement'], ['galaxy', 'spokes', 'clumps'] as const, UNIVERSE_SETTINGS_DEFAULT.arrangement),
   };
 }
 

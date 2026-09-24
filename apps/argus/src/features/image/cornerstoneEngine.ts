@@ -531,7 +531,7 @@ export class CornerstoneEngine implements ImageEngine {
     const { tools } = this.libraries;
     const group = tools.ToolGroupManager.getToolGroup(this.toolGroupId_get());
     if (group === undefined) return;
-    group.setToolActive(tools.StackScrollTool.toolName, { bindings: [{ mouseButton: tools.Enums.MouseBindings.Wheel }] });
+    group.setToolActive(tools.StackScrollTool.toolName, { bindings: [{ mouseButton: tools.Enums.MouseBindings.Wheel }, { numTouchPoints: 2 }] });
   }
 
   /**
@@ -731,7 +731,7 @@ export class CornerstoneEngine implements ImageEngine {
     group.addViewport(viewportId, engineId);
     const bindings = tools.Enums.MouseBindings;
     // The wheel turns the stack only once the stack is whole.
-    if (this.filled) group.setToolActive(tools.StackScrollTool.toolName, { bindings: [{ mouseButton: bindings.Wheel }] });
+    if (this.filled) group.setToolActive(tools.StackScrollTool.toolName, { bindings: [{ mouseButton: bindings.Wheel }, { numTouchPoints: 2 }] });
     this.primary = this.tool;
     if (this.tool === 'probe') this.probe_arm();
     else group.setToolActive(TOOL_NAMES[this.tool], { bindings: [{ mouseButton: bindings.Primary }] });
@@ -824,7 +824,7 @@ export class CornerstoneEngine implements ImageEngine {
       for (const name of [TOOL_NAMES.zoom, TOOL_NAMES.pan, TOOL_NAMES.wl, TOOL_NAMES.length, TOOL_NAMES.angle]) group.addTool(name);
       this.primary = null;
       group.setToolActive(tools.CrosshairsTool.toolName, { bindings: [{ mouseButton: bindings.Primary }] });
-      group.setToolActive(tools.StackScrollTool.toolName, { bindings: [{ mouseButton: bindings.Wheel }] });
+      group.setToolActive(tools.StackScrollTool.toolName, { bindings: [{ mouseButton: bindings.Wheel }, { numTouchPoints: 2 }] });
       group.setToolActive(TOOL_NAMES.zoom, { bindings: [{ mouseButton: bindings.Secondary }] });
       group.setToolActive(TOOL_NAMES.pan, { bindings: [{ mouseButton: bindings.Auxiliary }] });
       for (const input of inputs) {
@@ -862,7 +862,7 @@ export class CornerstoneEngine implements ImageEngine {
    * @param group - The layout's tool group.
    */
   private volumeBindings_apply(group: {
-    setToolActive: (name: string, options: { bindings: Array<{ mouseButton: number }> }) => void;
+    setToolActive: (name: string, options: { bindings: Array<{ mouseButton?: number; numTouchPoints?: number }> }) => void;
     setToolPassive: (name: string) => void;
   }): void {
     if (this.libraries === null) return;

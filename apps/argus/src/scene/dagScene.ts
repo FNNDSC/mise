@@ -195,6 +195,13 @@ const WAVE_LOOP_GAP_MS: number = 2_500;
 
 /** Pointer travel (px) past which a press counts as a drag, not a click. */
 const DRAG_THRESHOLD_PX: number = 4;
+/** Two taps within this span and distance are a double tap. */
+const DOUBLE_TAP_MS: number = 350;
+const DOUBLE_TAP_PX: number = 30;
+/** How long a tap's name stays up after the finger lifts. */
+const TAP_TIP_MS: number = 1500;
+/** A fingertip is wider than a cursor: the least a star reaches for one. */
+const TOUCH_REACH_PX: number = 14;
 
 /** Statuses grouped for coloring. */
 const RUNNING_STATUSES: ReadonlySet<string> = new Set([
@@ -862,6 +869,20 @@ export class DagScene {
 
   /** Whether the pointer is over the field: the idle spin waits while it is. */
   private pointerInside: boolean = false;
+  /** Fingers on the canvas, by pointer id, where each is now. */
+  private touches: Map<number, { x: number; y: number }> = new Map();
+  /** A two-finger gesture under way: the fingers' last spread and middle. */
+  private pinch: { spread: number; midX: number; midY: number } | null = null;
+  /** A gesture happened: the finger left behind neither orbits nor taps. */
+  private gestureHeld: boolean = false;
+  /** The last tap, for a double tap. */
+  private lastTap: { at: number; x: number; y: number } | null = null;
+  /** What the last press was made with: mouse, pen or touch. */
+  private pressKind: string = 'mouse';
+  /** When a double tap last entered: a browser's own dblclick after it is the same act. */
+  private tapActivatedAt: number = 0;
+  /** The pending hide of a tap's name. */
+  private tapTipTimer: number | null = null;
   /** The node the hover tip names, and where the pointer was. */
   private hovered: { id: string; x: number; y: number } | null = null;
 
@@ -908,22 +929,74 @@ export class DagScene {
     container.appendChild(this.renderer.domElement);
     this.size_fit();
     if (!this.ambient) {
+      // Fingers belong to the scene, not the page: without this the browser
+      // takes a pinch for a page zoom and a drag for a scroll.
+      this.renderer.domElement.style.touchAction = 'none';
       this.renderer.domElement.addEventListener('click', (event: MouseEvent): void => {
         // The click that ends a pull is the pull's release, not a select.
         if (this.suppressClick) {
           this.suppressClick = false;
           return;
         }
+        // A finger has no double click it can count on: two taps close in
+        // time and place are one, and enter as a double click does.
+        if (this.pressKind === 'touch') {
+          const now: number = Date.now();
+          const last = this.lastTap;
+          if (last !== null && now - last.at <= DOUBLE_TAP_MS && Math.hypot(event.clientX - last.x, event.clientY - last.y) <= DOUBLE_TAP_PX) {
+            this.lastTap = null;
+            this.tapActivatedAt = now;
+            this.pick_handle(event, 'activate');
+            return;
+          }
+          this.lastTap = { at: now, x: event.clientX, y: event.clientY };
+        }
         this.pick_handle(event, 'select');
       });
-      this.renderer.domElement.addEventListener('dblclick', (event: MouseEvent): void =>
-        this.pick_handle(event, 'activate'),
-      );
-      this.renderer.domElement.addEventListener('pointerdown', (event: PointerEvent): void =>
-        this.press_handle(event),
-      );
-      this.renderer.domElement.addEventListener('pointerup', (): void => this.drag_end());
-      this.renderer.domElement.addEventListener('pointercancel', (): void => this.drag_end());
+      this.renderer.domElement.addEventListener('dblclick', (event: MouseEvent): void => {
+        if (Date.now() - this.tapActivatedAt < 600) return;
+        this.pick_handle(event, 'activate');
+      });
+      this.renderer.domElement.addEventListener('pointerdown', (event: PointerEvent): void => {
+        this.pressKind = event.pointerType;
+        if (event.pointerType === 'touch') {
+          // The first finger of a new touch starts clean: a lift the browser
+          // never reported (a cancelled gesture, a system swipe) must not
+          // leave a phantom finger that turns every later tap into a third.
+          if (event.isPrimary) {
+            this.touches.clear();
+            this.pinch = null;
+            this.gestureHeld = false;
+          }
+          this.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+          if (this.touches.size === 2) {
+            this.gesture_begin();
+            return;
+          }
+          if (this.touches.size > 2 || this.gestureHeld) return;
+          this.press_handle(event);
+          // No hover under a finger: the press names what it landed on —
+          // after the press, which clears the tip a cursor leaves behind.
+          this.hover_handle(event);
+          return;
+        }
+        this.press_handle(event);
+      });
+      const release = (event: PointerEvent): void => {
+        if (event.pointerType === 'touch') {
+          this.touches.delete(event.pointerId);
+          if (this.touches.size < 2) this.pinch = null;
+          if (this.touches.size === 0 && this.gestureHeld) {
+            this.gestureHeld = false;
+            // The lift that ends a gesture is not a tap.
+            this.suppressClick = true;
+            window.setTimeout((): void => { this.suppressClick = false; }, 400);
+          }
+        }
+        this.drag_end();
+      };
+      this.renderer.domElement.addEventListener('pointerup', release);
+      this.renderer.domElement.addEventListener('pointercancel', release);
       // Hovering names the node: a small tip follows the pointer over a
       // sphere, so identity does not cost a click.
       this.tip = document.createElement('div');
@@ -931,6 +1004,14 @@ export class DagScene {
       this.tip.hidden = true;
       container.appendChild(this.tip);
       this.renderer.domElement.addEventListener('pointermove', (event: PointerEvent): void => {
+        if (event.pointerType === 'touch' && this.touches.has(event.pointerId)) {
+          this.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+          if (this.pinch !== null) {
+            this.gesture_move();
+            return;
+          }
+          if (this.gestureHeld) return;
+        }
         if (this.drag !== null) {
           this.drag_move(event);
         } else if (this.viewDrag !== null) {
@@ -939,35 +1020,25 @@ export class DagScene {
           this.hover_handle(event);
         }
       });
-      this.renderer.domElement.addEventListener('pointerleave', (): void => {
-        if (this.tip) this.tip.hidden = true;
+      this.renderer.domElement.addEventListener('pointerleave', (event: PointerEvent): void => {
         this.pointerInside = false;
         this.hovered = null;
+        // A finger lifting leaves the canvas at once; its name stays up a
+        // moment so it can be read.
+        if (event.pointerType === 'touch' && this.tip !== null && !this.tip.hidden) {
+          if (this.tapTipTimer !== null) window.clearTimeout(this.tapTipTimer);
+          this.tapTipTimer = window.setTimeout((): void => {
+            this.tapTipTimer = null;
+            if (this.tip !== null && this.touches.size === 0) this.tip.hidden = true;
+          }, TAP_TIP_MS);
+          return;
+        }
+        if (this.tip) this.tip.hidden = true;
       });
       // The wheel dollies: closer to read a dense graph, back for the whole.
       this.renderer.domElement.addEventListener('wheel', (event: WheelEvent): void => {
         event.preventDefault();
-        this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
-        this.touched = true;
-        // Dolly along the eye ray, not the z axis: census parks the camera
-        // off-axis (and far beyond the old 3..40 clamp), where a z-only
-        // dolly slid the whole cloud diagonally off screen.
-        const eyeDistance: number = this.camera.position.length();
-        if (this.census) {
-          // Census is a place: the wheel FLIES along the eye ray, untethered
-          // from the origin — through the core and out the other side.
-          const heading: THREE.Vector3 = this.camera.getWorldDirection(new THREE.Vector3());
-          const speed: number = Math.max(4, eyeDistance) * 0.0012;
-          this.camera.position.addScaledVector(heading, -event.deltaY * speed);
-          return;
-        }
-        // Dolly toward the focus, not the world's origin: after a flight to
-        // a feed the camera looks at the feed, and the wheel must close on it.
-        const offset: THREE.Vector3 = this.camera.position.clone().sub(this.focus);
-        const eye: number = offset.length();
-        const factor: number = Math.exp(event.deltaY * 0.001);
-        const next: number = Math.min(Math.max(eye * factor, 1.5), Math.max(40, this.camera.far * 0.45));
-        this.camera.position.copy(this.focus).addScaledVector(offset, next / Math.max(0.0001, eye));
+        this.camera_dolly(event.deltaY);
       }, { passive: false });
       // Right-drag pans; the browser menu would eat the gesture.
       this.renderer.domElement.addEventListener('contextmenu', (event: Event): void =>
@@ -2565,7 +2636,7 @@ export class DagScene {
       if (star.dim) continue;
       const hit = screen(star.position);
       if (hit === null) continue;
-      const reach: number = Math.max(4, (STAR_GLOW * star.radius * perUnit) / hit.depth);
+      const reach: number = Math.max(this.pressKind === 'touch' ? TOUCH_REACH_PX : 4, (STAR_GLOW * star.radius * perUnit) / hit.depth);
       const distance: number = Math.hypot(hit.x - px, hit.y - py);
       if (distance > reach) continue;
       const score: number = distance / reach;
@@ -2819,6 +2890,84 @@ export class DagScene {
     }
   }
 
+  /**
+   * Moves the camera nearer or farther, as a wheel turn of `deltaY` does:
+   * toward the focus, or — in census, which is a place — along the eye ray,
+   * untethered, through the core and out the other side.
+   *
+   * @param deltaY - A wheel's delta: positive draws back, negative closes in.
+   */
+  private camera_dolly(deltaY: number): void {
+    this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+    this.touched = true;
+    // Dolly along the eye ray, not the z axis: census parks the camera
+    // off-axis (and far beyond the old 3..40 clamp), where a z-only
+    // dolly slid the whole cloud diagonally off screen.
+    if (this.census) {
+      const heading: THREE.Vector3 = this.camera.getWorldDirection(new THREE.Vector3());
+      const speed: number = Math.max(4, this.camera.position.length()) * 0.0012;
+      this.camera.position.addScaledVector(heading, -deltaY * speed);
+      return;
+    }
+    // Toward the focus, not the world's origin: after a flight to a feed
+    // the camera looks at the feed, and a dolly must close on it.
+    const offset: THREE.Vector3 = this.camera.position.clone().sub(this.focus);
+    const eye: number = offset.length();
+    const next: number = Math.min(Math.max(eye * Math.exp(deltaY * 0.001), 1.5), Math.max(40, this.camera.far * 0.45));
+    this.camera.position.copy(this.focus).addScaledVector(offset, next / Math.max(0.0001, eye));
+  }
+
+  /**
+   * Slides the camera in its own plane by a screen distance; the focus
+   * rides along, so the next turn pivots on what is now in the middle.
+   *
+   * @param dx - Screen pixels across.
+   * @param dy - Screen pixels down.
+   */
+  private camera_pan(dx: number, dy: number): void {
+    const factor: number = this.camera.position.distanceTo(this.focus) * 0.0016;
+    const shift: THREE.Vector3 = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).multiplyScalar(-dx * factor)
+      .add(new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1).multiplyScalar(dy * factor));
+    this.camera.position.add(shift);
+    this.focus.add(shift);
+  }
+
+  /** The two fingers down: their spread and their middle. */
+  private fingers_read(): { spread: number; midX: number; midY: number } | null {
+    const [a, b] = [...this.touches.values()];
+    if (a === undefined || b === undefined) return null;
+    return { spread: Math.hypot(a.x - b.x, a.y - b.y), midX: (a.x + b.x) / 2, midY: (a.y + b.y) / 2 };
+  }
+
+  /**
+   * A second finger lands: whatever the first began — a pull, an orbit —
+   * lets go, and the two steer the camera together until they lift.
+   */
+  private gesture_begin(): void {
+    this.drag_end();
+    this.viewDrag = null;
+    this.gestureHeld = true;
+    this.pinch = this.fingers_read();
+    this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+    if (this.tip) this.tip.hidden = true;
+  }
+
+  /**
+   * Two fingers move: spreading closes in and pinching draws back, as the
+   * wheel does, and the pair moving together pans.
+   */
+  private gesture_move(): void {
+    const now = this.fingers_read();
+    if (now === null || this.pinch === null) return;
+    if (now.spread > 0 && this.pinch.spread > 0) {
+      // The spread's ratio is the zoom: in the wheel's own units, so a pinch
+      // and a wheel travel the same.
+      this.camera_dolly(Math.log(this.pinch.spread / now.spread) / 0.001);
+    }
+    if (this.projection === '2d' || !this.census) this.camera_pan(now.midX - this.pinch.midX, now.midY - this.pinch.midY);
+    this.pinch = now;
+  }
+
   /** Steers the view from an empty-space drag: orbit, or pan. */
   private view_move(event: PointerEvent): void {
     if (this.viewDrag === null) return;
@@ -2840,11 +2989,7 @@ export class DagScene {
       // Screen-proportional pan: the graph follows the pointer.
       // Screen-proportional pan in the camera's own plane; the focus rides
       // along, so the next turn pivots on what is now in the middle.
-      const factor: number = this.camera.position.distanceTo(this.focus) * 0.0016;
-      const shift: THREE.Vector3 = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).multiplyScalar(-dx * factor)
-        .add(new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1).multiplyScalar(dy * factor));
-      this.camera.position.add(shift);
-      this.focus.add(shift);
+      this.camera_pan(dx, dy);
     } else {
       // Orbit about the focus: across turns about the world's up, along
       // turns about the camera's right — the pivot is what is looked at.

@@ -28,6 +28,9 @@ import vtkMouseCameraTrackballZoomManipulator from '@kitware/vtk.js/Interaction/
 import vtkMouseCameraTrackballPanManipulator from '@kitware/vtk.js/Interaction/Manipulators/MouseCameraTrackballPanManipulator.js';
 
 /** What the scene needs to open. */
+
+/** Two fingers' travel, in pixels, that sweeps one slice. */
+const SWEEP_TOUCH_PX: number = 12;
 export interface SlabSceneOptions {
   /** The vtkImageData holding the volume (dims, spacing, origin, direction, scalars). */
   imageData: unknown;
@@ -161,6 +164,37 @@ export function slabScene_open(element: HTMLElement, options: SlabSceneOptions):
   };
   element.addEventListener('wheel', onWheel, { passive: false });
 
+  // Two fingers moving up or down sweep, as the wheel does: a slice every
+  // few pixels of travel. Heard before vtk's own touch handling, which
+  // would take the pair for a pinch or a turn.
+  let sweepFrom: number | null = null;
+  const fingersMid = (event: TouchEvent): number =>
+    ((event.touches[0]?.clientY ?? 0) + (event.touches[1]?.clientY ?? 0)) / 2;
+  const onTouchStart = (event: TouchEvent): void => {
+    if (event.touches.length !== 2) { sweepFrom = null; return; }
+    sweepFrom = fingersMid(event);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const onTouchMove = (event: TouchEvent): void => {
+    if (sweepFrom === null || event.touches.length !== 2) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const travel: number = fingersMid(event) - sweepFrom;
+    const steps: number = Math.trunc(travel / SWEEP_TOUCH_PX);
+    if (steps === 0) return;
+    sweepFrom += steps * SWEEP_TOUCH_PX;
+    sweep(currentK + steps);
+    options.onSweep(currentK);
+  };
+  const onTouchEnd = (event: TouchEvent): void => {
+    if (event.touches.length < 2) sweepFrom = null;
+  };
+  element.addEventListener('touchstart', onTouchStart, { capture: true, passive: false });
+  element.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+  element.addEventListener('touchend', onTouchEnd, { capture: true });
+  element.addEventListener('touchcancel', onTouchEnd, { capture: true });
+
   return {
     sweep,
     ghost_set: (level: number | null): void => {
@@ -177,6 +211,10 @@ export function slabScene_open(element: HTMLElement, options: SlabSceneOptions):
     slice_get: (): number => currentK,
     dispose: (): void => {
       element.removeEventListener('wheel', onWheel);
+      element.removeEventListener('touchstart', onTouchStart, { capture: true });
+      element.removeEventListener('touchmove', onTouchMove, { capture: true });
+      element.removeEventListener('touchend', onTouchEnd, { capture: true });
+      element.removeEventListener('touchcancel', onTouchEnd, { capture: true });
       try { renderer.removeVolume(volume); renderer.removeActor(imageSlice); } catch { /* torn down */ }
       try { (grw as unknown as { delete: () => void }).delete(); } catch { /* already gone */ }
     },

@@ -6,6 +6,8 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { AddressInfo } from 'node:net';
+import { createServer, type Server } from 'node:http';
+import { SessionRegistry } from '../../src/registry.js';
 import { porterApp_build, upstreamPath_build, mountUrl_split, berthHttp_of, type PorterApp } from '../../src/app.js';
 import type { Berth, BootListener, BootReport, SessionHost } from '../../src/host/sessionHost.js';
 import type { PorterConfig } from '../../src/config.js';
@@ -373,5 +375,59 @@ describe('the wire through the mount', () => {
       client.once('error', () => resolve('refused'));
     });
     expect(outcome).toBe('refused');
+  });
+});
+
+describe('a session whose daemon is gone', () => {
+  const identity: string = 'chris@https://cube.example.org/api/v1/';
+  /** A port nothing listens on: bound, noted, closed. */
+  const deadPort_find = async (): Promise<number> => {
+    const probe: Server = createServer();
+    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+    const port: number = (probe.address() as AddressInfo).port;
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    return port;
+  };
+  /** Logs in while the host reports a berth at `url`, and returns the cookie and key. */
+  const attach = async (url: string): Promise<{ cookie: string; key: string }> => {
+    host.found = { identity, url, token: 'ATTACH' };
+    const response = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'right' } });
+    return { cookie: cookie_of(response), key: (response.json() as { key: string }).key };
+  };
+
+  it('a new boot drops the entry that named the dead daemon', async () => {
+    const registry: SessionRegistry = new SessionRegistry();
+    const key: string = registry.note(identity, 'chris', { identity, url: 'ws://127.0.0.1:1111', token: 'OLD' }).key;
+    registry.pending_note(identity, 'chris');
+    expect(registry.get(key)).toBeNull();
+    const settled = await registry.settle(identity, { find: async () => ({ identity, url: 'ws://127.0.0.1:2222', token: 'NEW' }) });
+    expect(settled?.berth.url).toBe('ws://127.0.0.1:2222');
+    expect(registry.get(key)?.berth.url).toBe('ws://127.0.0.1:2222');
+  });
+
+  it('the mount moves to where the session answers now, instead of a 500 for the dead port', async () => {
+    const live: Server = createServer((_request, response) => { response.end('from the live daemon'); });
+    await new Promise<void>((resolve) => live.listen(0, '127.0.0.1', resolve));
+    try {
+      const { cookie, key } = await attach(`ws://127.0.0.1:${await deadPort_find()}`);
+      host.found = { identity, url: `ws://127.0.0.1:${(live.address() as AddressInfo).port}`, token: 'NEW' };
+      const first = await built.app.inject({ method: 'GET', url: `/s/${key}/index.html`, headers: { cookie } });
+      expect(first.statusCode).toBe(307);
+      expect(first.headers.location).toBe(`/s/${key}/index.html`);
+      const again = await built.app.inject({ method: 'GET', url: `/s/${key}/index.html`, headers: { cookie } });
+      expect(again.statusCode).toBe(200);
+      expect(again.body).toBe('from the live daemon');
+    } finally {
+      await new Promise<void>((resolve) => live.close(() => resolve()));
+    }
+  });
+
+  it('with no session up, the mount sends the browser to the door and forgets the key', async () => {
+    const { cookie, key } = await attach(`ws://127.0.0.1:${await deadPort_find()}`);
+    host.found = null;
+    const response = await built.app.inject({ method: 'GET', url: `/s/${key}/`, headers: { cookie } });
+    expect(response.statusCode).toBe(303);
+    expect(response.headers.location).toMatch(/^\/login\?reason=your%20session%20ended/);
+    expect((await built.app.inject({ method: 'GET', url: `/s/${key}/`, headers: { cookie } })).statusCode).toBe(404);
   });
 });

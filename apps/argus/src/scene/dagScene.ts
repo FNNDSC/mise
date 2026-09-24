@@ -594,9 +594,11 @@ const PULSE_TRIP_MS: number = 1200;
 /** The rest between two replays of a finished feed's run. */
 const REPLAY_REST_MS: number = 1800;
 /** A replayed stage before its pulse lands: this share of its colour. */
-const LAMP_DIM: number = 0.4;
-/** How long a stage flares as its pulse lands. */
-const LAMP_FLARE_MS: number = 350;
+const LAMP_DIM: number = 0.18;
+/** How long a stage's glow blooms out and settles as its pulse lands. */
+const LAMP_BLOOM_MS: number = 1000;
+/** How far the bloom reaches, in the stage's radii. */
+const LAMP_BLOOM_REACH: number = 9;
 /** How long the lit stages take to dim before the run replays. */
 const LAMP_FADE_MS: number = 500;
 /** What a lit stage brightens toward. */
@@ -852,7 +854,11 @@ export class DagScene {
   /** The tube materials on stage, whose pulses follow the clock. */
   private tubeMaterials: THREE.ShaderMaterial[] = [];
   /** Each tube batch and the edges it draws, so a pull can move them. */
-  private tubeSets: Array<{ mesh: THREE.InstancedMesh; edges: Array<{ from: string; to: string; width: number }>; lamps: Map<string, number> }> = [];
+  private tubeSets: Array<{ mesh: THREE.InstancedMesh; edges: Array<{ from: string; to: string; width: number }>; lamps: Map<string, number>; blinks: Set<string>; group: HandoffGroup; members: ReadonlySet<string> }> = [];
+  /** A status moved under a tube: its tubes are re-read next frame. */
+  private tubesStale: boolean = false;
+  /** The glow each lit or blinking stage blooms with, by node. */
+  private lampGlows: Map<string, THREE.Sprite> = new Map();
 
   /** Whether the pointer is over the field: the idle spin waits while it is. */
   private pointerInside: boolean = false;
@@ -1032,6 +1038,7 @@ export class DagScene {
           const time = material.uniforms['time'];
           if (time !== undefined) time.value = now;
         }
+        if (this.tubesStale) this.tubes_restatus();
         this.lamps_animate(now);
       }
       this.renderer.render(this.scene, this.camera);
@@ -1527,12 +1534,17 @@ export class DagScene {
   public status_update(nodeId: string, status: string): void {
     const node: SceneNode | undefined = this.graph.nodes.find((n: SceneNode) => n.id === nodeId);
     if (!node) return;
+    if (node.status === status) return;
     node.status = status;
     const mesh: THREE.Mesh | undefined = this.meshes.get(nodeId);
     if (mesh && mesh.material instanceof THREE.MeshStandardMaterial) {
       const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
       mesh.material.color = nodeColor_pick(node, palette_read(), isRoot);
+      delete mesh.userData['lampBase'];
     }
+    // A stage that started or finished changes what its tubes carry: a
+    // stream, a replay, or nothing.
+    if (this.tubeSets.some((entry): boolean => entry.members.has(nodeId))) this.tubesStale = true;
   }
 
   /** Re-reads the palette (the THEME pill changed) and repaints. */
@@ -1912,6 +1924,8 @@ export class DagScene {
     this.placedById = new Map();
     this.tubeMaterials = [];
     this.tubeSets = [];
+    for (const glow of this.lampGlows.values()) glow.material.dispose();
+    this.lampGlows = new Map();
     const palette = palette_read();
     this.pulseColor = palette.pulse;
     this.lastPositions = new Map(placed.map((p: PlacedNode): [string, THREE.Vector3] => [p.node.id, p.position.clone()]));
@@ -2227,6 +2241,9 @@ export class DagScene {
     // A replayed stage lights when its pulse arrives: the root at once,
     // every other stage as the first tube into it lands.
     const lamps: Map<string, number> = new Map();
+    // A running stage blinks with the stream: lit each time a pulse lands,
+    // dark again before the next, until it is done.
+    const blinks: Set<string> = new Set();
     edges.forEach(({ from, to, join }: { from: PlacedNode; to: PlacedNode; join: boolean }, i: number): void => {
       const along: THREE.Vector3 = to.position.clone().sub(from.position);
       const length: number = along.length();
@@ -2246,6 +2263,7 @@ export class DagScene {
       const depth: number = depth_of(from.node.id);
       deepest = Math.max(deepest, depth);
       starts[i] = depth * WAVE_STEP_MS;
+      if (modes[i] === 1) blinks.add(to.node.id);
       if (modes[i] === 2) {
         const landed: number = starts[i]! + PULSE_TRIP_MS / 2;
         lamps.set(to.node.id, Math.min(lamps.get(to.node.id) ?? Infinity, landed));
@@ -2269,7 +2287,7 @@ export class DagScene {
       const cycle = mesh.material.uniforms['cycle'];
       if (cycle !== undefined) cycle.value = (deepest + 1) * WAVE_STEP_MS + PULSE_TRIP_MS / 2 + REPLAY_REST_MS;
     }
-    this.tubeSets.push({ mesh, edges: set, lamps });
+    this.tubeSets.push({ mesh, edges: set, lamps, blinks, group, members });
   }
 
   /**
@@ -2280,30 +2298,99 @@ export class DagScene {
    * @param now - This frame's time, the tubes' own.
    */
   private lamps_animate(now: number): void {
-    for (const { mesh: tubes, lamps } of this.tubeSets) {
-      if (lamps.size === 0 || !(tubes.material instanceof THREE.ShaderMaterial)) continue;
+    const shown: Set<string> = new Set();
+    for (const { mesh: tubes, lamps, blinks } of this.tubeSets) {
+      if ((lamps.size === 0 && blinks.size === 0) || !(tubes.material instanceof THREE.ShaderMaterial)) continue;
       const born: number = Number(tubes.material.uniforms['born']?.value ?? now);
       const cycle: number = Number(tubes.material.uniforms['cycle']?.value ?? 1);
       const local: number = (((now - born) % cycle) + cycle) % cycle;
       // Out of the cycle's last stretch every lamp fades back down.
       const fade: number = Math.min(1, Math.max(0, (cycle - local) / LAMP_FADE_MS));
       for (const [id, landed] of lamps) {
-        const sphere: THREE.Mesh | undefined = this.meshes.get(id);
-        if (sphere === undefined || !(sphere.material instanceof THREE.MeshStandardMaterial)) continue;
-        let base: unknown = sphere.userData['lampBase'];
-        if (!(base instanceof THREE.Color)) {
-          base = sphere.material.color.clone();
-          sphere.userData['lampBase'] = base;
-        }
         const since: number = local - landed;
-        const lit: number = since < 0 ? 0 : fade;
-        const flare: number = since >= 0 && since < LAMP_FLARE_MS ? 1 - since / LAMP_FLARE_MS : 0;
-        sphere.material.color
-          .copy(base as THREE.Color)
-          .multiplyScalar(LAMP_DIM + (1 - LAMP_DIM) * lit)
-          .lerp(LAMP_WHITE, Math.min(1, 0.18 * lit + 0.55 * flare));
+        this.lamp_paint(id, since < 0 ? 0 : fade, since >= 0 && since < LAMP_BLOOM_MS ? since / LAMP_BLOOM_MS : -1, shown);
+      }
+      // The stream's pulse lands every trip; a running stage flares then
+      // and dies back toward dark.
+      const trip: number = ((now % PULSE_TRIP_MS) + PULSE_TRIP_MS) % PULSE_TRIP_MS;
+      for (const id of blinks) {
+        if (lamps.has(id)) continue;
+        const decay: number = Math.max(0, 1 - trip / (PULSE_TRIP_MS * 0.8));
+        this.lamp_paint(id, decay * decay, trip < LAMP_BLOOM_MS ? trip / LAMP_BLOOM_MS : -1, shown);
       }
     }
+    for (const [id, glow] of this.lampGlows) {
+      if (shown.has(id)) continue;
+      glow.visible = false;
+      if (!this.meshes.has(id)) {
+        this.group.remove(glow);
+        glow.material.dispose();
+        this.lampGlows.delete(id);
+      }
+    }
+  }
+
+  /**
+   * Paints one stage's lamp: its colour from dark to lit, and — while a
+   * pulse has just landed — a flash toward white and a glow that blooms
+   * out and settles.
+   *
+   * @param id - The stage.
+   * @param lit - How lit it stands, 0 (dark) to 1.
+   * @param bloom - How far through its bloom, 0..1; below 0 when none.
+   * @param shown - Collects the stages whose glow shows this frame.
+   */
+  private lamp_paint(id: string, lit: number, bloom: number, shown: Set<string>): void {
+    const sphere: THREE.Mesh | undefined = this.meshes.get(id);
+    if (sphere === undefined || !(sphere.material instanceof THREE.MeshStandardMaterial)) return;
+    let base: unknown = sphere.userData['lampBase'];
+    if (!(base instanceof THREE.Color)) {
+      base = sphere.material.color.clone();
+      sphere.userData['lampBase'] = base;
+    }
+    const flash: number = bloom < 0 ? 0 : (1 - bloom) ** 2;
+    sphere.material.color
+      .copy(base as THREE.Color)
+      .multiplyScalar(LAMP_DIM + (1 - LAMP_DIM) * Math.max(lit, flash))
+      .lerp(LAMP_WHITE, Math.min(1, 0.22 * lit + 0.7 * flash));
+    if (bloom < 0) return;
+    let glow: THREE.Sprite | undefined = this.lampGlows.get(id);
+    if (glow === undefined) {
+      glow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: nebulaTexture_get(), color: (base as THREE.Color).clone().lerp(LAMP_WHITE, 0.35),
+        transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+      }));
+      this.lampGlows.set(id, glow);
+      this.group.add(glow);
+    }
+    const radius: number = (sphere.geometry as THREE.BufferGeometry & { parameters?: { radius?: number } }).parameters?.radius ?? NODE_RADIUS;
+    // Out fast, then settle: the glow swells to its reach and fades.
+    const swell: number = 1 - (1 - bloom) ** 3;
+    glow.position.copy(sphere.position);
+    glow.scale.setScalar(radius * (2 + LAMP_BLOOM_REACH * swell) * sphere.scale.x);
+    glow.material.opacity = 0.9 * (1 - bloom) ** 1.5;
+    glow.visible = true;
+    shown.add(id);
+  }
+
+  /** Re-reads every tube set from the stages' statuses as they are now. */
+  private tubes_restatus(): void {
+    this.tubesStale = false;
+    const palette = palette_read();
+    const stale = this.tubeSets;
+    this.tubeSets = [];
+    for (const entry of stale) {
+      this.group.remove(entry.mesh);
+      entry.mesh.geometry.dispose();
+      if (entry.mesh.material instanceof THREE.ShaderMaterial) {
+        const material: THREE.ShaderMaterial = entry.mesh.material;
+        this.tubeMaterials = this.tubeMaterials.filter((m: THREE.ShaderMaterial): boolean => m !== material);
+        material.dispose();
+      }
+      entry.group.tubes = null;
+      this.tubes_build(entry.group, entry.members, palette);
+    }
+    this.tubes_follow();
   }
 
   /**

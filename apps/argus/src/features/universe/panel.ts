@@ -187,6 +187,14 @@ export class UniversePanel {
       // A space of thousands settles in slices, and says how far it has
       // come: the page never sits frozen behind a settle.
       progress: (done: number, total: number, nodes: number): void => this.settle_progress(done, total, nodes),
+      // A feed turns solid as a whole when it is near enough to read; a
+      // folded shape's molecule does the same.
+      handoffKey: (node: SceneNode): string | null => {
+        const feed: RegExpMatchArray | null = node.id.match(/^feed:(\d+):/);
+        if (feed !== null) return `feed:${feed[1]}`;
+        const folded: string | null = foldShape_of(node.id);
+        return folded === null ? null : `fold:${folded}`;
+      },
       // A sphere is a plugin group inside a feed; the tip says both. Inside
       // a feed the nodes are its own and carry their labels.
       tip: (node: SceneNode): string | null => (this.inside === null ? (foldTip_of(node.id, this.landed) ?? universeTip_of(node.id, this.landed) ?? clusterTip_of(node.id, this.landed)) : null),

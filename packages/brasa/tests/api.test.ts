@@ -60,9 +60,11 @@ describe('chellApi_create', () => {
     mkdirRun.mockResolvedValue(envelope_of('fs.mkdir', []));
     const sh = await chellApi_create();
     await sh.mkdir('a');
-    expect(mkdirRun).toHaveBeenCalledWith({ paths: ['a'] });
+    expect(mkdirRun).toHaveBeenCalledWith({ paths: ['a'], parents: false });
     await sh.mkdir(['a', 'b']);
-    expect(mkdirRun).toHaveBeenCalledWith({ paths: ['a', 'b'] });
+    expect(mkdirRun).toHaveBeenCalledWith({ paths: ['a', 'b'], parents: false });
+    await sh.mkdir('a/b', { parents: true });
+    expect(mkdirRun).toHaveBeenCalledWith({ paths: ['a/b'], parents: true });
   });
 
   it('touch carries the content options', async () => {

@@ -685,7 +685,7 @@ export class GatherPanel {
         vfsPath: entry.vfsPath,
       })),
     });
-    this.handlers.command_run('mkdir ~/gather');
+    this.handlers.command_run('mkdir -p ~/gather');
     this.handlers.command_show(`touch --withContents '${manifest}' ~/gather/${name}.json`);
     this.unsaved = false;
     return true;
@@ -705,7 +705,7 @@ export class GatherPanel {
         entry.patient, entry.description, entry.modality, entry.seriesUID, entry.vfsPath,
       ].map(csvField_quote).join(',')),
     ];
-    this.handlers.command_run('mkdir ~/gather');
+    this.handlers.command_run('mkdir -p ~/gather');
     this.handlers.command_show(`touch --withContents '${rows.join('\n')}' ~/gather/${name}.csv`);
   }
 

@@ -46,6 +46,25 @@ export interface CommandArgsOptions {
 
 
 /**
+ * Names the first option a verb does not have, in the words the shell
+ * uses on Linux, so a verb refuses it rather than skipping it: an ignored
+ * flag reads as done.
+ *
+ * @param verb - The command, for the message.
+ * @param parsed - The parsed arguments.
+ * @param known - The option keys the verb reads (single letters for short
+ *   flags, names for long ones).
+ * @returns The refusal line, or null when every option is known.
+ */
+export function optionsUnknown_refusal(verb: string, parsed: ParsedArgs, known: ReadonlyArray<string>): string | null {
+  for (const key of Object.keys(parsed)) {
+    if (key === '_' || known.includes(key)) continue;
+    return key.length === 1 ? `${verb}: invalid option -- '${key}'` : `${verb}: unrecognized option '--${key}'`;
+  }
+  return null;
+}
+
+/**
  * Parses raw argument strings into a structured object.
  * Supports `--` as an end-of-options marker (everything after is treated as positional args).
  *

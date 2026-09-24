@@ -2492,7 +2492,7 @@ async function surface_start(token: string): Promise<void> {
       });
       // Silent: this is the surface keeping its own state, not an act the
       // operator took, and the transcript is for what they did.
-      void client.line_execute('mkdir ~/gather', { silent: true, observe: false });
+      void client.line_execute('mkdir -p ~/gather', { silent: true, observe: false });
       void client.line_execute(
         `touch --withContents '${kept.replace(/'/g, "'\\''")}' ${COHORT_FILE}`,
         { silent: true, observe: false },
@@ -3199,7 +3199,7 @@ async function surface_start(token: string): Promise<void> {
       // through a button, so it is echoed into the console — the transcript
       // is the whole story of the session, not only of what was typed —
       // then run silently so a long retrieve never locks the prompt. The
-      // incidental probes (`pacs list`, `mkdir ~/gather`) are not echoed.
+      // incidental probes (`pacs list`, `mkdir -p ~/gather`) are not echoed.
       if (/^(pacs query|pull )/.test(line)) terminal.line_echo(line);
       void client.line_execute(line, { silent: true }).then((outcome: ExecuteOutcome): void => {
         for (const envelope of outcome.envelopes) pacsPanel.envelope_observe(envelope);

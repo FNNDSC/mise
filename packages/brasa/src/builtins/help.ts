@@ -182,9 +182,9 @@ export const helpText: Record<string, CommandHelp> = {
     usage: 'rm [options] <path> [path...]',
     description: 'Remove files or directories',
     options: [
-      '-r, -R      Remove directories recursively',
-      '-f          Force removal',
-      '-i          Prompt before every removal (interactive)',
+      '-r, -R, --recursive  Remove directories recursively (without it a directory is "Is a directory")',
+      '-f, --force          Force removal',
+      '-i, --interactive    Prompt before every removal (interactive)',
       '-I          Prompt ONCE for the whole list, naming how many',
       '-rf, -fr    Recursive and force combined',
       '-ri, -ir    Recursive and interactive combined',
@@ -264,12 +264,16 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   mkdir: {
-    usage: 'mkdir <directory> [directory...]',
+    usage: 'mkdir [-p] <directory> [directory...]',
     description: 'Create directories',
+    options: [
+      '-p, --parents  make missing parents too, and take a folder already there as done',
+      'Without -p, as on Linux: a missing parent is "No such file or directory" and an existing folder is "File exists".',
+    ],
     examples: [
-      'mkdir newdir          # Create single directory',
-      'mkdir dir1 dir2       # Create multiple directories',
-      'mkdir experiments/run1  # Create nested directory',
+      'mkdir newdir               # Create single directory',
+      'mkdir dir1 dir2            # Create multiple directories',
+      'mkdir -p experiments/run1  # Create nested directory, parents included',
     ],
   },
   upload: {

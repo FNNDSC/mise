@@ -57,14 +57,27 @@ export interface RmArgs {
    */
   once: boolean;
   paths: string[];
+  /** The refusal line for an option rm does not have, when one was given. */
+  refused?: string;
 }
 
+/** The long options rm knows, and the short flag each one is. */
+const RM_LONG_OPTIONS: Readonly<Record<string, string>> = {
+  '--recursive': 'r',
+  '--force': 'f',
+  '--interactive': 'i',
+};
+
 /**
- * Parses `rm` arguments, supporting combined short flags (`-rf`, `-rfi`) and the
- * `--` end-of-options separator.
+ * Parses `rm` arguments, supporting combined short flags (`-rf`, `-rfi`),
+ * the long forms (`--recursive`, `--force`, `--interactive`) and the `--`
+ * end-of-options separator. An option rm does not have is refused by name
+ * — never skipped, and never read letter by letter (`--force` once turned
+ * recursion on through its `r`).
  *
  * @param args - Raw command arguments.
- * @returns The parsed flags and path operands.
+ * @returns The parsed flags and path operands, with `refused` set for the
+ *   first unknown option.
  */
 export function rmArgs_parse(args: string[]): RmArgs {
   let recursive: boolean = false;
@@ -84,13 +97,22 @@ export function rmArgs_parse(args: string[]): RmArgs {
       continue;
     }
     if (arg.startsWith('-') && arg.length > 1) {
-      for (const ch of arg.substring(1)) {
+      let flags: string = arg.substring(1);
+      if (arg.startsWith('--')) {
+        const short: string | undefined = RM_LONG_OPTIONS[arg];
+        if (short === undefined) {
+          return { recursive, force, interactive, once, paths, refused: `rm: unrecognized option '${arg}'` };
+        }
+        flags = short;
+      }
+      for (const ch of flags) {
         if (ch === 'r' || ch === 'R') recursive = true;
         else if (ch === 'f') force = true;
         else if (ch === 'i') interactive = true;
         else if (ch === 'I') once = true;
+        else return { recursive, force, interactive, once, paths, refused: `rm: invalid option -- '${ch}'` };
       }
-    } else if (!arg.startsWith('-')) {
+    } else {
       paths.push(arg);
     }
   }
@@ -116,6 +138,21 @@ export function rmSummary_format(successCount: number, failCount: number): strin
   return chalk.red(`Failed to remove ${failCount} item${failCount !== 1 ? 's' : ''}`);
 }
 
+/**
+ * Says why a removal failed in the words rm uses on Linux: a directory
+ * without `-r` "Is a directory", a missing operand "No such file or
+ * directory"; anything else as the store reported it.
+ *
+ * @param result - The failed removal.
+ * @param recursive - Whether `-r` was given.
+ * @returns The reason that finishes "rm: cannot remove 'x': ".
+ */
+export function rmFailure_reason(result: RmResult, recursive: boolean): string {
+  if (result.type === 'dir' && !recursive) return 'Is a directory';
+  if (result.type === null && (result.error ?? '').startsWith('No such file or directory')) return 'No such file or directory';
+  return result.error || 'unknown error';
+}
+
 /** Outcome of one removal target, for the envelope model. */
 export interface RmOutcome {
   path: string;
@@ -134,7 +171,9 @@ export interface RmOutcome {
  * @returns An envelope whose model lists per-target outcomes.
  */
 export async function builtin_rm(args: string[]): Promise<CommandEnvelope> {
-  return rm_run(rmArgs_parse(args));
+  const parsed: RmArgs = rmArgs_parse(args);
+  if (parsed.refused !== undefined) return envelope_error('', undefined, `${chalk.red(parsed.refused)}\n`);
+  return rm_run(parsed);
 }
 
 /**
@@ -251,6 +290,11 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
 
       const result: RmResult = await chefs_rm_cmd(target, options);
 
+      if (result.success && result.type === null) {
+        // `-f` on something not there: nothing removed, nothing to say.
+        outcomes.push({ path: pathArg, removed: false, skipped: false });
+        continue;
+      }
       if (result.success) {
         if (paths.length > 1) {
           out_emit(chalk.gray(`removed '${pathArg}'`));
@@ -268,7 +312,7 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
         // nested listings from the deleted tree.
         listCache.cache_invalidateTree(target);
       } else {
-        err_emit(chalk.red(`rm: cannot remove '${pathArg}': ${result.error || 'unknown error'}`));
+        err_emit(chalk.red(`rm: cannot remove '${pathArg}': ${rmFailure_reason(result, recursive)}`));
         outcomes.push({ path: pathArg, removed: false, skipped: false });
         failCount++;
       }

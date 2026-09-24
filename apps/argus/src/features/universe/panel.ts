@@ -110,9 +110,6 @@ const DESCENT_MS: number = 650;
 /** How long the climb back out takes. */
 const ASCENT_MS: number = 650;
 
-/** The share of an entered feed's nodes the camera frames; the rest may spill. */
-const DESCENT_BULK: number = 0.8;
-
 export class UniversePanel {
   private readonly scene: DagScene;
   /** The wait over the field: the session asked, or a settle in slices. */
@@ -656,7 +653,7 @@ export class UniversePanel {
    *
    * @param feedId - The feed.
    */
-  private descend(feedId: number): void {
+  private descend(feedId: number, clicked?: string): void {
     const feed: LandedFeed | undefined = this.landed.get(feedId);
     const ask = this.handlers.feed_dag;
     if (feed === undefined || ask === undefined || this.flying || this.inside !== null) return;
@@ -670,7 +667,13 @@ export class UniversePanel {
     this.entering = feedId;
     this.title_paint();
     const asked: number = Date.now();
-    this.scene.camera_flyToFit(spheres, DESCENT_MS, (): void => {
+    // A click flies toward the star clicked; a word (universe enter) frames
+    // the feed's spheres.
+    const approach = (onDone: () => void): void => {
+      if (clicked !== undefined) this.scene.camera_flyToward(clicked, 14, DESCENT_MS, onDone);
+      else this.scene.camera_flyToFit(spheres, DESCENT_MS, onDone);
+    };
+    approach((): void => {
       void ask(feedId).then((model: FeedDagModel | null): void => {
         if (this.disposed) return;
         this.entering = null;
@@ -726,7 +729,7 @@ export class UniversePanel {
         this.title_paint();
         // Frame the bulk of the feed, not its outliers: a node must be wide
         // enough to hover and click, and the wheel reaches the rest.
-        this.scene.camera_flyToFit([...this.inside.ids], DESCENT_MS, (): void => { this.flying = false; }, DESCENT_BULK);
+        this.scene.camera_flyToFit([...this.inside.ids], DESCENT_MS, (): void => { this.flying = false; }, 1, 0.95);
       });
     });
   }
@@ -857,7 +860,7 @@ export class UniversePanel {
     if (this.inside === null) {
       const match: RegExpMatchArray | null = node.id.match(/^feed:(\d+):\d+$/);
       const folded: string | null = foldShape_of(node.id);
-      if (match !== null) this.descend(Number(match[1]));
+      if (match !== null) this.descend(Number(match[1]), node.id);
       else if (folded !== null) this.cluster_enter(folded);
       else if (node.id.startsWith('shape:')) this.cluster_enter(node.id.slice('shape:'.length));
       return;

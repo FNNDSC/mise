@@ -60,6 +60,21 @@ export function wireUrl_resolve(location: PageLocation): string {
 }
 
 /**
+ * A byte URL made absolute against the page it is used from. The image
+ * loaders need one: `vfsUrl_build` answers relative to the page's mount
+ * (`vfs?path=…`), which is right at the root and under a door's
+ * `/s/<key>/` prefix alike, and gluing it to the origin instead dropped the
+ * slash — `http://host:4180vfs?…` — so every DICOM and NIfTI failed to load.
+ *
+ * @param url - A URL relative to the page, or already absolute.
+ * @param pageHref - The page's own address (`location.href`).
+ * @returns The absolute URL.
+ */
+export function byteUrl_absolute(url: string, pageHref: string): string {
+  return new URL(url, pageHref).href;
+}
+
+/**
  * Builds the URL serving one path's bytes, relative to the page's mount.
  *
  * The token rides the query only when the page holds one: behind a door the

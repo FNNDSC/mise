@@ -8,7 +8,7 @@
  * @module
  */
 import { describe, it, expect } from '@jest/globals';
-import { pageMount_of, wireUrl_resolve, vfsUrl_build, downloadUrl_build, door_isPresent, doorUrl_build, type PageLocation } from '../../src/calypso/routes.js';
+import { pageMount_of, wireUrl_resolve, vfsUrl_build, downloadUrl_build, door_isPresent, doorUrl_build, type PageLocation, byteUrl_absolute } from '../../src/calypso/routes.js';
 
 const atRoot: PageLocation = { protocol: 'http:', host: '127.0.0.1:41785', pathname: '/', search: '?token=abc' };
 const behindDoor: PageLocation = { protocol: 'https:', host: 'titan.tch.harvard.edu', pathname: '/s/chris@cube/', search: '?door' };
@@ -68,5 +68,28 @@ describe('doorUrl_build', () => {
   });
   it('keeps whatever a front put in front of the door', () => {
     expect(doorUrl_build('/porter/s/0123456789abcdef/', 'logout')).toBe('/porter/logout');
+  });
+});
+
+describe('byteUrl_absolute: the image loaders get a URL that loads', () => {
+  // A DICOM or NIfTI view fails without a word when this is wrong: every
+  // slice is an invalid URL. Pinned at the root and behind a door.
+  it('resolves a byte URL under a door\'s /s/<key>/ prefix, keeping the prefix', () => {
+    const url: string = byteUrl_absolute(vfsUrl_build('/home/radstar/uploads/SAG-anon/0001.dcm', ''), 'http://pangea.tch.harvard.edu:4180/s/56dfb37d9b35f209/');
+    expect(url).toBe('http://pangea.tch.harvard.edu:4180/s/56dfb37d9b35f209/vfs?path=%2Fhome%2Fradstar%2Fuploads%2FSAG-anon%2F0001.dcm');
+  });
+
+  it('resolves a byte URL at the root, with its token', () => {
+    const url: string = byteUrl_absolute(vfsUrl_build('/home/u/a.nii.gz', 'tok'), 'http://127.0.0.1:38167/?token=tok');
+    expect(url).toBe('http://127.0.0.1:38167/vfs?path=%2Fhome%2Fu%2Fa.nii.gz&token=tok');
+  });
+
+  it('never glues a host to a path without its slash — the regression that broke every image', () => {
+    for (const page of ['http://h:4180/s/key/', 'http://h:1/?token=t', 'https://titan.tch.harvard.edu/s/k/']) {
+      const url: string = byteUrl_absolute(vfsUrl_build('/x.dcm', ''), page);
+      const parsed: URL = new URL(url);
+      expect(parsed.pathname.endsWith('/vfs')).toBe(true);
+      expect(`wadouri:${url}`.startsWith('wadouri:http')).toBe(true);
+    }
   });
 });

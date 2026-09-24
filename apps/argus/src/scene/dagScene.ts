@@ -837,6 +837,11 @@ export class DagScene {
   /** The tube materials on stage, whose pulses follow the clock. */
   private tubeMaterials: THREE.ShaderMaterial[] = [];
 
+  /** Whether the pointer is over the field: the idle spin waits while it is. */
+  private pointerInside: boolean = false;
+  /** The node the hover tip names, and where the pointer was. */
+  private hovered: { id: string; x: number; y: number } | null = null;
+
   /** Times the scene has framed the graph itself (`camera_fit`). */
   private fits: number = 0;
   private strategy: LayoutStrategy = 'ranked';
@@ -913,6 +918,8 @@ export class DagScene {
       });
       this.renderer.domElement.addEventListener('pointerleave', (): void => {
         if (this.tip) this.tip.hidden = true;
+        this.pointerInside = false;
+        this.hovered = null;
       });
       // The wheel dollies: closer to read a dense graph, back for the whole.
       this.renderer.domElement.addEventListener('wheel', (event: WheelEvent): void => {
@@ -969,6 +976,7 @@ export class DagScene {
         // A flight or a stay inside a node holds it unconditionally.
         if (
           Date.now() >= this.spinIdleUntil &&
+          !this.pointerInside &&
           !this.holding &&
           this.flight === null &&
           this.projection === '3d'
@@ -1148,7 +1156,7 @@ export class DagScene {
    *   a few nodes far out, and a frame that held them all put the feed at
    *   the centre as a starburst of two-pixel spheres nobody could click.
    */
-  public camera_flyToFit(ids: ReadonlyArray<string>, durationMs: number, onDone: () => void, bulk: number = 1): void {
+  public camera_flyToFit(ids: ReadonlyArray<string>, durationMs: number, onDone: () => void, bulk: number = 1, margin: number = 1.15): void {
     const wanted: Set<string> = new Set(ids);
     const points: THREE.Vector3[] = [];
     let radiusMax: number = 0;
@@ -1173,7 +1181,7 @@ export class DagScene {
     const fov: number = (this.camera.fov * Math.PI) / 180;
     const fitH: number = radius / Math.tan(fov / 2);
     const fitW: number = radius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
-    const distance: number = Math.max(6, Math.max(fitH, fitW) * 1.15);
+    const distance: number = Math.max(3, Math.max(fitH, fitW) * margin);
     // Approach along the line the camera already looks down, so the flight
     // reads as a dolly and never a swing round the field.
     const heading: THREE.Vector3 = this.camera.position.clone().sub(center);
@@ -1223,6 +1231,42 @@ export class DagScene {
   /** @returns How nodes are drawn. */
   public draw_get(): DrawMode {
     return this.drawMode;
+  }
+
+  /**
+   * Flies the camera toward one node, along the line it already looks
+   * down, to a distance where its neighbourhood fills the view: the zoom
+   * into the star the operator clicked, not a framing of all it belongs to.
+   *
+   * @param id - The node.
+   * @param distance - How far from it to stop, in scene units.
+   * @param durationMs - The flight's length.
+   * @param onDone - Called on arrival (at once when the node is not drawn).
+   */
+  public camera_flyToward(id: string, distance: number, durationMs: number, onDone: () => void): void {
+    const drawn = this.nodeWorld_of(id);
+    if (drawn === null) {
+      onDone();
+      return;
+    }
+    const center: THREE.Vector3 = drawn.position;
+    const heading: THREE.Vector3 = this.camera.position.clone().sub(center);
+    if (heading.lengthSq() < 0.0001) heading.set(0, 0, 1);
+    heading.normalize();
+    const toPos: THREE.Vector3 = center.clone().add(heading.multiplyScalar(Math.max(distance, drawn.radius * 4)));
+    const aim: THREE.Camera = this.camera.clone();
+    aim.position.copy(toPos);
+    aim.lookAt(center);
+    this.focus.copy(center);
+    this.flight = {
+      fromPos: this.camera.position.clone(),
+      toPos,
+      fromQuat: this.camera.quaternion.clone(),
+      toQuat: aim.quaternion.clone(),
+      startedAt: Date.now(),
+      durationMs,
+      onDone,
+    };
   }
 
   /**
@@ -2118,7 +2162,8 @@ export class DagScene {
     edges.forEach(({ from, to }: { from: PlacedNode; to: PlacedNode }, i: number): void => {
       const along: THREE.Vector3 = to.position.clone().sub(from.position);
       const length: number = along.length();
-      const width: number = Math.max(0.03, Math.min(from.radius, to.radius) * 0.16);
+      // Thick enough to read as a tube, not a hairline, at the feed's framing.
+      const width: number = Math.max(0.06, Math.min(from.radius, to.radius) * 0.34);
       carrier.position.copy(from.position).addScaledVector(along, 0.5);
       carrier.quaternion.setFromUnitVectors(up, length > 0 ? along.clone().divideScalar(length) : up);
       carrier.scale.set(width, length, width);
@@ -2650,6 +2695,9 @@ export class DagScene {
 
   /** Names the node under the pointer in the hover tip, or hides it. */
   private hover_handle(event: PointerEvent): void {
+    // The space holds still while the pointer is over it: a target that
+    // turns under the cursor is a click on a neighbour.
+    this.pointerInside = true;
     if (this.tip === null) return;
     // In census the spheres are members of one instanced mesh: the group
     // under the pointer is what the tip names, as a click would pick.
@@ -2661,8 +2709,10 @@ export class DagScene {
     if (node === undefined) {
       this.tip.hidden = true;
       this.renderer.domElement.style.cursor = '';
+      this.hovered = null;
       return;
     }
+    this.hovered = { id: node.id, x: event.clientX, y: event.clientY };
     const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
     this.tip.textContent = this.handlers.tip?.(node) ?? node.label;
     this.tip.style.left = `${event.clientX - bounds.left + 14}px`;
@@ -2673,7 +2723,12 @@ export class DagScene {
 
   /** Resolves a pointer event to a node and fires the matching handler. */
   private pick_handle(event: MouseEvent, kind: 'select' | 'activate'): void {
-    const nodeId: string | null = this.node_under(event);
+    // What the tip names is what a click takes, when the pointer has not
+    // moved off it: the operator aimed at the node they read.
+    const held = this.hovered;
+    const nodeId: string | null = held !== null && Math.hypot(event.clientX - held.x, event.clientY - held.y) <= 6
+      ? held.id
+      : this.node_under(event);
     if (nodeId === null) {
       // Empty space is the natural off switch for the node detail.
       if (kind === 'select' && this.selectedId !== null) {

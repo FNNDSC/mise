@@ -366,6 +366,20 @@ export class UniversePanel {
       if (this.inside === null) return 'universe node: not inside a feed (universe enter <feed> first)';
       return this.node_flyTo(instanceID) ? `flying into instance ${instanceID}` : `universe node: no node of feed ${this.inside.feedId} hosts instance ${instanceID}`;
     }
+    if (verb === 'state') {
+      // A surface can be asked what it holds: the draw, the kept choices,
+      // and whether the entered feed's nodes are solid or stars.
+      const scene: Record<string, unknown> = this.scene.state_get();
+      const kept: string | null = (() => {
+        const key: string | null = this.settingsKey_get();
+        try { return key === null || this.store === undefined ? null : this.store.getItem(key); } catch { return null; }
+      })();
+      return [
+        `universe: ${this.inside !== null ? `inside feed ${this.inside.feedId}` : this.cluster !== null ? 'in a cluster' : 'the whole space'}; view ${this.view}, scale ${this.scale}, density ${this.density}`,
+        `scene: ${Object.entries(scene).map(([k, v]): string => `${k}=${String(v)}`).join(' ')}`,
+        `kept settings: ${kept ?? '(none)'}`,
+      ].join('\n');
+    }
     if (verb === 'layout') {
       const wanted: string = (args[0] ?? '').toLowerCase();
       if (wanted !== 'galaxy' && wanted !== 'spokes' && wanted !== 'clumps') return 'universe layout galaxy|spokes|clumps';
@@ -414,7 +428,7 @@ export class UniversePanel {
       this.handlers.feed_open?.(this.inside.feedId);
       return `opening feed ${this.inside.feedId}`;
     }
-    return 'universe enter <feed>|node <instance>|cluster <feed>|view feeds|shapes|density shape|census|draw stars|spheres|layout galaxy|spokes|clumps|physics <term> on|off|reset|back|open';
+    return 'universe enter <feed>|node <instance>|cluster <feed>|view feeds|shapes|density shape|census|draw stars|spheres|layout galaxy|spokes|clumps|state|physics <term> on|off|reset|back|open';
   }
 
   /**

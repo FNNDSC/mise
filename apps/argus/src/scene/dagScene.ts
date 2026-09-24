@@ -1234,6 +1234,35 @@ export class DagScene {
   }
 
   /**
+   * What the scene holds, for a surface asked to say so: how it draws,
+   * how many nodes are solid spheres and how many stars, which of the
+   * graph's solid-marked nodes are drawn solid, and the hand-off's state.
+   *
+   * @returns A plain summary.
+   */
+  public state_get(): Record<string, unknown> {
+    const solidMarked: string[] = this.graph.nodes.filter((node: SceneNode): boolean => node.solid === true).map((node: SceneNode): string => node.id);
+    const solidDrawn: number = solidMarked.filter((id: string): boolean => this.meshes.has(id)).length;
+    let groupsSolid: number = 0;
+    for (const group of this.handoff.values()) if (group.mix > 0) groupsSolid += 1;
+    return {
+      draw: this.drawMode,
+      arrangement: this.arrangement,
+      census: this.census,
+      nodes: this.graph.nodes.length,
+      meshes: this.meshes.size,
+      stars: this.stars.length,
+      solidMarked: solidMarked.length,
+      solidDrawn,
+      tubes: this.tubeMaterials.length,
+      handoffGroups: this.handoff.size,
+      handoffSolid: groupsSolid,
+      camera: this.camera.position.distanceTo(this.focus).toFixed(1),
+      settling: this.slicing,
+    };
+  }
+
+  /**
    * Flies the camera toward one node, along the line it already looks
    * down, to a distance where its neighbourhood fills the view: the zoom
    * into the star the operator clicked, not a framing of all it belongs to.

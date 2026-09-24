@@ -18,6 +18,9 @@ import type { DicomSeriesModel } from '@fnndsc/menu';
 import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray.js';
 import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData.js';
 import type { SlabScene } from './slabScene.js';
+
+
+import { byteUrl_absolute } from '../../calypso/routes.js';
 import {
   IMAGE_TOOLS,
   type ImageColormap,
@@ -167,8 +170,8 @@ export class CornerstoneEngine implements ImageEngine {
     this.startAt = Math.max(1, Math.min(startAt, series.files.length));
     // One file, many frames: each frame is an image id of its own.
     this.imageIds = series.files.length === 1 && series.frames > 1
-      ? Array.from({ length: series.frames }, (_, frame: number): string => `wadouri:${location.origin}${host.source.url_of(series.files[0] ?? '')}&frame=${frame}`)
-      : series.files.map((path: string): string => `wadouri:${location.origin}${host.source.url_of(path)}`);
+      ? Array.from({ length: series.frames }, (_, frame: number): string => `wadouri:${byteUrl_absolute(host.source.url_of(series.files[0] ?? ''), location.href)}&frame=${frame}`)
+      : series.files.map((path: string): string => `wadouri:${byteUrl_absolute(host.source.url_of(path), location.href)}`);
     this.imageIds.forEach((imageId: string, index: number): void => {
       this.pathByImageId.set(imageId, series.files.length === 1 ? (series.files[0] ?? '') : (series.files[index] ?? ''));
     });

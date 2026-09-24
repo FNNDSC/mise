@@ -837,6 +837,11 @@ export class DagScene {
   /** The tube materials on stage, whose pulses follow the clock. */
   private tubeMaterials: THREE.ShaderMaterial[] = [];
 
+  /** Whether the pointer is over the field: the idle spin waits while it is. */
+  private pointerInside: boolean = false;
+  /** The node the hover tip names, and where the pointer was. */
+  private hovered: { id: string; x: number; y: number } | null = null;
+
   /** Times the scene has framed the graph itself (`camera_fit`). */
   private fits: number = 0;
   private strategy: LayoutStrategy = 'ranked';
@@ -913,6 +918,8 @@ export class DagScene {
       });
       this.renderer.domElement.addEventListener('pointerleave', (): void => {
         if (this.tip) this.tip.hidden = true;
+        this.pointerInside = false;
+        this.hovered = null;
       });
       // The wheel dollies: closer to read a dense graph, back for the whole.
       this.renderer.domElement.addEventListener('wheel', (event: WheelEvent): void => {
@@ -969,6 +976,7 @@ export class DagScene {
         // A flight or a stay inside a node holds it unconditionally.
         if (
           Date.now() >= this.spinIdleUntil &&
+          !this.pointerInside &&
           !this.holding &&
           this.flight === null &&
           this.projection === '3d'
@@ -1148,7 +1156,7 @@ export class DagScene {
    *   a few nodes far out, and a frame that held them all put the feed at
    *   the centre as a starburst of two-pixel spheres nobody could click.
    */
-  public camera_flyToFit(ids: ReadonlyArray<string>, durationMs: number, onDone: () => void, bulk: number = 1): void {
+  public camera_flyToFit(ids: ReadonlyArray<string>, durationMs: number, onDone: () => void, bulk: number = 1, margin: number = 1.15): void {
     const wanted: Set<string> = new Set(ids);
     const points: THREE.Vector3[] = [];
     let radiusMax: number = 0;
@@ -1173,7 +1181,7 @@ export class DagScene {
     const fov: number = (this.camera.fov * Math.PI) / 180;
     const fitH: number = radius / Math.tan(fov / 2);
     const fitW: number = radius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
-    const distance: number = Math.max(6, Math.max(fitH, fitW) * 1.15);
+    const distance: number = Math.max(3, Math.max(fitH, fitW) * margin);
     // Approach along the line the camera already looks down, so the flight
     // reads as a dolly and never a swing round the field.
     const heading: THREE.Vector3 = this.camera.position.clone().sub(center);
@@ -1223,6 +1231,71 @@ export class DagScene {
   /** @returns How nodes are drawn. */
   public draw_get(): DrawMode {
     return this.drawMode;
+  }
+
+  /**
+   * What the scene holds, for a surface asked to say so: how it draws,
+   * how many nodes are solid spheres and how many stars, which of the
+   * graph's solid-marked nodes are drawn solid, and the hand-off's state.
+   *
+   * @returns A plain summary.
+   */
+  public state_get(): Record<string, unknown> {
+    const solidMarked: string[] = this.graph.nodes.filter((node: SceneNode): boolean => node.solid === true).map((node: SceneNode): string => node.id);
+    const solidDrawn: number = solidMarked.filter((id: string): boolean => this.meshes.has(id)).length;
+    let groupsSolid: number = 0;
+    for (const group of this.handoff.values()) if (group.mix > 0) groupsSolid += 1;
+    return {
+      draw: this.drawMode,
+      arrangement: this.arrangement,
+      census: this.census,
+      nodes: this.graph.nodes.length,
+      meshes: this.meshes.size,
+      stars: this.stars.length,
+      solidMarked: solidMarked.length,
+      solidDrawn,
+      tubes: this.tubeMaterials.length,
+      handoffGroups: this.handoff.size,
+      handoffSolid: groupsSolid,
+      camera: this.camera.position.distanceTo(this.focus).toFixed(1),
+      settling: this.slicing,
+    };
+  }
+
+  /**
+   * Flies the camera toward one node, along the line it already looks
+   * down, to a distance where its neighbourhood fills the view: the zoom
+   * into the star the operator clicked, not a framing of all it belongs to.
+   *
+   * @param id - The node.
+   * @param distance - How far from it to stop, in scene units.
+   * @param durationMs - The flight's length.
+   * @param onDone - Called on arrival (at once when the node is not drawn).
+   */
+  public camera_flyToward(id: string, distance: number, durationMs: number, onDone: () => void): void {
+    const drawn = this.nodeWorld_of(id);
+    if (drawn === null) {
+      onDone();
+      return;
+    }
+    const center: THREE.Vector3 = drawn.position;
+    const heading: THREE.Vector3 = this.camera.position.clone().sub(center);
+    if (heading.lengthSq() < 0.0001) heading.set(0, 0, 1);
+    heading.normalize();
+    const toPos: THREE.Vector3 = center.clone().add(heading.multiplyScalar(Math.max(distance, drawn.radius * 4)));
+    const aim: THREE.Camera = this.camera.clone();
+    aim.position.copy(toPos);
+    aim.lookAt(center);
+    this.focus.copy(center);
+    this.flight = {
+      fromPos: this.camera.position.clone(),
+      toPos,
+      fromQuat: this.camera.quaternion.clone(),
+      toQuat: aim.quaternion.clone(),
+      startedAt: Date.now(),
+      durationMs,
+      onDone,
+    };
   }
 
   /**
@@ -1480,7 +1553,7 @@ export class DagScene {
    * groups pair members by index, so chains of ×N groups render as
    * branched filaments over the shell — the cell-surface reading.
    */
-  private censusBuild(placed: PlacedNode[], palette: ReturnType<typeof palette_read>): void {
+  private censusBuild(placed: PlacedNode[], palette: ReturnType<typeof palette_read>, fit: boolean = true): void {
     // A ghost (a cluster's anchor, drawn as a halo in shape) is nobody's
     // job: it carries the feeds it gathers as a count, and a census of it
     // would draw a shell of nothing.
@@ -1574,7 +1647,10 @@ export class DagScene {
       this.group.add(lines);
     }
 
-    if (!this.ambient) {
+    // The census parks the camera only when a framing was asked for: a
+    // descent redraws under a camera the flight has placed, and re-parking
+    // it there was the view resetting under every click.
+    if (!this.ambient && fit) {
       const fov: number = (this.camera.fov * Math.PI) / 180;
       const fitH: number = cloudRadius / Math.tan(fov / 2);
       const fitW: number = cloudRadius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
@@ -1826,7 +1902,11 @@ export class DagScene {
       for (const item of placed) item.position.z = 0;
     }
     if (this.census) {
-      this.censusBuild(placed, palette);
+      // The census shells every job but the feed the operator is at: an
+      // entered feed stays solid spheres in its tubes, whatever the density.
+      const solidOnes: PlacedNode[] = placed.filter((item: PlacedNode): boolean => item.node.solid === true && item.node.ghost !== true);
+      this.censusBuild(placed.filter((item: PlacedNode): boolean => item.node.solid !== true), palette, fit);
+      if (solidOnes.length > 0) this.solid_draw(solidOnes, palette);
       return;
     }
     if (!this.ambient && fit) this.camera_fit(placed);
@@ -2118,7 +2198,8 @@ export class DagScene {
     edges.forEach(({ from, to }: { from: PlacedNode; to: PlacedNode }, i: number): void => {
       const along: THREE.Vector3 = to.position.clone().sub(from.position);
       const length: number = along.length();
-      const width: number = Math.max(0.03, Math.min(from.radius, to.radius) * 0.16);
+      // Thick enough to read as a tube, not a hairline, at the feed's framing.
+      const width: number = Math.max(0.06, Math.min(from.radius, to.radius) * 0.34);
       carrier.position.copy(from.position).addScaledVector(along, 0.5);
       carrier.quaternion.setFromUnitVectors(up, length > 0 ? along.clone().divideScalar(length) : up);
       carrier.scale.set(width, length, width);
@@ -2617,8 +2698,39 @@ export class DagScene {
    * group), a solid sphere, or a star (or nebula) when nothing solid is.
    */
   private node_under(event: MouseEvent): string | null {
+    // A solid sphere wins: the entered feed stands in the census as spheres.
+    const solid: string | null = this.meshNode_under(event);
+    if (solid !== null) return solid;
     if (this.census && this.censusMesh !== null) return this.censusNode_under(event);
-    return this.meshNode_under(event) ?? this.starNode_under(event);
+    return this.starNode_under(event);
+  }
+
+  /**
+   * Draws nodes as lit spheres joined by tubes, among a census: the feed the
+   * operator entered, which the census's points would otherwise swallow.
+   *
+   * @param solidOnes - The nodes to draw solid.
+   * @param palette - The palette.
+   */
+  private solid_draw(solidOnes: ReadonlyArray<PlacedNode>, palette: ReturnType<typeof palette_read>): void {
+    for (const item of solidOnes) {
+      this.placedById.set(item.node.id, item);
+      const isRoot: boolean = item.node.parentIds.length === 0 && item.node.joinParentIds.length === 0;
+      const mesh: THREE.Mesh = new THREE.Mesh(this.sphere_of(item.radius), new THREE.MeshStandardMaterial({
+        color: nodeColor_pick(item.node, palette, isRoot), roughness: 0.35, metalness: 0.15,
+      }));
+      mesh.position.copy(item.position);
+      mesh.userData['nodeId'] = item.node.id;
+      mesh.userData['dim'] = false;
+      this.group.add(mesh);
+      this.meshes.set(item.node.id, mesh);
+    }
+    const ids: string[] = solidOnes.map((item: PlacedNode): string => item.node.id);
+    const entered: HandoffGroup = {
+      entries: ids.map((id: string): StarEntry => ({ id, position: new THREE.Vector3(), radius: 0, color: new THREE.Color(), dim: false, ember: false })),
+      center: new THREE.Vector3(), maxRadius: 0, mix: 1, target: 1, meshes: [], lines: [], tubes: null, threadSegments: [],
+    };
+    this.tubes_build(entered, new Set(ids), palette);
   }
 
   /** The node id behind a shape-mode mesh under the pointer. */
@@ -2650,6 +2762,9 @@ export class DagScene {
 
   /** Names the node under the pointer in the hover tip, or hides it. */
   private hover_handle(event: PointerEvent): void {
+    // The space holds still while the pointer is over it: a target that
+    // turns under the cursor is a click on a neighbour.
+    this.pointerInside = true;
     if (this.tip === null) return;
     // In census the spheres are members of one instanced mesh: the group
     // under the pointer is what the tip names, as a click would pick.
@@ -2661,8 +2776,10 @@ export class DagScene {
     if (node === undefined) {
       this.tip.hidden = true;
       this.renderer.domElement.style.cursor = '';
+      this.hovered = null;
       return;
     }
+    this.hovered = { id: node.id, x: event.clientX, y: event.clientY };
     const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
     this.tip.textContent = this.handlers.tip?.(node) ?? node.label;
     this.tip.style.left = `${event.clientX - bounds.left + 14}px`;
@@ -2673,7 +2790,12 @@ export class DagScene {
 
   /** Resolves a pointer event to a node and fires the matching handler. */
   private pick_handle(event: MouseEvent, kind: 'select' | 'activate'): void {
-    const nodeId: string | null = this.node_under(event);
+    // What the tip names is what a click takes, when the pointer has not
+    // moved off it: the operator aimed at the node they read.
+    const held = this.hovered;
+    const nodeId: string | null = held !== null && Math.hypot(event.clientX - held.x, event.clientY - held.y) <= 6
+      ? held.id
+      : this.node_under(event);
     if (nodeId === null) {
       // Empty space is the natural off switch for the node detail.
       if (kind === 'select' && this.selectedId !== null) {

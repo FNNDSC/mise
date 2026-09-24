@@ -252,6 +252,16 @@ try {
       await say('universe density census', 4000);
       const densityCensus = first?.querySelector('.universe-density')?.textContent?.trim() ?? '';
       const censusTitle = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';
+      // Census with a feed entered: the feed stays solid spheres in tubes
+      // (the census used to swallow it and re-park the camera).
+      await say('universe enter ' + landedId, 500);
+      for (let i = 0; i < 60; i++) { await sleep(500); if (/INSIDE FEED/.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
+      await sleep(2000);
+      await say('universe state', 1500);
+      const censusState = document.getElementById('terminal').innerText.split('\\n').filter((l) => /^scene:/.test(l)).slice(-1)[0] ?? '';
+      await say('universe back', 500);
+      for (let i = 0; i < 60; i++) { await sleep(500); if (!/INSIDE FEED/.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
+      await sleep(1500);
       await say('universe density shape', 3000);
       const densityShape = first?.querySelector('.universe-density')?.textContent?.trim() ?? '';
       // Press the tile again: the same pane, focused, not a second one.
@@ -262,7 +272,7 @@ try {
       await sleep(1000);
       const count = document.querySelectorAll('.pane-universe').length;
       await say('view files', 2000);
-      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle, viewPill, unfoldTitle, viewPillBack, gravityOff, gravityReset, densityCensus, censusTitle, densityShape, clickKept, fitsBefore, fitsAfter, clickTitle, waited, drawDefault, drawSpheres, keptSpheres, drawStars, readoutGone, layoutDefault, layoutClumps, keptClumps };`);
+      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle, viewPill, unfoldTitle, viewPillBack, gravityOff, gravityReset, densityCensus, censusTitle, densityShape, clickKept, fitsBefore, fitsAfter, clickTitle, waited, drawDefault, drawSpheres, keptSpheres, drawStars, readoutGone, layoutDefault, layoutClumps, keptClumps, censusState };`);
     check('the UNIVERSE tile opens a pane of its own kind, titled by what landed',
       universe.hadTile && /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.title), universe.title);
     check('the universe pane says whether the index is whole', universe.state === 'WHOLE' || universe.state === 'LANDING', universe.state);
@@ -284,6 +294,13 @@ try {
     check('the universe lays itself out as a galaxy by default; universe layout clumps switches it, and the choice is kept',
       universe.layoutDefault === 'GALAXY' && universe.layoutClumps === 'CLUMPS' && universe.keptClumps === 'clumps',
       `${universe.layoutDefault} | ${universe.layoutClumps} | ${universe.keptClumps}`);
+    {
+      const marked = Number((universe.censusState.match(/solidMarked=(\d+)/) ?? [])[1] ?? -1);
+      const drawn = Number((universe.censusState.match(/solidDrawn=(\d+)/) ?? [])[1] ?? -2);
+      const tubes = Number((universe.censusState.match(/tubes=(\d+)/) ?? [])[1] ?? 0);
+      check('in census a feed entered stays solid spheres in tubes: every node marked solid is drawn solid',
+        marked > 0 && drawn === marked && tubes >= 1 && /census=true/.test(universe.censusState), universe.censusState);
+    }
     check('a click keeps the camera: a wheeled-in camera and the settled space stand through a click on the field',
       universe.clickKept, `fits ${universe.fitsBefore} -> ${universe.fitsAfter} | ${universe.clickTitle}`);
     check('universe enter <feed> descends: the title names the feed inside, the state says INSIDE, BACK and OPEN FEED stand on the frame',

@@ -8,6 +8,7 @@
  *
  * @module
  */
+import { byteUrl_absolute } from '../../calypso/routes.js';
 import {
   IMAGE_TOOLS,
   type ImageColormap,
@@ -92,7 +93,9 @@ export class NiivueEngine implements ImageEngine {
     await nv.attachToCanvas(canvas);
     const name: string = this.path.split('/').pop() ?? 'volume.nii.gz';
     try {
-      await nv.loadVolumes([{ url: `${location.origin}${this.host.source.url_of(this.path)}`, name }]);
+      // Absolute, resolved against the page: the source's URL is relative to
+      // the page's mount, and glued to the origin it lost its slash.
+      await nv.loadVolumes([{ url: byteUrl_absolute(this.host.source.url_of(this.path), location.href), name }]);
     } catch (error: unknown) {
       this.refused = 1;
       this.host.progress_set(null);

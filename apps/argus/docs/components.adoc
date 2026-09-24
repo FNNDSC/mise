@@ -327,7 +327,7 @@ A theme may set `--harvestgold` per `data-modality` on `.image-body` (the frame'
 
 === Purpose
 
-The LCARS frame on a screen narrower than 700px: the same shape, none of the desktop widths. Nothing in the frame may hold a width a phone does not have; the right side of the page ran off the screen because the gutter kept 168px and the header's readouts kept their minimums.
+The frame on a screen narrower than 700px: the same shape, none of the desktop widths. Nothing in the frame may hold a width a phone does not have; the right side of the page ran off the screen because the gutter kept 168px and the header's readouts kept their minimums.
 
 === Anatomy
 
@@ -342,7 +342,7 @@ The LCARS frame on a screen narrower than 700px: the same shape, none of the des
 
 === Stylesheet
 
-`src/lcars/argus.css`, the block headed "the frame on a phone" (`@media (max-width: 700px)`). The root type steps down to 15px there, and the frame's measurements are variables (`--lfw`, `--elbow-radius`, `--elbow-inner`, `--bar-height`), so the frame rescales rather than being redrawn.
+`argus.css`, the block headed "the frame on a phone" (`@media (max-width: 700px)`). The root type steps down to 15px there, and the frame's measurements are variables (`--lfw`, `--elbow-radius`, `--elbow-inner`, `--bar-height`), so the frame rescales rather than being redrawn.
 
 === Do not
 

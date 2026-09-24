@@ -153,6 +153,9 @@ function request_wantsJson(request: FastifyRequest): boolean {
   return contentType.includes('application/json') || (accept.includes('application/json') && !accept.includes('text/html'));
 }
 
+/** What the door says when a session's daemon is gone. */
+const SESSION_ENDED: string = 'your session ended; log in to start it again';
+
 /**
  * Builds the porter's routes over a host and a config.
  *
@@ -177,6 +180,31 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   await app.register(fastifyCookie, { secret: config.secret });
   await app.register(fastifyFormbody);
   await app.register(replyFrom);
+
+  /**
+   * Finds where an entry's session answers now, after its berth failed to.
+   * A daemon started again since the entry was written (a login that
+   * booted a new one, an operator who killed the old one) answers at a new
+   * port: the entry moves there. None answering: the entry is forgotten,
+   * so the next visit goes to the door rather than to a dead port.
+   *
+   * @param entry - The entry whose berth refused.
+   * @returns `moved` when the session answers at a new berth, `same` when
+   *   the berth on record still answers (the failure was something else),
+   *   `gone` when no session is up.
+   */
+  const entry_recover = async (entry: SessionEntry): Promise<'moved' | 'same' | 'gone'> => {
+    const found: Berth | null = await host.find(entry.identity);
+    if (found === null) {
+      registry.forget(entry.key);
+      options.log?.(`${entry.user}'s session at ${entry.berth.url} is gone; forgot it`);
+      return 'gone';
+    }
+    if (found.url === entry.berth.url) return 'same';
+    options.log?.(`${entry.user}'s session moved from ${entry.berth.url} to ${found.url}`);
+    registry.note(entry.identity, entry.user, found);
+    return 'moved';
+  };
 
   /** The key the request's cookie names, or null. */
   const key_ofRequest = (request: FastifyRequest): string | null => cookieKey_read(request.headers.cookie, config.secret);
@@ -314,6 +342,19 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     registry.activity_note(entry.key);
     return reply.from(upstreamPath_build(split.rest, entry.berth.token), {
       getUpstream: (): string => berthHttp_of(entry.berth),
+      // The daemon behind the entry did not answer: ask the host who is up
+      // now instead of handing the browser a bare 500 for a dead port.
+      onError: (_failed: unknown, error: { error: Error }): void => {
+        void entry_recover(entry).then((outcome: 'moved' | 'same' | 'gone'): void => {
+          if (outcome === 'moved') {
+            void reply.redirect(request.url, 307);
+          } else if (outcome === 'gone') {
+            void reply.redirect(`/login?reason=${encodeURIComponent(SESSION_ENDED)}`, 303);
+          } else {
+            void reply.code(502).send({ error: `the session did not answer: ${error.error.message}` });
+          }
+        });
+      },
     });
   });
   app.all('/s/:key', async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
@@ -355,7 +396,11 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
         socket.pipe(upstream);
         upstream.pipe(socket);
       });
-      upstream.on('error', (): void => { socket.destroy(); });
+      upstream.on('error', (): void => {
+        socket.destroy();
+        // The surface reconnects on its own; let it find the live berth.
+        void entry_recover(entry);
+      });
       upstream.once('close', (): void => { wire_release(); socket.destroy(); });
       socket.on('error', (): void => { upstream.destroy(); });
     });

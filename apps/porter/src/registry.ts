@@ -87,10 +87,16 @@ export class SessionRegistry {
     return [...this.byKey.values()].filter((entry: SessionEntry): boolean => entry.wires === 0 && now - entry.activeAt > idleMs);
   }
 
-  /** Records an identity whose session is booting; the berth comes later. */
+  /**
+   * Records an identity whose session is booting; the berth comes later.
+   * A boot starts only when no live session answers, so an entry still
+   * held for the identity names a daemon that is gone — it is dropped, or
+   * the mount would keep sending the new session's traffic to the dead
+   * one's port.
+   */
   public pending_note(identity: string, user: string): void {
     const key: string = this.key_of(identity);
-    if (this.byKey.has(key)) return;
+    this.byKey.delete(key);
     this.pending.set(key, { key, identity, user });
   }
 

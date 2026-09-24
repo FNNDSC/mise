@@ -19,12 +19,14 @@
  */
 import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope } from '@fnndsc/menu';
 import { PROC_UNIVERSE_MODEL_KIND, procUniverseModelSchema, type ProcUniverseModel } from '@fnndsc/menu';
-import { DagScene, PHYSICS_DEFAULT, type PhysicsTerms, type SceneGraph, type SceneNode, type SettleMode } from '../../scene/dagScene.js';
+import { DagScene, PHYSICS_DEFAULT, type DrawMode, type PhysicsTerms, type SceneGraph, type SceneNode, type SettleMode } from '../../scene/dagScene.js';
 import {
   LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse,
   enteredFeed_build, descendedGraph_build, sphereIds_of, clusterTip_of, clusterGraph_build, clusterIds_of, shapeWords_of, shapeWords_brief, shape_of,
   foldedGraph_build, foldTip_of, foldShape_of, foldIds_of, unfoldedGraph_build,
   type LandedFeed, type UniverseScale, type EnteredFeed,
+  universeSettings_of,
+  universeSettings_parse,
 } from '../dag/universe.js';
 import type { KeyStore } from '../../app/dormant.js';
 import { WaitProgress } from '../wait/progress.js';
@@ -70,6 +72,8 @@ export interface UniversePanelMount {
   gravityPill: HTMLElement | null;
   /** DENSITY: a sphere per stage (SHAPE), or a point per job (CENSUS). */
   densityPill: HTMLElement | null;
+  /** DRAW: every node a point of light (STARS), or a lit sphere (SPHERES). */
+  drawPill?: HTMLElement | null;
   /** The facts overlay on the field: the selected node's payload and verbs. */
   facts: HTMLElement | null;
   /** BACK, on the frame while a feed is entered. */
@@ -154,6 +158,10 @@ export class UniversePanel {
   private densityPill: HTMLElement | null = null;
   /** SHAPE draws a stage as one sphere with its count; CENSUS every job of it as a point. */
   private density: 'shape' | 'census' = 'shape';
+  /** How the space is drawn: stars by default, lit spheres by choice. */
+  private drawMode: DrawMode = 'stars';
+  private drawPill: HTMLElement | null = null;
+  private scalePill: HTMLElement | null = null;
   /** The settle's terms as the operator has them; gravity on by default here. */
   private physics: PhysicsTerms = { ...PHYSICS_DEFAULT, gravity: true };
   private readonly backPill: HTMLElement | null;
@@ -218,6 +226,7 @@ export class UniversePanel {
       if (mount.scalePill !== null) mount.scalePill.textContent = this.scale === 'jobs' ? 'JOBS' : 'ALIKE';
       // The spheres change size: every one of them settles again.
       if (this.shown) this.paint(true, 'full');
+      this.settings_save();
     });
     mount.viewPill?.addEventListener('click', (): void => this.view_set(this.view === 'feeds' ? 'shapes' : 'feeds'));
     this.viewPill = mount.viewPill;
@@ -225,6 +234,10 @@ export class UniversePanel {
     mount.gravityPill?.addEventListener('click', (): void => { this.physics_set('gravity', !this.physics.gravity); });
     this.densityPill = mount.densityPill;
     mount.densityPill?.addEventListener('click', (): void => { this.density_set(this.density === 'shape' ? 'census' : 'shape'); });
+    this.drawPill = mount.drawPill ?? null;
+    this.scalePill = mount.scalePill;
+    mount.drawPill?.addEventListener('click', (): void => { this.draw_set(this.drawMode === 'stars' ? 'spheres' : 'stars'); });
+    this.scene.draw_set(this.drawMode);
     this.canvas.style.display = 'none';
     this.title_paint();
   }
@@ -337,6 +350,11 @@ export class UniversePanel {
       if (this.inside === null) return 'universe node: not inside a feed (universe enter <feed> first)';
       return this.node_flyTo(instanceID) ? `flying into instance ${instanceID}` : `universe node: no node of feed ${this.inside.feedId} hosts instance ${instanceID}`;
     }
+    if (verb === 'draw') {
+      const wanted: string = (args[0] ?? '').toLowerCase();
+      if (wanted !== 'stars' && wanted !== 'spheres') return 'universe draw stars|spheres';
+      return this.draw_set(wanted);
+    }
     if (verb === 'density') {
       const wanted: string = (args[0] ?? '').toLowerCase();
       if (wanted !== 'shape' && wanted !== 'census') return 'universe density shape|census';
@@ -375,7 +393,7 @@ export class UniversePanel {
       this.handlers.feed_open?.(this.inside.feedId);
       return `opening feed ${this.inside.feedId}`;
     }
-    return 'universe enter <feed>|node <instance>|cluster <feed>|view feeds|shapes|density shape|census|physics <term> on|off|reset|back|open';
+    return 'universe enter <feed>|node <instance>|cluster <feed>|view feeds|shapes|density shape|census|draw stars|spheres|physics <term> on|off|reset|back|open';
   }
 
   /**
@@ -396,6 +414,65 @@ export class UniversePanel {
   }
 
   /**
+   * Draws the space as stars or as lit spheres; nothing moves.
+   *
+   * @param mode - The draw mode.
+   * @returns What happened, for the console.
+   */
+  private draw_set(mode: DrawMode): string {
+    this.drawMode = mode;
+    if (this.drawPill !== null) this.drawPill.textContent = mode.toUpperCase();
+    this.scene.draw_set(mode);
+    this.settings_save();
+    return mode === 'stars' ? 'every sphere a point of light' : 'every sphere lit and solid';
+  }
+
+  /** Where this identity's frame choices are kept. */
+  private settingsKey_get(): string | null {
+    return this.storeKey === null ? null : this.storeKey.replace(/^argus\.universe\./, 'argus.universe.settings.');
+  }
+
+  /** Keeps the frame's four choices for this identity. The physics knobs are play and are not kept. */
+  private settings_save(): void {
+    const key: string | null = this.settingsKey_get();
+    if (this.store === undefined || key === null) return;
+    try {
+      this.store.setItem(key, JSON.stringify(universeSettings_of(this.drawMode, this.view, this.scale, this.density)));
+    } catch {
+      // A full or refused store forgets; the choices still hold for now.
+    }
+  }
+
+  /**
+   * Takes this identity's kept frame choices, before the space is drawn.
+   *
+   * @returns Whether the view or the scale changed, which reshapes the space.
+   */
+  private settings_recall(): boolean {
+    const key: string | null = this.settingsKey_get();
+    if (this.store === undefined || key === null) return false;
+    let text: string | null = null;
+    try {
+      text = this.store.getItem(key);
+    } catch {
+      return false;
+    }
+    const kept = universeSettings_parse(text);
+    const reshaped: boolean = kept.view !== this.view || kept.scale !== this.scale;
+    this.drawMode = kept.draw;
+    this.view = kept.view;
+    this.scale = kept.scale;
+    this.density = kept.density;
+    if (this.drawPill !== null) this.drawPill.textContent = kept.draw.toUpperCase();
+    if (this.viewPill !== null) this.viewPill.textContent = kept.view.toUpperCase();
+    if (this.scalePill !== null) this.scalePill.textContent = kept.scale === 'jobs' ? 'JOBS' : 'ALIKE';
+    if (this.densityPill !== null) this.densityPill.textContent = kept.density.toUpperCase();
+    this.scene.draw_set(kept.draw);
+    this.scene.census_set(kept.density === 'census');
+    return reshaped;
+  }
+
+  /**
    * Draws every job of the space as its own point (CENSUS), or a stage as
    * one sphere with its count (SHAPE). The counts already ride the
    * groups, so a census costs no data and no call: the scene shells each
@@ -408,6 +485,7 @@ export class UniversePanel {
     this.density = density;
     if (this.densityPill !== null) this.densityPill.textContent = density.toUpperCase();
     this.scene.census_set(density === 'census');
+    this.settings_save();
     return density === 'census' ? 'every job its own point' : 'a stage one sphere, with its count';
   }
 
@@ -431,6 +509,7 @@ export class UniversePanel {
     this.view = view;
     if (this.viewPill !== null) this.viewPill.textContent = view.toUpperCase();
     if (this.shown && this.inside === null && this.cluster === null) this.paint(true, 'full');
+    this.settings_save();
   }
 
   /** Whether a feed is entered, for a host that asks. */
@@ -549,6 +628,9 @@ export class UniversePanel {
           return;
         }
         const entered: EnteredFeed = enteredFeed_build(model);
+        // The feed the operator is at is solid, however small: its nodes
+        // are hovered and pressed.
+        for (const node of entered.nodes) node.solid = true;
         // The feed unfolds from where its molecule stood — or, entered by
         // word from the folded top, from where its shape's fold stands:
         // every new node starts at that centre and settles out from it.
@@ -843,14 +925,23 @@ export class UniversePanel {
     const key: string = universeStoreKey_of(user, uri);
     if (key === this.storeKey) return;
     this.storeKey = key;
-    if (this.shown) this.seed_recall();
+    const reshaped: boolean = this.settings_recall();
+    if (this.shown) {
+      const seeded: boolean = this.seed_recall();
+      // Repaint only for something recalled: a restart of a settle already
+      // under way for nothing new costs its whole run again.
+      if ((reshaped || seeded) && this.inside === null && this.cluster === null) this.paint(false);
+    }
   }
 
   /** Seeds the next settle from the remembered positions, if any. */
-  private seed_recall(): void {
-    if (this.store === undefined || this.storeKey === null) return;
+  /** @returns Whether any positions were remembered and seeded. */
+  private seed_recall(): boolean {
+    if (this.store === undefined || this.storeKey === null) return false;
     const positions = storedPositions_parse(this.store.getItem(this.storeKey));
-    if (Object.keys(positions).length > 0) this.scene.positions_seed(positions);
+    if (Object.keys(positions).length === 0) return false;
+    this.scene.positions_seed(positions);
+    return true;
   }
 
   private remember_later(): void {

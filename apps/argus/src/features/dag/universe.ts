@@ -214,6 +214,51 @@ export function universeStoreKey_of(user: string, uri: string): string {
   return `argus.universe.${user}@${uri}`;
 }
 
+/** The universe frame's kept choices, per identity. */
+export interface UniverseSettings {
+  draw: 'stars' | 'spheres';
+  view: 'feeds' | 'shapes';
+  scale: 'jobs' | 'feeds';
+  density: 'shape' | 'census';
+}
+
+/** What a first visit gets: stars, every feed, sized by jobs, a sphere per stage. */
+export const UNIVERSE_SETTINGS_DEFAULT: UniverseSettings = { draw: 'stars', view: 'feeds', scale: 'jobs', density: 'shape' };
+
+/**
+ * The record kept for the frame's choices.
+ *
+ * @returns The record.
+ */
+export function universeSettings_of(draw: UniverseSettings['draw'], view: UniverseSettings['view'], scale: UniverseSettings['scale'], density: UniverseSettings['density']): UniverseSettings {
+  return { draw, view, scale, density };
+}
+
+/**
+ * Reads kept choices; anything missing or unrecognised takes the default,
+ * so an older or damaged record never leaves the frame half-set.
+ *
+ * @param text - What the store held, or null.
+ * @returns The choices.
+ */
+export function universeSettings_parse(text: string | null): UniverseSettings {
+  let raw: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = text === null ? null : JSON.parse(text);
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) raw = parsed as Record<string, unknown>;
+  } catch {
+    // A damaged record is no record.
+  }
+  const pick = <T extends string>(value: unknown, allowed: ReadonlyArray<T>, fallback: T): T =>
+    typeof value === 'string' && (allowed as ReadonlyArray<string>).includes(value) ? (value as T) : fallback;
+  return {
+    draw: pick(raw['draw'], ['stars', 'spheres'] as const, UNIVERSE_SETTINGS_DEFAULT.draw),
+    view: pick(raw['view'], ['feeds', 'shapes'] as const, UNIVERSE_SETTINGS_DEFAULT.view),
+    scale: pick(raw['scale'], ['jobs', 'feeds'] as const, UNIVERSE_SETTINGS_DEFAULT.scale),
+    density: pick(raw['density'], ['shape', 'census'] as const, UNIVERSE_SETTINGS_DEFAULT.density),
+  };
+}
+
 /** Positions as they are kept: node id to a rounded triple. */
 export type StoredPositions = Record<string, [number, number, number]>;
 

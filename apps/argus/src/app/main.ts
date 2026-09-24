@@ -1882,6 +1882,7 @@ async function surface_start(token: string): Promise<void> {
         gravityPill: mount.querySelector<HTMLElement>('.universe-gravity'),
         densityPill: mount.querySelector<HTMLElement>('.universe-density'),
         drawPill: mount.querySelector<HTMLElement>('.universe-draw'),
+        arrangementPill: mount.querySelector<HTMLElement>('.universe-arrangement'),
         facts: mount.querySelector<HTMLElement>('.universe-facts'),
         backPill: mount.querySelector<HTMLElement>('.universe-back'),
         openPill: mount.querySelector<HTMLElement>('.universe-open'),

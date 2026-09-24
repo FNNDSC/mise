@@ -124,6 +124,30 @@ function sound_play(audioId: string): void {
 }
 
 /**
+ * Wires the header's menu pill. On a phone the header has no room for the
+ * versions, the audio and theme pills and the credits: they fold behind
+ * this pill, which opens them over the page and closes them again (and so
+ * does a press anywhere outside). On a wide screen the pill is not shown.
+ */
+function headMenuPill_wire(): void {
+  const pill: HTMLElement = element_require('head-menu-pill');
+  const open_set = (open: boolean): void => {
+    if (open) document.body.dataset['headMenu'] = 'open';
+    else delete document.body.dataset['headMenu'];
+    pill.setAttribute('aria-expanded', String(open));
+  };
+  pill.addEventListener('click', (event: MouseEvent): void => {
+    event.stopPropagation();
+    open_set(document.body.dataset['headMenu'] !== 'open');
+  });
+  document.addEventListener('click', (event: MouseEvent): void => {
+    if (document.body.dataset['headMenu'] !== 'open') return;
+    const inside: boolean = event.target instanceof Element && event.target.closest('#header-dag-info') !== null;
+    if (!inside) open_set(false);
+  });
+}
+
+/**
  * Wires the audio pill: green means the panel voice is live, red means
  * muted. The choice persists per browser.
  */
@@ -5302,6 +5326,7 @@ function page_boot(): void {
   cascade = cascade_build();
   headerFaces_wire();
   headerBand_wire();
+  headMenuPill_wire();
   audioPill_wire();
   themePill_wire();
   doorPill_wire();

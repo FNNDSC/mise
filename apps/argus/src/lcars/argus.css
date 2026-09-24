@@ -6212,3 +6212,160 @@ body[data-zoom] #header-strip,
 body:not([data-header]) #header-strip {
   display: none;
 }
+
+/* ═══════════════════════════════════════════ the frame on a phone
+ *
+ * Below 700px the frame keeps its shape and gives up its widths. The
+ * gutter slims to a rail that reads its blocks by number (01 … 06, the
+ * word folded away), the elbow's sweep shrinks with it, the type steps
+ * down, and the header keeps its banner and its bands: the ARGUS WEB face
+ * — versions, audio, theme, credits — folds behind the ≡ pill, which opens
+ * it over the page. Nothing in the frame may hold a desktop width here: the
+ * right side ran off the screen because the gutter kept 168px and the
+ * header's readouts kept their minimums.
+ */
+.head-menu-pill {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  :root {
+    --lfw: 56px;
+    --elbow-radius: 36px;
+    --elbow-inner: 24px;
+    --elbow-inner-radius: 18px;
+    --left-frame-padding: 0.4rem;
+    --bar-height: 14px;
+  }
+
+  html {
+    font-size: 15px;
+  }
+
+  body {
+    padding: 6px 0 0 2px;
+  }
+
+  .wrap {
+    padding: 0 4px 0 2px;
+  }
+
+  main {
+    padding: 14px 0 6px 8px;
+    min-width: 0;
+  }
+
+  .right-frame,
+  .right-frame-top {
+    min-width: 0;
+  }
+
+  /* The rail: numbers, not words. */
+  .left-frame .gutter-word,
+  .left-frame-top .hop,
+  .left-frame .hop-dash,
+  .brand-label {
+    display: none;
+  }
+
+  button[class^='panel-'] {
+    padding: 0.35rem;
+    font-size: 0.85rem;
+  }
+
+  button.panel-1 {
+    min-height: 56px;
+  }
+
+  button.panel-lang {
+    font-size: 0.7rem;
+  }
+
+  .banner {
+    font-size: 1.3rem;
+  }
+
+  .head-menu-pill {
+    display: inline-block;
+    margin-left: 0.6rem;
+    padding: 0 0.7rem;
+    border: none;
+    border-radius: 0.7rem;
+    background-color: var(--honey);
+    color: #000;
+    font-family: inherit;
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1.4rem;
+    vertical-align: middle;
+    cursor: pointer;
+  }
+
+  /* The DAG face stays folded until asked for; then it opens over the page,
+   * one column, without the cycler. */
+  body:not([data-header]) #header-dag,
+  body[data-header='dag'] #header-dag {
+    display: none;
+  }
+
+  body[data-head-menu='open']:not([data-header]) #header-dag,
+  body[data-head-menu='open'][data-header='dag'] #header-dag {
+    display: block;
+    position: fixed;
+    top: 3.4rem;
+    left: 8px;
+    right: 8px;
+    z-index: 60;
+    height: auto;
+    max-height: 70vh;
+    padding: 0.6rem;
+    border: 2px solid var(--honey);
+    border-radius: 0.8rem;
+    background-color: #000;
+    columns: 1;
+  }
+
+  body[data-head-menu='open'] #pipeline-cycler {
+    display: none;
+  }
+
+  #about-rows {
+    columns: 1;
+  }
+
+  .telemetry-label {
+    min-width: 6.5rem;
+  }
+
+  .header-face {
+    columns: 1;
+  }
+
+  .brand-mark {
+    width: 2.6rem;
+  }
+
+  /* The dashboard's tiles stand one above another and the column scrolls:
+   * three across left two of them cut off at the screen's edge. */
+  .launcher-body {
+    overflow-y: auto;
+  }
+
+  .launcher-grid {
+    grid-template-columns: 1fr;
+    grid-auto-rows: auto;
+  }
+
+  .launcher-tile-wide {
+    grid-column: auto;
+  }
+
+  .launcher-head {
+    flex-wrap: wrap;
+  }
+
+  .launcher-tile-wide .launcher-name,
+  .launcher-name {
+    font-size: 1.4rem;
+  }
+}

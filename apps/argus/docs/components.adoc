@@ -322,3 +322,28 @@ A theme may set `--harvestgold` per `data-modality` on `.image-body` (the frame'
 * Do not fetch bytes anywhere but through `ImageSource`: the engine never talks to CUBE.
 * Do not draw a tool behaviour of your own: bind the library's, or say by name that the engine lacks it.
 * Do not swallow Esc in the field: it gives the keyboard back, one press, one level.
+
+== Frame on a phone
+
+=== Purpose
+
+The LCARS frame on a screen narrower than 700px: the same shape, none of the desktop widths. Nothing in the frame may hold a width a phone does not have; the right side of the page ran off the screen because the gutter kept 168px and the header's readouts kept their minimums.
+
+=== Anatomy
+
+[cols="1,2,4"]
+|===
+| Part | Selector | What it is
+
+| rail | `.left-frame` `.left-frame-top` | The gutter slimmed to `--lfw: 56px`, its elbow's sweep shrunk with it. Its blocks read by number: the word (`.gutter-word`, `.left-frame-top .hop`) and the dash (`.hop-dash`) fold away, so DASHBOARD-01 reads `01`; LANG keeps its word at a smaller size; the ChRIS mark stands alone in the top block.
+| menu pill | `#head-menu-pill` `.head-menu-pill` | `≡` at the end of the banner, shown only on a phone. It opens the ARGUS WEB face (`#header-dag`: the AUDIO and theme pills, the versions, the credits) over the page in one column without the cycler, and a press anywhere outside it closes it again (`body[data-head-menu='open']`).
+| dashboard | `.launcher-grid` | One column of blocks, each as tall as it needs, the column scrolling; the wide block takes one column like the rest.
+|===
+
+=== Stylesheet
+
+`src/lcars/argus.css`, the block headed "the frame on a phone" (`@media (max-width: 700px)`). The root type steps down to 15px there, and the frame's measurements are variables (`--lfw`, `--elbow-radius`, `--elbow-inner`, `--bar-height`), so the frame rescales rather than being redrawn.
+
+=== Do not
+
+Do not give a frame element a fixed width or a minimum in px or rem without a phone value beside it: a desktop minimum is exactly what pushed the header off the screen.

@@ -5208,6 +5208,31 @@ body[data-zoom] #header-restore {
    mode frame: that is a narrow rail against the spine, right for a column
    of capsules and hopeless for a caption and a path — and it answers to
    what the field holds, which an errand does not change. */
+/* A page older than its server's build says so over the stage, with the
+ * one control that answers it (honest-wait). */
+.stale-page {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 1rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: calc(100% - 2rem);
+  padding: 0.55rem 0.7rem 0.55rem 1.1rem;
+  background: #000;
+  border: 2px solid var(--pumpkin-pie);
+  border-radius: 1.2rem 0.3rem 1.2rem 0.3rem;
+  color: var(--butter);
+  font-family: var(--face-label);
+  letter-spacing: 0.08em;
+}
+
+.stale-page-words {
+  min-width: 0;
+}
+
 .errand-bar {
   display: flex;
   align-items: center;

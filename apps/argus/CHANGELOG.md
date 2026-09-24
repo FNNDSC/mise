@@ -1,5 +1,12 @@
 # @fnndsc/argus
 
+## 0.16.2
+
+### Patch Changes
+
+- 53d43f6: `mkdir` follows POSIX: `-p`/`--parents` makes missing parents and accepts an existing folder; without it a missing parent is "No such file or directory" and an existing folder "File exists". `rm` says "Is a directory" for a directory without `-r`, reads `--recursive`/`--force`/`--interactive` whole, and stays silent on `-f` of a missing operand. `mkdir`, `rm`, `cp`, `mv` and `touch` refuse an option they do not have, by name, instead of skipping it or taking it for a path. argus ensures `~/gather` with `mkdir -p`.
+- 38572b6: Tubes follow a pulled node and a pull no longer explodes the feed; tubes are the DAG pane's default edges; a finished feed's pulse replays in a cycle, lighting each stage with a blooming glow as the pulse lands; a running stage blinks with its stream until done; the feed on stage arriving again with the same shape patches in place instead of resettling.
+
 ## 0.16.1
 
 ### Patch Changes

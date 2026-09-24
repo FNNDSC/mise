@@ -2126,6 +2126,26 @@ try {
   check('a cwd inside a feed does not paint its graph over the roster',
     settles.error === undefined && settles.rosterUp === true, JSON.stringify({ rosterUp: settles.rosterUp }));
   }
+  if (stage('stale-page')) {
+  // A page older than its server's build says so: a failed on-demand chunk
+  // (the event Vite's loader raises for it) puts a notice with RELOAD over
+  // the stage and a line on the console, once.
+  const stale = await evalIn(`
+    await console_idle();
+    const before = document.querySelectorAll('.stale-page').length;
+    window.dispatchEvent(new Event('vite:preloadError', { cancelable: true }));
+    window.dispatchEvent(new Event('vite:preloadError', { cancelable: true }));
+    await sleep(300);
+    const notices = [...document.querySelectorAll('.stale-page')];
+    const words = notices[0]?.textContent ?? '';
+    const lines = document.getElementById('terminal').innerText.split('\\n').filter(l => /server has a newer argus/.test(l)).length;
+    notices.forEach(n => n.remove());
+    return { before, count: notices.length, words, lines };`);
+  check('a page older than its server\'s build says so once, with RELOAD, on the stage and the console',
+    stale.before === 0 && stale.count === 1 && /THIS PAGE IS OLDER/.test(stale.words) && /RELOAD/.test(stale.words) && stale.lines === 1,
+    JSON.stringify(stale));
+  }
+
   if (stage('home-trail')) {
   // The way home is one press: a `~` lead row above `..` anywhere but home,
   // and the path line a trail whose every segment but the last goes there.

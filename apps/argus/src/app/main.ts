@@ -75,6 +75,7 @@ import {
   type PaneInstance,
 } from './panes.js';
 import { LayoutManager, type LayoutNode } from './layout.js';
+import { stalePage_watch } from './stalePage.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
 // from `tests/smoke/canon/lcars.json` — the computed style of this surface's own
 // rendered page — and proven against it at zero differences across 275 elements.
@@ -5017,6 +5018,10 @@ async function surface_start(token: string): Promise<void> {
     },
     (prefix: string) => client.line_complete(prefix),
   );
+
+  // A page older than the build it is served from says so, once, when it
+  // asks for a chunk the server no longer has.
+  stalePage_watch((line: string): void => terminal.line_note(line));
 
   // Progress describes a running command, so nothing it draws may outlive
   // one; the submit handler clears the region once the command settles.

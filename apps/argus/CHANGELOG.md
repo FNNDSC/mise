@@ -1,5 +1,17 @@
 # @fnndsc/argus
 
+## 0.15.0
+
+### Minor Changes
+
+- 5caeef6: argus: the universe draws stars. A STARS / SPHERES block on its frame (STARS by default; `universe draw stars|spheres`): every node a point of light at its sphere's true size, errored ones drawn as embers over the glow so red stays red, edges as faint threads, a cluster's halo as a nebula glow that is still its handle; an entered feed stays solid, and CENSUS draws its members as stars. On the GPU the same space went from 20 to 60 frames a second. The frame's four choices (draw, view, scale, density) are now kept per identity.
+
+### Patch Changes
+
+- b92c96a: argus: under STARS, a feed near enough to read turns solid as a whole — past about seven pixels on screen, back to stars below five — crossfading its stars into lit spheres and its threads into edges. Its spheres exist only while it is solid, so detail follows the camera and the frame stays at 60 fps.
+- d6dac25: argus: a page older than the build its server now has says so. When a tab loaded before a deploy asks for an on-demand chunk the server no longer has (the image engines load this way), argus writes one console line and shows a notice over the stage, "ARGUS WAS UPDATED ON THE SERVER — THIS PAGE IS OLDER", with RELOAD. It used to fail silently: an image pane never opened.
+- 6233301: argus: a wait over two seconds shows its progress (new AEGIS law). Opening the universe no longer holds the page: a large settle runs in slices with a bar over the field (`SETTLING 3,034 SPHERES · 43%`), and the field says `ASKING THE SESSION FOR THE SPACE` until the answer arrives instead of a title claiming `0 FEEDS`. A space re-shown with remembered positions (a login, a reload, the climb out of a feed) appears at once, and a landing during a sweep settles only its own molecule.
+
 ## 0.14.0
 
 ### Minor Changes

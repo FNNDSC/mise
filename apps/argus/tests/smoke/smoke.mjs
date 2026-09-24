@@ -157,6 +157,10 @@ try {
       // Wait for a space with something in it: the smoke's cache is warm, so
       // a title still reading 0 FEEDS after this is a space that never came.
       for (let i = 0; i < 120; i++) { await sleep(500); if (panes().length > 0 && /[1-9]\\d* FEEDS/.test(panes()[0].querySelector('.universe-title')?.textContent ?? '')) break; }
+      // The space arrives before it has settled: the settle runs in slices
+      // under its own readout, and the scene is the settled one once the
+      // readout is gone.
+      for (let i = 0; i < 240; i++) { const w = panes()[0]?.querySelector('.wait-progress'); if (!w || w.hidden) break; await sleep(500); }
       await sleep(2000);
       const first = panes()[0] ?? null;
       const title = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';

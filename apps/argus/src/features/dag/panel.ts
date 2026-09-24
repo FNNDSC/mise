@@ -258,6 +258,25 @@ const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
 ];
 
 
+/**
+ * Whether two models of a feed are the same graph: the same nodes in the
+ * same order, the same counts, the same edges — only statuses may differ.
+ *
+ * @param previous - The model on stage.
+ * @param model - The model arriving.
+ * @returns True when the arriving one can be patched in place.
+ */
+function shape_same(previous: FeedDagModel, model: FeedDagModel): boolean {
+  return previous.nodes.length === model.nodes.length &&
+    model.nodes.every((node: FeedDagNode, index: number): boolean => {
+      const before: FeedDagNode | undefined = previous.nodes[index];
+      return before !== undefined && before.id === node.id &&
+        (before.tally?.count ?? 1) === (node.tally?.count ?? 1) &&
+        before.parentIds.length === node.parentIds.length &&
+        before.joinParentIds.length === node.joinParentIds.length;
+    });
+}
+
 export class DagPanel {
   private readonly scene: DagScene;
   private readonly canvas: HTMLElement;
@@ -574,8 +593,16 @@ export class DagPanel {
       this.facts.replaceChildren();
       this.scene.selection_clear();
     }
+    const previous: FeedDagModel | null = this.lastModel;
     this.lastModel = model;
-    this.graph_show(model);
+    // The feed on stage asked again (a second open, a watch's answer):
+    // the same shape patches in place — a rebuild would resettle the graph
+    // and drop its tubes and pulses mid-run.
+    if (previous !== null && previous.feedId === model.feedId && shape_same(previous, model)) {
+      this.statuses_patch(model);
+    } else {
+      this.graph_show(model);
+    }
     this.watch_open(model.feedId);
     this.handlers.feed_shown?.();
   }
@@ -760,26 +787,27 @@ export class DagPanel {
     if (this.shownFeedId !== model.feedId || this.canvas.style.display === 'none') return;
     const previous: FeedDagModel | null = this.lastModel;
     this.lastModel = model;
-    const shapeSame: boolean = previous !== null &&
-      previous.nodes.length === model.nodes.length &&
-      model.nodes.every((node: FeedDagNode, index: number): boolean => {
-        const before: FeedDagNode | undefined = previous.nodes[index];
-        return before !== undefined && before.id === node.id &&
-          (before.tally?.count ?? 1) === (node.tally?.count ?? 1) &&
-          before.parentIds.length === node.parentIds.length &&
-          before.joinParentIds.length === node.joinParentIds.length;
-      });
-    if (shapeSame) {
-      for (const node of model.nodes) {
-        this.scene.status_update(node.id, node.status);
-        this.factsPayloads.set(node.id, node);
-      }
-      // The pane is watching because something is moving; the facts on
-      // screen are part of what moved.
-      if (this.factsShown !== null) this.facts_show(this.factsShown);
+    if (previous !== null && shape_same(previous, model)) {
+      this.statuses_patch(model);
       return;
     }
     this.graph_show(model, false);
+  }
+
+  /**
+   * Patches a same-shaped model's statuses and facts into the scene in
+   * place.
+   *
+   * @param model - The model, the same shape as the one on stage.
+   */
+  private statuses_patch(model: FeedDagModel): void {
+    for (const node of model.nodes) {
+      this.scene.status_update(node.id, node.status);
+      this.factsPayloads.set(node.id, node);
+    }
+    // The pane is watching because something is moving; the facts on
+    // screen are part of what moved.
+    if (this.factsShown !== null) this.facts_show(this.factsShown);
   }
 
   /**
@@ -1139,6 +1167,9 @@ export class DagPanel {
 
   /** Repaints the universe from what has landed, and titles it honestly. */
   private universe_paint(): void {
+    // The scene holds the universe now, not the feed last shown: a feed
+    // arriving next is painted whole, never patched into this.
+    this.lastModel = null;
     this.scene.graph_set(universeGraph_build(this.landed.all()), { wave: false });
     this.universeTitle_paint();
   }

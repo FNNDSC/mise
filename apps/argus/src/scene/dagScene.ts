@@ -591,6 +591,16 @@ const HANDOFF_STAR_PX: number = 5;
 const HANDOFF_FADE_MS: number = 300;
 /** A pulse's trip along one tube; a live edge repeats it. */
 const PULSE_TRIP_MS: number = 1200;
+/** The rest between two replays of a finished feed's run. */
+const REPLAY_REST_MS: number = 1800;
+/** A replayed stage before its pulse lands: this share of its colour. */
+const LAMP_DIM: number = 0.4;
+/** How long a stage flares as its pulse lands. */
+const LAMP_FLARE_MS: number = 350;
+/** How long the lit stages take to dim before the run replays. */
+const LAMP_FADE_MS: number = 500;
+/** What a lit stage brightens toward. */
+const LAMP_WHITE: THREE.Color = new THREE.Color('#ffffff');
 
 const TUBE_VERTEX: string = `
 attribute vec3 aColor;
@@ -615,12 +625,14 @@ void main() {
 
 /**
  * A tube lit by its facing, carrying a pulse from parent (its foot) to
- * child (its head): mode 1 streams (live), mode 2 fires once from vStart
- * (the arrival wave), mode 0 rests.
+ * child (its head): mode 1 streams (live), mode 2 replays the run — each
+ * stage at vStart into a cycle that rests and repeats — mode 0 rests.
  */
 const TUBE_FRAGMENT: string = `
 uniform float time;
 uniform float opacity;
+uniform float born;
+uniform float cycle;
 varying vec3 vColor;
 varying float vMode;
 varying float vStart;
@@ -635,7 +647,10 @@ void main() {
     float head = fract(time / ${PULSE_TRIP_MS.toFixed(1)});
     pulse = smoothstep(0.14, 0.0, abs(vAlong - head));
   } else if (vMode > 1.5) {
-    float head = (time - vStart) / ${(PULSE_TRIP_MS / 2).toFixed(1)};
+    // A finished feed replays its run: the wave goes stage by stage in the
+    // order the stages ran, rests, and goes again.
+    float local = mod(time - born, cycle) - vStart;
+    float head = local / ${(PULSE_TRIP_MS / 2).toFixed(1)};
     if (head > -0.1 && head < 1.2) pulse = smoothstep(0.14, 0.0, abs(vAlong - head));
   }
   gl_FragColor = vec4(base + vec3(1.0, 0.95, 0.8) * pulse * 1.3, opacity);
@@ -836,6 +851,8 @@ export class DagScene {
   private handoffAt: number = 0;
   /** The tube materials on stage, whose pulses follow the clock. */
   private tubeMaterials: THREE.ShaderMaterial[] = [];
+  /** Each tube batch and the edges it draws, so a pull can move them. */
+  private tubeSets: Array<{ mesh: THREE.InstancedMesh; edges: Array<{ from: string; to: string; width: number }>; lamps: Map<string, number> }> = [];
 
   /** Whether the pointer is over the field: the idle spin waits while it is. */
   private pointerInside: boolean = false;
@@ -1015,6 +1032,7 @@ export class DagScene {
           const time = material.uniforms['time'];
           if (time !== undefined) time.value = now;
         }
+        this.lamps_animate(now);
       }
       this.renderer.render(this.scene, this.camera);
       this.frameHandle = window.requestAnimationFrame(animate);
@@ -1893,6 +1911,7 @@ export class DagScene {
     this.handoff = new Map();
     this.placedById = new Map();
     this.tubeMaterials = [];
+    this.tubeSets = [];
     const palette = palette_read();
     this.pulseColor = palette.pulse;
     this.lastPositions = new Map(placed.map((p: PlacedNode): [string, THREE.Vector3] => [p.node.id, p.position.clone()]));
@@ -2003,21 +2022,25 @@ export class DagScene {
         const parent: PlacedNode | undefined = byId.get(parentId);
         if (!parent || parent.node.ghost === true) continue;
         const dim: boolean = node.dim === true || parent.node.dim === true;
-        if (solid(item) && solid(parent)) { if (!starring) this.edge_add(parentId, node.id, parent.position, position, palette.edge, false, dim); }
+        if (solid(item) && solid(parent)) { if (!starring && dim) this.edge_add(parentId, node.id, parent.position, position, palette.edge, false, dim); }
         else thread_add(parent.position, position, palette.edge, dim, node);
       }
       for (const joinId of node.joinParentIds) {
         const parent: PlacedNode | undefined = byId.get(joinId);
         if (!parent) continue;
         const dim: boolean = node.dim === true || parent.node.dim === true;
-        if (solid(item) && solid(parent)) { if (!starring) this.edge_add(joinId, node.id, parent.position, position, palette.join, true, dim); }
+        if (solid(item) && solid(parent)) { if (!starring && dim) this.edge_add(joinId, node.id, parent.position, position, palette.join, true, dim); }
         else thread_add(parent.position, position, palette.join, dim, node);
       }
     }
-    // Under stars, the solid nodes (a feed the operator entered) wear the
-    // same tubes a near feed does, and fire the same arrival wave.
-    if (starring) {
-      const solidIds: string[] = placed.filter((item: PlacedNode): boolean => item.node.solid === true && item.node.ghost !== true).map((item: PlacedNode): string => item.node.id);
+    // Solid spheres are joined by tubes: under stars, the nodes marked solid
+    // (a feed the operator entered); drawn as spheres, every node not dimmed
+    // — the DAG pane's graph and the universe's SPHERES alike. Dimmed
+    // scenery keeps its faint lines.
+    {
+      const solidIds: string[] = placed
+        .filter((item: PlacedNode): boolean => item.node.ghost !== true && item.node.halo !== true && (starring ? item.node.solid === true : item.node.dim !== true))
+        .map((item: PlacedNode): string => item.node.id);
       if (solidIds.length > 0) {
         const entered: HandoffGroup = {
           entries: solidIds.map((id: string): StarEntry => ({ id, position: new THREE.Vector3(), radius: 0, color: new THREE.Color(), dim: false, ember: false })),
@@ -2158,13 +2181,17 @@ export class DagScene {
    * red, and the wave stops there as the run did.
    */
   private tubes_build(group: HandoffGroup, members: ReadonlySet<string>, palette: ReturnType<typeof palette_read>): void {
-    const edges: Array<{ from: PlacedNode; to: PlacedNode }> = [];
+    const edges: Array<{ from: PlacedNode; to: PlacedNode; join: boolean }> = [];
     for (const entry of group.entries) {
       const child: PlacedNode | undefined = this.placedById.get(entry.id);
       if (child === undefined) continue;
-      for (const parentId of [...child.node.parentIds, ...child.node.joinParentIds]) {
+      for (const parentId of child.node.parentIds) {
         const parent: PlacedNode | undefined = this.placedById.get(parentId);
-        if (parent !== undefined && members.has(parentId)) edges.push({ from: parent, to: child });
+        if (parent !== undefined && members.has(parentId)) edges.push({ from: parent, to: child, join: false });
+      }
+      for (const parentId of child.node.joinParentIds) {
+        const parent: PlacedNode | undefined = this.placedById.get(parentId);
+        if (parent !== undefined && members.has(parentId)) edges.push({ from: parent, to: child, join: true });
       }
     }
     if (edges.length === 0) return;
@@ -2188,14 +2215,19 @@ export class DagScene {
     const starts: Float32Array = new Float32Array(edges.length);
     const bright: THREE.Color = palette.edge.clone().lerp(new THREE.Color('#ffffff'), 0.45);
     const mesh: THREE.InstancedMesh = new THREE.InstancedMesh(tubeGeometry_get(), new THREE.ShaderMaterial({
-      uniforms: { time: { value: now }, opacity: { value: group.mix } },
+      uniforms: { time: { value: now }, opacity: { value: group.mix }, born: { value: now }, cycle: { value: 1 } },
       vertexShader: TUBE_VERTEX,
       fragmentShader: TUBE_FRAGMENT,
       transparent: true,
     }), edges.length);
     const up: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
     const carrier: THREE.Object3D = new THREE.Object3D();
-    edges.forEach(({ from, to }: { from: PlacedNode; to: PlacedNode }, i: number): void => {
+    let deepest: number = 0;
+    const set: Array<{ from: string; to: string; width: number }> = [];
+    // A replayed stage lights when its pulse arrives: the root at once,
+    // every other stage as the first tube into it lands.
+    const lamps: Map<string, number> = new Map();
+    edges.forEach(({ from, to, join }: { from: PlacedNode; to: PlacedNode; join: boolean }, i: number): void => {
       const along: THREE.Vector3 = to.position.clone().sub(from.position);
       const length: number = along.length();
       // Thick enough to read as a tube, not a hairline, at the feed's framing.
@@ -2205,12 +2237,20 @@ export class DagScene {
       carrier.scale.set(width, length, width);
       carrier.updateMatrix();
       mesh.setMatrixAt(i, carrier.matrix);
+      set.push({ from: from.node.id, to: to.node.id, width });
       const failed: boolean = to.node.status === 'finishedWithError' || (to.node.share !== undefined && to.node.share >= 1);
-      const color: THREE.Color = failed ? palette.error : bright;
+      const color: THREE.Color = failed ? palette.error : join ? palette.join : bright;
       colors.set([color.r, color.g, color.b], i * 3);
       const live: boolean = to.node.status !== undefined && RUNNING_STATUSES.has(to.node.status);
       modes[i] = live ? 1 : (fired(to.node) ? 2 : 0);
-      starts[i] = now + depth_of(from.node.id) * WAVE_STEP_MS;
+      const depth: number = depth_of(from.node.id);
+      deepest = Math.max(deepest, depth);
+      starts[i] = depth * WAVE_STEP_MS;
+      if (modes[i] === 2) {
+        const landed: number = starts[i]! + PULSE_TRIP_MS / 2;
+        lamps.set(to.node.id, Math.min(lamps.get(to.node.id) ?? Infinity, landed));
+        if (depth === 0) lamps.set(from.node.id, 0);
+      }
     });
     mesh.geometry = tubeGeometry_get();
     mesh.instanceMatrix.needsUpdate = true;
@@ -2224,7 +2264,70 @@ export class DagScene {
     mesh.frustumCulled = false;
     this.group.add(mesh);
     group.tubes = mesh;
-    if (mesh.material instanceof THREE.ShaderMaterial) this.tubeMaterials.push(mesh.material);
+    if (mesh.material instanceof THREE.ShaderMaterial) {
+      this.tubeMaterials.push(mesh.material);
+      const cycle = mesh.material.uniforms['cycle'];
+      if (cycle !== undefined) cycle.value = (deepest + 1) * WAVE_STEP_MS + PULSE_TRIP_MS / 2 + REPLAY_REST_MS;
+    }
+    this.tubeSets.push({ mesh, edges: set, lamps });
+  }
+
+  /**
+   * Lights a replayed feed's stages on its tubes' clock: every stage starts
+   * the cycle dimmed, flares as its pulse lands and stays lit, and the lot
+   * dims again as the rest runs out — then the run replays.
+   *
+   * @param now - This frame's time, the tubes' own.
+   */
+  private lamps_animate(now: number): void {
+    for (const { mesh: tubes, lamps } of this.tubeSets) {
+      if (lamps.size === 0 || !(tubes.material instanceof THREE.ShaderMaterial)) continue;
+      const born: number = Number(tubes.material.uniforms['born']?.value ?? now);
+      const cycle: number = Number(tubes.material.uniforms['cycle']?.value ?? 1);
+      const local: number = (((now - born) % cycle) + cycle) % cycle;
+      // Out of the cycle's last stretch every lamp fades back down.
+      const fade: number = Math.min(1, Math.max(0, (cycle - local) / LAMP_FADE_MS));
+      for (const [id, landed] of lamps) {
+        const sphere: THREE.Mesh | undefined = this.meshes.get(id);
+        if (sphere === undefined || !(sphere.material instanceof THREE.MeshStandardMaterial)) continue;
+        let base: unknown = sphere.userData['lampBase'];
+        if (!(base instanceof THREE.Color)) {
+          base = sphere.material.color.clone();
+          sphere.userData['lampBase'] = base;
+        }
+        const since: number = local - landed;
+        const lit: number = since < 0 ? 0 : fade;
+        const flare: number = since >= 0 && since < LAMP_FLARE_MS ? 1 - since / LAMP_FLARE_MS : 0;
+        sphere.material.color
+          .copy(base as THREE.Color)
+          .multiplyScalar(LAMP_DIM + (1 - LAMP_DIM) * lit)
+          .lerp(LAMP_WHITE, Math.min(1, 0.18 * lit + 0.55 * flare));
+      }
+    }
+  }
+
+  /**
+   * Brings every tube to the spheres it joins, where they stand now: a
+   * pulled node drags its tubes with it.
+   */
+  private tubes_follow(): void {
+    const up: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
+    const carrier: THREE.Object3D = new THREE.Object3D();
+    for (const { mesh, edges } of this.tubeSets) {
+      edges.forEach(({ from, to, width }: { from: string; to: string; width: number }, i: number): void => {
+        const a: THREE.Mesh | undefined = this.meshes.get(from);
+        const b: THREE.Mesh | undefined = this.meshes.get(to);
+        if (a === undefined || b === undefined) return;
+        const along: THREE.Vector3 = b.position.clone().sub(a.position);
+        const length: number = along.length();
+        carrier.position.copy(a.position).addScaledVector(along, 0.5);
+        carrier.quaternion.setFromUnitVectors(up, length > 0 ? along.clone().divideScalar(length) : up);
+        carrier.scale.set(width, length, width);
+        carrier.updateMatrix();
+        mesh.setMatrixAt(i, carrier.matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+    }
   }
 
   /** Lets a feed's spheres go once it is stars again. */
@@ -2242,6 +2345,8 @@ export class DagScene {
     }
     if (group.tubes !== null) {
       this.group.remove(group.tubes);
+      const released: THREE.InstancedMesh = group.tubes;
+      this.tubeSets = this.tubeSets.filter((entry): boolean => entry.mesh !== released);
       group.tubes.geometry.dispose();
       if (group.tubes.material instanceof THREE.ShaderMaterial) {
         const material: THREE.ShaderMaterial = group.tubes.material;
@@ -2445,7 +2550,11 @@ export class DagScene {
   private positions_sync(): void {
     for (const simNode of this.dragSimNodes) {
       this.meshes.get(simNode.id)?.position.set(simNode.x, simNode.y, simNode.z);
+      // Where a pulled node comes to rest is where it stands: a later
+      // redraw starts from here instead of snapping it back.
+      this.lastPositions.set(simNode.id, new THREE.Vector3(simNode.x, simNode.y, simNode.z));
     }
+    if (this.tubeSets.length > 0) this.tubes_follow();
     for (const edge of this.edges) {
       const from: THREE.Mesh | undefined = this.meshes.get(edge.fromId);
       const to: THREE.Mesh | undefined = this.meshes.get(edge.toId);
@@ -2498,7 +2607,11 @@ export class DagScene {
     // Drag in the plane through the node, facing the camera: intuitive
     // pull, no depth surprises.
     const normal: THREE.Vector3 = this.camera.getWorldDirection(new THREE.Vector3()).negate();
-    const plane: THREE.Plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, hit.position);
+    // The plane runs through the node where it stands in the WORLD: the ray
+    // it is cut with is in world space, and the group may be moved and
+    // turned (the universe turns about its focus).
+    this.group.updateMatrixWorld(true);
+    const plane: THREE.Plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, hit.getWorldPosition(new THREE.Vector3()));
     this.drag = {
       nodeId, plane, startX: event.clientX, startY: event.clientY, moved: false,
       // Ranked is deterministic truth: a pull peeks at ONE node and the
@@ -2555,11 +2668,20 @@ export class DagScene {
       const mesh: THREE.Mesh = this.meshes.get(id) as THREE.Mesh;
       return { id, x: mesh.position.x, y: mesh.position.y, z: mesh.position.z };
     });
+    // The pull reacts with the forces the layout settled under — the same
+    // link lengths, charge by size within the hug's reach, no overlap — so
+    // a tug moves the molecule rather than blowing it apart (generic forces
+    // disagreed with the rest the layout had found, and every node fled).
+    const radii: Map<string, number> = moleculeRadii_of(this.graph.nodes);
+    const radiusOf = (id: string): number => radii.get(id) ?? NODE_RADIUS;
     this.dragSim = forceSimulation(this.dragSimNodes, this.projection === '2d' ? 2 : 3)
-      .force('link', forceLink(links).id((d: { id: string }) => d.id).distance(2.2))
-      .force('charge', forceManyBody().strength(-6))
-      .alpha(0.5)
-      .alphaTarget(0.3)
+      .force('link', forceLink(links).id((d: { id: string }) => d.id).distance(
+        (link: { source: { id: string }; target: { id: string } }): number => radiusOf(link.source.id) + radiusOf(link.target.id) + 1.4,
+      ))
+      .force('charge', forceManyBody().strength((d: { id: string }): number => -6 * (radiusOf(d.id) / NODE_RADIUS) ** 2).distanceMax(12))
+      .force('collide', forceCollide().radius((d: { id: string }): number => radiusOf(d.id) * 1.2))
+      .alpha(0.25)
+      .alphaTarget(0.08)
       .stop();
     const grabbed = this.dragSimNodes.find((n) => n.id === nodeId);
     if (grabbed) {
@@ -2590,6 +2712,10 @@ export class DagScene {
     this.raycaster.setFromCamera(pointer, this.camera);
     const point: THREE.Vector3 = new THREE.Vector3();
     if (this.raycaster.ray.intersectPlane(this.drag.plane, point) === null) return;
+    // Back into the group's own space, where the node and the simulation
+    // live: pinned to a world point, the node leapt away and dragged its
+    // whole molecule after it.
+    this.group.worldToLocal(point);
     if (this.drag.solo) {
       const mesh: THREE.Mesh | undefined = this.meshes.get(this.drag.nodeId);
       if (mesh !== undefined) {

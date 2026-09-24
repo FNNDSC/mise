@@ -230,6 +230,13 @@ try {
       const gravityOff = first?.querySelector('.universe-gravity')?.textContent?.trim() ?? '';
       await say('universe physics reset', 2000);
       const gravityReset = first?.querySelector('.universe-gravity')?.textContent?.trim() ?? '';
+      // The draw: stars by default, spheres by word, the choice kept per identity.
+      const drawDefault = first?.querySelector('.universe-draw')?.textContent?.trim() ?? '';
+      await say('universe draw spheres', 2500);
+      const drawSpheres = first?.querySelector('.universe-draw')?.textContent?.trim() ?? '';
+      const keptSpheres = Object.keys(localStorage).filter((k) => k.startsWith('argus.universe.settings.')).map((k) => JSON.parse(localStorage.getItem(k) ?? '{}').draw).join(',');
+      await say('universe draw stars', 2500);
+      const drawStars = first?.querySelector('.universe-draw')?.textContent?.trim() ?? '';
       // Every job its own point, and back to a sphere per stage.
       await say('universe density census', 4000);
       const densityCensus = first?.querySelector('.universe-density')?.textContent?.trim() ?? '';
@@ -244,7 +251,7 @@ try {
       await sleep(1000);
       const count = document.querySelectorAll('.pane-universe').length;
       await say('view files', 2000);
-      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle, viewPill, unfoldTitle, viewPillBack, gravityOff, gravityReset, densityCensus, censusTitle, densityShape, clickKept, fitsBefore, fitsAfter, clickTitle, waited };`);
+      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle, viewPill, unfoldTitle, viewPillBack, gravityOff, gravityReset, densityCensus, censusTitle, densityShape, clickKept, fitsBefore, fitsAfter, clickTitle, waited, drawDefault, drawSpheres, keptSpheres, drawStars };`);
     check('the UNIVERSE tile opens a pane of its own kind, titled by what landed',
       universe.hadTile && /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.title), universe.title);
     check('the universe pane says whether the index is whole', universe.state === 'WHOLE' || universe.state === 'LANDING', universe.state);
@@ -260,6 +267,9 @@ try {
         blank.length === 0 && climbs,
         JSON.stringify(universe.waited.filter((_, i) => i % 5 === 0)));
     }
+    check('the universe draws stars by default; universe draw spheres and stars switch it, and the choice is kept for this identity',
+      universe.drawDefault === 'STARS' && universe.drawSpheres === 'SPHERES' && universe.keptSpheres === 'spheres' && universe.drawStars === 'STARS',
+      `${universe.drawDefault} | ${universe.drawSpheres} | ${universe.keptSpheres} | ${universe.drawStars}`);
     check('a click keeps the camera: a wheeled-in camera and the settled space stand through a click on the field',
       universe.clickKept, `fits ${universe.fitsBefore} -> ${universe.fitsAfter} | ${universe.clickTitle}`);
     check('universe enter <feed> descends: the title names the feed inside, the state says INSIDE, BACK and OPEN FEED stand on the frame',

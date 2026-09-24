@@ -55,6 +55,12 @@ export interface SceneNode {
    */
   halo?: boolean;
   /**
+   * Drawn as a lit sphere even when the scene draws stars: a node the
+   * operator is at (an entered feed's own nodes) stays solid to hover and
+   * press, whatever its size on screen.
+   */
+  solid?: boolean;
+  /**
    * Drawn faint: the rest of a field while one part of it is entered.
    * Present in the settle and drawn, but at a fraction of its opacity, and
    * its edges with it.
@@ -481,6 +487,91 @@ const SLICE_MIN_WORK: number = 90 * 400;
 /** Time a settle may take from one frame before it yields to the next. */
 const SLICE_BUDGET_MS: number = 12;
 
+/** How the scene draws its nodes: lit spheres, or points of light. */
+export type DrawMode = 'spheres' | 'stars';
+
+/** A star's smallest size on screen, in CSS pixels: no node ever vanishes. */
+const STAR_FLOOR_PX: number = 2;
+/** A star's sprite spans this many times its sphere's diameter: core plus glow. */
+const STAR_GLOW: number = 1.8;
+/** Threads (edges) while the scene draws stars: faint, so the light leads. */
+const THREAD_OPACITY: number = 0.1;
+/** A nebula's opacity at its heart; a dimmed one a third of it. */
+const NEBULA_OPACITY: number = 0.2;
+
+const STAR_VERTEX: string = `
+attribute float radius;
+attribute float alpha;
+attribute vec3 tint;
+uniform float scale;
+uniform float floorPx;
+varying vec3 vTint;
+varying float vAlpha;
+void main() {
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mv;
+  float px = ${STAR_GLOW.toFixed(1)} * 2.0 * radius * scale / max(0.0001, -mv.z);
+  gl_PointSize = max(px, floorPx);
+  vTint = tint;
+  vAlpha = alpha;
+}`;
+
+/** The glow: a bright core falling off to nothing at the sprite's edge. */
+const STAR_FRAGMENT_GLOW: string = `
+varying vec3 vTint;
+varying float vAlpha;
+void main() {
+  float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
+  if (d > 1.0) discard;
+  float core = smoothstep(0.6, 0.0, d);
+  float halo = pow(1.0 - d, 2.2) * 0.55;
+  float a = clamp(core + halo, 0.0, 1.0) * vAlpha;
+  gl_FragColor = vec4(vTint * a, a);
+}`;
+
+/** The ember: an errored star drawn solid over the glow, so red stays red. */
+const STAR_FRAGMENT_EMBER: string = `
+varying vec3 vTint;
+varying float vAlpha;
+void main() {
+  float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
+  if (d > 1.0) discard;
+  float a = smoothstep(1.0, 0.35, d) * vAlpha;
+  gl_FragColor = vec4(vTint, a);
+}`;
+
+/** One star as drawn: whose it is, where, how big, its hue, whether dim, whether errored. */
+interface StarEntry {
+  id: string;
+  position: THREE.Vector3;
+  radius: number;
+  color: THREE.Color;
+  dim: boolean;
+  ember: boolean;
+}
+
+/** A soft radial glow, shared by every nebula. */
+let nebulaTexture: THREE.Texture | null = null;
+
+/** Draws (once) the nebula's radial glow. */
+function nebulaTexture_get(): THREE.Texture {
+  if (nebulaTexture !== null) return nebulaTexture;
+  const canvas: HTMLCanvasElement = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const context: CanvasRenderingContext2D | null = canvas.getContext('2d');
+  if (context !== null) {
+    const gradient: CanvasGradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 128, 128);
+  }
+  nebulaTexture = new THREE.CanvasTexture(canvas);
+  return nebulaTexture;
+}
+
 /**
  * One live DAG rendering bound to a container element.
  */
@@ -605,6 +696,17 @@ export class DagScene {
     this.group.position.sub(this.focus).applyQuaternion(q).add(this.focus);
     this.group.quaternion.premultiply(q);
   }
+
+  /** How nodes are drawn: lit spheres (every pane), or stars (the universe's choice). */
+  private drawMode: DrawMode = 'spheres';
+  /** The stars on stage, in draw order, for picking and flights. */
+  private stars: StarEntry[] = [];
+  /** Star index by node id: a node's first star (census members share one). */
+  private starIndex: Map<string, number> = new Map();
+  /** Nebulae on stage: a cluster's handle while the scene draws stars. */
+  private nebulae: Array<{ id: string; position: THREE.Vector3; radius: number }> = [];
+  /** The star materials, whose pixel scale follows the camera each frame. */
+  private starMaterials: THREE.ShaderMaterial[] = [];
 
   /** Times the scene has framed the graph itself (`camera_fit`). */
   private fits: number = 0;
@@ -768,6 +870,7 @@ export class DagScene {
         this.wave_animate();
         this.flight_animate();
       }
+      this.starScale_update();
       this.renderer.render(this.scene, this.camera);
       this.frameHandle = window.requestAnimationFrame(animate);
     };
@@ -913,12 +1016,12 @@ export class DagScene {
     const points: THREE.Vector3[] = [];
     let radiusMax: number = 0;
     this.group.updateMatrixWorld(true);
-    for (const [id, mesh] of this.meshes) {
+    for (const id of this.drawnIds()) {
       if (wanted.size > 0 && !wanted.has(id)) continue;
-      points.push(mesh.getWorldPosition(new THREE.Vector3()));
-      const sphere: THREE.BufferGeometry = mesh.geometry;
-      sphere.computeBoundingSphere();
-      radiusMax = Math.max(radiusMax, sphere.boundingSphere?.radius ?? NODE_RADIUS);
+      const drawn = this.nodeWorld_of(id);
+      if (drawn === null) continue;
+      points.push(drawn.position);
+      radiusMax = Math.max(radiusMax, drawn.radius);
     }
     if (points.length === 0) {
       onDone();
@@ -966,6 +1069,23 @@ export class DagScene {
    */
   public camera_touched(): boolean {
     return this.touched;
+  }
+
+  /**
+   * Draws the nodes as lit spheres or as stars. Moves nothing: the scene
+   * is redrawn where it stands, the camera where the operator put it.
+   *
+   * @param mode - The draw mode.
+   */
+  public draw_set(mode: DrawMode): void {
+    if (mode === this.drawMode) return;
+    this.drawMode = mode;
+    this.rebuild(false, 'hold');
+  }
+
+  /** @returns How nodes are drawn. */
+  public draw_get(): DrawMode {
+    return this.drawMode;
   }
 
   /**
@@ -1233,7 +1353,11 @@ export class DagScene {
       roughness: 0.5,
       metalness: 0.1,
     });
-    const instanced: THREE.InstancedMesh = new THREE.InstancedMesh(geometry, material, total);
+    // Under stars the members are points of light like any star; the
+    // instanced spheres are the SPHERES draw.
+    const starring: boolean = this.drawMode === 'stars';
+    const starred: StarEntry[] = [];
+    const instanced: THREE.InstancedMesh = new THREE.InstancedMesh(geometry, material, starring ? 1 : total);
     const color: THREE.Color = new THREE.Color();
     const carrier: THREE.Object3D = new THREE.Object3D();
     const memberPositions: Map<string, THREE.Vector3[]> = new Map();
@@ -1254,13 +1378,20 @@ export class DagScene {
         const point: THREE.Vector3 =
           n === 1 ? position.clone() : fibonacciPoint_make(k, n, shellRadius).add(position);
         points.push(point);
-        carrier.position.copy(point);
-        carrier.scale.setScalar(memberRadius);
-        carrier.updateMatrix();
-        instanced.setMatrixAt(index, carrier.matrix);
         const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
         color.set(nodeColor_pick(node, palette, isRoot));
-        instanced.setColorAt(index, color);
+        if (starring) {
+          starred.push({
+            id: node.id, position: point, radius: memberRadius, color: color.clone(), dim: node.dim === true,
+            ember: (node.share !== undefined && node.share > 0) || node.status === 'finishedWithError',
+          });
+        } else {
+          carrier.position.copy(point);
+          carrier.scale.setScalar(memberRadius);
+          carrier.updateMatrix();
+          instanced.setMatrixAt(index, carrier.matrix);
+          instanced.setColorAt(index, color);
+        }
         this.censusIds.push(node.id);
         this.censusPositions.push(point);
         index += 1;
@@ -1268,10 +1399,14 @@ export class DagScene {
       }
       memberPositions.set(node.id, points);
     }
-    if (instanced.instanceColor) instanced.instanceColor.needsUpdate = true;
-    this.group.add(instanced);
-    this.censusMesh = instanced;
-    this.censusBase = instanced.instanceColor ? Float32Array.from(instanced.instanceColor.array) : null;
+    if (starring) {
+      this.stars_draw(starred);
+    } else {
+      if (instanced.instanceColor) instanced.instanceColor.needsUpdate = true;
+      this.group.add(instanced);
+      this.censusMesh = instanced;
+      this.censusBase = instanced.instanceColor ? Float32Array.from(instanced.instanceColor.array) : null;
+    }
 
     const segments: number[] = [];
     for (const { node } of placed) {
@@ -1293,7 +1428,9 @@ export class DagScene {
       edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(segments, 3));
       const lines: THREE.LineSegments = new THREE.LineSegments(
         edgeGeometry,
-        new THREE.LineBasicMaterial({ color: palette.edge, transparent: true, opacity: 0.35 }),
+        starring
+          ? new THREE.LineBasicMaterial({ color: palette.edge, transparent: true, opacity: THREAD_OPACITY, blending: THREE.AdditiveBlending, depthWrite: false })
+          : new THREE.LineBasicMaterial({ color: palette.edge, transparent: true, opacity: 0.35 }),
       );
       this.group.add(lines);
     }
@@ -1360,6 +1497,8 @@ export class DagScene {
 
   /** Counts rebuilds, so a sliced settle overtaken by a newer one stops. */
   private rebuildGen: number = 0;
+  /** Whether a settle is running in slices, its readout up. */
+  private slicing: boolean = false;
 
   /**
    * Rebuilds meshes and edges from the current graph and strategy.
@@ -1369,6 +1508,13 @@ export class DagScene {
    */
   private rebuild(fit: boolean = true, mode: SettleMode = 'full'): void {
     const generation: number = ++this.rebuildGen;
+    // A settle in slices overtaken by this rebuild ends here: its readout
+    // closes, or a quick rebuild after it would leave the bar standing at
+    // whatever it last said.
+    if (this.slicing) {
+      this.slicing = false;
+      this.handlers.progress?.(1, 1, 0);
+    }
     if (this.strategy !== 'molecule') {
       this.draw(layout_ranked(this.graph.nodes), fit);
       return;
@@ -1400,6 +1546,7 @@ export class DagScene {
       return;
     }
     let done: number = 0;
+    this.slicing = true;
     progress(0, settle.total, nodes);
     const slice = (): void => {
       if (generation !== this.rebuildGen || this.disposed) return;
@@ -1413,6 +1560,7 @@ export class DagScene {
         window.requestAnimationFrame(slice);
         return;
       }
+      this.slicing = false;
       this.draw(settle.place(), fit);
       progress(settle.total, settle.total, nodes);
     };
@@ -1431,6 +1579,10 @@ export class DagScene {
     this.dragSim = null;
     this.dragSimNodes = [];
     this.drag = null;
+    this.stars = [];
+    this.starIndex = new Map();
+    this.nebulae = [];
+    this.starMaterials = [];
     const palette = palette_read();
     this.pulseColor = palette.pulse;
     this.lastPositions = new Map(placed.map((p: PlacedNode): [string, THREE.Vector3] => [p.node.id, p.position.clone()]));
@@ -1446,8 +1598,28 @@ export class DagScene {
     if (!this.ambient && fit) this.camera_fit(placed);
     const byId: Map<string, PlacedNode> = new Map(placed.map((p: PlacedNode) => [p.node.id, p]));
 
+    // Stars: every node but a solid one is a point of light, a halo a
+    // nebula; they are drawn in batches after this loop.
+    const starring: boolean = this.drawMode === 'stars';
+    const starred: StarEntry[] = [];
     for (const { node, position, radius } of placed) {
       if (node.ghost === true && node.halo !== true) continue;
+      if (starring && node.solid !== true) {
+        if (node.halo === true) {
+          this.nebula_add(node, position, palette);
+          continue;
+        }
+        const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
+        starred.push({
+          id: node.id,
+          position: position.clone(),
+          radius,
+          color: nodeColor_pick(node, palette, isRoot).clone(),
+          dim: node.dim === true,
+          ember: (node.share !== undefined && node.share > 0) || node.status === 'finishedWithError',
+        });
+        continue;
+      }
       if (node.halo === true) {
         // A cluster's handle: translucent, unlit, written last so the
         // spheres inside it show through; picked only when nothing solid is.
@@ -1493,18 +1665,199 @@ export class DagScene {
       this.meshes.set(node.id, mesh);
     }
 
-    for (const { node, position } of placed) {
+    if (starred.length > 0) this.stars_draw(starred);
+    // An edge between two solid nodes is a line as ever; an edge touching a
+    // star is a thread, all of them one batch.
+    const threads: number[] = [];
+    const threadColors: number[] = [];
+    const solid = (item: PlacedNode): boolean => !starring || item.node.solid === true;
+    const thread_add = (from: THREE.Vector3, to: THREE.Vector3, color: THREE.Color, dim: boolean): void => {
+      const k: number = dim ? 0.35 : 1;
+      threads.push(from.x, from.y, from.z, to.x, to.y, to.z);
+      threadColors.push(color.r * k, color.g * k, color.b * k, color.r * k, color.g * k, color.b * k);
+    };
+    for (const item of placed) {
+      const { node, position } = item;
       if (node.ghost === true) continue;
       for (const parentId of node.parentIds) {
         const parent: PlacedNode | undefined = byId.get(parentId);
-        if (parent && parent.node.ghost !== true) this.edge_add(parentId, node.id, parent.position, position, palette.edge, false, node.dim === true || parent.node.dim === true);
+        if (!parent || parent.node.ghost === true) continue;
+        const dim: boolean = node.dim === true || parent.node.dim === true;
+        if (solid(item) && solid(parent)) this.edge_add(parentId, node.id, parent.position, position, palette.edge, false, dim);
+        else thread_add(parent.position, position, palette.edge, dim);
       }
       for (const joinId of node.joinParentIds) {
         const parent: PlacedNode | undefined = byId.get(joinId);
-        if (parent) this.edge_add(joinId, node.id, parent.position, position, palette.join, true, node.dim === true || parent.node.dim === true);
+        if (!parent) continue;
+        const dim: boolean = node.dim === true || parent.node.dim === true;
+        if (solid(item) && solid(parent)) this.edge_add(joinId, node.id, parent.position, position, palette.join, true, dim);
+        else thread_add(parent.position, position, palette.join, dim);
       }
     }
+    if (threads.length > 0) {
+      const geometry: THREE.BufferGeometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(threads, 3));
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(threadColors, 3));
+      this.group.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({
+        vertexColors: true, transparent: true, opacity: THREAD_OPACITY, blending: THREE.AdditiveBlending, depthWrite: false,
+      })));
+    }
 
+  }
+
+  /**
+   * Draws stars in two layers: the error-free ones glow additively (the
+   * galaxy's light), the errored ones — embers — are drawn after them in
+   * plain blending, so a red star inside a bright core stays red.
+   *
+   * @param entries - The stars.
+   */
+  private stars_draw(entries: StarEntry[]): void {
+    for (const entry of entries) {
+      if (!this.starIndex.has(entry.id)) this.starIndex.set(entry.id, this.stars.length);
+      this.stars.push(entry);
+    }
+    for (const ember of [false, true]) {
+      const layer: StarEntry[] = entries.filter((entry: StarEntry): boolean => entry.ember === ember);
+      if (layer.length === 0) continue;
+      const positions: Float32Array = new Float32Array(layer.length * 3);
+      const tints: Float32Array = new Float32Array(layer.length * 3);
+      const radii: Float32Array = new Float32Array(layer.length);
+      const alphas: Float32Array = new Float32Array(layer.length);
+      layer.forEach((entry: StarEntry, i: number): void => {
+        positions.set([entry.position.x, entry.position.y, entry.position.z], i * 3);
+        tints.set([entry.color.r, entry.color.g, entry.color.b], i * 3);
+        radii[i] = entry.radius;
+        alphas[i] = entry.dim ? DIM_OPACITY * 1.5 : 1;
+      });
+      const geometry: THREE.BufferGeometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('tint', new THREE.BufferAttribute(tints, 3));
+      geometry.setAttribute('radius', new THREE.BufferAttribute(radii, 1));
+      geometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
+      const material: THREE.ShaderMaterial = new THREE.ShaderMaterial({
+        uniforms: { scale: { value: 1 }, floorPx: { value: STAR_FLOOR_PX * window.devicePixelRatio } },
+        vertexShader: STAR_VERTEX,
+        fragmentShader: ember ? STAR_FRAGMENT_EMBER : STAR_FRAGMENT_GLOW,
+        transparent: true,
+        depthWrite: false,
+        blending: ember ? THREE.NormalBlending : THREE.AdditiveBlending,
+      });
+      const points: THREE.Points = new THREE.Points(geometry, material);
+      // Embers over the glow: drawn after it, whatever the sort says.
+      points.renderOrder = ember ? 2 : 1;
+      points.frustumCulled = false;
+      this.group.add(points);
+      this.starMaterials.push(material);
+    }
+    this.starScale_update();
+  }
+
+  /** Keeps the stars' pixel scale true to the camera and the canvas. */
+  private starScale_update(): void {
+    if (this.starMaterials.length === 0) return;
+    const height: number = this.renderer.domElement.height;
+    const scale: number = height / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
+    for (const material of this.starMaterials) {
+      const uniform = material.uniforms['scale'];
+      if (uniform !== undefined) uniform.value = scale;
+    }
+  }
+
+  /**
+   * A cluster's handle while the scene draws stars: a soft glow at its
+   * anchor, facing the camera, sized as its halo would be.
+   */
+  private nebula_add(node: SceneNode, position: THREE.Vector3, palette: ReturnType<typeof palette_read>): void {
+    const radius: number = haloRadius_of(node.count ?? 1);
+    const sprite: THREE.Sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: nebulaTexture_get(),
+      color: palette.edge,
+      transparent: true,
+      opacity: node.dim === true ? NEBULA_OPACITY / 3 : NEBULA_OPACITY,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }));
+    sprite.position.copy(position);
+    sprite.scale.setScalar(radius * 2);
+    sprite.renderOrder = 0;
+    this.group.add(sprite);
+    this.nebulae.push({ id: node.id, position: position.clone(), radius });
+  }
+
+  /**
+   * The node whose star — or, over no star, whose nebula — is under the
+   * pointer, picked in screen space: a star is hit within its drawn size
+   * (never less than a few pixels), the nearest centre wins, a dimmed star
+   * is scenery and takes no pointer.
+   */
+  private starNode_under(event: MouseEvent): string | null {
+    if (this.stars.length === 0 && this.nebulae.length === 0) return null;
+    const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
+    const px: number = event.clientX - bounds.left;
+    const py: number = event.clientY - bounds.top;
+    this.group.updateMatrixWorld(true);
+    this.camera.updateMatrixWorld();
+    const perUnit: number = bounds.height / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
+    // One matrix from the group's space to the screen's; one scratch
+    // vector: a census can hold tens of thousands of stars, and this runs
+    // on every pointer move.
+    const view: THREE.Matrix4 = new THREE.Matrix4().multiplyMatrices(this.camera.matrixWorldInverse, this.group.matrixWorld);
+    const clip: THREE.Matrix4 = new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, view);
+    const e: number[] = clip.elements;
+    const v: number[] = view.elements;
+    const screen = (p: THREE.Vector3): { x: number; y: number; depth: number } | null => {
+      const depth: number = -(v[2]! * p.x + v[6]! * p.y + v[10]! * p.z + v[14]!);
+      if (depth <= 0) return null;
+      const w: number = e[3]! * p.x + e[7]! * p.y + e[11]! * p.z + e[15]!;
+      const x: number = (e[0]! * p.x + e[4]! * p.y + e[8]! * p.z + e[12]!) / w;
+      const y: number = (e[1]! * p.x + e[5]! * p.y + e[9]! * p.z + e[13]!) / w;
+      return { x: (x + 1) / 2 * bounds.width, y: (1 - y) / 2 * bounds.height, depth };
+    };
+    let best: string | null = null;
+    let bestScore: number = Infinity;
+    for (const star of this.stars) {
+      if (star.dim) continue;
+      const hit = screen(star.position);
+      if (hit === null) continue;
+      const reach: number = Math.max(4, (STAR_GLOW * star.radius * perUnit) / hit.depth);
+      const distance: number = Math.hypot(hit.x - px, hit.y - py);
+      if (distance > reach) continue;
+      const score: number = distance / reach;
+      if (score < bestScore) { bestScore = score; best = star.id; }
+    }
+    if (best !== null) return best;
+    for (const nebula of this.nebulae) {
+      const hit = screen(nebula.position);
+      if (hit === null) continue;
+      if (Math.hypot(hit.x - px, hit.y - py) <= (nebula.radius * perUnit) / hit.depth) return nebula.id;
+    }
+    return null;
+  }
+
+  /**
+   * Where a drawn node stands in the world and how big it is — a sphere,
+   * a star or a census member alike — for flights and framing.
+   *
+   * @param id - The node.
+   * @returns Its world position and radius, or null when it is not drawn.
+   */
+  private nodeWorld_of(id: string): { position: THREE.Vector3; radius: number } | null {
+    const mesh: THREE.Mesh | undefined = this.meshes.get(id);
+    if (mesh !== undefined) {
+      const sphere: THREE.BufferGeometry = mesh.geometry;
+      if (sphere.boundingSphere === null) sphere.computeBoundingSphere();
+      return { position: mesh.getWorldPosition(new THREE.Vector3()), radius: sphere.boundingSphere?.radius ?? NODE_RADIUS };
+    }
+    const index: number | undefined = this.starIndex.get(id);
+    const star: StarEntry | undefined = index === undefined ? undefined : this.stars[index];
+    if (star !== undefined) return { position: this.group.localToWorld(star.position.clone()), radius: star.radius };
+    return null;
+  }
+
+  /** Every drawn node's id: spheres and stars. */
+  private drawnIds(): string[] {
+    return [...this.meshes.keys(), ...this.starIndex.keys()];
   }
 
   /** Adds one edge line; joins are dashed. Endpoint ids allow live re-anchoring. */
@@ -1787,6 +2140,15 @@ export class DagScene {
     return object instanceof THREE.Mesh ? object : null;
   }
 
+  /**
+   * The node under the pointer, however it is drawn: a census member (its
+   * group), a solid sphere, or a star (or nebula) when nothing solid is.
+   */
+  private node_under(event: MouseEvent): string | null {
+    if (this.census && this.censusMesh !== null) return this.censusNode_under(event);
+    return this.meshNode_under(event) ?? this.starNode_under(event);
+  }
+
   /** The node id behind a shape-mode mesh under the pointer. */
   private meshNode_under(event: MouseEvent): string | null {
     const nodeId: unknown = this.mesh_under(event)?.userData['nodeId'];
@@ -1819,7 +2181,7 @@ export class DagScene {
     if (this.tip === null) return;
     // In census the spheres are members of one instanced mesh: the group
     // under the pointer is what the tip names, as a click would pick.
-    const nodeId: unknown = this.census ? this.censusNode_under(event) : this.mesh_under(event)?.userData['nodeId'];
+    const nodeId: unknown = this.node_under(event);
     const node: SceneNode | undefined =
       typeof nodeId === 'string'
         ? this.graph.nodes.find((n: SceneNode) => n.id === nodeId)
@@ -1839,7 +2201,7 @@ export class DagScene {
 
   /** Resolves a pointer event to a node and fires the matching handler. */
   private pick_handle(event: MouseEvent, kind: 'select' | 'activate'): void {
-    const nodeId: string | null = this.census ? this.censusNode_under(event) : this.meshNode_under(event);
+    const nodeId: string | null = this.node_under(event);
     if (nodeId === null) {
       // Empty space is the natural off switch for the node detail.
       if (kind === 'select' && this.selectedId !== null) {

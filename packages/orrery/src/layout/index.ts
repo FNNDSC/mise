@@ -12,4 +12,5 @@ export { galaxy_layout } from './galaxy.js';
 export { hierarchy_layout, type HierarchyArrangement, type HierarchyNode, type HierarchyPhysics, type HierarchyPositions } from './hierarchy.js';
 export { molecule_prepare, molecule_layout, moleculeRadii_of, type MoleculeNode, type MoleculePlace, type MoleculeSettle } from './molecule.js';
 export { rankedLayout_compute, ranked_layout, type RankedInput, type RankedPlacement, type RankedLayout, type RankedSceneNode } from './ranked.js';
+export { hash_of, random_seeded, randomFor_key } from './seeded.js';
 export { layoutEngines_list, layoutEngine_get, layoutNeeds_missing } from './registry.js';

@@ -115,6 +115,13 @@ export interface ImageEngineState {
   annotations: number;
   /** The window/level on the field, when the engine tracks it. */
   voi?: { lower: number; upper: number } | null;
+  /**
+   * Each viewport as it stands now, read from the viewport itself: how
+   * zoomed (a parallel view's scale, a perspective view's distance to its
+   * focus), where it looks, and its live window. What a drag on the field
+   * changed is read here, not from what a command last set.
+   */
+  viewports?: Array<{ id: string; scale: number; focus: [number, number, number]; voi: { lower: number; upper: number } | null }>;
   /** The SLAB ghost opacity, 0..1 or null when hidden; absent off SLAB. */
   ghost?: number | null;
   /** The colormap on the field. */

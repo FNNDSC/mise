@@ -39,23 +39,19 @@ import {
   HANDOFF_FADE_MS,
   HANDOFF_SOLID_PX,
   HANDOFF_STAR_PX,
-  NEBULA_OPACITY,
   STAR_GLOW,
   SphereGeometries,
   THREAD_OPACITY,
   WAVE_STEP_MS,
   fibonacciPoint_make,
   haloRadius_of,
-  nebulaTexture_get,
-  starLayer_make,
-  starScale_of,
+  StarField,
   TubeField,
   tubeMode_of,
   type NodeState,
   type Palette,
   type TubeNode,
   type StarEntry,
-  type StarLayer,
   type TubeSpec,
 } from '@fnndsc/orrery';
 import {
@@ -449,6 +445,8 @@ export class DagScene {
   private readonly group: THREE.Group = new THREE.Group();
   private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
   private meshes: Map<string, THREE.Mesh> = new Map();
+  /** The field's stars, threads and nebulae. */
+  private readonly starField: StarField = new StarField(this.group);
   /** Every solid molecule's tubes, and the lamps its stages wear. */
   private readonly tubes: TubeField = new TubeField({
     parent: this.group,
@@ -570,18 +568,6 @@ export class DagScene {
 
   /** How nodes are drawn: lit spheres (every pane), or stars (the universe's choice). */
   private drawMode: DrawMode = 'spheres';
-  /** The stars on stage, in draw order, for picking and flights. */
-  private stars: StarEntry[] = [];
-  /** Star index by node id: a node's first star (census members share one). */
-  private starIndex: Map<string, number> = new Map();
-  /** Nebulae on stage: a cluster's handle while the scene draws stars. */
-  private nebulae: Array<{ id: string; position: THREE.Vector3; radius: number }> = [];
-  /** The star materials, whose pixel scale follows the camera each frame. */
-  private starMaterials: THREE.ShaderMaterial[] = [];
-  /** Each star layer's alpha attribute and the alphas it was drawn with. */
-  private starLayers: Array<{ alpha: THREE.BufferAttribute; base: Float32Array }> = [];
-  /** The thread batch's colours and the colours it was drawn with. */
-  private threadColor: { attribute: THREE.BufferAttribute; base: Float32Array } | null = null;
   /** Feeds in the hand-off, by key. */
   private handoff: Map<string, HandoffGroup> = new Map();
   /** Placed nodes by id, for the spheres a solid feed draws. */
@@ -823,7 +809,7 @@ export class DagScene {
         this.wave_animate();
         this.flight_animate();
       }
-      this.starScale_update();
+      this.starField.scale_update(this.renderer.domElement.height, this.camera.fov);
       this.handoff_step();
       this.tubes.frame(performance.now());
       this.renderer.render(this.scene, this.camera);
@@ -1061,7 +1047,7 @@ export class DagScene {
       census: this.census,
       nodes: this.graph.nodes.length,
       meshes: this.meshes.size,
-      stars: this.stars.length,
+      stars: this.starField.count(),
       solidMarked: solidMarked.length,
       solidDrawn,
       tubes: this.tubes.materialCount(),
@@ -1430,7 +1416,7 @@ export class DagScene {
       memberRadii.set(node.id, memberRadius);
     }
     if (starring) {
-      this.stars_draw(starred);
+      this.starField.draw(starred, window.devicePixelRatio, this.renderer.domElement.height, this.camera.fov);
     } else {
       if (instanced.instanceColor) instanced.instanceColor.needsUpdate = true;
       this.group.add(instanced);
@@ -1709,12 +1695,7 @@ export class DagScene {
     this.dragSim = null;
     this.dragSimNodes = [];
     this.drag = null;
-    this.stars = [];
-    this.starIndex = new Map();
-    this.nebulae = [];
-    this.starMaterials = [];
-    this.starLayers = [];
-    this.threadColor = null;
+    this.starField.clear();
     this.handoff = new Map();
     this.placedById = new Map();
     this.tubes.clear();
@@ -1805,7 +1786,7 @@ export class DagScene {
       this.meshes.set(node.id, mesh);
     }
 
-    if (starred.length > 0) this.stars_draw(starred);
+    if (starred.length > 0) this.starField.draw(starred, window.devicePixelRatio, this.renderer.domElement.height, this.camera.fov);
     for (const item of placed) this.placedById.set(item.node.id, item);
     if (handoffKey !== undefined) this.handoff_gather(starred, handoffKey);
     // An edge between two solid nodes is a line as ever; an edge touching a
@@ -1855,16 +1836,7 @@ export class DagScene {
         this.tubes.build(entered, entered.entries.map((entry: StarEntry): string => entry.id), new Set(solidIds));
       }
     }
-    if (threads.length > 0) {
-      const geometry: THREE.BufferGeometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(threads, 3));
-      const colors: THREE.Float32BufferAttribute = new THREE.Float32BufferAttribute(threadColors, 3);
-      geometry.setAttribute('color', colors);
-      this.threadColor = { attribute: colors, base: Float32Array.from(threadColors) };
-      this.group.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({
-        vertexColors: true, transparent: true, opacity: THREAD_OPACITY, blending: THREE.AdditiveBlending, depthWrite: false,
-      })));
-    }
+    this.starField.threads_draw(threads, threadColors);
 
   }
 
@@ -1909,8 +1881,6 @@ export class DagScene {
     this.camera.updateMatrixWorld();
     const view: THREE.Matrix4 = new THREE.Matrix4().multiplyMatrices(this.camera.matrixWorldInverse, this.group.matrixWorld);
     const v: number[] = view.elements;
-    let starsTouched: boolean = false;
-    let threadsTouched: boolean = false;
     for (const group of this.handoff.values()) {
       // Its nearest sphere decides: a sprawling feed with one sphere at the
       // camera turns solid, rather than leaving that sphere a swelling star.
@@ -1937,24 +1907,11 @@ export class DagScene {
         const opacity = group.tubes.material.uniforms['opacity'];
         if (opacity !== undefined) opacity.value = group.mix;
       }
-      for (const entry of group.entries) {
-        const layer = entry.layer === undefined ? undefined : this.starLayers[entry.layer];
-        if (layer === undefined || entry.slot === undefined) continue;
-        layer.alpha.setX(entry.slot, (layer.base[entry.slot] ?? 1) * (1 - group.mix));
-        starsTouched = true;
-      }
-      if (this.threadColor !== null && group.threadSegments.length > 0) {
-        const colors = this.threadColor.attribute.array as Float32Array;
-        const base: Float32Array = this.threadColor.base;
-        for (const segment of group.threadSegments) {
-          for (let k = segment * 6; k < segment * 6 + 6; k++) colors[k] = (base[k] ?? 0) * (1 - group.mix);
-        }
-        threadsTouched = true;
-      }
+      this.starField.stars_fade(group.entries, 1 - group.mix);
+      this.starField.threads_fade(group.threadSegments, 1 - group.mix);
       if (group.mix === 0) this.handoffSolid_release(group);
     }
-    if (starsTouched) for (const layer of this.starLayers) layer.alpha.needsUpdate = true;
-    if (threadsTouched && this.threadColor !== null) this.threadColor.attribute.needsUpdate = true;
+    this.starField.flush();
   }
 
   /** Draws a feed's spheres and edges for its time as solid. */
@@ -2072,58 +2029,13 @@ export class DagScene {
   }
 
   /**
-   * Draws stars in two layers: the error-free ones glow additively (the
-   * galaxy's light), the errored ones — embers — are drawn after them in
-   * plain blending, so a red star inside a bright core stays red.
-   *
-   * @param entries - The stars.
-   */
-  private stars_draw(entries: StarEntry[]): void {
-    for (const entry of entries) {
-      if (!this.starIndex.has(entry.id)) this.starIndex.set(entry.id, this.stars.length);
-      this.stars.push(entry);
-    }
-    for (const ember of [false, true]) {
-      const layer: StarEntry[] = entries.filter((entry: StarEntry): boolean => entry.ember === ember);
-      if (layer.length === 0) continue;
-      const drawn: StarLayer = starLayer_make(layer, ember, this.starLayers.length, window.devicePixelRatio);
-      this.starLayers.push({ alpha: drawn.alpha, base: drawn.base });
-      this.group.add(drawn.points);
-      this.starMaterials.push(drawn.material);
-    }
-    this.starScale_update();
-  }
-
-  /** Keeps the stars' pixel scale true to the camera and the canvas. */
-  private starScale_update(): void {
-    if (this.starMaterials.length === 0) return;
-    const scale: number = starScale_of(this.renderer.domElement.height, this.camera.fov);
-    for (const material of this.starMaterials) {
-      const uniform = material.uniforms['scale'];
-      if (uniform !== undefined) uniform.value = scale;
-    }
-  }
-
-  /**
    * A cluster's handle while the scene draws stars: a soft glow at its
    * anchor, facing the camera, sized as its halo would be.
    */
   private nebula_add(node: SceneNode, position: THREE.Vector3, palette: ReturnType<typeof palette_read>): void {
-    const radius: number = haloRadius_of(node.count ?? 1);
-    const sprite: THREE.Sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: nebulaTexture_get(),
-      color: palette.edge,
-      transparent: true,
-      opacity: node.dim === true ? NEBULA_OPACITY / 3 : NEBULA_OPACITY,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    }));
-    sprite.position.copy(position);
-    sprite.scale.setScalar(radius * 2);
-    sprite.renderOrder = 0;
-    this.group.add(sprite);
-    this.nebulae.push({ id: node.id, position: position.clone(), radius });
+    this.starField.nebula_add(node.id, position, haloRadius_of(node.count ?? 1), palette.edge, node.dim === true);
   }
+
 
   /**
    * The node whose star — or, over no star, whose nebula — is under the
@@ -2132,7 +2044,7 @@ export class DagScene {
    * is scenery and takes no pointer.
    */
   private starNode_under(event: MouseEvent): string | null {
-    if (this.stars.length === 0 && this.nebulae.length === 0) return null;
+    if (this.starField.count() === 0 && this.starField.nebulae().length === 0) return null;
     const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
     const px: number = event.clientX - bounds.left;
     const py: number = event.clientY - bounds.top;
@@ -2156,7 +2068,7 @@ export class DagScene {
     };
     let best: string | null = null;
     let bestScore: number = Infinity;
-    for (const star of this.stars) {
+    for (const star of this.starField.list()) {
       if (star.dim) continue;
       const hit = screen(star.position);
       if (hit === null) continue;
@@ -2167,7 +2079,7 @@ export class DagScene {
       if (score < bestScore) { bestScore = score; best = star.id; }
     }
     if (best !== null) return best;
-    for (const nebula of this.nebulae) {
+    for (const nebula of this.starField.nebulae()) {
       const hit = screen(nebula.position);
       if (hit === null) continue;
       if (Math.hypot(hit.x - px, hit.y - py) <= (nebula.radius * perUnit) / hit.depth) return nebula.id;
@@ -2189,15 +2101,14 @@ export class DagScene {
       if (sphere.boundingSphere === null) sphere.computeBoundingSphere();
       return { position: mesh.getWorldPosition(new THREE.Vector3()), radius: sphere.boundingSphere?.radius ?? NODE_RADIUS };
     }
-    const index: number | undefined = this.starIndex.get(id);
-    const star: StarEntry | undefined = index === undefined ? undefined : this.stars[index];
+    const star: StarEntry | undefined = this.starField.entry(id);
     if (star !== undefined) return { position: this.group.localToWorld(star.position.clone()), radius: star.radius };
     return null;
   }
 
   /** Every drawn node's id: spheres and stars. */
   private drawnIds(): string[] {
-    return [...this.meshes.keys(), ...this.starIndex.keys()];
+    return [...this.meshes.keys(), ...this.starField.ids()];
   }
 
   /** Adds one edge line; joins are dashed. Endpoint ids allow live re-anchoring. */

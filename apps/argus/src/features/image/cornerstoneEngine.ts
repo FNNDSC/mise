@@ -54,7 +54,16 @@ function cornerstone_load(): Promise<Loaded> {
         import('@cornerstonejs/dicom-image-loader'),
       ]);
       await core.init();
-      loader.init({ maxWebWorkers: 2 });
+      // A slice that never answers must still end: on a weak cell signal a
+      // request can stall rather than fail, and a stalled slice held its
+      // loader for good. Past the timeout it is refused, and asked again.
+      loader.init({
+        maxWebWorkers: 2,
+        beforeSend: async (xhr: XMLHttpRequest): Promise<Record<string, string>> => {
+          xhr.timeout = SLICE_TIMEOUT_MS;
+          return {};
+        },
+      });
       tools.init();
       for (const tool of [
         tools.StackScrollTool,
@@ -130,6 +139,14 @@ const SLAB_GHOST_DEFAULT: number = 0.12;
 let engineSerial: number = 0;
 
 /** Cornerstone3D as the image engine. */
+
+/** How many slices are asked for at once: enough to fill a pipe, few enough for a phone. */
+const SLICES_IN_FLIGHT: number = 8;
+/** The pauses before a refused slice is asked for again, and how many times. */
+const SLICE_RETRY_PAUSES_MS: readonly number[] = [500, 1500, 4000];
+/** How long one slice may take to arrive before it counts as refused. */
+const SLICE_TIMEOUT_MS: number = 30_000;
+
 export class CornerstoneEngine implements ImageEngine {
   public readonly name = 'cornerstone' as const;
   private readonly host: ImageEngineHost;
@@ -146,6 +163,8 @@ export class CornerstoneEngine implements ImageEngine {
   private tool: ImageTool = 'wl';
   private slice: number = 0;
   private readonly refused: Set<string> = new Set<string>();
+  /** Slices in a transfer syntax the loader cannot read: asking again changes nothing. */
+  private readonly unsupported: Set<string> = new Set<string>();
   private startAt: number;
   private disposed: boolean = false;
   private metadataRegistered: boolean = false;
@@ -225,13 +244,10 @@ export class CornerstoneEngine implements ImageEngine {
         this.host.progress_set({ label: 'READING SLICES', done, total });
       };
       say();
-      await Promise.all(this.imageIds.map((imageId: string): Promise<unknown> =>
-        core.imageLoader.loadAndCacheImage(imageId)
-          .catch((): null => null)
-          .finally((): void => {
-            done++;
-            if (!this.disposed) say();
-          })));
+      await this.images_load(this.imageIds, (): void => {
+        done++;
+        if (!this.disposed) say();
+      });
       if (this.disposed) return false;
       this.filled = true;
       this.host.progress_set(null);
@@ -256,6 +272,68 @@ export class CornerstoneEngine implements ImageEngine {
     }
     await this.volume_show(layout);
     return true;
+  }
+
+  /**
+   * Asks again for every refused slice a network could have dropped (not
+   * one the loader cannot read), saying how far along; the slice on screen
+   * is redrawn if it was among them.
+   *
+   * @returns How many slices are still refused.
+   */
+  public async refused_retry(): Promise<number> {
+    const again: string[] = [...this.refused].filter((imageId: string): boolean => !this.unsupported.has(imageId));
+    if (again.length === 0 || this.disposed) return this.refused.size;
+    const onScreen: string | undefined = this.imageIds[Math.max(0, this.slice - 1)];
+    let done: number = 0;
+    const say = (): void => this.host.progress_set({ label: 'ASKING AGAIN', done, total: again.length });
+    say();
+    await this.images_load(again, (): void => {
+      done++;
+      if (!this.disposed) say();
+    });
+    if (this.disposed) return this.refused.size;
+    this.host.progress_set(null);
+    this.host.readout_set(this.sliceReadout_get());
+    this.host.note(`image: asked again for ${again.length} slices; ${again.length - [...again].filter((id: string): boolean => this.refused.has(id)).length} arrived, ${this.refused.size} still refused`);
+    if (onScreen !== undefined && again.includes(onScreen) && !this.refused.has(onScreen)) this.slice_set(this.slice);
+    return this.refused.size;
+  }
+
+  /**
+   * Loads slices a few at a time, each asked again a few times with a
+   * growing pause before it counts as refused. A phone on a cell network
+   * that was sent every slice of a series at once dropped most of them;
+   * a few at a time, and a second and third try, rides out a weak signal.
+   *
+   * @param imageIds - The slices.
+   * @param landed - Told as each one arrives or is given up on.
+   */
+  private async images_load(imageIds: ReadonlyArray<string>, landed: () => void): Promise<void> {
+    if (this.libraries === null) return;
+    const { core } = this.libraries;
+    const load_one = async (imageId: string): Promise<void> => {
+      for (let attempt = 0; attempt <= SLICE_RETRY_PAUSES_MS.length; attempt++) {
+        if (this.disposed || this.unsupported.has(imageId)) return;
+        if (attempt > 0) await new Promise<void>((resolve): void => { window.setTimeout(resolve, SLICE_RETRY_PAUSES_MS[attempt - 1]); });
+        try {
+          await core.imageLoader.loadAndCacheImage(imageId);
+          this.refused.delete(imageId);
+          return;
+        } catch {
+          // Refused this time: counted by the load-failure watch, asked again.
+        }
+      }
+    };
+    let next: number = 0;
+    const worker = async (): Promise<void> => {
+      while (next < imageIds.length && !this.disposed) {
+        const imageId: string = imageIds[next++] as string;
+        await load_one(imageId);
+        landed();
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(SLICES_IN_FLIGHT, imageIds.length) }, worker));
   }
 
   public slice_set(slice: number): boolean {
@@ -704,6 +782,7 @@ export class CornerstoneEngine implements ImageEngine {
       this.refused.add(detail.imageId);
       const message: string = detail.error?.message ?? '';
       const syntax: string | undefined = /transfer syntax[^0-9]*([0-9.]+)/i.exec(message)?.[1];
+      if (syntax !== undefined) this.unsupported.add(detail.imageId);
       this.host.readout_set(
         syntax !== undefined
           ? `UNSUPPORTED TRANSFER SYNTAX ${syntax}`

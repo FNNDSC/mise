@@ -11,6 +11,7 @@ export * from './palette.js';
 export * from './geometry.js';
 export * from './stars.js';
 export * from './starField.js';
+export * from './sphereField.js';
 export * from './nebula.js';
 export * from './tubes.js';
 export * from './tubeField.js';

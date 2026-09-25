@@ -56,18 +56,23 @@ function asJson(value: unknown): unknown {
 }
 
 /**
- * Asserts two position maps agree within a tolerance. The hierarchy's
+ * How far apart two position maps are: the largest difference on any axis
+ * of any node, or Infinity when they place different nodes. The hierarchy's
  * settle is not bit-exact run to run — d3 parts coincident starting points
- * with a random jiggle of 1e-6 — so the same code lands a few 1e-14 apart
- * on each run; a real change moves nodes by whole units.
+ * with a random jiggle of 1e-6 — so the same code lands a few 1e-14 apart;
+ * a real change moves nodes by whole units.
  */
-function positions_expectClose(received: Record<string, Vec3>, expected: unknown): void {
+function positions_deviation(received: Record<string, Vec3>, expected: unknown): number {
   const want = expected as Record<string, Vec3>;
-  expect(Object.keys(received).sort()).toEqual(Object.keys(want).sort());
-  for (const [id, at] of Object.entries(received)) {
+  const ids: string[] = Object.keys(received).sort();
+  if (ids.join('|') !== Object.keys(want).sort().join('|')) return Infinity;
+  let worst: number = 0;
+  for (const id of ids) {
+    const at: Vec3 = received[id] as Vec3;
     const ref: Vec3 = want[id] as Vec3;
-    for (let axis = 0; axis < 3; axis++) expect(Math.abs((at[axis] as number) - (ref[axis] as number))).toBeLessThan(1e-4);
+    for (let axis = 0; axis < 3; axis++) worst = Math.max(worst, Math.abs((at[axis] as number) - (ref[axis] as number)));
   }
+  return worst;
 }
 
 const PHYS: PhysicsTerms = { link: true, charge: true, collide: true, gravity: false };
@@ -133,11 +138,11 @@ describe('hierarchy and galaxy, pinned under a seeded source', () => {
       expect(asJson(run(which))).toEqual(asJson(run(which)));
     });
     it(`${which}: matches its pinned layout`, () => {
-      positions_expectClose(run(which), golden[which]);
+      expect(positions_deviation(run(which), golden[which])).toBeLessThan(1e-4);
     });
   }
   it('a fully seeded galaxy needs no random source and matches the scene exactly', () => {
     const seeded: HierarchyNode[] = universeNodes().map((n: HierarchyNode, i: number): HierarchyNode => ({ ...n, seed: [i * 0.1, -i * 0.2, i * 0.05], frozen: i % 7 === 0 }));
-    positions_expectClose(galaxy_layout(seeded, physics, () => {}), hierarchy['galaxySeeded']);
+    expect(positions_deviation(galaxy_layout(seeded, physics, () => {}), hierarchy['galaxySeeded'])).toBeLessThan(1e-4);
   });
 });

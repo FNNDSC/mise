@@ -20,42 +20,49 @@ export const STAR_VERTEX: string = `
 attribute float radius;
 attribute float alpha;
 attribute vec3 tint;
+attribute float flash;
 uniform float scale;
 uniform float floorPx;
 uniform float capPx;
 varying vec3 vTint;
 varying float vAlpha;
+varying float vFlash;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
   float px = ${STAR_GLOW.toFixed(1)} * 2.0 * radius * scale / max(0.0001, -mv.z);
-  gl_PointSize = min(max(px, floorPx), capPx);
+  // An arrival flashes: the star swells past its cap for a moment.
+  gl_PointSize = min(max(px, floorPx), capPx) * (1.0 + 1.6 * flash);
   vTint = tint;
   vAlpha = alpha;
+  vFlash = flash;
 }`;
 
 /** The glow: a bright core falling off to nothing at the sprite's edge. */
 export const STAR_FRAGMENT_GLOW: string = `
 varying vec3 vTint;
 varying float vAlpha;
+varying float vFlash;
 void main() {
   float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
   if (d > 1.0) discard;
   float core = smoothstep(0.6, 0.0, d);
   float halo = pow(1.0 - d, 2.2) * 0.55;
   float a = clamp(core + halo, 0.0, 1.0) * vAlpha;
-  gl_FragColor = vec4(vTint * a, a);
+  vec3 c = mix(vTint, vec3(1.0), vFlash * 0.6);
+  gl_FragColor = vec4(c * a, a);
 }`;
 
 /** The ember: an errored star drawn solid over the glow, so red stays red. */
 export const STAR_FRAGMENT_EMBER: string = `
 varying vec3 vTint;
 varying float vAlpha;
+varying float vFlash;
 void main() {
   float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
   if (d > 1.0) discard;
   float a = smoothstep(1.0, 0.35, d) * vAlpha;
-  gl_FragColor = vec4(vTint, a);
+  gl_FragColor = vec4(mix(vTint, vec3(1.0), vFlash * 0.6), a);
 }`;
 
 /** One star as drawn: whose it is, where, how big, its hue, whether dim, whether errored. */
@@ -77,6 +84,8 @@ export interface StarLayer {
   material: THREE.ShaderMaterial;
   alpha: THREE.BufferAttribute;
   base: Float32Array;
+  /** How brightly each star flashes, 0 at rest. */
+  flash: THREE.BufferAttribute;
 }
 
 /**
@@ -108,6 +117,8 @@ export function starLayer_make(entries: ReadonlyArray<StarEntry>, ember: boolean
   geometry.setAttribute('radius', new THREE.BufferAttribute(radii, 1));
   const alpha: THREE.BufferAttribute = new THREE.BufferAttribute(alphas, 1);
   geometry.setAttribute('alpha', alpha);
+  const flash: THREE.BufferAttribute = new THREE.BufferAttribute(new Float32Array(entries.length), 1);
+  geometry.setAttribute('flash', flash);
   const material: THREE.ShaderMaterial = new THREE.ShaderMaterial({
     uniforms: { scale: { value: 1 }, floorPx: { value: STAR_FLOOR_PX * pixelRatio }, capPx: { value: STAR_CAP_PX * pixelRatio } },
     vertexShader: STAR_VERTEX,
@@ -120,7 +131,7 @@ export function starLayer_make(entries: ReadonlyArray<StarEntry>, ember: boolean
   // Embers over the glow: drawn after it, whatever the sort says.
   points.renderOrder = ember ? 2 : 1;
   points.frustumCulled = false;
-  return { points, material, alpha, base: Float32Array.from(alphas) };
+  return { points, material, alpha, base: Float32Array.from(alphas), flash };
 }
 
 /**

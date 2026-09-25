@@ -50,18 +50,14 @@ import {
   type StarEntry,
   CameraRig,
   PointerGestures,
+  PullSimulation,
+  type PullNode,
   Picker,
   type PickStar,
   type PickNebula,
   DRAG_THRESHOLD_PX,
   type WorldReach,
 } from '@fnndsc/orrery';
-import {
-  forceSimulation,
-  forceLink,
-  forceManyBody,
-  forceCollide,
-} from 'd3-force-3d';
 
 /** One node as the scene understands it. */
 export interface SceneNode {
@@ -480,8 +476,7 @@ export class DagScene {
     home: THREE.Vector3;
   } | null = null;
   /** The live reaction simulation while (and shortly after) a grab. */
-  private dragSim: ReturnType<typeof forceSimulation> | null = null;
-  private dragSimNodes: Array<{ id: string; x: number; y: number; z: number; fx?: number | null; fy?: number | null; fz?: number | null }> = [];
+  private pull: PullSimulation | null = null;
   /** The pulse wave's schedule: node id to flare time (ms into the wave). */
   private waveTimes: Map<string, number> = new Map();
   /** Wall-clock start of the running wave, or null when no wave runs. */
@@ -589,13 +584,11 @@ export class DagScene {
         this.rig.spin_step(!(this.gestures?.pointerOver() ?? false) && this.projection === '3d');
         // The reaction simulation runs while hot: during a grab, and cooling
         // after release until it settles.
-        if (this.dragSim !== null) {
-          if (this.drag !== null || this.dragSim.alpha() > 0.02) {
-            this.dragSim.tick();
+        if (this.pull !== null) {
+          if (this.pull.step(this.drag !== null)) {
             this.positions_sync();
           } else {
-            this.dragSim = null;
-            this.dragSimNodes = [];
+            this.pull = null;
           }
         }
         if (this.dragReturns.length > 0) {
@@ -1253,8 +1246,7 @@ export class DagScene {
     this.group.clear();
     this.spheres.clear();
     this.censusField.clear();
-    this.dragSim = null;
-    this.dragSimNodes = [];
+    this.pull = null;
     this.drag = null;
     this.starField.clear();
     this.handoffField.clear();
@@ -1459,11 +1451,11 @@ export class DagScene {
 
   /** Copies simulation positions onto meshes and re-anchors every edge. */
   private positions_sync(): void {
-    for (const simNode of this.dragSimNodes) {
-      this.meshes.get(simNode.id)?.position.set(simNode.x, simNode.y, simNode.z);
+    for (const { id, position } of this.pull?.positions() ?? []) {
+      this.meshes.get(id)?.position.set(...position);
       // Where a pulled node comes to rest is where it stands: a later
       // redraw starts from here instead of snapping it back.
-      this.lastPositions.set(simNode.id, new THREE.Vector3(simNode.x, simNode.y, simNode.z));
+      this.lastPositions.set(id, new THREE.Vector3(...position));
     }
     this.tubes.follow();
     this.spheres.edges_follow();
@@ -1508,59 +1500,19 @@ export class DagScene {
    * force, or the pull would fight a recentering spring.
    */
   private dragSim_begin(nodeId: string): void {
-    // A pull moves the grabbed node's own molecule — the nodes joined to it
-    // by edges, never across a cluster's halo, never a dimmed one — and
-    // leaves the rest of the field where it stands. Pulling one feed in a
-    // universe of seven hundred re-settled all of them under physics that
-    // were not the universe's own.
-    const halo = (id: string): boolean => this.meshes.get(id)?.userData['halo'] === true;
-    const dim = (id: string): boolean => this.meshes.get(id)?.userData['dim'] === true;
-    const all: Array<{ source: string; target: string }> = [];
-    const around: Map<string, string[]> = new Map();
-    for (const node of this.graph.nodes) {
-      for (const parentId of [...node.parentIds, ...node.joinParentIds]) {
-        if (!this.meshes.has(parentId) || !this.meshes.has(node.id) || halo(parentId) || halo(node.id)) continue;
-        all.push({ source: parentId, target: node.id });
-        around.set(parentId, [...(around.get(parentId) ?? []), node.id]);
-        around.set(node.id, [...(around.get(node.id) ?? []), parentId]);
-      }
-    }
-    const molecule: Set<string> = new Set([nodeId]);
-    const queue: string[] = [nodeId];
-    while (queue.length > 0) {
-      const at: string = queue.pop() as string;
-      for (const next of around.get(at) ?? []) {
-        if (molecule.has(next) || dim(next)) continue;
-        molecule.add(next);
-        queue.push(next);
-      }
-    }
-    const links: Array<{ source: string; target: string }> = all.filter((link): boolean => molecule.has(link.source) && molecule.has(link.target));
-    this.dragSimNodes = [...molecule].map((id: string) => {
-      const mesh: THREE.Mesh = this.meshes.get(id) as THREE.Mesh;
-      return { id, x: mesh.position.x, y: mesh.position.y, z: mesh.position.z };
-    });
-    // The pull reacts with the forces the layout settled under — the same
-    // link lengths, charge by size within the hug's reach, no overlap — so
-    // a tug moves the molecule rather than blowing it apart (generic forces
-    // disagreed with the rest the layout had found, and every node fled).
     const radii: Map<string, number> = moleculeRadii_of(this.graph.nodes);
-    const radiusOf = (id: string): number => radii.get(id) ?? NODE_RADIUS;
-    this.dragSim = forceSimulation(this.dragSimNodes, this.projection === '2d' ? 2 : 3)
-      .force('link', forceLink(links).id((d: { id: string }) => d.id).distance(
-        (link: { source: { id: string }; target: { id: string } }): number => radiusOf(link.source.id) + radiusOf(link.target.id) + 1.4,
-      ))
-      .force('charge', forceManyBody().strength((d: { id: string }): number => -6 * (radiusOf(d.id) / NODE_RADIUS) ** 2).distanceMax(12))
-      .force('collide', forceCollide().radius((d: { id: string }): number => radiusOf(d.id) * 1.2))
-      .alpha(0.25)
-      .alphaTarget(0.08)
-      .stop();
-    const grabbed = this.dragSimNodes.find((n) => n.id === nodeId);
-    if (grabbed) {
-      grabbed.fx = grabbed.x;
-      grabbed.fy = grabbed.y;
-      grabbed.fz = grabbed.z;
+    const nodes: PullNode[] = [...this.meshes].map(([id, mesh]: [string, THREE.Mesh]): PullNode => ({
+      id,
+      position: [mesh.position.x, mesh.position.y, mesh.position.z],
+      radius: radii.get(id) ?? NODE_RADIUS,
+      dim: mesh.userData['dim'] === true,
+      halo: mesh.userData['halo'] === true,
+    }));
+    const edges: Array<{ from: string; to: string }> = [];
+    for (const node of this.graph.nodes) {
+      for (const parentId of [...node.parentIds, ...node.joinParentIds]) edges.push({ from: parentId, to: node.id });
     }
+    this.pull = new PullSimulation({ grabbed: nodeId, nodes, edges, dimensions: this.projection === '2d' ? 2 : 3, baseRadius: NODE_RADIUS });
   }
 
   /** Follows the pointer during a pull: the grabbed node tracks the drag plane. */
@@ -1590,12 +1542,7 @@ export class DagScene {
       }
       return;
     }
-    const grabbed = this.dragSimNodes.find((n) => n.id === this.drag?.nodeId);
-    if (grabbed) {
-      grabbed.fx = point.x;
-      grabbed.fy = point.y;
-      grabbed.fz = point.z;
-    }
+    this.pull?.pin([point.x, point.y, point.z]);
   }
 
   /** Nodes easing home after a ranked peek: mesh, from, to, start time. */
@@ -1617,13 +1564,7 @@ export class DagScene {
         });
       }
     }
-    const grabbed = this.dragSimNodes.find((n) => n.id === this.drag?.nodeId);
-    if (grabbed) {
-      grabbed.fx = null;
-      grabbed.fy = null;
-      grabbed.fz = null;
-    }
-    this.dragSim?.alphaTarget(0);
+    this.pull?.release();
     this.drag = null;
     return moved;
   }

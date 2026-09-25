@@ -4,7 +4,8 @@
  *
  * @module
  */
-import type * as THREE from 'three';
+import * as THREE from 'three';
+import type { Paint } from '../types/encoding.js';
 
 /**
  * The colours of a drawing.
@@ -29,4 +30,29 @@ export interface Palette {
   join: THREE.Color;
   root: THREE.Color;
   pulse: THREE.Color;
+}
+
+/** Hues parsed once per distinct value: a space of thousands shares a few. */
+const hueCache: Map<string, THREE.Color> = new Map();
+
+/**
+ * The colour a paint names, in a palette.
+ *
+ * @param paint - The paint.
+ * @param palette - The colours of the drawing.
+ * @returns The colour — shared for a token or a hue, fresh for a blend;
+ *   never mutate it.
+ */
+export function paint_resolve(paint: Paint, palette: Palette): THREE.Color {
+  if ('token' in paint) return palette[paint.token];
+  if ('hue' in paint) {
+    let color: THREE.Color | undefined = hueCache.get(paint.hue);
+    if (color === undefined) {
+      color = new THREE.Color(paint.hue);
+      hueCache.set(paint.hue, color);
+    }
+    return color;
+  }
+  const [from, to] = paint.blend;
+  return palette[from].clone().lerp(palette[to], Math.max(0, Math.min(1, paint.share)));
 }

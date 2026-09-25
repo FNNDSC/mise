@@ -216,6 +216,8 @@ export const procUniverseFeedSchema = z.object({
   chain: z.array(z.string()),
   /** The feed's jobs collapsed by plugin per place in the pipeline: its shape, with counts. */
   groups: z.array(procJobGroupSchema).default([]),
+  /** When the feed was made (ISO 8601): the order a replay reveals the space in; empty from a daemon that predates it. */
+  createdAt: z.string().default(''),
 });
 export const procUniverseModelSchema = z.object({
   feeds: z.array(procUniverseFeedSchema),

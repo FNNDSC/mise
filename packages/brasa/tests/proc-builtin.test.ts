@@ -569,8 +569,10 @@ describe('proc universe', () => {
     const model = envelope.model?.data as { feeds: Array<{ id: number; chain: string[]; status: string; jobs: number }>; whole: boolean };
     expect(model.whole).toBe(false);
     expect(model.feeds.map((f) => f.id)).toEqual([1, 2]);
-    expect(model.feeds[0]).toEqual({ id: 1, title: 'a', jobs: 2, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [{ plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null }, { plugin: 'pl-dcm2niix', count: 2, errored: 0, status: 'finishedSuccessfully', parent: 0 }] });
+    expect(model.feeds[0]).toEqual({ id: 1, title: 'a', jobs: 2, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [{ plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null }, { plugin: 'pl-dcm2niix', count: 2, errored: 0, status: 'finishedSuccessfully', parent: 0 }], createdAt: '2026-01-01' });
     expect(model.feeds[1]?.status).toBe('finishedWithError');
+    // When each feed was made travels with it: the order a replay reveals the space in.
+    expect((model.feeds[1] as { createdAt?: string }).createdAt).toBe('2026-01-02');
     expect(envelope.rendered).toContain('2 feeds across 2 pipeline shapes');
     expect(envelope.rendered).toContain('still warming');
   });

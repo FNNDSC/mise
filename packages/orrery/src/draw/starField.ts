@@ -28,8 +28,12 @@ export class StarField {
   private index: Map<string, number> = new Map();
   private nebulaList: Nebula[] = [];
   private materials: THREE.ShaderMaterial[] = [];
-  private layers: Array<{ alpha: THREE.BufferAttribute; base: Float32Array }> = [];
-  private threads: { attribute: THREE.BufferAttribute; base: Float32Array } | null = null;
+  private layers: Array<{ alpha: THREE.BufferAttribute; base: Float32Array; flash: THREE.BufferAttribute }> = [];
+  private threads: { attribute: THREE.BufferAttribute; base: Float32Array; ends: ReadonlyArray<string> } | null = null;
+  /** Each nebula's sprite and resting opacity, by its cluster's id. */
+  private nebulaSprites: Map<string, { material: THREE.SpriteMaterial; base: number }> = new Map();
+  /** Every star of a node, by id; built when first asked. */
+  private starsById: Map<string, StarEntry[]> | null = null;
   private starsTouched: boolean = false;
   private threadsTouched: boolean = false;
 
@@ -79,11 +83,12 @@ export class StarField {
       if (!this.index.has(entry.id)) this.index.set(entry.id, this.stars.length);
       this.stars.push(entry);
     }
+    this.starsById = null;
     for (const ember of [false, true]) {
       const layer: StarEntry[] = entries.filter((entry: StarEntry): boolean => entry.ember === ember);
       if (layer.length === 0) continue;
       const drawn: StarLayer = starLayer_make(layer, ember, this.layers.length, pixelRatio);
-      this.layers.push({ alpha: drawn.alpha, base: drawn.base });
+      this.layers.push({ alpha: drawn.alpha, base: drawn.base, flash: drawn.flash });
       this.parent.add(drawn.points);
       this.materials.push(drawn.material);
     }
@@ -110,14 +115,16 @@ export class StarField {
    *
    * @param positions - Segment ends, six numbers a segment.
    * @param colors - Their colours, six numbers a segment.
+   * @param ends - The nodes each segment joins, two ids a segment: a thread
+   *   shows in a replay only once both have arrived. Optional.
    */
-  public threads_draw(positions: ReadonlyArray<number>, colors: ReadonlyArray<number>): void {
+  public threads_draw(positions: ReadonlyArray<number>, colors: ReadonlyArray<number>, ends: ReadonlyArray<string> = []): void {
     if (positions.length === 0) return;
     const geometry: THREE.BufferGeometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions as number[], 3));
     const attribute: THREE.Float32BufferAttribute = new THREE.Float32BufferAttribute(colors as number[], 3);
     geometry.setAttribute('color', attribute);
-    this.threads = { attribute, base: Float32Array.from(colors) };
+    this.threads = { attribute, base: Float32Array.from(colors), ends };
     this.parent.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({
       vertexColors: true, transparent: true, opacity: THREAD_OPACITY, blending: THREE.AdditiveBlending, depthWrite: false,
     })));
@@ -147,6 +154,7 @@ export class StarField {
     sprite.renderOrder = 0;
     this.parent.add(sprite);
     this.nebulaList.push({ id, position: position.clone(), radius });
+    this.nebulaSprites.set(id, { material: sprite.material, base: sprite.material.opacity });
   }
 
   /**
@@ -196,7 +204,71 @@ export class StarField {
     this.materials = [];
     this.layers = [];
     this.threads = null;
+    this.nebulaSprites = new Map();
+    this.starsById = null;
     this.starsTouched = false;
     this.threadsTouched = false;
+  }
+
+  /**
+   * Shows or hides nodes' stars and nebulae (a replay: 0 not yet arrived,
+   * 1 as drawn). Threads follow with {@link threads_present}.
+   *
+   * @param ids - The nodes.
+   * @param presence - How much of their resting light they keep.
+   */
+  public presence_set(ids: Iterable<string>, presence: number): void {
+    for (const id of ids) {
+      for (const entry of this.stars_of(id)) {
+        const layer = entry.layer === undefined ? undefined : this.layers[entry.layer];
+        if (layer === undefined || entry.slot === undefined) continue;
+        layer.alpha.setX(entry.slot, (layer.base[entry.slot] ?? 1) * presence);
+        this.starsTouched = true;
+      }
+      const nebula = this.nebulaSprites.get(id);
+      if (nebula !== undefined) nebula.material.opacity = nebula.base * presence;
+    }
+  }
+
+  /**
+   * Sets how brightly a node's stars flash (an arrival), 0 at rest.
+   *
+   * @param id - The node.
+   * @param strength - 0..1.
+   */
+  public flash_set(id: string, strength: number): void {
+    for (const entry of this.stars_of(id)) {
+      const layer = entry.layer === undefined ? undefined : this.layers[entry.layer];
+      if (layer === undefined || entry.slot === undefined) continue;
+      layer.flash.setX(entry.slot, strength);
+      layer.flash.needsUpdate = true;
+    }
+  }
+
+  /**
+   * Shows each thread whose two ends are both present, hides the rest.
+   * Threads drawn without their ends are left as they are.
+   *
+   * @param present - Whether a node is present.
+   */
+  public threads_present(present: (id: string) => boolean): void {
+    const threads = this.threads;
+    if (threads === null || threads.ends.length === 0) return;
+    const colors = threads.attribute.array as Float32Array;
+    const segments: number = threads.ends.length / 2;
+    for (let segment = 0; segment < segments; segment++) {
+      const shown: number = present(threads.ends[segment * 2] ?? '') && present(threads.ends[segment * 2 + 1] ?? '') ? 1 : 0;
+      for (let k = segment * 6; k < segment * 6 + 6; k++) colors[k] = (threads.base[k] ?? 0) * shown;
+    }
+    this.threadsTouched = true;
+  }
+
+  /** Every star drawn for a node. */
+  private stars_of(id: string): ReadonlyArray<StarEntry> {
+    if (this.starsById === null) {
+      this.starsById = new Map();
+      for (const entry of this.stars) this.starsById.set(entry.id, [...(this.starsById.get(entry.id) ?? []), entry]);
+    }
+    return this.starsById.get(id) ?? [];
   }
 }

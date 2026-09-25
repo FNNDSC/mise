@@ -67,4 +67,36 @@ describe('StarField', () => {
     expect(field.entry('a')).toBeUndefined();
     expect(field.nebulae()).toEqual([]);
   });
+
+  it('hides and shows a node\'s stars and nebula for a replay, and flashes an arrival', () => {
+    const parent = new THREE.Group();
+    const field = new StarField(parent);
+    field.draw([star('a', false), star('b', true)], 1, 800, 50);
+    field.nebula_add('a', new THREE.Vector3(), 2, new THREE.Color(1, 1, 1), false);
+    const sprite = parent.children.find((child) => child instanceof THREE.Sprite) as THREE.Sprite;
+    const resting = sprite.material.opacity;
+    field.presence_set(['a', 'b'], 0);
+    field.flush();
+    const glow = (parent.children[0] as THREE.Points).geometry;
+    const ember = (parent.children[1] as THREE.Points).geometry;
+    expect(glow.getAttribute('alpha').getX(0)).toBe(0);
+    expect(ember.getAttribute('alpha').getX(0)).toBe(0);
+    expect(sprite.material.opacity).toBe(0);
+    field.presence_set(['a'], 1);
+    field.flash_set('a', 0.75);
+    expect(glow.getAttribute('alpha').getX(0)).toBe(1);
+    expect(glow.getAttribute('flash').getX(0)).toBe(0.75);
+    expect(sprite.material.opacity).toBe(resting);
+  });
+
+  it('shows a thread only once both its ends are present', () => {
+    const parent = new THREE.Group();
+    const field = new StarField(parent);
+    field.draw([star('a', false), star('b', false), star('c', false)], 1, 800, 50);
+    field.threads_draw([0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2], [1, 1, 1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], ['a', 'b', 'b', 'c']);
+    field.threads_present((id: string): boolean => id !== 'c');
+    const colors = ((parent.children.find((child) => child instanceof THREE.LineSegments) as THREE.LineSegments).geometry.getAttribute('color').array) as Float32Array;
+    expect([...colors.slice(0, 6)]).toEqual([1, 1, 1, 1, 1, 1]);
+    expect([...colors.slice(6, 12)]).toEqual([0, 0, 0, 0, 0, 0]);
+  });
 });

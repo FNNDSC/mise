@@ -115,6 +115,13 @@ export interface ImageEngineState {
   annotations: number;
   /** The window/level on the field, when the engine tracks it. */
   voi?: { lower: number; upper: number } | null;
+  /**
+   * Each viewport as it stands now, read from the viewport itself: how
+   * zoomed (a parallel view's scale, a perspective view's distance to its
+   * focus), where it looks, and its live window. What a drag on the field
+   * changed is read here, not from what a command last set.
+   */
+  viewports?: Array<{ id: string; scale: number; focus: [number, number, number]; voi: { lower: number; upper: number } | null }>;
   /** The SLAB ghost opacity, 0..1 or null when hidden; absent off SLAB. */
   ghost?: number | null;
   /** The colormap on the field. */
@@ -144,6 +151,12 @@ export interface ImageEngine {
    * the stack is whole; false when the engine has no stack to fill.
    */
   slices_fill(): Promise<boolean>;
+  /**
+   * Asks again for every slice that was refused (a dropped connection on a
+   * phone refuses most of a series at once). Resolves to how many are still
+   * refused. Absent on an engine that reads one file.
+   */
+  refused_retry?(): Promise<number>;
   /** One-based. Refused while the stack is still arriving. */
   slice_set(slice: number): boolean;
   wl_set(lower: number, upper: number): boolean;

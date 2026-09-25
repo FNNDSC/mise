@@ -87,7 +87,7 @@ const SUBJECTS: ReadonlySet<string> = new Set([
  * field. Opening an image (`image <path>`, `image --help`, `image` alone) is
  * the kernel's `image` command, so those lines fall through to the session.
  */
-const IMAGE_SURFACE_VERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags', 'load', 'guard', 'ghost']);
+const IMAGE_SURFACE_VERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags', 'load', 'guard', 'ghost', 'state']);
 
 const SHARED_SUBJECTS: Readonly<Record<string, ReadonlySet<string>>> = {
   pacs: new Set(['sort', 'filter']),
@@ -221,7 +221,7 @@ const VERBS_HELP: string = [
   'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · hue status|compute · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh',
   'file [@id] home|back|download|delete · follow · root · list|cards|preview · sort <col> [asc|desc] · filter <text>|off',
   'pacs sort <col> [asc|desc] · filter <text>|off   (the results listing; every other pacs verb is the session\'s)',
-  'image [@id] [--force] <path> · layout single|mpr|3d|slab · slice <n> · series <n> · wl <lo> <hi> · wl preset <name> · colormap gray|hot|jet|cool · save · tags · load · guard <bytes>|off · ghost <0..1>|off',
+  'image [@id] [--force] <path> · layout single|mpr|3d|slab · slice <n> · series <n> · wl <lo> <hi> · wl preset <name> · colormap gray|hot|jet|cool · save · tags · load · guard <bytes>|off · ghost <0..1>|off · state',
   'tags [@id] redact on|off · filter <text>|off   (the pane that follows an image pane\'s slice)',
   'header stats|dag|away|restore',
   'console open|close|toggle|zoom|height <px>',

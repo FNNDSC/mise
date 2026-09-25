@@ -15,3 +15,4 @@ export * from './sphereField.js';
 export * from './nebula.js';
 export * from './tubes.js';
 export * from './tubeField.js';
+export * from './handoffField.js';

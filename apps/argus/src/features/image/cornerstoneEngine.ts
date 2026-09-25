@@ -93,6 +93,20 @@ const TOOL_NAMES: Readonly<Record<ImageTool, string>> = {
   probe: 'Probe',
 };
 
+
+/**
+ * How a frame tool is configured when it joins a tool group. ZOOM zooms and
+ * nothing else: the library's zoom, by default, pinches to zoom on touch and
+ * pans on a one-finger drag — so on a phone the ZOOM block panned — and pans
+ * on a pinch too. A one-finger drag now zooms, as a mouse drag does.
+ *
+ * @param name - The tool's name.
+ * @returns Its configuration, or undefined for the library's own.
+ */
+function toolConfig_of(name: string): Record<string, unknown> | undefined {
+  if (name === TOOL_NAMES.zoom) return { pinchToZoom: false, pan: false };
+  return undefined;
+}
 /** A volume viewport's data, as far as the probe reads it. */
 interface ProbeVolumeData {
   dimensions: number[];
@@ -480,9 +494,28 @@ export class CornerstoneEngine implements ImageEngine {
       annotations,
       filled: this.filled,
       voi: this.lastVoi,
+      viewports: this.viewports_read(),
       ghost: this.layout === 'slab' ? this.ghostLevel : undefined,
       colormap: this.colormap,
     };
+  }
+
+  /** Every viewport's zoom, focus and live window, read from the viewport. */
+  private viewports_read(): Array<{ id: string; scale: number; focus: [number, number, number]; voi: { lower: number; upper: number } | null }> {
+    if (this.renderingEngine === null) return [];
+    return this.renderingEngine.getViewports().map((viewport) => {
+      const camera = viewport.getCamera() as { parallelProjection?: boolean; parallelScale?: number; position?: number[]; focalPoint?: number[] };
+      const focal: number[] = camera.focalPoint ?? [0, 0, 0];
+      const position: number[] = camera.position ?? focal;
+      const distance: number = Math.hypot((position[0] ?? 0) - (focal[0] ?? 0), (position[1] ?? 0) - (focal[1] ?? 0), (position[2] ?? 0) - (focal[2] ?? 0));
+      const properties = (viewport as unknown as { getProperties?: () => { voiRange?: { lower: number; upper: number } } }).getProperties?.();
+      return {
+        id: viewport.id,
+        scale: camera.parallelProjection === true ? (camera.parallelScale ?? 0) : distance,
+        focus: [focal[0] ?? 0, focal[1] ?? 0, focal[2] ?? 0],
+        voi: properties?.voiRange ?? null,
+      };
+    });
   }
 
   public dispose(): void {
@@ -726,7 +759,7 @@ export class CornerstoneEngine implements ImageEngine {
     this.host.note(`image: ${this.imageIds.length} slices, first on screen in ${Math.round(performance.now() - started)} ms`);
     const group = tools.ToolGroupManager.getToolGroup(this.toolGroupId_get()) ?? tools.ToolGroupManager.createToolGroup(this.toolGroupId_get());
     if (group === undefined) return;
-    for (const name of Object.values(TOOL_NAMES)) group.addTool(name);
+    for (const name of Object.values(TOOL_NAMES)) group.addTool(name, toolConfig_of(name));
     group.addTool(tools.StackScrollTool.toolName);
     group.addViewport(viewportId, engineId);
     const bindings = tools.Enums.MouseBindings;
@@ -821,7 +854,7 @@ export class CornerstoneEngine implements ImageEngine {
       // each plane IS a slice. Added here so the frame can lend one to the
       // primary drag; before this they were never on the MPR group and the
       // button threw, so measuring and probing an MPR did nothing.
-      for (const name of [TOOL_NAMES.zoom, TOOL_NAMES.pan, TOOL_NAMES.wl, TOOL_NAMES.length, TOOL_NAMES.angle]) group.addTool(name);
+      for (const name of [TOOL_NAMES.zoom, TOOL_NAMES.pan, TOOL_NAMES.wl, TOOL_NAMES.length, TOOL_NAMES.angle]) group.addTool(name, toolConfig_of(name));
       this.primary = null;
       group.setToolActive(tools.CrosshairsTool.toolName, { bindings: [{ mouseButton: bindings.Primary }] });
       group.setToolActive(tools.StackScrollTool.toolName, { bindings: [{ mouseButton: bindings.Wheel }, { numTouchPoints: 2 }] });
@@ -840,7 +873,7 @@ export class CornerstoneEngine implements ImageEngine {
       // button threw and only rotate answered — the operator saw exactly
       // that.
       group.addTool(tools.TrackballRotateTool.toolName);
-      group.addTool(TOOL_NAMES.zoom);
+      group.addTool(TOOL_NAMES.zoom, toolConfig_of(TOOL_NAMES.zoom));
       group.addTool(TOOL_NAMES.pan);
       this.primary = null;
       this.volumeBindings_apply(group);

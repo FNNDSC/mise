@@ -57,6 +57,7 @@ Each row says what the sentence lowers to. "Drawer" means the pane's drawer caps
 | `image layout slab` | frame SLAB block | A crisp acquisition slice sweeping through a ghost of the volume; the wheel sweeps, left-drag rotates.
 | `image ghost <0..1>\|off` | (SLAB only) | The ghost volume's opacity behind the crisp slice; `off` hides it.
 | `image guard <bytes>\|off` | the pane's threshold | The bytes a series may reach before MPR or 3D wait for LOAD; default 256 MB.
+| `image state` | (the field read back) | Prints the layout, the tool, its primary binding, the slice, refusals and annotations, then per viewport its scale, focus and window — what the field shows, not what the frame lights.
 | `image tags` | frame TAGS block | Opens, or focuses, the tags pane that follows this image pane's slice, beside it in the same link group.
 |===
 

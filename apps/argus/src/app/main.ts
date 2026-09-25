@@ -3472,7 +3472,7 @@ async function surface_start(token: string): Promise<void> {
   let replayPlace: { dir: 'row' | 'col'; before: boolean } | null = null;
 
   /** Console-line verbs that tune an open viewer rather than open one. */
-  const IMAGE_SUBVERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags', 'load', 'guard', 'ghost']);
+  const IMAGE_SUBVERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags', 'load', 'guard', 'ghost', 'state']);
 
   /**
    * Captures the current stage as a DESKTOP: a script of console lines that
@@ -4726,6 +4726,17 @@ async function surface_start(token: string): Promise<void> {
         ?? onStage.find(([id]: [string, ImagePanel]): boolean => subjects.group_of(id) === group)?.[1]
         ?? (onStage.length === 1 ? onStage[0]?.[1] : undefined);
       if (panel === undefined) return `image ${verb}: no image pane on stage for '${paneId}'`;
+      if (verb === 'state') {
+        // A surface can be asked what it holds: the layout, the tool, the
+        // slices, and each viewport's zoom, focus and live window — what a
+        // drag on the field changed, read from the field itself.
+        const state = panel.state_get();
+        if (state === null) return 'image state: no image on the field';
+        const views: string = (state.viewports ?? [])
+          .map((v) => `${v.id.replace(/^.*-/, '')} scale=${v.scale.toFixed(3)} focus=${v.focus.map((n: number): string => n.toFixed(2)).join(',')} voi=${v.voi === null ? '-' : `${v.voi.lower.toFixed(1)}..${v.voi.upper.toFixed(1)}`}`)
+          .join(' | ');
+        return `image: layout=${state.layout} tool=${state.tool} primary=${state.primaryTool ?? '-'} slice=${state.slice}/${state.slices} refused=${state.refused} annotations=${state.annotations} filled=${state.filled}\nviewports: ${views || '(none)'}`;
+      }
       if (verb === 'layout') {
         const layout: string = args[0] ?? '';
         if (!(IMAGE_LAYOUTS as readonly string[]).includes(layout)) return 'image layout single|mpr|3d|slab';

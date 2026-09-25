@@ -34,23 +34,21 @@ import {
 } from '@fnndsc/orrery/layout';
 import {
   CENSUS_TUBE_CAP,
-  DIM_OPACITY,
-  HALO_OPACITY,
-  HANDOFF_FADE_MS,
-  HANDOFF_SOLID_PX,
-  HANDOFF_STAR_PX,
   STAR_GLOW,
   THREAD_OPACITY,
   WAVE_STEP_MS,
   fibonacciPoint_make,
   haloRadius_of,
+  HandoffField,
   SphereField,
   StarField,
   TubeField,
   tubeMode_of,
   type NodeState,
   type Palette,
+  type HandoffLook,
   type TubeNode,
+  type TubeOwner,
   type StarEntry,
   type TubeSpec,
 } from '@fnndsc/orrery';
@@ -415,22 +413,6 @@ export type DrawMode = 'spheres' | 'stars';
 
 
 
-/**
- * One feed (or folded shape) in the hand-off: its stars, where it stands,
- * how far it is between stars (0) and spheres (1), and the spheres and
- * edges that exist only while it is solid.
- */
-interface HandoffGroup {
-  entries: StarEntry[];
-  center: THREE.Vector3;
-  maxRadius: number;
-  mix: number;
-  target: number;
-  meshes: THREE.Mesh[];
-  lines: THREE.Line[];
-  tubes: THREE.InstancedMesh | null;
-  threadSegments: number[];
-}
 
 /**
  * One live DAG rendering bound to a container element.
@@ -458,6 +440,13 @@ export class DagScene {
     node: (id: string): TubeNode | undefined => this.tubeNode_of(id),
     sphere: (id: string): THREE.Mesh | undefined => this.meshes.get(id),
     palette: (): Palette => palette_read(),
+  });
+  /** Every molecule's place between stars and spheres. */
+  private readonly handoffField: HandoffField = new HandoffField({
+    spheres: this.spheres,
+    stars: this.starField,
+    tubes: this.tubes,
+    look: (id: string): HandoffLook | undefined => this.handoffLook_of(id),
   });
 
   /** Where the last projection left every node — the next settle's seed. */
@@ -571,12 +560,8 @@ export class DagScene {
 
   /** How nodes are drawn: lit spheres (every pane), or stars (the universe's choice). */
   private drawMode: DrawMode = 'spheres';
-  /** Feeds in the hand-off, by key. */
-  private handoff: Map<string, HandoffGroup> = new Map();
   /** Placed nodes by id, for the spheres a solid feed draws. */
   private placedById: Map<string, PlacedNode> = new Map();
-  /** When the hand-off last stepped. */
-  private handoffAt: number = 0;
 
   /** Whether the pointer is over the field: the idle spin waits while it is. */
   private pointerInside: boolean = false;
@@ -1042,8 +1027,6 @@ export class DagScene {
   public state_get(): Record<string, unknown> {
     const solidMarked: string[] = this.graph.nodes.filter((node: SceneNode): boolean => node.solid === true).map((node: SceneNode): string => node.id);
     const solidDrawn: number = solidMarked.filter((id: string): boolean => this.meshes.has(id)).length;
-    let groupsSolid: number = 0;
-    for (const group of this.handoff.values()) if (group.mix > 0) groupsSolid += 1;
     return {
       draw: this.drawMode,
       arrangement: this.arrangement,
@@ -1055,8 +1038,8 @@ export class DagScene {
       solidDrawn,
       tubes: this.tubes.materialCount(),
       censusTubes: this.tubes.censusCount(),
-      handoffGroups: this.handoff.size,
-      handoffSolid: groupsSolid,
+      handoffGroups: this.handoffField.size(),
+      handoffSolid: this.handoffField.solidCount(),
       camera: this.camera.position.distanceTo(this.focus).toFixed(1),
       settling: this.slicing,
     };
@@ -1684,7 +1667,7 @@ export class DagScene {
     this.dragSimNodes = [];
     this.drag = null;
     this.starField.clear();
-    this.handoff = new Map();
+    this.handoffField.clear();
     this.placedById = new Map();
     this.tubes.clear();
     const palette = palette_read();
@@ -1746,7 +1729,13 @@ export class DagScene {
 
     if (starred.length > 0) this.starField.draw(starred, window.devicePixelRatio, this.renderer.domElement.height, this.camera.fov);
     for (const item of placed) this.placedById.set(item.node.id, item);
-    if (handoffKey !== undefined) this.handoff_gather(starred, handoffKey);
+    if (handoffKey !== undefined) {
+      const byNode: Map<string, SceneNode> = new Map(this.graph.nodes.map((node: SceneNode): [string, SceneNode] => [node.id, node]));
+      this.handoffField.gather(starred, (id: string): string | null => {
+        const node: SceneNode | undefined = byNode.get(id);
+        return node === undefined ? null : handoffKey(node);
+      });
+    }
     // An edge between two solid nodes is a line as ever; an edge touching a
     // star is a thread, all of them one batch.
     const threads: number[] = [];
@@ -1758,7 +1747,7 @@ export class DagScene {
       threads.push(from.x, from.y, from.z, to.x, to.y, to.z);
       threadColors.push(color.r * k, color.g * k, color.b * k, color.r * k, color.g * k, color.b * k);
       const key: string | null = dim || handoffKey === undefined ? null : handoffKey(owner);
-      if (key !== null) this.handoff.get(key)?.threadSegments.push(segment);
+      if (key !== null) this.handoffField.thread_note(key, segment);
     };
     for (const item of placed) {
       const { node, position } = item;
@@ -1787,41 +1776,15 @@ export class DagScene {
         .filter((item: PlacedNode): boolean => item.node.ghost !== true && item.node.halo !== true && (starring ? item.node.solid === true : item.node.dim !== true))
         .map((item: PlacedNode): string => item.node.id);
       if (solidIds.length > 0) {
-        const entered: HandoffGroup = {
-          entries: solidIds.map((id: string): StarEntry => ({ id, position: new THREE.Vector3(), radius: 0, color: new THREE.Color(), dim: false, ember: false })),
-          center: new THREE.Vector3(), maxRadius: 0, mix: 1, target: 1, meshes: [], lines: [], tubes: null, threadSegments: [],
-        };
-        this.tubes.build(entered, entered.entries.map((entry: StarEntry): string => entry.id), new Set(solidIds));
+        const entered: TubeOwner = { tubes: null, mix: 1 };
+        this.tubes.build(entered, solidIds, new Set(solidIds));
       }
     }
     this.starField.threads_draw(threads, threadColors);
 
   }
 
-  /**
-   * Gathers the drawn stars into feeds for the hand-off. A dimmed star is
-   * scenery and never turns solid; a star with no feed stays a star.
-   */
-  private handoff_gather(starred: StarEntry[], keyOf: (node: SceneNode) => string | null): void {
-    const byId: Map<string, SceneNode> = new Map(this.graph.nodes.map((node: SceneNode): [string, SceneNode] => [node.id, node]));
-    for (const entry of starred) {
-      if (entry.dim) continue;
-      const node: SceneNode | undefined = byId.get(entry.id);
-      const key: string | null = node === undefined ? null : keyOf(node);
-      if (key === null) continue;
-      let group: HandoffGroup | undefined = this.handoff.get(key);
-      if (group === undefined) {
-        group = { entries: [], center: new THREE.Vector3(), maxRadius: 0, mix: 0, target: 0, meshes: [], lines: [], tubes: null, threadSegments: [] };
-        this.handoff.set(key, group);
-      }
-      group.entries.push(entry);
-      group.maxRadius = Math.max(group.maxRadius, entry.radius);
-    }
-    for (const group of this.handoff.values()) {
-      for (const entry of group.entries) group.center.add(entry.position);
-      group.center.divideScalar(Math.max(1, group.entries.length));
-    }
-  }
+
 
   /**
    * Steps the hand-off once a frame: a feed whose largest sphere spans
@@ -1829,62 +1792,17 @@ export class DagScene {
    * to edges; one that shrinks back goes to stars and its spheres are let go.
    */
   private handoff_step(): void {
-    if (this.handoff.size === 0) return;
-    const now: number = performance.now();
-    const dt: number = this.handoffAt === 0 ? 0 : Math.min(100, now - this.handoffAt);
-    this.handoffAt = now;
+    if (this.handoffField.size() === 0) return;
     const height: number = this.renderer.domElement.clientHeight || 1;
     const perUnit: number = height / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
     this.group.updateMatrixWorld(true);
     this.camera.updateMatrixWorld();
     const view: THREE.Matrix4 = new THREE.Matrix4().multiplyMatrices(this.camera.matrixWorldInverse, this.group.matrixWorld);
-    const v: number[] = view.elements;
-    for (const group of this.handoff.values()) {
-      // Its nearest sphere decides: a sprawling feed with one sphere at the
-      // camera turns solid, rather than leaving that sphere a swelling star.
-      let depth: number = Infinity;
-      for (const entry of group.entries) {
-        const p: THREE.Vector3 = entry.position;
-        const d: number = -(v[2]! * p.x + v[6]! * p.y + v[10]! * p.z + v[14]!);
-        if (d > 0 && d < depth) depth = d;
-      }
-      const px: number = depth === Infinity ? 0 : (2 * group.maxRadius * perUnit) / depth;
-      if (group.target === 0 && px > HANDOFF_SOLID_PX) group.target = 1;
-      else if (group.target === 1 && px < HANDOFF_STAR_PX) group.target = 0;
-      if (group.mix === group.target) continue;
-      const step: number = dt === 0 ? 1 : dt / HANDOFF_FADE_MS;
-      group.mix = group.target > group.mix ? Math.min(1, group.mix + step) : Math.max(0, group.mix - step);
-      if (group.mix > 0 && group.meshes.length === 0) this.handoffSolid_build(group);
-      for (const mesh of group.meshes) {
-        if (mesh.material instanceof THREE.MeshStandardMaterial) mesh.material.opacity = group.mix;
-      }
-      for (const line of group.lines) {
-        if (line.material instanceof THREE.LineBasicMaterial) line.material.opacity = 0.75 * group.mix;
-      }
-      if (group.tubes !== null && group.tubes.material instanceof THREE.ShaderMaterial) {
-        const opacity = group.tubes.material.uniforms['opacity'];
-        if (opacity !== undefined) opacity.value = group.mix;
-      }
-      this.starField.stars_fade(group.entries, 1 - group.mix);
-      this.starField.threads_fade(group.threadSegments, 1 - group.mix);
-      if (group.mix === 0) this.handoffSolid_release(group);
-    }
-    this.starField.flush();
+    this.handoffField.step(view, perUnit, performance.now());
   }
 
-  /** Draws a feed's spheres and edges for its time as solid. */
-  private handoffSolid_build(group: HandoffGroup): void {
-    const palette = palette_read();
-    const members: Set<string> = new Set(group.entries.map((entry: StarEntry): string => entry.id));
-    for (const entry of group.entries) {
-      const placed: PlacedNode | undefined = this.placedById.get(entry.id);
-      if (placed === undefined) continue;
-      const node: SceneNode = placed.node;
-      const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
-      group.meshes.push(this.spheres.sphere_add(node.id, placed.position, placed.radius, { color: nodeColor_pick(node, palette, isRoot), fade: group.mix }));
-    }
-    this.tubes.build(group, group.entries.map((entry: StarEntry): string => entry.id), members);
-  }
+
+
 
   /**
    * Joins a census's jobs with tubes: each job to the job of its parent
@@ -1940,6 +1858,19 @@ export class DagScene {
   }
 
   /**
+   * How a placed node's sphere is drawn when its molecule turns solid.
+   *
+   * @param id - The node.
+   * @returns Where it stands, how large, what hue.
+   */
+  private handoffLook_of(id: string): HandoffLook | undefined {
+    const placed: PlacedNode | undefined = this.placedById.get(id);
+    if (placed === undefined) return undefined;
+    const isRoot: boolean = placed.node.parentIds.length === 0 && placed.node.joinParentIds.length === 0;
+    return { position: placed.position, radius: placed.radius, color: nodeColor_pick(placed.node, palette_read(), isRoot) };
+  }
+
+  /**
    * A placed node as the tubes read it.
    *
    * @param id - The node.
@@ -1957,21 +1888,7 @@ export class DagScene {
     };
   }
 
-  /** Lets a feed's spheres go once it is stars again. */
-  private handoffSolid_release(group: HandoffGroup): void {
-    for (const mesh of group.meshes) this.spheres.remove(mesh);
-    for (const line of group.lines) {
-      this.group.remove(line);
-      line.geometry.dispose();
-      if (line.material instanceof THREE.Material) line.material.dispose();
-    }
-    if (group.tubes !== null) {
-      this.tubes.release(group.tubes);
-      group.tubes = null;
-    }
-    group.meshes = [];
-    group.lines = [];
-  }
+
 
   /**
    * A cluster's handle while the scene draws stars: a soft glow at its
@@ -2425,11 +2342,8 @@ export class DagScene {
       this.spheres.sphere_add(item.node.id, item.position, item.radius, { color: nodeColor_pick(item.node, palette, isRoot) });
     }
     const ids: string[] = solidOnes.map((item: PlacedNode): string => item.node.id);
-    const entered: HandoffGroup = {
-      entries: ids.map((id: string): StarEntry => ({ id, position: new THREE.Vector3(), radius: 0, color: new THREE.Color(), dim: false, ember: false })),
-      center: new THREE.Vector3(), maxRadius: 0, mix: 1, target: 1, meshes: [], lines: [], tubes: null, threadSegments: [],
-    };
-    this.tubes.build(entered, entered.entries.map((entry: StarEntry): string => entry.id), new Set(ids));
+    const entered: TubeOwner = { tubes: null, mix: 1 };
+    this.tubes.build(entered, ids, new Set(ids));
   }
 
   /** The node id behind a shape-mode mesh under the pointer. */

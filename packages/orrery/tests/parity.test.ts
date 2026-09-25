@@ -107,34 +107,20 @@ describe('molecule parity', () => {
   }
 });
 
-/**
- * A seeded random source (a linear congruential generator), so a layout
- * that turns reused molecules at random lands the same way every run.
- */
-function lcg_make(seed: number): () => number {
-  let state: number = seed >>> 0;
-  return (): number => {
-    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-}
-
 /*
- * The hierarchy and galaxy moved into orrery unchanged but for a type alias
- * and an optional random source (defaulting to Math.random, as before); their
- * output with Math.random differs run to run by design, so they are pinned
- * here under a seeded source instead of against the scene's recording.
+ * The hierarchy and galaxy turn each reused molecule by a chance seeded from
+ * the molecule's own key, so the same space lands the same way every time;
+ * they are pinned here as they land by default.
  */
-describe('hierarchy and galaxy, pinned under a seeded source', () => {
+describe('hierarchy and galaxy, pinned', () => {
   const physics: PhysicsTerms = { link: true, charge: true, collide: true, gravity: true, reach: 12 };
   const golden: Record<string, unknown> = JSON.parse(readFileSync(new URL('./fixtures/hierarchy-seeded.json', import.meta.url), 'utf8'));
   const run = (which: string): Record<string, Vec3> => {
-    const random = lcg_make(7);
-    if (which === 'galaxy') return galaxy_layout(universeNodes(), physics, () => {}, random);
-    return hierarchy_layout(universeNodes(), physics, () => {}, which as 'spokes' | 'clumps', random);
+    if (which === 'galaxy') return galaxy_layout(universeNodes(), physics, () => {});
+    return hierarchy_layout(universeNodes(), physics, () => {}, which as 'spokes' | 'clumps');
   };
   for (const which of ['spokes', 'clumps', 'galaxy']) {
-    it(`${which}: the same seed lands the same space`, () => {
+    it(`${which}: the same space lands the same way every time`, () => {
       expect(asJson(run(which))).toEqual(asJson(run(which)));
     });
     it(`${which}: matches its pinned layout`, () => {

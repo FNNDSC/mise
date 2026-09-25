@@ -19,6 +19,7 @@
  * @module
  */
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, forceX, forceY, forceZ } from 'd3-force-3d';
+import { randomFor_key } from './seeded.js';
 import type { PhysicsTerms } from './types.js';
 
 /**
@@ -141,10 +142,11 @@ type SimNode = { id: string; x?: number; y?: number; z?: number; fx?: number; fy
  * @param physics - The terms.
  * @param onProgress - Told how far it has come, 0..1.
  * @param arrangement - SPOKES or CLUMPS (GALAXY starts from spokes).
- * @param random - Where a reused molecule's turn comes from: a molecule
- *   whose shape was already worked out takes it at a random turn, so like
- *   feeds do not stand as clones. `Math.random` unless a caller wants the
- *   same space every time.
+ * @param randomFor - Where a reused molecule's turn comes from, by the
+ *   molecule's key: a molecule whose shape was already worked out takes it
+ *   at a turn of its own, so like feeds do not stand as clones. Seeded by
+ *   the key unless a caller asks otherwise, so the same space lands the
+ *   same way on every device and a new molecule turns no other.
  * @returns Every node's position.
  */
 export function hierarchy_layout(
@@ -152,7 +154,7 @@ export function hierarchy_layout(
   physics: HierarchyPhysics,
   onProgress: (fraction: number) => void = (): void => {},
   arrangement: HierarchyArrangement = 'clumps',
-  random: () => number = Math.random,
+  randomFor: (key: string) => () => number = randomFor_key,
 ): HierarchyPositions {
   const byId: Map<string, HierarchyNode> = new Map(nodes.map((node: HierarchyNode): [string, HierarchyNode] => [node.id, node]));
   const groups: Map<string, HierarchyNode[]> = new Map();
@@ -191,6 +193,7 @@ export function hierarchy_layout(
       // Every sphere stood somewhere: the molecule keeps its shape.
       for (const member of members) local.set(member.id, [member.seed![0] - mean[0], member.seed![1] - mean[1], member.seed![2] - mean[2]]);
     } else if (known !== undefined) {
+      const random: () => number = randomFor(key);
       const yaw: number = random() * Math.PI * 2;
       const pitch: number = (random() - 0.5) * Math.PI;
       members.forEach((member: HierarchyNode, i: number): void => { local.set(member.id, offset_turn(known[i] ?? [0, 0, 0], yaw, pitch)); });

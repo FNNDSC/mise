@@ -1,5 +1,15 @@
 # @fnndsc/argus
 
+## 0.16.5
+
+### Patch Changes
+
+- ac55e18: DOWNLOAD saves the file or says why not. The page fetches the file with its own credentials and saves only an answer that is the file, under the name the daemon gives it (else the path's basename); a login page or a `not found` is no longer saved as a broken file named `vfs` — nothing is saved and the console says why.
+- a46fe8b: A dropped slice is asked again: slices load eight at a time, each refused one is retried three times with a growing pause, one with no answer in 30 s counts as refused, and whatever is still refused puts RETRY n on the image frame to ask again for just those.
+- f319057: ZOOM on an image only zooms: a one-finger drag under ZOOM panned the view, because the library's zoom pinched and panned by default. `image state` prints what the field shows (layout, tool, slice, and per viewport its scale, focus and window), and the smoke drives every frame block by mouse and by finger and reads the field back.
+- 7b4853b: On a phone the listing caps no longer run under the mode frame's elbow, whose black fillet cut a notch out of the PATIENT cap: caps clip at their own clear line. The PACS command line wraps, so EXPORT CSV is no longer cut off at the pane's edge.
+- d9fc76f: The universe lands the same way on every device: each molecule's turn in the galaxy, spokes and clumps layouts is seeded from the molecule itself, so a lab's universe is repeatable and a new feed turns no other.
+
 ## 0.16.4
 
 ### Patch Changes

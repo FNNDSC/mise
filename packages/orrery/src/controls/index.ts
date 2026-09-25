@@ -5,3 +5,4 @@
  */
 export * from './cameraRig.js';
 export * from './gestures.js';
+export * from './picker.js';

@@ -50,6 +50,9 @@ import {
   type StarEntry,
   CameraRig,
   PointerGestures,
+  Picker,
+  type PickStar,
+  type PickNebula,
   DRAG_THRESHOLD_PX,
   type WorldReach,
 } from '@fnndsc/orrery';
@@ -162,8 +165,6 @@ const WAVE_LOOP_GAP_MS: number = 2_500;
 
 /** How long a tap's name stays up after the finger lifts. */
 const TAP_TIP_MS: number = 1500;
-/** A fingertip is wider than a cursor: the least a star reaches for one. */
-const TOUCH_REACH_PX: number = 14;
 
 /** Statuses grouped for coloring. */
 const RUNNING_STATUSES: ReadonlySet<string> = new Set([
@@ -391,7 +392,8 @@ export class DagScene {
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.PerspectiveCamera;
   private readonly group: THREE.Group = new THREE.Group();
-  private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
+  /** What lies under a pointer, among everything drawn. */
+  private readonly picker: Picker;
   /** The solid spheres, halos and plain edges. */
   private readonly spheres: SphereField = new SphereField(this.group);
   /** Every drawn sphere and halo, by its node's id: the sphere field's own map. */
@@ -538,6 +540,13 @@ export class DagScene {
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
     this.camera.position.set(0, 0, 14);
     this.rig = new CameraRig(this.camera, this.group);
+    this.picker = new Picker(this.camera, this.group, this.renderer.domElement, {
+      meshes: (): Iterable<THREE.Object3D> => this.meshes.values(),
+      stars: (): Iterable<PickStar> => this.starField.list(),
+      nebulae: (): Iterable<PickNebula> => this.starField.nebulae(),
+      // A census is picked by its members only while it stands.
+      census: () => (this.census && this.censusField.drawn() ? this.censusField : null),
+    }, STAR_GLOW);
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
     const key: THREE.DirectionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
     key.position.set(4, 6, 8);
@@ -1424,56 +1433,6 @@ export class DagScene {
 
 
   /**
-   * The node whose star — or, over no star, whose nebula — is under the
-   * pointer, picked in screen space: a star is hit within its drawn size
-   * (never less than a few pixels), the nearest centre wins, a dimmed star
-   * is scenery and takes no pointer.
-   */
-  private starNode_under(event: MouseEvent): string | null {
-    if (this.starField.count() === 0 && this.starField.nebulae().length === 0) return null;
-    const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
-    const px: number = event.clientX - bounds.left;
-    const py: number = event.clientY - bounds.top;
-    this.group.updateMatrixWorld(true);
-    this.camera.updateMatrixWorld();
-    const perUnit: number = bounds.height / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
-    // One matrix from the group's space to the screen's; one scratch
-    // vector: a census can hold tens of thousands of stars, and this runs
-    // on every pointer move.
-    const view: THREE.Matrix4 = new THREE.Matrix4().multiplyMatrices(this.camera.matrixWorldInverse, this.group.matrixWorld);
-    const clip: THREE.Matrix4 = new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, view);
-    const e: number[] = clip.elements;
-    const v: number[] = view.elements;
-    const screen = (p: THREE.Vector3): { x: number; y: number; depth: number } | null => {
-      const depth: number = -(v[2]! * p.x + v[6]! * p.y + v[10]! * p.z + v[14]!);
-      if (depth <= 0) return null;
-      const w: number = e[3]! * p.x + e[7]! * p.y + e[11]! * p.z + e[15]!;
-      const x: number = (e[0]! * p.x + e[4]! * p.y + e[8]! * p.z + e[12]!) / w;
-      const y: number = (e[1]! * p.x + e[5]! * p.y + e[9]! * p.z + e[13]!) / w;
-      return { x: (x + 1) / 2 * bounds.width, y: (1 - y) / 2 * bounds.height, depth };
-    };
-    let best: string | null = null;
-    let bestScore: number = Infinity;
-    for (const star of this.starField.list()) {
-      if (star.dim) continue;
-      const hit = screen(star.position);
-      if (hit === null) continue;
-      const reach: number = Math.max(this.gestures?.pressKind() === 'touch' ? TOUCH_REACH_PX : 4, (STAR_GLOW * star.radius * perUnit) / hit.depth);
-      const distance: number = Math.hypot(hit.x - px, hit.y - py);
-      if (distance > reach) continue;
-      const score: number = distance / reach;
-      if (score < bestScore) { bestScore = score; best = star.id; }
-    }
-    if (best !== null) return best;
-    for (const nebula of this.starField.nebulae()) {
-      const hit = screen(nebula.position);
-      if (hit === null) continue;
-      if (Math.hypot(hit.x - px, hit.y - py) <= (nebula.radius * perUnit) / hit.depth) return nebula.id;
-    }
-    return null;
-  }
-
-  /**
    * Where a drawn node stands in the world and how big it is — a sphere,
    * a star or a census member alike — for flights and framing.
    *
@@ -1519,7 +1478,7 @@ export class DagScene {
    * @returns True when a node was taken hold of.
    */
   private grab_begin(event: PointerEvent): boolean {
-    const hit: THREE.Mesh | null = this.mesh_under(event);
+    const hit: THREE.Mesh | null = this.picker.mesh_under(event);
     const nodeId: unknown = hit?.userData['nodeId'];
     if (hit === null || typeof nodeId !== 'string') return false;
     // Drag in the plane through the node, facing the camera: intuitive
@@ -1617,14 +1576,8 @@ export class DagScene {
       if (!this.drag.solo) this.dragSim_begin(this.drag.nodeId);
     }
     if (!this.drag.moved) return;
-    const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
-    const pointer: THREE.Vector2 = new THREE.Vector2(
-      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
-      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
-    );
-    this.raycaster.setFromCamera(pointer, this.camera);
     const point: THREE.Vector3 = new THREE.Vector3();
-    if (this.raycaster.ray.intersectPlane(this.drag.plane, point) === null) return;
+    if (this.picker.ray_aim(event).ray.intersectPlane(this.drag.plane, point) === null) return;
     // Back into the group's own space, where the node and the simulation
     // live: pinned to a world point, the node leapt away and dragged its
     // whole molecule after it.
@@ -1675,40 +1628,6 @@ export class DagScene {
     return moved;
   }
 
-  /** @returns The node mesh under a pointer event, or null. */
-  private mesh_under(event: MouseEvent): THREE.Mesh | null {
-    const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
-    const pointer: THREE.Vector2 = new THREE.Vector2(
-      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
-      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
-    );
-    // A raycast can land between a rebuild and its first render, when the
-    // fresh meshes still carry identity matrices; bring them current.
-    this.group.updateMatrixWorld(true);
-    this.raycaster.setFromCamera(pointer, this.camera);
-    const hits: THREE.Intersection[] = this.raycaster
-      .intersectObjects([...this.meshes.values()])
-      .filter((hit: THREE.Intersection): boolean => hit.object.userData['dim'] !== true);
-    // A halo wraps its cluster, so its surface is hit before the spheres
-    // inside it: a solid hit anywhere along the ray wins, the halo only
-    // when the pointer is over nothing solid.
-    const solid: THREE.Intersection | undefined = hits.find((hit: THREE.Intersection): boolean => hit.object.userData['halo'] !== true);
-    const object: THREE.Object3D | undefined = (solid ?? hits[0])?.object;
-    return object instanceof THREE.Mesh ? object : null;
-  }
-
-  /**
-   * The node under the pointer, however it is drawn: a census member (its
-   * group), a solid sphere, or a star (or nebula) when nothing solid is.
-   */
-  private node_under(event: MouseEvent): string | null {
-    // A solid sphere wins: the entered feed stands in the census as spheres.
-    const solid: string | null = this.meshNode_under(event);
-    if (solid !== null) return solid;
-    if (this.census && this.censusField.drawn()) return this.censusNode_under(event);
-    return this.starNode_under(event);
-  }
-
   /**
    * Draws nodes as lit spheres joined by tubes, among a census: the feed the
    * operator entered, which the census's points would otherwise swallow.
@@ -1725,29 +1644,6 @@ export class DagScene {
     const ids: string[] = solidOnes.map((item: PlacedNode): string => item.node.id);
     const entered: TubeOwner = { tubes: null, mix: 1 };
     this.tubes.build(entered, ids, new Set(ids));
-  }
-
-  /** The node id behind a shape-mode mesh under the pointer. */
-  private meshNode_under(event: MouseEvent): string | null {
-    const nodeId: unknown = this.mesh_under(event)?.userData['nodeId'];
-    return typeof nodeId === 'string' ? nodeId : null;
-  }
-
-  /**
-   * The group node id behind the census member under the pointer. A
-   * member is entered through its group's representative — the census is
-   * a place, not just a diorama. The touched member lights up.
-   */
-  private censusNode_under(event: MouseEvent): string | null {
-    if (!this.censusField.drawn()) return null;
-    const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
-    const pointer: THREE.Vector2 = new THREE.Vector2(
-      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
-      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
-    );
-    this.group.updateMatrixWorld(true);
-    this.raycaster.setFromCamera(pointer, this.camera);
-    return this.censusField.pick(this.raycaster);
   }
 
   /**
@@ -1774,7 +1670,7 @@ export class DagScene {
     if (this.tip === null) return;
     // In census the spheres are members of one instanced mesh: the group
     // under the pointer is what the tip names, as a click would pick.
-    const nodeId: unknown = this.node_under(event);
+    const nodeId: unknown = this.picker.node_under(event, this.gestures?.pressKind() === 'touch');
     const node: SceneNode | undefined =
       typeof nodeId === 'string'
         ? this.graph.nodes.find((n: SceneNode) => n.id === nodeId)
@@ -1801,7 +1697,7 @@ export class DagScene {
     const held = this.hovered;
     const nodeId: string | null = held !== null && Math.hypot(event.clientX - held.x, event.clientY - held.y) <= 6
       ? held.id
-      : this.node_under(event);
+      : this.picker.node_under(event, this.gestures?.pressKind() === 'touch');
     if (nodeId === null) {
       // Empty space is the natural off switch for the node detail.
       if (kind === 'select' && this.selectedId !== null) {

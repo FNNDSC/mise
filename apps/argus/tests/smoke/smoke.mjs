@@ -1593,6 +1593,62 @@ try {
     JSON.stringify(grid));
   }
 
+  if (stage('file-download')) {
+  // DOWNLOAD saves the file under its own name, or saves nothing and says
+  // why. It once let the browser fetch the byte route itself, which saved
+  // whatever came back — a login page, a `not found` — as a broken file
+  // named `vfs`, and the surface said nothing.
+  const { mkdtempSync, readdirSync, statSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const landing = mkdtempSync(join(tmpdir(), 'argus-smoke-download-'));
+  await page.cdp('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: landing, eventsEnabled: true });
+  const landed = () => readdirSync(landing).filter((n) => !n.endsWith('.crdownload')).map((n) => ({ name: n, bytes: statSync(join(landing, n)).size }));
+  const dl = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const fp = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
+    const term = document.querySelector('#terminal input');
+    const say = async (line, ms) => { term.value = line;
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const named = (n) => [...fp().querySelectorAll('.files-row')].find(r => r.querySelector('.files-name')?.textContent.trim() === n);
+    const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const settle = async (want) => { for (let i = 0; i < 140; i++) { await sleep(500); if (want()) return true; } return false; };
+    const downloadVerb = () => [...fp().querySelectorAll('.files-row-zone .listing-action')].find(b => b.textContent.trim() === 'DOWNLOAD') ?? null;
+    await say('rm -r ~/smoke-download', 2500);
+    await say('mkdir -p ~/smoke-download', 2500);
+    await say('cd ~/smoke-download', 2500);
+    const chooser = fp().querySelector('.files-upload-input');
+    const dt = new DataTransfer();
+    dt.items.add(new File([new TextEncoder().encode('a,b\\n1,2\\n')], 'smoke-download.csv', { type: 'text/csv' }));
+    chooser.files = dt.files;
+    chooser.dispatchEvent(new Event('change', { bubbles: true }));
+    const uploaded = await settle(() => named('smoke-download.csv'));
+    click(named('smoke-download.csv')); await sleep(700);
+    const verb = downloadVerb();
+    if (verb !== null) verb.click();
+    await settle(() => /download: smoke-download\\.csv/.test(document.getElementById('terminal').innerText));
+    // The same verb pressed after the file is gone: the session cannot read
+    // it, and the verb must say so rather than hand the browser an error.
+    click(named('smoke-download.csv')); await sleep(700);
+    const stale = downloadVerb();
+    await say('rm ~/smoke-download/smoke-download.csv', 3000);
+    if (stale !== null) stale.click();
+    await settle(() => /download: \\S*smoke-download\\.csv: .*nothing was saved/.test(document.getElementById('terminal').innerText));
+    const lines = document.getElementById('terminal').innerText.split('\\n').map(l => l.trim()).filter(l => /^download: /.test(l));
+    await say('cd ~', 2500);
+    await say('rm -r ~/smoke-download', 3000);
+    return { uploaded, pressed: verb !== null, stalePressed: stale !== null, lines };`);
+  for (let i = 0; i < 40 && landed().length === 0; i++) await new Promise((r) => setTimeout(r, 250));
+  const files = landed();
+  check('DOWNLOAD saves the file under its own name, whole',
+    dl.pressed && files.length === 1 && files[0].name === 'smoke-download.csv' && files[0].bytes === 8 && dl.lines.some((l) => l === 'download: smoke-download.csv'),
+    JSON.stringify({ dl, files }));
+  check('a file the session cannot read is saved as nothing, and the console says why',
+    dl.stalePressed && landed().length === 1 && dl.lines.some((l) => /smoke-download\.csv: the session could not read that file — nothing was saved$/.test(l)),
+    JSON.stringify({ lines: dl.lines, files: landed() }));
+  await page.cdp('Browser.setDownloadBehavior', { behavior: 'default' });
+  }
+
   if (stage('place-verbs')) {
   // Two verbs that act on the PLACE: they ride the field's frame, they make
   // and land things in the listing on stage, and the listing shows what

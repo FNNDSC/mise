@@ -36,7 +36,8 @@ import { ArgusTerminal } from '../console/terminal.js';
 import { consolePalette_publish } from '../console/ansi.js';
 import { ArgusProgress } from '../console/progress.js';
 import { listingNumbering_set } from '../features/roster/listing.js';
-import { FilesPanel, type FileAction, type FsListing, type FsListingEntry, extension_isImage, browserDownload_start, type PreviewProvider, type GlimpseNode } from '../features/files/panel.js';
+import { browserDownload_save, type DownloadOutcome } from '../features/files/download.js';
+import { FilesPanel, type FileAction, type FsListing, type FsListingEntry, extension_isImage, type PreviewProvider, type GlimpseNode } from '../features/files/panel.js';
 import type { ListingAction } from '../features/roster/row.js';
 import { FILE_ROW_ROSTER, FILES_SELECTION_ROSTER, RUNS_ROW_ROSTER, type FileRowFacts, type FilesSelectionFacts, type RunsRowFacts } from '../features/roster/verbs.js';
 import { GatherPanel, type GatherSeries, type GatherFeed } from '../features/gather/panel.js';
@@ -861,6 +862,18 @@ async function surface_start(token: string): Promise<void> {
   /** Builds the byte route for a path, from where this page was served. */
   const vfsUrl_build = (path: string): string => routeVfsUrl_build(path, token);
   const downloadUrl_build = (path: string): string => routeDownloadUrl_build(path, token);
+  /**
+   * Brings one file down to the operator's disk and says how it went: the
+   * name it landed under, or why nothing did. A broken file named after
+   * the route is never saved in silence.
+   */
+  const file_save = (path: string): void => {
+    void browserDownload_save(downloadUrl_build(path), path).then((outcome: DownloadOutcome): void => {
+      terminal.line_note(outcome.ok
+        ? `download: ${outcome.name}${outcome.streamed ? ' — large; the browser fetches it itself' : ''}`
+        : `download: ${path}: ${outcome.reason}`);
+    });
+  };
 
   /**
    * Reads at most `maxBytes` of a file's head through the /vfs route,
@@ -913,7 +926,7 @@ async function surface_start(token: string): Promise<void> {
   /** What a files pane's PREVIEW projection fetches through. */
   const previewProvider: PreviewProvider = {
     imageUrl: vfsUrl_build,
-    downloadUrl: downloadUrl_build,
+    download: file_save,
     textHead: fileHead_fetch,
     pipelineGlimpse: pipelineGlimpse_fetch,
   };
@@ -1740,7 +1753,7 @@ async function surface_start(token: string): Promise<void> {
       },
       // The browser's own save: an attachment named for the file lands on
       // the operator's disk; nothing opens to show it.
-      download: (): void => browserDownload_start(downloadUrl_build(path)),
+      download: (): void => file_save(path),
       // PROCESS acts on the place: a bound catalogue opens beside this pane.
       process: (): void => process_open(id, { input: path, feed, node: feed === null ? null : nodeOf_path(path) }),
       // GATHER takes the row into the session's cohort, beside whatever
@@ -4711,7 +4724,7 @@ async function surface_start(token: string): Promise<void> {
     file_download: (paneId: string): boolean => {
       const regard: RegardValue | null = subjects.regard_get(paneId);
       if (regard === null || regard.modelKind !== 'fs.file') return false;
-      browserDownload_start(downloadUrl_build(regard.address));
+      file_save(regard.address);
       return true;
     },
     image_open: (paneId: string | null, path: string, options?: { force?: boolean }): Promise<string> => image_open(paneId, path, options ?? {}),

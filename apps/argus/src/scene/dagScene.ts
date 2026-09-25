@@ -39,28 +39,21 @@ import {
   HANDOFF_FADE_MS,
   HANDOFF_SOLID_PX,
   HANDOFF_STAR_PX,
-  LAMP_BLOOM_MS,
-  LAMP_BLOOM_REACH,
-  LAMP_DIM,
-  LAMP_FADE_MS,
-  LAMP_WHITE,
   NEBULA_OPACITY,
-  PULSE_TRIP_MS,
-  REPLAY_REST_MS,
   STAR_GLOW,
   SphereGeometries,
   THREAD_OPACITY,
-  TUBE_FRAGMENT,
-  TUBE_VERTEX,
   WAVE_STEP_MS,
   fibonacciPoint_make,
   haloRadius_of,
   nebulaTexture_get,
   starLayer_make,
   starScale_of,
-  tubeGeometry_get,
-  tubeMesh_make,
+  TubeField,
+  tubeMode_of,
+  type NodeState,
   type Palette,
+  type TubeNode,
   type StarEntry,
   type StarLayer,
   type TubeSpec,
@@ -253,6 +246,21 @@ function hueColor_get(hue: string): THREE.Color {
   return color;
 }
 
+/**
+ * A node's state as orrery draws it, read from its ChRIS status: at work,
+ * failed (the stage errored, or every job it stands for did), finished
+ * (it ran, or an aggregate settled), or resting.
+ *
+ * @param node - The node.
+ * @returns Its state.
+ */
+function state_of(node: SceneNode): NodeState {
+  if (node.status !== undefined && RUNNING_STATUSES.has(node.status)) return 'live';
+  if (node.status === 'finishedWithError' || (node.share !== undefined && node.share >= 1)) return 'failed';
+  if (node.status === 'finishedSuccessfully' || (node.share !== undefined && node.status !== undefined)) return 'done';
+  return 'rest';
+}
+
 function nodeColor_pick(
   node: SceneNode,
   palette: ReturnType<typeof palette_read>,
@@ -441,6 +449,13 @@ export class DagScene {
   private readonly group: THREE.Group = new THREE.Group();
   private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
   private meshes: Map<string, THREE.Mesh> = new Map();
+  /** Every solid molecule's tubes, and the lamps its stages wear. */
+  private readonly tubes: TubeField = new TubeField({
+    parent: this.group,
+    node: (id: string): TubeNode | undefined => this.tubeNode_of(id),
+    sphere: (id: string): THREE.Mesh | undefined => this.meshes.get(id),
+    palette: (): Palette => palette_read(),
+  });
 
   /** Where the last projection left every node — the next settle's seed. */
   private lastPositions: Map<string, THREE.Vector3> = new Map();
@@ -573,16 +588,6 @@ export class DagScene {
   private placedById: Map<string, PlacedNode> = new Map();
   /** When the hand-off last stepped. */
   private handoffAt: number = 0;
-  /** The tube materials on stage, whose pulses follow the clock. */
-  private tubeMaterials: THREE.ShaderMaterial[] = [];
-  /** How many job-to-job tubes the census drew (0 when it drew lines). */
-  private censusTubes: number = 0;
-  /** Each tube batch and the edges it draws, so a pull can move them. */
-  private tubeSets: Array<{ mesh: THREE.InstancedMesh; edges: Array<{ from: string; to: string; width: number }>; lamps: Map<string, number>; blinks: Set<string>; group: HandoffGroup; members: ReadonlySet<string> }> = [];
-  /** A status moved under a tube: its tubes are re-read next frame. */
-  private tubesStale: boolean = false;
-  /** The glow each lit or blinking stage blooms with, by node. */
-  private lampGlows: Map<string, THREE.Sprite> = new Map();
 
   /** Whether the pointer is over the field: the idle spin waits while it is. */
   private pointerInside: boolean = false;
@@ -820,15 +825,7 @@ export class DagScene {
       }
       this.starScale_update();
       this.handoff_step();
-      if (this.tubeMaterials.length > 0) {
-        const now: number = performance.now();
-        for (const material of this.tubeMaterials) {
-          const time = material.uniforms['time'];
-          if (time !== undefined) time.value = now;
-        }
-        if (this.tubesStale) this.tubes_restatus();
-        this.lamps_animate(now);
-      }
+      this.tubes.frame(performance.now());
       this.renderer.render(this.scene, this.camera);
       this.frameHandle = window.requestAnimationFrame(animate);
     };
@@ -1067,8 +1064,8 @@ export class DagScene {
       stars: this.stars.length,
       solidMarked: solidMarked.length,
       solidDrawn,
-      tubes: this.tubeMaterials.length,
-      censusTubes: this.censusTubes,
+      tubes: this.tubes.materialCount(),
+      censusTubes: this.tubes.censusCount(),
       handoffGroups: this.handoff.size,
       handoffSolid: groupsSolid,
       camera: this.camera.position.distanceTo(this.focus).toFixed(1),
@@ -1333,7 +1330,7 @@ export class DagScene {
     }
     // A stage that started or finished changes what its tubes carry: a
     // stream, a replay, or nothing.
-    if (this.tubeSets.some((entry): boolean => entry.members.has(nodeId))) this.tubesStale = true;
+    if (this.tubes.holds(nodeId)) this.tubes.stale_mark();
   }
 
   /** Re-reads the palette (the THEME pill changed) and repaints. */
@@ -1720,11 +1717,7 @@ export class DagScene {
     this.threadColor = null;
     this.handoff = new Map();
     this.placedById = new Map();
-    this.tubeMaterials = [];
-    this.censusTubes = 0;
-    this.tubeSets = [];
-    for (const glow of this.lampGlows.values()) glow.material.dispose();
-    this.lampGlows = new Map();
+    this.tubes.clear();
     const palette = palette_read();
     this.pulseColor = palette.pulse;
     this.lastPositions = new Map(placed.map((p: PlacedNode): [string, THREE.Vector3] => [p.node.id, p.position.clone()]));
@@ -1859,7 +1852,7 @@ export class DagScene {
           entries: solidIds.map((id: string): StarEntry => ({ id, position: new THREE.Vector3(), radius: 0, color: new THREE.Color(), dim: false, ember: false })),
           center: new THREE.Vector3(), maxRadius: 0, mix: 1, target: 1, meshes: [], lines: [], tubes: null, threadSegments: [],
         };
-        this.tubes_build(entered, new Set(solidIds), palette);
+        this.tubes.build(entered, entered.entries.map((entry: StarEntry): string => entry.id), new Set(solidIds));
       }
     }
     if (threads.length > 0) {
@@ -1983,7 +1976,7 @@ export class DagScene {
       this.meshes.set(node.id, mesh);
       group.meshes.push(mesh);
     }
-    this.tubes_build(group, members, palette);
+    this.tubes.build(group, group.entries.map((entry: StarEntry): string => entry.id), members);
   }
 
   /**
@@ -2021,9 +2014,7 @@ export class DagScene {
     let deepest: number = 0;
     for (const { node } of placed) {
       const mine: THREE.Vector3[] = memberPositions.get(node.id) ?? [];
-      const live: boolean = node.status !== undefined && RUNNING_STATUSES.has(node.status);
-      const fired: boolean = node.status === 'finishedSuccessfully' || node.status === 'finishedWithError' || (node.share !== undefined && node.status !== undefined && !live);
-      const failed: boolean = node.status === 'finishedWithError' || (node.share !== undefined && node.share >= 1);
+      const state: NodeState = state_of(node);
       for (const parentId of node.parentIds) {
         const theirs: THREE.Vector3[] | undefined = memberPositions.get(parentId);
         if (!theirs || theirs.length === 0) continue;
@@ -2034,245 +2025,29 @@ export class DagScene {
           const to: THREE.Vector3 | undefined = mine[k];
           const from: THREE.Vector3 | undefined = theirs.length === mine.length ? theirs[k] : theirs[k % theirs.length];
           if (from === undefined || to === undefined) continue;
-          specs.push({ from, to, width, color: failed ? palette.error : bright, mode: live ? 1 : fired ? 2 : 0, start });
+          specs.push({ from, to, width, color: state === 'failed' ? palette.error : bright, mode: tubeMode_of(state), start });
         }
       }
     }
-    if (specs.length === 0) return;
-    const mesh: THREE.InstancedMesh = tubeMesh_make(specs, (deepest + 1) * WAVE_STEP_MS + PULSE_TRIP_MS / 2 + REPLAY_REST_MS);
-    this.group.add(mesh);
-    if (mesh.material instanceof THREE.ShaderMaterial) this.tubeMaterials.push(mesh.material);
-    this.censusTubes = specs.length;
+    this.tubes.census_build(specs, deepest);
   }
 
   /**
-   * A solid feed's edges as tubes, each carrying pulses from parent to
-   * child: a tube into a running or waiting stage streams (data is moving
-   * there now); a finished feed fires once as it turns solid, stage by
-   * stage in the order it ran, and rests; a tube into a failed stage is
-   * red, and the wave stops there as the run did.
+   * A placed node as the tubes read it.
+   *
+   * @param id - The node.
+   * @returns Where it stands, how large, what it hangs from, its state.
    */
-  private tubes_build(group: HandoffGroup, members: ReadonlySet<string>, palette: ReturnType<typeof palette_read>): void {
-    const edges: Array<{ from: PlacedNode; to: PlacedNode; join: boolean }> = [];
-    for (const entry of group.entries) {
-      const child: PlacedNode | undefined = this.placedById.get(entry.id);
-      if (child === undefined) continue;
-      for (const parentId of child.node.parentIds) {
-        const parent: PlacedNode | undefined = this.placedById.get(parentId);
-        if (parent !== undefined && members.has(parentId)) edges.push({ from: parent, to: child, join: false });
-      }
-      for (const parentId of child.node.joinParentIds) {
-        const parent: PlacedNode | undefined = this.placedById.get(parentId);
-        if (parent !== undefined && members.has(parentId)) edges.push({ from: parent, to: child, join: true });
-      }
-    }
-    if (edges.length === 0) return;
-    // A stage's depth in its feed: the wave reaches it that many steps in.
-    const depth: Map<string, number> = new Map();
-    const depth_of = (id: string, seen: Set<string> = new Set()): number => {
-      const known: number | undefined = depth.get(id);
-      if (known !== undefined) return known;
-      if (seen.has(id)) return 0;
-      seen.add(id);
-      const placed: PlacedNode | undefined = this.placedById.get(id);
-      const parents: string[] = placed === undefined ? [] : [...placed.node.parentIds, ...placed.node.joinParentIds].filter((p: string): boolean => members.has(p));
-      const d: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((p: string): number => depth_of(p, seen)));
-      depth.set(id, d);
-      return d;
+  private tubeNode_of(id: string): TubeNode | undefined {
+    const placed: PlacedNode | undefined = this.placedById.get(id);
+    if (placed === undefined) return undefined;
+    return {
+      position: placed.position,
+      radius: placed.radius,
+      parents: placed.node.parentIds,
+      joins: placed.node.joinParentIds,
+      state: state_of(placed.node),
     };
-    const fired = (node: SceneNode): boolean => node.status === 'finishedSuccessfully' || node.status === 'finishedWithError' || (node.share !== undefined && node.status !== undefined && !RUNNING_STATUSES.has(node.status));
-    const now: number = performance.now();
-    const colors: Float32Array = new Float32Array(edges.length * 3);
-    const modes: Float32Array = new Float32Array(edges.length);
-    const starts: Float32Array = new Float32Array(edges.length);
-    const bright: THREE.Color = palette.edge.clone().lerp(new THREE.Color('#ffffff'), 0.45);
-    const mesh: THREE.InstancedMesh = new THREE.InstancedMesh(tubeGeometry_get(), new THREE.ShaderMaterial({
-      uniforms: { time: { value: now }, opacity: { value: group.mix }, born: { value: now }, cycle: { value: 1 } },
-      vertexShader: TUBE_VERTEX,
-      fragmentShader: TUBE_FRAGMENT,
-      transparent: true,
-    }), edges.length);
-    const up: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
-    const carrier: THREE.Object3D = new THREE.Object3D();
-    let deepest: number = 0;
-    const set: Array<{ from: string; to: string; width: number }> = [];
-    // A replayed stage lights when its pulse arrives: the root at once,
-    // every other stage as the first tube into it lands.
-    const lamps: Map<string, number> = new Map();
-    // A running stage blinks with the stream: lit each time a pulse lands,
-    // dark again before the next, until it is done.
-    const blinks: Set<string> = new Set();
-    edges.forEach(({ from, to, join }: { from: PlacedNode; to: PlacedNode; join: boolean }, i: number): void => {
-      const along: THREE.Vector3 = to.position.clone().sub(from.position);
-      const length: number = along.length();
-      // Thick enough to read as a tube, not a hairline, at the feed's framing.
-      const width: number = Math.max(0.06, Math.min(from.radius, to.radius) * 0.34);
-      carrier.position.copy(from.position).addScaledVector(along, 0.5);
-      carrier.quaternion.setFromUnitVectors(up, length > 0 ? along.clone().divideScalar(length) : up);
-      carrier.scale.set(width, length, width);
-      carrier.updateMatrix();
-      mesh.setMatrixAt(i, carrier.matrix);
-      set.push({ from: from.node.id, to: to.node.id, width });
-      const failed: boolean = to.node.status === 'finishedWithError' || (to.node.share !== undefined && to.node.share >= 1);
-      const color: THREE.Color = failed ? palette.error : join ? palette.join : bright;
-      colors.set([color.r, color.g, color.b], i * 3);
-      const live: boolean = to.node.status !== undefined && RUNNING_STATUSES.has(to.node.status);
-      modes[i] = live ? 1 : (fired(to.node) ? 2 : 0);
-      const depth: number = depth_of(from.node.id);
-      deepest = Math.max(deepest, depth);
-      starts[i] = depth * WAVE_STEP_MS;
-      if (modes[i] === 1) blinks.add(to.node.id);
-      if (modes[i] === 2) {
-        const landed: number = starts[i]! + PULSE_TRIP_MS / 2;
-        lamps.set(to.node.id, Math.min(lamps.get(to.node.id) ?? Infinity, landed));
-        if (depth === 0) lamps.set(from.node.id, 0);
-      }
-    });
-    mesh.geometry = tubeGeometry_get();
-    mesh.instanceMatrix.needsUpdate = true;
-    // Instanced attributes ride a clone of the shared tube, so each feed's
-    // tubes carry their own colours and pulses.
-    const geometry: THREE.BufferGeometry = tubeGeometry_get().clone();
-    geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
-    geometry.setAttribute('aMode', new THREE.InstancedBufferAttribute(modes, 1));
-    geometry.setAttribute('aStart', new THREE.InstancedBufferAttribute(starts, 1));
-    mesh.geometry = geometry;
-    mesh.frustumCulled = false;
-    this.group.add(mesh);
-    group.tubes = mesh;
-    if (mesh.material instanceof THREE.ShaderMaterial) {
-      this.tubeMaterials.push(mesh.material);
-      const cycle = mesh.material.uniforms['cycle'];
-      if (cycle !== undefined) cycle.value = (deepest + 1) * WAVE_STEP_MS + PULSE_TRIP_MS / 2 + REPLAY_REST_MS;
-    }
-    this.tubeSets.push({ mesh, edges: set, lamps, blinks, group, members });
-  }
-
-  /**
-   * Lights a replayed feed's stages on its tubes' clock: every stage starts
-   * the cycle dimmed, flares as its pulse lands and stays lit, and the lot
-   * dims again as the rest runs out — then the run replays.
-   *
-   * @param now - This frame's time, the tubes' own.
-   */
-  private lamps_animate(now: number): void {
-    const shown: Set<string> = new Set();
-    for (const { mesh: tubes, lamps, blinks } of this.tubeSets) {
-      if ((lamps.size === 0 && blinks.size === 0) || !(tubes.material instanceof THREE.ShaderMaterial)) continue;
-      const born: number = Number(tubes.material.uniforms['born']?.value ?? now);
-      const cycle: number = Number(tubes.material.uniforms['cycle']?.value ?? 1);
-      const local: number = (((now - born) % cycle) + cycle) % cycle;
-      // Out of the cycle's last stretch every lamp fades back down.
-      const fade: number = Math.min(1, Math.max(0, (cycle - local) / LAMP_FADE_MS));
-      for (const [id, landed] of lamps) {
-        const since: number = local - landed;
-        this.lamp_paint(id, since < 0 ? 0 : fade, since >= 0 && since < LAMP_BLOOM_MS ? since / LAMP_BLOOM_MS : -1, shown);
-      }
-      // The stream's pulse lands every trip; a running stage flares then
-      // and dies back toward dark.
-      const trip: number = ((now % PULSE_TRIP_MS) + PULSE_TRIP_MS) % PULSE_TRIP_MS;
-      for (const id of blinks) {
-        if (lamps.has(id)) continue;
-        const decay: number = Math.max(0, 1 - trip / (PULSE_TRIP_MS * 0.8));
-        this.lamp_paint(id, decay * decay, trip < LAMP_BLOOM_MS ? trip / LAMP_BLOOM_MS : -1, shown);
-      }
-    }
-    for (const [id, glow] of this.lampGlows) {
-      if (shown.has(id)) continue;
-      glow.visible = false;
-      if (!this.meshes.has(id)) {
-        this.group.remove(glow);
-        glow.material.dispose();
-        this.lampGlows.delete(id);
-      }
-    }
-  }
-
-  /**
-   * Paints one stage's lamp: its colour from dark to lit, and — while a
-   * pulse has just landed — a flash toward white and a glow that blooms
-   * out and settles.
-   *
-   * @param id - The stage.
-   * @param lit - How lit it stands, 0 (dark) to 1.
-   * @param bloom - How far through its bloom, 0..1; below 0 when none.
-   * @param shown - Collects the stages whose glow shows this frame.
-   */
-  private lamp_paint(id: string, lit: number, bloom: number, shown: Set<string>): void {
-    const sphere: THREE.Mesh | undefined = this.meshes.get(id);
-    if (sphere === undefined || !(sphere.material instanceof THREE.MeshStandardMaterial)) return;
-    let base: unknown = sphere.userData['lampBase'];
-    if (!(base instanceof THREE.Color)) {
-      base = sphere.material.color.clone();
-      sphere.userData['lampBase'] = base;
-    }
-    const flash: number = bloom < 0 ? 0 : (1 - bloom) ** 2;
-    sphere.material.color
-      .copy(base as THREE.Color)
-      .multiplyScalar(LAMP_DIM + (1 - LAMP_DIM) * Math.max(lit, flash))
-      .lerp(LAMP_WHITE, Math.min(1, 0.22 * lit + 0.7 * flash));
-    if (bloom < 0) return;
-    let glow: THREE.Sprite | undefined = this.lampGlows.get(id);
-    if (glow === undefined) {
-      glow = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: nebulaTexture_get(), color: (base as THREE.Color).clone().lerp(LAMP_WHITE, 0.35),
-        transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
-      }));
-      this.lampGlows.set(id, glow);
-      this.group.add(glow);
-    }
-    const radius: number = (sphere.geometry as THREE.BufferGeometry & { parameters?: { radius?: number } }).parameters?.radius ?? NODE_RADIUS;
-    // Out fast, then settle: the glow swells to its reach and fades.
-    const swell: number = 1 - (1 - bloom) ** 3;
-    glow.position.copy(sphere.position);
-    glow.scale.setScalar(radius * (2 + LAMP_BLOOM_REACH * swell) * sphere.scale.x);
-    glow.material.opacity = 0.9 * (1 - bloom) ** 1.5;
-    glow.visible = true;
-    shown.add(id);
-  }
-
-  /** Re-reads every tube set from the stages' statuses as they are now. */
-  private tubes_restatus(): void {
-    this.tubesStale = false;
-    const palette = palette_read();
-    const stale = this.tubeSets;
-    this.tubeSets = [];
-    for (const entry of stale) {
-      this.group.remove(entry.mesh);
-      entry.mesh.geometry.dispose();
-      if (entry.mesh.material instanceof THREE.ShaderMaterial) {
-        const material: THREE.ShaderMaterial = entry.mesh.material;
-        this.tubeMaterials = this.tubeMaterials.filter((m: THREE.ShaderMaterial): boolean => m !== material);
-        material.dispose();
-      }
-      entry.group.tubes = null;
-      this.tubes_build(entry.group, entry.members, palette);
-    }
-    this.tubes_follow();
-  }
-
-  /**
-   * Brings every tube to the spheres it joins, where they stand now: a
-   * pulled node drags its tubes with it.
-   */
-  private tubes_follow(): void {
-    const up: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
-    const carrier: THREE.Object3D = new THREE.Object3D();
-    for (const { mesh, edges } of this.tubeSets) {
-      edges.forEach(({ from, to, width }: { from: string; to: string; width: number }, i: number): void => {
-        const a: THREE.Mesh | undefined = this.meshes.get(from);
-        const b: THREE.Mesh | undefined = this.meshes.get(to);
-        if (a === undefined || b === undefined) return;
-        const along: THREE.Vector3 = b.position.clone().sub(a.position);
-        const length: number = along.length();
-        carrier.position.copy(a.position).addScaledVector(along, 0.5);
-        carrier.quaternion.setFromUnitVectors(up, length > 0 ? along.clone().divideScalar(length) : up);
-        carrier.scale.set(width, length, width);
-        carrier.updateMatrix();
-        mesh.setMatrixAt(i, carrier.matrix);
-      });
-      mesh.instanceMatrix.needsUpdate = true;
-    }
   }
 
   /** Lets a feed's spheres go once it is stars again. */
@@ -2289,15 +2064,7 @@ export class DagScene {
       if (line.material instanceof THREE.Material) line.material.dispose();
     }
     if (group.tubes !== null) {
-      this.group.remove(group.tubes);
-      const released: THREE.InstancedMesh = group.tubes;
-      this.tubeSets = this.tubeSets.filter((entry): boolean => entry.mesh !== released);
-      group.tubes.geometry.dispose();
-      if (group.tubes.material instanceof THREE.ShaderMaterial) {
-        const material: THREE.ShaderMaterial = group.tubes.material;
-        this.tubeMaterials = this.tubeMaterials.filter((m: THREE.ShaderMaterial): boolean => m !== material);
-        material.dispose();
-      }
+      this.tubes.release(group.tubes);
       group.tubes = null;
     }
     group.meshes = [];
@@ -2469,7 +2236,7 @@ export class DagScene {
       // redraw starts from here instead of snapping it back.
       this.lastPositions.set(simNode.id, new THREE.Vector3(simNode.x, simNode.y, simNode.z));
     }
-    if (this.tubeSets.length > 0) this.tubes_follow();
+    this.tubes.follow();
     for (const edge of this.edges) {
       const from: THREE.Mesh | undefined = this.meshes.get(edge.fromId);
       const to: THREE.Mesh | undefined = this.meshes.get(edge.toId);
@@ -2845,7 +2612,7 @@ export class DagScene {
       entries: ids.map((id: string): StarEntry => ({ id, position: new THREE.Vector3(), radius: 0, color: new THREE.Color(), dim: false, ember: false })),
       center: new THREE.Vector3(), maxRadius: 0, mix: 1, target: 1, meshes: [], lines: [], tubes: null, threadSegments: [],
     };
-    this.tubes_build(entered, new Set(ids), palette);
+    this.tubes.build(entered, entered.entries.map((entry: StarEntry): string => entry.id), new Set(ids));
   }
 
   /** The node id behind a shape-mode mesh under the pointer. */

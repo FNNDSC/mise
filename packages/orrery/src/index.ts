@@ -9,4 +9,5 @@
  * @module
  */
 export * from './layout/index.js';
+export type { NodeState } from './types/encoding.js';
 export * from './draw/index.js';

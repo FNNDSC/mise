@@ -41,7 +41,6 @@ import {
   SphereField,
   StarField,
   TubeField,
-  type NodeState,
   type Palette,
   type CensusNode,
   type HandoffLook,
@@ -49,6 +48,7 @@ import {
   type TubeOwner,
   type StarEntry,
   CameraRig,
+  paint_resolve,
   PointerGestures,
   PullSimulation,
   type PullNode,
@@ -58,6 +58,7 @@ import {
   DRAG_THRESHOLD_PX,
   type WorldReach,
 } from '@fnndsc/orrery';
+import { chrisLook_of, chrisPaint_of, chrisState_of } from './chrisLook.js';
 
 /** One node as the scene understands it. */
 export interface SceneNode {
@@ -168,11 +169,6 @@ const WAVE_LOOP_GAP_MS: number = 2_500;
 /** How long a tap's name stays up after the finger lifts. */
 const TAP_TIP_MS: number = 1500;
 
-/** Statuses grouped for coloring. */
-const RUNNING_STATUSES: ReadonlySet<string> = new Set([
-  'created', 'waiting', 'scheduled', 'started', 'registeringFiles',
-]);
-
 /**
  * Reads the live LCARS palette from the document's computed style.
  *
@@ -198,57 +194,6 @@ function palette_read(): Palette {
     // vanished on butter (finished) nodes. Themeable via `--dag-pulse`.
     pulse: varColor('--dag-pulse', '#48d8f0'),
   };
-}
-
-/**
- * Colors one node by its state: errors are always visible, the root wears
- * its own cool color (unless it errored — errors win), activity is the
- * theme's accent, settled work is quiet, templates wear the gold.
- */
-const hueColors: Map<string, THREE.Color> = new Map();
-
-/** A host-assigned hue as a scene color, parsed once per distinct value. */
-function hueColor_get(hue: string): THREE.Color {
-  let color: THREE.Color | undefined = hueColors.get(hue);
-  if (color === undefined) {
-    color = new THREE.Color(hue);
-    hueColors.set(hue, color);
-  }
-  return color;
-}
-
-/**
- * A node's state as orrery draws it, read from its ChRIS status: at work,
- * failed (the stage errored, or every job it stands for did), finished
- * (it ran, or an aggregate settled), or resting.
- *
- * @param node - The node.
- * @returns Its state.
- */
-function state_of(node: SceneNode): NodeState {
-  if (node.status !== undefined && RUNNING_STATUSES.has(node.status)) return 'live';
-  if (node.status === 'finishedWithError' || (node.share !== undefined && node.share >= 1)) return 'failed';
-  if (node.status === 'finishedSuccessfully' || (node.share !== undefined && node.status !== undefined)) return 'done';
-  return 'rest';
-}
-
-function nodeColor_pick(
-  node: SceneNode,
-  palette: ReturnType<typeof palette_read>,
-  isRoot: boolean,
-): THREE.Color {
-  if (node.share !== undefined && node.status !== 'cancelled') {
-    if (node.share >= 1) return palette.error;
-    // Square root so a small share still shows as a trace of red.
-    return palette.done.clone().lerp(palette.error, Math.sqrt(Math.max(0, node.share)));
-  }
-  if (node.status === 'finishedWithError' || node.status === 'cancelled') return palette.error;
-  if (node.hue !== undefined) return hueColor_get(node.hue);
-  if (isRoot) return palette.root;
-  if (node.status === undefined) return palette.template;
-  if (node.status === 'finishedSuccessfully') return palette.done;
-  if (RUNNING_STATUSES.has(node.status)) return palette.running;
-  return palette.unknown;
 }
 
 /**
@@ -857,10 +802,7 @@ export class DagScene {
   private waveSchedule_compute(): Map<string, number> {
     const times: Map<string, number> = new Map();
     const present: Set<string> = new Set(this.graph.nodes.map((n: SceneNode) => n.id));
-    const fired = (node: SceneNode): boolean =>
-      node.status === undefined ||
-      node.status === 'finishedSuccessfully' ||
-      node.status === 'finishedWithError';
+    const fired = (node: SceneNode): boolean => chrisLook_of(node).waved;
     // Relaxation to a fixpoint: cheap at feed scale, and immune to input order.
     let settled: boolean = false;
     while (!settled) {
@@ -988,8 +930,7 @@ export class DagScene {
     if (!node) return;
     if (node.status === status) return;
     node.status = status;
-    const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
-    this.spheres.recolor(nodeId, nodeColor_pick(node, palette_read(), isRoot));
+    this.spheres.recolor(nodeId, paint_resolve(chrisPaint_of(node), palette_read()));
     // A stage that started or finished changes what its tubes carry: a
     // stream, a replay, or nothing.
     if (this.tubes.holds(nodeId)) this.tubes.stale_mark();
@@ -1038,16 +979,15 @@ export class DagScene {
     // cloud's centre and in how deep a stage lies.
     const nodes: CensusNode[] = placed.map((item: PlacedNode): CensusNode => {
       const node: SceneNode = item.node;
-      const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
       return {
         id: node.id,
         position: item.position,
         radius: item.radius,
         count: Math.max(1, node.count ?? 1),
-        color: nodeColor_pick(node, palette, isRoot),
+        color: paint_resolve(chrisPaint_of(node), palette),
         dim: node.dim === true,
-        ember: (node.share !== undefined && node.share > 0) || node.status === 'finishedWithError',
-        state: state_of(node),
+        ember: chrisLook_of(node).ember,
+        state: chrisState_of(node),
         parents: node.parentIds,
         ghost: node.ghost === true,
       };
@@ -1299,14 +1239,13 @@ export class DagScene {
           this.nebula_add(node, position, palette);
           continue;
         }
-        const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
         starred.push({
           id: node.id,
           position: position.clone(),
           radius,
-          color: nodeColor_pick(node, palette, isRoot).clone(),
+          color: paint_resolve(chrisPaint_of(node), palette).clone(),
           dim: node.dim === true,
-          ember: (node.share !== undefined && node.share > 0) || node.status === 'finishedWithError',
+          ember: chrisLook_of(node).ember,
         });
         continue;
       }
@@ -1314,11 +1253,10 @@ export class DagScene {
         this.spheres.halo_add(node.id, position, haloRadius_of(node.count ?? 1), palette.edge, node.dim === true);
         continue;
       }
-      const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
       // 2D is drawn flat: discs, not lit spheres — the schematic reading
       // all the way down; status colour, selection and flare carry over.
       this.spheres.sphere_add(node.id, position, radius, {
-        color: nodeColor_pick(node, palette, isRoot),
+        color: paint_resolve(chrisPaint_of(node), palette),
         dim: node.dim === true,
         selected: node.id === this.selectedId,
         flat: this.projection === '2d',
@@ -1408,8 +1346,7 @@ export class DagScene {
   private handoffLook_of(id: string): HandoffLook | undefined {
     const placed: PlacedNode | undefined = this.placedById.get(id);
     if (placed === undefined) return undefined;
-    const isRoot: boolean = placed.node.parentIds.length === 0 && placed.node.joinParentIds.length === 0;
-    return { position: placed.position, radius: placed.radius, color: nodeColor_pick(placed.node, palette_read(), isRoot) };
+    return { position: placed.position, radius: placed.radius, color: paint_resolve(chrisPaint_of(placed.node), palette_read()) };
   }
 
   /**
@@ -1426,7 +1363,7 @@ export class DagScene {
       radius: placed.radius,
       parents: placed.node.parentIds,
       joins: placed.node.joinParentIds,
-      state: state_of(placed.node),
+      state: chrisState_of(placed.node),
     };
   }
 
@@ -1595,8 +1532,7 @@ export class DagScene {
   private solid_draw(solidOnes: ReadonlyArray<PlacedNode>, palette: ReturnType<typeof palette_read>): void {
     for (const item of solidOnes) {
       this.placedById.set(item.node.id, item);
-      const isRoot: boolean = item.node.parentIds.length === 0 && item.node.joinParentIds.length === 0;
-      this.spheres.sphere_add(item.node.id, item.position, item.radius, { color: nodeColor_pick(item.node, palette, isRoot) });
+      this.spheres.sphere_add(item.node.id, item.position, item.radius, { color: paint_resolve(chrisPaint_of(item.node), palette) });
     }
     const ids: string[] = solidOnes.map((item: PlacedNode): string => item.node.id);
     const entered: TubeOwner = { tubes: null, mix: 1 };

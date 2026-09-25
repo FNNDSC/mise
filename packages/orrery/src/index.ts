@@ -9,3 +9,4 @@
  * @module
  */
 export * from './layout/index.js';
+export * from './draw/index.js';

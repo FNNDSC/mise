@@ -3721,6 +3721,146 @@ try {
     await evalIn(`const input = document.querySelector('#terminal input'); input.value = 'image layout single'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(600); return 1;`);
   }
   }
+  if (stage('image-frame')) {
+  if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
+    console.log('  skipped: needs the image pane from image-pane');
+  } else {
+    // Every frame block does what its word says — by a mouse and by a
+    // finger. ZOOM once panned on a phone: the library's zoom pinched to
+    // zoom and panned on a one-finger drag, and nothing here drove a block
+    // and read what it did. Each block is driven for real and the field is
+    // read back through `image state`, not the block's own light.
+    const say = async (line) => evalIn(`
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      input.value = ${JSON.stringify(line)};
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await sleep(250);
+      return 1;`);
+    const read = async () => {
+      await say('image state');
+      const lines = await evalIn(`
+        for (let i = 0; i < 40; i++) { await sleep(100); const t = document.getElementById('terminal').innerText.split('\\n'); if (t.some((l) => /^viewports: /.test(l.trim()))) break; }
+        const t = document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim());
+        return { head: t.filter((l) => /^image: layout=/.test(l)).slice(-1)[0] ?? '', views: t.filter((l) => /^viewports: /.test(l)).slice(-1)[0] ?? '' };`);
+      const first = (lines.views.replace(/^viewports: /, '').split(' | ')[0] ?? '');
+      const num = (re, text) => { const m = re.exec(text); return m ? Number(m[1]) : NaN; };
+      const focus = (/focus=([-\d.,]+)/.exec(first)?.[1] ?? '').split(',').map(Number);
+      const voi = /voi=([-\d.]+)\.\.([-\d.]+)/.exec(first);
+      return {
+        scale: num(/scale=([-\d.]+)/, first), focus, voi: voi ? [Number(voi[1]), Number(voi[2])] : null,
+        annotations: num(/annotations=(\d+)/, lines.head), slice: num(/slice=(\d+)\//, lines.head), layout: /layout=(\w+)/.exec(lines.head)?.[1] ?? '',
+      };
+    };
+    const field = async () => evalIn(`
+      const v = document.querySelector('.pane-image .image-viewport, .pane-image .image-render .image-viewport');
+      const r = v.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };`);
+    const pick = async (tool) => evalIn(`document.querySelector('.pane-image .image-tool[data-tool="${tool}"]').click(); await sleep(200); return 1;`);
+    const mouseDrag = async (a, b) => {
+      await page.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x, y: a.y });
+      await page.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, x: a.x, y: a.y });
+      for (let k = 1; k <= 6; k++) await page.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', button: 'left', buttons: 1, x: a.x + (b.x - a.x) * k / 6, y: a.y + (b.y - a.y) * k / 6 });
+      await page.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, x: b.x, y: b.y });
+      await new Promise((r) => setTimeout(r, 300));
+    };
+    const click = async (at) => {
+      await page.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
+      await page.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, x: at.x, y: at.y });
+      await page.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, x: at.x, y: at.y });
+      await new Promise((r) => setTimeout(r, 200));
+    };
+    const touchDrag = async (points, dy, dx = 0) => {
+      const at = (k) => points.map((p, i) => ({ x: p.x + dx * k / 6, y: p.y + dy * k / 6, id: i }));
+      await page.cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0) });
+      // A finger rests a moment before it moves; the viewer takes a touch
+      // as a drag only once it has landed.
+      await new Promise((r) => setTimeout(r, 150));
+      for (let k = 1; k <= 6; k++) { await page.cdp('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(k) }); await new Promise((r) => setTimeout(r, 30)); }
+      await page.cdp('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await new Promise((r) => setTimeout(r, 300));
+    };
+    const moved = (a, b) => Math.hypot(...a.focus.map((v, i) => v - (b.focus[i] ?? 0))) > Math.max(1e-3, a.scale * 1e-3);
+    // ZOOM zooms about the point pressed, so the view's centre may shift as
+    // it scales; what it must do is scale. PAN must move and not scale.
+    const zoomed = (a, b) => Math.abs(a.scale - b.scale) > a.scale * 0.01;
+    const windowed = (a, b) => a.voi !== null && b.voi !== null && (Math.abs(a.voi[0] - b.voi[0]) > 0.5 || Math.abs(a.voi[1] - b.voi[1]) > 0.5);
+
+    await say('image guard off');
+    await say('image layout single');
+    await evalIn(`for (let i = 0; i < 120; i++) { await sleep(250); const t = document.querySelector('.pane-image .pane-state')?.textContent || ''; if (/SLICE \\d+ OF/.test(t) && !/LOADING/.test(t)) break; } return 1;`);
+    const c = await field();
+    const a = { x: c.x - 50, y: c.y - 40 };
+    const b = { x: c.x + 50, y: c.y + 40 };
+    const results = {};
+    // By a finger, then by a mouse, each read against the field before it.
+    await page.cdp('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    for (const tool of ['wl', 'zoom', 'pan']) {
+      await pick(tool);
+      const before = await read();
+      await touchDrag([b], -80, -100);
+      const after = await read();
+      results[`touch ${tool}`] = { zoomed: zoomed(before, after), moved: moved(before, after), windowed: windowed(before, after) };
+    }
+    const sliceBefore = await read();
+    await touchDrag([{ x: c.x - 40, y: c.y - 60 }, { x: c.x + 40, y: c.y - 60 }], 120);
+    const sliceAfter = await read();
+    await page.cdp('Emulation.setTouchEmulationEnabled', { enabled: false });
+    // The library drops mouse events for two seconds after a touch (and
+    // touches after a mouse), so a finger's tap is never read twice.
+    await new Promise((r) => setTimeout(r, 2200));
+    check('W/L by a finger changes the window and neither zooms nor pans', results['touch wl'].windowed && !results['touch wl'].zoomed && !results['touch wl'].moved, JSON.stringify(results['touch wl']));
+    check('ZOOM by a finger zooms (it once panned on a phone)', results['touch zoom'].zoomed && !results['touch zoom'].windowed, JSON.stringify(results['touch zoom']));
+    check('PAN by a finger pans, and does not zoom', results['touch pan'].moved && !results['touch pan'].zoomed, JSON.stringify(results['touch pan']));
+    check('two fingers up or down step through the series', sliceAfter.slice !== sliceBefore.slice, JSON.stringify({ before: sliceBefore.slice, after: sliceAfter.slice }));
+    for (const tool of ['wl', 'zoom', 'pan']) {
+      await pick(tool);
+      const before = await read();
+      await mouseDrag(a, b);
+      const after = await read();
+      results[`mouse ${tool}`] = { zoomed: zoomed(before, after), moved: moved(before, after), windowed: windowed(before, after) };
+    }
+    check('W/L by mouse changes the window and neither zooms nor pans', results['mouse wl'].windowed && !results['mouse wl'].zoomed && !results['mouse wl'].moved, JSON.stringify(results['mouse wl']));
+    check('ZOOM by mouse zooms', results['mouse zoom'].zoomed && !results['mouse zoom'].windowed, JSON.stringify(results['mouse zoom']));
+    check('PAN by mouse pans, and does not zoom', results['mouse pan'].moved && !results['mouse pan'].zoomed, JSON.stringify(results['mouse pan']));
+
+    await pick('length');
+    const lengthBefore = await read();
+    await mouseDrag(a, b);
+    const lengthAfter = await read();
+    check('LENGTH leaves a measurement', lengthAfter.annotations === lengthBefore.annotations + 1, JSON.stringify({ before: lengthBefore.annotations, after: lengthAfter.annotations }));
+    // The angle starts in empty field: pressed on the length's end it would
+    // take that handle instead.
+    await pick('angle');
+    await mouseDrag({ x: c.x - 60, y: c.y + 50 }, { x: c.x, y: c.y + 10 });
+    await click({ x: c.x + 60, y: c.y + 50 });
+    const angleAfter = await read();
+    check('ANGLE leaves a measurement', angleAfter.annotations === lengthAfter.annotations + 1, JSON.stringify({ before: lengthAfter.annotations, after: angleAfter.annotations }));
+    await pick('probe');
+    await page.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: c.x + 3, y: c.y + 3 });
+    await new Promise((r) => setTimeout(r, 300));
+    const probe = await evalIn(`return document.querySelector('.pane-image .image-probe-note')?.textContent ?? null;`);
+    check('PROBE reads the pixel under the pointer', probe !== null && probe.length > 0, JSON.stringify(probe));
+
+
+    // A rendered volume: ZOOM and PAN take the drag from rotate.
+    await say('image layout 3d');
+    await evalIn(`for (let i = 0; i < 160; i++) { await sleep(250); const img = document.querySelector('.pane-image'); if (img.querySelector('.pane-mode').textContent === '3D' && img.querySelector('.image-render .image-viewport')) break; } await sleep(1500); return 1;`);
+    const r3 = await field();
+    const a3 = { x: r3.x - 50, y: r3.y - 40 };
+    const b3 = { x: r3.x + 50, y: r3.y + 40 };
+    await pick('zoom');
+    const z0 = await read();
+    await mouseDrag(a3, b3);
+    const z1 = await read();
+    await pick('pan');
+    const p0 = await read();
+    await mouseDrag(a3, b3);
+    const p1 = await read();
+    check('ZOOM on a rendered volume zooms', zoomed(z0, z1), JSON.stringify({ z0, z1 }));
+    check('PAN on a rendered volume pans, and does not zoom', moved(p0, p1) && !zoomed(p0, p1), JSON.stringify({ p0, p1 }));
+    await say('image layout single');
+  }
+  }
   if (stage('image-slab')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');

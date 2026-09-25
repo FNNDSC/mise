@@ -112,6 +112,8 @@ export class ImagePanel {
   private readonly colormapPill: HTMLButtonElement;
   private readonly savePill: HTMLButtonElement;
   private readonly loadPill: HTMLButtonElement;
+  /** Asks again for the slices a network dropped; shown only while some are refused. */
+  private readonly retryPill: HTMLButtonElement;
   private readonly presetPill: HTMLButtonElement;
   private readonly focusMark: HTMLElement;
   /** Bytes a series may reach before MPR or 3D waits for LOAD; null turns the guard off. */
@@ -165,6 +167,7 @@ export class ImagePanel {
     this.colormapPill = element_find(mount, '.image-colormap') as HTMLButtonElement;
     this.savePill = element_find(mount, '.image-save') as HTMLButtonElement;
     this.loadPill = element_find(mount, '.image-load') as HTMLButtonElement;
+    this.retryPill = element_find(mount, '.image-retry') as HTMLButtonElement;
     this.presetPill = element_find(mount, '.image-preset') as HTMLButtonElement;
     this.focusMark = element_find(mount, '.image-focus');
     this.field.tabIndex = 0;
@@ -172,6 +175,7 @@ export class ImagePanel {
     this.colormapPill.addEventListener('click', (): void => void this.colormap_cycle());
     this.savePill.addEventListener('click', (): void => void this.annotations_save());
     this.loadPill.addEventListener('click', (): void => void this.load_press());
+    this.retryPill.addEventListener('click', (): void => void this.retry_press());
     this.presetPill.addEventListener('click', (): void => this.preset_cycle());
     element_find(mount, '.image-tags').addEventListener('click', (): void => this.handlers.tags_open());
     for (const tool of IMAGE_TOOLS) {
@@ -229,6 +233,7 @@ export class ImagePanel {
     this.forced = options.force === true;
     this.pendingLayout = null;
     this.loadPill.hidden = true;
+    this.retryPill.hidden = true;
     this.presets_paint(model.modality);
     this.siblings = options.siblings ?? [];
     this.pane.dataset['modality'] = modalityHue_of(model.modality);
@@ -296,6 +301,7 @@ export class ImagePanel {
     this.title.title = path;
     this.forced = true;
     this.loadPill.hidden = true;
+    this.retryPill.hidden = true;
     this.presets_paint('NIFTI');
     const { NiivueEngine } = await import('./niivueEngine.js');
     await this.engine_open(new NiivueEngine(this.engineHost_get(), path));
@@ -404,6 +410,7 @@ export class ImagePanel {
   public async load_press(): Promise<boolean> {
     this.forced = true;
     this.loadPill.hidden = true;
+    this.retryPill.hidden = true;
     const layout: ImageLayout | null = this.pendingLayout;
     this.pendingLayout = null;
     if (layout !== null) return this.layout_set(layout);
@@ -572,11 +579,33 @@ export class ImagePanel {
     this.stateSpan.textContent = '';
   }
 
+  /** Shows RETRY with the count while slices are refused and the engine can ask again. */
+  private retryPill_paint(): void {
+    const refused: number = this.engine === null ? 0 : this.engine.state_get().refused;
+    const able: boolean = this.engine?.refused_retry !== undefined;
+    this.retryPill.hidden = !able || refused === 0;
+    if (!this.retryPill.disabled) this.retryPill.textContent = `RETRY ${refused}`;
+  }
+
+  /** Asks again for the refused slices; one round at a time. */
+  private async retry_press(): Promise<void> {
+    if (this.engine?.refused_retry === undefined || this.retryPill.disabled) return;
+    this.retryPill.disabled = true;
+    this.retryPill.textContent = 'ASKING…';
+    try {
+      await this.engine.refused_retry();
+    } finally {
+      this.retryPill.disabled = false;
+      this.retryPill_paint();
+    }
+  }
+
   private engineHost_get(): ImageEngineHost {
     return {
       source: this.handlers.source,
       readout_set: (text: string): void => {
         this.stateSpan.textContent = text;
+        this.retryPill_paint();
       },
       progress_set: (progress: ImageProgress | null): void => this.progress_show(progress),
       note: this.handlers.note,

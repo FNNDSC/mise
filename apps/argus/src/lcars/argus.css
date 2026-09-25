@@ -985,6 +985,11 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   padding: 0 calc(var(--roster-pad) + var(--elbow-clear, 0px)) 0 var(--roster-pad);
   margin: 0.2rem 0 0.45rem;
   font-size: 0.8rem;
+  /* The caps end at their own clear line, even when the tracks are wider
+   * than the field: on a phone the PACS tracks run to ~870px in a 320px
+   * field, and a cap that ran on past the padding went under the frame's
+   * elbow, whose black fillet cut a notch out of it. */
+  clip-path: inset(0 calc(var(--roster-pad) + var(--elbow-clear, 0px)) 0 0);
 }
 
 /* Caps are bar SEGMENTS: a uniform 3px of black between them whatever the
@@ -1452,12 +1457,16 @@ main {
 
 #pacs-commandline {
   display: flex;
+  /* A narrow pane puts the capsules under the line rather than past the
+   * pane's edge, where EXPORT CSV was cut to "EXPO". */
+  flex-wrap: wrap;
   gap: 0.6rem;
   margin-bottom: 0.6rem;
 }
 
 #pacs-command {
-  flex: 1;
+  flex: 1 1 10rem;
+  min-width: 10rem;
   background: black;
   border: 1px solid var(--pumpkin-pie);
   border-radius: 0.4rem;

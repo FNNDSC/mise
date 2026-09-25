@@ -18,7 +18,7 @@
  * @module
  */
 import { feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type FeedDagModel, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
-import { DagScene, type SceneNode } from '../scene/dagScene.js';
+import { ChrisSpace, type SceneNode } from '../scene/chrisSpace.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
@@ -1172,7 +1172,7 @@ async function surface_start(token: string): Promise<void> {
     graph_fetch: () => Promise<BinGraph | null>,
     form: BinForm | null,
   ): void => {
-    let scene: DagScene | null = null;
+    let scene: ChrisSpace | null = null;
     let modeRelease: (() => void) | null = null;
     const mount: HTMLElement | null = panel.contentHtml_show(path, '', {
       diagram: true,
@@ -1198,7 +1198,7 @@ async function surface_start(token: string): Promise<void> {
       const facts: HTMLElement = document.createElement('div');
       facts.className = 'dag-facts';
       mount.appendChild(facts);
-      const built: DagScene = new DagScene(mount, {
+      const built: ChrisSpace = new ChrisSpace(mount, {
         // A node's substance already arrived with the graph, so a touch
         // reads it out and a dive goes in. Nothing is fetched for either.
         select: (node: SceneNode): void => graph.facts_show(facts, node.id, false, form),
@@ -1347,7 +1347,7 @@ async function surface_start(token: string): Promise<void> {
    * The /bin diagram currently flown into, if any: the scene holding the
    * camera and the overlay to clear when it comes home.
    */
-  let binDive: { scene: DagScene; facts: HTMLElement } | null = null;
+  let binDive: { scene: ChrisSpace; facts: HTMLElement } | null = null;
 
   /**
    * Leaves a /bin node, flying the camera back to where it was.
@@ -1355,7 +1355,7 @@ async function surface_start(token: string): Promise<void> {
    * @returns True when a dive was in progress and this ended it.
    */
   function binDive_leave(): boolean {
-    const dive: { scene: DagScene; facts: HTMLElement } | null = binDive;
+    const dive: { scene: ChrisSpace; facts: HTMLElement } | null = binDive;
     if (dive === null) return false;
     binDive = null;
     dive.scene.flight_back((): void => {
@@ -1533,7 +1533,7 @@ async function surface_start(token: string): Promise<void> {
     return rows;
   }
 
-  function diagramModes_wire(mount: HTMLElement, scene: DagScene, panel: FilesPanel, run?: () => void): () => void {
+  function diagramModes_wire(mount: HTMLElement, scene: ChrisSpace, panel: FilesPanel, run?: () => void): () => void {
   const body: HTMLElement | null = mount.closest<HTMLElement>('.files-body');
   const strategyPill: HTMLElement | null = body?.querySelector<HTMLElement>('.diagram-strategy') ?? null;
   const projectionPill: HTMLElement | null = body?.querySelector<HTMLElement>('.diagram-projection') ?? null;

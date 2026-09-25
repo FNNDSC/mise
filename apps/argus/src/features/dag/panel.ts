@@ -32,7 +32,7 @@ import {
   type WireEnvelope,
   type WatchState,
 } from '@fnndsc/menu';
-import { DagScene, type LayoutStrategy, type PhysicsTerms, type SceneNode } from '../../scene/dagScene.js';
+import { ChrisSpace, type LayoutStrategy, type PhysicsTerms, type SceneNode } from '../../scene/chrisSpace.js';
 import { Listing, type ListingStateParts } from '../roster/listing.js';
 import { progressCell_build, type ListingProgress, type ListingTrait, type ListingAction } from '../roster/row.js';
 import type { ProgressMessage } from '../../calypso/client.js';
@@ -278,7 +278,7 @@ function shape_same(previous: FeedDagModel, model: FeedDagModel): boolean {
 }
 
 export class DagPanel {
-  private readonly scene: DagScene;
+  private readonly scene: ChrisSpace;
   private readonly canvas: HTMLElement;
   private readonly title: HTMLElement;
   private readonly facts: HTMLElement;
@@ -390,7 +390,7 @@ export class DagPanel {
       this.rosterAskedAt = Date.now();
       this.handlers.command_run('proc feeds');
     }, ROSTER_LIVE_TICK_MS);
-    this.scene = new DagScene(canvas, {
+    this.scene = new ChrisSpace(canvas, {
       select: (node: SceneNode): void => this.facts_show(node),
       activate: (node: SceneNode): void => this.node_activate(node),
       deselect: (): void => this.facts.replaceChildren(),

@@ -164,7 +164,7 @@ Do not size a track to its content, and do not put the expanse at the end of the
 
 == Universe pane
 
-Source: `apps/argus/src/features/universe/panel.ts` (the pane), over `features/dag/universe.ts` (the graph built from landed feeds, the tip, the memory) and `scene/dagScene.ts` (the scene, shared with the DAG pane).
+Source: `apps/argus/src/features/universe/panel.ts` (the pane), over `features/dag/universe.ts` (the graph built from landed feeds, the tip, the memory) and `scene/chrisSpace.ts` (the orrery reading ChRIS — `@fnndsc/orrery`'s scene, shared with the DAG pane).
 
 Status: on stage since 2026-09-22 (slice 1 of the universe descent). Opens from the dashboard's UNIVERSE tile as a stage of its own (the `universe` preset, one primary pane raised whole, like RUNS and PACS); the wait's theater in the DAG pane (a universe drawn while the roster is refused) shares its graph and its tip but is not this pane.
 

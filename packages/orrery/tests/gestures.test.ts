@@ -62,6 +62,7 @@ beforeEach(() => {
     leave: () => { log.push('leave'); },
     tap: (_event, kind) => { log.push(kind); },
     tip_hide: () => { log.push('tip-hide'); },
+    gesture_end: () => { log.push('gesture-end'); },
   };
   gestures = new PointerGestures(canvas as unknown as HTMLElement, rig, target, { flat: () => flat, untethered: () => untethered }, () => now);
 });
@@ -204,6 +205,21 @@ describe('fingers', () => {
     touch('pointerup', 1, 160, 100);
     canvas.fire('click', { clientX: 160, clientY: 100 });
     expect(log).not.toContain('select');
+  });
+
+  it('says when a two-finger gesture ends — once, on the last lift — and never for a tap', () => {
+    touch('pointerdown', 1, 50, 50);
+    touch('pointerup', 1, 50, 50);
+    expect(log).not.toContain('gesture-end');
+    touch('pointerdown', 1, 100, 100);
+    touch('pointerdown', 2, 180, 100, false);
+    touch('pointermove', 2, 120, 100, false);
+    touch('pointerup', 2, 120, 100, false);
+    expect(log).not.toContain('gesture-end');
+    touch('pointerup', 1, 100, 100);
+    expect(log.filter((e) => e === 'gesture-end')).toHaveLength(1);
+    // Pinched in: the camera drew back.
+    expect(camera.position.z).toBeGreaterThan(14);
   });
 
   it('does not pan a pinch when untethered', () => {

@@ -110,6 +110,13 @@ const DESCENT_MS: number = 650;
 /** How long the climb back out takes. */
 const ASCENT_MS: number = 650;
 
+/**
+ * How far past its framing a pinch must draw the camera back to climb out
+ * of a feed or a cluster: half as far again as the descent left it. Less,
+ * and a pinch to see a sprawling feed whole would leave it.
+ */
+const PINCH_LEAVE_FACTOR: number = 1.5;
+
 export class UniversePanel {
   private readonly scene: DagScene;
   /** The wait over the field: the session asked, or a settle in slices. */
@@ -151,6 +158,11 @@ export class UniversePanel {
   private cluster: { shape: string; ids: string[] } | null = null;
   /** A descent or an ascent in flight: clicks wait. */
   private flying: boolean = false;
+  /**
+   * How far the camera stood when the descent (into a feed or a cluster)
+   * landed: a pinch that draws it back well past this climbs out.
+   */
+  private framedAt: number | null = null;
   /** The feed whose graph is being asked for, while it is. */
   private entering: number | null = null;
   private readonly facts: HTMLElement | null;
@@ -208,6 +220,9 @@ export class UniversePanel {
       // A double click inside a feed flies into the node, as in the DAG pane.
       activate: (node: SceneNode): void => this.node_dive(node),
       deselect: (): void => this.facts_clear(),
+      // A phone has no Esc: pinching out past where the descent framed a
+      // feed climbs out, as a double tap went in.
+      gesture_end: (): void => this.pinch_leave(),
     });
     mount.backPill?.addEventListener('click', (): void => this.ascend());
     mount.openPill?.addEventListener('click', (): void => {
@@ -743,7 +758,7 @@ export class UniversePanel {
         this.title_paint();
         // Frame the bulk of the feed, not its outliers: a node must be wide
         // enough to hover and click, and the wheel reaches the rest.
-        this.scene.camera_flyToFit([...this.inside.ids], DESCENT_MS, (): void => { this.flying = false; }, 1, 0.95);
+        this.scene.camera_flyToFit([...this.inside.ids], DESCENT_MS, (): void => this.landed_note(), 1, 0.95);
       });
     });
   }
@@ -754,6 +769,7 @@ export class UniversePanel {
    */
   private ascend(): void {
     if (this.flying) return;
+    this.framedAt = null;
     if (this.inside !== null) {
       this.inside = null;
       this.facts_clear();
@@ -797,7 +813,7 @@ export class UniversePanel {
       const lit: SceneGraph = clusterGraph_build(this.landed.all(), shape, this.scale);
       this.scene.graph_set(lit, { wave: false, fit: false, frozen: lit.nodes.map((node: SceneNode): string => node.id) });
       this.title_paint();
-      this.scene.camera_flyToFit(ids, DESCENT_MS, (): void => { this.flying = false; });
+      this.scene.camera_flyToFit(ids, DESCENT_MS, (): void => this.landed_note());
       return;
     }
     const { graph, memberIds } = unfoldedGraph_build(this.landed.all(), shape, this.scale);
@@ -828,7 +844,25 @@ export class UniversePanel {
     const frozen: string[] = graph.nodes.filter((node: SceneNode): boolean => !memberSet.has(node.id) && node.ghost !== true).map((node: SceneNode): string => node.id);
     this.scene.graph_set(graph, { wave: false, fit: false, frozen, physics: { reach: UNIVERSE_REACH, gravity: false } });
     this.title_paint();
-    this.scene.camera_flyToFit(memberIds, DESCENT_MS, (): void => { this.flying = false; });
+    this.scene.camera_flyToFit(memberIds, DESCENT_MS, (): void => this.landed_note());
+  }
+
+  /** A descent landed: the flight is over, and where it stands is its framing. */
+  private landed_note(): void {
+    this.flying = false;
+    this.framedAt = this.scene.camera_distance();
+  }
+
+  /**
+   * A two-finger gesture ended. Inside a feed or a cluster, a camera drawn
+   * back well past the descent's framing climbs out one level — pinch out
+   * is leave, as double tap is enter.
+   */
+  private pinch_leave(): void {
+    if (this.inside === null && this.cluster === null) return;
+    if (this.flying || this.scene.holding_get() || this.framedAt === null) return;
+    if (this.scene.camera_distance() <= this.framedAt * PINCH_LEAVE_FACTOR) return;
+    this.ascend();
   }
 
   /**

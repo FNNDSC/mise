@@ -48,6 +48,9 @@ const GESTURE_LIFT_MS: number = 400;
  * @property tap - A click or a tap: `select`, or `activate` on a double.
  * @property tip_hide - A press or a gesture began; whatever names the thing
  *   under the pointer is out of date.
+ * @property gesture_end - The last finger of a two-finger gesture lifted:
+ *   the camera stands where the fingers left it. Optional — a scene that
+ *   reads nothing into a finished pinch leaves it out.
  */
 export interface GestureTarget {
   grab_begin(event: PointerEvent): boolean;
@@ -57,6 +60,7 @@ export interface GestureTarget {
   leave(event: PointerEvent): void;
   tap(event: MouseEvent, kind: 'select' | 'activate'): void;
   tip_hide(): void;
+  gesture_end?(): void;
 }
 
 /**
@@ -216,6 +220,9 @@ export class PointerGestures {
         // The lift that ends a gesture is not a tap.
         this.suppressClick = true;
         setTimeout((): void => { this.suppressClick = false; }, GESTURE_LIFT_MS);
+        this.release();
+        this.target.gesture_end?.();
+        return;
       }
     }
     this.release();

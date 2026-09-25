@@ -48,6 +48,8 @@ import {
   type TubeNode,
   type TubeOwner,
   type StarEntry,
+  CameraRig,
+  type WorldReach,
 } from '@fnndsc/orrery';
 import {
   forceSimulation,
@@ -148,28 +150,6 @@ interface PlacedNode {
   position: THREE.Vector3;
   radius: number;
 }
-
-
-
-
-
-
-/** Idle rotation speed, radians per frame. */
-const SPIN_INTERACTIVE: number = 0.0022;
-
-/** The world's up: the axis the idle spin and a sideways orbit turn about. */
-const WORLD_UP: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
-const SPIN_AMBIENT: number = 0.006;
-
-/**
- * How fast the ambient tumble axis wanders, radians of phase per frame.
- * Well below the spin rate, so the motion reads as one continuous freeform
- * tumble rather than a wobble.
- */
-const TUMBLE_DRIFT: number = 0.0035;
-
-/** How long after the last touch the idle spin stays paused. */
-const SPIN_RESUME_MS: number = 10_000;
 
 
 /** How long one node's wave flare lasts (rise and fall). */
@@ -403,14 +383,6 @@ const SLICE_BUDGET_MS: number = 12;
 export type DrawMode = 'spheres' | 'stars';
 
 
-
-
-
-
-
-
-
-
 /**
  * One live DAG rendering bound to a container element.
  */
@@ -498,8 +470,6 @@ export class DagScene {
     return this.census;
   }
   private graph: SceneGraph = { nodes: [] };
-  /** Idle spin stays paused until this clock time (0 = spinning). */
-  private spinIdleUntil: number = 0;
   /** The grab in progress: which node, its drag plane, and travel so far. */
   private drag: {
     nodeId: string;
@@ -519,42 +489,12 @@ export class DagScene {
   private waveTimes: Map<string, number> = new Map();
   /** Wall-clock start of the running wave, or null when no wave runs. */
   private waveStartAt: number | null = null;
-  /** The camera flight in progress, or null. */
-  private flight: {
-    fromPos: THREE.Vector3;
-    toPos: THREE.Vector3;
-    fromQuat: THREE.Quaternion;
-    toQuat: THREE.Quaternion;
-    startedAt: number;
-    durationMs: number;
-    onDone: () => void;
-  } | null = null;
-  /** Camera home before a fly-in, restored by the fly-back. */
-  private flightHome: { position: THREE.Vector3; quaternion: THREE.Quaternion } | null = null;
-  /** While inside a node (overlay up), the spin and picking hold still. */
-  private holding: boolean = false;
-
   /**
-   * Whether the operator has moved the camera (wheel or drag) since the
-   * scene last framed the graph itself. A caller repainting the same space
-   * asks this before refitting: a refit under a placed camera is a reset.
+   * The camera and the world it turns: the focus, the flights, the hold
+   * inside a node, the idle spin, and whether the operator has placed the
+   * camera since the scene last framed itself.
    */
-  private touched: boolean = false;
-
-  /**
-   * The world point the camera looks at: the pivot of the idle spin and the
-   * orbit, the target of the wheel's dolly, carried by a pan. A flight to a
-   * feed or a cluster moves it there, so the space turns about what the
-   * operator is looking at instead of swinging it out of view.
-   */
-  private readonly focus: THREE.Vector3 = new THREE.Vector3();
-
-  /** Turns the graph about an axis through the focus. */
-  private turn_about(axis: THREE.Vector3, angle: number): void {
-    const q: THREE.Quaternion = new THREE.Quaternion().setFromAxisAngle(axis, angle);
-    this.group.position.sub(this.focus).applyQuaternion(q).add(this.focus);
-    this.group.quaternion.premultiply(q);
-  }
+  private readonly rig: CameraRig;
 
   /** How nodes are drawn: lit spheres (every pane), or stars (the universe's choice). */
   private drawMode: DrawMode = 'spheres';
@@ -588,10 +528,6 @@ export class DagScene {
   private disposed: boolean = false;
   /** The hover tip naming the node under the pointer (pane mode only). */
   private tip: HTMLDivElement | null = null;
-  /** The ambient tumble's wandering rotation axis, reused across frames. */
-  private readonly tumbleAxis: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
-  /** Phase driving the axis wander; seeded randomly so miniatures desync. */
-  private tumblePhase: number = Math.random() * Math.PI * 2;
   /** The wave's flare color, re-read from the palette on every rebuild. */
   private pulseColor: THREE.Color = new THREE.Color('#48d8f0');
 
@@ -615,6 +551,7 @@ export class DagScene {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
     this.camera.position.set(0, 0, 14);
+    this.rig = new CameraRig(this.camera, this.group);
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
     const key: THREE.DirectionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
     key.position.set(4, 6, 8);
@@ -745,32 +682,12 @@ export class DagScene {
     const animate = (): void => {
       if (this.disposed) return;
       if (this.ambient) {
-        // Freeform tumble: constant angular speed around an axis that itself
-        // drifts slowly, so the graph turns through every orientation instead
-        // of orbiting one axis. Incommensurate frequencies keep the wander
-        // from ever settling into a repeating figure.
-        this.tumblePhase += TUMBLE_DRIFT;
-        this.tumbleAxis
-          .set(
-            Math.sin(this.tumblePhase * 0.7),
-            Math.cos(this.tumblePhase * 0.4) + 0.6,
-            Math.sin(this.tumblePhase * 0.3) * 0.8,
-          )
-          .normalize();
-        this.group.rotateOnWorldAxis(this.tumbleAxis, SPIN_AMBIENT);
+        this.rig.tumble_step();
         this.wave_animate();
       } else {
         // A touched graph holds still; the idle spin resumes after the wait.
         // A flight or a stay inside a node holds it unconditionally.
-        if (
-          Date.now() >= this.spinIdleUntil &&
-          !this.pointerInside &&
-          !this.holding &&
-          this.flight === null &&
-          this.projection === '3d'
-        ) {
-          this.turn_about(WORLD_UP, SPIN_INTERACTIVE);
-        }
+        this.rig.spin_step(!this.pointerInside && this.projection === '3d');
         // The reaction simulation runs while hot: during a grab, and cooling
         // after release until it settles.
         if (this.dragSim !== null) {
@@ -793,7 +710,7 @@ export class DagScene {
           this.positions_sync();
         }
         this.wave_animate();
-        this.flight_animate();
+        this.rig.flight_step();
       }
       this.starField.scale_update(this.renderer.domElement.height, this.camera.fov);
       this.handoff_step();
@@ -888,39 +805,18 @@ export class DagScene {
     const mesh: THREE.Mesh | undefined = this.meshes.get(nodeId);
     // In census there is no mesh per node: fly to the group's first member.
     const censusIndex: number = mesh === undefined ? this.censusField.ids().indexOf(nodeId) : -1;
-    if ((mesh === undefined && censusIndex < 0) || this.flight !== null || this.holding) {
+    if ((mesh === undefined && censusIndex < 0) || this.rig.flying() || this.rig.holding_get()) {
       return;
     }
     // The dive leaves the graph exactly as the operator has it — no reset
-    // snap. Holding first: the spin must not move the target mid-aim.
-    this.holding = true;
-    this.flightHome = {
-      position: this.camera.position.clone(),
-      quaternion: this.camera.quaternion.clone(),
-    };
-    // Aim the camera at the node from its current stance, then dolly to just
-    // shy of the surface — arrival reads as passing inside. World position:
-    // the camera flies in world space, and the group may be rotated.
+    // snap. World position: the camera flies in world space, and the group
+    // may be rotated.
     this.group.updateMatrixWorld(true);
     const target: THREE.Vector3 =
       mesh !== undefined
         ? mesh.getWorldPosition(new THREE.Vector3())
         : this.group.localToWorld((this.censusField.positions()[censusIndex] ?? new THREE.Vector3()).clone());
-    const toPos: THREE.Vector3 = target
-      .clone()
-      .add(this.camera.position.clone().sub(target).normalize().multiplyScalar(0.4));
-    const aim: THREE.Camera = this.camera.clone();
-    aim.position.copy(this.camera.position);
-    aim.lookAt(target);
-    this.flight = {
-      fromPos: this.camera.position.clone(),
-      toPos,
-      fromQuat: this.camera.quaternion.clone(),
-      toQuat: aim.quaternion.clone(),
-      startedAt: Date.now(),
-      durationMs: 700,
-      onDone: onArrived,
-    };
+    this.rig.flyInto(target, onArrived);
   }
 
   /**
@@ -940,51 +836,14 @@ export class DagScene {
    */
   public camera_flyToFit(ids: ReadonlyArray<string>, durationMs: number, onDone: () => void, bulk: number = 1, margin: number = 1.15): void {
     const wanted: Set<string> = new Set(ids);
-    const points: THREE.Vector3[] = [];
-    let radiusMax: number = 0;
+    const reaches: WorldReach[] = [];
     this.group.updateMatrixWorld(true);
     for (const id of this.drawnIds()) {
       if (wanted.size > 0 && !wanted.has(id)) continue;
       const drawn = this.nodeWorld_of(id);
-      if (drawn === null) continue;
-      points.push(drawn.position);
-      radiusMax = Math.max(radiusMax, drawn.radius);
+      if (drawn !== null) reaches.push(drawn);
     }
-    if (points.length === 0) {
-      onDone();
-      return;
-    }
-    const center: THREE.Vector3 = new THREE.Vector3();
-    for (const point of points) center.add(point);
-    center.divideScalar(points.length);
-    const distances: number[] = points.map((point: THREE.Vector3): number => center.distanceTo(point)).sort((a: number, b: number): number => a - b);
-    const kept: number = Math.max(1, Math.min(distances.length, Math.ceil(distances.length * Math.min(1, Math.max(0.1, bulk)))));
-    const radius: number = Math.max(1, (distances[kept - 1] ?? 1) + radiusMax);
-    const fov: number = (this.camera.fov * Math.PI) / 180;
-    const fitH: number = radius / Math.tan(fov / 2);
-    const fitW: number = radius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
-    const distance: number = Math.max(3, Math.max(fitH, fitW) * margin);
-    // Approach along the line the camera already looks down, so the flight
-    // reads as a dolly and never a swing round the field.
-    const heading: THREE.Vector3 = this.camera.position.clone().sub(center);
-    if (heading.lengthSq() < 0.0001) heading.set(0, 0, 1);
-    heading.normalize();
-    const toPos: THREE.Vector3 = center.clone().add(heading.multiplyScalar(distance));
-    const aim: THREE.Camera = this.camera.clone();
-    aim.position.copy(toPos);
-    aim.lookAt(center);
-    this.focus.copy(center);
-    this.camera.far = Math.max(this.camera.far, (distance + radius) * 2);
-    this.camera.updateProjectionMatrix();
-    this.flight = {
-      fromPos: this.camera.position.clone(),
-      toPos,
-      fromQuat: this.camera.quaternion.clone(),
-      toQuat: aim.quaternion.clone(),
-      startedAt: Date.now(),
-      durationMs,
-      onDone,
-    };
+    this.rig.flyToFit(reaches, durationMs, onDone, bulk, margin);
   }
 
   /**
@@ -995,7 +854,7 @@ export class DagScene {
    * @returns True once the operator has wheeled or dragged since the last fit.
    */
   public camera_touched(): boolean {
-    return this.touched;
+    return this.rig.touched_get();
   }
 
   /**
@@ -1038,7 +897,7 @@ export class DagScene {
       censusTubes: this.tubes.censusCount(),
       handoffGroups: this.handoffField.size(),
       handoffSolid: this.handoffField.solidCount(),
-      camera: this.camera.position.distanceTo(this.focus).toFixed(1),
+      camera: this.rig.eyeDistance().toFixed(1),
       settling: this.slicing,
     };
   }
@@ -1059,24 +918,7 @@ export class DagScene {
       onDone();
       return;
     }
-    const center: THREE.Vector3 = drawn.position;
-    const heading: THREE.Vector3 = this.camera.position.clone().sub(center);
-    if (heading.lengthSq() < 0.0001) heading.set(0, 0, 1);
-    heading.normalize();
-    const toPos: THREE.Vector3 = center.clone().add(heading.multiplyScalar(Math.max(distance, drawn.radius * 4)));
-    const aim: THREE.Camera = this.camera.clone();
-    aim.position.copy(toPos);
-    aim.lookAt(center);
-    this.focus.copy(center);
-    this.flight = {
-      fromPos: this.camera.position.clone(),
-      toPos,
-      fromQuat: this.camera.quaternion.clone(),
-      toQuat: aim.quaternion.clone(),
-      startedAt: Date.now(),
-      durationMs,
-      onDone,
-    };
+    this.rig.flyToward(drawn, distance, durationMs, onDone);
   }
 
   /**
@@ -1090,7 +932,7 @@ export class DagScene {
    * @returns True while the camera is held inside a node.
    */
   public holding_get(): boolean {
-    return this.holding;
+    return this.rig.holding_get();
   }
 
   /**
@@ -1099,43 +941,9 @@ export class DagScene {
    * @param onDone - Called once the camera is home.
    */
   public flight_back(onDone: () => void): void {
-    if (this.flightHome === null) {
-      this.holding = false;
-      onDone();
-      return;
-    }
-    const home: { position: THREE.Vector3; quaternion: THREE.Quaternion } = this.flightHome;
-    this.flight = {
-      fromPos: this.camera.position.clone(),
-      toPos: home.position.clone(),
-      fromQuat: this.camera.quaternion.clone(),
-      toQuat: home.quaternion.clone(),
-      startedAt: Date.now(),
-      durationMs: 700,
-      onDone: (): void => {
-        this.flightHome = null;
-        this.holding = false;
-        this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
-        onDone();
-      },
-    };
+    this.rig.flyBack(onDone);
   }
 
-  /** Advances the camera flight, easing position and aim together. */
-  private flight_animate(): void {
-    if (this.flight === null) return;
-    const raw: number = (Date.now() - this.flight.startedAt) / this.flight.durationMs;
-    const t: number = Math.min(1, raw);
-    // Smoothstep: gentle leave, gentle arrive.
-    const eased: number = t * t * (3 - 2 * t);
-    this.camera.position.lerpVectors(this.flight.fromPos, this.flight.toPos, eased);
-    this.camera.quaternion.slerpQuaternions(this.flight.fromQuat, this.flight.toQuat, eased);
-    if (t >= 1) {
-      const done: () => void = this.flight.onDone;
-      this.flight = null;
-      done();
-    }
-  }
 
   /** Computes each fireable node's flare time, in ms into the wave. */
   private waveSchedule_compute(): Map<string, number> {
@@ -1343,25 +1151,16 @@ export class DagScene {
     // descent redraws under a camera the flight has placed, and re-parking
     // it there was the view resetting under every click.
     if (!this.ambient && fit) {
-      const fov: number = (this.camera.fov * Math.PI) / 180;
-      const fitH: number = cloudRadius / Math.tan(fov / 2);
-      const fitW: number = cloudRadius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
-      const distance: number = Math.max(8, Math.max(fitH, fitW) * 1.15);
-      this.group.position.copy(center).applyQuaternion(this.group.quaternion).negate();
-      this.focus.set(0, 0, 0);
       // A census cloud grown from near-planar anchors reads edge-on from
       // the axis; open on a three-quarter orbit so the shells read as
       // volume from the first frame.
-      this.camera.position.set(distance * 0.5, distance * 0.4, distance * 0.85);
-      this.camera.far = Math.max(200, (distance + cloudRadius) * 2.5);
-      this.camera.updateProjectionMatrix();
-      this.camera.lookAt(0, 0, 0);
+      this.rig.frame(center, cloudRadius, { stance: 'threeQuarter', farScale: 2.5 });
     }
   }
 
   private camera_fit(placed: PlacedNode[]): void {
     if (placed.length === 0) return;
-    this.touched = false;
+    this.rig.touch_clear();
     // How many times the scene has framed the graph itself, on the canvas:
     // a smoke reads it to prove a click did not refit a placed camera.
     this.fits += 1;
@@ -1375,20 +1174,10 @@ export class DagScene {
     const reaches: number[] = placed.map((item: PlacedNode): number => center.distanceTo(item.position) + item.radius).sort((a: number, b: number): number => a - b);
     const share: number = this.handlers.handoffKey !== undefined ? 0.95 : 1;
     const radius: number = Math.max(1, reaches[Math.max(0, Math.ceil(reaches.length * share) - 1)] ?? 1);
-    const fov: number = (this.camera.fov * Math.PI) / 180;
-    const fitH: number = radius / Math.tan(fov / 2);
-    const fitW: number = radius / (Math.tan(fov / 2) * Math.max(0.1, this.camera.aspect));
-    const distance: number = Math.max(8, Math.max(fitH, fitW) * 1.15);
-    this.group.position.copy(center).applyQuaternion(this.group.quaternion).negate();
-    this.focus.set(0, 0, 0);
-    this.camera.position.set(0, 0, distance);
-    // The far plane always clears the framed graph: the fixed 200 clipped
+    // The far plane always clears the framed graph: a fixed 200 clipped
     // sprawling molecules into black voids (and swallowed 2D whole).
-    this.camera.far = Math.max(200, (distance + radius) * 2);
-    this.camera.updateProjectionMatrix();
-    this.camera.lookAt(0, 0, 0);
+    this.rig.frame(center, radius);
   }
-
 
 
   /** Counts rebuilds, so a sliced settle overtaken by a newer one stops. */
@@ -1686,7 +1475,6 @@ export class DagScene {
   }
 
 
-
   /**
    * Steps the hand-off once a frame: a feed whose largest sphere spans
    * more than a few pixels turns solid, crossfading, its threads rising
@@ -1701,10 +1489,6 @@ export class DagScene {
     const view: THREE.Matrix4 = new THREE.Matrix4().multiplyMatrices(this.camera.matrixWorldInverse, this.group.matrixWorld);
     this.handoffField.step(view, perUnit, performance.now());
   }
-
-
-
-
 
 
   /**
@@ -1737,7 +1521,6 @@ export class DagScene {
       state: state_of(placed.node),
     };
   }
-
 
 
   /**
@@ -1824,7 +1607,6 @@ export class DagScene {
   }
 
 
-
   /** Copies simulation positions onto meshes and re-anchors every edge. */
   private positions_sync(): void {
     for (const simNode of this.dragSimNodes) {
@@ -1855,8 +1637,8 @@ export class DagScene {
    * view drag — orbit, or pan with shift or the right button.
    */
   private press_handle(event: PointerEvent): void {
-    if (this.holding || this.flight !== null) return;
-    this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+    if (this.rig.holding_get() || this.rig.flying()) return;
+    this.rig.spin_pause();
     const hit: THREE.Mesh | null = this.mesh_under(event);
     const nodeId: unknown = hit?.userData['nodeId'];
     if (hit === null || typeof nodeId !== 'string') {
@@ -1967,7 +1749,7 @@ export class DagScene {
   /** Follows the pointer during a pull: the grabbed node tracks the drag plane. */
   private drag_move(event: PointerEvent): void {
     if (this.drag === null) return;
-    this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+    this.rig.spin_pause();
     if (
       !this.drag.moved &&
       Math.abs(event.clientX - this.drag.startX) + Math.abs(event.clientY - this.drag.startY) >
@@ -2013,23 +1795,10 @@ export class DagScene {
    * @param deltaY - A wheel's delta: positive draws back, negative closes in.
    */
   private camera_dolly(deltaY: number): void {
-    this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
-    this.touched = true;
-    // Dolly along the eye ray, not the z axis: census parks the camera
-    // off-axis (and far beyond the old 3..40 clamp), where a z-only
-    // dolly slid the whole cloud diagonally off screen.
-    if (this.census) {
-      const heading: THREE.Vector3 = this.camera.getWorldDirection(new THREE.Vector3());
-      const speed: number = Math.max(4, this.camera.position.length()) * 0.0012;
-      this.camera.position.addScaledVector(heading, -deltaY * speed);
-      return;
-    }
-    // Toward the focus, not the world's origin: after a flight to a feed
-    // the camera looks at the feed, and a dolly must close on it.
-    const offset: THREE.Vector3 = this.camera.position.clone().sub(this.focus);
-    const eye: number = offset.length();
-    const next: number = Math.min(Math.max(eye * Math.exp(deltaY * 0.001), 1.5), Math.max(40, this.camera.far * 0.45));
-    this.camera.position.copy(this.focus).addScaledVector(offset, next / Math.max(0.0001, eye));
+    // Dolly along the eye ray, not toward the focus, in census: it parks
+    // the camera off-axis, where closing on the focus slid the whole cloud
+    // diagonally off screen.
+    this.rig.dolly(deltaY, this.census);
   }
 
   /**
@@ -2040,11 +1809,7 @@ export class DagScene {
    * @param dy - Screen pixels down.
    */
   private camera_pan(dx: number, dy: number): void {
-    const factor: number = this.camera.position.distanceTo(this.focus) * 0.0016;
-    const shift: THREE.Vector3 = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).multiplyScalar(-dx * factor)
-      .add(new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1).multiplyScalar(dy * factor));
-    this.camera.position.add(shift);
-    this.focus.add(shift);
+    this.rig.pan(dx, dy);
   }
 
   /** The two fingers down: their spread and their middle. */
@@ -2063,7 +1828,7 @@ export class DagScene {
     this.viewDrag = null;
     this.gestureHeld = true;
     this.pinch = this.fingers_read();
-    this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+    this.rig.spin_pause();
     if (this.tip) this.tip.hidden = true;
   }
 
@@ -2086,7 +1851,7 @@ export class DagScene {
   /** Steers the view from an empty-space drag: orbit, or pan. */
   private view_move(event: PointerEvent): void {
     if (this.viewDrag === null) return;
-    this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+    this.rig.spin_pause();
     const dx: number = event.clientX - this.viewDrag.lastX;
     const dy: number = event.clientY - this.viewDrag.lastY;
     this.viewDrag.lastX = event.clientX;
@@ -2097,7 +1862,7 @@ export class DagScene {
         Math.abs(event.clientY - this.viewDrag.startY) > DRAG_THRESHOLD_PX
     ) {
       this.viewDrag.moved = true;
-      this.touched = true;
+      this.rig.touch_note();
     }
     if (!this.viewDrag.moved) return;
     if (this.viewDrag.pan || this.projection === '2d') {
@@ -2108,8 +1873,7 @@ export class DagScene {
     } else {
       // Orbit about the focus: across turns about the world's up, along
       // turns about the camera's right — the pivot is what is looked at.
-      this.turn_about(WORLD_UP, dx * 0.005);
-      this.turn_about(new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).normalize(), dy * 0.005);
+      this.rig.orbit(dx, dy);
     }
   }
 
@@ -2121,10 +1885,10 @@ export class DagScene {
     if (this.viewDrag !== null) {
       if (this.viewDrag.moved) this.suppressClick = true;
       this.viewDrag = null;
-      this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+      this.rig.spin_pause();
     }
     if (this.drag === null) return;
-    this.spinIdleUntil = Date.now() + SPIN_RESUME_MS;
+    this.rig.spin_pause();
     if (this.drag.moved) this.suppressClick = true;
     if (this.drag.solo && this.drag.moved) {
       const mesh: THREE.Mesh | undefined = this.meshes.get(this.drag.nodeId);

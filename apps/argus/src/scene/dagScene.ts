@@ -49,6 +49,8 @@ import {
   type TubeOwner,
   type StarEntry,
   CameraRig,
+  PointerGestures,
+  DRAG_THRESHOLD_PX,
   type WorldReach,
 } from '@fnndsc/orrery';
 import {
@@ -158,11 +160,6 @@ const WAVE_FLARE_MS: number = 700;
 /** Rest between wave loops in the ambient miniature. */
 const WAVE_LOOP_GAP_MS: number = 2_500;
 
-/** Pointer travel (px) past which a press counts as a drag, not a click. */
-const DRAG_THRESHOLD_PX: number = 4;
-/** Two taps within this span and distance are a double tap. */
-const DOUBLE_TAP_MS: number = 350;
-const DOUBLE_TAP_PX: number = 30;
 /** How long a tap's name stays up after the finger lifts. */
 const TAP_TIP_MS: number = 1500;
 /** A fingertip is wider than a cursor: the least a star reaches for one. */
@@ -483,8 +480,6 @@ export class DagScene {
   /** The live reaction simulation while (and shortly after) a grab. */
   private dragSim: ReturnType<typeof forceSimulation> | null = null;
   private dragSimNodes: Array<{ id: string; x: number; y: number; z: number; fx?: number | null; fy?: number | null; fz?: number | null }> = [];
-  /** Swallows the click that ends a drag, so a pull is not a select. */
-  private suppressClick: boolean = false;
   /** The pulse wave's schedule: node id to flare time (ms into the wave). */
   private waveTimes: Map<string, number> = new Map();
   /** Wall-clock start of the running wave, or null when no wave runs. */
@@ -501,20 +496,11 @@ export class DagScene {
   /** Placed nodes by id, for the spheres a solid feed draws. */
   private placedById: Map<string, PlacedNode> = new Map();
 
-  /** Whether the pointer is over the field: the idle spin waits while it is. */
-  private pointerInside: boolean = false;
-  /** Fingers on the canvas, by pointer id, where each is now. */
-  private touches: Map<number, { x: number; y: number }> = new Map();
-  /** A two-finger gesture under way: the fingers' last spread and middle. */
-  private pinch: { spread: number; midX: number; midY: number } | null = null;
-  /** A gesture happened: the finger left behind neither orbits nor taps. */
-  private gestureHeld: boolean = false;
-  /** The last tap, for a double tap. */
-  private lastTap: { at: number; x: number; y: number } | null = null;
-  /** What the last press was made with: mouse, pen or touch. */
-  private pressKind: string = 'mouse';
-  /** When a double tap last entered: a browser's own dblclick after it is the same act. */
-  private tapActivatedAt: number = 0;
+  /**
+   * The pointer's intents on the canvas — the view drag, the fingers, the
+   * taps — or null for a miniature, which nobody steers.
+   */
+  private gestures: PointerGestures | null = null;
   /** The pending hide of a tap's name. */
   private tapTipTimer: number | null = null;
   /** The node the hover tip names, and where the pointer was. */
@@ -560,121 +546,25 @@ export class DagScene {
     container.appendChild(this.renderer.domElement);
     this.size_fit();
     if (!this.ambient) {
-      // Fingers belong to the scene, not the page: without this the browser
-      // takes a pinch for a page zoom and a drag for a scroll.
-      this.renderer.domElement.style.touchAction = 'none';
-      this.renderer.domElement.addEventListener('click', (event: MouseEvent): void => {
-        // The click that ends a pull is the pull's release, not a select.
-        if (this.suppressClick) {
-          this.suppressClick = false;
-          return;
-        }
-        // A finger has no double click it can count on: two taps close in
-        // time and place are one, and enter as a double click does.
-        if (this.pressKind === 'touch') {
-          const now: number = Date.now();
-          const last = this.lastTap;
-          if (last !== null && now - last.at <= DOUBLE_TAP_MS && Math.hypot(event.clientX - last.x, event.clientY - last.y) <= DOUBLE_TAP_PX) {
-            this.lastTap = null;
-            this.tapActivatedAt = now;
-            this.pick_handle(event, 'activate');
-            return;
-          }
-          this.lastTap = { at: now, x: event.clientX, y: event.clientY };
-        }
-        this.pick_handle(event, 'select');
-      });
-      this.renderer.domElement.addEventListener('dblclick', (event: MouseEvent): void => {
-        if (Date.now() - this.tapActivatedAt < 600) return;
-        this.pick_handle(event, 'activate');
-      });
-      this.renderer.domElement.addEventListener('pointerdown', (event: PointerEvent): void => {
-        this.pressKind = event.pointerType;
-        if (event.pointerType === 'touch') {
-          // The first finger of a new touch starts clean: a lift the browser
-          // never reported (a cancelled gesture, a system swipe) must not
-          // leave a phantom finger that turns every later tap into a third.
-          if (event.isPrimary) {
-            this.touches.clear();
-            this.pinch = null;
-            this.gestureHeld = false;
-          }
-          this.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
-          if (this.touches.size === 2) {
-            this.gesture_begin();
-            return;
-          }
-          if (this.touches.size > 2 || this.gestureHeld) return;
-          this.press_handle(event);
-          // No hover under a finger: the press names what it landed on —
-          // after the press, which clears the tip a cursor leaves behind.
-          this.hover_handle(event);
-          return;
-        }
-        this.press_handle(event);
-      });
-      const release = (event: PointerEvent): void => {
-        if (event.pointerType === 'touch') {
-          this.touches.delete(event.pointerId);
-          if (this.touches.size < 2) this.pinch = null;
-          if (this.touches.size === 0 && this.gestureHeld) {
-            this.gestureHeld = false;
-            // The lift that ends a gesture is not a tap.
-            this.suppressClick = true;
-            window.setTimeout((): void => { this.suppressClick = false; }, 400);
-          }
-        }
-        this.drag_end();
-      };
-      this.renderer.domElement.addEventListener('pointerup', release);
-      this.renderer.domElement.addEventListener('pointercancel', release);
       // Hovering names the node: a small tip follows the pointer over a
       // sphere, so identity does not cost a click.
       this.tip = document.createElement('div');
       this.tip.className = 'dag-node-tip';
       this.tip.hidden = true;
       container.appendChild(this.tip);
-      this.renderer.domElement.addEventListener('pointermove', (event: PointerEvent): void => {
-        if (event.pointerType === 'touch' && this.touches.has(event.pointerId)) {
-          this.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
-          if (this.pinch !== null) {
-            this.gesture_move();
-            return;
-          }
-          if (this.gestureHeld) return;
-        }
-        if (this.drag !== null) {
-          this.drag_move(event);
-        } else if (this.viewDrag !== null) {
-          this.view_move(event);
-        } else {
-          this.hover_handle(event);
-        }
+      this.gestures = new PointerGestures(this.renderer.domElement, this.rig, {
+        grab_begin: (event: PointerEvent): boolean => this.grab_begin(event),
+        grab_move: (event: PointerEvent): void => this.drag_move(event),
+        grab_end: (): boolean => this.grab_end(),
+        hover: (event: PointerEvent): void => this.hover_handle(event),
+        leave: (event: PointerEvent): void => this.leave_handle(event),
+        tap: (event: MouseEvent, kind: 'select' | 'activate'): void => this.pick_handle(event, kind),
+        tip_hide: (): void => { if (this.tip) this.tip.hidden = true; },
+      }, {
+        flat: (): boolean => this.projection === '2d',
+        // Census is a place: the camera parks off the focus.
+        untethered: (): boolean => this.census,
       });
-      this.renderer.domElement.addEventListener('pointerleave', (event: PointerEvent): void => {
-        this.pointerInside = false;
-        this.hovered = null;
-        // A finger lifting leaves the canvas at once; its name stays up a
-        // moment so it can be read.
-        if (event.pointerType === 'touch' && this.tip !== null && !this.tip.hidden) {
-          if (this.tapTipTimer !== null) window.clearTimeout(this.tapTipTimer);
-          this.tapTipTimer = window.setTimeout((): void => {
-            this.tapTipTimer = null;
-            if (this.tip !== null && this.touches.size === 0) this.tip.hidden = true;
-          }, TAP_TIP_MS);
-          return;
-        }
-        if (this.tip) this.tip.hidden = true;
-      });
-      // The wheel dollies: closer to read a dense graph, back for the whole.
-      this.renderer.domElement.addEventListener('wheel', (event: WheelEvent): void => {
-        event.preventDefault();
-        this.camera_dolly(event.deltaY);
-      }, { passive: false });
-      // Right-drag pans; the browser menu would eat the gesture.
-      this.renderer.domElement.addEventListener('contextmenu', (event: Event): void =>
-        event.preventDefault(),
-      );
     }
     // A pane resize (a collapsed console, a divider drag) reshapes the box
     // without a window resize; an unfitted canvas would stretch the graph.
@@ -687,7 +577,7 @@ export class DagScene {
       } else {
         // A touched graph holds still; the idle spin resumes after the wait.
         // A flight or a stay inside a node holds it unconditionally.
-        this.rig.spin_step(!this.pointerInside && this.projection === '3d');
+        this.rig.spin_step(!(this.gestures?.pointerOver() ?? false) && this.projection === '3d');
         // The reaction simulation runs while hot: during a grab, and cooling
         // after release until it settles.
         if (this.dragSim !== null) {
@@ -1107,6 +997,7 @@ export class DagScene {
     this.layoutWorker?.terminate();
     this.layoutWorker = null;
     if (this.frameHandle !== null) window.cancelAnimationFrame(this.frameHandle);
+    this.gestures?.detach();
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.spheres.dispose();
@@ -1567,7 +1458,7 @@ export class DagScene {
       if (star.dim) continue;
       const hit = screen(star.position);
       if (hit === null) continue;
-      const reach: number = Math.max(this.pressKind === 'touch' ? TOUCH_REACH_PX : 4, (STAR_GLOW * star.radius * perUnit) / hit.depth);
+      const reach: number = Math.max(this.gestures?.pressKind() === 'touch' ? TOUCH_REACH_PX : 4, (STAR_GLOW * star.radius * perUnit) / hit.depth);
       const distance: number = Math.hypot(hit.x - px, hit.y - py);
       if (distance > reach) continue;
       const score: number = distance / reach;
@@ -1619,46 +1510,18 @@ export class DagScene {
     this.spheres.edges_follow();
   }
 
-  /** An empty-space drag steering the view: orbit, or pan with shift/right. */
-  private viewDrag: {
-    lastX: number;
-    lastY: number;
-    startX: number;
-    startY: number;
-    pan: boolean;
-    moved: boolean;
-  } | null = null;
-
   /**
-   * A press touches the graph: the idle spin pauses exactly where it is —
-   * never a snap — and what follows depends on what was under the pointer.
-   * A node press begins a pull (the structure reacts through a live force
-   * simulation anchored at the grabbed node); an empty-space press begins a
-   * view drag — orbit, or pan with shift or the right button.
+   * A press the gestures could not place: when it landed on a node it
+   * begins a pull (the structure reacts through a live force simulation
+   * anchored at the grabbed node) and the press is the scene's to follow.
+   *
+   * @param event - The press.
+   * @returns True when a node was taken hold of.
    */
-  private press_handle(event: PointerEvent): void {
-    if (this.rig.holding_get() || this.rig.flying()) return;
-    this.rig.spin_pause();
+  private grab_begin(event: PointerEvent): boolean {
     const hit: THREE.Mesh | null = this.mesh_under(event);
     const nodeId: unknown = hit?.userData['nodeId'];
-    if (hit === null || typeof nodeId !== 'string') {
-      this.viewDrag = {
-        lastX: event.clientX,
-        lastY: event.clientY,
-        startX: event.clientX,
-        startY: event.clientY,
-        pan: event.shiftKey || event.button === 2 || event.button === 1,
-        moved: false,
-      };
-      try {
-        this.renderer.domElement.setPointerCapture(event.pointerId);
-      } catch {
-        // A capture refusal (synthetic events, a vanished pointer) only
-        // costs drag continuity outside the canvas.
-      }
-      if (this.tip) this.tip.hidden = true;
-      return;
-    }
+    if (hit === null || typeof nodeId !== 'string') return false;
     // Drag in the plane through the node, facing the camera: intuitive
     // pull, no depth surprises.
     const normal: THREE.Vector3 = this.camera.getWorldDirection(new THREE.Vector3()).negate();
@@ -1675,12 +1538,7 @@ export class DagScene {
       solo: this.strategy === 'ranked',
       home: hit.position.clone(),
     };
-    try {
-      this.renderer.domElement.setPointerCapture(event.pointerId);
-    } catch {
-      // See above: capture is a nicety, not a dependency.
-    }
-    if (this.tip) this.tip.hidden = true;
+    return true;
   }
 
   /**
@@ -1787,109 +1645,17 @@ export class DagScene {
     }
   }
 
-  /**
-   * Moves the camera nearer or farther, as a wheel turn of `deltaY` does:
-   * toward the focus, or — in census, which is a place — along the eye ray,
-   * untethered, through the core and out the other side.
-   *
-   * @param deltaY - A wheel's delta: positive draws back, negative closes in.
-   */
-  private camera_dolly(deltaY: number): void {
-    // Dolly along the eye ray, not toward the focus, in census: it parks
-    // the camera off-axis, where closing on the focus slid the whole cloud
-    // diagonally off screen.
-    this.rig.dolly(deltaY, this.census);
-  }
-
-  /**
-   * Slides the camera in its own plane by a screen distance; the focus
-   * rides along, so the next turn pivots on what is now in the middle.
-   *
-   * @param dx - Screen pixels across.
-   * @param dy - Screen pixels down.
-   */
-  private camera_pan(dx: number, dy: number): void {
-    this.rig.pan(dx, dy);
-  }
-
-  /** The two fingers down: their spread and their middle. */
-  private fingers_read(): { spread: number; midX: number; midY: number } | null {
-    const [a, b] = [...this.touches.values()];
-    if (a === undefined || b === undefined) return null;
-    return { spread: Math.hypot(a.x - b.x, a.y - b.y), midX: (a.x + b.x) / 2, midY: (a.y + b.y) / 2 };
-  }
-
-  /**
-   * A second finger lands: whatever the first began — a pull, an orbit —
-   * lets go, and the two steer the camera together until they lift.
-   */
-  private gesture_begin(): void {
-    this.drag_end();
-    this.viewDrag = null;
-    this.gestureHeld = true;
-    this.pinch = this.fingers_read();
-    this.rig.spin_pause();
-    if (this.tip) this.tip.hidden = true;
-  }
-
-  /**
-   * Two fingers move: spreading closes in and pinching draws back, as the
-   * wheel does, and the pair moving together pans.
-   */
-  private gesture_move(): void {
-    const now = this.fingers_read();
-    if (now === null || this.pinch === null) return;
-    if (now.spread > 0 && this.pinch.spread > 0) {
-      // The spread's ratio is the zoom: in the wheel's own units, so a pinch
-      // and a wheel travel the same.
-      this.camera_dolly(Math.log(this.pinch.spread / now.spread) / 0.001);
-    }
-    if (this.projection === '2d' || !this.census) this.camera_pan(now.midX - this.pinch.midX, now.midY - this.pinch.midY);
-    this.pinch = now;
-  }
-
-  /** Steers the view from an empty-space drag: orbit, or pan. */
-  private view_move(event: PointerEvent): void {
-    if (this.viewDrag === null) return;
-    this.rig.spin_pause();
-    const dx: number = event.clientX - this.viewDrag.lastX;
-    const dy: number = event.clientY - this.viewDrag.lastY;
-    this.viewDrag.lastX = event.clientX;
-    this.viewDrag.lastY = event.clientY;
-    if (
-      !this.viewDrag.moved &&
-      Math.abs(event.clientX - this.viewDrag.startX) +
-        Math.abs(event.clientY - this.viewDrag.startY) > DRAG_THRESHOLD_PX
-    ) {
-      this.viewDrag.moved = true;
-      this.rig.touch_note();
-    }
-    if (!this.viewDrag.moved) return;
-    if (this.viewDrag.pan || this.projection === '2d') {
-      // Screen-proportional pan: the graph follows the pointer.
-      // Screen-proportional pan in the camera's own plane; the focus rides
-      // along, so the next turn pivots on what is now in the middle.
-      this.camera_pan(dx, dy);
-    } else {
-      // Orbit about the focus: across turns about the world's up, along
-      // turns about the camera's right — the pivot is what is looked at.
-      this.rig.orbit(dx, dy);
-    }
-  }
-
   /** Nodes easing home after a ranked peek: mesh, from, to, start time. */
   private dragReturns: Array<{ mesh: THREE.Mesh; from: THREE.Vector3; to: THREE.Vector3; startedAt: number }> = [];
 
-  /** Releases a pull: the grip opens and the simulation cools to rest. */
-  private drag_end(): void {
-    if (this.viewDrag !== null) {
-      if (this.viewDrag.moved) this.suppressClick = true;
-      this.viewDrag = null;
-      this.rig.spin_pause();
-    }
-    if (this.drag === null) return;
-    this.rig.spin_pause();
-    if (this.drag.moved) this.suppressClick = true;
+  /**
+   * Releases a pull: the grip opens and the simulation cools to rest.
+   *
+   * @returns Whether the pull had moved, so its click is swallowed.
+   */
+  private grab_end(): boolean {
+    if (this.drag === null) return false;
+    const moved: boolean = this.drag.moved;
     if (this.drag.solo && this.drag.moved) {
       const mesh: THREE.Mesh | undefined = this.meshes.get(this.drag.nodeId);
       if (mesh !== undefined) {
@@ -1906,6 +1672,7 @@ export class DagScene {
     }
     this.dragSim?.alphaTarget(0);
     this.drag = null;
+    return moved;
   }
 
   /** @returns The node mesh under a pointer event, or null. */
@@ -1983,11 +1750,27 @@ export class DagScene {
     return this.censusField.pick(this.raycaster);
   }
 
+  /**
+   * The pointer left the field. A finger lifting leaves at once, so its
+   * name stays up a moment to be read; a cursor's goes with it.
+   *
+   * @param event - The leave.
+   */
+  private leave_handle(event: PointerEvent): void {
+    this.hovered = null;
+    if (event.pointerType === 'touch' && this.tip !== null && !this.tip.hidden) {
+      if (this.tapTipTimer !== null) window.clearTimeout(this.tapTipTimer);
+      this.tapTipTimer = window.setTimeout((): void => {
+        this.tapTipTimer = null;
+        if (this.tip !== null && (this.gestures?.fingersDown() ?? 0) === 0) this.tip.hidden = true;
+      }, TAP_TIP_MS);
+      return;
+    }
+    if (this.tip) this.tip.hidden = true;
+  }
+
   /** Names the node under the pointer in the hover tip, or hides it. */
   private hover_handle(event: PointerEvent): void {
-    // The space holds still while the pointer is over it: a target that
-    // turns under the cursor is a click on a neighbour.
-    this.pointerInside = true;
     if (this.tip === null) return;
     // In census the spheres are members of one instanced mesh: the group
     // under the pointer is what the tip names, as a click would pick.

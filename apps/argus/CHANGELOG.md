@@ -1,5 +1,12 @@
 # @fnndsc/argus
 
+## 0.16.3
+
+### Patch Changes
+
+- e847e49: The frame on a phone: below 700px the gutter slims to a rail read by number, the header's ARGUS WEB face (audio, theme, versions) folds behind a ≡ pill, the dashboard stacks its blocks in one scrolling column, and nothing holds a desktop width — the right side no longer runs off the screen.
+- cb01d69: Touch: the universe and DAG panes take a pinch to zoom, two fingers to pan, one to orbit or pull, a tap to select and name, a double tap to enter; the image pane steps through a series with two fingers up or down.
+
 ## 0.16.2
 
 ### Patch Changes

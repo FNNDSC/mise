@@ -33,24 +33,21 @@ import {
   type Vec3,
 } from '@fnndsc/orrery/layout';
 import {
-  CENSUS_TUBE_CAP,
   STAR_GLOW,
-  THREAD_OPACITY,
   WAVE_STEP_MS,
-  fibonacciPoint_make,
   haloRadius_of,
+  CensusField,
   HandoffField,
   SphereField,
   StarField,
   TubeField,
-  tubeMode_of,
   type NodeState,
   type Palette,
+  type CensusNode,
   type HandoffLook,
   type TubeNode,
   type TubeOwner,
   type StarEntry,
-  type TubeSpec,
 } from '@fnndsc/orrery';
 import {
   forceSimulation,
@@ -448,6 +445,13 @@ export class DagScene {
     tubes: this.tubes,
     look: (id: string): HandoffLook | undefined => this.handoffLook_of(id),
   });
+  /** Every job of every stage, when the scene draws a census. */
+  private readonly censusField: CensusField = new CensusField({
+    parent: this.group,
+    stars: this.starField,
+    tubes: this.tubes,
+    starsView: () => ({ pixelRatio: window.devicePixelRatio, heightPx: this.renderer.domElement.height, fovDeg: this.camera.fov }),
+  });
 
   /** Where the last projection left every node — the next settle's seed. */
   private lastPositions: Map<string, THREE.Vector3> = new Map();
@@ -475,12 +479,6 @@ export class DagScene {
     return { ...this.physics };
   }
 
-  /** The census cloud, when drawn: instance index → group node id / local position. */
-  private censusMesh: THREE.InstancedMesh | null = null;
-  private censusIds: string[] = [];
-  private censusPositions: THREE.Vector3[] = [];
-  /** The census cloud's resting colors, the wave's return point. */
-  private censusBase: Float32Array | null = null;
 
   /**
    * Toggles the census projection: the full multiplicity of the graph as
@@ -889,7 +887,7 @@ export class DagScene {
   public flight_into(nodeId: string, onArrived: () => void): void {
     const mesh: THREE.Mesh | undefined = this.meshes.get(nodeId);
     // In census there is no mesh per node: fly to the group's first member.
-    const censusIndex: number = mesh === undefined ? this.censusIds.indexOf(nodeId) : -1;
+    const censusIndex: number = mesh === undefined ? this.censusField.ids().indexOf(nodeId) : -1;
     if ((mesh === undefined && censusIndex < 0) || this.flight !== null || this.holding) {
       return;
     }
@@ -907,7 +905,7 @@ export class DagScene {
     const target: THREE.Vector3 =
       mesh !== undefined
         ? mesh.getWorldPosition(new THREE.Vector3())
-        : this.group.localToWorld((this.censusPositions[censusIndex] ?? new THREE.Vector3()).clone());
+        : this.group.localToWorld((this.censusField.positions()[censusIndex] ?? new THREE.Vector3()).clone());
     const toPos: THREE.Vector3 = target
       .clone()
       .add(this.camera.position.clone().sub(target).normalize().multiplyScalar(0.4));
@@ -1172,25 +1170,9 @@ export class DagScene {
     if (this.waveStartAt === null) return;
     const elapsed: number = Date.now() - this.waveStartAt;
     let peak: number = 0;
-    if (this.census && this.censusMesh !== null && this.censusBase !== null && this.censusMesh.instanceColor) {
-      // The wave rides the cloud: every member flares with its group's
-      // fire time, written straight into the instance color buffer.
-      const colors: Float32Array = this.censusMesh.instanceColor.array as Float32Array;
-      const base: Float32Array = this.censusBase;
-      const pulse: THREE.Color = this.pulseColor;
-      for (let i = 0; i < this.censusIds.length; i++) {
-        const fireAt: number | undefined = this.waveTimes.get(this.censusIds[i] ?? '');
-        if (fireAt === undefined) continue;
-        peak = Math.max(peak, fireAt);
-        const dt: number = elapsed - fireAt;
-        const flare: number =
-          dt >= 0 && dt <= WAVE_FLARE_MS ? Math.sin((dt / WAVE_FLARE_MS) * Math.PI) : 0;
-        const o: number = i * 3;
-        colors[o] = base[o]! + (pulse.r - base[o]!) * flare;
-        colors[o + 1] = base[o + 1]! + (pulse.g - base[o + 1]!) * flare;
-        colors[o + 2] = base[o + 2]! + (pulse.b - base[o + 2]!) * flare;
-      }
-      this.censusMesh.instanceColor.needsUpdate = true;
+    if (this.census && this.censusField.drawn()) {
+      // The wave rides the cloud: every job flares with its stage's fire time.
+      peak = this.censusField.flare((id: string): number | undefined => this.waveTimes.get(id), elapsed, this.pulseColor, WAVE_FLARE_MS);
       if (elapsed > peak + WAVE_FLARE_MS) {
         this.waveStartAt = this.ambient || this.waveLooping ? Date.now() + WAVE_LOOP_GAP_MS : null;
       }
@@ -1335,105 +1317,27 @@ export class DagScene {
    * branched filaments over the shell — the cell-surface reading.
    */
   private censusBuild(placed: PlacedNode[], palette: ReturnType<typeof palette_read>, fit: boolean = true): void {
-    // A ghost (a cluster's anchor, drawn as a halo in shape) is nobody's
-    // job: it carries the feeds it gathers as a count, and a census of it
-    // would draw a shell of nothing.
-    let total: number = 0;
-    for (const item of placed) if (item.node.ghost !== true) total += Math.max(1, item.node.count ?? 1);
-    const geometry: THREE.IcosahedronGeometry = new THREE.IcosahedronGeometry(1, 1);
-    const material: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({
-      color: '#ffffff',
-      roughness: 0.5,
-      metalness: 0.1,
+    // A ghost (a cluster's anchor) is nobody's job; it still counts in the
+    // cloud's centre and in how deep a stage lies.
+    const nodes: CensusNode[] = placed.map((item: PlacedNode): CensusNode => {
+      const node: SceneNode = item.node;
+      const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
+      return {
+        id: node.id,
+        position: item.position,
+        radius: item.radius,
+        count: Math.max(1, node.count ?? 1),
+        color: nodeColor_pick(node, palette, isRoot),
+        dim: node.dim === true,
+        ember: (node.share !== undefined && node.share > 0) || node.status === 'finishedWithError',
+        state: state_of(node),
+        parents: node.parentIds,
+        ghost: node.ghost === true,
+      };
     });
-    // Under stars the members are points of light like any star; the
-    // instanced spheres are the SPHERES draw.
-    const starring: boolean = this.drawMode === 'stars';
-    const starred: StarEntry[] = [];
-    const instanced: THREE.InstancedMesh = new THREE.InstancedMesh(geometry, material, starring ? 1 : total);
-    const color: THREE.Color = new THREE.Color();
-    const carrier: THREE.Object3D = new THREE.Object3D();
-    const memberPositions: Map<string, THREE.Vector3[]> = new Map();
-    const memberRadii: Map<string, number> = new Map();
-    let index: number = 0;
-    let cloudRadius: number = 1;
-    const center: THREE.Vector3 = new THREE.Vector3();
-    for (const item of placed) center.add(item.position);
-    center.divideScalar(Math.max(1, placed.length));
-
-    for (const { node, position, radius } of placed) {
-      if (node.ghost === true) continue;
-      const n: number = Math.max(1, node.count ?? 1);
-      const shellRadius: number = n === 1 ? 0 : radius * (1.6 + 0.55 * Math.cbrt(n));
-      const memberRadius: number =
-        n === 1 ? radius : Math.max(0.06, Math.min(radius * 0.5, (2.2 * shellRadius) / Math.sqrt(n)));
-      const points: THREE.Vector3[] = [];
-      for (let k = 0; k < n; k++) {
-        const point: THREE.Vector3 =
-          n === 1 ? position.clone() : fibonacciPoint_make(k, n, shellRadius).add(position);
-        points.push(point);
-        const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
-        color.set(nodeColor_pick(node, palette, isRoot));
-        if (starring) {
-          starred.push({
-            id: node.id, position: point, radius: memberRadius, color: color.clone(), dim: node.dim === true,
-            ember: (node.share !== undefined && node.share > 0) || node.status === 'finishedWithError',
-          });
-        } else {
-          carrier.position.copy(point);
-          carrier.scale.setScalar(memberRadius);
-          carrier.updateMatrix();
-          instanced.setMatrixAt(index, carrier.matrix);
-          instanced.setColorAt(index, color);
-        }
-        this.censusIds.push(node.id);
-        this.censusPositions.push(point);
-        index += 1;
-        cloudRadius = Math.max(cloudRadius, center.distanceTo(point) + memberRadius);
-      }
-      memberPositions.set(node.id, points);
-      memberRadii.set(node.id, memberRadius);
-    }
-    if (starring) {
-      this.starField.draw(starred, window.devicePixelRatio, this.renderer.domElement.height, this.camera.fov);
-    } else {
-      if (instanced.instanceColor) instanced.instanceColor.needsUpdate = true;
-      this.group.add(instanced);
-      this.censusMesh = instanced;
-      this.censusBase = instanced.instanceColor ? Float32Array.from(instanced.instanceColor.array) : null;
-    }
-
-    const segments: number[] = [];
-    for (const { node } of placed) {
-      const mine: THREE.Vector3[] = memberPositions.get(node.id) ?? [];
-      for (const parentId of node.parentIds) {
-        const theirs: THREE.Vector3[] | undefined = memberPositions.get(parentId);
-        if (!theirs || theirs.length === 0) continue;
-        for (let k = 0; k < mine.length; k++) {
-          const a: THREE.Vector3 | undefined = mine[k];
-          const b: THREE.Vector3 | undefined =
-            theirs.length === mine.length ? theirs[k] : theirs[k % theirs.length];
-          if (a === undefined || b === undefined) continue;
-          segments.push(a.x, a.y, a.z, b.x, b.y, b.z);
-        }
-      }
-    }
-    // Drawn as spheres, a census joins its jobs with the tubes a feed wears,
-    // pulses and all — while there are few enough of them to draw.
-    const tubeCount: number = segments.length / 6;
-    if (!starring && tubeCount > 0 && tubeCount <= CENSUS_TUBE_CAP) {
-      this.censusTubes_build(placed, memberPositions, memberRadii, palette);
-    } else if (segments.length > 0) {
-      const edgeGeometry: THREE.BufferGeometry = new THREE.BufferGeometry();
-      edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(segments, 3));
-      const lines: THREE.LineSegments = new THREE.LineSegments(
-        edgeGeometry,
-        starring
-          ? new THREE.LineBasicMaterial({ color: palette.edge, transparent: true, opacity: THREAD_OPACITY, blending: THREE.AdditiveBlending, depthWrite: false })
-          : new THREE.LineBasicMaterial({ color: palette.edge, transparent: true, opacity: 0.35 }),
-      );
-      this.group.add(lines);
-    }
+    const cloud = this.censusField.build(nodes, this.drawMode === 'stars', palette);
+    const center: THREE.Vector3 = cloud.center;
+    const cloudRadius: number = cloud.radius;
 
     // The census parks the camera only when a framing was asked for: a
     // descent redraws under a camera the flight has placed, and re-parking
@@ -1659,10 +1563,7 @@ export class DagScene {
   private draw(placed: PlacedNode[], fit: boolean): void {
     this.group.clear();
     this.spheres.clear();
-    this.censusMesh = null;
-    this.censusIds = [];
-    this.censusPositions = [];
-    this.censusBase = null;
+    this.censusField.clear();
     this.dragSim = null;
     this.dragSimNodes = [];
     this.drag = null;
@@ -1804,58 +1705,7 @@ export class DagScene {
 
 
 
-  /**
-   * Joins a census's jobs with tubes: each job to the job of its parent
-   * stage it stands against, as the census's lines did, in the stage's hue
-   * (red into a failed one). A stage that runs streams; a finished run
-   * replays stage by stage in the order its stages ran — every job of a
-   * stage together, so a fan of three hundred pulses as one.
-   *
-   * @param placed - The census's stages.
-   * @param memberPositions - Where each stage's jobs stand.
-   * @param memberRadii - How large each stage's jobs are drawn.
-   * @param palette - The frame's hues.
-   */
-  private censusTubes_build(
-    placed: ReadonlyArray<PlacedNode>,
-    memberPositions: ReadonlyMap<string, THREE.Vector3[]>,
-    memberRadii: ReadonlyMap<string, number>,
-    palette: ReturnType<typeof palette_read>,
-  ): void {
-    const byId: Map<string, SceneNode> = new Map(placed.map((item: PlacedNode): [string, SceneNode] => [item.node.id, item.node]));
-    const depth: Map<string, number> = new Map();
-    const depth_of = (id: string, seen: Set<string> = new Set()): number => {
-      const known: number | undefined = depth.get(id);
-      if (known !== undefined) return known;
-      if (seen.has(id)) return 0;
-      seen.add(id);
-      const parents: string[] = (byId.get(id)?.parentIds ?? []).filter((p: string): boolean => byId.has(p));
-      const d: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((p: string): number => depth_of(p, seen)));
-      depth.set(id, d);
-      return d;
-    };
-    const bright: THREE.Color = palette.edge.clone().lerp(new THREE.Color('#ffffff'), 0.45);
-    const specs: TubeSpec[] = [];
-    let deepest: number = 0;
-    for (const { node } of placed) {
-      const mine: THREE.Vector3[] = memberPositions.get(node.id) ?? [];
-      const state: NodeState = state_of(node);
-      for (const parentId of node.parentIds) {
-        const theirs: THREE.Vector3[] | undefined = memberPositions.get(parentId);
-        if (!theirs || theirs.length === 0) continue;
-        const width: number = Math.max(0.02, Math.min(memberRadii.get(node.id) ?? 0.1, memberRadii.get(parentId) ?? 0.1) * 0.34);
-        const start: number = depth_of(parentId) * WAVE_STEP_MS;
-        deepest = Math.max(deepest, depth_of(parentId));
-        for (let k = 0; k < mine.length; k++) {
-          const to: THREE.Vector3 | undefined = mine[k];
-          const from: THREE.Vector3 | undefined = theirs.length === mine.length ? theirs[k] : theirs[k % theirs.length];
-          if (from === undefined || to === undefined) continue;
-          specs.push({ from, to, width, color: state === 'failed' ? palette.error : bright, mode: tubeMode_of(state), start });
-        }
-      }
-    }
-    this.tubes.census_build(specs, deepest);
-  }
+
 
   /**
    * How a placed node's sphere is drawn when its molecule turns solid.
@@ -2324,7 +2174,7 @@ export class DagScene {
     // A solid sphere wins: the entered feed stands in the census as spheres.
     const solid: string | null = this.meshNode_under(event);
     if (solid !== null) return solid;
-    if (this.census && this.censusMesh !== null) return this.censusNode_under(event);
+    if (this.census && this.censusField.drawn()) return this.censusNode_under(event);
     return this.starNode_under(event);
   }
 
@@ -2358,7 +2208,7 @@ export class DagScene {
    * a place, not just a diorama. The touched member lights up.
    */
   private censusNode_under(event: MouseEvent): string | null {
-    if (this.censusMesh === null) return null;
+    if (!this.censusField.drawn()) return null;
     const bounds: DOMRect = this.renderer.domElement.getBoundingClientRect();
     const pointer: THREE.Vector2 = new THREE.Vector2(
       ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
@@ -2366,11 +2216,7 @@ export class DagScene {
     );
     this.group.updateMatrixWorld(true);
     this.raycaster.setFromCamera(pointer, this.camera);
-    const hit: THREE.Intersection | undefined = this.raycaster.intersectObject(this.censusMesh)[0];
-    if (hit === undefined || hit.instanceId === undefined) return null;
-    this.censusMesh.setColorAt(hit.instanceId, new THREE.Color('#ffffff'));
-    if (this.censusMesh.instanceColor) this.censusMesh.instanceColor.needsUpdate = true;
-    return this.censusIds[hit.instanceId] ?? null;
+    return this.censusField.pick(this.raycaster);
   }
 
   /** Names the node under the pointer in the hover tip, or hides it. */

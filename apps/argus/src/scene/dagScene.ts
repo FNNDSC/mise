@@ -40,11 +40,11 @@ import {
   HANDOFF_SOLID_PX,
   HANDOFF_STAR_PX,
   STAR_GLOW,
-  SphereGeometries,
   THREAD_OPACITY,
   WAVE_STEP_MS,
   fibonacciPoint_make,
   haloRadius_of,
+  SphereField,
   StarField,
   TubeField,
   tubeMode_of,
@@ -444,7 +444,12 @@ export class DagScene {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly group: THREE.Group = new THREE.Group();
   private readonly raycaster: THREE.Raycaster = new THREE.Raycaster();
-  private meshes: Map<string, THREE.Mesh> = new Map();
+  /** The solid spheres, halos and plain edges. */
+  private readonly spheres: SphereField = new SphereField(this.group);
+  /** Every drawn sphere and halo, by its node's id: the sphere field's own map. */
+  private get meshes(): Map<string, THREE.Mesh> {
+    return this.spheres.map;
+  }
   /** The field's stars, threads and nebulae. */
   private readonly starField: StarField = new StarField(this.group);
   /** Every solid molecule's tubes, and the lamps its stages wear. */
@@ -505,8 +510,6 @@ export class DagScene {
   public census_get(): boolean {
     return this.census;
   }
-  /** Edge lines with their endpoint identities, for live re-anchoring. */
-  private edges: Array<{ line: THREE.Line; fromId: string; toId: string; dashed: boolean }> = [];
   private graph: SceneGraph = { nodes: [] };
   /** Idle spin stays paused until this clock time (0 = spinning). */
   private spinIdleUntil: number = 0;
@@ -1259,13 +1262,9 @@ export class DagScene {
    * happened, and a double click could never land. A selection is paint.
    */
   private selection_paint(): void {
-    for (const [id, mesh] of this.meshes) {
-      if (!(mesh.material instanceof THREE.MeshStandardMaterial)) continue;
-      const on: boolean = id === this.selectedId;
-      mesh.material.emissive.set(on ? '#ffffff' : '#000000');
-      mesh.material.emissiveIntensity = on ? 0.35 : 0;
-    }
+    this.spheres.select(this.selectedId);
   }
+
 
   /** @returns The active layout strategy. */
   public strategy_get(): LayoutStrategy {
@@ -1308,12 +1307,8 @@ export class DagScene {
     if (!node) return;
     if (node.status === status) return;
     node.status = status;
-    const mesh: THREE.Mesh | undefined = this.meshes.get(nodeId);
-    if (mesh && mesh.material instanceof THREE.MeshStandardMaterial) {
-      const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
-      mesh.material.color = nodeColor_pick(node, palette_read(), isRoot);
-      delete mesh.userData['lampBase'];
-    }
+    const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
+    this.spheres.recolor(nodeId, nodeColor_pick(node, palette_read(), isRoot));
     // A stage that started or finished changes what its tubes carry: a
     // stream, a replay, or nothing.
     if (this.tubes.holds(nodeId)) this.tubes.stale_mark();
@@ -1341,6 +1336,7 @@ export class DagScene {
     if (this.frameHandle !== null) window.cancelAnimationFrame(this.frameHandle);
     this.renderer.dispose();
     this.renderer.domElement.remove();
+    this.spheres.dispose();
   }
 
   /**
@@ -1506,13 +1502,6 @@ export class DagScene {
     this.camera.lookAt(0, 0, 0);
   }
 
-  /** Sphere geometries by radius, shared: a node's geometry is never mutated. */
-  private readonly sphereGeometries: SphereGeometries = new SphereGeometries();
-
-  /** A sphere of a radius, shared across nodes and rebuilds. */
-  private sphere_of(radius: number): THREE.SphereGeometry {
-    return this.sphereGeometries.of(radius);
-  }
 
 
   /** Counts rebuilds, so a sliced settle overtaken by a newer one stops. */
@@ -1686,8 +1675,7 @@ export class DagScene {
   /** Draws placed nodes as the scene: meshes, edges, census, the frame. */
   private draw(placed: PlacedNode[], fit: boolean): void {
     this.group.clear();
-    this.meshes = new Map();
-    this.edges = [];
+    this.spheres.clear();
     this.censusMesh = null;
     this.censusIds = [];
     this.censusPositions = [];
@@ -1742,48 +1730,18 @@ export class DagScene {
         continue;
       }
       if (node.halo === true) {
-        // A cluster's handle: translucent, unlit, written last so the
-        // spheres inside it show through; picked only when nothing solid is.
-        const haloGeometry: THREE.SphereGeometry = new THREE.SphereGeometry(haloRadius_of(node.count ?? 1), 24, 18);
-        const haloMaterial: THREE.MeshBasicMaterial = new THREE.MeshBasicMaterial({
-          color: palette.edge, transparent: true, opacity: node.dim === true ? HALO_OPACITY * 0.4 : HALO_OPACITY, depthWrite: false,
-        });
-        const halo: THREE.Mesh = new THREE.Mesh(haloGeometry, haloMaterial);
-        halo.position.copy(position);
-        halo.renderOrder = 1;
-        halo.userData['nodeId'] = node.id;
-        halo.userData['halo'] = true;
-        // A dimmed halo is scenery like a dimmed sphere: it takes no pointer.
-        halo.userData['dim'] = node.dim === true;
-        this.group.add(halo);
-        this.meshes.set(node.id, halo);
+        this.spheres.halo_add(node.id, position, haloRadius_of(node.count ?? 1), palette.edge, node.dim === true);
         continue;
       }
       const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
       // 2D is drawn flat: discs, not lit spheres — the schematic reading
-      // all the way down. Uniform normals face the camera, so the shared
-      // material pipeline (status color, selection, flare) carries over.
-      const geometry: THREE.BufferGeometry =
-        this.projection === '2d'
-          ? new THREE.CircleGeometry(radius, 36)
-          : this.sphere_of(radius);
-      const material: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({
+      // all the way down; status colour, selection and flare carry over.
+      this.spheres.sphere_add(node.id, position, radius, {
         color: nodeColor_pick(node, palette, isRoot),
-        roughness: 0.35,
-        metalness: 0.15,
-        emissive: node.id === this.selectedId ? new THREE.Color('#ffffff') : new THREE.Color('#000000'),
-        emissiveIntensity: node.id === this.selectedId ? 0.35 : 0,
-        ...(node.dim === true ? { transparent: true, opacity: DIM_OPACITY } : {}),
+        dim: node.dim === true,
+        selected: node.id === this.selectedId,
+        flat: this.projection === '2d',
       });
-      const mesh: THREE.Mesh = new THREE.Mesh(geometry, material);
-      mesh.position.copy(position);
-      mesh.userData['nodeId'] = node.id;
-      // A dimmed node is scenery: it is drawn behind the graph in hand and
-      // takes no pointer, so a hover or a click through a feed's nodes
-      // never lands on the field they stand in.
-      mesh.userData['dim'] = node.dim === true;
-      this.group.add(mesh);
-      this.meshes.set(node.id, mesh);
     }
 
     if (starred.length > 0) this.starField.draw(starred, window.devicePixelRatio, this.renderer.domElement.height, this.camera.fov);
@@ -1809,14 +1767,14 @@ export class DagScene {
         const parent: PlacedNode | undefined = byId.get(parentId);
         if (!parent || parent.node.ghost === true) continue;
         const dim: boolean = node.dim === true || parent.node.dim === true;
-        if (solid(item) && solid(parent)) { if (!starring && dim) this.edge_add(parentId, node.id, parent.position, position, palette.edge, false, dim); }
+        if (solid(item) && solid(parent)) { if (!starring && dim) this.spheres.edge_add(parentId, node.id, parent.position, position, palette.edge, false, dim); }
         else thread_add(parent.position, position, palette.edge, dim, node);
       }
       for (const joinId of node.joinParentIds) {
         const parent: PlacedNode | undefined = byId.get(joinId);
         if (!parent) continue;
         const dim: boolean = node.dim === true || parent.node.dim === true;
-        if (solid(item) && solid(parent)) { if (!starring && dim) this.edge_add(joinId, node.id, parent.position, position, palette.join, true, dim); }
+        if (solid(item) && solid(parent)) { if (!starring && dim) this.spheres.edge_add(joinId, node.id, parent.position, position, palette.join, true, dim); }
         else thread_add(parent.position, position, palette.join, dim, node);
       }
     }
@@ -1923,15 +1881,7 @@ export class DagScene {
       if (placed === undefined) continue;
       const node: SceneNode = placed.node;
       const isRoot: boolean = node.parentIds.length === 0 && node.joinParentIds.length === 0;
-      const mesh: THREE.Mesh = new THREE.Mesh(this.sphere_of(placed.radius), new THREE.MeshStandardMaterial({
-        color: nodeColor_pick(node, palette, isRoot), roughness: 0.35, metalness: 0.15, transparent: true, opacity: group.mix,
-      }));
-      mesh.position.copy(placed.position);
-      mesh.userData['nodeId'] = node.id;
-      mesh.userData['dim'] = false;
-      this.group.add(mesh);
-      this.meshes.set(node.id, mesh);
-      group.meshes.push(mesh);
+      group.meshes.push(this.spheres.sphere_add(node.id, placed.position, placed.radius, { color: nodeColor_pick(node, palette, isRoot), fade: group.mix }));
     }
     this.tubes.build(group, group.entries.map((entry: StarEntry): string => entry.id), members);
   }
@@ -2009,12 +1959,7 @@ export class DagScene {
 
   /** Lets a feed's spheres go once it is stars again. */
   private handoffSolid_release(group: HandoffGroup): void {
-    for (const mesh of group.meshes) {
-      this.group.remove(mesh);
-      if (mesh.material instanceof THREE.Material) mesh.material.dispose();
-      const id: unknown = mesh.userData['nodeId'];
-      if (typeof id === 'string' && this.meshes.get(id) === mesh) this.meshes.delete(id);
-    }
+    for (const mesh of group.meshes) this.spheres.remove(mesh);
     for (const line of group.lines) {
       this.group.remove(line);
       line.geometry.dispose();
@@ -2111,33 +2056,7 @@ export class DagScene {
     return [...this.meshes.keys(), ...this.starField.ids()];
   }
 
-  /** Adds one edge line; joins are dashed. Endpoint ids allow live re-anchoring. */
-  private edge_add(
-    fromId: string,
-    toId: string,
-    from: THREE.Vector3,
-    to: THREE.Vector3,
-    color: THREE.Color,
-    dashed: boolean,
-    dim: boolean = false,
-  ): void {
-    const geometry: THREE.BufferGeometry = new THREE.BufferGeometry().setFromPoints([from, to]);
-    let line: THREE.Line;
-    if (dashed) {
-      const material: THREE.LineDashedMaterial = new THREE.LineDashedMaterial({
-        color, dashSize: 0.25, gapSize: 0.18, transparent: true, opacity: dim ? DIM_OPACITY : 0.9,
-      });
-      line = new THREE.Line(geometry, material);
-      line.computeLineDistances();
-    } else {
-      const material: THREE.LineBasicMaterial = new THREE.LineBasicMaterial({
-        color, transparent: true, opacity: dim ? DIM_OPACITY : 0.75,
-      });
-      line = new THREE.Line(geometry, material);
-    }
-    this.group.add(line);
-    this.edges.push({ line, fromId, toId, dashed });
-  }
+
 
   /** Copies simulation positions onto meshes and re-anchors every edge. */
   private positions_sync(): void {
@@ -2148,13 +2067,7 @@ export class DagScene {
       this.lastPositions.set(simNode.id, new THREE.Vector3(simNode.x, simNode.y, simNode.z));
     }
     this.tubes.follow();
-    for (const edge of this.edges) {
-      const from: THREE.Mesh | undefined = this.meshes.get(edge.fromId);
-      const to: THREE.Mesh | undefined = this.meshes.get(edge.toId);
-      if (from === undefined || to === undefined) continue;
-      edge.line.geometry.setFromPoints([from.position, to.position]);
-      if (edge.dashed) edge.line.computeLineDistances();
-    }
+    this.spheres.edges_follow();
   }
 
   /** An empty-space drag steering the view: orbit, or pan with shift/right. */
@@ -2509,14 +2422,7 @@ export class DagScene {
     for (const item of solidOnes) {
       this.placedById.set(item.node.id, item);
       const isRoot: boolean = item.node.parentIds.length === 0 && item.node.joinParentIds.length === 0;
-      const mesh: THREE.Mesh = new THREE.Mesh(this.sphere_of(item.radius), new THREE.MeshStandardMaterial({
-        color: nodeColor_pick(item.node, palette, isRoot), roughness: 0.35, metalness: 0.15,
-      }));
-      mesh.position.copy(item.position);
-      mesh.userData['nodeId'] = item.node.id;
-      mesh.userData['dim'] = false;
-      this.group.add(mesh);
-      this.meshes.set(item.node.id, mesh);
+      this.spheres.sphere_add(item.node.id, item.position, item.radius, { color: nodeColor_pick(item.node, palette, isRoot) });
     }
     const ids: string[] = solidOnes.map((item: PlacedNode): string => item.node.id);
     const entered: HandoffGroup = {

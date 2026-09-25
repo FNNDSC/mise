@@ -1,5 +1,12 @@
 # @fnndsc/argus
 
+## 0.16.4
+
+### Patch Changes
+
+- aff458c: A census drawn as spheres joins its jobs with tubes and pulses, as a feed's stages are joined (up to 20,000 edges; lines beyond).
+- f2ef100: The frame meets itself on every screen: the header's band sits level with the gutter's elbow at any height (it broke on screens shorter than about 1000px), and a long pane title no longer pushes the panes past the right edge — the title ellipsises and a drawer's verbs wrap.
+
 ## 0.16.3
 
 ### Patch Changes

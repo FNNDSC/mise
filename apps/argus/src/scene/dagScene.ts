@@ -119,6 +119,12 @@ export interface SceneHandlers {
   activate?: (node: SceneNode) => void;
   /** A click on empty space cleared the selection. */
   deselect?: () => void;
+  /**
+   * A two-finger gesture ended: the camera stands where the fingers left
+   * it. A host that reads a pinch as a step (out of a feed) asks
+   * {@link DagScene.camera_distance} here.
+   */
+  gesture_end?: () => void;
   /** The words the hover tip shows for a node; null for the node's label. */
   tip?: (node: SceneNode) => string | null;
   /**
@@ -564,6 +570,7 @@ export class DagScene {
         leave: (event: PointerEvent): void => this.leave_handle(event),
         tap: (event: MouseEvent, kind: 'select' | 'activate'): void => this.pick_handle(event, kind),
         tip_hide: (): void => { if (this.tip) this.tip.hidden = true; },
+        gesture_end: (): void => this.handlers.gesture_end?.(),
       }, {
         flat: (): boolean => this.projection === '2d',
         // Census is a place: the camera parks off the focus.
@@ -736,6 +743,15 @@ export class DagScene {
       if (drawn !== null) reaches.push(drawn);
     }
     this.rig.flyToFit(reaches, durationMs, onDone, bulk, margin);
+  }
+
+  /**
+   * How far the camera stands from what it looks at.
+   *
+   * @returns The distance from the eye to the focus, in scene units.
+   */
+  public camera_distance(): number {
+    return this.rig.eyeDistance();
   }
 
   /**

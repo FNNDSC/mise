@@ -46,6 +46,25 @@ Grilled and settled with the operator on 2026-09-25.
 | `hierarchy.ts` | Spokes and clumps: molecules placed about their anchors.
 | `galaxy.ts` | The whole space finding its own rest, starting from the spokes arrangement.
 | `registry.ts` | The engines by name: galaxy, spokes, clumps, ranked, molecule; `layoutNeeds_missing` says what an engine needs that the nodes do not carry.
+| `seeded.ts` | Chance that comes out the same every time: a molecule's turn seeded by a hash of its own key.
+|===
+
+== The drawing layer
+
+`draw/` holds what a scene draws with and nothing that lays out or steers. Its public entry is `@fnndsc/orrery`.
+
+[cols="1,3"]
+|===
+| Module | What it holds
+
+| `palette.ts` | `Palette`: the colours a drawing is handed (running, done, error, template, unknown, edge, join, root, pulse). orrery never reads a stylesheet.
+| `constants.ts` | How faint things are drawn: dimmed nodes, halos, threads, nebulae.
+| `timing.ts` | The drawing's clock: the wave's step down a graph, a pulse's trip, a replay's rest.
+| `geometry.ts` | Halo radii, shells of points on a sphere, and `SphereGeometries` — one sphere per size a scene draws.
+| `stars.ts` | The two star layers (glow, embers) as one draw call each (`starLayer_make`), their shaders, and the scale that keeps a star true to its sphere (`starScale_of`).
+| `nebula.ts` | The soft glow a cluster wears under stars.
+| `tubes.ts` | The lit tubes and their pulse shader; `tubeMesh_make` builds any number of them as one instanced mesh.
+| `lamps.ts`, `handoff.ts` | The lamps' darkness, bloom and fade; when a molecule turns from stars to spheres and how long the crossfade takes.
 |===
 
 The layer's public entry is `@fnndsc/orrery/layout`: it loads no renderer, so a worker that settles a space loads only the gearing.
@@ -58,4 +77,5 @@ The layer's public entry is `@fnndsc/orrery/layout`: it loads no renderer, so a 
 
 | 2026-09-25 (the gearing moves out) | Slice 1. The package, its lint, and the layouts. Hierarchy, galaxy and the ranked tiers moved unchanged but for types; the molecule settle was rewritten on plain `[x, y, z]` rather than the renderer's vectors, and ARGUS converts at its edge. The universe's worker is now a host that runs orrery's engines by name, and says so when asked for an engine it does not have rather than drawing every node at the origin. Proof of no change: the old code was recorded on fixed graphs before anything moved, and the new code must match it — the molecule settle and the ranked tiers to the last digit, in 3D, flat, and warm-started with frozen nodes. The recording turned something up: the hierarchy and the galaxy were never repeatable. A molecule that reuses a shape already worked out takes it at a random turn, so like feeds do not stand as clones; the same space laid out twice lands differently by up to 116 units (clumps). That is behaviour, and slice 1 changes none, so both engines now take an optional random source, `Math.random` as before, and are pinned in their tests under a seeded one. Whether a surface should seed them from the space itself, so a lab's universe looks the same on every device, is the operator's call. |
 | 2026-09-25 (the same sky everywhere) | The operator: "Yes seed from the universe". Not from the universe as one seed — a feed arriving would change it and turn every molecule at once — but from each molecule: a reused molecule's turn is drawn from a generator seeded by a hash of its own key (`seeded.ts`: FNV-1a, then a linear congruential generator). Each feed keeps one orientation for good, the same on every device and every visit, and a new feed turns no other. It is the engines' default; a caller that wants the old chance passes `Math.random`. With the only other chance in the settle being d3's own seeded jiggle, the space is now repeatable: two fresh browsers on two fresh sessions laid out a 26,402-sphere universe and saved positions identical to the last digit. The hash and the generator are pinned in tests, since changing either would turn every molecule in every operator's universe at once. A browser that kept positions from before keeps them until the space is laid out afresh. |
+| 2026-09-25 (the brass, part one) | Slice 2a. The drawing's stateless pieces left the scene for `draw/`: the palette's shape, the opacities, the clock, the star shaders and a builder for a star layer, the nebula's glow, the tube shader and its instanced builder, the lamps' and hand-off's measures, halos and shells, and a shared sphere cache. They moved as text, byte for byte; the scene now calls them. The stateful drawers (spheres, stars, tubes and lamps, census, the hand-off) follow in 2b. three.js loads under orrery's jest, so these pieces are tested there: tubes carry their hue, mode and start per instance and stand where their ends are; a star layer records each star's slot and draws the dimmed ones faint; one sphere per size. The scene is 2,932 lines, down from 3,188. |
 |===

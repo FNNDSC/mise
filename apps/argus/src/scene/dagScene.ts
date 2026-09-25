@@ -33,6 +33,39 @@ import {
   type Vec3,
 } from '@fnndsc/orrery/layout';
 import {
+  CENSUS_TUBE_CAP,
+  DIM_OPACITY,
+  HALO_OPACITY,
+  HANDOFF_FADE_MS,
+  HANDOFF_SOLID_PX,
+  HANDOFF_STAR_PX,
+  LAMP_BLOOM_MS,
+  LAMP_BLOOM_REACH,
+  LAMP_DIM,
+  LAMP_FADE_MS,
+  LAMP_WHITE,
+  NEBULA_OPACITY,
+  PULSE_TRIP_MS,
+  REPLAY_REST_MS,
+  STAR_GLOW,
+  SphereGeometries,
+  THREAD_OPACITY,
+  TUBE_FRAGMENT,
+  TUBE_VERTEX,
+  WAVE_STEP_MS,
+  fibonacciPoint_make,
+  haloRadius_of,
+  nebulaTexture_get,
+  starLayer_make,
+  starScale_of,
+  tubeGeometry_get,
+  tubeMesh_make,
+  type Palette,
+  type StarEntry,
+  type StarLayer,
+  type TubeSpec,
+} from '@fnndsc/orrery';
+import {
   forceSimulation,
   forceLink,
   forceManyBody,
@@ -133,22 +166,8 @@ interface PlacedNode {
 }
 
 
-/** How faint a dimmed node and its edges are drawn. */
-const DIM_OPACITY: number = 0.16;
 
-/** How faint a cluster's halo is drawn. */
-const HALO_OPACITY: number = 0.09;
 
-/**
- * A halo's radius by the feeds it gathers: room for a few, more for a crowd,
- * never so much it swallows the neighbouring cluster.
- *
- * @param count - The feeds of the shape.
- * @returns The radius in scene units.
- */
-function haloRadius_of(count: number): number {
-  return 1.6 + 0.45 * Math.sqrt(Math.max(1, count));
-}
 
 
 /** Idle rotation speed, radians per frame. */
@@ -168,8 +187,6 @@ const TUMBLE_DRIFT: number = 0.0035;
 /** How long after the last touch the idle spin stays paused. */
 const SPIN_RESUME_MS: number = 10_000;
 
-/** Wave delay between one dependency tier firing and the next. */
-const WAVE_STEP_MS: number = 450;
 
 /** How long one node's wave flare lasts (rise and fall). */
 const WAVE_FLARE_MS: number = 700;
@@ -197,11 +214,7 @@ const RUNNING_STATUSES: ReadonlySet<string> = new Set([
  *
  * @returns The scene's colors, tracking the active theme.
  */
-function palette_read(): {
-  running: THREE.Color; done: THREE.Color; error: THREE.Color;
-  template: THREE.Color; unknown: THREE.Color; edge: THREE.Color; join: THREE.Color;
-  root: THREE.Color; pulse: THREE.Color;
-} {
+function palette_read(): Palette {
   const style: CSSStyleDeclaration = getComputedStyle(document.documentElement);
   const varColor = (name: string, fallback: string): THREE.Color =>
     new THREE.Color(style.getPropertyValue(name).trim() || fallback);
@@ -267,14 +280,6 @@ function nodeColor_pick(
  * the hierarchy (the earlier per-node depth jitter made a turned tree look
  * like a different feed).
  */
-/** The k-th of n points on a fibonacci sphere of the given radius. */
-function fibonacciPoint_make(k: number, n: number, radius: number): THREE.Vector3 {
-  const golden: number = Math.PI * (3 - Math.sqrt(5));
-  const y: number = n === 1 ? 0 : 1 - (2 * k) / (n - 1);
-  const ring: number = Math.sqrt(Math.max(0, 1 - y * y));
-  const angle: number = golden * k;
-  return new THREE.Vector3(Math.cos(angle) * ring * radius, y * radius, Math.sin(angle) * ring * radius);
-}
 
 /**
  * A scene node as orrery's molecule reads it: its parents with its joins
@@ -398,216 +403,13 @@ const SLICE_BUDGET_MS: number = 12;
 /** How the scene draws its nodes: lit spheres, or points of light. */
 export type DrawMode = 'spheres' | 'stars';
 
-/** A star's smallest size on screen, in CSS pixels: no node ever vanishes. */
-const STAR_FLOOR_PX: number = 2;
-/** A star never swells past this many CSS pixels: near the camera a feed is spheres, not a glow. */
-const STAR_CAP_PX: number = 28;
-/** A star's sprite spans this many times its sphere's diameter: core plus glow. */
-const STAR_GLOW: number = 1.8;
-/** Threads (edges) while the scene draws stars: faint, so the light leads. */
-const THREAD_OPACITY: number = 0.1;
-/** A nebula's opacity at its heart; a dimmed one a third of it. */
-const NEBULA_OPACITY: number = 0.2;
 
-const STAR_VERTEX: string = `
-attribute float radius;
-attribute float alpha;
-attribute vec3 tint;
-uniform float scale;
-uniform float floorPx;
-uniform float capPx;
-varying vec3 vTint;
-varying float vAlpha;
-void main() {
-  vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  gl_Position = projectionMatrix * mv;
-  float px = ${STAR_GLOW.toFixed(1)} * 2.0 * radius * scale / max(0.0001, -mv.z);
-  gl_PointSize = min(max(px, floorPx), capPx);
-  vTint = tint;
-  vAlpha = alpha;
-}`;
 
-/** The glow: a bright core falling off to nothing at the sprite's edge. */
-const STAR_FRAGMENT_GLOW: string = `
-varying vec3 vTint;
-varying float vAlpha;
-void main() {
-  float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
-  if (d > 1.0) discard;
-  float core = smoothstep(0.6, 0.0, d);
-  float halo = pow(1.0 - d, 2.2) * 0.55;
-  float a = clamp(core + halo, 0.0, 1.0) * vAlpha;
-  gl_FragColor = vec4(vTint * a, a);
-}`;
 
-/** The ember: an errored star drawn solid over the glow, so red stays red. */
-const STAR_FRAGMENT_EMBER: string = `
-varying vec3 vTint;
-varying float vAlpha;
-void main() {
-  float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
-  if (d > 1.0) discard;
-  float a = smoothstep(1.0, 0.35, d) * vAlpha;
-  gl_FragColor = vec4(vTint, a);
-}`;
 
-/** One star as drawn: whose it is, where, how big, its hue, whether dim, whether errored. */
-interface StarEntry {
-  id: string;
-  position: THREE.Vector3;
-  radius: number;
-  color: THREE.Color;
-  dim: boolean;
-  ember: boolean;
-  /** Which layer draws it (0 glow, 1 ember) and its slot there, once drawn. */
-  layer?: number;
-  slot?: number;
-}
 
-/** A feed switches to solid when its largest sphere spans this many CSS pixels… */
-const HANDOFF_SOLID_PX: number = 7;
-/** …and back to stars below this: the gap keeps a feed at the edge from flickering. */
-const HANDOFF_STAR_PX: number = 5;
-/** The crossfade between a feed's stars and its spheres. */
-const HANDOFF_FADE_MS: number = 300;
-/** A pulse's trip along one tube; a live edge repeats it. */
-const PULSE_TRIP_MS: number = 1200;
-/** The rest between two replays of a finished feed's run. */
-const REPLAY_REST_MS: number = 1800;
-/**
- * The most job-to-job edges a census draws as tubes. Past it the census
- * keeps its lines: a lab's whole history is hundreds of thousands of
- * edges, and that many cylinders would stall the tablet it is read on.
- */
-const CENSUS_TUBE_CAP: number = 20_000;
-/** A replayed stage before its pulse lands: this share of its colour. */
-const LAMP_DIM: number = 0.18;
-/** How long a stage's glow blooms out and settles as its pulse lands. */
-const LAMP_BLOOM_MS: number = 1000;
-/** How far the bloom reaches, in the stage's radii. */
-const LAMP_BLOOM_REACH: number = 9;
-/** How long the lit stages take to dim before the run replays. */
-const LAMP_FADE_MS: number = 500;
-/** What a lit stage brightens toward. */
-const LAMP_WHITE: THREE.Color = new THREE.Color('#ffffff');
 
-const TUBE_VERTEX: string = `
-attribute vec3 aColor;
-attribute float aMode;
-attribute float aStart;
-varying vec3 vColor;
-varying float vMode;
-varying float vStart;
-varying float vAlong;
-varying vec3 vNormal;
-varying vec3 vView;
-void main() {
-  vAlong = position.y + 0.5;
-  vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-  vView = -mv.xyz;
-  vNormal = normalize(normalMatrix * mat3(instanceMatrix) * normal);
-  vColor = aColor;
-  vMode = aMode;
-  vStart = aStart;
-  gl_Position = projectionMatrix * mv;
-}`;
 
-/**
- * A tube lit by its facing, carrying a pulse from parent (its foot) to
- * child (its head): mode 1 streams (live), mode 2 replays the run — each
- * stage at vStart into a cycle that rests and repeats — mode 0 rests.
- */
-const TUBE_FRAGMENT: string = `
-uniform float time;
-uniform float opacity;
-uniform float born;
-uniform float cycle;
-varying vec3 vColor;
-varying float vMode;
-varying float vStart;
-varying float vAlong;
-varying vec3 vNormal;
-varying vec3 vView;
-void main() {
-  float facing = abs(dot(normalize(vNormal), normalize(vView)));
-  vec3 base = vColor * (0.35 + 0.65 * facing);
-  float pulse = 0.0;
-  if (vMode > 0.5 && vMode < 1.5) {
-    float head = fract(time / ${PULSE_TRIP_MS.toFixed(1)});
-    pulse = smoothstep(0.14, 0.0, abs(vAlong - head));
-  } else if (vMode > 1.5) {
-    // A finished feed replays its run: the wave goes stage by stage in the
-    // order the stages ran, rests, and goes again.
-    float local = mod(time - born, cycle) - vStart;
-    float head = local / ${(PULSE_TRIP_MS / 2).toFixed(1)};
-    if (head > -0.1 && head < 1.2) pulse = smoothstep(0.14, 0.0, abs(vAlong - head));
-  }
-  gl_FragColor = vec4(base + vec3(1.0, 0.95, 0.8) * pulse * 1.3, opacity);
-}`;
-
-/** The tube every solid edge wears, stretched and turned per edge. */
-let tubeGeometry: THREE.CylinderGeometry | null = null;
-
-/** A unit tube, one high along y, centred: its foot at -0.5, its head at +0.5. */
-function tubeGeometry_get(): THREE.CylinderGeometry {
-  if (tubeGeometry === null) tubeGeometry = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true);
-  return tubeGeometry;
-}
-
-/** One tube: where it runs, how wide, its hue, and its pulse. */
-interface TubeSpec {
-  from: THREE.Vector3;
-  to: THREE.Vector3;
-  width: number;
-  color: THREE.Color;
-  /** 0 rests, 1 streams (a live stage), 2 replays (a finished run). */
-  mode: number;
-  /** When, into the replay's cycle, the wave sets off along it. */
-  start: number;
-}
-
-/**
- * Makes one instanced mesh of tubes from their specs: the shared unit tube
- * stretched and turned per spec, each carrying its own hue and pulse.
- *
- * @param specs - The tubes.
- * @param cycle - The replay's period, in ms.
- * @returns The mesh, not yet added to anything.
- */
-function tubeMesh_make(specs: ReadonlyArray<TubeSpec>, cycle: number): THREE.InstancedMesh {
-  const now: number = performance.now();
-  const material: THREE.ShaderMaterial = new THREE.ShaderMaterial({
-    uniforms: { time: { value: now }, opacity: { value: 1 }, born: { value: now }, cycle: { value: cycle } },
-    vertexShader: TUBE_VERTEX,
-    fragmentShader: TUBE_FRAGMENT,
-    transparent: true,
-  });
-  const geometry: THREE.BufferGeometry = tubeGeometry_get().clone();
-  const colors: Float32Array = new Float32Array(specs.length * 3);
-  const modes: Float32Array = new Float32Array(specs.length);
-  const starts: Float32Array = new Float32Array(specs.length);
-  const mesh: THREE.InstancedMesh = new THREE.InstancedMesh(geometry, material, specs.length);
-  const up: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
-  const carrier: THREE.Object3D = new THREE.Object3D();
-  specs.forEach((spec: TubeSpec, i: number): void => {
-    const along: THREE.Vector3 = spec.to.clone().sub(spec.from);
-    const length: number = along.length();
-    carrier.position.copy(spec.from).addScaledVector(along, 0.5);
-    carrier.quaternion.setFromUnitVectors(up, length > 0 ? along.divideScalar(length) : up);
-    carrier.scale.set(spec.width, length, spec.width);
-    carrier.updateMatrix();
-    mesh.setMatrixAt(i, carrier.matrix);
-    colors.set([spec.color.r, spec.color.g, spec.color.b], i * 3);
-    modes[i] = spec.mode;
-    starts[i] = spec.start;
-  });
-  geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
-  geometry.setAttribute('aMode', new THREE.InstancedBufferAttribute(modes, 1));
-  geometry.setAttribute('aStart', new THREE.InstancedBufferAttribute(starts, 1));
-  mesh.instanceMatrix.needsUpdate = true;
-  mesh.frustumCulled = false;
-  return mesh;
-}
 
 /**
  * One feed (or folded shape) in the hand-off: its stars, where it stands,
@@ -624,28 +426,6 @@ interface HandoffGroup {
   lines: THREE.Line[];
   tubes: THREE.InstancedMesh | null;
   threadSegments: number[];
-}
-
-/** A soft radial glow, shared by every nebula. */
-let nebulaTexture: THREE.Texture | null = null;
-
-/** Draws (once) the nebula's radial glow. */
-function nebulaTexture_get(): THREE.Texture {
-  if (nebulaTexture !== null) return nebulaTexture;
-  const canvas: HTMLCanvasElement = document.createElement('canvas');
-  canvas.width = 128;
-  canvas.height = 128;
-  const context: CanvasRenderingContext2D | null = canvas.getContext('2d');
-  if (context !== null) {
-    const gradient: CanvasGradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
-    gradient.addColorStop(0, 'rgba(255,255,255,1)');
-    gradient.addColorStop(0.35, 'rgba(255,255,255,0.45)');
-    gradient.addColorStop(1, 'rgba(255,255,255,0)');
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, 128, 128);
-  }
-  nebulaTexture = new THREE.CanvasTexture(canvas);
-  return nebulaTexture;
 }
 
 /**
@@ -1744,19 +1524,13 @@ export class DagScene {
   }
 
   /** Sphere geometries by radius, shared: a node's geometry is never mutated. */
-  private readonly spheres: Map<number, THREE.SphereGeometry> = new Map();
+  private readonly sphereGeometries: SphereGeometries = new SphereGeometries();
 
   /** A sphere of a radius, shared across nodes and rebuilds. */
   private sphere_of(radius: number): THREE.SphereGeometry {
-    const key: number = Math.round(radius * 1000);
-    let geometry: THREE.SphereGeometry | undefined = this.spheres.get(key);
-    if (geometry === undefined) {
-      geometry = new THREE.SphereGeometry(key / 1000, 24, 18);
-      geometry.computeBoundingSphere();
-      this.spheres.set(key, geometry);
-    }
-    return geometry;
+    return this.sphereGeometries.of(radius);
   }
+
 
   /** Counts rebuilds, so a sliced settle overtaken by a newer one stops. */
   private rebuildGen: number = 0;
@@ -2545,39 +2319,10 @@ export class DagScene {
     for (const ember of [false, true]) {
       const layer: StarEntry[] = entries.filter((entry: StarEntry): boolean => entry.ember === ember);
       if (layer.length === 0) continue;
-      const positions: Float32Array = new Float32Array(layer.length * 3);
-      const tints: Float32Array = new Float32Array(layer.length * 3);
-      const radii: Float32Array = new Float32Array(layer.length);
-      const alphas: Float32Array = new Float32Array(layer.length);
-      layer.forEach((entry: StarEntry, i: number): void => {
-        entry.layer = this.starLayers.length;
-        entry.slot = i;
-        positions.set([entry.position.x, entry.position.y, entry.position.z], i * 3);
-        tints.set([entry.color.r, entry.color.g, entry.color.b], i * 3);
-        radii[i] = entry.radius;
-        alphas[i] = entry.dim ? DIM_OPACITY * 1.5 : 1;
-      });
-      const geometry: THREE.BufferGeometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      geometry.setAttribute('tint', new THREE.BufferAttribute(tints, 3));
-      geometry.setAttribute('radius', new THREE.BufferAttribute(radii, 1));
-      const alphaAttribute: THREE.BufferAttribute = new THREE.BufferAttribute(alphas, 1);
-      geometry.setAttribute('alpha', alphaAttribute);
-      this.starLayers.push({ alpha: alphaAttribute, base: Float32Array.from(alphas) });
-      const material: THREE.ShaderMaterial = new THREE.ShaderMaterial({
-        uniforms: { scale: { value: 1 }, floorPx: { value: STAR_FLOOR_PX * window.devicePixelRatio }, capPx: { value: STAR_CAP_PX * window.devicePixelRatio } },
-        vertexShader: STAR_VERTEX,
-        fragmentShader: ember ? STAR_FRAGMENT_EMBER : STAR_FRAGMENT_GLOW,
-        transparent: true,
-        depthWrite: false,
-        blending: ember ? THREE.NormalBlending : THREE.AdditiveBlending,
-      });
-      const points: THREE.Points = new THREE.Points(geometry, material);
-      // Embers over the glow: drawn after it, whatever the sort says.
-      points.renderOrder = ember ? 2 : 1;
-      points.frustumCulled = false;
-      this.group.add(points);
-      this.starMaterials.push(material);
+      const drawn: StarLayer = starLayer_make(layer, ember, this.starLayers.length, window.devicePixelRatio);
+      this.starLayers.push({ alpha: drawn.alpha, base: drawn.base });
+      this.group.add(drawn.points);
+      this.starMaterials.push(drawn.material);
     }
     this.starScale_update();
   }
@@ -2585,8 +2330,7 @@ export class DagScene {
   /** Keeps the stars' pixel scale true to the camera and the canvas. */
   private starScale_update(): void {
     if (this.starMaterials.length === 0) return;
-    const height: number = this.renderer.domElement.height;
-    const scale: number = height / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
+    const scale: number = starScale_of(this.renderer.domElement.height, this.camera.fov);
     for (const material of this.starMaterials) {
       const uniform = material.uniforms['scale'];
       if (uniform !== undefined) uniform.value = scale;

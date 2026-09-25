@@ -4,3 +4,4 @@
  * @module
  */
 export * from './cameraRig.js';
+export * from './gestures.js';

@@ -3535,7 +3535,7 @@ button.files-crumb:focus-visible {
   min-height: 100%;
 }
 
-/* Every DagScene canvas fills its mount in CSS pixels whatever the device
+/* Every orrery canvas fills its mount in CSS pixels whatever the device
  * pixel ratio: the renderer draws at device resolution and leaves the CSS
  * size to this rule. Without it a HiDPI display fed the canvas's device
  * width back into its mount's width on every resize — a /bin diagram grew

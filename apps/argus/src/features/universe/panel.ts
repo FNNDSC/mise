@@ -19,7 +19,7 @@
  */
 import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope } from '@fnndsc/menu';
 import { PROC_UNIVERSE_MODEL_KIND, procUniverseModelSchema, type ProcUniverseModel } from '@fnndsc/menu';
-import { DagScene, PHYSICS_DEFAULT, type DrawMode, type PhysicsTerms, type SceneGraph, type SceneNode, type SettleMode } from '../../scene/dagScene.js';
+import { ChrisSpace, PHYSICS_DEFAULT, type DrawMode, type PhysicsTerms, type SceneGraph, type SceneNode, type SettleMode } from '../../scene/chrisSpace.js';
 import {
   LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse,
   enteredFeed_build, descendedGraph_build, sphereIds_of, clusterTip_of, clusterGraph_build, clusterIds_of, shapeWords_of, shapeWords_brief, shape_of,
@@ -118,7 +118,7 @@ const ASCENT_MS: number = 650;
 const PINCH_LEAVE_FACTOR: number = 1.5;
 
 export class UniversePanel {
-  private readonly scene: DagScene;
+  private readonly scene: ChrisSpace;
   /** The wait over the field: the session asked, or a settle in slices. */
   private readonly wait: WaitProgress;
   /** Whether `proc universe` has been asked and not yet answered. */
@@ -199,7 +199,7 @@ export class UniversePanel {
     this.openPill = mount.openPill;
     this.pane = mount.canvas.closest<HTMLElement>('.workspace-pane');
     this.wait = new WaitProgress(mount.canvas);
-    this.scene = new DagScene(mount.canvas, {
+    this.scene = new ChrisSpace(mount.canvas, {
       // A space of thousands settles in slices, and says how far it has
       // come: the page never sits frozen behind a settle.
       progress: (done: number, total: number, nodes: number): void => this.settle_progress(done, total, nodes),

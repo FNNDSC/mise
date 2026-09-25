@@ -14,7 +14,7 @@
  *
  * @module
  */
-import type { SceneGraph, SceneNode } from '../../scene/dagScene.js';
+import type { SceneGraph, SceneNode } from '../../scene/chrisSpace.js';
 import type { FeedDagModel, FeedDagNode } from '@fnndsc/menu';
 
 /** One node of a feed's collapsed shape. */

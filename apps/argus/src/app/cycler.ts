@@ -16,7 +16,7 @@ import {
   type PipelineDiagramNode,
   type WireEnvelope,
 } from '@fnndsc/menu';
-import { DagScene, type SceneNode } from '../scene/dagScene.js';
+import { ChrisSpace, type SceneNode } from '../scene/chrisSpace.js';
 
 /** How long each pipeline holds the stage. */
 const CYCLE_MS: number = 20000;
@@ -26,7 +26,7 @@ const CYCLE_MS: number = 20000;
  * renders each arriving model in an ambient miniature scene.
  */
 export class PipelineCycler {
-  private readonly scene: DagScene;
+  private readonly scene: ChrisSpace;
   private readonly nameplate: HTMLElement;
   private readonly command_run: (line: string) => void;
   private names: string[] = [];
@@ -43,7 +43,7 @@ export class PipelineCycler {
   constructor(mount: HTMLElement, nameplate: HTMLElement, command_run: (line: string) => void) {
     this.nameplate = nameplate;
     this.command_run = command_run;
-    this.scene = new DagScene(mount, {}, { ambient: true });
+    this.scene = new ChrisSpace(mount, {}, { ambient: true });
     new MutationObserver((): void => this.scene.palette_refresh()).observe(
       document.documentElement,
       { attributes: true, attributeFilter: ['data-theme'] },

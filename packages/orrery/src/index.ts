@@ -12,3 +12,4 @@ export * from './layout/index.js';
 export type { NodeState, NodeLook, Paint, PaletteToken } from './types/encoding.js';
 export * from './draw/index.js';
 export * from './controls/index.js';
+export * from './scene/index.js';

@@ -1,19 +1,22 @@
 /**
- * @file The DAG scene: one three.js rendering of a compute graph.
+ * @file The orrery itself: one three.js space, composed of the layers.
  *
- * The scene eats a normalized graph — nodes with identity, edges, status,
- * and an optional scalar metric — and knows nothing of feeds, pipelines, or
- * the wire. Both envelope models normalize into it, so one traversal, one
- * picking path, and one palette serve the pane and the header miniature.
+ * A surface hands in a graph — nodes with identity, parents and joins, a
+ * scalar metric, a multiplicity, and a LOOK it has read from its own domain
+ * (a state, a named paint, an ember, whether the finish wave passes) — and
+ * the orrery lays it out (`layout/`), draws it (`draw/`), and lets it be
+ * steered and picked (`controls/`). It knows nothing of what the nodes
+ * stand for: a surface says what a node looks like, and gets its own nodes
+ * back from every pick.
  *
  * Layout is a strategy seam:
- * - `ranked` (default): deterministic tiers by graph depth. The same graph
- *   always draws the same picture; the third dimension is presentation.
- * - `molecule`: a d3-force-3d settling, node radii scaled by the metric —
- *   the compute-molecule reading of a pipeline's shape.
+ * - `ranked`: deterministic tiers by graph depth; the same graph always
+ *   draws the same picture, the third dimension is presentation.
+ * - `molecule`: a d3-force-3d settle, radii scaled by the metric; a surface
+ *   that groups its nodes (a hand-off key) settles in a worker it provides.
  *
- * Colors are read from the live LCARS palette (CSS custom properties), so
- * the THEME pill recolors the scene like everything else.
+ * Colours come from the palette the surface hands in, read on every
+ * rebuild, so a theme change repaints the space like everything else.
  *
  * @module
  */
@@ -24,14 +27,14 @@ import {
   molecule_prepare,
   moleculeRadii_of as orreryRadii_of,
   ranked_layout,
+  layoutEngine_get,
   type HierarchyArrangement,
   type HierarchyNode,
   type HierarchyPositions,
   type MoleculeNode,
   type MoleculeSettle as OrreryMoleculeSettle,
   type PhysicsTerms,
-  type Vec3,
-} from '@fnndsc/orrery/layout';
+} from '../layout/index.js';
 import {
   STAR_GLOW,
   WAVE_STEP_MS,
@@ -41,39 +44,39 @@ import {
   SphereField,
   StarField,
   TubeField,
+  paint_resolve,
   type Palette,
   type CensusNode,
   type HandoffLook,
   type TubeNode,
   type TubeOwner,
   type StarEntry,
+} from '../draw/index.js';
+import {
   CameraRig,
-  paint_resolve,
   PointerGestures,
-  PullSimulation,
-  type PullNode,
   Picker,
+  DRAG_THRESHOLD_PX,
   type PickStar,
   type PickNebula,
-  DRAG_THRESHOLD_PX,
   type WorldReach,
-} from '@fnndsc/orrery';
-import { chrisLook_of, chrisPaint_of, chrisState_of } from './chrisLook.js';
+} from '../controls/index.js';
+import { PullSimulation, type PullNode } from '../layout/pull.js';
+import type { NodeLook } from '../types/encoding.js';
+import type { Vec3 } from '../types/space.js';
 
-/** One node as the scene understands it. */
-export interface SceneNode {
+/** One node as the orrery draws it; a surface's own node type extends this. */
+export interface SpaceNode {
   id: string;
   label: string;
+  /** How it looks, read by the surface from its own domain. */
+  look: NodeLook;
   parentIds: string[];
   joinParentIds: string[];
-  /** Execution status; undefined for template (authored) nodes. */
-  status?: string;
   /** Scalar for molecule radius scaling; undefined = degree fallback. */
   metric?: number;
   /** Collapsed-group multiplicity (×N); undefined or 1 for singletons. */
   count?: number;
-  /** A hue the host assigns (a mode's color, e.g. by compute); errors still win. */
-  hue?: string;
   /**
    * A ghost drawn as a halo: a translucent sphere at the anchor's place,
    * sized by `count`, that names a cluster on hover and takes a click
@@ -93,12 +96,6 @@ export interface SceneNode {
    */
   dim?: boolean;
   /**
-   * The share of a collapsed group that ended in error, 0..1. Hues the
-   * sphere between done and error by that share rather than painting a
-   * group of eighty thousand red for one failure; absent for a clean group.
-   */
-  share?: number;
-  /**
    * Present in the settle, never drawn: an anchor that pulls its children
    * together (the universe hangs feeds of one shape from one), with no
    * sphere, no edge and no pick of its own.
@@ -107,27 +104,27 @@ export interface SceneNode {
 }
 
 /** The normalized graph the scene renders. */
-export interface SceneGraph {
-  nodes: SceneNode[];
+export interface SpaceGraph<N extends SpaceNode = SpaceNode> {
+  nodes: N[];
 }
 
 /** The two ways a graph takes shape. */
 export type LayoutStrategy = 'ranked' | 'molecule';
 
 /** Callbacks the host wires into picking. */
-export interface SceneHandlers {
-  select?: (node: SceneNode) => void;
-  activate?: (node: SceneNode) => void;
+export interface OrreryHandlers<N extends SpaceNode = SpaceNode> {
+  select?: (node: N) => void;
+  activate?: (node: N) => void;
   /** A click on empty space cleared the selection. */
   deselect?: () => void;
   /**
    * A two-finger gesture ended: the camera stands where the fingers left
    * it. A host that reads a pinch as a step (out of a feed) asks
-   * {@link DagScene.camera_distance} here.
+   * {@link Orrery.camera_distance} here.
    */
   gesture_end?: () => void;
   /** The words the hover tip shows for a node; null for the node's label. */
-  tip?: (node: SceneNode) => string | null;
+  tip?: (node: N) => string | null;
   /**
    * A settle too big for one frame is run in slices, and each slice says
    * how far it has come; `done === total` is the settle's end. A scene
@@ -139,22 +136,34 @@ export interface SceneHandlers {
    * stars, a feed near enough to read turns solid as a whole. No key, or no
    * handler, and a node stays a star.
    */
-  handoffKey?: (node: SceneNode) => string | null;
+  handoffKey?: (node: N) => string | null;
 }
 
 /** The terms a settle honours: orrery's own, re-exported for the panes. */
 export type { PhysicsTerms };
 export { PHYSICS_DEFAULT };
 
-/** Rendering options that differ between the pane and the header miniature. */
-export interface SceneOptions {
+/** What a surface hands the orrery beside its graph. */
+export interface OrreryOptions {
   /** Ambient mode: slower spin, no picking, no selection ring. */
   ambient?: boolean;
+  /**
+   * The colours to draw with, asked on every rebuild so a theme change
+   * repaints; the default palette when absent.
+   */
+  palette?: () => Palette;
+  /**
+   * A worker that settles a grouped space off the page, speaking the
+   * layout-worker protocol (`layout/worker` names the engines). The bundle
+   * that hosts the page must build it, so the surface makes it; without
+   * one, the settle runs on the page.
+   */
+  layoutWorker?: () => Worker;
 }
 
 /** A positioned node during layout. */
 interface PlacedNode {
-  node: SceneNode;
+  node: SpaceNode;
   position: THREE.Vector3;
   radius: number;
 }
@@ -170,29 +179,21 @@ const WAVE_LOOP_GAP_MS: number = 2_500;
 const TAP_TIP_MS: number = 1500;
 
 /**
- * Reads the live LCARS palette from the document's computed style.
+ * The palette used when a surface hands none in.
  *
- * @returns The scene's colors, tracking the active theme.
+ * @returns Warm status colours, a cool root and a cool pulse.
  */
-function palette_read(): Palette {
-  const style: CSSStyleDeclaration = getComputedStyle(document.documentElement);
-  const varColor = (name: string, fallback: string): THREE.Color =>
-    new THREE.Color(style.getPropertyValue(name).trim() || fallback);
+export function palette_default(): Palette {
   return {
-    running: varColor('--orange', '#f70'),
-    done: varColor('--butter', '#fec'),
-    error: new THREE.Color('#f22'),
-    template: varColor('--harvestgold', '#fa4'),
-    unknown: new THREE.Color('#555'),
-    edge: varColor('--pumpkin-pie', '#c50'),
-    join: varColor('--honey', '#fc9'),
-    // The root wears a cool color against the warm status palette, so the
-    // graph's origin reads at a glance in either layout. Themeable via
-    // `--dag-root`; the fallback is the harbor seaglass.
-    root: varColor('--dag-root', '#6fbfae'),
-    // The wave flares COOL against the warm status palette: a white flare
-    // vanished on butter (finished) nodes. Themeable via `--dag-pulse`.
-    pulse: varColor('--dag-pulse', '#48d8f0'),
+    running: new THREE.Color('#ff7700'),
+    done: new THREE.Color('#ffeecc'),
+    error: new THREE.Color('#ff2222'),
+    template: new THREE.Color('#ffaa44'),
+    unknown: new THREE.Color('#555555'),
+    edge: new THREE.Color('#cc5500'),
+    join: new THREE.Color('#ffcc99'),
+    root: new THREE.Color('#6fbfae'),
+    pulse: new THREE.Color('#48d8f0'),
   };
 }
 
@@ -212,7 +213,7 @@ function palette_read(): Palette {
  * @param node - The scene node.
  * @returns The molecule node.
  */
-function moleculeNode_of(node: SceneNode): MoleculeNode {
+function moleculeNode_of(node: SpaceNode): MoleculeNode {
   const out: MoleculeNode = { id: node.id, parents: [...node.parentIds, ...node.joinParentIds] };
   if (node.metric !== undefined) out.metric = node.metric;
   return out;
@@ -225,13 +226,13 @@ function moleculeNode_of(node: SceneNode): MoleculeNode {
  * @param nodes - The graph's nodes.
  * @returns Every node placed.
  */
-function layout_ranked(nodes: SceneNode[]): PlacedNode[] {
-  const places = ranked_layout(nodes.map((node: SceneNode) => {
+function layout_ranked(nodes: SpaceNode[]): PlacedNode[] {
+  const places = ranked_layout(nodes.map((node: SpaceNode) => {
     const out: { id: string; parentIds: string[]; metric?: number } = { id: node.id, parentIds: node.parentIds };
     if (node.metric !== undefined) out.metric = node.metric;
     return out;
   }));
-  return nodes.map((node: SceneNode, index: number): PlacedNode => {
+  return nodes.map((node: SpaceNode, index: number): PlacedNode => {
     const at = places[index];
     return { node, position: new THREE.Vector3(...(at?.position ?? [0, 0, 0])), radius: at?.radius ?? NODE_RADIUS };
   });
@@ -254,7 +255,7 @@ interface MoleculeSettle {
  * @param nodes - The graph's nodes.
  * @returns Radius by id.
  */
-function moleculeRadii_of(nodes: ReadonlyArray<SceneNode>): Map<string, number> {
+function moleculeRadii_of(nodes: ReadonlyArray<SpaceNode>): Map<string, number> {
   return orreryRadii_of(nodes.map(moleculeNode_of));
 }
 
@@ -269,7 +270,7 @@ function moleculeRadii_of(nodes: ReadonlyArray<SceneNode>): Map<string, number> 
  * @returns The settle, placing into the scene's vectors.
  */
 function moleculeScene_prepare(
-  nodes: SceneNode[],
+  nodes: SpaceNode[],
   dimensions: 2 | 3 = 3,
   seed: Map<string, THREE.Vector3> = new Map(),
   physics: PhysicsTerms = PHYSICS_DEFAULT,
@@ -282,7 +283,7 @@ function moleculeScene_prepare(
     moving: settle.moving,
     step: settle.step,
     place: (): PlacedNode[] => settle.place().map((place, index: number): PlacedNode => ({
-      node: nodes[index] as SceneNode,
+      node: nodes[index] as SpaceNode,
       position: new THREE.Vector3(...place.position),
       radius: place.radius,
     })),
@@ -295,7 +296,7 @@ function moleculeScene_prepare(
  * @returns Every node placed.
  */
 function layout_molecule(
-  nodes: SceneNode[],
+  nodes: SpaceNode[],
   dimensions: 2 | 3 = 3,
   seed: Map<string, THREE.Vector3> = new Map(),
   physics: PhysicsTerms = PHYSICS_DEFAULT,
@@ -331,9 +332,11 @@ export type DrawMode = 'spheres' | 'stars';
 /**
  * One live DAG rendering bound to a container element.
  */
-export class DagScene {
+export class Orrery<N extends SpaceNode = SpaceNode> {
   private readonly container: HTMLElement;
-  private readonly handlers: SceneHandlers;
+  private readonly handlers: OrreryHandlers<N>;
+  private readonly paletteOf: () => Palette;
+  private readonly layoutWorkerOf: (() => Worker) | undefined;
   private readonly ambient: boolean;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
@@ -354,7 +357,7 @@ export class DagScene {
     parent: this.group,
     node: (id: string): TubeNode | undefined => this.tubeNode_of(id),
     sphere: (id: string): THREE.Mesh | undefined => this.meshes.get(id),
-    palette: (): Palette => palette_read(),
+    palette: (): Palette => this.palette_read(),
   });
   /** Every molecule's place between stars and spheres. */
   private readonly handoffField: HandoffField = new HandoffField({
@@ -415,7 +418,7 @@ export class DagScene {
   public census_get(): boolean {
     return this.census;
   }
-  private graph: SceneGraph = { nodes: [] };
+  private graph: SpaceGraph<N> = { nodes: [] };
   /** The grab in progress: which node, its drag plane, and travel so far. */
   private drag: {
     nodeId: string;
@@ -470,9 +473,11 @@ export class DagScene {
    * @param handlers - Picking callbacks (ignored in ambient mode).
    * @param options - Pane vs miniature behavior.
    */
-  constructor(container: HTMLElement, handlers: SceneHandlers = {}, options: SceneOptions = {}) {
+  constructor(container: HTMLElement, handlers: OrreryHandlers<N> = {}, options: OrreryOptions = {}) {
     this.container = container;
     this.handlers = handlers;
+    this.paletteOf = options.palette ?? palette_default;
+    this.layoutWorkerOf = options.layoutWorker;
     this.ambient = options.ambient === true;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -570,7 +575,7 @@ export class DagScene {
    *
    * @param graph - The normalized graph.
    */
-  public graph_set(graph: SceneGraph, options: { wave?: boolean; fit?: boolean; frozen?: ReadonlyArray<string>; physics?: Partial<PhysicsTerms>; settle?: SettleMode } = {}): void {
+  public graph_set(graph: SpaceGraph<N>, options: { wave?: boolean; fit?: boolean; frozen?: ReadonlyArray<string>; physics?: Partial<PhysicsTerms>; settle?: SettleMode } = {}): void {
     this.graph = graph;
     // Nodes to hold still through this settle, and physics for it alone:
     // a descent settles one feed while the field around it stands, with
@@ -735,7 +740,7 @@ export class DagScene {
    * @returns A plain summary.
    */
   public state_get(): Record<string, unknown> {
-    const solidMarked: string[] = this.graph.nodes.filter((node: SceneNode): boolean => node.solid === true).map((node: SceneNode): string => node.id);
+    const solidMarked: string[] = this.graph.nodes.filter((node: N): boolean => node.solid === true).map((node: N): string => node.id);
     const solidDrawn: number = solidMarked.filter((id: string): boolean => this.meshes.has(id)).length;
     return {
       draw: this.drawMode,
@@ -801,8 +806,8 @@ export class DagScene {
   /** Computes each fireable node's flare time, in ms into the wave. */
   private waveSchedule_compute(): Map<string, number> {
     const times: Map<string, number> = new Map();
-    const present: Set<string> = new Set(this.graph.nodes.map((n: SceneNode) => n.id));
-    const fired = (node: SceneNode): boolean => chrisLook_of(node).waved;
+    const present: Set<string> = new Set(this.graph.nodes.map((n: N) => n.id));
+    const fired = (node: N): boolean => node.look.waved;
     // Relaxation to a fixpoint: cheap at feed scale, and immune to input order.
     let settled: boolean = false;
     while (!settled) {
@@ -919,21 +924,25 @@ export class DagScene {
   }
 
   /**
-   * Updates one node's status in place (progress-channel driven) without
-   * re-laying the graph.
+   * Updates one node's look in place (its state changed on the progress
+   * channel) without re-laying the graph.
    *
-   * @param nodeId - The node whose status changed.
-   * @param status - The new status.
+   * @param nodeId - The node.
+   * @param look - How it looks now.
    */
-  public status_update(nodeId: string, status: string): void {
-    const node: SceneNode | undefined = this.graph.nodes.find((n: SceneNode) => n.id === nodeId);
+  public look_update(nodeId: string, look: NodeLook): void {
+    const node: N | undefined = this.graph.nodes.find((n: N) => n.id === nodeId);
     if (!node) return;
-    if (node.status === status) return;
-    node.status = status;
-    this.spheres.recolor(nodeId, paint_resolve(chrisPaint_of(node), palette_read()));
+    node.look = look;
+    this.spheres.recolor(nodeId, paint_resolve(look.paint, this.palette_read()));
     // A stage that started or finished changes what its tubes carry: a
     // stream, a replay, or nothing.
     if (this.tubes.holds(nodeId)) this.tubes.stale_mark();
+  }
+
+  /** @returns The colours to draw with now. */
+  private palette_read(): Palette {
+    return this.paletteOf();
   }
 
   /** Re-reads the palette (the THEME pill changed) and repaints. */
@@ -974,20 +983,20 @@ export class DagScene {
    * groups pair members by index, so chains of ×N groups render as
    * branched filaments over the shell — the cell-surface reading.
    */
-  private censusBuild(placed: PlacedNode[], palette: ReturnType<typeof palette_read>, fit: boolean = true): void {
+  private censusBuild(placed: PlacedNode[], palette: Palette, fit: boolean = true): void {
     // A ghost (a cluster's anchor) is nobody's job; it still counts in the
     // cloud's centre and in how deep a stage lies.
     const nodes: CensusNode[] = placed.map((item: PlacedNode): CensusNode => {
-      const node: SceneNode = item.node;
+      const node: SpaceNode = item.node;
       return {
         id: node.id,
         position: item.position,
         radius: item.radius,
         count: Math.max(1, node.count ?? 1),
-        color: paint_resolve(chrisPaint_of(node), palette),
+        color: paint_resolve(node.look.paint, palette),
         dim: node.dim === true,
-        ember: chrisLook_of(node).ember,
-        state: chrisState_of(node),
+        ember: node.look.ember,
+        state: node.look.state,
         parents: node.parentIds,
         ghost: node.ghost === true,
       };
@@ -1055,7 +1064,7 @@ export class DagScene {
     }
     let frozen: ReadonlySet<string> = this.frozen;
     if (mode !== 'full' && frozen.size === 0) {
-      const standing: string[] = this.graph.nodes.map((node: SceneNode): string => node.id).filter((id: string): boolean => this.lastPositions.has(id));
+      const standing: string[] = this.graph.nodes.map((node: N): string => node.id).filter((id: string): boolean => this.lastPositions.has(id));
       if (standing.length > 0) frozen = new Set(standing);
     }
     const settle: MoleculeSettle = moleculeScene_prepare(
@@ -1150,7 +1159,7 @@ export class DagScene {
     const keyOf = this.handlers.handoffKey;
     if (keyOf === undefined) return;
     const radii: Map<string, number> = moleculeRadii_of(this.graph.nodes);
-    const nodes: HierarchyNode[] = this.graph.nodes.map((node: SceneNode): HierarchyNode => {
+    const nodes: HierarchyNode[] = this.graph.nodes.map((node: N): HierarchyNode => {
       const seed: THREE.Vector3 | undefined = this.lastPositions.get(node.id);
       return {
         id: node.id,
@@ -1165,11 +1174,33 @@ export class DagScene {
     const count: number = nodes.length;
     this.slicing = true;
     progress(0, total, count);
+    const physics = this.physicsOnce !== undefined ? { ...this.physics, ...this.physicsOnce } : this.physics;
+    const placeAll = (positions: HierarchyPositions): void => {
+      const placed: PlacedNode[] = this.graph.nodes.map((node: N): PlacedNode => {
+        const at: [number, number, number] = positions[node.id] ?? [0, 0, 0];
+        return { node, position: new THREE.Vector3(at[0], at[1], at[2]), radius: radii.get(node.id) ?? NODE_RADIUS };
+      });
+      this.slicing = false;
+      this.draw(placed, fit);
+      progress(total, total, count);
+    };
     if (this.layoutWorker === null) {
-      this.layoutWorker = new Worker(new URL('./layoutWorker.ts', import.meta.url), { type: 'module' });
+      const make: (() => Worker) | undefined = this.layoutWorkerOf;
+      if (make === undefined) {
+        // No worker from the surface: the engine settles on the page.
+        const engine = layoutEngine_get(this.arrangement);
+        if (engine === undefined) {
+          console.error(`layout: no engine named ${this.arrangement}`);
+          this.slicing = false;
+          progress(total, total, count);
+          return;
+        }
+        placeAll(engine.run({ nodes, physics }, (fraction: number): void => progress(Math.min(total - 1, Math.floor(fraction * total)), total, count)).positions);
+        return;
+      }
+      this.layoutWorker = make();
     }
     const worker: Worker = this.layoutWorker;
-    const physics = this.physicsOnce !== undefined ? { ...this.physics, ...this.physicsOnce } : this.physics;
     worker.onmessage = (event: MessageEvent<{ generation: number; type: 'progress' | 'done' | 'failed'; fraction?: number; positions?: HierarchyPositions; reason?: string }>): void => {
       const answer = event.data;
       if (answer.generation !== this.rebuildGen || this.disposed) return;
@@ -1185,14 +1216,7 @@ export class DagScene {
         progress(total, total, count);
         return;
       }
-      const positions: HierarchyPositions = answer.positions ?? {};
-      const placed: PlacedNode[] = this.graph.nodes.map((node: SceneNode): PlacedNode => {
-        const at: [number, number, number] = positions[node.id] ?? [0, 0, 0];
-        return { node, position: new THREE.Vector3(at[0], at[1], at[2]), radius: radii.get(node.id) ?? NODE_RADIUS };
-      });
-      this.slicing = false;
-      this.draw(placed, fit);
-      progress(total, total, count);
+      placeAll(answer.positions ?? {});
     };
     worker.postMessage({ generation, nodes, physics, arrangement: this.arrangement });
   }
@@ -1208,7 +1232,7 @@ export class DagScene {
     this.handoffField.clear();
     this.placedById = new Map();
     this.tubes.clear();
-    const palette = palette_read();
+    const palette = this.palette_read();
     this.pulseColor = palette.pulse;
     this.lastPositions = new Map(placed.map((p: PlacedNode): [string, THREE.Vector3] => [p.node.id, p.position.clone()]));
     if (this.projection === '2d') {
@@ -1243,9 +1267,9 @@ export class DagScene {
           id: node.id,
           position: position.clone(),
           radius,
-          color: paint_resolve(chrisPaint_of(node), palette).clone(),
+          color: paint_resolve(node.look.paint, palette).clone(),
           dim: node.dim === true,
-          ember: chrisLook_of(node).ember,
+          ember: node.look.ember,
         });
         continue;
       }
@@ -1256,7 +1280,7 @@ export class DagScene {
       // 2D is drawn flat: discs, not lit spheres — the schematic reading
       // all the way down; status colour, selection and flare carry over.
       this.spheres.sphere_add(node.id, position, radius, {
-        color: paint_resolve(chrisPaint_of(node), palette),
+        color: paint_resolve(node.look.paint, palette),
         dim: node.dim === true,
         selected: node.id === this.selectedId,
         flat: this.projection === '2d',
@@ -1266,9 +1290,9 @@ export class DagScene {
     if (starred.length > 0) this.starField.draw(starred, window.devicePixelRatio, this.renderer.domElement.height, this.camera.fov);
     for (const item of placed) this.placedById.set(item.node.id, item);
     if (handoffKey !== undefined) {
-      const byNode: Map<string, SceneNode> = new Map(this.graph.nodes.map((node: SceneNode): [string, SceneNode] => [node.id, node]));
+      const byNode: Map<string, N> = new Map(this.graph.nodes.map((node: N): [string, N] => [node.id, node]));
       this.handoffField.gather(starred, (id: string): string | null => {
-        const node: SceneNode | undefined = byNode.get(id);
+        const node: N | undefined = byNode.get(id);
         return node === undefined ? null : handoffKey(node);
       });
     }
@@ -1277,12 +1301,13 @@ export class DagScene {
     const threads: number[] = [];
     const threadColors: number[] = [];
     const solid = (item: PlacedNode): boolean => !starring || item.node.solid === true;
-    const thread_add = (from: THREE.Vector3, to: THREE.Vector3, color: THREE.Color, dim: boolean, owner: SceneNode): void => {
+    const thread_add = (from: THREE.Vector3, to: THREE.Vector3, color: THREE.Color, dim: boolean, owner: SpaceNode): void => {
       const k: number = dim ? 0.35 : 1;
       const segment: number = threads.length / 6;
       threads.push(from.x, from.y, from.z, to.x, to.y, to.z);
       threadColors.push(color.r * k, color.g * k, color.b * k, color.r * k, color.g * k, color.b * k);
-      const key: string | null = dim || handoffKey === undefined ? null : handoffKey(owner);
+      // A placed node is one of the graph's own: the surface's node, typed wide.
+      const key: string | null = dim || handoffKey === undefined ? null : handoffKey(owner as N);
       if (key !== null) this.handoffField.thread_note(key, segment);
     };
     for (const item of placed) {
@@ -1346,7 +1371,7 @@ export class DagScene {
   private handoffLook_of(id: string): HandoffLook | undefined {
     const placed: PlacedNode | undefined = this.placedById.get(id);
     if (placed === undefined) return undefined;
-    return { position: placed.position, radius: placed.radius, color: paint_resolve(chrisPaint_of(placed.node), palette_read()) };
+    return { position: placed.position, radius: placed.radius, color: paint_resolve(placed.node.look.paint, this.palette_read()) };
   }
 
   /**
@@ -1363,7 +1388,7 @@ export class DagScene {
       radius: placed.radius,
       parents: placed.node.parentIds,
       joins: placed.node.joinParentIds,
-      state: chrisState_of(placed.node),
+      state: placed.node.look.state,
     };
   }
 
@@ -1372,7 +1397,7 @@ export class DagScene {
    * A cluster's handle while the scene draws stars: a soft glow at its
    * anchor, facing the camera, sized as its halo would be.
    */
-  private nebula_add(node: SceneNode, position: THREE.Vector3, palette: ReturnType<typeof palette_read>): void {
+  private nebula_add(node: SpaceNode, position: THREE.Vector3, palette: Palette): void {
     this.starField.nebula_add(node.id, position, haloRadius_of(node.count ?? 1), palette.edge, node.dim === true);
   }
 
@@ -1529,10 +1554,10 @@ export class DagScene {
    * @param solidOnes - The nodes to draw solid.
    * @param palette - The palette.
    */
-  private solid_draw(solidOnes: ReadonlyArray<PlacedNode>, palette: ReturnType<typeof palette_read>): void {
+  private solid_draw(solidOnes: ReadonlyArray<PlacedNode>, palette: Palette): void {
     for (const item of solidOnes) {
       this.placedById.set(item.node.id, item);
-      this.spheres.sphere_add(item.node.id, item.position, item.radius, { color: paint_resolve(chrisPaint_of(item.node), palette) });
+      this.spheres.sphere_add(item.node.id, item.position, item.radius, { color: paint_resolve(item.node.look.paint, palette) });
     }
     const ids: string[] = solidOnes.map((item: PlacedNode): string => item.node.id);
     const entered: TubeOwner = { tubes: null, mix: 1 };
@@ -1564,9 +1589,9 @@ export class DagScene {
     // In census the spheres are members of one instanced mesh: the group
     // under the pointer is what the tip names, as a click would pick.
     const nodeId: unknown = this.picker.node_under(event, this.gestures?.pressKind() === 'touch');
-    const node: SceneNode | undefined =
+    const node: N | undefined =
       typeof nodeId === 'string'
-        ? this.graph.nodes.find((n: SceneNode) => n.id === nodeId)
+        ? this.graph.nodes.find((n: N) => n.id === nodeId)
         : undefined;
     if (node === undefined) {
       this.tip.hidden = true;
@@ -1599,7 +1624,7 @@ export class DagScene {
       }
       return;
     }
-    const node: SceneNode | undefined = this.graph.nodes.find((n: SceneNode) => n.id === nodeId);
+    const node: N | undefined = this.graph.nodes.find((n: N) => n.id === nodeId);
     if (!node) return;
     if (kind === 'select') {
       this.selectedId = nodeId;

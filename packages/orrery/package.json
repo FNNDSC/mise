@@ -1,0 +1,56 @@
+{
+  "name": "@fnndsc/orrery",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The model of the heavens a surface draws: layouts, drawers and controls for a space of molecules, knowing nothing of what the molecules are",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FNNDSC/mise.git",
+    "directory": "packages/orrery"
+  },
+  "homepage": "https://github.com/FNNDSC/mise/tree/main/packages/orrery#readme",
+  "bugs": {
+    "url": "https://github.com/FNNDSC/mise/issues"
+  },
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./layout": {
+      "import": "./dist/layout/index.js",
+      "types": "./dist/layout/index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "rm -fr dist && tsc",
+    "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --coverage"
+  },
+  "keywords": [
+    "chris",
+    "mise",
+    "layout",
+    "force-directed",
+    "fnndsc"
+  ],
+  "author": "Rudolph Pienaar",
+  "license": "MIT",
+  "dependencies": {
+    "d3-force-3d": "^3.0.6"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.2.0",
+    "@types/jest": "^30.0.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.5",
+    "typescript": "^5.0.0"
+  },
+  "type": "module"
+}

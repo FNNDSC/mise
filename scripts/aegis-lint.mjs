@@ -217,7 +217,10 @@ LINT_CHECKS['a-preview-is-the-same-drawing'] = () => {
   // They did not always: the card spread each tier evenly while the scene
   // hung a tree of leaf slots, and nobody chose that — the two were written
   // separately and could not help but differ.
-  const layout = 'apps/argus/src/scene/rankedLayout.ts';
+  // The placement lives in orrery's layout layer; the scene reads it in
+  // scene units (ranked_layout), a card in layout units (rankedLayout_compute),
+  // and both come from the one module.
+  const layout = 'packages/orrery/src/layout/ranked.ts';
   if (!existsSync(layout)) {
     fail('a-preview-is-the-same-drawing', 'the shared ranked layout is gone');
     return;
@@ -228,7 +231,7 @@ LINT_CHECKS['a-preview-is-the-same-drawing'] = () => {
   ];
   for (const path of drawers) {
     const text = readFileSync(path, 'utf8');
-    if (!/rankedLayout_compute\(/.test(text)) {
+    if (!/\b(rankedLayout_compute|ranked_layout)\(/.test(text) || !/from '@fnndsc\/orrery(\/layout)?'/.test(text)) {
       fail('a-preview-is-the-same-drawing', `${path} draws a ranked graph without reading the shared layout`);
     }
     // The tell of a second layout: computing depth or tiers locally.

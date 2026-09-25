@@ -16,7 +16,7 @@ import {
   type RankedInput,
   type RankedLayout,
   type RankedPlacement,
-} from '../../src/scene/rankedLayout.js';
+} from '../src/layout/ranked.js';
 
 /** The tier a node landed on. */
 function tier_of(layout: RankedLayout, id: string): number | undefined {

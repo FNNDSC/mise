@@ -26,6 +26,7 @@
  *
  * @module
  */
+import { NODE_RADIUS, type Vec3 } from './types.js';
 
 /** What the layout needs of a node: who it is, and what it hangs from. */
 export interface RankedInput {
@@ -138,4 +139,40 @@ export function rankedLayout_compute(nodes: ReadonlyArray<RankedInput>): RankedL
     tier: depths.get(node.id) ?? 0,
   }));
   return { placements, width, tierCount };
+}
+
+/** Distance between tiers, in scene units. */
+const TIER_SPACING: number = 2.6;
+/** Distance between sibling slots, in scene units. */
+const SIBLING_SPACING: number = 2.0;
+
+/** What the ranked placement reads of a node to draw it: its tree and its metric. */
+export interface RankedSceneNode extends RankedInput {
+  metric?: number;
+}
+
+/**
+ * The ranked layout in scene units: tiers down the screen, the graph
+ * centred, every node's radius scaled by its metric (uniform when none
+ * arrived — a mode pill that changes nothing on screen reads as broken).
+ *
+ * @param nodes - The graph.
+ * @returns Every node's place and radius, in the input's order.
+ */
+export function ranked_layout(nodes: ReadonlyArray<RankedSceneNode>): Array<{ id: string; position: Vec3; radius: number }> {
+  const metrics: number[] = nodes.map((n: RankedSceneNode): number => n.metric ?? 0);
+  const metricPeak: number = Math.max(...metrics, 0);
+  const layout: RankedLayout = rankedLayout_compute(nodes);
+  const slots: Map<string, RankedPlacement> = new Map(
+    layout.placements.map((placement: RankedPlacement): [string, RankedPlacement] => [placement.id, placement]),
+  );
+  return nodes.map((node: RankedSceneNode) => {
+    const at: RankedPlacement | undefined = slots.get(node.id);
+    const x: number = ((at?.x ?? 0) - layout.width / 2) * SIBLING_SPACING;
+    const y: number = ((layout.tierCount - 1) / 2 - (at?.tier ?? 0)) * TIER_SPACING;
+    const metric: number = node.metric ?? 0;
+    const scale: number = metricPeak > 0 ? 0.55 + (metric / metricPeak) * 1.0 : 1;
+    const position: Vec3 = [x, y, 0];
+    return { id: node.id, position, radius: NODE_RADIUS * scale };
+  });
 }

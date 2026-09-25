@@ -18,21 +18,25 @@
  * @module
  */
 import * as THREE from 'three';
-import type { HierarchyArrangement, HierarchyNode, HierarchyPositions } from './hierarchy.js';
 import {
-  rankedLayout_compute,
-  type RankedLayout,
-  type RankedPlacement,
-} from './rankedLayout.js';
+  NODE_RADIUS,
+  PHYSICS_DEFAULT,
+  molecule_prepare,
+  moleculeRadii_of as orreryRadii_of,
+  ranked_layout,
+  type HierarchyArrangement,
+  type HierarchyNode,
+  type HierarchyPositions,
+  type MoleculeNode,
+  type MoleculeSettle as OrreryMoleculeSettle,
+  type PhysicsTerms,
+  type Vec3,
+} from '@fnndsc/orrery/layout';
 import {
   forceSimulation,
   forceLink,
   forceManyBody,
-  forceCenter,
   forceCollide,
-  forceX,
-  forceY,
-  forceZ,
 } from 'd3-force-3d';
 
 /** One node as the scene understands it. */
@@ -111,22 +115,9 @@ export interface SceneHandlers {
   handoffKey?: (node: SceneNode) => string | null;
 }
 
-/** The physics terms the molecule settle may honor (expert knobs; GRAVITY is a meaning). */
-export interface PhysicsTerms {
-  charge: boolean;
-  link: boolean;
-  collide: boolean;
-  gravity: boolean;
-  /**
-   * How far a node's repulsion reaches, in scene units; unbounded when
-   * absent. A sparse graph settles as wide as its charge carries, so six
-   * spheres spread across a field and read as dots: bounding the reach
-   * lets a small molecule hug itself while a crowd still spreads.
-   */
-  reach?: number;
-}
-
-export const PHYSICS_DEFAULT: PhysicsTerms = { charge: true, link: true, collide: true, gravity: false };
+/** The terms a settle honours: orrery's own, re-exported for the panes. */
+export type { PhysicsTerms };
+export { PHYSICS_DEFAULT };
 
 /** Rendering options that differ between the pane and the header miniature. */
 export interface SceneOptions {
@@ -141,8 +132,6 @@ interface PlacedNode {
   radius: number;
 }
 
-/** Base node radius in scene units. */
-const NODE_RADIUS: number = 0.55;
 
 /** How faint a dimmed node and its edges are drawn. */
 const DIM_OPACITY: number = 0.16;
@@ -161,11 +150,6 @@ function haloRadius_of(count: number): number {
   return 1.6 + 0.45 * Math.sqrt(Math.max(1, count));
 }
 
-/** Vertical distance between ranked tiers. */
-const TIER_SPACING: number = 2.6;
-
-/** Horizontal spread between siblings in a tier. */
-const SIBLING_SPACING: number = 2.0;
 
 /** Idle rotation speed, radians per frame. */
 const SPIN_INTERACTIVE: number = 0.0022;
@@ -292,75 +276,92 @@ function fibonacciPoint_make(k: number, n: number, radius: number): THREE.Vector
   return new THREE.Vector3(Math.cos(angle) * ring * radius, y * radius, Math.sin(angle) * ring * radius);
 }
 
-function layout_ranked(nodes: SceneNode[]): PlacedNode[] {
-  const metrics: number[] = nodes.map((n: SceneNode): number => n.metric ?? 0);
-  const metricPeak: number = Math.max(...metrics, 0);
-  // The placement itself is declared once, in `rankedLayout`, and drawn
-  // twice: here in three.js and as SVG in a preview card. What remains here
-  // is turning layout units into scene units and scaling by the metric.
-  const layout: RankedLayout = rankedLayout_compute(nodes);
-  const slots: Map<string, RankedPlacement> = new Map(
-    layout.placements.map((placement: RankedPlacement): [string, RankedPlacement] => [placement.id, placement]),
-  );
-
-  const placed: PlacedNode[] = [];
-  for (const node of nodes) {
-    const at: RankedPlacement | undefined = slots.get(node.id);
-    const x: number = ((at?.x ?? 0) - layout.width / 2) * SIBLING_SPACING;
-    const y: number = ((layout.tierCount - 1) / 2 - (at?.tier ?? 0)) * TIER_SPACING;
-    // Metric scaling applies in every layout: a mode pill that changes
-    // nothing on screen reads as broken. No metric = uniform.
-    const metric: number = node.metric ?? 0;
-    const scale: number = metricPeak > 0 ? 0.55 + (metric / metricPeak) * 1.0 : 1;
-    placed.push({ node, position: new THREE.Vector3(x, y, 0), radius: NODE_RADIUS * scale });
-  }
-  return placed;
+/**
+ * A scene node as orrery's molecule reads it: its parents with its joins
+ * after them, and its metric.
+ *
+ * @param node - The scene node.
+ * @returns The molecule node.
+ */
+function moleculeNode_of(node: SceneNode): MoleculeNode {
+  const out: MoleculeNode = { id: node.id, parents: [...node.parentIds, ...node.joinParentIds] };
+  if (node.metric !== undefined) out.metric = node.metric;
+  return out;
 }
 
 /**
- * The compute molecule: a d3-force-3d settling with node radii scaled by
- * the metric (degree when no metric arrived). The graph finds its own
- * shape; scale carries meaning.
- */
-/**
- * A molecule settle that can be run in slices: the simulation built, its
- * ticks counted, stepped as the caller has time, and placed at the end.
+ * The ranked layout, placed in the scene: orrery places the tiers, the scene
+ * holds them as vectors beside their nodes.
  *
- * @property total - The ticks this settle runs; zero when nothing moves.
- * @property moving - How many nodes the simulation moves.
- * @property step - Runs up to `ticks` more ticks.
- * @property place - Where every node stands now.
+ * @param nodes - The graph's nodes.
+ * @returns Every node placed.
+ */
+function layout_ranked(nodes: SceneNode[]): PlacedNode[] {
+  const places = ranked_layout(nodes.map((node: SceneNode) => {
+    const out: { id: string; parentIds: string[]; metric?: number } = { id: node.id, parentIds: node.parentIds };
+    if (node.metric !== undefined) out.metric = node.metric;
+    return out;
+  }));
+  return nodes.map((node: SceneNode, index: number): PlacedNode => {
+    const at = places[index];
+    return { node, position: new THREE.Vector3(...(at?.position ?? [0, 0, 0])), radius: at?.radius ?? NODE_RADIUS };
+  });
+}
+
+/**
+ * A molecule settle that can be run in slices, holding its places as the
+ * scene's vectors: orrery settles, the scene draws.
  */
 interface MoleculeSettle {
   total: number;
-  /** Nodes the simulation moves: pinned ones cost nothing. */
   moving: number;
   step: (ticks: number) => void;
   place: () => PlacedNode[];
 }
 
 /**
- * Each node's radius, as the molecule settle sizes it: the metric (degree
- * when none arrived) against the graph's peak.
+ * Each node's radius, as the molecule settle sizes it.
  *
  * @param nodes - The graph's nodes.
  * @returns Radius by id.
  */
 function moleculeRadii_of(nodes: ReadonlyArray<SceneNode>): Map<string, number> {
-  const degree: Map<string, number> = new Map();
-  for (const node of nodes) {
-    for (const parentId of [...node.parentIds, ...node.joinParentIds]) {
-      degree.set(parentId, (degree.get(parentId) ?? 0) + 1);
-      degree.set(node.id, (degree.get(node.id) ?? 0) + 1);
-    }
-  }
-  const metrics: number[] = nodes.map((n: SceneNode): number => n.metric ?? degree.get(n.id) ?? 1);
-  const peak: number = Math.max(...metrics, 1);
-  return new Map(nodes.map((n: SceneNode, i: number): [string, number] => [n.id, NODE_RADIUS * (0.5 + ((metrics[i] ?? 1) / peak) * 1.2)]));
+  return orreryRadii_of(nodes.map(moleculeNode_of));
 }
 
 /**
- * Lays out a molecule in one go — {@link molecule_prepare} run to its end.
+ * Builds orrery's molecule settle over the scene's nodes and seeds.
+ *
+ * @param nodes - The graph's nodes.
+ * @param dimensions - 2 or 3.
+ * @param seed - Where nodes stood last.
+ * @param physics - The terms of this settle.
+ * @param frozen - Nodes that stand where their seed put them.
+ * @returns The settle, placing into the scene's vectors.
+ */
+function moleculeScene_prepare(
+  nodes: SceneNode[],
+  dimensions: 2 | 3 = 3,
+  seed: Map<string, THREE.Vector3> = new Map(),
+  physics: PhysicsTerms = PHYSICS_DEFAULT,
+  frozen: ReadonlySet<string> = new Set(),
+): MoleculeSettle {
+  const seeds: Map<string, Vec3> = new Map([...seed].map(([id, at]: [string, THREE.Vector3]): [string, Vec3] => [id, [at.x, at.y, at.z]]));
+  const settle: OrreryMoleculeSettle = molecule_prepare(nodes.map(moleculeNode_of), dimensions, seeds, physics, frozen);
+  return {
+    total: settle.total,
+    moving: settle.moving,
+    step: settle.step,
+    place: (): PlacedNode[] => settle.place().map((place, index: number): PlacedNode => ({
+      node: nodes[index] as SceneNode,
+      position: new THREE.Vector3(...place.position),
+      radius: place.radius,
+    })),
+  };
+}
+
+/**
+ * Lays out a molecule in one go.
  *
  * @returns Every node placed.
  */
@@ -371,136 +372,9 @@ function layout_molecule(
   physics: PhysicsTerms = PHYSICS_DEFAULT,
   frozen: ReadonlySet<string> = new Set(),
 ): PlacedNode[] {
-  const settle: MoleculeSettle = molecule_prepare(nodes, dimensions, seed, physics, frozen);
+  const settle: MoleculeSettle = moleculeScene_prepare(nodes, dimensions, seed, physics, frozen);
   settle.step(settle.total);
   return settle.place();
-}
-
-/**
- * Builds a molecule settle without running it.
- *
- * @param nodes - The graph's nodes.
- * @param dimensions - 2 or 3.
- * @param seed - Where nodes stood last; a seeded node starts there.
- * @param physics - The terms of this settle.
- * @param frozen - Nodes that stand where their seed put them.
- * @returns The settle, ready to step.
- */
-function molecule_prepare(
-  nodes: SceneNode[],
-  dimensions: 2 | 3 = 3,
-  seed: Map<string, THREE.Vector3> = new Map(),
-  physics: PhysicsTerms = PHYSICS_DEFAULT,
-  frozen: ReadonlySet<string> = new Set(),
-): MoleculeSettle {
-  const degree: Map<string, number> = new Map();
-  const links: Array<{ source: string; target: string }> = [];
-  for (const node of nodes) {
-    for (const parentId of [...node.parentIds, ...node.joinParentIds]) {
-      links.push({ source: parentId, target: node.id });
-      degree.set(parentId, (degree.get(parentId) ?? 0) + 1);
-      degree.set(node.id, (degree.get(node.id) ?? 0) + 1);
-    }
-  }
-  const metrics: number[] = nodes.map(
-    (n: SceneNode): number => n.metric ?? degree.get(n.id) ?? 1,
-  );
-  const metricPeak: number = Math.max(...metrics, 1);
-
-  // Radius is physics, not paint: the metric sets each node's room in the
-  // settle, so TIME and SIZE reshape the molecule, not just its spheres.
-  const radii: number[] = metrics.map(
-    (metric: number): number => NODE_RADIUS * (0.5 + (metric / metricPeak) * 1.2),
-  );
-  const radiusOf: Map<string, number> = new Map(nodes.map((n: SceneNode, i: number): [string, number] => [n.id, radii[i] ?? NODE_RADIUS]));
-
-  // Warm start: a re-projection (a metric flip) morphs from where the
-  // graph stands instead of re-rolling a new equilibrium.
-  // A frozen node stands where its seed put it and pushes on nothing: the
-  // rest of a field holds still while one part of it settles.
-  const simNodes: Array<{ id: string; x?: number; y?: number; z?: number; fx?: number; fy?: number; fz?: number }> = nodes.map(
-    (n: SceneNode) => {
-      const from: THREE.Vector3 | undefined = seed.get(n.id);
-      if (from === undefined) return { id: n.id };
-      if (frozen.has(n.id)) return { id: n.id, x: from.x, y: from.y, z: from.z, fx: from.x, fy: from.y, fz: from.z };
-      return { id: n.id, x: from.x, y: from.y, z: from.z };
-    },
-  );
-  // Only what moves is simulated. A frozen node with a place stands there
-  // and pushes on nothing, so a settle with most of the field frozen (a
-  // descent into one feed among three thousand spheres) simulates the free
-  // nodes and whatever they link to, not the field: the whole-field settle
-  // held the page for seconds and flights caught under it arrived in one
-  // frame.
-  const pinned = (d: { id: string; fx?: number }): boolean => frozen.has(d.id) && d.fx !== undefined;
-  let simulated: typeof simNodes = simNodes;
-  let simLinks: typeof links = links;
-  if (frozen.size > 0) {
-    const free: Set<string> = new Set(simNodes.filter((d): boolean => !pinned(d)).map((d): string => d.id));
-    simLinks = links.filter((link): boolean => free.has(link.source) || free.has(link.target));
-    const kept: Set<string> = new Set(free);
-    for (const link of simLinks) { kept.add(link.source); kept.add(link.target); }
-    simulated = simNodes.filter((d): boolean => kept.has(d.id));
-    const present: Set<string> = new Set(simulated.map((d): string => d.id));
-    simLinks = simLinks.filter((link): boolean => present.has(link.source) && present.has(link.target));
-  }
-  // In 2D the simulation itself is two-dimensional: a 3D settle flattened
-  // afterwards piles nodes that resolved their overlaps in depth.
-  const charge = forceManyBody().strength(
-    physics.charge
-      ? (d: { id: string }): number => (frozen.has(d.id) ? 0 : -6 * ((radiusOf.get(d.id) ?? NODE_RADIUS) / NODE_RADIUS) ** 2)
-      : (d: { id: string }): number => (frozen.has(d.id) ? 0 : -6),
-  );
-  if (physics.reach !== undefined) charge.distanceMax(physics.reach);
-  const simulation = forceSimulation(simulated, dimensions)
-    .force(
-      'link',
-      forceLink(simLinks)
-        .id((d: { id: string }) => d.id)
-        // Edges reach surface to surface: a hub's children orbit its skin.
-        .distance(
-          physics.link
-            ? (link: { source: { id: string }; target: { id: string } }): number =>
-                (radiusOf.get(link.source.id) ?? NODE_RADIUS) + (radiusOf.get(link.target.id) ?? NODE_RADIUS) + 1.4
-            : 2.2,
-        ),
-    )
-    // Repulsion scales with cross-section: a heavy node carves its room.
-    .force('charge', charge)
-    .stop();
-  // Centering shifts every free node by the mean of ALL nodes each tick;
-  // with most of the field frozen that mean never settles and the few free
-  // nodes stream away from where they were seeded. A settle with frozen
-  // nodes keeps its centre where it is.
-  if (frozen.size === 0) {
-    simulation.force('center', dimensions === 2 ? forceCenter(0, 0) : forceCenter(0, 0, 0));
-  }
-  if (physics.collide) {
-    simulation.force('collide', forceCollide().radius((d: { id: string }): number => (radiusOf.get(d.id) ?? NODE_RADIUS) * 1.2));
-  }
-  if (physics.gravity) {
-    // Mass-weighted centering: the heaviest stage settles at the heart.
-    const pull = (d: { id: string }): number => (((radiusOf.get(d.id) ?? NODE_RADIUS) / NODE_RADIUS) ** 2) * 0.08;
-    simulation.force('gx', forceX(0).strength(pull)).force('gy', forceY(0).strength(pull));
-    if (dimensions === 3) simulation.force('gz', forceZ(0).strength(pull));
-  }
-  const total: number = simulated.length === 0 ? 0 : (seed.size > 0 ? 90 : 150);
-  let done: number = 0;
-  return {
-    total,
-    moving: simulated.length,
-    step: (ticks: number): void => {
-      for (let tick: number = 0; tick < ticks && done < total; tick++, done++) simulation.tick();
-    },
-    place: (): PlacedNode[] => nodes.map((node: SceneNode, index: number): PlacedNode => {
-      const sim = simNodes[index];
-      return {
-        node,
-        position: new THREE.Vector3(sim?.x ?? 0, sim?.y ?? 0, sim?.z ?? 0),
-        radius: radii[index] ?? NODE_RADIUS,
-      };
-    }),
-  };
 }
 
 /**
@@ -1913,7 +1787,7 @@ export class DagScene {
       const standing: string[] = this.graph.nodes.map((node: SceneNode): string => node.id).filter((id: string): boolean => this.lastPositions.has(id));
       if (standing.length > 0) frozen = new Set(standing);
     }
-    const settle: MoleculeSettle = molecule_prepare(
+    const settle: MoleculeSettle = moleculeScene_prepare(
       this.graph.nodes,
       this.projection === '2d' ? 2 : 3,
       this.lastPositions,
@@ -2025,11 +1899,19 @@ export class DagScene {
     }
     const worker: Worker = this.layoutWorker;
     const physics = this.physicsOnce !== undefined ? { ...this.physics, ...this.physicsOnce } : this.physics;
-    worker.onmessage = (event: MessageEvent<{ generation: number; type: 'progress' | 'done'; fraction?: number; positions?: HierarchyPositions }>): void => {
+    worker.onmessage = (event: MessageEvent<{ generation: number; type: 'progress' | 'done' | 'failed'; fraction?: number; positions?: HierarchyPositions; reason?: string }>): void => {
       const answer = event.data;
       if (answer.generation !== this.rebuildGen || this.disposed) return;
       if (answer.type === 'progress') {
         progress(Math.min(total - 1, Math.floor((answer.fraction ?? 0) * total)), total, count);
+        return;
+      }
+      if (answer.type === 'failed') {
+        // An engine the host does not know: the space stays as it stood,
+        // and the reason is said, never drawn as every node at the origin.
+        console.error(`layout: ${answer.reason ?? 'the engine failed'}`);
+        this.slicing = false;
+        progress(total, total, count);
         return;
       }
       const positions: HierarchyPositions = answer.positions ?? {};

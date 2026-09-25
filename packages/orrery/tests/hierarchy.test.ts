@@ -5,7 +5,7 @@
  * real lab.
  */
 import { describe, it, expect } from '@jest/globals';
-import { hierarchy_layout, type HierarchyNode } from '../../src/scene/hierarchy.js';
+import { hierarchy_layout, type HierarchyNode } from '../src/layout/hierarchy.js';
 
 const PHYSICS = { charge: true, link: true, collide: true, gravity: false };
 

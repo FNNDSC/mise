@@ -17,9 +17,8 @@
  */
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, forceX, forceY, forceZ } from 'd3-force-3d';
 import { hierarchy_layout, type HierarchyNode, type HierarchyPhysics, type HierarchyPositions } from './hierarchy.js';
+import { NODE_RADIUS } from './types.js';
 
-/** The radius a sphere's charge is scaled against: the scene's own. */
-const NODE_RADIUS: number = 0.55;
 /** Ticks of the free settle, from the spokes start. */
 const GALAXY_TICKS: number = 80;
 
@@ -31,18 +30,21 @@ type SimNode = { id: string; x?: number; y?: number; z?: number; fx?: number; fy
  * @param nodes - Every node (group and seed as for the hierarchy).
  * @param physics - The terms: the molecule settle's own.
  * @param onProgress - Told how far it has come, 0..1.
+ * @param random - Where a reused molecule's turn comes from; `Math.random`
+ *   unless a caller wants the same space every time.
  * @returns Every node's position.
  */
 export function galaxy_layout(
   nodes: ReadonlyArray<HierarchyNode>,
   physics: HierarchyPhysics,
   onProgress: (fraction: number) => void = (): void => {},
+  random: () => number = Math.random,
 ): HierarchyPositions {
   // Where to start: where each sphere stood, or — for a space not seen
   // before — the spokes arrangement.
   const unseeded: boolean = nodes.some((node: HierarchyNode): boolean => node.seed === undefined);
   const start: HierarchyPositions = unseeded
-    ? hierarchy_layout(nodes, physics, (fraction: number): void => onProgress(0.05 * fraction), 'spokes')
+    ? hierarchy_layout(nodes, physics, (fraction: number): void => onProgress(0.05 * fraction), 'spokes', random)
     : {};
   onProgress(0.05);
   const sim: SimNode[] = nodes.map((node: HierarchyNode): SimNode => {

@@ -1,0 +1,60 @@
+= ORRERY: the model of the heavens a surface draws
+:toc: left
+:sectnums:
+
+== Abstract
+
+An orrery is the geared model of the sky on a desk: gearing computes where each body stands, brass spheres show it, a crank sets it turning. `@fnndsc/orrery` is that instrument for the universe and DAG views of ARGUS, in three layers kept strictly apart — `layout/` (the gearing), `draw/` (the spheres), `controls/` (the crank) — and a small `scene/` that composes them. It knows nothing of what the bodies stand for: a surface translates its own domain into orrery's encoding and hands it in.
+
+It exists because the scene had grown into one class of 3,306 lines and 151 methods holding the renderer, the camera and its gestures, the layout drivers, four draw modes, the hand-off between stars and spheres, tubes, lamps, picking, the drag simulation and the waves. Three new self-organising layouts were about to land on it. The operator: "I have a fear that the code is probably getting wild... A wild bramble patch vs a curated garden". The split comes first; the new layouts land as engines on its seams.
+
+== Status
+
+Epic mise#709. Slice 1 (mise#710): the package, the layer lint, the pure layouts behind the engine contract. Slices 2–4 move the drawers, the controls, and the domain adapter; slices 5–9 add replay, plugin constellations, DATA facts in the kernel, the DATA layout, and accretion.
+
+== Decisions
+
+Grilled and settled with the operator on 2026-09-25.
+
+[cols="1,4"]
+|===
+| Decision | Settled
+
+| split before growing | The scene is split into its own package before any new layout; each new layout then lands as one more engine behind a small contract.
+| the name | `orrery` (`@fnndsc/orrery`, `packages/orrery`), chosen over _sphaera_, _ouranos_ and _aether_: it names the instrument, not the sky. Gearing is layout, spheres are drawers, the crank is the controls.
+| the package | A workspace package, private until something besides ARGUS uses it. ARGUS bundles it (so it is a development dependency of ARGUS: a published package must never depend on a private one).
+| the layers | `layout/` (pure: graph in, positions out; no renderer; runs in a worker; tested in jest), `draw/` (draws positions with an encoding; never reads a layout or the camera), `controls/` (camera, focus, flights, mouse and touch, picking; never draws or lays out), `scene/` (composes them). Every layer may name the shared vocabulary in `types/` and nothing else of another layer. The seams are checked in CI by `npm run lint:orrery`.
+| domain-free | orrery imports no `@fnndsc/*` package and knows no statuses, feeds or plugins. A surface hands in nodes (`id`, `size`, `hue`, `state` — rest, live, done, failed — `group`, `emphasis`, `count`, `label`, `tip`), edges (`from`, `to`, `kind`: parent or join), and a palette as tokens. ARGUS keeps one adapter translating ChRIS into that. When a tube streams or replays, or a lamp blinks, is orrery's rule, keyed off `state` alone.
+| the engine contract | `LayoutEngine { id, label, needs, run(input, progress) }`; `run` is pure and answers `{ positions, arrival? }`. `LayoutInput` carries nodes (`id`, `parents`, `radius`, `group`, `seed?`, `frozen?`, `attrs`) and physics. `needs` names the node attributes an engine reads; a surface that cannot supply them offers the engine greyed with the reason and never runs it. Engines sit in a registry; a LAYOUT block lists what is registered; positions are remembered per engine.
+| time and replay | Engines answer static positions and, optionally, when each node arrived. One replay control in `controls/` reveals nodes in arrival order at their final places with a flash as each lands; an engine with no history replays by creation time.
+| plugin constellations | Plugins are stars. A stage's pull to its plugin's star is weighted by how distinctive the plugin is (log of all feeds over the feeds using it), shared across the feed's plugins; a plugin used by nearly every feed is a landmark that pulls nothing; plugins are named without their version. Every stage is pulled to its own plugin's star, so a pipeline is a stream between stars; the shape anchors are off. Stars are laid out first by which plugins appear together, then frozen while the feeds settle between them. A star is a handle: hover names it, a click lights its stages, a double click frames it.
+| DATA | What a feed's input is: its format (DICOM, JPEG, PNG, NIfTI, MGZ, other), then — for DICOM — its modality and series description. Facts come from the PACS query cache or one header read, once per feed, cached in the kernel's index. Descriptions are compared by their words after normalising. The hierarchy engine lays the space out by format, modality and description group, drawn as labelled nebulae. A feed that reads another's output is drawn joined to it by a faint tube.
+| accretion | Feeds arrive in creation order and wander until they stick, drifting toward their most similar kin and sticking to kin more readily than to strangers; the same seed grows the same coral. A feed is one particle; its molecule unfolds in place afterwards. New feeds accrete as the newest; a removed feed leaves a gap until REGROW.
+|===
+
+== The layout layer
+
+`layout/` holds every engine and nothing that draws:
+
+[cols="1,3"]
+|===
+| Module | What it holds
+
+| `types.ts` | The contract: `LayoutNode`, `LayoutInput`, `LayoutResult`, `LayoutEngine`, `PhysicsTerms` (charge, link, collide, gravity, reach), `PHYSICS_DEFAULT`, `NODE_RADIUS`.
+| `molecule.ts` | One graph finding its own shape: a force settle sized by each node's metric (its degree when none arrived), steppable in slices, able to hold nodes still at a seed. Positions are plain `[x, y, z]`.
+| `ranked.ts` | Tiers down the screen: the tree placed as a schematic, in layout units (`rankedLayout_compute`, also drawn as SVG by a surface's preview cards) and in scene units (`ranked_layout`).
+| `hierarchy.ts` | Spokes and clumps: molecules placed about their anchors.
+| `galaxy.ts` | The whole space finding its own rest, starting from the spokes arrangement.
+| `registry.ts` | The engines by name: galaxy, spokes, clumps, ranked, molecule; `layoutNeeds_missing` says what an engine needs that the nodes do not carry.
+|===
+
+The layer's public entry is `@fnndsc/orrery/layout`: it loads no renderer, so a worker that settles a space loads only the gearing.
+
+== Journal
+
+[cols="1,5"]
+|===
+| When | What happened
+
+| 2026-09-25 (the gearing moves out) | Slice 1. The package, its lint, and the layouts. Hierarchy, galaxy and the ranked tiers moved unchanged but for types; the molecule settle was rewritten on plain `[x, y, z]` rather than the renderer's vectors, and ARGUS converts at its edge. The universe's worker is now a host that runs orrery's engines by name, and says so when asked for an engine it does not have rather than drawing every node at the origin. Proof of no change: the old code was recorded on fixed graphs before anything moved, and the new code must match it — the molecule settle and the ranked tiers to the last digit, in 3D, flat, and warm-started with frozen nodes. The recording turned something up: the hierarchy and the galaxy were never repeatable. A molecule that reuses a shape already worked out takes it at a random turn, so like feeds do not stand as clones; the same space laid out twice lands differently by up to 116 units (clumps). That is behaviour, and slice 1 changes none, so both engines now take an optional random source, `Math.random` as before, and are pinned in their tests under a seeded one. Whether a surface should seed them from the space itself, so a lab's universe looks the same on every device, is the operator's call. |
+|===

@@ -19,6 +19,7 @@
  * @module
  */
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, forceX, forceY, forceZ } from 'd3-force-3d';
+import type { PhysicsTerms } from './types.js';
 
 /**
  * How molecules sit around their anchor: packed as bodies (CLUMPS), or
@@ -27,14 +28,8 @@ import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, f
  */
 export type HierarchyArrangement = 'clumps' | 'spokes' | 'galaxy';
 
-/** The physics a hierarchy honours; the scene's own terms. */
-export interface HierarchyPhysics {
-  charge: boolean;
-  link: boolean;
-  collide: boolean;
-  gravity: boolean;
-  reach?: number;
-}
+/** The physics a hierarchy honours: the layout layer's own terms. */
+export type HierarchyPhysics = PhysicsTerms;
 
 /**
  * One node to place.
@@ -145,6 +140,11 @@ type SimNode = { id: string; x?: number; y?: number; z?: number; fx?: number; fy
  * @param nodes - Every node.
  * @param physics - The terms.
  * @param onProgress - Told how far it has come, 0..1.
+ * @param arrangement - SPOKES or CLUMPS (GALAXY starts from spokes).
+ * @param random - Where a reused molecule's turn comes from: a molecule
+ *   whose shape was already worked out takes it at a random turn, so like
+ *   feeds do not stand as clones. `Math.random` unless a caller wants the
+ *   same space every time.
  * @returns Every node's position.
  */
 export function hierarchy_layout(
@@ -152,6 +152,7 @@ export function hierarchy_layout(
   physics: HierarchyPhysics,
   onProgress: (fraction: number) => void = (): void => {},
   arrangement: HierarchyArrangement = 'clumps',
+  random: () => number = Math.random,
 ): HierarchyPositions {
   const byId: Map<string, HierarchyNode> = new Map(nodes.map((node: HierarchyNode): [string, HierarchyNode] => [node.id, node]));
   const groups: Map<string, HierarchyNode[]> = new Map();
@@ -190,8 +191,8 @@ export function hierarchy_layout(
       // Every sphere stood somewhere: the molecule keeps its shape.
       for (const member of members) local.set(member.id, [member.seed![0] - mean[0], member.seed![1] - mean[1], member.seed![2] - mean[2]]);
     } else if (known !== undefined) {
-      const yaw: number = Math.random() * Math.PI * 2;
-      const pitch: number = (Math.random() - 0.5) * Math.PI;
+      const yaw: number = random() * Math.PI * 2;
+      const pitch: number = (random() - 0.5) * Math.PI;
       members.forEach((member: HierarchyNode, i: number): void => { local.set(member.id, offset_turn(known[i] ?? [0, 0, 0], yaw, pitch)); });
     } else {
       const sim: SimNode[] = members.map((member: HierarchyNode): SimNode => {

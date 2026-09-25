@@ -100,4 +100,5 @@ jobs:
       - run: npm run lint:listings
       - run: npm run lint:changesets
       - run: npm run lint:aegis
+      - run: npm run lint:orrery
       - run: npm run lint --if-present

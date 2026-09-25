@@ -144,6 +144,12 @@ export interface ImageEngine {
    * the stack is whole; false when the engine has no stack to fill.
    */
   slices_fill(): Promise<boolean>;
+  /**
+   * Asks again for every slice that was refused (a dropped connection on a
+   * phone refuses most of a series at once). Resolves to how many are still
+   * refused. Absent on an engine that reads one file.
+   */
+  refused_retry?(): Promise<number>;
   /** One-based. Refused while the stack is still arriving. */
   slice_set(slice: number): boolean;
   wl_set(lower: number, upper: number): boolean;

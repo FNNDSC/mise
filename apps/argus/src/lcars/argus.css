@@ -116,6 +116,7 @@ body {
 main {
   display: block;
   flex: 1 1 auto;
+  min-width: 0;
   padding: 60px 0 11px 50px;
 }
 
@@ -282,11 +283,22 @@ h1 {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
+  /* The column holding the console and the panes gives way to the screen,
+   * not to its longest line: a feed name in a pane's title held it 200px
+   * past the right edge on a folding phone. */
+  min-width: 0;
 }
 
 .right-frame-top {
   position: relative;
-  display: block;
+  /* A column whose middle grows: the band that closes the head sits at the
+   * foot of the row, level with the foot of the gutter's elbow, whatever
+   * the screen's height. As a block it stopped where its content did —
+   * the header's face is a share of the height, the gutter's head has a
+   * floor — and on any screen shorter than about 1000px the band ended up
+   * to 45px above the elbow it should meet. */
+  display: flex;
+  flex-direction: column;
   width: 100%;
   /* A flex item will not shrink below its content unless told: the header's
    * readouts held it about 150px past the screen's edge at every width,
@@ -303,6 +315,7 @@ h1 {
  * off the band below it. */
 .data-cascade-button-group {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: flex-start;
@@ -793,6 +806,7 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
  * whole (orange, destructive red by color law). */
 .drawer-group {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
 }
@@ -4209,12 +4223,14 @@ body[data-zoom] #header-restore {
 .lcars-terminal-header-bar {
   flex: none;
   display: flex;
+  min-width: 0;
   height: 28px;
   align-items: flex-end;
 }
 
 .lcars-bar-horizontal {
   flex: 1;
+  min-width: 0;
   height: 28px;
   background-color: var(--harvestgold);
   display: flex;

@@ -17,7 +17,7 @@
 import { Ok, Err, errorStack, type Result } from '@fnndsc/cumin';
 import { vfsDispatcher } from '../vfs/dispatcher.js';
 import type { VFSItem } from '../vfs/provider.js';
-import { fileContent_getBinary } from '../files/index.js';
+import { fileContent_getBinary, fileContent_getBinaryStream } from '../files/index.js';
 import { TRANSFER_SYNTAX_NAMES } from './dictionary.js';
 import { dicomTags_read, dicomTag_find, type DicomTag, type DicomTagSet } from './tags.js';
 
@@ -107,6 +107,42 @@ export async function dicomHeader_get(path: string, io: DicomFolderIO = dicomFol
   }
   headerCache.set(path, parsed.value);
   return parsed;
+}
+
+/** How much of a file's start is read for its header alone: every tag before the pixels, in any file seen so far. */
+export const DICOM_HEADER_PREFIX_BYTES: number = 2 * 1024 * 1024;
+
+/**
+ * Reads a DICOM file's header from the start of the file alone: the
+ * download stops after {@link DICOM_HEADER_PREFIX_BYTES} and the parse at
+ * the pixel data. A cine loop of hundreds of megabytes costs two.
+ *
+ * @param path - The file.
+ * @returns The tags before the pixels, or an error when the prefix is not DICOM.
+ */
+export async function dicomHeaderPrefix_get(path: string): Promise<Result<DicomTagSet>> {
+  const opened = await fileContent_getBinaryStream(path);
+  if (!opened.ok) return Err();
+  const stream: unknown = opened.value.stream;
+  let prefix: Buffer;
+  if (Buffer.isBuffer(stream)) {
+    prefix = stream.subarray(0, DICOM_HEADER_PREFIX_BYTES);
+  } else if (stream !== null && typeof stream === 'object' && Symbol.asyncIterator in stream) {
+    const chunks: Buffer[] = [];
+    let read: number = 0;
+    for await (const chunk of stream as AsyncIterable<Buffer | Uint8Array | string>) {
+      const piece: Buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      chunks.push(piece);
+      read += piece.length;
+      if (read >= DICOM_HEADER_PREFIX_BYTES) break;
+    }
+    // Leaving the loop early ends the download; say so to a stream that asks.
+    (stream as { destroy?: () => void }).destroy?.();
+    prefix = Buffer.concat(chunks).subarray(0, DICOM_HEADER_PREFIX_BYTES);
+  } else {
+    return Err();
+  }
+  return dicomTags_read(prefix, true);
 }
 
 /**

@@ -76,13 +76,19 @@ const STRUCTURAL_TAGS: ReadonlySet<string> = new Set<string>(['FFFEE000', 'FFFEE
 /**
  * Reads the elements of a DICOM file.
  *
- * @param bytes - The whole file, Part 10 header included.
+ * @param bytes - The whole file, Part 10 header included — or, with
+ *   `headerOnly`, as much of its start as holds everything before the pixels.
+ * @param headerOnly - Stop at the pixel data (7FE0,0010): a prefix of a large
+ *   file is enough, and the pixels are neither read nor needed.
  * @returns The tag set, or an error when the bytes are not a DICOM file.
  */
-export function dicomTags_read(bytes: Buffer): Result<DicomTagSet> {
+export function dicomTags_read(bytes: Buffer, headerOnly: boolean = false): Result<DicomTagSet> {
   const buffer: ArrayBuffer = new Uint8Array(bytes).slice().buffer as ArrayBuffer;
   try {
-    const message = dcmjs.data.DicomMessage.readFile(buffer, { ignoreErrors: true });
+    const message = dcmjs.data.DicomMessage.readFile(buffer, headerOnly ? { ignoreErrors: true, untilTag: '7FE00010', includeUntilTagValue: false } : { ignoreErrors: true });
+    // Stopped at the pixels, the pixel element stands with no value: it is
+    // not a tag the header has.
+    if (headerOnly) delete (message.dict as Record<string, unknown>)['7FE00010'];
     const meta: DicomTag[] = dict_flatten(message.meta);
     const body: DicomTag[] = dict_flatten(message.dict);
     const syntax: DicomTag | undefined = meta.find((tag: DicomTag): boolean => tag.name === 'TransferSyntaxUID');

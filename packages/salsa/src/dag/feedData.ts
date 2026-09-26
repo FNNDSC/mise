@@ -21,6 +21,12 @@ import type { Result } from '@fnndsc/cumin';
 import type { VFSItem } from '../vfs/provider.js';
 import { dicomTag_find, type DicomTagSet } from '../dicom/tags.js';
 
+/**
+ * How many entries of each kind (folders, files, links) a level is read to:
+ * the first data file is all that is wanted, and a full listing of a
+ * five-thousand-file upload cost five pages before it was looked at.
+ */
+const DATA_LIST_LIMIT: number = 50;
 /** How deep into nested folders the first file is looked for. */
 const DATA_DEPTH_MAX: number = 3;
 /**
@@ -29,6 +35,8 @@ const DATA_DEPTH_MAX: number = 3;
  * it. Raise it whenever what is read, or how, changes.
  */
 export const DATA_FACTS_READER: number = 1;
+/** Unnamed files tried as DICOM before a feed's data is called other. */
+const UNNAMED_TRIES: number = 3;
 /** Reads of a DICOM-named file that fail before its feed is recorded without a header. */
 const HEADER_TRIES_MAX: number = 3;
 /** Failed header reads so far, by feed. */
@@ -49,12 +57,14 @@ let sweeping: boolean = false;
  * the provider that owns output paths can hand its reader in.
  *
  * @property outputPath - A job's output folder, or null when it has none.
- * @property list - A folder's entries, or null when it cannot be listed.
+ * @property list - A folder's first entries; null when it is not there,
+ *   `refused` when the store will not show it to this identity (a shared
+ *   feed's data in someone else's uploads).
  * @property header - A DICOM file's tags, or null when it is not one.
  */
 export interface DataFactsIO {
   outputPath(instanceID: number): Promise<string | null>;
-  list(path: string): Promise<VFSItem[] | null>;
+  list(path: string): Promise<VFSItem[] | null | 'refused'>;
   header(path: string): Promise<DicomTagSet | null>;
 }
 
@@ -70,17 +80,51 @@ export function dataFactsIO_of(outputPath: (instanceID: number) => Promise<strin
   // providers, and a module-level import would close that circle.
   return {
     outputPath,
-    list: async (path: string): Promise<VFSItem[] | null> => {
+    list: async (path: string): Promise<VFSItem[] | null | 'refused'> => {
       const { vfsDispatcher } = await import('../vfs/dispatcher.js');
-      const listed: Result<VFSItem[]> = await vfsDispatcher.list(path);
-      return listed.ok ? listed.value : null;
+      // A projected folder (the PACS store, /proc) is its provider's to list.
+      if (vfsDispatcher.path_isVirtual(path)) {
+        const listed: Result<VFSItem[]> = await vfsDispatcher.list(path);
+        return listed.ok ? listed.value : null;
+      }
+      return cfsFirstPage_list(path);
     },
     header: async (path: string): Promise<DicomTagSet | null> => {
-      const { dicomHeader_get } = await import('../dicom/series.js');
-      const read: Result<DicomTagSet> = await dicomHeader_get(path);
+      // The start of the file, not all of it: a cine loop is hundreds of megabytes.
+      const { dicomHeaderPrefix_get } = await import('../dicom/series.js');
+      const read: Result<DicomTagSet> = await dicomHeaderPrefix_get(path);
       return read.ok ? read.value : null;
     },
   };
+}
+
+/**
+ * The first page of a CFS folder's folders, files and links. A folder that
+ * answers nothing is asked once, typed, whether it is empty, missing or
+ * refused — only a refusal is worth saying so for.
+ *
+ * @param path - The folder.
+ * @returns Its first entries, null when missing, or `refused`.
+ */
+async function cfsFirstPage_list(path: string): Promise<VFSItem[] | null | 'refused'> {
+  const { files_list, files_listOutcome } = await import('../files/index.js');
+  const { chrisRow_toItem } = await import('../vfs/providers/native.js');
+  const bounded = { limit: DATA_LIST_LIMIT, offset: 0 };
+  const kinds: Array<'dirs' | 'files' | 'links'> = ['dirs', 'files', 'links'];
+  let pages;
+  try {
+    pages = await Promise.all(kinds.map((kind) => files_list(bounded, kind, path)));
+  } catch {
+    return 'refused';
+  }
+  const items: VFSItem[] = [];
+  pages.forEach((page, index: number): void => {
+    const type: 'dir' | 'file' | 'link' = kinds[index] === 'dirs' ? 'dir' : kinds[index] === 'files' ? 'file' : 'link';
+    for (const row of page?.tableData ?? []) items.push(chrisRow_toItem(row as Parameters<typeof chrisRow_toItem>[0], type));
+  });
+  if (items.length > 0) return items;
+  const outcome = await files_listOutcome(bounded, 'dirs', path);
+  return outcome.kind === 'refused' ? 'refused' : outcome.kind === 'missing' ? null : [];
 }
 
 /**
@@ -101,7 +145,12 @@ export function dataFormat_ofName(name: string): Exclude<ProcFeedDataFacts['form
 
 /** A name that is not data: a hidden file, or the sidecars a job leaves beside its output. */
 function name_isSidecar(name: string): boolean {
-  return name.startsWith('.') || /\.(json|txt|log|csv|md)$/i.test(name);
+  return name.startsWith('.') || /\.(json|txt|log|csv|md|xml)$/i.test(name);
+}
+
+/** The files a level offers as its data: one named, or a few unnamed to try. */
+interface DataCandidates {
+  files: Array<{ path: string; name: string; linked: boolean }>;
 }
 
 /**
@@ -111,7 +160,7 @@ function name_isSidecar(name: string): boolean {
  *
  * @returns The file's path and name, or a reason when there is none.
  */
-async function dataFile_find(folder: string, io: DataFactsIO): Promise<{ path: string; name: string } | { reason: string } | null> {
+async function dataFile_find(folder: string, io: DataFactsIO): Promise<DataCandidates | { reason: string } | null> {
   // A copy job's output is often links to what it copied — a file, or a
   // whole folder: a link is data too, named by its own name and read, or
   // descended into, through its target.
@@ -120,21 +169,23 @@ async function dataFile_find(folder: string, io: DataFactsIO): Promise<{ path: s
   const pathOf = (at: string, item: VFSItem): string => (item.type === 'link' && item.target !== undefined ? item.target : `${at}/${item.name}`);
   let at: string = folder.replace(/\/$/, '');
   for (let depth = 0; depth <= DATA_DEPTH_MAX; depth++) {
-    const items: VFSItem[] | null = await io.list(at);
+    const items: VFSItem[] | null | 'refused' = await io.list(at);
     if (items === null) return null;
+    if (items === 'refused') return { reason: `its data is in ${at}, which this identity may not read` };
     const data: VFSItem[] = items.filter(isData).sort(byName);
     // A file whose name says its format, plain or linked.
     const named: VFSItem | undefined = data.find((item: VFSItem): boolean => dataFormat_ofName(item.name) !== null);
-    if (named !== undefined) return { path: pathOf(at, named), name: named.name };
-    // A plain file whose name says nothing (a DICOM without an extension).
-    const plain: VFSItem | undefined = data.find((item: VFSItem): boolean => item.type === 'file');
-    if (plain !== undefined) return { path: pathOf(at, plain), name: plain.name };
+    if (named !== undefined) return { files: [{ path: pathOf(at, named), name: named.name, linked: named.type === 'link' }] };
+    // Plain files whose names say nothing (DICOM named by UID, no extension): a few are tried.
+    const plain: VFSItem[] = data.filter((item: VFSItem): boolean => item.type === 'file').slice(0, UNNAMED_TRIES);
+    if (plain.length > 0) return { files: plain.map((item: VFSItem) => ({ path: pathOf(at, item), name: item.name, linked: false })) };
     // A link whose name says nothing: a folder when its target lists, else a file.
     const link: VFSItem | undefined = data.find((item: VFSItem): boolean => item.type === 'link');
     if (link !== undefined) {
       const target: string = pathOf(at, link);
-      const inside: VFSItem[] | null = await io.list(target);
-      if (inside === null) return { path: target, name: link.name };
+      const inside: VFSItem[] | null | 'refused' = await io.list(target);
+      if (inside === 'refused') return { reason: `its data is linked from ${target}, which this identity may not read` };
+      if (inside === null) return { files: [{ path: target, name: link.name, linked: true }] };
       at = target.replace(/\/$/, '');
       continue;
     }
@@ -168,20 +219,29 @@ export async function feedDataFacts_read(feedID: number, io: DataFactsIO, cache:
   }
   const output: string | null = await io.outputPath(root.id);
   if (output === null) return null;
-  const file = await dataFile_find(output, io);
-  if (file === null) return null;
-  if ('reason' in file) return { format: 'unknown', reason: file.reason };
-  const named = dataFormat_ofName(file.name);
-  // A DICOM file often carries no extension: a name that says nothing is
-  // tried as DICOM before it is called other.
+  const found = await dataFile_find(output, io);
+  if (found === null) return null;
+  if ('reason' in found) return { format: 'unknown', reason: found.reason };
+  const first = found.files[0] as { path: string; name: string; linked: boolean };
+  const named = dataFormat_ofName(first.name);
   if (named !== null && named !== 'dicom') return { format: named };
-  const header: DicomTagSet | null = await io.header(file.path);
+  // A DICOM file often carries no extension: names that say nothing are
+  // tried as DICOM, a few of them, before the data is called other.
+  let header: DicomTagSet | null = null;
+  for (const file of found.files) {
+    header = await io.header(file.path);
+    if (header !== null) break;
+  }
   if (header === null) {
-    if (named !== 'dicom') return { format: 'other', reason: `its first file, ${file.name}, is not a format the index names` };
+    if (named !== 'dicom') {
+      return first.linked
+        ? { format: 'unknown', reason: `its data is linked from ${first.path}, which cannot be read here` }
+        : { format: 'other', reason: `its first file, ${first.name}, is not a format the index names` };
+    }
     const tries: number = (headerTries.get(feedID) ?? 0) + 1;
     headerTries.set(feedID, tries);
     // Its name already says DICOM: record that, and why there is no modality.
-    return tries < HEADER_TRIES_MAX ? null : { format: 'dicom', reason: `the header of its first file, ${file.name}, could not be read` };
+    return tries < HEADER_TRIES_MAX ? null : { format: 'dicom', reason: `the header of its first file, ${first.name}, could not be read` };
   }
   headerTries.delete(feedID);
   const facts: ProcFeedDataFacts = { format: 'dicom' };

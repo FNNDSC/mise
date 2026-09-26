@@ -31,6 +31,7 @@ import {
   type ProcFeed,
   type ProcFeedSnapshot,
   type ProcInstance,
+  type ProcFeedDataFacts,
 } from './procCache';
 import { errorStack } from '../error/errorStack';
 
@@ -65,6 +66,26 @@ interface ShardFile {
   feedID: number;
   loaded: boolean;
   instances: ProcInstance[];
+  /** What the feed's data is; absent from a shard written before it was read, or before facts existed. */
+  dataFacts?: ProcFeedDataFacts;
+}
+
+/** The formats a feed's data facts may name. */
+const DATA_FORMATS: ReadonlySet<string> = new Set(['dicom', 'nifti', 'mgz', 'jpeg', 'png', 'other', 'unknown']);
+
+/**
+ * Validates a feed's data facts, read back from a shard. A shard whose facts
+ * fail keeps its topology and loses only the facts: they are read again.
+ *
+ * @param value - Parsed facts candidate.
+ * @returns True when the facts are well formed.
+ */
+export function dataFacts_check(value: unknown): value is ProcFeedDataFacts {
+  if (!value || typeof value !== 'object') return false;
+  const facts = value as Record<string, unknown>;
+  const optionalText = (key: string): boolean => facts[key] === undefined || typeof facts[key] === 'string';
+  return typeof facts['format'] === 'string' && DATA_FORMATS.has(facts['format'])
+    && optionalText('modality') && optionalText('seriesDescription') && optionalText('reason');
 }
 
 /**
@@ -300,7 +321,7 @@ async function shards_assemble(
   if (!roster.feeds.every(procFeed_check)) throw new Error('incompatible checkpoint');
   const feedIDs: Set<number> = new Set(roster.feeds.map((feed: ProcFeed): number => feed.id));
 
-  const snapshot: ProcCacheSnapshot = { feeds: roster.feeds, instances: [], topologyLoaded: [] };
+  const snapshot: ProcCacheSnapshot = { feeds: roster.feeds, instances: [], topologyLoaded: [], dataFacts: {} };
   let skipped: number = 0;
   for (const name of await fs.readdir(dir)) {
     const match: RegExpMatchArray | null = SHARD_PATTERN.exec(name);
@@ -311,6 +332,7 @@ async function shards_assemble(
     if (!shardFile_check(shard, identity) || shard.feedID !== feedID) { skipped++; continue; }
     snapshot.instances.push(...shard.instances);
     if (shard.loaded) snapshot.topologyLoaded.push(feedID);
+    if (shard.dataFacts !== undefined && dataFacts_check(shard.dataFacts) && snapshot.dataFacts !== undefined) snapshot.dataFacts[feedID] = shard.dataFacts;
   }
   if (skipped > 0) {
     errorStack.stack_push('warning', `proc checkpoint: ${skipped} feed shard(s) skipped (orphaned or unreadable)`);
@@ -427,7 +449,7 @@ export async function procCheckpointFeed_save(
   const cache = procCache_get();
   const snapshot: ProcFeedSnapshot = cache.feedSnapshot_create(feedID);
   const path: string = shardPath_get(dir, feedID);
-  if (!cache.feed_get(feedID) || (snapshot.instances.length === 0 && !snapshot.loaded)) {
+  if (!cache.feed_get(feedID) || (snapshot.instances.length === 0 && !snapshot.loaded && snapshot.dataFacts === undefined)) {
     await fs.rm(path, { force: true });
     return;
   }
@@ -439,6 +461,7 @@ export async function procCheckpointFeed_save(
     feedID,
     loaded: snapshot.loaded,
     instances: snapshot.instances,
+    ...(snapshot.dataFacts === undefined ? {} : { dataFacts: snapshot.dataFacts }),
   };
   await json_write(path, file);
 }

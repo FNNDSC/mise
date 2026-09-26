@@ -1966,6 +1966,33 @@ async function surface_start(token: string): Promise<void> {
           runs_show();
           dagPanel.feed_enter(feedId);
         },
+        // OPEN IN /BIN: the plugin's newest entry, opened in the browser as
+        // every /bin entry opens — its one-node graph.
+        plugin_open: (plugin: string): void => {
+          void (async (): Promise<void> => {
+            const outcome: ExecuteOutcome = await client.line_execute('ls /bin', { silent: true, observe: false });
+            const names: string[] = [];
+            for (const envelope of outcome.envelopes) {
+              if (envelope.model?.kind !== 'fs.listing') continue;
+              // One listing per path asked for.
+              const data: unknown = envelope.model.data;
+              const listings = (Array.isArray(data) ? data : [data]) as Array<{ items?: Array<{ name: string }> }>;
+              for (const listing of listings) for (const item of listing.items ?? []) names.push(item.name);
+            }
+            const entry: string | undefined = names
+              .filter((name: string): boolean => name.startsWith(`${plugin}-v`))
+              .sort((a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true }))
+              .pop();
+            if (entry === undefined) {
+              terminal.line_note(`universe: ${plugin} is not in /bin`);
+              return;
+            }
+            element_require('gutter-files').click();
+            binEntry_show('files', filesPanels.get('files') as FilesPanel, `/bin/${entry}`, 'plugin');
+          })().catch((error: unknown): void => {
+            terminal.line_note(`universe: could not open ${plugin} in /bin: ${error instanceof Error ? error.message : String(error)}`);
+          });
+        },
         note: (line: string): void => terminal.line_note(line),
       },
       localKeyStore(),
@@ -2112,9 +2139,13 @@ async function surface_start(token: string): Promise<void> {
       const outcome: ExecuteOutcome = await client.line_execute(`ls "${path}"`, { silent: true, observe: false });
       for (const envelope of outcome.envelopes) {
         if (envelope.model?.kind !== 'fs.listing') continue;
-        const listing = envelope.model.data as { path?: string; entries?: Array<{ name: string; type: string }> };
+        // One listing per path asked for, its entries under `items` — as the
+        // launcher and the browser read it. Read as one object with
+        // `entries`, this answered no folders for any path.
+        const data: unknown = envelope.model.data;
+        const listing = ((Array.isArray(data) ? data[0] : data) ?? {}) as { path?: string; items?: Array<{ name: string; type: string }> };
         const base: string = (listing.path ?? path).replace(/\/$/, '');
-        return (listing.entries ?? [])
+        return (listing.items ?? [])
           .filter((entry): boolean => entry.type === 'dir')
           .map((entry): string => `${base}/${entry.name}`);
       }

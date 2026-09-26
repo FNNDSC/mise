@@ -628,9 +628,12 @@ export class UniversePanel {
     const graphOf = (a: Arrangement): string => (ownGraph_is(a) ? a : 'hubs');
     const graphChanges: boolean = graphOf(arrangement) !== graphOf(this.arrangement);
     this.litHub = null;
+    // The space as it stands is the old arrangement's: kept under its name
+    // before the name changes. Kept after, a galaxy was filed as spokes and
+    // every layout recalled the one before it.
+    this.remember_now();
     this.arrangement = arrangement;
     if (this.arrangementPill !== null) this.arrangementPill.textContent = arrangement.toUpperCase();
-    this.remember_now();
     if (this.inside === null && this.cluster === null) {
       // Constellations bring their own graph (the plugin stars, no hubs):
       // the arrangement is set without a redraw and the new graph painted.

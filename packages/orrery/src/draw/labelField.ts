@@ -21,6 +21,12 @@ import * as THREE from 'three';
 export const CAPTION_SCREEN_HEIGHT: number = 0.028;
 /** The opacity of a caption on a dimmed node. */
 const CAPTION_DIM: number = 0.25;
+/**
+ * The plate behind a caption's words: dark, mostly opaque, so the words
+ * read over the brightest cloud. Bare words were lost on a phone over a
+ * nebula of four hundred feeds.
+ */
+const CAPTION_PLATE: string = 'rgba(0, 0, 0, 0.7)';
 /** Pixels of text height on the canvas a caption is drawn on. */
 const CANVAS_TEXT_PX: number = 48;
 
@@ -80,6 +86,11 @@ export class LabelField {
       // A resized canvas forgets its font.
       context.font = font;
       context.textBaseline = 'middle';
+      const radius: number = canvas.height / 4;
+      context.fillStyle = CAPTION_PLATE;
+      context.beginPath();
+      context.roundRect(0, 0, canvas.width, canvas.height, radius);
+      context.fill();
       context.fillStyle = `#${color.getHexString()}`;
       context.fillText(text, CANVAS_TEXT_PX / 2, canvas.height / 2);
     }

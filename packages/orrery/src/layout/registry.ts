@@ -8,6 +8,7 @@
  *
  * @module
  */
+import { constellations_layout } from './constellations.js';
 import { galaxy_layout } from './galaxy.js';
 import { hierarchy_layout, type HierarchyNode } from './hierarchy.js';
 import { molecule_layout, type MoleculeNode } from './molecule.js';
@@ -104,8 +105,20 @@ const moleculeEngine: LayoutEngine = {
   },
 };
 
+/**
+ * Constellations: every plugin a star placed by what runs with what, every
+ * feed's stages pulled to their plugins' stars. Needs each stage's plugin.
+ */
+const constellationsEngine: LayoutEngine = {
+  id: 'constellations',
+  label: 'CONSTELLATIONS',
+  needs: ['plugin'],
+  run: (input: LayoutInput, progress: (fraction: number) => void): LayoutResult =>
+    ({ positions: constellations_layout(input.nodes, input.physics, progress) }),
+};
+
 /** Every engine, in the order a LAYOUT block offers them. */
-const ENGINES: ReadonlyArray<LayoutEngine> = [galaxyEngine, spokesEngine, clumpsEngine, rankedEngine, moleculeEngine];
+const ENGINES: ReadonlyArray<LayoutEngine> = [galaxyEngine, spokesEngine, clumpsEngine, constellationsEngine, rankedEngine, moleculeEngine];
 
 /**
  * Every registered engine.

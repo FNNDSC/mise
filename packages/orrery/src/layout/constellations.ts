@@ -166,7 +166,9 @@ export function constellations_layout(
     sim.force('charge', charge);
   }
   if (physics.collide) sim.force('collide', forceCollide().radius((d: { id: string }): number => (d as Body).r * 1.2));
-  for (let tick = 0; tick < FEED_TICKS; tick++) {
+  // A space whose every body is held has nothing to settle.
+  const moving: boolean = all.some((body: Body): boolean => body.fx === undefined);
+  for (let tick = 0; moving && tick < FEED_TICKS; tick++) {
     sim.tick();
     if (tick % 4 === 0) onProgress(0.4 + 0.6 * (tick / FEED_TICKS));
   }

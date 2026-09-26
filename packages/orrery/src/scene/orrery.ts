@@ -1102,6 +1102,13 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     // how far it has come: the page keeps drawing the scene that stands,
     // the operator sees a bar move, and the new scene replaces it at the
     // end. Without a listener, and for a small settle, it runs in one go.
+    // Nothing to move (a repaint under `hold` or `new` with every node
+    // standing: a plugin lit, a palette changed): draw where they stand.
+    // Any engine would only spend its ticks on bodies that cannot move.
+    if (settle.moving === 0) {
+      this.draw(settle.place(), fit);
+      return;
+    }
     const nodes: number = this.graph.nodes.length;
     const progress = this.handlers.progress;
     // The work is the ticks times the nodes that move: a descent settles a

@@ -45,6 +45,7 @@ import {
   SphereField,
   StarField,
   TubeField,
+  LabelField,
   paint_resolve,
   type Palette,
   type CensusNode,
@@ -77,6 +78,8 @@ export interface SpaceNode {
    * plugin, a star's kind — whatever the surface supplies.
    */
   attrs?: Record<string, number | string | string[]>;
+  /** Words pinned above the node, read without hovering (a hub's name and count). */
+  caption?: string;
   /** Drawn as a ringed star: a node of another kind among the stars (a plugin in constellations). */
   ring?: boolean;
   /** How it looks, read by the surface from its own domain. */
@@ -116,9 +119,10 @@ export interface SpaceNode {
 /** The normalized graph the scene renders. */
 /**
  * How a space is arranged: a hierarchy round each shape's hub (galaxy,
- * spokes, clumps), or constellations round the plugin stars.
+ * spokes, clumps), constellations round the plugin stars, or a tree of hubs
+ * the surface names (hubs).
  */
-export type SpaceArrangement = HierarchyArrangement | 'constellations';
+export type SpaceArrangement = HierarchyArrangement | 'constellations' | 'hubs';
 
 export interface SpaceGraph<N extends SpaceNode = SpaceNode> {
   nodes: N[];
@@ -375,6 +379,8 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
   }
   /** The field's stars, threads and nebulae. */
   private readonly starField: StarField = new StarField(this.group);
+  /** Captions pinned above nodes. */
+  private readonly labels: LabelField = new LabelField(this.group);
   /** Every solid molecule's tubes, and the lamps its stages wear. */
   private readonly tubes: TubeField = new TubeField({
     parent: this.group,
@@ -588,6 +594,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
       this.handoff_step();
       this.replay_step();
       this.tubes.frame(performance.now());
+      this.labels.declutter(this.camera);
       this.renderer.render(this.scene, this.camera);
       this.frameHandle = window.requestAnimationFrame(animate);
     };
@@ -1264,6 +1271,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     this.pull = null;
     this.drag = null;
     this.starField.clear();
+    this.labels.clear();
     this.handoffField.clear();
     this.placedById = new Map();
     this.tubes.clear();
@@ -1285,6 +1293,17 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     }
     if (!this.ambient && fit) this.camera_fit(placed);
     const byId: Map<string, PlacedNode> = new Map(placed.map((p: PlacedNode) => [p.node.id, p]));
+    const childrenOf: Map<string, PlacedNode[]> = new Map();
+    for (const item of placed) {
+      for (const parentId of item.node.parentIds) childrenOf.set(parentId, [...(childrenOf.get(parentId) ?? []), item]);
+    }
+    const heldCentre_of = (id: string): THREE.Vector3 | null => {
+      const children: PlacedNode[] = childrenOf.get(id) ?? [];
+      if (children.length === 0) return null;
+      const centre: THREE.Vector3 = new THREE.Vector3();
+      for (const child of children) centre.add(child.position);
+      return centre.divideScalar(children.length);
+    };
 
     // Stars: every node but a solid one is a point of light, a halo a
     // nebula; they are drawn in batches after this loop.
@@ -1293,6 +1312,13 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     // A replay shows every node as a star: nothing turns solid under it.
     const handoffKey = starring && this.replay === null ? this.handlers.handoffKey : undefined;
     for (const { node, position, radius } of placed) {
+      if (node.caption !== undefined) {
+        // A ghost's words stand over what it holds: the layout parks the
+        // anchor itself wherever its pulls cancel, often between clouds.
+        const held: THREE.Vector3 | null = node.ghost === true ? heldCentre_of(node.id) : null;
+        const reach: number = held !== null ? 0 : node.halo === true ? haloRadius_of(node.count ?? 1) : radius;
+        this.labels.caption_add(node.id, node.caption, held ?? position, reach, palette.done, node.dim === true, node.count ?? 1);
+      }
       if (node.ghost === true && node.halo !== true) continue;
       if (starring && node.solid !== true) {
         if (node.halo === true) {

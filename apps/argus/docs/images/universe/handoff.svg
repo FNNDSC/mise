@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="300" viewBox="0 0 1180 300" font-family="ui-monospace, monospace" font-size="14">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#3aa0d8"/></marker><marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#f2c14e"/></marker></defs>
+<rect width="1180" height="300" fill="#000"/>
+<line x1="80" y1="260" x2="640" y2="260" stroke="#8a9aa8"/><line x1="80" y1="40" x2="80" y2="260" stroke="#8a9aa8"/>
+<text x="640.0" y="290.0" fill="#8a9aa8" font-size="12" text-anchor="end" font-weight="normal">molecule diameter on screen (px)</text>
+<text x="70.0" y="46.0" fill="#8a9aa8" font-size="12" text-anchor="end" font-weight="normal">spheres</text>
+<text x="70.0" y="260.0" fill="#8a9aa8" font-size="12" text-anchor="end" font-weight="normal">stars</text>
+<text x="80.0" y="276.0" fill="#8a9aa8" font-size="11" text-anchor="middle" font-weight="normal">0</text>
+<text x="313.3" y="276.0" fill="#8a9aa8" font-size="11" text-anchor="middle" font-weight="normal">5</text>
+<text x="406.7" y="276.0" fill="#8a9aa8" font-size="11" text-anchor="middle" font-weight="normal">7</text>
+<text x="640.0" y="276.0" fill="#8a9aa8" font-size="11" text-anchor="middle" font-weight="normal">12</text>
+<polyline points="80.0,260 406.6666666666667,260 406.6666666666667,40 640.0,40" fill="none" stroke="#6ee7b7" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="640.0,48 313.33333333333337,48 313.33333333333337,252 80.0,252" fill="none" stroke="#f2c14e" stroke-width="2.5" marker-end="url(#arrowA)"/>
+<text x="476.7" y="142.0" fill="#6ee7b7" font-size="12" text-anchor="start" font-weight="normal">closing: solid past 7 px</text>
+<text x="94.0" y="174.0" fill="#f2c14e" font-size="12" text-anchor="start" font-weight="normal">leaving: stars below 5 px</text>
+<text x="700.0" y="90.0" fill="#f2c14e" font-size="13" text-anchor="start" font-weight="normal">px = 2·r_max·(H / 2·tan(fov/2)) / depth</text>
+<text x="700.0" y="116.0" fill="#f2c14e" font-size="13" text-anchor="start" font-weight="normal">mix ← mix ± dt / 300 ms</text>
+<text x="700.0" y="142.0" fill="#8a9aa8" font-size="13" text-anchor="start" font-weight="normal">spheres, tubes at mix; stars at 1 − mix</text>
+<text x="700.0" y="168.0" fill="#8a9aa8" font-size="13" text-anchor="start" font-weight="normal">the gap between 5 and 7 stops a flicker</text>
+</svg>

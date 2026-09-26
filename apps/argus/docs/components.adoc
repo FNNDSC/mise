@@ -177,6 +177,8 @@ The universe pane shows the space of everything run on this CUBE: every feed the
 .The universe pane, numbered: the bar (1), the rule (2), the elbow (3), the spine widened into the frame (4) with its blocks (5), the field of molecules in clusters (6), and the tip over a sphere (7)
 image::images/universe-pane-anatomy.svg[Universe pane anatomy,1180]
 
+The mathematics of every layout, view and drawing mode, with a screenshot of each, is in link:universe-projections.adoc[Universe projections].
+
 [cols="1,1,3"]
 |===
 | Part | Class | Holds

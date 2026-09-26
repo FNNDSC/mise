@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="600" viewBox="0 0 1180 600" font-family="ui-monospace, monospace" font-size="14">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#3aa0d8"/></marker><marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#f2c14e"/></marker></defs>
+<rect width="1180" height="600" fill="#000"/>
+<circle cx="420" cy="300" r="293.3" fill="none" stroke="#1b5f86" stroke-dasharray="5 5"/>
+<text x="631.2" y="88.8" fill="#8a9aa8" font-size="12" text-anchor="start" font-weight="normal">launch sphere</text>
+<circle cx="420.0" cy="300.0" r="22.0" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="384.0" cy="276.3" r="17.0" fill="#3aa0d8" opacity="0.35" stroke="#3aa0d8"/>
+<circle cx="468.5" cy="304.0" r="22.7" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="458.9" cy="258.0" r="20.3" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="349.0" cy="302.8" r="22.9" fill="#3aa0d8" opacity="0.35" stroke="#3aa0d8"/>
+<circle cx="406.6" cy="340.1" r="16.2" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="492.2" cy="226.2" r="21.7" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="310.0" cy="333.0" r="22.4" fill="#3aa0d8" opacity="0.35" stroke="#3aa0d8"/>
+<circle cx="382.4" cy="367.4" r="16.3" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="429.0" cy="376.9" r="22.9" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="300.1" cy="290.1" r="17.7" fill="#3aa0d8" opacity="0.35" stroke="#3aa0d8"/>
+<circle cx="473.9" cy="373.6" r="18.1" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="514.2" cy="323.3" r="22.8" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="267.2" cy="310.8" r="17.2" fill="#3aa0d8" opacity="0.35" stroke="#3aa0d8"/>
+<circle cx="526.4" cy="257.9" r="20.8" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="350.5" cy="345.9" r="16.3" fill="#3aa0d8" opacity="0.35" stroke="#3aa0d8"/>
+<circle cx="558.6" cy="300.2" r="23.2" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="414.2" cy="422.8" r="21.3" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="230.6" cy="302.1" r="16.4" fill="#3aa0d8" opacity="0.35" stroke="#3aa0d8"/>
+<circle cx="570.8" cy="250.0" r="20.3" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="579.5" cy="207.7" r="18.8" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="338.1" cy="257.1" r="20.1" fill="#3aa0d8" opacity="0.35" stroke="#3aa0d8"/>
+<circle cx="457.6" cy="410.8" r="18.5" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="352.7" cy="393.3" r="19.1" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<circle cx="242.3" cy="340.5" r="17.5" fill="#3aa0d8" opacity="0.35" stroke="#3aa0d8"/>
+<circle cx="607.5" cy="301.3" r="21.8" fill="#6ee7b7" opacity="0.35" stroke="#6ee7b7"/>
+<polyline points="224.6,518.7 226.8,509.0 221.1,502.9 227.9,501.1 221.9,499.2 218.5,490.5 212.8,485.4 209.2,477.0 216.3,475.4 221.9,467.7 228.6,466.3 224.4,458.2 225.4,448.3 223.3,450.8 230.1,445.3 224.9,445.0 231.9,442.3 233.5,445.2 233.0,448.2 227.8,441.2 230.4,431.6 231.9,434.5 236.8,435.8 243.4,433.5 240.4,435.7 246.8,431.0 240.6,425.1 245.1,416.9 249.7,417.9 247.0,408.4 252.8,402.4 251.4,392.5 254.6,383.8 247.3,379.2" fill="none" stroke="#f2c14e" stroke-width="1.5"/>
+<circle cx="224.6" cy="518.7" r="5" fill="#f2c14e"/>
+<circle cx="247.3" cy="379.2" r="20.0" fill="none" stroke="#f2c14e" stroke-width="2"/>
+<text x="214.6" y="506.7" fill="#f2c14e" font-size="12" text-anchor="end" font-weight="normal">launched</text>
+<text x="800.0" y="140.0" fill="#8a9aa8" font-size="13" text-anchor="start" font-weight="normal">a walker of family B, launched at random,</text>
+<text x="800.0" y="164.0" fill="#8a9aa8" font-size="13" text-anchor="start" font-weight="normal">drifts toward its closest kin:</text>
+<text x="800.0" y="188.0" fill="#f2c14e" font-size="13" text-anchor="start" font-weight="normal">  h = 0.65·ŵ + 0.35·unit(kin − x)</text>
+<text x="800.0" y="212.0" fill="#8a9aa8" font-size="13" text-anchor="start" font-weight="normal">touching a stranger (A): sticks with</text>
+<text x="800.0" y="236.0" fill="#f2c14e" font-size="13" text-anchor="start" font-weight="normal">  p = max(0.01, L) — else pushed off</text>
+<text x="800.0" y="260.0" fill="#8a9aa8" font-size="13" text-anchor="start" font-weight="normal">touching kin (B): L = 1, it sticks</text>
+<text x="800.0" y="284.0" fill="#8a9aa8" font-size="13" text-anchor="start" font-weight="normal"></text>
+<text x="800.0" y="308.0" fill="#f2c14e" font-size="13" text-anchor="start" font-weight="normal">L(a,b) = Σ_{a∩b} w / Σ_{a∪b} w,  w = ln(N/n_p)</text>
+<text x="800.0" y="332.0" fill="#8a9aa8" font-size="13" text-anchor="start" font-weight="normal">400 steps, then a free place by its kin</text>
+<circle cx="810" cy="400" r="8" fill="#6ee7b7" opacity="0.5"/><text x="826.0" y="405.0" fill="#8a9aa8" font-size="12" text-anchor="start" font-weight="normal">family A</text>
+<circle cx="930" cy="400" r="8" fill="#3aa0d8" opacity="0.5"/><text x="946.0" y="405.0" fill="#8a9aa8" font-size="12" text-anchor="start" font-weight="normal">family B</text>
+</svg>

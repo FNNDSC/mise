@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="230" viewBox="0 0 1300 230" font-family="ui-monospace, monospace" font-size="14">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#3aa0d8"/></marker><marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#f2c14e"/></marker></defs>
+<rect width="1300" height="230" fill="#000"/>
+<rect x="20" y="40" width="190" height="96" rx="10" fill="#1b5f86" stroke="#3aa0d8" stroke-width="1.5"/>
+<text x="115.0" y="64.0" fill="#e8f4ff" font-size="15" text-anchor="middle" font-weight="bold">CUBE</text>
+<text x="115.0" y="88.0" fill="#8a9aa8" font-size="12" text-anchor="middle" font-weight="normal">feeds, jobs</text>
+<text x="115.0" y="107.0" fill="#8a9aa8" font-size="12" text-anchor="middle" font-weight="normal">plugin instances</text>
+<line x1="212.0" y1="88.0" x2="228.0" y2="88.0" stroke="#3aa0d8" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="230" y="40" width="190" height="96" rx="10" fill="#1b5f86" stroke="#3aa0d8" stroke-width="1.5"/>
+<text x="325.0" y="64.0" fill="#e8f4ff" font-size="15" text-anchor="middle" font-weight="bold">/proc index</text>
+<text x="325.0" y="88.0" fill="#8a9aa8" font-size="12" text-anchor="middle" font-weight="normal">ProcCache (cumin/salsa)</text>
+<text x="325.0" y="107.0" fill="#8a9aa8" font-size="12" text-anchor="middle" font-weight="normal">topology · data facts</text>
+<line x1="422.0" y1="88.0" x2="438.0" y2="88.0" stroke="#3aa0d8" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="440" y="40" width="190" height="96" rx="10" fill="#3aa0d8" stroke="#3aa0d8" stroke-width="1.5"/>
+<text x="535.0" y="64.0" fill="#000" font-size="15" text-anchor="middle" font-weight="bold">proc universe</text>
+<text x="535.0" y="88.0" fill="#000" font-size="12" text-anchor="middle" font-weight="normal">feeds × groups</text>
+<text x="535.0" y="107.0" fill="#000" font-size="12" text-anchor="middle" font-weight="normal">jobs collapsed ×N</text>
+<line x1="632.0" y1="88.0" x2="648.0" y2="88.0" stroke="#3aa0d8" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="650" y="40" width="190" height="96" rx="10" fill="#1b5f86" stroke="#3aa0d8" stroke-width="1.5"/>
+<text x="745.0" y="64.0" fill="#e8f4ff" font-size="15" text-anchor="middle" font-weight="bold">graph builder</text>
+<text x="745.0" y="88.0" fill="#8a9aa8" font-size="12" text-anchor="middle" font-weight="normal">argus universe.ts</text>
+<text x="745.0" y="107.0" fill="#8a9aa8" font-size="12" text-anchor="middle" font-weight="normal">one per arrangement</text>
+<line x1="842.0" y1="88.0" x2="858.0" y2="88.0" stroke="#3aa0d8" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="860" y="40" width="190" height="96" rx="10" fill="#3aa0d8" stroke="#3aa0d8" stroke-width="1.5"/>
+<text x="955.0" y="64.0" fill="#000" font-size="15" text-anchor="middle" font-weight="bold">layout engine</text>
+<text x="955.0" y="88.0" fill="#000" font-size="12" text-anchor="middle" font-weight="normal">orrery layout/</text>
+<text x="955.0" y="107.0" fill="#000" font-size="12" text-anchor="middle" font-weight="normal">pure · in a worker</text>
+<line x1="1052.0" y1="88.0" x2="1068.0" y2="88.0" stroke="#3aa0d8" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1070" y="40" width="190" height="96" rx="10" fill="#1b5f86" stroke="#3aa0d8" stroke-width="1.5"/>
+<text x="1165.0" y="64.0" fill="#e8f4ff" font-size="15" text-anchor="middle" font-weight="bold">drawing</text>
+<text x="1165.0" y="88.0" fill="#8a9aa8" font-size="12" text-anchor="middle" font-weight="normal">stars · spheres</text>
+<text x="1165.0" y="107.0" fill="#8a9aa8" font-size="12" text-anchor="middle" font-weight="normal">census · halos · captions</text>
+<path d="M 1165.0 140 v 48 H 955.0 v -44" fill="none" stroke="#f2c14e" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrowA)"/>
+<text x="1060.0" y="206.0" fill="#f2c14e" font-size="12" text-anchor="middle" font-weight="normal">positions kept per layout · held on a landing</text>
+<path d="M 745.0 140 v 48 H 535.0 v -44" fill="none" stroke="#f2c14e" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrowA)"/>
+<text x="640.0" y="206.0" fill="#f2c14e" font-size="12" text-anchor="middle" font-weight="normal">VIEW · SCALE · LAYOUT choose the graph</text>
+</svg>

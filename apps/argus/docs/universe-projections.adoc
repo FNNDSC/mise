@@ -1,0 +1,351 @@
+= Universe projections
+:toc: left
+:toclevels: 2
+:sectnums:
+:stem: latexmath
+:imagesdir: images/universe
+:icons: font
+
+[abstract]
+== Abstract
+
+The UNIVERSE pane draws everything a ChRIS identity has ever run as one space: every feed a small molecule of the jobs it ran, the molecules arranged so that the arrangement itself says something — which feeds are the same pipeline, which tools run with which, what data the work began from, in what order the lab grew. This document describes that space mathematically: what is projected, the choices on the frame that select a projection, the forces and procedures behind each of the six layouts (GALAXY, SPOKES, CLUMPS, CONSTELLATIONS, DATA, ACCRETION), how the placed space is drawn (stars, spheres, a census of every job, halos, captions, the hand-off between them), how time is shown (REPLAY), and what each costs. Every formula is the one in the code, cited by file; every screenshot is the operator's own space (709 feeds, 2,997 drawn stages, 46 plugins, 37 pipeline shapes) on the lab's CUBE, the pane zoomed to the whole viewport.
+
+Where the design decisions behind a layout were argued, they are recorded in link:../../../packages/orrery/docs/orrery.adoc[orrery.adoc] (the drawing library's design and journal); the surface's side is in link:aegis.adoc[aegis.adoc] and the pane's reference in link:components.adoc[components.adoc].
+
+== What is projected
+
+=== Feeds, jobs and groups
+
+A feed stem:[f] is a tree (with the occasional join) of plugin instances — jobs. A large feed may run hundreds of jobs of one plugin side by side (a conversion fanned over a series), so drawing jobs one-to-one would give a space of 210,012 nodes for this identity, which is neither drawable in a force layout nor readable. The session therefore collapses each feed: jobs are grouped by plugin at each place in the pipeline, and a group stands for all of them.
+
+.A feed as run and as drawn: fourteen parallel conversions become one group of fourteen, its hue shifted toward error by the share that failed.
+image::collapse.svg[Collapse,1180]
+
+A group stem:[g] carries its plugin stem:[p_g], its job count stem:[n_g], its errored count stem:[e_g], its status, and its parent group. The shape of a feed is the string of its groups, `parent:plugin` joined by `>` (`r:pl-dircopy>0:pl-dcm2niix>1:pl-mri-preview`); feeds with the same shape ran the same pipeline (`apps/argus/src/features/dag/universe.ts`).
+
+=== Size and colour
+
+With the JOBS scale a group's metric grows with the log of its jobs, and its radius with its metric against the largest in the space:
+
+[latexmath]
+++++
+m_g = \log_2(n_g + 1), \qquad r_g = r_0\left(\tfrac12 + 1.2\,\frac{m_g}{\max(1, \max_h m_h)}\right), \qquad r_0 = 0.55
+++++
+
+so radii run from stem:[0.275] (one job, in a space of giants) to stem:[0.935]. With the ALIKE scale every metric is 1 and every sphere the same (`packages/orrery/src/layout/molecule.ts`).
+
+A group's colour blends from the palette's _done_ to its _error_ by the square root of the share of its jobs that failed, so that one failure in eighty thousand is visible but not alarming, and a group that failed outright is plainly red:
+
+[latexmath]
+++++
+s_g = \min\!\left(1, \frac{e_g}{n_g}\right), \qquad c_g = c_{\text{done}} + \sqrt{s_g}\,\bigl(c_{\text{error}} - c_{\text{done}}\bigr)
+++++
+
+A group with any failure also carries an _ember_ — a solid core under its glow (`apps/argus/src/scene/chrisLook.ts`, `packages/orrery/src/draw/palette.ts`).
+
+=== From the index to pixels
+
+.The projection pipeline. The frame's choices select the graph; the layout engine is pure and runs in a worker; positions are kept per layout and held when a feed lands.
+image::pipeline.svg[Pipeline,1300]
+
+The kernel's `/proc` index (cumin's ProcCache, filled by salsa's sweeps) holds every feed's topology and, since slice 7 of the ORRERY epic, what each feed's data is. `proc universe` answers the collapsed feeds. ARGUS builds a scene graph for the chosen view and layout; the orrery layout engine places it (a pure function, run in a Web Worker so the page never stalls); the orrery drawing layer draws it.
+
+== The frame's choices
+
+A projection is the product of independent choices, each a block on the pane's mode frame and a word on the console (`universe <verb>`), all but the physics kept per identity.
+
+[cols="1,2,3",options="header"]
+|===
+| Block | Values | What it changes
+
+| VIEW | FEEDS · SHAPES | every feed its own molecule, or each pipeline shape folded into one molecule
+| SCALE | JOBS · ALIKE | a sphere sized by its jobs, or every sphere alike
+| DENSITY | SHAPE · CENSUS | a group as one sphere with its count, or every job its own point
+| LAYOUT | GALAXY · SPOKES · CLUMPS · CONSTELLATIONS · DATA · ACCRETION | where every molecule stands
+| DRAW | STARS · SPHERES | points of light far off, or lit spheres everywhere
+| 3D / 2D | 3D · 2D | the space in depth, or flattened onto the screen
+| CAPTIONS | ON · OFF | hub names over the picture
+| REPLAY | play · pause · at a date | the space's history, feed by feed
+|===
+
+CONSTELLATIONS, DATA and ACCRETION each bring a graph of their own and need every feed, so they are offered in the FEEDS view only; SHAPES gives way to GALAXY.
+
+== The common physics
+
+Every settling layout is a velocity-Verlet simulation (d3-force-3d) of bodies stem:[i] with positions stem:[\mathbf{x}_i] and velocities stem:[\mathbf{v}_i]. Each tick applies the forces, scaled by a cooling parameter stem:[\alpha], then
+
+[latexmath]
+++++
+\mathbf{v}_i \leftarrow (1 - \lambda)\,\mathbf{v}_i, \qquad \mathbf{x}_i \leftarrow \mathbf{x}_i + \mathbf{v}_i, \qquad \alpha \leftarrow \alpha + (\alpha_{\min} - \alpha)\,\delta
+++++
+
+with velocity decay stem:[\lambda = 0.4] and alpha decay stem:[\delta = 1 - 0.001^{1/300} \approx 0.0228]. The forces the layouts use:
+
+Charge (repulsion, Barnes–Hut):: stem:[\Delta\mathbf{v}_i = \alpha \sum_j q_j\, \frac{\mathbf{x}_j - \mathbf{x}_i}{\lVert \mathbf{x}_j - \mathbf{x}_i \rVert^2}] with stem:[q_j = -6\,(r_j / r_0)^2] — a body repels as its area — cut off beyond a _reach_ when one is set.
+Link (spring):: each edge stem:[(s,t)] is pulled to rest length stem:[L_{st} = r_s + r_t + 1.4]: with stem:[\ell = \lVert \mathbf{x}_t - \mathbf{x}_s \rVert], the ends move by stem:[\alpha\,k\,(\ell - L)/\ell] of their separation, split by degree; stiffness stem:[k = 1/\min(\deg s, \deg t)] unless a layout sets it.
+Collide:: overlapping bodies are pushed apart until their centres are stem:[1.2\,(r_i + r_j)] apart (1.05 in CLUMPS).
+Gravity (mass-weighted centring):: stem:[\Delta\mathbf{v}_i = -\alpha\,\gamma_i\,\mathbf{x}_i] with stem:[\gamma_i = 0.08\,(r_i/r_0)^2]: heavy bodies are held nearer the centre, so clusters gather rather than drift. On by default in the universe (GRAVITY on the frame).
+
+The bound on reach matters for small spaces: with fewer than 240 nodes the universe sets a reach of 12, so a lone molecule hugs itself instead of spreading as far as its charge carries; a crowd is left unbounded (`apps/argus/src/features/universe/panel.ts`).
+
+Chance in every layout is seeded: an FNV-1a hash of a molecule's key seeds a linear congruential generator, so the same lab draws the same space on every device and every visit, and a molecule arriving later turns no other (`packages/orrery/src/layout/seeded.ts`).
+
+== The layouts
+
+=== Molecules and their hubs
+
+In GALAXY, SPOKES and CLUMPS a feed is a molecule hung from an unseen anchor — a _ghost_ hub, one per pipeline shape — so that feeds of one pipeline gather. Each molecule is first laid out alone (a small settle, charge reach 12, 60 ticks, re-centred), and the result is cached by the molecule's signature (its parent structure and radii): the next feed with the same signature reuses the shape, turned by a seeded yaw stem:[\psi \in [0, 2\pi)] and pitch stem:[\theta \in [-\pi/2, \pi/2)], so that like feeds are alike but not clones. A molecule then moves as one rigid body of radius stem:[\max(r_0, \max_i \lVert \mathbf{o}_i \rVert + r_i)] over its offsets stem:[\mathbf{o}_i] (`packages/orrery/src/layout/hierarchy.ts`).
+
+=== SPOKES
+
+Every feed a spoke from its shape's hub, its chain pointing out.
+
+.SPOKES geometry, computed from the code's own formulas: directions from a Fibonacci shell, reach staggered by the golden ratio so neighbouring spokes do not collide.
+image::spokes.svg[Spokes,1180]
+
+For a hub of radius stem:[r_h] with stem:[n] feeds of mean body radius stem:[\bar r], the shell and the stem:[k]-th feed's distance are
+
+[latexmath]
+++++
+S = \max\!\left(r_h + 2,\ \sqrt{n}\,\bar r \cdot 1.6\right), \qquad d_k = r_h + 1.4 + S\left(0.35 + 0.65\,\{k\varphi^{-1}\}\right) + \lVert \mathbf{o}_{\text{root}} \rVert
+++++
+
+where stem:[\{\cdot\}] is the fractional part and stem:[\varphi^{-1} \approx 0.618]. The direction is the stem:[k]-th point of a Fibonacci shell of stem:[n] points,
+
+[latexmath]
+++++
+y_k = 1 - \frac{2(k + \frac12)}{n}, \qquad \phi_k = k\,\pi(3 - \sqrt5), \qquad \hat{\mathbf{u}}_k = \bigl(\cos\phi_k \sqrt{1 - y_k^2},\ y_k,\ \sin\phi_k \sqrt{1 - y_k^2}\bigr)
+++++
+
+and the molecule is turned (Rodrigues' rotation) so that the axis from its root to its centre points along stem:[\hat{\mathbf{u}}_k]: the root faces the hub. Hubs themselves repel (stem:[q = -1.5\,r_h]) and collide, over 60 ticks.
+
+.SPOKES on the operator's space.
+image::spokes.jpg[SPOKES,1600]
+
+=== CLUMPS
+
+The same molecules, packed round their hub by a settle of the rigid bodies: links at stem:[L = r_s + r_t + 1.4], charge stem:[-6(r/r_0)^2], collide stem:[1.05\,r], and gravity stem:[\min(1, 0.08(r/r_0)^2)] per axis, 60 ticks.
+
+.CLUMPS.
+image::clumps.jpg[CLUMPS,1600]
+
+=== GALAXY (the default)
+
+The space finding its own shape. GALAXY starts from the SPOKES arrangement, so that it refines rather than unfolds, then lets every node go: charge stem:[-6(r/r_0)^2], springs along every edge (a feed's root to its shape's ghost included) at stem:[r_s + r_t + 1.4], collide stem:[1.2\,r], mass-weighted gravity stem:[0.08(r/r_0)^2], 80 ticks from stem:[\alpha = 0.6] (`packages/orrery/src/layout/galaxy.ts`). The result is a few large clusters — here the three pipeline families this identity runs, the largest (a CIVET pipeline over four hundred scans) a sphere of radial molecules.
+
+.GALAXY.
+image::galaxy.jpg[GALAXY,1600]
+
+=== CONSTELLATIONS
+
+Plugins are stars; a feed lies between the stars it ran. The sky is laid out first, alone, as a map of which tools run with which; then the stars are held and every feed settles against them.
+
+.CONSTELLATIONS in two phases.
+image::constellations.svg[Constellations,1240]
+
+How much a plugin _says_ about a feed is its inverse document frequency; a plugin in more than nine feeds in ten is a landmark and says nothing:
+
+[latexmath]
+++++
+w_p = \begin{cases} \ln\dfrac{N}{n_p} & n_p / N \le 0.9 \\[4pt] 0 & \text{otherwise} \end{cases}
+++++
+
+with stem:[N] feeds and stem:[n_p] of them running stem:[p]. Two plugins' co-occurrence is the share of the rarer's feeds that ran both, stem:[\sigma_{ab} = c_{ab} / \min(n_a, n_b)]. Phase one settles the stars with springs of length and stiffness
+
+[latexmath]
+++++
+L_{ab} = R\,(1.1 - \sigma_{ab}), \qquad k_{ab} = 0.05 + 0.6\,\sigma_{ab}, \qquad R = \max\!\left(6,\ 4\sqrt{S},\ 1.6\sqrt{M}\right)
+++++
+
+(stem:[S] stars, stem:[M] stages: the sky grows with what settles in it), charge stem:[-30] out to stem:[3R], collide stem:[3r], 160 ticks. Phase two holds the stars and springs each stage stem:[g] of feed stem:[f] to its own plugin's star with
+
+[latexmath]
+++++
+k_g = \frac{0.3 + 0.6\, w_{p_g} / \max_p w_p}{\sqrt{\lvert P_f \rvert}}, \qquad L_g = r_{\star} + r_g + 1
+++++
+
+where stem:[P_f] is the set of distinct plugins the feed ran: the rarest plugin pulls hardest, and a long pipeline is not dragged harder than a short one. Stages keep their own edges (stiffness 1) and repel within a reach of 5, 120 ticks. Tuned against this space offline: the median distance from a stage to its own star fell from 172 to 13 (`packages/orrery/src/layout/constellations.ts`).
+
+.CONSTELLATIONS: the ringed points are plugin stars.
+image::constellations.jpg[CONSTELLATIONS,1600]
+
+A press on a star lights the stages that ran it across the whole sky and names the plugin, its feeds and its errored share:
+
+.pl-dcm2niix lit: 209 feeds, 1% of its jobs errored.
+image::constellations-lit.jpg[CONSTELLATIONS with a plugin lit,1600]
+
+=== DATA
+
+Every feed hung from what it began from: a hub per format, under DICOM a hub per modality, under that a hub per series-description group.
+
+.The DATA hub tree (counts are this space's).
+image::data.svg[DATA,1180]
+
+What each feed's data is — its format, and for DICOM its modality and series description read from one header prefix — is read once by the kernel and kept in the index (`packages/salsa/src/dag/feedData.ts`). Descriptions are compared by their words, not their spelling. A description becomes a word set stem:[W(d)]: upper case, separators to spaces, and words that say nothing about the sequence dropped (pure numbers, matrix sizes `256X256`, `FOV220`, `3MM`). Two word sets are one series when their overlap is at least a half,
+
+[latexmath]
+++++
+O(A, B) = \frac{\lvert A \cap B \rvert}{\min(\lvert A \rvert, \lvert B \rvert)} \ \ge\ \tfrac12
+++++
+
+(over the smaller, so `SAG MPRAGE` is the same series as `SAG MPRAGE 220 FOV`). Groups form greedily, most common description first, each named by the description most of its feeds carry (`apps/argus/src/features/dag/dataSpace.ts`).
+
+Hubs are massless ghosts drawn as nebulae of radius stem:[\rho(n) = 1.6 + 0.45\sqrt{n}] for the stem:[n] feeds beneath them, and the space settles as the galaxy does. A hub is captioned when it is a format or a modality, or when stem:[n \ge \max(5,\ 0.02\,N)].
+
+.DATA, 708 of 709 feeds read: NIfTI · 435 (the CIVET inputs), DICOM · 234 (of which 203 are shared feeds whose files this identity may list but not read — a CUBE sharing gap — so NO MODALITY), and the rest.
+image::data.jpg[DATA,1600]
+
+=== ACCRETION
+
+The space grown in the order it was made. Feeds arrive oldest first; the first stands at the centre; each after it walks in from a sphere round what has grown until it touches a feed already placed, and sticks there with a chance equal to how alike the two are. Like grows on like, the oldest work lies deepest, and a stranger starts a limb of its own. This is diffusion-limited aggregation biased by similarity (`packages/orrery/src/layout/accretion.ts`).
+
+.One walker, simulated with the engine's rules: launched at random, drifting toward its kin, pushed off a stranger, sticking to its own family.
+image::accretion.svg[Accretion,1180]
+
+Likeness is the weighted overlap of the plugins two feeds ran, with the constellations' weights:
+
+[latexmath]
+++++
+L(a, b) = \frac{\sum_{p \in P_a \cap P_b} w_p}{\sum_{p \in P_a \cup P_b} w_p}
+++++
+
+A feed of radius stem:[r] is launched at a seeded point on the sphere of radius stem:[R_L = E + 3r + r_{\max}] (stem:[E] the extent grown so far) and steps stem:[s = \max(0.5,\ r/2)] along
+
+[latexmath]
+++++
+\mathbf{h} = (1 - \delta)\,\hat{\mathbf{w}} + \delta\,\frac{\mathbf{x}_k - \mathbf{x}}{\lVert \mathbf{x}_k - \mathbf{x} \rVert}, \qquad \delta = 0.35
+++++
+
+a random unit stem:[\hat{\mathbf{w}}] blended with a drift toward its _kin_ stem:[k], the placed feed most like it. It touches a placed feed stem:[j] when stem:[\lVert \mathbf{x} - \mathbf{x}_j \rVert < r + r_j + 0.4], and then sticks against the most alike of those it touches with probability
+
+[latexmath]
+++++
+P(\text{stick}) = \max\bigl(0.01,\ L(f, j)\bigr)
+++++
+
+else it is pushed off and walks on. After 400 steps it takes a free place touching its kin. A walker that strays beyond stem:[2R_L] is launched again. Each feed is a compact tree: its root at its heart, each child one edge (stem:[r_{\text{parent}} + r_{\text{child}} + 1.4]) past its parent, its heading tilted by a seeded angle in stem:[[0, \pi/3)] off its parent's. Drift and floor were tuned on synthetic labs of three pipeline families: a feed grew beside its own family six times in seven. The first cut unfolded each feed with the DAG pane's settle — fourteen units wide — and the real space drew as spokes; the compact tree has a median radius of 3.6. Nothing already placed moves: a feed that lands later accretes as the newest, and `universe regrow` grows the coral afresh. For this space the growth takes 2.5 s in the worker.
+
+.ACCRETION.
+image::accretion.jpg[ACCRETION,1600]
+
+== Views and density
+
+=== SHAPES: the pipelines folded
+
+In the SHAPES view each pipeline shape is one molecule, drawn from its first feed's groups, with its stages summed over the feeds of that shape: jobs stem:[J = \sum n], a stage's errored share the share of the shape's feeds that failed there, and its metric stem:[\log_2(J + 1)] (or stem:[\log_2(\text{feeds} + 1)] under ALIKE). Thirty-seven molecules stand for 709 feeds.
+
+.SHAPES, spheres up close.
+image::shapes.jpg[SHAPES,1600]
+
+=== CENSUS: every job
+
+Under CENSUS a group of stem:[n] jobs becomes stem:[n] points on a Fibonacci shell round its stage, of radius and member size
+
+[latexmath]
+++++
+R_{\text{shell}} = r\,(1.6 + 0.55\, n^{1/3}), \qquad r_{\text{member}} = \max\!\left(0.06,\ \min\!\left(\tfrac{r}{2},\ \frac{2.2\,R_{\text{shell}}}{\sqrt n}\right)\right)
+++++
+
+and member stem:[k] of a group joins member stem:[k \bmod n_{\text{parent}}] of its parent's, so a chain of equal fans reads as parallel filaments (`packages/orrery/src/draw/censusField.ts`).
+
+.CENSUS: a fan of hundreds of conversions as a shell of jobs.
+image::census.jpg[CENSUS,1600]
+
+== Drawing
+
+=== Stars
+
+Far off, every node is a point of light — one draw call for the whole space. A star's size on screen is its sphere's projected diameter enlarged by 1.8 and clamped,
+
+[latexmath]
+++++
+\text{px} = \operatorname{clamp}\!\left(1.8 \cdot \frac{2 r\, S}{z},\ 2,\ 28\right)(1 + 1.6\,\phi), \qquad S = \frac{H}{2\tan(\text{fov}/2)}
+++++
+
+with stem:[z] its depth, stem:[H] the view height in pixels and stem:[\phi] its replay flash; its glow is a smooth core with a halo falling as stem:[(1 - d)^{2.2}], drawn additively (`packages/orrery/src/draw/stars.ts`). A plugin star wears a ring. Ghost hubs are nebulae of radius stem:[\rho(n)]; threads between stars are faint lines.
+
+=== Spheres, and the hand-off
+
+Close up a molecule becomes lit spheres joined by tubes carrying pulses from parent to child. Which a molecule is drawn as is decided per molecule in screen pixels, with hysteresis so it does not flicker at the boundary:
+
+.The hand-off between stars and spheres.
+image::handoff.svg[Hand-off,1180]
+
+[latexmath]
+++++
+\text{px}_{\text{mol}} = \frac{2\, r_{\max} S}{z_{\min}}, \qquad \text{target} = \begin{cases} \text{spheres} & \text{px}_{\text{mol}} > 7 \\ \text{stars} & \text{px}_{\text{mol}} < 5 \end{cases}, \qquad \mu \leftarrow \mu \pm \frac{\Delta t}{300\ \text{ms}}
+++++
+
+Spheres and tubes are drawn at opacity stem:[\mu], stars and threads at stem:[1 - \mu] (`packages/orrery/src/draw/handoff.ts`). SPHERES on the frame draws every node lit and solid regardless:
+
+.GALAXY drawn as spheres.
+image::galaxy-spheres.jpg[GALAXY as spheres,1600]
+
+=== Captions
+
+A hub's name is drawn on a dark plate, the same size on screen at any distance (2.8% of the view's height). Where two captions meet on screen the one naming more feeds is shown and the other hidden until hovered — checked every frame, since captions are few. A ghost hub's caption stands at the centre of what it holds, not where its forces leave it (`packages/orrery/src/draw/labelField.ts`). CAPTIONS OFF hides them all.
+
+=== 2D
+
+The 2D projection flattens the placed space onto the screen: every node's depth is set to zero, spheres become discs, the idle spin stops, and a drag on empty space pans instead of orbiting. The worker's engines still settle in three dimensions; what is kept is unflattened, so returning to 3D loses nothing.
+
+.GALAXY in 2D.
+image::flat.jpg[2D,1600]
+
+== Time: REPLAY
+
+REPLAY plays the space's history: every feed hidden until the moment it was made, then shown where it stands now, with a flash. The replay clock advances
+
+[latexmath]
+++++
+t \leftarrow t + \Delta t_{\text{wall}} \cdot \frac{t_{\text{last}} - t_{\text{first}}}{30\,000\ \text{ms}} \cdot v, \qquad \phi = 1 - \frac{t_{\text{wall}} - t_{\text{arrived}}}{900\ \text{ms}}
+++++
+
+so the whole history plays in thirty seconds at speed stem:[v = 1], and each arrival flashes for 0.9 s (`packages/orrery/src/controls/replay.ts`). It works over any layout. This identity made half its feeds in two days of January 2025:
+
+.REPLAY paused at 18 January 2025 over GALAXY.
+image::replay.jpg[REPLAY,1600]
+
+Over ACCRETION, whose growth order is creation order, the replay is the coral growing:
+
+.REPLAY paused at 18 January 2025 over ACCRETION.
+image::accretion-replay.jpg[REPLAY over ACCRETION,1600]
+
+== Descent
+
+Entering a feed (a double press, or `universe enter <feed>`) replaces its molecule with its full graph — every job group, its tubes and lamps — settled alone with a reach of 12 and no gravity, the rest of the space dimmed but held in place behind it; BACK on the frame, or Esc, climbs out.
+
+.Inside feed 1869: twenty-three groups.
+image::inside-feed.jpg[Inside a feed,1600]
+
+== Memory and cost
+
+Each layout keeps its own positions per identity; a return to a layout already seen redraws at once. When a feed lands, every standing node is held (frozen at its place) and only the newcomer settles — for ACCRETION, only the newcomer walks — so nothing the operator has seen moves. The engines run in a Web Worker behind a progress readout, so the page never stalls; measured for this space, ACCRETION grows in 2.5 s. A repaint that moves nothing — lighting a plugin, a hub, a caption toggle — settles nothing and draws in place.
+
+[cols="1,3,2,1,1",options="header"]
+|===
+| Layout | What makes two feeds close | Needs | Settles | Seeded
+
+| GALAXY | same pipeline shape (a shared ghost hub), then free forces | topology | forces, 80 ticks | yes
+| SPOKES | same shape; a spoke each, staggered | topology | placement + hub settle | yes
+| CLUMPS | same shape; packed | topology | rigid-body settle, 60 ticks | yes
+| CONSTELLATIONS | the plugins they ran, weighted by rarity | each stage's plugin | two phases, 160 + 120 ticks | yes
+| DATA | the data they began from: format, modality, series | kernel data facts | forces, as GALAXY | yes
+| ACCRETION | the plugins they ran, and when they were made | plugin; creation time | a walk per feed, no settle | yes
+|===
+
+== Code
+
+[cols="1,3",options="header"]
+|===
+| Where | What
+
+| `packages/orrery/src/layout/` | the engines: `galaxy.ts`, `hierarchy.ts` (spokes, clumps), `constellations.ts`, `accretion.ts`, `molecule.ts`, `seeded.ts`, `registry.ts`
+| `packages/orrery/src/draw/` | stars, spheres, census, halos and nebulae, tubes, captions, the hand-off
+| `packages/orrery/src/controls/` | camera, gestures, picking, replay
+| `apps/argus/src/features/dag/universe.ts` | the graphs per view and layout, sizes, shares, kept settings
+| `apps/argus/src/features/dag/dataSpace.ts` | the DATA hub tree
+| `apps/argus/src/features/universe/panel.ts` | the pane: frame, verbs, memory
+| `packages/salsa/src/dag/feedData.ts` | reading each feed's data facts into the index
+|===

@@ -12,6 +12,8 @@ It exists because the scene had grown into one class of 3,306 lines and 151 meth
 
 Epic mise#709. Slice 1 (mise#710): the package, the layer lint, the pure layouts behind the engine contract. Slices 2–4 move the drawers, the controls, and the domain adapter; slices 5–9 add replay, plugin constellations, DATA facts in the kernel, the DATA layout, and accretion.
 
+What each layout computes, as mathematics with diagrams and screenshots of the operator's space, is in link:../../../apps/argus/docs/universe-projections.adoc[Universe projections].
+
 == Decisions
 
 Grilled and settled with the operator on 2026-09-25.

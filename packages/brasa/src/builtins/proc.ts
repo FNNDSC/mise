@@ -4,8 +4,8 @@
  */
 import chalk from 'chalk';
 import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procFeed_refreshStart, type FeedTopologyReadiness, procRoster_sync, procRoster_syncStart, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
-import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, feedStatus_ofCounts, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
-import { FEED_LIST_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, type FeedListModel, type ProcUniverseModel } from '@fnndsc/menu';
+import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, feedStatus_ofCounts, procLayout_get, procLayout_set, procLayoutName_check, procLayoutPositions_check, type ProcLayoutRecord, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { FEED_LIST_MODEL_KIND, PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, type FeedListModel, type ProcLayoutModel, type ProcUniverseModel } from '@fnndsc/menu';
 import { spinner } from '../lib/spinner.js';
 import { commandArgs_process, type ParsedArgs } from './utils.js';
 import { builtin_cd } from './fs/cd.js';
@@ -485,6 +485,45 @@ function procUniverse_handle(): Promise<CommandEnvelope> {
 }
 
 /**
+ * Handles `proc layout <name>` and `proc layout put <name> <places>`: where
+ * a surface last laid the universe out under a layout, kept by the session
+ * so the universe is placed once per identity rather than once per browser.
+ * A surface asks before it settles and draws at once from what is kept;
+ * after it settles, it puts what it found.
+ *
+ * @param args - Full command args (`args[1]` is the name or `put`).
+ * @returns The kept layout as a model, or what was kept.
+ */
+async function procLayout_handle(args: string[]): Promise<CommandEnvelope> {
+  const putting: boolean = args[1] === 'put';
+  const name: string = (putting ? args[2] : args[1]) ?? '';
+  if (!procLayoutName_check(name)) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`proc layout: not a layout: '${name}'`)}\n`);
+  }
+  if (putting) {
+    let places: unknown = null;
+    try {
+      places = JSON.parse(args[3] ?? '');
+    } catch {
+      places = null;
+    }
+    if (!procLayoutPositions_check(places)) {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red('proc layout put: the places must be node ids to [x, y, z]')}\n`);
+    }
+    const kept: ProcLayoutRecord = await procLayout_set(name, places);
+    return envelope_ok(`${chalk.green(`layout ${name}:`)} ${Object.keys(kept.positions).length.toLocaleString('en-US')} places kept\n`);
+  }
+  const kept: ProcLayoutRecord | null = await procLayout_get(name);
+  const model: ProcLayoutModel = { name, positions: kept?.positions ?? null, writtenAt: kept?.writtenAt ?? null };
+  const rendered: string = kept === null
+    ? `${chalk.cyan(`layout ${name}:`)} none kept\n`
+    : `${chalk.cyan(`layout ${name}:`)} ${Object.keys(kept.positions).length.toLocaleString('en-US')} places, kept ${kept.writtenAt}\n`;
+  return envelope_ok(rendered, { kind: PROC_LAYOUT_MODEL_KIND, data: model });
+}
+
+/**
  * A feed's settled and total job counts, from CUBE's own counters.
  *
  * These come with the feed row rather than needing resident topology, so a
@@ -656,6 +695,9 @@ export async function builtin_proc(args: string[]): Promise<CommandEnvelope> {
   }
   if (subcommand === 'universe') {
     return procUniverse_handle();
+  }
+  if (subcommand === 'layout') {
+    return procLayout_handle(args);
   }
   if (subcommand === 'stat') {
     return procStat_handle(args);

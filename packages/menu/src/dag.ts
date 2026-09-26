@@ -243,3 +243,19 @@ export type ProcJobGroup = z.infer<typeof procJobGroupSchema>;
 export type ProcUniverseFeed = z.infer<typeof procUniverseFeedSchema>;
 export type ProcUniverseModel = z.infer<typeof procUniverseModelSchema>;
 export const PROC_UNIVERSE_MODEL_KIND = 'proc.universe' as const;
+
+/**
+ * Where a surface last laid the universe out under one layout, as the
+ * session keeps it: a surface that finds it draws at once, and settles only
+ * what is new since.
+ */
+export const procLayoutModelSchema = z.object({
+  /** The layout: `galaxy`, `spokes`, `constellations`, ... */
+  name: z.string(),
+  /** Every node's place by the surface's node id; null when none is kept. */
+  positions: z.record(z.string(), z.tuple([z.number(), z.number(), z.number()])).nullable(),
+  /** When it was kept (ISO 8601); null when none is. */
+  writtenAt: z.string().nullable(),
+});
+export type ProcLayoutModel = z.infer<typeof procLayoutModelSchema>;
+export const PROC_LAYOUT_MODEL_KIND = 'proc.layout' as const;

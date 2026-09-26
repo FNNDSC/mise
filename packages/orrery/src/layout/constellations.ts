@@ -103,8 +103,8 @@ export function constellations_layout(
   if (starBodies.length > 0 && starBodies.some((body: Body): boolean => body.fx === undefined)) {
     const sky = forceSimulation(starBodies, 3)
       .force('link', forceLink(starLinks).id((d: { id: string }): string => d.id)
-        .distance((link): number => skyRadius * (1.1 - (link as unknown as { share: number }).share))
-        .strength((link): number => 0.05 + 0.6 * (link as unknown as { share: number }).share))
+        .distance((link): number => skyRadius * (1.1 - Number(link['share'])))
+        .strength((link): number => 0.05 + 0.6 * Number(link['share'])))
       .force('charge', forceManyBody().strength(-30).distanceMax(skyRadius * 3))
       .force('collide', forceCollide().radius((d: { id: string }): number => (d as Body).r * 3))
       .force('center', forceCenter(0, 0, 0))
@@ -145,8 +145,8 @@ export function constellations_layout(
   }
   const sim = forceSimulation(all, 3)
     .force('link', forceLink(links).id((d: { id: string }): string => d.id)
-      .distance((link): number => (link as unknown as { length: number }).length)
-      .strength((link): number => (link as unknown as { strength: number }).strength))
+      .distance((link): number => Number(link['length']))
+      .strength((link): number => Number(link['strength'])))
     .stop();
   if (physics.charge) {
     const charge = forceManyBody().strength((d: { id: string }): number => -6 * (((d as Body).r / NODE_RADIUS) ** 2));

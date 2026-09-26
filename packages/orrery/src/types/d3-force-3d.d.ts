@@ -25,6 +25,8 @@ declare module 'd3-force-3d' {
   export interface ResolvedLink {
     source: { id: string };
     target: { id: string };
+    /** Whatever else the caller put on the link, carried through. */
+    [field: string]: unknown;
   }
   export interface LinkForce {
     id(accessor: (d: { id: string }) => string): LinkForce;

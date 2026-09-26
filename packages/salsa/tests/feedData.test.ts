@@ -34,12 +34,12 @@ const tags = (pairs: Record<string, string>): DicomTagSet => ({
 });
 
 /** A fake IO over a folder tree: path to entries; path to header (or null). */
-function io_of(tree: Record<string, VFSItem[]>, headers: Record<string, DicomTagSet | null> = {}): DataFactsIO & { reads: string[] } {
+function io_of(tree: Record<string, VFSItem[] | 'refused'>, headers: Record<string, DicomTagSet | null> = {}): DataFactsIO & { reads: string[] } {
   const reads: string[] = [];
   return {
     reads,
     outputPath: async (instanceID: number): Promise<string | null> => `/out/${instanceID}`,
-    list: async (path: string): Promise<VFSItem[] | null> => tree[path] ?? null,
+    list: async (path: string): Promise<VFSItem[] | null | 'refused'> => tree[path] ?? null,
     header: async (path: string): Promise<DicomTagSet | null> => { reads.push(path); return headers[path] ?? null; },
   };
 }
@@ -82,6 +82,22 @@ describe('feedDataFacts_read', () => {
     expect(await feedDataFacts_read(2, io)).toEqual({ format: 'other', reason: 'its first file, blob.bin, is not a format the index names' });
   });
 
+  it('passes over a report beside the series and tries a few UID-named files as DICOM', async () => {
+    feed_add(1);
+    const io = io_of(
+      { '/out/10': [item('1.2.3.report.xml'), item('1.2.3.4'), item('1.2.3.5'), item('1.2.3.6'), item('1.2.3.7')] },
+      { '/out/10/1.2.3.6': tags({ Modality: 'US' }) },
+    );
+    expect(await feedDataFacts_read(1, io)).toEqual({ format: 'dicom', modality: 'US' });
+    expect(io.reads).toEqual(['/out/10/1.2.3.4', '/out/10/1.2.3.5', '/out/10/1.2.3.6']);
+  });
+
+  it('says a link\'s data cannot be read here when it neither lists nor reads', async () => {
+    feed_add(1);
+    const link = { ...item('home_x_uploads_HNM040', 'link'), target: '/home/x/uploads/HNM040' } as VFSItem;
+    expect(await feedDataFacts_read(1, io_of({ '/out/10': [link] }))).toEqual({ format: 'unknown', reason: 'its data is linked from /home/x/uploads/HNM040, which cannot be read here' });
+  });
+
   it('records a root with no data files as unknown, with the reason', async () => {
     feed_add(1);
     expect(await feedDataFacts_read(1, io_of({ '/out/10': [item('meta.json')] }))).toEqual({ format: 'unknown', reason: 'its first job left no data files' });
@@ -118,6 +134,15 @@ describe('feedDataFacts_read', () => {
       { '/home/u/upload/SAG-anon/0001.dcm': tags({ Modality: 'MR', SeriesDescription: 'SAG' }) },
     );
     expect(await feedDataFacts_read(1, io)).toEqual({ format: 'dicom', modality: 'MR', seriesDescription: 'SAG' });
+  });
+
+  it('says so when a feed\'s data is somewhere this identity may not read', async () => {
+    feed_add(1);
+    feed_add(2);
+    const link = { ...item('home_x_uploads_Z', 'link'), target: '/home/x/uploads/Z' } as VFSItem;
+    const io = io_of({ '/out/10': [link], '/home/x/uploads/Z': 'refused', '/out/20': 'refused' });
+    expect(await feedDataFacts_read(1, io)).toEqual({ format: 'unknown', reason: 'its data is linked from /home/x/uploads/Z, which this identity may not read' });
+    expect(await feedDataFacts_read(2, io)).toEqual({ format: 'unknown', reason: 'its data is in /out/20, which this identity may not read' });
   });
 
   it('reads a copy job\'s links as data, through their targets', async () => {

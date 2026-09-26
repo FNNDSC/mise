@@ -30,6 +30,37 @@ interface ChrisFileOrDirRaw {
 }
 
 /**
+ * One CUBE files/dirs/links row as a listing item: its name (the last path
+ * segment, a link's `.chrislink` dropped) and, for a link, where it points.
+ *
+ * @param raw - The row.
+ * @param type - What kind of row it is.
+ * @returns The item.
+ */
+export function chrisRow_toItem(raw: ChrisFileOrDirRaw, type: "dir" | "file" | "link" | "vfs"): VFSItem {
+  let name: string = raw.fname || raw.path || "";
+  if (name.includes("/")) {
+    name = name.split("/").pop() || name;
+  }
+  if (type === "link" && name.endsWith(".chrislink")) {
+    name = name.slice(0, -10);
+  }
+  const targetPath: string | undefined = raw.path
+    ? raw.path.startsWith("/")
+      ? raw.path
+      : "/" + raw.path
+    : undefined;
+  return {
+    name,
+    type,
+    size: raw.fsize || 0,
+    owner: raw.owner_username || "unknown",
+    date: raw.creation_date || "",
+    target: targetPath,
+  };
+}
+
+/**
  * Native ChRIS filesystem provider operating on absolute CUBE folders.
  */
 export class NativeVfsProvider implements VFSProvider {
@@ -120,32 +151,7 @@ export class NativeVfsProvider implements VFSProvider {
 
       const items: VFSItem[] = [];
 
-      const mapToItem = (
-        raw: ChrisFileOrDirRaw,
-        type: "dir" | "file" | "link" | "vfs"
-      ): VFSItem => {
-        let name: string = raw.fname || raw.path || "";
-        if (name.includes("/")) {
-          name = name.split("/").pop() || name;
-        }
-        if (type === "link" && name.endsWith(".chrislink")) {
-          name = name.slice(0, -10);
-        }
-        const targetPath: string | undefined = raw.path
-          ? raw.path.startsWith("/")
-            ? raw.path
-            : "/" + raw.path
-          : undefined;
-
-        return {
-          name,
-          type,
-          size: raw.fsize || 0,
-          owner: raw.owner_username || "unknown",
-          date: raw.creation_date || "",
-          target: targetPath,
-        };
-      };
+      const mapToItem = chrisRow_toItem;
 
       if (dirsResult.status === "fulfilled" && dirsResult.value?.tableData) {
         dirsResult.value.tableData.forEach((d: unknown) =>

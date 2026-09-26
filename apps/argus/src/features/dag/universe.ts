@@ -319,7 +319,7 @@ export interface UniverseSettings {
   view: 'feeds' | 'shapes';
   scale: 'jobs' | 'feeds';
   density: 'shape' | 'census';
-  arrangement: 'galaxy' | 'spokes' | 'clumps' | 'constellations';
+  arrangement: 'galaxy' | 'spokes' | 'clumps' | 'constellations' | 'data';
 }
 
 /** What a first visit gets: stars, every feed, sized by jobs, a sphere per stage, the space a galaxy. */
@@ -356,7 +356,7 @@ export function universeSettings_parse(text: string | null): UniverseSettings {
     view: pick(raw['view'], ['feeds', 'shapes'] as const, UNIVERSE_SETTINGS_DEFAULT.view),
     scale: pick(raw['scale'], ['jobs', 'feeds'] as const, UNIVERSE_SETTINGS_DEFAULT.scale),
     density: pick(raw['density'], ['shape', 'census'] as const, UNIVERSE_SETTINGS_DEFAULT.density),
-    arrangement: pick(raw['arrangement'], ['galaxy', 'spokes', 'clumps', 'constellations'] as const, UNIVERSE_SETTINGS_DEFAULT.arrangement),
+    arrangement: pick(raw['arrangement'], ['galaxy', 'spokes', 'clumps', 'constellations', 'data'] as const, UNIVERSE_SETTINGS_DEFAULT.arrangement),
   };
 }
 
@@ -446,9 +446,10 @@ export function enteredFeed_build(model: FeedDagModel): EnteredFeed {
  * @param scale - What sizes the other spheres.
  * @returns The scene graph.
  */
-export function descendedGraph_build(landed: ReadonlyArray<LandedFeed>, feedId: number, entered: EnteredFeed, scale: UniverseScale = 'jobs', constellations: boolean = false): SceneGraph {
-  // The rest of the space stands as it was drawn: round its hubs, or round the plugin stars.
-  const whole: SceneGraph = constellations ? constellationsGraph_build(landed, scale) : universeGraph_build(landed, scale);
+export function descendedGraph_build(landed: ReadonlyArray<LandedFeed>, feedId: number, entered: EnteredFeed, scale: UniverseScale = 'jobs', constellations: boolean = false, drawn?: SceneGraph): SceneGraph {
+  // The rest of the space stands as it was drawn: round its hubs, round the
+  // plugin stars, or as the graph the surface hands in.
+  const whole: SceneGraph = drawn ?? (constellations ? constellationsGraph_build(landed, scale) : universeGraph_build(landed, scale));
   const prefix: string = `feed:${feedId}:`;
   const nodes: SceneNode[] = whole.nodes
     .filter((node: SceneNode): boolean => !node.id.startsWith(prefix))

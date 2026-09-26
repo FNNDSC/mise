@@ -1,0 +1,71 @@
+/**
+ * @file Captions: words pinned above a node, facing the camera, sized with
+ * it, faint with it, forgotten on a redraw, and giving way to a greater one
+ * where two meet on screen.
+ */
+import { describe, it, expect, beforeAll } from '@jest/globals';
+import * as THREE from 'three';
+import { LabelField, CAPTION_SCREEN_HEIGHT } from '../src/draw/labelField.js';
+
+beforeAll(() => {
+  // No page here: a canvas that draws nothing.
+  (globalThis as { document?: unknown }).document ??= { createElement: () => ({ width: 0, height: 0, getContext: () => null }) };
+});
+
+describe('LabelField', () => {
+  it('pins a caption just above its node, one size on screen at any distance, and dims it with its node', () => {
+    const parent = new THREE.Group();
+    const labels = new LabelField(parent);
+    labels.caption_add('hub', 'DICOM · 38', new THREE.Vector3(1, 2, 3), 10, new THREE.Color(1, 1, 1), false);
+    labels.caption_add('small', 'MR', new THREE.Vector3(0, 0, 0), 0.5, new THREE.Color(1, 1, 1), true);
+    expect(labels.count()).toBe(2);
+    const [big, small] = parent.children as THREE.Sprite[];
+    expect(big.position.y).toBe(12);
+    expect(big.scale.y).toBe(CAPTION_SCREEN_HEIGHT);
+    expect(small.scale.y).toBe(CAPTION_SCREEN_HEIGHT);
+    expect(big.scale.x).toBeGreaterThan(big.scale.y);
+    expect((big.material as THREE.SpriteMaterial).sizeAttenuation).toBe(false);
+    expect((small.material as THREE.SpriteMaterial).opacity).toBe(0.25);
+    expect((big.material as THREE.SpriteMaterial).opacity).toBe(0.9);
+  });
+
+  it('forgets every caption on a redraw', () => {
+    const parent = new THREE.Group();
+    const labels = new LabelField(parent);
+    labels.caption_add('a', 'A', new THREE.Vector3(), 1, new THREE.Color(), false);
+    labels.clear();
+    expect(labels.count()).toBe(0);
+  });
+
+  it('shows the greater of two captions that meet on screen, and both when apart', () => {
+    const parent = new THREE.Group();
+    const labels = new LabelField(parent);
+    const camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 1000);
+    camera.position.set(0, 0, 100);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld();
+    labels.caption_add('small', 'SR · 3', new THREE.Vector3(0.5, 0, 0), 0, new THREE.Color(), false, 3);
+    labels.caption_add('big', 'DICOM · 36', new THREE.Vector3(0, 0, 0), 0, new THREE.Color(), false, 36);
+    labels.caption_add('far', 'NIfTI · 435', new THREE.Vector3(30, 20, 0), 0, new THREE.Color(), false, 435);
+    parent.updateMatrixWorld();
+    expect(labels.declutter(camera)).toBe(2);
+    const [small, big, far] = parent.children as THREE.Sprite[];
+    expect([small.visible, big.visible, far.visible]).toEqual([false, true, true]);
+    small.position.set(-30, -20, 0);
+    parent.updateMatrixWorld();
+    expect(labels.declutter(camera)).toBe(3);
+    expect(small.visible).toBe(true);
+  });
+
+  it('hides a caption behind the camera', () => {
+    const parent = new THREE.Group();
+    const labels = new LabelField(parent);
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
+    camera.position.set(0, 0, 100);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld();
+    labels.caption_add('behind', 'X', new THREE.Vector3(0, 0, 200), 0, new THREE.Color(), false);
+    parent.updateMatrixWorld();
+    expect(labels.declutter(camera)).toBe(0);
+  });
+});

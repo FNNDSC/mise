@@ -86,5 +86,12 @@ export {
   procCheckpointFeed_save,
   procCheckpointRoster_save,
   procCheckpoint_watch,
+  procLayout_get,
+  procLayout_set,
+  procLayoutHome_set,
+  procLayoutName_check,
+  procLayoutPositions_check,
+  PROC_LAYOUT_NODES_MAX,
+  PROC_LAYOUT_ID_MAX,
 } from './procCheckpoint.js';
-export type { ProcCheckpointRestoreResult } from './procCheckpoint.js';
+export type { ProcCheckpointRestoreResult, ProcLayoutRecord, ProcLayoutPosition } from './procCheckpoint.js';

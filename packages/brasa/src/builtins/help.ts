@@ -815,6 +815,8 @@ export const helpText: Record<string, CommandHelp> = {
       'stat <feed_id>                         Show raw counters + topology state for one feed',
       'feeds <title> [--force]                Search feed titles; --force waits for warm-up',
       'universe                               Every feed the index holds as it landed: size, status, pipeline shape; honest while warming',
+      'layout <name>                          Where a surface last laid the universe out under a layout, as the session keeps it',
+      'layout put <name> <places>             Keep a layout: node ids to [x, y, z], as JSON (surfaces put what they settle)',
       'refresh                                Rebuild entire proc cache',
       'refresh <feed_id>                      Rebuild cache for one feed only',
       'retry                                  Resume a failed topology sweep at its failed page',

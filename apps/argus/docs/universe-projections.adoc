@@ -321,7 +321,7 @@ image::inside-feed.jpg[Inside a feed,1600]
 
 == Memory and cost
 
-Each layout keeps its own positions per identity; a return to a layout already seen redraws at once. When a feed lands, every standing node is held (frozen at its place) and only the newcomer settles — for ACCRETION, only the newcomer walks — so nothing the operator has seen moves. The engines run in a Web Worker behind a progress readout, so the page never stalls; measured for this space, ACCRETION grows in 2.5 s. A repaint that moves nothing — lighting a plugin, a hub, a caption toggle — settles nothing and draws in place.
+Each layout keeps its own positions per identity, in the browser and in the session: the first browser to settle a layout puts its places to the session (`proc layout put`), which keeps them beside the index checkpoint, and any browser that keeps none draws from the session's copy at once (8.1 s to a settled space for a clean browser before, 1.5 s after). When a feed lands, every standing node is held (frozen at its place) and only the newcomer settles — for ACCRETION, only the newcomer walks — so nothing the operator has seen moves. The engines run in a Web Worker behind a progress readout, so the page never stalls; measured for this space, ACCRETION grows in 2.5 s. A repaint that moves nothing — lighting a plugin, a hub, a caption toggle — settles nothing and draws in place.
 
 [cols="1,3,2,1,1",options="header"]
 |===

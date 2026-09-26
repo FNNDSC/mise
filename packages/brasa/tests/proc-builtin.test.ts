@@ -76,6 +76,8 @@ const mockCache = {
   get warmupComplete(): boolean { return mockWarmupComplete; },
 };
 
+const mockLayouts: Map<string, { name: string; positions: Record<string, [number, number, number]>; writtenAt: string }> = new Map();
+
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   feedStatus_ofCounts: (feed: { erroredJobs: number }): string => (feed.erroredJobs > 0 ? 'finishedWithError' : 'finishedSuccessfully'),
   Context: {},
@@ -89,6 +91,15 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   path_extractFeedID: pathExtractFeedID_mock,
   path_extractPluginInstanceID: pathExtractPluginInstanceID_mock,
   path_isInFeed: pathIsInFeed_mock,
+  procLayoutName_check: (name: string): boolean => /^[a-z][a-z0-9-]{0,31}$/.test(name),
+  procLayoutPositions_check: (value: unknown): boolean => !!value && typeof value === 'object' && !Array.isArray(value)
+    && Object.values(value as Record<string, unknown>).every((at) => Array.isArray(at) && at.length === 3 && at.every((v) => typeof v === 'number')),
+  procLayout_get: async (name: string) => mockLayouts.get(name) ?? null,
+  procLayout_set: async (name: string, positions: Record<string, [number, number, number]>) => {
+    const record = { name, positions, writtenAt: '2026-09-26T00:00:00.000Z' };
+    mockLayouts.set(name, record);
+    return record;
+  },
 }));
 
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
@@ -556,6 +567,33 @@ describe('builtin_proc warm-up policy', () => {
 
     expect(envelope.status).toBe('ok');
     expect(procTopologyAwait_mock).not.toHaveBeenCalled();
+  });
+});
+
+describe('proc layout', () => {
+  it('says when no layout is kept, keeps one a surface puts, and answers it as a model', async () => {
+    mockLayouts.clear();
+    const none = await builtin_proc(['layout', 'galaxy']);
+    expect(none.model).toEqual({ kind: 'proc.layout', data: { name: 'galaxy', positions: null, writtenAt: null } });
+    expect(none.rendered).toContain('none kept');
+    const put = await builtin_proc(['layout', 'put', 'galaxy', JSON.stringify({ 'feed:1:0': [1, 2, 3], 'shape:x': [0, 0, 0] })]);
+    expect(put.status).toBe('ok');
+    expect(put.rendered).toContain('2 places kept');
+    const kept = await builtin_proc(['layout', 'galaxy']);
+    expect((kept.model?.data as { positions: Record<string, number[]> }).positions['feed:1:0']).toEqual([1, 2, 3]);
+    expect(kept.rendered).toContain('2 places, kept 2026-09-26');
+  });
+
+  it('refuses a name that is not a layout, and places that are not places', async () => {
+    const badName = await builtin_proc(['layout', '../x']);
+    expect(badName.status).toBe('error');
+    expect(badName.renderedErr).toContain("not a layout: '../x'");
+    const badPlaces = await builtin_proc(['layout', 'put', 'galaxy', '{"a":[1,2]}']);
+    expect(badPlaces.status).toBe('error');
+    expect(badPlaces.renderedErr).toContain('node ids to [x, y, z]');
+    const notJson = await builtin_proc(['layout', 'put', 'galaxy', '{nope']);
+    expect(notJson.status).toBe('error');
+    process.exitCode = 0;
   });
 });
 

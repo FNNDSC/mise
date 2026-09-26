@@ -17,6 +17,11 @@
  * written no more than once per {@link PROC_CHECKPOINT_FLOOR_MS}, and never
  * later than that after its first pending mutation.
  *
+ * Beside the index, the folder keeps where a surface last laid the space
+ * out, one `layout-<name>.json` per layout: the universe is placed once per
+ * identity, not once per browser, and every surface after the first draws
+ * at once from the session's copy.
+ *
  * @module
  */
 import { createHash, randomUUID } from 'crypto';
@@ -516,6 +521,8 @@ export function procCheckpoint_watch(
 ): () => void {
   const timers: Map<ShardKey, NodeJS.Timeout> = new Map();
   const lastWrite: Map<ShardKey, number> = new Map();
+  // Layouts are kept beside the index this watcher keeps.
+  procLayoutHome_set({ identity, root });
 
   const shard_write = async (key: ShardKey): Promise<void> => {
     if (key === 'roster') await procCheckpointRoster_save(identity, root);
@@ -573,4 +580,126 @@ export function procCheckpoint_watch(
     for (const timer of timers.values()) clearTimeout(timer);
     timers.clear();
   };
+}
+
+// ── Layouts ───────────────────────────────────────────────────────────────────
+
+/** A node's place: x, y, z. */
+export type ProcLayoutPosition = [number, number, number];
+
+/**
+ * Where a surface laid the space out under one layout.
+ *
+ * @property name - The layout (`galaxy`, `constellations`, ...).
+ * @property positions - Every node's place, by the surface's node id.
+ * @property writtenAt - When it was kept (ISO 8601).
+ */
+export interface ProcLayoutRecord {
+  name: string;
+  positions: Record<string, ProcLayoutPosition>;
+  writtenAt: string;
+}
+
+/**
+ * The longest node id a kept layout takes. A shape's hub is named by its
+ * whole pipeline (`shape:r:pl-dircopy>0:pl-dyanon>...`), past 256 characters
+ * for a long one — a bound that short refused a real space whole.
+ */
+export const PROC_LAYOUT_ID_MAX: number = 4096;
+/** The most nodes a kept layout may hold: a large identity draws some 26,000. */
+export const PROC_LAYOUT_NODES_MAX: number = 250_000;
+
+/** The identity (and folder) the index is checkpointed for, once a watcher runs. */
+let layoutHome: { identity: string; root: string } | null = null;
+/** Layouts kept this session, by name: asked often, read from disk once. */
+const layoutsHeld: Map<string, ProcLayoutRecord> = new Map();
+
+/**
+ * Whether a string names a layout: lower case, a letter first, short.
+ *
+ * @param name - The name.
+ * @returns Whether it does.
+ */
+export function procLayoutName_check(name: string): boolean {
+  return /^[a-z][a-z0-9-]{0,31}$/.test(name);
+}
+
+/**
+ * Whether a value is a set of places: node ids to three finite numbers,
+ * no more than {@link PROC_LAYOUT_NODES_MAX} of them.
+ *
+ * @param value - The value.
+ * @returns Whether it is.
+ */
+export function procLayoutPositions_check(value: unknown): value is Record<string, ProcLayoutPosition> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const entries: Array<[string, unknown]> = Object.entries(value as Record<string, unknown>);
+  if (entries.length > PROC_LAYOUT_NODES_MAX) return false;
+  return entries.every(([id, at]): boolean =>
+    id.length > 0 && id.length <= PROC_LAYOUT_ID_MAX && Array.isArray(at) && at.length === 3 && at.every((v: unknown): boolean => typeof v === 'number' && Number.isFinite(v)));
+}
+
+/** The file a layout is kept in, when the index has a home. */
+function layoutPath_get(name: string): string | null {
+  return layoutHome === null ? null : join(procCheckpointDir_get(layoutHome.identity, layoutHome.root), `layout-${name}.json`);
+}
+
+/**
+ * Where the space was last laid out under a layout: this session's copy, or
+ * the checkpoint's. A file that does not hold what a layout holds is none.
+ *
+ * @param name - The layout.
+ * @returns The record, or null when none is kept.
+ */
+export async function procLayout_get(name: string): Promise<ProcLayoutRecord | null> {
+  if (!procLayoutName_check(name)) return null;
+  const held: ProcLayoutRecord | undefined = layoutsHeld.get(name);
+  if (held !== undefined) return held;
+  const path: string | null = layoutPath_get(name);
+  if (path === null) return null;
+  let file: unknown = null;
+  try {
+    file = await json_read(path);
+  } catch {
+    return null;
+  }
+  if (!file || typeof file !== 'object') return null;
+  const record: Partial<ProcLayoutRecord> & { schemaVersion?: unknown; identity?: unknown } = file as Partial<ProcLayoutRecord> & { schemaVersion?: unknown; identity?: unknown };
+  if (record.schemaVersion !== PROC_CHECKPOINT_SCHEMA || record.identity !== layoutHome?.identity || record.name !== name
+    || typeof record.writtenAt !== 'string' || !procLayoutPositions_check(record.positions)) return null;
+  const kept: ProcLayoutRecord = { name, positions: record.positions, writtenAt: record.writtenAt };
+  layoutsHeld.set(name, kept);
+  return kept;
+}
+
+/**
+ * Keeps where a surface laid the space out under a layout: for this session
+ * at once, and in the checkpoint when the index has a home.
+ *
+ * @param name - The layout.
+ * @param positions - Every node's place.
+ * @returns The record kept.
+ * @throws When the name or the places are not what a layout holds.
+ */
+export async function procLayout_set(name: string, positions: Record<string, ProcLayoutPosition>): Promise<ProcLayoutRecord> {
+  if (!procLayoutName_check(name)) throw new Error(`not a layout name: ${name}`);
+  if (!procLayoutPositions_check(positions)) throw new Error('not a set of places');
+  const record: ProcLayoutRecord = { name, positions, writtenAt: new Date().toISOString() };
+  layoutsHeld.set(name, record);
+  const path: string | null = layoutPath_get(name);
+  if (path !== null && layoutHome !== null) {
+    await dir_ensure(dirname(path));
+    await json_write(path, { schemaVersion: PROC_CHECKPOINT_SCHEMA, identity: layoutHome.identity, ...record });
+  }
+  return record;
+}
+
+/**
+ * Forgets this session's layouts and where they are kept: a new identity, or a test.
+ *
+ * @param home - The identity and folder layouts are kept for, or null for none.
+ */
+export function procLayoutHome_set(home: { identity: string; root: string } | null): void {
+  layoutHome = home;
+  layoutsHeld.clear();
 }

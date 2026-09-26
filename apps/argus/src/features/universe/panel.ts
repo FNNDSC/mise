@@ -18,7 +18,7 @@
  * @module
  */
 import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope } from '@fnndsc/menu';
-import { PROC_UNIVERSE_MODEL_KIND, procUniverseModelSchema, type ProcUniverseModel } from '@fnndsc/menu';
+import { PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, procLayoutModelSchema, procUniverseModelSchema, type ProcUniverseModel } from '@fnndsc/menu';
 import { ChrisSpace, PHYSICS_DEFAULT, type DrawMode, type PhysicsTerms, type SceneGraph, type SceneNode, type SettleMode } from '../../scene/chrisSpace.js';
 import {
   LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse,
@@ -37,6 +37,19 @@ import { dataGraph_build, dataHubKey_of, dataHubTip_of, dataPath_of, description
 
 /** How the whole space is arranged: round each shape's hub, or round the plugin stars. */
 type Arrangement = UniverseSettings['arrangement'];
+
+/**
+ * A cheap fingerprint of a set of places: how many, and a weighted sum.
+ * Tells a settle that moved nothing from one that moved something.
+ *
+ * @param positions - The places.
+ * @returns The fingerprint.
+ */
+function placesSignature_of(positions: Record<string, [number, number, number]>): string {
+  let sum: number = 0;
+  for (const at of Object.values(positions)) sum += at[0] * 1.3 + at[1] * 1.7 + at[2] * 1.9;
+  return `${Object.keys(positions).length}:${sum.toFixed(2)}`;
+}
 
 /**
  * Whether an arrangement brings a graph of its own (the FEEDS view only)
@@ -166,6 +179,10 @@ export class UniversePanel {
   private repaintTimer: number | null = null;
   private lastReask: number = 0;
   private rememberTimer: number | null = null;
+  /** What was last put to the session, per layout: a settle that moved nothing puts nothing. */
+  private putSignatures: Map<string, string> = new Map();
+  /** How many places the session keeps, per layout, as last heard or put; absent when unknown. */
+  private sessionPlaces: Map<string, number | null> = new Map();
   private storeKey: string | null = null;
   private arrivalsKey: string = '';
   private feedsCount: number | null = null;
@@ -348,6 +365,9 @@ export class UniversePanel {
     // the lab moving and says nothing.
     if (!this.shown) this.wait.show('ASKING THE SESSION FOR THE SPACE', null);
     this.title_paint();
+    // Where the session keeps this layout, asked first: a browser that has
+    // never drawn this space draws it at once from the session's copy.
+    if (!this.shown) this.handlers.command_run(`proc layout ${this.sessionLayoutName_of(this.arrangement)}`);
     this.handlers.command_run('proc universe');
   }
 
@@ -370,6 +390,11 @@ export class UniversePanel {
    * @param envelope - Any envelope answering this pane.
    */
   public envelope_observe(envelope: WireEnvelope): void {
+    if (envelope.model?.kind === PROC_LAYOUT_MODEL_KIND) {
+      const layout = procLayoutModelSchema.safeParse(envelope.model.data);
+      if (layout.success) this.sessionLayout_take(layout.data.name, layout.data.positions);
+      return;
+    }
     if (envelope.model?.kind !== PROC_UNIVERSE_MODEL_KIND) return;
     const universe = procUniverseModelSchema.safeParse(envelope.model.data);
     if (universe.success) this.space_show(universe.data);
@@ -459,6 +484,7 @@ export class UniversePanel {
         `kept settings: ${kept ?? '(none)'}`,
         `lit: ${this.lit ?? 'none'}`,
         `captions: ${this.captions ? 'on' : 'off'}`,
+        `session layout: ${(() => { const kept = this.sessionPlaces.get(this.sessionLayoutName_of(this.arrangement)); return kept === undefined ? 'not asked' : kept === null ? 'none kept' : `${kept} places kept`; })()}`,
         `replay: ${(() => { const r = this.scene.replay_state(); return r === null ? 'none' : `${r.playing ? 'playing' : 'paused'} at ${new Date(r.at).toISOString().slice(0, 10)} of ${new Date(r.span[0]).toISOString().slice(0, 10)}..${new Date(r.span[1]).toISOString().slice(0, 10)}`; })()}`,
       ].join('\n');
     }
@@ -634,6 +660,9 @@ export class UniversePanel {
     this.remember_now();
     this.arrangement = arrangement;
     if (this.arrangementPill !== null) this.arrangementPill.textContent = arrangement.toUpperCase();
+    // Nothing kept here for this layout: the session may keep it, and its
+    // answer seeds the settle before it runs (the session answers in order).
+    if (this.positions_recalled(arrangement) === undefined) this.handlers.command_run(`proc layout ${this.sessionLayoutName_of(arrangement)}`);
     if (this.inside === null && this.cluster === null) {
       // Constellations bring their own graph (the plugin stars, no hubs):
       // the arrangement is set without a redraw and the new graph painted.
@@ -1429,5 +1458,69 @@ export class UniversePanel {
     } catch {
       // A full or refused store forgets; the space still draws.
     }
+    this.sessionLayout_put();
+  }
+
+  /**
+   * The name the session keeps a layout under: the arrangement, and the
+   * folded shapes apart from every feed (their nodes are other nodes).
+   */
+  private sessionLayoutName_of(arrangement: Arrangement): string {
+    return this.view === 'shapes' ? `${arrangement}-shapes` : arrangement;
+  }
+
+  /**
+   * Takes the session's copy of a layout: kept here when this browser
+   * keeps none of its own, so the next settle holds it and only what is new
+   * since settles. A browser that has its own keeps it.
+   *
+   * @param name - The layout the session answered for.
+   * @param positions - Its places, or null when it keeps none.
+   */
+  private sessionLayout_take(name: string, positions: Record<string, [number, number, number]> | null): void {
+    // What the session keeps is never less than this browser put there.
+    if (positions !== null || !this.sessionPlaces.has(name)) this.sessionPlaces.set(name, positions === null ? null : Object.keys(positions).length);
+    if (positions === null || this.store === undefined) return;
+    const arrangement: Arrangement | undefined = (['galaxy', 'spokes', 'clumps', 'constellations', 'data', 'accretion'] as const)
+      .find((a: Arrangement): boolean => this.sessionLayoutName_of(a) === name);
+    if (arrangement === undefined || this.positions_recalled(arrangement) !== undefined) return;
+    const key: string | null = this.positionsKey_of(arrangement);
+    if (key === null) return;
+    try {
+      this.store.setItem(key, JSON.stringify(positions));
+    } catch {
+      return;
+    }
+    this.putSignatures.set(name, placesSignature_of(positions));
+    // Taken for the layout on stage, under a space already drawn (a settle
+    // of this browser's own under way): seeded and painted again, holding
+    // what the session placed so only what is new since settles. A space
+    // not yet on stage seeds from the store when it arrives.
+    if (arrangement === this.arrangement && this.shown && this.inside === null && this.cluster === null && this.entering === null) {
+      this.scene.positions_seed(positions);
+      this.paint(false, 'new');
+    }
+  }
+
+  /**
+   * Puts where the whole space stands to the session, when it moved: every
+   * browser after this one draws it at once. Only the whole space at rest —
+   * never a feed entered, a cluster, or a replay.
+   */
+  private sessionLayout_put(): void {
+    if (this.inside !== null || this.cluster !== null || this.scene.replay_state() !== null) return;
+    const positions: Record<string, [number, number, number]> = {};
+    for (const [id, at] of Object.entries(this.scene.positions_get())) {
+      // A node not yet placed has no place to keep (NaN travels as null, and the session refuses the lot).
+      if (!at.every((v: number): boolean => Number.isFinite(v))) continue;
+      positions[id] = [Math.round(at[0] * 100) / 100, Math.round(at[1] * 100) / 100, Math.round(at[2] * 100) / 100];
+    }
+    if (Object.keys(positions).length === 0) return;
+    const name: string = this.sessionLayoutName_of(this.arrangement);
+    const signature: string = placesSignature_of(positions);
+    if (this.putSignatures.get(name) === signature) return;
+    this.putSignatures.set(name, signature);
+    this.sessionPlaces.set(name, Object.keys(positions).length);
+    this.handlers.command_run(`proc layout put ${name} '${JSON.stringify(positions).replace(/'/g, "'\\''")}'`);
   }
 }

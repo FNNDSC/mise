@@ -463,6 +463,44 @@ try {
       kept.both === true && kept.differ === true, JSON.stringify(kept));
   }
 
+  if (stage('universe-session-layout')) {
+    // The universe is laid out once per identity: the first browser to
+    // settle a layout puts it to the session, which keeps it beside the
+    // index, and the next browser draws from it at once.
+    const kept = await evalIn(`
+      try {
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      const say = async (line, ms) => { await console_idle(); input.value = line;
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      const lastLine = (re) => document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
+      document.getElementById('gutter-dashboard')?.click();
+      for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.launcher-tile')) break; }
+      [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
+      const pane = () => [...document.querySelectorAll('.pane-universe')].find((p) => p.offsetParent !== null);
+      const settled = () => { const p = pane(); const w = p?.querySelector('.wait-progress'); return /[1-9]\\d* FEEDS/.test(p?.querySelector('.universe-title')?.textContent ?? '') && !(w && !w.hidden); };
+      for (let i = 0; i < 480; i++) { await sleep(500); if (settled()) break; }
+      await say('universe layout galaxy', 1500);
+      for (let i = 0; i < 480; i++) { await sleep(500); if (settled()) break; }
+      // Remembered a moment after the settle stands, then put.
+      let answer = '';
+      for (let i = 0; i < 40; i++) {
+        await say('proc layout galaxy', 800);
+        answer = lastLine(/^layout galaxy:/);
+        if (/places, kept/.test(answer)) break;
+        await sleep(1000);
+      }
+      await say('universe state', 600);
+      const state = lastLine(/^session layout: /);
+      await say('proc layout ../x', 600);
+      const refused = lastLine(/^proc layout: /);
+      return { answer, state, refused };
+      } catch (err) { return { crash: String(err && err.stack || err) }; }`);
+    check('the session keeps where the universe was laid out, and refuses a name that is not a layout',
+      /^layout galaxy: [\d,]+ places, kept /.test(kept.answer) && /^session layout: \d+ places kept/.test(kept.state) && /not a layout/.test(kept.refused),
+      JSON.stringify(kept));
+  }
+
   if (stage('universe-accretion')) {
     // ACCRETION grows the space in the order it was made, kin sticking to
     // kin; REGROW forgets the kept coral and grows it afresh.

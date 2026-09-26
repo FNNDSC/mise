@@ -152,10 +152,12 @@ export {
   type FeedListModel,
   procJobGroupSchema,
   procUniverseFeedSchema,
+  procFeedDataSchema,
   procUniverseModelSchema,
   PROC_UNIVERSE_MODEL_KIND,
   type ProcJobGroup,
   type ProcUniverseFeed,
+  type ProcFeedData,
   type ProcUniverseModel,
 } from './dag.js';
 export {

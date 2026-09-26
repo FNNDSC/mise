@@ -6,7 +6,7 @@
  * a fake IO.
  */
 import { procCache_get, type ProcCache, type ProcFeed, type ProcInstance } from '@fnndsc/cumin';
-import { feedDataFacts_read, procDataFacts_sweep, procDataFacts_feed, dataFormat_ofName, type DataFactsIO } from '../src/dag/feedData';
+import { feedDataFacts_read, procDataFacts_sweep, procDataFacts_feed, dataFormat_ofName, DATA_FACTS_READER, DATA_FACTS_FEED_MS, type DataFactsIO } from '../src/dag/feedData';
 import type { VFSItem } from '../src/vfs/provider';
 import type { DicomTagSet } from '../src/dicom/tags';
 
@@ -102,12 +102,30 @@ describe('feedDataFacts_read', () => {
     expect(await feedDataFacts_read(2, io_of({}))).toBeNull();
   });
 
-  it('retries a DICOM-named file whose header will not read, then calls it unknown', async () => {
+  it('retries a DICOM-named file whose header will not read, then records it as DICOM with the reason', async () => {
     feed_add(1);
     const io = io_of({ '/out/10': [item('a.dcm')] });
     expect(await feedDataFacts_read(1, io)).toBeNull();
     expect(await feedDataFacts_read(1, io)).toBeNull();
-    expect(await feedDataFacts_read(1, io)).toEqual({ format: 'unknown', reason: 'its first file, a.dcm, is named DICOM but its header could not be read' });
+    expect(await feedDataFacts_read(1, io)).toEqual({ format: 'dicom', reason: 'the header of its first file, a.dcm, could not be read' });
+  });
+
+  it('follows a link that leads to a folder, and reads the series inside', async () => {
+    feed_add(1);
+    const link = { ...item('home_u_upload_SAG-anon', 'link'), target: '/home/u/upload/SAG-anon' } as VFSItem;
+    const io = io_of(
+      { '/out/10': [link, item('input.meta.json')], '/home/u/upload/SAG-anon': [item('0001.dcm')] },
+      { '/home/u/upload/SAG-anon/0001.dcm': tags({ Modality: 'MR', SeriesDescription: 'SAG' }) },
+    );
+    expect(await feedDataFacts_read(1, io)).toEqual({ format: 'dicom', modality: 'MR', seriesDescription: 'SAG' });
+  });
+
+  it('reads a copy job\'s links as data, through their targets', async () => {
+    feed_add(1);
+    const link = { ...item('home_u_uploads_S_0001.dcm', 'link'), target: '/home/u/uploads/S/0001.dcm' } as VFSItem;
+    const io = io_of({ '/out/10': [link, item('input.meta.json')] }, { '/home/u/uploads/S/0001.dcm': tags({ Modality: 'CT', SeriesDescription: 'AX' }) });
+    expect(await feedDataFacts_read(1, io)).toEqual({ format: 'dicom', modality: 'CT', seriesDescription: 'AX' });
+    expect(io.reads).toEqual(['/home/u/uploads/S/0001.dcm']);
   });
 });
 
@@ -116,12 +134,19 @@ describe('the sweep', () => {
     feed_add(1);
     feed_add(2);
     feed_add(3, 'started');
-    cache.dataFacts_set(2, { format: 'png' });
+    cache.dataFacts_set(2, { format: 'png', reader: DATA_FACTS_READER });
     const io = io_of({ '/out/10': [item('x.mgz')], '/out/20': [item('y.nii')] });
     expect(await procDataFacts_sweep(io)).toBe(1);
-    expect(cache.dataFacts_of(1)).toEqual({ format: 'mgz' });
-    expect(cache.dataFacts_of(2)).toEqual({ format: 'png' });
+    expect(cache.dataFacts_of(1)).toEqual({ format: 'mgz', reader: DATA_FACTS_READER });
+    expect(cache.dataFacts_of(2)).toEqual({ format: 'png', reader: DATA_FACTS_READER });
     expect(cache.dataFacts_of(3)).toBeUndefined();
+  });
+
+  it('reads again a feed an older reader answered', async () => {
+    feed_add(1);
+    cache.dataFacts_set(1, { format: 'unknown', reason: 'its first job left no data files' });
+    expect(await procDataFacts_sweep(io_of({ '/out/10': [item('x.png')] }))).toBe(1);
+    expect(cache.dataFacts_of(1)).toEqual({ format: 'png', reader: DATA_FACTS_READER });
   });
 
   it('reads one feed as its topology loads, and never twice', async () => {
@@ -129,6 +154,26 @@ describe('the sweep', () => {
     const io = io_of({ '/out/10': [item('x.png')] });
     expect(await procDataFacts_feed(1, io)).toBe(true);
     expect(await procDataFacts_feed(1, io)).toBe(false);
+  });
+
+  it('gives up on a feed whose read never answers, and goes on to the next', async () => {
+    jest.useFakeTimers();
+    try {
+      feed_add(1);
+      feed_add(2);
+      const io: DataFactsIO = {
+        outputPath: async (id: number) => (id === 20 ? new Promise<string | null>(() => undefined) : `/out/${id}`),
+        list: async (path: string) => (path === '/out/10' ? [item('x.png')] : null),
+        header: async () => null,
+      };
+      const sweep = procDataFacts_sweep(io);
+      await jest.advanceTimersByTimeAsync(DATA_FACTS_FEED_MS + 1);
+      expect(await sweep).toBe(1);
+      expect(cache.dataFacts_of(1)?.format).toBe('png');
+      expect(cache.dataFacts_of(2)).toBeUndefined();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('survives a read that throws', async () => {

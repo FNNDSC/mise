@@ -304,12 +304,15 @@ export type ProcDataFormat = 'dicom' | 'nifti' | 'mgz' | 'jpeg' | 'png' | 'other
  * @property modality - DICOM Modality (0008,0060), when the header says.
  * @property seriesDescription - DICOM SeriesDescription (0008,103E), when it says.
  * @property reason - Why the format is `unknown` or `other`, in words.
+ * @property reader - The version of the reader that wrote them: a newer
+ *   reader reads a feed again rather than trust an older one's answer.
  */
 export interface ProcFeedDataFacts {
   format: ProcDataFormat;
   modality?: string;
   seriesDescription?: string;
   reason?: string;
+  reader?: number;
 }
 
 /**

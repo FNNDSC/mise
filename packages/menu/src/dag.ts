@@ -207,6 +207,15 @@ export const procJobGroupSchema = z.object({
   status: z.string(),
   parent: z.number().nullable(),
 });
+/** What a feed's data is: its format, and for DICOM its modality and series description. */
+export const procFeedDataSchema = z.object({
+  format: z.enum(['dicom', 'nifti', 'mgz', 'jpeg', 'png', 'other', 'unknown']),
+  modality: z.string().optional(),
+  seriesDescription: z.string().optional(),
+  /** Why the format is `unknown` or `other`, in words. */
+  reason: z.string().optional(),
+});
+export type ProcFeedData = z.infer<typeof procFeedDataSchema>;
 export const procUniverseFeedSchema = z.object({
   id: z.number(),
   /** The feed's name; empty from a daemon that predates it. */
@@ -218,6 +227,12 @@ export const procUniverseFeedSchema = z.object({
   groups: z.array(procJobGroupSchema).default([]),
   /** When the feed was made (ISO 8601): the order a replay reveals the space in; empty from a daemon that predates it. */
   createdAt: z.string().default(''),
+  /**
+   * What the feed's data is, once the index has read it: the format, and
+   * for DICOM the modality and series description; absent until read, and
+   * from a daemon that predates it.
+   */
+  data: procFeedDataSchema.optional(),
 });
 export const procUniverseModelSchema = z.object({
   feeds: z.array(procUniverseFeedSchema),

@@ -1,5 +1,20 @@
 # @fnndsc/salsa
 
+## 3.19.0
+
+### Minor Changes
+
+- f571a14: The /proc index reads what each feed's data is, once: from the first file its root job made (by name, descending into a folder), the format, and for DICOM the modality and series description from one header read. It runs after the topology sweep, as each feed's topology loads, and after a checkpoint restore; what cannot be known yet is tried again, what is known to be absent is recorded with its reason.
+
+### Patch Changes
+
+- 8602c78: Reading a feed's data costs its first page, not its whole folder: the reader lists the first fifty folders, files and links of a level, reads a DICOM header from the first 2 MB of a file (the parse stopping at the pixel data), passes over XML reports, tries a few UID-named files as DICOM, and says when a feed's data lives somewhere this identity may not read.
+- a8d0d99: The data-facts sweep reads in rounds: what a round cannot answer yet (a header that failed once, a read that ran out of time) is tried again after a pause, until a round records nothing and every header has had its tries. A single round had left 199 of 709 feeds unread for as long as the daemon lived.
+- d1da8ac: `proc universe` carries what each feed's data is (`data`: format, and for DICOM modality and series description) once the index has read it. The reader follows a copy job's links (to files and to folders), reads newest feeds first, four at a time, gives a feed that never answers 45 s before moving on, records a DICOM-named file whose header will not read as DICOM with the reason, and stamps each record with its reader's version so a better reader reads feeds again.
+- Updated dependencies [e7f82dd]
+- Updated dependencies [0f9ae74]
+  - @fnndsc/cumin@3.24.0
+
 ## 3.18.2
 
 ### Patch Changes

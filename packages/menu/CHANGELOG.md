@@ -1,5 +1,13 @@
 # @fnndsc/menu
 
+## 0.12.0
+
+### Minor Changes
+
+- d1da8ac: `proc universe` carries what each feed's data is (`data`: format, and for DICOM modality and series description) once the index has read it. The reader follows a copy job's links (to files and to folders), reads newest feeds first, four at a time, gives a feed that never answers 45 s before moving on, records a DICOM-named file whose header will not read as DICOM with the reason, and stamps each record with its reader's version so a better reader reads feeds again.
+- 0f9ae74: The universe laid out once per identity: `proc layout <name>` answers where a surface last laid the universe out under a layout, and `proc layout put <name> <places>` keeps it beside the index checkpoint. ARGUS puts each settled layout and, in a browser that keeps none, draws from the session's copy at once, settling only feeds new since.
+- d8e160c: `proc universe` says when each feed was made (`createdAt`, ISO 8601), the order a replay reveals the space in; a model from an older daemon reads it as empty.
+
 ## 0.11.0
 
 ### Minor Changes

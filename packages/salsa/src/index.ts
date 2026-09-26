@@ -28,4 +28,4 @@ export { feedGraph_build, signature_compute } from './dag/feedGraph.js';
 export type { FeedGraph, FeedNode } from './dag/feedGraph.js';
 export { feedJoins_ensure, nodeJoins_resolve } from './dag/feedJoins.js';
 export { feedGraphData_ensure } from './dag/feedLoad.js';
-export { feedDataFacts_read, procDataFacts_sweep, procDataFacts_feed, dataFactsIO_of, dataFormat_ofName, type DataFactsIO } from './dag/feedData.js';
+export { feedDataFacts_read, procDataFacts_sweep, procDataFacts_feed, dataFactsIO_of, dataFormat_ofName, DATA_FACTS_READER, type DataFactsIO } from './dag/feedData.js';

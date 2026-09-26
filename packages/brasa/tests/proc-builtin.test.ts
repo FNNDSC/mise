@@ -44,6 +44,8 @@ const pathExtractFeedID_mock = jest.fn((): number | null => null);
 const pathExtractPluginInstanceID_mock = jest.fn((): number | null => null);
 const pathIsInFeed_mock = jest.fn((): boolean => false);
 let mockFeeds: TestFeed[] = [];
+/** Each feed's data facts, as the index holds them. */
+let mockDataFacts: Record<number, unknown> = {};
 let mockWarmup = { loaded: 0, total: 0, active: false };
 let mockWarmupComplete: boolean = false;
 let mockLifecycle: { state: string; checkpointAt?: string } = { state: 'empty' };
@@ -56,6 +58,7 @@ const mockCache = {
   feed_get: jest.fn((id: number) => mockFeeds.find((feed: TestFeed) => feed.id === id)),
   feeds_find: jest.fn((term: string) => mockFeeds.filter((feed: TestFeed) => feed.title.includes(term))),
   feedIDs_get: jest.fn((): number[] => mockFeeds.map((feed: TestFeed) => feed.id)),
+  dataFacts_of: jest.fn((id: number) => mockDataFacts[id]),
   feedScopeCounts_get: jest.fn(() => ({ user: 40, shared: 14, public: 637, total: 691 })),
   instances_count: jest.fn((): number => 25),
   instancesForFeed_count: jest.fn((): number => 2),
@@ -575,6 +578,19 @@ describe('proc universe', () => {
     expect((model.feeds[1] as { createdAt?: string }).createdAt).toBe('2026-01-02');
     expect(envelope.rendered).toContain('2 feeds across 2 pipeline shapes');
     expect(envelope.rendered).toContain('still warming');
+  });
+
+  it('carries what each feed\'s data is, once the index has read it', async () => {
+    mockFeeds = [
+      { id: 1, title: 'a', ownerUsername: 'chris', public: false, creationDate: '2026-01-01', finishedJobs: 2, erroredJobs: 0, startedJobs: 0, scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0 } as unknown as TestFeed,
+    ];
+    mockDataFacts = { 1: { format: 'dicom', modality: 'MR', seriesDescription: 'SAG MPRAGE' } };
+    const envelope = await builtin_proc(['universe']);
+    const model = envelope.model?.data as { feeds: Array<{ id: number; data?: unknown }> };
+    expect(model.feeds[0]?.data).toEqual({ format: 'dicom', modality: 'MR', seriesDescription: 'SAG MPRAGE' });
+    mockDataFacts = {};
+    const unread = (await builtin_proc(['universe'])).model?.data as { feeds: Array<{ data?: unknown }> };
+    expect(unread.feeds[0]?.data).toBeUndefined();
   });
 
   it('says the index is whole once the sweep completed', async () => {

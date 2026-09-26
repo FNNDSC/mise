@@ -38,6 +38,8 @@ export interface LandedFeed {
   groups: LandedGroup[];
   /** When the feed was made (ISO 8601): the order a replay reveals it in; absent or empty from a daemon that predates it. */
   createdAt?: string;
+  /** What the feed's data is, once the index has read it: its format, and for DICOM its modality and series description. */
+  data?: { format: string; modality?: string; seriesDescription?: string; reason?: string };
 }
 
 /**

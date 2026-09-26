@@ -23,10 +23,24 @@ import { dicomTag_find, type DicomTagSet } from '../dicom/tags.js';
 
 /** How deep into nested folders the first file is looked for. */
 const DATA_DEPTH_MAX: number = 3;
-/** Reads of a DICOM-named file that fail before its feed is called unknown, not retried. */
+/**
+ * This reader's version, written into every record it makes: facts from an
+ * older reader are read again, so a better reading reaches feeds read before
+ * it. Raise it whenever what is read, or how, changes.
+ */
+export const DATA_FACTS_READER: number = 1;
+/** Reads of a DICOM-named file that fail before its feed is recorded without a header. */
 const HEADER_TRIES_MAX: number = 3;
 /** Failed header reads so far, by feed. */
 const headerTries: Map<number, number> = new Map();
+/** Feeds read at once by a sweep: a feed costs a few CUBE round trips, and one at a time took three seconds each. */
+export const DATA_FACTS_IN_FLIGHT: number = 4;
+/**
+ * How long one feed may take: a read that never answers (a link to a file
+ * that went away, a stalled download) must not hold a worker for good —
+ * four such hangs once stopped a whole sweep. The feed is tried again later.
+ */
+export const DATA_FACTS_FEED_MS: number = 45_000;
 /** Whether a sweep is under way: one at a time. */
 let sweeping: boolean = false;
 
@@ -98,15 +112,32 @@ function name_isSidecar(name: string): boolean {
  * @returns The file's path and name, or a reason when there is none.
  */
 async function dataFile_find(folder: string, io: DataFactsIO): Promise<{ path: string; name: string } | { reason: string } | null> {
+  // A copy job's output is often links to what it copied — a file, or a
+  // whole folder: a link is data too, named by its own name and read, or
+  // descended into, through its target.
+  const isData = (item: VFSItem): boolean => (item.type === 'file' || item.type === 'link') && !name_isSidecar(item.name);
+  const byName = (a: VFSItem, b: VFSItem): number => a.name.localeCompare(b.name, undefined, { numeric: true });
+  const pathOf = (at: string, item: VFSItem): string => (item.type === 'link' && item.target !== undefined ? item.target : `${at}/${item.name}`);
   let at: string = folder.replace(/\/$/, '');
   for (let depth = 0; depth <= DATA_DEPTH_MAX; depth++) {
     const items: VFSItem[] | null = await io.list(at);
     if (items === null) return null;
-    const byName = (a: VFSItem, b: VFSItem): number => a.name.localeCompare(b.name, undefined, { numeric: true });
-    const files: VFSItem[] = items.filter((item: VFSItem): boolean => item.type === 'file' && !name_isSidecar(item.name)).sort(byName);
-    const named: VFSItem | undefined = files.find((item: VFSItem): boolean => dataFormat_ofName(item.name) !== null);
-    const first: VFSItem | undefined = named ?? files[0];
-    if (first !== undefined) return { path: `${at}/${first.name}`, name: first.name };
+    const data: VFSItem[] = items.filter(isData).sort(byName);
+    // A file whose name says its format, plain or linked.
+    const named: VFSItem | undefined = data.find((item: VFSItem): boolean => dataFormat_ofName(item.name) !== null);
+    if (named !== undefined) return { path: pathOf(at, named), name: named.name };
+    // A plain file whose name says nothing (a DICOM without an extension).
+    const plain: VFSItem | undefined = data.find((item: VFSItem): boolean => item.type === 'file');
+    if (plain !== undefined) return { path: pathOf(at, plain), name: plain.name };
+    // A link whose name says nothing: a folder when its target lists, else a file.
+    const link: VFSItem | undefined = data.find((item: VFSItem): boolean => item.type === 'link');
+    if (link !== undefined) {
+      const target: string = pathOf(at, link);
+      const inside: VFSItem[] | null = await io.list(target);
+      if (inside === null) return { path: target, name: link.name };
+      at = target.replace(/\/$/, '');
+      continue;
+    }
     const folders: VFSItem[] = items.filter((item: VFSItem): boolean => item.type === 'dir' && !item.name.startsWith('.')).sort(byName);
     const next: VFSItem | undefined = folders[0];
     if (next === undefined) return { reason: 'its first job left no data files' };
@@ -149,7 +180,8 @@ export async function feedDataFacts_read(feedID: number, io: DataFactsIO, cache:
     if (named !== 'dicom') return { format: 'other', reason: `its first file, ${file.name}, is not a format the index names` };
     const tries: number = (headerTries.get(feedID) ?? 0) + 1;
     headerTries.set(feedID, tries);
-    return tries < HEADER_TRIES_MAX ? null : { format: 'unknown', reason: `its first file, ${file.name}, is named DICOM but its header could not be read` };
+    // Its name already says DICOM: record that, and why there is no modality.
+    return tries < HEADER_TRIES_MAX ? null : { format: 'dicom', reason: `the header of its first file, ${file.name}, could not be read` };
   }
   headerTries.delete(feedID);
   const facts: ProcFeedDataFacts = { format: 'dicom' };
@@ -162,8 +194,9 @@ export async function feedDataFacts_read(feedID: number, io: DataFactsIO, cache:
 
 /**
  * Reads the data facts of every feed that has none yet — the index's quiet
- * tail after the topology sweep. Sequential awaits are the throttle; what
- * cannot be known yet is tried again on the next sweep.
+ * tail after the topology sweep. A few feeds are read at once
+ * ({@link DATA_FACTS_IN_FLIGHT}), which is the throttle; what cannot be known
+ * yet is tried again on the next sweep.
  *
  * @param io - How to read.
  * @returns How many feeds were read.
@@ -174,9 +207,14 @@ export async function procDataFacts_sweep(io: DataFactsIO): Promise<number> {
   const cache: ProcCache = procCache_get();
   let read: number = 0;
   try {
-    for (const feedID of cache.feedIDs_get()) {
-      if (await procDataFacts_feed(feedID, io, cache)) read += 1;
-    }
+    // Newest first: the work an operator is looking at now is read first.
+    const queue: number[] = cache.feedIDs_get().filter((feedID: number): boolean => !dataFacts_current(cache, feedID)).sort((a: number, b: number): number => b - a);
+    const worker = async (): Promise<void> => {
+      for (let feedID = queue.shift(); feedID !== undefined; feedID = queue.shift()) {
+        if (await procDataFacts_feed(feedID, io, cache)) read += 1;
+      }
+    };
+    await Promise.all(Array.from({ length: DATA_FACTS_IN_FLIGHT }, worker));
   } finally {
     sweeping = false;
   }
@@ -193,14 +231,25 @@ export async function procDataFacts_sweep(io: DataFactsIO): Promise<number> {
  * @returns Whether facts were recorded.
  */
 export async function procDataFacts_feed(feedID: number, io: DataFactsIO, cache: ProcCache = procCache_get()): Promise<boolean> {
-  if (cache.dataFacts_of(feedID) !== undefined) return false;
+  if (dataFacts_current(cache, feedID)) return false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const facts: ProcFeedDataFacts | null = await feedDataFacts_read(feedID, io, cache);
+    const late: Promise<null> = new Promise<null>((resolve: (value: null) => void): void => {
+      timer = setTimeout((): void => resolve(null), DATA_FACTS_FEED_MS);
+    });
+    const facts: ProcFeedDataFacts | null = await Promise.race([feedDataFacts_read(feedID, io, cache), late]);
     if (facts === null) return false;
-    cache.dataFacts_set(feedID, facts);
+    cache.dataFacts_set(feedID, { ...facts, reader: DATA_FACTS_READER });
     return true;
   } catch {
     // A read that throws is a read that failed: the next sweep tries again.
     return false;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
+}
+
+/** Whether a feed's facts were written by this reader: none, or an older reader's, are read again. */
+function dataFacts_current(cache: ProcCache, feedID: number): boolean {
+  return cache.dataFacts_of(feedID)?.reader === DATA_FACTS_READER;
 }

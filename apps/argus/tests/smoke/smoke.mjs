@@ -822,7 +822,12 @@ try {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(600);
     const escBack = !fp.querySelector('.files-diagram') && fp.querySelectorAll('.files-row').length > 0;
     const pipeline = fp.querySelector('.files-row.files-type-pipeline');
-    if (!pipeline) return { skipped: null, pluginScene, pluginWall, pluginSelected, pluginImmersed, pluginEscLeftNode, survivesListing, listingUnderneath, escBack, pipelineSkipped: true };
+    if (!pipeline) {
+      // Leave the browser as it was found: a view left up would take the
+      // next scenario's listing underneath it.
+      for (let i = 0; i < 4 && fp.querySelector('.files-close-pill'); i++) { fp.querySelector('.files-close-pill').click(); await sleep(400); }
+      return { skipped: null, pluginScene, pluginWall, pluginSelected, pluginImmersed, pluginEscLeftNode, survivesListing, listingUnderneath, escBack, pipelineSkipped: true };
+    }
     pipeline.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     let summary = false, canvas = false;
     for (let i = 0; i < 60; i++) { await sleep(500); const c = fp.querySelector('.files-content'); if (c && /pipeline/.test(c.textContent)) summary = true; if (fp.querySelector('.files-diagram canvas')) { canvas = true; break; } }
@@ -1868,18 +1873,24 @@ try {
     const panes = () => [...document.querySelectorAll('.pane-files')].filter(p => p.offsetParent !== null);
     const fp = () => panes()[0];
     const term = document.querySelector('#terminal input');
-    const say = async (line, ms) => { term.value = line;
-      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    // Each line waits for the one before to finish: a remove still under
+    // way when mkdir -p runs leaves nothing behind once it lands.
+    const say = async (line, ms) => { await console_idle(); term.value = line;
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_idle(); };
     const rows = (p) => [...p.querySelectorAll('.files-row')];
     const named = (p, n) => rows(p).find(r => r.querySelector('.files-name')?.textContent.trim() === n);
     const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     const settle = async (want, n = 140) => { for (let i = 0; i < n; i++) { await sleep(500); if (want()) return true; } return false; };
     const catalogue = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null && /smoke-desk/.test(p.querySelector('.files-binding')?.textContent ?? ''));
 
+    // A scenario starts from nothing of its own: a view another left up
+    // takes a listing underneath it, so close any before listing ~.
+    for (let i = 0; i < 4 && fp()?.querySelector('.files-close-pill'); i++) { fp().querySelector('.files-close-pill').click(); await sleep(400); }
     await say('rm -r ~/smoke-desk', 2500);
     await say('mkdir -p ~/smoke-desk', 2500);
     await say('cd ~', 2500);
-    await settle(() => named(fp(), 'smoke-desk'));
+    const homed = await settle(() => fp() !== undefined && named(fp(), 'smoke-desk') !== undefined);
+    if (!homed) return { error: 'the browser never listed ~/smoke-desk', panes: panes().map(p => ({ path: p.querySelector('.files-path')?.textContent.trim() ?? '', binding: p.querySelector('.files-binding')?.textContent.trim() ?? '', view: p.querySelector('.files-diagram') ? 'diagram' : p.querySelector('.files-content') ? 'content' : 'listing', bar: p.querySelector('.lcars-title')?.textContent.trim() ?? '' })), all: document.querySelectorAll('.pane-files').length, rows: fp() ? rows(fp()).map(r => r.querySelector('.files-name')?.textContent.trim()).slice(0, 60) : [], console: document.getElementById('terminal').innerText.split('\\n').filter(l => l.trim()).slice(-8) };
     click(named(fp(), 'smoke-desk').querySelector('.files-name')); await sleep(600);
     [...fp().querySelectorAll('.files-row-zone .listing-action')].find(b => b.textContent.trim() === 'PROCESS')?.click();
     await settle(() => catalogue() !== undefined, 40);
@@ -1909,11 +1920,15 @@ try {
     await say('cd ~', 2000);
     await say('rm -r ~/smoke-desk', 3000);
     return { headersBefore, recentRows, bindingBefore, cardLabel, catalogueLine, back, bindingAfter, lineAfter, listingBack };`);
+  if (desk.error !== undefined) {
+    check('the browser lists a fresh ~/smoke-desk', false, JSON.stringify(desk));
+  } else {
   check('a bound catalogue leads with RECENT, the executables lately run', desk.headersBefore && desk.recentRows.length > 0 && desk.recentRows.every(n => /^pl-/.test(n)), JSON.stringify(desk.recentRows));
   check('a catalogue left for another domain is a PROCESS card in PANES, carrying its line', desk.cardLabel !== null && /^PROCESS /.test(desk.cardLabel) && desk.catalogueLine === 'cd "/home/x/smoke-desk"; pl-simpledsapp-v2.1.5 --prefix kept-', JSON.stringify({ label: desk.cardLabel, line: desk.catalogueLine }));
   check('restore returns the catalogue bound as it was, its line verbatim, as a listing',
     desk.back && desk.bindingAfter === desk.bindingBefore && /smoke-desk → new feed$/.test(desk.bindingAfter) && desk.lineAfter === 'cd "/home/x/smoke-desk"; pl-simpledsapp-v2.1.5 --prefix kept-' && desk.listingBack,
     JSON.stringify({ back: desk.back, bindingBefore: desk.bindingBefore, bindingAfter: desk.bindingAfter, lineAfter: desk.lineAfter, listingBack: desk.listingBack }));
+  }
   }
 
   if (stage('roster-shares')) {

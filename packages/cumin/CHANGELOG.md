@@ -1,5 +1,19 @@
 # @fnndsc/cumin
 
+## 3.24.0
+
+### Minor Changes
+
+- e7f82dd: The /proc index can keep what each feed's data is (`ProcFeedDataFacts`: format, and for DICOM the modality and series description), persisted in the feed's checkpoint shard; a shard written before facts existed restores as before, and malformed facts are dropped without losing the feed's topology.
+- 0f9ae74: The universe laid out once per identity: `proc layout <name>` answers where a surface last laid the universe out under a layout, and `proc layout put <name> <places>` keeps it beside the index checkpoint. ARGUS puts each settled layout and, in a browser that keeps none, draws from the session's copy at once, settling only feeds new since.
+
+### Patch Changes
+
+- Updated dependencies [d1da8ac]
+- Updated dependencies [0f9ae74]
+- Updated dependencies [d8e160c]
+  - @fnndsc/menu@0.12.0
+
 ## 3.23.2
 
 ### Patch Changes

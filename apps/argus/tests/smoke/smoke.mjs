@@ -323,6 +323,71 @@ try {
       `${universe.densityCensus} | ${universe.censusTitle} | ${universe.densityShape}`);
   }
 
+  if (stage('universe-constellations')) {
+    // CONSTELLATIONS: every plugin a ringed star, every feed pulled to the
+    // stars it ran. A plugin lit by word shows its facts and its verb, and
+    // OPEN IN /BIN opens its graph in the files browser.
+    const sky = await evalIn(`
+      try {
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      const say = async (line, ms) => { await console_idle(); input.value = line;
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      const lastLine = (re) => document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
+      document.getElementById('gutter-dashboard')?.click();
+      for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.launcher-tile')) break; }
+      [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
+      const pane = () => [...document.querySelectorAll('.pane-universe')].find((p) => p.offsetParent !== null);
+      const settled = () => { const p = pane(); const w = p?.querySelector('.wait-progress'); return /[1-9]\\d* FEEDS/.test(p?.querySelector('.universe-title')?.textContent ?? '') && !(w && !w.hidden); };
+      for (let i = 0; i < 480; i++) { await sleep(500); if (settled()) break; }
+      await say('universe layout constellations', 1500);
+      for (let i = 0; i < 480; i++) { await sleep(500); if (settled()) break; }
+      const block = pane()?.querySelector('.universe-arrangement')?.textContent.trim() ?? '';
+      await say('universe state', 600);
+      const scene = lastLine(/^scene: /);
+      await say('universe plugin no-such-plugin', 600);
+      const refused = lastLine(/^universe plugin/);
+      await say('universe plugin pl-dircopy', 1500);
+      const lit = lastLine(/^pl-dircopy · |^universe plugin/);
+      const facts = pane()?.querySelector('.universe-facts');
+      const factsText = facts && !facts.hidden ? facts.textContent : '';
+      await say('universe state', 600);
+      const litState = lastLine(/^lit: /);
+      let opened = { pressed: false, path: '', diagram: false };
+      const open = facts?.querySelector('.universe-plugin-open');
+      if (open) {
+        open.click();
+        opened.pressed = true;
+        const fp = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+        for (let i = 0; i < 60; i++) { await sleep(500); if (fp()?.querySelector('.files-diagram')) break; }
+        opened.path = fp()?.querySelector('.files-content-header span')?.textContent ?? '';
+        opened.diagram = !!fp()?.querySelector('.files-diagram');
+        opened.console = document.getElementById('terminal').innerText.split('\\n').filter((l) => l.trim()).slice(-4);
+        opened.header = fp()?.querySelector('.files-path')?.textContent.trim() ?? '';
+        for (let i = 0; i < 4 && fp()?.querySelector('.files-close-pill'); i++) { fp().querySelector('.files-close-pill').click(); await sleep(400); }
+      }
+      document.getElementById('gutter-dashboard')?.click(); await sleep(600);
+      [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
+      await sleep(1000);
+      await say('universe plugin off', 800);
+      await say('universe layout galaxy', 1500);
+      return { block, scene, refused, lit, factsText, litState, opened };
+      } catch (err) { return { crash: String(err && err.stack || err) }; }`);
+    if (sky.crash) console.log('  CRASH ' + sky.crash);
+    check('CONSTELLATIONS is an arrangement of its own, with a ringed star per plugin in the scene',
+      sky.block === 'CONSTELLATIONS' && /arrangement=constellations/.test(sky.scene), JSON.stringify({ block: sky.block, scene: sky.scene }));
+    check('universe plugin refuses a plugin no feed ran, by name', /no feed here ran no-such-plugin/.test(sky.refused), JSON.stringify(sky.refused));
+    if (/no feed here ran/.test(sky.lit)) {
+      console.log('  skipped: no feed here ran pl-dircopy');
+    } else {
+      check('a lit plugin says how many feeds ran it and how much of it failed, and shows its facts and its verb',
+        /^pl-dircopy · [\d,]+ feeds? · \d+% errored$/.test(sky.lit) && /PLUGINpl-dircopy/.test(sky.factsText) && /OPEN IN \/BIN/.test(sky.factsText) && sky.litState === 'lit: pl-dircopy',
+        JSON.stringify({ lit: sky.lit, facts: sky.factsText, state: sky.litState }));
+      check('OPEN IN /BIN opens the plugin\'s graph in the files browser',
+        sky.opened.pressed && /^\/bin\/pl-dircopy-v/.test(sky.opened.path) && sky.opened.diagram, JSON.stringify(sky.opened));
+    }
+  }
+
   if (stage('universe-replay')) {
     // REPLAY plays the space's history: every feed hidden until the day it
     // was made, then shown where it stands now, the day on the bar. A word
@@ -3849,6 +3914,29 @@ try {
     await evalIn(`const input = document.querySelector('#terminal input'); input.value = 'image layout single'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(600); return 1;`);
   }
   }
+  if (stage('image-study')) {
+  if (dicomSeries === '' || fixtureFolder === null) {
+    console.log('  skipped: needs the image fixtures');
+  } else {
+    // A study folder opens its first series: `image` finds the series
+    // inside a folder that is not one itself.
+    const study = await evalIn(`
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      input.value = ${JSON.stringify('image ')} + ${JSON.stringify(fixtureFolder)};
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 120; i++) {
+        await sleep(500);
+        const p = [...document.querySelectorAll('.pane-image')].find((x) => x.offsetParent !== null);
+        const state = p?.querySelector('.pane-state')?.textContent ?? '';
+        if (p && /NOT A READABLE/.test(p.innerText)) return { opened: false, state, text: p.innerText.slice(0, 160) };
+        if (/SLICE \\d+ OF 16/.test(state)) return { opened: true, state };
+      }
+      return { opened: false, console: document.getElementById('terminal').innerText.split('\\n').slice(-4) };`);
+    check('a study folder opens its first series', study.opened === true, JSON.stringify(study));
+  }
+  }
+
   if (stage('image-frame')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');

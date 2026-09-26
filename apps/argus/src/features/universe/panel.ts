@@ -29,6 +29,7 @@ import {
   universeSettings_parse,
   constellationsGraph_build,
   pluginTip_of,
+  pluginOfStar,
   type UniverseSettings,
 } from '../dag/universe.js';
 
@@ -50,6 +51,8 @@ export interface UniversePanelHandlers {
   /** PROCESS on a node: a catalogue bound to its data. */
   node_process?: (node: { vfsPath: string; instanceId: number; label: string }) => void;
   /** OPEN: the feed in a RUNS pane of its own. */
+  /** Opens a plugin's /bin entry, its one-node graph, in the files browser. */
+  plugin_open?: (plugin: string) => void;
   feed_open?: (feedId: number) => void;
   /** A line for the console: what the pane is waiting for, or why it refused. */
   note?: (line: string) => void;
@@ -192,6 +195,8 @@ export class UniversePanel {
   private readonly openPill: HTMLElement | null;
   private readonly pane: HTMLElement | null;
   private readonly escape_listen: (event: KeyboardEvent) => void;
+  /** The plugin whose stages are lit across the sky, or null. */
+  private lit: string | null = null;
   /** The REPLAY block, painted with the replay's state. */
   private replayPill: HTMLElement | null = null;
   /** The day the readout last showed, so it repaints once a day of history, not once a frame. */
@@ -230,8 +235,16 @@ export class UniversePanel {
       // click on one of the feed's nodes shows its facts and its verbs.
       select: (node: SceneNode): void => this.node_select(node),
       // A double click inside a feed flies into the node, as in the DAG pane.
-      activate: (node: SceneNode): void => this.node_dive(node),
-      deselect: (): void => this.facts_clear(),
+      activate: (node: SceneNode): void => {
+        // A double click on a plugin star frames the stages it ran.
+        const plugin: string | null = this.inside === null ? pluginOfStar(node.id) : null;
+        if (plugin !== null) this.plugin_frame(plugin);
+        else this.node_dive(node);
+      },
+      deselect: (): void => {
+        this.facts_clear();
+        if (this.lit !== null) this.plugin_light(null);
+      },
       replay: (): void => this.replay_paint(),
       // A phone has no Esc: pinching out past where the descent framed a
       // feed climbs out, as a double tap went in.
@@ -420,8 +433,18 @@ export class UniversePanel {
         `universe: ${this.inside !== null ? `inside feed ${this.inside.feedId}` : this.cluster !== null ? 'in a cluster' : 'the whole space'}; view ${this.view}, scale ${this.scale}, density ${this.density}`,
         `scene: ${Object.entries(scene).map(([k, v]): string => `${k}=${String(v)}`).join(' ')}`,
         `kept settings: ${kept ?? '(none)'}`,
+        `lit: ${this.lit ?? 'none'}`,
         `replay: ${(() => { const r = this.scene.replay_state(); return r === null ? 'none' : `${r.playing ? 'playing' : 'paused'} at ${new Date(r.at).toISOString().slice(0, 10)} of ${new Date(r.span[0]).toISOString().slice(0, 10)}..${new Date(r.span[1]).toISOString().slice(0, 10)}`; })()}`,
       ].join('\n');
+    }
+    if (verb === 'plugin') {
+      const name: string = args[0] ?? '';
+      if (name === '' ) return 'universe plugin <name> | off';
+      if (this.arrangement !== 'constellations' || this.inside !== null || this.cluster !== null) return 'universe plugin: the CONSTELLATIONS layout only (universe layout constellations)';
+      if (name.toLowerCase() === 'off') { this.plugin_light(null); return 'no plugin lit'; }
+      if (!this.landed.all().some((feed: LandedFeed): boolean => feed.groups.some((group): boolean => group.plugin === name))) return `universe plugin: no feed here ran ${name}`;
+      this.plugin_light(name);
+      return pluginTip_of(`plugin:${name}`, this.landed) ?? name;
     }
     if (verb === 'replay') {
       const word: string = (args[0] ?? '').toLowerCase();
@@ -737,9 +760,14 @@ export class UniversePanel {
   private paint(fit: boolean = true, settle: SettleMode = 'new'): void {
     // The top of the universe: every feed (the structure itself), or the
     // shapes folded when the operator asks for it.
-    const graph = this.view === 'shapes' ? foldedGraph_build(this.landed.all(), this.scale)
+    const built = this.view === 'shapes' ? foldedGraph_build(this.landed.all(), this.scale)
       : this.arrangement === 'constellations' ? constellationsGraph_build(this.landed.all(), this.scale)
       : universeGraph_build(this.landed.all(), this.scale);
+    // A lit plugin: its stages as drawn, every other stage faint. The stars
+    // stay lit — a faint star takes no pointer, and another plugin must
+    // stay one press away.
+    const lit: string | null = this.arrangement === 'constellations' ? this.lit : null;
+    const graph = lit === null ? built : { nodes: built.nodes.map((node: SceneNode): SceneNode => (node.attrs?.['kind'] === 'star' || node.attrs?.['plugin'] === lit ? node : { ...node, dim: true })) };
     // Hug while small, spread when a crowd: the bound that keeps a lone
     // molecule together would pack seven hundred feeds into one ball.
     // Set only when it changes: physics_set settles the old graph again.
@@ -989,6 +1017,12 @@ export class UniversePanel {
   private node_select(node: SceneNode): void {
     if (this.flying) return;
     if (this.inside === null) {
+      // A plugin star lights the stages it ran; pressed again, it goes out.
+      const plugin: string | null = pluginOfStar(node.id);
+      if (plugin !== null) {
+        this.plugin_light(this.lit === plugin ? null : plugin);
+        return;
+      }
       const match: RegExpMatchArray | null = node.id.match(/^feed:(\d+):\d+$/);
       const folded: string | null = foldShape_of(node.id);
       if (match !== null) this.descend(Number(match[1]), node.id);
@@ -1142,6 +1176,69 @@ export class UniversePanel {
     const from: string = new Date(state?.span[0] ?? 0).toISOString().slice(0, 10);
     const to: string = new Date(state?.span[1] ?? 0).toISOString().slice(0, 10);
     return `replaying ${made.size} feeds, ${from} to ${to}, at ×${speed} (universe replay pause | stop | at <date>; Esc stops)`;
+  }
+
+  /**
+   * Lights one plugin's stages across the sky — its star and every stage
+   * that ran it as drawn, the rest faint, nothing moved — and says what it
+   * is on the facts overlay; null puts it out.
+   *
+   * @param plugin - The plugin, or null.
+   */
+  private plugin_light(plugin: string | null): void {
+    this.lit = plugin;
+    if (plugin === null) this.facts_clear();
+    else this.pluginFacts_show(plugin);
+    if (this.shown && this.inside === null && this.cluster === null) this.paint(false, 'hold');
+  }
+
+  /**
+   * Frames the stages a plugin ran: the camera flown to hold their bulk.
+   *
+   * @param plugin - The plugin.
+   */
+  private plugin_frame(plugin: string): void {
+    if (this.lit !== plugin) this.plugin_light(plugin);
+    const ids: string[] = [];
+    for (const feed of this.landed.all()) {
+      feed.groups.forEach((group, index: number): void => {
+        if (group.plugin === plugin) ids.push(`feed:${feed.id}:${index}`);
+      });
+    }
+    if (ids.length === 0 || this.flying) return;
+    this.flying = true;
+    this.scene.camera_flyToFit(ids, DESCENT_MS, (): void => { this.flying = false; }, 0.9);
+  }
+
+  /** A lit plugin's facts and its verb, on the field's overlay. */
+  private pluginFacts_show(plugin: string): void {
+    if (this.facts === null) return;
+    this.facts.replaceChildren();
+    const tip: string = pluginTip_of(`plugin:${plugin}`, this.landed) ?? plugin;
+    const [, feeds = '', errored = ''] = tip.split(' · ');
+    for (const [label, value] of [['PLUGIN', plugin], ['FEEDS', feeds.replace(/ feeds?$/, '')], ['ERRORED', errored.replace(/ errored$/, '')]] as Array<[string, string]>) {
+      const row: HTMLDivElement = document.createElement('div');
+      row.className = 'telemetry-row';
+      const name: HTMLSpanElement = document.createElement('span');
+      name.className = 'telemetry-label';
+      name.textContent = label;
+      const figure: HTMLSpanElement = document.createElement('span');
+      figure.className = 'telemetry-value';
+      figure.textContent = value;
+      row.append(name, figure);
+      this.facts.append(row);
+    }
+    // The plugin's verb rides its facts: a control lives where it acts.
+    const verbs: HTMLDivElement = document.createElement('div');
+    verbs.className = 'universe-node-verbs';
+    const open: HTMLButtonElement = document.createElement('button');
+    open.className = 'pacs-capsule universe-plugin-open';
+    open.textContent = 'OPEN IN /BIN';
+    open.title = 'the plugin in the files browser: its one-node graph, its parameters';
+    open.addEventListener('click', (): void => this.handlers.plugin_open?.(plugin));
+    verbs.append(open);
+    this.facts.append(verbs);
+    this.facts.hidden = false;
   }
 
   /** Ends a replay, if one runs: the space shown whole again. */

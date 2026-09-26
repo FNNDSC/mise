@@ -320,18 +320,20 @@ export interface UniverseSettings {
   scale: 'jobs' | 'feeds';
   density: 'shape' | 'census';
   arrangement: 'galaxy' | 'spokes' | 'clumps' | 'constellations' | 'data';
+  /** Whether the space's captions are drawn: words over the picture, the operator's to turn off. */
+  captions: boolean;
 }
 
-/** What a first visit gets: stars, every feed, sized by jobs, a sphere per stage, the space a galaxy. */
-export const UNIVERSE_SETTINGS_DEFAULT: UniverseSettings = { draw: 'stars', view: 'feeds', scale: 'jobs', density: 'shape', arrangement: 'galaxy' };
+/** What a first visit gets: stars, every feed, sized by jobs, a sphere per stage, the space a galaxy, captions on. */
+export const UNIVERSE_SETTINGS_DEFAULT: UniverseSettings = { draw: 'stars', view: 'feeds', scale: 'jobs', density: 'shape', arrangement: 'galaxy', captions: true };
 
 /**
  * The record kept for the frame's choices.
  *
  * @returns The record.
  */
-export function universeSettings_of(draw: UniverseSettings['draw'], view: UniverseSettings['view'], scale: UniverseSettings['scale'], density: UniverseSettings['density'], arrangement: UniverseSettings['arrangement'] = UNIVERSE_SETTINGS_DEFAULT.arrangement): UniverseSettings {
-  return { draw, view, scale, density, arrangement };
+export function universeSettings_of(draw: UniverseSettings['draw'], view: UniverseSettings['view'], scale: UniverseSettings['scale'], density: UniverseSettings['density'], arrangement: UniverseSettings['arrangement'] = UNIVERSE_SETTINGS_DEFAULT.arrangement, captions: boolean = UNIVERSE_SETTINGS_DEFAULT.captions): UniverseSettings {
+  return { draw, view, scale, density, arrangement, captions };
 }
 
 /**
@@ -357,6 +359,7 @@ export function universeSettings_parse(text: string | null): UniverseSettings {
     scale: pick(raw['scale'], ['jobs', 'feeds'] as const, UNIVERSE_SETTINGS_DEFAULT.scale),
     density: pick(raw['density'], ['shape', 'census'] as const, UNIVERSE_SETTINGS_DEFAULT.density),
     arrangement: pick(raw['arrangement'], ['galaxy', 'spokes', 'clumps', 'constellations', 'data'] as const, UNIVERSE_SETTINGS_DEFAULT.arrangement),
+    captions: typeof raw['captions'] === 'boolean' ? raw['captions'] : UNIVERSE_SETTINGS_DEFAULT.captions,
   };
 }
 

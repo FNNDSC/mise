@@ -86,6 +86,8 @@ export interface UniversePanelMount {
   densityPill: HTMLElement | null;
   /** DRAW: every node a point of light (STARS), or a lit sphere (SPHERES). */
   drawPill?: HTMLElement | null;
+  /** CAPTIONS: the hubs' words over the picture, on or off. */
+  captionsPill?: HTMLElement | null;
   /** LAYOUT: the space's own emergent shape (GALAXY), molecules as spokes round their hub (SPOKES), or packed (CLUMPS). */
   arrangementPill?: HTMLElement | null;
   /** The facts overlay on the field: the selected node's payload and verbs. */
@@ -186,6 +188,9 @@ export class UniversePanel {
   /** How the space is drawn: stars by default, lit spheres by choice. */
   private drawMode: DrawMode = 'stars';
   private drawPill: HTMLElement | null = null;
+  private captionsPill: HTMLElement | null = null;
+  /** Whether the space's captions are drawn. */
+  private captions: boolean = true;
   /** How molecules sit round their anchor. */
   private arrangement: Arrangement = 'galaxy';
   private arrangementPill: HTMLElement | null = null;
@@ -308,6 +313,8 @@ export class UniversePanel {
     this.drawPill = mount.drawPill ?? null;
     this.scalePill = mount.scalePill;
     mount.drawPill?.addEventListener('click', (): void => { this.draw_set(this.drawMode === 'stars' ? 'spheres' : 'stars'); });
+    this.captionsPill = mount.captionsPill ?? null;
+    mount.captionsPill?.addEventListener('click', (): void => { this.handlers.note?.(this.captions_set(!this.captions)); });
     this.arrangementPill = mount.arrangementPill ?? null;
     mount.arrangementPill?.addEventListener('click', (): void => {
       const cycle: Arrangement[] = ['galaxy', 'spokes', 'clumps', 'constellations', 'data'];
@@ -439,6 +446,7 @@ export class UniversePanel {
         `scene: ${Object.entries(scene).map(([k, v]): string => `${k}=${String(v)}`).join(' ')}`,
         `kept settings: ${kept ?? '(none)'}`,
         `lit: ${this.lit ?? 'none'}`,
+        `captions: ${this.captions ? 'on' : 'off'}`,
         `replay: ${(() => { const r = this.scene.replay_state(); return r === null ? 'none' : `${r.playing ? 'playing' : 'paused'} at ${new Date(r.at).toISOString().slice(0, 10)} of ${new Date(r.span[0]).toISOString().slice(0, 10)}..${new Date(r.span[1]).toISOString().slice(0, 10)}`; })()}`,
       ].join('\n');
     }
@@ -492,6 +500,11 @@ export class UniversePanel {
       if (wanted !== 'stars' && wanted !== 'spheres') return 'universe draw stars|spheres';
       return this.draw_set(wanted);
     }
+    if (verb === 'captions') {
+      const wanted: string = (args[0] ?? '').toLowerCase();
+      if (wanted !== 'on' && wanted !== 'off') return 'universe captions on|off';
+      return this.captions_set(wanted === 'on');
+    }
     if (verb === 'density') {
       const wanted: string = (args[0] ?? '').toLowerCase();
       if (wanted !== 'shape' && wanted !== 'census') return 'universe density shape|census';
@@ -530,7 +543,7 @@ export class UniversePanel {
       this.handlers.feed_open?.(this.inside.feedId);
       return `opening feed ${this.inside.feedId}`;
     }
-    return 'universe enter <feed>|node <instance>|cluster <feed>|view feeds|shapes|density shape|census|draw stars|spheres|layout galaxy|spokes|clumps|state|physics <term> on|off|reset|back|open';
+    return 'universe enter <feed>|node <instance>|cluster <feed>|view feeds|shapes|density shape|census|draw stars|spheres|captions on|off|layout galaxy|spokes|clumps|constellations|data|plugin <name>|off|replay [speed]|pause|stop|at <date>|state|physics <term> on|off|reset|back|open';
   }
 
   /**
@@ -563,6 +576,20 @@ export class UniversePanel {
     this.scene.draw_set(mode);
     this.settings_save();
     return mode === 'stars' ? 'every sphere a point of light' : 'every sphere lit and solid';
+  }
+
+  /**
+   * Shows or hides the space's captions; nothing moves or redraws.
+   *
+   * @param on - Shown.
+   * @returns What happened, for the console.
+   */
+  private captions_set(on: boolean): string {
+    this.captions = on;
+    if (this.captionsPill !== null) this.captionsPill.textContent = on ? 'CAPTIONS ON' : 'CAPTIONS OFF';
+    this.scene.captions_set(on);
+    this.settings_save();
+    return on ? 'captions on: each hub names itself and its count' : 'captions off: a hub names itself on hover';
   }
 
   /**
@@ -602,12 +629,12 @@ export class UniversePanel {
     return this.storeKey === null ? null : this.storeKey.replace(/^argus\.universe\./, 'argus.universe.settings.');
   }
 
-  /** Keeps the frame's four choices for this identity. The physics knobs are play and are not kept. */
+  /** Keeps the frame's choices for this identity. The physics knobs are play and are not kept. */
   private settings_save(): void {
     const key: string | null = this.settingsKey_get();
     if (this.store === undefined || key === null) return;
     try {
-      this.store.setItem(key, JSON.stringify(universeSettings_of(this.drawMode, this.view, this.scale, this.density, this.arrangement)));
+      this.store.setItem(key, JSON.stringify(universeSettings_of(this.drawMode, this.view, this.scale, this.density, this.arrangement, this.captions)));
     } catch {
       // A full or refused store forgets; the choices still hold for now.
     }
@@ -642,6 +669,9 @@ export class UniversePanel {
     if (this.densityPill !== null) this.densityPill.textContent = kept.density.toUpperCase();
     this.scene.draw_set(kept.draw);
     this.scene.census_set(kept.density === 'census');
+    this.captions = kept.captions;
+    if (this.captionsPill !== null) this.captionsPill.textContent = kept.captions ? 'CAPTIONS ON' : 'CAPTIONS OFF';
+    this.scene.captions_set(kept.captions);
     return reshaped;
   }
 

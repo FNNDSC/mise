@@ -88,4 +88,23 @@ describe('LabelField', () => {
     }
     expect(calls).toEqual(['path', 'plate', 'fill rgba(0, 0, 0, 0.7)', 'text #ffffff']);
   });
+
+  it('hides every caption when captions are off, and shows them again', () => {
+    const parent = new THREE.Group();
+    const labels = new LabelField(parent);
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
+    camera.position.set(0, 0, 100);
+    camera.updateMatrixWorld();
+    labels.caption_add('a', 'DICOM · 3', new THREE.Vector3(), 0, new THREE.Color(), false, 3);
+    parent.updateMatrixWorld();
+    labels.shown_set(false);
+    expect(labels.declutter(camera)).toBe(0);
+    expect((parent.children[0] as THREE.Sprite).visible).toBe(false);
+    expect(labels.shown_get()).toBe(false);
+    labels.caption_add('b', 'MR · 2', new THREE.Vector3(50, 50, 0), 0, new THREE.Color(), false, 2);
+    expect((parent.children[1] as THREE.Sprite).visible).toBe(false);
+    labels.shown_set(true);
+    expect(labels.declutter(camera)).toBe(2);
+    expect((parent.children[0] as THREE.Sprite).visible).toBe(true);
+  });
 });

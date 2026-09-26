@@ -758,6 +758,15 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     this.rebuild(false, 'hold');
   }
 
+  /**
+   * Shows or hides the nodes' captions; nothing is redrawn.
+   *
+   * @param on - Shown.
+   */
+  public captions_set(on: boolean): void {
+    this.labels.shown_set(on);
+  }
+
   /** @returns How nodes are drawn. */
   public draw_get(): DrawMode {
     return this.drawMode;
@@ -776,6 +785,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     return {
       draw: this.drawMode,
       arrangement: this.arrangement,
+      captions: this.labels.shown_get() ? this.labels.count() : 'off',
       census: this.census,
       nodes: this.graph.nodes.length,
       meshes: this.meshes.size,

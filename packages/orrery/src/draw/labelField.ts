@@ -49,6 +49,8 @@ interface ScreenBox {
 /** The captions of one scene. */
 export class LabelField {
   private captions: Map<string, Caption> = new Map();
+  /** Whether captions are shown at all: the operator may want the picture bare. */
+  private shown: boolean = true;
 
   /**
    * @param parent - Where the captions are drawn.
@@ -103,6 +105,8 @@ export class LabelField {
     sprite.position.set(position.x, position.y + radius, position.z);
     // Over the stars and the nebulae: words are read, not glowed through.
     sprite.renderOrder = 4;
+    // Drawn while captions are off, it stays hidden until they are on.
+    sprite.visible = this.shown;
     this.parent.add(sprite);
     this.captions.get(id)?.texture.dispose();
     this.captions.set(id, { sprite, texture, rank });
@@ -116,6 +120,7 @@ export class LabelField {
    * @returns How many captions are shown.
    */
   public declutter(camera: THREE.PerspectiveCamera): number {
+    if (!this.shown) return 0;
     const ordered: Caption[] = [...this.captions.values()].sort((a: Caption, b: Caption): number => b.rank - a.rank);
     const kept: ScreenBox[] = [];
     const at: THREE.Vector3 = new THREE.Vector3();
@@ -135,6 +140,21 @@ export class LabelField {
       if (!meets) kept.push(box);
     }
     return kept.length;
+  }
+
+  /**
+   * Shows or hides every caption; each keeps its place and words.
+   *
+   * @param on - Shown.
+   */
+  public shown_set(on: boolean): void {
+    this.shown = on;
+    if (!on) for (const caption of this.captions.values()) caption.sprite.visible = false;
+  }
+
+  /** @returns Whether captions are shown. */
+  public shown_get(): boolean {
+    return this.shown;
   }
 
   /** Forgets every caption: the scene is being redrawn (its parent already cleared). */

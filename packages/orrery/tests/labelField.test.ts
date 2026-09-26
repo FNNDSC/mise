@@ -68,4 +68,24 @@ describe('LabelField', () => {
     parent.updateMatrixWorld();
     expect(labels.declutter(camera)).toBe(0);
   });
+
+  it('draws a dark plate behind the words, so they read over a bright cloud', () => {
+    const calls: string[] = [];
+    const context = {
+      font: '', textBaseline: '', fillStyle: '',
+      measureText: () => ({ width: 100 }),
+      beginPath: () => calls.push('path'),
+      roundRect: () => calls.push('plate'),
+      fill: () => calls.push(`fill ${context.fillStyle}`),
+      fillText: () => calls.push(`text ${context.fillStyle}`),
+    };
+    const saved = (globalThis as { document?: unknown }).document;
+    (globalThis as { document?: unknown }).document = { createElement: () => ({ width: 0, height: 0, getContext: () => context }) };
+    try {
+      new LabelField(new THREE.Group()).caption_add('hub', 'NIfTI · 435', new THREE.Vector3(), 1, new THREE.Color(1, 1, 1), false);
+    } finally {
+      (globalThis as { document?: unknown }).document = saved;
+    }
+    expect(calls).toEqual(['path', 'plate', 'fill rgba(0, 0, 0, 0.7)', 'text #ffffff']);
+  });
 });

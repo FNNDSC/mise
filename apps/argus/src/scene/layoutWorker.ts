@@ -8,14 +8,15 @@
  *
  * @module
  */
-import { layoutEngine_get, type HierarchyArrangement, type HierarchyNode, type LayoutEngine, type PhysicsTerms } from '@fnndsc/orrery/layout';
+import { layoutEngine_get, type LayoutEngine, type LayoutNode, type PhysicsTerms } from '@fnndsc/orrery/layout';
 
 /** What the page asks: a generation, the nodes, the physics, the engine. */
 interface LayoutAsk {
   generation: number;
-  nodes: HierarchyNode[];
+  nodes: LayoutNode[];
   physics: PhysicsTerms;
-  arrangement: HierarchyArrangement;
+  /** The engine's registered name. */
+  arrangement: string;
 }
 
 self.onmessage = (event: MessageEvent<LayoutAsk>): void => {

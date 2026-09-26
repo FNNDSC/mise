@@ -99,4 +99,15 @@ describe('StarField', () => {
     expect([...colors.slice(0, 6)]).toEqual([1, 1, 1, 1, 1, 1]);
     expect([...colors.slice(6, 12)]).toEqual([0, 0, 0, 0, 0, 0]);
   });
+
+  it('draws a ringed star in a layer of its own, over the glow and the embers', () => {
+    const parent = new THREE.Group();
+    const field = new StarField(parent);
+    field.draw([star('a', false), star('b', true), { ...star('p', false), ring: true }], 1, 800, 50);
+    expect(parent.children.length).toBe(3);
+    expect(field.entry('p')?.layer).toBe(2);
+    const ring = parent.children[2] as THREE.Points;
+    expect(ring.renderOrder).toBe(3);
+    expect((ring.material as THREE.ShaderMaterial).fragmentShader).toContain('ring');
+  });
 });

@@ -84,10 +84,11 @@ export class StarField {
       this.stars.push(entry);
     }
     this.starsById = null;
-    for (const ember of [false, true]) {
-      const layer: StarEntry[] = entries.filter((entry: StarEntry): boolean => entry.ember === ember);
+    // The glow, the embers over it, and rings (stars of another kind) over both.
+    for (const [ember, ring] of [[false, false], [true, false], [false, true]] as const) {
+      const layer: StarEntry[] = entries.filter((entry: StarEntry): boolean => (entry.ring === true) === ring && (ring || entry.ember === ember));
       if (layer.length === 0) continue;
-      const drawn: StarLayer = starLayer_make(layer, ember, this.layers.length, pixelRatio);
+      const drawn: StarLayer = starLayer_make(layer, ember, this.layers.length, pixelRatio, ring);
       this.layers.push({ alpha: drawn.alpha, base: drawn.base, flash: drawn.flash });
       this.parent.add(drawn.points);
       this.materials.push(drawn.material);

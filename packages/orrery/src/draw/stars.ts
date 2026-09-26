@@ -53,6 +53,23 @@ void main() {
   gl_FragColor = vec4(c * a, a);
 }`;
 
+/**
+ * The ring: a star of another kind — a thin bright circle round a small
+ * core, so a plugin reads apart from the feeds around it.
+ */
+export const STAR_FRAGMENT_RING: string = `
+varying vec3 vTint;
+varying float vAlpha;
+varying float vFlash;
+void main() {
+  float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
+  if (d > 1.0) discard;
+  float ring = smoothstep(0.62, 0.72, d) * smoothstep(0.92, 0.82, d);
+  float core = smoothstep(0.28, 0.0, d);
+  float a = clamp(ring + core, 0.0, 1.0) * vAlpha;
+  gl_FragColor = vec4(mix(vTint, vec3(1.0), 0.35 + vFlash * 0.4), a);
+}`;
+
 /** The ember: an errored star drawn solid over the glow, so red stays red. */
 export const STAR_FRAGMENT_EMBER: string = `
 varying vec3 vTint;
@@ -73,6 +90,8 @@ export interface StarEntry {
   color: THREE.Color;
   dim: boolean;
   ember: boolean;
+  /** Drawn as a ring: a star of another kind. */
+  ring?: boolean;
   /** Which layer draws it (0 glow, 1 ember) and its slot there, once drawn. */
   layer?: number;
   slot?: number;
@@ -98,7 +117,7 @@ export interface StarLayer {
  * @param pixelRatio - The display's pixel ratio, for the size floor and cap.
  * @returns The layer, not yet added to anything.
  */
-export function starLayer_make(entries: ReadonlyArray<StarEntry>, ember: boolean, layerIndex: number, pixelRatio: number): StarLayer {
+export function starLayer_make(entries: ReadonlyArray<StarEntry>, ember: boolean, layerIndex: number, pixelRatio: number, ring: boolean = false): StarLayer {
   const positions: Float32Array = new Float32Array(entries.length * 3);
   const tints: Float32Array = new Float32Array(entries.length * 3);
   const radii: Float32Array = new Float32Array(entries.length);
@@ -122,14 +141,14 @@ export function starLayer_make(entries: ReadonlyArray<StarEntry>, ember: boolean
   const material: THREE.ShaderMaterial = new THREE.ShaderMaterial({
     uniforms: { scale: { value: 1 }, floorPx: { value: STAR_FLOOR_PX * pixelRatio }, capPx: { value: STAR_CAP_PX * pixelRatio } },
     vertexShader: STAR_VERTEX,
-    fragmentShader: ember ? STAR_FRAGMENT_EMBER : STAR_FRAGMENT_GLOW,
+    fragmentShader: ring ? STAR_FRAGMENT_RING : ember ? STAR_FRAGMENT_EMBER : STAR_FRAGMENT_GLOW,
     transparent: true,
     depthWrite: false,
-    blending: ember ? THREE.NormalBlending : THREE.AdditiveBlending,
+    blending: ember || ring ? THREE.NormalBlending : THREE.AdditiveBlending,
   });
   const points: THREE.Points = new THREE.Points(geometry, material);
   // Embers over the glow: drawn after it, whatever the sort says.
-  points.renderOrder = ember ? 2 : 1;
+  points.renderOrder = ring ? 3 : ember ? 2 : 1;
   points.frustumCulled = false;
   return { points, material, alpha, base: Float32Array.from(alphas), flash };
 }

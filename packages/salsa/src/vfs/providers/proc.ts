@@ -50,6 +50,7 @@ import { type ProcRosterSyncKind,
 import { VFSProvider, VFSItem, CpOptions } from '../provider.js';
 import { job_cancel, job_delete, job_statusFetch, job_logFetch, jobs_statusBatch } from '../../jobs/index.js';
 import { procJoins_sweep } from '../../dag/feedJoins.js';
+import { dataFactsIO_of, procDataFacts_feed, procDataFacts_sweep, type DataFactsIO } from '../../dag/feedData.js';
 import { pipelinePackages_sweep } from '../../pipelines/packages.js';
 
 /** Fetches one page of a paginated feed collection through the wire contract. */
@@ -310,6 +311,8 @@ async function feedInstances_load(feedID: number): Promise<void> {
     for (const inst of instances.values()) cache.instance_add(procInstance_fromRow(inst));
     cache.topologyLoaded_mark(feedID);
     cache.feedLoad_clear(feedID);
+    // What the feed's data is: read once, now its root is known.
+    void procDataFacts_feed(feedID, dataFactsIO_get());
   } catch (error: unknown) {
     // A walk that stops names where it stopped and stays annunciated for a
     // minute; the next visit starts again from the beginning.
@@ -1289,6 +1292,26 @@ function procTopology_start(state: ProcTopologySweepState): Promise<void> {
   return sweep;
 }
 
+/** The data-facts reader, with this provider's output paths. */
+function dataFactsIO_get(): DataFactsIO {
+  return dataFactsIO_of(instanceOutputPath_ensure);
+}
+
+/**
+ * Reads the data facts of every feed that has none yet (see
+ * `dag/feedData.ts`): the index's tail after a sweep, and the one a daemon
+ * that restored its checkpoint starts itself, since no sweep runs then.
+ *
+ * @returns How many feeds were read; zero when a sweep is already under way.
+ */
+export async function procDataFacts_start(): Promise<number> {
+  try {
+    return await procDataFacts_sweep(dataFactsIO_get());
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * Kicks the quiet settlement tails once the topology index is complete:
  * every unresolved `ts` join resolves in the background (so first diagrams
@@ -1298,6 +1321,7 @@ function procTopology_start(state: ProcTopologySweepState): Promise<void> {
  */
 function procSettlementTails_run(): void {
   void procJoins_sweep().catch((): void => { /* lazy resolution remains */ });
+  void procDataFacts_start();
   void pipelinePackages_sweep().catch((): void => { /* lazy fetch remains */ });
 }
 

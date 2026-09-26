@@ -55,6 +55,7 @@ import {
   procTopology_warmup,
   vfsDispatcher,
   type ProcTopologyStatus,
+  procDataFacts_start,
 } from '@fnndsc/salsa';
 import { BOOT_TAG_WIDTH, type BootStatus } from '../lib/bootsequence.js';
 
@@ -594,6 +595,10 @@ export async function startupWarmup_run(
             if (changed.length > 0) {
               reporter?.log('ok', 'Roster', `${count_noun(changed.length, 'feed')} moved while away; each refreshes on its next visit`);
             }
+            // No sweep runs after a restore, so its tails do not either:
+            // what each feed's data is gets read here, quietly, for any feed
+            // the checkpoint does not yet know it for.
+            void procDataFacts_start();
           });
         } else {
           topologySweep = procTopology_warmup();

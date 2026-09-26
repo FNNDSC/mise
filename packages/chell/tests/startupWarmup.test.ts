@@ -22,6 +22,8 @@ const mockVfsRead = jest.fn();
 const mockCheckpointRestore = jest.fn(async () => ({ restored: false, count: 0 }));
 const mockRosterBootSync = jest.fn(async (): Promise<number[]> => []);
 const mockRosterSync = jest.fn(async (): Promise<number[]> => []);
+/** Reads what each feed's data is, after a restore. */
+const mockDataFactsStart = jest.fn(async (): Promise<number> => 0);
 const mockWarmupComplete = jest.fn();
 const mockCheckpointWatch = jest.fn();
 const mockCacheClear = jest.fn();
@@ -82,6 +84,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   procTopology_status: jest.fn(() => ({ state: 'complete', failure: undefined })),
   procTopology_reconcileFeeds: mockTopologyReconcileFeeds,
   procTopology_warmup: mockTopologyWarmup,
+  procDataFacts_start: mockDataFactsStart,
 }));
 /** Age of the oldest restored folder listing, in milliseconds. */
 let mockOldestAge: number | null = null;
@@ -266,6 +269,8 @@ describe('daemonSession_run', () => {
     expect(mockTopologyWarmup).not.toHaveBeenCalled();
     expect(mockTopologyReconcileFeeds).not.toHaveBeenCalled();
     expect(report).toHaveBeenCalledWith('ok', 'Roster', '2 feeds moved while away; each refreshes on its next visit');
+    // No sweep runs after a restore, so the data facts are read here.
+    expect(mockDataFactsStart).toHaveBeenCalled();
   });
 
   it('reports a background topology failure after publishing engine readiness', async () => {

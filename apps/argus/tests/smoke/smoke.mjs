@@ -323,6 +323,50 @@ try {
       `${universe.densityCensus} | ${universe.censusTitle} | ${universe.densityShape}`);
   }
 
+  if (stage('universe-replay')) {
+    // REPLAY plays the space's history: every feed hidden until the day it
+    // was made, then shown where it stands now, the day on the bar. A word
+    // starts it, pauses it, moves it to a date; the block names its state;
+    // Esc ends it and the space is whole again.
+    const replay = await evalIn(`
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      const say = async (line, ms) => { await console_idle(); input.value = line;
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      document.getElementById('gutter-dashboard')?.click();
+      for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.launcher-tile')) break; }
+      [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
+      const pane = () => [...document.querySelectorAll('.pane-universe')].find((p) => p.offsetParent !== null);
+      for (let i = 0; i < 480; i++) { await sleep(500); const p = pane(); const w = p?.querySelector('.wait-progress'); if (/[1-9]\\d* FEEDS/.test(p?.querySelector('.universe-title')?.textContent ?? '') && !(w && !w.hidden)) break; }
+      const readout = () => pane()?.querySelector('.pane-state')?.textContent.trim() ?? '';
+      const block = () => pane()?.querySelector('.universe-replay')?.textContent.trim() ?? '';
+      const lastLine = (re) => document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
+      const atRest = { readout: readout(), block: block() };
+      await say('universe replay 6', 400);
+      const started = lastLine(/^replaying|^universe replay/);
+      const days = [];
+      for (let i = 0; i < 60; i++) { await sleep(250); const r = readout(); if (days[days.length - 1] !== r) days.push(r); if (block() === 'REPLAYED') break; }
+      const ended = { readout: readout(), block: block() };
+      await say('universe state', 600);
+      const stated = lastLine(/^replay: /);
+      await say('universe replay at 2025-06-01', 600);
+      const moved = { readout: readout(), block: block(), said: lastLine(/^replay at|^universe replay/) };
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(800);
+      const stopped = { readout: readout(), block: block() };
+      return { atRest, started, days: days.slice(0, 12), dayCount: days.length, ended, stated, moved, stopped };`);
+    const dated = (text) => /^(REPLAY|PAUSED) \d{4}-\d\d-\d\d$/.test(text);
+    check('REPLAY rests on the frame, the bar saying the space as it is',
+      replay.atRest.block === 'REPLAY' && /WHOLE|LANDING/.test(replay.atRest.readout), JSON.stringify(replay.atRest));
+    check('universe replay plays the history: the bar walks the days and the block says PLAYING, then REPLAYED',
+      /^replaying \d+ feeds, \d{4}-\d\d-\d\d to \d{4}-\d\d-\d\d/.test(replay.started) && replay.days.filter(dated).length >= 3 && replay.ended.block === 'REPLAYED',
+      JSON.stringify({ started: replay.started, days: replay.days, ended: replay.ended }));
+    check('universe state says where the replay stands', /^replay: paused at \d{4}-\d\d-\d\d of \d{4}-\d\d-\d\d\.\.\d{4}-\d\d-\d\d$/.test(replay.stated), JSON.stringify(replay.stated));
+    check('universe replay at <date> moves the history there and holds it',
+      replay.moved.block === 'PAUSED' && /^PAUSED \d{4}-\d\d-\d\d$/.test(replay.moved.readout), JSON.stringify(replay.moved));
+    check('Esc ends the replay and the space is whole again',
+      replay.stopped.block === 'REPLAY' && /WHOLE|LANDING/.test(replay.stopped.readout), JSON.stringify(replay.stopped));
+  }
+
   if (stage('drawer-everywhere (files, runs, pacs)')) {
   for (const preset of ['gutter-files', 'gutter-runs', 'gutter-tools']) {
     const result = await evalIn(`

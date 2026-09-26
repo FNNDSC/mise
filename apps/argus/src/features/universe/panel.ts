@@ -65,6 +65,8 @@ export interface UniversePanelMount {
   empty: HTMLElement;
   projectionPill: HTMLElement | null;
   refreshPill: HTMLElement | null;
+  /** REPLAY: the space's history played back in the order its feeds were made. */
+  replayPill?: HTMLElement | null;
   scalePill: HTMLElement | null;
   /** VIEW: every feed its own molecule, or the shapes folded. */
   viewPill: HTMLElement | null;
@@ -184,6 +186,10 @@ export class UniversePanel {
   private readonly openPill: HTMLElement | null;
   private readonly pane: HTMLElement | null;
   private readonly escape_listen: (event: KeyboardEvent) => void;
+  /** The REPLAY block, painted with the replay's state. */
+  private replayPill: HTMLElement | null = null;
+  /** The day the readout last showed, so it repaints once a day of history, not once a frame. */
+  private replayDay: string = '';
   /** The reach the scene was last given; undefined until the first paint. */
   private reach: number | undefined | null = null;
 
@@ -220,6 +226,7 @@ export class UniversePanel {
       // A double click inside a feed flies into the node, as in the DAG pane.
       activate: (node: SceneNode): void => this.node_dive(node),
       deselect: (): void => this.facts_clear(),
+      replay: (): void => this.replay_paint(),
       // A phone has no Esc: pinching out past where the descent framed a
       // feed climbs out, as a double tap went in.
       gesture_end: (): void => this.pinch_leave(),
@@ -231,6 +238,11 @@ export class UniversePanel {
     // Esc climbs out, one press, one level — the same key that leaves a
     // node overlay in the DAG pane.
     this.escape_listen = (event: KeyboardEvent): void => {
+      // A replay is a level of its own: Esc ends it, the space shown whole.
+      if (event.key === 'Escape' && this.scene.replay_state() !== null && (this.pane === null || this.pane.offsetParent !== null)) {
+        this.replay_end();
+        return;
+      }
       // Inside a node (the overlay up) Esc is the overlay's: it flies back out.
       if (event.key !== 'Escape' || (this.inside === null && this.cluster === null) || this.flying || this.scene.holding_get()) return;
       if (this.pane !== null && this.pane.offsetParent === null) return;
@@ -248,6 +260,14 @@ export class UniversePanel {
       if (mount.projectionPill !== null) mount.projectionPill.textContent = next.toUpperCase();
     });
     mount.refreshPill?.addEventListener('click', (): void => this.request());
+    this.replayPill = mount.replayPill ?? null;
+    mount.replayPill?.addEventListener('click', (): void => {
+      const state = this.scene.replay_state();
+      if (state === null) this.handlers.note?.(this.replay_start(1));
+      else if (state.playing) this.scene.replay_pause();
+      else this.scene.replay_play();
+      this.replay_paint();
+    });
     mount.scalePill?.addEventListener('click', (): void => {
       this.scale = this.scale === 'jobs' ? 'feeds' : 'jobs';
       if (mount.scalePill !== null) mount.scalePill.textContent = this.scale === 'jobs' ? 'JOBS' : 'ALIKE';
@@ -393,7 +413,39 @@ export class UniversePanel {
         `universe: ${this.inside !== null ? `inside feed ${this.inside.feedId}` : this.cluster !== null ? 'in a cluster' : 'the whole space'}; view ${this.view}, scale ${this.scale}, density ${this.density}`,
         `scene: ${Object.entries(scene).map(([k, v]): string => `${k}=${String(v)}`).join(' ')}`,
         `kept settings: ${kept ?? '(none)'}`,
+        `replay: ${(() => { const r = this.scene.replay_state(); return r === null ? 'none' : `${r.playing ? 'playing' : 'paused'} at ${new Date(r.at).toISOString().slice(0, 10)} of ${new Date(r.span[0]).toISOString().slice(0, 10)}..${new Date(r.span[1]).toISOString().slice(0, 10)}`; })()}`,
       ].join('\n');
+    }
+    if (verb === 'replay') {
+      const word: string = (args[0] ?? '').toLowerCase();
+      if (word === 'stop') {
+        if (this.scene.replay_state() === null) return 'universe replay: none is running';
+        this.replay_end();
+        return 'replay stopped; the space is whole';
+      }
+      if (word === 'pause') {
+        if (this.scene.replay_state() === null) return 'universe replay: none is running';
+        this.scene.replay_pause();
+        this.replay_paint();
+        return 'replay paused';
+      }
+      if (word === 'at') {
+        if (this.scene.replay_state() === null) return 'universe replay: none is running (universe replay first)';
+        const at: number = Date.parse(args[1] ?? '');
+        if (!Number.isFinite(at)) return 'universe replay at <YYYY-MM-DD>';
+        this.scene.replay_pause();
+        this.scene.replay_seek(at);
+        this.replay_paint();
+        return `replay at ${new Date(this.scene.replay_state()?.at ?? at).toISOString().slice(0, 10)}`;
+      }
+      const speed: number = word === '' ? 1 : Number(word);
+      if (!Number.isFinite(speed) || speed <= 0) return 'universe replay [speed] | pause | stop | at <YYYY-MM-DD>';
+      if (this.scene.replay_state() !== null) {
+        this.scene.replay_play(speed);
+        this.replay_paint();
+        return `replaying at ×${speed}`;
+      }
+      return this.replay_start(speed);
     }
     if (verb === 'layout') {
       const wanted: string = (args[0] ?? '').toLowerCase();
@@ -470,6 +522,7 @@ export class UniversePanel {
    * @returns What happened, for the console.
    */
   private draw_set(mode: DrawMode): string {
+    this.replay_end();
     this.drawMode = mode;
     if (this.drawPill !== null) this.drawPill.textContent = mode.toUpperCase();
     this.scene.draw_set(mode);
@@ -485,6 +538,7 @@ export class UniversePanel {
    * @returns What happened, for the console.
    */
   private arrangement_set(arrangement: 'galaxy' | 'spokes' | 'clumps'): string {
+    this.replay_end();
     this.arrangement = arrangement;
     if (this.arrangementPill !== null) this.arrangementPill.textContent = arrangement.toUpperCase();
     this.remember_now();
@@ -553,6 +607,7 @@ export class UniversePanel {
    * @returns What happened, for the console.
    */
   private density_set(density: 'shape' | 'census'): string {
+    this.replay_end();
     this.density = density;
     if (this.densityPill !== null) this.densityPill.textContent = density.toUpperCase();
     this.scene.census_set(density === 'census');
@@ -577,6 +632,7 @@ export class UniversePanel {
 
   /** Switches the top of the universe between every feed and the folded shapes. */
   private view_set(view: 'feeds' | 'shapes'): void {
+    this.replay_end();
     this.view = view;
     if (this.viewPill !== null) this.viewPill.textContent = view.toUpperCase();
     if (this.shown && this.inside === null && this.cluster === null) this.paint(true, 'full');
@@ -683,6 +739,8 @@ export class UniversePanel {
    * @param feedId - The feed.
    */
   private descend(feedId: number, clicked?: string): void {
+    // A feed is entered from the space as it stands, not a moment of its history.
+    this.replay_end();
     const feed: LandedFeed | undefined = this.landed.get(feedId);
     const ask = this.handlers.feed_dag;
     if (feed === undefined || ask === undefined || this.flying || this.inside !== null) return;
@@ -797,6 +855,7 @@ export class UniversePanel {
    * @param shape - The shape.
    */
   private cluster_enter(shape: string): void {
+    this.replay_end();
     if (this.flying || this.inside !== null) return;
     this.cluster_show(shape);
   }
@@ -1022,6 +1081,73 @@ export class UniversePanel {
       this.state.classList.add(this.whole ? 'state-settled' : 'state-wait');
       this.state.textContent = this.whole ? 'WHOLE' : 'LANDING';
     }
+    if (this.scene.replay_state() !== null) this.replay_paint();
+  }
+
+  /**
+   * Starts a replay: every feed hidden until the day it was made, then
+   * shown with a flash where it stands now, the camera untouched. Only the
+   * whole space, feed by feed, as stars: a replay of a folded shape or a
+   * census would reveal something no feed was.
+   *
+   * @param speed - 1 crosses the whole history in thirty seconds.
+   * @returns What happened, in words.
+   */
+  private replay_start(speed: number): string {
+    if (this.inside !== null || this.cluster !== null) return 'universe replay: climb out first (universe back)';
+    if (this.view !== 'feeds') return 'universe replay: the FEEDS view only (universe view feeds)';
+    if (this.density !== 'shape') return 'universe replay: SHAPE density only (universe density shape)';
+    if (this.drawMode !== 'stars') return 'universe replay: it draws stars (universe draw stars)';
+    const made: Map<number, number> = new Map();
+    for (const feed of this.landed.all()) {
+      const at: number = Date.parse(feed.createdAt ?? '');
+      if (Number.isFinite(at)) made.set(feed.id, at);
+    }
+    if (made.size === 0) return 'universe replay: the session does not say when its feeds were made (a daemon from before the replay: restart it)';
+    const arrivals: Map<string, number> = new Map();
+    for (const id of Object.keys(this.scene.positions_get())) {
+      const feed: RegExpMatchArray | null = id.match(/^feed:(\d+):/);
+      const at: number | undefined = feed === null ? undefined : made.get(Number(feed[1]));
+      if (at !== undefined) arrivals.set(id, at);
+    }
+    this.facts_clear();
+    this.replayDay = '';
+    this.scene.replay_begin(arrivals, speed);
+    this.replay_paint();
+    const state = this.scene.replay_state();
+    const from: string = new Date(state?.span[0] ?? 0).toISOString().slice(0, 10);
+    const to: string = new Date(state?.span[1] ?? 0).toISOString().slice(0, 10);
+    return `replaying ${made.size} feeds, ${from} to ${to}, at ×${speed} (universe replay pause | stop | at <date>; Esc stops)`;
+  }
+
+  /** Ends a replay, if one runs: the space shown whole again. */
+  private replay_end(): void {
+    if (this.scene.replay_state() === null) return;
+    this.scene.replay_stop();
+    this.replayDay = '';
+    this.title_paint();
+    this.replay_paint();
+  }
+
+  /**
+   * Paints the replay on the frame and the bar: the block names its state
+   * (REPLAY at rest, PLAYING, PAUSED, REPLAYED at the end) and the bar's
+   * readout the day the history has reached, repainted once a day.
+   */
+  private replay_paint(): void {
+    const state = this.scene.replay_state();
+    if (this.replayPill !== null) {
+      const done: boolean = state !== null && !state.playing && state.at >= state.span[1];
+      this.replayPill.textContent = state === null ? 'REPLAY' : state.playing ? 'PLAYING' : done ? 'REPLAYED' : 'PAUSED';
+      this.replayPill.classList.toggle('rail-off', state === null);
+    }
+    if (state === null || this.state === null) return;
+    const day: string = `${state.playing ? 'REPLAY' : 'PAUSED'} ${new Date(state.at).toISOString().slice(0, 10)}`;
+    if (day === this.replayDay) return;
+    this.replayDay = day;
+    this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
+    this.state.classList.add('state-live');
+    this.state.textContent = day;
   }
 
   /** Learns whose universe this is, once, and seeds it if a space is already up. */

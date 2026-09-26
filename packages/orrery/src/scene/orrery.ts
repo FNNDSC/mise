@@ -55,6 +55,8 @@ import {
 import {
   CameraRig,
   PointerGestures,
+  ReplayClock,
+  type ReplayFrame,
   Picker,
   DRAG_THRESHOLD_PX,
   type PickStar,
@@ -137,6 +139,11 @@ export interface OrreryHandlers<N extends SpaceNode = SpaceNode> {
    * handler, and a node stays a star.
    */
   handoffKey?: (node: N) => string | null;
+  /**
+   * A replay moved: its moment (in the arrivals' units) and whether it
+   * still plays; called each frame it advances and once when it stops.
+   */
+  replay?: (at: number, playing: boolean) => void;
 }
 
 /** The terms a settle honours: orrery's own, re-exported for the panes. */
@@ -336,6 +343,8 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
   private readonly container: HTMLElement;
   private readonly handlers: OrreryHandlers<N>;
   private readonly paletteOf: () => Palette;
+  /** The replay under way, or null: its clock, the arrivals, and what is shown. */
+  private replay: { clock: ReplayClock; arrivals: ReadonlyMap<string, number>; shown: Set<string> } | null = null;
   private readonly layoutWorkerOf: (() => Worker) | undefined;
   private readonly ambient: boolean;
   private readonly renderer: THREE.WebGLRenderer;
@@ -563,6 +572,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
       }
       this.starField.scale_update(this.renderer.domElement.height, this.camera.fov);
       this.handoff_step();
+      this.replay_step();
       this.tubes.frame(performance.now());
       this.renderer.render(this.scene, this.camera);
       this.frameHandle = window.requestAnimationFrame(animate);
@@ -1255,7 +1265,8 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     // nebula; they are drawn in batches after this loop.
     const starring: boolean = this.drawMode === 'stars';
     const starred: StarEntry[] = [];
-    const handoffKey = starring ? this.handlers.handoffKey : undefined;
+    // A replay shows every node as a star: nothing turns solid under it.
+    const handoffKey = starring && this.replay === null ? this.handlers.handoffKey : undefined;
     for (const { node, position, radius } of placed) {
       if (node.ghost === true && node.halo !== true) continue;
       if (starring && node.solid !== true) {
@@ -1301,10 +1312,12 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     const threads: number[] = [];
     const threadColors: number[] = [];
     const solid = (item: PlacedNode): boolean => !starring || item.node.solid === true;
-    const thread_add = (from: THREE.Vector3, to: THREE.Vector3, color: THREE.Color, dim: boolean, owner: SpaceNode): void => {
+    const threadEnds: string[] = [];
+    const thread_add = (from: THREE.Vector3, to: THREE.Vector3, color: THREE.Color, dim: boolean, owner: SpaceNode, fromId: string): void => {
       const k: number = dim ? 0.35 : 1;
       const segment: number = threads.length / 6;
       threads.push(from.x, from.y, from.z, to.x, to.y, to.z);
+      threadEnds.push(fromId, owner.id);
       threadColors.push(color.r * k, color.g * k, color.b * k, color.r * k, color.g * k, color.b * k);
       // A placed node is one of the graph's own: the surface's node, typed wide.
       const key: string | null = dim || handoffKey === undefined ? null : handoffKey(owner as N);
@@ -1318,14 +1331,14 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
         if (!parent || parent.node.ghost === true) continue;
         const dim: boolean = node.dim === true || parent.node.dim === true;
         if (solid(item) && solid(parent)) { if (!starring && dim) this.spheres.edge_add(parentId, node.id, parent.position, position, palette.edge, false, dim); }
-        else thread_add(parent.position, position, palette.edge, dim, node);
+        else thread_add(parent.position, position, palette.edge, dim, node, parentId);
       }
       for (const joinId of node.joinParentIds) {
         const parent: PlacedNode | undefined = byId.get(joinId);
         if (!parent) continue;
         const dim: boolean = node.dim === true || parent.node.dim === true;
         if (solid(item) && solid(parent)) { if (!starring && dim) this.spheres.edge_add(joinId, node.id, parent.position, position, palette.join, true, dim); }
-        else thread_add(parent.position, position, palette.join, dim, node);
+        else thread_add(parent.position, position, palette.join, dim, node, joinId);
       }
     }
     // Solid spheres are joined by tubes: under stars, the nodes marked solid
@@ -1341,10 +1354,109 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
         this.tubes.build(entered, solidIds, new Set(solidIds));
       }
     }
-    this.starField.threads_draw(threads, threadColors);
+    this.starField.threads_draw(threads, threadColors, threadEnds);
+    // A redraw during a replay keeps what has not arrived hidden.
+    if (this.replay !== null) this.replay_paintAll();
 
   }
 
+
+  /**
+   * Plays the space's history: every node with an arrival hidden until it
+   * arrives, then shown with a flash, at its final place, the camera
+   * untouched. Nodes without one stand throughout. Nothing turns solid
+   * while it plays; stars only.
+   *
+   * @param arrivals - When each node arrived (epoch ms for dates).
+   * @param speed - 1 crosses the whole history in {@link REPLAY_WALL_MS}.
+   */
+  public replay_begin(arrivals: ReadonlyMap<string, number>, speed: number = 1): void {
+    const clock: ReplayClock = new ReplayClock(arrivals);
+    this.replay = { clock, arrivals, shown: new Set() };
+    // Redrawn with the hand-off off: a solid feed would stand before it arrived.
+    this.rebuild(false, 'hold');
+    this.replay_paintAll();
+    clock.play(speed);
+  }
+
+  /**
+   * Plays on (or again from the start, at the end).
+   *
+   * @param speed - A new speed, or the one it had.
+   */
+  public replay_play(speed?: number): void {
+    this.replay?.clock.play(speed);
+  }
+
+  /** Holds the replay where it is. */
+  public replay_pause(): void {
+    this.replay?.clock.pause();
+  }
+
+  /**
+   * Moves the replay to a moment: what had arrived by then shown, the rest hidden.
+   *
+   * @param at - The moment, in the arrivals' units.
+   */
+  public replay_seek(at: number): void {
+    if (this.replay === null) return;
+    this.replay_apply(this.replay.clock.seek(at));
+  }
+
+  /** Ends the replay: the space redrawn whole, the hand-off back. */
+  public replay_stop(): void {
+    if (this.replay === null) return;
+    this.replay = null;
+    this.rebuild(false, 'hold');
+  }
+
+  /**
+   * Where the replay stands, or null when none runs.
+   *
+   * @returns Whether it plays, its moment, and its span.
+   */
+  public replay_state(): { playing: boolean; at: number; span: [number, number] } | null {
+    if (this.replay === null) return null;
+    return { playing: this.replay.clock.playing(), at: this.replay.clock.at(), span: this.replay.clock.span() };
+  }
+
+  /** One frame of the replay: arrivals shown, departures hidden, flashes faded. */
+  private replay_step(): void {
+    const replay = this.replay;
+    if (replay === null) return;
+    const wasPlaying: boolean = replay.clock.playing();
+    const frame: ReplayFrame = replay.clock.step();
+    this.replay_apply(frame);
+    for (const [id, strength] of replay.clock.flashing()) this.starField.flash_set(id, strength);
+    this.starField.flush();
+    if (wasPlaying || frame.arrived.length > 0) this.handlers.replay?.(frame.at, replay.clock.playing());
+  }
+
+  /** Shows what arrived and hides what left, threads following. */
+  private replay_apply(frame: ReplayFrame): void {
+    const replay = this.replay;
+    if (replay === null || (frame.arrived.length === 0 && frame.departed.length === 0)) return;
+    for (const id of frame.arrived) replay.shown.add(id);
+    for (const id of frame.departed) {
+      replay.shown.delete(id);
+      this.starField.flash_set(id, 0);
+    }
+    this.starField.presence_set(frame.arrived, 1);
+    this.starField.presence_set(frame.departed, 0);
+    this.starField.threads_present((id: string): boolean => replay.shown.has(id) || !replay.arrivals.has(id));
+    this.starField.flush();
+  }
+
+  /** Paints every dated node as the replay has it: shown if arrived, else hidden. */
+  private replay_paintAll(): void {
+    const replay = this.replay;
+    if (replay === null) return;
+    const hidden: string[] = [...replay.arrivals.keys()].filter((id: string): boolean => !replay.shown.has(id));
+    this.starField.presence_set(hidden, 0);
+    this.starField.presence_set(replay.shown, 1);
+    this.starField.threads_present((id: string): boolean => replay.shown.has(id) || !replay.arrivals.has(id));
+    this.starField.flush();
+  }
 
   /**
    * Steps the hand-off once a frame: a feed whose largest sphere spans

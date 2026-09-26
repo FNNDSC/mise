@@ -27,6 +27,7 @@ import {
   type LandedFeed, type UniverseScale, type EnteredFeed,
   universeSettings_of,
   universeSettings_parse,
+  accretionGraph_build,
   constellationsGraph_build,
   pluginTip_of,
   pluginOfStar,
@@ -36,6 +37,17 @@ import { dataGraph_build, dataHubKey_of, dataHubTip_of, dataPath_of, description
 
 /** How the whole space is arranged: round each shape's hub, or round the plugin stars. */
 type Arrangement = UniverseSettings['arrangement'];
+
+/**
+ * Whether an arrangement brings a graph of its own (the FEEDS view only)
+ * rather than the shared space round each shape's hub.
+ *
+ * @param arrangement - The arrangement.
+ * @returns Whether it does.
+ */
+function ownGraph_is(arrangement: Arrangement): boolean {
+  return arrangement === 'constellations' || arrangement === 'data' || arrangement === 'accretion';
+}
 import type { KeyStore } from '../../app/dormant.js';
 import { WaitProgress } from '../wait/progress.js';
 
@@ -317,7 +329,7 @@ export class UniversePanel {
     mount.captionsPill?.addEventListener('click', (): void => { this.handlers.note?.(this.captions_set(!this.captions)); });
     this.arrangementPill = mount.arrangementPill ?? null;
     mount.arrangementPill?.addEventListener('click', (): void => {
-      const cycle: Arrangement[] = ['galaxy', 'spokes', 'clumps', 'constellations', 'data'];
+      const cycle: Arrangement[] = ['galaxy', 'spokes', 'clumps', 'constellations', 'data', 'accretion'];
       this.handlers.note?.(this.arrangement_set(cycle[(cycle.indexOf(this.arrangement) + 1) % cycle.length] as Arrangement));
     });
     this.scene.draw_set(this.drawMode);
@@ -492,13 +504,23 @@ export class UniversePanel {
     }
     if (verb === 'layout') {
       const wanted: string = (args[0] ?? '').toLowerCase();
-      if (wanted !== 'galaxy' && wanted !== 'spokes' && wanted !== 'clumps' && wanted !== 'constellations' && wanted !== 'data') return 'universe layout galaxy|spokes|clumps|constellations|data';
+      if (wanted !== 'galaxy' && wanted !== 'spokes' && wanted !== 'clumps' && wanted !== 'constellations' && wanted !== 'data' && wanted !== 'accretion') return 'universe layout galaxy|spokes|clumps|constellations|data|accretion';
       return this.arrangement_set(wanted);
     }
     if (verb === 'draw') {
       const wanted: string = (args[0] ?? '').toLowerCase();
       if (wanted !== 'stars' && wanted !== 'spheres') return 'universe draw stars|spheres';
       return this.draw_set(wanted);
+    }
+    if (verb === 'regrow') {
+      // A coral keeps what has grown, and a removed feed leaves its gap:
+      // regrowing forgets the kept places and grows the space afresh.
+      if (this.arrangement !== 'accretion' || this.inside !== null || this.cluster !== null) return 'universe regrow: the ACCRETION layout only (universe layout accretion)';
+      this.replay_end();
+      const key: string | null = this.positionsKey_of('accretion');
+      try { if (key !== null) this.store?.setItem(key, '{}'); } catch { /* a refused store forgets nothing; the space still regrows */ }
+      this.paint(true, 'full');
+      return 'the space regrown from its first feed';
     }
     if (verb === 'captions') {
       const wanted: string = (args[0] ?? '').toLowerCase();
@@ -543,7 +565,7 @@ export class UniversePanel {
       this.handlers.feed_open?.(this.inside.feedId);
       return `opening feed ${this.inside.feedId}`;
     }
-    return 'universe enter <feed>|node <instance>|cluster <feed>|view feeds|shapes|density shape|census|draw stars|spheres|captions on|off|layout galaxy|spokes|clumps|constellations|data|plugin <name>|off|replay [speed]|pause|stop|at <date>|state|physics <term> on|off|reset|back|open';
+    return 'universe enter <feed>|node <instance>|cluster <feed>|view feeds|shapes|density shape|census|draw stars|spheres|captions on|off|layout galaxy|spokes|clumps|constellations|data|accretion|regrow|plugin <name>|off|replay [speed]|pause|stop|at <date>|state|physics <term> on|off|reset|back|open';
   }
 
   /**
@@ -600,10 +622,10 @@ export class UniversePanel {
    * @returns What happened, for the console.
    */
   private arrangement_set(arrangement: Arrangement): string {
-    if ((arrangement === 'constellations' || arrangement === 'data') && this.view !== 'feeds') return `universe layout ${arrangement}: the FEEDS view only (universe view feeds)`;
+    if (ownGraph_is(arrangement) && this.view !== 'feeds') return `universe layout ${arrangement}: the FEEDS view only (universe view feeds)`;
     this.replay_end();
-    // Constellations and DATA each bring a graph of their own; the others share one.
-    const graphOf = (a: Arrangement): string => (a === 'constellations' || a === 'data' ? a : 'hubs');
+    // Constellations, DATA and accretion each bring a graph of their own; the others share one.
+    const graphOf = (a: Arrangement): string => (ownGraph_is(a) ? a : 'hubs');
     const graphChanges: boolean = graphOf(arrangement) !== graphOf(this.arrangement);
     this.litHub = null;
     this.arrangement = arrangement;
@@ -621,7 +643,8 @@ export class UniversePanel {
       : arrangement === 'spokes' ? 'each molecule a spoke round its hub'
       : arrangement === 'clumps' ? 'molecules packed round their hub'
       : arrangement === 'constellations' ? 'every plugin a star, placed by what runs with what; every feed pulled to the stars it ran'
-      : 'every feed hung from what it began from: its format, its modality, its series';
+      : arrangement === 'data' ? 'every feed hung from what it began from: its format, its modality, its series'
+      : 'the space grown in the order it was made: each feed wandering until it sticks, to its kin more readily than to strangers';
   }
 
   /** Where this identity's frame choices are kept. */
@@ -711,8 +734,8 @@ export class UniversePanel {
   /** Switches the top of the universe between every feed and the folded shapes. */
   private view_set(view: 'feeds' | 'shapes'): void {
     this.replay_end();
-    // Folded shapes have no plugin stars and no data hubs: they give way to the galaxy.
-    if (view === 'shapes' && (this.arrangement === 'constellations' || this.arrangement === 'data')) {
+    // Folded shapes have no plugin stars, no data hubs and no feeds to grow: they give way to the galaxy.
+    if (view === 'shapes' && ownGraph_is(this.arrangement)) {
       this.arrangement = 'galaxy';
       if (this.arrangementPill !== null) this.arrangementPill.textContent = 'GALAXY';
       this.scene.arrangement_set('galaxy', this.positions_recalled('galaxy'), false);
@@ -802,6 +825,7 @@ export class UniversePanel {
     const built = this.view === 'shapes' ? foldedGraph_build(this.landed.all(), this.scale)
       : this.arrangement === 'constellations' ? constellationsGraph_build(this.landed.all(), this.scale)
       : this.arrangement === 'data' ? this.dataGraph_paint()
+      : this.arrangement === 'accretion' ? accretionGraph_build(this.landed.all(), this.scale)
       : universeGraph_build(this.landed.all(), this.scale);
     // A lit plugin: its stages as drawn, every other stage faint. The stars
     // stay lit — a faint star takes no pointer, and another plugin must
@@ -888,7 +912,7 @@ export class UniversePanel {
         // replaced by its graph, everything but the graph dimmed.
         const prefix: string = `feed:${feedId}:`;
         const graph: SceneGraph = this.view === 'feeds'
-          ? descendedGraph_build(this.landed.all(), feedId, entered, this.scale, this.arrangement === 'constellations', this.arrangement === 'data' ? dataGraph_build(this.landed.all(), this.scale).graph : undefined)
+          ? descendedGraph_build(this.landed.all(), feedId, entered, this.scale, this.arrangement === 'constellations', this.arrangement === 'data' ? dataGraph_build(this.landed.all(), this.scale).graph : this.arrangement === 'accretion' ? accretionGraph_build(this.landed.all(), this.scale) : undefined)
           : {
               nodes: [
                 ...unfoldedGraph_build(this.landed.all(), shape_of(feed), this.scale).graph.nodes

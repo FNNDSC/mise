@@ -8,6 +8,7 @@
  *
  * @module
  */
+import { accretion_layout } from './accretion.js';
 import { constellations_layout } from './constellations.js';
 import { galaxy_layout } from './galaxy.js';
 import { hierarchy_layout, type HierarchyNode } from './hierarchy.js';
@@ -130,8 +131,20 @@ const hubsEngine: LayoutEngine = {
     ({ positions: galaxy_layout(input.nodes.map(hierarchyNode_of), input.physics, progress) }),
 };
 
+/**
+ * Accretion: feeds arrive oldest first and wander until they stick, to kin
+ * more readily than to strangers — the space grown as a coral. Needs each
+ * stage's plugin; a feed's creation time orders the growth when supplied.
+ */
+const accretionEngine: LayoutEngine = {
+  id: 'accretion',
+  label: 'ACCRETION',
+  needs: ['plugin'],
+  run: (input: LayoutInput, progress: (fraction: number) => void): LayoutResult => accretion_layout(input.nodes, input.physics, progress),
+};
+
 /** Every engine, in the order a LAYOUT block offers them. */
-const ENGINES: ReadonlyArray<LayoutEngine> = [galaxyEngine, spokesEngine, clumpsEngine, constellationsEngine, hubsEngine, rankedEngine, moleculeEngine];
+const ENGINES: ReadonlyArray<LayoutEngine> = [galaxyEngine, spokesEngine, clumpsEngine, constellationsEngine, hubsEngine, accretionEngine, rankedEngine, moleculeEngine];
 
 /**
  * Every registered engine.

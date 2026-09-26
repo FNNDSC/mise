@@ -1,5 +1,22 @@
 # @fnndsc/argus
 
+## 0.17.0
+
+### Minor Changes
+
+- 8851db3: CONSTELLATIONS on the universe's LAYOUT block (`universe layout constellations`): every plugin a ringed star placed by what runs with what, every feed pulled to the stars it ran; a star's tip reads `pl-x · n feeds · e% errored`.
+- e59a8d7: DATA on the universe's LAYOUT block (`universe layout data`): every feed hung from what it began from — a hub per format, then per DICOM modality, then per series-description group — each hub a captioned nebula sized by its feeds; a hub's tip reads its path and count, a press lights its feeds.
+- 8cd7a3a: REPLAY on the universe: the space's history played back feed by feed in the order they were made, each shown with a flash where it stands now and the day on the bar. A block on the mode frame (REPLAY, PLAYING, PAUSED, REPLAYED), `universe replay [speed] | pause | stop | at <date>`, and Esc ends it. Needs a daemon that dates its feeds.
+
+### Patch Changes
+
+- a0927ec: In CONSTELLATIONS a plugin star is a handle: a press lights the stages it ran across the sky and shows its facts with OPEN IN /BIN, a double press frames them, and `universe plugin <name> | off` does the same by word. A study folder handed to the surface's image opener finds its series again (it read the listing's shape wrong).
+- e61a6ad: On a touch screen, pinching out of an entered feed or cluster climbs out one level, as a double tap went in: once the camera stands half as far again as the descent framed it. A smaller pinch, to see a feed whole, stays. BACK stays on the mode frame.
+- d1da8ac: `proc universe` carries what each feed's data is (`data`: format, and for DICOM modality and series description) once the index has read it. The reader follows a copy job's links (to files and to folders), reads newest feeds first, four at a time, gives a feed that never answers 45 s before moving on, records a DICOM-named file whose header will not read as DICOM with the reason, and stamps each record with its reader's version so a better reader reads feeds again.
+- Updated dependencies [d1da8ac]
+- Updated dependencies [d8e160c]
+  - @fnndsc/menu@0.12.0
+
 ## 0.16.5
 
 ### Patch Changes

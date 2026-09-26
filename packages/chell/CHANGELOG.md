@@ -1,5 +1,21 @@
 # @fnndsc/chell
 
+## 5.9.4
+
+### Patch Changes
+
+- f571a14: The /proc index reads what each feed's data is, once: from the first file its root job made (by name, descending into a folder), the format, and for DICOM the modality and series description from one header read. It runs after the topology sweep, as each feed's topology loads, and after a checkpoint restore; what cannot be known yet is tried again, what is known to be absent is recorded with its reason.
+- Updated dependencies [e7f82dd]
+- Updated dependencies [8602c78]
+- Updated dependencies [f571a14]
+- Updated dependencies [d1da8ac]
+- Updated dependencies [d8e160c]
+  - @fnndsc/cumin@3.24.0
+  - @fnndsc/salsa@3.19.0
+  - @fnndsc/menu@0.12.0
+  - @fnndsc/brasa@0.27.1
+  - @fnndsc/calypso@0.16.7
+
 ## 5.9.3
 
 ### Patch Changes

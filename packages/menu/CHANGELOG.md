@@ -1,5 +1,12 @@
 # @fnndsc/menu
 
+## 0.12.0
+
+### Minor Changes
+
+- d1da8ac: `proc universe` carries what each feed's data is (`data`: format, and for DICOM modality and series description) once the index has read it. The reader follows a copy job's links (to files and to folders), reads newest feeds first, four at a time, gives a feed that never answers 45 s before moving on, records a DICOM-named file whose header will not read as DICOM with the reason, and stamps each record with its reader's version so a better reader reads feeds again.
+- d8e160c: `proc universe` says when each feed was made (`createdAt`, ISO 8601), the order a replay reveals the space in; a model from an older daemon reads it as empty.
+
 ## 0.11.0
 
 ### Minor Changes

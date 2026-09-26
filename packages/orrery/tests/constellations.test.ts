@@ -64,6 +64,12 @@ describe('constellations_layout', () => {
     expect(last).toBe(1);
   });
 
+  it('hands back a space whose every body is held exactly as it stood', () => {
+    const held = sky().map((node, i) => ({ ...node, seed: [i, -i, i / 2] as [number, number, number], frozen: true }));
+    const out = constellations_layout(held, PHYSICS_DEFAULT);
+    held.forEach((node) => expect(out[node.id]).toEqual(node.seed));
+  });
+
   it('settles a space with no stars by its edges alone', () => {
     const plain = constellations_layout(feed(1, ['a', 'b']), PHYSICS_DEFAULT);
     expect(Object.keys(plain)).toEqual(['feed:1:0', 'feed:1:1']);

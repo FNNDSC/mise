@@ -432,6 +432,42 @@ try {
       JSON.stringify({ off: data.off, on: data.on }));
   }
 
+  if (stage('universe-accretion')) {
+    // ACCRETION grows the space in the order it was made, kin sticking to
+    // kin; REGROW forgets the kept coral and grows it afresh.
+    const acc = await evalIn(`
+      try {
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      const say = async (line, ms) => { await console_idle(); input.value = line;
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      const lastLine = (re) => document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
+      document.getElementById('gutter-dashboard')?.click();
+      for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.launcher-tile')) break; }
+      [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
+      const pane = () => [...document.querySelectorAll('.pane-universe')].find((p) => p.offsetParent !== null);
+      const settled = () => { const p = pane(); const w = p?.querySelector('.wait-progress'); return /[1-9]\\d* FEEDS/.test(p?.querySelector('.universe-title')?.textContent ?? '') && !(w && !w.hidden); };
+      for (let i = 0; i < 480; i++) { await sleep(500); if (settled()) break; }
+      await say('universe layout accretion', 1500);
+      const said = lastLine(/^the space grown in the order|^universe layout/);
+      for (let i = 0; i < 480; i++) { await sleep(500); if (settled()) break; }
+      const block = pane()?.querySelector('.universe-arrangement')?.textContent.trim() ?? '';
+      await say('universe regrow', 1500);
+      const regrown = lastLine(/^the space regrown|^universe regrow/);
+      for (let i = 0; i < 480; i++) { await sleep(500); if (settled()) break; }
+      await say('universe state', 600);
+      const scene = lastLine(/^scene: /);
+      await say('universe layout galaxy', 1500);
+      await say('universe regrow', 600);
+      const refused = lastLine(/^universe regrow/);
+      return { said, block, regrown, scene, refused };
+      } catch (err) { return { crash: String(err && err.stack || err) }; }`);
+    check('ACCRETION grows the space as a coral, and REGROW grows it afresh (ACCRETION only)',
+      /^the space grown in the order it was made/.test(acc.said) && acc.block === 'ACCRETION' && /^the space regrown/.test(acc.regrown)
+        && /arrangement=accretion/.test(acc.scene) && /the ACCRETION layout only/.test(acc.refused),
+      JSON.stringify(acc));
+  }
+
   if (stage('universe-replay')) {
     // REPLAY plays the space's history: every feed hidden until the day it
     // was made, then shown where it stands now, the day on the bar. A word

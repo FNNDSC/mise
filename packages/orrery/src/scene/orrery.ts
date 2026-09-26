@@ -120,9 +120,9 @@ export interface SpaceNode {
 /**
  * How a space is arranged: a hierarchy round each shape's hub (galaxy,
  * spokes, clumps), constellations round the plugin stars, or a tree of hubs
- * the surface names (hubs).
+ * the surface names (hubs), or grown feed by feed as a coral (accretion).
  */
-export type SpaceArrangement = HierarchyArrangement | 'constellations' | 'hubs';
+export type SpaceArrangement = HierarchyArrangement | 'constellations' | 'hubs' | 'accretion';
 
 export interface SpaceGraph<N extends SpaceNode = SpaceNode> {
   nodes: N[];

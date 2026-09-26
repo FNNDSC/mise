@@ -212,6 +212,30 @@ export function constellationsGraph_build(landed: ReadonlyArray<LandedFeed>, sca
 }
 
 /**
+ * The space as it grows by accretion: every feed its own molecule, no hubs
+ * and no stars, each stage carrying its plugin (what makes feeds alike) and
+ * its feed's creation time (the order the coral grows in).
+ *
+ * @param landed - Every landed feed.
+ * @param scale - What sizes a stage.
+ * @returns The graph.
+ */
+export function accretionGraph_build(landed: ReadonlyArray<LandedFeed>, scale: UniverseScale = 'jobs'): SceneGraph {
+  const createdOf: Map<number, number> = new Map();
+  for (const feed of landed) {
+    const at: number = feed.createdAt === undefined ? Number.NaN : Date.parse(feed.createdAt);
+    if (Number.isFinite(at)) createdOf.set(feed.id, at);
+  }
+  const nodes: SceneNode[] = constellationsGraph_build(landed, scale).nodes
+    .filter((node: SceneNode): boolean => node.attrs?.['kind'] !== 'star')
+    .map((node: SceneNode): SceneNode => {
+      const created: number | undefined = createdOf.get(Number(node.id.split(':')[1]));
+      return created === undefined ? node : { ...node, attrs: { ...node.attrs, createdAt: created } };
+    });
+  return { nodes };
+}
+
+/**
  * What a plugin star's tip says: the plugin, how many feeds ran it, and the
  * share of its jobs that failed.
  *
@@ -319,7 +343,7 @@ export interface UniverseSettings {
   view: 'feeds' | 'shapes';
   scale: 'jobs' | 'feeds';
   density: 'shape' | 'census';
-  arrangement: 'galaxy' | 'spokes' | 'clumps' | 'constellations' | 'data';
+  arrangement: 'galaxy' | 'spokes' | 'clumps' | 'constellations' | 'data' | 'accretion';
   /** Whether the space's captions are drawn: words over the picture, the operator's to turn off. */
   captions: boolean;
 }
@@ -358,7 +382,7 @@ export function universeSettings_parse(text: string | null): UniverseSettings {
     view: pick(raw['view'], ['feeds', 'shapes'] as const, UNIVERSE_SETTINGS_DEFAULT.view),
     scale: pick(raw['scale'], ['jobs', 'feeds'] as const, UNIVERSE_SETTINGS_DEFAULT.scale),
     density: pick(raw['density'], ['shape', 'census'] as const, UNIVERSE_SETTINGS_DEFAULT.density),
-    arrangement: pick(raw['arrangement'], ['galaxy', 'spokes', 'clumps', 'constellations', 'data'] as const, UNIVERSE_SETTINGS_DEFAULT.arrangement),
+    arrangement: pick(raw['arrangement'], ['galaxy', 'spokes', 'clumps', 'constellations', 'data', 'accretion'] as const, UNIVERSE_SETTINGS_DEFAULT.arrangement),
     captions: typeof raw['captions'] === 'boolean' ? raw['captions'] : UNIVERSE_SETTINGS_DEFAULT.captions,
   };
 }

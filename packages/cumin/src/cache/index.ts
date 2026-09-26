@@ -62,6 +62,8 @@ export type {
   ProcCacheLifecycle,
   ProcCacheSnapshot,
   ProcFeedSnapshot,
+  ProcFeedDataFacts,
+  ProcDataFormat,
   ProcCacheChange,
   ProcCacheListener,
 } from './procCache.js';

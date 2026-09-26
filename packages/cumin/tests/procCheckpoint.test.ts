@@ -215,3 +215,61 @@ it('the default checkpoint directory lives under the user cache home, keyed but 
   expect(dir).toMatch(/\/chell\/proc\/[0-9a-f]{16}$/);
   expect(dir).not.toContain('cube.example.org');
 });
+
+describe('a feed\'s data facts', () => {
+  it('ride the feed\'s shard and come back with it, even for a feed holding no topology yet', async () => {
+    procCache_get().feed_add(feed_create(5));
+    procCache_get().feed_add(feed_create(6));
+    procCache_get().instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-root', params: null, status: 'finishedSuccessfully' });
+    procCache_get().topologyLoaded_mark(5);
+    procCache_get().dataFacts_set(5, { format: 'dicom', modality: 'MR', seriesDescription: 'SAG MPRAGE' });
+    procCache_get().dataFacts_set(6, { format: 'nifti' });
+    await procCheckpoint_save(identity, root);
+    expect(await shardNames()).toEqual(['feed-5.json', 'feed-6.json']);
+    procCache_get().cache_clear();
+    expect(procCache_get().dataFacts_of(5)).toBeUndefined();
+    expect((await procCheckpoint_restore(identity, root)).restored).toBe(true);
+    expect(procCache_get().dataFacts_of(5)).toEqual({ format: 'dicom', modality: 'MR', seriesDescription: 'SAG MPRAGE' });
+    expect(procCache_get().dataFacts_of(6)).toEqual({ format: 'nifti' });
+  });
+
+  it('are absent from a shard written before they existed, and the shard restores all the same', async () => {
+    procCache_get().feed_add(feed_create(5));
+    procCache_get().instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-root', params: null, status: 'finishedSuccessfully' });
+    procCache_get().topologyLoaded_mark(5);
+    await procCheckpoint_save(identity, root);
+    const shard = JSON.parse(await readFile(join(dir, 'feed-5.json'), 'utf8'));
+    expect(shard.dataFacts).toBeUndefined();
+    procCache_get().cache_clear();
+    expect((await procCheckpoint_restore(identity, root)).restored).toBe(true);
+    expect(procCache_get().topologyLoaded_has(5)).toBe(true);
+    expect(procCache_get().dataFacts_of(5)).toBeUndefined();
+  });
+
+  it('are dropped when malformed, and the feed\'s topology kept', async () => {
+    procCache_get().feed_add(feed_create(5));
+    procCache_get().instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-root', params: null, status: 'finishedSuccessfully' });
+    procCache_get().topologyLoaded_mark(5);
+    procCache_get().dataFacts_set(5, { format: 'dicom' });
+    await procCheckpoint_save(identity, root);
+    const path = join(dir, 'feed-5.json');
+    const shard = JSON.parse(await readFile(path, 'utf8'));
+    shard.dataFacts = { format: 'hologram' };
+    await writeFile(path, JSON.stringify(shard));
+    procCache_get().cache_clear();
+    expect((await procCheckpoint_restore(identity, root)).restored).toBe(true);
+    expect(procCache_get().topologyLoaded_has(5)).toBe(true);
+    expect(procCache_get().dataFacts_of(5)).toBeUndefined();
+  });
+
+  it('outlive a re-walk of the feed\'s graph and leave with the feed', () => {
+    procCache_get().feed_add(feed_create(5));
+    procCache_get().dataFacts_set(5, { format: 'png' });
+    procCache_get().feedTopology_evict(5);
+    expect(procCache_get().dataFacts_of(5)).toEqual({ format: 'png' });
+    procCache_get().feed_remove(5);
+    expect(procCache_get().dataFacts_of(5)).toBeUndefined();
+    procCache_get().dataFacts_set(7, { format: 'png' });
+    expect(procCache_get().dataFacts_of(7)).toBeUndefined();
+  });
+});

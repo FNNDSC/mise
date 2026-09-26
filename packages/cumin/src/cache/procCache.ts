@@ -293,6 +293,25 @@ export interface ProcCacheLifecycle {
   checkpointAt?: string;
 }
 
+/** What kind of data a feed began from. */
+export type ProcDataFormat = 'dicom' | 'nifti' | 'mgz' | 'jpeg' | 'png' | 'other' | 'unknown';
+
+/**
+ * What a feed's data is, read once from the first file its root produced:
+ * the format, and for DICOM the modality and series description.
+ *
+ * @property format - The kind of data.
+ * @property modality - DICOM Modality (0008,0060), when the header says.
+ * @property seriesDescription - DICOM SeriesDescription (0008,103E), when it says.
+ * @property reason - Why the format is `unknown` or `other`, in words.
+ */
+export interface ProcFeedDataFacts {
+  format: ProcDataFormat;
+  modality?: string;
+  seriesDescription?: string;
+  reason?: string;
+}
+
 /**
  * Serializable topology retained across daemon restarts.
  *
@@ -304,6 +323,8 @@ export interface ProcCacheSnapshot {
   feeds: ProcFeed[];
   instances: ProcInstance[];
   topologyLoaded: number[];
+  /** Each feed's data facts, by feed id; absent from a checkpoint written before they existed. */
+  dataFacts?: Record<number, ProcFeedDataFacts>;
 }
 
 /**
@@ -317,6 +338,8 @@ export interface ProcFeedSnapshot {
   feedID: number;
   loaded: boolean;
   instances: ProcInstance[];
+  /** The feed's data facts, once read; absent until then. */
+  dataFacts?: ProcFeedDataFacts;
 }
 
 /**
@@ -374,6 +397,8 @@ export class ProcCache {
 
   /** Feed IDs whose instance topology has been fully fetched. */
   private topologyLoaded: Set<number> = new Set();
+  /** What each feed's data is, once read: about the data, not the graph, so a re-walk keeps it. */
+  private dataFacts: Map<number, ProcFeedDataFacts> = new Map();
 
   /** In-flight topology fetch promises — prevents duplicate API calls. */
   private loading: Map<number, Promise<void>> = new Map();
@@ -524,6 +549,7 @@ export class ProcCache {
   feed_remove(feedID: number): void {
     this.feeds.delete(feedID);
     this.topologyLoaded.delete(feedID);
+    this.dataFacts.delete(feedID);
     const allInstances: ProcInstance[] = Array.from(this.instances.values())
       .filter((i: ProcInstance) => i.feedID === feedID);
     for (const inst of allInstances) {
@@ -798,6 +824,29 @@ export class ProcCache {
 
   topologyLoaded_has(feedID: number): boolean {
     return this.topologyLoaded.has(feedID);
+  }
+
+  /**
+   * Records what a feed's data is.
+   *
+   * @param feedID - The feed.
+   * @param facts - What its first file said.
+   */
+  dataFacts_set(feedID: number, facts: ProcFeedDataFacts): void {
+    if (!this.feeds.has(feedID)) return;
+    this.dataFacts.set(feedID, { ...facts });
+    this.change_emit({ scope: 'feed', feedID });
+  }
+
+  /**
+   * What a feed's data is, once read.
+   *
+   * @param feedID - The feed.
+   * @returns Its facts, or undefined before they are read.
+   */
+  dataFacts_of(feedID: number): ProcFeedDataFacts | undefined {
+    const facts: ProcFeedDataFacts | undefined = this.dataFacts.get(feedID);
+    return facts === undefined ? undefined : { ...facts };
   }
 
   // ── In-flight map ─────────────────────────────────────────────────────────
@@ -1220,6 +1269,7 @@ export class ProcCache {
       feeds: Array.from(this.feeds.values()).map((feed: ProcFeed): ProcFeed => ({ ...feed })),
       instances,
       topologyLoaded: Array.from(this.topologyLoaded),
+      dataFacts: Object.fromEntries(Array.from(this.dataFacts).map(([id, facts]): [number, ProcFeedDataFacts] => [id, { ...facts }])),
     };
   }
 
@@ -1236,7 +1286,8 @@ export class ProcCache {
     for (const inst of this.instances.values()) {
       if (inst.feedID === feedID) instances.push(procInstance_persistent(inst));
     }
-    return { feedID, loaded: this.topologyLoaded.has(feedID), instances };
+    const facts: ProcFeedDataFacts | undefined = this.dataFacts.get(feedID);
+    return { feedID, loaded: this.topologyLoaded.has(feedID), instances, ...(facts === undefined ? {} : { dataFacts: { ...facts } }) };
   }
 
   /**
@@ -1248,6 +1299,7 @@ export class ProcCache {
   shardedFeedIDs_get(): number[] {
     const ids: Set<number> = new Set(this.topologyLoaded);
     for (const inst of this.instances.values()) ids.add(inst.feedID);
+    for (const id of this.dataFacts.keys()) ids.add(id);
     return Array.from(ids);
   }
 
@@ -1269,6 +1321,9 @@ export class ProcCache {
       this.instance_add({ ...restored, params: null, status: status_isTerminal(inst.status) ? inst.status : null });
     }
     this.topologyLoaded = new Set(snapshot.topologyLoaded.filter((id: number): boolean => this.feeds.has(id)));
+    for (const [id, facts] of Object.entries(snapshot.dataFacts ?? {})) {
+      if (this.feeds.has(Number(id))) this.dataFacts.set(Number(id), { ...facts });
+    }
     this._warmupProgress = { loaded: this.instances.size, total: this.instances.size, active: false };
     this.lifecycle = { state: 'restored', checkpointAt };
     this.change_emit({ scope: 'lifecycle' });
@@ -1296,6 +1351,7 @@ export class ProcCache {
     this.feedRoots.clear();
     this.children.clear();
     this.topologyLoaded.clear();
+    this.dataFacts.clear();
     this.loading.clear();
     this.feedLoads.clear();
     this.arrivals.clear();

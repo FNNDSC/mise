@@ -432,6 +432,37 @@ try {
       JSON.stringify({ off: data.off, on: data.on }));
   }
 
+  if (stage('universe-layouts')) {
+    // Each layout keeps its own places: switching files the space as it
+    // stands under the layout it was, never under the one it becomes (a
+    // galaxy once filed as spokes, and every layout recalled the one before).
+    const kept = await evalIn(`
+      try {
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      const say = async (line, ms) => { await console_idle(); input.value = line;
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      document.getElementById('gutter-dashboard')?.click();
+      for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.launcher-tile')) break; }
+      [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
+      const pane = () => [...document.querySelectorAll('.pane-universe')].find((p) => p.offsetParent !== null);
+      const settled = () => { const p = pane(); const w = p?.querySelector('.wait-progress'); return /[1-9]\\d* FEEDS/.test(p?.querySelector('.universe-title')?.textContent ?? '') && !(w && !w.hidden); };
+      const settle = async () => { for (let i = 0; i < 480; i++) { await sleep(500); if (settled()) break; } await sleep(1500); };
+      await settle();
+      await say('universe layout galaxy', 1500); await settle();
+      await say('universe layout spokes', 1500); await settle();
+      await say('universe layout galaxy', 1500); await settle();
+      const keys = Object.keys(localStorage).filter((k) => /^argus\\.universe\\./.test(k) && !/settings/.test(k));
+      const galaxyKey = keys.find((k) => !/\\.(spokes|clumps|constellations|data|accretion)$/.test(k));
+      const spokesKey = keys.find((k) => /\\.spokes$/.test(k));
+      const g = galaxyKey ? localStorage.getItem(galaxyKey) : null;
+      const sp = spokesKey ? localStorage.getItem(spokesKey) : null;
+      return { galaxyKey, spokesKey, both: g !== null && sp !== null, differ: g !== sp, sizes: [g?.length ?? 0, sp?.length ?? 0] };
+      } catch (err) { return { crash: String(err && err.stack || err) }; }`);
+    check('each layout keeps its own places: GALAXY and SPOKES are filed apart',
+      kept.both === true && kept.differ === true, JSON.stringify(kept));
+  }
+
   if (stage('universe-accretion')) {
     // ACCRETION grows the space in the order it was made, kin sticking to
     // kin; REGROW forgets the kept coral and grows it afresh.

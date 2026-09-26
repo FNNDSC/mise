@@ -25,10 +25,13 @@ declare module 'd3-force-3d' {
   export interface ResolvedLink {
     source: { id: string };
     target: { id: string };
+    /** Whatever else the caller put on the link, carried through. */
+    [field: string]: unknown;
   }
   export interface LinkForce {
     id(accessor: (d: { id: string }) => string): LinkForce;
     distance(value: number | ((link: ResolvedLink) => number)): LinkForce;
+    strength(value: number | ((link: ResolvedLink) => number)): LinkForce;
   }
   export interface ManyBodyForce {
     strength(value: number | ((d: { id: string }) => number)): ManyBodyForce;
@@ -38,7 +41,7 @@ declare module 'd3-force-3d' {
     radius(value: number | ((d: { id: string }) => number)): CollideForce;
   }
   export function forceSimulation(nodes: SimulationNode[], dimensions?: number): Simulation;
-  export function forceLink(links: Array<{ source: string; target: string }>): LinkForce;
+  export function forceLink(links: Array<{ source: string; target: string; [field: string]: unknown }>): LinkForce;
   export function forceManyBody(): ManyBodyForce;
   export function forceCollide(): CollideForce;
   export interface AxisForce {

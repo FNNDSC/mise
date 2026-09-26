@@ -19,7 +19,7 @@ function space(): LayoutNode[] {
 
 describe('layout registry', () => {
   it('offers the settled engines in order', () => {
-    expect(layoutEngines_list().map((engine: LayoutEngine): string => engine.id)).toEqual(['galaxy', 'spokes', 'clumps', 'ranked', 'molecule']);
+    expect(layoutEngines_list().map((engine: LayoutEngine): string => engine.id)).toEqual(['galaxy', 'spokes', 'clumps', 'constellations', 'ranked', 'molecule']);
   });
 
   it('finds an engine by name and nothing by an unknown one', () => {

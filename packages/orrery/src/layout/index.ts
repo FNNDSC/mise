@@ -9,6 +9,7 @@
  */
 export * from './types.js';
 export { galaxy_layout } from './galaxy.js';
+export { constellations_layout, pluginWeights_of, LANDMARK_SHARE } from './constellations.js';
 export { hierarchy_layout, type HierarchyArrangement, type HierarchyNode, type HierarchyPhysics, type HierarchyPositions } from './hierarchy.js';
 export { molecule_prepare, molecule_layout, moleculeRadii_of, type MoleculeNode, type MoleculePlace, type MoleculeSettle } from './molecule.js';
 export { rankedLayout_compute, ranked_layout, type RankedInput, type RankedPlacement, type RankedLayout, type RankedSceneNode } from './ranked.js';

@@ -776,23 +776,28 @@ try {
     for (let i = 0; i < 60; i++) { await sleep(500); if (fp.querySelector('.files-diagram canvas')) { pluginScene = true; break; } }
     // No prose: the graph is the whole view.
     const pluginWall = fp.querySelector('.files-content') !== null;
-    let pluginSelected = '', pluginImmersed = '', pluginEscLeftNode = false;
+    let pluginSelected = '', pluginImmersed = '', pluginEscLeftNode = false, pluginOpensInside = false;
+    const immersed = () => fp.querySelector('.files-diagram .dag-facts')?.classList.contains('dag-facts-immersed') === true;
     if (pluginScene) {
-      await sleep(1200);
       const canvas = fp.querySelector('.files-diagram canvas');
       const facts = () => fp.querySelector('.files-diagram .dag-facts');
       const box = canvas.getBoundingClientRect();
       const at = { clientX: Math.round(box.left + box.width / 2), clientY: Math.round(box.top + box.height / 2) };
       const hit = (type) => canvas.dispatchEvent(new MouseEvent(type, { ...at, bubbles: true, cancelable: true }));
+      // A level of one opens itself (the graph is the form): the plugin
+      // arrives inside its one node, its parameters open.
+      for (let i = 0; i < 20 && !immersed(); i++) await sleep(250);
+      pluginOpensInside = immersed();
+      // ONE press leaves the node and not the view — the same
+      // retreat-exactly-one-level rule the pipeline dive follows.
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(1500);
+      pluginEscLeftNode = !immersed() && fp.querySelector('.files-diagram') !== null;
+      // Outside the node, a touch reads out what it is; a dive goes back in.
       hit('click'); await sleep(500);
       pluginSelected = (facts()?.textContent ?? '');
       hit('dblclick'); await sleep(1800);
       pluginImmersed = (facts()?.textContent ?? '');
-      // ONE press leaves the node and not the view — the same
-      // retreat-exactly-one-level rule the pipeline dive follows.
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(1500);
-      pluginEscLeftNode = facts()?.classList.contains('dag-facts-immersed') === false
-        && fp.querySelector('.files-diagram') !== null;
     }
     // A view is closed by the operator, never by an arrival: a listing
     // asked for while the view is up lands under it, and CLOSE shows it.
@@ -817,16 +822,23 @@ try {
     // (the command line, if still open, is the topmost transient and would
     // take the press — close it first).
     if (!document.getElementById('lang-palette').hidden) { pill.click(); await sleep(150); }
+    // A plugin opens inside its node, so the view is two levels up from
+    // the listing: the first press leaves the node, the second the view.
     const beforeEsc = fp.querySelector('.files-row.files-type-plugin');
-    if (beforeEsc) { beforeEsc.dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(1500); }
+    if (beforeEsc) {
+      beforeEsc.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 40 && !immersed(); i++) await sleep(250);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(1500);
+    }
+    const escKeptView = fp.querySelector('.files-diagram') !== null;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(600);
-    const escBack = !fp.querySelector('.files-diagram') && fp.querySelectorAll('.files-row').length > 0;
+    const escBack = escKeptView && !fp.querySelector('.files-diagram') && fp.querySelectorAll('.files-row').length > 0;
     const pipeline = fp.querySelector('.files-row.files-type-pipeline');
     if (!pipeline) {
       // Leave the browser as it was found: a view left up would take the
       // next scenario's listing underneath it.
       for (let i = 0; i < 4 && fp.querySelector('.files-close-pill'); i++) { fp.querySelector('.files-close-pill').click(); await sleep(400); }
-      return { skipped: null, pluginScene, pluginWall, pluginSelected, pluginImmersed, pluginEscLeftNode, survivesListing, listingUnderneath, escBack, pipelineSkipped: true };
+      return { skipped: null, pluginScene, pluginWall, pluginOpensInside, pluginSelected, pluginImmersed, pluginEscLeftNode, survivesListing, listingUnderneath, escBack, pipelineSkipped: true };
     }
     pipeline.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     let summary = false, canvas = false;
@@ -837,13 +849,14 @@ try {
     const panelx = fp.querySelector('.files-panel');
     const spills = panelx.scrollWidth > panelx.clientWidth + 1;
     fp.querySelector('.files-close-pill')?.click(); await sleep(300);
-    return { skipped: null, pluginScene, pluginWall, pluginSelected, pluginImmersed, pluginEscLeftNode, survivesListing, listingUnderneath, escBack, summary, canvas, pipelineSkipped: false, spills, dpr: window.devicePixelRatio };`);
+    return { skipped: null, pluginScene, pluginWall, pluginOpensInside, pluginSelected, pluginImmersed, pluginEscLeftNode, survivesListing, listingUnderneath, escBack, summary, canvas, pipelineSkipped: false, spills, dpr: window.devicePixelRatio };`);
   if (binCtx.skipped) {
     console.log(`  skipped: ${binCtx.skipped}`);
   } else {
     check('a plugin opens as a graph of one node, with no wall of text',
       binCtx.pluginScene === true && binCtx.pluginWall === false,
       JSON.stringify({ scene: binCtx.pluginScene, wall: binCtx.pluginWall }));
+    check('a plugin opens inside its one node, its parameters open', binCtx.pluginOpensInside === true);
     check('touching the plugin node reads out what it is',
       /PLUGIN/.test(binCtx.pluginSelected ?? '') && /PARAMETERS/.test(binCtx.pluginSelected ?? ''),
       JSON.stringify(binCtx.pluginSelected ?? '').slice(0, 160));
@@ -856,7 +869,7 @@ try {
     check('a view is closed by the operator, never by an arriving listing',
       binCtx.survivesListing === true && binCtx.listingUnderneath === true,
       JSON.stringify({ survived: binCtx.survivesListing, under: binCtx.listingUnderneath }));
-    check('Esc returns a content view to its listing', binCtx.escBack === true);
+    check('Esc returns a content view to its listing, one level a press: the node, then the view', binCtx.escBack === true);
     if (binCtx.pipelineSkipped) console.log('  skipped: no pipeline rows');
     else {
       check('a pipeline opens as its summary with its DAG rendered', binCtx.summary && binCtx.canvas);

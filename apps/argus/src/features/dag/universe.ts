@@ -36,6 +36,8 @@ export interface LandedFeed {
   status: string;
   chain: string[];
   groups: LandedGroup[];
+  /** When the feed was made (ISO 8601): the order a replay reveals it in; absent or empty from a daemon that predates it. */
+  createdAt?: string;
 }
 
 /**

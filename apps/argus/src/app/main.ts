@@ -1914,6 +1914,7 @@ async function surface_start(token: string): Promise<void> {
         empty: pane_find(mount, '.universe-empty'),
         projectionPill: mount.querySelector<HTMLElement>('.universe-projection'),
         refreshPill: mount.querySelector<HTMLElement>('.universe-refresh'),
+        replayPill: mount.querySelector<HTMLElement>('.universe-replay'),
         scalePill: mount.querySelector<HTMLElement>('.universe-scale'),
         viewPill: mount.querySelector<HTMLElement>('.universe-view'),
         gravityPill: mount.querySelector<HTMLElement>('.universe-gravity'),

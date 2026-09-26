@@ -411,12 +411,25 @@ try {
       const block = pane()?.querySelector('.universe-arrangement')?.textContent.trim() ?? '';
       await say('universe state', 600);
       const scene = lastLine(/^scene: /);
+      // CAPTIONS is the operator's: pressed off, the words go and the kept
+      // choice says so; pressed again, they come back.
+      const captions = () => pane()?.querySelector('.universe-captions');
+      captions()?.click();
+      await say('universe state', 600);
+      const off = { block: captions()?.textContent.trim() ?? '', scene: lastLine(/^scene: /), kept: lastLine(/^kept settings: /) };
+      captions()?.click();
+      await say('universe state', 600);
+      const on = { block: captions()?.textContent.trim() ?? '', scene: lastLine(/^scene: /) };
       await say('universe layout galaxy', 1500);
-      return { said, block, scene };
+      return { said, block, scene, off, on };
       } catch (err) { return { crash: String(err && err.stack || err) }; }`);
     check('DATA hangs every feed from what it began from, as an arrangement of its own',
       /^every feed hung from what it began from/.test(data.said) && data.block === 'DATA' && /arrangement=hubs/.test(data.scene),
       JSON.stringify(data));
+    check('CAPTIONS turns the hubs\' words off and on, and the choice is kept',
+      data.off?.block === 'CAPTIONS OFF' && /captions=off/.test(data.off?.scene ?? '') && /"captions":false/.test(data.off?.kept ?? '')
+        && data.on?.block === 'CAPTIONS ON' && /captions=[1-9]/.test(data.on?.scene ?? ''),
+      JSON.stringify({ off: data.off, on: data.on }));
   }
 
   if (stage('universe-replay')) {

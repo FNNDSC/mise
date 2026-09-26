@@ -161,7 +161,7 @@ describe('the sweep', () => {
     feed_add(3, 'started');
     cache.dataFacts_set(2, { format: 'png', reader: DATA_FACTS_READER });
     const io = io_of({ '/out/10': [item('x.mgz')], '/out/20': [item('y.nii')] });
-    expect(await procDataFacts_sweep(io)).toBe(1);
+    expect(await procDataFacts_sweep(io, 0)).toBe(1);
     expect(cache.dataFacts_of(1)).toEqual({ format: 'mgz', reader: DATA_FACTS_READER });
     expect(cache.dataFacts_of(2)).toEqual({ format: 'png', reader: DATA_FACTS_READER });
     expect(cache.dataFacts_of(3)).toBeUndefined();
@@ -170,7 +170,7 @@ describe('the sweep', () => {
   it('reads again a feed an older reader answered', async () => {
     feed_add(1);
     cache.dataFacts_set(1, { format: 'unknown', reason: 'its first job left no data files' });
-    expect(await procDataFacts_sweep(io_of({ '/out/10': [item('x.png')] }))).toBe(1);
+    expect(await procDataFacts_sweep(io_of({ '/out/10': [item('x.png')] }), 0)).toBe(1);
     expect(cache.dataFacts_of(1)).toEqual({ format: 'png', reader: DATA_FACTS_READER });
   });
 
@@ -191,8 +191,9 @@ describe('the sweep', () => {
         list: async (path: string) => (path === '/out/10' ? [item('x.png')] : null),
         header: async () => null,
       };
-      const sweep = procDataFacts_sweep(io);
-      await jest.advanceTimersByTimeAsync(DATA_FACTS_FEED_MS + 1);
+      const sweep = procDataFacts_sweep(io, 0);
+      // Every round gives the hung read its time, and gives up on it again.
+      await jest.advanceTimersByTimeAsync(3 * (DATA_FACTS_FEED_MS + 1));
       expect(await sweep).toBe(1);
       expect(cache.dataFacts_of(1)?.format).toBe('png');
       expect(cache.dataFacts_of(2)).toBeUndefined();
@@ -201,10 +202,33 @@ describe('the sweep', () => {
     }
   });
 
+  it('reads again in later rounds what a round could not, until a failing header has had its tries', async () => {
+    feed_add(1);
+    feed_add(2);
+    let listings: number = 0;
+    const io: DataFactsIO & { reads: string[] } = {
+      ...io_of({ '/out/20': [item('a.dcm')] }),
+      // Feed 1's folder answers only on the second asking.
+      list: async (path: string) => (path === '/out/10' ? (++listings >= 2 ? [item('x.png')] : null) : path === '/out/20' ? [item('a.dcm')] : null),
+    };
+    expect(await procDataFacts_sweep(io, 0)).toBe(2);
+    expect(cache.dataFacts_of(1)?.format).toBe('png');
+    expect(cache.dataFacts_of(2)).toEqual({ format: 'dicom', reason: 'the header of its first file, a.dcm, could not be read', reader: DATA_FACTS_READER });
+  });
+
+  it('stops when rounds record nothing and nothing is left to try', async () => {
+    feed_add(1, 'started');
+    let asked: number = 0;
+    const io: DataFactsIO = { outputPath: async () => { asked += 1; return null; }, list: async () => null, header: async () => null };
+    expect(await procDataFacts_sweep(io, 0)).toBe(0);
+    expect(cache.dataFacts_of(1)).toBeUndefined();
+    expect(asked).toBe(0);
+  });
+
   it('survives a read that throws', async () => {
     feed_add(1);
     const io: DataFactsIO = { outputPath: async () => { throw new Error('network'); }, list: async () => null, header: async () => null };
-    expect(await procDataFacts_sweep(io)).toBe(0);
+    expect(await procDataFacts_sweep(io, 0)).toBe(0);
     expect(cache.dataFacts_of(1)).toBeUndefined();
   });
 });

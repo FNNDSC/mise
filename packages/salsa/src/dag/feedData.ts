@@ -49,6 +49,13 @@ export const DATA_FACTS_IN_FLIGHT: number = 4;
  * four such hangs once stopped a whole sweep. The feed is tried again later.
  */
 export const DATA_FACTS_FEED_MS: number = 45_000;
+/**
+ * The pause between a sweep's rounds. A sweep once ran a single round, and
+ * every feed it could not answer yet — a header that failed once, a read
+ * that ran out of time — stayed unread for as long as the daemon lived:
+ * 199 of 709 feeds, found by watching the count stop.
+ */
+export const DATA_FACTS_ROUND_PAUSE_MS: number = 30_000;
 /** Whether a sweep is under way: one at a time. */
 let sweeping: boolean = false;
 
@@ -255,29 +262,51 @@ export async function feedDataFacts_read(feedID: number, io: DataFactsIO, cache:
 /**
  * Reads the data facts of every feed that has none yet — the index's quiet
  * tail after the topology sweep. A few feeds are read at once
- * ({@link DATA_FACTS_IN_FLIGHT}), which is the throttle; what cannot be known
- * yet is tried again on the next sweep.
+ * ({@link DATA_FACTS_IN_FLIGHT}), which is the throttle. What cannot be
+ * known yet is tried again in the next round, after a pause: rounds go on
+ * while one records something, and at least until a failing header has had
+ * all its tries, so a feed is left unread only while it truly cannot be read.
  *
  * @param io - How to read.
+ * @param pauseMs - The pause between rounds.
  * @returns How many feeds were read.
  */
-export async function procDataFacts_sweep(io: DataFactsIO): Promise<number> {
+export async function procDataFacts_sweep(io: DataFactsIO, pauseMs: number = DATA_FACTS_ROUND_PAUSE_MS): Promise<number> {
   if (sweeping) return 0;
   sweeping = true;
   const cache: ProcCache = procCache_get();
   let read: number = 0;
   try {
-    // Newest first: the work an operator is looking at now is read first.
-    const queue: number[] = cache.feedIDs_get().filter((feedID: number): boolean => !dataFacts_current(cache, feedID)).sort((a: number, b: number): number => b - a);
-    const worker = async (): Promise<void> => {
-      for (let feedID = queue.shift(); feedID !== undefined; feedID = queue.shift()) {
-        if (await procDataFacts_feed(feedID, io, cache)) read += 1;
-      }
-    };
-    await Promise.all(Array.from({ length: DATA_FACTS_IN_FLIGHT }, worker));
+    for (let round = 1; ; round += 1) {
+      const recorded: number = await dataFactsRound_run(io, cache);
+      read += recorded;
+      const unread: boolean = cache.feedIDs_get().some((feedID: number): boolean => !dataFacts_current(cache, feedID));
+      if (!unread || (recorded === 0 && round >= HEADER_TRIES_MAX)) break;
+      await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, pauseMs); });
+    }
   } finally {
     sweeping = false;
   }
+  return read;
+}
+
+/**
+ * One round of a sweep: every feed without facts, newest first.
+ *
+ * @param io - How to read.
+ * @param cache - The index.
+ * @returns How many feeds were read.
+ */
+async function dataFactsRound_run(io: DataFactsIO, cache: ProcCache): Promise<number> {
+  let read: number = 0;
+  // Newest first: the work an operator is looking at now is read first.
+  const queue: number[] = cache.feedIDs_get().filter((feedID: number): boolean => !dataFacts_current(cache, feedID)).sort((a: number, b: number): number => b - a);
+  const worker = async (): Promise<void> => {
+    for (let feedID = queue.shift(); feedID !== undefined; feedID = queue.shift()) {
+      if (await procDataFacts_feed(feedID, io, cache)) read += 1;
+    }
+  };
+  await Promise.all(Array.from({ length: DATA_FACTS_IN_FLIGHT }, worker));
   return read;
 }
 
@@ -302,7 +331,7 @@ export async function procDataFacts_feed(feedID: number, io: DataFactsIO, cache:
     cache.dataFacts_set(feedID, { ...facts, reader: DATA_FACTS_READER });
     return true;
   } catch {
-    // A read that throws is a read that failed: the next sweep tries again.
+    // A read that throws is a read that failed: the next round tries again.
     return false;
   } finally {
     if (timer !== undefined) clearTimeout(timer);

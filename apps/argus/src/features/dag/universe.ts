@@ -138,6 +138,101 @@ export function universeGraph_build(landed: ReadonlyArray<LandedFeed>, scale: Un
   return { nodes };
 }
 
+/** The prefix of a plugin star's id. */
+const PLUGIN_STAR_PREFIX: string = 'plugin:';
+
+/**
+ * A plugin star's id.
+ *
+ * @param plugin - The plugin's name (versions collapse: the name alone).
+ * @returns The id.
+ */
+export function pluginStarId_of(plugin: string): string {
+  return `${PLUGIN_STAR_PREFIX}${plugin}`;
+}
+
+/**
+ * The plugin a star stands for.
+ *
+ * @param nodeId - A node id.
+ * @returns The plugin's name, or null when the node is not a plugin star.
+ */
+export function pluginOfStar(nodeId: string): string | null {
+  return nodeId.startsWith(PLUGIN_STAR_PREFIX) ? nodeId.slice(PLUGIN_STAR_PREFIX.length) : null;
+}
+
+/**
+ * The space as constellations: every feed its own molecule with no shape's
+ * hub to hang from, each stage marked with its plugin, and one ringed star
+ * per plugin, sized by the feeds that ran it — the engine places the stars
+ * by what runs with what and pulls each stage to its own.
+ *
+ * @param landed - Every landed feed.
+ * @param scale - What sizes a stage.
+ * @returns The graph.
+ */
+export function constellationsGraph_build(landed: ReadonlyArray<LandedFeed>, scale: UniverseScale = 'jobs'): SceneGraph {
+  const nodes: SceneNode[] = [];
+  const feedsUsing: Map<string, number> = new Map();
+  const feeds: LandedFeed[] = [...landed].sort((a: LandedFeed, b: LandedFeed): number => a.id - b.id);
+  for (const feed of feeds) {
+    if (feed.groups.length === 0) continue;
+    for (const plugin of new Set(feed.groups.map((group: LandedGroup): string => group.plugin))) feedsUsing.set(plugin, (feedsUsing.get(plugin) ?? 0) + 1);
+    feed.groups.forEach((group: LandedGroup, index: number): void => {
+      const share: number | undefined = erroredShare_of(group);
+      nodes.push({
+        id: groupId_of(feed.id, index),
+        label: group.plugin,
+        parentIds: group.parent === null ? [] : [groupId_of(feed.id, group.parent)],
+        joinParentIds: [],
+        status: group.status,
+        metric: scale === 'jobs' ? jobsMetric_of(group.count) : 1,
+        attrs: { plugin: group.plugin },
+        ...(group.count > 1 ? { count: group.count } : {}),
+        ...(share !== undefined ? { share } : {}),
+      });
+    });
+  }
+  for (const [plugin, count] of [...feedsUsing].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    nodes.push({
+      id: pluginStarId_of(plugin),
+      label: plugin,
+      parentIds: [],
+      joinParentIds: [],
+      // A star's mass is how many feeds ran it, on a log.
+      metric: 1 + Math.log(count),
+      hue: '#e8f4ff',
+      ring: true,
+      attrs: { kind: 'star', plugin },
+    });
+  }
+  return { nodes };
+}
+
+/**
+ * What a plugin star's tip says: the plugin, how many feeds ran it, and the
+ * share of its jobs that failed.
+ *
+ * @param nodeId - A node id.
+ * @param feeds - The landed feeds.
+ * @returns The tip, or null when the node is not a plugin star.
+ */
+export function pluginTip_of(nodeId: string, feeds: LandedFeeds): string | null {
+  const plugin: string | null = pluginOfStar(nodeId);
+  if (plugin === null) return null;
+  let ran: number = 0;
+  let jobs: number = 0;
+  let errored: number = 0;
+  for (const feed of feeds.all()) {
+    const mine: LandedGroup[] = feed.groups.filter((group: LandedGroup): boolean => group.plugin === plugin);
+    if (mine.length === 0) continue;
+    ran += 1;
+    for (const group of mine) { jobs += group.count; errored += group.errored; }
+  }
+  const share: number = jobs === 0 ? 0 : Math.round((errored / jobs) * 100);
+  return `${plugin} · ${ran.toLocaleString('en-US')} feed${ran === 1 ? '' : 's'} · ${share}% errored`;
+}
+
 /**
  * Keeps the feeds the session has reported, one per id, newest report
  * winning: a feed fills out between one landing and the next.
@@ -222,7 +317,7 @@ export interface UniverseSettings {
   view: 'feeds' | 'shapes';
   scale: 'jobs' | 'feeds';
   density: 'shape' | 'census';
-  arrangement: 'galaxy' | 'spokes' | 'clumps';
+  arrangement: 'galaxy' | 'spokes' | 'clumps' | 'constellations';
 }
 
 /** What a first visit gets: stars, every feed, sized by jobs, a sphere per stage, the space a galaxy. */
@@ -259,7 +354,7 @@ export function universeSettings_parse(text: string | null): UniverseSettings {
     view: pick(raw['view'], ['feeds', 'shapes'] as const, UNIVERSE_SETTINGS_DEFAULT.view),
     scale: pick(raw['scale'], ['jobs', 'feeds'] as const, UNIVERSE_SETTINGS_DEFAULT.scale),
     density: pick(raw['density'], ['shape', 'census'] as const, UNIVERSE_SETTINGS_DEFAULT.density),
-    arrangement: pick(raw['arrangement'], ['galaxy', 'spokes', 'clumps'] as const, UNIVERSE_SETTINGS_DEFAULT.arrangement),
+    arrangement: pick(raw['arrangement'], ['galaxy', 'spokes', 'clumps', 'constellations'] as const, UNIVERSE_SETTINGS_DEFAULT.arrangement),
   };
 }
 
@@ -349,8 +444,9 @@ export function enteredFeed_build(model: FeedDagModel): EnteredFeed {
  * @param scale - What sizes the other spheres.
  * @returns The scene graph.
  */
-export function descendedGraph_build(landed: ReadonlyArray<LandedFeed>, feedId: number, entered: EnteredFeed, scale: UniverseScale = 'jobs'): SceneGraph {
-  const whole: SceneGraph = universeGraph_build(landed, scale);
+export function descendedGraph_build(landed: ReadonlyArray<LandedFeed>, feedId: number, entered: EnteredFeed, scale: UniverseScale = 'jobs', constellations: boolean = false): SceneGraph {
+  // The rest of the space stands as it was drawn: round its hubs, or round the plugin stars.
+  const whole: SceneGraph = constellations ? constellationsGraph_build(landed, scale) : universeGraph_build(landed, scale);
   const prefix: string = `feed:${feedId}:`;
   const nodes: SceneNode[] = whole.nodes
     .filter((node: SceneNode): boolean => !node.id.startsWith(prefix))

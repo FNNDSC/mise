@@ -27,6 +27,12 @@ import { NODE_RADIUS, type LayoutNode, type PhysicsTerms, type Positions, type V
 const STAR_TICKS: number = 160;
 /** Ticks of the feeds' settle against the held stars. */
 const FEED_TICKS: number = 120;
+/** How far a stage's repulsion carries: a crowd round a star stays round it. */
+const STAGE_REACH: number = 5;
+/** The pull on a stage from its plugin's star, for the rarest plugin; a common one pulls less. */
+const STAR_PULL_MAX: number = 0.9;
+/** The least pull a plugin that pulls at all exerts. */
+const STAR_PULL_MIN: number = 0.3;
 /** A plugin in more than this share of feeds is a landmark: no pull. */
 export const LANDMARK_SHARE: number = 0.9;
 
@@ -82,6 +88,7 @@ export function constellations_layout(
   const feedsUsing: Map<string, number> = new Map();
   for (const plugins of feedPlugins.values()) for (const plugin of plugins) feedsUsing.set(plugin, (feedsUsing.get(plugin) ?? 0) + 1);
   const weights: Map<string, number> = pluginWeights_of(feedsUsing, feedPlugins.size);
+  const heaviest: number = Math.max(1e-9, ...weights.values());
 
   // Phase 1: the stars alone, drawn together by how often they ran together.
   const together: Map<string, number> = new Map();
@@ -92,7 +99,8 @@ export function constellations_layout(
       together.set(key, (together.get(key) ?? 0) + 1);
     }
   }
-  const skyRadius: number = Math.max(6, Math.sqrt(stars.length) * 4);
+  // Room for every stage round its star: the sky grows with what settles in it.
+  const skyRadius: number = Math.max(6, Math.sqrt(stars.length) * 4, Math.sqrt(stages.length) * 1.6);
   const starBodies: Body[] = stars.map((star: LayoutNode): Body => body_of(star, skyRadius, randomFor_key(`star:${star.id}`)));
   const starLinks: Array<{ source: string; target: string; share: number }> = [];
   for (const [key, count] of together) {
@@ -140,7 +148,11 @@ export function constellations_layout(
     const weight: number = plugin === null ? 0 : weights.get(plugin) ?? 0;
     const shared: number = node.group === null ? 1 : Math.max(1, feedPlugins.get(node.group)?.size ?? 1);
     if (star !== undefined && weight > 0) {
-      links.push({ source: star.id, target: node.id, strength: Math.min(1, 0.25 * weight / shared), length: star.radius + node.radius + 2 });
+      // The rarest plugin pulls hardest; a feed's pull is shared across its
+      // plugins, gently, so a long pipeline still reaches every star it ran.
+      const said: number = weight / heaviest;
+      const pull: number = (STAR_PULL_MIN + (STAR_PULL_MAX - STAR_PULL_MIN) * said) / Math.sqrt(shared);
+      links.push({ source: star.id, target: node.id, strength: pull, length: star.radius + node.radius + 1 });
     }
   }
   const sim = forceSimulation(all, 3)
@@ -150,7 +162,7 @@ export function constellations_layout(
     .stop();
   if (physics.charge) {
     const charge = forceManyBody().strength((d: { id: string }): number => -6 * (((d as Body).r / NODE_RADIUS) ** 2));
-    if (physics.reach !== undefined) charge.distanceMax(physics.reach);
+    charge.distanceMax(Math.min(physics.reach ?? STAGE_REACH, STAGE_REACH));
     sim.force('charge', charge);
   }
   if (physics.collide) sim.force('collide', forceCollide().radius((d: { id: string }): number => (d as Body).r * 1.2));

@@ -30,6 +30,7 @@ import {
   layoutEngine_get,
   type HierarchyArrangement,
   type HierarchyNode,
+  type LayoutNode,
   type HierarchyPositions,
   type MoleculeNode,
   type MoleculeSettle as OrreryMoleculeSettle,
@@ -71,6 +72,13 @@ import type { Vec3 } from '../types/space.js';
 export interface SpaceNode {
   id: string;
   label: string;
+  /**
+   * What an engine that needs more reads (`LayoutEngine.needs`): a stage's
+   * plugin, a star's kind — whatever the surface supplies.
+   */
+  attrs?: Record<string, number | string | string[]>;
+  /** Drawn as a ringed star: a node of another kind among the stars (a plugin in constellations). */
+  ring?: boolean;
   /** How it looks, read by the surface from its own domain. */
   look: NodeLook;
   parentIds: string[];
@@ -106,6 +114,12 @@ export interface SpaceNode {
 }
 
 /** The normalized graph the scene renders. */
+/**
+ * How a space is arranged: a hierarchy round each shape's hub (galaxy,
+ * spokes, clumps), or constellations round the plugin stars.
+ */
+export type SpaceArrangement = HierarchyArrangement | 'constellations';
+
 export interface SpaceGraph<N extends SpaceNode = SpaceNode> {
   nodes: N[];
 }
@@ -1132,17 +1146,20 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
   /** The layout worker, made on the first big settle and kept. */
   private layoutWorker: Worker | null = null;
   /** How a hierarchy sits molecules around their anchor. */
-  private arrangement: HierarchyArrangement = 'galaxy';
+  private arrangement: SpaceArrangement = 'galaxy';
   /** Where each arrangement's spheres stood, for a return to it. */
-  private arrangementMemory: Map<HierarchyArrangement, Map<string, THREE.Vector3>> = new Map();
+  private arrangementMemory: Map<SpaceArrangement, Map<string, THREE.Vector3>> = new Map();
 
   /**
    * Arranges molecules as clumps or spokes. The space is laid out afresh:
    * a remembered shape would keep the old arrangement.
    *
-   * @param arrangement - The arrangement.
+   * @param arrangement - The arrangement: a registered engine's name.
+   * @param remembered - Where its spheres stood, from a host's memory.
+   * @param redraw - Redraw at once; false when the host is about to hand
+   *   in the graph the arrangement needs (constellations bring their stars).
    */
-  public arrangement_set(arrangement: HierarchyArrangement, remembered?: Record<string, [number, number, number]>): void {
+  public arrangement_set(arrangement: SpaceArrangement, remembered?: Record<string, [number, number, number]>, redraw: boolean = true): void {
     if (arrangement === this.arrangement) return;
     // Each arrangement keeps where its spheres stood: going back to one
     // already seen redraws it, and only a first visit pays its settle.
@@ -1153,11 +1170,11 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
       kept = new Map(Object.entries(remembered).map(([id, [x, y, z]]): [string, THREE.Vector3] => [id, new THREE.Vector3(x, y, z)]));
     }
     this.lastPositions = kept ?? new Map();
-    this.rebuild(true, kept === undefined ? 'full' : 'hold');
+    if (redraw) this.rebuild(true, kept === undefined ? 'full' : 'hold');
   }
 
   /** @returns How a hierarchy sits molecules round their hubs. */
-  public arrangement_get(): HierarchyArrangement {
+  public arrangement_get(): SpaceArrangement {
     return this.arrangement;
   }
 
@@ -1169,13 +1186,14 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     const keyOf = this.handlers.handoffKey;
     if (keyOf === undefined) return;
     const radii: Map<string, number> = moleculeRadii_of(this.graph.nodes);
-    const nodes: HierarchyNode[] = this.graph.nodes.map((node: N): HierarchyNode => {
+    const nodes: LayoutNode[] = this.graph.nodes.map((node: N): LayoutNode => {
       const seed: THREE.Vector3 | undefined = this.lastPositions.get(node.id);
       return {
         id: node.id,
         parents: [...node.parentIds, ...node.joinParentIds],
         radius: radii.get(node.id) ?? NODE_RADIUS,
         group: node.ghost === true ? null : keyOf(node),
+        ...(node.attrs === undefined ? {} : { attrs: node.attrs }),
         ...(seed === undefined ? {} : { seed: [seed.x, seed.y, seed.z] as [number, number, number] }),
         ...(frozen.has(node.id) ? { frozen: true } : {}),
       };
@@ -1281,6 +1299,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
           color: paint_resolve(node.look.paint, palette).clone(),
           dim: node.dim === true,
           ember: node.look.ember,
+          ...(node.ring === true ? { ring: true } : {}),
         });
         continue;
       }

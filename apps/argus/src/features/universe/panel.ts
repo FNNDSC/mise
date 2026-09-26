@@ -27,7 +27,13 @@ import {
   type LandedFeed, type UniverseScale, type EnteredFeed,
   universeSettings_of,
   universeSettings_parse,
+  constellationsGraph_build,
+  pluginTip_of,
+  type UniverseSettings,
 } from '../dag/universe.js';
+
+/** How the whole space is arranged: round each shape's hub, or round the plugin stars. */
+type Arrangement = UniverseSettings['arrangement'];
 import type { KeyStore } from '../../app/dormant.js';
 import { WaitProgress } from '../wait/progress.js';
 
@@ -177,7 +183,7 @@ export class UniversePanel {
   private drawMode: DrawMode = 'stars';
   private drawPill: HTMLElement | null = null;
   /** How molecules sit round their anchor. */
-  private arrangement: 'galaxy' | 'spokes' | 'clumps' = 'galaxy';
+  private arrangement: Arrangement = 'galaxy';
   private arrangementPill: HTMLElement | null = null;
   private scalePill: HTMLElement | null = null;
   /** The settle's terms as the operator has them; gravity on by default here. */
@@ -219,7 +225,7 @@ export class UniversePanel {
       },
       // A sphere is a plugin group inside a feed; the tip says both. Inside
       // a feed the nodes are its own and carry their labels.
-      tip: (node: SceneNode): string | null => (this.inside === null ? (foldTip_of(node.id, this.landed) ?? universeTip_of(node.id, this.landed) ?? clusterTip_of(node.id, this.landed)) : null),
+      tip: (node: SceneNode): string | null => (this.inside === null ? (pluginTip_of(node.id, this.landed) ?? foldTip_of(node.id, this.landed) ?? universeTip_of(node.id, this.landed) ?? clusterTip_of(node.id, this.landed)) : null),
       // Outside: a click on a sphere descends into its feed. Inside: a
       // click on one of the feed's nodes shows its facts and its verbs.
       select: (node: SceneNode): void => this.node_select(node),
@@ -286,7 +292,8 @@ export class UniversePanel {
     mount.drawPill?.addEventListener('click', (): void => { this.draw_set(this.drawMode === 'stars' ? 'spheres' : 'stars'); });
     this.arrangementPill = mount.arrangementPill ?? null;
     mount.arrangementPill?.addEventListener('click', (): void => {
-      this.arrangement_set(this.arrangement === 'galaxy' ? 'spokes' : this.arrangement === 'spokes' ? 'clumps' : 'galaxy');
+      const cycle: Arrangement[] = ['galaxy', 'spokes', 'clumps', 'constellations'];
+      this.handlers.note?.(this.arrangement_set(cycle[(cycle.indexOf(this.arrangement) + 1) % cycle.length] as Arrangement));
     });
     this.scene.draw_set(this.drawMode);
     this.canvas.style.display = 'none';
@@ -449,7 +456,7 @@ export class UniversePanel {
     }
     if (verb === 'layout') {
       const wanted: string = (args[0] ?? '').toLowerCase();
-      if (wanted !== 'galaxy' && wanted !== 'spokes' && wanted !== 'clumps') return 'universe layout galaxy|spokes|clumps';
+      if (wanted !== 'galaxy' && wanted !== 'spokes' && wanted !== 'clumps' && wanted !== 'constellations') return 'universe layout galaxy|spokes|clumps|constellations';
       return this.arrangement_set(wanted);
     }
     if (verb === 'draw') {
@@ -537,16 +544,25 @@ export class UniversePanel {
    * @param arrangement - The arrangement.
    * @returns What happened, for the console.
    */
-  private arrangement_set(arrangement: 'galaxy' | 'spokes' | 'clumps'): string {
+  private arrangement_set(arrangement: Arrangement): string {
+    if (arrangement === 'constellations' && this.view !== 'feeds') return 'universe layout constellations: the FEEDS view only (universe view feeds)';
     this.replay_end();
+    const graphChanges: boolean = (arrangement === 'constellations') !== (this.arrangement === 'constellations');
     this.arrangement = arrangement;
     if (this.arrangementPill !== null) this.arrangementPill.textContent = arrangement.toUpperCase();
     this.remember_now();
-    if (this.inside === null && this.cluster === null) this.scene.arrangement_set(arrangement, this.positions_recalled(arrangement));
+    if (this.inside === null && this.cluster === null) {
+      // Constellations bring their own graph (the plugin stars, no hubs):
+      // the arrangement is set without a redraw and the new graph painted.
+      this.scene.arrangement_set(arrangement, this.positions_recalled(arrangement), !graphChanges);
+      if (graphChanges) this.paint(true, this.positions_recalled(arrangement) === undefined ? 'full' : 'hold');
+    }
     this.settings_save();
     return arrangement === 'galaxy'
       ? 'the space finds its own shape: every sphere pushing, every edge holding'
-      : arrangement === 'spokes' ? 'each molecule a spoke round its hub' : 'molecules packed round their hub';
+      : arrangement === 'spokes' ? 'each molecule a spoke round its hub'
+      : arrangement === 'clumps' ? 'molecules packed round their hub'
+      : 'every plugin a star, placed by what runs with what; every feed pulled to the stars it ran';
   }
 
   /** Where this identity's frame choices are kept. */
@@ -633,6 +649,12 @@ export class UniversePanel {
   /** Switches the top of the universe between every feed and the folded shapes. */
   private view_set(view: 'feeds' | 'shapes'): void {
     this.replay_end();
+    // Folded shapes have no plugin stars: the sky gives way to the galaxy.
+    if (view === 'shapes' && this.arrangement === 'constellations') {
+      this.arrangement = 'galaxy';
+      if (this.arrangementPill !== null) this.arrangementPill.textContent = 'GALAXY';
+      this.scene.arrangement_set('galaxy', this.positions_recalled('galaxy'), false);
+    }
     this.view = view;
     if (this.viewPill !== null) this.viewPill.textContent = view.toUpperCase();
     if (this.shown && this.inside === null && this.cluster === null) this.paint(true, 'full');
@@ -715,7 +737,9 @@ export class UniversePanel {
   private paint(fit: boolean = true, settle: SettleMode = 'new'): void {
     // The top of the universe: every feed (the structure itself), or the
     // shapes folded when the operator asks for it.
-    const graph = this.view === 'shapes' ? foldedGraph_build(this.landed.all(), this.scale) : universeGraph_build(this.landed.all(), this.scale);
+    const graph = this.view === 'shapes' ? foldedGraph_build(this.landed.all(), this.scale)
+      : this.arrangement === 'constellations' ? constellationsGraph_build(this.landed.all(), this.scale)
+      : universeGraph_build(this.landed.all(), this.scale);
     // Hug while small, spread when a crowd: the bound that keeps a lone
     // molecule together would pack seven hundred feeds into one ball.
     // Set only when it changes: physics_set settles the old graph again.
@@ -796,7 +820,7 @@ export class UniversePanel {
         // replaced by its graph, everything but the graph dimmed.
         const prefix: string = `feed:${feedId}:`;
         const graph: SceneGraph = this.view === 'feeds'
-          ? descendedGraph_build(this.landed.all(), feedId, entered, this.scale)
+          ? descendedGraph_build(this.landed.all(), feedId, entered, this.scale, this.arrangement === 'constellations')
           : {
               nodes: [
                 ...unfoldedGraph_build(this.landed.all(), shape_of(feed), this.scale).graph.nodes
@@ -1169,13 +1193,13 @@ export class UniversePanel {
    * Where an arrangement's positions are kept: a galaxy under the key the
    * universe always used, each other arrangement beside it.
    */
-  private positionsKey_of(arrangement: 'galaxy' | 'spokes' | 'clumps'): string | null {
+  private positionsKey_of(arrangement: Arrangement): string | null {
     if (this.storeKey === null) return null;
     return arrangement === 'galaxy' ? this.storeKey : `${this.storeKey}.${arrangement}`;
   }
 
   /** The positions kept for an arrangement, or none. */
-  private positions_recalled(arrangement: 'galaxy' | 'spokes' | 'clumps'): Record<string, [number, number, number]> | undefined {
+  private positions_recalled(arrangement: Arrangement): Record<string, [number, number, number]> | undefined {
     const key: string | null = this.positionsKey_of(arrangement);
     if (this.store === undefined || key === null) return undefined;
     try {

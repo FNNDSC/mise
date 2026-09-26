@@ -32,6 +32,7 @@ import {
   pluginOfStar,
   type UniverseSettings,
 } from '../dag/universe.js';
+import { dataGraph_build, dataHubKey_of, dataHubTip_of, dataPath_of, descriptionGroups_of } from '../dag/dataSpace.js';
 
 /** How the whole space is arranged: round each shape's hub, or round the plugin stars. */
 type Arrangement = UniverseSettings['arrangement'];
@@ -197,6 +198,10 @@ export class UniversePanel {
   private readonly escape_listen: (event: KeyboardEvent) => void;
   /** The plugin whose stages are lit across the sky, or null. */
   private lit: string | null = null;
+  /** DATA's hubs as last drawn: labels and feed counts, for the tips. */
+  private dataHubs: Map<string, { label: string; feeds: number }> = new Map();
+  /** The DATA hub whose feeds are lit, by its path key, or null. */
+  private litHub: string | null = null;
   /** The REPLAY block, painted with the replay's state. */
   private replayPill: HTMLElement | null = null;
   /** The day the readout last showed, so it repaints once a day of history, not once a frame. */
@@ -230,7 +235,7 @@ export class UniversePanel {
       },
       // A sphere is a plugin group inside a feed; the tip says both. Inside
       // a feed the nodes are its own and carry their labels.
-      tip: (node: SceneNode): string | null => (this.inside === null ? (pluginTip_of(node.id, this.landed) ?? foldTip_of(node.id, this.landed) ?? universeTip_of(node.id, this.landed) ?? clusterTip_of(node.id, this.landed)) : null),
+      tip: (node: SceneNode): string | null => (this.inside === null ? (dataHubTip_of(node.id, this.dataHubs) ?? pluginTip_of(node.id, this.landed) ?? foldTip_of(node.id, this.landed) ?? universeTip_of(node.id, this.landed) ?? clusterTip_of(node.id, this.landed)) : null),
       // Outside: a click on a sphere descends into its feed. Inside: a
       // click on one of the feed's nodes shows its facts and its verbs.
       select: (node: SceneNode): void => this.node_select(node),
@@ -305,7 +310,7 @@ export class UniversePanel {
     mount.drawPill?.addEventListener('click', (): void => { this.draw_set(this.drawMode === 'stars' ? 'spheres' : 'stars'); });
     this.arrangementPill = mount.arrangementPill ?? null;
     mount.arrangementPill?.addEventListener('click', (): void => {
-      const cycle: Arrangement[] = ['galaxy', 'spokes', 'clumps', 'constellations'];
+      const cycle: Arrangement[] = ['galaxy', 'spokes', 'clumps', 'constellations', 'data'];
       this.handlers.note?.(this.arrangement_set(cycle[(cycle.indexOf(this.arrangement) + 1) % cycle.length] as Arrangement));
     });
     this.scene.draw_set(this.drawMode);
@@ -479,7 +484,7 @@ export class UniversePanel {
     }
     if (verb === 'layout') {
       const wanted: string = (args[0] ?? '').toLowerCase();
-      if (wanted !== 'galaxy' && wanted !== 'spokes' && wanted !== 'clumps' && wanted !== 'constellations') return 'universe layout galaxy|spokes|clumps|constellations';
+      if (wanted !== 'galaxy' && wanted !== 'spokes' && wanted !== 'clumps' && wanted !== 'constellations' && wanted !== 'data') return 'universe layout galaxy|spokes|clumps|constellations|data';
       return this.arrangement_set(wanted);
     }
     if (verb === 'draw') {
@@ -568,16 +573,19 @@ export class UniversePanel {
    * @returns What happened, for the console.
    */
   private arrangement_set(arrangement: Arrangement): string {
-    if (arrangement === 'constellations' && this.view !== 'feeds') return 'universe layout constellations: the FEEDS view only (universe view feeds)';
+    if ((arrangement === 'constellations' || arrangement === 'data') && this.view !== 'feeds') return `universe layout ${arrangement}: the FEEDS view only (universe view feeds)`;
     this.replay_end();
-    const graphChanges: boolean = (arrangement === 'constellations') !== (this.arrangement === 'constellations');
+    // Constellations and DATA each bring a graph of their own; the others share one.
+    const graphOf = (a: Arrangement): string => (a === 'constellations' || a === 'data' ? a : 'hubs');
+    const graphChanges: boolean = graphOf(arrangement) !== graphOf(this.arrangement);
+    this.litHub = null;
     this.arrangement = arrangement;
     if (this.arrangementPill !== null) this.arrangementPill.textContent = arrangement.toUpperCase();
     this.remember_now();
     if (this.inside === null && this.cluster === null) {
       // Constellations bring their own graph (the plugin stars, no hubs):
       // the arrangement is set without a redraw and the new graph painted.
-      this.scene.arrangement_set(arrangement, this.positions_recalled(arrangement), !graphChanges);
+      this.scene.arrangement_set(arrangement === 'data' ? 'hubs' : arrangement, this.positions_recalled(arrangement), !graphChanges);
       if (graphChanges) this.paint(true, this.positions_recalled(arrangement) === undefined ? 'full' : 'hold');
     }
     this.settings_save();
@@ -585,7 +593,8 @@ export class UniversePanel {
       ? 'the space finds its own shape: every sphere pushing, every edge holding'
       : arrangement === 'spokes' ? 'each molecule a spoke round its hub'
       : arrangement === 'clumps' ? 'molecules packed round their hub'
-      : 'every plugin a star, placed by what runs with what; every feed pulled to the stars it ran';
+      : arrangement === 'constellations' ? 'every plugin a star, placed by what runs with what; every feed pulled to the stars it ran'
+      : 'every feed hung from what it began from: its format, its modality, its series';
   }
 
   /** Where this identity's frame choices are kept. */
@@ -626,7 +635,7 @@ export class UniversePanel {
     this.density = kept.density;
     this.arrangement = kept.arrangement;
     if (this.arrangementPill !== null) this.arrangementPill.textContent = kept.arrangement.toUpperCase();
-    this.scene.arrangement_set(kept.arrangement, this.positions_recalled(kept.arrangement));
+    this.scene.arrangement_set(kept.arrangement === 'data' ? 'hubs' : kept.arrangement, this.positions_recalled(kept.arrangement));
     if (this.drawPill !== null) this.drawPill.textContent = kept.draw.toUpperCase();
     if (this.viewPill !== null) this.viewPill.textContent = kept.view.toUpperCase();
     if (this.scalePill !== null) this.scalePill.textContent = kept.scale === 'jobs' ? 'JOBS' : 'ALIKE';
@@ -672,8 +681,8 @@ export class UniversePanel {
   /** Switches the top of the universe between every feed and the folded shapes. */
   private view_set(view: 'feeds' | 'shapes'): void {
     this.replay_end();
-    // Folded shapes have no plugin stars: the sky gives way to the galaxy.
-    if (view === 'shapes' && this.arrangement === 'constellations') {
+    // Folded shapes have no plugin stars and no data hubs: they give way to the galaxy.
+    if (view === 'shapes' && (this.arrangement === 'constellations' || this.arrangement === 'data')) {
       this.arrangement = 'galaxy';
       if (this.arrangementPill !== null) this.arrangementPill.textContent = 'GALAXY';
       this.scene.arrangement_set('galaxy', this.positions_recalled('galaxy'), false);
@@ -762,6 +771,7 @@ export class UniversePanel {
     // shapes folded when the operator asks for it.
     const built = this.view === 'shapes' ? foldedGraph_build(this.landed.all(), this.scale)
       : this.arrangement === 'constellations' ? constellationsGraph_build(this.landed.all(), this.scale)
+      : this.arrangement === 'data' ? this.dataGraph_paint()
       : universeGraph_build(this.landed.all(), this.scale);
     // A lit plugin: its stages as drawn, every other stage faint. The stars
     // stay lit — a faint star takes no pointer, and another plugin must
@@ -848,7 +858,7 @@ export class UniversePanel {
         // replaced by its graph, everything but the graph dimmed.
         const prefix: string = `feed:${feedId}:`;
         const graph: SceneGraph = this.view === 'feeds'
-          ? descendedGraph_build(this.landed.all(), feedId, entered, this.scale, this.arrangement === 'constellations')
+          ? descendedGraph_build(this.landed.all(), feedId, entered, this.scale, this.arrangement === 'constellations', this.arrangement === 'data' ? dataGraph_build(this.landed.all(), this.scale).graph : undefined)
           : {
               nodes: [
                 ...unfoldedGraph_build(this.landed.all(), shape_of(feed), this.scale).graph.nodes
@@ -1021,6 +1031,13 @@ export class UniversePanel {
       const plugin: string | null = pluginOfStar(node.id);
       if (plugin !== null) {
         this.plugin_light(this.lit === plugin ? null : plugin);
+        return;
+      }
+      // A DATA hub lights the feeds beneath it; pressed again, it goes out.
+      const hub: string | null = dataHubKey_of(node.id);
+      if (hub !== null) {
+        this.litHub = this.litHub === hub ? null : hub;
+        this.paint(false, 'hold');
         return;
       }
       const match: RegExpMatchArray | null = node.id.match(/^feed:(\d+):\d+$/);
@@ -1241,6 +1258,26 @@ export class UniversePanel {
     this.facts.hidden = false;
   }
 
+  /**
+   * DATA's graph for this paint: the hubs kept for the tips, and with a hub
+   * lit, every feed not beneath it faint (the hubs stay, and pressable).
+   */
+  private dataGraph_paint(): SceneGraph {
+    const { graph, hubs } = dataGraph_build(this.landed.all(), this.scale);
+    this.dataHubs = hubs;
+    const lit: string | null = this.litHub;
+    if (lit === null) return graph;
+    const groupOf = descriptionGroups_of(this.landed.all().map((feed: LandedFeed): string | undefined => feed.data?.seriesDescription).filter((d: string | undefined): d is string => d !== undefined));
+    const beneath: Set<number> = new Set(this.landed.all()
+      .filter((feed: LandedFeed): boolean => dataPath_of(feed, groupOf).some((step): boolean => step.key === lit))
+      .map((feed: LandedFeed): number => feed.id));
+    return { nodes: graph.nodes.map((node: SceneNode): SceneNode => {
+      if (dataHubKey_of(node.id) !== null) return node;
+      const feed: RegExpMatchArray | null = node.id.match(/^feed:(\d+):/);
+      return feed !== null && beneath.has(Number(feed[1])) ? node : { ...node, dim: true };
+    }) };
+  }
+
   /** Ends a replay, if one runs: the space shown whole again. */
   private replay_end(): void {
     if (this.scene.replay_state() === null) return;
@@ -1329,7 +1366,8 @@ export class UniversePanel {
   private remember_now(): void {
     if (this.store === undefined || this.storeKey === null || !this.shown) return;
     try {
-      const key: string | null = this.positionsKey_of(this.scene.arrangement_get());
+      // The positions are the panel's arrangement's (DATA settles as the scene's hubs).
+      const key: string | null = this.positionsKey_of(this.arrangement);
       if (key !== null) this.store.setItem(key, JSON.stringify(this.scene.positions_get()));
     } catch {
       // A full or refused store forgets; the space still draws.

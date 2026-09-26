@@ -117,8 +117,21 @@ const constellationsEngine: LayoutEngine = {
     ({ positions: constellations_layout(input.nodes, input.physics, progress) }),
 };
 
+/**
+ * Hubs: the galaxy's forces on a space hung from a tree of hubs the surface
+ * names (a hub under a hub, feeds under the deepest). The same settle as
+ * the galaxy, kept under its own name so a surface remembers each apart.
+ */
+const hubsEngine: LayoutEngine = {
+  id: 'hubs',
+  label: 'HUBS',
+  needs: [],
+  run: (input: LayoutInput, progress: (fraction: number) => void): LayoutResult =>
+    ({ positions: galaxy_layout(input.nodes.map(hierarchyNode_of), input.physics, progress) }),
+};
+
 /** Every engine, in the order a LAYOUT block offers them. */
-const ENGINES: ReadonlyArray<LayoutEngine> = [galaxyEngine, spokesEngine, clumpsEngine, constellationsEngine, rankedEngine, moleculeEngine];
+const ENGINES: ReadonlyArray<LayoutEngine> = [galaxyEngine, spokesEngine, clumpsEngine, constellationsEngine, hubsEngine, rankedEngine, moleculeEngine];
 
 /**
  * Every registered engine.

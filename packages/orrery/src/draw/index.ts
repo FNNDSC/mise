@@ -17,3 +17,4 @@ export * from './tubes.js';
 export * from './tubeField.js';
 export * from './handoffField.js';
 export * from './censusField.js';
+export * from './labelField.js';

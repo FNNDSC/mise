@@ -388,6 +388,37 @@ try {
     }
   }
 
+  if (stage('universe-data')) {
+    // DATA: every feed hung from what it began from — format, modality,
+    // series — each hub a captioned nebula. A feed not yet read hangs from
+    // a hub that says so.
+    const data = await evalIn(`
+      try {
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      const say = async (line, ms) => { await console_idle(); input.value = line;
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      const lastLine = (re) => document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
+      document.getElementById('gutter-dashboard')?.click();
+      for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.launcher-tile')) break; }
+      [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
+      const pane = () => [...document.querySelectorAll('.pane-universe')].find((p) => p.offsetParent !== null);
+      const settled = () => { const p = pane(); const w = p?.querySelector('.wait-progress'); return /[1-9]\\d* FEEDS/.test(p?.querySelector('.universe-title')?.textContent ?? '') && !(w && !w.hidden); };
+      for (let i = 0; i < 480; i++) { await sleep(500); if (settled()) break; }
+      await say('universe layout data', 1500);
+      const said = lastLine(/^every feed hung from|^universe layout/);
+      for (let i = 0; i < 480; i++) { await sleep(500); if (settled()) break; }
+      const block = pane()?.querySelector('.universe-arrangement')?.textContent.trim() ?? '';
+      await say('universe state', 600);
+      const scene = lastLine(/^scene: /);
+      await say('universe layout galaxy', 1500);
+      return { said, block, scene };
+      } catch (err) { return { crash: String(err && err.stack || err) }; }`);
+    check('DATA hangs every feed from what it began from, as an arrangement of its own',
+      /^every feed hung from what it began from/.test(data.said) && data.block === 'DATA' && /arrangement=hubs/.test(data.scene),
+      JSON.stringify(data));
+  }
+
   if (stage('universe-replay')) {
     // REPLAY plays the space's history: every feed hidden until the day it
     // was made, then shown where it stands now, the day on the bar. A word

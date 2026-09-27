@@ -28,6 +28,7 @@ import {
   moleculeRadii_of as orreryRadii_of,
   ranked_layout,
   layoutEngine_get,
+  layoutInput_build,
   type HierarchyArrangement,
   type HierarchyNode,
   type LayoutNode,
@@ -114,6 +115,12 @@ export interface SpaceNode {
    * sphere, no edge and no pick of its own.
    */
   ghost?: boolean;
+  /**
+   * Its joins are drawn faint — a thread at a dim node's strength, never a
+   * tube — for a relation that is not an edge of the run (a feed's lineage
+   * to the feed it began from).
+   */
+  joinFaint?: boolean;
 }
 
 /** The normalized graph the scene renders. */
@@ -786,6 +793,8 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
       draw: this.drawMode,
       arrangement: this.arrangement,
       captions: this.labels.shown_get() ? this.labels.count() : 'off',
+      // How many nodes the scene knows a place for: what a hold can hold.
+      known: this.lastPositions.size,
       census: this.census,
       nodes: this.graph.nodes.length,
       meshes: this.meshes.size,
@@ -1210,18 +1219,9 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     const keyOf = this.handlers.handoffKey;
     if (keyOf === undefined) return;
     const radii: Map<string, number> = moleculeRadii_of(this.graph.nodes);
-    const nodes: LayoutNode[] = this.graph.nodes.map((node: N): LayoutNode => {
-      const seed: THREE.Vector3 | undefined = this.lastPositions.get(node.id);
-      return {
-        id: node.id,
-        parents: [...node.parentIds, ...node.joinParentIds],
-        radius: radii.get(node.id) ?? NODE_RADIUS,
-        group: node.ghost === true ? null : keyOf(node),
-        ...(node.attrs === undefined ? {} : { attrs: node.attrs }),
-        ...(seed === undefined ? {} : { seed: [seed.x, seed.y, seed.z] as [number, number, number] }),
-        ...(frozen.has(node.id) ? { frozen: true } : {}),
-      };
-    });
+    // Built as a session builds it, so a place the session keeps is a place this settle would find.
+    const seeds: Map<string, Vec3> = new Map([...this.lastPositions].map(([id, at]): [string, Vec3] => [id, [at.x, at.y, at.z]]));
+    const nodes: LayoutNode[] = layoutInput_build(this.graph.nodes, keyOf, seeds, frozen);
     const total: number = 1000;
     const count: number = nodes.length;
     this.slicing = true;
@@ -1398,6 +1398,10 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
       for (const joinId of node.joinParentIds) {
         const parent: PlacedNode | undefined = byId.get(joinId);
         if (!parent) continue;
+        if (node.joinFaint === true) {
+          thread_add(parent.position, position, palette.join, true, node, joinId);
+          continue;
+        }
         const dim: boolean = node.dim === true || parent.node.dim === true;
         if (solid(item) && solid(parent)) { if (!starring && dim) this.spheres.edge_add(joinId, node.id, parent.position, position, palette.join, true, dim); }
         else thread_add(parent.position, position, palette.join, dim, node, joinId);
@@ -1561,7 +1565,8 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
       position: placed.position,
       radius: placed.radius,
       parents: placed.node.parentIds,
-      joins: placed.node.joinParentIds,
+      // A faint join is a thread, never a tube.
+      joins: placed.node.joinFaint === true ? [] : placed.node.joinParentIds,
       state: placed.node.look.state,
     };
   }

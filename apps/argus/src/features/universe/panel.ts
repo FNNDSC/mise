@@ -18,7 +18,7 @@
  * @module
  */
 import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope } from '@fnndsc/menu';
-import { PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, procLayoutModelSchema, procUniverseModelSchema, type ProcUniverseModel } from '@fnndsc/menu';
+import { PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, UNIVERSE_REACH, procLayoutModelSchema, procUniverseModelSchema, universeKey_of, universeReach_of, type ProcUniverseModel } from '@fnndsc/menu';
 import { ChrisSpace, PHYSICS_DEFAULT, type DrawMode, type PhysicsTerms, type SceneGraph, type SceneNode, type SettleMode } from '../../scene/chrisSpace.js';
 import {
   LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse,
@@ -37,6 +37,18 @@ import { dataGraph_build, dataHubKey_of, dataHubTip_of, dataPath_of, description
 
 /** How the whole space is arranged: round each shape's hub, or round the plugin stars. */
 type Arrangement = UniverseSettings['arrangement'];
+
+/**
+ * Whether the settle's terms are the ones every browser starts with (and the
+ * session lays out with): charge, links, collisions and gravity all on.
+ *
+ * @param physics - The terms.
+ * @returns Whether they are.
+ */
+function physics_isDefault(physics: PhysicsTerms): boolean {
+  const standard: PhysicsTerms = { ...PHYSICS_DEFAULT, gravity: true };
+  return physics.charge === standard.charge && physics.link === standard.link && physics.collide === standard.collide && physics.gravity === standard.gravity;
+}
 
 /**
  * A cheap fingerprint of a set of places: how many, and a weighted sum.
@@ -123,16 +135,10 @@ export interface UniversePanelMount {
   openPill: HTMLElement | null;
 }
 
-/** How far a sphere's repulsion reaches while the space is small: a molecule hugs itself at this bound. */
-const UNIVERSE_REACH: number = 12;
-
-/**
- * Spheres beyond which the reach is unbounded again. The bound is for the
- * first landings — six spheres that would otherwise scatter as dots — and
- * a crowd under it packs into one ball with its clusters lost; a crowd
- * spreads on its own charge and reads as the field it is.
- */
-const UNIVERSE_HUG_NODES: number = 240;
+/** How long the pane waits for the session to lay a layout out before settling it here. */
+const SESSION_WAIT_MS: number = 180_000;
+/** How often the pane asks the session how far it has come. */
+const SESSION_WAIT_ASK_MS: number = 1500;
 
 /** The least time between two repaints from landings. */
 const REPAINT_MS: number = 1000;
@@ -183,6 +189,8 @@ export class UniversePanel {
   private putSignatures: Map<string, string> = new Map();
   /** How many places the session keeps, per layout, as last heard or put; absent when unknown. */
   private sessionPlaces: Map<string, number | null> = new Map();
+  /** The layout the pane waits for the session to lay out, and until when; null when it waits for none. */
+  private sessionWait: { name: string; until: number; timer: number | null } | null = null;
   private storeKey: string | null = null;
   private arrivalsKey: string = '';
   private feedsCount: number | null = null;
@@ -261,12 +269,8 @@ export class UniversePanel {
       progress: (done: number, total: number, nodes: number): void => this.settle_progress(done, total, nodes),
       // A feed turns solid as a whole when it is near enough to read; a
       // folded shape's molecule does the same.
-      handoffKey: (node: SceneNode): string | null => {
-        const feed: RegExpMatchArray | null = node.id.match(/^feed:(\d+):/);
-        if (feed !== null) return `feed:${feed[1]}`;
-        const folded: string | null = foldShape_of(node.id);
-        return folded === null ? null : `fold:${folded}`;
-      },
+      // The molecule a node belongs to, named as the session names it when it lays the space out.
+      handoffKey: (node: SceneNode): string | null => universeKey_of(node.id),
       // A sphere is a plugin group inside a feed; the tip says both. Inside
       // a feed the nodes are its own and carry their labels.
       tip: (node: SceneNode): string | null => (this.inside === null ? (dataHubTip_of(node.id, this.dataHubs) ?? pluginTip_of(node.id, this.landed) ?? foldTip_of(node.id, this.landed) ?? universeTip_of(node.id, this.landed) ?? clusterTip_of(node.id, this.landed)) : null),
@@ -392,7 +396,7 @@ export class UniversePanel {
   public envelope_observe(envelope: WireEnvelope): void {
     if (envelope.model?.kind === PROC_LAYOUT_MODEL_KIND) {
       const layout = procLayoutModelSchema.safeParse(envelope.model.data);
-      if (layout.success) this.sessionLayout_take(layout.data.name, layout.data.positions);
+      if (layout.success) this.sessionLayout_take(layout.data.name, layout.data.positions, layout.data.laying ?? null);
       return;
     }
     if (envelope.model?.kind !== PROC_UNIVERSE_MODEL_KIND) return;
@@ -772,9 +776,23 @@ export class UniversePanel {
       if (this.arrangementPill !== null) this.arrangementPill.textContent = 'GALAXY';
       this.scene.arrangement_set('galaxy', this.positions_recalled('galaxy'), false);
     }
+    // The view leaving is kept under its own name before the name changes.
+    this.remember_now();
     this.view = view;
     if (this.viewPill !== null) this.viewPill.textContent = view.toUpperCase();
-    if (this.shown && this.inside === null && this.cluster === null) this.paint(true, 'full');
+    if (this.shown && this.inside === null && this.cluster === null) {
+      // A view already seen is drawn where it stood; only a first visit
+      // settles the whole space. Settled afresh on every switch, a return
+      // to FEEDS raced whatever the operator did next, and a step that
+      // cancelled the settle left the scene holding the folded shapes.
+      const kept = this.positions_recalled(this.arrangement);
+      if (kept !== undefined) {
+        this.scene.positions_seed(kept);
+        this.paint(true, 'new');
+      } else {
+        this.paint(true, 'full');
+      }
+    }
     this.settings_save();
   }
 
@@ -852,6 +870,11 @@ export class UniversePanel {
    *   scale or a view), which re-settles all of them.
    */
   private paint(fit: boolean = true, settle: SettleMode = 'new'): void {
+    // The session is laying this layout out: its places are drawn when they come.
+    if (this.sessionWait_holds()) {
+      this.title_paint();
+      return;
+    }
     // The top of the universe: every feed (the structure itself), or the
     // shapes folded when the operator asks for it.
     const built = this.view === 'shapes' ? foldedGraph_build(this.landed.all(), this.scale)
@@ -867,7 +890,7 @@ export class UniversePanel {
     // Hug while small, spread when a crowd: the bound that keeps a lone
     // molecule together would pack seven hundred feeds into one ball.
     // Set only when it changes: physics_set settles the old graph again.
-    const reach: number | undefined = graph.nodes.length <= UNIVERSE_HUG_NODES ? UNIVERSE_REACH : undefined;
+    const reach: number | undefined = universeReach_of(graph.nodes.length);
     if (reach !== this.reach) {
       this.reach = reach;
       // The graph below settles under the new reach; settling the old one
@@ -1411,11 +1434,14 @@ export class UniversePanel {
   /** Seeds the next settle from the remembered positions, if any. */
   /**
    * Where an arrangement's positions are kept: a galaxy under the key the
-   * universe always used, each other arrangement beside it.
+   * universe always used, each other arrangement beside it, and the folded
+   * shapes of each apart from every feed's.
    */
   private positionsKey_of(arrangement: Arrangement): string | null {
     if (this.storeKey === null) return null;
-    return arrangement === 'galaxy' ? this.storeKey : `${this.storeKey}.${arrangement}`;
+    // The folded shapes are other nodes: kept beside every feed's places, never over them.
+    const key: string = arrangement === 'galaxy' ? this.storeKey : `${this.storeKey}.${arrangement}`;
+    return this.view === 'shapes' ? `${key}.shapes` : key;
   }
 
   /** The positions kept for an arrangement, or none. */
@@ -1451,6 +1477,10 @@ export class UniversePanel {
   /** Writes where the molecules stand, for the next visit. */
   private remember_now(): void {
     if (this.store === undefined || this.storeKey === null || !this.shown) return;
+    // Kept only as the view on stage: a remember timer set under SHAPES and
+    // firing after FEEDS is back once filed the folded shapes as the galaxy,
+    // for this browser and for the session's copy.
+    if (!this.positions_matchView(this.scene.positions_get())) return;
     try {
       // The positions are the panel's arrangement's (DATA settles as the scene's hubs).
       const key: string | null = this.positionsKey_of(this.arrangement);
@@ -1462,11 +1492,26 @@ export class UniversePanel {
   }
 
   /**
-   * The name the session keeps a layout under: the arrangement, and the
-   * folded shapes apart from every feed (their nodes are other nodes).
+   * Whether a set of places is the view on stage's: folded stages under
+   * SHAPES, every feed's own under FEEDS.
+   *
+   * @param positions - The places.
+   * @returns Whether they are.
+   */
+  private positions_matchView(positions: Record<string, [number, number, number]>): boolean {
+    const ids: string[] = Object.keys(positions);
+    const folded: boolean = ids.some((id: string): boolean => id.startsWith('fold:'));
+    const feeds: boolean = ids.some((id: string): boolean => id.startsWith('feed:'));
+    return this.view === 'shapes' ? folded && !feeds : !folded;
+  }
+
+  /**
+   * The name the session keeps a layout under: the arrangement, with the
+   * folded shapes (other nodes) and spheres alike (other radii) kept apart.
    */
   private sessionLayoutName_of(arrangement: Arrangement): string {
-    return this.view === 'shapes' ? `${arrangement}-shapes` : arrangement;
+    // Spheres all alike are other radii, so other places: kept apart from JOBS, which the session lays out itself.
+    return `${arrangement}${this.view === 'shapes' ? '-shapes' : ''}${this.scale === 'feeds' ? '-alike' : ''}`;
   }
 
   /**
@@ -1477,10 +1522,20 @@ export class UniversePanel {
    * @param name - The layout the session answered for.
    * @param positions - Its places, or null when it keeps none.
    */
-  private sessionLayout_take(name: string, positions: Record<string, [number, number, number]> | null): void {
+  private sessionLayout_take(name: string, positions: Record<string, [number, number, number]> | null, laying: { nodes: number; fraction: number } | null = null): void {
     // What the session keeps is never less than this browser put there.
     if (positions !== null || !this.sessionPlaces.has(name)) this.sessionPlaces.set(name, positions === null ? null : Object.keys(positions).length);
-    if (positions === null || this.store === undefined) return;
+    if (positions === null && laying !== null) {
+      this.sessionWait_hold(name, laying);
+      return;
+    }
+    const waited: boolean = this.sessionWait?.name === name;
+    if (waited) this.sessionWait_end();
+    if (positions === null || this.store === undefined) {
+      // The session laid nothing out after all: this browser settles the space itself.
+      if (waited && this.shown) this.paint(true, 'full');
+      return;
+    }
     const arrangement: Arrangement | undefined = (['galaxy', 'spokes', 'clumps', 'constellations', 'data', 'accretion'] as const)
       .find((a: Arrangement): boolean => this.sessionLayoutName_of(a) === name);
     if (arrangement === undefined || this.positions_recalled(arrangement) !== undefined) return;
@@ -1498,8 +1553,43 @@ export class UniversePanel {
     // not yet on stage seeds from the store when it arrives.
     if (arrangement === this.arrangement && this.shown && this.inside === null && this.cluster === null && this.entering === null) {
       this.scene.positions_seed(positions);
-      this.paint(false, 'new');
+      this.paint(waited, 'new');
     }
+  }
+
+  /**
+   * Waits for the session laying a layout out, showing its progress, rather
+   * than settling the same space again here: asked again every moment until
+   * the places come, and given up on after {@link SESSION_WAIT_MS}.
+   *
+   * @param name - The layout the session is laying out.
+   * @param laying - How far it has come.
+   */
+  private sessionWait_hold(name: string, laying: { nodes: number; fraction: number }): void {
+    if (name !== this.sessionLayoutName_of(this.arrangement) || this.positions_recalled(this.arrangement) !== undefined) return;
+    const until: number = this.sessionWait?.name === name ? this.sessionWait.until : Date.now() + SESSION_WAIT_MS;
+    if (this.sessionWait?.timer !== undefined && this.sessionWait?.timer !== null) window.clearTimeout(this.sessionWait.timer);
+    if (Date.now() >= until) {
+      this.sessionWait_end();
+      if (this.shown) this.paint(true, 'full');
+      return;
+    }
+    this.wait.show(`LAYING OUT ${laying.nodes.toLocaleString('en-US')} SPHERES · THE SESSION`, laying.fraction);
+    const timer: number = window.setTimeout((): void => { this.handlers.command_run(`proc layout ${name}`); }, SESSION_WAIT_ASK_MS);
+    this.sessionWait = { name, until, timer };
+  }
+
+  /** Stops waiting for the session. */
+  private sessionWait_end(): void {
+    if (this.sessionWait?.timer !== undefined && this.sessionWait?.timer !== null) window.clearTimeout(this.sessionWait.timer);
+    this.sessionWait = null;
+    this.wait.hide();
+  }
+
+  /** Whether the pane waits for the session to lay out the layout on stage. */
+  private sessionWait_holds(): boolean {
+    return this.sessionWait !== null && this.sessionWait.name === this.sessionLayoutName_of(this.arrangement)
+      && Date.now() < this.sessionWait.until && this.inside === null && this.cluster === null;
   }
 
   /**
@@ -1509,6 +1599,10 @@ export class UniversePanel {
    */
   private sessionLayout_put(): void {
     if (this.inside !== null || this.cluster !== null || this.scene.replay_state() !== null) return;
+    // Only the space every browser would find: the index whole, the physics
+    // as they come. A knob turned (gravity off) is play, and never replaces
+    // the places kept for everyone.
+    if (!this.whole || !physics_isDefault(this.physics)) return;
     const positions: Record<string, [number, number, number]> = {};
     for (const [id, at] of Object.entries(this.scene.positions_get())) {
       // A node not yet placed has no place to keep (NaN travels as null, and the session refuses the lot).

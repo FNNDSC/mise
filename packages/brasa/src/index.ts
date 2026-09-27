@@ -37,3 +37,5 @@ export * from './lib/pipe.js';
 export * from './lib/semicolonParser.js';
 export * from './lib/completer/index.js';
 export { jobsState_derive, type JobsState } from './core/jobsState.js';
+export { universeLayouts_warm, universeLayout_underWay, universeLayoutInput_of, SESSION_GALAXY_NODES_MIN } from './universe/universeLayout.js';
+export { procUniverseModel_build } from './builtins/proc.js';

@@ -54,8 +54,11 @@ const mockConsole = jest.fn(async (_target: { identity: string; url: string; tok
 jest.unstable_mockModule('../src/core/daemonConsole.js', () => ({
   daemonConsole_run: mockConsole,
 }));
+const mockUniverseLayoutsWarm = jest.fn(async (): Promise<number> => 0);
 jest.unstable_mockModule('@fnndsc/brasa', () => ({
   warmupFailure_note: mockWarmupFailureNote,
+  procUniverseModel_build: jest.fn(() => ({ feeds: [], whole: true })),
+  universeLayouts_warm: mockUniverseLayoutsWarm,
   warmupFailure_clear: mockWarmupFailureClear,
   session: mockSession,
   vfs: { data_get: mockDataGet },

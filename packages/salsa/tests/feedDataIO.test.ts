@@ -19,6 +19,8 @@ jest.mock('../src/vfs/dispatcher', () => ({
   vfsDispatcher: { path_isVirtual: (p: string) => mockIsVirtual(p), list: (p: string) => mockDispatcherList(p) },
 }));
 jest.mock('../src/dicom/series', () => ({ dicomHeaderPrefix_get: (p: string) => mockHeader(p) }));
+const mockSeries = jest.fn();
+jest.mock('@fnndsc/cumin', () => ({ ...jest.requireActual('@fnndsc/cumin'), pacsSeriesFacts_ofPath: (p: string) => mockSeries(p) }));
 
 import { dataFactsIO_of } from '../src/dag/feedData';
 
@@ -62,5 +64,11 @@ describe('dataFactsIO_of', () => {
     expect(await io.header('/a.dcm')).toEqual({ tags: [] });
     expect(await io.header('/b.dcm')).toBeNull();
     expect(await io.outputPath(1)).toBe('/out/1');
+  });
+
+  it('asks CUBE\'s series record for a PACS path, and takes a failed ask as none', async () => {
+    mockSeries.mockResolvedValueOnce({ modality: 'MR' }).mockRejectedValueOnce(new Error('503'));
+    expect(await io.series?.('/SERVICES/PACS/P/1-A/S/5-X/1.dcm')).toEqual({ modality: 'MR' });
+    expect(await io.series?.('/SERVICES/PACS/P/1-A/S/5-X/1.dcm')).toBeNull();
   });
 });

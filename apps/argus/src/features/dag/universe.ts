@@ -16,224 +16,44 @@
  */
 import type { SceneGraph, SceneNode } from '../../scene/chrisSpace.js';
 import type { FeedDagModel, FeedDagNode } from '@fnndsc/menu';
+import {
+  type LandedGroup,
+  type LandedFeed,
+  shape_of,
+  groupId_of,
+  anchorId_of,
+  type UniverseScale,
+  jobsMetric_of,
+  erroredShare_of,
+  universeGraph_build,
+  pluginStarId_of,
+  pluginOfStar,
+  constellationsGraph_build,
+  accretionGraph_build,
+  shapeWords_of,
+  foldId_of,
+  foldShape_of,
+} from '@fnndsc/menu';
 
-/** One node of a feed's collapsed shape. */
-export interface LandedGroup {
-  plugin: string;
-  count: number;
-  /** How many of the count ended in error; zero from an older daemon. */
-  errored: number;
-  status: string;
-  parent: number | null;
-}
 
-/** One feed as the session reported it landing. */
-export interface LandedFeed {
-  id: number;
-  /** The feed's name, for the tip; empty from a daemon that predates it. */
-  title: string;
-  jobs: number;
-  status: string;
-  chain: string[];
-  groups: LandedGroup[];
-  /** When the feed was made (ISO 8601): the order a replay reveals it in; absent or empty from a daemon that predates it. */
-  createdAt?: string;
-  /** What the feed's data is, once the index has read it: its format, and for DICOM its modality and series description. */
-  data?: { format: string; modality?: string; seriesDescription?: string; reason?: string };
-}
-
-/**
- * The signature of a feed's shape: what pulls like feeds together.
- *
- * @param feed - The feed.
- * @returns The plugins in group order with their parent places — the same
- *   for two feeds that ran the same pipeline, whatever their counts.
- */
-export function shape_of(feed: LandedFeed): string {
-  return feed.groups.map((group: LandedGroup): string => `${group.parent ?? 'r'}:${group.plugin}`).join('>');
-}
-
-/** The id of a feed's group node. */
-export function groupId_of(feedId: number, index: number): string {
-  return `feed:${feedId}:${index}`;
-}
-
-/** The id of a shape's unseen anchor. */
-export function anchorId_of(shape: string): string {
-  return `shape:${shape}`;
-}
-
-/**
- * Builds the space from the feeds that have landed so far.
- *
- * @param landed - The feeds, in any order; the graph is the same for any order.
- * @returns The graph: every feed's groups, and one ghost anchor per shape
- *   that each feed's root hangs from — present in the settle, never drawn.
- */
-/**
- * What sizes a sphere: the jobs it stands for, on a log scale, or nothing
- * (every sphere alike, so the field reads by shape alone).
- */
-export type UniverseScale = 'jobs' | 'feeds';
-
-/**
- * A sphere's weight on the jobs scale. Logarithmic, because a group of
- * eighty thousand beside groups of three hundred left everything but the
- * giant at the smallest radius and the giant at the heart of gravity — a
- * fat caterpillar where a field should be.
- *
- * @param count - The jobs the group stands for.
- * @returns The metric the settle sizes by.
- */
-export function jobsMetric_of(count: number): number {
-  return Math.log2(Math.max(1, count) + 1);
-}
-
-/**
- * The share of a group that ended in error, 0..1, or undefined when none
- * did: what hues the sphere. A group is not red because one job in eighty
- * thousand failed; it is as red as its failures are many.
- *
- * @param group - The group.
- * @returns The share, or undefined for a clean group.
- */
-export function erroredShare_of(group: LandedGroup): number | undefined {
-  if (group.errored <= 0 || group.count <= 0) return undefined;
-  return Math.min(1, group.errored / group.count);
-}
-
-export function universeGraph_build(landed: ReadonlyArray<LandedFeed>, scale: UniverseScale = 'jobs'): SceneGraph {
-  const nodes: SceneNode[] = [];
-  const anchors: Set<string> = new Set();
-  const feeds: LandedFeed[] = [...landed].sort((a: LandedFeed, b: LandedFeed): number => a.id - b.id);
-  const perShape: Map<string, number> = new Map();
-  for (const feed of feeds) {
-    if (feed.groups.length === 0) continue;
-    const shape: string = shape_of(feed);
-    perShape.set(shape, (perShape.get(shape) ?? 0) + 1);
-  }
-  for (const feed of feeds) {
-    if (feed.groups.length === 0) continue;
-    const shape: string = shape_of(feed);
-    const anchor: string = anchorId_of(shape);
-    if (!anchors.has(shape)) {
-      anchors.add(shape);
-      // No mass: an anchor gathers its feeds without carving room of its
-      // own — but it is drawn as a halo, the cluster's handle, sized by
-      // how many feeds share the shape.
-      nodes.push({ id: anchor, label: shapeWords_of(shape), parentIds: [], joinParentIds: [], ghost: true, halo: true, metric: 1, count: perShape.get(shape) ?? 1 });
-    }
-    feed.groups.forEach((group: LandedGroup, index: number): void => {
-      const share: number | undefined = erroredShare_of(group);
-      nodes.push({
-        id: groupId_of(feed.id, index),
-        label: group.plugin,
-        parentIds: [group.parent === null ? anchor : groupId_of(feed.id, group.parent)],
-        joinParentIds: [],
-        status: group.status,
-        metric: scale === 'jobs' ? jobsMetric_of(group.count) : 1,
-        ...(group.count > 1 ? { count: group.count } : {}),
-        ...(share !== undefined ? { share } : {}),
-      });
-    });
-  }
-  return { nodes };
-}
-
-/** The prefix of a plugin star's id. */
-const PLUGIN_STAR_PREFIX: string = 'plugin:';
-
-/**
- * A plugin star's id.
- *
- * @param plugin - The plugin's name (versions collapse: the name alone).
- * @returns The id.
- */
-export function pluginStarId_of(plugin: string): string {
-  return `${PLUGIN_STAR_PREFIX}${plugin}`;
-}
-
-/**
- * The plugin a star stands for.
- *
- * @param nodeId - A node id.
- * @returns The plugin's name, or null when the node is not a plugin star.
- */
-export function pluginOfStar(nodeId: string): string | null {
-  return nodeId.startsWith(PLUGIN_STAR_PREFIX) ? nodeId.slice(PLUGIN_STAR_PREFIX.length) : null;
-}
-
-/**
- * The space as constellations: every feed its own molecule with no shape's
- * hub to hang from, each stage marked with its plugin, and one ringed star
- * per plugin, sized by the feeds that ran it — the engine places the stars
- * by what runs with what and pulls each stage to its own.
- *
- * @param landed - Every landed feed.
- * @param scale - What sizes a stage.
- * @returns The graph.
- */
-export function constellationsGraph_build(landed: ReadonlyArray<LandedFeed>, scale: UniverseScale = 'jobs'): SceneGraph {
-  const nodes: SceneNode[] = [];
-  const feedsUsing: Map<string, number> = new Map();
-  const feeds: LandedFeed[] = [...landed].sort((a: LandedFeed, b: LandedFeed): number => a.id - b.id);
-  for (const feed of feeds) {
-    if (feed.groups.length === 0) continue;
-    for (const plugin of new Set(feed.groups.map((group: LandedGroup): string => group.plugin))) feedsUsing.set(plugin, (feedsUsing.get(plugin) ?? 0) + 1);
-    feed.groups.forEach((group: LandedGroup, index: number): void => {
-      const share: number | undefined = erroredShare_of(group);
-      nodes.push({
-        id: groupId_of(feed.id, index),
-        label: group.plugin,
-        parentIds: group.parent === null ? [] : [groupId_of(feed.id, group.parent)],
-        joinParentIds: [],
-        status: group.status,
-        metric: scale === 'jobs' ? jobsMetric_of(group.count) : 1,
-        attrs: { plugin: group.plugin },
-        ...(group.count > 1 ? { count: group.count } : {}),
-        ...(share !== undefined ? { share } : {}),
-      });
-    });
-  }
-  for (const [plugin, count] of [...feedsUsing].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
-    nodes.push({
-      id: pluginStarId_of(plugin),
-      label: plugin,
-      parentIds: [],
-      joinParentIds: [],
-      // A star's mass is how many feeds ran it, on a log.
-      metric: 1 + Math.log(count),
-      hue: '#e8f4ff',
-      ring: true,
-      attrs: { kind: 'star', plugin },
-    });
-  }
-  return { nodes };
-}
-
-/**
- * The space as it grows by accretion: every feed its own molecule, no hubs
- * and no stars, each stage carrying its plugin (what makes feeds alike) and
- * its feed's creation time (the order the coral grows in).
- *
- * @param landed - Every landed feed.
- * @param scale - What sizes a stage.
- * @returns The graph.
- */
-export function accretionGraph_build(landed: ReadonlyArray<LandedFeed>, scale: UniverseScale = 'jobs'): SceneGraph {
-  const createdOf: Map<number, number> = new Map();
-  for (const feed of landed) {
-    const at: number = feed.createdAt === undefined ? Number.NaN : Date.parse(feed.createdAt);
-    if (Number.isFinite(at)) createdOf.set(feed.id, at);
-  }
-  const nodes: SceneNode[] = constellationsGraph_build(landed, scale).nodes
-    .filter((node: SceneNode): boolean => node.attrs?.['kind'] !== 'star')
-    .map((node: SceneNode): SceneNode => {
-      const created: number | undefined = createdOf.get(Number(node.id.split(':')[1]));
-      return created === undefined ? node : { ...node, attrs: { ...node.attrs, createdAt: created } };
-    });
-  return { nodes };
-}
+export {
+  type LandedGroup,
+  type LandedFeed,
+  shape_of,
+  groupId_of,
+  anchorId_of,
+  type UniverseScale,
+  jobsMetric_of,
+  erroredShare_of,
+  universeGraph_build,
+  pluginStarId_of,
+  pluginOfStar,
+  constellationsGraph_build,
+  accretionGraph_build,
+  shapeWords_of,
+  foldId_of,
+  foldShape_of,
+} from '@fnndsc/menu';
 
 /**
  * What a plugin star's tip says: the plugin, how many feeds ran it, and the
@@ -495,20 +315,6 @@ export function sphereIds_of(feedId: number, feed: LandedFeed): string[] {
   return feed.groups.map((_group: LandedGroup, index: number): string => groupId_of(feedId, index));
 }
 
-/**
- * A shape in words: its plugins in pipeline order, each once.
- *
- * @param shape - The shape string (`r:pl-a>0:pl-b>0:pl-b`).
- * @returns `pl-a > pl-b`.
- */
-export function shapeWords_of(shape: string): string {
-  const seen: string[] = [];
-  for (const part of shape.split('>')) {
-    const plugin: string = part.slice(part.indexOf(':') + 1);
-    if (plugin.length > 0 && !seen.includes(plugin)) seen.push(plugin);
-  }
-  return seen.join(' > ');
-}
 
 /**
  * A shape in few words, for a title: the first plugins and how many more.
@@ -574,10 +380,6 @@ export function clusterGraph_build(landed: ReadonlyArray<LandedFeed>, shape: str
   return { nodes };
 }
 
-/** The scene id of one stage of a folded shape. */
-export function foldId_of(shape: string, index: number): string {
-  return `fold:${shape}:${index}`;
-}
 
 /**
  * The universe folded across feeds: one molecule per pipeline shape, its
@@ -652,11 +454,6 @@ export function foldTip_of(nodeId: string, feeds: LandedFeeds): string | null {
   return `${plugin} · ${count}${errors} · ${shapeWords_brief(shape)}`;
 }
 
-/** The shape a folded stage's id names, or null. */
-export function foldShape_of(nodeId: string): string | null {
-  const match: RegExpMatchArray | null = nodeId.match(/^fold:(.+):\d+$/);
-  return match === null ? null : (match[1] as string);
-}
 
 /** The scene ids of a folded shape's stages, as drawn. */
 export function foldIds_of(shape: string, feeds: LandedFeeds): string[] {

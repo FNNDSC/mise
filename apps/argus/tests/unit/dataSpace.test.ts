@@ -87,4 +87,17 @@ describe('dataGraph_build', () => {
     expect(dataHubKey_of(groupId_of(1, 0))).toBeNull();
     expect(dataHubTip_of(groupId_of(1, 0), hubs)).toBeNull();
   });
+
+  it('threads a feed to the feed whose work it began from: a lineage join, root to root', () => {
+    const source = { id: 12, title: 's', jobs: 2, status: 'finishedSuccessfully', chain: [], groups: [{ plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null }, { plugin: 'pl-dcm2niix', count: 1, errored: 0, status: 'finishedSuccessfully', parent: 0 }], data: { format: 'dicom', modality: 'MR' } } as LandedFeed;
+    const derived = { id: 13, title: 'd', jobs: 1, status: 'finishedSuccessfully', chain: [], groups: [{ plugin: 'pl-topologicalcopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null }], data: { format: 'nifti', sourceFeed: 12 } } as LandedFeed;
+    const orphan = { ...derived, id: 14, data: { format: 'nifti', sourceFeed: 999 } } as LandedFeed;
+    const { graph } = dataGraph_build([source, derived, orphan]);
+    expect(graph.nodes.find((n) => n.id === 'feed:13:0')?.joinParentIds).toEqual(['feed:12:0']);
+    // A relation, not an edge of the run: drawn faint.
+    expect(graph.nodes.find((n) => n.id === 'feed:13:0')?.joinFaint).toBe(true);
+    // A source not in the space draws no thread.
+    expect(graph.nodes.find((n) => n.id === 'feed:14:0')?.joinParentIds).toEqual([]);
+    expect(graph.nodes.find((n) => n.id === 'feed:12:0')?.joinParentIds).toEqual([]);
+  });
 });

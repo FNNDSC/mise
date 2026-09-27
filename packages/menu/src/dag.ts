@@ -214,6 +214,8 @@ export const procFeedDataSchema = z.object({
   seriesDescription: z.string().optional(),
   /** Why the format is `unknown` or `other`, in words. */
   reason: z.string().optional(),
+  /** The feed whose output this feed's data is: its lineage, when it began from another feed's work. */
+  sourceFeed: z.number().optional(),
 });
 export type ProcFeedData = z.infer<typeof procFeedDataSchema>;
 export const procUniverseFeedSchema = z.object({
@@ -256,6 +258,8 @@ export const procLayoutModelSchema = z.object({
   positions: z.record(z.string(), z.tuple([z.number(), z.number(), z.number()])).nullable(),
   /** When it was kept (ISO 8601); null when none is. */
   writtenAt: z.string().nullable(),
+  /** How far the session has come laying it out, while it does; absent or null otherwise. */
+  laying: z.object({ nodes: z.number(), fraction: z.number() }).nullable().optional(),
 });
 export type ProcLayoutModel = z.infer<typeof procLayoutModelSchema>;
 export const PROC_LAYOUT_MODEL_KIND = 'proc.layout' as const;

@@ -19,6 +19,8 @@ import {
   warmupFailure_note,
   type BrasaEngine,
   type PrefetchResult,
+  procUniverseModel_build,
+  universeLayouts_warm,
 } from '@fnndsc/brasa';
 import { daemon_launch, identity_forSession, type DaemonLaunchInfo, hostControl_fromInputs, type HostControlInputs } from '@fnndsc/calypso';
 import { daemonConsole_run, type DaemonConsoleTarget } from './daemonConsole.js';
@@ -603,6 +605,13 @@ export async function startupWarmup_run(
         } else {
           topologySweep = procTopology_warmup();
         }
+        // The index whole, the session lays the universe out once for every
+        // surface (in a worker thread, off the lane); a layout it already
+        // keeps is left as it is.
+        void topologySweep.then((): void => {
+          if (procTopology_status().state !== 'complete') return;
+          void universeLayouts_warm(() => procUniverseModel_build().feeds);
+        }, (): void => { /* no index, no layout */ });
         if (reportSettlement) {
           void topologySweep.then(
             (): void => {

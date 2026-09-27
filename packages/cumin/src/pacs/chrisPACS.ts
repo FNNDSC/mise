@@ -583,6 +583,96 @@ export interface SeriesStorageState {
 }
 
 /**
+ * What CUBE's own series record says of a series stored in its PACS folder:
+ * its modality and description, no file read.
+ *
+ * @property modality - The series' modality, when recorded.
+ * @property seriesDescription - The series' description, when recorded.
+ */
+export interface PACSSeriesFacts {
+  modality?: string;
+  seriesDescription?: string;
+}
+
+/** Series records already fetched, by PACS and patient folder: one ask serves every series of a patient. */
+const seriesByPatient: Map<string, Promise<Map<string, PACSSeriesFacts>>> = new Map();
+
+/**
+ * The series folder a path lies in, when it lies in CUBE's PACS store
+ * (`SERVICES/PACS/<pacs>/<patient>/<study>/<series>/...`).
+ *
+ * @param path - A CFS path, with or without its leading slash.
+ * @returns The series folder (no leading slash), its PACS and its patient folder; null elsewhere.
+ */
+export function pacsSeriesFolder_of(path: string): { folder: string; pacs: string; patient: string } | null {
+  const parts: string[] = path.replace(/^\/+/, '').split('/');
+  if (parts.length < 6 || parts[0] !== 'SERVICES' || parts[1] !== 'PACS') return null;
+  const [, , pacs, patient] = parts as [string, string, string, string];
+  if (pacs.length === 0 || patient.length === 0) return null;
+  return { folder: parts.slice(0, 6).join('/'), pacs, patient };
+}
+
+/**
+ * What CUBE's series record says of the series a PACS path lies in. CUBE
+ * cannot be asked by folder, but a patient folder begins with the patient's
+ * ID, and the series list answers by patient: the patient's series are
+ * asked for once, and the folder matched exactly among them. A path outside
+ * the PACS store, a folder not found, or a failed ask is none.
+ *
+ * @param path - A CFS path in the PACS store.
+ * @returns The series' facts, or null.
+ */
+export async function pacsSeriesFacts_ofPath(path: string): Promise<PACSSeriesFacts | null> {
+  const at = pacsSeriesFolder_of(path);
+  if (at === null) return null;
+  const patientID: string = at.patient.split('-')[0] ?? '';
+  if (patientID.length === 0) return null;
+  const key: string = `${at.pacs}/${at.patient}`;
+  let asked: Promise<Map<string, PACSSeriesFacts>> | undefined = seriesByPatient.get(key);
+  if (asked === undefined) {
+    asked = patientSeries_fetch(at.pacs, patientID).catch((): Map<string, PACSSeriesFacts> => {
+      // A failed ask is forgotten, so the next feed of this patient asks again.
+      seriesByPatient.delete(key);
+      return new Map();
+    });
+    seriesByPatient.set(key, asked);
+  }
+  return (await asked).get(at.folder) ?? null;
+}
+
+/** Every series CUBE records for one patient in one PACS, by folder: only modality and description kept. */
+async function patientSeries_fetch(pacs: string, patientID: string): Promise<Map<string, PACSSeriesFacts>> {
+  const found: Map<string, PACSSeriesFacts> = new Map();
+  const client: Client | null = await chrisConnection.client_get();
+  if (!client) return found;
+  for (let offset: number = 0; ; offset += SERIES_PAGE) {
+    const page: Awaited<ReturnType<typeof client.getPACSSeriesList>> =
+      await client.getPACSSeriesList({ PatientID: patientID, pacs_identifier: pacs, limit: SERIES_PAGE, offset });
+    const items: ReturnType<typeof page.getItems> = page.getItems();
+    if (!items || items.length === 0) break;
+    for (const item of items) {
+      const data: { folder_path?: string; Modality?: string; SeriesDescription?: string } | null =
+        itemData_get<{ folder_path?: string; Modality?: string; SeriesDescription?: string }>(item);
+      const folder: string | undefined = data?.folder_path?.replace(/^\/+/, '');
+      if (!folder) continue;
+      const facts: PACSSeriesFacts = {};
+      const modality: string = (data?.Modality ?? '').trim();
+      const description: string = (data?.SeriesDescription ?? '').trim();
+      if (modality.length > 0) facts.modality = modality;
+      if (description.length > 0) facts.seriesDescription = description;
+      found.set(folder, facts);
+    }
+    if (items.length < SERIES_PAGE) break;
+  }
+  return found;
+}
+
+/** Forgets the series records fetched: a test, or a new identity. */
+export function pacsSeriesFacts_clear(): void {
+  seriesByPatient.clear();
+}
+
+/**
  * Resolves a series' CUBE storage state: its registered file count and the
  * folder it landed in.
  *

@@ -312,6 +312,8 @@ export interface ProcFeedDataFacts {
   modality?: string;
   seriesDescription?: string;
   reason?: string;
+  /** The feed whose output this feed's data is, when it began from another feed's work. */
+  sourceFeed?: number;
   reader?: number;
 }
 

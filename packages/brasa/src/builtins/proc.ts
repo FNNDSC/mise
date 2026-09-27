@@ -7,6 +7,7 @@ import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procFeed_r
 import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, feedStatus_ofCounts, procLayout_get, procLayout_set, procLayoutName_check, procLayoutPositions_check, type ProcLayoutRecord, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { FEED_LIST_MODEL_KIND, PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, type FeedListModel, type ProcLayoutModel, type ProcUniverseModel } from '@fnndsc/menu';
 import { spinner } from '../lib/spinner.js';
+import { universeLayout_underWay, universeLayouts_warm } from '../universe/universeLayout.js';
 import { commandArgs_process, type ParsedArgs } from './utils.js';
 import { builtin_cd } from './fs/cd.js';
 import { procWatch_add, procWatch_remove, procWatch_list, watchSubject_parse, type ProcWatchEntry } from './procWatch.js';
@@ -466,6 +467,24 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
  * @returns The universe model, rendered as a count and a whole/warming word.
  */
 function procUniverse_handle(): Promise<CommandEnvelope> {
+  const model: ProcUniverseModel = procUniverseModel_build();
+  const feeds: ProcUniverseModel['feeds'] = model.feeds;
+  const whole: boolean = model.whole;
+  const shapes: number = new Set(feeds.map((feed): string => feed.chain.join('>'))).size;
+  const rendered: string =
+    `${chalk.cyan('universe:')} ${feeds.length} feeds across ${shapes} pipeline shapes` +
+    `${whole ? '' : chalk.yellow(' — the index is still warming; this is what has landed so far')}
+`;
+  return Promise.resolve(envelope_ok(rendered, { kind: PROC_UNIVERSE_MODEL_KIND, data: model }));
+}
+
+/**
+ * The universe as the index holds it: every feed whose topology is loaded,
+ * as it landed, and whether the index is whole.
+ *
+ * @returns The universe model.
+ */
+export function procUniverseModel_build(): ProcUniverseModel {
   const cache: ProcCache = procCache_get();
   const feeds: ProcUniverseModel['feeds'] = cache.feedIDs_get()
     .filter((feedID: number): boolean => cache.topologyLoaded_has(feedID))
@@ -475,13 +494,7 @@ function procUniverse_handle(): Promise<CommandEnvelope> {
       return { id: feedID, title: feed.title, jobs: cache.instancesForFeed_count(feedID), status: feedStatus_ofCounts(feed), chain: cache.pluginChain_of(feedID), groups: cache.pluginGroups_of(feedID), createdAt: feed.creationDate ?? '', ...(data === undefined ? {} : { data }) };
     });
   const whole: boolean = !cache.warmupProgress_get().active && procTopology_status().state === 'complete';
-  const shapes: number = new Set(feeds.map((feed): string => feed.chain.join('>'))).size;
-  const rendered: string =
-    `${chalk.cyan('universe:')} ${feeds.length} feeds across ${shapes} pipeline shapes` +
-    `${whole ? '' : chalk.yellow(' — the index is still warming; this is what has landed so far')}
-`;
-  const model: ProcUniverseModel = { feeds, whole };
-  return Promise.resolve(envelope_ok(rendered, { kind: PROC_UNIVERSE_MODEL_KIND, data: model }));
+  return { feeds, whole };
 }
 
 /**
@@ -516,10 +529,16 @@ async function procLayout_handle(args: string[]): Promise<CommandEnvelope> {
     return envelope_ok(`${chalk.green(`layout ${name}:`)} ${Object.keys(kept.positions).length.toLocaleString('en-US')} places kept\n`);
   }
   const kept: ProcLayoutRecord | null = await procLayout_get(name);
-  const model: ProcLayoutModel = { name, positions: kept?.positions ?? null, writtenAt: kept?.writtenAt ?? null };
-  const rendered: string = kept === null
-    ? `${chalk.cyan(`layout ${name}:`)} none kept\n`
-    : `${chalk.cyan(`layout ${name}:`)} ${Object.keys(kept.positions).length.toLocaleString('en-US')} places, kept ${kept.writtenAt}\n`;
+  // None kept and the index whole: the session lays the universe out, and
+  // says how far it has come to whoever asks meanwhile.
+  if (kept === null && procUniverseModel_build().whole) void universeLayouts_warm((): ProcUniverseModel['feeds'] => procUniverseModel_build().feeds);
+  const laying = universeLayout_underWay(name);
+  const model: ProcLayoutModel = { name, positions: kept?.positions ?? null, writtenAt: kept?.writtenAt ?? null, laying };
+  const rendered: string = kept !== null
+    ? `${chalk.cyan(`layout ${name}:`)} ${Object.keys(kept.positions).length.toLocaleString('en-US')} places, kept ${kept.writtenAt}\n`
+    : laying !== null
+      ? `${chalk.cyan(`layout ${name}:`)} laying out ${laying.nodes.toLocaleString('en-US')} spheres · ${Math.floor(laying.fraction * 100)}%\n`
+      : `${chalk.cyan(`layout ${name}:`)} none kept\n`;
   return envelope_ok(rendered, { kind: PROC_LAYOUT_MODEL_KIND, data: model });
 }
 

@@ -1568,11 +1568,12 @@ try {
       const facts = () => (document.querySelector('.dag-facts')?.textContent ?? '').replace(/\\s+/g, ' ');
       // Walk down the middle until a click lands on a node.
       let touched = '';
+      let redive = null;
       for (const f of [0.42, 0.52, 0.62, 0.72, 0.32]) {
         const at = { clientX: Math.round(box.left + box.width / 2), clientY: Math.round(box.top + box.height * f) };
         const hit = (type) => canvas.dispatchEvent(new MouseEvent(type, { ...at, bubbles: true, cancelable: true }));
         hit('click'); await sleep(500);
-        if (facts() !== '') { touched = facts(); hit('dblclick'); break; }
+        if (facts() !== '') { touched = facts(); hit('dblclick'); redive = () => { hit('click'); hit('dblclick'); }; break; }
       }
       if (touched === '') return { drew: true, touched: '' };
       for (let i = 0; i < 50; i++) { await sleep(400); if (document.querySelector('.node-overlay')) break; }
@@ -1580,14 +1581,32 @@ try {
       const ov = document.querySelector('.node-overlay');
       const inside = {
         opened: ov !== null,
-        header: ov?.querySelector('.node-overlay-header')?.textContent.trim() ?? '',
+        header: (ov?.getAttribute('aria-label') ?? '').toUpperCase(),
         rows: ov ? ov.querySelectorAll('.listing-row').length : 0,
       };
       // Esc leaves the node and flies the camera home; the scene stays.
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await sleep(2500);
-      return { drew: true, touched, inside,
-        left: document.querySelector('.node-overlay') === null,
+      const left = document.querySelector('.node-overlay') === null;
+      // A phone has no Esc: at the node's root the listing's way up reads
+      // EXIT NODE and leaves; EXIT NODE also stands first on the node's frame.
+      redive();
+      for (let i = 0; i < 50; i++) { await sleep(400); if (document.querySelector('.node-overlay')) break; }
+      await sleep(2500);
+      const pill = document.querySelector('.node-overlay .node-overlay-exit');
+      // On the node's own frame, first among its verbs, inside the node's box.
+      const box = document.querySelector('.node-overlay')?.getBoundingClientRect();
+      const onFrame = pill?.parentElement?.classList.contains('mode-frame') === true && pill?.parentElement?.firstElementChild === pill;
+      const pb = pill?.getBoundingClientRect();
+      const pillWhole = onFrame && !!pb && !!box && pb.right <= box.right + 1 && pb.left >= box.left - 1;
+      // One frame: no strip of its own above the node's browser.
+      const oneFrame = document.querySelectorAll('.node-overlay > *').length === 1;
+      const upRow = [...document.querySelectorAll('.node-overlay .listing-row')].find((r) => /EXIT NODE/.test(r.textContent));
+      const rowReads = upRow !== undefined;
+      (upRow?.querySelector('.listing-name, .row-name') ?? upRow)?.click();
+      await sleep(2500);
+      return { drew: true, touched, inside, left,
+        pill: { shown: pill !== null, word: pill?.textContent.trim() ?? '', whole: pillWhole, oneFrame, rowReads, left: document.querySelector('.node-overlay') === null },
         keptScene: document.querySelector('.dag-canvas canvas') !== null };`);
     if (dive.drew !== true) {
       console.log('  skipped: the DAG did not draw in time');
@@ -1601,6 +1620,9 @@ try {
         dive.inside?.rows > 0, JSON.stringify(dive.inside));
       check('Esc leaves the node and keeps the scene',
         dive.left === true && dive.keptScene === true, JSON.stringify(dive));
+      check('EXIT NODE leaves the node without Esc: the way up at its root reads it, and it stands first on the node\'s own frame (one frame, no strip above)',
+        dive.pill?.shown === true && dive.pill?.word === 'EXIT NODE' && dive.pill?.whole === true && dive.pill?.oneFrame === true && dive.pill?.rowReads === true && dive.pill?.left === true && dive.keptScene === true,
+        JSON.stringify(dive.pill));
     }
   }
   }

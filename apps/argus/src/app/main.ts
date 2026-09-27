@@ -2832,22 +2832,37 @@ async function surface_start(token: string): Promise<void> {
     }
     const element: HTMLElement = document.createElement('div');
     element.className = 'node-overlay';
-    const header: HTMLElement = document.createElement('header');
-    header.className = 'node-overlay-header';
-    const title: HTMLSpanElement = document.createElement('span');
-    title.textContent = `INSIDE ${vfsPath}`.toUpperCase();
-    const hint: HTMLSpanElement = document.createElement('span');
-    hint.className = 'node-overlay-hint';
-    hint.textContent = 'ESC EXITS NODE';
-    header.append(title, hint);
+    element.setAttribute('aria-label', `inside ${vfsPath}`);
     // The node's browser is a files body like any other: the same frame
-    // (rule, elbow, spine, mode bar) and the same caps grid.
+    // (rule, elbow, spine, mode bar) and the same caps grid. It covers the
+    // pane's own frame, so one frame stands — a strip of its own above it
+    // left the pane's elbow hanging beside it, and the breadcrumb already
+    // says where inside the node the operator is.
     const body: HTMLElement = filesBody_stamp();
     body.classList.add('node-overlay-body');
-    element.append(header, body);
+    // The way out is a control on the frame, first among the field's verbs
+    // and beside BACK: a phone has no Esc. It leaves the node, as its word
+    // says, from wherever inside it; Esc keeps its gentler first step back
+    // to the listing.
+    const exit: HTMLButtonElement = document.createElement('button');
+    exit.type = 'button';
+    exit.className = 'strategy-pill node-overlay-exit';
+    exit.title = 'leave the node (Esc)';
+    exit.textContent = 'EXIT NODE';
+    body.querySelector('.mode-frame')?.prepend(exit);
+    element.append(body);
     const history: string[] = [];
     const panel: FilesPanel = new FilesPanel(pane_find(body, '.files-panel'), (action: FileAction): void => {
       if (action.kind === 'dir') {
+        // Above the node's own root is outside the node: the way up is the
+        // way out (the updir row there reads EXIT NODE), never a walk out of
+        // the graph into /proc — nor a hop, since `feed_<id>` looks like one.
+        const root: string = vfsPath.replace(/\/+$/, '');
+        if (action.path !== root && !action.path.startsWith(`${root}/`)) {
+          nodeOverlay_close(id);
+          sound_play('audio3');
+          return;
+        }
         // A descendant plugin instance is a node of the same graph: the
         // experience is a hop — fly out of this node, fly into that one —
         // never a directory descent that leaves the graph behind.
@@ -2913,6 +2928,11 @@ async function surface_start(token: string): Promise<void> {
       },
     );
     nodeOverlays.set(id, { element, panel, history });
+    panel.ceiling_set(vfsPath, 'EXIT NODE');
+    exit.addEventListener('click', (): void => {
+      nodeOverlay_close(id);
+      sound_play('audio3');
+    });
     canvas.appendChild(element);
     window.requestAnimationFrame((): void => element.classList.add('node-overlay-open'));
     rootedListing_show(id, panel, vfsPath);

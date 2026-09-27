@@ -9,6 +9,7 @@
  */
 export * from './types.js';
 export { galaxy_layout } from './galaxy.js';
+export { layoutInput_build, type LayoutSource } from './layoutInput.js';
 export { accretion_layout, feedLikeness_of, STEP_BUDGET } from './accretion.js';
 export { constellations_layout, pluginWeights_of, LANDMARK_SHARE } from './constellations.js';
 export { hierarchy_layout, type HierarchyArrangement, type HierarchyNode, type HierarchyPhysics, type HierarchyPositions } from './hierarchy.js';

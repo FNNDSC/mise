@@ -281,8 +281,9 @@ try {
     check('a second press focuses the universe rather than opening another', universe.count === 1, String(universe.count));
     {
       // From half a second on, never a blank field: the space, or what it waits on.
-      const blank = universe.waited.filter(([t, s]) => t >= 500 && !(s === 'DRAWN' || /ASKING|SETTLING/.test(s)));
-      const percents = universe.waited.map(([, s]) => (s.match(/SETTLING .* (\d+)%$/) ?? [])[1]).filter((v) => v !== undefined).map(Number);
+      // The wait is the browser's own settle, or the session laying the space out for every browser.
+      const blank = universe.waited.filter(([t, s]) => t >= 500 && !(s === 'DRAWN' || /ASKING|SETTLING|LAYING OUT/.test(s)));
+      const percents = universe.waited.map(([, s]) => (s.match(/(?:SETTLING|LAYING OUT) .* (\d+)%$/) ?? [])[1]).filter((v) => v !== undefined).map(Number);
       const climbs = percents.length < 2 || percents[percents.length - 1] > percents[0];
       check('a wait over two seconds shows its progress: from the press the universe is drawn or says what it waits on, and a settle climbs',
         blank.length === 0 && climbs && universe.readoutGone,
@@ -453,7 +454,7 @@ try {
       await say('universe layout spokes', 1500); await settle();
       await say('universe layout galaxy', 1500); await settle();
       const keys = Object.keys(localStorage).filter((k) => /^argus\\.universe\\./.test(k) && !/settings/.test(k));
-      const galaxyKey = keys.find((k) => !/\\.(spokes|clumps|constellations|data|accretion)$/.test(k));
+      const galaxyKey = keys.find((k) => !/\\.(spokes|clumps|constellations|data|accretion|shapes)$/.test(k));
       const spokesKey = keys.find((k) => /\\.spokes$/.test(k));
       const g = galaxyKey ? localStorage.getItem(galaxyKey) : null;
       const sp = spokesKey ? localStorage.getItem(spokesKey) : null;

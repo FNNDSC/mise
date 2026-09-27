@@ -76,6 +76,13 @@ const mockCache = {
   get warmupComplete(): boolean { return mockWarmupComplete; },
 };
 
+let mockUnderWay: { nodes: number; fraction: number } | null = null;
+const universeLayoutsWarm_mock = jest.fn(async (): Promise<number> => 0);
+jest.unstable_mockModule('../src/universe/universeLayout.js', () => ({
+  universeLayout_underWay: (): { nodes: number; fraction: number } | null => mockUnderWay,
+  universeLayouts_warm: universeLayoutsWarm_mock,
+}));
+
 const mockLayouts: Map<string, { name: string; positions: Record<string, [number, number, number]>; writtenAt: string }> = new Map();
 
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
@@ -574,7 +581,7 @@ describe('proc layout', () => {
   it('says when no layout is kept, keeps one a surface puts, and answers it as a model', async () => {
     mockLayouts.clear();
     const none = await builtin_proc(['layout', 'galaxy']);
-    expect(none.model).toEqual({ kind: 'proc.layout', data: { name: 'galaxy', positions: null, writtenAt: null } });
+    expect(none.model).toEqual({ kind: 'proc.layout', data: { name: 'galaxy', positions: null, writtenAt: null, laying: null } });
     expect(none.rendered).toContain('none kept');
     const put = await builtin_proc(['layout', 'put', 'galaxy', JSON.stringify({ 'feed:1:0': [1, 2, 3], 'shape:x': [0, 0, 0] })]);
     expect(put.status).toBe('ok');
@@ -582,6 +589,25 @@ describe('proc layout', () => {
     const kept = await builtin_proc(['layout', 'galaxy']);
     expect((kept.model?.data as { positions: Record<string, number[]> }).positions['feed:1:0']).toEqual([1, 2, 3]);
     expect(kept.rendered).toContain('2 places, kept 2026-09-26');
+  });
+
+  it('says how far the session has come laying a layout out, and starts it once the index is whole', async () => {
+    mockLayouts.clear();
+    mockFeeds = [];
+    mockWarmup = { loaded: 1, total: 1, active: false };
+    mockTopologyStatus = { state: 'complete' };
+    mockUnderWay = { nodes: 26402, fraction: 0.42 };
+    universeLayoutsWarm_mock.mockClear();
+    const laying = await builtin_proc(['layout', 'galaxy']);
+    expect((laying.model?.data as { laying: unknown }).laying).toEqual({ nodes: 26402, fraction: 0.42 });
+    expect(laying.rendered).toContain('laying out 26,402 spheres · 42%');
+    expect(universeLayoutsWarm_mock).toHaveBeenCalledTimes(1);
+    mockUnderWay = null;
+    mockWarmup = { loaded: 1, total: 10, active: true };
+    universeLayoutsWarm_mock.mockClear();
+    await builtin_proc(['layout', 'galaxy']);
+    // The index still warming: nothing is laid out from half a universe.
+    expect(universeLayoutsWarm_mock).not.toHaveBeenCalled();
   });
 
   it('refuses a name that is not a layout, and places that are not places', async () => {

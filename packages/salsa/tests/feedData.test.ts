@@ -6,7 +6,7 @@
  * a fake IO.
  */
 import { procCache_get, type ProcCache, type ProcFeed, type ProcInstance } from '@fnndsc/cumin';
-import { feedDataFacts_read, procDataFacts_sweep, procDataFacts_feed, dataFormat_ofName, DATA_FACTS_READER, DATA_FACTS_FEED_MS, type DataFactsIO } from '../src/dag/feedData';
+import { feedDataFacts_read, procDataFacts_sweep, procDataFacts_feed, procDataFacts_settled, dataFormat_ofName, sourceFeed_of, DATA_FACTS_READER, DATA_FACTS_FEED_MS, type DataFactsIO } from '../src/dag/feedData';
 import type { VFSItem } from '../src/vfs/provider';
 import type { DicomTagSet } from '../src/dicom/tags';
 
@@ -154,6 +154,35 @@ describe('feedDataFacts_read', () => {
   });
 });
 
+describe('what CUBE records, and whose work a feed began from', () => {
+  it('describes a series in the PACS store from CUBE\'s own record, reading no header', async () => {
+    feed_add(1);
+    const link = { ...item('SERVICES_PACS_x', 'link'), target: '/SERVICES/PACS/PACSDCM/1-A/S-1/00005-SAG' } as VFSItem;
+    const io = { ...io_of({ '/out/10': [link], '/SERVICES/PACS/PACSDCM/1-A/S-1/00005-SAG': [item('0001.dcm')] }), series: async () => ({ modality: 'MR', seriesDescription: 'SAG' }) };
+    expect(await feedDataFacts_read(1, io)).toEqual({ format: 'dicom', modality: 'MR', seriesDescription: 'SAG' });
+    expect(io.reads).toEqual([]);
+  });
+
+  it('falls back to the header when CUBE has no record of the series', async () => {
+    feed_add(1);
+    const io = { ...io_of({ '/out/10': [item('a.dcm')] }, { '/out/10/a.dcm': tags({ Modality: 'CT' }) }), series: async () => null };
+    expect(await feedDataFacts_read(1, io)).toEqual({ format: 'dicom', modality: 'CT' });
+  });
+
+  it('names the feed whose output a feed\'s data is: its lineage, never itself', async () => {
+    expect(sourceFeed_of('/home/u/feeds/feed_12/pl-dcm2niix_40/data/brain.nii', 1)).toBe(12);
+    expect(sourceFeed_of('/home/u/feeds/feed_1/pl-x/data/a', 1)).toBeUndefined();
+    expect(sourceFeed_of('/home/u/uploads/feed_12/a', 1)).toBeUndefined();
+    feed_add(1);
+    feed_add(2);
+    const fromFeed = { ...item('home_u_feeds_feed_12_out', 'link'), target: '/home/u/feeds/feed_12/pl-dcm2niix_40/data' } as VFSItem;
+    const refused = { ...item('home_x_feeds_feed_7', 'link'), target: '/home/x/feeds/feed_7/pl-y/data' } as VFSItem;
+    const io = io_of({ '/out/10': [fromFeed], '/home/u/feeds/feed_12/pl-dcm2niix_40/data': [item('brain.nii')], '/out/20': [refused], '/home/x/feeds/feed_7/pl-y/data': 'refused' });
+    expect(await feedDataFacts_read(1, io)).toEqual({ format: 'nifti', sourceFeed: 12 });
+    expect(await feedDataFacts_read(2, io)).toEqual({ format: 'unknown', reason: 'its data is linked from /home/x/feeds/feed_7/pl-y/data, which this identity may not read', sourceFeed: 7 });
+  });
+});
+
 describe('the sweep', () => {
   it('records facts for every feed that has none, and leaves the rest', async () => {
     feed_add(1);
@@ -223,6 +252,14 @@ describe('the sweep', () => {
     expect(await procDataFacts_sweep(io, 0)).toBe(0);
     expect(cache.dataFacts_of(1)).toBeUndefined();
     expect(asked).toBe(0);
+  });
+
+  it('lets a waiter know when the sweep under way has ended', async () => {
+    feed_add(1);
+    const sweep = procDataFacts_sweep(io_of({ '/out/10': [item('x.png')] }), 0);
+    expect(await procDataFacts_settled()).toBe(1);
+    expect(await sweep).toBe(1);
+    expect(await procDataFacts_settled()).toBe(1);
   });
 
   it('survives a read that throws', async () => {

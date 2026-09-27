@@ -191,7 +191,7 @@ O(A, B) = \frac{\lvert A \cap B \rvert}{\min(\lvert A \rvert, \lvert B \rvert)} 
 
 (over the smaller, so `SAG MPRAGE` is the same series as `SAG MPRAGE 220 FOV`). Groups form greedily, most common description first, each named by the description most of its feeds carry (`apps/argus/src/features/dag/dataSpace.ts`).
 
-Hubs are massless ghosts drawn as nebulae of radius stem:[\rho(n) = 1.6 + 0.45\sqrt{n}] for the stem:[n] feeds beneath them, and the space settles as the galaxy does. A hub is captioned when it is a format or a modality, or when stem:[n \ge \max(5,\ 0.02\,N)].
+A feed whose data lies in another feed's output (`/feeds/feed_<id>/`) is joined to that feed's root: its lineage, drawn as a faint thread and counted as a parent in the settle, so derived work drifts toward its source. Hubs are massless ghosts drawn as nebulae of radius stem:[\rho(n) = 1.6 + 0.45\sqrt{n}] for the stem:[n] feeds beneath them, and the space settles as the galaxy does. A hub is captioned when it is a format or a modality, or when stem:[n \ge \max(5,\ 0.02\,N)].
 
 .DATA, 708 of 709 feeds read: NIfTI · 435 (the CIVET inputs), DICOM · 234 (of which 203 are shared feeds whose files this identity may list but not read — a CUBE sharing gap — so NO MODALITY), and the rest.
 image::data.jpg[DATA,1600]
@@ -321,7 +321,7 @@ image::inside-feed.jpg[Inside a feed,1600]
 
 == Memory and cost
 
-Each layout keeps its own positions per identity, in the browser and in the session: the first browser to settle a layout puts its places to the session (`proc layout put`), which keeps them beside the index checkpoint, and any browser that keeps none draws from the session's copy at once (8.1 s to a settled space for a clean browser before, 1.5 s after). When a feed lands, every standing node is held (frozen at its place) and only the newcomer settles — for ACCRETION, only the newcomer walks — so nothing the operator has seen moves. The engines run in a Web Worker behind a progress readout, so the page never stalls; measured for this space, ACCRETION grows in 2.5 s. A repaint that moves nothing — lighting a plugin, a hub, a caption toggle — settles nothing and draws in place.
+Each layout keeps its own positions per identity, in the browser and in the session. The session lays every layout out itself once its index is whole — the same graph, the same engine input (`layoutInput_build`), the same engine, in a worker thread — and keeps the places beside the index checkpoint; a browser that keeps none draws from the session's copy at once, and one that asks while the session is still at it shows the session's progress (`LAYING OUT n SPHERES · THE SESSION · p%`). When a feed lands, every standing node is held (frozen at its place) and only the newcomer settles — for ACCRETION, only the newcomer walks — so nothing the operator has seen moves. The engines run in a Web Worker behind a progress readout, so the page never stalls; measured for this space, ACCRETION grows in 2.5 s. A repaint that moves nothing — lighting a plugin, a hub, a caption toggle — settles nothing and draws in place.
 
 [cols="1,3,2,1,1",options="header"]
 |===

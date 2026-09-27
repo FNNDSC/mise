@@ -16,7 +16,7 @@
  *
  * @module
  */
-import { procCache_get, status_isTerminal, type ProcCache, type ProcFeedDataFacts, type ProcInstance } from '@fnndsc/cumin';
+import { pacsSeriesFacts_ofPath, procCache_get, status_isTerminal, type ProcCache, type ProcFeedDataFacts, type ProcInstance } from '@fnndsc/cumin';
 import type { Result } from '@fnndsc/cumin';
 import type { VFSItem } from '../vfs/provider.js';
 import { dicomTag_find, type DicomTagSet } from '../dicom/tags.js';
@@ -34,7 +34,7 @@ const DATA_DEPTH_MAX: number = 3;
  * older reader are read again, so a better reading reaches feeds read before
  * it. Raise it whenever what is read, or how, changes.
  */
-export const DATA_FACTS_READER: number = 1;
+export const DATA_FACTS_READER: number = 2;
 /** Unnamed files tried as DICOM before a feed's data is called other. */
 const UNNAMED_TRIES: number = 3;
 /** Reads of a DICOM-named file that fail before its feed is recorded without a header. */
@@ -58,6 +58,18 @@ export const DATA_FACTS_FEED_MS: number = 45_000;
 export const DATA_FACTS_ROUND_PAUSE_MS: number = 30_000;
 /** Whether a sweep is under way: one at a time. */
 let sweeping: boolean = false;
+/** The sweep under way, for whoever must wait for every feed's facts. */
+let sweepDone: Promise<number> = Promise.resolve(0);
+
+/**
+ * Settles when the facts sweep under way ends, at once when none is: what
+ * is laid out by the data (DATA's hubs) waits for the facts it hangs on.
+ *
+ * @returns A promise settled with how many feeds the sweep read.
+ */
+export function procDataFacts_settled(): Promise<number> {
+  return sweepDone;
+}
 
 /**
  * How the sweep reads: injected, so it is testable without a daemon, and so
@@ -68,11 +80,29 @@ let sweeping: boolean = false;
  *   `refused` when the store will not show it to this identity (a shared
  *   feed's data in someone else's uploads).
  * @property header - A DICOM file's tags, or null when it is not one.
+ * @property series - What CUBE's own series record says of a series in its
+ *   PACS store (modality, description), or null: asked before a header is
+ *   read, since a record costs no file.
  */
 export interface DataFactsIO {
   outputPath(instanceID: number): Promise<string | null>;
   list(path: string): Promise<VFSItem[] | null | 'refused'>;
   header(path: string): Promise<DicomTagSet | null>;
+  series?(path: string): Promise<{ modality?: string; seriesDescription?: string } | null>;
+}
+
+/**
+ * The feed a data path lies in, when it is another feed's output: the
+ * feed's lineage. A feed's own output is not its source.
+ *
+ * @param path - Where the feed's data is.
+ * @param self - The feed.
+ * @returns The source feed, or undefined.
+ */
+export function sourceFeed_of(path: string, self: number): number | undefined {
+  const found: RegExpMatchArray | null = path.match(/(?:^|\/)feeds\/feed_(\d+)(?:\/|$)/);
+  const id: number = found === null ? Number.NaN : Number(found[1]);
+  return Number.isInteger(id) && id !== self ? id : undefined;
 }
 
 /**
@@ -95,6 +125,13 @@ export function dataFactsIO_of(outputPath: (instanceID: number) => Promise<strin
         return listed.ok ? listed.value : null;
       }
       return cfsFirstPage_list(path);
+    },
+    series: async (path: string): Promise<{ modality?: string; seriesDescription?: string } | null> => {
+      try {
+        return await pacsSeriesFacts_ofPath(path);
+      } catch {
+        return null;
+      }
     },
     header: async (path: string): Promise<DicomTagSet | null> => {
       // The start of the file, not all of it: a cine loop is hundreds of megabytes.
@@ -167,7 +204,7 @@ interface DataCandidates {
  *
  * @returns The file's path and name, or a reason when there is none.
  */
-async function dataFile_find(folder: string, io: DataFactsIO): Promise<DataCandidates | { reason: string } | null> {
+async function dataFile_find(folder: string, io: DataFactsIO): Promise<DataCandidates | { reason: string; path?: string } | null> {
   // A copy job's output is often links to what it copied — a file, or a
   // whole folder: a link is data too, named by its own name and read, or
   // descended into, through its target.
@@ -178,7 +215,7 @@ async function dataFile_find(folder: string, io: DataFactsIO): Promise<DataCandi
   for (let depth = 0; depth <= DATA_DEPTH_MAX; depth++) {
     const items: VFSItem[] | null | 'refused' = await io.list(at);
     if (items === null) return null;
-    if (items === 'refused') return { reason: `its data is in ${at}, which this identity may not read` };
+    if (items === 'refused') return { reason: `its data is in ${at}, which this identity may not read`, path: at };
     const data: VFSItem[] = items.filter(isData).sort(byName);
     // A file whose name says its format, plain or linked.
     const named: VFSItem | undefined = data.find((item: VFSItem): boolean => dataFormat_ofName(item.name) !== null);
@@ -191,7 +228,7 @@ async function dataFile_find(folder: string, io: DataFactsIO): Promise<DataCandi
     if (link !== undefined) {
       const target: string = pathOf(at, link);
       const inside: VFSItem[] | null | 'refused' = await io.list(target);
-      if (inside === 'refused') return { reason: `its data is linked from ${target}, which this identity may not read` };
+      if (inside === 'refused') return { reason: `its data is linked from ${target}, which this identity may not read`, path: target };
       if (inside === null) return { files: [{ path: target, name: link.name, linked: true }] };
       at = target.replace(/\/$/, '');
       continue;
@@ -228,10 +265,19 @@ export async function feedDataFacts_read(feedID: number, io: DataFactsIO, cache:
   if (output === null) return null;
   const found = await dataFile_find(output, io);
   if (found === null) return null;
-  if ('reason' in found) return { format: 'unknown', reason: found.reason };
+  // Where the data lies says whose work it began from.
+  const lineage = (path: string | undefined): { sourceFeed?: number } => {
+    const source: number | undefined = path === undefined ? undefined : sourceFeed_of(path, feedID);
+    return source === undefined ? {} : { sourceFeed: source };
+  };
+  if ('reason' in found) return { format: 'unknown', reason: found.reason, ...lineage(found.path) };
   const first = found.files[0] as { path: string; name: string; linked: boolean };
+  const from = lineage(first.path);
   const named = dataFormat_ofName(first.name);
-  if (named !== null && named !== 'dicom') return { format: named };
+  if (named !== null && named !== 'dicom') return { format: named, ...from };
+  // A series in CUBE's PACS store is described by CUBE's own record: no file read.
+  const recorded = io.series === undefined ? null : await io.series(first.path);
+  if (recorded !== null) return { format: 'dicom', ...recorded, ...from };
   // A DICOM file often carries no extension: names that say nothing are
   // tried as DICOM, a few of them, before the data is called other.
   let header: DicomTagSet | null = null;
@@ -242,16 +288,16 @@ export async function feedDataFacts_read(feedID: number, io: DataFactsIO, cache:
   if (header === null) {
     if (named !== 'dicom') {
       return first.linked
-        ? { format: 'unknown', reason: `its data is linked from ${first.path}, which cannot be read here` }
-        : { format: 'other', reason: `its first file, ${first.name}, is not a format the index names` };
+        ? { format: 'unknown', reason: `its data is linked from ${first.path}, which cannot be read here`, ...from }
+        : { format: 'other', reason: `its first file, ${first.name}, is not a format the index names`, ...from };
     }
     const tries: number = (headerTries.get(feedID) ?? 0) + 1;
     headerTries.set(feedID, tries);
     // Its name already says DICOM: record that, and why there is no modality.
-    return tries < HEADER_TRIES_MAX ? null : { format: 'dicom', reason: `the header of its first file, ${first.name}, could not be read` };
+    return tries < HEADER_TRIES_MAX ? null : { format: 'dicom', reason: `the header of its first file, ${first.name}, could not be read`, ...from };
   }
   headerTries.delete(feedID);
-  const facts: ProcFeedDataFacts = { format: 'dicom' };
+  const facts: ProcFeedDataFacts = { format: 'dicom', ...from };
   const modality: string | undefined = dicomTag_find(header.tags, 'Modality')?.value.trim();
   const description: string | undefined = dicomTag_find(header.tags, 'SeriesDescription')?.value.trim();
   if (modality !== undefined && modality.length > 0) facts.modality = modality;
@@ -274,6 +320,13 @@ export async function feedDataFacts_read(feedID: number, io: DataFactsIO, cache:
 export async function procDataFacts_sweep(io: DataFactsIO, pauseMs: number = DATA_FACTS_ROUND_PAUSE_MS): Promise<number> {
   if (sweeping) return 0;
   sweeping = true;
+  const run: Promise<number> = dataFactsRounds_run(io, pauseMs);
+  sweepDone = run.catch((): number => 0);
+  return run;
+}
+
+/** Every round of one sweep, until a round records nothing and every header has had its tries. */
+async function dataFactsRounds_run(io: DataFactsIO, pauseMs: number): Promise<number> {
   const cache: ProcCache = procCache_get();
   let read: number = 0;
   try {

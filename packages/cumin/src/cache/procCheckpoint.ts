@@ -91,6 +91,7 @@ export function dataFacts_check(value: unknown): value is ProcFeedDataFacts {
   const optionalText = (key: string): boolean => facts[key] === undefined || typeof facts[key] === 'string';
   return typeof facts['format'] === 'string' && DATA_FORMATS.has(facts['format'])
     && optionalText('modality') && optionalText('seriesDescription') && optionalText('reason')
+    && (facts['sourceFeed'] === undefined || integer_check(facts['sourceFeed']))
     && (facts['reader'] === undefined || integer_check(facts['reader']));
 }
 

@@ -36,6 +36,8 @@ import fastifyFormbody from '@fastify/formbody';
 import replyFrom from '@fastify/reply-from';
 import { z } from 'zod';
 import { connect as net_connect, type Socket } from 'node:net';
+import { readFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { identity_normalise } from '@fnndsc/calypso/berth';
@@ -103,6 +105,33 @@ export function upstreamPath_build(rest: string, token: string): string {
   }
   const text: string = query.toString();
   return text.length > 0 ? `${pathname}?${text}` : pathname;
+}
+
+/** The sound types the page asks for, and what each is served as. */
+const SOUND_TYPES: Readonly<Record<string, string>> = { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg' };
+
+/**
+ * The deployment's own copy of a sound the page asks for, when it has one:
+ * `sounds/<name>.<mp3|wav|ogg>` under the session, read from the sounds
+ * folder. A name is taken as a bare file name only, so no path climbs out.
+ *
+ * @param soundsDir - The deployment's sounds folder, or null for none.
+ * @param rest - The path after `/s/<key>/`, query included.
+ * @returns The bytes and their type, or null when the page's own is served.
+ */
+export async function soundOverride_read(soundsDir: string | null, rest: string): Promise<{ bytes: Buffer; type: string } | null> {
+  if (soundsDir === null) return null;
+  const path: string = rest.split('?')[0] ?? '';
+  const match: RegExpMatchArray | null = path.match(/^sounds\/([A-Za-z0-9_-]+)\.(mp3|wav|ogg)$/);
+  if (match === null) return null;
+  const name: string = `${match[1]}.${match[2]}`;
+  if (basename(name) !== name) return null;
+  try {
+    return { bytes: await readFile(join(soundsDir, name)), type: SOUND_TYPES[match[2] as string] as string };
+  } catch {
+    // Not in the folder: the page's own sound is served.
+    return null;
+  }
 }
 
 /**
@@ -340,6 +369,9 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
       return reply.code(404).send({ error: 'no session behind that key' });
     }
     registry.activity_note(entry.key);
+    // The deployment's own beeps, when it keeps them, in place of the page's.
+    const sound = await soundOverride_read(config.soundsDir, split.rest);
+    if (sound !== null) return reply.type(sound.type).header('cache-control', 'private, max-age=3600').send(sound.bytes);
     return reply.from(upstreamPath_build(split.rest, entry.berth.token), {
       getUpstream: (): string => berthHttp_of(entry.berth),
       // The daemon behind the entry did not answer: ask the host who is up

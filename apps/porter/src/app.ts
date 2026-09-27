@@ -121,7 +121,8 @@ const SOUND_TYPES: Readonly<Record<string, string>> = { mp3: 'audio/mpeg', wav: 
  */
 export async function soundOverride_read(soundsDir: string | null, rest: string): Promise<{ bytes: Buffer; type: string } | null> {
   if (soundsDir === null) return null;
-  const path: string = rest.split('?')[0] ?? '';
+  // The rest as the mount splits it begins with a slash (`/sounds/press.mp3`).
+  const path: string = (rest.split('?')[0] ?? '').replace(/^\/+/, '');
   const match: RegExpMatchArray | null = path.match(/^sounds\/([A-Za-z0-9_-]+)\.(mp3|wav|ogg)$/);
   if (match === null) return null;
   const name: string = `${match[1]}.${match[2]}`;

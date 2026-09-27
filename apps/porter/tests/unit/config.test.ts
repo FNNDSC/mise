@@ -53,6 +53,9 @@ describe('porterConfig_resolve', () => {
     expect(given.cookieHours).toBe(8);
     expect(made.idleHours).toBe(24);
     expect(porterConfig_resolve({ PORTER_CUBE_URL: 'https://c/api/v1/', PORTER_IDLE_HOURS: '2' }, locate).idleHours).toBe(2);
+    // The deployment's own sounds, kept outside the install; none unless told.
+    expect(made.soundsDir).toBeNull();
+    expect(porterConfig_resolve({ PORTER_CUBE_URL: 'https://c/api/v1/', PORTER_SOUNDS_DIR: '/etc/porter/sounds' }, locate).soundsDir).toBe('/etc/porter/sounds');
     expect(() => porterConfig_resolve({ PORTER_CUBE_URL: 'https://c/api/v1/', PORTER_IDLE_HOURS: 'never' }, locate)).toThrow('PORTER_IDLE_HOURS is not a span');
   });
 

@@ -21,7 +21,7 @@ const config: PorterConfig = {
   secret: 'a-secret-of-at-least-twenty-characters',
   secretGenerated: false,
   cookieHours: 24,
-  idleHours: 24,
+  idleHours: 24, soundsDir: null,
 };
 
 /** The door's cookie as a browser would send it back, from a login reply. */

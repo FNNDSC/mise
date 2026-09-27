@@ -34,6 +34,13 @@ export interface PorterConfig {
   cookieHours: number;
   /** How long a session may stand with no surface on it before it is ended, in hours. */
   idleHours: number;
+  /**
+   * A folder of sounds served in place of the page's own (`sounds/<name>`),
+   * when the deployment has them: the original LCARS beeps, which may not
+   * be redistributed and so are never in a package, kept outside the
+   * install so an upgrade does not take them away. Null when none.
+   */
+  soundsDir: string | null;
 }
 
 /** The environment variables a porter reads, and no others. */
@@ -46,6 +53,7 @@ export interface PorterEnv {
   PORTER_SECRET?: string;
   PORTER_COOKIE_HOURS?: string;
   PORTER_IDLE_HOURS?: string;
+  PORTER_SOUNDS_DIR?: string;
   XDG_STATE_HOME?: string;
 }
 
@@ -143,5 +151,6 @@ export function porterConfig_resolve(env: PorterEnv, locateChell: () => string =
     secretGenerated: !secretGiven,
     cookieHours,
     idleHours,
+    soundsDir: env.PORTER_SOUNDS_DIR !== undefined && env.PORTER_SOUNDS_DIR.length > 0 ? env.PORTER_SOUNDS_DIR : null,
   };
 }

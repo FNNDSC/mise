@@ -11,6 +11,9 @@ import { SessionRegistry } from '../../src/registry.js';
 import { porterApp_build, upstreamPath_build, mountUrl_split, berthHttp_of, type PorterApp } from '../../src/app.js';
 import type { Berth, BootListener, BootReport, SessionHost } from '../../src/host/sessionHost.js';
 import type { PorterConfig } from '../../src/config.js';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const config: PorterConfig = {
   cubeUrl: 'https://cube.example.org/api/v1/',
@@ -67,6 +70,24 @@ beforeEach(async () => {
     host,
     mint: async (_cube: string, username: string, password: string) =>
       password === 'right' ? { token: `TOKEN-${username}` } : { token: null, reason: 'CUBE refused the login' },
+  });
+});
+
+describe('the deployment\'s own sounds', () => {
+  it('answers a sound under the session from the sounds folder, and proxies what it does not have', async () => {
+    const dir: string = await mkdtemp(join(tmpdir(), 'porter-sounds-'));
+    await writeFile(join(dir, 'press.mp3'), Buffer.from('beep1'));
+    const soundHost = new FakeHost();
+    // A session already up: the login attaches to it and the key has an entry at once.
+    soundHost.found = { identity: 'chris@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4444', token: 'ATTACH' };
+    const withSounds = await porterApp_build({ config: { ...config, soundsDir: dir }, host: soundHost, mint: async () => ({ token: 'T' }) });
+    const login = await withSounds.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'x' } });
+    const { key } = login.json() as { key: string };
+    const sound = await withSounds.app.inject({ method: 'GET', url: `/s/${key}/sounds/press.mp3`, headers: { cookie: cookie_of(login) } });
+    expect(sound.statusCode).toBe(200);
+    expect(sound.headers['content-type']).toBe('audio/mpeg');
+    expect(sound.body).toBe('beep1');
+    await withSounds.app.close();
   });
 });
 

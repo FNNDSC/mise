@@ -12,11 +12,17 @@ describe('soundOverride_read', () => {
   it('serves a sound from the folder, typed, and nothing else', async () => {
     const dir: string = await mkdtemp(join(tmpdir(), 'sounds-'));
     await writeFile(join(dir, 'press.mp3'), Buffer.from('beep'));
-    expect(await soundOverride_read(dir, 'sounds/press.mp3?v=1')).toEqual({ bytes: Buffer.from('beep'), type: 'audio/mpeg' });
+    // As the mount splits a request: the rest begins with a slash.
+    const { mountUrl_split } = await import('../../src/app.js');
+    const rest = mountUrl_split('/s/0123456789abcdef/sounds/press.mp3?v=1')!.rest;
+    expect(rest).toBe('/sounds/press.mp3?v=1');
+    expect(await soundOverride_read(dir, rest)).toEqual({ bytes: Buffer.from('beep'), type: 'audio/mpeg' });
+    expect(await soundOverride_read(dir, 'sounds/press.mp3')).toEqual({ bytes: Buffer.from('beep'), type: 'audio/mpeg' });
     // Not in the folder, not a sound, or climbing out: the page's own is served.
     expect(await soundOverride_read(dir, 'sounds/arrive.mp3')).toBeNull();
     expect(await soundOverride_read(dir, 'index.html')).toBeNull();
-    expect(await soundOverride_read(dir, 'sounds/../secret.mp3')).toBeNull();
+    expect(await soundOverride_read(dir, '/sounds/../secret.mp3')).toBeNull();
+    expect(await soundOverride_read(dir, '/sounds/sub/press.mp3')).toBeNull();
     expect(await soundOverride_read(null, 'sounds/press.mp3')).toBeNull();
   });
 });

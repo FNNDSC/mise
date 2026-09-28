@@ -4506,12 +4506,27 @@ body[data-zoom] #header-restore {
 /* The drag strip is a quiet hairline, full-bleed: radius and a pulsing
  * animation made it read as a misaligned double line. */
 #drawer-strip {
+  position: relative;
   flex: none;
   height: 4px;
   margin: 3px 0;
   background: var(--pumpkin-pie);
   border-radius: 0;
   cursor: row-resize;
+  /* A drag is the strip's, not the page's scroll. */
+  touch-action: none;
+  z-index: 6;
+}
+
+/* A finger needs more than four pixels: the strip keeps its look, and an
+   invisible band around it takes the touch. */
+#drawer-strip::before {
+  content: '';
+  position: absolute;
+  /* Deeper into the console above than into the lid below, whose toggle
+     keeps most of its height; above its neighbours so they do not paint
+     over the band (the lid took the touch first). */
+  inset: -14px 0 -8px;
 }
 
 #drawer-strip:hover,
@@ -6210,6 +6225,7 @@ button.launcher-row:hover {
   z-index: 40;
   cursor: ns-resize;
   background: transparent;
+  touch-action: none;
 }
 
 #header-strip::after {

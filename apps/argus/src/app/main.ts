@@ -342,15 +342,18 @@ function drawer_wire(
   let dragStartY: number = 0;
   let dragStartHeight: number = 0;
   let dragging: boolean = false;
-  strip.addEventListener('mousedown', (event: MouseEvent): void => {
+  // Pointer events, captured: a finger drags the strip as a mouse does (a
+  // phone sent no mouse events, and the console's foot would not move).
+  strip.addEventListener('pointerdown', (event: PointerEvent): void => {
     dragging = true;
     dragStartY = event.clientY;
     dragStartHeight = drawer.getBoundingClientRect().height;
     // Dragging steers the height directly; the zoom transition would lag it.
     drawer.classList.add('drawer-dragging');
+    strip.setPointerCapture(event.pointerId);
     event.preventDefault();
   });
-  window.addEventListener('mousemove', (event: MouseEvent): void => {
+  strip.addEventListener('pointermove', (event: PointerEvent): void => {
     if (!dragging) {
       return;
     }
@@ -364,10 +367,12 @@ function drawer_wire(
     drawer.style.height = `${height}px`;
     terminal.size_fit();
   });
-  window.addEventListener('mouseup', (): void => {
+  const drag_end = (): void => {
     dragging = false;
     drawer.classList.remove('drawer-dragging');
-  });
+  };
+  strip.addEventListener('pointerup', drag_end);
+  strip.addEventListener('pointercancel', drag_end);
 
   return closed_set;
 }
@@ -556,19 +561,23 @@ function headerBand_wire(): void {
   let dragging: boolean = false;
   let startY: number = 0;
   let startHeight: number = 0;
-  strip.addEventListener('mousedown', (event: MouseEvent): void => {
+  // Pointer events, captured: a finger drags the band's foot as a mouse does.
+  strip.addEventListener('pointerdown', (event: PointerEvent): void => {
     const face: HTMLElement | null = document.querySelector<HTMLElement>('.header-face');
     dragging = true;
     startY = event.clientY;
     startHeight = face === null ? BAND_MIN_HEIGHT_PX : face.getBoundingClientRect().height;
+    strip.setPointerCapture(event.pointerId);
     event.preventDefault();
   });
-  window.addEventListener('mousemove', (event: MouseEvent): void => {
+  strip.addEventListener('pointermove', (event: PointerEvent): void => {
     if (!dragging) return;
     height_apply(startHeight + (event.clientY - startY));
     strip_place();
   });
-  window.addEventListener('mouseup', (): void => { dragging = false; strip_place(); });
+  const band_dragEnd = (): void => { dragging = false; strip_place(); };
+  strip.addEventListener('pointerup', band_dragEnd);
+  strip.addEventListener('pointercancel', band_dragEnd);
 }
 
 /** Set once the surface is up: puts the cohort on the main panel. */

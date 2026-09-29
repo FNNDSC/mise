@@ -3644,6 +3644,29 @@ button.files-crumb:focus-visible {
   --roster-pad: 0.4rem;
 }
 
+/* More than the band shows: a chip at the foot says how many, and puts the
+   whole cohort on stage. */
+.header-gather-field .gather-more {
+  position: absolute;
+  right: calc(var(--spine-w) + 0.6rem);
+  bottom: 0.4rem;
+  z-index: 3;
+  padding: 0.25rem 0.9rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--butter);
+  color: #000;
+  font-family: var(--face-label);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  box-shadow: 0 0 0 4px #000;
+}
+
+.header-gather-field .gather-more:hover {
+  background: var(--harvestgold);
+}
+
 .header-gather-field .gather-rows > .roster-order {
   position: sticky;
   top: 0;
@@ -6221,22 +6244,32 @@ button.launcher-row:hover {
   position: fixed;
   left: var(--lfw);
   right: 0;
-  height: 10px;
+  /* Tall enough for a finger; the grip it wears stays thin. */
+  height: 16px;
   z-index: 40;
   cursor: ns-resize;
   background: transparent;
   touch-action: none;
 }
 
+/* The band's foot is draggable, and says so at rest: a grip, not a hairline
+   that showed only under a hovering mouse. */
 #header-strip::after {
   content: '';
   position: absolute;
   left: 50%;
-  top: 4px;
-  width: 6rem;
-  height: 2px;
+  top: 6px;
+  width: 7rem;
+  height: 4px;
+  border-radius: 2px;
   transform: translateX(-50%);
-  background: color-mix(in srgb, var(--harvestgold) 45%, transparent);
+  background: color-mix(in srgb, var(--harvestgold) 80%, transparent);
+}
+
+#header-strip:hover::after,
+#header-strip:active::after {
+  background: var(--harvestgold);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--harvestgold) 60%, transparent);
 }
 
 body[data-header='away'] #header-strip,

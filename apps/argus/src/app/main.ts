@@ -551,7 +551,7 @@ function headerBand_wire(): void {
   /** The strip rides the boundary, so it follows the band's own foot. */
   const strip_place = (): void => {
     const box: DOMRect = header.getBoundingClientRect();
-    strip.style.top = `${Math.max(0, box.bottom - 5)}px`;
+    strip.style.top = `${Math.max(0, box.bottom - 8)}px`;
   };
   strip_place();
   window.addEventListener('resize', strip_place);
@@ -582,6 +582,42 @@ function headerBand_wire(): void {
 
 /** Set once the surface is up: puts the cohort on the main panel. */
 let cohortStage_run: (() => void) | null = null;
+
+/**
+ * The band's cohort says when it holds more than it shows. The band keeps
+ * one height (gathering never moves the body), so a long cohort scrolls
+ * inside it — and nothing said so, and ON STAGE sat on a retracted frame.
+ * A chip at the band's foot reads `+N MORE · ON STAGE` while rows lie below
+ * the view: N is how many, the press puts the whole cohort on stage. It is
+ * gone when everything is in view.
+ *
+ * @param field - The band's cohort field.
+ */
+function gatherMore_wire(field: HTMLElement): void {
+  const rows: HTMLElement | null = field.querySelector<HTMLElement>('.gather-rows');
+  if (rows === null) return;
+  const chip: HTMLButtonElement = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'strategy-pill gather-more';
+  chip.title = 'the whole cohort as a pane on the main panel';
+  chip.hidden = true;
+  chip.addEventListener('click', (event: Event): void => {
+    event.stopPropagation();
+    cohortStage_run?.();
+  });
+  field.appendChild(chip);
+  const count = (): void => {
+    const foot: number = rows.getBoundingClientRect().bottom;
+    const below: number = [...rows.querySelectorAll<HTMLElement>('.listing-row')]
+      .filter((row: HTMLElement): boolean => row.getBoundingClientRect().top >= foot - 2).length;
+    chip.hidden = below === 0;
+    chip.textContent = `+${below} MORE · ON STAGE`;
+  };
+  rows.addEventListener('scroll', count, { passive: true });
+  new ResizeObserver(count).observe(rows);
+  new MutationObserver(count).observe(rows, { childList: true, subtree: true });
+  count();
+}
 
 function headerFaces_wire(): void {
   const body: HTMLElement = document.body;
@@ -616,6 +652,7 @@ function headerFaces_wire(): void {
     if (bandField.dataset['modes'] === 'open') delete bandField.dataset['modes'];
     else bandField.dataset['modes'] = 'open';
   });
+  if (bandField !== null) gatherMore_wire(bandField);
 
   const header_restore = (): void => {
     if (body.dataset['zoom'] !== undefined) {

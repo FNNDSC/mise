@@ -3154,6 +3154,96 @@ try {
       JSON.stringify({ afterRemove: gather.afterRemove, dismissed: gather.dismissed }));
   }
   }
+  if (stage('gather-series-parity')) {
+  // A series looks the same wherever it is listed: the cohort's rows ARE
+  // the PACS answer's series rows, so the one series, measured in both
+  // listings, paints alike — plain, indicated, and dimmed beside another
+  // row's indication. And an indicated bar keeps its colour: a series
+  // pulled to the last file, selected, must not read like one never
+  // fetched (a black fill in a black-tinted track once made it so). The
+  // hue and the inversion were each decided per pane and per state; only
+  // the same row in two places, side by side, shows them drift.
+  if (!process.env.SMOKE_PACS_QUERY) {
+    console.log('  skipped: set SMOKE_PACS_QUERY=<a `pacs query ...` line that finds a study with a series in CUBE>');
+  } else {
+    const parity = await evalIn(`
+      document.getElementById('gutter-tools').click(); await sleep(500);
+      const ws = document.getElementById('pacs-workspace');
+      const cmd = document.getElementById('pacs-command');
+      const studies = () => document.querySelectorAll('#pacs-results .pacs-study').length;
+      cmd.value = ${JSON.stringify(process.env.SMOKE_PACS_QUERY)};
+      cmd.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 60; i++) { await sleep(100); if (document.querySelector('#pacs-results .pacs-waiting')) break; }
+      for (let i = 0; i < 240; i++) { await sleep(1000); if (studies() > 0) break; }
+      await sleep(2500);
+      const study = document.querySelector('#pacs-results .pacs-study');
+      if (!study) return { error: 'no study' };
+      if (!study.classList.contains('listing-open')) { study.querySelector('.pacs-study-row .listing-control').click(); await sleep(400); }
+      const zoneVerb = (root, zone, word) => [...root.querySelectorAll(zone + ' .listing-action')].find(b => b.textContent.trim() === word);
+      // a series CUBE holds whole: gathered, and its bar full
+      let picked = null;
+      for (const row of study.querySelectorAll('.pacs-series')) {
+        if (!row.querySelector('.pacs-bar-full')) continue;
+        row.click(); await sleep(300);
+        if (zoneVerb(ws, '.pacs-row-zone', 'GATHER')) { picked = row; break; }
+      }
+      if (!picked) return { error: 'no fully pulled series in CUBE to gather' };
+      const uid = picked.dataset.seriesuid;
+      zoneVerb(ws, '.pacs-row-zone', 'GATHER').click(); await sleep(1200);
+      const face = document.getElementById('header-gather');
+      if (face.offsetParent === null) { document.getElementById('header-gather-pill').click(); await sleep(600); }
+      if (face.offsetParent === null) { document.body.dataset.header = 'gather'; await sleep(600); }
+      const band = () => face.querySelector('.gather-series[data-seriesuid="' + uid + '"]');
+      const pacs = () => document.querySelector('#pacs-results .pacs-series[data-seriesuid="' + uid + '"]');
+      if (!band()) return { error: 'the band does not list the gathered series', uid };
+      // What a row wears, every part the eye compares.
+      const paint = (row) => {
+        const of = (sel, prop) => { const el = sel ? row.querySelector(sel) : row; return el ? getComputedStyle(el)[prop] : null; };
+        return { row: of(null, 'backgroundColor'), opacity: of(null, 'opacity'), index: of('.listing-index', 'backgroundColor'), digits: of('.listing-index', 'color'),
+          desc: of('.pacs-series-desc', 'color'), badge: of('.pacs-badge', 'color'), bar: of('.pacs-bar-full', 'backgroundColor'), note: of('.pacs-badge-note', 'color'), files: of('.pacs-series-files', 'color') };
+      };
+      const lit = (root) => root.querySelectorAll('.listing-indicated').length;
+      const both = () => ({ pacs: paint(pacs()), band: paint(band()), litPacs: lit(document.getElementById('pacs-results')), litBand: lit(face) });
+      // indicated in both
+      pacs().click(); await sleep(300); band().click(); await sleep(300);
+      const indicated = both();
+      // the idle track an indicated row would draw, beside the full bar it does
+      const idle = document.createElement('span'); idle.className = 'listing-progress listing-progress-idle'; pacs().querySelector('.pacs-badge').appendChild(idle);
+      const idleTrack = getComputedStyle(idle).backgroundColor; idle.remove();
+      // dimmed: another row of each listing indicated
+      const other = [...study.querySelectorAll('.pacs-series')].find(r => r !== pacs());
+      if (other) { other.click(); await sleep(300); }
+      face.querySelector('.gather-cohort-row .gather-cohort-name').click(); await sleep(300);
+      const dimmed = both();
+      // plain: nothing indicated in either listing. Escape retracts the
+      // PACS pane's frame, and a frame retracting stands its row down; the
+      // band's frame retracts from its own strip.
+      for (let i = 0; i < 3; i++) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(250); }
+      if (lit(face) > 0) { face.closest('.header-face, #header')?.querySelector('.mode-strip')?.click(); await sleep(400); }
+      const plain = both();
+      // leave the cohort as it was found
+      const input = document.querySelector('#terminal input');
+      input.value = 'gather clear'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(1500);
+      return { uid, indicated, idleTrack, dimmed, plain, other: other !== undefined };`);
+    const same = (state) => state && JSON.stringify(state.pacs) === JSON.stringify(state.band);
+    const lum = (css) => { const m = /rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)/.exec(css ?? ''); if (!m) return 0; const a = m[4] === undefined ? 1 : Number(m[4]);
+      const ch = (v) => { const c = (Number(v) / 255) * a; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+      return 0.2126 * ch(m[1]) + 0.7152 * ch(m[2]) + 0.0722 * ch(m[3]); };
+    const contrast = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+    check('the same series paints alike in the cohort band and the PACS answer, indicated in both',
+      parity.error === undefined && same(parity.indicated) && parity.indicated.litPacs === 1 && parity.indicated.litBand === 1,
+      JSON.stringify(parity.error ?? parity.indicated));
+    check('and alike when each is dimmed beside another indicated row',
+      parity.error === undefined && same(parity.dimmed) && parity.dimmed.pacs.opacity !== parity.indicated.pacs.opacity,
+      JSON.stringify(parity.error ?? parity.dimmed));
+    check('and alike plain, nothing indicated',
+      parity.error === undefined && same(parity.plain) && parity.plain.litPacs === 0 && parity.plain.litBand === 0,
+      JSON.stringify(parity.error ?? parity.plain));
+    check('an indicated full bar keeps a colour: it stands off the idle track and the row',
+      parity.error === undefined && contrast(parity.indicated.pacs.bar, parity.idleTrack) >= 3 && contrast(parity.indicated.pacs.bar, parity.indicated.pacs.row) >= 1.5,
+      JSON.stringify(parity.error ?? { bar: parity.indicated?.pacs.bar, idleTrack: parity.idleTrack, row: parity.indicated?.pacs.row }));
+  }
+  }
   if (stage('gather-process')) {
   // PROCESS on the cohort: its feed first (made by the pull the operator
   // could have typed, named at the ask), then a catalogue bound to the

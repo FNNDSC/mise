@@ -2676,7 +2676,11 @@ body[data-header='dag'] #header-dag {
  * blob, and the number stops being a number. */
 .pane-files { --listing-index-hue: var(--harvestgold); }
 .pane-pacs, .pacs-panel, [class*='pacs-'] { --listing-index-hue: var(--daybreak); }
-.pane-gather, .gather-rows, #header-gather { --listing-index-hue: var(--butter); }
+/* The cohort's rows ARE series rows — the same series the PACS answer
+ * listed, wearing the same number — so they take the series listing's hue.
+ * In butter they read as another kind of row, and under the 25% dim a
+ * butter capsule went grey while the PACS answer's stayed blue. */
+.pane-gather, .gather-rows, #header-gather { --listing-index-hue: var(--daybreak); }
 .pane-dag, .pane-tags { --listing-index-hue: var(--harvestgold); }
 
 .listing-actions {
@@ -2892,19 +2896,28 @@ body[data-header='dag'] #header-dag {
 /* On the block the bar inverts with the type: a black fill in a black
  * track, an outlined empty track in black — the block IS the bright hue,
  * and a bar in the scheme's progress colours vanished into it. */
+/* On the indicated row the bar sits in a black WELL, and what fills it stays
+ * a colour: the listing's light tint when done, the state's own when running
+ * or failed. It used to invert whole — black fill in a black-tinted track —
+ * and a series pulled to the last file read exactly like one never fetched:
+ * a full bar the eye took for nothing. An empty well is empty; a full one is
+ * lit; both edges clear 3:1 on the row's own hue. */
 .listing-framed .listing-indicated .listing-progress {
-  background: rgb(0 0 0 / 28%);
+  background: #000;
 }
 
 .listing-framed .listing-indicated .listing-progress-idle {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 55%);
+  background: #000;
+  box-shadow: none;
 }
 
 .listing-framed .listing-indicated .listing-progress-fill,
 .listing-framed .listing-indicated .pacs-bar-full {
-  background: #000;
+  background: var(--butter);
 }
+
+.listing-framed .listing-indicated .listing-progress-running .listing-progress-fill { background: var(--state-running); }
+.listing-framed .listing-indicated .listing-progress-failed .listing-progress-fill { background: var(--state-error); }
 
 .listing-framed .listing-indicated .pacs-badge,
 .listing-framed .listing-indicated .pacs-badge[data-state] {
@@ -4770,14 +4783,15 @@ body[data-zoom] #header-restore {
   overflow: hidden;
 }
 
-/* On the indicated block the running bar inverts with the type, as every
- * other bar does: black in a black track. */
+/* On the indicated block the running bar sits in the same black well as
+ * every other bar, and keeps its running colour: a retrieval under way is
+ * the one thing on the row that must stay visible. */
 .listing-framed .listing-indicated .pacs-bar {
-  background: rgb(0 0 0 / 28%);
+  background: #000;
 }
 
 .listing-framed .listing-indicated .pacs-bar-fill {
-  background: #000;
+  background: var(--state-running);
 }
 
 .pacs-bar-fill {

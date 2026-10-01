@@ -20,6 +20,8 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
   },
 }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  Ok: (value: unknown) => ({ ok: true, value }),
+  Err: () => ({ ok: false }),
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {

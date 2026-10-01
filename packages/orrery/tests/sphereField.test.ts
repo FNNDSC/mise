@@ -22,6 +22,14 @@ describe('SphereField', () => {
     expect((b.material as THREE.MeshStandardMaterial).opacity).toBe(DIM_OPACITY);
     expect(c.geometry).toBeInstanceOf(THREE.CircleGeometry);
     expect((c.material as THREE.MeshStandardMaterial).emissiveIntensity).toBe(0.35);
+    // A disc sits ON its tubes: drawn after them, without the depth test a
+    // tube's near face would win in the plane they share. A sphere keeps both.
+    expect(c.renderOrder).toBe(2);
+    expect((c.material as THREE.MeshStandardMaterial).depthTest).toBe(false);
+    expect((c.material as THREE.MeshStandardMaterial).transparent).toBe(true);
+    expect((c.material as THREE.MeshStandardMaterial).opacity).toBe(1);
+    expect(a.renderOrder).toBe(0);
+    expect((a.material as THREE.MeshStandardMaterial).depthTest).toBe(true);
     expect((d.material as THREE.MeshStandardMaterial).opacity).toBe(0.3);
     expect(a.geometry).toBe(field.sphere_add('e', new THREE.Vector3(), 0.5, { color: new THREE.Color() }).geometry);
     expect(parent.children.length).toBe(5);

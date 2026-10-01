@@ -12,7 +12,8 @@
  */
 
 import { chrisConnection } from "../connect/chrisConnection.js";
-import { itemData_get, items_get, listData_get, resource_call } from "../chrisapi/adapter.js";
+import { itemData_get, items_get, listData_get, resource_call, type Client } from "../chrisapi/adapter.js";
+import { pipelineRecord_keep, pipelineRecord_recall, pipelineResource_keep } from "./pipelineMemo.js";
 import { listPages_drain, type ListPage } from "../chrisapi/contract.js";
 import { ChRISResourceGroup } from "../resources/chrisResourceGroup.js";
 import { errorStack } from "../error/errorStack.js";
@@ -39,6 +40,9 @@ interface ItemListSlice {
 interface IdRecord {
   id: number;
 }
+
+/** How many pipelines a name search reads: exact names seldom collide. */
+const PIPELINE_SEARCH_LIMIT: number = 100;
 
 
 /**
@@ -124,20 +128,58 @@ export async function pipelines_list(
 /**
  * Resolves a pipeline by name (exact match first, then substring) or numeric ID string.
  *
+ * One resolution per specifier per session: the answer is kept on the
+ * connection's client (see pipelineMemo), so a diagram asked again — the
+ * browser asks one per pipeline card on every visit to /bin — costs no
+ * search. A miss is never kept.
+ *
  * @param nameOrId - Pipeline name or numeric ID.
  * @returns Result containing the matched PipelineRecord.
  */
 export async function pipeline_resolve(
   nameOrId: string
 ): Promise<Result<PipelineRecord>> {
+  const client = await chrisConnection.client_get();
+  if (!client) {
+    errorStack.stack_push('error', 'Not connected to ChRIS');
+    return Err();
+  }
+  const kept: PipelineRecord | null = pipelineRecord_recall(client, nameOrId);
+  if (kept !== null) return Ok(kept);
+  const resolved: Result<PipelineRecord> = await pipelineResolve_fetch(client, nameOrId);
+  if (resolved.ok) pipelineRecord_keep(client, nameOrId, resolved.value);
+  return resolved;
+}
+
+/**
+ * Keeps the chrisapi items a pipeline listing served, by id, so the
+ * pipings can be read off them without listing the pipeline again.
+ *
+ * @param client - The connection's client.
+ * @param page - The list response.
+ */
+function pipelineItems_keep(client: Client, page: unknown): void {
+  const items: Array<{ data?: unknown }> = items_get<{ data?: unknown }>(page as { getItems(): unknown });
+  for (const item of items) {
+    const data: IdRecord | null = itemData_get<IdRecord>(item);
+    if (data && typeof data.id === 'number') pipelineResource_keep(client, data.id, item);
+  }
+}
+
+/**
+ * Resolves a pipeline against CUBE: the wire half of pipeline_resolve.
+ *
+ * @param client - The connection's client.
+ * @param nameOrId - Pipeline name or numeric ID.
+ * @returns Result containing the matched PipelineRecord.
+ */
+async function pipelineResolve_fetch(
+  client: Client,
+  nameOrId: string
+): Promise<Result<PipelineRecord>> {
   const isNumericID: boolean = /^\d+$/.test(nameOrId);
   if (isNumericID) {
     const numericId: number = parseInt(nameOrId, 10);
-    const client = await chrisConnection.client_get();
-    if (!client) {
-      errorStack.stack_push('error', 'Not connected to ChRIS');
-      return Err();
-    }
     try {
       const pipeline = await client.getPipeline(numericId);
       const data: PipelineRecord | null = itemData_get<PipelineRecord>(pipeline);
@@ -145,6 +187,7 @@ export async function pipeline_resolve(
         errorStack.stack_push('error', `Pipeline with ID ${numericId} not found`);
         return Err();
       }
+      pipelineResource_keep(client, data.id, pipeline as object);
       return Ok(data);
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);
@@ -153,61 +196,86 @@ export async function pipeline_resolve(
     }
   }
 
-  const listResult: Result<PipelineRecord[]> = await pipelines_list(nameOrId);
-  if (!listResult.ok) return Err();
+  // A /bin slug names its pipeline's id (`<base>_id<N>`, minted by the
+  // listing from the record), so the id is the identity: one list by id
+  // answers, where a name search for the slug is a certain miss and the
+  // id only its fallback — two requests. A pipeline CUBE itself named
+  // `..._idN` is listed in /bin under its own id, so a bare slug never
+  // means it.
+  const slugID: RegExpMatchArray | null = nameOrId.match(/_id(\d+)$/);
+  if (slugID) {
+    try {
+      const pipeline = await client.getPipeline(parseInt(slugID[1], 10));
+      const data: PipelineRecord | null = itemData_get<PipelineRecord>(pipeline);
+      if (data) {
+        pipelineResource_keep(client, data.id, pipeline as object);
+        return Ok(data);
+      }
+    } catch (_e: unknown) {}
+  }
 
-  const exact: PipelineRecord | undefined = listResult.value.find(
+  // The search is read as a page, not through pipelines_list, so the items
+  // it served can be kept: a pipeline's pipings hang off its item.
+  let page: unknown;
+  try {
+    page = await resource_call<unknown>(client, 'getPipelines', { name: nameOrId, limit: PIPELINE_SEARCH_LIMIT });
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push('error', `pipelines_list: ${msg}`);
+    return Err();
+  }
+  pipelineItems_keep(client, page);
+  const found: PipelineRecord[] = listData_get<PipelineRecord>(page as { data?: unknown });
+  const exact: PipelineRecord | undefined = found.find(
     (p: PipelineRecord) => p.name === nameOrId
   );
   if (exact) return Ok(exact);
-
-  if (listResult.value.length === 1) return Ok(listResult.value[0]);
-
-  if (listResult.value.length === 0) {
-    const fallbackClient = await chrisConnection.client_get();
-    if (fallbackClient) {
-      // ID-suffix fallback: slug of form "{name}_id{N}" generated for pipelines without source files
-      const idSuffixMatch: RegExpMatchArray | null = nameOrId.match(/_id(\d+)$/);
-      if (idSuffixMatch) {
-        const directId: number = parseInt(idSuffixMatch[1], 10);
-        try {
-          const pipeline = await fallbackClient.getPipeline(directId);
-          const directData: PipelineRecord | null = itemData_get<PipelineRecord>(pipeline);
-          if (directData) {
-            return Ok(directData);
-          }
-        } catch (_e: unknown) {}
-      }
-
-      // Slug fallback: treat nameOrId as a source file fname fragment
+  if (found.length === 1) return Ok(found[0]);
+  if (found.length === 0) {
+    const fallbackClient: Client = client;
+    // ID-suffix fallback: slug of form "{name}_id{N}" generated for pipelines without source files
+    const idSuffixMatch: RegExpMatchArray | null = nameOrId.match(/_id(\d+)$/);
+    if (idSuffixMatch) {
+      const directId: number = parseInt(idSuffixMatch[1], 10);
       try {
-        const sfList: ItemListSlice = await resource_call<ItemListSlice>(
-          fallbackClient, 'getPipelineSourceFiles', { fname: nameOrId, limit: 1 }
-        );
-        const sfItems: PipelineSourceFileItem[] = items_get<PipelineSourceFileItem>(sfList).filter(
-          (item: PipelineSourceFileItem) => {
-            const base: string = item.data.fname.split('/').pop() ?? '';
-            return base.replace(/\.(ya?ml)$/i, '') === nameOrId;
-          }
-        );
-        if (sfItems.length > 0 && sfItems[0].data.pipeline_name) {
-          const byName: Result<PipelineRecord[]> = await pipelines_list(sfItems[0].data.pipeline_name);
-          if (byName.ok) {
-            const exactByName: PipelineRecord | undefined = byName.value.find(
-              (p: PipelineRecord) => p.name === sfItems[0].data.pipeline_name
-            );
-            if (exactByName) return Ok(exactByName);
-          }
+        const pipeline = await fallbackClient.getPipeline(directId);
+        const directData: PipelineRecord | null = itemData_get<PipelineRecord>(pipeline);
+        if (directData) {
+          pipelineResource_keep(client, directData.id, pipeline as object);
+          return Ok(directData);
         }
       } catch (_e: unknown) {}
     }
+
+    // Slug fallback: treat nameOrId as a source file fname fragment
+    try {
+      const sfList: ItemListSlice = await resource_call<ItemListSlice>(
+        fallbackClient, 'getPipelineSourceFiles', { fname: nameOrId, limit: 1 }
+      );
+      const sfItems: PipelineSourceFileItem[] = items_get<PipelineSourceFileItem>(sfList).filter(
+        (item: PipelineSourceFileItem) => {
+          const base: string = item.data.fname.split('/').pop() ?? '';
+          return base.replace(/\.(ya?ml)$/i, '') === nameOrId;
+        }
+      );
+      if (sfItems.length > 0 && sfItems[0].data.pipeline_name) {
+        const byName: Result<PipelineRecord[]> = await pipelines_list(sfItems[0].data.pipeline_name);
+        if (byName.ok) {
+          const exactByName: PipelineRecord | undefined = byName.value.find(
+            (p: PipelineRecord) => p.name === sfItems[0].data.pipeline_name
+          );
+          if (exactByName) return Ok(exactByName);
+        }
+      }
+    } catch (_e: unknown) {}
+    
     errorStack.stack_push('error', `No pipeline matching '${nameOrId}'`);
     return Err();
   }
 
   errorStack.stack_push(
     'error',
-    `Ambiguous: ${listResult.value.length} pipelines match '${nameOrId}'. Use ID or full name.`
+    `Ambiguous: ${found.length} pipelines match '${nameOrId}'. Use ID or full name.`
   );
   return Err();
 }

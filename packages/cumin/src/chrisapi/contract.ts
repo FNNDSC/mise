@@ -33,6 +33,7 @@ import {
   resource_call,
 } from './adapter';
 import type { PipelineRecord } from '../pipelines/chrisPipeline';
+import { pipelineResource_keep, pipelineResource_recall } from '../pipelines/pipelineMemo';
 
 /**
  * One normalized page of a paginated CUBE list.
@@ -794,12 +795,14 @@ export async function pipeline_get(
   client: Client,
   pipelineID: number,
 ): Promise<PipelineHandle | null> {
-  const resource: { data?: unknown } | null = await resource_call<{ data?: unknown } | null>(
-    client,
-    'getPipeline',
-    pipelineID,
-  );
+  // The item a search or an earlier get served answers first: chrisapi's
+  // getPipeline is a list-by-id, and the pipings hang off the item either way.
+  const kept: object | null = pipelineResource_recall(client, pipelineID);
+  const resource: { data?: unknown } | null = kept !== null
+    ? (kept as { data?: unknown })
+    : await resource_call<{ data?: unknown } | null>(client, 'getPipeline', pipelineID);
   if (!resource) return null;
+  if (kept === null) pipelineResource_keep(client, pipelineID, resource);
 
   const pipingsPage_get = async (params: Record<string, unknown>): Promise<ListPage<PluginPipingItem>> => {
     const page: WirePage = await resource_call<WirePage>(resource, 'getPluginPipings', params);

@@ -37,6 +37,9 @@ import {
   feedCached_isSettled,
   procRoster_sync,
   procRoster_bootSync,
+  procTopologyCatchup_enqueue,
+  procTopologyCatchup_status,
+  procTopologyCatchup_await,
   procVisitState_reset,
   FEED_RECHECK_MS,
   ROSTER_FULL_WALK_MS,
@@ -1002,5 +1005,75 @@ describe('roster boot sync', () => {
     };
     mockClientGet.mockResolvedValue(client);
     expect((await procRoster_sync(true)).sort()).toEqual([3, 5]);
+  });
+});
+
+describe('topology catch-up', () => {
+  /** A client whose feed index and per-feed job pages are fixed. */
+  function catchupClient(feedRows: unknown[], jobsByFeed: Record<number, unknown[]>) {
+    return {
+      getFeeds: jest.fn().mockImplementation((params: Record<string, unknown>) =>
+        ({ data: params.min_id === undefined ? feedRows : [], totalCount: feedRows.length })),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+      getPluginInstances: jest.fn().mockImplementation((params: Record<string, unknown>) => {
+        const rows: unknown[] = jobsByFeed[Number(params.feed_id)] ?? [];
+        return { data: rows, totalCount: rows.length };
+      }),
+    };
+  }
+
+  it('lands the topology of roster feeds the sweep never saw, one walk at a time', async () => {
+    cache.feed_add(feed({ id: 3, title: 'restored, no shard' }));
+    cache.built_set();
+    cache.lifecycle_set('current');
+    cache.warmup_complete();
+    const client = catchupClient(
+      [{ id: 3, name: 'restored, no shard', owner_username: 'chris' }, { id: 7, name: 'arrived', owner_username: 'chris' }],
+      { 3: [{ id: 30, feed_id: 3, plugin_name: 'pl-a', status: 'finishedSuccessfully', size: 10 }],
+        7: [{ id: 70, feed_id: 7, plugin_name: 'pl-b', status: 'finishedSuccessfully', size: 20 }] },
+    );
+    mockClientGet.mockResolvedValue(client);
+
+    await procRoster_sync(true);
+    expect(procTopologyCatchup_status().running).toBe(true);
+    await procTopologyCatchup_await();
+
+    expect(cache.topologyLoaded_has(3)).toBe(true);
+    expect(cache.topologyLoaded_has(7)).toBe(true);
+    expect(cache.instance_get(30)?.outputBytes).toBe(10);
+    expect(cache.instance_get(70)?.outputBytes).toBe(20);
+    expect(client.getPluginInstances).toHaveBeenCalledWith(expect.objectContaining({ feed_id: 3 }));
+    expect(client.getPluginInstances).toHaveBeenCalledWith(expect.objectContaining({ feed_id: 7 }));
+    expect(procTopologyCatchup_status()).toEqual({ queued: 0, running: false });
+  });
+
+  it('queues nothing while the global sweep is the one bringing topology in', async () => {
+    cache.feed_add(feed({ id: 3 }));
+    cache.built_set();
+    cache.lifecycle_set('current');
+    expect(cache.warmupComplete).toBe(false);
+    expect(procTopologyCatchup_enqueue([3])).toBe(0);
+    expect(procTopologyCatchup_status()).toEqual({ queued: 0, running: false });
+  });
+
+  it('skips a feed already loaded, already queued, or not in the roster', async () => {
+    cache.feed_add(feed({ id: 3 }));
+    cache.feed_add(feed({ id: 4 }));
+    cache.topologyLoaded_mark(3);
+    cache.built_set();
+    cache.lifecycle_set('current');
+    cache.warmup_complete();
+    let release: (() => void) | undefined;
+    const held: Promise<{ data: unknown[]; totalCount: number }> = new Promise((resolve) => {
+      release = (): void => resolve({ data: [], totalCount: 0 });
+    });
+    mockClientGet.mockResolvedValue({ getPluginInstances: jest.fn().mockReturnValue(held) });
+
+    expect(procTopologyCatchup_enqueue([3, 4, 4, 99])).toBe(1);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(procTopologyCatchup_enqueue([4])).toBe(0);
+    release?.();
+    await procTopologyCatchup_await();
+    expect(cache.topologyLoaded_has(4)).toBe(true);
   });
 });

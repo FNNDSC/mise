@@ -125,6 +125,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   procTopology_warmup: procTopologyWarmup_mock,
   procTopology_retry: procTopologyRetry_mock,
   procTopology_status: jest.fn(() => ({ ...mockTopologyStatus })),
+  procTopologyCatchup_status: jest.fn(() => ({ queued: 0, running: false })),
 }));
 
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({

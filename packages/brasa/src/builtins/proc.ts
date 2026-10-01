@@ -3,7 +3,7 @@
  * Manages the /proc VFS cache (job monitoring).
  */
 import chalk from 'chalk';
-import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procFeed_refreshStart, type FeedTopologyReadiness, procRoster_sync, procRoster_syncStart, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
+import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procFeed_refreshStart, type FeedTopologyReadiness, procRoster_sync, procTopologyCatchup_status, procRoster_syncStart, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
 import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, feedStatus_ofCounts, procLayout_get, procLayout_set, procLayoutName_check, procLayoutPositions_check, type ProcLayoutRecord, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { FEED_LIST_MODEL_KIND, PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, type FeedListModel, type ProcLayoutModel, type ProcUniverseModel } from '@fnndsc/menu';
 import { spinner } from '../lib/spinner.js';
@@ -600,6 +600,12 @@ async function procStat_handle(args: string[]): Promise<CommandEnvelope> {
     rendered += `    shared       : ${chalk.cyan(String(counts.shared))}\n`;
     rendered += `  jobs loaded    : ${chalk.cyan(jobCount)}\n`;
     rendered += `  topology sweep : ${warmupLine}\n`;
+    // Feeds the roster gained after the sweep land behind the prompt, one
+    // walk at a time; while any wait, the readout says so.
+    const catchup: { queued: number; running: boolean } = procTopologyCatchup_status();
+    if (catchup.queued > 0 || catchup.running) {
+      rendered += `  topology catch-up : ${chalk.yellow(`${catchup.queued + (catchup.running ? 1 : 0)} feed(s) landing`)}\n`;
+    }
     rendered += `  cache state    : ${chalk.cyan(lifecycle.state)}\n`;
     if (lifecycle.checkpointAt) rendered += `  checkpoint     : ${chalk.cyan(lifecycle.checkpointAt)}\n`;
     return envelope_ok(rendered);

@@ -17,6 +17,7 @@
  *
  * @module
  */
+import { more_wire } from '../features/roster/more.js';
 import { feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type FeedDagModel, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { ChrisSpace, type SceneNode } from '../scene/chrisSpace.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction } from './dormant.js';
@@ -605,64 +606,29 @@ let cohortStage_run: (() => void) | null = null;
 function gatherMore_wire(field: HTMLElement): void {
   const rows: HTMLElement | null = field.querySelector<HTMLElement>('.gather-rows');
   if (rows === null) return;
-  const chip: HTMLButtonElement = document.createElement('button');
-  chip.type = 'button';
-  chip.className = 'strategy-pill gather-more';
-  chip.title = 'the whole cohort as a pane on the main panel';
-  chip.hidden = true;
-  chip.addEventListener('click', (event: Event): void => {
-    event.stopPropagation();
-    cohortStage_run?.();
+  // The band's chip is the field's chip wearing a verb: N counts the rows
+  // below, the press puts the whole cohort on stage.
+  const chip: HTMLButtonElement = more_wire(rows, {
+    rows: '.listing-row',
+    label: (below: number): string => `+${below} MORE · ON STAGE`,
+    press: (): void => { cohortStage_run?.(); },
+    className: 'strategy-pill gather-more',
+    mount: field,
   });
-  field.appendChild(chip);
-  const count = (): void => {
-    const foot: number = rows.getBoundingClientRect().bottom;
-    const below: number = [...rows.querySelectorAll<HTMLElement>('.listing-row')]
-      .filter((row: HTMLElement): boolean => row.getBoundingClientRect().top >= foot - 2).length;
-    chip.hidden = below === 0;
-    chip.textContent = `+${below} MORE · ON STAGE`;
-  };
-  rows.addEventListener('scroll', count, { passive: true });
-  new ResizeObserver(count).observe(rows);
-  new MutationObserver(count).observe(rows, { childList: true, subtree: true });
-  count();
+  chip.title = 'the whole cohort as a pane on the main panel';
 }
 
 /**
  * A mode frame says when it holds more blocks than its field is tall. The
  * frame scrolls (a short band or pane cannot grow for it: gathering never
- * moves the body), its scrollbar is gone, and a chip at its foot reads
- * `▼ N MORE` while blocks lie below the view — the press shows them — or
- * `▲ TOP` once the foot is reached. The band's +N MORE grammar, on chrome.
+ * moves the body), its scrollbar is gone, and the field's chip at its foot
+ * reads `▼ N MORE` while blocks lie below the view — the press shows them —
+ * or `▲ TOP` once the foot is reached.
  *
  * @param frame - The frame.
  */
 function frameMore_wire(frame: HTMLElement): void {
-  frame.dataset['more'] = 'wired';
-  const chip: HTMLButtonElement = document.createElement('button');
-  chip.type = 'button';
-  chip.className = 'frame-more';
-  chip.hidden = true;
-  const atFoot = (): boolean => frame.scrollTop + frame.clientHeight >= frame.scrollHeight - 2;
-  chip.addEventListener('click', (event: Event): void => {
-    event.stopPropagation();
-    frame.scrollBy({ top: atFoot() ? -frame.scrollHeight : Math.max(1, frame.clientHeight - chip.offsetHeight), behavior: 'smooth' });
-  });
-  frame.appendChild(chip);
-  const count = (): void => {
-    const overflowing: boolean = frame.scrollHeight > frame.clientHeight + 2;
-    if (chip.hidden !== !overflowing) chip.hidden = !overflowing;
-    if (!overflowing) return;
-    const foot: number = frame.getBoundingClientRect().bottom;
-    const below: number = [...frame.querySelectorAll<HTMLElement>('.strategy-pill, .listing-action')]
-      .filter((block: HTMLElement): boolean => block.getBoundingClientRect().height > 0 && block.getBoundingClientRect().top >= foot - 2).length;
-    const label: string = atFoot() ? '▲ TOP' : `▼ ${below} MORE`;
-    if (chip.textContent !== label) chip.textContent = label;
-  };
-  frame.addEventListener('scroll', count, { passive: true });
-  new ResizeObserver(count).observe(frame);
-  new MutationObserver(count).observe(frame, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class'] });
-  count();
+  more_wire(frame, { rows: '.strategy-pill, .listing-action', className: 'frame-more' });
 }
 
 /** Wires every mode frame on the page, now and as panes mint theirs. */

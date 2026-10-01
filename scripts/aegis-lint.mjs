@@ -362,6 +362,38 @@ LINT_CHECKS['an-instruments-field-is-foreign'] = () => {
   }
 };
 
+LINT_CHECKS['a-field-says-it-holds-more'] = () => {
+  // Every scrolling field wears the chip: each `overflow: auto|scroll` rule
+  // in the stylesheet names a class in MORE_FIELDS (features/roster/more.ts),
+  // and each name there is wired by a `more_wire` call in a source that
+  // names the field. The console's scrollback keeps its own idiom by name.
+  const more = features.find((f) => f.path.endsWith('/roster/more.ts'));
+  if (!more) { fail('a-field-says-it-holds-more', 'features/roster/more.ts not read'); return; }
+  const list = (name) => {
+    const m = more.text.match(new RegExp(`${name}[^=]*=\\s*\\[([^\\]]*)\\]`));
+    return m ? [...m[1].matchAll(/'([a-z0-9-]+)'/g)].map((x) => x[1]) : null;
+  };
+  const fields = list('MORE_FIELDS');
+  const scrollback = list('SCROLLBACK_FIELDS') ?? [];
+  if (!fields) { fail('a-field-says-it-holds-more', 'MORE_FIELDS not found in more.ts'); return; }
+  const allowed = new Set([...fields, ...scrollback]);
+  const sheet = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const rule of sheet.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/overflow(?:-y)?\s*:\s*(?:auto|scroll)\b/.test(rule[2])) continue;
+    for (const selector of rule[1].split(',')) {
+      // The field is the last class the selector names, or its id when it names none.
+      const classes = [...selector.matchAll(/[.#]([a-zA-Z0-9_-]+)/g)].map((m) => m[1]);
+      const field = classes.at(-1);
+      if (field === undefined) { fail('a-field-says-it-holds-more', `a scrolling rule names no class or id: ${selector.trim()}`); continue; }
+      if (!allowed.has(field)) fail('a-field-says-it-holds-more', `'.${field}' scrolls but is not in MORE_FIELDS (wire more_wire, or make the mount overflow: hidden): ${selector.trim()}`);
+    }
+  }
+  for (const field of fields) {
+    const wired = [...features, ...sources].some((f) => f.text.includes('more_wire(') && f.text.includes(field));
+    if (!wired) fail('a-field-says-it-holds-more', `MORE_FIELDS names '${field}' but no source wires it (a file with more_wire( that names '${field}')`);
+  }
+};
+
 // -------------------------------------------------- the table enforces itself
 
 const lawsTable = aegis.match(/\| Law \| Statement \| Enforcement\n([\s\S]*?)\n\|===/);

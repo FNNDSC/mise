@@ -19,6 +19,7 @@
  *
  * @module
  */
+import { more_wire } from '../roster/more.js';
 
 /** One row of a tile: a thing that exists, and what pressing it opens. */
 export interface LauncherRow {
@@ -80,6 +81,14 @@ export class LauncherPanel {
   constructor(mount: HTMLElement, host: LauncherHost) {
     this.host = host;
     this.grid = mount.querySelector<HTMLElement>('.launcher-grid') as HTMLElement;
+    // The grid scrolls on a short screen without a scrollbar and says what
+    // it holds; its chip sits after the grid, not in a cell of it.
+    more_wire(this.grid, { rows: '.launcher-tile', mount: this.grid.parentElement ?? this.grid });
+    // On a phone the tiles stand in one column and the body scrolls instead
+    // of the grid (.launcher-body): wired too, and only the one that
+    // overflows speaks.
+    const body: HTMLElement | null = mount.querySelector<HTMLElement>('.launcher-body');
+    if (body !== null) more_wire(body, { rows: '.launcher-tile' });
     this.startHere = mount.querySelector<HTMLButtonElement>('.launcher-start') as HTMLButtonElement;
     this.startHere.addEventListener('click', (): void => {
       this.host.startHere_set(!this.host.startHere_get());

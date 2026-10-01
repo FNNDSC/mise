@@ -11,6 +11,33 @@
  * (aegis.adoc: a-field-says-it-holds-more).
  */
 
+/**
+ * Every scrolling field on the surface, by the class its stylesheet rule
+ * names. The aegis lint (a-field-says-it-holds-more) holds each
+ * `overflow: auto` rule in argus.css to this list, and each name here to a
+ * `more_wire` call in the source that names it — so a pane that grows a
+ * scrolling field wires the chip or fails CI. A container whose child is
+ * the wired field (the gather mount, the table mount) does not scroll
+ * itself and is not here.
+ */
+export const MORE_FIELDS: ReadonlyArray<string> = [
+  'listing-field',   // every listing's rows (features/roster/host.ts)
+  'files-content',   // a file's text (features/files/panel.ts)
+  'gather-rows',     // the band's cohort (app/main.ts)
+  'empty-result',    // an errand pane's answer (features/empty/panel.ts)
+  'launcher-grid',   // the dashboard's tiles (features/launcher/panel.ts)
+  'launcher-body',   // the same tiles on a phone, where the body scrolls
+  'panes-body',      // the PANES desktop cards (app/main.ts)
+  'view-body',       // the slaved viewer's text or picture (app/main.ts)
+  'dag-facts',       // a node's readout, immersed (app/main.ts)
+  'dag-facts-immersed', // the same readout's immersed rule
+  'mode-frame',      // every mode frame's blocks (app/main.ts)
+  'pacs-workspace',  // the PACS pane whole, by id (app/main.ts)
+];
+
+/** The one scrolling field that keeps the terminal's own idiom: the console's scrollback. */
+export const SCROLLBACK_FIELDS: ReadonlyArray<string> = ['argus-output'];
+
 /** How a field counts what lies below, and what its chip does. */
 export interface MoreOptions {
   /** A selector for the field's rows; absent, the field counts lines of text. */

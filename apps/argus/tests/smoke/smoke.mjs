@@ -358,6 +358,43 @@ try {
   check('a frame pill writes nothing to the console', pill.error === undefined && pill.consoleGrew === false, JSON.stringify(pill));
   }
 
+  if (stage('more-everywhere')) {
+  // Every scrolling field wears the chip: the fields a page has at rest are
+  // wired the moment they are stamped, and a node's readout once immersed.
+  const more = await evalIn(`
+    await console_idle();
+    const wired = (sel) => { const el = document.querySelector(sel); return el === null ? 'absent' : (el.dataset.more === 'wired' && getComputedStyle(el).scrollbarWidth === 'none' ? 'wired' : 'bare'); };
+    // The panes are stamped when opened: open each, then read its field.
+    for (const id of ['gutter-dashboard', 'gutter-panes', 'gutter-tools']) { document.getElementById(id)?.click(); await sleep(600); }
+    const atRest = { launcherGrid: wired('.launcher-grid'), launcherBody: wired('.launcher-body'), panesBody: wired('.panes-body'), pacs: wired('#pacs-workspace') };
+    // a mount around a wired field never scrolls itself (the band's own
+    // rows are a wired field, so the gather PANE's mount is the one read)
+    const mounts = ['.pane-gather .gather-rows', '.files-table-rows'].map((sel) => { const el = document.querySelector(sel); return el === null ? 'absent' : getComputedStyle(el).overflowY; });
+    // the viewer's body: open a text file in a split with a viewer
+    const input = document.querySelector('#terminal input');
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_idle(); };
+    await say('cd /bin');
+    const fp = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+    if (!fp()) { document.getElementById('gutter-files').click(); for (let i = 0; i < 40; i++) { await sleep(250); if (fp()) break; } }
+    let plugin = null;
+    for (let i = 0; i < 60; i++) { await sleep(500); plugin = fp()?.querySelector('.files-row.files-type-plugin'); if (plugin) break; }
+    if (!plugin) return { atRest, mounts, node: 'no plugin row' };
+    plugin.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    let facts = null;
+    for (let i = 0; i < 60; i++) { await sleep(500); facts = document.querySelector('.dag-facts-immersed'); if (facts) break; }
+    const node = facts === null ? 'no immersed readout' : (facts.dataset.more === 'wired' && getComputedStyle(facts).scrollbarWidth === 'none' ? 'wired' : 'bare');
+    const chip = facts?.querySelector('.more-chip');
+    const overflowing = facts !== null && facts.scrollHeight > facts.clientHeight + 2;
+    const chipRight = chip === null || chip === undefined ? 'absent' : (overflowing ? (!chip.hidden && /MORE|TOP/.test(chip.textContent) ? 'shown' : 'hidden-while-overflowing') : (chip.hidden ? 'hidden' : 'shown-while-fitting'));
+    return { atRest, mounts, node, chipRight, overflowing };`);
+  check('the fields a page has at rest wear the chip and hide their scrollbars: the dashboard, the desktop, the PACS workspace',
+    more.atRest !== undefined && Object.values(more.atRest).every((v) => v === 'wired' || v === 'absent') && Object.values(more.atRest).some((v) => v === 'wired'),
+    JSON.stringify(more.atRest));
+  check('a mount around a wired field never scrolls itself', (more.mounts ?? []).every((v) => v === 'hidden' || v === 'absent'), JSON.stringify(more.mounts));
+  check('a node readout immersed in a DAG wears the chip, shown only while it holds more',
+    more.node === 'wired' && (more.chipRight === 'shown' || more.chipRight === 'hidden'), JSON.stringify(more));
+  }
+
   if (stage('universe-constellations')) {
     // CONSTELLATIONS: every plugin a ringed star, every feed pulled to the
     // stars it ran. A plugin lit by word shows its facts and its verb, and

@@ -80,7 +80,7 @@ export function folder_verifyPathMatch(folder: FileBrowserFolder | null | undefi
 async function parentListing_get(parentPath: string): Promise<Result<VFSItem[]>> {
   const { listCache_get: cache_of } = await import('@fnndsc/cumin');
   const kept: CacheResult<VFSItem[]> | null = cache_of().cache_get<VFSItem[]>(parentPath);
-  if (kept !== null) return Ok(kept.data);
+  if (kept) return Ok(kept.data);
   const { vfsDispatcher } = await import('@fnndsc/salsa');
   return vfsDispatcher.list(parentPath);
 }

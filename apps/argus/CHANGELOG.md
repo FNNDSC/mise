@@ -1,5 +1,11 @@
 # @fnndsc/argus
 
+## 0.18.7
+
+### Patch Changes
+
+- 08e85b7: BACK heads the graph pane's frame (to the roster, or asks for one), and a tap on the node facts plate's own ground stands it down — a phone has no Esc and the plate reads as background.
+
 ## 0.18.6
 
 ### Patch Changes

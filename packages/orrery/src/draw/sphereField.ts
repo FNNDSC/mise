@@ -77,6 +77,19 @@ export class SphereField {
       ...(look.fade !== undefined ? { transparent: true, opacity: look.fade } : {}),
     });
     const mesh: THREE.Mesh = new THREE.Mesh(geometry, material);
+    if (look.flat === true) {
+      // A disc lies in the plane the tubes are centred on, so a tube's near
+      // face stood in front of it and ran across the node it joined. The
+      // schematic reads the other way: the node sits ON its tubes. The
+      // tubes are transparent (their shader fades and pulses), and three
+      // draws every transparent thing after every opaque one whatever its
+      // render order — so the disc is transparent too, at full opacity,
+      // ordered after the tubes and without the depth test: it covers the
+      // tube ends as a sphere's near hemisphere does in 3D.
+      material.transparent = true;
+      material.depthTest = false;
+      mesh.renderOrder = 2;
+    }
     mesh.position.copy(position);
     mesh.userData['nodeId'] = id;
     // A dimmed node is scenery: drawn behind the graph in hand, it takes no

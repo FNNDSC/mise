@@ -24,6 +24,8 @@
  * @see docs/calypso.adoc for the governing design.
  * @module
  */
+import { FileReadRefusal, fileRefusal_name } from './fileRefusal.js';
+export { FileReadRefusal, fileRefusal_name } from './fileRefusal.js';
 import chalk from 'chalk';
 import type { CommandEnvelope, Result } from '@fnndsc/cumin';
 import type { Regard, WatchState, AmbientEvent } from '@fnndsc/menu';
@@ -501,6 +503,9 @@ async function projectedPath_physical(projected: string): Promise<string> {
  */
 export async function file_read(filePath: string): Promise<Buffer> {
   const { path_resolve } = await import('../builtins/utils.js');
+  const { errorStack } = await import('@fnndsc/cumin');
+  const since: number = errorStack.checkpoint_mark();
+  const refusal = (): FileReadRefusal => fileRefusal_name(filePath, errorStack.checkpoint_drain(since).map((note: { message: string }): string => note.message));
   const resolved: string = await path_resolve(filePath);
   const { vfsDispatcher } = await import('@fnndsc/salsa');
   // A projection is read by the provider that owns it — `/proc/jobs/…/data`
@@ -522,12 +527,13 @@ export async function file_read(filePath: string): Promise<Buffer> {
       const followed: Result<Buffer> = await catLinked(physical);
       if (followed.ok) return followed.value;
     }
-    throw new Error(`cannot read ${filePath}`);
+    throw refusal();
   }
   const { files_catBinary } = await import('@fnndsc/chili/commands/fs/cat.js');
   const result: Result<Buffer> = await files_catBinary(resolved);
   if (!result.ok) {
-    throw new Error(`cannot read ${filePath}`);
+    throw refusal();
   }
+  errorStack.checkpoint_drain(since);
   return result.value;
 }

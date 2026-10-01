@@ -4,7 +4,7 @@
  *
  * Reads its configuration from the environment, stands a process host on
  * this machine, and listens. `porter --status` lists the sessions a running
- * porter's state directory holds.
+ * porter's state directory holds; `porter --end <who>` ends one of them.
  *
  * @module
  */
@@ -42,9 +42,55 @@ async function status_print(stateDir: string): Promise<void> {
   }
 }
 
+/**
+ * Ends one session: the daemon is sent SIGTERM, its state directory stays,
+ * and the operator's next login boots a fresh one on the kernel this
+ * porter now carries. An adopted session keeps the kernel it was born
+ * with across every porter upgrade — a session from last week answers a
+ * surface from today with last week's answers — and until now the only
+ * way to move it on was to find its pid by hand.
+ *
+ * @param stateDir - Where the state directory is.
+ * @param who - The session's berth key, its identity (`user@cube`), or the
+ *   user alone when one session carries that user.
+ */
+async function session_end(stateDir: string, who: string): Promise<void> {
+  const host: ProcessHost = new ProcessHost({ stateDir, chellEntry: process.env['PORTER_CHELL'] ?? chellEntry_locate() });
+  const sightings: SessionSighting[] = await host.sessions_adopt();
+  const matches: SessionSighting[] = sightings.filter((sighting: SessionSighting): boolean =>
+    sighting.identity === who || berthKey_compute(sighting.identity) === who || sighting.identity.startsWith(`${who}@`));
+  if (matches.length === 0) {
+    console.error(`[!] no session for ${who}; 'porter --status' lists them`);
+    process.exit(1);
+  }
+  if (matches.length > 1) {
+    console.error(`[!] ${who} names ${matches.length} sessions; use the berth key:`);
+    for (const sighting of matches) console.error(`    ${berthKey_compute(sighting.identity)}  ${sighting.identity}`);
+    process.exit(1);
+  }
+  const target: SessionSighting = matches[0] as SessionSighting;
+  if (!target.alive) {
+    console.log(`${berthKey_compute(target.identity)}  gone already  ${target.identity}`);
+    return;
+  }
+  const ended: boolean = await host.evict(target.identity);
+  console.log(`${berthKey_compute(target.identity)}  ${ended ? 'ended' : 'could not be ended'}  ${target.identity}${target.berth.pid !== undefined ? `  pid ${target.berth.pid}` : ''}`);
+  if (ended) console.log('    state kept; the next login boots a fresh session on this porter\'s kernel');
+}
+
 async function porter_start(): Promise<void> {
   if (process.argv.includes('--status')) {
     await status_print(porterStateDir_resolve(process.env));
+    return;
+  }
+  const endAt: number = process.argv.indexOf('--end');
+  if (endAt >= 0) {
+    const who: string | undefined = process.argv[endAt + 1];
+    if (who === undefined || who.startsWith('--')) {
+      console.error('[!] porter --end <berth key | user | user@cube>');
+      process.exit(1);
+    }
+    await session_end(porterStateDir_resolve(process.env), who);
     return;
   }
   let config: PorterConfig;

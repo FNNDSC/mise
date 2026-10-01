@@ -458,7 +458,15 @@ export class CalypsoDaemon {
       }
       response.writeHead(200, headers);
       response.end(request.method === 'HEAD' ? undefined : bytes);
-    } catch {
+    } catch (error: unknown) {
+      // The kernel says why it refused (status and a line); the route
+      // passes both on. It used to answer 404 for everything, and a
+      // surface could only say REFUSED.
+      const named: { status?: unknown; reason?: unknown } = error as { status?: unknown; reason?: unknown };
+      if (typeof named.status === 'number' && typeof named.reason === 'string') {
+        refuse(named.status, named.reason);
+        return;
+      }
       refuse(404, 'not found');
     }
   }

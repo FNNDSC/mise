@@ -8,6 +8,7 @@
  *
  * @module
  */
+import { refusal_explain } from './refusal.js';
 import { byteUrl_absolute } from '../../calypso/routes.js';
 import {
   IMAGE_TOOLS,
@@ -101,6 +102,10 @@ export class NiivueEngine implements ImageEngine {
       this.host.progress_set(null);
       this.host.readout_set('REFUSED 1 OF 1');
       this.host.note(`image: ${this.path}: ${error instanceof Error ? error.message : String(error)}`);
+      // The route says why; the loader only that it failed.
+      const why: string = await refusal_explain(byteUrl_absolute(this.host.source.url_of(this.path), location.href));
+      this.host.readout_set(`REFUSED 1 OF 1 · ${why}`);
+      this.host.note(`image: ${this.path}: ${why.toLowerCase()}`);
       return;
     }
     this.host.progress_set(null);

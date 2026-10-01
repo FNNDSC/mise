@@ -348,6 +348,66 @@ function badgeElement_register(seriesUID: string, badge: HTMLElement): void {
  * @param seriesUID - The series.
  * @param paint - What to do to each badge.
  */
+/**
+ * The last state the wire reported per series. A row built after the pull
+ * — the cohort rebuilt by SAVE, a listing redrawn — asks here, so a series
+ * pulled a minute ago does not come back reading NOT RETRIEVED.
+ */
+const badgeStateLast: Map<string, BadgeState> = new Map();
+
+/**
+ * Paints a badge from what its series is doing.
+ *
+ * Done is a FULL BAR with the count beside it, the same drawing a series
+ * already in CUBE gets when the answer arrives: it used to be the word
+ * PULLED alone, so a series the operator had just watched fill read unlike
+ * the one above it that had been home all along.
+ *
+ * @param badge - The badge element.
+ * @param state - The series' state.
+ */
+function badge_paint(badge: HTMLElement, state: BadgeState): void {
+  badge.replaceChildren();
+  badge.dataset['state'] = state.status;
+  const note: HTMLSpanElement = document.createElement('span');
+  note.className = 'pacs-badge-note';
+
+  if (state.status === 'idle') {
+    note.textContent = BADGE_TEXT['idle'] ?? 'NOT RETRIEVED';
+    badge.append(progressCell_build({ done: 0, total: 0 }), note);
+    return;
+  }
+  if (state.status === 'done') {
+    const bar: HTMLSpanElement = document.createElement('span');
+    bar.className = 'pacs-bar-full';
+    note.textContent = state.total !== undefined && state.total > 0 ? `✓ ${state.total} IN CUBE` : '✓ IN CUBE';
+    badge.append(bar, note);
+    return;
+  }
+  if (state.status !== 'running' && state.status !== 'queued') {
+    badge.textContent = BADGE_TEXT[state.status] ?? state.status.toUpperCase();
+    return;
+  }
+  // A running pull shows how far it has got, not just that it is going.
+  // Without a total there is no fraction to draw, so the bar paces
+  // instead — still motion, still honest about knowing no better.
+  const counted: string = state.total !== undefined ? ` ${state.current ?? 0}/${state.total}` : '';
+  const fraction: number | null =
+    state.status === 'queued' || state.total === undefined || state.total === 0
+      ? null
+      : Math.min(1, (state.current ?? 0) / state.total);
+  const track: HTMLSpanElement = document.createElement('span');
+  track.className = fraction === null ? 'pacs-bar pacs-bar-pacing' : 'pacs-bar';
+  const fill: HTMLSpanElement = document.createElement('span');
+  fill.className = 'pacs-bar-fill';
+  if (fraction !== null) fill.style.width = `${Math.round(fraction * 100)}%`;
+  track.appendChild(fill);
+  note.textContent = state.status === 'queued'
+    ? (BADGE_TEXT['queued'] ?? 'QUEUED')
+    : `${BADGE_TEXT['running']}${counted}`;
+  badge.append(track, note);
+}
+
 function badgeElements_paint(seriesUID: string, paint: (badge: HTMLElement) => void): void {
   const held: Set<HTMLElement> | undefined = badgeElements.get(seriesUID);
   if (held === undefined) return;
@@ -381,8 +441,11 @@ export function seriesBadge_build(series: PacsSeries): HTMLElement {
   badge.append(track, note);
   badge.dataset['state'] = 'idle';
   // Registered wherever it stands: a cohort's row moves with the pull the
-  // same as the answer's row does, because they are the same series.
+  // same as the answer's row does, because they are the same series — and
+  // a row built after the pull reads what the pull last said.
   badgeElement_register(series.seriesUID, badge);
+  const last: BadgeState | undefined = badgeStateLast.get(series.seriesUID);
+  if (last !== undefined) badge_paint(badge, last);
   return badge;
 }
 
@@ -1504,6 +1567,7 @@ export class PacsPanel {
    */
   private badgeState_set(seriesUID: string, state: BadgeState): void {
     this.badgeStates.set(seriesUID, state);
+    badgeStateLast.set(seriesUID, state);
     this.seriesProgress.set(seriesUID, progress_ofState(state, this.seriesProgress.get(seriesUID)));
     // Every badge for this series, in every pane showing it.
     badgeElements_paint(seriesUID, (badge: HTMLElement): void => this.badge_paint(badge, state));
@@ -1545,45 +1609,9 @@ export class PacsPanel {
     return badge;
   }
 
-  /**
-   * Paints a badge from what its series is doing.
-   *
-   * @param badge - The badge element.
-   * @param state - The series' state.
-   */
+  /** Paints a badge from what its series is doing (the module's painter). */
   private badge_paint(badge: HTMLElement, state: BadgeState): void {
-    badge.replaceChildren();
-    badge.dataset['state'] = state.status;
-    const note: HTMLSpanElement = document.createElement('span');
-    note.className = 'pacs-badge-note';
-
-    if (state.status === 'idle') {
-      note.textContent = BADGE_TEXT['idle'] ?? 'NOT RETRIEVED';
-      badge.append(progressCell_build({ done: 0, total: 0 }), note);
-      return;
-    }
-    if (state.status !== 'running' && state.status !== 'queued') {
-      badge.textContent = BADGE_TEXT[state.status] ?? state.status.toUpperCase();
-      return;
-    }
-    // A running pull shows how far it has got, not just that it is going.
-    // Without a total there is no fraction to draw, so the bar paces
-    // instead — still motion, still honest about knowing no better.
-    const counted: string = state.total !== undefined ? ` ${state.current ?? 0}/${state.total}` : '';
-    const fraction: number | null =
-      state.status === 'queued' || state.total === undefined || state.total === 0
-        ? null
-        : Math.min(1, (state.current ?? 0) / state.total);
-    const track: HTMLSpanElement = document.createElement('span');
-    track.className = fraction === null ? 'pacs-bar pacs-bar-pacing' : 'pacs-bar';
-    const fill: HTMLSpanElement = document.createElement('span');
-    fill.className = 'pacs-bar-fill';
-    if (fraction !== null) fill.style.width = `${Math.round(fraction * 100)}%`;
-    track.appendChild(fill);
-    note.textContent = state.status === 'queued'
-      ? (BADGE_TEXT['queued'] ?? 'QUEUED')
-      : `${BADGE_TEXT['running']}${counted}`;
-    badge.append(track, note);
+    badge_paint(badge, state);
   }
 
   /**

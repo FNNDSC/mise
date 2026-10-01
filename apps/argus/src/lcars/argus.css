@@ -2393,9 +2393,39 @@ body[data-zoom]:not([data-zoom='console'])
   z-index: 5;
   /* A short pane can hold fewer blocks than the frame carries once a row's
    * verbs join the field's; the bar then scrolls rather than running past
-   * the pane's foot, where its last verbs would be cut off unseen. */
+   * the pane's foot, where its last verbs would be cut off unseen. No
+   * scrollbar, though: a grey browser bar down an LCARS frame read as a
+   * defect, so a chip at the frame's foot says how many blocks lie below
+   * (`.frame-more`, the band's own +N MORE grammar) and the press shows them. */
   overflow-y: auto;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+}
+
+.mode-frame::-webkit-scrollbar {
+  display: none;
+}
+
+.frame-more {
+  position: sticky;
+  bottom: 0;
+  flex: none;
+  margin-top: auto;
+  z-index: 2;
+  align-self: center;
+  padding: 0.25rem 0.7rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--butter);
+  color: #000;
+  font-family: var(--face-label);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  box-shadow: 0 0 0 4px #000;
+}
+
+.frame-more:hover {
+  background: var(--harvestgold);
 }
 
 .workspace-pane[data-modes='open'] .mode-frame {
@@ -2896,6 +2926,14 @@ body[data-header='dag'] #header-dag {
 /* On the block the bar inverts with the type: a black fill in a black
  * track, an outlined empty track in black — the block IS the bright hue,
  * and a bar in the scheme's progress colours vanished into it. */
+/* The indicated row bleeds half a rem under the frame's spine (the margin
+ * above), which the field counts as overflow and answers with a horizontal
+ * scrollbar the width of the listing. The bleed lies under opaque chrome:
+ * clip it. */
+.listing-framed .listing-field {
+  overflow-x: hidden;
+}
+
 /* On the indicated row the bar sits in a black WELL, and what fills it stays
  * a colour: the listing's light tint when done, the state's own when running
  * or failed. It used to invert whole — black fill in a black-tinted track —
@@ -3564,6 +3602,12 @@ button.files-crumb:focus-visible {
 .man-key { color: var(--honey); }
 .man-flag { color: var(--daybreak); }
 .man-str { color: var(--orange); }
+
+/* JSON reads as structure, not as one line of bytes. */
+.files-content.files-json .json-key { color: var(--daybreak); }
+.files-content.files-json .json-string { color: var(--butter); }
+.files-content.files-json .json-number { color: var(--orange); }
+.files-content.files-json .json-literal { color: var(--honey); }
 
 .files-content {
   margin: 0;

@@ -619,6 +619,60 @@ function gatherMore_wire(field: HTMLElement): void {
   count();
 }
 
+/**
+ * A mode frame says when it holds more blocks than its field is tall. The
+ * frame scrolls (a short band or pane cannot grow for it: gathering never
+ * moves the body), its scrollbar is gone, and a chip at its foot reads
+ * `▼ N MORE` while blocks lie below the view — the press shows them — or
+ * `▲ TOP` once the foot is reached. The band's +N MORE grammar, on chrome.
+ *
+ * @param frame - The frame.
+ */
+function frameMore_wire(frame: HTMLElement): void {
+  frame.dataset['more'] = 'wired';
+  const chip: HTMLButtonElement = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'frame-more';
+  chip.hidden = true;
+  const atFoot = (): boolean => frame.scrollTop + frame.clientHeight >= frame.scrollHeight - 2;
+  chip.addEventListener('click', (event: Event): void => {
+    event.stopPropagation();
+    frame.scrollBy({ top: atFoot() ? -frame.scrollHeight : Math.max(1, frame.clientHeight - chip.offsetHeight), behavior: 'smooth' });
+  });
+  frame.appendChild(chip);
+  const count = (): void => {
+    const overflowing: boolean = frame.scrollHeight > frame.clientHeight + 2;
+    if (chip.hidden !== !overflowing) chip.hidden = !overflowing;
+    if (!overflowing) return;
+    const foot: number = frame.getBoundingClientRect().bottom;
+    const below: number = [...frame.querySelectorAll<HTMLElement>('.strategy-pill, .listing-action')]
+      .filter((block: HTMLElement): boolean => block.getBoundingClientRect().height > 0 && block.getBoundingClientRect().top >= foot - 2).length;
+    const label: string = atFoot() ? '▲ TOP' : `▼ ${below} MORE`;
+    if (chip.textContent !== label) chip.textContent = label;
+  };
+  frame.addEventListener('scroll', count, { passive: true });
+  new ResizeObserver(count).observe(frame);
+  new MutationObserver(count).observe(frame, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class'] });
+  count();
+}
+
+/** Wires every mode frame on the page, now and as panes mint theirs. */
+function modeFrames_watch(): void {
+  const wire = (root: ParentNode): void => {
+    for (const frame of root.querySelectorAll<HTMLElement>('.mode-frame:not([data-more])')) frameMore_wire(frame);
+  };
+  new MutationObserver((records: MutationRecord[]): void => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        if (node.matches('.mode-frame') && node.dataset['more'] === undefined) frameMore_wire(node);
+        wire(node);
+      }
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+  wire(document);
+}
+
 function headerFaces_wire(): void {
   const body: HTMLElement = document.body;
   const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
@@ -639,20 +693,18 @@ function headerFaces_wire(): void {
   document.querySelector('.panel-1')?.addEventListener('click', (): void => face_select('stats'));
   document.querySelector('.panel-2')?.addEventListener('click', (): void => face_select('dag'));
   document.querySelector('.panel-gather')?.addEventListener('click', (): void => face_select('gather'));
-  // The band is not a pane, so its own frame opens on its own declaration:
-  // the strip toggles it, a press inside it acts, a press on the fill or
-  // anywhere else on the band retracts it, as a pane's frame does.
+  // The band is not a pane, but its field hosts a frame (`data-frame-host`)
+  // and that frame answers to the one grammar the panes' do: the strip
+  // toggles it, a press inside it acts, a press on the fill or anywhere
+  // else retracts it, and Esc retracts it with the rest. The document's
+  // retraction handler reads the host; the band keeps no toggle of its own.
   const bandField: HTMLElement | null = document.querySelector<HTMLElement>('.header-gather-field');
   bandField?.querySelector('.gather-stage')?.addEventListener('click', (event: Event): void => {
     event.stopPropagation();
     cohortStage_run?.();
   });
-  bandField?.querySelector('.mode-strip')?.addEventListener('click', (): void => {
-    if (bandField === null) return;
-    if (bandField.dataset['modes'] === 'open') delete bandField.dataset['modes'];
-    else bandField.dataset['modes'] = 'open';
-  });
   if (bandField !== null) gatherMore_wire(bandField);
+  modeFrames_watch();
 
   const header_restore = (): void => {
     if (body.dataset['zoom'] !== undefined) {
@@ -4369,10 +4421,13 @@ async function surface_start(token: string): Promise<void> {
   };
   // The mode frame is transient chrome like a drawer: a frame that got out
   // of the way leaves a strip; the strip brings it back; the field (or
-  // Esc) sends it away again. One retraction grammar, header and pane.
+  // Esc) sends it away again. One retraction grammar, header and pane: the
+  // band's field hosts its own frame (`data-frame-host`) and retracts with
+  // the panes' — Esc once left the cohort row standing lit in the band
+  // while every pane's row stood down.
   const modeFrames_close = (): boolean => {
     let closed: boolean = false;
-    for (const pane of document.querySelectorAll<HTMLElement>('.workspace-pane[data-modes="open"]')) {
+    for (const pane of document.querySelectorAll<HTMLElement>('.workspace-pane[data-modes="open"], [data-frame-host][data-modes="open"]')) {
       delete pane.dataset['modes'];
       closed = true;
     }
@@ -4401,7 +4456,7 @@ async function surface_start(token: string): Promise<void> {
     // The façade retracts it when the row stands down.
     if (event.target.closest('.listing-framed .listing-row') !== null) return;
     const strip: HTMLElement | null = event.target.closest<HTMLElement>('.mode-strip');
-    const pane: HTMLElement | null = strip?.closest<HTMLElement>('.workspace-pane') ?? null;
+    const pane: HTMLElement | null = strip?.closest<HTMLElement>('.workspace-pane, [data-frame-host]') ?? null;
     const wasOpen: boolean = pane?.dataset['modes'] === 'open';
     const closedAny: boolean = modeFrames_close();
     if (strip !== null && pane !== null && !wasOpen) {

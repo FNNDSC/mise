@@ -3207,6 +3207,11 @@ try {
       // indicated in both
       pacs().click(); await sleep(300); band().click(); await sleep(300);
       const indicated = both();
+      // the band's frame, open with the cohort's verbs: no scrollbar down it,
+      // a chip saying how many blocks lie below when it holds more than the
+      // band is tall, and no sideways scroll under the rows
+      const frame = face.querySelector('.mode-frame'); const more = frame.querySelector('.frame-more');
+      const frameInfo = { scrollbar: getComputedStyle(frame).scrollbarWidth, overflowing: frame.scrollHeight > frame.clientHeight + 2, chip: more && !more.hidden ? more.textContent : null, fieldOX: getComputedStyle(face.querySelector('.listing-field')).overflowX };
       // the idle track an indicated row would draw, beside the full bar it does
       const idle = document.createElement('span'); idle.className = 'listing-progress listing-progress-idle'; pacs().querySelector('.pacs-badge').appendChild(idle);
       const idleTrack = getComputedStyle(idle).backgroundColor; idle.remove();
@@ -3215,16 +3220,21 @@ try {
       if (other) { other.click(); await sleep(300); }
       face.querySelector('.gather-cohort-row .gather-cohort-name').click(); await sleep(300);
       const dimmed = both();
-      // plain: nothing indicated in either listing. Escape retracts the
-      // PACS pane's frame, and a frame retracting stands its row down; the
-      // band's frame retracts from its own strip.
+      // plain: nothing indicated in either listing. Esc retracts every
+      // open frame, the band's with the panes', and a frame retracting
+      // stands its row down.
       for (let i = 0; i < 3; i++) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(250); }
-      if (lit(face) > 0) { face.closest('.header-face, #header')?.querySelector('.mode-strip')?.click(); await sleep(400); }
+      const bandFrameOpen = face.querySelector('[data-frame-host]')?.dataset.modes === 'open';
       const plain = both();
+      // and the band's strip still brings its frame back, and the fill sends it away
+      face.querySelector('.mode-strip').click(); await sleep(300);
+      const stripOpens = face.querySelector('[data-frame-host]').dataset.modes === 'open';
+      face.querySelector('.mode-strip').click(); await sleep(300);
+      const stripCloses = face.querySelector('[data-frame-host]').dataset.modes !== 'open';
       // leave the cohort as it was found
       const input = document.querySelector('#terminal input');
       input.value = 'gather clear'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(1500);
-      return { uid, indicated, idleTrack, dimmed, plain, other: other !== undefined };`);
+      return { uid, indicated, idleTrack, dimmed, plain, bandFrameOpen, stripOpens, stripCloses, frameInfo, other: other !== undefined };`);
     const same = (state) => state && JSON.stringify(state.pacs) === JSON.stringify(state.band);
     const lum = (css) => { const m = /rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)/.exec(css ?? ''); if (!m) return 0; const a = m[4] === undefined ? 1 : Number(m[4]);
       const ch = (v) => { const c = (Number(v) / 255) * a; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
@@ -3236,13 +3246,56 @@ try {
     check('and alike when each is dimmed beside another indicated row',
       parity.error === undefined && same(parity.dimmed) && parity.dimmed.pacs.opacity !== parity.indicated.pacs.opacity,
       JSON.stringify(parity.error ?? parity.dimmed));
-    check('and alike plain, nothing indicated',
-      parity.error === undefined && same(parity.plain) && parity.plain.litPacs === 0 && parity.plain.litBand === 0,
-      JSON.stringify(parity.error ?? parity.plain));
+    check('and alike plain, nothing indicated: Esc retracts the band\'s frame with the panes\' and stands its row down',
+      parity.error === undefined && same(parity.plain) && parity.plain.litPacs === 0 && parity.plain.litBand === 0 && parity.bandFrameOpen === false,
+      JSON.stringify(parity.error ?? { plain: parity.plain, bandFrameOpen: parity.bandFrameOpen }));
+    check("the band's frame wears no scrollbar: a chip says what lies below, and the rows never scroll sideways",
+      parity.error === undefined && parity.frameInfo.scrollbar === 'none' && parity.frameInfo.fieldOX === 'hidden'
+      && (!parity.frameInfo.overflowing || /^▼ \d+ MORE$/.test(parity.frameInfo.chip ?? '')),
+      JSON.stringify(parity.error ?? parity.frameInfo));
+    check("the band's strip still brings its frame back and sends it away",
+      parity.error === undefined && parity.stripOpens === true && parity.stripCloses === true,
+      JSON.stringify({ stripOpens: parity.stripOpens, stripCloses: parity.stripCloses }));
     check('an indicated full bar keeps a colour: it stands off the idle track and the row',
       parity.error === undefined && contrast(parity.indicated.pacs.bar, parity.idleTrack) >= 3 && contrast(parity.indicated.pacs.bar, parity.indicated.pacs.row) >= 1.5,
       JSON.stringify(parity.error ?? { bar: parity.indicated?.pacs.bar, idleTrack: parity.idleTrack, row: parity.indicated?.pacs.row }));
   }
+  }
+  if (stage('files-json')) {
+  // A JSON file is shown as the structure it is: pretty-printed, keys and
+  // strings and numbers and literals in their own hues, RAW for the bytes
+  // as written. The cohort manifest is the file every session has.
+  const json = await evalIn(`
+    const fp = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+    const input = document.querySelector('#terminal input');
+    const say = async (line) => { await console_idle(); input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_idle(); };
+    await say('cd ~/gather');
+    if (!fp()) { [...document.querySelectorAll('.launcher-verb')].find((b) => b.textContent.trim() === 'OPEN HOME')?.click(); }
+    for (let i = 0; i < 40; i++) { await sleep(250); if (fp()) break; }
+    if (!fp()) return { error: 'no files pane' };
+    const rowOf = (word) => [...fp().querySelectorAll('.listing-row')].find((r) => r.textContent.includes(word));
+    for (let i = 0; i < 40; i++) { await sleep(250); if (rowOf('current.json') || rowOf('gather')) break; }
+    if (!rowOf('current.json') && rowOf('gather')) { (rowOf('gather').querySelector('.listing-control') ?? rowOf('gather')).click(); for (let i = 0; i < 40; i++) { await sleep(250); if (rowOf('current.json')) break; } }
+    const row = rowOf('current.json');
+    if (!row) return { error: 'no current.json row' };
+    (row.querySelector('.listing-control') ?? row).click();
+    for (let i = 0; i < 40; i++) { await sleep(250); if (fp().querySelector('.files-content')) break; }
+    const pane = fp(); const body = () => pane.querySelector('.files-content');
+    const pills = () => [...pane.querySelectorAll('.files-content-header button')].map((b) => b.textContent.trim());
+    const pill = (w) => [...pane.querySelectorAll('.files-content-header button')].find((b) => b.textContent.trim() === w);
+    const pretty = { json: body().classList.contains('files-json'), keys: body().querySelectorAll('.json-key').length, lines: body().textContent.split('\\n').length, pills: pills() };
+    pill('RAW')?.click(); await sleep(400);
+    const raw = { json: body().classList.contains('files-json'), lines: body().textContent.split('\\n').length, pills: pills() };
+    pill('PRETTY')?.click(); await sleep(400);
+    const back = body().classList.contains('files-json');
+    pill('CLOSE')?.click(); await sleep(300);
+    return { pretty, raw, back };`);
+  check('a JSON file opens pretty-printed with its keys marked, DOWNLOAD / RAW / CLOSE on its header',
+    json.error === undefined && json.pretty.json && json.pretty.keys >= 3 && json.pretty.lines > 2 && json.pretty.pills.join(',') === 'DOWNLOAD,RAW,CLOSE',
+    JSON.stringify(json.error ?? json.pretty));
+  check('RAW shows the bytes as written and offers PRETTY, which returns to the structure',
+    json.error === undefined && !json.raw.json && json.raw.lines < json.pretty.lines && json.raw.pills.join(',') === 'DOWNLOAD,PRETTY,CLOSE' && json.back === true,
+    JSON.stringify(json.error ?? json.raw));
   }
   if (stage('gather-process')) {
   // PROCESS on the cohort: its feed first (made by the pull the operator

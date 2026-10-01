@@ -30,6 +30,9 @@ export function stalePage_is(reason: unknown): boolean {
   return STALE_MESSAGE.test(message);
 }
 
+/** What a surface says on its own field when its chunk is of an older build. */
+export const STALE_PAGE_READOUT: string = 'ARGUS WAS UPDATED ON THE SERVER · RELOAD THIS PAGE';
+
 /**
  * Watches for a load of a chunk the server no longer has, and says so.
  *
@@ -47,7 +50,9 @@ export function stalePage_watch(note: (line: string) => void, host: HTMLElement 
     notice.setAttribute('role', 'alert');
     const words: HTMLSpanElement = document.createElement('span');
     words.className = 'stale-page-words';
-    words.textContent = 'ARGUS WAS UPDATED ON THE SERVER — THIS PAGE IS OLDER';
+    // What it is, then the cure: an operator who has never seen a chunk
+    // hash needs neither word, only "this page is old; reload it".
+    words.textContent = 'THIS PAGE IS AN OLDER ARGUS THAN THE SERVER NOW HAS — RELOAD TO CONTINUE';
     const reload: HTMLButtonElement = document.createElement('button');
     reload.className = 'pacs-capsule stale-page-reload';
     reload.textContent = 'RELOAD';
@@ -56,12 +61,13 @@ export function stalePage_watch(note: (line: string) => void, host: HTMLElement 
     notice.append(words, reload);
     host.appendChild(notice);
   };
-  // Vite's loader announces a failed chunk before it throws; answered here,
-  // the failure is the page's to explain rather than an uncaught error.
-  window.addEventListener('vite:preloadError', (event: Event): void => {
-    event.preventDefault();
-    tell();
-  });
+  // Vite's loader announces a failed chunk before it throws. It is told
+  // here and NOT prevented: a prevented event makes the loader resolve the
+  // import to `undefined`, and the caller then fell over destructuring
+  // nothing — a TypeError in the console that named neither the build nor
+  // the cure. Left to throw, the import rejects with the chunk's own
+  // message, and the caller can say so where the operator is looking.
+  window.addEventListener('vite:preloadError', (): void => { tell(); });
   window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent): void => {
     if (stalePage_is(event.reason)) tell();
   });

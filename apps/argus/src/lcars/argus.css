@@ -2960,6 +2960,30 @@ body[data-header='dag'] #header-dag {
   overflow-x: hidden;
 }
 
+/* A press acknowledged (aegis.adoc: a-press-is-acknowledged): the row the
+ * operator activated lights as an indicated row does, the rest dims, its
+ * capsule works, until the listing lands or a refusal returns. Nothing
+ * blanks; the parent stays under the hand that pressed in it. */
+.listing-field:has(.listing-activating) .listing-row:not(.listing-activating) {
+  opacity: 0.25;
+}
+
+.listing-row.listing-activating {
+  background: var(--harvestgold);
+  color: #000;
+}
+
+.listing-row.listing-activating .listing-control {
+  background: var(--butter);
+  color: #000;
+  animation: grip-breathe 0.8s ease-in-out infinite alternate;
+}
+
+.pane-state.state-refused {
+  color: var(--state-error);
+  opacity: 1;
+}
+
 /* On the indicated row the bar sits in a black WELL, and what fills it stays
  * a colour: the listing's light tint when done, the state's own when running
  * or failed. It used to invert whole — black fill in a black-tinted track —

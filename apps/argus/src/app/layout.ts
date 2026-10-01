@@ -27,6 +27,94 @@ export type LayoutNode =
   | { pane: string }
   | { dir: 'row' | 'col'; ratio: number; first: LayoutNode; second: LayoutNode };
 
+/** The side a pane moves to (aegis.adoc: a-pane-can-be-moved). */
+export type MoveDir = 'left' | 'right' | 'above' | 'below';
+
+/** Why a move was refused: the only pane on stage, or already at that edge. */
+export type MoveRefusal = 'lone' | 'edge';
+
+/** One step of the path from the root to a leaf: the split, and which side the path took. */
+interface PathStep {
+  node: Extract<LayoutNode, { dir: 'row' | 'col' }>;
+  side: 'first' | 'second';
+}
+
+/**
+ * The path from the root to a leaf, root first.
+ *
+ * @param node - The tree.
+ * @param target - The pane id.
+ * @returns The splits taken and the side at each, empty when the root is the leaf; null when absent.
+ */
+function tree_path(node: LayoutNode, target: string): PathStep[] | null {
+  if ('pane' in node) return node.pane === target ? [] : null;
+  const first: PathStep[] | null = tree_path(node.first, target);
+  if (first !== null) return [{ node, side: 'first' }, ...first];
+  const second: PathStep[] | null = tree_path(node.second, target);
+  if (second !== null) return [{ node, side: 'second' }, ...second];
+  return null;
+}
+
+/**
+ * Replaces one subtree, found by identity, with another.
+ *
+ * @param node - The tree.
+ * @param block - The subtree object to replace.
+ * @param replacement - What stands in its place.
+ * @returns The new tree, or null when the block is not in it.
+ */
+function tree_replaceBlock(node: LayoutNode, block: LayoutNode, replacement: LayoutNode): LayoutNode | null {
+  if (node === block) return replacement;
+  if ('pane' in node) return null;
+  const first: LayoutNode | null = tree_replaceBlock(node.first, block, replacement);
+  if (first !== null) return { ...node, first };
+  const second: LayoutNode | null = tree_replaceBlock(node.second, block, replacement);
+  if (second !== null) return { ...node, second };
+  return null;
+}
+
+/**
+ * Moves a leaf to a side: the pane is detached (its sibling takes the
+ * hole) and re-split onto the nearest block on that side — the whole
+ * subtree beyond the nearest ancestor split on that axis that had the
+ * mover on the near side — or onto its former sibling when no such
+ * ancestor exists and the asked axis differs from the sibling's; the new
+ * split opens even. Every outcome is a tree a split could have made.
+ *
+ * @param root - The tree.
+ * @param target - The pane that moves.
+ * @param dir - The side it moves to.
+ * @returns The new tree, or why the move is refused.
+ */
+export function tree_moveLeaf(root: LayoutNode, target: string, dir: MoveDir): LayoutNode | MoveRefusal {
+  const path: PathStep[] | null = tree_path(root, target);
+  if (path === null || path.length === 0) return 'lone';
+  const axis: 'row' | 'col' = dir === 'left' || dir === 'right' ? 'col' : 'row';
+  // To move further right (or below) the mover must stand first in a split
+  // on that axis; to move left (or above), second.
+  const near: 'first' | 'second' = dir === 'right' || dir === 'below' ? 'first' : 'second';
+  const parent: PathStep = path[path.length - 1] as PathStep;
+  let block: LayoutNode | null = null;
+  for (let index: number = path.length - 1; index >= 0; index -= 1) {
+    const step: PathStep = path[index] as PathStep;
+    if (step.node.dir === axis && step.side === near) {
+      block = step.side === 'first' ? step.node.second : step.node.first;
+      break;
+    }
+  }
+  if (block === null) {
+    if (parent.node.dir === axis) return 'edge';
+    block = parent.side === 'first' ? parent.node.second : parent.node.first;
+  }
+  const pruned: LayoutNode | null = tree_pruneLeaf(root, target);
+  if (pruned === null) return 'lone';
+  const mover: LayoutNode = { pane: target };
+  const split: LayoutNode = near === 'first'
+    ? { dir: axis, ratio: 0.5, first: block, second: mover }
+    : { dir: axis, ratio: 0.5, first: mover, second: block };
+  return tree_replaceBlock(pruned, block, split) ?? 'edge';
+}
+
 /** A named preset: a tree builder, so each application starts fresh. */
 export type LayoutPreset = () => LayoutNode;
 
@@ -142,6 +230,34 @@ export class LayoutManager {
     this.focusedPane = newPane;
     this.render();
     return true;
+  }
+
+  /**
+   * Moves a leaf to a side (see tree_moveLeaf). The mover keeps focus.
+   *
+   * @param target - The pane that moves.
+   * @param dir - The side it moves to.
+   * @returns True when it moved, else why not.
+   */
+  public leaf_move(target: string, dir: MoveDir): true | MoveRefusal {
+    if (this.tree === null) return 'lone';
+    const moved: LayoutNode | MoveRefusal = tree_moveLeaf(this.tree, target, dir);
+    if (typeof moved === 'string') return moved;
+    this.tree = moved;
+    this.focusedPane = target;
+    this.render();
+    return true;
+  }
+
+  /**
+   * Whether a move would be taken, so a control can dim before the press.
+   *
+   * @param target - The pane that would move.
+   * @param dir - The side.
+   * @returns True when the move is possible.
+   */
+  public move_possible(target: string, dir: MoveDir): boolean {
+    return this.tree !== null && typeof tree_moveLeaf(this.tree, target, dir) !== 'string';
   }
 
   /**

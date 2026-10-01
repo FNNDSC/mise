@@ -15,6 +15,7 @@
  *
  * @module
  */
+import { STALE_PAGE_READOUT, stalePage_is } from '../../app/stalePage.js';
 import type { DicomSeriesModel, DicomTagsModel } from '@fnndsc/menu';
 import {
   IMAGE_COLORMAPS,
@@ -245,7 +246,9 @@ export class ImagePanel {
       const at: number = this.siblings.findIndex((choice: SeriesChoice): boolean => choice.path === model.path) + 1;
       this.handlers.note(`image: series ${at} of ${this.siblings.length} in this study; image series <n> switches`);
     }
-    const { CornerstoneEngine } = await import('./cornerstoneEngine.js');
+    const cornerstone: typeof import('./cornerstoneEngine.js') | null = await this.chunk_import((): Promise<typeof import('./cornerstoneEngine.js')> => import('./cornerstoneEngine.js'));
+    if (cornerstone === null) return;
+    const { CornerstoneEngine } = cornerstone;
     const engine: ImageEngine = new CornerstoneEngine(this.engineHost_get(), model, options.startAt ?? 1);
     await this.engine_open(engine);
     if (this.engine !== engine) return;
@@ -303,8 +306,34 @@ export class ImagePanel {
     this.loadPill.hidden = true;
     this.retryPill.hidden = true;
     this.presets_paint('NIFTI');
-    const { NiivueEngine } = await import('./niivueEngine.js');
+    const niivue: typeof import('./niivueEngine.js') | null = await this.chunk_import((): Promise<typeof import('./niivueEngine.js')> => import('./niivueEngine.js'));
+    if (niivue === null) return;
+    const { NiivueEngine } = niivue;
     await this.engine_open(new NiivueEngine(this.engineHost_get(), path));
+  }
+
+  /**
+   * Loads one of the pane's on-demand engines, and says on the field when
+   * it cannot: the chunk's name carries the build, and a page older than
+   * the server's build asks for a chunk the server no longer has. The
+   * operator saw "no DICOMs" and a TypeError in the developer console; the
+   * field now reads the cure.
+   *
+   * @param load - The dynamic import.
+   * @returns The module, or null when it is of an older build than the server's.
+   */
+  private async chunk_import<T>(load: () => Promise<T>): Promise<T | null> {
+    try {
+      const loaded: T | undefined = await load();
+      if (loaded !== undefined) return loaded;
+    } catch (error: unknown) {
+      if (!stalePage_is(error)) throw error;
+    }
+    this.stateSpan.textContent = STALE_PAGE_READOUT;
+    this.stateSpan.classList.remove('state-live', 'state-settled', 'state-wait');
+    this.stateSpan.classList.add('state-stale');
+    this.handlers.note(`image: ${STALE_PAGE_READOUT.toLowerCase()} — the viewer's code is of an older build than the server has`);
+    return null;
   }
 
   /**

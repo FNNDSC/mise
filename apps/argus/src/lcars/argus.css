@@ -2405,11 +2405,27 @@ body[data-zoom]:not([data-zoom='console'])
   display: none;
 }
 
-.frame-more {
+/* A field that holds more than it shows says so (aegis.adoc:
+ * a-field-says-it-holds-more). LCARS has no scrollbars: a scrolling field
+ * hides the browser's and wears one chip at its foot — ▼ N MORE while
+ * content lies below, ▲ TOP at the end; the wheel and the finger still
+ * scroll. One rule for the listing field, the frame, the file view and
+ * the band's rows (features/roster/more.ts). */
+.holds-more {
+  scrollbar-width: none;
+}
+
+.holds-more::-webkit-scrollbar {
+  display: none;
+}
+
+.more-chip {
   position: sticky;
-  bottom: 0;
+  bottom: 0.3rem;
+  display: block;
   flex: none;
-  margin-top: auto;
+  margin: 0.3rem auto 0;
+  width: max-content;
   z-index: 2;
   align-self: center;
   padding: 0.25rem 0.7rem;
@@ -2424,8 +2440,18 @@ body[data-zoom]:not([data-zoom='console'])
   box-shadow: 0 0 0 4px #000;
 }
 
-.frame-more:hover {
+.more-chip[hidden] {
+  display: none;
+}
+
+.more-chip:hover {
   background: var(--harvestgold);
+}
+
+/* The frame's chip hugs its foot inside the flex column. */
+.frame-more {
+  bottom: 0;
+  margin-top: auto;
 }
 
 .workspace-pane[data-modes='open'] .mode-frame {
@@ -3617,7 +3643,6 @@ button.files-crumb:focus-visible {
   flex: 1 1 0;
   min-height: 0;
   overflow: auto;
-  scrollbar-width: thin;
 }
 
 .files-content {
@@ -3706,7 +3731,7 @@ button.files-crumb:focus-visible {
   flex: 1 1 0;
   min-height: 0;
   overflow: auto;
-  scrollbar-width: thin;
+  scrollbar-width: none;
   padding-top: calc(var(--rule-h) + 0.3rem);
   --roster-gap: 0.6rem;
   --roster-pad: 0.4rem;
@@ -3716,6 +3741,7 @@ button.files-crumb:focus-visible {
    whole cohort on stage. */
 .header-gather-field .gather-more {
   position: absolute;
+  margin: 0;
   right: calc(var(--spine-w) + 0.6rem);
   bottom: 0.4rem;
   z-index: 3;
@@ -6254,7 +6280,7 @@ button.launcher-row:hover {
   flex: 1 1 0;
   min-height: 0;
   overflow: auto;
-  scrollbar-width: thin;
+  scrollbar-width: none;
   padding-top: calc(var(--rule-h) + 0.3rem);
   /* The grid the caps and every row read; the tracks themselves are the
      façade's, computed from the traits it was declared with. */

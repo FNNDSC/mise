@@ -3211,7 +3211,8 @@ try {
       // a chip saying how many blocks lie below when it holds more than the
       // band is tall, and no sideways scroll under the rows
       const frame = face.querySelector('.mode-frame'); const more = frame.querySelector('.frame-more');
-      const frameInfo = { scrollbar: getComputedStyle(frame).scrollbarWidth, overflowing: frame.scrollHeight > frame.clientHeight + 2, chip: more && !more.hidden ? more.textContent : null, fieldOX: getComputedStyle(face.querySelector('.listing-field')).overflowX };
+      const listingField = face.querySelector('.listing-field'); const fieldChip = listingField.querySelector('.more-chip');
+      const frameInfo = { scrollbar: getComputedStyle(frame).scrollbarWidth, overflowing: frame.scrollHeight > frame.clientHeight + 2, chip: more && !more.hidden ? more.textContent : null, fieldOX: getComputedStyle(listingField).overflowX, fieldScrollbar: getComputedStyle(listingField).scrollbarWidth, fieldChip: fieldChip !== null, fieldChipHonest: (fieldChip?.hidden ?? true) === !(listingField.scrollHeight > listingField.clientHeight + 2) };
       // the idle track an indicated row would draw, beside the full bar it does
       const idle = document.createElement('span'); idle.className = 'listing-progress listing-progress-idle'; pacs().querySelector('.pacs-badge').appendChild(idle);
       const idleTrack = getComputedStyle(idle).backgroundColor; idle.remove();
@@ -3251,7 +3252,8 @@ try {
       JSON.stringify(parity.error ?? { plain: parity.plain, bandFrameOpen: parity.bandFrameOpen }));
     check("the band's frame wears no scrollbar: a chip says what lies below, and the rows never scroll sideways",
       parity.error === undefined && parity.frameInfo.scrollbar === 'none' && parity.frameInfo.fieldOX === 'hidden'
-      && (!parity.frameInfo.overflowing || /^▼ \d+ MORE$/.test(parity.frameInfo.chip ?? '')),
+      && (!parity.frameInfo.overflowing || /^▼ \d+ MORE$/.test(parity.frameInfo.chip ?? ''))
+      && parity.frameInfo.fieldScrollbar === 'none' && parity.frameInfo.fieldChip && parity.frameInfo.fieldChipHonest,
       JSON.stringify(parity.error ?? parity.frameInfo));
     check("the band's strip still brings its frame back and sends it away",
       parity.error === undefined && parity.stripOpens === true && parity.stripCloses === true,
@@ -3270,8 +3272,10 @@ try {
     const input = document.querySelector('#terminal input');
     const say = async (line) => { await console_idle(); input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_idle(); };
     await say('cd ~/gather');
-    if (!fp()) { [...document.querySelectorAll('.launcher-verb')].find((b) => b.textContent.trim() === 'OPEN HOME')?.click(); }
-    for (let i = 0; i < 40; i++) { await sleep(250); if (fp()) break; }
+    // The gutter's FILES summons the browser from any stage; the dashboard's
+    // OPEN HOME only while the dashboard is what is on stage.
+    if (!fp()) { document.getElementById('gutter-files').click(); for (let i = 0; i < 40; i++) { await sleep(250); if (fp()) break; } }
+    if (!fp()) { [...document.querySelectorAll('.launcher-verb')].find((b) => b.textContent.trim() === 'OPEN HOME')?.click(); for (let i = 0; i < 40; i++) { await sleep(250); if (fp()) break; } }
     if (!fp()) return { error: 'no files pane' };
     const rowOf = (word) => [...fp().querySelectorAll('.listing-row')].find((r) => r.textContent.includes(word));
     for (let i = 0; i < 40; i++) { await sleep(250); if (rowOf('current.json') || rowOf('gather')) break; }
@@ -3287,7 +3291,7 @@ try {
     // The content view is the pane's field: it scrolls inside the pane and
     // never runs past its foot (a long manifest's bottom was simply gone).
     const panel = pane.querySelector('.files-panel');
-    const field = { overflowY: getComputedStyle(body()).overflowY, inside: Math.round(body().getBoundingClientRect().bottom) <= Math.round(panel.getBoundingClientRect().bottom) + 1 };
+    const field = { overflowY: getComputedStyle(body()).overflowY, inside: Math.round(body().getBoundingClientRect().bottom) <= Math.round(panel.getBoundingClientRect().bottom) + 1, scrollbar: getComputedStyle(body()).scrollbarWidth, chip: body().querySelector('.more-chip') !== null, chipHonest: (body().querySelector('.more-chip')?.hidden ?? true) === !(body().scrollHeight > body().clientHeight + 2) };
     pill('RAW')?.click(); await sleep(400);
     const raw = { json: body().classList.contains('files-json'), lines: body().textContent.split('\\n').length, pills: pills() };
     pill('PRETTY')?.click(); await sleep(400);
@@ -3296,6 +3300,9 @@ try {
     return { pretty, raw, back, field };`);
   check('the content view scrolls inside the pane and never runs past its foot',
     json.error === undefined && json.field.overflowY === 'auto' && json.field.inside === true,
+    JSON.stringify(json.error ?? json.field));
+  check('the content view wears no scrollbar and its chip says what lies below',
+    json.error === undefined && json.field.scrollbar === 'none' && json.field.chip && json.field.chipHonest,
     JSON.stringify(json.error ?? json.field));
   check('a JSON file opens pretty-printed with its keys marked, DOWNLOAD / RAW / CLOSE on its header',
     json.error === undefined && json.pretty.json && json.pretty.keys >= 3 && json.pretty.lines > 2 && json.pretty.pills.join(',') === 'DOWNLOAD,RAW,CLOSE',

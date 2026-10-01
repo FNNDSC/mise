@@ -22,6 +22,7 @@
  *
  * @module
  */
+import { more_wire } from './more.js';
 import type { RosterOrder } from './order.js';
 
 /**
@@ -59,6 +60,8 @@ export class ListingHost<T> {
     field.className = 'listing-field';
     this.container.appendChild(field);
     this.field = field;
+    // The field scrolls without a scrollbar and says what it holds.
+    more_wire(field, { rows: '.listing-row' });
     return field;
   }
 

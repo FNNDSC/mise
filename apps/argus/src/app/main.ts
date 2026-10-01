@@ -639,18 +639,15 @@ function headerFaces_wire(): void {
   document.querySelector('.panel-1')?.addEventListener('click', (): void => face_select('stats'));
   document.querySelector('.panel-2')?.addEventListener('click', (): void => face_select('dag'));
   document.querySelector('.panel-gather')?.addEventListener('click', (): void => face_select('gather'));
-  // The band is not a pane, so its own frame opens on its own declaration:
-  // the strip toggles it, a press inside it acts, a press on the fill or
-  // anywhere else on the band retracts it, as a pane's frame does.
+  // The band is not a pane, but its field hosts a frame (`data-frame-host`)
+  // and that frame answers to the one grammar the panes' do: the strip
+  // toggles it, a press inside it acts, a press on the fill or anywhere
+  // else retracts it, and Esc retracts it with the rest. The document's
+  // retraction handler reads the host; the band keeps no toggle of its own.
   const bandField: HTMLElement | null = document.querySelector<HTMLElement>('.header-gather-field');
   bandField?.querySelector('.gather-stage')?.addEventListener('click', (event: Event): void => {
     event.stopPropagation();
     cohortStage_run?.();
-  });
-  bandField?.querySelector('.mode-strip')?.addEventListener('click', (): void => {
-    if (bandField === null) return;
-    if (bandField.dataset['modes'] === 'open') delete bandField.dataset['modes'];
-    else bandField.dataset['modes'] = 'open';
   });
   if (bandField !== null) gatherMore_wire(bandField);
 
@@ -4369,10 +4366,13 @@ async function surface_start(token: string): Promise<void> {
   };
   // The mode frame is transient chrome like a drawer: a frame that got out
   // of the way leaves a strip; the strip brings it back; the field (or
-  // Esc) sends it away again. One retraction grammar, header and pane.
+  // Esc) sends it away again. One retraction grammar, header and pane: the
+  // band's field hosts its own frame (`data-frame-host`) and retracts with
+  // the panes' — Esc once left the cohort row standing lit in the band
+  // while every pane's row stood down.
   const modeFrames_close = (): boolean => {
     let closed: boolean = false;
-    for (const pane of document.querySelectorAll<HTMLElement>('.workspace-pane[data-modes="open"]')) {
+    for (const pane of document.querySelectorAll<HTMLElement>('.workspace-pane[data-modes="open"], [data-frame-host][data-modes="open"]')) {
       delete pane.dataset['modes'];
       closed = true;
     }
@@ -4401,7 +4401,7 @@ async function surface_start(token: string): Promise<void> {
     // The façade retracts it when the row stands down.
     if (event.target.closest('.listing-framed .listing-row') !== null) return;
     const strip: HTMLElement | null = event.target.closest<HTMLElement>('.mode-strip');
-    const pane: HTMLElement | null = strip?.closest<HTMLElement>('.workspace-pane') ?? null;
+    const pane: HTMLElement | null = strip?.closest<HTMLElement>('.workspace-pane, [data-frame-host]') ?? null;
     const wasOpen: boolean = pane?.dataset['modes'] === 'open';
     const closedAny: boolean = modeFrames_close();
     if (strip !== null && pane !== null && !wasOpen) {

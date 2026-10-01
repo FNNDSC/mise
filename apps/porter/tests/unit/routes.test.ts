@@ -231,6 +231,12 @@ describe('the door', () => {
     expect(brain.statusCode).toBe(200);
     expect(brain.headers['content-type']).toContain('text/javascript');
     expect(brain.body).toContain('export function logo_frameRender');
+    const icon = await built.app.inject({ method: 'GET', url: '/greeter/favicon.svg' });
+    expect(icon.statusCode).toBe(200);
+    expect(icon.headers['content-type']).toBe('image/svg+xml');
+    expect(icon.body).toMatch(/^<svg /);
+    const door = await built.app.inject({ method: 'GET', url: '/login' });
+    expect(door.body).toContain('./greeter/favicon.svg');
     const ansi = await built.app.inject({ method: 'GET', url: '/greeter/ansi.js' });
     expect(ansi.body).toContain('export function ansi_toHtml');
     expect((await built.app.inject({ method: 'GET', url: '/greeter/other.js' })).statusCode).toBe(404);

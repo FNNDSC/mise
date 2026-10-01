@@ -3510,6 +3510,18 @@ try {
     ack.error === undefined && ack.after.landed === '~/feeds' && !ack.after.lit && !ack.after.wait && !/OPENING/.test(ack.after.bar),
     JSON.stringify(ack.error ?? ack.after));
   }
+  if (stage('favicon')) {
+  // The tab wears the mark: the page links an SVG icon and a PNG, relative
+  // to where it is mounted, and both are served.
+  const icon = await evalIn(`
+    const links = [...document.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]')].map((l) => l.getAttribute('href'));
+    const fetched = {};
+    for (const href of new Set(links)) { const r = await fetch(new URL(href, document.baseURI)); fetched[href] = r.status + ' ' + (r.headers.get('content-type') ?? ''); }
+    return { links, fetched };`);
+  check('the page links its SVG and PNG icons, relative, and both are served',
+    icon.links.includes('favicon.svg') && icon.links.includes('favicon.png') && /^200 image\/svg\+xml/.test(icon.fetched['favicon.svg'] ?? '') && /^200 image\/png/.test(icon.fetched['favicon.png'] ?? ''),
+    JSON.stringify(icon));
+  }
   if (stage('gather-process')) {
   // PROCESS on the cohort: its feed first (made by the pull the operator
   // could have typed, named at the ask), then a catalogue bound to the

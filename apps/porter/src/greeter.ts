@@ -55,6 +55,7 @@ function shell_render(shell: GreeterShell): string {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${attribute_escape(shell.title)}</title>
+<link rel="icon" type="image/svg+xml" href="${shell.root}greeter/favicon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet" />

@@ -16,6 +16,12 @@ import { listCache_get } from '../cache/listCache';
 /** How a memoised client is marked, so it is wrapped once. */
 const MEMOISED: unique symbol = Symbol('folderLookup_memoised');
 
+/** The one method the memo wraps, and the mark it leaves. */
+interface FolderLookupClient {
+  getFileBrowserFolderByPath(path: string, timeout?: number): Promise<unknown>;
+  [MEMOISED]?: boolean;
+}
+
 /**
  * Wraps a client's folder lookup with the session's memo. Idempotent.
  *
@@ -23,19 +29,18 @@ const MEMOISED: unique symbol = Symbol('folderLookup_memoised');
  * @returns The same client, its `getFileBrowserFolderByPath` memoised.
  */
 export function folderLookup_memoize(client: Client): Client {
-  const marked: { [MEMOISED]?: boolean } = client as unknown as { [MEMOISED]?: boolean };
-  if (marked[MEMOISED] === true) return client;
+  const wrapped: FolderLookupClient = client as FolderLookupClient;
+  if (wrapped[MEMOISED] === true) return client;
   // A client without the lookup (a stub, an older chrisapi) is left as it is.
-  if (typeof (client as { getFileBrowserFolderByPath?: unknown }).getFileBrowserFolderByPath !== 'function') return client;
-  marked[MEMOISED] = true;
-  const lookup = client.getFileBrowserFolderByPath.bind(client) as (path: string, timeout?: number) => Promise<unknown>;
-  (client as unknown as { getFileBrowserFolderByPath: (path: string, timeout?: number) => Promise<unknown> }).getFileBrowserFolderByPath =
-    (path: string, timeout?: number): Promise<unknown> => {
-      const kept: Promise<unknown> | null = listCache_get().folder_get(path);
-      if (kept !== null) return kept;
-      const fresh: Promise<unknown> = lookup(path, timeout);
-      listCache_get().folder_set(path, fresh);
-      return fresh;
-    };
+  if (typeof wrapped.getFileBrowserFolderByPath !== 'function') return client;
+  wrapped[MEMOISED] = true;
+  const lookup: (path: string, timeout?: number) => Promise<unknown> = wrapped.getFileBrowserFolderByPath.bind(wrapped);
+  wrapped.getFileBrowserFolderByPath = (path: string, timeout?: number): Promise<unknown> => {
+    const kept: Promise<unknown> | null = listCache_get().folder_get(path);
+    if (kept !== null) return kept;
+    const fresh: Promise<unknown> = lookup(path, timeout);
+    listCache_get().folder_set(path, fresh);
+    return fresh;
+  };
   return client;
 }

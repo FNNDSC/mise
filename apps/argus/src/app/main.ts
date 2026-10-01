@@ -619,6 +619,60 @@ function gatherMore_wire(field: HTMLElement): void {
   count();
 }
 
+/**
+ * A mode frame says when it holds more blocks than its field is tall. The
+ * frame scrolls (a short band or pane cannot grow for it: gathering never
+ * moves the body), its scrollbar is gone, and a chip at its foot reads
+ * `▼ N MORE` while blocks lie below the view — the press shows them — or
+ * `▲ TOP` once the foot is reached. The band's +N MORE grammar, on chrome.
+ *
+ * @param frame - The frame.
+ */
+function frameMore_wire(frame: HTMLElement): void {
+  frame.dataset['more'] = 'wired';
+  const chip: HTMLButtonElement = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'frame-more';
+  chip.hidden = true;
+  const atFoot = (): boolean => frame.scrollTop + frame.clientHeight >= frame.scrollHeight - 2;
+  chip.addEventListener('click', (event: Event): void => {
+    event.stopPropagation();
+    frame.scrollBy({ top: atFoot() ? -frame.scrollHeight : Math.max(1, frame.clientHeight - chip.offsetHeight), behavior: 'smooth' });
+  });
+  frame.appendChild(chip);
+  const count = (): void => {
+    const overflowing: boolean = frame.scrollHeight > frame.clientHeight + 2;
+    if (chip.hidden !== !overflowing) chip.hidden = !overflowing;
+    if (!overflowing) return;
+    const foot: number = frame.getBoundingClientRect().bottom;
+    const below: number = [...frame.querySelectorAll<HTMLElement>('.strategy-pill, .listing-action')]
+      .filter((block: HTMLElement): boolean => block.getBoundingClientRect().height > 0 && block.getBoundingClientRect().top >= foot - 2).length;
+    const label: string = atFoot() ? '▲ TOP' : `▼ ${below} MORE`;
+    if (chip.textContent !== label) chip.textContent = label;
+  };
+  frame.addEventListener('scroll', count, { passive: true });
+  new ResizeObserver(count).observe(frame);
+  new MutationObserver(count).observe(frame, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class'] });
+  count();
+}
+
+/** Wires every mode frame on the page, now and as panes mint theirs. */
+function modeFrames_watch(): void {
+  const wire = (root: ParentNode): void => {
+    for (const frame of root.querySelectorAll<HTMLElement>('.mode-frame:not([data-more])')) frameMore_wire(frame);
+  };
+  new MutationObserver((records: MutationRecord[]): void => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        if (node.matches('.mode-frame') && node.dataset['more'] === undefined) frameMore_wire(node);
+        wire(node);
+      }
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+  wire(document);
+}
+
 function headerFaces_wire(): void {
   const body: HTMLElement = document.body;
   const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
@@ -650,6 +704,7 @@ function headerFaces_wire(): void {
     cohortStage_run?.();
   });
   if (bandField !== null) gatherMore_wire(bandField);
+  modeFrames_watch();
 
   const header_restore = (): void => {
     if (body.dataset['zoom'] !== undefined) {

@@ -278,8 +278,36 @@ ci-watch:
 	@until gh pr checks --required 2>/dev/null | grep -q .; do sleep 15; done
 	@gh pr checks --watch --interval 30 --required
 
-merge: ci-watch
-	gh pr merge --merge
+# Rebases this branch onto origin/main and pushes it (force-with-lease: only
+# over what was last pushed). A branch left BEHIND main cannot merge under
+# strict protection, and GitHub's "update branch" button is what this is
+# from the terminal.
+rebase:
+	git fetch origin
+	git rebase origin/main
+	git push --force-with-lease -u origin $(BRANCH)
+
+# Merges this branch's PR once its required checks pass. Main is protected
+# with strict status checks: a branch that fell BEHIND main (another PR
+# landed while this one waited) is refused with nothing said that a shell
+# loop would notice, so the branch is rebased and re-pushed first, and once
+# more if main moved again while the checks ran. Two rounds, then it stops
+# and says so rather than chase a busy main forever.
+merge:
+	@gh pr view --json number >/dev/null || { echo "No PR for $(BRANCH); run 'make pr' first."; exit 1; }
+	@for round in 1 2 3; do \
+		state=$$(gh pr view --json mergeStateStatus --jq .mergeStateStatus); \
+		if [ "$$state" = "BEHIND" ] || [ "$$state" = "DIRTY" ]; then \
+			if [ $$round -eq 3 ]; then echo "Still $$state after two rebases; main is moving — try again."; exit 1; fi; \
+			echo "Branch is $$state main; rebasing and pushing..."; \
+			$(MAKE) --no-print-directory rebase || exit 1; \
+			sleep 10; \
+		fi; \
+		$(MAKE) --no-print-directory ci-watch || exit 1; \
+		state=$$(gh pr view --json mergeStateStatus --jq .mergeStateStatus); \
+		if [ "$$state" = "BEHIND" ]; then echo "Main moved while the checks ran."; continue; fi; \
+		gh pr merge --merge && break || exit 1; \
+	done
 	@echo "Merged. 'make sync' fast-forwards local main; 'make publish' releases"
 	@echo "any pending changesets via the Version Packages PR."
 

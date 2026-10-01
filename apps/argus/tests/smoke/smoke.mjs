@@ -3385,6 +3385,12 @@ try {
     const say = async (line) => { await console_idle(); input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_idle(); };
     const text = () => document.getElementById('terminal').innerText;
     const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2); };
+    // The boot's own cost, read before anything resets the ledger: the
+    // group warm reads members off the membership pages and asks CUBE for
+    // no user one by one (it asked for 51 on a 5-group CUBE).
+    await say('netstat');
+    const bootOut = after('netstat');
+    const bootFamilies = [...bootOut.matchAll(/^\\s+(\\S+)\\s+(\\d+)\\s+\\d+ ms$/gm)].map((m) => [m[1], Number(m[2])]);
     // The boot keeps warming behind the prompt (groups, users, the index)
     // and the ledger counts those too, as it should; a navigation's cost
     // is read on a quiet wire, so wait for one.
@@ -3439,7 +3445,7 @@ try {
         firstFamilies: [...firstOut.matchAll(/^\\s+(\\S+)\\s+(\\d+)\\s+\\d+ ms$/gm)].map((m) => [m[1], Number(m[2])]),
         again: Number(/REQUESTS (\\d+) since/.exec(againOut)?.[1] ?? NaN) };
     }
-    return { total, families, last, binTotal, binFamilies, forcedTotal, forcedFamilies, forcedLast, diagram };`);
+    return { total, families, last, binTotal, binFamilies, forcedTotal, forcedFamilies, forcedLast, diagram, bootFamilies };`);
   check('netstat counts a listing forced fresh by family and lists its requests timed',
     net.error === undefined && Number.isFinite(net.forcedTotal) && net.forcedTotal >= 3 && net.forcedFamilies.length >= 3 && net.forcedLast >= 3,
     JSON.stringify(net));
@@ -3450,12 +3456,22 @@ try {
   // Budgets are held by FAMILY: a warm behind the prompt (users, publicfeeds,
   // the pipeline index) may land in the window and is not the navigation's.
   const asked = (families, re) => families.filter(([f]) => re.test(f)).reduce((n, [, c]) => n + c, 0);
+  // What a session may read of users, or groups, by id before this stage:
+  // the login's own identity, and an `id`/`whoami` an earlier scenario may
+  // have asked. The group warm reads neither that way.
+  const BOOT_USER_READS = 2;
   check('a revisited CUBE directory fetches none of its collections: the listing cache serves',
     net.error === undefined && asked(net.families, /^filebrowser\/:id\//) === 0,
     JSON.stringify(net.families));
   check('a revisited /bin fetches no plugins, pipelines or sources: the listing the boot warmed serves',
     net.error === undefined && asked(net.binFamilies, /^(plugins|pipelines|pipelines\/sourcefiles)$/) === 0,
     JSON.stringify(net.binFamilies));
+  check('the boot asks CUBE for no user one by one: a group\'s members are read off its membership pages',
+    net.error === undefined && asked(net.bootFamilies, /^users\/:id$/) <= BOOT_USER_READS,
+    JSON.stringify(net.bootFamilies));
+  check('the boot lists no group by id: a group is read off the one groups listing',
+    net.error === undefined && asked(net.bootFamilies, /^groups\/search$/) <= BOOT_USER_READS,
+    JSON.stringify(net.bootFamilies));
   check('a pipeline diagram costs at most its id, pipings and defaults once, and nothing again',
     net.error === undefined && (net.diagram === null || (net.diagram.first <= 3 && net.diagram.again === 0
       && net.diagram.firstFamilies.every(([f, n]) => /^pipelines\/(search|:id\/(pipings|parameters))$/.test(f) && n <= 1))),

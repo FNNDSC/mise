@@ -1,5 +1,25 @@
 # @fnndsc/brasa
 
+## 0.30.0
+
+### Minor Changes
+
+- 4864a34: `netstat`: the wire is a readout. The kernel keeps a ledger of every request it makes to CUBE (Node's diagnostics channels, nothing patched) — count since the session or the last reset, by endpoint family with time spent, the last few timed — and `netstat [-n <count>] [-r]` reads it as text and as the `net.stats` model.
+
+### Patch Changes
+
+- 51f1ca9: `cd` into a virtual directory lists it through the listing façade — the cache the boot warmed and `ls` fills serves at once, a stale entry is refreshed behind the prompt — instead of fetching the whole of `/bin` from CUBE on every `cd`.
+- c9c018b: `cd` reads the parent from the listing cache before asking CUBE: every `cd` listed the parent from CUBE (three requests) to learn whether the entry was a link, though the parent was the listing on screen.
+- c371b47: A feed the roster gains after the topology sweep lands its jobs on its own: every roster sync (the watcher's delta, the full walk, a restored roster brought into service) queues the feeds it leaves without topology, and one detached walk at a time lands them behind the prompt — so a feed created after the sweep, or restored from a roster whose shard was never written, shows SIZE and TIME in the RUNS listing without anyone opening it. `proc stat` names the feeds still landing.
+- Updated dependencies [fbb1579]
+- Updated dependencies [576b948]
+- Updated dependencies [4864a34]
+- Updated dependencies [7fb4c21]
+- Updated dependencies [c371b47]
+  - @fnndsc/cumin@3.26.0
+  - @fnndsc/menu@0.14.0
+  - @fnndsc/salsa@3.20.1
+
 ## 0.29.1
 
 ### Patch Changes

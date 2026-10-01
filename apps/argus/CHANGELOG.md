@@ -1,5 +1,19 @@
 # @fnndsc/argus
 
+## 0.18.10
+
+### Patch Changes
+
+- 88437cc: A tab icon: the ChRIS mark on the page's own ground, for the surface and for the door.
+- 55fbf6c: Every scrolling field says it holds more: the node readout immersed in a DAG, the errand pane's answer, the dashboard's tiles, the PANES desktop, the slaved viewer's body and the PACS workspace now wear the `▼ N MORE` chip and hide their scrollbars like the listings, the file view, the band and the frames already did; the gather pane's and the CSV table's mounts no longer scroll around the listing field inside them. `MORE_FIELDS` names every scrolling field and the aegis lint holds the stylesheet to it. And an opened image fills its field keeping its shape (`object-fit: contain`) instead of being stretched to the width under a 60vh cap.
+- 40acb72: A pane can be moved: the drawer's SPLIT label is a pill now, beside a new MOVE pill, and the four direction capsules act under whichever is lit — SPLIT opens a new pane on that side as before; MOVE (one press, then the drawer falls back to SPLIT) moves this pane there, detached and re-split onto the nearest block on that side, a side it cannot go dimmed first. The mover keeps focus and its bar reads MOVED <SIDE>; `pane move left|right|above|below` is the same verb typed, refused by name ("already rightmost", "the only pane on stage").
+- d7ec90d: A moved pane returns where it was moved to: a desktop card and a dormant group record the stage's tiling at dormancy (leaves as action indices) and lay it over the replayed panes, since a birth alone cannot say "beside that whole block".
+- d057e99: The layout tree learns to move a pane: `leaf_move(pane, side)` detaches the pane and re-splits the nearest block on that side (the former sibling when none), opening even; the only pane on stage and a pane already at that edge are refused by name. The drawer's MOVE pill and the `pane move` verb follow.
+- 4863f32: A frame pill answers on its pane's own bar: the UNIVERSE layout, captions and replay pills had narrated their one-line answers into the console as notes (a cycle through the layouts filled it with their descriptions, no command typed); the answer now holds the pane's state bar for a moment and the standing readout returns, and the console carries only what was typed or asked there.
+- 8260d33: A press is acknowledged: the activated row lights and the rest dims, its capsule works, and the pane bar reads `OPENING <name>` until the listing lands or the kernel refuses (then the reason, on the bar); a repeat press on the same row is absorbed.
+- Updated dependencies [4864a34]
+  - @fnndsc/menu@0.14.0
+
 ## 0.18.9
 
 ### Patch Changes

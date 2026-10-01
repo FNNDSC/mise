@@ -1,5 +1,15 @@
 # @fnndsc/porter
 
+## 0.4.4
+
+### Patch Changes
+
+- 88437cc: A tab icon: the ChRIS mark on the page's own ground, for the surface and for the door.
+- Updated dependencies [4864a34]
+  - @fnndsc/menu@0.14.0
+  - @fnndsc/calypso@0.16.10
+  - @fnndsc/chell@5.9.6
+
 ## 0.4.3
 
 ### Patch Changes

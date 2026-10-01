@@ -1,5 +1,16 @@
 # @fnndsc/salsa
 
+## 3.20.1
+
+### Patch Changes
+
+- c371b47: A feed the roster gains after the topology sweep lands its jobs on its own: every roster sync (the watcher's delta, the full walk, a restored roster brought into service) queues the feeds it leaves without topology, and one detached walk at a time lands them behind the prompt — so a feed created after the sweep, or restored from a roster whose shard was never written, shows SIZE and TIME in the RUNS listing without anyone opening it. `proc stat` names the feeds still landing.
+- Updated dependencies [fbb1579]
+- Updated dependencies [576b948]
+- Updated dependencies [4864a34]
+- Updated dependencies [7fb4c21]
+  - @fnndsc/cumin@3.26.0
+
 ## 3.20.0
 
 ### Minor Changes

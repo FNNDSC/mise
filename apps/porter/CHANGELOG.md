@@ -1,5 +1,11 @@
 # @fnndsc/porter
 
+## 0.4.3
+
+### Patch Changes
+
+- b5bb197: The greeter settles a boot row where it stands: the outcome of a `[PENDING]` or `[RETRY]` step replaces that row instead of appending beneath it.
+
 ## 0.4.2
 
 ### Patch Changes

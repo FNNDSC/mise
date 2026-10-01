@@ -1,5 +1,13 @@
 # @fnndsc/argus
 
+## 0.18.9
+
+### Patch Changes
+
+- 8b9b990: A field that holds more than it shows says so: every scrolling field (listing, frame, file view, band) hides the browser scrollbar and wears a `▼ N MORE` / `▲ TOP` chip at its foot, through one façade helper.
+- b381cd5: A file's content view scrolls inside its pane instead of running past its foot; the header band's grip stands (and breathes) on the resting face too, so the band can be dragged before any face is chosen.
+- 5c31b8b: A page older than the server's build says so where the operator looks: the image pane reads `ARGUS WAS UPDATED ON THE SERVER · RELOAD THIS PAGE` on its field instead of failing silently, and the page notice says what it is and the cure; the stale chunk is no longer swallowed into a TypeError.
+
 ## 0.18.8
 
 ### Patch Changes

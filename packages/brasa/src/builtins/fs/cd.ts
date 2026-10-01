@@ -6,8 +6,8 @@ import chalk from 'chalk';
 import path from 'path';
 import { session } from '../../session/index.js';
 import { path_resolve, path_resolveLinks, error_stripDebugPrefix } from '../utils.js';
-import { envelope_ok, envelope_error } from '@fnndsc/cumin';
-import type { CommandEnvelope, Result, StackMessage, Client } from '@fnndsc/cumin';
+import { envelope_ok, envelope_error, Ok } from '@fnndsc/cumin';
+import type { CommandEnvelope, Result, StackMessage, Client, CacheResult } from '@fnndsc/cumin';
 import type { VFSItem } from '@fnndsc/salsa';
 
 /**
@@ -68,6 +68,24 @@ export function folder_verifyPathMatch(folder: FileBrowserFolder | null | undefi
 }
 
 /**
+ * A parent's listing, from the cache when it holds one — the parent is
+ * almost always the listing on screen, and `cd` needs an entry's kind, not
+ * its freshest row, so a stale listing serves — and from CUBE only when the
+ * cache never held it. Every `cd` used to list the parent from CUBE (three
+ * requests) to learn whether the entry was a link.
+ *
+ * @param parentPath - The parent directory.
+ * @returns Its entries, or Err when it cannot be listed.
+ */
+async function parentListing_get(parentPath: string): Promise<Result<VFSItem[]>> {
+  const { listCache_get: cache_of } = await import('@fnndsc/cumin');
+  const kept: CacheResult<VFSItem[]> | null = cache_of().cache_get<VFSItem[]>(parentPath);
+  if (kept !== null) return Ok(kept.data);
+  const { vfsDispatcher } = await import('@fnndsc/salsa');
+  return vfsDispatcher.list(parentPath);
+}
+
+/**
  * The target of a CFS link at a path, from its parent's listing; null when
  * the path is not a link (or its parent cannot be listed).
  *
@@ -76,8 +94,7 @@ export function folder_verifyPathMatch(folder: FileBrowserFolder | null | undefi
  */
 export async function cfsLink_target(cleanPath: string): Promise<string | null> {
   if (cleanPath === '/' || !cleanPath.startsWith('/')) return null;
-  const { vfsDispatcher } = await import('@fnndsc/salsa');
-  const parentResult: Result<VFSItem[]> = await vfsDispatcher.list(path.posix.dirname(cleanPath));
+  const parentResult: Result<VFSItem[]> = await parentListing_get(path.posix.dirname(cleanPath));
   if (!parentResult.ok) return null;
   const entryName: string = path.posix.basename(cleanPath);
   const entry: VFSItem | undefined = parentResult.value.find((item: VFSItem): boolean => item.name === entryName);
@@ -116,7 +133,7 @@ async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<Com
   const { vfsDispatcher } = await import('@fnndsc/salsa');
   const parentPath: string = path.posix.dirname(cleanPath);
   const entryName: string = path.posix.basename(cleanPath);
-  const parentResult: Result<VFSItem[]> = await vfsDispatcher.list(parentPath);
+  const parentResult: Result<VFSItem[]> = await parentListing_get(parentPath);
   const entry: VFSItem | undefined = parentResult.ok
     ? parentResult.value.find((item: VFSItem) => item.name === entryName)
     : undefined;

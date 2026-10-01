@@ -550,17 +550,18 @@ describe('Builtins - Core Functions', () => {
     });
 
     it('rejects a virtual file even when its provider can list the containing directory', async () => {
-      mockVfsDispatcherList.mockImplementation(async (targetPath: string) => {
-        if (targetPath === '/proc/jobs/feed_5') {
-          return {
-            ok: true,
-            value: [
-              { name: 'status', type: 'file', size: 0, owner: '', date: '' },
-              { name: 'pl-dircopy_10', type: 'job', size: 0, owner: '', date: '' },
-            ],
-          };
-        }
-        return { ok: true, value: [] };
+      // cd reads the parent through the listing façade (S3/S4), so the
+      // containing listing is answered there.
+      mockVfsListingGet.mockResolvedValueOnce({
+        ok: true,
+        value: {
+          path: '/proc/jobs/feed_5',
+          fresh: true,
+          items: [
+            { name: 'status', type: 'file', size: 0, owner: '', date: '' },
+            { name: 'pl-dircopy_10', type: 'job', size: 0, owner: '', date: '' },
+          ],
+        },
       });
 
       const envelope: CommandEnvelope = await builtin_cd(['/proc/jobs/feed_5/status']);
@@ -571,15 +572,13 @@ describe('Builtins - Core Functions', () => {
     });
 
     it('resolves an unresolved virtual job data link only when cd follows it', async () => {
-      mockVfsDispatcherList.mockResolvedValueOnce({
+      mockVfsListingGet.mockResolvedValueOnce({
         ok: true,
-        value: [{
-          name: 'data',
-          type: 'link',
-          size: 0,
-          owner: '',
-          date: '',
-        }],
+        value: {
+          path: '/proc/jobs/feed_5/pl-root_10',
+          fresh: true,
+          items: [{ name: 'data', type: 'link', size: 0, owner: '', date: '' }],
+        },
       });
       mockVfsDispatcherLinkTargetResolve.mockResolvedValueOnce({
         ok: true,

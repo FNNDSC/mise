@@ -27,6 +27,7 @@ export * from "./resources/chrisResourceGroup";
 export * from "./resources/chrisObjContext";
 export * from "./resources/chrisEmbeddedResourceGroup";
 export * from "./filebrowser/chrisFileBrowser";
+export * from "./filebrowser/folderMemo";
 export * from "./filebrowser/chrisFiles";
 export * from "./filebrowser/chrisPACS";
 export * from "./filebrowser/chrisPipeline";

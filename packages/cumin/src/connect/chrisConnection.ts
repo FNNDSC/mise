@@ -9,6 +9,7 @@
  * @module
  */
 
+import { folderLookup_memoize } from '../filebrowser/folderMemo';
 import { requestLedger_start } from '../net/requestLedger';
 import { Client, authToken_get as adapterAuthToken_get, client_create } from "../chrisapi/adapter.js";
 import { ConnectionConfig, config_init, connectionConfig } from "../config/config.js";
@@ -350,7 +351,8 @@ export class ChRISConnection {
       this.authToken
     ) {
       if (!this.client) {
-        this.client = client_create(this.chrisURL, this.authToken);
+        // One folder lookup per path per session (see filebrowser/folderMemo).
+        this.client = folderLookup_memoize(client_create(this.chrisURL, this.authToken));
       }
     }
     return this.client;

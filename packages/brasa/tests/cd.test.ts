@@ -39,6 +39,16 @@ jest.unstable_mockModule('../src/builtins/utils.js', () => ({
   error_stripDebugPrefix: jest.fn((m: string): string => m),
 }));
 const vfsList = jest.fn<(path: string) => Promise<{ ok: boolean; value?: unknown[] }>>();
+// cd lists a parent through the brasa façade (S3/S4); the façade is
+// answered by the same dispatcher stub the cases drive.
+jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
+  vfs: {
+    listing_get: async (target: string) => {
+      const listed = await vfsList(target);
+      return listed.ok ? { ok: true, value: { path: target, items: listed.value, fresh: true } } : { ok: false };
+    },
+  },
+}));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   vfsDispatcher: {
     list: vfsList,

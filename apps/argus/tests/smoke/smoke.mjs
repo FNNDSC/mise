@@ -324,6 +324,40 @@ try {
       `${universe.densityCensus} | ${universe.censusTitle} | ${universe.densityShape}`);
   }
 
+  if (stage('universe-pill-bar')) {
+  // A frame pill answers on its pane's own bar, not in the console: the
+  // UNIVERSE layout pill cycled six times once filled the console with the
+  // layouts' descriptions, no command typed.
+  const pill = await evalIn(`
+    await console_idle();
+    const panes = () => [...document.querySelectorAll('.pane-universe')].filter((p) => p.offsetParent !== null);
+    if (panes().length === 0) {
+      document.getElementById('gutter-dashboard')?.click();
+      for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelectorAll('.launcher-tile').length > 0) break; }
+      [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
+      for (let i = 0; i < 120; i++) { await sleep(500); if (panes().length > 0 && /[1-9]\\d* FEEDS/.test(panes()[0].querySelector('.universe-title')?.textContent ?? '')) break; }
+      for (let i = 0; i < 240; i++) { const w = panes()[0]?.querySelector('.wait-progress'); if (!w || w.hidden) break; await sleep(500); }
+    }
+    const pane = panes()[0]; if (!pane) return { error: 'no universe pane' };
+    const bar = pane.querySelector('.pane-state');
+    const arrangement = pane.querySelector('.universe-arrangement');
+    const captions = pane.querySelector('.universe-captions');
+    const standing = bar?.textContent.trim() ?? '';
+    const consoleBefore = document.getElementById('terminal').innerText;
+    captions?.click(); await sleep(150);
+    const noted = { text: bar?.textContent.trim() ?? '', cls: bar?.classList.contains('state-note') ?? false };
+    captions?.click(); await sleep(150);
+    const notedAgain = bar?.textContent.trim() ?? '';
+    await sleep(4600);
+    const restored = { text: bar?.textContent.trim() ?? '', cls: bar?.classList.contains('state-note') ?? false };
+    const consoleAfter = document.getElementById('terminal').innerText;
+    return { standing, noted, notedAgain, restored, consoleGrew: consoleAfter.length !== consoleBefore.length, arrangementLabel: arrangement?.textContent.trim() ?? '' };`);
+  check('a frame pill answers on its own bar: the captions pill holds its answer on the pane state, then the standing state returns',
+    pill.error === undefined && pill.noted.cls && /captions/i.test(pill.noted.text) && pill.notedAgain !== pill.noted.text && !pill.restored.cls && pill.restored.text === pill.standing,
+    JSON.stringify(pill));
+  check('a frame pill writes nothing to the console', pill.error === undefined && pill.consoleGrew === false, JSON.stringify(pill));
+  }
+
   if (stage('universe-constellations')) {
     // CONSTELLATIONS: every plugin a ringed star, every feed pulled to the
     // stars it ran. A plugin lit by word shows its facts and its verb, and

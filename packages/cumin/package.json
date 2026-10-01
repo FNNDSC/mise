@@ -23,6 +23,11 @@
       "types": "./dist/index.d.ts",
       "require": "./dist/index.js"
     },
+    "./request-ledger": {
+      "import": "./dist/net/requestLedger.js",
+      "types": "./dist/net/requestLedger.d.ts",
+      "require": "./dist/net/requestLedger.js"
+    },
     "./dicom-payload": {
       "import": "./dist/pacs/dicomPayload.js",
       "types": "./dist/pacs/dicomPayload.d.ts",

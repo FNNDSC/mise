@@ -284,6 +284,8 @@ export class DagPanel {
   private readonly facts: HTMLElement;
   private readonly empty: HTMLElement;
   private readonly strategyPill: HTMLElement;
+  /** BACK on the frame: out of the graph, to the roster. */
+  private backPill: HTMLElement | null = null;
   private readonly feedList: HTMLElement;
   private readonly handlers: DagPanelHandlers;
   private rosterTimer: ReturnType<typeof setInterval> | null = null;
@@ -403,6 +405,28 @@ export class DagPanel {
       this.scene.strategy_set(next);
       strategyPill.textContent = next.toUpperCase();
       this.modes_render();
+    });
+    // BACK heads the frame: the way out of a graph is a press, as it is out
+    // of a node and out of an entered feed in the universe — Esc does the
+    // same, and a phone has no Esc. From a graph it returns to the roster
+    // beneath; a graph that arrived with no roster beneath it (cwd-follow)
+    // asks for one. Hidden while the roster is what is shown.
+    this.backPill = strategyPill.parentElement?.querySelector<HTMLElement>('.dag-back') ?? null;
+    this.backPill?.addEventListener('click', (): void => {
+      if (!this.nav_pop()) this.feedsChooser_request();
+    });
+    // The facts overlay is where the operator looks when they pick a node,
+    // and on a phone it is most of the picture: a tap on its own ground
+    // (not on a row or a verb) stands it down, as a tap on empty space
+    // does — the operator who taps "the background" and lands on the
+    // overlay meant the same thing.
+    this.facts.addEventListener('click', (event: Event): void => {
+      if (!(event.target instanceof Element)) return;
+      if (event.target.closest('button, a, input') !== null) return;
+      if (this.facts.classList.contains('dag-facts-immersed')) return;
+      this.scene.selection_clear();
+      this.factsShown = null;
+      this.facts.replaceChildren();
     });
     // The projection pill lives beside the strategy pill on the mode frame;
     // the label always names the CURRENT mode, same as RANKED/MOLECULE.
@@ -1431,6 +1455,7 @@ export class DagPanel {
   /** Shows or hides the roster and its frame host together. */
   private roster_show(on: boolean): void {
     this.rosterShown = on;
+    if (this.backPill !== null) this.backPill.hidden = on;
     // Flex, not block: the frame sits above a scrolling field. Nothing
     // asks this element what it is showing; `rosterShown` is the answer.
     this.feedList.style.display = on ? 'flex' : 'none';

@@ -3297,6 +3297,48 @@ try {
     json.error === undefined && !json.raw.json && json.raw.lines < json.pretty.lines && json.raw.pills.join(',') === 'DOWNLOAD,PRETTY,CLOSE' && json.back === true,
     JSON.stringify(json.error ?? json.raw));
   }
+  if (stage('dag-back-facts')) {
+  // The way out of a graph is a press: BACK heads the graph's frame and
+  // returns to the roster; a tap on the node facts plate's own ground
+  // stands the plate down, as a tap on empty space does — on a phone the
+  // plate reads as the background.
+  const dagBack = await evalIn(`
+    const row = [...document.querySelectorAll('.launcher-row')].find((e) => /^\\d{3,}\\s/.test(e.textContent.trim()) && !/ERRORED|FEEDS|ENTRIES/.test(e.textContent));
+    if (!row) return { skipped: 'no feed row on the dashboard' };
+    row.click(); await sleep(1500);
+    let canvas = null;
+    for (let i = 0; i < 160; i++) { await sleep(500); canvas = [...document.querySelectorAll('.pane-dag canvas')].find((c) => c.offsetParent !== null); if (canvas) break; }
+    if (!canvas) return { skipped: 'no graph drawn in time' };
+    await sleep(2500);
+    const pane = canvas.closest('.pane-dag');
+    const facts = pane.querySelector('.dag-facts'); const back = pane.querySelector('.dag-back');
+    const backOnGraph = { hidden: back.hidden, first: back.parentElement.firstElementChild === back, text: back.textContent.trim() };
+    const box = canvas.getBoundingClientRect();
+    const hit = (x, y, type = 'click') => canvas.dispatchEvent(new MouseEvent(type, { clientX: Math.round(x), clientY: Math.round(y), bubbles: true, cancelable: true }));
+    let shown = false;
+    for (const [fx, fy] of [[0.5, 0.5], [0.5, 0.35], [0.5, 0.65], [0.4, 0.5], [0.6, 0.5], [0.5, 0.25], [0.5, 0.75]]) {
+      hit(box.left + box.width * fx, box.top + box.height * fy, 'mousemove'); await sleep(120);
+      hit(box.left + box.width * fx, box.top + box.height * fy); await sleep(500);
+      if (facts.textContent.trim() !== '') { shown = true; break; }
+    }
+    if (!shown) return { skipped: 'no node under the probe points', backOnGraph };
+    const fb = facts.getBoundingClientRect();
+    const ground = document.elementFromPoint(fb.left + 3, fb.top + 3);
+    ground.dispatchEvent(new MouseEvent('click', { clientX: fb.left + 3, clientY: fb.top + 3, bubbles: true })); await sleep(400);
+    const cleared = facts.textContent.trim() === '';
+    back.click(); await sleep(1500);
+    return { backOnGraph, groundWas: ground.className, cleared, rosterShown: pane.querySelector('.dag-roster').classList.contains('roster-shown'), backHidden: back.hidden };`);
+  if (dagBack.skipped) {
+    console.log(`  skipped: ${dagBack.skipped}`);
+  } else {
+    check('BACK heads the graph frame, and a press returns to the roster and hides itself',
+      dagBack.backOnGraph.hidden === false && dagBack.backOnGraph.first && dagBack.backOnGraph.text === 'BACK' && dagBack.rosterShown && dagBack.backHidden,
+      JSON.stringify(dagBack));
+    check("a tap on the facts plate's own ground stands the plate down",
+      /dag-facts/.test(dagBack.groundWas) && dagBack.cleared === true,
+      JSON.stringify({ groundWas: dagBack.groundWas, cleared: dagBack.cleared }));
+  }
+  }
   if (stage('gather-process')) {
   // PROCESS on the cohort: its feed first (made by the pull the operator
   // could have typed, named at the ask), then a catalogue bound to the

@@ -76,7 +76,7 @@ import {
   paneInstances_list,
   type PaneInstance,
 } from './panes.js';
-import { LayoutManager, type LayoutNode } from './layout.js';
+import { LayoutManager, type LayoutNode, type MoveDir, type MoveRefusal } from './layout.js';
 import { stalePage_watch } from './stalePage.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
 // from `tests/smoke/canon/lcars.json` — the computed style of this surface's own
@@ -4145,6 +4145,50 @@ async function surface_start(token: string): Promise<void> {
   // rest the pane shows only work and state; clicking the header (the
   // frame) toggles the pane drawer, which holds the layout verbs and the
   // kind's semantic children (docs/aegis.adoc).
+  /** The timers of controls' answers holding a pane's bar, by bar. */
+  const barNotes: WeakMap<HTMLElement, ReturnType<typeof setTimeout>> = new WeakMap();
+  /**
+   * A pane's bar carries a control's answer for a moment, then what stood
+   * there returns (aegis.adoc: a-pill-answers-on-its-own-bar).
+   *
+   * @param paneId - The pane whose bar speaks.
+   * @param text - The answer.
+   */
+  const paneBar_note = (paneId: string, text: string): void => {
+    const bar: HTMLElement | null = paneInstance_get(paneId)?.mount.querySelector<HTMLElement>('.pane-state') ?? null;
+    if (bar === null) return;
+    const pending: ReturnType<typeof setTimeout> | undefined = barNotes.get(bar);
+    if (pending !== undefined) clearTimeout(pending);
+    const stood: { text: string; className: string } = { text: bar.textContent ?? '', className: bar.className };
+    bar.className = 'pane-state state-note';
+    bar.textContent = text;
+    barNotes.set(bar, setTimeout((): void => {
+      barNotes.delete(bar);
+      // Something else may have written the bar meanwhile; that stands.
+      if (bar.textContent !== text) return;
+      bar.className = stood.className;
+      bar.textContent = stood.text;
+    }, 4000));
+  };
+  /** The edge a pane cannot move past, named for its refusal. */
+  const EDGE_WORDS: Readonly<Record<MoveDir, string>> = { left: 'leftmost', right: 'rightmost', above: 'topmost', below: 'bottommost' };
+  /**
+   * Moves a pane to a side (aegis.adoc: a-pane-can-be-moved): the drawer's
+   * MOVE and the typed `pane move` both come here. The mover keeps focus and
+   * its bar says so; a refusal is named.
+   *
+   * @param paneId - The pane that moves.
+   * @param side - Where it goes.
+   * @returns The readout: what happened, or why not.
+   */
+  const pane_move = (paneId: string, side: MoveDir): string => {
+    const moved: true | MoveRefusal = layout.leaf_move(paneId, side);
+    if (moved === 'lone') return 'pane move: the only pane on stage';
+    if (moved === 'edge') return `pane move ${side}: already ${EDGE_WORDS[side]}`;
+    paneBar_note(paneId, `MOVED ${side.toUpperCase()}`);
+    sound_play('audio3');
+    return `moved ${side}`;
+  };
   const pane_chrome_wire = (id: string, kind: string, mount: HTMLElement): void => {
     const drawer: HTMLElement | null = mount.querySelector<HTMLElement>('.pane-drawer');
     const handle: HTMLElement | null = mount.querySelector<HTMLElement>('.pane-handle');
@@ -4180,10 +4224,41 @@ async function surface_start(token: string): Promise<void> {
         sound_play('audio3');
       });
     }
-    // The four placement pills: SPLIT is the one verb that creates a pane;
-    // the selected binding says what the created pane IS.
-    for (const splitter of drawer.querySelectorAll<HTMLElement>('[data-split]')) {
+    // The four direction capsules act under the lit pill: SPLIT opens a new
+    // pane on that side (the one verb that creates a pane; the selected
+    // binding says what it IS), MOVE walks this pane there for one press.
+    const splitters: HTMLButtonElement[] = [...drawer.querySelectorAll<HTMLButtonElement>('[data-split]')];
+    const sideOf = (splitter: HTMLElement): MoveDir => splitter.dataset['split'] === 'row'
+      ? (splitter.dataset['place'] === 'before' ? 'above' : 'below')
+      : (splitter.dataset['place'] === 'before' ? 'left' : 'right');
+    const mode_set = (mode: 'split' | 'move'): void => {
+      drawer.dataset['mode'] = mode;
+      for (const pill of drawer.querySelectorAll<HTMLElement>('.drawer-mode')) {
+        pill.classList.toggle('drawer-mode-selected', pill.dataset['mode'] === mode);
+      }
+      for (const splitter of splitters) {
+        const side: MoveDir = sideOf(splitter);
+        // A side this pane cannot go dims before the press.
+        splitter.disabled = mode === 'move' && !layout.move_possible(id, side);
+        splitter.title = mode === 'move' ? `this pane moves ${side}` : `new pane opens ${side}`;
+      }
+    };
+    for (const pill of drawer.querySelectorAll<HTMLElement>('.drawer-mode')) {
+      pill.addEventListener('click', (): void => {
+        const wanted: 'split' | 'move' = pill.dataset['mode'] === 'move' ? 'move' : 'split';
+        // MOVE pressed while armed disarms; SPLIT is the rest state.
+        mode_set(wanted === 'move' && drawer.dataset['mode'] === 'move' ? 'split' : wanted);
+        sound_play('audio3');
+      });
+    }
+    for (const splitter of splitters) {
       splitter.addEventListener('click', (): void => {
+        if (drawer.dataset['mode'] === 'move') {
+          pane_move(id, sideOf(splitter));
+          mode_set('split');
+          drawer.hidden = true;
+          return;
+        }
         const dir: 'row' | 'col' = splitter.dataset['split'] === 'row' ? 'row' : 'col';
         const before: boolean = splitter.dataset['place'] === 'before';
         const binding: string =
@@ -4837,6 +4912,7 @@ async function surface_start(token: string): Promise<void> {
       return true;
     },
     panes_shown: (): string[] => layout.panes_shown(),
+    pane_move,
     paneRect_get: (id: string): DOMRect | null => {
       const leaf: HTMLElement | null = document.querySelector<HTMLElement>(`.layout-leaf[data-leaf="${id}"]`);
       return leaf?.getBoundingClientRect() ?? null;

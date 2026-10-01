@@ -20,7 +20,7 @@
 import { more_wire } from '../features/roster/more.js';
 import { feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type FeedDagModel, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { ChrisSpace, type SceneNode } from '../scene/chrisSpace.js';
-import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction } from './dormant.js';
+import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction, type DesktopShape } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import { logo_linesRender } from '@fnndsc/menu/logo';
@@ -3738,6 +3738,21 @@ async function surface_start(token: string): Promise<void> {
     const content = actions.filter((action): boolean => action.op !== 'domain' || action.feed !== undefined);
     if (content.length === 0) return;
     const thumbnail: string | undefined = stageStrip_capture(stageIds);
+    // The tiling as it stands, leaves as action indices: a pane moved after
+    // its birth stands where it was moved to, which its birth cannot say.
+    const shape_of = (node: LayoutNode): DesktopShape | null => {
+      if ('pane' in node) {
+        const index: number | undefined = actionIndexOf.get(node.pane);
+        return index === undefined ? null : { leaf: index };
+      }
+      const first: DesktopShape | null = shape_of(node.first);
+      const second: DesktopShape | null = shape_of(node.second);
+      if (first === null) return second;
+      if (second === null) return first;
+      return { dir: node.dir, ratio: node.ratio, first, second };
+    };
+    const stageTree: LayoutNode | null = layout.tree_get();
+    const shape: DesktopShape | null = stageTree === null ? null : shape_of(stageTree);
     const memberOf: Record<string, string> = { image: 'viewer', view: 'viewer', dir: 'files', fs: 'files', tags: 'tags', empty: 'pane', domain: 'dag', catalogue: 'catalogue', graph: 'dag', gather: 'gather' };
     const members: string[] = [...new Set(content.map((action): string => memberOf[action.op] ?? 'pane'))];
     // A viewer desktop is keyed by its series, so returning to it updates the
@@ -3770,6 +3785,7 @@ async function surface_start(token: string): Promise<void> {
       regard,
       members,
       actions,
+      ...(shape === null ? {} : { shape }),
       ...(thumbnail === undefined ? {} : { thumbnail }),
       lastTouched: Date.now(),
     });
@@ -3937,6 +3953,25 @@ async function surface_start(token: string): Promise<void> {
         } else {
           produced.push(null);
         }
+      }
+      // The tiling returns as it stood: every frame is open now, so the
+      // recorded shape is laid over them — a moved pane where it was moved
+      // to, a block beside a block. A leaf whose action produced nothing
+      // is left out of the shape.
+      if (snapshot.shape !== undefined) {
+        const tree_of = (node: DesktopShape): LayoutNode | null => {
+          if ('leaf' in node) {
+            const pane: string | null = produced[node.leaf] ?? null;
+            return pane === null ? null : { pane };
+          }
+          const first: LayoutNode | null = tree_of(node.first);
+          const second: LayoutNode | null = tree_of(node.second);
+          if (first === null) return second;
+          if (second === null) return first;
+          return { dir: node.dir, ratio: node.ratio, first, second };
+        };
+        const tree: LayoutNode | null = tree_of(snapshot.shape);
+        if (tree !== null && !('pane' in tree)) layout.tree_set(tree);
       }
     } finally {
       desktopReplaying = false;

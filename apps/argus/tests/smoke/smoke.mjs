@@ -438,6 +438,43 @@ try {
     move.error === undefined && /^moved above/.test(move.typed) && move.aboveOf && /already topmost/.test(move.refused), JSON.stringify(move));
   }
 
+  if (stage('pane-move-restore')) {
+  // A moved pane returns where it was moved to: the desktop records the
+  // stage's tiling at dormancy and lays it over the replayed panes.
+  const back = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_idle(); };
+    const settle = async (test, tries = 40) => { for (let i = 0; i < tries; i++) { if (test()) return true; await sleep(250); } return test(); };
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const leaves = () => [...document.querySelectorAll('.layout-leaf')].map((l) => l.dataset.leaf);
+    const rect = (id) => document.querySelector('.layout-leaf[data-leaf="' + id + '"]').getBoundingClientRect();
+    const before = new Set(leaves());
+    await say('pane split right');
+    const born = leaves().find((id) => !before.has(id)); if (!born) return { error: 'no pane born' };
+    const drawer = document.querySelector('.layout-leaf[data-leaf="' + born + '"] .pane-drawer');
+    drawer.hidden = false;
+    drawer.querySelector('.drawer-mode[data-mode="move"]').click(); await sleep(100);
+    drawer.querySelector('[data-split="row"][data-place="after"]').click(); await sleep(200);
+    const movedBelow = rect(born).top >= rect('files').bottom - 2;
+    // away, then back through PANES
+    document.getElementById('gutter-runs').click(); await sleep(1200);
+    document.getElementById('gutter-panes').click(); await sleep(800);
+    const desktop = (window.__argusDormant?.list?.() ?? []).find((g) => (g.actions ?? []).some((a) => a.op === 'empty') && g.shape !== undefined);
+    const shaped = desktop !== undefined && desktop.shape !== undefined && !('leaf' in desktop.shape) && desktop.shape.dir === 'row';
+    const card = [...document.querySelectorAll('.panes-card')].find((c) => c.querySelector('.panes-card-label')?.textContent === desktop?.label);
+    if (card) card.click();
+    const empty = () => [...document.querySelectorAll('.layout-leaf')].find((l) => l.querySelector('.pane-empty') && l.offsetParent !== null);
+    const returned = await settle(() => empty() !== undefined && document.querySelector('.layout-leaf[data-leaf="files"]') !== null, 60);
+    await sleep(400);
+    const belowAgain = returned && empty().getBoundingClientRect().top >= rect('files').bottom - 2;
+    const restoredId = empty()?.dataset.leaf ?? null;
+    if (restoredId) { const d = empty().querySelector('.pane-drawer'); d.hidden = false; d.querySelector('.drawer-close')?.click(); await sleep(300); }
+    return { born, movedBelow, carded: desktop !== undefined, shaped, cardFound: card !== undefined, returned, belowAgain };`);
+  check('a moved pane returns where it was moved to: the desktop keeps the tiling and lays it over the replayed panes',
+    back.error === undefined && back.movedBelow && back.carded && back.shaped && back.cardFound && back.returned && back.belowAgain, JSON.stringify(back));
+  }
+
   if (stage('universe-constellations')) {
     // CONSTELLATIONS: every plugin a ringed star, every feed pulled to the
     // stars it ran. A plugin lit by word shows its facts and its verb, and

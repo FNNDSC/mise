@@ -70,6 +70,16 @@ export interface DesktopAction {
   side?: 'before' | 'after';
 }
 
+/**
+ * The stage's tiling at dormancy, leaves as action indices: re-applied after
+ * the actions replay, so a pane MOVED after its birth returns where it was
+ * moved to (aegis.adoc: a-pane-can-be-moved) — births alone cannot say
+ * "beside that whole block".
+ */
+export type DesktopShape =
+  | { leaf: number }
+  | { dir: 'row' | 'col'; ratio: number; first: DesktopShape; second: DesktopShape };
+
 /** The image view state a snapshot restores. */
 export interface GroupView {
   layout: string;
@@ -97,6 +107,8 @@ export interface GroupSnapshot {
    * their widths.
    */
   actions?: readonly DesktopAction[];
+  /** The tiling the actions stood in, when a move left it unlike their births. */
+  shape?: DesktopShape;
   /** The image view state, when the group holds a viewer. */
   view?: GroupView;
   /** A small raster of the viewer at dormancy, as a data URL. */

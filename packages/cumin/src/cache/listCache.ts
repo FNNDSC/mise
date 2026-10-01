@@ -211,6 +211,15 @@ export class ListCache {
   };
   /** Listeners told after any mutation a persister would want to see. */
   private listeners: Set<() => void> = new Set();
+  /**
+   * The folder records CUBE answered for a path (`filebrowser/search?path=`),
+   * kept beside the listings and dropped by the same invalidations. Three
+   * callers resolved the same path independently on every navigation —
+   * three identical requests — and the next visit asked again. The value
+   * is the lookup's promise, so callers in flight together share one
+   * request; a miss (null) or a failure is never kept.
+   */
+  private folders: Map<string, { promise: Promise<unknown>; timestamp: number; ttl: number }> = new Map();
 
   /**
    * Registers a callback for checkpoint-worthy mutations (set, update,
@@ -355,6 +364,57 @@ export class ListCache {
    *
    * @param path - The path to mark dirty.
    */
+  /**
+   * The folder record kept for a path, while its listing's TTL holds.
+   *
+   * @param path - The folder's path.
+   * @returns The lookup's promise, or null when none is kept or it expired.
+   */
+  folder_get(path: string): Promise<unknown> | null {
+    const kept = this.folders.get(path);
+    if (kept === undefined) return null;
+    if (Date.now() - kept.timestamp > kept.ttl) {
+      this.folders.delete(path);
+      return null;
+    }
+    return kept.promise;
+  }
+
+  /**
+   * Keeps a folder lookup for a path. A lookup that answers null or
+   * rejects is forgotten as it settles: a folder that is not there may
+   * be made in a moment, and a failure is not an answer.
+   *
+   * @param path - The folder's path.
+   * @param promise - The lookup under way.
+   */
+  folder_set(path: string, promise: Promise<unknown>): void {
+    this.folders.set(path, { promise, timestamp: Date.now(), ttl: this.ttl_get(path) });
+    promise.then(
+      (folder: unknown): void => { if (folder === null || folder === undefined) this.folders.delete(path); },
+      (): void => { this.folders.delete(path); },
+    );
+  }
+
+  /**
+   * Drops the folder records a listing invalidation calls into question:
+   * the path's own and everything beneath it (a removed or renamed entry
+   * takes its subtree's records with it).
+   *
+   * @param path - The invalidated listing's path; omitted, every record.
+   */
+  private folders_drop(path?: string): void {
+    if (path === undefined) { this.folders.clear(); return; }
+    this.folders.delete(path);
+    const prefix: string = path.endsWith('/') ? path : `${path}/`;
+    for (const key of this.folders.keys()) if (key.startsWith(prefix)) this.folders.delete(key);
+  }
+
+  /** How many folder records are kept (for a readout or a test). */
+  folders_count(): number {
+    return this.folders.size;
+  }
+
   cache_markDirty(path: string): void {
     const entry: CacheEntry<unknown> | undefined = this.cache.get(path);
     if (entry) {
@@ -392,6 +452,7 @@ export class ListCache {
     } else {
       this.cache.clear();
     }
+    this.folders_drop(path);
     this.change_emit();
   }
 
@@ -406,6 +467,7 @@ export class ListCache {
    *     itself is removed along with all entries under `path + '/'`.
    */
   cache_invalidateTree(path: string): void {
+    this.folders_drop(path);
     this.cache.delete(path);
     const prefix: string = path.endsWith("/") ? path : `${path}/`;
     for (const key of this.cache.keys()) {

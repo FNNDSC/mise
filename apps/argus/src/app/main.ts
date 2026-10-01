@@ -1270,6 +1270,8 @@ async function surface_start(token: string): Promise<void> {
       if (graph.text !== '') panel.contentText_set(graph.text);
       const facts: HTMLElement = document.createElement('div');
       facts.className = 'dag-facts';
+      // Immersed in a node (dag-facts-immersed) the readout scrolls; it says what it holds.
+      more_wire(facts);
       mount.appendChild(facts);
       const built: ChrisSpace = new ChrisSpace(mount, {
         // A node's substance already arrived with the graph, so a touch
@@ -2844,6 +2846,8 @@ async function surface_start(token: string): Promise<void> {
 
   const viewInstance_build = (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-view');
+    // The viewer's body scrolls a long text or a tall picture, and says so.
+    more_wire(pane_find(mount, '.view-body'));
     const panel: ViewerPanel = new ViewerPanel(
       pane_find(mount, '.view-body'),
       pane_find(mount, '.view-title'),
@@ -3352,6 +3356,9 @@ async function surface_start(token: string): Promise<void> {
     return answer;
   };
 
+  // The PACS workspace scrolls whole when its levels outgrow a short leaf,
+  // and says what it holds in rows (#pacs-workspace).
+  more_wire(element_require('pacs-workspace'), { rows: '.listing-row' });
   const pacsPanel: PacsPanel = new PacsPanel(element_require('pacs-workspace'), {
     command_run: (line: string): void => {
       // The claim rule: a pane's own request resolves to it alone. The
@@ -4081,6 +4088,8 @@ async function surface_start(token: string): Promise<void> {
     launcherPanel.render();
   }, DASHBOARD_TICK_MS);
 
+  // The desktop cards scroll without a scrollbar and say what they hold.
+  more_wire(pane_find(panesMount, '.panes-body'), { rows: '.panes-card' });
   const panesPanel: PanesPanel = new PanesPanel(panesMount, {
     list: (): GroupSnapshot[] => dormant.list(),
     restore: (id: string): void => { void group_restore(id); },

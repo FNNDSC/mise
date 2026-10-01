@@ -40,7 +40,7 @@ image::images/listing-anatomy.svg[Listing anatomy,1180]
 | frame | `.roster-order` | The caps row and the filter strip, seated at the head of the mount, never re-inserted.
 | caps | `.roster-caps` › `.roster-cap` | One cap per capped trait, blank cells over uncapped traits; the active cap wears `.roster-active` and its direction glyph.
 | strip | `.roster-filter` › `.roster-filter-input` | The filter, hidden until FILTER or the language opens it.
-| field | `.listing-field` | The scrolling region beneath the frame, opened fresh on every render.
+| field | `.listing-field` | The scrolling region beneath the frame, opened fresh on every render. A JPEG or PNG opened here is `.files-image`: it fills the field and keeps its shape (`object-fit: contain`), letterboxed on the field's black. Every scrolling field on the surface wears the `▼ N MORE` chip through `more_wire`; `MORE_FIELDS` in `features/roster/more.ts` is the list the lint holds the stylesheet to.
 | block | `.listing-block` | One group of rows: a header when given, its own caps when `caps: 'each'`, then its rows or its painted form.
 | rows | `.listing-rows` | The rows of one block.
 | row | `.listing-row` | A grid on `--roster-cols`: one cell per trait, then the action track when actions are declared.

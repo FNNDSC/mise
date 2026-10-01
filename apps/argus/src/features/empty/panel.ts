@@ -12,6 +12,7 @@
  * @module
  */
 import type { WireEnvelope } from '@fnndsc/menu';
+import { more_wire } from '../roster/more.js';
 import type { ExecuteOutcome } from '../../calypso/client.js';
 
 /** The pane kinds an envelope model can claim. */
@@ -50,6 +51,8 @@ export class EmptyPanel {
   constructor(mount: HTMLElement, handlers: EmptyPanelHandlers) {
     this.handlers = handlers;
     this.result = element_find(mount, '.empty-result');
+    // The answer scrolls without a scrollbar and says what it holds.
+    more_wire(this.result);
     const prompt: HTMLInputElement = element_find(mount, '.empty-prompt') as HTMLInputElement;
     prompt.addEventListener('keydown', (event: KeyboardEvent): void => {
       if (event.key === 'Enter' && prompt.value.trim().length > 0) {

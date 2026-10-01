@@ -1747,7 +1747,9 @@ main {
   flex-direction: column;
   flex: 1 1 0;
   min-height: 0;
-  overflow-y: auto;
+  /* The façade's listing field inside scrolls and says what it holds; the
+   * mount around it never scrolls (a-field-says-it-holds-more). */
+  overflow: hidden;
 }
 
 .gather-cohort-name { color: var(--harvestgold); font-weight: bold; }
@@ -2004,7 +2006,8 @@ body[data-zoom]:not([data-zoom='console'])
   border-radius: 0 10px 10px 0;
 }
 
-.dag-facts:empty {
+/* Nothing told: no box. The chip the field wears is not something told. */
+.dag-facts:not(:has(> :not(.more-chip))) {
   display: none;
 }
 
@@ -2412,8 +2415,9 @@ body[data-zoom]:not([data-zoom='console'])
  * a-field-says-it-holds-more). LCARS has no scrollbars: a scrolling field
  * hides the browser's and wears one chip at its foot — ▼ N MORE while
  * content lies below, ▲ TOP at the end; the wheel and the finger still
- * scroll. One rule for the listing field, the frame, the file view and
- * the band's rows (features/roster/more.ts). */
+ * scroll. One rule for every scrolling field — MORE_FIELDS in
+ * features/roster/more.ts names them, and the aegis lint holds every
+ * overflow: auto rule in this sheet to that list. */
 .holds-more {
   scrollbar-width: none;
 }
@@ -3426,12 +3430,20 @@ button.files-crumb:focus-visible {
   filter: brightness(1.3);
 }
 
+/* An image fills the field it is shown in and keeps its shape: letterboxed
+ * on the field's black, never stretched. The old rule capped the height at
+ * 60vh inside a flex column that stretched the width, and a tall picture
+ * came out wide (a-field-fills-its-pane). In the viewer's block body the
+ * same rule scales to the width and the body scrolls a tall one. */
 .files-image {
   display: block;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
   max-width: 100%;
-  max-height: 60vh;
+  align-self: stretch;
+  object-fit: contain;
   margin: 0.5rem 0;
-  border: 1px solid var(--pumpkin-pie);
 }
 
 .files-body {
@@ -3533,7 +3545,7 @@ button.files-crumb:focus-visible {
   /* A glimpse the wheel can walk. The card shows the head of a file; when
    * there is more, reading it should not require opening the file. Both
    * axes, because code and tables are as often too wide as too tall. */
-  overflow: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
   text-align: left;
 }
@@ -6306,8 +6318,8 @@ button.launcher-row:hover {
   flex-direction: column;
   flex: 1 1 0;
   min-height: 0;
-  overflow: auto;
-  scrollbar-width: none;
+  /* The listing field inside scrolls and wears the chip; the mount does not. */
+  overflow: hidden;
   padding-top: calc(var(--rule-h) + 0.3rem);
   /* The grid the caps and every row read; the tracks themselves are the
      façade's, computed from the traits it was declared with. */

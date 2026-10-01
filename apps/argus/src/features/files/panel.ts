@@ -613,6 +613,13 @@ export class FilesPanel {
    * @param envelope - Any envelope the session showed this surface.
    */
   public envelope_observe(envelope: WireEnvelope): void {
+    // A press the kernel refused: the row stands down and the bar reads
+    // the kernel's own words (cd: x: Not a directory; not yours to read).
+    if (envelope.status === 'error') {
+      const said: string = (envelope.renderedErr ?? envelope.rendered ?? '').replace(/\x1b\[[0-9;]*m/g, '').trim().split('\n')[0] ?? '';
+      if (/^(cd|ls): /.test(said)) this.listing.activation_refuse(said);
+      return;
+    }
     if (envelope.model?.kind !== 'fs.listing') {
       return;
     }

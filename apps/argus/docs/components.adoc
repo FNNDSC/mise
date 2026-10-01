@@ -127,6 +127,7 @@ As the roster uses it: one block, the constant field `roster`; a leading control
 |===
 | State | Class | Put there by
 
+| activating | `.listing-activating` on the pressed row; `state-wait` and `OPENING <name>` on the bar | The instant a row is activated, until the listing lands or the kernel refuses (then `state-refused` and the kernel's words on the bar). The rest of the field dims as for an indicated row; the row's control capsule breathes. A repeat press on the same row is absorbed; a press on another row replaces it.
 | indicated | `.listing-indicated` on the row | A click on a row of a listing with actions (outside its control cell, when it has one), or `row_indicate(key)`. Exactly one row at a time across every level; the previous row stands down. Belongs to the field: restored after a repaint of the same field (a fold, a sort, a re-listing), gone with a row that left, cleared by navigation. `indication_refresh()` redraws its verbs from their live predicates.
 | selected | `.listing-selected` on the row | A click while SELECT is on, on a governed row. Kept across renders of the same field.
 | selecting | `.listing-selecting` on the mount | `select_toggle`. The SELECT block reads `SELECT ON` and loses `rail-off`.

@@ -322,6 +322,10 @@ interface LevelHost {
    * a track and every level's indication is drawn in the one zone.
    */
   framed(): boolean;
+  /** Whether this row's activation is still in flight. */
+  activating_is(key: string): boolean;
+  /** Acknowledges a press: lights the row and says OPENING on the bar. */
+  activation_begin(key: string, element: HTMLElement | null, name: string): void;
   /** Draws the indicated row's verbs in the row zone; none empties it. */
   zoneVerbs_set(capsules: ReadonlyArray<Node>): void;
   /** Says something beneath the zone's verbs, about the indicated row. */
@@ -926,7 +930,17 @@ class Level<T> {
     if (!lead && this.child !== null) {
       expansion_toggle(this.expansion, key);
       this.host.repaint();
+      this.declaration.activate?.(row);
+      return;
     }
+    // The press is acknowledged before anything answers: the row lights
+    // `activating`, the rest dims as for an indicated row, the capsule
+    // works, and the bar reads OPENING <name> until the listing lands or a
+    // refusal returns. A second press on the same row while it is in
+    // flight is absorbed (the double-press of impatience is not two
+    // navigations); a press on another row replaces the intent.
+    if (this.host.activating_is(key)) return;
+    this.host.activation_begin(key, this.rowsByKey.get(key) ?? null, rowName_of(key));
     this.declaration.activate?.(row);
   }
 
@@ -1040,6 +1054,8 @@ export class Listing<T> {
   private readonly host: ListingHost<T>;
   private readonly gridHost: HTMLElement;
   private readonly stateSpan: HTMLElement | null;
+  /** The press in flight: its row's key and element, or null. */
+  private activating: { key: string; element: HTMLElement | null } | null = null;
   private readonly filterBlock: HTMLElement | null;
   private readonly selectBlock: HTMLElement | null;
   /** The frame's row zone, when the verbs ride the frame. */
@@ -1109,6 +1125,8 @@ export class Listing<T> {
       {
         repaint: (): void => this.repaint_queue(),
         framed: (): boolean => this.zone !== null,
+        activating_is: (key: string): boolean => this.activating?.key === key,
+        activation_begin: (key: string, element: HTMLElement | null, name: string): void => this.activation_begin(key, element, name),
         zoneVerbs_set: (capsules: ReadonlyArray<Node>): void => this.zoneVerbs_set(capsules),
         zoneReadout_set: (text: string): void => this.zoneReadout_set(text),
         indication_claim: (claim: IndicationClaim): void => {
@@ -1172,7 +1190,58 @@ export class Listing<T> {
     }
     this.field = context.field;
     this.blocks = blocks;
+    // The listing that answers a press settles it, wherever it landed.
+    this.activation_settle();
     this.render();
+  }
+
+  /**
+   * Acknowledges a press before anything answers (aegis.adoc:
+   * a-press-is-acknowledged): the row lights `activating`, the rest dims,
+   * its capsule works, and the bar reads OPENING <name> until the listing
+   * lands (`rows_set`) or the kernel refuses (`activation_refuse`). A
+   * press on another row while one is in flight replaces the intent.
+   *
+   * @param key - The row's key.
+   * @param element - The row's element, when it is on stage.
+   * @param name - What the bar names.
+   */
+  private activation_begin(key: string, element: HTMLElement | null, name: string): void {
+    this.activating?.element?.classList.remove('listing-activating');
+    this.activating = { key, element };
+    element?.classList.add('listing-activating');
+    if (this.stateSpan !== null) {
+      this.stateSpan.classList.remove('state-stale', 'state-refused');
+      this.stateSpan.classList.add('state-wait');
+      this.stateSpan.textContent = `OPENING ${name}`;
+    }
+  }
+
+  /** Stands the press down: the answer has landed. */
+  private activation_settle(): void {
+    if (this.activating === null) return;
+    this.activating.element?.classList.remove('listing-activating');
+    this.activating = null;
+    this.stateSpan?.classList.remove('state-wait');
+  }
+
+  /**
+   * Stands the press down with the kernel's refusal on the bar: the row
+   * returns to the listing it was pressed in, which stayed on stage.
+   *
+   * @param reason - The kernel's own words.
+   */
+  public activation_refuse(reason: string): void {
+    if (this.activating === null) return;
+    this.activation_settle();
+    if (this.stateSpan === null) return;
+    this.stateSpan.classList.add('state-refused');
+    this.stateSpan.textContent = reason.toUpperCase();
+  }
+
+  /** The row a press is waiting on, or null. */
+  public activating_get(): string | null {
+    return this.activating?.key ?? null;
   }
 
   /** Coalesces order changes across every level into one repaint. */
@@ -1584,6 +1653,17 @@ function zone_mint(mount: HTMLElement, prefix: string | undefined): HTMLElement 
  * @param parts - The façade's parts.
  * @returns The line, empty when there is nothing to say.
  */
+/**
+ * What the bar names while a press waits: the last segment of the row's
+ * key (a path, mostly) — `OPENING feed_4587`.
+ *
+ * @param key - The row's key.
+ * @returns The name.
+ */
+export function rowName_of(key: string): string {
+  return key.split('/').filter((part: string): boolean => part !== '').pop() ?? key;
+}
+
 export function listingState_compose(parts: ListingStateParts): string {
   const words: string[] = [];
   if (parts.selecting) words.push('SELECT');

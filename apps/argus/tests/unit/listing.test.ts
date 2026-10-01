@@ -1005,3 +1005,50 @@ describe('the index pill', () => {
     expect(pill?.classList.contains('numbered')).toBe(false);
   });
 });
+
+describe('a-press-is-acknowledged', () => {
+  it('lights the pressed row, says OPENING <name> on the bar, and stands down when the listing lands', () => {
+    const activate = jest.fn();
+    const { listing, mount, root } = listing_build({ activate, key: (entry: Entry): string => `/x/${entry.name}` });
+    listing.rows_set([{ key: '/x', rows: ENTRIES }], { field: '/x' });
+    const state: HTMLElement = root.querySelector('.pane-state') as HTMLElement;
+    const row: HTMLElement = rows_onStage(mount)[0] as HTMLElement;
+    row.click();
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(row.classList.contains('listing-activating')).toBe(true);
+    expect(listing.activating_get()).toBe(`/x/${ENTRIES[1]?.name}`);
+    expect(state.textContent).toBe(`OPENING ${ENTRIES[1]?.name}`);
+    expect(state.classList.contains('state-wait')).toBe(true);
+    // the same row again, while in flight: absorbed
+    row.click();
+    expect(activate).toHaveBeenCalledTimes(1);
+    // the answer lands
+    listing.rows_set([{ key: '/x/a', rows: [] }], { field: '/x/a' });
+    expect(listing.activating_get()).toBeNull();
+    expect(mount.querySelector('.listing-activating')).toBeNull();
+    expect(state.classList.contains('state-wait')).toBe(false);
+    expect(state.textContent).not.toMatch(/OPENING/);
+  });
+
+  it('a press on another row replaces the intent; a refusal stands the press down with the words on the bar', () => {
+    const activate = jest.fn();
+    const { listing, mount, root } = listing_build({ activate, key: (entry: Entry): string => `/x/${entry.name}` });
+    listing.rows_set([{ key: '/x', rows: ENTRIES }], { field: '/x' });
+    const state: HTMLElement = root.querySelector('.pane-state') as HTMLElement;
+    const [first, second] = rows_onStage(mount) as [HTMLElement, HTMLElement];
+    first.click();
+    second.click();
+    expect(activate).toHaveBeenCalledTimes(2);
+    expect(first.classList.contains('listing-activating')).toBe(false);
+    expect(second.classList.contains('listing-activating')).toBe(true);
+    listing.activation_refuse('cd: b: Not a directory');
+    expect(listing.activating_get()).toBeNull();
+    expect(second.classList.contains('listing-activating')).toBe(false);
+    expect(state.textContent).toBe('CD: B: NOT A DIRECTORY');
+    expect(state.classList.contains('state-refused')).toBe(true);
+    expect(state.classList.contains('state-wait')).toBe(false);
+    // nothing in flight: a refusal arriving late changes nothing
+    listing.activation_refuse('cd: late');
+    expect(state.textContent).toBe('CD: B: NOT A DIRECTORY');
+  });
+});

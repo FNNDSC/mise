@@ -3436,6 +3436,39 @@ try {
     net.error === undefined && asked(net.binFamilies, /^(plugins|pipelines|pipelines\/sourcefiles)$/) === 0,
     JSON.stringify(net.binFamilies));
   }
+  if (stage('press-ack')) {
+  // A press is acknowledged before anything answers: the row lights, the
+  // rest dims, its capsule works, the bar reads OPENING <name>; the
+  // listing that lands stands it down.
+  const ack = await evalIn(`
+    const input = document.querySelector('#terminal input');
+    const say = async (line) => { await console_idle(); input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_idle(); };
+    const fp = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+    await say('cd ~');
+    if (!fp()) { document.getElementById('gutter-files').click(); for (let i = 0; i < 40; i++) { await sleep(250); if (fp()) break; } }
+    if (!fp()) return { error: 'no files pane' };
+    const pane = fp(); const state = pane.querySelector('.pane-state');
+    const rowOf = (word) => [...pane.querySelectorAll('.listing-row')].find((r) => r.textContent.includes(word) && !r.textContent.includes('..'));
+    for (let i = 0; i < 40; i++) { await sleep(250); if (rowOf('feeds')) break; }
+    const row = rowOf('feeds'); if (!row) return { error: 'no feeds row' };
+    const pathOf = () => pane.querySelector('.files-path')?.textContent.trim() ?? '';
+    const before = pathOf();
+    (row.querySelector('.listing-control') ?? row).click();
+    // the instant after the press, before the kernel can have answered
+    const atOnce = { lit: row.classList.contains('listing-activating'), others: [...pane.querySelectorAll('.listing-row')].filter((r) => r !== row).map((r) => getComputedStyle(r).opacity), bar: state?.textContent ?? '', wait: state?.classList.contains('state-wait') ?? false };
+    // the same row pressed again while in flight is absorbed
+    (row.querySelector('.listing-control') ?? row).click();
+    let landed = null; for (let i = 0; i < 200; i++) { await sleep(50); if (pathOf() !== before) { landed = pathOf(); break; } }
+    await sleep(300);
+    const after = { landed, lit: pane.querySelector('.listing-activating') !== null, bar: state?.textContent ?? '', wait: state?.classList.contains('state-wait') ?? false };
+    return { atOnce, after };`);
+  check('the instant a row is pressed it lights, the rest dims, and the bar reads OPENING <name>',
+    ack.error === undefined && ack.atOnce.lit && ack.atOnce.others.length > 0 && ack.atOnce.others.every((o) => Number(o) < 0.5) && /^OPENING feeds$/.test(ack.atOnce.bar) && ack.atOnce.wait,
+    JSON.stringify(ack.error ?? ack.atOnce));
+  check('the listing that lands stands the press down, and a second press on the same row was absorbed',
+    ack.error === undefined && ack.after.landed === '~/feeds' && !ack.after.lit && !ack.after.wait && !/OPENING/.test(ack.after.bar),
+    JSON.stringify(ack.error ?? ack.after));
+  }
   if (stage('gather-process')) {
   // PROCESS on the cohort: its feed first (made by the pull the operator
   // could have typed, named at the ask), then a catalogue bound to the

@@ -203,6 +203,9 @@ async function procCache_build(): Promise<number[]> {
   }
   cache.built_set();
   rosterWalkedAt = Date.now();
+  // The feeds this walk leaves without topology — arrivals, and a restored
+  // roster's feeds whose shards were never written — land behind the prompt.
+  procTopologyCatchup_roster(cache);
   return reconciliationTargets;
 }
 
@@ -1152,6 +1155,7 @@ async function procRosterDelta_run(
   );
   for (const feed of fresh.values()) cache.feed_add(feed);
   cache.arrivals_note(Array.from(fresh.keys()));
+  procTopologyCatchup_roster(cache);
   return Array.from(fresh.keys());
 }
 
@@ -1176,6 +1180,100 @@ export async function procRoster_bootSync(): Promise<number[]> {
   return added;
 }
 
+// ── Topology catch-up ──────────────────────────────────────────────────────
+//
+// A feed the roster gains after the sweep — found by the watcher's delta,
+// shared to this identity, or restored from a roster whose shard was never
+// written — has a row but no jobs, so its SIZE and TIME read as dashes
+// until someone opens it (the only thing that walked a feed's jobs). Every
+// roster sync now queues the feeds it leaves without topology, and one
+// detached walk at a time lands them: a feed-scoped page or two each, off
+// the lane, annunciated by the load register like a visit's walk.
+
+/** Feeds waiting for their topology walk, in the order the roster found them. */
+const topologyCatchupQueue: number[] = [];
+/** The feeds queued, for a cheap membership test. */
+const topologyCatchupQueued: Set<number> = new Set();
+/** The runner draining the queue, when one is. */
+let topologyCatchupRun: Promise<void> | null = null;
+
+/**
+ * Queues roster feeds whose topology the cache lacks, and starts the walk
+ * when none is running. Nothing is queued while the global sweep is the
+ * one bringing topology in (it covers every feed), nor for a feed already
+ * loaded, loading or queued.
+ *
+ * @param feedIDs - Candidate feed IDs (a sync's arrivals, or the roster).
+ * @returns How many feeds this call queued.
+ */
+export function procTopologyCatchup_enqueue(feedIDs: number[]): number {
+  const cache: ProcCache = procCache_get();
+  if (!cache.warmupComplete || procTopologyPromise !== null) return 0;
+  let queued: number = 0;
+  for (const feedID of feedIDs) {
+    if (!cache.feed_get(feedID) || cache.topologyLoaded_has(feedID)) continue;
+    if (cache.loading_get(feedID) !== undefined || topologyCatchupQueued.has(feedID)) continue;
+    topologyCatchupQueue.push(feedID);
+    topologyCatchupQueued.add(feedID);
+    queued++;
+  }
+  if (queued > 0 && topologyCatchupRun === null) {
+    topologyCatchupRun = procTopologyCatchup_run().finally((): void => { topologyCatchupRun = null; });
+  }
+  return queued;
+}
+
+/** Walks the queued feeds one at a time until the queue is empty. */
+async function procTopologyCatchup_run(): Promise<void> {
+  const cache: ProcCache = procCache_get();
+  for (;;) {
+    const feedID: number | undefined = topologyCatchupQueue.shift();
+    if (feedID === undefined) return;
+    topologyCatchupQueued.delete(feedID);
+    if (!cache.feed_get(feedID) || cache.topologyLoaded_has(feedID)) continue;
+    // A sweep that started meanwhile covers the rest.
+    if (procTopologyPromise !== null) { procTopologyCatchup_reset(); return; }
+    feedInstances_ensureStarted(feedID);
+    const walk: Promise<void> | undefined = cache.loading_get(feedID);
+    if (walk) await walk.catch((): void => { /* named in the load register; the next sync queues it again */ });
+  }
+}
+
+/**
+ * How many feeds still wait for their topology, and whether a walk runs.
+ *
+ * @returns The catch-up's state.
+ */
+export function procTopologyCatchup_status(): { queued: number; running: boolean } {
+  return { queued: topologyCatchupQueue.length, running: topologyCatchupRun !== null };
+}
+
+/**
+ * Waits for the catch-up to drain (tests, and a readout that wants whole numbers).
+ *
+ * @returns Resolves when no walk is queued or running.
+ */
+export async function procTopologyCatchup_await(): Promise<void> {
+  while (topologyCatchupRun !== null) await topologyCatchupRun;
+}
+
+/** Forgets the queue (a sweep took over, or a cache cleared underneath us). */
+function procTopologyCatchup_reset(): void {
+  topologyCatchupQueue.length = 0;
+  topologyCatchupQueued.clear();
+}
+
+/**
+ * Queues every roster feed without topology — what a roster sync leaves
+ * behind when the sweep is already over.
+ *
+ * @param cache - The process cache.
+ * @returns How many feeds were queued.
+ */
+function procTopologyCatchup_roster(cache: ProcCache): number {
+  return procTopologyCatchup_enqueue(cache.feedIDs_get());
+}
+
 /**
  * Forgets all visit bookkeeping (tests, and a cache cleared underneath us).
  */
@@ -1184,6 +1282,7 @@ export function procVisitState_reset(): void {
   feedVisitInflight.clear();
   rosterWalkedAt = 0;
   rosterSyncInflight = null;
+  procTopologyCatchup_reset();
 }
 
 /**

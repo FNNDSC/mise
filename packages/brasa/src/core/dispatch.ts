@@ -12,6 +12,7 @@
  *
  * @module
  */
+import { builtin_netstat } from '../builtins/net/netstat.js';
 import { writeFileSync, appendFileSync } from 'fs';
 import chalk from 'chalk';
 import {
@@ -165,6 +166,7 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   mkdir: builtin_mkdir,
   touch: builtin_touch,
   pwd: builtin_pwd,
+  netstat: builtin_netstat,
   id: builtin_id,
   whoami: builtin_whoami,
   whereami: builtin_whereami,
@@ -241,6 +243,7 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   cd: envelopeHandler_wrap(builtin_cd),
   ls: envelopeHandler_wrap(builtin_ls),
   pwd: envelopeHandler_wrap(builtin_pwd),
+  netstat: envelopeHandler_wrap(builtin_netstat),
   cat: envelopeHandler_wrap(builtin_cat),
   rm: envelopeHandler_wrap(builtin_rm),
   setfacl: envelopeHandler_wrap(builtin_setfacl),

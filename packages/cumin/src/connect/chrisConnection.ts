@@ -9,6 +9,7 @@
  * @module
  */
 
+import { requestLedger_start } from '../net/requestLedger';
 import { Client, authToken_get as adapterAuthToken_get, client_create } from "../chrisapi/adapter.js";
 import { ConnectionConfig, config_init, connectionConfig } from "../config/config.js";
 import {
@@ -91,6 +92,9 @@ export class ChRISConnection {
    * @param storageProvider - The storage provider for persistence.
    */
   constructor(config?: ConnectionConfig, storageProvider?: IStorageProvider) {
+    // Every request the session makes is counted from the moment there is
+    // a session to make them (netstat reads the ledger).
+    requestLedger_start();
     if (config && storageProvider) {
       this.init(config, storageProvider);
     }

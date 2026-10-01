@@ -3376,6 +3376,38 @@ try {
     grip.after > grip.before + 40 && Math.abs(grip.restored - grip.before) <= 2,
     JSON.stringify({ before: grip.before, after: grip.after, restored: grip.restored }));
   }
+  if (stage('netstat')) {
+  // The wire is a readout: netstat counts what the session asked of CUBE,
+  // by family, timed — and a navigation's cost is read from it, which is
+  // how the budgets below are held.
+  const net = await evalIn(`
+    const input = document.querySelector('#terminal input');
+    const say = async (line) => { await console_idle(); input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_idle(); };
+    const text = () => document.getElementById('terminal').innerText;
+    const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2); };
+    // The boot keeps warming behind the prompt (groups, users, the index)
+    // and the ledger counts those too, as it should; a navigation's cost
+    // is read on a quiet wire, so wait for one.
+    let quiet = false;
+    for (let i = 0; i < 20 && !quiet; i++) { await say('netstat -r'); await sleep(3000); await say('netstat'); quiet = /REQUESTS 0 since/.test(after('netstat')); }
+    if (!quiet) return { error: 'the wire never went quiet' };
+    await say('netstat -r');
+    await say('cd ~');
+    await say('netstat');
+    const out = after('netstat');
+    const total = Number(/REQUESTS (\\d+) since/.exec(out)?.[1] ?? NaN);
+    const families = [...out.matchAll(/^\\s+(\\S+)\\s+(\\d+)\\s+\\d+ ms$/gm)].map((m) => [m[1], Number(m[2])]);
+    const last = (out.match(/^\\s+\\d+ ms\\s+\\d{3}\\s+GET /gm) ?? []).length;
+    return { total, families, last };`);
+  check('netstat counts a navigation by family and lists its requests timed',
+    net.error === undefined && Number.isFinite(net.total) && net.total > 0 && net.families.length > 0 && net.last > 0,
+    JSON.stringify(net));
+  // The budget: a home listing is at most the searches and the three
+  // collections it needs; the number here is today's measured cost and
+  // comes DOWN with the slices that follow (the epic: a navigation costs
+  // what it must).
+  check('cd ~ costs no more than the budget (14 requests today)', net.error === undefined && net.total <= 14, JSON.stringify(net));
+  }
   if (stage('gather-process')) {
   // PROCESS on the cohort: its feed first (made by the pull the operator
   // could have typed, named at the ask), then a catalogue bound to the

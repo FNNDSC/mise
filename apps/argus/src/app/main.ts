@@ -530,6 +530,9 @@ const BAND_HEIGHT_KEY: string = 'argus.headerBand.height';
  * takes the floor rather than vanishing — a band nobody can see is a band
  * they cannot drag back.
  */
+/** How far above the header's foot the grip stands: on the rail's centred bar. */
+const BAND_GRIP_RISE_PX: number = 52;
+
 function headerBand_wire(): void {
   const root: HTMLElement = document.documentElement;
   const strip: HTMLElement | null = document.getElementById('header-strip');
@@ -548,10 +551,16 @@ function headerBand_wire(): void {
   })();
   if (remembered !== null && Number.isFinite(Number(remembered))) height_apply(Number(remembered));
 
-  /** The strip rides the boundary, so it follows the band's own foot. */
+  /**
+   * The strip rides the boundary, so it follows the band's own foot — but
+   * its grip stands on the rail's centred bar, inside the header's art,
+   * not on the boundary line itself: there the grip lay on the console's
+   * title bar, in the title bar's own hue, and nobody could see it. The
+   * centred bar is where the operator reached for a grab.
+   */
   const strip_place = (): void => {
     const box: DOMRect = header.getBoundingClientRect();
-    strip.style.top = `${Math.max(0, box.bottom - 8)}px`;
+    strip.style.top = `${Math.max(0, box.bottom - BAND_GRIP_RISE_PX)}px`;
   };
   strip_place();
   window.addEventListener('resize', strip_place);

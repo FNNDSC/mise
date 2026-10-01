@@ -1,5 +1,19 @@
 # @fnndsc/cumin
 
+## 3.26.0
+
+### Minor Changes
+
+- 4864a34: `netstat`: the wire is a readout. The kernel keeps a ledger of every request it makes to CUBE (Node's diagnostics channels, nothing patched) — count since the session or the last reset, by endpoint family with time spent, the last few timed — and `netstat [-n <count>] [-r]` reads it as text and as the `net.stats` model.
+
+### Patch Changes
+
+- fbb1579: One folder lookup per path per session: `filebrowser/search?path=` is memoised through the listing cache (shared in flight, a miss never kept, dropped by the same invalidations the listings get), so a navigation no longer asks CUBE three times for the same path.
+- 576b948: A group's members are read off its membership page: a membership row names its user (`user_id`, `user_username`), so `members_getAll` no longer fetches every member one by one — the boot's group warm asked CUBE for 51 users one by one on the dev CUBE and now asks for none; the linked user is fetched only for a row that does not name one. And the group items the one groups listing served are kept per client, so a group's members are read off its item instead of listing the group by id first (73 searches on a 73-group CUBE).
+- 7fb4c21: A pipeline is resolved once per session: `pipeline_resolve` keeps its answer on the connection's client (by the specifier asked, the name and the id), the chrisapi item a search or a get served is kept beside it, and `pipeline_get` reads the pipings off that item instead of listing the pipeline again — a `pipeline diagram` costs at most three requests the first time (the id, the pipings, the defaults) and none the second; a /bin slug (`<base>_idN`) is resolved by its id outright instead of a name search that always missed and then the id as a fallback.
+- Updated dependencies [4864a34]
+  - @fnndsc/menu@0.14.0
+
 ## 3.25.0
 
 ### Minor Changes

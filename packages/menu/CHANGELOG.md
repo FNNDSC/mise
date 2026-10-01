@@ -1,5 +1,11 @@
 # @fnndsc/menu
 
+## 0.14.0
+
+### Minor Changes
+
+- 4864a34: `netstat`: the wire is a readout. The kernel keeps a ledger of every request it makes to CUBE (Node's diagnostics channels, nothing patched) — count since the session or the last reset, by endpoint family with time spent, the last few timed — and `netstat [-n <count>] [-r]` reads it as text and as the `net.stats` model.
+
 ## 0.13.0
 
 ### Minor Changes

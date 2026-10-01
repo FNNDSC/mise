@@ -1,5 +1,28 @@
 # @fnndsc/calypso
 
+## 0.16.10
+
+### Patch Changes
+
+- Updated dependencies [88437cc]
+- Updated dependencies [51f1ca9]
+- Updated dependencies [c9c018b]
+- Updated dependencies [55fbf6c]
+- Updated dependencies [fbb1579]
+- Updated dependencies [576b948]
+- Updated dependencies [4864a34]
+- Updated dependencies [40acb72]
+- Updated dependencies [d7ec90d]
+- Updated dependencies [d057e99]
+- Updated dependencies [4863f32]
+- Updated dependencies [7fb4c21]
+- Updated dependencies [8260d33]
+- Updated dependencies [c371b47]
+  - @fnndsc/argus@0.18.10
+  - @fnndsc/brasa@0.30.0
+  - @fnndsc/cumin@3.26.0
+  - @fnndsc/menu@0.14.0
+
 ## 0.16.9
 
 ### Patch Changes

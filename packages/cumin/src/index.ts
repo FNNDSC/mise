@@ -31,6 +31,7 @@ export * from "./filebrowser/chrisFiles";
 export * from "./filebrowser/chrisPACS";
 export * from "./filebrowser/chrisPipeline";
 export * from "./io/chrisIO";
+export * from "./net/requestLedger";
 export * from "./io/io";
 export * from "./io/node_io";
 export * from "./utils/keypair";

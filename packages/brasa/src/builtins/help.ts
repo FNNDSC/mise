@@ -98,6 +98,19 @@ export const helpText: Record<string, CommandHelp> = {
       'cd                    # Show current directory',
     ],
   },
+  netstat: {
+    usage: 'netstat [-n <count>] [-r]',
+    description: 'What the session has asked of CUBE: requests since the session (or the last reset), by endpoint family with the time spent, and the last few timed',
+    options: [
+      '-n <count>   List that many recent requests (default 10)',
+      '-r, --reset  Forget the count after showing it',
+    ],
+    examples: [
+      'netstat              # the count, by family, the last 10',
+      'netstat -n 30        # the last 30 requests, timed',
+      'netstat -r; cd ~/feeds; netstat   # what one navigation costs',
+    ],
+  },
   pwd: {
     usage: 'pwd [options]',
     description: 'Print current working directory',
@@ -1656,7 +1669,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   const categories: Record<string, string[]> = {
     Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
     'File Operations': ['cat', 'edit', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download'],
-    Connection: ['connect', 'logout', 'context', 'id', 'whoami', 'whereami'],
+    Connection: ['connect', 'logout', 'context', 'id', 'whoami', 'whereami', 'netstat'],
     Monitoring: ['proc'],
     Imaging: ['dcm', 'image'],
     'Single Resource': ['plugin', 'pipeline', 'feed', 'tag', 'group', 'pluginmeta', 'plugininstance', 'workflow'],

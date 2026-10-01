@@ -14,6 +14,7 @@
  *
  * @module
  */
+import type { NetStatsModel } from '@fnndsc/menu';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { MkdirOutcome } from '../builtins/fs/mkdir.js';
 import type { TouchOutcome } from '../builtins/fs/touch.js';
@@ -100,6 +101,7 @@ export interface FeedCreated {
 export interface FsModelMap {
   'feed.created': FeedCreated;
   'fs.cwd': CwdModel;
+  'net.stats': NetStatsModel;
   'run.scheduled': RunScheduled;
   'plugininstance.list': PluginInstanceRow[];
   'fs.mkdir': MkdirOutcome[];

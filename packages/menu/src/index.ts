@@ -257,3 +257,4 @@ export {
   universeKey_of,
   universeLayoutGraph_build,
 } from './universe.js';
+export { netStatsModelSchema, netRequestSchema, netFamilySchema, NET_STATS_MODEL_KIND, type NetStatsModel } from './net.js';

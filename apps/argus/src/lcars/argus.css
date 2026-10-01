@@ -3609,6 +3609,17 @@ button.files-crumb:focus-visible {
 .files-content.files-json .json-number { color: var(--orange); }
 .files-content.files-json .json-literal { color: var(--honey); }
 
+/* The content view is the pane's field: it takes the height the header
+ * leaves and scrolls inside it. Without the flex floor a long file ran past
+ * the pane's foot, which the pane clips — the bottom of a cohort manifest
+ * was simply not there. */
+.files-panel > .files-content {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
 .files-content {
   margin: 0;
   padding: 0.4rem 0;
@@ -6330,10 +6341,31 @@ button.launcher-row:hover {
   box-shadow: 0 0 8px color-mix(in srgb, var(--harvestgold) 60%, transparent);
 }
 
+/* The grip stands whenever a face does: the resting face (no data-header)
+ * included — hidden there, the band's foot could not be dragged until a
+ * face had been chosen, and the operator grabbed the chrome bar beneath
+ * instead. It leaves with the header (away) and under a zoom. */
 body[data-header='away'] #header-strip,
-body[data-zoom] #header-strip,
-body:not([data-header]) #header-strip {
+body[data-zoom] #header-strip {
   display: none;
+}
+
+/* A grip that can be dragged says so softly, as every control at rest
+ * does: the strip breathes in opacity (a brightness swing on 4px of bar
+ * is invisible). It settles still under the hand. */
+@keyframes grip-breathe {
+  from { opacity: 0.45; }
+  to { opacity: 1; }
+}
+
+#header-strip::after {
+  animation: grip-breathe 2.2s ease-in-out infinite alternate;
+}
+
+#header-strip:hover::after,
+#header-strip:active::after {
+  animation: none;
+  opacity: 1;
 }
 
 /* ═══════════════════════════════════════════ the frame on a phone

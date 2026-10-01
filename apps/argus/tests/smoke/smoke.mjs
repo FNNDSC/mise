@@ -3284,12 +3284,19 @@ try {
     const pills = () => [...pane.querySelectorAll('.files-content-header button')].map((b) => b.textContent.trim());
     const pill = (w) => [...pane.querySelectorAll('.files-content-header button')].find((b) => b.textContent.trim() === w);
     const pretty = { json: body().classList.contains('files-json'), keys: body().querySelectorAll('.json-key').length, lines: body().textContent.split('\\n').length, pills: pills() };
+    // The content view is the pane's field: it scrolls inside the pane and
+    // never runs past its foot (a long manifest's bottom was simply gone).
+    const panel = pane.querySelector('.files-panel');
+    const field = { overflowY: getComputedStyle(body()).overflowY, inside: Math.round(body().getBoundingClientRect().bottom) <= Math.round(panel.getBoundingClientRect().bottom) + 1 };
     pill('RAW')?.click(); await sleep(400);
     const raw = { json: body().classList.contains('files-json'), lines: body().textContent.split('\\n').length, pills: pills() };
     pill('PRETTY')?.click(); await sleep(400);
     const back = body().classList.contains('files-json');
     pill('CLOSE')?.click(); await sleep(300);
-    return { pretty, raw, back };`);
+    return { pretty, raw, back, field };`);
+  check('the content view scrolls inside the pane and never runs past its foot',
+    json.error === undefined && json.field.overflowY === 'auto' && json.field.inside === true,
+    JSON.stringify(json.error ?? json.field));
   check('a JSON file opens pretty-printed with its keys marked, DOWNLOAD / RAW / CLOSE on its header',
     json.error === undefined && json.pretty.json && json.pretty.keys >= 3 && json.pretty.lines > 2 && json.pretty.pills.join(',') === 'DOWNLOAD,RAW,CLOSE',
     JSON.stringify(json.error ?? json.pretty));
@@ -3338,6 +3345,29 @@ try {
       /dag-facts/.test(dagBack.groundWas) && dagBack.cleared === true,
       JSON.stringify({ groundWas: dagBack.groundWas, cleared: dagBack.cleared }));
   }
+  }
+  if (stage('header-grip')) {
+  // The band's foot is a grip that stands whenever a face does — the
+  // resting face included — and breathes; dragged, it resizes the band.
+  const grip = await evalIn(`
+    delete document.body.dataset.header; await sleep(600);
+    const strip = document.getElementById('header-strip'); const face = () => [...document.querySelectorAll('.header-face')].find((f) => f.offsetParent !== null);
+    const b = strip.getBoundingClientRect();
+    const rest = { header: document.body.dataset.header ?? null, display: getComputedStyle(strip).display, breathes: getComputedStyle(strip, '::after').animationName, hit: (document.elementFromPoint(b.left + b.width / 2, b.top + 6) ?? {}).id ?? null };
+    const before = Math.round(face()?.getBoundingClientRect().height ?? 0);
+    const x = b.left + b.width / 2, y = b.top + 6;
+    const ev = (type, yy) => strip.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: yy, pointerId: 1, pointerType: 'mouse', isPrimary: true, bubbles: true, cancelable: true, buttons: 1 }));
+    ev('pointerdown', y); await sleep(50); for (let i = 1; i <= 8; i++) { ev('pointermove', y + i * 10); await sleep(20); } ev('pointerup', y + 80); await sleep(300);
+    const after = Math.round(face()?.getBoundingClientRect().height ?? 0);
+    const b2 = strip.getBoundingClientRect();
+    ev('pointerdown', b2.top + 6); await sleep(50); for (let i = 1; i <= 8; i++) { ev('pointermove', b2.top + 6 - i * 10); await sleep(20); } ev('pointerup', b2.top + 6 - 80); await sleep(300);
+    return { rest, before, after, restored: Math.round(face()?.getBoundingClientRect().height ?? 0) };`);
+  check('the band grip stands on the resting face, breathes, and is what a press lands on',
+    grip.rest.header === null && grip.rest.display !== 'none' && grip.rest.breathes === 'grip-breathe' && grip.rest.hit === 'header-strip',
+    JSON.stringify(grip.rest));
+  check('dragging the grip resizes the band, and back',
+    grip.after > grip.before + 40 && Math.abs(grip.restored - grip.before) <= 2,
+    JSON.stringify({ before: grip.before, after: grip.after, restored: grip.restored }));
   }
   if (stage('gather-process')) {
   // PROCESS on the cohort: its feed first (made by the pull the operator

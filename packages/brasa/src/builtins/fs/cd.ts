@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import path from 'path';
 import { session } from '../../session/index.js';
 import { path_resolve, path_resolveLinks, error_stripDebugPrefix } from '../utils.js';
-import { envelope_ok, envelope_error, Ok } from '@fnndsc/cumin';
+import { envelope_ok, envelope_error, Ok, Err } from '@fnndsc/cumin';
 import type { CommandEnvelope, Result, StackMessage, Client, CacheResult } from '@fnndsc/cumin';
 import type { VFSItem } from '@fnndsc/salsa';
 
@@ -81,8 +81,12 @@ async function parentListing_get(parentPath: string): Promise<Result<VFSItem[]>>
   const { listCache_get: cache_of } = await import('@fnndsc/cumin');
   const kept: CacheResult<VFSItem[]> | null = cache_of().cache_get<VFSItem[]>(parentPath);
   if (kept) return Ok(kept.data);
-  const { vfsDispatcher } = await import('@fnndsc/salsa');
-  return vfsDispatcher.list(parentPath);
+  // Through the listing façade, so what CUBE answers is cached for the
+  // next cd (and the ls that follows): listed live and uncached, the root
+  // was fetched again on every cd into /bin.
+  const { vfs } = await import('../../lib/vfs/vfs.js');
+  const listed: Result<{ items: unknown[] }> = await vfs.listing_get(parentPath);
+  return listed.ok ? Ok(listed.value.items as VFSItem[]) : Err();
 }
 
 /**
@@ -152,18 +156,21 @@ async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<Com
     return envelope_error('', undefined, `${chalk.red(`cd: ${pathArg}: Not a directory`)}\n`);
   }
 
-  // A directory-like VFS entry still asks its provider to enumerate children,
-  // both as final validation and to prime a subsequent `ls`.
-  const listResult: Result<VFSItem[]> = await vfsDispatcher.list(cleanPath);
+  // A directory-like VFS entry is listed to validate it and to prime the
+  // `ls` that follows — through the one listing façade, so the cache the
+  // boot warmed and `ls` fills serves at once: `cd /bin` used to fetch the
+  // whole of /bin from CUBE every time (plugins, pipelines, their sources;
+  // seconds) and then overwrite a cache that already held it. A stale
+  // entry is served and refreshed behind the prompt (listing_get), the
+  // way a stale `ls` is; a path the cache never held is listed as before.
+  const { vfs } = await import('../../lib/vfs/vfs.js');
+  const listResult: Result<{ items: unknown[] }> = await vfs.listing_get(cleanPath);
   if (!listResult.ok) {
     const { errorStack } = await import('@fnndsc/cumin');
     const lastError: StackMessage | undefined = errorStack.stack_pop();
     const detail: string = lastError ? error_stripDebugPrefix(lastError.message) : 'No such file or directory';
     return envelope_error('', undefined, `${chalk.red(`cd: ${pathArg}: ${detail}`)}\n`);
   }
-
-  const { listCache_get } = await import('@fnndsc/cumin');
-  listCache_get().cache_set(cleanPath, listResult.value);
 
   await session.directory_change(cleanPath);
   return cdSuccess_envelope(cleanPath, '');

@@ -3391,22 +3391,50 @@ try {
     let quiet = false;
     for (let i = 0; i < 20 && !quiet; i++) { await say('netstat -r'); await sleep(3000); await say('netstat'); quiet = /REQUESTS 0 since/.test(after('netstat')); }
     if (!quiet) return { error: 'the wire never went quiet' };
+    // A revisit is the deterministic cost: the first visit may list a
+    // parent the cache never held (the root, for /bin) or revalidate a
+    // listing a signal marked stale, both honest and both once.
+    await say('cd ~/feeds'); await say('cd /bin'); await say('cd ~');
     await say('netstat -r');
-    await say('cd ~');
+    await say('cd ~/feeds');
     await say('netstat');
     const out = after('netstat');
     const total = Number(/REQUESTS (\\d+) since/.exec(out)?.[1] ?? NaN);
     const families = [...out.matchAll(/^\\s+(\\S+)\\s+(\\d+)\\s+\\d+ ms$/gm)].map((m) => [m[1], Number(m[2])]);
     const last = (out.match(/^\\s+\\d+ ms\\s+\\d{3}\\s+GET /gm) ?? []).length;
-    return { total, families, last };`);
-  check('netstat counts a navigation by family and lists its requests timed',
-    net.error === undefined && Number.isFinite(net.total) && net.total > 0 && net.families.length > 0 && net.last > 0,
+    // /bin: the boot warmed it; cd must read that, not fetch it again.
+    await say('netstat -r');
+    await say('cd /bin');
+    await say('netstat');
+    const binOut = after('netstat');
+    const binTotal = Number(/REQUESTS (\\d+) since/.exec(binOut)?.[1] ?? NaN);
+    const binFamilies = [...binOut.matchAll(/^\\s+(\\S+)\\s+(\\d+)\\s+\\d+ ms$/gm)].map((m) => [m[1], Number(m[2])]);
+    await say('cd ~');
+    // The ledger itself, shown by a listing forced fresh: that always asks.
+    await say('netstat -r');
+    await say('ls --refresh ~');
+    await say('netstat');
+    const forced = after('netstat');
+    const forcedTotal = Number(/REQUESTS (\\d+) since/.exec(forced)?.[1] ?? NaN);
+    const forcedFamilies = [...forced.matchAll(/^\\s+(\\S+)\\s+(\\d+)\\s+\\d+ ms$/gm)].map((m) => [m[1], Number(m[2])]);
+    const forcedLast = (forced.match(/^\\s+\\d+ ms\\s+\\d{3}\\s+GET /gm) ?? []).length;
+    return { total, families, last, binTotal, binFamilies, forcedTotal, forcedFamilies, forcedLast };`);
+  check('netstat counts a listing forced fresh by family and lists its requests timed',
+    net.error === undefined && Number.isFinite(net.forcedTotal) && net.forcedTotal >= 3 && net.forcedFamilies.length >= 3 && net.forcedLast >= 3,
     JSON.stringify(net));
   // The budget: a home listing is at most the searches and the three
   // collections it needs; the number here is today's measured cost and
   // comes DOWN with the slices that follow (the epic: a navigation costs
   // what it must).
-  check('cd ~ costs no more than the budget (2 requests: one folder lookup, and a background warm the quiet wire may still let through)', net.error === undefined && net.total <= 2, JSON.stringify(net));
+  // Budgets are held by FAMILY: a warm behind the prompt (users, publicfeeds,
+  // the pipeline index) may land in the window and is not the navigation's.
+  const asked = (families, re) => families.filter(([f]) => re.test(f)).reduce((n, [, c]) => n + c, 0);
+  check('a revisited CUBE directory fetches none of its collections: the listing cache serves',
+    net.error === undefined && asked(net.families, /^filebrowser\/:id\//) === 0,
+    JSON.stringify(net.families));
+  check('a revisited /bin fetches no plugins, pipelines or sources: the listing the boot warmed serves',
+    net.error === undefined && asked(net.binFamilies, /^(plugins|pipelines|pipelines\/sourcefiles)$/) === 0,
+    JSON.stringify(net.binFamilies));
   }
   if (stage('gather-process')) {
   // PROCESS on the cohort: its feed first (made by the pull the operator

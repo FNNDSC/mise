@@ -111,15 +111,16 @@ export async function ls_run(runOptions: LsOptions): Promise<CommandEnvelope> {
     if (pathArgs.length === 0) {
       const cwd: string = await session.getCWD();
       rendered += `${chalk.gray(`[Cache] Invalidating: ${cwd}`)}\n`;
+      // The named listing only. A refresh used to clear EVERY listing too,
+      // so one REFRESH press made the next navigation anywhere fetch again
+      // — /bin included, seconds — for a staleness nobody had claimed.
       listCache.cache_invalidate(cwd);
-      listCache.cache_invalidate();
     } else {
       for (const pathArg of pathArgs) {
         const resolvedPath: string = await path_resolve(pathArg);
         rendered += `${chalk.gray(`[Cache] Invalidating: ${resolvedPath}`)}\n`;
         listCache.cache_invalidate(resolvedPath);
       }
-      listCache.cache_invalidate();
     }
   }
 

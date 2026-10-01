@@ -75,10 +75,40 @@ interface SessionRecord {
   /** The daemon's pid when adopted from its berth rather than started here. */
   adoptedPid: number | null;
   lines: BootLine[];
+  /** The next row number. */
+  serial: number;
+  /** Rows still open (`[PENDING]`, `[RETRY]`), by label, to the row they hold. */
+  open: Map<string, number>;
   state: 'booting' | 'ready' | 'failed';
   reason?: string;
   listeners: Set<BootListener>;
   starting: Promise<Berth> | null;
+}
+
+/** A boot row as chell prints it: a status tag, then the step's label. */
+export interface BootRow {
+  /** The step the row is about (`Feeds`, `Queries`, …). */
+  label: string;
+  /** Whether the row is still open — `[PENDING]` or `[RETRY]` — or settled. */
+  open: boolean;
+}
+
+/** The tags chell's boot logger prints (bootsequence.ts), colour stripped. */
+const BOOT_ROW: RegExp = /^\[\s*(OK|RETRY|SKIP|FAIL|PENDING)\s*\]\s+(\S+)/;
+
+/**
+ * Reads a boot line as a status row, or not one.
+ *
+ * @param text - The line, ANSI and all.
+ * @returns The row's label and whether it is still open, or null for a line
+ *   that is not a status row (the brain, a box rule, a plain note).
+ */
+export function bootRow_parse(text: string): BootRow | null {
+  const plain: string = text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+  const match: RegExpExecArray | null = BOOT_ROW.exec(plain);
+  if (match === null) return null;
+  const tag: string = match[1] as string;
+  return { label: match[2] as string, open: tag === 'PENDING' || tag === 'RETRY' };
 }
 
 /** Default spawner: a real child with piped streams. */
@@ -187,6 +217,8 @@ export class ProcessHost implements SessionHost {
             child: null,
             adoptedPid: berth.pid ?? null,
             lines: [],
+            serial: 0,
+            open: new Map(),
             state: 'ready',
             listeners: new Set(),
             starting: null,
@@ -213,6 +245,8 @@ export class ProcessHost implements SessionHost {
       child: null,
       adoptedPid: null,
       lines: [],
+      serial: 0,
+      open: new Map(),
       state: 'booting',
       listeners: new Set(),
       starting: null,
@@ -248,7 +282,22 @@ export class ProcessHost implements SessionHost {
     const child: SpawnedSession = this.spawner(process.execPath, [this.chellEntry, `${user}@${cubeUrl}`, '--daemon', '--auth-token-stdin', '--no-logo'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
     record.child = child;
     const line_note = (channel: 'out' | 'err', text: string): void => {
-      const line: BootLine = { channel, text };
+      const row: BootRow | null = bootRow_parse(text);
+      const held: number | undefined = row === null ? undefined : record.open.get(row.label);
+      if (row !== null && held !== undefined) {
+        // The outcome of a row printed open: settle it where it stands, as
+        // the boot logger would on a terminal. The kept line takes the new
+        // text under the old number, so a late follower sees the settled
+        // row once, in its place.
+        const kept: BootLine | undefined = record.lines.find((line: BootLine): boolean => line.id === held);
+        if (kept !== undefined) { kept.channel = channel; kept.text = text; }
+        if (!row.open) record.open.delete(row.label);
+        const line: BootLine = { channel, text, id: held, replaces: held };
+        for (const listener of record.listeners) listener.line(line);
+        return;
+      }
+      const line: BootLine = { channel, text, id: record.serial++ };
+      if (row !== null && row.open) record.open.set(row.label, line.id as number);
       record.lines.push(line);
       // A daemon writes for as long as it lives; a follower wants the boot,
       // not the year. The earliest lines go first.

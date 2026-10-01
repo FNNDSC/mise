@@ -144,7 +144,15 @@ brain_draw(0, false);
 const feed = new EventSource(${JSON.stringify(`../boot/${key}`)});
 feed.addEventListener('line', (event) => {
   const line = JSON.parse(event.data);
-  rows.insertAdjacentHTML('beforeend', ansi_toHtml(line.text) + '\\n');
+  // A line that settles an open row ([PENDING] → [ OK ]) rewrites that row
+  // where it stands, as the boot would on a terminal, instead of leaving
+  // the pending row to linger above a second line.
+  const held = line.replaces === undefined ? null : rows.querySelector('[data-row="' + line.replaces + '"]');
+  if (held !== null) { held.innerHTML = ansi_toHtml(line.text); return; }
+  const row = document.createElement('span');
+  if (line.id !== undefined) row.dataset.row = String(line.id);
+  row.innerHTML = ansi_toHtml(line.text);
+  rows.append(row, '\\n');
   rows.scrollTop = rows.scrollHeight;
 });
 const settle = (name, reason) => {

@@ -67,3 +67,10 @@ describe('folderLookup_memoize', () => {
     expect(calls).toEqual(['/once']);
   });
 });
+
+describe('a client without the lookup', () => {
+  it('is left as it is', () => {
+    const bare: object = {};
+    expect(folderLookup_memoize(bare as never)).toBe(bare);
+  });
+});

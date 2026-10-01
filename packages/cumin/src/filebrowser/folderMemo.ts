@@ -25,6 +25,8 @@ const MEMOISED: unique symbol = Symbol('folderLookup_memoised');
 export function folderLookup_memoize(client: Client): Client {
   const marked: { [MEMOISED]?: boolean } = client as unknown as { [MEMOISED]?: boolean };
   if (marked[MEMOISED] === true) return client;
+  // A client without the lookup (a stub, an older chrisapi) is left as it is.
+  if (typeof (client as { getFileBrowserFolderByPath?: unknown }).getFileBrowserFolderByPath !== 'function') return client;
   marked[MEMOISED] = true;
   const lookup = client.getFileBrowserFolderByPath.bind(client) as (path: string, timeout?: number) => Promise<unknown>;
   (client as unknown as { getFileBrowserFolderByPath: (path: string, timeout?: number) => Promise<unknown> }).getFileBrowserFolderByPath =

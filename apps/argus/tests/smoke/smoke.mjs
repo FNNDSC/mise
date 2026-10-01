@@ -3418,7 +3418,28 @@ try {
     const forcedTotal = Number(/REQUESTS (\\d+) since/.exec(forced)?.[1] ?? NaN);
     const forcedFamilies = [...forced.matchAll(/^\\s+(\\S+)\\s+(\\d+)\\s+\\d+ ms$/gm)].map((m) => [m[1], Number(m[2])]);
     const forcedLast = (forced.match(/^\\s+\\d+ ms\\s+\\d{3}\\s+GET /gm) ?? []).length;
-    return { total, families, last, binTotal, binFamilies, forcedTotal, forcedFamilies, forcedLast };`);
+    // A pipeline diagram — the browser asks one per card in PREVIEW, by the
+    // /bin slug. Resolved once per session and its pipings read off the item
+    // the resolution served: at most three requests the first time (the id,
+    // the pipings, the defaults), none the second.
+    await say('ls /bin');
+    const slug = /\\b([A-Za-z0-9][\\w.-]*_id\\d+)\\b/.exec(after('ls /bin'))?.[1] ?? null;
+    let diagram = null;
+    if (slug !== null) {
+      await say('netstat -r');
+      await say('pipeline diagram ' + slug);
+      await say('netstat');
+      const firstOut = after('netstat');
+      await say('netstat -r');
+      await say('pipeline diagram ' + slug);
+      await say('netstat');
+      const againOut = after('netstat');
+      diagram = { slug,
+        first: Number(/REQUESTS (\\d+) since/.exec(firstOut)?.[1] ?? NaN),
+        firstFamilies: [...firstOut.matchAll(/^\\s+(\\S+)\\s+(\\d+)\\s+\\d+ ms$/gm)].map((m) => [m[1], Number(m[2])]),
+        again: Number(/REQUESTS (\\d+) since/.exec(againOut)?.[1] ?? NaN) };
+    }
+    return { total, families, last, binTotal, binFamilies, forcedTotal, forcedFamilies, forcedLast, diagram };`);
   check('netstat counts a listing forced fresh by family and lists its requests timed',
     net.error === undefined && Number.isFinite(net.forcedTotal) && net.forcedTotal >= 3 && net.forcedFamilies.length >= 3 && net.forcedLast >= 3,
     JSON.stringify(net));
@@ -3435,6 +3456,10 @@ try {
   check('a revisited /bin fetches no plugins, pipelines or sources: the listing the boot warmed serves',
     net.error === undefined && asked(net.binFamilies, /^(plugins|pipelines|pipelines\/sourcefiles)$/) === 0,
     JSON.stringify(net.binFamilies));
+  check('a pipeline diagram costs at most its id, pipings and defaults once, and nothing again',
+    net.error === undefined && (net.diagram === null || (net.diagram.first <= 3 && net.diagram.again === 0
+      && net.diagram.firstFamilies.every(([f, n]) => /^pipelines\/(search|:id\/(pipings|parameters))$/.test(f) && n <= 1))),
+    JSON.stringify(net.diagram));
   }
   if (stage('press-ack')) {
   // A press is acknowledged before anything answers: the row lights, the

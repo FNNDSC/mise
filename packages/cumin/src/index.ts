@@ -43,6 +43,7 @@ export * from "./utils/envelope";
 export * from "./cache";
 export * from "./path/chrisPath";
 export * from "./pipelines/chrisPipeline";
+export * from "./pipelines/pipelineMemo";
 export * from "./users/chrisUsers";
 export * from "./tags/chrisTags";
 export * from "./groups/chrisGroups";

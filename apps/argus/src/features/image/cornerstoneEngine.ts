@@ -14,6 +14,7 @@
  *
  * @module
  */
+import { refusal_explain } from './refusal.js';
 import type { DicomSeriesModel } from '@fnndsc/menu';
 import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray.js';
 import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData.js';
@@ -789,6 +790,14 @@ export class CornerstoneEngine implements ImageEngine {
           : `REFUSED ${this.refused.size} OF ${this.imageIds.length}`,
       );
       this.host.note(`image: ${this.pathByImageId.get(detail.imageId) ?? detail.imageId}: ${message || 'could not be read'}`);
+      // The loader says that it failed; the route says why. REFUSED alone
+      // sent an operator hunting through three layers for a 403.
+      if (syntax === undefined) {
+        void refusal_explain(detail.imageId).then((why: string): void => {
+          this.host.readout_set(`REFUSED ${this.refused.size} OF ${this.imageIds.length} · ${why}`);
+          this.host.note(`image: ${this.pathByImageId.get(detail.imageId ?? '') ?? detail.imageId}: ${why.toLowerCase()}`);
+        });
+      }
     });
   }
 

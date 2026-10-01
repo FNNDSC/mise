@@ -30,6 +30,7 @@
  *
  * @module
  */
+import { FAVICON_SVG } from './favicon.js';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyCookie, { unsign as cookie_unsign } from '@fastify/cookie';
 import fastifyFormbody from '@fastify/formbody';
@@ -295,18 +296,20 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
 
   // The greeter's two modules: the wire package's own, from where they are
   // installed. Read once; a porter does not restart for a menu upgrade.
-  const greeterModules: Record<string, string> = {
-    'brain.js': readFileSync(fileURLToPath(import.meta.resolve('@fnndsc/menu/logo')), 'utf-8'),
-    'ansi.js': readFileSync(fileURLToPath(import.meta.resolve('@fnndsc/menu/ansi')), 'utf-8'),
+  const greeterModules: Record<string, { type: string; source: string }> = {
+    'brain.js': { type: 'text/javascript; charset=utf-8', source: readFileSync(fileURLToPath(import.meta.resolve('@fnndsc/menu/logo')), 'utf-8') },
+    'ansi.js': { type: 'text/javascript; charset=utf-8', source: readFileSync(fileURLToPath(import.meta.resolve('@fnndsc/menu/ansi')), 'utf-8') },
+    // The door wears the surface's own mark on its tab.
+    'favicon.svg': { type: 'image/svg+xml', source: FAVICON_SVG },
   };
   app.get('/greeter/:name', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const name: string = (request.params as { name: string }).name;
-    const source: string | undefined = greeterModules[name];
-    if (source === undefined) {
+    const served: { type: string; source: string } | undefined = greeterModules[name];
+    if (served === undefined) {
       return reply.code(404).send({ error: 'no such greeter module' });
     }
-    void reply.type('text/javascript; charset=utf-8');
-    return source;
+    void reply.type(served.type);
+    return served.source;
   });
 
   app.post('/logout', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {

@@ -3406,7 +3406,7 @@ try {
   // collections it needs; the number here is today's measured cost and
   // comes DOWN with the slices that follow (the epic: a navigation costs
   // what it must).
-  check('cd ~ costs no more than the budget (7 requests: one lookup, the three collections, and the parent until S3)', net.error === undefined && net.total <= 7, JSON.stringify(net));
+  check('cd ~ costs no more than the budget (2 requests: one folder lookup, and a background warm the quiet wire may still let through)', net.error === undefined && net.total <= 2, JSON.stringify(net));
   }
   if (stage('gather-process')) {
   // PROCESS on the cohort: its feed first (made by the pull the operator

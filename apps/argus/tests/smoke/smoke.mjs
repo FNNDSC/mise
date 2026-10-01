@@ -395,6 +395,49 @@ try {
     more.node === 'wired' && (more.chipRight === 'shown' || more.chipRight === 'hidden'), JSON.stringify(more));
   }
 
+  if (stage('pane-move')) {
+  // A pane can be moved: the drawer's MOVE arms the direction capsules for
+  // one press; the typed verb is the same move, refused by name.
+  const move = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_idle(); };
+    const text = () => document.getElementById('terminal').innerText;
+    const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2).trim(); };
+    const fp = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+    if (!fp()) { document.getElementById('gutter-files').click(); for (let i = 0; i < 40; i++) { await sleep(250); if (fp()) break; } }
+    const leaves = () => [...document.querySelectorAll('.layout-leaf')].map((l) => l.dataset.leaf);
+    const before = new Set(leaves());
+    await say('pane split right');
+    const born = leaves().find((id) => !before.has(id)); if (!born) return { error: 'no pane born' };
+    const rect = (id) => document.querySelector('.layout-leaf[data-leaf="' + id + '"]').getBoundingClientRect();
+    const filesId = leaves().find((id) => document.querySelector('.layout-leaf[data-leaf="' + id + '"] .pane-files'));
+    const rightOf = rect(born).left >= rect(filesId).right - 2;
+    const mount = document.querySelector('.layout-leaf[data-leaf="' + born + '"]');
+    const drawer = mount.querySelector('.pane-drawer');
+    drawer.hidden = false;
+    const movePill = drawer.querySelector('.drawer-mode[data-mode="move"]'); movePill.click(); await sleep(100);
+    const capsule = (split, place) => drawer.querySelector('[data-split="' + split + '"][data-place="' + place + '"]');
+    const armed = { lit: movePill.classList.contains('drawer-mode-selected'), mode: drawer.dataset.mode, rightDimmed: capsule('col', 'after').disabled, belowOffered: !capsule('row', 'after').disabled };
+    const consoleBefore = text().length;
+    capsule('row', 'after').click(); await sleep(150);
+    // the tree re-rendered: the leaf is a new element, the pane's mount moved into it
+    const bar = document.querySelector('.layout-leaf[data-leaf="' + born + '"] .pane-state')?.textContent.trim() ?? '';
+    const belowOf = rect(born).top >= rect(filesId).bottom - 2;
+    const fellBack = drawer.dataset.mode === 'split' && drawer.querySelector('.drawer-mode[data-mode="split"]').classList.contains('drawer-mode-selected');
+    const consoleQuiet = text().length === consoleBefore;
+    await say('pane move above'); const typed = after('pane move above');
+    const aboveOf = rect(born).bottom <= rect(filesId).top + 2;
+    await say('pane move above'); const refused = after('pane move above');
+    await say('pane close');
+    return { born, rightOf, armed, bar, belowOf, fellBack, consoleQuiet, typed, aboveOf, refused };`);
+  check("a pane moves where the drawer's MOVE sends it: armed, the edge dims, a split-right pane goes below; the drawer falls back to SPLIT; the bar says MOVED; the console carries nothing",
+    move.error === undefined && move.rightOf && move.armed.lit && move.armed.mode === 'move' && move.armed.rightDimmed && move.armed.belowOffered && move.belowOf && move.fellBack && /MOVED BELOW/.test(move.bar) && move.consoleQuiet,
+    JSON.stringify(move));
+  check('pane move <side> is the verb typed, refused by name at the edge',
+    move.error === undefined && /^moved above/.test(move.typed) && move.aboveOf && /already topmost/.test(move.refused), JSON.stringify(move));
+  }
+
   if (stage('universe-constellations')) {
     // CONSTELLATIONS: every plugin a ringed star, every feed pulled to the
     // stars it ran. A plugin lit by word shows its facts and its verb, and

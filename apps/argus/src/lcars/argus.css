@@ -834,6 +834,31 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   color: #000;
 }
 
+/* SPLIT and MOVE: two pills saying what the four direction capsules do.
+ * SPLIT is lit at rest (where new panes go, sticky); MOVE lights for one
+ * press and the drawer falls back to SPLIT (a-pane-can-be-moved). */
+.drawer-structure .drawer-mode {
+  background-color: rgb(255 238 204 / 22%);
+  color: var(--butter);
+}
+
+.drawer-structure .drawer-mode.drawer-mode-selected {
+  background-color: var(--butter);
+  color: #000;
+  box-shadow: 0 0 8px rgb(255 238 204 / 60%);
+}
+
+/* Armed to move, the direction capsules wear the warning hue: the next
+ * press moves this pane, not a new one. A side it cannot go dims first. */
+.pane-drawer[data-mode="move"] .drawer-split {
+  background-color: var(--october-sunset);
+}
+
+.pane-drawer .drawer-split:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 /* The binding radio: the selected binding is lit, the others recede. Two
  * radios ride this group and read alike — what the next split creates, and
  * whether THIS browser follows the session cwd. */

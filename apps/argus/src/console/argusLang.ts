@@ -27,6 +27,8 @@ export interface ArgusHost {
   focus_set(id: string): boolean;
   /** Every pane id currently on stage. */
   panes_shown(): string[];
+  /** Moves a pane to a side; answers with what happened, or the refusal by name. */
+  pane_move(paneId: string, side: 'left' | 'right' | 'above' | 'below'): string;
   /** A shown pane's bounding rect (for spatial focus), or null. */
   paneRect_get(id: string): DOMRect | null;
   /** A pane's mount element (drawer, mode frame, chooser live inside), or null. */
@@ -423,6 +425,11 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
       const created: string | undefined = host.panes_shown().find((id: string): boolean => !beforeIds.has(id));
       if (created !== undefined && replayPanes !== null) replayPanes.push(created);
       return `split ${arg}: ${created ?? '(no pane created)'}`;
+    }
+    if (verb === 'move') {
+      // The drawer's MOVE: the pane walks to that side (aegis.adoc: a-pane-can-be-moved).
+      if (!(arg in SPLIT_PLACES)) return 'pane move left|right|above|below';
+      return host.pane_move(paneId, arg as 'left' | 'right' | 'above' | 'below');
     }
     if (verb === 'zoom') return control_click(host, paneId, '.drawer-zoom') ? `zoomed ${paneId}` : 'pane zoom: no drawer';
     if (verb === 'close') return control_click(host, paneId, '.drawer-close') ? `closed ${paneId}` : 'pane close: no drawer';

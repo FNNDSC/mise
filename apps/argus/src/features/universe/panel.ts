@@ -38,6 +38,9 @@ import { dataGraph_build, dataHubKey_of, dataHubTip_of, dataPath_of, description
 /** How the whole space is arranged: round each shape's hub, or round the plugin stars. */
 type Arrangement = UniverseSettings['arrangement'];
 
+/** How long a pill's answer holds the bar before the standing state returns. */
+const NOTE_HOLD_MS: number = 4000;
+
 /**
  * Whether the settle's terms are the ones every browser starts with (and the
  * session lays out with): charge, links, collisions and gravity all on.
@@ -174,6 +177,8 @@ export class UniversePanel {
   private readonly canvas: HTMLElement;
   private readonly title: HTMLElement;
   private readonly state: HTMLElement | null;
+  /** The timer of a pill's answer holding the bar, while one does. */
+  private noteTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly empty: HTMLElement;
   private readonly handlers: UniversePanelHandlers;
   private readonly store: KeyStore | undefined;
@@ -325,7 +330,7 @@ export class UniversePanel {
     this.replayPill = mount.replayPill ?? null;
     mount.replayPill?.addEventListener('click', (): void => {
       const state = this.scene.replay_state();
-      if (state === null) this.handlers.note?.(this.replay_start(1));
+      if (state === null) this.bar_note(this.replay_start(1));
       else if (state.playing) this.scene.replay_pause();
       else this.scene.replay_play();
       this.replay_paint();
@@ -347,11 +352,11 @@ export class UniversePanel {
     this.scalePill = mount.scalePill;
     mount.drawPill?.addEventListener('click', (): void => { this.draw_set(this.drawMode === 'stars' ? 'spheres' : 'stars'); });
     this.captionsPill = mount.captionsPill ?? null;
-    mount.captionsPill?.addEventListener('click', (): void => { this.handlers.note?.(this.captions_set(!this.captions)); });
+    mount.captionsPill?.addEventListener('click', (): void => { this.bar_note(this.captions_set(!this.captions)); });
     this.arrangementPill = mount.arrangementPill ?? null;
     mount.arrangementPill?.addEventListener('click', (): void => {
       const cycle: Arrangement[] = ['galaxy', 'spokes', 'clumps', 'constellations', 'data', 'accretion'];
-      this.handlers.note?.(this.arrangement_set(cycle[(cycle.indexOf(this.arrangement) + 1) % cycle.length] as Arrangement));
+      this.bar_note(this.arrangement_set(cycle[(cycle.indexOf(this.arrangement) + 1) % cycle.length] as Arrangement));
     });
     this.scene.draw_set(this.drawMode);
     this.canvas.style.display = 'none';
@@ -1211,26 +1216,54 @@ export class UniversePanel {
     this.facts.hidden = true;
   }
 
+  /**
+   * Writes the bar's standing state. While a pill's answer holds the bar,
+   * the standing state waits: the note's timer repaints when it lets go.
+   *
+   * @param cls - The state class (`state-live`, `state-wait`, ...).
+   * @param text - The standing readout.
+   */
+  private state_stand(cls: string, text: string): void {
+    if (this.state === null) return;
+    if (this.noteTimer !== null) return;
+    this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait', 'state-note');
+    this.state.classList.add(cls);
+    this.state.textContent = text;
+  }
+
+  /**
+   * A frame pill's answer, on the pane's own bar for a moment — not in
+   * the console, which carries only what was typed or asked there (AEGIS:
+   * a-pill-answers-on-its-own-bar). The standing state returns after.
+   *
+   * @param line - The answer.
+   */
+  private bar_note(line: string): void {
+    if (this.state === null) return;
+    if (this.noteTimer !== null) clearTimeout(this.noteTimer);
+    this.noteTimer = null;
+    this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
+    this.state.classList.add('state-note');
+    this.state.textContent = line;
+    this.noteTimer = setTimeout((): void => {
+      this.noteTimer = null;
+      this.state?.classList.remove('state-note');
+      this.title_paint();
+    }, NOTE_HOLD_MS);
+  }
+
   /** Titles the space with what it holds and, while warming, how far the index is. */
   private title_paint(): void {
     if (this.entering !== null && this.inside === null) {
       const feed: LandedFeed | undefined = this.landed.get(this.entering);
       this.title.textContent = `UNIVERSE — ENTERING FEED ${this.entering}${feed !== undefined && feed.title.length > 0 ? ` · ${feed.title}` : ''} …`;
-      if (this.state !== null) {
-        this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
-        this.state.classList.add('state-wait');
-        this.state.textContent = 'ASKING';
-      }
+      this.state_stand('state-wait', 'ASKING');
       return;
     }
     if (this.inside !== null) {
       const jobs: number = this.inside.entered.nodes.reduce((sum: number, node: SceneNode): number => sum + (node.count ?? 1), 0);
       this.title.textContent = `UNIVERSE — INSIDE FEED ${this.inside.feedId} · ${this.inside.title} · ${jobs.toLocaleString('en-US')} JOBS`;
-      if (this.state !== null) {
-        this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
-        this.state.classList.add('state-live');
-        this.state.textContent = 'INSIDE';
-      }
+      this.state_stand('state-live', 'INSIDE');
       return;
     }
     if (this.cluster !== null) {
@@ -1238,33 +1271,21 @@ export class UniversePanel {
       // The bar is not the place for eleven plugin names: the first few and
       // the count, the whole shape on the halo's tip.
       this.title.textContent = `UNIVERSE — SHAPE ${shapeWords_brief(this.cluster.shape)} · ${count} FEED${count === 1 ? '' : 'S'}`;
-      if (this.state !== null) {
-        this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
-        this.state.classList.add('state-live');
-        this.state.textContent = 'CLUSTER';
-      }
+      this.state_stand('state-live', 'CLUSTER');
       return;
     }
     if (this.asking && !this.shown) {
       // Nothing has been told yet: say that, not "0 FEEDS", which reads
       // as an empty lab.
       this.title.textContent = 'UNIVERSE — ASKING THE SESSION …';
-      if (this.state !== null) {
-        this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
-        this.state.classList.add('state-wait');
-        this.state.textContent = 'ASKING';
-      }
+      this.state_stand('state-wait', 'ASKING');
       return;
     }
     const figure: string = `${this.landed.size()} FEEDS · ${this.landed.shapes()} SHAPES`;
     this.title.textContent = this.whole
       ? `UNIVERSE — ${figure}`
       : `UNIVERSE — ${figure}${this.warming.length > 0 ? ` · ${this.warming}` : ' · INDEX WARMING'}`;
-    if (this.state !== null) {
-      this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
-      this.state.classList.add(this.whole ? 'state-settled' : 'state-wait');
-      this.state.textContent = this.whole ? 'WHOLE' : 'LANDING';
-    }
+    this.state_stand(this.whole ? 'state-settled' : 'state-wait', this.whole ? 'WHOLE' : 'LANDING');
     if (this.scene.replay_state() !== null) this.replay_paint();
   }
 
@@ -1412,9 +1433,7 @@ export class UniversePanel {
     const day: string = `${state.playing ? 'REPLAY' : 'PAUSED'} ${new Date(state.at).toISOString().slice(0, 10)}`;
     if (day === this.replayDay) return;
     this.replayDay = day;
-    this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
-    this.state.classList.add('state-live');
-    this.state.textContent = day;
+    this.state_stand('state-live', day);
   }
 
   /** Learns whose universe this is, once, and seeds it if a space is already up. */

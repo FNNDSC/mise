@@ -186,7 +186,7 @@ The mathematics of every layout, view and drawing mode, with a screenshot of eac
 | Part | Class | Holds
 
 | pane | `.pane-universe` | The primary pane `universe`, the whole of its stage; the tile enters the stage and asks for the space once.
-| bar | `.pane-handle` | `.universe-title` `UNIVERSE — n FEEDS · m SHAPES`, and while the index warms `· INDEX WARMING loaded/total (p%)`; `.pane-state` `LANDING` while the space still grows, `WHOLE` once the index is.
+| bar | `.pane-handle` | `.universe-title` `UNIVERSE — n FEEDS · m SHAPES`, and while the index warms `· INDEX WARMING loaded/total (p%)`; `.pane-state` `LANDING` while the space still grows, `WHOLE` once the index is. A frame pill's answer (the layout chosen, captions on or off, the replay begun) holds `.pane-state` in `state-note` for four seconds, then the standing readout returns; nothing reaches the console.
 | frame | `.field-rule` `.mode-strip` `.mode-elbow` `.mode-frame` | The mode frame every pane wears; a strip at rest.
 | projection block | `.universe-projection` | Cycles 3D and 2D.
 | view block | `.universe-view` | Cycles FEEDS (every feed its own molecule, the default) and SHAPES (the shapes folded, one molecule each).

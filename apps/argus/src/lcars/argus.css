@@ -1133,6 +1133,9 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 }
 /* A selection in flight: the bar says the pane is waiting, not idle. */
 .pane-state.state-wait { color: var(--butter); opacity: 1; }
+/* A frame pill's answer, held on the pane's own bar for a moment (never
+ * the console): the layout chosen, the captions toggled, the replay begun. */
+.pane-state.state-note { color: var(--butter); opacity: 1; font-style: italic; }
 
 /* ------------------------------------------------------------ the nameplate */
 /* The top-left block is the LCARS nameplate: the mark is engraved in the

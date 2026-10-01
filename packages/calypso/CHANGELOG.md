@@ -1,5 +1,14 @@
 # @fnndsc/calypso
 
+## 0.16.9
+
+### Patch Changes
+
+- cbd71cc: A refused file read says why: the kernel names the status and reason (403 not yours to read, 404 no such file, 502 CUBE could not serve it), `/vfs` answers with them instead of 404 for everything, and an image pane that lost a slice reads the reason out. `porter --end <who>` ends one session so the next login boots on the current kernel.
+- Updated dependencies [cbd71cc]
+  - @fnndsc/brasa@0.29.1
+  - @fnndsc/argus@0.18.8
+
 ## 0.16.8
 
 ### Patch Changes

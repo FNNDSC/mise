@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { berth_pathIn } from '@fnndsc/calypso/berth';
-import { ProcessHost, BOOT_LINES_KEPT, type SpawnedSession, type SessionSpawn } from '../../src/host/processHost.js';
+import { ProcessHost, BOOT_LINES_KEPT, bootRow_parse, type SpawnedSession, type SessionSpawn } from '../../src/host/processHost.js';
 import type { BootLine } from '../../src/host/sessionHost.js';
 
 const IDENTITY: string = 'chris@https://cube.example.org/api/v1/';
@@ -102,14 +102,44 @@ describe('ProcessHost', () => {
     let ended: string | null = null;
     const followed = host.boot_follow(IDENTITY, { line: (line: BootLine): void => { seen.push(line); }, done: (state: string): void => { ended = state; } });
     expect(followed?.report.state).toBe('booting');
-    expect(followed?.report.lines).toEqual([{ channel: 'out', text: '[ OK ] Session' }, { channel: 'err', text: 'warm' }]);
+    expect(followed?.report.lines).toEqual([{ channel: 'out', text: '[ OK ] Session', id: 0 }, { channel: 'err', text: 'warm', id: 1 }]);
     child.stdout.write('nect\n');
     await new Promise((r) => setTimeout(r, 10));
-    expect(seen).toEqual([{ channel: 'out', text: '[ OK ] Connect' }]);
+    expect(seen).toEqual([{ channel: 'out', text: '[ OK ] Connect', id: 2 }]);
     berth_plant(host);
     await starting;
     expect(ended).toBe('ready');
     expect(host.boot_follow(IDENTITY, { line: (): void => undefined, done: (): void => undefined })?.report.state).toBe('ready');
+  });
+
+  it('settles an open row in place: the outcome of a [PENDING] step replaces it, for the follower and the late one alike', async () => {
+    const host: ProcessHost = host_make();
+    const starting: Promise<unknown> = host.spawn(IDENTITY, 'chris', 'https://cube.example.org/api/v1/', 'MINTED');
+    await new Promise((r) => setTimeout(r, 10));
+    const seen: BootLine[] = [];
+    host.boot_follow(IDENTITY, { line: (line: BootLine): void => { seen.push(line); }, done: (): void => undefined });
+    // The tags arrive coloured (FORCE_COLOR under porter), padded as chell pads them.
+    child.stdout.write('\x1b[36m[PENDING]  \x1b[39m Feeds        Warming /home/x/feeds behind the prompt\n');
+    child.stdout.write('\x1b[36m[PENDING]  \x1b[39m Queries      Indexing prior PACS queries behind the prompt\n');
+    child.stdout.write('\x1b[32m[ OK ]     \x1b[39m Groups       Cached 71 groups\n');
+    child.stdout.write('\x1b[33m[RETRY]    \x1b[39m Feeds        CUBE is slow; asking again\n');
+    child.stdout.write('\x1b[32m[ OK ]     \x1b[39m Queries      2100 PACS queries indexed, 33 new\n');
+    child.stdout.write('\x1b[32m[ OK ]     \x1b[39m Feeds        Cached 2477 feeds\n');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(seen.map((line: BootLine): [number | undefined, number | undefined] => [line.id, line.replaces])).toEqual([[0, undefined], [1, undefined], [2, undefined], [0, 0], [1, 1], [0, 0]]);
+    // The kept boot holds each step once, settled, in the row it opened on.
+    const late = host.boot_follow(IDENTITY, { line: (): void => undefined, done: (): void => undefined });
+    expect(late?.report.lines.map((line: BootLine): string => line.text.replace(/\x1b\[[0-9;]*m/g, '').replace(/\s+/g, ' ').trim())).toEqual([
+      '[ OK ] Feeds Cached 2477 feeds',
+      '[ OK ] Queries 2100 PACS queries indexed, 33 new',
+      '[ OK ] Groups Cached 71 groups',
+    ]);
+    // A settled label that opens again is a new row, not the old one.
+    child.stdout.write('[PENDING]   Feeds        full roster refresh\n');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(seen[seen.length - 1]).toEqual({ channel: 'out', text: '[PENDING]   Feeds        full roster refresh', id: 3 });
+    berth_plant(host);
+    await starting;
   });
 
   it('fails the boot when the child exits first', async () => {
@@ -190,5 +220,16 @@ describe('a porter restarted', () => {
     expect(report?.lines[0]?.text).toBe('line 5');
     berth_plant(host);
     await starting;
+  });
+});
+
+describe('bootRow_parse', () => {
+  it('reads the tag and label through colour, and knows which rows stay open', () => {
+    expect(bootRow_parse('\x1b[36m[PENDING]  \x1b[39m Feeds   Warming')).toEqual({ label: 'Feeds', open: true });
+    expect(bootRow_parse('[RETRY]     Feeds   again')).toEqual({ label: 'Feeds', open: true });
+    expect(bootRow_parse('[ OK ]      Feeds   Cached')).toEqual({ label: 'Feeds', open: false });
+    expect(bootRow_parse('[FAIL]      Shared  no')).toEqual({ label: 'Shared', open: false });
+    expect(bootRow_parse('          Plugins      Prefetching /bin for completions')).toBeNull();
+    expect(bootRow_parse('[+] Session initialized.')).toBeNull();
   });
 });

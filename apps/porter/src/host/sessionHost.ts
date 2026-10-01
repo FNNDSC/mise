@@ -21,6 +21,15 @@ export interface BootLine {
   channel: 'out' | 'err';
   /** The line, ANSI and all: the greeter renders it as the terminal would. */
   text: string;
+  /** The row's number in this boot, so a later line can settle it in place. */
+  id?: number;
+  /**
+   * The row this line settles: a `[PENDING]` or `[RETRY]` row of the same
+   * label, printed earlier. On a terminal the boot logger rewrites that row
+   * where it stands; off one (as under porter) it can only append, so the
+   * host matches the label and the greeter does the rewriting.
+   */
+  replaces?: number;
 }
 
 /** A boot in progress, or finished, as a host reports it. */

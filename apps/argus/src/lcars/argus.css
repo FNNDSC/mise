@@ -2292,6 +2292,7 @@ body[data-zoom]:not([data-zoom='console'])
 .files-body,
 .image-body,
 .tags-body,
+.help-body,
 .dag-canvas,
 .universe-canvas,
 .dag-roster,
@@ -5713,6 +5714,45 @@ body[data-zoom] #header-restore {
   display: flex;
   flex-direction: column;
   padding-right: var(--spine-w);
+}
+
+/* The HELP pane's body: the tags body's shape, one listing of two blocks. */
+.help-body {
+  --roster-gap: 0px;
+  --roster-pad: 0px;
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-right: var(--spine-w);
+}
+
+.help-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.help-panel > .roster-order { position: static; z-index: auto; flex: none; }
+.help-panel > .listing-field { padding-right: 0.5rem; }
+
+.help-key {
+  font-family: 'Share Tech Mono', monospace;
+  color: var(--butter);
+}
+
+.help-does { color: var(--harvestgold); }
+.help-verb .help-does { color: var(--daybreak); }
+
+.help-block-head {
+  margin: 0.4rem 0 0.2rem;
+  color: var(--butter);
+  font-family: var(--face-label);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
 }
 
 .pane-tags[data-modality='MR'] .tags-body { --harvestgold: var(--daybreak); }

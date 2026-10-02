@@ -574,6 +574,37 @@ try {
     more.error === undefined && more.scrollback && more.alone && more.carded && more.panesShown, JSON.stringify(more));
   }
 
+  if (stage('help-pane')) {
+  // Help lives on the stage: a HELP tile on the dashboard, a HELP pane of
+  // the chords and the verbs, and the same tables typed into the console.
+  const help = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_idle(); };
+    const text = () => document.getElementById('terminal').innerText;
+    const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2).trim(); };
+    document.getElementById('gutter-dashboard')?.click();
+    for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelectorAll('.launcher-tile').length > 0) break; }
+    const tile = [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'HELP');
+    const figures = tile ? [...tile.querySelectorAll('.launcher-figure')].map((f) => f.textContent.trim()) : [];
+    tile?.querySelector('.launcher-verb')?.click();
+    const pane = () => [...document.querySelectorAll('.pane-help')].find((p) => p.offsetParent !== null);
+    for (let i = 0; i < 40; i++) { await sleep(250); if (pane()) break; }
+    const rows = pane() ? pane().querySelectorAll('.listing-row').length : 0;
+    const keyRows = pane() ? pane().querySelectorAll('.help-row.help-pane').length : 0;
+    const verbRows = pane() ? pane().querySelectorAll('.help-row.help-verb').length : 0;
+    const chip = pane()?.querySelector('.more-chip') !== null;
+    await say('help keys'); const typedKeys = /prefix chords/.test(after('help keys'));
+    await say('help verbs'); const typedVerbs = /argus verbs/.test(after('help verbs'));
+    await say('help pane'); const again = /on stage/.test(after('help pane'));
+    const panes = document.querySelectorAll('.pane-help').length;
+    return { tile: tile !== undefined, figures, rows, keyRows, verbRows, chip, typedKeys, typedVerbs, again, panes };`);
+  check('the dashboard has a HELP tile that opens the HELP pane: the chords and the verbs as a listing',
+    help.tile && help.figures.some((f) => /KEYS/.test(f)) && help.rows > 30 && help.keyRows >= 10 && help.verbRows >= 10, JSON.stringify(help));
+  check('help keys and help verbs answer in the console; a second help pane focuses the pane on stage rather than opening another',
+    help.typedKeys && help.typedVerbs && help.again && help.panes === 1, JSON.stringify(help));
+  }
+
   if (stage('universe-constellations')) {
     // CONSTELLATIONS: every plugin a ringed star, every feed pulled to the
     // stars it ran. A plugin lit by word shows its facts and its verb, and

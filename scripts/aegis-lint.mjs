@@ -8,6 +8,7 @@
  * without teeth.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const html = readFileSync('apps/argus/index.html', 'utf8');
 const css = readFileSync('apps/argus/src/lcars/argus.css', 'utf8');
@@ -359,6 +360,16 @@ LINT_CHECKS['an-instruments-field-is-foreign'] = () => {
   }
   if (!/class="mode-frame"[\s\S]*?image-tool/.test(template[1])) {
     fail('an-instruments-field-is-foreign', 'the image pane\'s tool blocks are not on its mode frame');
+  }
+};
+
+LINT_CHECKS['keys-are-documented'] = () => {
+  // The keys reference is generated from DRAWER_CHORDS; the written file
+  // and the table may never disagree (scripts/keys-doc.mjs --check).
+  try {
+    execFileSync('node', ['scripts/keys-doc.mjs', '--check'], { stdio: 'pipe' });
+  } catch (error) {
+    fail('keys-are-documented', String(error.stderr ?? error.message).trim().split('\n')[0]);
   }
 };
 

@@ -18,7 +18,7 @@
  * @module
  */
 import { more_wire } from '../features/roster/more.js';
-import { feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagModelSchema, pipelineDiagramModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, type PipelineDiagramNode, type PromptContext, type WireEnvelope, type WatchState, type FeedDagModel, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
+import { feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, type PromptContext, type WireEnvelope, type WatchState, type FeedDagModel, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { type SceneNode } from '../scene/chrisSpace.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction, type DesktopShape } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
@@ -36,10 +36,9 @@ import { ArgusTerminal } from '../console/terminal.js';
 import { consolePalette_publish } from '../console/ansi.js';
 import { ArgusProgress } from '../console/progress.js';
 import { listingNumbering_set } from '../features/roster/listing.js';
-import { browserDownload_save, type DownloadOutcome } from '../features/files/download.js';
-import { FilesPanel, type FileAction, type FsListing, type FsListingEntry, extension_isImage, type PreviewProvider, type GlimpseNode } from '../features/files/panel.js';
-import type { ListingAction } from '../features/roster/row.js';
-import { FILE_ROW_ROSTER, FILES_SELECTION_ROSTER, RUNS_ROW_ROSTER, type FileRowFacts, type FilesSelectionFacts, type RunsRowFacts } from '../features/roster/verbs.js';
+import { type DownloadOutcome } from '../features/files/download.js';
+import { FilesPanel, type FsListing, type FsListingEntry, extension_isImage } from '../features/files/panel.js';
+import { RUNS_ROW_ROSTER, type RunsRowFacts } from '../features/roster/verbs.js';
 import { GatherPanel, type GatherSeries, type GatherFeed } from '../features/gather/panel.js';
 import { LauncherPanel, type LauncherTile, type LauncherRow } from '../features/launcher/panel.js';
 import { runLine_compose, runLine_executable, runLine_hasTitle, runLine_titleAppend } from '../features/files/runLine.js';
@@ -51,7 +50,7 @@ import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
 import { ViewerPanel } from '../features/view/panel.js';
 import { ImagePanel, type SeriesChoice } from '../features/image/panel.js';
 import { TagsPanel } from '../features/tags/panel.js';
-import { DICOM_FILE_PATTERN, SERIES_FOLDER_PATTERN, seriesFolder_is, VOLUME_FILE_PATTERN, IMAGE_LAYOUTS, IMAGE_COLORMAPS, type ImageLayout, type ImageColormap } from '../features/image/engine.js';
+import { DICOM_FILE_PATTERN, SERIES_FOLDER_PATTERN, VOLUME_FILE_PATTERN, IMAGE_LAYOUTS, IMAGE_COLORMAPS, type ImageLayout, type ImageColormap } from '../features/image/engine.js';
 import { SubjectBus, type RegardValue } from './subjects.js';
 import { StatusBar } from './status.js';
 import { IndexInstrument } from './indexInstrument.js';
@@ -87,6 +86,7 @@ import { nodeOverlay_wire, type FileText, type NodeOverlay } from './nodeOverlay
 import { cohort_wire, type CohortModule } from './cohort.js';
 import { asks_wire, type Asks } from './asks.js';
 import { keys_wire } from './keys.js';
+import { browser_wire, feedOf_path, imagery_is, nodeOf_path, shares_read, TABLE_FILE_PATTERN, type Browser } from './browser.js';
 import { place_of, side_ofPlace, splitSelector_of, type Side } from './sides.js';
 import { stalePage_watch } from './stalePage.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
@@ -247,8 +247,6 @@ function wsUrl_resolve(): string {
   return wireUrl_resolve(window.location);
 }
 
-/** Files the surface opens as the table they are, not as their bytes. */
-const TABLE_FILE_PATTERN: RegExp = /\.(csv|tsv)$/i;
 
 /** Watches the header so its slide distance is never a stale measurement. */
 let headerHeightObserver: ResizeObserver | null = null;
@@ -872,16 +870,6 @@ function aboutFace_fill(attach: AttachInfo): void {
 }
 
 /**
- * Strips ANSI escape sequences from rendered text.
- *
- * @param text - The ANSI-decorated text.
- * @returns The plain text.
- */
-function ansi_strip(text: string): string {
-  return text.replace(/\x1b\[[0-9;:]*[A-Za-z]/g, '');
-}
-
-/**
  * Wires the LCARS panel beeps: every frame button clicks with the theme's
  * voice, live or inert alike.
  */
@@ -947,242 +935,6 @@ async function surface_start(token: string): Promise<void> {
   };
 
   /** Builds the byte route for a path, from where this page was served. */
-  const vfsUrl_build = (path: string): string => routeVfsUrl_build(path, token);
-  const downloadUrl_build = (path: string): string => routeDownloadUrl_build(path, token);
-  /**
-   * Brings one file down to the operator's disk and says how it went: the
-   * name it landed under, or why nothing did. A broken file named after
-   * the route is never saved in silence.
-   */
-  const file_save = (path: string): void => {
-    void browserDownload_save(downloadUrl_build(path), path).then((outcome: DownloadOutcome): void => {
-      terminal.line_note(outcome.ok
-        ? `download: ${outcome.name}${outcome.streamed ? ' — large; the browser fetches it itself' : ''}`
-        : `download: ${path}: ${outcome.reason}`);
-    });
-  };
-
-  /**
-   * Reads at most `maxBytes` of a file's head through the /vfs route,
-   * cancelling the body as soon as enough has arrived — a preview never
-   * pulls a whole log across the wire.
-   */
-  const fileHead_fetch = async (path: string, maxBytes: number): Promise<string> => {
-    const response: Response = await fetch(vfsUrl_build(path));
-    if (!response.ok || response.body === null) {
-      // The route serves what CUBE STORES. A file a VFS provider makes —
-      // a package's manifest, a readout under /proc — is perfectly real to
-      // the session and unknown to the route, which answered 404 and left
-      // the preview blank: a file that reads fine in the console looked
-      // like an empty file in the pane. So ask the session, which can read
-      // anything it can list. A refusal is carried through rather than
-      // swallowed, because a blank tile is the one thing that says nothing.
-      const read: FileText = await fileText_fetch(path);
-      return read.text.slice(0, maxBytes);
-    }
-    const reader: ReadableStreamDefaultReader<Uint8Array> = response.body.getReader();
-    const decoder: TextDecoder = new TextDecoder();
-    let text: string = '';
-    while (text.length < maxBytes) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      text += decoder.decode(value, { stream: true });
-    }
-    void reader.cancel().catch((): void => { /* the body is already released */ });
-    return text.slice(0, maxBytes);
-  };
-  /**
-   * A pipeline's authored graph, for a card-sized glimpse. A plugin needs
-   * no such fetch: it is one node whatever it declares, and the card draws
-   * that node itself.
-   */
-  const pipelineGlimpse_fetch = async (path: string): Promise<GlimpseNode[] | null> => {
-    const specifier: string = /_id(\d+)$/.exec(path)?.[1] ?? path.replace(/^.*\//, '');
-    const outcome: ExecuteOutcome = await client.line_execute(`pipeline diagram ${specifier}`, { silent: true, observe: false });
-    for (const envelope of outcome.envelopes) {
-      if (envelope.model?.kind !== DAG_MODEL_KINDS.pipelineDiagram) continue;
-      const parsed = pipelineDiagramModelSchema.safeParse(envelope.model.data);
-      if (!parsed.success) continue;
-      return parsed.data.nodes.map((node: PipelineDiagramNode): GlimpseNode => ({
-        id: node.id,
-        parentIds: [...node.parentIds, ...(node.joinParentIds ?? [])],
-      }));
-    }
-    return null;
-  };
-  /** What a files pane's PREVIEW projection fetches through. */
-  const previewProvider: PreviewProvider = {
-    imageUrl: vfsUrl_build,
-    download: file_save,
-    textHead: fileHead_fetch,
-    pipelineGlimpse: pipelineGlimpse_fetch,
-  };
-
-  /**
-   * A file read's outcome: its text, or why it could not be read.
-   *
-   * @property ok - Whether the session returned contents.
-   * @property text - The contents, or the refusal in the session's words.
-   */
-  /**
-   * Fetches a file's text through a silent, pane-local cat.
-   *
-   * A refusal is an answer. CUBE lists files a shared feed's guest may not
-   * read, so a failed read is ordinary and must be reported: joining the
-   * rendered text alone turned a 403 into an empty pane, which reads as an
-   * empty file.
-   */
-  const fileText_fetch = (path: string): Promise<FileText> =>
-    client
-      .line_execute(`cat "${path}"`, { silent: true, observe: false })
-      .then((outcome: ExecuteOutcome): FileText => {
-        const refused: boolean = outcome.envelopes.some(
-          (envelope): boolean => envelope.status === 'error',
-        );
-        if (!refused) {
-          return {
-            ok: true,
-            text: ansi_strip(outcome.envelopes.map((envelope): string => envelope.rendered).join('\n')),
-          };
-        }
-        const said: string = outcome.envelopes
-          .flatMap((envelope): string[] => (envelope.errors ?? []).map((entry): string => entry.message))
-          .concat(outcome.envelopes.map((envelope): string => envelope.renderedErr ?? ''))
-          .map((line): string => ansi_strip(line).trim())
-          .filter((line): boolean => line !== '')
-          .join('\n');
-        return { ok: false, text: said === '' ? 'the session refused this read and said nothing further' : said };
-      });
-
-  // Lowers a file activation. The primary browser is slaved to the session
-  // cwd and navigates by real `cd`; a rooted browser (a split's instance)
-  // navigates independently by targeted silent listings. A file activation
-  // is an indication: it writes the pane's group regard, and when the group
-  // holds a viewer, the viewer renders it — the browser overlays its own
-  // content only as the viewerless fallback.
-  // A rooted browser's own navigation history, for its BACK verb; the
-  // primary's back is the session's own `cd -`.
-  const rootedHistory: Map<string, string[]> = new Map();
-  // Which browsers follow the session cwd. The primary does by default; a
-  // split-born browser is rooted by default; either can be re-bound from
-  // its drawer (FOLLOW CWD / ROOT HERE) or the language.
-  const filesFollow: Map<string, boolean> = new Map();
-  // Each browser's binding pair, so a change made anywhere — drawer,
-  // language, or a split born rooted — is read back by the control that
-  // states it.
-  const cwdBindSyncs: Map<string, () => void> = new Map();
-  const cwdBind_sync_register = (id: string, sync: () => void): void => {
-    cwdBindSyncs.set(id, sync);
-  };
-  const cwdBind_sync = (id: string): void => {
-    cwdBindSyncs.get(id)?.();
-  };
-  const filesFollow_set = (id: string, on: boolean): void => {
-    filesFollow.set(id, on);
-    cwdBind_sync(id);
-    const panel: FilesPanel | undefined = panels.get('files', id);
-    panel?.follow_set(on);
-    if (on && panel !== undefined) {
-      // A browser that starts following shows the cwd at once.
-      void client
-        .line_execute('ls', { silent: true, observe: false })
-        .then((outcome: ExecuteOutcome): void => {
-          for (const envelope of outcome.envelopes) panel.envelope_observe(envelope);
-        });
-    }
-  };
-
-  /**
-   * Delivers files the operator picked into the folder on stage.
-   *
-   * A browser cannot reach the machine the daemon runs on, so `upload` is
-   * not a verb this surface can speak: the bytes go over the daemon's own
-   * `/vfs` route, which writes them through the kernel. What the operator
-   * sees is the console, as with any other verb — what is being put where,
-   * and what became of each file.
-   *
-   * @param id - The pane whose listing is on stage.
-   * @param place - The folder the files land in.
-   * @param chosen - The files the operator picked.
-   */
-  const files_deliver = async (id: string, place: string, chosen: File[]): Promise<void> => {
-    for (const file of chosen) {
-      const target: string = `${place}/${file.name}`;
-      terminal.line_note(`putting ${file.name} in ${place}…`);
-      try {
-        const response: Response = await fetch(vfsUrl_build(target), {
-          method: 'POST',
-          body: file,
-        });
-        if (!response.ok) {
-          terminal.line_note(`upload: ${file.name}: ${(await response.text()).trim() || response.statusText}`);
-          continue;
-        }
-        terminal.line_note(`✓ ${target}`);
-      } catch (error: unknown) {
-        terminal.line_note(`upload: ${file.name}: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-    // The listing must show what landed in it; a browser that says nothing
-    // changed is a browser the operator stops believing.
-    listing_refresh(id, place);
-  };
-
-  /**
-   * Asks a browser for its place again, after something changed it.
-   *
-   * A following browser re-lists through the session, so the transcript
-   * shows the same `ls` an operator would have typed; a rooted one asks for
-   * its own place silently, which is how it navigates already.
-   *
-   * @param id - The pane to refresh.
-   * @param place - The folder it is showing.
-   */
-  const listing_refresh = (id: string, place: string): void => {
-    const panel: FilesPanel | undefined = panels.get('files', id);
-    if (panel === undefined) return;
-    if (filesFollow.get(id) === true) terminal.line_run('ls');
-    else rootedListing_show(id, panel, place);
-  };
-
-  /**
-   * Asks for a name and makes a directory in a place: the MKDIR block on
-   * the frame and the `.` row's NEW DIR are one gesture with two homes.
-   *
-   * @param id - The browser pane asking.
-   * @param place - The directory to make it in.
-   */
-  const directory_make = (id: string, place: string): void => {
-    void ask_onPane(id, { message: `New directory in ${place}: `, kind: 'text', commit: 'MAKE IT' })
-      .then((name: string | null): void => {
-        const wanted: string = (name ?? '').trim();
-        // An abandoned question makes nothing, and says nothing: the
-        // operator withdrew it, which is not an error to report.
-        if (wanted === '') return;
-        terminal.line_run(`mkdir "${place}/${wanted}"`);
-        // `mkdir` renders what it made; it does not re-list the folder
-        // it made it in, so the browser asks for the place again.
-        listing_refresh(id, place);
-      });
-  };
-
-  const rootedListing_show = (id: string, panel: FilesPanel, path: string): void => {
-    // A bare `~` must reach the shell unquoted or it would not expand.
-    const line: string = path === '~' ? 'ls ~' : `ls "${path}"`;
-    void client
-      .line_execute(line, { silent: true, observe: false })
-      .then((outcome: ExecuteOutcome): void => {
-        for (const envelope of outcome.envelopes) {
-          panel.envelope_observe(envelope);
-        }
-      });
-  };
-
-  /**
-   * Highlights the /bin description grammar client-side when the daemon
-   * sent plain text: section headings, `Key:` labels, flags, and quoted
-   * values. ANSI-colored text is rendered as sent.
-   */
   /**
    * A /bin entry as the graph it is (app/binView.ts): a pipeline's nodes or
    * a plugin's one, the dive into a node, the form a bound catalogue makes
@@ -1194,310 +946,38 @@ async function surface_start(token: string): Promise<void> {
   });
   const binEntry_show = binView.entry_show;
 
-  const fileAction_handle = (
-    id: string,
-    panel: FilesPanel,
-    action: FileAction,
-  ): void => {
-    if (action.kind === 'dir') {
-      if (filesFollow.get(id) === true) {
-        terminal.line_run(`cd "${action.path}"`);
-      } else {
-        const previous: string | null = panel.path_current();
-        if (previous !== null) {
-          rootedHistory.get(id)?.push(previous);
-        }
-        rootedListing_show(id, panel, action.path);
-      }
-      return;
-    }
-    if (action.kind === 'plugin' || action.kind === 'pipeline') {
-      binEntry_show(id, panel, action.path, action.kind);
-      return;
-    }
-    // A volume or a DICOM slice is an image: it opens beside the browser,
-    // never as bytes in a text view.
-    if (imagery_is(action.path)) {
-      void image_open(id, action.path).then((line: string): void => terminal.line_note(line));
-      return;
-    }
-    subjects.regard_write(id, { address: action.path, modelKind: 'fs.file' });
-    if (subjects.groupHasViewer(id)) {
-      return;
-    }
-    if (extension_isImage(action.path)) {
-      // Images render natively from the daemon's token-gated /vfs route,
-      // never as terminal strings.
-      panel.contentImage_show(action.path, vfsUrl_build(action.path));
-      return;
-    }
-    // Text renders from a silent cat, so a large file does not flood the
-    // transcript.
-    void fileText_fetch(action.path).then((read: FileText): void => {
-      if (!read.ok) {
-        panel.contentRefused_show(action.path, read.text);
-        return;
-      }
-      // A CSV is a table, and every table on this surface is a listing.
-      if (TABLE_FILE_PATTERN.test(action.path)) panel.contentTable_show(action.path, read.text);
-      else panel.content_show(action.path, read.text);
-    });
-  };
-
   /**
-   * Whether a path names something an image pane draws rather than a text
-   * view: a NIfTI/MGZ volume, or a DICOM slice.
-   *
-   * One rule, asked by every surface that answers a file click. The browser
-   * knew it and the node dive did not, so a volume a run had just produced
-   * was read as text inside its own node and refused by the kernel — the
-   * one file in the feed the operator most wanted to see.
-   *
-   * @param path - The file's path.
-   * @returns True when an image pane is what opens it.
+   * The browser (app/browser.ts): the files pane as this host builds it,
+   * its readers, its rooted listings and history, its binding to the cwd,
+   * its row and selection verbs. The host's routes, opens, asks, cohort and
+   * /bin view are its hooks, read when called.
    */
-  const imagery_is = (path: string): boolean =>
-    VOLUME_FILE_PATTERN.test(path) || DICOM_FILE_PATTERN.test(path);
+  const vfsUrl_build = (path: string): string => routeVfsUrl_build(path, token);
+  const browser: Browser = browser_wire(context, {
+    vfsUrl_build,
+    downloadUrl_build: (path: string): string => routeDownloadUrl_build(path, token),
+    image_open: (fromId: string, path: string): Promise<string> => image_open(fromId, path),
+    process_open: (fromId: string, binding: CatalogueBinding): void => process_open(fromId, binding),
+    run_press: (paneId: string, executable: string, kind: 'plugin' | 'pipeline'): void => { void run_press(paneId, executable, kind); },
+    cohort_gather: (entries: ReadonlyArray<GatherSeries>): void => cohort_gather(entries),
+    verbLine_run: (paneId: string, line: string): void => verbLine_run(paneId, line),
+    ask_onPane: (paneId: string, request: PaneAskRequest): Promise<string | null> => ask_onPane(paneId, request),
+    binEntry_show,
+    catalogue_of: (paneId: string): CatalogueBinding | undefined => catalogueBindings.get(paneId),
+    promptUser: (): string | null => promptUser,
+    template_stamp,
+    pane_find,
+  });
+  const { previewProvider, fileText_fetch, file_save, rootedListing_show, listing_refresh, directory_make, files_deliver, filesBody_stamp, rowVerbs_of } = browser;
+  const filesInstance_build = browser.instance_build;
 
-  /** Stamps a files body (frame members + panel) from the files template. */
-  const filesBody_stamp = (): HTMLElement => {
-    const body: HTMLElement | null = template_stamp('tpl-pane-files').querySelector<HTMLElement>('.files-body');
-    if (body === null) throw new Error('tpl-pane-files has no files-body');
-    return body;
-  };
-
-  /**
-   * The feed a path names, by the kernel's own rule.
-   *
-   * `aclTarget_resolve` matches `/feeds/feed_<id>/` anywhere in a path, so a
-   * file deep inside a feed shares as its feed does. The rule is repeated
-   * here rather than imported because a browser surface holds no kernel
-   * code; it is one regex and the kernel owns the meaning.
-   *
-   * @param path - The row's path.
-   * @returns The feed id, or null when nothing in the path names one.
-   */
-  /**
-   * The plugin instance whose own `data/` a path is, when it is one:
-   * `…/<plugin>_<id>/data` (with or without a trailing slash). Inside a
-   * feed only such a directory can be processed — the kernel appends to the
-   * node whatever was named beneath it.
-   *
-   * @param path - The path.
-   * @returns The instance id, or null.
-   */
   /** The session's user, as the prompt context last named it; null before the first. */
   let promptUser: string | null = null;
   /** The session's identity (user and CUBE), as the prompt last named it. */
   let promptIdentity: string | null = null;
 
-  const nodeOf_path = (path: string): number | null => {
-    const match: RegExpMatchArray | null = /_(\d+)\/data\/?$/.exec(path);
-    return match === null ? null : parseInt(match[1] ?? '', 10);
-  };
-
   /** What a bound catalogue processes: the input, and where a run of it lands. */
   const catalogueBindings: Map<string, CatalogueBinding> = new Map();
-
-  const feedOf_path = (path: string): number | null => {
-    // A feed has two addresses: the folder it stores its output in, and the
-    // projection the graph renders it as. Both name the same feed, and a
-    // row that knew only the first offered a node under /proc a NEW feed
-    // rather than the one it is already in.
-    const held: RegExpMatchArray | null = path.match(/\/(?:feeds|jobs)\/feed_(\d+)(?:\/|$)/);
-    return held === null ? null : Number(held[1]);
-  };
-
-  /**
-   * Whether a path is a projection: the kernel renders it and nothing
-   * writes it, so the verbs that would write have nothing to act on.
-   *
-   * @param path - The path a row or a field names.
-   * @returns True for `/proc`, `/net`, `/etc` and `/usr/share`.
-   */
-  const path_isProjection = (path: string): boolean => /^\/(proc|net|etc|usr)(\/|$)/.test(path);
-
-  /**
-   * What a row may be told to do.
-   *
-   * Every verb lowers to a session command the operator can read in the
-   * transcript — never a silent mutation behind a capsule. DELETE lowers to
-   * `rm -i`, so the KERNEL raises the confirmation and one confirmation
-   * grammar serves every surface; MOVE and COPY lower to a one-operand `mv`
-   * and `cp`, whose missing destination is the ask that opens the errand.
-   *
-   * @param id - The pane whose row this is.
-   * @param entry - The row's entry.
-   * @param path - The row's path.
-   * @returns The verbs this row is offered.
-   */
-  const rowVerbs_of = (
-    id: string,
-    entry: FsListingEntry,
-    path: string,
-  ): ReadonlyArray<ListingAction<FsListingEntry>> => {
-    const quoted: string = `"${path}"`;
-    const directory: boolean = entry.type === 'dir' || entry.type === 'vfs' || entry.type === 'job';
-    // Which verbs a row is offered is the roster's to say
-    // (features/roster/verbs.ts); what each one does is this pane's.
-    const feed: number | null = feedOf_path(path);
-    const facts: FileRowFacts = {
-      kind: entry.type === 'plugin' || entry.type === 'pipeline'
-        ? 'catalogue'
-        : directory && seriesFolder_is(path, entry.name)
-          ? 'seriesFolder'
-          : entry.type === 'file' ? 'file' : 'directory',
-      feed,
-      node: feed === null ? null : nodeOf_path(path),
-      bound: catalogueBindings.has(id),
-      projection: path_isProjection(path),
-    };
-    const runs: Record<string, () => void> = {
-      image: (): void => {
-        void image_open(id, path).then((line: string): void => terminal.line_note(line));
-      },
-      // The browser's own save: an attachment named for the file lands on
-      // the operator's disk; nothing opens to show it.
-      download: (): void => file_save(path),
-      // PROCESS acts on the place: a bound catalogue opens beside this pane.
-      process: (): void => process_open(id, { input: path, feed, node: feed === null ? null : nodeOf_path(path) }),
-      // GATHER takes the row into the session's cohort, beside whatever
-      // PACS series are already in it. The member is keyed by its path,
-      // since a directory or a file has no series UID and the path is what
-      // a run would be given — CUBE's unextpath takes files too.
-      gather: (): void => cohort_gather([{
-        kind: directory ? 'dir' : 'file',
-        seriesUID: path,
-        description: entry.name,
-        imagery: seriesFolder_is(path, entry.name),
-        modality: seriesFolder_is(path, entry.name) ? 'MR' : '—',
-        patient: promptUser ?? '',
-        vfsPath: path,
-        folderPath: path,
-      }]),
-      // RUN runs the line on the catalogue's input, as the console would.
-      run: (): void => { void run_press(id, entry.name, entry.type === 'pipeline' ? 'pipeline' : 'plugin'); },
-      move: (): void => verbLine_run(id, `mv ${quoted}`),
-      copy: (): void => verbLine_run(id, `cp ${quoted}`),
-      delete: (): void => verbLine_run(id, `rm ${directory ? '-ri' : '-i'} ${quoted}`),
-      share: (): void => verbLine_run(id, `setfacl ${quoted}`),
-    };
-    return FILE_ROW_ROSTER.rules
-      .filter((rule): boolean => rule.offered(facts))
-      .map((rule): ListingAction<FsListingEntry> => ({
-        label: rule.label(facts),
-        run: (): void => runs[rule.name]?.(),
-      }));
-  };
-
-  /**
-   * Reads an access list out of a silent `getfacl`.
-   *
-   * The envelope's own model carries the identities; the rendered text is
-   * for a terminal. A feed shared with nobody says so rather than showing
-   * an empty space that reads as a failed read.
-   *
-   * @param outcome - What the silent command returned.
-   * @returns The readout for the row.
-   */
-  const shares_read = (outcome: ExecuteOutcome): string => {
-    for (const envelope of outcome.envelopes) {
-      const model: unknown = envelope.model;
-      if (typeof model !== 'object' || model === null) continue;
-      const data: unknown = (model as { kind?: unknown; data?: unknown }).data;
-      if ((model as { kind?: unknown }).kind !== 'fs.acl' || !Array.isArray(data)) continue;
-      const names: string[] = [];
-      for (const held of data as Array<{ usernames?: unknown }>) {
-        if (Array.isArray(held.usernames)) names.push(...held.usernames.map(String));
-      }
-      return names.length === 0 ? 'SHARED WITH NOBODY' : `SHARED WITH ${names.join(', ')}`;
-    }
-    return 'ACCESS UNREAD';
-  };
-
-  // Builds one files pane instance from the template; a catalogue is the
-  // same pane wearing catalogue traits, for `/bin` bound to an input.
-  const filesInstance_build = (id: string, primary: boolean, catalogue: boolean = false): PaneInstance => {
-    const mount: HTMLElement = template_stamp('tpl-pane-files');
-    const panel: FilesPanel = new FilesPanel(
-      pane_find(mount, '.files-panel'),
-      (action: FileAction): void => fileAction_handle(id, panel, action),
-      previewProvider,
-      { catalogue },
-    );
-    // A selection's verbs are the row's verbs over many rows, and the kernel
-    // already takes many operands — so each is ONE line the operator could
-    // have typed, not twenty lines they must audit.
-    panel.selectionVerbs_declare((rows) => {
-      const paths: string[] = rows.map(([path]): string => path);
-      const quoted: string = paths.map((path: string): string => `"${path}"`).join(' ');
-      const files: boolean = rows.every(([, entry]): boolean => entry.type === 'file');
-      const feeds: number[] = [];
-      for (const path of paths) {
-        const feed: number | null = feedOf_path(path);
-        if (feed !== null && !feeds.includes(feed)) feeds.push(feed);
-      }
-      const facts: FilesSelectionFacts = { count: paths.length, feeds };
-      const runs: Record<string, () => void> = {
-        // -I asks ONCE for the whole list: twenty questions to remove
-        // twenty files is a confirmation an operator learns to dismiss.
-        delete: (): void => verbLine_run(id, `rm -rI ${quoted}`),
-        // `-t` with no value: every operand is a SOURCE and the target is
-        // asked for. Without it `mv a b` is a rename of a onto b — the
-        // right reading of that line, and the wrong thing for a set.
-        move: (): void => terminal.line_run(`mv -t ${quoted}`),
-        copy: (): void => terminal.line_run(`cp -t ${quoted}`),
-        // A grant is per feed, so a selection of twenty files in one feed
-        // is ONE grant: the capsule names the feeds, not the files.
-        share: (): void => terminal.line_run(
-          `setfacl ${feeds.map((feed: number): string => `feed_${feed}`).join(' ')}`,
-        ),
-      };
-      void files;
-      return FILES_SELECTION_ROSTER.rules
-        .filter((rule): boolean => rule.offered(facts))
-        .map((rule): ListingAction<void> => ({
-          label: rule.label(facts),
-          run: (): void => runs[rule.name]?.(),
-        }));
-    });
-    panel.rowVerbs_declare(
-      (entry, path: string) => rowVerbs_of(id, entry, path),
-      (_entry, path: string): void => {
-        // Indicating IS the regard: a viewer in the group renders what the
-        // operator pointed at, without their having to open it first.
-        subjects.regard_write(id, { address: path, modelKind: 'fs.file' });
-        // A verb that grants access says what is already granted. The read
-        // is silent (an instrument, not a command the operator issued) and
-        // lands beside the verbs when it arrives.
-        if (feedOf_path(path) === null) return;
-        void client
-          .line_execute(`getfacl "${path}"`, { silent: true, observe: false })
-          .then((outcome: ExecuteOutcome): void => {
-            panel.rowReadout_show(path, shares_read(outcome));
-          })
-          .catch((): void => { panel.rowReadout_show(path, 'ACCESS UNREAD'); });
-      },
-    );
-    panels.set('files', id, panel);
-    // Home is the session's: the trail starts at `~` under it and the `~`
-    // row goes there. A pane opened after the prompt arrived learns it here.
-    if (promptUser !== null && promptUser !== '') panel.home_set(`/home/${promptUser}`);
-    rootedHistory.set(id, []);
-    filesFollow.set(id, primary);
-    cwdBind_sync(id);
-    panel.follow_set(primary);
-    return {
-      id,
-      kind: 'files',
-      mount,
-      dispose: (): void => {
-        panels.delete(id);
-        rootedHistory.delete(id);
-        subjects.pane_leave(id);
-      },
-    };
-  };
 
   // Builds one viewer pane instance: a slaved projection of its group's
   // regard. The subscription happens at spawn time, after the instance has
@@ -2844,7 +2324,7 @@ async function surface_start(token: string): Promise<void> {
           capsule.textContent = text;
           capsule.title = hint;
           capsule.addEventListener('click', (): void => {
-            if ((filesFollow.get(id) === true) !== follow) filesFollow_set(id, follow);
+            if (browser.follows(id) !== follow) browser.follow_set(id, follow);
             sound_play('audio3');
           });
           binding.appendChild(capsule);
@@ -2854,8 +2334,8 @@ async function surface_start(token: string): Promise<void> {
         cwdBind_offer('ROOT HERE', false, 'unbind from the cwd: this browser keeps its own place');
         // The pair reads the pane's state wherever the state was changed —
         // the drawer, the language, or a split being born rooted.
-        cwdBind_sync_register(id, (): void => {
-          const following: boolean = filesFollow.get(id) === true;
+        browser.cwdBind_sync_register(id, (): void => {
+          const following: boolean = browser.follows(id);
           for (const capsule of binding.querySelectorAll<HTMLElement>('.drawer-cwdbind')) {
             capsule.classList.toggle(
               'drawer-bind-selected',
@@ -2863,24 +2343,19 @@ async function surface_start(token: string): Promise<void> {
             );
           }
         });
-        cwdBind_sync(id);
+        browser.cwdBind_sync(id);
       }
       // HOME and BACK act on where the FIELD points, so they live on the
       // frame that answers to the field. A following browser's back and home
       // are the session's own; a rooted one walks its own history.
-      const follows = (): boolean => filesFollow.get(id) === true;
+      const follows = (): boolean => browser.follows(id);
       mount.querySelector<HTMLElement>('.files-home')?.addEventListener('click', (): void => {
         if (follows()) {
           terminal.line_run('cd ~');
           return;
         }
         const panel: FilesPanel | undefined = panels.get('files', id);
-        if (panel === undefined) return;
-        const previous: string | null = panel.path_current();
-        if (previous !== null) {
-          rootedHistory.get(id)?.push(previous);
-        }
-        rootedListing_show(id, panel, '~');
+        if (panel !== undefined) browser.rooted_walk(id, panel, '~');
       });
       mount.querySelector<HTMLElement>('.files-back')?.addEventListener('click', (): void => {
         if (follows()) {
@@ -2888,10 +2363,7 @@ async function surface_start(token: string): Promise<void> {
           return;
         }
         const panel: FilesPanel | undefined = panels.get('files', id);
-        const previous: string | undefined = rootedHistory.get(id)?.pop();
-        if (panel !== undefined && previous !== undefined) {
-          rootedListing_show(id, panel, previous);
-        }
+        if (panel !== undefined) browser.rooted_back(id, panel);
       });
       // DOWNLOAD and DELETE act on a ROW, so the drawer offers neither. The
       // intents themselves live on (the console language reaches them, and
@@ -3772,7 +3244,7 @@ async function surface_start(token: string): Promise<void> {
         } else {
           // A console listing reaches every browser bound to the cwd.
           for (const [paneId, panel] of panels.entries('files')) {
-            if (filesFollow.get(paneId) === true) panel.envelope_observe(envelope);
+            if (browser.follows(paneId)) panel.envelope_observe(envelope);
           }
           pacsPanel.envelope_observe(envelope);
           // A verb that changed a folder does not re-list it: `rm` reports

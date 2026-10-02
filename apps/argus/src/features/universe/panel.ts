@@ -20,7 +20,7 @@
 import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope } from '@fnndsc/menu';
 import { barState_clear, barState_set, type BarState } from '../roster/bar.js';
 import { PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, UNIVERSE_REACH, procLayoutModelSchema, procUniverseModelSchema, universeKey_of, universeReach_of, type ProcUniverseModel } from '@fnndsc/menu';
-import { ChrisSpace, PHYSICS_DEFAULT, type DrawMode, type PhysicsTerms, type SceneGraph, type SceneNode, type SettleMode } from '../../scene/chrisSpace.js';
+import { ChrisSpace, PHYSICS_DEFAULT, type DrawMode, type PhysicsTerms, type SceneGraph, type SceneNode, type SettleMode, type ScenePlan } from '../../scene/chrisSpace.js';
 import {
   LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse,
   enteredFeed_build, descendedGraph_build, sphereIds_of, clusterTip_of, clusterGraph_build, clusterIds_of, shapeWords_of, shapeWords_brief, shape_of,
@@ -214,7 +214,6 @@ export class UniversePanel {
   /** The cluster in view, while one is: a shape and its spheres. */
   private cluster: { shape: string; ids: string[] } | null = null;
   /** A descent or an ascent in flight: clicks wait. */
-  private flying: boolean = false;
   /**
    * How far the camera stood when the descent (into a feed or a cluster)
    * landed: a pinch that draws it back well past this climbs out.
@@ -312,7 +311,7 @@ export class UniversePanel {
         return;
       }
       // Inside a node (the overlay up) Esc is the overlay's: it flies back out.
-      if (event.key !== 'Escape' || (this.inside === null && this.cluster === null) || this.flying || this.scene.holding_get()) return;
+      if (event.key !== 'Escape' || (this.inside === null && this.cluster === null) || this.scene.moving() || this.scene.holding_get()) return;
       if (this.pane !== null && this.pane.offsetParent === null) return;
       this.ascend();
     };
@@ -582,7 +581,7 @@ export class UniversePanel {
       this.view_set(wanted);
       return wanted === 'feeds' ? 'every feed its own molecule' : 'the shapes folded, one molecule each';
     }
-    if (this.flying && (verb === 'enter' || verb === 'cluster' || verb === 'back')) return 'universe: still moving; ask again';
+    if (this.scene.moving() && (verb === 'enter' || verb === 'cluster' || verb === 'back')) return 'universe: still moving; ask again';
     if (verb === 'cluster') {
       const feedId: number = parseInt(args[0] ?? '', 10);
       const feed: LandedFeed | undefined = Number.isFinite(feedId) ? this.landed.get(feedId) : undefined;
@@ -852,7 +851,7 @@ export class UniversePanel {
     // not drawn: the descent stands until the climb, which paints what has
     // landed since. Drawn, it keeps a camera the operator has placed: a
     // re-ask is the lab moving, not a reason to fly the operator out.
-    if (this.inside === null && this.cluster === null && this.entering === null && !this.flying) this.paint(!this.scene.camera_touched());
+    if (this.inside === null && this.cluster === null && this.entering === null && !this.scene.moving()) this.paint(!this.scene.camera_touched());
     else this.title_paint();
   }
 
@@ -861,7 +860,7 @@ export class UniversePanel {
     if (!this.landed.take(landed) || this.repaintTimer !== null || this.inside !== null || this.cluster !== null || this.entering !== null) return;
     this.repaintTimer = window.setTimeout((): void => {
       this.repaintTimer = null;
-      if (this.disposed || this.entering !== null || this.inside !== null || this.cluster !== null || this.flying) return;
+      if (this.disposed || this.entering !== null || this.inside !== null || this.cluster !== null || this.scene.moving()) return;
       this.paint(!this.scene.camera_touched());
     }, REPAINT_MS);
   }
@@ -920,8 +919,7 @@ export class UniversePanel {
     this.replay_end();
     const feed: LandedFeed | undefined = this.landed.get(feedId);
     const ask = this.handlers.feed_dag;
-    if (feed === undefined || ask === undefined || this.flying || this.inside !== null) return;
-    this.flying = true;
+    if (feed === undefined || ask === undefined || this.scene.moving() || this.inside !== null) return;
     this.facts_clear();
     const spheres: string[] = sphereIds_of(feedId, feed);
     // The ask can take seconds on a large feed, and can be refused: the bar
@@ -933,69 +931,58 @@ export class UniversePanel {
     const asked: number = Date.now();
     // A click flies toward the star clicked; a word (universe enter) frames
     // the feed's spheres.
-    const approach = (onDone: () => void): void => {
-      if (clicked !== undefined) this.scene.camera_flyToward(clicked, 14, DESCENT_MS, onDone);
-      else this.scene.camera_flyToFit(spheres, DESCENT_MS, onDone);
-    };
-    approach((): void => {
-      void ask(feedId).then((model: FeedDagModel | null): void => {
-        if (this.disposed) return;
-        this.entering = null;
-        if (model === null) {
-          this.flying = false;
-          this.title_paint();
-          this.handlers.note?.(`universe: feed ${feedId}: the session gave no graph for it (feed diagram feed_${feedId} refused or answered nothing after ${Math.round((Date.now() - asked) / 1000)}s)`);
-          return;
-        }
-        const entered: EnteredFeed = enteredFeed_build(model);
-        // The feed the operator is at is solid, however small: its nodes
-        // are hovered and pressed.
-        for (const node of entered.nodes) node.solid = true;
-        // The feed unfolds from where its molecule stood — or, entered by
-        // word from the folded top, from where its shape's fold stands:
-        // every new node starts at that centre and settles out from it.
-        const positions = this.scene.positions_get();
-        const centre: [number, number, number] = [0, 0, 0];
-        let counted: number = 0;
-        for (const id of [...spheres, ...foldIds_of(shape_of(feed), this.landed)]) {
-          const at = positions[id];
-          if (at === undefined) continue;
-          centre[0] += at[0]; centre[1] += at[1]; centre[2] += at[2]; counted += 1;
-          if (counted === spheres.length && spheres.some((sphere: string): boolean => positions[sphere] !== undefined)) break;
-        }
-        if (counted > 0) { centre[0] /= counted; centre[1] /= counted; centre[2] /= counted; }
-        for (const node of entered.nodes) {
-          positions[node.id] = [centre[0] + (Math.random() - 0.5) * 0.5, centre[1] + (Math.random() - 0.5) * 0.5, centre[2] + (Math.random() - 0.5) * 0.5];
-        }
-        this.scene.positions_seed(positions);
-        // The base is what stands behind the feed: every feed, or its own
-        // shape unfolded with the rest still folded; the feed's molecule
-        // replaced by its graph, everything but the graph dimmed.
-        const prefix: string = `feed:${feedId}:`;
-        const graph: SceneGraph = this.view === 'feeds'
-          ? descendedGraph_build(this.landed.all(), feedId, entered, this.scale, this.arrangement === 'constellations', this.arrangement === 'data' ? dataGraph_build(this.landed.all(), this.scale).graph : this.arrangement === 'accretion' ? accretionGraph_build(this.landed.all(), this.scale) : undefined)
-          : {
-              nodes: [
-                ...unfoldedGraph_build(this.landed.all(), shape_of(feed), this.scale).graph.nodes
-                  .filter((node: SceneNode): boolean => !node.id.startsWith(prefix))
-                  .map((node: SceneNode): SceneNode => ({ ...node, dim: true })),
-                ...entered.nodes,
-              ],
-            };
-        // Only the feed settles: the rest of the space holds still and
-        // pushes on nothing, and the feed hugs itself where the molecule
-        // stood rather than exploding into a crowd's charge.
-        const enteredIds: Set<string> = new Set(entered.nodes.map((node: SceneNode): string => node.id));
-        const frozen: string[] = graph.nodes.filter((node: SceneNode): boolean => !enteredIds.has(node.id)).map((node: SceneNode): string => node.id);
-        this.scene.graph_set(graph, { wave: false, fit: false, frozen, physics: { reach: UNIVERSE_REACH, gravity: false } });
-        this.inside = { feedId, title: model.feedName, entered, ids: new Set(entered.nodes.map((node: SceneNode): string => node.id)) };
-        this.pane?.classList.add('universe-inside');
+    const approach = clicked !== undefined ? { toward: clicked, distance: 14, durationMs: DESCENT_MS } : { fit: spheres, durationMs: DESCENT_MS };
+    this.scene.descent(approach, async (): Promise<ScenePlan | null> => {
+      const model: FeedDagModel | null = await ask(feedId);
+      if (this.disposed) return null;
+      this.entering = null;
+      if (model === null) {
         this.title_paint();
-        // Frame the bulk of the feed, not its outliers: a node must be wide
-        // enough to hover and click, and the wheel reaches the rest.
-        this.scene.camera_flyToFit([...this.inside.ids], DESCENT_MS, (): void => this.landed_note(), 1, 0.95);
-      });
-    });
+        this.handlers.note?.(`universe: feed ${feedId}: the session gave no graph for it (feed diagram feed_${feedId} refused or answered nothing after ${Math.round((Date.now() - asked) / 1000)}s)`);
+        return null;
+      }
+      const entered: EnteredFeed = enteredFeed_build(model);
+      // The feed the operator is at is solid, however small: its nodes
+      // are hovered and pressed.
+      for (const node of entered.nodes) node.solid = true;
+      // The base is what stands behind the feed: every feed, or its own
+      // shape unfolded with the rest still folded; the feed's molecule
+      // replaced by its graph, everything but the graph dimmed.
+      const prefix: string = `feed:${feedId}:`;
+      const graph: SceneGraph = this.view === 'feeds'
+        ? descendedGraph_build(this.landed.all(), feedId, entered, this.scale, this.arrangement === 'constellations', this.arrangement === 'data' ? dataGraph_build(this.landed.all(), this.scale).graph : this.arrangement === 'accretion' ? accretionGraph_build(this.landed.all(), this.scale) : undefined)
+        : {
+            nodes: [
+              ...unfoldedGraph_build(this.landed.all(), shape_of(feed), this.scale).graph.nodes
+                .filter((node: SceneNode): boolean => !node.id.startsWith(prefix))
+                .map((node: SceneNode): SceneNode => ({ ...node, dim: true })),
+              ...entered.nodes,
+            ],
+          };
+      const ids: Set<string> = new Set(entered.nodes.map((node: SceneNode): string => node.id));
+      // The feed unfolds from where its molecule stood — or, entered by
+      // word from the folded top, from where its shape's fold stands.
+      // Only the feed settles: the rest of the space holds still and
+      // pushes on nothing, and the feed hugs itself where the molecule
+      // stood rather than exploding into a crowd's charge. Frame the bulk
+      // of the feed, not its outliers: a node must be wide enough to hover
+      // and click, and the wheel reaches the rest.
+      return {
+        graph,
+        unfolding: [...ids],
+        from: [spheres, foldIds_of(shape_of(feed), this.landed)],
+        physics: { reach: UNIVERSE_REACH, gravity: false },
+        frame: [...ids],
+        durationMs: DESCENT_MS,
+        bulk: 1,
+        margin: 0.95,
+        drawn: (): void => {
+          this.inside = { feedId, title: model.feedName, entered, ids };
+          this.pane?.classList.add('universe-inside');
+          this.title_paint();
+        },
+      };
+    }, (): void => this.landed_note());
   }
 
   /**
@@ -1003,7 +990,7 @@ export class UniversePanel {
    * from (or the whole space), from a cluster to the whole space, framed.
    */
   private ascend(): void {
-    if (this.flying) return;
+    if (this.scene.moving()) return;
     this.framedAt = null;
     if (this.inside !== null) {
       this.inside = null;
@@ -1019,9 +1006,8 @@ export class UniversePanel {
       this.cluster = null;
       this.pane?.classList.remove('universe-cluster');
     }
-    this.flying = true;
     this.paint(false);
-    this.scene.camera_flyToFit([], ASCENT_MS, (): void => { this.flying = false; });
+    this.scene.frame([], ASCENT_MS);
   }
 
   /**
@@ -1033,7 +1019,7 @@ export class UniversePanel {
    */
   private cluster_enter(shape: string): void {
     this.replay_end();
-    if (this.flying || this.inside !== null) return;
+    if (this.scene.moving() || this.inside !== null) return;
     this.cluster_show(shape);
   }
 
@@ -1043,49 +1029,32 @@ export class UniversePanel {
       // the rest dimmed, nothing moved, the camera flown to frame it.
       const ids: string[] = clusterIds_of(shape, this.landed);
       if (ids.length === 0) return;
-      this.flying = true;
       this.cluster = { shape, ids };
       this.pane?.classList.add('universe-cluster');
-      const lit: SceneGraph = clusterGraph_build(this.landed.all(), shape, this.scale);
-      this.scene.graph_set(lit, { wave: false, fit: false, frozen: lit.nodes.map((node: SceneNode): string => node.id) });
-      this.title_paint();
-      this.scene.camera_flyToFit(ids, DESCENT_MS, (): void => this.landed_note());
+      this.scene.relight(clusterGraph_build(this.landed.all(), shape, this.scale), ids, DESCENT_MS, (): void => this.landed_note(), (): void => this.title_paint());
       return;
     }
     const { graph, memberIds } = unfoldedGraph_build(this.landed.all(), shape, this.scale);
     if (memberIds.length === 0) return;
-    this.flying = true;
     this.cluster = { shape, ids: memberIds };
     this.pane?.classList.add('universe-cluster');
     // The members unfold from where the folded molecule stood: each starts
     // at its centre and settles out, the rest of the field frozen, no
     // gravity to the origin, no centering — the feed descent's settle.
-    const positions = this.scene.positions_get();
-    const foldIds: string[] = foldIds_of(shape, this.landed);
-    const centre: [number, number, number] = [0, 0, 0];
-    let counted: number = 0;
-    for (const id of foldIds) {
-      const at = positions[id];
-      if (at === undefined) continue;
-      centre[0] += at[0]; centre[1] += at[1]; centre[2] += at[2]; counted += 1;
-    }
-    if (counted > 0) { centre[0] /= counted; centre[1] /= counted; centre[2] /= counted; }
     const memberSet: Set<string> = new Set(memberIds);
-    for (const node of graph.nodes) {
-      if (memberSet.has(node.id) || node.ghost === true) {
-        positions[node.id] = [centre[0] + (Math.random() - 0.5) * 0.5, centre[1] + (Math.random() - 0.5) * 0.5, centre[2] + (Math.random() - 0.5) * 0.5];
-      }
-    }
-    this.scene.positions_seed(positions);
-    const frozen: string[] = graph.nodes.filter((node: SceneNode): boolean => !memberSet.has(node.id) && node.ghost !== true).map((node: SceneNode): string => node.id);
-    this.scene.graph_set(graph, { wave: false, fit: false, frozen, physics: { reach: UNIVERSE_REACH, gravity: false } });
-    this.title_paint();
-    this.scene.camera_flyToFit(memberIds, DESCENT_MS, (): void => this.landed_note());
+    this.scene.unfold({
+      graph,
+      unfolding: graph.nodes.filter((node: SceneNode): boolean => memberSet.has(node.id) || node.ghost === true).map((node: SceneNode): string => node.id),
+      from: [foldIds_of(shape, this.landed)],
+      physics: { reach: UNIVERSE_REACH, gravity: false },
+      frame: memberIds,
+      durationMs: DESCENT_MS,
+      drawn: (): void => this.title_paint(),
+    }, (): void => this.landed_note());
   }
 
   /** A descent landed: the flight is over, and where it stands is its framing. */
   private landed_note(): void {
-    this.flying = false;
     this.framedAt = this.scene.camera_distance();
   }
 
@@ -1096,7 +1065,7 @@ export class UniversePanel {
    */
   private pinch_leave(): void {
     if (this.inside === null && this.cluster === null) return;
-    if (this.flying || this.scene.holding_get() || this.framedAt === null) return;
+    if (this.scene.moving() || this.scene.holding_get() || this.framedAt === null) return;
     if (this.scene.camera_distance() <= this.framedAt * PINCH_LEAVE_FACTOR) return;
     this.ascend();
   }
@@ -1110,7 +1079,7 @@ export class UniversePanel {
   private node_dive(node: SceneNode): void {
     const payload: FeedDagNode | undefined = this.inside?.entered.payloads.get(node.id);
     const dive = this.handlers.node_dive;
-    if (payload === undefined || dive === undefined || this.flying) return;
+    if (payload === undefined || dive === undefined || this.scene.moving()) return;
     this.scene.flight_into(node.id, (): void => dive(payload.vfsPath));
   }
 
@@ -1140,7 +1109,7 @@ export class UniversePanel {
 
   /** A click: descend from a sphere outside, show facts on a node inside. */
   private node_select(node: SceneNode): void {
-    if (this.flying) return;
+    if (this.scene.moving()) return;
     if (this.inside === null) {
       // A plugin star lights the stages it ran; pressed again, it goes out.
       const plugin: string | null = pluginOfStar(node.id);
@@ -1349,9 +1318,8 @@ export class UniversePanel {
         if (group.plugin === plugin) ids.push(`feed:${feed.id}:${index}`);
       });
     }
-    if (ids.length === 0 || this.flying) return;
-    this.flying = true;
-    this.scene.camera_flyToFit(ids, DESCENT_MS, (): void => { this.flying = false; }, 0.9);
+    if (ids.length === 0 || this.scene.moving()) return;
+    this.scene.frame(ids, DESCENT_MS, undefined, 0.9);
   }
 
   /** A lit plugin's facts and its verb, on the field's overlay. */

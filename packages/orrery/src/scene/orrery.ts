@@ -55,7 +55,8 @@ import {
   type PlacedNode,
 } from './settle.js';
 import { bodies_draw, edges_draw, type DrawnBodies, type DrawPorts } from './bodies.js';
-import { DrawnNodes, censusNodes_of } from './drawn.js';
+import { DrawnNodes, censusNodes_of, handoffLook_of, handoffView_of, perUnit_of, tubeNode_of } from './drawn.js';
+import { Flights, type Approach, type FlightGraph, type UnfoldPlan } from './flights.js';
 import type { CensusNode } from '../draw/index.js';
 import { HierarchySettle } from './hierarchySettle.js';
 import { PulseWave } from './wave.js';
@@ -64,6 +65,7 @@ import { GrabSession } from './grab.js';
 import { HoverTip } from './hover.js';
 
 export type { SpaceNode } from './node.js';
+export type { Approach, UnfoldPlan, Places } from './flights.js';
 
 /**
  * How a space is arranged: a hierarchy round each shape's hub (galaxy,
@@ -231,6 +233,15 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     census: this.censusField,
     group: this.group,
   });
+  /** The choreographies a surface asks for as one word each. */
+  private readonly flights: Flights<N> = new Flights<N>({
+    positions_get: () => this.positions_get(),
+    positions_seed: (places) => this.positions_seed(places),
+    graph_set: (graph: FlightGraph<N>, options) => this.graph_set(graph, options),
+    flyToFit: (ids, durationMs, onDone, bulk, margin) => this.camera_flyToFit(ids, durationMs, onDone, bulk, margin),
+    flyToward: (id, distance, durationMs, onDone) => this.camera_flyToward(id, distance, durationMs, onDone),
+    alive: (): boolean => !this.disposed,
+  });
   /** A named space's settle as a hierarchy, in the surface's worker. */
   private readonly hierarchy: HierarchySettle<N>;
   /** The pulse wave over the drawn nodes. */
@@ -351,7 +362,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     // A pane resize (a collapsed console, a divider drag) reshapes the box
     // without a window resize; an unfitted canvas would stretch the graph.
     new ResizeObserver((): void => this.size_fit()).observe(container);
-    this.frame();
+    this.tick();
   }
 
   /**
@@ -395,7 +406,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
   }
 
   /** One frame: the motions stepped, the scene rendered, the next frame asked. */
-  private frame(): void {
+  private tick(): void {
     if (this.disposed) return;
     if (this.ambient) {
       this.rig.tumble_step();
@@ -414,7 +425,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     this.tubes.frame(performance.now());
     this.labels.declutter(this.camera);
     this.renderer.render(this.scene, this.camera);
-    this.frameHandle = window.requestAnimationFrame((): void => this.frame());
+    this.frameHandle = window.requestAnimationFrame((): void => this.tick());
   }
 
   /** Sets physics terms and re-settles (warm-started, so it morphs). */
@@ -566,6 +577,31 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
    */
   public camera_touched(): boolean {
     return this.rig.touched_get();
+  }
+
+  /** @returns Whether a flight the surface asked for is under way (see `flights.ts`); a dive into a node is a hold, not a flight. */
+  public moving(): boolean {
+    return this.flights.moving();
+  }
+
+  /** Frames nodes, the scene moving until the camera arrives (see `Flights.frame`). */
+  public frame(ids: ReadonlyArray<string>, durationMs: number, onDone: () => void = (): void => {}, bulk?: number, margin?: number): void {
+    this.flights.frame(ids, durationMs, onDone, bulk, margin);
+  }
+
+  /** Lights a graph where everything stands and frames part of it (see `Flights.relight`). */
+  public relight(graph: SpaceGraph<N>, frame: ReadonlyArray<string>, durationMs: number, onDone: () => void = (): void => {}, drawn?: () => void): void {
+    this.flights.relight(graph, frame, durationMs, onDone, drawn);
+  }
+
+  /** Unfolds a graph from where other nodes stood, then frames it (see {@link UnfoldPlan}). */
+  public unfold(plan: UnfoldPlan<N>, onDone: () => void = (): void => {}): void {
+    this.flights.unfold(plan, onDone);
+  }
+
+  /** Descends: approach, ask, unfold, frame (see `Flights.descent`). */
+  public descent(approach: Approach, ask: () => Promise<UnfoldPlan<N> | null>, onDone: () => void = (): void => {}, onRefused: () => void = (): void => {}): void {
+    this.flights.descent(approach, ask, onDone, onRefused);
   }
 
   /**
@@ -1106,42 +1142,19 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
   private handoff_step(): void {
     if (this.handoffField.size() === 0) return;
     const height: number = this.renderer.domElement.clientHeight || 1;
-    const perUnit: number = height / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
-    this.group.updateMatrixWorld(true);
-    this.camera.updateMatrixWorld();
-    const view: THREE.Matrix4 = new THREE.Matrix4().multiplyMatrices(this.camera.matrixWorldInverse, this.group.matrixWorld);
-    this.handoffField.step(view, perUnit, performance.now());
+    this.handoffField.step(handoffView_of(this.camera, this.group), perUnit_of(height, this.camera.fov), performance.now());
   }
 
-  /**
-   * How a placed node's sphere is drawn when its molecule turns solid.
-   *
-   * @param id - The node.
-   * @returns Where it stands, how large, what hue.
-   */
+  /** @returns How a placed node's sphere is drawn when its molecule turns solid. */
   private handoffLook_of(id: string): HandoffLook | undefined {
     const placed: PlacedNode | undefined = this.placedById.get(id);
-    if (placed === undefined) return undefined;
-    return { position: placed.position, radius: placed.radius, color: paint_resolve(placed.node.look.paint, this.palette_read()) };
+    return placed === undefined ? undefined : handoffLook_of(placed, this.palette_read());
   }
 
-  /**
-   * A placed node as the tubes read it.
-   *
-   * @param id - The node.
-   * @returns Where it stands, how large, what it hangs from, its state.
-   */
+  /** @returns A placed node as the tubes read it. */
   private tubeNode_of(id: string): TubeNode | undefined {
     const placed: PlacedNode | undefined = this.placedById.get(id);
-    if (placed === undefined) return undefined;
-    return {
-      position: placed.position,
-      radius: placed.radius,
-      parents: placed.node.parentIds,
-      // A faint join is a thread, never a tube.
-      joins: placed.node.joinFaint === true ? [] : placed.node.joinParentIds,
-      state: placed.node.look.state,
-    };
+    return placed === undefined ? undefined : tubeNode_of(placed);
   }
 
   /** Copies simulation positions onto meshes and re-anchors every edge. */

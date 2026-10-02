@@ -26,11 +26,16 @@ import {
   type PhysicsTerms,
   type SettleMode,
   type SpaceNode,
+  type Approach,
+  type UnfoldPlan,
 } from '@fnndsc/orrery';
 import { chrisLook_of } from './chrisLook.js';
 
 export { PHYSICS_DEFAULT };
-export type { DrawMode, LayoutStrategy, PhysicsTerms, SettleMode };
+export type { Approach, DrawMode, LayoutStrategy, PhysicsTerms, SettleMode };
+
+/** An unfold as a pane plans it: the scene's plan over the pane's own nodes. */
+export type ScenePlan = Omit<UnfoldPlan<LookedNode>, 'graph'> & { graph: SceneGraph };
 
 /** One node of a compute graph, as a pane builds it. */
 export interface SceneNode extends Omit<SpaceNode, 'look'> {
@@ -122,6 +127,24 @@ export class ChrisSpace extends Orrery<LookedNode> {
     const nodes: LookedNode[] = graph.nodes.map((node: SceneNode): LookedNode => Object.assign(node, { look: chrisLook_of(node) }));
     this.byId = new Map(nodes.map((node: LookedNode): [string, LookedNode] => [node.id, node]));
     super.graph_set({ nodes }, options);
+  }
+
+  /**
+   * Relights a pane's graph where everything stands; see {@link Orrery.relight}.
+   * The nodes are read for their looks on the way in, as `graph_set` reads them.
+   */
+  public override relight(graph: SceneGraph, frame: ReadonlyArray<string>, durationMs: number, onDone?: () => void, drawn?: () => void): void {
+    super.relight(graph as { nodes: LookedNode[] }, frame, durationMs, onDone, drawn);
+  }
+
+  /** Unfolds a pane's graph; see {@link Orrery.unfold}. The looks are read as the graph is drawn. */
+  public override unfold(plan: ScenePlan, onDone?: () => void): void {
+    super.unfold(plan as unknown as UnfoldPlan<LookedNode>, onDone);
+  }
+
+  /** Descends into a pane's graph; see {@link Orrery.descent}. The looks are read as the graph is drawn. */
+  public override descent(approach: Approach, ask: () => Promise<ScenePlan | null>, onDone?: () => void, onRefused?: () => void): void {
+    super.descent(approach, ask as unknown as () => Promise<UnfoldPlan<LookedNode> | null>, onDone, onRefused);
   }
 
   /**

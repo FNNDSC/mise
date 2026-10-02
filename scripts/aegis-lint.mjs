@@ -387,6 +387,26 @@ LINT_CHECKS['a-fact-has-one-source'] = () => {
       }
     }
   }
+  // The PACS levels and the query form share their leading tracks (the
+  // fold, PATIENT, MRN): each level reads them from PACS_LEAD_TRACKS, and
+  // the form has a cell for every track before them, the listing's control
+  // column included (#825: the form fell a column off its caps when the
+  // facade minted a control track the form had no cell for).
+  {
+    const pacs = readFileSync('apps/argus/src/features/pacs/panel.ts', 'utf8');
+    for (const key of ['fold', 'patient', 'mrn']) {
+      const pattern = new RegExp(`key: '${key}',[\\s\\S]*?width: ([^,\\n]+),`, 'g');
+      for (const match of pacs.matchAll(pattern)) {
+        if (match[1].trim() !== `PACS_LEAD_TRACKS.${key}`) fail('a-fact-has-one-source', `apps/argus/src/features/pacs/panel.ts: the '${key}' trait spells its own width (${match[1].trim()}); read PACS_LEAD_TRACKS.${key}`);
+      }
+    }
+    const html = readFileSync('apps/argus/index.html', 'utf8');
+    const form = html.slice(html.indexOf('id="pacs-form"'), html.indexOf('</div>', html.indexOf('id="pacs-form"')));
+    const keys = [...form.matchAll(/data-key="([a-z]+)"/g)].map((m) => m[1]);
+    if (keys[0] !== 'control' || keys[1] !== 'fold' || keys[2] !== 'patient' || keys[3] !== 'mrn') {
+      fail('a-fact-has-one-source', `apps/argus/index.html: the PACS form's leading cells are ${keys.slice(0, 4).join(', ')}; they must be control, fold, patient, mrn — one cell per leading track of the levels`);
+    }
+  }
 };
 
 /**

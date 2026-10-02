@@ -86,8 +86,9 @@ import { nodeOverlay_wire, type FileText, type NodeOverlay } from './nodeOverlay
 import { cohort_wire, type CohortModule } from './cohort.js';
 import { asks_wire, type Asks } from './asks.js';
 import { keys_wire } from './keys.js';
-import { browser_wire, feedOf_path, imagery_is, nodeOf_path, shares_read, TABLE_FILE_PATTERN, type Browser } from './browser.js';
-import { place_of, side_ofPlace, splitSelector_of, type Side } from './sides.js';
+import { paneChrome_wire } from './paneChrome.js';
+import { browser_wire, feedOf_path, imagery_is, shares_read, TABLE_FILE_PATTERN, type Browser } from './browser.js';
+import { place_of, type Side } from './sides.js';
 import { stalePage_watch } from './stalePage.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
 // from `tests/smoke/canon/lcars.json` — the computed style of this surface's own
@@ -2186,256 +2187,21 @@ async function surface_start(token: string): Promise<void> {
   /** The timers of controls' answers holding a pane's bar, by bar. */
   // The verbs on a pane as a thing on the stage, wired to this host (app/paneVerbs.ts).
   const { bar_note: paneBar_note, move: pane_move, flip: pane_flip, resize: pane_resize, chordKeys_of } = paneVerbs_wire(context);
-  const pane_chrome_wire = (id: string, kind: string, mount: HTMLElement): void => {
-    const drawer: HTMLElement | null = mount.querySelector<HTMLElement>('.pane-drawer');
-    const handle: HTMLElement | null = mount.querySelector<HTMLElement>('.pane-handle');
-    if (drawer === null || handle === null) {
-      return;
-    }
-    handle.addEventListener('click', (event: Event): void => {
-      // Working controls riding the header (the strategy pill) keep their
-      // own meaning; only the frame itself is the drawer's handle.
-      if (event.target instanceof Element && event.target.closest('button') !== null) {
-        return;
-      }
-      drawer.hidden = !drawer.hidden;
-      // An open drawer is keyboard-live either way it opened: first verb
-      // takes focus so arrows/Tab/Enter/Esc work without a prefix press.
-      if (!drawer.hidden) {
-        drawer.querySelector<HTMLButtonElement>('button')?.focus();
-      }
-      sound_play('audio3');
-    });
-    const zoomCapsule: HTMLElement | null = drawer.querySelector<HTMLElement>('.drawer-zoom');
-    if (zoomCapsule !== null) {
-      zoomCapsule.dataset['pane'] = id;
-    }
-    // The binding radio: what the next split creates. UNLINKED is the
-    // unmarked case; the selection is per-pane drawer state.
-    for (const bind of drawer.querySelectorAll<HTMLElement>('.drawer-bind')) {
-      bind.addEventListener('click', (): void => {
-        for (const peer of drawer.querySelectorAll('.drawer-bind')) {
-          peer.classList.remove('drawer-bind-selected');
-        }
-        bind.classList.add('drawer-bind-selected');
-        sound_play('audio3');
-      });
-    }
-    // The four direction capsules act under the lit pill: SPLIT opens a new
-    // pane on that side (the one verb that creates a pane; the selected
-    // binding says what it IS), MOVE walks this pane there for one press.
-    const splitters: HTMLButtonElement[] = [...drawer.querySelectorAll<HTMLButtonElement>('[data-split]')];
-    const sideOf = (splitter: HTMLElement): Side => side_ofPlace(splitter.dataset['split'], splitter.dataset['place']) ?? 'right';
-    const mode_set = (mode: 'split' | 'move'): void => {
-      drawer.dataset['mode'] = mode;
-      for (const pill of drawer.querySelectorAll<HTMLElement>('.drawer-mode')) {
-        pill.classList.toggle('drawer-mode-selected', pill.dataset['mode'] === mode);
-      }
-      for (const splitter of splitters) {
-        const side: Side = sideOf(splitter);
-        // A side this pane cannot go dims before the press.
-        splitter.disabled = mode === 'move' && !layout.move_possible(id, side);
-        const selector: string = splitSelector_of(side);
-        splitter.title = mode === 'move'
-          ? `this pane moves ${side}${chordKeys_of(selector, true)}`
-          : `new pane opens ${side}${chordKeys_of(selector, false)}`;
-      }
-    };
-    for (const pill of drawer.querySelectorAll<HTMLElement>('.drawer-mode')) {
-      pill.addEventListener('click', (): void => {
-        const wanted: 'split' | 'move' = pill.dataset['mode'] === 'move' ? 'move' : 'split';
-        // MOVE pressed while armed disarms; SPLIT is the rest state.
-        mode_set(wanted === 'move' && drawer.dataset['mode'] === 'move' ? 'split' : wanted);
-        sound_play('audio3');
-      });
-    }
-    for (const splitter of splitters) {
-      splitter.addEventListener('click', (): void => {
-        if (drawer.dataset['mode'] === 'move') {
-          pane_move(id, sideOf(splitter));
-          mode_set('split');
-          drawer.hidden = true;
-          return;
-        }
-        const dir: 'row' | 'col' = splitter.dataset['split'] === 'row' ? 'row' : 'col';
-        const before: boolean = splitter.dataset['place'] === 'before';
-        const binding: string =
-          drawer.querySelector<HTMLElement>('.drawer-bind-selected')?.dataset['bind'] ?? 'unlinked';
-        // A pill-born pane is a linked filesystem (follows the parent's regard
-        // at the directory level), a slaved viewer, or a blank pane.
-        const canonical: 'view' | 'fs' | 'empty' = binding === 'viewer' ? 'view' : binding === 'fs' ? 'fs' : 'empty';
-        if (pillPane_spawn(id, canonical, dir, before) === null) return;
-        drawer.hidden = true;
-        sound_play('audio3');
-      });
-    }
-    // Every capsule a chord presses names its keys in its title.
-    for (const selector of new Set(DRAWER_CHORDS.filter((chord: DrawerChord): boolean => chord.selector !== null && chord.move !== true).map((chord: DrawerChord): string => chord.selector ?? ''))) {
-      const capsule: HTMLElement | null = drawer.querySelector<HTMLElement>(selector);
-      if (capsule !== null && !capsule.title.includes('[keys ')) capsule.title = `${capsule.title}${chordKeys_of(selector, false)}`;
-    }
-    drawer.querySelector<HTMLElement>('.drawer-close')?.addEventListener('click', (): void => {
-      if (id === 'dag') {
-        // The primary DAG's close is its dismissal from home.
-        dagShown = false;
-        home_apply();
-        return;
-      }
-      if (!layout.leaf_close(id)) {
-        // The root leaf: closing the last pane means home.
-        home_apply();
-      }
-      orphans_dispose();
-      sound_play('audio3');
-    });
-    // Semantic children: parent-contextualized intents, per pane kind.
-    const children: HTMLElement | null = drawer.querySelector<HTMLElement>('.drawer-children');
-    if (children === null) {
-      return;
-    }
-    const child_offer = (label: string, hint: string, spawn: () => void, flavor: string = ''): void => {
-      const capsule: HTMLButtonElement = document.createElement('button');
-      capsule.className = `pacs-capsule drawer-child${flavor === '' ? '' : ` ${flavor}`}`;
-      capsule.textContent = label;
-      capsule.title = hint;
-      capsule.addEventListener('click', (): void => {
-        spawn();
-        drawer.hidden = true;
-        sound_play('audio3');
-      });
-      children.appendChild(capsule);
-    };
-    if (kind === 'files' || kind === 'catalogue') {
-      // Binding is a statement about this pane and its neighbours, so it
-      // rides the binding group beside LINKED FS rather than standing among
-      // verbs: what the next split creates, and what THIS browser follows,
-      // are the same kind of sentence. The two read as a radio because they
-      // are one — a browser either follows the session or holds its place.
-      const binding: HTMLElement | null = drawer.querySelector<HTMLElement>('.drawer-binding');
-      if (binding !== null) {
-        const label: HTMLElement = document.createElement('span');
-        label.className = 'drawer-label drawer-label-cwd';
-        label.textContent = 'CWD';
-        binding.appendChild(label);
-        const cwdBind_offer = (text: string, follow: boolean, hint: string): HTMLButtonElement => {
-          const capsule: HTMLButtonElement = document.createElement('button');
-          capsule.className = 'pacs-capsule drawer-cwdbind';
-          capsule.dataset['follow'] = follow ? 'on' : 'off';
-          capsule.textContent = text;
-          capsule.title = hint;
-          capsule.addEventListener('click', (): void => {
-            if (browser.follows(id) !== follow) browser.follow_set(id, follow);
-            sound_play('audio3');
-          });
-          binding.appendChild(capsule);
-          return capsule;
-        };
-        cwdBind_offer('FOLLOW CWD', true, "bind this browser to the session cwd (the console's browser)");
-        cwdBind_offer('ROOT HERE', false, 'unbind from the cwd: this browser keeps its own place');
-        // The pair reads the pane's state wherever the state was changed —
-        // the drawer, the language, or a split being born rooted.
-        browser.cwdBind_sync_register(id, (): void => {
-          const following: boolean = browser.follows(id);
-          for (const capsule of binding.querySelectorAll<HTMLElement>('.drawer-cwdbind')) {
-            capsule.classList.toggle(
-              'drawer-bind-selected',
-              (capsule.dataset['follow'] === 'on') === following,
-            );
-          }
-        });
-        browser.cwdBind_sync(id);
-      }
-      // HOME and BACK act on where the FIELD points, so they live on the
-      // frame that answers to the field. A following browser's back and home
-      // are the session's own; a rooted one walks its own history.
-      const follows = (): boolean => browser.follows(id);
-      mount.querySelector<HTMLElement>('.files-home')?.addEventListener('click', (): void => {
-        if (follows()) {
-          terminal.line_run('cd ~');
-          return;
-        }
-        const panel: FilesPanel | undefined = panels.get('files', id);
-        if (panel !== undefined) browser.rooted_walk(id, panel, '~');
-      });
-      mount.querySelector<HTMLElement>('.files-back')?.addEventListener('click', (): void => {
-        if (follows()) {
-          terminal.line_run('cd -');
-          return;
-        }
-        const panel: FilesPanel | undefined = panels.get('files', id);
-        if (panel !== undefined) browser.rooted_back(id, panel);
-      });
-      // DOWNLOAD and DELETE act on a ROW, so the drawer offers neither. The
-      // intents themselves live on (the console language reaches them, and
-      // the row's own track carries them next); only their home is gone.
-
-      // MKDIR and UPLOAD act on the PLACE the field holds, so they ride the
-      // frame beside HOME and BACK. Both need the listing on stage, which
-      // is the browser's own path and not necessarily the session's cwd.
-      const here = (): string | null => panels.get('files', id)?.path_current() ?? null;
-      mount.querySelector<HTMLElement>('.files-mkdir')?.addEventListener('click', (): void => {
-        const place: string | null = here();
-        if (place !== null) directory_make(id, place);
-      });
-      // REFRESH asks for the listing on stage again: a verb on the field,
-      // so it rides the frame with MKDIR and UPLOAD.
-      mount.querySelector<HTMLElement>('.files-refresh')?.addEventListener('click', (): void => {
-        const place: string | null = here();
-        if (place !== null) listing_refresh(id, place);
-      });
-      const chooser: HTMLInputElement | null = mount.querySelector<HTMLInputElement>('.files-upload-input');
-      mount.querySelector<HTMLElement>('.files-upload')?.addEventListener('click', (): void => {
-        if (here() === null) return;
-        // The operator's own machine is the browser's, and only the browser
-        // may open a file there — so the picker is the surface's, and the
-        // bytes travel to the daemon, which writes them through the kernel.
-        chooser?.click();
-      });
-      chooser?.addEventListener('change', (): void => {
-        const place: string | null = here();
-        const chosen: FileList | null = chooser.files;
-        if (place === null || chosen === null || chosen.length === 0) return;
-        void files_deliver(id, place, Array.from(chosen));
-        chooser.value = '';
-      });
-    }
-    if (kind === 'dag') {
-      // ENTER always lands in a place. A regard may point at a file (a
-      // file click inside a node writes the same cell): the place is its
-      // directory. Nothing regarded means the feed on stage.
-      child_offer('ENTER NODE', 'move the session into the indicated node (its data directory)', (): void => {
-        const regard: RegardValue | null = subjects.regard_get(id);
-        const feedId: number | null = panels.get('dag', id)?.feed_get() ?? null;
-        const place: string | null =
-          regard === null ? (feedId === null ? null : `/proc/jobs/feed_${feedId}`)
-          : regard.modelKind === 'fs.file' ? regard.address.replace(/\/[^/]*$/, '') || '/'
-          : regard.address;
-        if (place !== null) terminal.line_run(`cd "${place}"`);
-      });
-      child_offer('PROCESS NODE', 'run an executable on the indicated node\'s output (a catalogue opens beside)', (): void => {
-        const regard: RegardValue | null = subjects.regard_get(id);
-        const feedId: number | null = panels.get('dag', id)?.feed_get() ?? null;
-        if (regard === null || feedId === null) return;
-        const place: string = regard.modelKind === 'fs.file' ? regard.address.replace(/\/[^/]*$/, '') || '/' : regard.address;
-        const node: number | null = nodeOf_path(place) ?? (/_(\d+)\/?$/.exec(place) === null ? null : parseInt(/_(\d+)\/?$/.exec(place)?.[1] ?? '', 10));
-        if (node === null) return;
-        process_open(id, { input: place.replace(/\/data\/?$/, '') + '/data', feed: feedId, node });
-      });
-      child_offer('ENTER FEED', 'move the session into the feed on stage (or the one picked in the roster)', (): void => {
-        const feedId: number | null = panels.get('dag', id)?.feed_get() ?? null;
-        if (feedId !== null) terminal.line_run(`cd "/proc/jobs/feed_${feedId}"`);
-      });
-      child_offer('BACK', 'return to the previous listing inside the node', (): void => {
-        nodeOverlay.back(id);
-      });
-      child_offer('CLEAR DETAIL', 'dismiss the node facts (a click on empty space does too)', (): void => {
-        panels.get('dag', id)?.detail_clear();
-      });
-      child_offer('REFRESH', 'revisit the feed now (a watch keeps sampling it while it runs)', (): void => {
-        panels.get('dag', id)?.refresh();
-      });
-    }
-  };
+  /**
+   * A pane's chrome (app/paneChrome.ts): the drawer behind its handle and
+   * the children its kind adds. The pane verbs, the browser, the pill
+   * spawn, the opens and the home are its hooks.
+   */
+  const pane_chrome_wire = paneChrome_wire(context, {
+    verbs: { move: pane_move, chordKeys_of },
+    browser,
+    pillPane_spawn,
+    process_open: (fromId: string, binding: CatalogueBinding): void => process_open(fromId, binding),
+    overlay_back: (paneId: string): void => nodeOverlay.back(paneId),
+    home_apply: (): void => home_apply(),
+    orphans_dispose: (): void => orphans_dispose(),
+    dag_dismiss: (): void => { dagShown = false; },
+  });
   pane_chrome_wire('files', 'files', filesPrimary.mount);
   pane_chrome_wire('dag', 'dag', dagPrimary.mount);
   pane_chrome_wire('universe', 'universe', universePrimary.mount);

@@ -583,6 +583,12 @@ try {
     const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_idle(); };
     const text = () => document.getElementById('terminal').innerText;
     const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2).trim(); };
+    // The order that found #816: a stage whose pane is not in home (UNIVERSE),
+    // then the dashboard, then HELP — the spawn must have a host on stage.
+    document.getElementById('gutter-dashboard')?.click();
+    for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelectorAll('.launcher-tile').length > 0) break; }
+    [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
+    for (let i = 0; i < 60; i++) { await sleep(500); if ([...document.querySelectorAll('.pane-universe')].some((p) => p.offsetParent !== null)) break; }
     document.getElementById('gutter-dashboard')?.click();
     for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelectorAll('.launcher-tile').length > 0) break; }
     const tile = [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'HELP');
@@ -1145,6 +1151,9 @@ try {
     // touch the workspace, prefix must address the pane
     document.getElementById('gutter-files').click(); await sleep(500);
     const fpane = document.querySelector('.pane-files');
+    // A touch is a pointer going down and a click; the layout takes focus on the first.
+    for (const d of document.querySelectorAll('.pane-drawer:not([hidden])')) d.hidden = true;
+    fpane.querySelector('.files-panel').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     fpane.querySelector('.files-panel').click(); await sleep(150);
     prefix(); await sleep(200);
     const fdrawer = fpane.querySelector('.pane-drawer');

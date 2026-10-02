@@ -191,6 +191,36 @@ export const helpText: Record<string, CommandHelp> = {
       'getfacl /home/me/feeds/feed_12',
     ],
   },
+  setfattr: {
+    usage: 'setfattr -n tag -v <value> <path>... | setfattr -x tag [-v <value>] <path>...',
+    summary: 'Hang a tag on a feed, or take it off',
+    description:
+      'A feed\'s tags are the values of one extended attribute, tag (also user.tag): CUBE\'s '
+      + 'freeform labels. -n tag -v <value> hangs a tag (your tag of that name, made if it does '
+      + 'not exist yet); -x tag -v <value> takes it off; -x tag alone takes every tag off, as '
+      + 'setfattr removes the whole attribute. A feed is named by id, by feed_N, by any path '
+      + 'through /feeds/, or by its projection /proc/jobs/feed_N. Silent on success.',
+    options: [
+      '-n, --name tag        The attribute to set (only tag exists)',
+      '-v, --value <value>   The tag',
+      '-x, --remove tag      Remove the tag given by -v, or every tag without -v',
+    ],
+    examples: [
+      'setfattr -n tag -v urgent feed_12',
+      'setfattr -n tag -v review feed_12 feed_13',
+      'setfattr -x tag -v urgent /proc/jobs/feed_12',
+    ],
+  },
+  getfattr: {
+    usage: 'getfattr [-n tag] <path>...',
+    summary: 'Show the tags a feed wears',
+    description:
+      'Show a feed\'s tags in getfattr\'s dump shape: a # file: line, then one tag="…" line per tag.',
+    examples: [
+      'getfattr feed_12',
+      'getfattr -n tag /home/me/feeds/feed_12',
+    ],
+  },
   rm: {
     usage: 'rm [options] <path> [path...]',
     description: 'Remove files or directories',

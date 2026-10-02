@@ -106,6 +106,20 @@ export interface ExecuteOutcome {
 }
 
 /**
+ * A file the session asked this surface to edit.
+ *
+ * @property path - The file, where the editor's saves go; absent only when the
+ *   command editing it could not name one.
+ * @property content - The file's text as the command read it.
+ * @property extension - The filename extension, for the field's syntax mode.
+ */
+export interface SurfaceEdit {
+  path?: string;
+  content: string;
+  extension?: string;
+}
+
+/**
  * Callbacks through which the client delivers session activity.
  *
  * @property output_receive - A live output chunk from this surface's own
@@ -127,6 +141,13 @@ export interface ClientHandlers {
    * resolves null to abandon it.
    */
   ask_receive?: (request: SurfaceAsk) => Promise<string | null>;
+  /**
+   * The session asked this surface to edit a file. The handler opens the
+   * editor pane and returns at once; true means it opened. The command that
+   * asked is answered then, never when the operator saves: each save runs as
+   * its own command line.
+   */
+  edit_receive?: (request: SurfaceEdit) => boolean;
   telemetry_receive?: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry; state?: JobsStateTelemetry }) => void;
   session_receive?: (surface: string, envelope: WireEnvelope) => void;
   envelope_observe?: (envelope: WireEnvelope) => void;
@@ -498,8 +519,10 @@ export class ArgusClient {
         this.reply_send({ type: 'shellError', shellId: message.shellId, reason: 'the argus surface cannot run shell commands' });
         break;
       }
+      // An edit opens a pane that stays open, so the command is answered at
+      // once that it opened; the operator's saves are lines of their own.
       case 'edit': {
-        this.reply_send({ type: 'editError', editId: message.editId, reason: 'the argus surface cannot open an editor' });
+        this.edit_run(message);
         break;
       }
       // File delivery is the one capability a browser has and a terminal
@@ -512,6 +535,38 @@ export class ArgusClient {
       default:
         break;
     }
+  }
+
+  /**
+   * Hands a file the session asked to edit to the host's editor pane.
+   *
+   * The command waiting on it is answered as soon as the pane opens: the
+   * content comes back unchanged with `opened`, so the kernel saves nothing.
+   * A host with no editor, or one that could not open, refuses in words.
+   *
+   * @param message - The edit request from the daemon.
+   */
+  private edit_run(message: { editId: string; content: string; extension?: string; path?: string }): void {
+    const open: ((request: SurfaceEdit) => boolean) | undefined = this.handlers.edit_receive;
+    let opened: boolean = false;
+    let reason: string = 'the argus surface cannot open an editor';
+    if (open !== undefined) {
+      try {
+        opened = open({
+          content: message.content,
+          ...(message.path === undefined ? {} : { path: message.path }),
+          ...(message.extension === undefined ? {} : { extension: message.extension }),
+        });
+        reason = 'the editor pane did not open';
+      } catch (error: unknown) {
+        reason = error instanceof Error ? error.message : String(error);
+      }
+    }
+    if (opened) {
+      this.reply_send({ type: 'editResult', editId: message.editId, content: message.content, changed: false, opened: true });
+      return;
+    }
+    this.reply_send({ type: 'editError', editId: message.editId, reason });
   }
 
   /**

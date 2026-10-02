@@ -105,6 +105,8 @@ export interface DeliverOutcome {
 export interface EditOutcome {
   content: string;
   changed: boolean;
+  /** The surface opened an editor that stays open; its saves are lines of their own. */
+  opened?: boolean;
 }
 
 /** The default number of envelopes retained for scrollback replay. */
@@ -603,7 +605,11 @@ export class CalypsoDaemon {
       } else if (value.type === 'shellError') {
         this.shells.fail(socket, value.shellId, value.reason);
       } else if (value.type === 'editResult') {
-        this.edits.settle(socket, value.editId, { content: value.content, changed: value.changed });
+        this.edits.settle(socket, value.editId, {
+          content: value.content,
+          changed: value.changed,
+          ...(value.opened === undefined ? {} : { opened: value.opened }),
+        });
       } else if (value.type === 'editError') {
         this.edits.fail(socket, value.editId, value.reason);
       } else if (value.type === 'deliverResult') {
@@ -1026,16 +1032,19 @@ export class CalypsoDaemon {
    *
    * @param content - The content to edit.
    * @param extension - An optional filename extension for syntax mode.
-   * @returns The edited content and whether it changed.
+   * @param path - The file being edited, for an editor that stays open and
+   *   saves back to it (a browser's editor pane).
+   * @returns The edited content and whether it changed, or that an editor
+   *   which stays open took it.
    * @throws {Error} When no command is executing or the surface disconnects.
    */
-  public edit_current(content: string, extension: string | undefined): Promise<EditOutcome> {
+  public edit_current(content: string, extension: string | undefined, path?: string): Promise<EditOutcome> {
     const origin: Surface | null = this.currentOrigin;
     if (!origin) {
       return Promise.reject(new Error('no active command to edit for'));
     }
     return this.edits.open(origin.socket, (editId: string): void => {
-      this.send(origin.socket, { type: 'edit', editId, content, extension });
+      this.send(origin.socket, { type: 'edit', editId, content, extension, ...(path === undefined ? {} : { path }) });
     });
   }
 

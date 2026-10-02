@@ -123,7 +123,7 @@ export function daemonSurface_create(daemon: CalypsoDaemon, policy: HostControlP
         ? hostShell_run(command, (channel: 'data' | 'err', chunk: string): void => { daemon.output_current(channel, chunk); })
         : daemon.shell_current(command),
     localEdit: (request: LocalEditRequest): Promise<LocalEditResult> =>
-      daemon.edit_current(request.content, request.extension),
+      daemon.edit_current(request.content, request.extension, request.path),
     fileDeliver: (request: FileDeliverRequest): Promise<FileDeliverResult> =>
       daemon.deliver_current(request),
   };

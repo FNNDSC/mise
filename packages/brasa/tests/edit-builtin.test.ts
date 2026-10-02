@@ -103,6 +103,15 @@ describe('builtin_edit', () => {
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
+  it('names the file to the editor, and saves nothing when a pane took it', async () => {
+    mockCat.mockResolvedValue(ok('original'));
+    mockLocalEdit.mockResolvedValue({ content: 'original', changed: false, opened: true });
+    const env = await builtin_edit(['notes.txt']);
+    expect(mockLocalEdit).toHaveBeenCalledWith({ content: 'original', extension: '.txt', path: '/home/chris/notes.txt' });
+    expect(env.rendered).toContain('(opened in the editor)');
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
   it('reports an editor failure', async () => {
     mockCat.mockResolvedValue(ok('original'));
     mockLocalEdit.mockRejectedValue(new Error("failed to launch 'vi'"));
@@ -146,10 +155,17 @@ describe('builtin_edit on a projected file', () => {
     mockLocalEdit.mockResolvedValueOnce({ content: 'edited', changed: true });
     const env = await builtin_edit(['/proc/jobs/feed_12/note']);
     expect(mockVfsRead).toHaveBeenCalledWith('/proc/jobs/feed_12/note');
-    expect(mockLocalEdit).toHaveBeenCalledWith({ content: 'the note', extension: '.txt' });
+    expect(mockLocalEdit).toHaveBeenCalledWith({ content: 'the note', extension: '.txt', path: '/proc/jobs/feed_12/note' });
     expect(mockVfsWrite).toHaveBeenCalledWith('/proc/jobs/feed_12/note', 'edited');
     expect(env.status).toBe('ok');
     expect(mockCat).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing back when a pane opened the note', async () => {
+    mockLocalEdit.mockResolvedValueOnce({ content: 'the note', changed: false, opened: true });
+    const env = await builtin_edit(['/proc/jobs/feed_12/note']);
+    expect(env.rendered).toContain('(opened in the editor)');
+    expect(mockVfsWrite).not.toHaveBeenCalled();
   });
 
   it('writes nothing when the editor changed nothing', async () => {

@@ -7,7 +7,6 @@ import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
 import { feeds_fetchList, FeedListResult } from '@fnndsc/chili/commands/feeds/list.js';
 import { feedFields_fetch } from '@fnndsc/chili/commands/feeds/fields.js';
 import { feed_create } from '@fnndsc/chili/commands/feed/create.js';
-import { surface_get, capability_require, CapabilityError, type LocalEditResult } from '../../core/surface.js';
 import { feed_noteGet, feed_noteUpdate } from '@fnndsc/chili/commands/feed/note.js';
 import type { FeedNote } from '@fnndsc/chili/commands/feed/note.js';
 import { feed_commentsList, feed_commentCreate, feed_commentDelete, feed_commentUpdate } from '@fnndsc/chili/commands/feed/comments.js';
@@ -28,7 +27,7 @@ import {
   envelope_ok,
   envelope_error,
 } from '@fnndsc/cumin';
-import { noteEditBody_format, noteEditBody_parse } from './feed.notes.js';
+import { builtin_edit } from '../fs/edit.js';
 import { feedTree_handle } from './feed.tree.js';
 import { feedDag_handle, feedDiagram_handle } from './feed.diagram.js';
 import { session } from '../../session/index.js';
@@ -116,43 +115,15 @@ async function feedInspect_handle(): Promise<CommandEnvelope> {
 }
 
 /**
- * Edits a feed note in the surface's editor: `$EDITOR` for a local CLI, the
- * web editor for argus. The editor's mechanics are the surface's
- * (`localEdit`), as they are for `edit`; this builtin only fetches, hands
- * the note over, and saves what comes back.
+ * Edits a feed's note. The note is a file, `/proc/jobs/feed_N/note`, so this
+ * is `edit` on that file: a terminal's editor and a browser's editor pane open
+ * the same text and save it the same way. The title is set with `--title`.
  *
- * @param feedId - The feed whose note is edited.
- * @returns An envelope carrying the edit outcome.
+ * @param feedId - The feed whose note to edit.
+ * @returns The edit's envelope.
  */
 async function feedNote_edit(feedId: number): Promise<CommandEnvelope> {
-  try {
-    capability_require('localEdit', 'feed note edit: this surface cannot open an editor.');
-  } catch (err: unknown) {
-    process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.red(err instanceof CapabilityError ? err.message : String(err))}\n`);
-  }
-  const getResult: Result<FeedNote> = await feed_noteGet(feedId);
-  if (!getResult.ok) {
-    process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.red(`Failed to get note for feed ${feedId}.`)}\n`);
-  }
-  const note: FeedNote = getResult.value;
-  const body: string = noteEditBody_format(note);
-  let edit: LocalEditResult;
-  try {
-    edit = await surface_get().localEdit({ content: body, extension: '.txt' });
-  } catch (err: unknown) {
-    process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.red(`feed note edit: ${err instanceof Error ? err.message : String(err)}`)}\n`);
-  }
-  if (!edit.changed || edit.content === body) {
-    return envelope_ok(`${chalk.gray('(no changes)')}\n`);
-  }
-  const { title, content } = noteEditBody_parse(edit.content, note.title);
-  const updateResult: Result<boolean> = await feed_noteUpdate(feedId, { title, content });
-  if (updateResult.ok) return envelope_ok(`${chalk.green(`Note updated on feed ${feedId}.`)}\n`);
-  process.exitCode = 1;
-  return envelope_error('', undefined, `${chalk.red('Failed to save note.')}\n`);
+  return builtin_edit([`/proc/jobs/feed_${feedId}/note`]);
 }
 
 /**

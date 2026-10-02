@@ -895,6 +895,38 @@ describe('CalypsoDaemon local edit over the wire', () => {
   });
 });
 
+describe('CalypsoDaemon edit into a pane that stays open', () => {
+  it('names the file to the surface and carries back that the surface opened it', async () => {
+    let daemonRef: CalypsoDaemon | undefined;
+    const engine: HostedEngine = {
+      line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+        const edit = await (daemonRef as CalypsoDaemon).edit_current('the note', '.txt', '/proc/jobs/feed_12/note');
+        return [{ status: 'ok', rendered: `opened=${String(edit.opened)} changed=${String(edit.changed)} ${line}` }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    daemonRef = daemon;
+    const port = await daemon.start();
+    try {
+      const ws = await client_attach(port);
+      const asked = message_next(ws);
+      send(ws, { type: 'execute', id: '1', line: 'x' });
+      const edit = await asked;
+      expect(edit.type).toBe('edit');
+      expect(edit.path).toBe('/proc/jobs/feed_12/note');
+
+      const replied = message_next(ws);
+      send(ws, { type: 'editResult', editId: edit.editId as string, content: 'the note', changed: false, opened: true });
+      const result = await replied;
+      expect((result.envelopes as { rendered: string }[])[0].rendered).toBe('opened=true changed=false x');
+      ws.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+});
+
 describe('CalypsoDaemon file delivery over the wire', () => {
   it('routes a delivery to the executing surface and reports where it landed', async () => {
     let daemonRef: CalypsoDaemon | undefined;

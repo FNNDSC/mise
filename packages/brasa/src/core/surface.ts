@@ -108,6 +108,8 @@ export interface PromptRequest {
 export interface LocalEditRequest {
   content: string;
   extension?: string;
+  /** The file being edited; an editor that stays open saves back to it. */
+  path?: string;
 }
 
 // The delivery request and result cross the wire, so they are declared once in
@@ -129,6 +131,12 @@ import type { FileDeliverRequest, FileDeliverResult, PromptKind, PromptPath } fr
 export interface LocalEditResult {
   content: string;
   changed: boolean;
+  /**
+   * The surface opened an editor that stays open (a browser pane) instead of
+   * returning the edited text. The command has nothing to save: every save
+   * made in that editor runs as its own command line.
+   */
+  opened?: boolean;
 }
 
 /**

@@ -134,6 +134,12 @@ export const editResultMessageSchema = z.object({
   editId: z.string(),
   content: z.string(),
   changed: z.boolean(),
+  /**
+   * The surface took the content into an editor that stays open (a browser's
+   * editor pane). Nothing comes back to save here: each save the operator
+   * makes there runs as its own command line.
+   */
+  opened: z.boolean().optional(),
 });
 
 /** Reports a local-edit failure to the daemon, correlated by `editId`. */
@@ -624,6 +630,8 @@ export const editMessageSchema = z.object({
   editId: z.string(),
   content: z.string(),
   extension: z.string().optional(),
+  /** The file being edited, so an editor that stays open knows where its saves go. */
+  path: z.string().optional(),
 });
 
 /**

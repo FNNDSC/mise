@@ -1,5 +1,14 @@
 # @fnndsc/argus
 
+## 0.18.12
+
+### Patch Changes
+
+- 92cc3e8: Cleanup, slice 4: the UNIVERSE pane's descent, climb, cluster and plugin framing are one scene word each (`descent`, `frame`, `unfold`, `relight`), and its own `flying` flag is gone for the scene's `moving()`; the DAG pane reads a feed's model into scene nodes through `features/dag/sceneGraph.ts` (`dagGraph_build`, `dagMetric_of`, `hueLegend_build`), pure and unit-tested. No behaviour changes.
+- ff537bd: Cleanup, slice 2a: the host's eight panel maps are one roster (`PanelRoster` in `app/panes.ts`: filed by pane id, read by kind), the host has a context its modules read (`app/hostContext.ts`: layout, panels, pane instances, subjects, dormant, sound, and the terminal and client read when called), and the first module is wired through it: the pane verbs (`app/paneVerbs.ts`: a bar note, move, flip, resize, the chord keys for a title), unit-tested in jsdom. No behaviour changes.
+- 65248d0: Cleanup, slice 1: four facts the surface spelled in many places have one source each — the sides (`app/sides.ts`), the pane bar's states and their writer (`features/roster/bar.ts`), the primaries and the pane kinds as a union (`app/panes.ts`) — and the aegis lint fails any file that spells them again. No behaviour changes.
+- 1003267: Focus names a pane on stage: after a preset change the layout's focus could still name a pane that had left (the launcher), so the HELP tile and `pane split` from the focused pane opened nothing (#816). A tree that loses the focused pane now hands focus to its first leaf.
+
 ## 0.18.11
 
 ### Patch Changes

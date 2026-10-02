@@ -229,7 +229,7 @@ LINT_CHECKS['a-preview-is-the-same-drawing'] = () => {
   // The stage is orrery's own scene, which reads its layout layer from
   // inside the package; a card reads it through the package's entry.
   const drawers = [
-    ['packages/orrery/src/scene/orrery.ts', /from '\.\.\/layout\/index\.js'/],
+    ['packages/orrery/src/scene/settle.ts', /from '\.\.\/layout\/index\.js'/],
     ['apps/argus/src/features/files/panel.ts', /from '@fnndsc\/orrery(\/layout)?'/],
   ];
   for (const [path, reads] of drawers) {

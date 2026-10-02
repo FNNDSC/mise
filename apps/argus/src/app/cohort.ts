@@ -11,7 +11,8 @@
  * stage as hooks; the module keeps the cohort, the band's panel and the
  * session file it is kept in.
  */
-import { paneAsk_open, type PaneAskRequest } from '../features/ask/paneAsk.js';
+import type { PaneAskRequest } from '../features/ask/paneAsk.js';
+import { question_stand } from './asks.js';
 import { Cohort } from '../features/gather/cohort.js';
 import { GatherPanel, type GatherFeed, type GatherPanelHandlers, type GatherSeries } from '../features/gather/panel.js';
 import type { ExecuteOutcome } from '../calypso/client.js';
@@ -184,16 +185,14 @@ export function cohort_wire(context: Pick<HostContext, 'layout' | 'panels' | 'su
     const host = (): string => hooks.errandHost_find() ?? 'pacs';
     // The question stands where the press was, and the press was in the
     // BAND; the console still records the exchange.
-    const askOnBand = async (request: PaneAskRequest, noteAs: string): Promise<string | null> => {
-      const noted: (answer: string | null) => void = context.terminal.ask_note(noteAs);
-      const answered: string | null = await paneAsk_open(hooks.element_require('header-gather'), request);
-      noted(answered);
-      return answered;
-    };
+    // The question stands where the press was — the BAND — and on the
+    // console's line as well; either answers it (#826).
+    const askOnBand = (request: PaneAskRequest): Promise<string | null> =>
+      question_stand(context.terminal, hooks.element_require('header-gather'), request);
     return new GatherPanel(face, hooks.pane_find(face, '.gather-rows'), handlers_make(host, {
-      name_ask: (suggest: string): Promise<string | null> => askOnBand({ message: 'Cohort name: ', kind: 'text', suggest, commit: 'NAME IT' }, 'Cohort name: '),
+      name_ask: (suggest: string): Promise<string | null> => askOnBand({ message: 'Cohort name: ', kind: 'text', suggest, commit: 'NAME IT' }),
       confirm_ask: async (message: string): Promise<'y' | 'n' | null> => {
-        const answered: string | null = await askOnBand({ message, kind: 'confirm' }, `${message} `);
+        const answered: string | null = await askOnBand({ message, kind: 'confirm' });
         return answered === 'y' || answered === 'n' ? answered : null;
       },
     }, {

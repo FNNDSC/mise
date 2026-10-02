@@ -1752,6 +1752,53 @@ try {
     JSON.stringify(asked));
   }
 
+  if (stage('question-both-places')) {
+  // A question on a pane stands on the console's line too (#826): answered
+  // on the pane, the console records it and frees its line; answered at the
+  // console, the pane's bar goes. Nothing typed at the prompt runs as a
+  // command while a question waits.
+  const both = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const settle = async (want, tries = 60) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
+    document.getElementById('gutter-files').click(); await sleep(700);
+    await say('rm -r ~/smoke-both', 2000); await say('mkdir -p ~/smoke-both', 2000); await say('cd ~/smoke-both', 2000);
+    const pane = [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+    const named = (n) => [...pane.querySelectorAll('.files-row')].find((r) => r.querySelector('.files-name')?.textContent.trim() === n);
+    const lastAsk = () => [...document.querySelectorAll('#terminal .argus-ask')].pop();
+    // 1. a text question answered ON THE PANE
+    pane.querySelector('.files-mkdir').click(); await sleep(500);
+    const askedBoth = pane.querySelector('.ask-bar') !== null && /New directory/.test(lastAsk()?.textContent ?? '');
+    pane.querySelector('.ask-bar-field').value = 'on-pane';
+    pane.querySelector('.ask-bar-commit').click();
+    const paneMade = await settle(() => named('on-pane') !== undefined);
+    const consoleRecorded = /on-pane/.test(lastAsk()?.querySelector('.ask-answer')?.textContent ?? '');
+    // 2. a text question answered AT THE CONSOLE
+    pane.querySelector('.files-mkdir').click(); await sleep(500);
+    await say('at-console', 1200);
+    const consoleMade = await settle(() => named('at-console') !== undefined);
+    const barGone = pane.querySelector('.ask-bar') === null;
+    // 3. a confirm answered ON THE PANE (a file: rm -i asks once; a
+    // directory's rm -ri asks to descend and then to remove, as POSIX does)
+    await say('touch ~/smoke-both/confirm.txt', 2000); await say('ls', 1500);
+    await settle(() => named('confirm.txt') !== undefined);
+    named('confirm.txt').querySelector('.files-name').dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(500);
+    [...pane.querySelectorAll('.files-row-zone .listing-action')].find((b) => b.textContent.trim() === 'DELETE')?.click();
+    await settle(() => pane.querySelector('.ask-bar-yes') !== null, 40);
+    pane.querySelector('.ask-bar-yes')?.click();
+    const removed = await settle(() => named('confirm.txt') === undefined);
+    const confirmRecorded = /\\by\\b|yes/i.test(lastAsk()?.querySelector('.ask-answer')?.textContent ?? '');
+    await say('cd ~', 1500); await say('rm -r ~/smoke-both', 2500);
+    return { askedBoth, paneMade, consoleRecorded, consoleMade, barGone, removed, confirmRecorded };`);
+  check('a pane question stands on the console too; answered on the pane, the console records it',
+    both.askedBoth && both.paneMade && both.consoleRecorded, JSON.stringify(both));
+  check('answered at the console, the pane question is answered and its bar goes — nothing runs as a command',
+    both.consoleMade && both.barGone, JSON.stringify(both));
+  check('a confirm answered on the pane acts, and the console records the answer',
+    both.removed && both.confirmRecorded, JSON.stringify(both));
+  }
+
   if (stage('contrast')) {
   // The frame's type, measured against WCAG 2.1 AA in every scheme.
   //

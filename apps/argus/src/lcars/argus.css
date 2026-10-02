@@ -5449,6 +5449,22 @@ body[data-zoom] #header-restore {
   min-width: 0;
 }
 
+/* The cure's own word is the control: a link in the sentence. */
+.stale-page-reload {
+  padding: 0;
+  border: 0;
+  background: none;
+  /* The sentence's own colour, so it clears contrast in every scheme;
+     the underline says it is pressable. */
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
 .errand-bar {
   display: flex;
   align-items: center;

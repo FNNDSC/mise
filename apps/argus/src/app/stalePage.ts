@@ -9,8 +9,8 @@
  * nowhere else, so an image pane simply never opened.
  *
  * Law honest-wait: a failure is visible and truthful. The page says, once, on the console and
- * in a notice over the stage, that the server has a newer argus and a
- * reload continues — and the notice's RELOAD does it.
+ * in a notice over the stage, that ARGUS has been updated in the
+ * background — and the notice's word `refresh` is the control that reloads.
  *
  * @module
  */
@@ -30,8 +30,18 @@ export function stalePage_is(reason: unknown): boolean {
   return STALE_MESSAGE.test(message);
 }
 
-/** What a surface says on its own field when its chunk is of an older build. */
-export const STALE_PAGE_READOUT: string = 'ARGUS WAS UPDATED ON THE SERVER · RELOAD THIS PAGE';
+/** The sentence the notice and the console say, in plain words: what happened, then the cure. */
+export const STALE_PAGE_WORDS: { before: string; refresh: string; after: string } = {
+  before: 'ARGUS has been updated in the background — ',
+  refresh: 'refresh',
+  after: ' this page',
+};
+
+/** The sentence whole, as the console says it. */
+export const STALE_PAGE_SENTENCE: string = `${STALE_PAGE_WORDS.before}${STALE_PAGE_WORDS.refresh}${STALE_PAGE_WORDS.after}`;
+
+/** What a surface says on its own field (a bar readout, upper case) when its chunk is of an older build. */
+export const STALE_PAGE_READOUT: string = 'ARGUS UPDATED IN THE BACKGROUND · REFRESH THIS PAGE';
 
 /**
  * Watches for a load of a chunk the server no longer has, and says so.
@@ -44,21 +54,22 @@ export function stalePage_watch(note: (line: string) => void, host: HTMLElement 
   const tell = (): void => {
     if (told) return;
     told = true;
-    note('argus: the server has a newer argus than this page — reload to continue (what failed to load was part of the old one)');
+    note(`argus: ${STALE_PAGE_SENTENCE} (what failed to load was part of the old build)`);
     const notice: HTMLDivElement = document.createElement('div');
     notice.className = 'stale-page';
     notice.setAttribute('role', 'alert');
     const words: HTMLSpanElement = document.createElement('span');
     words.className = 'stale-page-words';
-    // What it is, then the cure: an operator who has never seen a chunk
-    // hash needs neither word, only "this page is old; reload it".
-    words.textContent = 'THIS PAGE IS AN OLDER ARGUS THAN THE SERVER NOW HAS — RELOAD TO CONTINUE';
-    const reload: HTMLButtonElement = document.createElement('button');
-    reload.className = 'pacs-capsule stale-page-reload';
-    reload.textContent = 'RELOAD';
-    reload.title = 'load the argus the server has now';
-    reload.addEventListener('click', (): void => { window.location.reload(); });
-    notice.append(words, reload);
+    // What happened, then the cure, in a sentence; the cure's own word is
+    // the control that does it.
+    const refresh: HTMLButtonElement = document.createElement('button');
+    refresh.type = 'button';
+    refresh.className = 'stale-page-reload';
+    refresh.textContent = STALE_PAGE_WORDS.refresh;
+    refresh.title = 'load the argus the server has now';
+    refresh.addEventListener('click', (): void => { window.location.reload(); });
+    words.append(document.createTextNode(STALE_PAGE_WORDS.before), refresh, document.createTextNode(STALE_PAGE_WORDS.after));
+    notice.append(words);
     host.appendChild(notice);
   };
   // Vite's loader announces a failed chunk before it throws. It is told

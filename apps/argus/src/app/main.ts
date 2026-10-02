@@ -4231,6 +4231,19 @@ async function surface_start(token: string): Promise<void> {
       .map((chord: DrawerChord): string => chord.key);
     return keys.length === 0 ? '' : ` [keys ${keys.join(' ')}]`;
   };
+  /** Flips the axis of the split a pane stands in (the drawer's Space, `pane flip`). */
+  const pane_flip = (paneId: string): string => {
+    if (!layout.leaf_flip(paneId)) return 'pane flip: the only pane on stage';
+    paneBar_note(paneId, 'FLIPPED');
+    sound_play('audio3');
+    return 'flipped';
+  };
+  /** Moves the boundary beside a pane a step (Ctrl-arrow, `pane resize`). */
+  const pane_resize = (paneId: string, dir: 'left' | 'right' | 'up' | 'down', step: number): string => {
+    const side: MoveDir = dir === 'up' ? 'above' : dir === 'down' ? 'below' : dir;
+    if (!layout.leaf_resize(paneId, side, step)) return `pane resize ${dir}: no boundary that way`;
+    return `resized ${dir}`;
+  };
   const pane_chrome_wire = (id: string, kind: string, mount: HTMLElement): void => {
     const drawer: HTMLElement | null = mount.querySelector<HTMLElement>('.pane-drawer');
     const handle: HTMLElement | null = mount.querySelector<HTMLElement>('.pane-handle');
@@ -4722,9 +4735,17 @@ async function surface_start(token: string): Promise<void> {
       // is never a chord.
       const openDrawer: HTMLElement | null = document.querySelector<HTMLElement>('.pane-drawer:not([hidden])');
       const typing: boolean = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
+      const arrows: Readonly<Record<string, string>> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
+      const claim = (): void => { event.preventDefault(); event.stopImmediatePropagation(); };
+      // Ctrl-arrow with the drawer open: the boundary beside this pane moves
+      // a step; the drawer stays, so the next press moves it again.
+      if (openDrawer !== null && !typing && event.ctrlKey && !event.metaKey && !event.altKey && arrows[event.key] !== undefined) {
+        const focused: string | null = layout.focused_get();
+        if (focused !== null) pane_resize(focused, arrows[event.key] as 'left' | 'right' | 'up' | 'down', 0.05);
+        claim();
+        return;
+      }
       if (openDrawer !== null && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
-        const arrows: Readonly<Record<string, string>> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
-        const claim = (): void => { event.preventDefault(); event.stopImmediatePropagation(); };
         const direction: string | undefined = arrows[event.key];
         if (direction !== undefined) {
           drawers_close();
@@ -4744,6 +4765,57 @@ async function surface_start(token: string): Promise<void> {
         if (event.key === '?') {
           drawers_close();
           terminal.line_run('argus keys');
+          claim();
+          return;
+        }
+        if (event.key === ';') {
+          drawers_close();
+          if (layout.focus_last() !== null) sound_play('audio3');
+          claim();
+          return;
+        }
+        if (event.key === 'q') {
+          // Every pane names itself on its bar for a moment, so a target
+          // (@id) can be read off the stage.
+          drawers_close();
+          for (const shown of layout.panes_shown()) paneBar_note(shown, `@${shown}`);
+          claim();
+          return;
+        }
+        if (event.key === ' ') {
+          const focused: string | null = layout.focused_get();
+          drawers_close();
+          if (focused !== null) pane_flip(focused);
+          claim();
+          return;
+        }
+        if (event.key === '!') {
+          // Break out: this pane alone on stage; the arrangement it leaves
+          // is a PANES card first, so nothing is lost.
+          const focused: string | null = layout.focused_get();
+          drawers_close();
+          if (focused !== null && layout.panes_shown().length > 1) {
+            stageDesktop_capture();
+            layout.tree_set({ pane: focused });
+            orphans_dispose();
+            paneBar_note(focused, 'ALONE ON STAGE');
+            sound_play('audio3');
+          }
+          claim();
+          return;
+        }
+        if (event.key === 'w') {
+          drawers_close();
+          element_require('gutter-panes').click();
+          claim();
+          return;
+        }
+        if (event.key === '[') {
+          // The scrollback takes the keys: PageUp/PageDown page it, Esc gives
+          // them back (the terminal's own listener).
+          drawers_close();
+          const scrollback: HTMLElement | null = document.querySelector<HTMLElement>('.argus-output');
+          if (scrollback !== null) { scrollback.tabIndex = -1; scrollback.focus(); }
           claim();
           return;
         }
@@ -4992,6 +5064,9 @@ async function surface_start(token: string): Promise<void> {
     },
     panes_shown: (): string[] => layout.panes_shown(),
     pane_move,
+    pane_flip,
+    pane_resize,
+    focus_last: (): string | null => { const back: string | null = layout.focus_last(); if (back !== null) sound_play('audio3'); return back === null ? null : `focused ${back}`; },
     paneRect_get: (id: string): DOMRect | null => {
       const leaf: HTMLElement | null = document.querySelector<HTMLElement>(`.layout-leaf[data-leaf="${id}"]`);
       return leaf?.getBoundingClientRect() ?? null;
@@ -5245,7 +5320,9 @@ async function surface_start(token: string): Promise<void> {
     'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'header', 'console', 'back', 'desktop', 'argus',
   ];
   const LANG_FOLLOWERS: Record<string, string[]> = {
-    pane: ['split', 'zoom', 'close', 'bind', 'claim', 'focus'],
+    pane: ['split', 'zoom', 'close', 'bind', 'claim', 'focus', 'flip', 'resize'],
+    resize: ['left', 'right', 'up', 'down'],
+    focus: ['left', 'right', 'up', 'down', 'last'],
     view: ['files', 'runs', 'pacs'],
     runs: ['enter', 'sort', 'filter'],
     node: ['enter', 'immerse', 'back', 'clear'],

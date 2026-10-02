@@ -82,6 +82,10 @@ Each row says what the sentence lowers to. "Drawer" means the pane's drawer caps
 | `pane claim files\|runs\|pacs` | the empty pane's claim pills | Only an unlinked (empty) pane can be claimed.
 | `pane focus left\|right\|up\|down` | spatial focus | Nearest shown pane in that screen direction.
 | `pane focus @<id>` | focus by id |
+| `pane focus last` | the pane focused before this one | tmux `;`.
+| `pane move left\|right\|above\|below` | drawer MOVE then a direction | Detached and re-split onto the nearest block on that side; refused by name at an edge.
+| `pane flip` | the split's axis | Beside becomes above and back (tmux next layout, for a pair).
+| `pane resize left\|right\|up\|down [percent]` | the boundary beside the pane | Moves it a step (5 by default), remembered as a drag is.
 |===
 
 === view — the gutter givens
@@ -216,7 +220,9 @@ Tab completes from this table (first word, then the follower of the previous wor
 |===
 | After | Candidates
 | (start) | pane view runs node dag file pacs header console back desktop argus
-| pane | split zoom close bind claim focus
+| pane | split zoom close bind claim focus flip resize
+| resize | left right up down
+| focus | left right up down last
 | view | files runs pacs
 | runs | enter sort filter
 | node | enter immerse back clear

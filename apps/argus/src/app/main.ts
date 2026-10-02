@@ -74,14 +74,16 @@ import {
   paneInstance_create,
   paneInstance_dispose,
   paneInstance_get,
+  PanelRoster,
   paneInstances_list,
   type PaneInstance,
   pane_isPrimary,
   type PaneKind,
 } from './panes.js';
-import { LayoutManager, type LayoutNode, type MoveRefusal } from './layout.js';
+import { LayoutManager, type LayoutNode } from './layout.js';
+import type { HostContext } from './hostContext.js';
+import { paneVerbs_wire } from './paneVerbs.js';
 import { SIDES, place_of, side_ofArrow, side_ofPlace, splitSelector_of, type Side } from './sides.js';
-import { barState_set } from '../features/roster/bar.js';
 import { stalePage_watch } from './stalePage.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
 // from `tests/smoke/canon/lcars.json` — the computed style of this surface's own
@@ -914,14 +916,9 @@ async function surface_start(token: string): Promise<void> {
   // The beat's age moves on the surface's own clock, not only on beats.
   window.setInterval((): void => laneInstrument.tick(), 500);
 
-  // Panel rosters: every live controller by instance id, for routing —
+  // Panel roster: every live controller by pane id, for routing —
   // targeted progress, and the claim rule for console-issued models.
-  const filesPanels: Map<string, FilesPanel> = new Map();
-  /** The GATHER panes on stage, by pane id (one cohort each). */
-  const gatherPanels: Map<string, GatherPanel> = new Map();
-  const dagPanels: Map<string, DagPanel> = new Map();
-  /** The UNIVERSE panes on stage, by pane id: normally one. */
-  const universePanels: Map<string, UniversePanel> = new Map();
+  const panels: PanelRoster = new PanelRoster();
 
   // The subject bus: pane linkage as hub-and-spoke subjects. Every regard
   // write also flows to the daemon as session truth (the two-layer model).
@@ -1076,7 +1073,7 @@ async function surface_start(token: string): Promise<void> {
   const filesFollow_set = (id: string, on: boolean): void => {
     filesFollow.set(id, on);
     cwdBind_sync(id);
-    const panel: FilesPanel | undefined = filesPanels.get(id);
+    const panel: FilesPanel | undefined = panels.get('files', id);
     panel?.follow_set(on);
     if (on && panel !== undefined) {
       // A browser that starts following shows the cwd at once.
@@ -1135,7 +1132,7 @@ async function surface_start(token: string): Promise<void> {
    * @param place - The folder it is showing.
    */
   const listing_refresh = (id: string, place: string): void => {
-    const panel: FilesPanel | undefined = filesPanels.get(id);
+    const panel: FilesPanel | undefined = panels.get('files', id);
     if (panel === undefined) return;
     if (filesFollow.get(id) === true) terminal.line_run('ls');
     else rootedListing_show(id, panel, place);
@@ -1954,7 +1951,7 @@ async function surface_start(token: string): Promise<void> {
           .catch((): void => { panel.rowReadout_show(path, 'ACCESS UNREAD'); });
       },
     );
-    filesPanels.set(id, panel);
+    panels.set('files', id, panel);
     // Home is the session's: the trail starts at `~` under it and the `~`
     // row goes there. A pane opened after the prompt arrived learns it here.
     if (promptUser !== null && promptUser !== '') panel.home_set(`/home/${promptUser}`);
@@ -1967,7 +1964,7 @@ async function surface_start(token: string): Promise<void> {
       kind: 'files',
       mount,
       dispose: (): void => {
-        filesPanels.delete(id);
+        panels.delete(id);
         rootedHistory.delete(id);
         subjects.pane_leave(id);
       },
@@ -1977,12 +1974,10 @@ async function surface_start(token: string): Promise<void> {
   // Builds one viewer pane instance: a slaved projection of its group's
   // regard. The subscription happens at spawn time, after the instance has
   // joined its group (the retained cell then replays immediately).
-  const viewerPanels: Map<string, ViewerPanel> = new Map();
 
   // The image pane: a series or a volume on a guest engine's field, inside
   // mise's frame (docs/aegis.adoc: an-instruments-field-is-foreign,
   // focus-stays-in-the-field).
-  const imagePanels: Map<string, ImagePanel> = new Map();
   // The UNIVERSE pane: the space of everything run here, its own kind.
   const universeInstance_build = (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-universe');
@@ -2069,7 +2064,7 @@ async function surface_start(token: string): Promise<void> {
               return;
             }
             element_require('gutter-files').click();
-            binEntry_show('files', filesPanels.get('files') as FilesPanel, `/bin/${entry}`, 'plugin');
+            binEntry_show('files', panels.get('files', 'files') as FilesPanel, `/bin/${entry}`, 'plugin');
           })().catch((error: unknown): void => {
             terminal.line_note(`universe: could not open ${plugin} in /bin: ${error instanceof Error ? error.message : String(error)}`);
           });
@@ -2078,13 +2073,13 @@ async function surface_start(token: string): Promise<void> {
       },
       localKeyStore(),
     );
-    universePanels.set(id, panel);
+    panels.set('universe', id, panel);
     return {
       id,
       kind: 'universe',
       mount,
       dispose: (): void => {
-        universePanels.delete(id);
+        panels.delete(id);
         subjects.pane_leave(id);
         panel.dispose();
       },
@@ -2111,14 +2106,14 @@ async function surface_start(token: string): Promise<void> {
         terminal.line_note(tagsPane_open(id));
       },
     });
-    imagePanels.set(id, panel);
+    panels.set('image', id, panel);
     return {
       id,
       kind: 'image',
       mount,
       dispose: (): void => {
         panel.dispose();
-        imagePanels.delete(id);
+        panels.delete(id);
         subjects.pane_leave(id);
       },
     };
@@ -2126,35 +2121,33 @@ async function surface_start(token: string): Promise<void> {
 
   // The tags pane: a DICOM instance's elements, following the image pane's
   // slice through the group's regard (docs/aegis.adoc: tags-follow-the-image).
-  const tagsPanels: Map<string, TagsPanel> = new Map();
   const tagsInstance_build = (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-tags');
     const panel: TagsPanel = new TagsPanel(mount, {
       note: (line: string): void => terminal.line_note(line),
     });
-    tagsPanels.set(id, panel);
+    panels.set('tags', id, panel);
     return {
       id,
       kind: 'tags',
       mount,
       dispose: (): void => {
-        tagsPanels.delete(id);
+        panels.delete(id);
         subjects.pane_leave(id);
       },
     };
   };
 
   // The HELP pane: the keys and the verbs, as a listing.
-  const helpPanels: Map<string, HelpPanel> = new Map();
   const helpInstance_build = (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-help');
-    helpPanels.set(id, new HelpPanel(mount));
+    panels.set('help', id, new HelpPanel(mount));
     return {
       id,
       kind: 'help',
       mount,
       dispose: (): void => {
-        helpPanels.delete(id);
+        panels.delete(id);
         subjects.pane_leave(id);
       },
     };
@@ -2175,14 +2168,14 @@ async function surface_start(token: string): Promise<void> {
     return null;
   };
   const tagsPane_follow = (id: string, path: string): void => {
-    const panel: TagsPanel | undefined = tagsPanels.get(id);
+    const panel: TagsPanel | undefined = panels.get('tags', id);
     if (panel === undefined || panel.path_get() === path) return;
     void tags_ask(path).then((model: DicomTagsModel | null): void => {
       if (model === null) {
         terminal.line_note(`tags: ${path}: not a readable DICOM file`);
         return;
       }
-      tagsPanels.get(id)?.model_show(model);
+      panels.get('tags', id)?.model_show(model);
     });
   };
 
@@ -2195,7 +2188,7 @@ async function surface_start(token: string): Promise<void> {
   const tagsPane_open = (imageId: string): string => {
     const shown: Set<string> = new Set(layout.panes_shown());
     const group: string = subjects.group_of(imageId);
-    for (const id of tagsPanels.keys()) {
+    for (const id of panels.ids('tags')) {
       if (shown.has(id) && subjects.group_of(id) === group) {
         layout.focus_set(id);
         return 'image tags';
@@ -2263,15 +2256,15 @@ async function surface_start(token: string): Promise<void> {
     // and a viewer already on stage regarding the same series is reused
     // rather than spawning a second viewer for it.
     const anchor_set = (id: string): void => { if (anchor !== undefined) subjects.regard_write(id, anchor); };
-    if (fromId !== null && imagePanels.has(fromId)) { anchor_set(fromId); return imagePanels.get(fromId) ?? null; }
+    if (fromId !== null && panels.has('image', fromId)) { anchor_set(fromId); return panels.get('image', fromId) ?? null; }
     const shown: Set<string> = new Set(layout.panes_shown());
     if (anchor !== undefined) {
-      for (const [id, panel] of imagePanels) {
+      for (const [id, panel] of panels.entries('image')) {
         if (shown.has(id) && subjects.regard_get(id)?.address === anchor.address) { anchor_set(id); return panel; }
       }
     }
     const group: string | null = fromId !== null ? subjects.group_of(fromId) : null;
-    for (const [id, panel] of imagePanels) {
+    for (const [id, panel] of panels.entries('image')) {
       if (shown.has(id) && group !== null && subjects.group_of(id) === group) return panel;
     }
     const host: string | null = fromId !== null && shown.has(fromId) ? fromId : errandHost_find();
@@ -2284,7 +2277,7 @@ async function surface_start(token: string): Promise<void> {
     }
     birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
     anchor_set(spawned.id);
-    return imagePanels.get(spawned.id) ?? null;
+    return panels.get('image', spawned.id) ?? null;
   };
 
   /**
@@ -2375,7 +2368,7 @@ async function surface_start(token: string): Promise<void> {
     }
     birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
     catalogueBindings.set(spawned.id, binding);
-    const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
+    const panel: FilesPanel | undefined = panels.get('files', spawned.id);
     if (panel === undefined) return;
     panel.binding_set({
       input: binding.input,
@@ -2429,7 +2422,7 @@ async function surface_start(token: string): Promise<void> {
   const feed_open = (fromId: string, feedId: number): void => {
     launcher_yield();
     const shown: Set<string> = new Set(layout.panes_shown());
-    for (const [id, panel] of dagPanels) {
+    for (const [id, panel] of panels.entries('dag')) {
       if (id !== 'dag' && shown.has(id) && panel.feed_get() === feedId) { layout.focus_set(id); return; }
     }
     const host: string = shown.has(fromId) ? fromId : (errandHost_find() ?? fromId);
@@ -2440,7 +2433,7 @@ async function surface_start(token: string): Promise<void> {
       return;
     }
     birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
-    dagPanels.get(spawned.id)?.feed_enter(feedId);
+    panels.get('dag', spawned.id)?.feed_enter(feedId);
   };
 
   /**
@@ -2462,7 +2455,7 @@ async function surface_start(token: string): Promise<void> {
    */
   const run_press = async (id: string, executable: string, kind: 'plugin' | 'pipeline'): Promise<void> => {
     const binding: CatalogueBinding | undefined = catalogueBindings.get(id);
-    const panel: FilesPanel | undefined = filesPanels.get(id);
+    const panel: FilesPanel | undefined = panels.get('files', id);
     if (binding === undefined || panel === undefined) return;
     const refuse = (reason: string): void => {
       terminal.output_write('err', `\x1b[31m${reason}\x1b[0m\n`);
@@ -2516,11 +2509,11 @@ async function surface_start(token: string): Promise<void> {
   const dir_open = (folderPath: string): void => {
     launcher_yield();
     const shown: Set<string> = new Set(layout.panes_shown());
-    for (const [id] of filesPanels) {
+    for (const [id] of panels.entries('files')) {
       if (shown.has(id) && subjects.regard_get(id)?.address === folderPath) { layout.focus_set(id); return; }
     }
     let inheritFrom: string | undefined;
-    for (const [id, panel] of imagePanels) {
+    for (const [id, panel] of panels.entries('image')) {
       if (shown.has(id) && (subjects.regard_get(id)?.address === folderPath || panel.state_get()?.path === folderPath)) { inheritFrom = id; break; }
     }
     const host: string | null = errandHost_find();
@@ -2533,7 +2526,7 @@ async function surface_start(token: string): Promise<void> {
     }
     birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
     if (inheritFrom === undefined) subjects.regard_write(spawned.id, { address: folderPath, modelKind: 'dicom.series' });
-    const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
+    const panel: FilesPanel | undefined = panels.get('files', spawned.id);
     if (panel !== undefined) rootedListing_show(spawned.id, panel, folderPath);
   };
 
@@ -2595,13 +2588,13 @@ async function surface_start(token: string): Promise<void> {
       cohort_process: (binding: { input: string; feed: number; node: number }): void => process_open(id, binding),
       feed_open: (feedId: number): void => feed_open(id, feedId),
     }, cohort);
-    gatherPanels.set(id, panel);
+    panels.set('gather', id, panel);
     return {
       id,
       kind: 'gather',
       mount,
       dispose: (): void => {
-        gatherPanels.delete(id);
+        panels.delete(id);
         subjects.pane_leave(id);
       },
     };
@@ -2782,7 +2775,7 @@ async function surface_start(token: string): Promise<void> {
    */
   const cohort_stage = (): void => {
     const shown: Set<string> = new Set(layout.panes_shown());
-    const standing: string | null = [...gatherPanels.keys()].find((id: string): boolean => shown.has(id)) ?? null;
+    const standing: string | null = panels.ids('gather').find((id: string): boolean => shown.has(id)) ?? null;
     if (standing !== null) {
       layout.focus_set(standing);
     } else {
@@ -2794,7 +2787,7 @@ async function surface_start(token: string): Promise<void> {
         return;
       }
       birth_record(spawned.id, host, 'col', false);
-      gatherPanels.get(spawned.id)?.render_now();
+      panels.get('gather', spawned.id)?.render_now();
     }
     document.body.dataset['header'] = 'away';
     bandDismissed = true;
@@ -2847,7 +2840,7 @@ async function surface_start(token: string): Promise<void> {
    */
   const gather_open = (entries: ReadonlyArray<GatherSeries>, host: string = 'pacs'): string | null => {
     const shown: Set<string> = new Set(layout.panes_shown());
-    let id: string | null = [...gatherPanels.keys()].find((paneId: string): boolean => shown.has(paneId)) ?? null;
+    let id: string | null = panels.ids('gather').find((paneId: string): boolean => shown.has(paneId)) ?? null;
     if (id === null) {
       const from: string = shown.has(host) ? host : (errandHost_find() ?? host);
       const spawned: PaneInstance = instance_spawn('gather', 'pacs');
@@ -2859,7 +2852,7 @@ async function surface_start(token: string): Promise<void> {
       birth_record(spawned.id, from, replayPlace?.dir ?? 'row', replayPlace?.before ?? false);
       id = spawned.id;
     }
-    const panel: GatherPanel | undefined = gatherPanels.get(id);
+    const panel: GatherPanel | undefined = panels.get('gather', id);
     if (panel === undefined) return null;
     for (const entry of entries) panel.series_add(entry);
     return id;
@@ -2878,13 +2871,13 @@ async function surface_start(token: string): Promise<void> {
         path_isImage: extension_isImage,
       },
     );
-    viewerPanels.set(id, panel);
+    panels.set('view', id, panel);
     return {
       id,
       kind: 'view',
       mount,
       dispose: (): void => {
-        viewerPanels.delete(id);
+        panels.delete(id);
         subjects.pane_leave(id);
       },
     };
@@ -2901,7 +2894,7 @@ async function surface_start(token: string): Promise<void> {
 
   /** The scene a pane flies in: the DAG pane's or the universe's. */
   const flier_of = (id: string): { flight_back: (onDone: () => void) => void; node_flyTo: (instanceID: number) => boolean } | undefined =>
-    dagPanels.get(id) ?? universePanels.get(id);
+    panels.get('dag', id) ?? panels.get('universe', id);
 
   const nodeOverlay_open = (id: string, vfsPath: string): void => {
     const mount: HTMLElement | undefined = paneInstance_get(id)?.mount;
@@ -3132,14 +3125,14 @@ async function surface_start(token: string): Promise<void> {
           void client
             .line_execute(`getfacl feed_${feed.id}`, { silent: true, observe: false })
             .then((outcome: ExecuteOutcome): void => {
-              dagPanels.get(id)?.rowReadout_show(feed.id, shares_read(outcome));
+              panels.get('dag', id)?.rowReadout_show(feed.id, shares_read(outcome));
             })
-            .catch((): void => { dagPanels.get(id)?.rowReadout_show(feed.id, 'ACCESS UNREAD'); });
+            .catch((): void => { panels.get('dag', id)?.rowReadout_show(feed.id, 'ACCESS UNREAD'); });
         },
         ...(primary ? { feed_shown: (): void => dag_summon() } : {}),
       },
     );
-    dagPanels.set(id, panel);
+    panels.set('dag', id, panel);
     return {
       id,
       kind: 'dag',
@@ -3147,7 +3140,7 @@ async function surface_start(token: string): Promise<void> {
       dispose: (): void => {
         nodeOverlays.get(id)?.element.remove();
         nodeOverlays.delete(id);
-        dagPanels.delete(id);
+        panels.delete(id);
         subjects.pane_leave(id);
         panel.dispose();
       },
@@ -3171,8 +3164,8 @@ async function surface_start(token: string): Promise<void> {
   paneInstance_adopt({ id: 'launcher', kind: 'launcher', mount: launcherMount });
   const panesMount: HTMLElement = template_stamp('tpl-pane-panes');
   paneInstance_adopt({ id: 'panes', kind: 'panes', mount: panesMount });
-  const filesPanel: FilesPanel = filesPanels.get('files') as FilesPanel;
-  const dagPanel: DagPanel = dagPanels.get('dag') as DagPanel;
+  const filesPanel: FilesPanel = panels.get('files', 'files') as FilesPanel;
+  const dagPanel: DagPanel = panels.get('dag', 'dag') as DagPanel;
 
   const cycler: PipelineCycler = new PipelineCycler(
     element_require('pipeline-cycler'),
@@ -3240,7 +3233,7 @@ async function surface_start(token: string): Promise<void> {
       return null;
     }
     birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
-    const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
+    const panel: FilesPanel | undefined = panels.get('files', spawned.id);
     const anchor: string = request.path?.anchor ?? '~';
     if (panel !== undefined) rootedListing_show(spawned.id, panel, anchor);
 
@@ -3483,7 +3476,7 @@ async function surface_start(token: string): Promise<void> {
   // reparented WebGL canvas otherwise keeps its old pixel size.
   layout.renderObserver_set((): void => {
     window.requestAnimationFrame((): void => {
-      for (const panel of dagPanels.values()) {
+      for (const panel of panels.values('dag')) {
         panel.size_fit();
       }
     });
@@ -3527,7 +3520,7 @@ async function surface_start(token: string): Promise<void> {
     birth_record(spawned.id, parentId, dir, before, binding);
     if (binding === 'fs') {
       const browser_show = (value: RegardValue): void => {
-        const panel: FilesPanel | undefined = filesPanels.get(spawned.id);
+        const panel: FilesPanel | undefined = panels.get('files', spawned.id);
         if (panel === undefined) return;
         const dirPath: string = value.modelKind === 'fs.file' ? (value.address.replace(/\/[^/]*$/, '') || '/') : value.address;
         rootedListing_show(spawned.id, panel, dirPath);
@@ -3539,6 +3532,20 @@ async function surface_start(token: string): Promise<void> {
     return spawned.id;
   };
   const dormant: DormantRegistry = new DormantRegistry(DORMANT_CAP, localKeyStore());
+  /**
+   * The host as its modules read it (app/hostContext.ts). The terminal and
+   * the client are made below; a module reads them when called, not now.
+   */
+  const context: HostContext = {
+    layout,
+    panels,
+    paneInstance_get,
+    subjects,
+    dormant,
+    sound: sound_play,
+    get terminal(): ArgusTerminal { return terminal; },
+    get client(): ArgusClient { return client; },
+  };
   // The dormant set is read (and, at slice 3, restored) by the PANES view.
   // Exposed for verification until that view exists.
   Object.assign(globalThis as Record<string, unknown>, {
@@ -3677,7 +3684,7 @@ async function surface_start(token: string): Promise<void> {
         const query: string | null = preset === 'pacs' ? pacsPanel.query_get() : null;
         // The runs domain with a graph on stage is content, as a PACS
         // query is: the feed, and the view the operator chose for it.
-        const dagPanel: DagPanel | undefined = preset === 'dag' ? dagPanels.get('dag') : undefined;
+        const dagPanel: DagPanel | undefined = preset === 'dag' ? panels.get('dag', 'dag') : undefined;
         const feed: number | null = dagPanel !== undefined && dagPanel.graph_isShown() ? dagPanel.feed_get() : null;
         const dagView: string[] = feed !== null && dagPanel !== undefined ? dagPanel.view_lines() : [];
         if (feed !== null && label === undefined) label = dagPanel?.feedTitle_get();
@@ -3692,7 +3699,7 @@ async function surface_start(token: string): Promise<void> {
         // A drawer SPLIT-pill pane replays as its own birth, whatever it holds.
         emit({ op: birth.binding, target, ...place });
       } else if (kind === 'image') {
-        const panel = imagePanels.get(id);
+        const panel = panels.get('image', id);
         const state = panel?.state_get() ?? null;
         if (panel === undefined || state === null || state.path === null) continue;
         const view: string[] = [];
@@ -3715,7 +3722,7 @@ async function surface_start(token: string): Promise<void> {
         // be logged as a browser at /bin.
         const bound: CatalogueBinding | undefined = catalogueBindings.get(id);
         if (bound === undefined) continue;
-        const line: string = filesPanels.get(id)?.commandLine_get() ?? '';
+        const line: string = panels.get('files', id)?.commandLine_get() ?? '';
         emit({
           op: 'catalogue', input: bound.input, target, ...place,
           ...(bound.feed !== null ? { feed: bound.feed } : {}),
@@ -3724,12 +3731,12 @@ async function surface_start(token: string): Promise<void> {
         });
         if (label === undefined) label = `PROCESS ${bound.input.split('/').filter(Boolean).pop() ?? bound.input}`;
       } else if (kind === 'files') {
-        const path: string | null = filesPanels.get(id)?.path_current() ?? null;
+        const path: string | null = panels.get('files', id)?.path_current() ?? null;
         if (typeof path !== 'string' || path.length === 0) continue;
         emit({ op: 'dir', path, target, ...place });
       } else if (kind === 'gather') {
         // The cohort travels with the desktop: its series, and its name.
-        const panel: GatherPanel | undefined = gatherPanels.get(id);
+        const panel: GatherPanel | undefined = panels.get('gather', id);
         if (panel === undefined) continue;
         const series: GatherSeries[] = [...panel.entries_get()];
         const name: string | null = panel.name_get();
@@ -3742,7 +3749,7 @@ async function surface_start(token: string): Promise<void> {
         if (label === undefined) label = name ?? `GATHER · ${series.length} series`;
       } else if (kind === 'dag') {
         // A run's graph beside its catalogue: the feed it graphs.
-        const graphed: number | null = dagPanels.get(id)?.feed_get() ?? null;
+        const graphed: number | null = panels.get('dag', id)?.feed_get() ?? null;
         if (graphed === null) continue;
         emit({ op: 'graph', feed: graphed, target, ...place });
       } else if (kind === 'tags') {
@@ -3848,7 +3855,7 @@ async function surface_start(token: string): Promise<void> {
 
   /** The image pane id backing a panel, for wiring members after a restore. */
   const imagePane_idOf = (panel: ImagePanel): string | null =>
-    [...imagePanels.entries()].find(([, value]): boolean => value === panel)?.[0] ?? null;
+    panels.idOf('image', panel);
 
   /**
    * Brings a dormant group back onto the stage: leaves the PANES domain,
@@ -3893,7 +3900,7 @@ async function surface_start(token: string): Promise<void> {
             // view the operator had chosen, once the graph has landed.
             const feed: number = action.feed;
             const view: readonly string[] = action.view ?? [];
-            const dagPanel: DagPanel | undefined = dagPanels.get('dag');
+            const dagPanel: DagPanel | undefined = panels.get('dag', 'dag');
             dagPanel?.feed_enter(feed);
             if (view.length > 0 && dagPanel !== undefined) {
               const landed = (tries: number): void => {
@@ -3945,7 +3952,7 @@ async function surface_start(token: string): Promise<void> {
           process_open(host ?? 'files', { input: action.input, feed: action.feed ?? null, node: action.node ?? null });
           replayPlace = null;
           const opened: string | null = catalogues().find((paneId): boolean => !before.has(paneId)) ?? null;
-          if (opened !== null && action.line !== undefined) filesPanels.get(opened)?.commandLine_set(action.line);
+          if (opened !== null && action.line !== undefined) panels.get('files', opened)?.commandLine_set(action.line);
           produced.push(opened);
         } else if (action.op === 'gather' && action.series !== undefined) {
           // The cohort returns as it was gathered, named if it was named.
@@ -3953,9 +3960,9 @@ async function surface_start(token: string): Promise<void> {
           replayPlace = place;
           const opened: string | null = gather_open([...action.series], host ?? 'pacs');
           replayPlace = null;
-          if (opened !== null && action.name !== undefined) gatherPanels.get(opened)?.name_set(action.name);
+          if (opened !== null && action.name !== undefined) panels.get('gather', opened)?.name_set(action.name);
           if (opened !== null && action.feed !== undefined && action.root !== undefined) {
-            gatherPanels.get(opened)?.feed_set({ feedId: action.feed, rootInstanceId: action.root.instance, path: action.root.path });
+            panels.get('gather', opened)?.feed_set({ feedId: action.feed, rootInstanceId: action.root.instance, path: action.root.path });
           }
           produced.push(opened);
         } else if (action.op === 'graph' && action.feed !== undefined) {
@@ -4036,7 +4043,7 @@ async function surface_start(token: string): Promise<void> {
    * @returns What happened, for the console.
    */
   const help_open = (): string => {
-    const already: string | undefined = [...helpPanels.keys()].find((id: string): boolean => layout.panes_shown().includes(id));
+    const already: string | undefined = panels.ids('help').find((id: string): boolean => layout.panes_shown().includes(id));
     if (already !== undefined) {
       layout.focus_set(already);
       return 'help: on stage';
@@ -4102,7 +4109,7 @@ async function surface_start(token: string): Promise<void> {
       rows: feeds.slice(0, 6).map((feed: RosterFeed): LauncherRow => ({
         text: `${feed.id}  ${feed.title}`,
         errored: /error/i.test(feed.status),
-        open: (): void => { runs_show(); dagPanels.get('dag')?.feed_enter(feed.id); },
+        open: (): void => { runs_show(); panels.get('dag', 'dag')?.feed_enter(feed.id); },
       })),
       verb: 'OPEN THE ROSTER',
       enter: (): void => runs_show(),
@@ -4219,7 +4226,7 @@ async function surface_start(token: string): Promise<void> {
         // A DICOM instance is the tags pane's regard; a text viewer would
         // only cat its bytes.
         if (value.modelKind === 'dicom.instance') return;
-        viewerPanels.get(instance.id)?.regard_show(value);
+        panels.get('view', instance.id)?.regard_show(value);
       });
     }
     layout.mount_register(instance.id, instance.mount);
@@ -4232,65 +4239,8 @@ async function surface_start(token: string): Promise<void> {
   // frame) toggles the pane drawer, which holds the layout verbs and the
   // kind's semantic children (docs/aegis.adoc).
   /** The timers of controls' answers holding a pane's bar, by bar. */
-  const barNotes: WeakMap<HTMLElement, ReturnType<typeof setTimeout>> = new WeakMap();
-  /**
-   * A pane's bar carries a control's answer for a moment, then what stood
-   * there returns (aegis.adoc: a-pill-answers-on-its-own-bar).
-   *
-   * @param paneId - The pane whose bar speaks.
-   * @param text - The answer.
-   */
-  const paneBar_note = (paneId: string, text: string): void => {
-    const bar: HTMLElement | null = paneInstance_get(paneId)?.mount.querySelector<HTMLElement>('.pane-state') ?? null;
-    if (bar === null) return;
-    const pending: ReturnType<typeof setTimeout> | undefined = barNotes.get(bar);
-    if (pending !== undefined) clearTimeout(pending);
-    const stood: { text: string; className: string } = { text: bar.textContent ?? '', className: bar.className };
-    barState_set(bar, 'note', text);
-    barNotes.set(bar, setTimeout((): void => {
-      barNotes.delete(bar);
-      // Something else may have written the bar meanwhile; that stands.
-      if (bar.textContent !== text) return;
-      bar.className = stood.className;
-      bar.textContent = stood.text;
-    }, 4000));
-  };
-  /**
-   * Moves a pane to a side (aegis.adoc: a-pane-can-be-moved): the drawer's
-   * MOVE and the typed `pane move` both come here. The mover keeps focus and
-   * its bar says so; a refusal is named.
-   *
-   * @param paneId - The pane that moves.
-   * @param side - Where it goes.
-   * @returns The readout: what happened, or why not.
-   */
-  const pane_move = (paneId: string, side: Side): string => {
-    const moved: true | MoveRefusal = layout.leaf_move(paneId, side);
-    if (moved === 'lone') return 'pane move: the only pane on stage';
-    if (moved === 'edge') return `pane move ${side}: already ${SIDES[side].edge}`;
-    paneBar_note(paneId, `MOVED ${side.toUpperCase()}`);
-    sound_play('audio3');
-    return `moved ${side}`;
-  };
-  /** The chords a capsule answers to, for its title: `[keys % l]`. */
-  const chordKeys_of = (selector: string, move: boolean): string => {
-    const keys: string[] = DRAWER_CHORDS
-      .filter((chord: DrawerChord): boolean => chord.selector === selector && (chord.move === true) === move)
-      .map((chord: DrawerChord): string => chord.key);
-    return keys.length === 0 ? '' : ` [keys ${keys.join(' ')}]`;
-  };
-  /** Flips the axis of the split a pane stands in (the drawer's Space, `pane flip`). */
-  const pane_flip = (paneId: string): string => {
-    if (!layout.leaf_flip(paneId)) return 'pane flip: the only pane on stage';
-    paneBar_note(paneId, 'FLIPPED');
-    sound_play('audio3');
-    return 'flipped';
-  };
-  /** Moves the boundary beside a pane a step (Ctrl-arrow, `pane resize`). */
-  const pane_resize = (paneId: string, side: Side, step: number): string => {
-    if (!layout.leaf_resize(paneId, side, step)) return `pane resize ${SIDES[side].focusWord}: no boundary that way`;
-    return `resized ${SIDES[side].focusWord}`;
-  };
+  // The verbs on a pane as a thing on the stage, wired to this host (app/paneVerbs.ts).
+  const { bar_note: paneBar_note, move: pane_move, flip: pane_flip, resize: pane_resize, chordKeys_of } = paneVerbs_wire(context);
   const pane_chrome_wire = (id: string, kind: string, mount: HTMLElement): void => {
     const drawer: HTMLElement | null = mount.querySelector<HTMLElement>('.pane-drawer');
     const handle: HTMLElement | null = mount.querySelector<HTMLElement>('.pane-handle');
@@ -4459,7 +4409,7 @@ async function surface_start(token: string): Promise<void> {
           terminal.line_run('cd ~');
           return;
         }
-        const panel: FilesPanel | undefined = filesPanels.get(id);
+        const panel: FilesPanel | undefined = panels.get('files', id);
         if (panel === undefined) return;
         const previous: string | null = panel.path_current();
         if (previous !== null) {
@@ -4472,7 +4422,7 @@ async function surface_start(token: string): Promise<void> {
           terminal.line_run('cd -');
           return;
         }
-        const panel: FilesPanel | undefined = filesPanels.get(id);
+        const panel: FilesPanel | undefined = panels.get('files', id);
         const previous: string | undefined = rootedHistory.get(id)?.pop();
         if (panel !== undefined && previous !== undefined) {
           rootedListing_show(id, panel, previous);
@@ -4485,7 +4435,7 @@ async function surface_start(token: string): Promise<void> {
       // MKDIR and UPLOAD act on the PLACE the field holds, so they ride the
       // frame beside HOME and BACK. Both need the listing on stage, which
       // is the browser's own path and not necessarily the session's cwd.
-      const here = (): string | null => filesPanels.get(id)?.path_current() ?? null;
+      const here = (): string | null => panels.get('files', id)?.path_current() ?? null;
       mount.querySelector<HTMLElement>('.files-mkdir')?.addEventListener('click', (): void => {
         const place: string | null = here();
         if (place !== null) directory_make(id, place);
@@ -4518,7 +4468,7 @@ async function surface_start(token: string): Promise<void> {
       // directory. Nothing regarded means the feed on stage.
       child_offer('ENTER NODE', 'move the session into the indicated node (its data directory)', (): void => {
         const regard: RegardValue | null = subjects.regard_get(id);
-        const feedId: number | null = dagPanels.get(id)?.feed_get() ?? null;
+        const feedId: number | null = panels.get('dag', id)?.feed_get() ?? null;
         const place: string | null =
           regard === null ? (feedId === null ? null : `/proc/jobs/feed_${feedId}`)
           : regard.modelKind === 'fs.file' ? regard.address.replace(/\/[^/]*$/, '') || '/'
@@ -4527,7 +4477,7 @@ async function surface_start(token: string): Promise<void> {
       });
       child_offer('PROCESS NODE', 'run an executable on the indicated node\'s output (a catalogue opens beside)', (): void => {
         const regard: RegardValue | null = subjects.regard_get(id);
-        const feedId: number | null = dagPanels.get(id)?.feed_get() ?? null;
+        const feedId: number | null = panels.get('dag', id)?.feed_get() ?? null;
         if (regard === null || feedId === null) return;
         const place: string = regard.modelKind === 'fs.file' ? regard.address.replace(/\/[^/]*$/, '') || '/' : regard.address;
         const node: number | null = nodeOf_path(place) ?? (/_(\d+)\/?$/.exec(place) === null ? null : parseInt(/_(\d+)\/?$/.exec(place)?.[1] ?? '', 10));
@@ -4535,7 +4485,7 @@ async function surface_start(token: string): Promise<void> {
         process_open(id, { input: place.replace(/\/data\/?$/, '') + '/data', feed: feedId, node });
       });
       child_offer('ENTER FEED', 'move the session into the feed on stage (or the one picked in the roster)', (): void => {
-        const feedId: number | null = dagPanels.get(id)?.feed_get() ?? null;
+        const feedId: number | null = panels.get('dag', id)?.feed_get() ?? null;
         if (feedId !== null) terminal.line_run(`cd "/proc/jobs/feed_${feedId}"`);
       });
       child_offer('BACK', 'return to the previous listing inside the node', (): void => {
@@ -4546,10 +4496,10 @@ async function surface_start(token: string): Promise<void> {
         }
       });
       child_offer('CLEAR DETAIL', 'dismiss the node facts (a click on empty space does too)', (): void => {
-        dagPanels.get(id)?.detail_clear();
+        panels.get('dag', id)?.detail_clear();
       });
       child_offer('REFRESH', 'revisit the feed now (a watch keeps sampling it while it runs)', (): void => {
-        dagPanels.get(id)?.refresh();
+        panels.get('dag', id)?.refresh();
       });
     }
   };
@@ -4680,7 +4630,7 @@ async function surface_start(token: string): Promise<void> {
         // field still holds what was gathered.
         // An image field holding the keyboard gives it back first: one
         // press, one level (focus-stays-in-the-field).
-        for (const panel of imagePanels.values()) {
+        for (const panel of panels.values('image')) {
           if (panel.field_release()) {
             event.stopImmediatePropagation();
             sound_play('audio3');
@@ -4690,7 +4640,7 @@ async function surface_start(token: string): Promise<void> {
         let selectLeft: boolean = false;
         // An open question owns Esc: abandoning it is an answer, and a
         // press that also left a mode would answer two things at once.
-        for (const panel of terminal.ask_isOpen() ? [] : filesPanels.values()) {
+        for (const panel of terminal.ask_isOpen() ? [] : panels.values('files')) {
           if (panel.select_isOn()) {
             panel.select_toggle(false);
             selectLeft = true;
@@ -4740,7 +4690,7 @@ async function surface_start(token: string): Promise<void> {
         // is filled by the inside of one sphere and the scene is held, so
         // nothing moves and nothing reads as a control. Esc is the way out,
         // whatever left it there.
-        const heldInside: [string, DagPanel] | undefined = [...dagPanels.entries()]
+        const heldInside: [string, DagPanel] | undefined = panels.entries('dag')
           .find(([, panel]: [string, DagPanel]): boolean => panel.inside_isHeld());
         if (heldInside !== undefined) {
           heldInside[1].flight_back((): void => undefined);
@@ -4752,7 +4702,7 @@ async function surface_start(token: string): Promise<void> {
         // Esc returns it to its listing. The focused pane answers first
         // (focus citizenship), else whichever pane has content up.
         const focusedId: string | null = layout.focused_get();
-        const contentPanes: Array<[string, FilesPanel]> = [...filesPanels.entries()]
+        const contentPanes: Array<[string, FilesPanel]> = panels.entries('files')
           .filter(([, panel]: [string, FilesPanel]): boolean => panel.content_isShown())
           .sort(([a]: [string, FilesPanel], [b]: [string, FilesPanel]): number =>
             (a === focusedId ? -1 : b === focusedId ? 1 : 0));
@@ -4763,7 +4713,7 @@ async function surface_start(token: string): Promise<void> {
           sound_play('audio3');
           return;
         }
-        for (const panel of dagPanels.values()) {
+        for (const panel of panels.values('dag')) {
           if (panel.nav_pop()) {
             event.stopImmediatePropagation();
             sound_play('audio3');
@@ -4944,7 +4894,7 @@ async function surface_start(token: string): Promise<void> {
     paneInstance_dispose(emptyId);
     layout.mount_remove(emptyId);
     if (kind === 'tags') {
-      const tagsPanel: TagsPanel | undefined = tagsPanels.get(instance.id);
+      const tagsPanel: TagsPanel | undefined = panels.get('tags', instance.id);
       for (const envelope of envelopes) {
         if (envelope.model?.kind !== DICOM_MODEL_KINDS.tags) continue;
         const parsed = dicomTagsModelSchema.safeParse(envelope.model.data);
@@ -4953,7 +4903,7 @@ async function surface_start(token: string): Promise<void> {
       return;
     }
     if (kind === 'image') {
-      const imagePanel: ImagePanel | undefined = imagePanels.get(instance.id);
+      const imagePanel: ImagePanel | undefined = panels.get('image', instance.id);
       for (const envelope of envelopes) {
         if (envelope.model?.kind !== DICOM_MODEL_KINDS.series) continue;
         const parsed = dicomSeriesModelSchema.safeParse(envelope.model.data);
@@ -4962,7 +4912,7 @@ async function surface_start(token: string): Promise<void> {
       return;
     }
     const panel: FilesPanel | DagPanel | undefined =
-      kind === 'files' ? filesPanels.get(instance.id) : dagPanels.get(instance.id);
+      kind === 'files' ? panels.get('files', instance.id) : panels.get('dag', instance.id);
     for (const envelope of envelopes) {
       panel?.envelope_observe(envelope);
     }
@@ -5049,7 +4999,7 @@ async function surface_start(token: string): Promise<void> {
   // a feed viewer.
   const universe_show = (): void => {
     domain_enter('universe');
-    const panel: UniversePanel | undefined = universePanels.get('universe');
+    const panel: UniversePanel | undefined = panels.get('universe', 'universe');
     if (panel !== undefined && !panel.shown_get()) panel.request();
     layout.focus_set('universe');
     consoleFocused_set(false);
@@ -5130,7 +5080,7 @@ async function surface_start(token: string): Promise<void> {
       const regard: RegardValue | null = subjects.regard_get(paneId);
       const match: RegExpMatchArray | null = regard?.address.match(/_(\d+)(?:\/data)?\/?$/) ?? null;
       if (match === null) return false;
-      return dagPanels.get(paneId)?.node_flyTo(parseInt(match[1] ?? '', 10)) ?? false;
+      return panels.get('dag', paneId)?.node_flyTo(parseInt(match[1] ?? '', 10)) ?? false;
     },
     // The two row verbs, as the surface's own capability: the console
     // language presses them today and the row's action track presses the
@@ -5147,9 +5097,9 @@ async function surface_start(token: string): Promise<void> {
       // one in its link group, or the only one on stage.
       const shown: Set<string> = new Set(layout.panes_shown());
       const group: string = subjects.group_of(paneId);
-      const onStage: Array<[string, ImagePanel]> = [...imagePanels.entries()].filter(([id]: [string, ImagePanel]): boolean => shown.has(id));
+      const onStage: Array<[string, ImagePanel]> = panels.entries('image').filter(([id]: [string, ImagePanel]): boolean => shown.has(id));
       const panel: ImagePanel | undefined =
-        imagePanels.get(paneId)
+        panels.get('image', paneId)
         ?? onStage.find(([id]: [string, ImagePanel]): boolean => subjects.group_of(id) === group)?.[1]
         ?? (onStage.length === 1 ? onStage[0]?.[1] : undefined);
       if (panel === undefined) return `image ${verb}: no image pane on stage for '${paneId}'`;
@@ -5226,7 +5176,7 @@ async function surface_start(token: string): Promise<void> {
         return panel.ghost_set(level) ? `image ghost ${level === null ? 'off' : level}` : 'image ghost: SLAB layout only';
       }
       if (verb === 'tags') {
-        const imageId: string | undefined = [...imagePanels.entries()].find(([, candidate]: [string, ImagePanel]): boolean => candidate === panel)?.[0];
+        const imageId: string | undefined = panels.idOf('image', panel) ?? undefined;
         return imageId === undefined ? 'image tags: no image pane' : tagsPane_open(imageId);
       }
       return 'image <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> | wl preset <name> · colormap <name> · save';
@@ -5235,17 +5185,17 @@ async function surface_start(token: string): Promise<void> {
       // The universe in focus, or the one on stage: the console addresses
       // the space, not a pane number.
       const shown: Set<string> = new Set(layout.panes_shown());
-      const panel: UniversePanel | undefined = (paneId !== null ? universePanels.get(paneId) : undefined)
-        ?? [...universePanels.entries()].find(([id]): boolean => shown.has(id))?.[1];
+      const panel: UniversePanel | undefined = (paneId !== null ? panels.get('universe', paneId) : undefined)
+        ?? panels.entries('universe').find(([id]): boolean => shown.has(id))?.[1];
       if (panel === undefined) return 'universe: no universe pane on stage (press the dashboard tile)';
       return panel.control(verb, args);
     },
     tags_control: (paneId: string, verb: string, args: string[]): string => {
       const shown: Set<string> = new Set(layout.panes_shown());
       const group: string = subjects.group_of(paneId);
-      const onStage: Array<[string, TagsPanel]> = [...tagsPanels.entries()].filter(([id]: [string, TagsPanel]): boolean => shown.has(id));
+      const onStage: Array<[string, TagsPanel]> = panels.entries('tags').filter(([id]: [string, TagsPanel]): boolean => shown.has(id));
       const panel: TagsPanel | undefined =
-        tagsPanels.get(paneId)
+        panels.get('tags', paneId)
         ?? onStage.find(([id]: [string, TagsPanel]): boolean => subjects.group_of(id) === group)?.[1]
         ?? (onStage.length === 1 ? onStage[0]?.[1] : undefined);
       if (panel === undefined) return `tags ${verb}: no tags pane on stage for '${paneId}'`;
@@ -5505,7 +5455,7 @@ async function surface_start(token: string): Promise<void> {
         progress.write(message);
         statusBar.progress_observe(message);
         cascade?.progress_observe(message);
-        for (const panel of dagPanels.values()) {
+        for (const panel of panels.values('dag')) {
           panel.progress_observe(message);
         }
         pacsPanel.progress_observe(message);
@@ -5568,8 +5518,8 @@ async function surface_start(token: string): Promise<void> {
         indexInstrument.promptContext_show(context);
         cascade?.promptContext_observe(context);
         dagPanel.promptContext_observe(context);
-        for (const universe of universePanels.values()) universe.promptContext_observe(context);
-        for (const panel of filesPanels.values()) panel.home_set(context.user === '' ? null : `/home/${context.user}`);
+        for (const universe of panels.values('universe')) universe.promptContext_observe(context);
+        for (const panel of panels.values('files')) panel.home_set(context.user === '' ? null : `/home/${context.user}`);
       },
       telemetry_receive: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry; state?: JobsStateTelemetry }): void => {
         indexInstrument.counts_show(index);
@@ -5587,18 +5537,18 @@ async function surface_start(token: string): Promise<void> {
           // A stale listing's refresh: every Files pane showing that path
           // swaps it in and drops its STALE readout.
           filesPanel.ambient_observe(envelope);
-          for (const panel of filesPanels.values()) panel.ambient_observe(envelope);
+          for (const panel of panels.values('files')) panel.ambient_observe(envelope);
           return;
         }
         if (envelope.model?.kind !== 'feed.dag') return;
         const parsed = feedDagModelSchema.safeParse(envelope.model.data);
         if (!parsed.success) return;
         dagPanel.model_refresh(parsed.data);
-        for (const panel of dagPanels.values()) panel.model_refresh(parsed.data);
+        for (const panel of panels.values('dag')) panel.model_refresh(parsed.data);
       },
       watched_receive: (subject: string, state: WatchState): void => {
         dagPanel.watched_observe(subject, state);
-        for (const panel of dagPanels.values()) panel.watched_observe(subject, state);
+        for (const panel of panels.values('dag')) panel.watched_observe(subject, state);
       },
       // Which listing the session's numbers count. Every listing's index
       // pills repaint from it, so the rows wearing a number are exactly the
@@ -5624,13 +5574,13 @@ async function surface_start(token: string): Promise<void> {
         if (kind === 'feed.dag' || kind === 'feed.list' || kind === DAG_MODEL_KINDS.feedIndexing) {
           const focused: string | null = layout.focused_get();
           const target: DagPanel =
-            focused !== null && dagPanels.has(focused)
-              ? (dagPanels.get(focused) as DagPanel)
+            focused !== null && panels.has('dag', focused)
+              ? (panels.get('dag', focused) as DagPanel)
               : dagPanel;
           target.envelope_observe(envelope);
         } else {
           // A console listing reaches every browser bound to the cwd.
-          for (const [paneId, panel] of filesPanels) {
+          for (const [paneId, panel] of panels.entries('files')) {
             if (filesFollow.get(paneId) === true) panel.envelope_observe(envelope);
           }
           pacsPanel.envelope_observe(envelope);
@@ -5639,7 +5589,7 @@ async function surface_start(token: string): Promise<void> {
           // folder asks for it again, or it shows rows that are gone —
           // which is the listing lying about the store.
           if (kind === 'fs.rm' || kind === 'fs.mv' || kind === 'fs.cp') {
-            for (const [paneId, panel] of filesPanels) {
+            for (const [paneId, panel] of panels.entries('files')) {
               const place: string | null = panel.path_current();
               if (place !== null) listing_refresh(paneId, place);
             }

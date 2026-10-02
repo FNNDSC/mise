@@ -1,5 +1,14 @@
 # @fnndsc/argus
 
+## 0.18.15
+
+### Patch Changes
+
+- d635b67: A question that stands on a pane stands on the console's line too (#826): RUN's feed title, a delete's confirm, MKDIR's name, a cohort's name are answered on the pane or at the prompt, whichever comes first, and the other place closes. An answer typed at the prompt no longer runs as a command while the pane waits.
+- 60530c8: The DOWNLOAD smoke proves what ARGUS owns (#830): the name and bytes the page hands the browser to save, and nothing handed over for a file the session cannot read; headless Chromium saves no download at all, so the disk proved nothing about the surface. The smoke driver's CDP calls now reject with the method and the browser's words when refused, instead of resolving as if they had worked.
+- a414a4a: The PACS query form stands on its listing's grid again (#825): the form has a cell for the listing's control column, so PATIENT and MRN are typed over the PATIENT and MRN they fill; the levels read their shared leading tracks (fold, PATIENT, MRN) from one declaration, and the aegis lint holds the levels and the form to it.
+- ef43797: The older-page notice speaks plainly (#837): "ARGUS has been updated in the background — refresh this page", where the word "refresh" is the link that reloads; the console says the same sentence, and the smoke reads the words from the module so the two cannot drift.
+
 ## 0.18.14
 
 ### Patch Changes

@@ -442,7 +442,27 @@ export class LayoutManager {
       mount.remove();
     }
     this.root.replaceChildren(this.node_render(this.tree, ''));
+    this.focus_reconcile();
     this.renderObserver?.();
+  }
+
+  /**
+   * Focus names a pane on stage. A tree that lost the focused pane (a
+   * preset applied, a leaf closed from under it) hands focus to its first
+   * leaf — the domain's primary — so a spawn from the focused pane always
+   * has a host, and the pane that left is the one `;` returns to. Found as
+   * #816: after the launcher, `help pane` and `pane split` split from
+   * 'launcher', a pane no longer on stage, and opened nothing.
+   */
+  private focus_reconcile(): void {
+    const shown: string[] = this.panes_shown();
+    if (this.focusedPane !== null && shown.includes(this.focusedPane)) return;
+    const first: string | undefined = shown[0];
+    if (first === undefined) return;
+    const departed: string | null = this.focusedPane;
+    this.focusedPane = null;
+    this.focus_set(first);
+    if (departed !== null) this.previousFocus = departed;
   }
 
   /** Builds one node's DOM. `path` names the split for ratio persistence. */

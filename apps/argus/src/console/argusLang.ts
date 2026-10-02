@@ -182,7 +182,7 @@ function modePill_setTo(host: ArgusHost, paneId: string, selector: string, wante
 }
 
 /** Spatial focus: the nearest shown pane in a screen direction. */
-function focus_move(host: ArgusHost, direction: string): string | null {
+export function focus_move(host: ArgusHost, direction: string): string | null {
   const fromId: string | null = host.focused_get();
   const from: DOMRect | null = fromId !== null ? host.paneRect_get(fromId) : null;
   if (from === null) return null;
@@ -214,6 +214,58 @@ const SPLIT_PLACES: Readonly<Record<string, { split: string; place: string }>> =
   below: { split: 'row', place: 'after' },
 };
 
+/**
+ * One drawer verb, one key: with a drawer open (the prefix pressed), a chord
+ * fires one of its capsules — tmux's letters where tmux has one, vim's for
+ * a direction, a capital to MOVE. A chord is a key on a capsule, never a
+ * verb of its own (aegis.adoc: a-drawer-verb-has-a-chord); each capsule's
+ * title names its key, and `argus keys` lists them.
+ */
+export interface DrawerChord {
+  /** The key, as KeyboardEvent.key. */
+  key: string;
+  /** The capsule it presses, as a selector under the open drawer; null when the host acts (focus, help). */
+  selector: string | null;
+  /** What it does, for the table. */
+  does: string;
+  /** Whether the chord arms MOVE first. */
+  move?: boolean;
+}
+
+export const DRAWER_CHORDS: ReadonlyArray<DrawerChord> = [
+  { key: '%', selector: '[data-split="col"][data-place="after"]', does: 'split right (tmux)' },
+  { key: '"', selector: '[data-split="row"][data-place="after"]', does: 'split below (tmux)' },
+  { key: 'h', selector: '[data-split="col"][data-place="before"]', does: 'split left' },
+  { key: 'j', selector: '[data-split="row"][data-place="after"]', does: 'split below' },
+  { key: 'k', selector: '[data-split="row"][data-place="before"]', does: 'split above' },
+  { key: 'l', selector: '[data-split="col"][data-place="after"]', does: 'split right' },
+  { key: 'H', selector: '[data-split="col"][data-place="before"]', does: 'move this pane left', move: true },
+  { key: 'J', selector: '[data-split="row"][data-place="after"]', does: 'move this pane below', move: true },
+  { key: 'K', selector: '[data-split="row"][data-place="before"]', does: 'move this pane above', move: true },
+  { key: 'L', selector: '[data-split="col"][data-place="after"]', does: 'move this pane right', move: true },
+  { key: 'm', selector: '.drawer-mode[data-mode="move"]', does: 'arm MOVE (then a direction)' },
+  { key: 'z', selector: '.drawer-zoom', does: 'zoom (tmux)' },
+  { key: 'x', selector: '.drawer-close', does: 'close (tmux)' },
+  { key: 'u', selector: '.drawer-bind[data-bind="unlinked"]', does: 'the next split is unlinked' },
+  { key: 'f', selector: '.drawer-bind[data-bind="fs"]', does: 'the next split is a linked filesystem' },
+  { key: 'v', selector: '.drawer-bind[data-bind="viewer"]', does: 'the next split is a linked viewer' },
+  { key: '1', selector: '.empty-go-files', does: 'claim an empty pane as FILES' },
+  { key: '2', selector: '.empty-go-dag', does: 'claim an empty pane as RUNS' },
+  { key: '3', selector: '.empty-go-pacs', does: 'claim an empty pane as PACS' },
+  { key: 'o', selector: null, does: 'focus the next pane (tmux)' },
+  { key: 'O', selector: null, does: 'focus the previous pane' },
+  { key: '←↑↓→', selector: null, does: 'focus the pane in that direction (tmux)' },
+  { key: ':', selector: null, does: 'the command line (tmux)' },
+  { key: '?', selector: null, does: 'this table' },
+];
+
+/** The chord table, as the console prints it. */
+export const KEYS_HELP: string = [
+  'prefix chords — Ctrl-B opens the focused pane\'s drawer; one key then presses one capsule',
+  ...DRAWER_CHORDS.map((chord: DrawerChord): string => `  ${chord.key.padEnd(6)} ${chord.does}`),
+  '  Tab    walks the verbs; Enter fires; Esc closes the drawer',
+].join('\n');
+
 const VERBS_HELP: string = [
   'pane [@id|%n] split left|right|above|below · zoom · close · bind unlinked|fs|viewer',
   'pane [@id|%n] claim files|runs|pacs · focus left|right|up|down|@id',
@@ -231,6 +283,7 @@ const VERBS_HELP: string = [
   'desktop save|load|show|list|delete [name]',
   'attach [--reveal]           (how to reach THIS session from a terminal or another browser)',
   'argus verbs                 (this table; the long form is docs/argus-lang.adoc)',
+  'argus keys                  (the prefix chords: one key, one drawer verb)',
 ].join('\n');
 
 /**
@@ -294,7 +347,7 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   const verb: string = (words[0] ?? '').toLowerCase();
   const arg: string = (words[1] ?? '').toLowerCase();
 
-  if (subject === 'argus') return VERBS_HELP;
+  if (subject === 'argus') return verb === 'keys' ? KEYS_HELP : VERBS_HELP;
 
   if (subject === 'back') {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));

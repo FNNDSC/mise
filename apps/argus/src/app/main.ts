@@ -60,7 +60,7 @@ import { IndexInstrument } from './indexInstrument.js';
 import { LaneInstrument } from './laneInstrument.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler } from './cycler.js';
-import { argusLine_run, type ArgusHost } from '../console/argusLang.js';
+import { argusLine_run, DRAWER_CHORDS, focus_move, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
 
 /** Console zoom, exposed for the language (the bar carries no control). */
 let consoleZoom_set: (pane: string | null) => void = () => undefined;
@@ -4224,6 +4224,13 @@ async function surface_start(token: string): Promise<void> {
     sound_play('audio3');
     return `moved ${side}`;
   };
+  /** The chords a capsule answers to, for its title: `[keys % l]`. */
+  const chordKeys_of = (selector: string, move: boolean): string => {
+    const keys: string[] = DRAWER_CHORDS
+      .filter((chord: DrawerChord): boolean => chord.selector === selector && (chord.move === true) === move)
+      .map((chord: DrawerChord): string => chord.key);
+    return keys.length === 0 ? '' : ` [keys ${keys.join(' ')}]`;
+  };
   const pane_chrome_wire = (id: string, kind: string, mount: HTMLElement): void => {
     const drawer: HTMLElement | null = mount.querySelector<HTMLElement>('.pane-drawer');
     const handle: HTMLElement | null = mount.querySelector<HTMLElement>('.pane-handle');
@@ -4275,7 +4282,10 @@ async function surface_start(token: string): Promise<void> {
         const side: MoveDir = sideOf(splitter);
         // A side this pane cannot go dims before the press.
         splitter.disabled = mode === 'move' && !layout.move_possible(id, side);
-        splitter.title = mode === 'move' ? `this pane moves ${side}` : `new pane opens ${side}`;
+        const selector: string = `[data-split="${splitter.dataset['split'] ?? ''}"][data-place="${splitter.dataset['place'] ?? ''}"]`;
+        splitter.title = mode === 'move'
+          ? `this pane moves ${side}${chordKeys_of(selector, true)}`
+          : `new pane opens ${side}${chordKeys_of(selector, false)}`;
       }
     };
     for (const pill of drawer.querySelectorAll<HTMLElement>('.drawer-mode')) {
@@ -4305,6 +4315,11 @@ async function surface_start(token: string): Promise<void> {
         drawer.hidden = true;
         sound_play('audio3');
       });
+    }
+    // Every capsule a chord presses names its keys in its title.
+    for (const selector of new Set(DRAWER_CHORDS.filter((chord: DrawerChord): boolean => chord.selector !== null && chord.move !== true).map((chord: DrawerChord): string => chord.selector ?? ''))) {
+      const capsule: HTMLElement | null = drawer.querySelector<HTMLElement>(selector);
+      if (capsule !== null && !capsule.title.includes('[keys ')) capsule.title = `${capsule.title}${chordKeys_of(selector, false)}`;
     }
     drawer.querySelector<HTMLElement>('.drawer-close')?.addEventListener('click', (): void => {
       if (id === 'dag') {
@@ -4699,25 +4714,54 @@ async function surface_start(token: string): Promise<void> {
         }
         return;
       }
-      // Arrows walk an open drawer's verbs (Tab still works); wrap at the
-      // ends. Only claimed while a drawer verb actually holds focus.
-      if (
-        (event.key === 'ArrowRight' || event.key === 'ArrowLeft' ||
-         event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
-        document.activeElement instanceof HTMLButtonElement
-      ) {
-        const drawer: HTMLElement | null = document.activeElement.closest('.pane-drawer');
-        if (drawer !== null && !drawer.hidden) {
-          const verbs: HTMLButtonElement[] = [...drawer.querySelectorAll<HTMLButtonElement>('button')];
-          const at: number = verbs.indexOf(document.activeElement);
-          const forward: boolean = event.key === 'ArrowRight' || event.key === 'ArrowDown';
-          const next: HTMLButtonElement | undefined =
-            verbs[(at + (forward ? 1 : verbs.length - 1)) % verbs.length];
-          next?.focus();
-          event.preventDefault();
-          event.stopImmediatePropagation();
+      // Prefix chords (aegis.adoc: a-drawer-verb-has-a-chord): with a drawer
+      // open, one key presses one of its capsules — tmux's letters where
+      // tmux has one, vim's for a direction, a capital to MOVE; the arrows
+      // focus the pane in that direction, as tmux does. Tab still walks the
+      // verbs. A key typed into a line (the command line, an errand prompt)
+      // is never a chord.
+      const openDrawer: HTMLElement | null = document.querySelector<HTMLElement>('.pane-drawer:not([hidden])');
+      const typing: boolean = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
+      if (openDrawer !== null && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        const arrows: Readonly<Record<string, string>> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
+        const claim = (): void => { event.preventDefault(); event.stopImmediatePropagation(); };
+        const direction: string | undefined = arrows[event.key];
+        if (direction !== undefined) {
+          drawers_close();
+          if (focus_move(argusHost, direction) !== null) sound_play('audio3');
+          claim();
+          return;
         }
-        return;
+        if (event.key === 'o' || event.key === 'O') {
+          const shown: string[] = layout.panes_shown();
+          const at: number = shown.indexOf(layout.focused_get() ?? '');
+          const next: string | undefined = shown[(at + (event.key === 'o' ? 1 : shown.length - 1)) % shown.length];
+          drawers_close();
+          if (next !== undefined) { layout.focus_set(next); sound_play('audio3'); }
+          claim();
+          return;
+        }
+        if (event.key === '?') {
+          drawers_close();
+          terminal.line_run('argus keys');
+          claim();
+          return;
+        }
+        const chord: DrawerChord | undefined = DRAWER_CHORDS.find((one: DrawerChord): boolean => one.key === event.key && one.selector !== null);
+        if (chord !== undefined && chord.selector !== null) {
+          // A capital arms MOVE first; a side the pane cannot go is dimmed
+          // and the press lands on nothing, so MOVE is stood down again.
+          if (chord.move === true) openDrawer.querySelector<HTMLButtonElement>('.drawer-mode[data-mode="move"]')?.click();
+          const control: HTMLButtonElement | null = openDrawer.querySelector<HTMLButtonElement>(chord.selector);
+          if (control === null || control.disabled) {
+            if (chord.move === true) openDrawer.querySelector<HTMLButtonElement>('.drawer-mode[data-mode="split"]')?.click();
+            claim();
+            return;
+          }
+          control.click();
+          claim();
+          return;
+        }
       }
       // Prefix-: — a drawer opened by the prefix hands ':' to the command
       // line (and a second Ctrl-B does the same).

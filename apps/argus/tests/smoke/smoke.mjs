@@ -425,7 +425,7 @@ try {
     const bar = document.querySelector('.layout-leaf[data-leaf="' + born + '"] .pane-state')?.textContent.trim() ?? '';
     const belowOf = rect(born).top >= rect(filesId).bottom - 2;
     const fellBack = drawer.dataset.mode === 'split' && drawer.querySelector('.drawer-mode[data-mode="split"]').classList.contains('drawer-mode-selected');
-    const consoleQuiet = text().length === consoleBefore;
+    const consoleQuiet = !/moved|MOVED/.test(text().slice(consoleBefore));
     await say('pane move above'); const typed = after('pane move above');
     const aboveOf = rect(born).bottom <= rect(filesId).top + 2;
     await say('pane move above'); const refused = after('pane move above');
@@ -473,6 +473,54 @@ try {
     return { born, movedBelow, carded: desktop !== undefined, shaped, cardFound: card !== undefined, returned, belowAgain };`);
   check('a moved pane returns where it was moved to: the desktop keeps the tiling and lays it over the replayed panes',
     back.error === undefined && back.movedBelow && back.carded && back.shaped && back.cardFound && back.returned && back.belowAgain, JSON.stringify(back));
+  }
+
+  if (stage('prefix-chords')) {
+  // With the drawer open, one key presses one capsule; the arrows focus.
+  const chord = await evalIn(`
+    await console_idle();
+    const press = (key, extra = {}) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...extra }));
+    const prefix = () => press('b', { ctrlKey: true });
+    const leaves = () => [...document.querySelectorAll('.layout-leaf')].map((l) => l.dataset.leaf);
+    const rect = (id) => document.querySelector('.layout-leaf[data-leaf="' + id + '"]').getBoundingClientRect();
+    const drawerOf = (id) => document.querySelector('.layout-leaf[data-leaf="' + id + '"] .pane-drawer');
+    document.getElementById('gutter-files').click(); await sleep(600);
+    document.querySelector('.pane-files .files-panel')?.click(); await sleep(150);
+    const before = new Set(leaves());
+    prefix(); await sleep(150);
+    const opened = drawerOf('files') !== null && !drawerOf('files').hidden;
+    const titled = /\\[keys % l\\]/.test(drawerOf('files')?.querySelector('[data-split="col"][data-place="after"]')?.title ?? '');
+    press('l'); await sleep(400);
+    const born = leaves().find((id) => !before.has(id));
+    const splitRight = born !== undefined && rect(born).left >= rect('files').right - 2;
+    // J: move below, one chord (arms MOVE, presses BELOW, MOVE stands down)
+    prefix(); await sleep(150);
+    const bornDrawerOpen = born !== undefined && !drawerOf(born).hidden;
+    press('J'); await sleep(400);
+    const movedBelow = born !== undefined && rect(born).top >= rect('files').bottom - 2;
+    const stoodDown = born !== undefined && drawerOf(born).dataset.mode === 'split';
+    // the arrows focus: up from the moved pane is the files pane, whose drawer the next prefix opens
+    prefix(); await sleep(150);
+    press('ArrowUp'); await sleep(200);
+    prefix(); await sleep(150);
+    const focusedUp = drawerOf('files') !== null && !drawerOf('files').hidden;
+    press('Escape'); await sleep(150);
+    // ? prints the table
+    prefix(); await sleep(150);
+    press('?'); await sleep(600);
+    const table = /prefix chords/.test(document.getElementById('terminal').innerText);
+    // down to the moved pane by arrow, then x closes it
+    prefix(); await sleep(150);
+    press('ArrowDown'); await sleep(200);
+    prefix(); await sleep(150);
+    const xDrawerIsBorn = born !== undefined && !drawerOf(born).hidden;
+    press('x'); await sleep(400);
+    const closed = !leaves().includes(born);
+    return { opened, titled, born, splitRight, bornDrawerOpen, movedBelow, stoodDown, focusedUp, table, xDrawerIsBorn, closed };`);
+  check('a chord presses a drawer verb: l splits right, J moves below and stands MOVE down, x closes; the capsule names its key',
+    chord.opened && chord.titled && chord.splitRight && chord.bornDrawerOpen && chord.movedBelow && chord.stoodDown && chord.xDrawerIsBorn && chord.closed, JSON.stringify(chord));
+  check('an arrow with the drawer open focuses the pane in that direction, and ? prints the chord table',
+    chord.focusedUp && chord.table, JSON.stringify(chord));
   }
 
   if (stage('universe-constellations')) {

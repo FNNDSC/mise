@@ -42,7 +42,6 @@ import { FilesPanel, type FileAction, type FsListing, type FsListingEntry, exten
 import type { ListingAction } from '../features/roster/row.js';
 import { FILE_ROW_ROSTER, FILES_SELECTION_ROSTER, RUNS_ROW_ROSTER, type FileRowFacts, type FilesSelectionFacts, type RunsRowFacts } from '../features/roster/verbs.js';
 import { GatherPanel, type GatherSeries, type GatherFeed } from '../features/gather/panel.js';
-import { Cohort } from '../features/gather/cohort.js';
 import { LauncherPanel, type LauncherTile, type LauncherRow } from '../features/launcher/panel.js';
 import { runLine_compose, runLine_executable, runLine_flagGet, runLine_flagSet, runLine_hasTitle, runLine_titleAppend, pipelineNode_selector, type RunFlagValue } from '../features/files/runLine.js';
 import { DagPanel } from '../features/dag/panel.js';
@@ -83,8 +82,10 @@ import {
 import { LayoutManager, type LayoutNode } from './layout.js';
 import type { HostContext } from './hostContext.js';
 import { paneVerbs_wire } from './paneVerbs.js';
-import { desktop_wire, type CatalogueBinding, type Desktop } from './desktop.js';
+import { desktop_wire, type CatalogueBinding, type Desktop, type ReplayPlace } from './desktop.js';
 import { nodeOverlay_wire, type FileText, type NodeOverlay } from './nodeOverlay.js';
+import { cohort_wire, type CohortModule } from './cohort.js';
+import { asks_wire, type Asks } from './asks.js';
 import { SIDES, place_of, side_ofArrow, side_ofPlace, splitSelector_of, type Side } from './sides.js';
 import { stalePage_watch } from './stalePage.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
@@ -2547,324 +2548,31 @@ async function surface_start(token: string): Promise<void> {
    * @param id - The pane id.
    * @returns The instance.
    */
-  const gatherInstance_build = (id: string): PaneInstance => {
-    const mount: HTMLElement = template_stamp('tpl-pane-gather');
-    const panel: GatherPanel = new GatherPanel(mount, pane_find(mount, '.gather-rows'), {
-      command_run: (line: string): void => { void client.line_execute(line, { silent: true }); },
-      command_show: (line: string): void => terminal.line_run(line),
-      note: (text: string): void => terminal.line_note(text),
-      image_open: (folderPath: string): void => {
-        void image_open(id, folderPath).then((line: string): void => terminal.line_note(line));
-      },
-      process_open: (folderPath: string): void => process_open(id, { input: folderPath, feed: null, node: null }),
-      name_ask: (suggest: string): Promise<string | null> =>
-        ask_onPane(id, { message: 'Cohort name: ', kind: 'text', suggest, commit: 'NAME IT' }),
-      // On the pane, where the press was: CLEAR asks before throwing away
-      // a cohort that was never saved.
-      confirm_ask: async (message: string): Promise<'y' | 'n' | null> => {
-        const answered: string | null = await ask_onPane(id, { message, kind: 'confirm' });
-        return answered === 'y' || answered === 'n' ? answered : null;
-      },
-      changed: (): void => pacsStage_relight(),
-      dismiss: (): void => {
-        if (!layout.leaf_close(id)) home_apply();
-        orphans_dispose();
-        pacsStage_relight();
-      },
-      // The cohort's feed is made by the line the operator could have typed:
-      // echoed, run, its answer written; the kernel's model names the feed
-      // and the root a run appends to.
-      feed_create: async (line: string): Promise<GatherFeed | null> => {
-        terminal.line_echo(line);
-        let outcome: ExecuteOutcome;
-        try {
-          outcome = await client.line_execute(line, { silent: true });
-        } catch (error: unknown) {
-          terminal.output_write('err', `\x1b[31m${error instanceof Error ? error.message : String(error)}\x1b[0m\n`);
-          return null;
-        }
-        terminal.outcome_write(outcome);
-        for (const envelope of outcome.envelopes) {
-          if (envelope.model?.kind !== 'feed.created') continue;
-          const data = envelope.model.data as { feedId?: unknown; rootInstanceId?: unknown; path?: unknown };
-          if (typeof data.feedId === 'number' && typeof data.rootInstanceId === 'number' && typeof data.path === 'string') {
-            return { feedId: data.feedId, rootInstanceId: data.rootInstanceId, path: data.path };
-          }
-        }
-        return null;
-      },
-      cohort_process: (binding: { input: string; feed: number; node: number }): void => process_open(id, binding),
-      feed_open: (feedId: number): void => feed_open(id, feedId),
-    }, cohort);
-    panels.set('gather', id, panel);
-    return {
-      id,
-      kind: 'gather',
-      mount,
-      dispose: (): void => {
-        panels.delete(id);
-        subjects.pane_leave(id);
-      },
-    };
-  };
-
   /**
-   * The session's cohort, which rides the header band.
-   *
-   * ONE cohort per session, and it belongs to the session rather than to
-   * any pane: a cohort spans PACS series, and will span directories, so it
-   * cannot live in whichever pane happened to start it. The header is the
-   * one region that does not change when the body does, so gathering never
-   * rearranges the workspace — which is the whole reason it moved here.
+   * The session's cohort (app/cohort.ts): one per session, the band's and
+   * the GATHER pane's alike. The host's open verbs, asks and stage are its
+   * hooks; the ones declared further down are read when called.
    */
-  let headerCohort: GatherPanel | null = null;
-
-  /**
-   * The session's cohort itself, which neither view owns.
-   *
-   * The band shows it; a pane on the main panel can show the same one at
-   * the same time, for a cohort too big for a band. Two reflections of one
-   * set, which is the rule the badge registry already follows for a series
-   * shown in two places.
-   */
-  const cohort: Cohort<GatherSeries> = new Cohort<GatherSeries>();
-
-  /** Whether the operator sent the band away since the last gather. */
-  let bandDismissed: boolean = false;
-
-  /**
-   * Where the session keeps the cohort it is working on.
-   *
-   * A cohort belongs to the SESSION, so it outlives the page: a refresh
-   * keeps it, and a second surface attached to the same session sees the
-   * same one. A working file, not a format — SAVE still writes the named
-   * manifest beside it, which is the thing meant to be kept.
-   */
-  const COHORT_FILE: string = '~/gather/current.json';
-
-  /** Writes are debounced: gathering a study is twenty changes, one file. */
-  let cohortWrite: number | null = null;
-
-  /** Holds the cohort as the session's, after the surface changed it. */
-  const cohort_keep = (): void => {
-    if (cohortWrite !== null) window.clearTimeout(cohortWrite);
-    cohortWrite = window.setTimeout((): void => {
-      cohortWrite = null;
-      const held: ReadonlyArray<GatherSeries> = headerCohort?.entries_get() ?? [];
-      const kept: string = JSON.stringify({
-        version: 1,
-        name: headerCohort?.name_get() ?? null,
-        feed: headerCohort?.feed_get() ?? null,
-        series: held,
-      });
-      // Silent: this is the surface keeping its own state, not an act the
-      // operator took, and the transcript is for what they did.
-      void client.line_execute('mkdir -p ~/gather', { silent: true, observe: false });
-      void client.line_execute(
-        `touch --withContents '${kept.replace(/'/g, "'\\''")}' ${COHORT_FILE}`,
-        { silent: true, observe: false },
-      );
-    }, 1200);
-  };
-
-  /** Reads back the cohort the session was working on, at boot. */
-  const cohort_restore = async (): Promise<void> => {
-    const read: FileText = await fileText_fetch(COHORT_FILE);
-    if (!read.ok) return;
-    try {
-      const held = JSON.parse(read.text) as { series?: unknown };
-      if (!Array.isArray(held.series) || held.series.length === 0) return;
-      if (headerCohort === null) headerCohort = headerCohort_build();
-      for (const entry of held.series as GatherSeries[]) headerCohort.series_add(entry);
-      headerGather_annunciate();
-      pacsStage_relight();
-    } catch {
-      // A working file the operator may have edited: a cohort that cannot
-      // be read is not a reason to refuse the session.
-    }
-  };
-
-  /**
-   * Builds the cohort into the header's third face.
-   *
-   * Its handlers are the pane's, with the two that were about a pane made
-   * honest: a cohort in the band has no pane to close, so DISMISS empties
-   * and retracts instead, and what it opens (an image, a catalogue) lands
-   * in the BODY, where work happens.
-   *
-   * @returns The panel.
-   */
-  const headerCohort_build = (): GatherPanel => {
-    const face: HTMLElement = element_require('header-gather');
-    /**
-     * Where the cohort's work LANDS: a pane that is actually on stage.
-     *
-     * The band is everywhere, so what it opens has to arrive where the
-     * operator is looking. Anchoring it to the PACS pane put the catalogue
-     * beside a pane that may not be on stage at all — the operator viewed
-     * a gathered series, pressed PROCESS, and the thing it made appeared
-     * somewhere they were not. Resolved at the moment of the press, not
-     * when the cohort was built.
-     */
-    const host = (): string => errandHost_find() ?? 'pacs';
-    return new GatherPanel(face, pane_find(face, '.gather-rows'), {
-      command_run: (line: string): void => { void client.line_execute(line, { silent: true }); },
-      command_show: (line: string): void => terminal.line_run(line),
-      note: (text: string): void => terminal.line_note(text),
-      image_open: (folderPath: string): void => {
-        void image_open(host(), folderPath).then((line: string): void => terminal.line_note(line));
-      },
-      process_open: (folderPath: string): void => process_open(host(), { input: folderPath, feed: null, node: null }),
-      // The question stands where the press was, and the press was in the
-      // BAND: asking on the PACS pane put it on a pane the operator may
-      // not even have on stage, which reads as the verb doing nothing.
-      name_ask: async (suggest: string): Promise<string | null> => {
-        const face: HTMLElement = element_require('header-gather');
-        const noted: (answer: string | null) => void = terminal.ask_note('Cohort name: ');
-        const answered: string | null = await paneAsk_open(face, {
-          message: 'Cohort name: ', kind: 'text', suggest, commit: 'NAME IT',
-        });
-        noted(answered);
-        return answered;
-      },
-      // A yes-or-no on the band, where the press was: CLEAR asks it before
-      // throwing away a cohort that was never saved.
-      confirm_ask: async (message: string): Promise<'y' | 'n' | null> => {
-        const face: HTMLElement = element_require('header-gather');
-        const noted: (answer: string | null) => void = terminal.ask_note(`${message} `);
-        const answered: string | null = await paneAsk_open(face, { message, kind: 'confirm' });
-        noted(answered);
-        return answered === 'y' || answered === 'n' ? answered : null;
-      },
-      changed: (): void => {
-        pacsStage_relight();
-        headerGather_annunciate();
-        cohort_keep();
-      },
-      dismiss: (): void => {
-        // A band is not a pane: there is nothing to close. Sending the face
-        // away is what DISMISS means here, and it forgets nothing: the
-        // cohort is the session's, and stays. Emptying it is CLEAR.
-        document.body.dataset['header'] = 'away';
-        bandDismissed = true;
-        headerGather_annunciate();
-      },
-      feed_create: async (line: string): Promise<GatherFeed | null> => {
-        terminal.line_echo(line);
-        let outcome: ExecuteOutcome;
-        try {
-          outcome = await client.line_execute(line, { silent: true });
-        } catch (error: unknown) {
-          terminal.output_write('err', `\x1b[31m${error instanceof Error ? error.message : String(error)}\x1b[0m\n`);
-          return null;
-        }
-        terminal.outcome_write(outcome);
-        for (const envelope of outcome.envelopes) {
-          if (envelope.model?.kind !== 'feed.created') continue;
-          const data = envelope.model.data as { feedId?: unknown; rootInstanceId?: unknown; path?: unknown };
-          if (typeof data.feedId === 'number' && typeof data.rootInstanceId === 'number' && typeof data.path === 'string') {
-            return { feedId: data.feedId, rootInstanceId: data.rootInstanceId, path: data.path };
-          }
-        }
-        return null;
-      },
-      cohort_process: (binding: { input: string; feed: number; node: number }): void => process_open(host(), binding),
-      feed_open: (feedId: number): void => feed_open(host(), feedId),
-    }, cohort);
-  };
-
-  /**
-   * Puts the cohort on the main panel, as a pane.
-   *
-   * A band is right for reading and curating; a cohort of two hundred
-   * members with a filter on wants a whole field. It is the SAME cohort —
-   * neither view owns the set — so nothing is copied and nothing can
-   * drift. The band retracts as it goes, having done its job.
-   */
-  const cohort_stage = (): void => {
-    const shown: Set<string> = new Set(layout.panes_shown());
-    const standing: string | null = panels.ids('gather').find((id: string): boolean => shown.has(id)) ?? null;
-    if (standing !== null) {
-      layout.focus_set(standing);
-    } else {
-      const host: string = errandHost_find() ?? 'pacs';
-      const spawned: PaneInstance = instance_spawn('gather', 'pacs');
-      if (!layout.leaf_split(host, 'col', spawned.id, false)) {
-        paneInstance_dispose(spawned.id);
-        layout.mount_remove(spawned.id);
-        return;
-      }
-      birth_record(spawned.id, host, 'col', false);
-      panels.get('gather', spawned.id)?.render_now();
-    }
-    document.body.dataset['header'] = 'away';
-    bandDismissed = true;
-  };
-
-  /**
-   * The block says whether the session is holding anything, and no more.
-   *
-   * A plate is a NAME — `01-GATHER`, as `02-CALYPSO` is — so the count
-   * does not get glued to it. Holding something lights the block and
-   * holding nothing dims it, which is the armed-and-resting idiom the
-   * capsules already use; how many, and which, is what the face itself
-   * says on its own state line.
-   */
-  const headerGather_annunciate = (): void => {
-    const pill: HTMLElement | null = document.querySelector<HTMLElement>('#header-gather-pill');
-    if (pill === null) return;
-    const held: number = headerCohort?.entries_get().length ?? 0;
-    pill.classList.toggle('panel-gather-empty', held === 0);
-  };
-
-  /**
-   * Takes series into the session's cohort.
-   *
-   * The band reveals itself the first time, so the operator sees where the
-   * thing they gathered went; after they have deliberately sent it away it
-   * stays away and only the count moves, until they open it again.
-   *
-   * @param entries - The series to gather.
-   */
-  const cohort_gather = (entries: ReadonlyArray<GatherSeries>): void => {
-    if (headerCohort === null) headerCohort = headerCohort_build();
-    for (const entry of entries) headerCohort.series_add(entry);
-    const away: boolean = document.body.dataset['header'] === 'away';
-    if (!bandDismissed || !away) {
-      document.body.dataset['header'] = 'gather';
-      bandDismissed = false;
-    }
-    headerGather_annunciate();
-    cohort_keep();
-  };
-
-  /**
-   * Gathers series into the cohort on stage, opening the GATHER pane below
-   * the PACS listing (joined to its group) when there is none.
-   *
-   * @param entries - The series to gather.
-   * @param host - The pane the GATHER pane splits from; the PACS workspace by default.
-   * @returns The GATHER pane's id, or null when no pane could be opened.
-   */
-  const gather_open = (entries: ReadonlyArray<GatherSeries>, host: string = 'pacs'): string | null => {
-    const shown: Set<string> = new Set(layout.panes_shown());
-    let id: string | null = panels.ids('gather').find((paneId: string): boolean => shown.has(paneId)) ?? null;
-    if (id === null) {
-      const from: string = shown.has(host) ? host : (errandHost_find() ?? host);
-      const spawned: PaneInstance = instance_spawn('gather', 'pacs');
-      if (!layout.leaf_split(from, desktop.replayPlace_get()?.dir ?? 'row', spawned.id, desktop.replayPlace_get()?.before ?? false)) {
-        paneInstance_dispose(spawned.id);
-        layout.mount_remove(spawned.id);
-        return null;
-      }
-      birth_record(spawned.id, from, desktop.replayPlace_get()?.dir ?? 'row', desktop.replayPlace_get()?.before ?? false);
-      id = spawned.id;
-    }
-    const panel: GatherPanel | undefined = panels.get('gather', id);
-    if (panel === undefined) return null;
-    for (const entry of entries) panel.series_add(entry);
-    return id;
-  };
+  const cohortModule: CohortModule = cohort_wire(context, {
+    image_open: (fromId: string, path: string): Promise<string> => image_open(fromId, path),
+    process_open: (fromId: string, binding: CatalogueBinding): void => process_open(fromId, binding),
+    feed_open: (fromId: string, feedId: number): void => feed_open(fromId, feedId),
+    ask_onPane: (id: string, request: PaneAskRequest): Promise<string | null> => ask_onPane(id, request),
+    errandHost_find: (): string | null => errandHost_find(),
+    instance_spawn: (kind: PaneKind, inheritFrom?: string): PaneInstance => instance_spawn(kind, inheritFrom),
+    birth_record: (childId: string, parent: string, dir: 'row' | 'col', before: boolean): void => birth_record(childId, parent, dir, before),
+    replayPlace_get: (): ReplayPlace | null => desktop.replayPlace_get(),
+    stage_relight: (): void => pacsStage_relight(),
+    home_apply: (): void => home_apply(),
+    orphans_dispose: (): void => orphans_dispose(),
+    fileText_fetch,
+    template_stamp,
+    pane_find,
+    element_require,
+  });
+  const gatherInstance_build = cohortModule.instance_build;
+  const cohort_gather = cohortModule.gather;
+  const gather_open = cohortModule.open;
 
   const viewInstance_build = (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-view');
@@ -3045,190 +2753,21 @@ async function surface_start(token: string): Promise<void> {
    *
    * @returns A pane id in the current tree, or null when there is no tree.
    */
-  const errandHost_find = (): string | null => {
-    const tree: LayoutNode | null = layout.tree_get();
-    if (tree === null) return null;
-    const leaves: string[] = [];
-    const walk = (node: LayoutNode): void => {
-      if ('pane' in node) { leaves.push(node.pane); return; }
-      walk(node.first);
-      walk(node.second);
-    };
-    walk(tree);
-    const focused: string | null = layout.focused_get();
-    if (focused !== null && leaves.includes(focused)) return focused;
-    return leaves[0] ?? null;
-  };
-
-  /**
-   * The question a `path` ask puts on stage, as an errand.
-   *
-   * An ask is never a box: it borrows the instrument that already shows the
-   * space being asked about. A location wants a browser, so one opens beside
-   * the pane that asked — a NEW one, since hijacking the operator's own
-   * browser would lose their place and leave the layout changed after the
-   * errand — anchored where the ask said, and it closes when the errand
-   * ends either way.
-   *
-   * The errand's own controls ride the pane's mode frame, which is where a
-   * control that acts on the whole field belongs: the question as a caption
-   * (a readout — it answers no press), the composed path as an editable
-   * field, MKDIR for a folder that does not exist yet, and one verb that
-   * commits, reading whatever the kernel said it does.
-   *
-   * @param request - The question, its anchor and its suggestion.
-   * @returns The location the operator committed, or null when abandoned.
-   */
-  const errand_open = async (request: SurfaceAsk): Promise<string | null> => {
-    // Beside a pane that is actually on stage. The focused pane can be one
-    // the current preset does not hold — focus outlives a preset change —
-    // and splitting beside a pane that is not in the tree fails silently,
-    // which is an errand that never opens and a question nobody is asked.
-    const host: string | null = errandHost_find();
-    if (host === null) return null;
-    const spawned: PaneInstance = instance_spawn('files');
-    if (!layout.leaf_split(host, desktop.replayPlace_get()?.dir ?? 'col', spawned.id, desktop.replayPlace_get()?.before ?? false)) {
-      paneInstance_dispose(spawned.id);
-      layout.mount_remove(spawned.id);
-      return null;
-    }
-    birth_record(spawned.id, host, desktop.replayPlace_get()?.dir ?? 'col', desktop.replayPlace_get()?.before ?? false);
-    const panel: FilesPanel | undefined = panels.get('files', spawned.id);
-    const anchor: string = request.path?.anchor ?? '~';
-    if (panel !== undefined) rootedListing_show(spawned.id, panel, anchor);
-
-    const body: HTMLElement | null = spawned.mount.querySelector<HTMLElement>('.files-body');
-    if (body === null) {
-      paneInstance_dispose(spawned.id);
-      layout.mount_remove(spawned.id);
-      return null;
-    }
-    // The errand's controls ride a bar of their own across the top of the
-    // pane, not the mode frame: the frame is a narrow rail against the
-    // spine — right for a column of capsules, hopeless for a caption and a
-    // path — and the frame keeps answering to what the FIELD holds, which
-    // an errand does not change. The bar belongs to the errand and leaves
-    // with it.
-    const bar: HTMLElement = document.createElement('div');
-    bar.className = 'errand-bar';
-    body.insertBefore(bar, body.firstChild);
-
-    const caption: HTMLElement = document.createElement('span');
-    caption.className = 'errand-caption';
-    caption.textContent = request.message.trim();
-    const field: HTMLInputElement = document.createElement('input');
-    field.className = 'errand-path';
-    field.spellcheck = false;
-    const commit: HTMLButtonElement = document.createElement('button');
-    commit.className = 'pacs-capsule errand-commit';
-    commit.textContent = request.commit ?? 'USE THIS';
-    // The path typed IS the answer, whole. The bar used to carry a MKDIR
-    // of its own, which made the folder the path lives IN — so a field
-    // holding a directory made its parent, which already existed, and the
-    // browser appeared to walk up a level for no reason. The command that
-    // asked makes the holding folder itself and says so, or refuses by
-    // name, which is what a terminal does; and a browser's own frame still
-    // carries MKDIR for making a place before choosing it.
-    bar.append(caption, field, commit);
-
-    /** Composes the answer from where the browser stands. */
-    const path_compose = (): void => {
-      const here: string = panel?.path_current() ?? anchor;
-      const suggest: string | undefined = request.path?.suggest;
-      field.value = request.path?.wantsDirectory === true || suggest === undefined
-        ? here
-        : `${here.replace(/\/$/, '')}/${suggest}`;
-    };
-    path_compose();
-    // Walking the browser re-composes, so the field always names where the
-    // operator is standing — until they edit it, which is their last word.
-    let edited: boolean = false;
-    field.addEventListener('input', (): void => { edited = true; });
-    const walked = (): void => { if (!edited) path_compose(); };
-    spawned.mount.addEventListener('click', walked);
-
-    terminal.question_set(true);
-    return new Promise((resolve: (answer: string | null) => void): void => {
-      const settle = (answer: string | null): void => {
-        spawned.mount.removeEventListener('click', walked);
-        terminal.question_set(false);
-        errandClose = null;
-        layout.leaf_close(spawned.id);
-        paneInstance_dispose(spawned.id);
-        layout.mount_remove(spawned.id);
-        resolve(answer);
-      };
-      errandClose = (): void => settle(null);
-      commit.addEventListener('click', (): void => settle(field.value.trim() === '' ? null : field.value.trim()));
-      field.addEventListener('keydown', (event: KeyboardEvent): void => {
-        if (event.key === 'Enter') settle(field.value.trim() === '' ? null : field.value.trim());
-      });
-    });
-  };
-
-  /** Abandons the errand on stage, when there is one. */
-  let errandClose: (() => void) | null = null;
-
   /** Opens or retracts the console drawer; set once the drawer is wired. */
   let consoleClosed_set: ((closed: boolean) => void) | null = null;
 
   /**
-   * The pane whose pressed verb is running a line.
-   *
-   * A verb lowers to a command, and the command may have a question of its
-   * own — `rm -i` asks before it removes. That question belongs where the
-   * press was, not in the console: the operator is looking at the row they
-   * just acted on. The session still SPEAKS in the console and the
-   * transcript still keeps the exchange; what moves is where the answer is
-   * given. Cleared as soon as it is used, so an unrelated question later
-   * does not inherit a stale pane.
+   * Where a question stands (app/asks.ts): on the pane that provoked it,
+   * as an errand beside it, or on the console when no pane can carry it.
    */
-  let askingPane: string | null = null;
-
-  /**
-   * Runs a row's or a field's verb as the visible command it is, and
-   * remembers which pane pressed it.
-   *
-   * @param id - The pane whose verb this is.
-   * @param line - The command the operator could have typed.
-   */
-  const verbLine_run = (id: string, line: string): void => {
-    askingPane = id;
-    terminal.line_run(line);
-  };
-
-  /**
-   * Puts a question on the pane that provoked it.
-   *
-   * A transient question belongs where the hand is. Every surface question
-   * used to go to the console, and a console can be closed: PROCESS on a
-   * cohort asked for a name into a drawer of zero height, so the press
-   * read as dead and the surface waited on a question nobody could see.
-   * The pane asks now, and the console still records the exchange, so the
-   * scrollback stays the whole story of the session.
-   *
-   * @param id - The pane asking.
-   * @param request - The question.
-   * @returns The answer, or null when abandoned.
-   */
-  const ask_onPane = async (id: string, request: PaneAskRequest): Promise<string | null> => {
-    const mount: HTMLElement | undefined = paneInstance_get(id)?.mount;
-    // A pane that is not on stage cannot carry a question; the console can,
-    // and it exposes itself to do it.
-    if (mount === undefined) {
-      consoleClosed_set?.(false);
-      return terminal.ask_open({
-        message: request.message,
-        kind: request.kind,
-        ...(request.suggest === undefined ? {} : { suggest: request.suggest }),
-      });
-    }
-    const noted: (answer: string | null) => void = terminal.ask_note(request.message);
-    const answer: string | null = await paneAsk_open(mount, request);
-    // A secret never enters the transcript, not even as a length.
-    noted(request.kind === 'secret' && answer !== null ? '\u2022\u2022\u2022\u2022\u2022\u2022' : answer);
-    return answer;
-  };
+  const asks: Asks = asks_wire(context, {
+    instance_spawn: (kind: PaneKind, inheritFrom?: string): PaneInstance => instance_spawn(kind, inheritFrom),
+    birth_record: (childId: string, parent: string, dir: 'row' | 'col', before: boolean): void => birth_record(childId, parent, dir, before),
+    replayPlace_get: (): ReplayPlace | null => desktop.replayPlace_get(),
+    rootedListing_show,
+    console_expose: (): void => consoleClosed_set?.(false),
+  });
+  const { errandHost_find, errand_open, verbLine_run, ask_onPane } = asks;
 
   // The PACS workspace scrolls whole when its levels outgrow a short leaf,
   // and says what it holds in rows (#pacs-workspace).
@@ -3264,7 +2803,7 @@ async function surface_start(token: string): Promise<void> {
     // The cohort is the session's, in the band: gathering takes a series
     // wherever the operator is standing, and never moves the workspace.
     gather_add: (entry: GatherSeries): void => cohort_gather([entry]),
-    gathered_is: (seriesUID: string): boolean => headerCohort?.has(seriesUID) === true,
+    gathered_is: (seriesUID: string): boolean => cohortModule.has(seriesUID),
     workspace_close: (): void => home_apply(),
   });
   paneInstance_adopt({ id: 'pacs', kind: 'pacs', mount: element_require('pacs-workspace') });
@@ -4018,8 +3557,7 @@ async function surface_start(token: string): Promise<void> {
         // before anything else, because leaving it open while retreating
         // past it would leave a command waiting on an answer nobody is
         // being asked for any more.
-        if (errandClose !== null) {
-          errandClose();
+        if (asks.errand_abandon()) {
           event.stopImmediatePropagation();
           sound_play('audio3');
           return;
@@ -4867,8 +4405,7 @@ async function surface_start(token: string): Promise<void> {
           // pressed: `rm -i` asks before it removes, and the operator is
           // looking at the row they just acted on, not at the console. The
           // transcript still keeps the exchange either way.
-          const provoker: string | null = askingPane;
-          askingPane = null;
+          const provoker: string | null = asks.askingPane_take();
           if (provoker !== null && paneInstance_get(provoker) !== undefined) {
             return ask_onPane(provoker, {
               message: request.message,
@@ -5032,9 +4569,9 @@ async function surface_start(token: string): Promise<void> {
   // The block reads its own state from the first frame: an empty cohort is
   // the same block dimmed, not a lit one promising something it does not
   // hold. The restore below may fill it a moment later.
-  cohortStage_run = cohort_stage;
-  headerGather_annunciate();
-  void cohort_restore();
+  cohortStage_run = cohortModule.stage;
+  cohortModule.annunciate();
+  void cohortModule.restore();
   mode_show('READY');
   terminal.splash_write(SPLASH_BRAIN);
   terminal.prompt_draw();

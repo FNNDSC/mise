@@ -523,6 +523,57 @@ try {
     chord.focusedUp && chord.table, JSON.stringify(chord));
   }
 
+  if (stage('prefix-chords-2')) {
+  // The rest of tmux's table: last pane, pane ids, flip, resize, PANES, scrollback, break out.
+  const more = await evalIn(`
+    await console_idle();
+    const press = (key, extra = {}) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...extra }));
+    const prefix = () => press('b', { ctrlKey: true });
+    const leaves = () => [...document.querySelectorAll('.layout-leaf')].map((l) => l.dataset.leaf);
+    const rect = (id) => document.querySelector('.layout-leaf[data-leaf="' + id + '"]').getBoundingClientRect();
+    const drawerOf = (id) => document.querySelector('.layout-leaf[data-leaf="' + id + '"] .pane-drawer');
+    const bar = (id) => document.querySelector('.layout-leaf[data-leaf="' + id + '"] .pane-state')?.textContent.trim() ?? '';
+    document.getElementById('gutter-files').click(); await sleep(600);
+    document.querySelector('.pane-files .files-panel')?.click(); await sleep(150);
+    const before = new Set(leaves());
+    prefix(); await sleep(150); press('l'); await sleep(400);
+    const born = leaves().find((id) => !before.has(id)); if (!born) return { error: 'no pane born' };
+    // ; : the last pane (files) takes focus; its drawer answers the next prefix
+    prefix(); await sleep(150); press(';'); await sleep(200);
+    prefix(); await sleep(150);
+    const lastFocused = drawerOf('files') !== null && !drawerOf('files').hidden;
+    // q : every pane names itself on its bar
+    press('q'); await sleep(200);
+    const named = bar('files') === '@files' && bar(born) === '@' + born;
+    // Space : the pair flips, beside becomes above
+    prefix(); await sleep(150); press(' '); await sleep(400);
+    const flipped = rect(born).top >= rect('files').bottom - 2 && /FLIPPED/.test(bar('files'));
+    // Ctrl-Down : the boundary moves down, files grows
+    const filesBefore = rect('files').height;
+    prefix(); await sleep(150); press('ArrowDown', { ctrlKey: true }); await sleep(300);
+    const grew = rect('files').height > filesBefore + 4;
+    const drawerStayed = drawerOf('files') !== null && !drawerOf('files').hidden;
+    press('Escape'); await sleep(150);
+    // [ : the scrollback takes the keys
+    prefix(); await sleep(150); press('['); await sleep(200);
+    const scrollback = document.activeElement?.classList.contains('argus-output') === true;
+    document.querySelector('.pane-files .files-panel')?.click(); await sleep(150);
+    // ! : files alone on stage, the arrangement a PANES card
+    const cardsBefore = (window.__argusDormant?.list?.() ?? []).length;
+    prefix(); await sleep(150); press('!'); await sleep(600);
+    const alone = leaves().length === 1 && leaves()[0] === 'files' && /ALONE/.test(bar('files'));
+    const carded = (window.__argusDormant?.list?.() ?? []).length >= cardsBefore + 1;
+    // w : PANES
+    prefix(); await sleep(150); press('w'); await sleep(600);
+    const panesShown = document.querySelector('.pane-panes')?.offsetParent !== null;
+    document.getElementById('gutter-files').click(); await sleep(400);
+    return { born, lastFocused, named, flipped, grew, drawerStayed, scrollback, alone, carded, panesShown };`);
+  check('; focuses the last pane, q names every pane on its bar, Space flips the pair, Ctrl-arrow moves the boundary and keeps the drawer',
+    more.error === undefined && more.lastFocused && more.named && more.flipped && more.grew && more.drawerStayed, JSON.stringify(more));
+  check('[ hands the keys to the scrollback, ! breaks the pane out with the arrangement carded, w opens PANES',
+    more.error === undefined && more.scrollback && more.alone && more.carded && more.panesShown, JSON.stringify(more));
+  }
+
   if (stage('universe-constellations')) {
     // CONSTELLATIONS: every plugin a ringed star, every feed pulled to the
     // stars it ran. A plugin lit by word shows its facts and its verb, and

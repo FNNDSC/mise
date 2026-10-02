@@ -140,6 +140,8 @@ export class LayoutManager {
   private tree: LayoutNode | null = null;
   private focusedPane: string | null = null;
   private renderObserver: (() => void) | null = null;
+  /** The pane focused before the current one (tmux `;`). */
+  private previousFocus: string | null = null;
 
   /**
    * @param root - The element the tree renders into.
@@ -247,6 +249,70 @@ export class LayoutManager {
     this.focusedPane = target;
     this.render();
     return true;
+  }
+
+  /**
+   * Focuses the pane that was focused before this one (tmux `;`).
+   *
+   * @returns The pane now focused, or null when there was no previous one on stage.
+   */
+  public focus_last(): string | null {
+    const previous: string | null = this.previousFocus;
+    if (previous === null || !this.panes_shown().includes(previous)) return null;
+    this.focus_set(previous);
+    return previous;
+  }
+
+  /**
+   * Flips the axis of the split a pane stands in: beside becomes above
+   * (tmux's next-layout, for a pair).
+   *
+   * @param target - The pane.
+   * @returns True when it stood in a split.
+   */
+  public leaf_flip(target: string): boolean {
+    if (this.tree === null) return false;
+    const path: PathStep[] | null = tree_path(this.tree, target);
+    if (path === null || path.length === 0) return false;
+    const parent: PathStep = path[path.length - 1] as PathStep;
+    const flipped: LayoutNode = { ...parent.node, dir: parent.node.dir === 'col' ? 'row' : 'col' };
+    const replaced: LayoutNode | null = tree_replaceBlock(this.tree, parent.node, flipped);
+    if (replaced === null) return false;
+    this.tree = replaced;
+    this.render();
+    return true;
+  }
+
+  /**
+   * Moves the boundary beside a pane a step in a direction: the nearest
+   * split on that axis around it is re-balanced and remembered, as a
+   * divider drag is (tmux Ctrl-arrow).
+   *
+   * @param target - The pane.
+   * @param dir - Which way the boundary moves.
+   * @param step - The share moved, as a fraction of the split.
+   * @returns True when a split on that axis holds the pane.
+   */
+  public leaf_resize(target: string, dir: MoveDir, step: number = 0.05): boolean {
+    if (this.tree === null) return false;
+    const path: PathStep[] | null = tree_path(this.tree, target);
+    if (path === null || path.length === 0) return false;
+    const axis: 'row' | 'col' = dir === 'left' || dir === 'right' ? 'col' : 'row';
+    for (let index: number = path.length - 1; index >= 0; index -= 1) {
+      const step_: PathStep = path[index] as PathStep;
+      if (step_.node.dir !== axis) continue;
+      // The boundary moves right or down when the first side grows.
+      const forward: boolean = dir === 'right' || dir === 'below';
+      const ratio: number = Math.min(0.85, Math.max(0.15, step_.node.ratio + (forward ? step : -step)));
+      const balanced: LayoutNode = { ...step_.node, ratio };
+      const replaced: LayoutNode | null = tree_replaceBlock(this.tree, step_.node, balanced);
+      if (replaced === null) return false;
+      this.tree = replaced;
+      this.ratio_remember(path.slice(0, index).map((taken: PathStep): string => (taken.side === 'first' ? '0' : '1')).join(''), ratio);
+      this.render();
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -451,6 +517,7 @@ export class LayoutManager {
   /** Marks one pane focused and repaints the rings. */
   public focus_set(pane: string): void {
     if (this.focusedPane === pane) return;
+    if (this.focusedPane !== null) this.previousFocus = this.focusedPane;
     this.focusedPane = pane;
     // The focused pane is one declaration on the body as well, so the frame
     // (the gutter stone that opened it) can answer it without being told.

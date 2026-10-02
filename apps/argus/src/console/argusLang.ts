@@ -29,6 +29,12 @@ export interface ArgusHost {
   panes_shown(): string[];
   /** Moves a pane to a side; answers with what happened, or the refusal by name. */
   pane_move(paneId: string, side: 'left' | 'right' | 'above' | 'below'): string;
+  /** Flips the axis of the split the pane stands in. */
+  pane_flip(paneId: string): string;
+  /** Moves the boundary beside the pane a step; answers what happened. */
+  pane_resize(paneId: string, dir: 'left' | 'right' | 'up' | 'down', step: number): string;
+  /** Focuses the pane focused before this one; answers it, or null when none. */
+  focus_last(): string | null;
   /** A shown pane's bounding rect (for spatial focus), or null. */
   paneRect_get(id: string): DOMRect | null;
   /** A pane's mount element (drawer, mode frame, chooser live inside), or null. */
@@ -253,6 +259,13 @@ export const DRAWER_CHORDS: ReadonlyArray<DrawerChord> = [
   { key: '2', selector: '.empty-go-dag', does: 'claim an empty pane as RUNS' },
   { key: '3', selector: '.empty-go-pacs', does: 'claim an empty pane as PACS' },
   { key: 'o', selector: null, does: 'focus the next pane (tmux)' },
+  { key: ';', selector: null, does: 'focus the last pane (tmux)' },
+  { key: 'q', selector: null, does: 'show every pane\'s @id on its bar (tmux)' },
+  { key: 'Space', selector: null, does: 'flip this pane\'s split: beside becomes above (tmux next layout)' },
+  { key: '!', selector: null, does: 'break this pane out: alone on stage, the rest a PANES card (tmux)' },
+  { key: 'Ctrl-←↑↓→', selector: null, does: 'move the boundary beside this pane a step (tmux)' },
+  { key: 'w', selector: null, does: 'PANES, the desktops (tmux window chooser)' },
+  { key: '[', selector: null, does: 'the console\'s scrollback takes the keys (tmux)' },
   { key: 'O', selector: null, does: 'focus the previous pane' },
   { key: '←↑↓→', selector: null, does: 'focus the pane in that direction (tmux)' },
   { key: ':', selector: null, does: 'the command line (tmux)' },
@@ -268,7 +281,7 @@ export const KEYS_HELP: string = [
 
 const VERBS_HELP: string = [
   'pane [@id|%n] split left|right|above|below · zoom · close · bind unlinked|fs|viewer',
-  'pane [@id|%n] claim files|runs|pacs · focus left|right|up|down|@id',
+  'pane [@id|%n] claim files|runs|pacs · focus left|right|up|down|@id|last · flip · resize left|right|up|down [percent]',
   'view files|runs|pacs        (the gutter givens, workspace scope)',
   'runs enter <feedId> · sort <col> [asc|desc] · filter <text>|off',
   'node enter · immerse · back · clear (the indicated node)',
@@ -498,7 +511,15 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
       return control_click(host, paneId, selector)
         ? `claiming ${paneId} as ${arg}` : `pane claim: '${paneId}' is not an unlinked pane`;
     }
+    if (verb === 'flip') return host.pane_flip(paneId);
+    if (verb === 'resize') {
+      if (!['left', 'right', 'up', 'down'].includes(arg)) return 'pane resize left|right|up|down [percent]';
+      const percent: number = words[2] !== undefined ? Number(words[2]) : 5;
+      if (!Number.isFinite(percent) || percent <= 0 || percent > 70) return 'pane resize: the step is a percent, 1 to 70';
+      return host.pane_resize(paneId, arg as 'left' | 'right' | 'up' | 'down', percent / 100);
+    }
     if (verb === 'focus') {
+      if (arg === 'last') return host.focus_last() ?? 'pane focus last: no pane was focused before this one';
       if (arg.startsWith('@')) {
         return host.focus_set(arg.slice(1)) ? `focused ${arg.slice(1)}` : `no pane '${arg.slice(1)}'`;
       }

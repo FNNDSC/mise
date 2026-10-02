@@ -389,6 +389,75 @@ LINT_CHECKS['a-fact-has-one-source'] = () => {
   }
 };
 
+/**
+ * Every function and method a file declares, with where it opens and
+ * closes: a declaration (`name(...) {`, `function name(...) {`) or an arrow
+ * bound to a name (`const name = (...) => {`). Braces are counted with
+ * strings, template literals and comments blanked.
+ */
+function functions_of(text) {
+  const blank = text
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length))
+    .replace(/`(?:\\.|[^`\\])*`/g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/'(?:\\.|[^'\\\n])*'/g, (m) => ' '.repeat(m.length))
+    .replace(/"(?:\\.|[^"\\\n])*"/g, (m) => ' '.repeat(m.length));
+  const lines = blank.split('\n');
+  const decl = /^\s*(?:export\s+)?(?:(?:public|private|protected|static|async|readonly|get|set|override)\s+)*(?:function\s+)?([A-Za-z_$][\w$]*)\s*(?:<[^>]*>)?\s*\([^)]*\)\s*(?::\s*[^{=]+)?\s*\{\s*$/;
+  const arrow = /^\s*(?:export\s+)?(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:async\s*)?(?:<[^>]*>)?\s*\(.*\)\s*(?::\s*[^=]+)?=>\s*\{\s*$/;
+  const skip = new Set(['if', 'for', 'while', 'switch', 'catch', 'return', 'else', 'do', 'try']);
+  const found = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const match = decl.exec(lines[i]) ?? arrow.exec(lines[i]);
+    if (match === null || skip.has(match[1])) continue;
+    let depth = 0;
+    for (let j = i; j < lines.length; j += 1) {
+      for (const ch of lines[j]) { if (ch === '{') depth += 1; else if (ch === '}') depth -= 1; }
+      if (depth === 0) { found.push({ name: match[1], from: i + 1, to: j + 1 }); break; }
+    }
+  }
+  return found;
+}
+
+LINT_CHECKS['a-part-stays-a-part'] = () => {
+  // A function runs at most 150 lines, a file at most 1,200 (the cleanup
+  // epic's ceilings, #814). A module factory (`*_wire`, `*_build`) is a
+  // module boundary: it is measured by the named functions inside it, each
+  // under the ceiling, not as one function. What still stands past a
+  // ceiling is named below with its reason and the length it stood at when
+  // the ceiling arrived: it may shrink, never grow, and a new one fails.
+  const FUNCTION_LINES = 150;
+  const FILE_LINES = 1200;
+  const allowed = new Map([
+    ['apps/argus/src/app/main.ts', [2973, 'the host: the pane factories, the opens, the wire observers and the boot; each concern left goes to a module']],
+    ['apps/argus/src/app/main.ts#surface_start', [2004, 'the host closure itself; it shrinks as the file does']],
+    ['apps/argus/src/console/argusLang.ts#argusLine_run', [266, 'the language dispatcher: one branch per subject; a verb table is the next cut']],
+    ['apps/argus/src/features/image/slabScene.ts#slabScene_open', [155, 'the slab scene setup: one WebGL program; split when it next changes']],
+    ['apps/argus/src/features/pacs/panel.ts', [1941, 'the PACS panel: three listing levels and the form; the levels are the next cut']],
+    ['apps/argus/src/features/files/panel.ts', [1814, 'the files panel: the listing, the content views and the previews; the content views are the next cut']],
+    ['apps/argus/src/features/dag/panel.ts', [1732, 'the DAG panel: the roster and the graph; the roster is the next cut']],
+    ['apps/argus/src/features/universe/panel.ts', [1684, 'the universe panel: the verbs, the session layout and the replay; the session layout is the next cut']],
+    ['apps/argus/src/features/roster/listing.ts', [1675, 'the listing facade: one class every pane declares into; the traits are the next cut']],
+  ]);
+  const files = readdirSync('apps/argus/src', { recursive: true })
+    .map((name) => `apps/argus/src/${String(name).replaceAll('\\', '/')}`)
+    .filter((path) => path.endsWith('.ts') && !path.endsWith('.d.ts'));
+  const over = (key, length, ceiling, what) => {
+    const allow = allowed.get(key);
+    if (length <= ceiling) return;
+    if (allow === undefined) fail('a-part-stays-a-part', `${key} ${what} runs ${length} lines; the ceiling is ${ceiling}: split it into parts`);
+    else if (length > allow[0]) fail('a-part-stays-a-part', `${key} ${what} grew to ${length} lines past its allowance of ${allow[0]} (${allow[1]})`);
+  };
+  for (const path of files) {
+    const text = readFileSync(path, 'utf8');
+    over(path, text.split('\n').length, FILE_LINES, 'file');
+    for (const fn of functions_of(text)) {
+      if (/_(wire|build)$/.test(fn.name)) continue;
+      over(`${path}#${fn.name}`, fn.to - fn.from + 1, FUNCTION_LINES, 'function');
+    }
+  }
+};
+
 LINT_CHECKS['keys-are-documented'] = () => {
   // The keys reference is generated from DRAWER_CHORDS; the written file
   // and the table may never disagree (scripts/keys-doc.mjs --check).

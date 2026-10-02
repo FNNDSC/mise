@@ -45,7 +45,7 @@ import { LauncherPanel, type LauncherTile, type LauncherRow } from '../features/
 import { runLine_compose, runLine_executable, runLine_hasTitle, runLine_titleAppend } from '../features/files/runLine.js';
 import { DagPanel } from '../features/dag/panel.js';
 import { UniversePanel } from '../features/universe/panel.js';
-import { paneAsk_open, paneAsk_abandon, type PaneAskRequest } from '../features/ask/paneAsk.js';
+import { paneAsk_open, type PaneAskRequest } from '../features/ask/paneAsk.js';
 import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
 import { ViewerPanel } from '../features/view/panel.js';
@@ -58,7 +58,7 @@ import { IndexInstrument } from './indexInstrument.js';
 import { LaneInstrument } from './laneInstrument.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler } from './cycler.js';
-import { argusLine_run, DRAWER_CHORDS, VERB_LINES, focus_move, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
+import { argusLine_run, DRAWER_CHORDS, VERB_LINES, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
 import { HelpPanel } from '../features/help/panel.js';
 
 /** Console zoom, exposed for the language (the bar carries no control). */
@@ -86,7 +86,8 @@ import { binView_wire, type BinView } from './binView.js';
 import { nodeOverlay_wire, type FileText, type NodeOverlay } from './nodeOverlay.js';
 import { cohort_wire, type CohortModule } from './cohort.js';
 import { asks_wire, type Asks } from './asks.js';
-import { SIDES, place_of, side_ofArrow, side_ofPlace, splitSelector_of, type Side } from './sides.js';
+import { keys_wire } from './keys.js';
+import { place_of, side_ofPlace, splitSelector_of, type Side } from './sides.js';
 import { stalePage_watch } from './stalePage.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
 // from `tests/smoke/canon/lcars.json` — the computed style of this surface's own
@@ -3043,288 +3044,31 @@ async function surface_start(token: string): Promise<void> {
     }
     if (closedAny) sound_play('audio3');
   });
-  window.addEventListener(
-    'keydown',
-    (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        // The command line is the topmost transient: its Esc closes it and
-        // nothing else.
-        if (!palette.hidden) {
-          palette_close();
-          event.stopImmediatePropagation();
-          return;
-        }
-        // The console's own question owns Escape wherever focus is. Bound
-        // to the input line alone, it could not be abandoned by an operator
-        // whose hands were on a row's verbs — and the command that asked
-        // waited on an answer nobody could give any more.
-        if (terminal.ask_abandon()) {
-          event.stopImmediatePropagation();
-          sound_play('audio3');
-          return;
-        }
-        // A question standing on a pane is abandoned the same way and for
-        // the same reason: retreating past it would leave the surface
-        // waiting on an answer nobody is being asked for any more.
-        if (paneAsk_abandon()) {
-          event.stopImmediatePropagation();
-          sound_play('audio3');
-          return;
-        }
-        // An errand is a question standing on the stage: Esc abandons it
-        // before anything else, because leaving it open while retreating
-        // past it would leave a command waiting on an answer nobody is
-        // being asked for any more.
-        if (asks.errand_abandon()) {
-          event.stopImmediatePropagation();
-          sound_play('audio3');
-          return;
-        }
-        // Esc is a contextual back: transient chrome first (drawer, then
-        // zoom), then one navigation pop — node immersion back to the
-        // graph, the graph back to the feed list. Each press retreats
-        // exactly one level; never a walk back up invisible browser depth.
-        // SELECT is transient chrome of its own: Esc leaves the mode before
-        // it retreats anywhere, and leaving it keeps the selection — the
-        // field still holds what was gathered.
-        // An image field holding the keyboard gives it back first: one
-        // press, one level (focus-stays-in-the-field).
-        for (const panel of panels.values('image')) {
-          if (panel.field_release()) {
-            event.stopImmediatePropagation();
-            sound_play('audio3');
-            return;
-          }
-        }
-        let selectLeft: boolean = false;
-        // An open question owns Esc: abandoning it is an answer, and a
-        // press that also left a mode would answer two things at once.
-        for (const panel of terminal.ask_isOpen() ? [] : panels.values('files')) {
-          if (panel.select_isOn()) {
-            panel.select_toggle(false);
-            selectLeft = true;
-          }
-        }
-        if (selectLeft) {
-          event.stopImmediatePropagation();
-          sound_play('audio3');
-          return;
-        }
-        const drawersClosed: boolean = drawers_close();
-        const framesClosed: boolean = modeFrames_close();
-        if (drawersClosed || framesClosed) {
-          event.stopImmediatePropagation();
-          sound_play('audio3');
-          return;
-        }
-        if (document.body.dataset['zoom'] !== undefined) {
-          // The zoom listener (bubble phase) takes this press.
-          return;
-        }
-        // Inside a /bin node, the first Esc flies back out to the graph.
-        // Immersion is a level of its own, ahead of closing the view that
-        // holds it: Esc retreats exactly one level, never two.
-        if (binView.dive_leave()) {
-          event.stopImmediatePropagation();
-          sound_play('audio3');
-          return;
-        }
-        if (nodeOverlay.escape()) {
-          event.stopImmediatePropagation();
-          sound_play('audio3');
-          return;
-        }
-        // A camera parked inside a node with no overlay over it: the pane
-        // is filled by the inside of one sphere and the scene is held, so
-        // nothing moves and nothing reads as a control. Esc is the way out,
-        // whatever left it there.
-        const heldInside: [string, DagPanel] | undefined = panels.entries('dag')
-          .find(([, panel]: [string, DagPanel]): boolean => panel.inside_isHeld());
-        if (heldInside !== undefined) {
-          heldInside[1].flight_back((): void => undefined);
-          event.stopImmediatePropagation();
-          sound_play('audio3');
-          return;
-        }
-        // A files pane's content view (a file, a /bin entry) is a level:
-        // Esc returns it to its listing. The focused pane answers first
-        // (focus citizenship), else whichever pane has content up.
-        const focusedId: string | null = layout.focused_get();
-        const contentPanes: Array<[string, FilesPanel]> = panels.entries('files')
-          .filter(([, panel]: [string, FilesPanel]): boolean => panel.content_isShown())
-          .sort(([a]: [string, FilesPanel], [b]: [string, FilesPanel]): number =>
-            (a === focusedId ? -1 : b === focusedId ? 1 : 0));
-        const contentPane: [string, FilesPanel] | undefined = contentPanes[0];
-        if (contentPane !== undefined) {
-          contentPane[1].listing_restore();
-          event.stopImmediatePropagation();
-          sound_play('audio3');
-          return;
-        }
-        for (const panel of panels.values('dag')) {
-          if (panel.nav_pop()) {
-            event.stopImmediatePropagation();
-            sound_play('audio3');
-            return;
-          }
-        }
-        return;
-      }
-      // Prefix chords (aegis.adoc: a-drawer-verb-has-a-chord): with a drawer
-      // open, one key presses one of its capsules — tmux's letters where
-      // tmux has one, vim's for a direction, a capital to MOVE; the arrows
-      // focus the pane in that direction, as tmux does. Tab still walks the
-      // verbs. A key typed into a line (the command line, an errand prompt)
-      // is never a chord.
-      const openDrawer: HTMLElement | null = document.querySelector<HTMLElement>('.pane-drawer:not([hidden])');
-      const typing: boolean = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
-      const arrowSide: Side | null = side_ofArrow(event.key);
-      const claim = (): void => { event.preventDefault(); event.stopImmediatePropagation(); };
-      // Ctrl-arrow with the drawer open: the boundary beside this pane moves
-      // a step; the drawer stays, so the next press moves it again.
-      if (openDrawer !== null && !typing && event.ctrlKey && !event.metaKey && !event.altKey && arrowSide !== null) {
-        const focused: string | null = layout.focused_get();
-        if (focused !== null) pane_resize(focused, arrowSide, 0.05);
-        claim();
-        return;
-      }
-      if (openDrawer !== null && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
-        if (arrowSide !== null) {
-          drawers_close();
-          if (focus_move(argusHost, SIDES[arrowSide].focusWord) !== null) sound_play('audio3');
-          claim();
-          return;
-        }
-        if (event.key === 'o' || event.key === 'O') {
-          const shown: string[] = layout.panes_shown();
-          const at: number = shown.indexOf(layout.focused_get() ?? '');
-          const next: string | undefined = shown[(at + (event.key === 'o' ? 1 : shown.length - 1)) % shown.length];
-          drawers_close();
-          if (next !== undefined) { layout.focus_set(next); sound_play('audio3'); }
-          claim();
-          return;
-        }
-        if (event.key === '?') {
-          drawers_close();
-          terminal.line_run('argus keys');
-          claim();
-          return;
-        }
-        if (event.key === ';') {
-          drawers_close();
-          if (layout.focus_last() !== null) sound_play('audio3');
-          claim();
-          return;
-        }
-        if (event.key === 'q') {
-          // Every pane names itself on its bar for a moment, so a target
-          // (@id) can be read off the stage.
-          drawers_close();
-          for (const shown of layout.panes_shown()) paneBar_note(shown, `@${shown}`);
-          claim();
-          return;
-        }
-        if (event.key === ' ') {
-          const focused: string | null = layout.focused_get();
-          drawers_close();
-          if (focused !== null) pane_flip(focused);
-          claim();
-          return;
-        }
-        if (event.key === '!') {
-          // Break out: this pane alone on stage; the arrangement it leaves
-          // is a PANES card first, so nothing is lost.
-          const focused: string | null = layout.focused_get();
-          drawers_close();
-          if (focused !== null && layout.panes_shown().length > 1) {
-            stageDesktop_capture();
-            layout.tree_set({ pane: focused });
-            orphans_dispose();
-            paneBar_note(focused, 'ALONE ON STAGE');
-            sound_play('audio3');
-          }
-          claim();
-          return;
-        }
-        if (event.key === 'w') {
-          drawers_close();
-          element_require('gutter-panes').click();
-          claim();
-          return;
-        }
-        if (event.key === '[') {
-          // The scrollback takes the keys: PageUp/PageDown page it, Esc gives
-          // them back (the terminal's own listener).
-          drawers_close();
-          const scrollback: HTMLElement | null = document.querySelector<HTMLElement>('.argus-output');
-          if (scrollback !== null) { scrollback.tabIndex = -1; scrollback.focus(); }
-          claim();
-          return;
-        }
-        const chord: DrawerChord | undefined = DRAWER_CHORDS.find((one: DrawerChord): boolean => one.key === event.key && one.selector !== null);
-        if (chord !== undefined && chord.selector !== null) {
-          // A capital arms MOVE first; a side the pane cannot go is dimmed
-          // and the press lands on nothing, so MOVE is stood down again.
-          if (chord.move === true) openDrawer.querySelector<HTMLButtonElement>('.drawer-mode[data-mode="move"]')?.click();
-          const control: HTMLButtonElement | null = openDrawer.querySelector<HTMLButtonElement>(chord.selector);
-          if (control === null || control.disabled) {
-            if (chord.move === true) openDrawer.querySelector<HTMLButtonElement>('.drawer-mode[data-mode="split"]')?.click();
-            claim();
-            return;
-          }
-          control.click();
-          claim();
-          return;
-        }
-      }
-      // Prefix-: — a drawer opened by the prefix hands ':' to the command
-      // line (and a second Ctrl-B does the same).
-      if (event.key === ':' && document.querySelector('.pane-drawer:not([hidden])') !== null) {
-        drawers_close();
-        palette_open();
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        return;
-      }
-      if (event.key === 'b' && event.ctrlKey && !event.altKey && !event.metaKey) {
-        // The prefix belongs to argus EVERYWHERE — the terminal implements
-        // no readline Ctrl-B, so an exclusion only donated the key to the
-        // browser's bookmarks. Claim it unconditionally.
-        if (document.querySelector('.pane-drawer:not([hidden])') !== null) {
-          // Second prefix press: the command line.
-          drawers_close();
-          palette_open();
-          event.preventDefault();
-          return;
-        }
-        // Past the terminal exclusion the prefix belongs to argus, drawer
-        // or no drawer — the browser must never see it (bookmarks!).
-        event.preventDefault();
-        // A zoomed tree pane is the only one on stage: the prefix key must
-        // reach its drawer, whatever the layout focus was before the zoom.
-        const zoomed: string | undefined = document.body.dataset['zoom'];
-        const consoleHasIt: boolean =
-          zoomed === 'console' || (zoomed === undefined && consoleFocused);
-        const focused: string =
-          zoomed !== undefined && zoomed !== 'console'
-            ? zoomed
-            : (layout.focused_get() ?? 'files');
-        const drawer: HTMLElement | null = consoleHasIt
-          ? element_require('console-drawer')
-          : (paneInstance_get(focused)?.mount?.querySelector<HTMLElement>('.pane-drawer') ?? null);
-        if (drawer === null) {
-          return;
-        }
-        event.preventDefault();
-        drawer.hidden = !drawer.hidden;
-        if (!drawer.hidden) {
-          drawer.querySelector<HTMLButtonElement>('button')?.focus();
-        }
-        sound_play('audio3');
-      }
+  /**
+   * The keys the stage answers (app/keys.ts): Esc one level a press, the
+   * prefix chords, the prefix itself. The command line, the errand, the
+   * dives and the chrome are its hooks; the ones declared further down are
+   * read when a key is pressed.
+   */
+  keys_wire(context, {
+    palette_isOpen: (): boolean => !palette.hidden,
+    palette_open: (): void => palette_open(),
+    palette_close: (): void => palette_close(),
+    errand_abandon: (): boolean => asks.errand_abandon(),
+    dive_leave: (): boolean => binView.dive_leave(),
+    overlay_escape: (): boolean => nodeOverlay.escape(),
+    drawers_close,
+    modeFrames_close,
+    consoleFocused: (): boolean => consoleFocused,
+    verbs: { bar_note: paneBar_note, flip: pane_flip, resize: pane_resize },
+    host: (): ArgusHost => argusHost,
+    stage_alone: (paneId: string): void => {
+      stageDesktop_capture();
+      layout.tree_set({ pane: paneId });
+      orphans_dispose();
     },
-    { capture: true },
-  );
+    element_require,
+  });
 
   // A claimed empty pane becomes what its command projected.
   const pane_claim = (emptyId: string, kind: ClaimKind, envelopes: WireEnvelope[]): void => {

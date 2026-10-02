@@ -343,6 +343,9 @@ try {
     const arrangement = pane.querySelector('.universe-arrangement');
     const captions = pane.querySelector('.universe-captions');
     const standing = bar?.textContent.trim() ?? '';
+    // The boot's welcome can land after the console reads idle: measure
+    // only once the console has stood still for a moment.
+    { let last = ''; let still = 0; for (let i = 0; i < 60 && still < 3; i++) { const now = document.getElementById('terminal').innerText; still = now === last ? still + 1 : 0; last = now; await sleep(500); } }
     const consoleBefore = document.getElementById('terminal').innerText;
     captions?.click(); await sleep(150);
     const noted = { text: bar?.textContent.trim() ?? '', cls: bar?.classList.contains('state-note') ?? false };
@@ -351,7 +354,7 @@ try {
     await sleep(4600);
     const restored = { text: bar?.textContent.trim() ?? '', cls: bar?.classList.contains('state-note') ?? false };
     const consoleAfter = document.getElementById('terminal').innerText;
-    return { standing, noted, notedAgain, restored, consoleGrew: consoleAfter.length !== consoleBefore.length, arrangementLabel: arrangement?.textContent.trim() ?? '' };`);
+    return { standing, noted, notedAgain, restored, consoleGrew: consoleAfter.length !== consoleBefore.length, grew: consoleAfter.startsWith(consoleBefore) ? consoleAfter.slice(consoleBefore.length).slice(-300) : consoleAfter.slice(-300), arrangementLabel: arrangement?.textContent.trim() ?? '' };`);
   check('a frame pill answers on its own bar: the captions pill holds its answer on the pane state, then the standing state returns',
     pill.error === undefined && pill.noted.cls && /captions/i.test(pill.noted.text) && pill.notedAgain !== pill.noted.text && !pill.restored.cls && pill.restored.text === pill.standing,
     JSON.stringify(pill));

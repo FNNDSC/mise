@@ -13,6 +13,7 @@ const providerFns = {
   pacsReadBinary: jest.fn(),
   etcList: jest.fn(),
   procLinkTargetResolve: jest.fn(),
+  procWrite: jest.fn(),
 };
 
 jest.mock('../src/vfs/providers/native', () => ({
@@ -42,6 +43,7 @@ jest.mock('../src/vfs/providers/proc', () => ({
     prefix: string = '/proc';
     list(): Promise<unknown> { return Promise.resolve({ ok: true, value: [] }); }
     linkTarget_resolve(...args: unknown[]): Promise<unknown> { return providerFns.procLinkTargetResolve(...args); }
+    write(...args: unknown[]): Promise<unknown> { return providerFns.procWrite(...args); }
   },
 }));
 
@@ -201,6 +203,22 @@ describe('cp', () => {
     });
     expect(await d.cp('/a', '/b', {} as never)).toBe(false);
     expect(providerFns.nativeCp).not.toHaveBeenCalled();
+  });
+});
+
+describe('write', () => {
+  it('dispatches a whole-file write to the provider that holds writable files', async () => {
+    providerFns.procWrite.mockResolvedValue(true);
+    const d: VFSDispatcher = new VFSDispatcher();
+    expect(await d.write('/proc/jobs/feed_5/note', 'words')).toBe(true);
+    expect(providerFns.procWrite).toHaveBeenCalledWith('/proc/jobs/feed_5/note', 'words');
+  });
+
+  it('refuses a write where no provider takes one, by name', async () => {
+    const d: VFSDispatcher = new VFSDispatcher();
+    expect(await d.write('/etc/motd', 'x')).toBe(false);
+    expect(mockStackPush).toHaveBeenCalledWith('error', expect.stringContaining('File write not supported'));
+    expect(await d.write('/home/chris/f.txt', 'x')).toBe(false);
   });
 });
 

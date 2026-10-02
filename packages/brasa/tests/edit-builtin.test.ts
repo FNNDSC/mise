@@ -1,7 +1,14 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
+const mockVfsRead = jest.fn(async (_p: string): Promise<{ ok: boolean; value?: string }> => ({ ok: true, value: 'the note' }));
+const mockVfsWrite = jest.fn(async (_p: string, _c: string): Promise<boolean> => true);
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(async () => ({ user: 'chris', folder: '/home/chris' })),
+  vfsDispatcher: {
+    path_isVirtual: (p: string): boolean => p.startsWith('/proc/'),
+    read: mockVfsRead,
+    write: mockVfsWrite,
+  },
 }));
 const mockStackPop = jest.fn(() => undefined as { message: string } | undefined);
 const mockInvalidate = jest.fn();
@@ -123,5 +130,46 @@ describe('builtin_edit', () => {
     expect(env.renderedErr).toContain('Save failed');
     expect(env.renderedErr).toContain('preserved at');
     expect(process.exitCode).toBe(1);
+  });
+});
+
+describe('builtin_edit on a projected file', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    surface_install({ localEdit: true } as SurfaceCapabilities);
+    mockStackPop.mockReset().mockReturnValue(undefined);
+    mockVfsRead.mockResolvedValue({ ok: true, value: 'the note' });
+    mockVfsWrite.mockResolvedValue(true);
+  });
+
+  it("reads a feed's note through the projection, edits it, writes it back there", async () => {
+    mockLocalEdit.mockResolvedValueOnce({ content: 'edited', changed: true });
+    const env = await builtin_edit(['/proc/jobs/feed_12/note']);
+    expect(mockVfsRead).toHaveBeenCalledWith('/proc/jobs/feed_12/note');
+    expect(mockLocalEdit).toHaveBeenCalledWith({ content: 'the note', extension: '.txt' });
+    expect(mockVfsWrite).toHaveBeenCalledWith('/proc/jobs/feed_12/note', 'edited');
+    expect(env.status).toBe('ok');
+    expect(mockCat).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing when the editor changed nothing', async () => {
+    mockLocalEdit.mockResolvedValueOnce({ content: 'the note', changed: false });
+    const env = await builtin_edit(['/proc/jobs/feed_12/note']);
+    expect(env.rendered).toContain('(no changes)');
+    expect(mockVfsWrite).not.toHaveBeenCalled();
+  });
+
+  it("says the projection's refusal, in its words, when it will not take the write or the read", async () => {
+    mockLocalEdit.mockResolvedValueOnce({ content: 'x', changed: true });
+    mockVfsWrite.mockResolvedValueOnce(false);
+    mockStackPop.mockReturnValueOnce({ message: '/proc/jobs/feed_12/title: Read-only file system' });
+    const refused = await builtin_edit(['/proc/jobs/feed_12/title']);
+    expect(refused.renderedErr).toContain('Read-only file system');
+    mockVfsRead.mockResolvedValueOnce({ ok: false });
+    const unread = await builtin_edit(['/proc/jobs/feed_12/note']);
+    expect(unread.renderedErr).toContain('could not read');
+    mockLocalEdit.mockRejectedValueOnce(new Error('editor crashed'));
+    const crashed = await builtin_edit(['/proc/jobs/feed_12/note']);
+    expect(crashed.renderedErr).toContain('editor crashed');
   });
 });

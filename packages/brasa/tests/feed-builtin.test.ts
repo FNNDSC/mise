@@ -67,8 +67,6 @@ jest.unstable_mockModule('../src/builtins/res/feed.notes.js', () => ({
   noteEditBody_format: jest.fn(() => 'ORIGINAL BODY'),
   noteEditBody_parse: jest.fn(() => ({ title: 'Parsed', content: 'Body' })),
 }));
-const mockSpawnSync = jest.fn(() => ({}));
-jest.unstable_mockModule('child_process', () => ({ spawnSync: mockSpawnSync }));
 
 const mockFeedTreeHandle = jest.fn(async (id: number) => ({ status: 'ok', rendered: `TREE ${id}` }));
 const mockFeedDiagramHandle = jest.fn(async (id: number) => ({ status: 'ok', rendered: `SIGNALFLOW ${id}` }));
@@ -83,8 +81,20 @@ jest.unstable_mockModule('../src/builtins/res/feed.diagram.js', () => ({
 const mockConfirm = jest.fn(async (): Promise<boolean> => true);
 jest.unstable_mockModule('../src/core/question.js', () => ({ repl_confirm: mockConfirm }));
 
-const { writeFileSync } = await import('fs');
 const { builtin_feed } = await import('../src/builtins/res/feed.js');
+const { surface_set } = await import('../src/core/surface.js');
+import type { LocalEditRequest, LocalEditResult } from '../src/core/surface.js';
+
+// The surface's editor: the note is edited where the surface edits (#831).
+const mockLocalEdit = jest.fn(async (r: LocalEditRequest): Promise<LocalEditResult> => ({ content: r.content, changed: false }));
+function editorSurface_install(localEdit: boolean = true): void {
+  surface_set({
+    capabilities: { localEdit } as never,
+    prompt: async (): Promise<string> => '',
+    pipeSegment: async (_c: string, i: Buffer): Promise<Buffer> => i,
+    localEdit: mockLocalEdit,
+  } as never);
+}
 
 const ok = <T>(value: T) => ({ ok: true as const, value });
 const err = () => ({ ok: false as const });
@@ -94,7 +104,8 @@ let errSpy: jest.SpiedFunction<typeof console.error>;
 beforeEach(() => {
   jest.clearAllMocks();
   process.exitCode = 0;
-  mockSpawnSync.mockReset().mockReturnValue({});
+  mockLocalEdit.mockReset().mockImplementation(async (r: LocalEditRequest): Promise<LocalEditResult> => ({ content: r.content, changed: false }));
+  editorSurface_install();
   mockCwdGet.mockResolvedValue('/');
   mockFeedResolve.mockResolvedValue(ok({ id: 12, name: 'Brain Run' }));
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -223,21 +234,33 @@ describe('builtin_feed', () => {
 
   it('edits a note through the editor and saves changes', async () => {
     mockNoteGet.mockResolvedValue(ok({ title: 'T', content: 'old' }));
-    mockSpawnSync.mockImplementation((_editor: unknown, argv: unknown) => {
-      writeFileSync((argv as string[])[0], 'EDITED BODY', 'utf8');
-      return {};
-    });
+    mockLocalEdit.mockResolvedValueOnce({ content: 'EDITED BODY', changed: true });
     mockNoteUpdate.mockResolvedValue(ok(true));
     await builtin_feed(['note', 'edit', '5']);
+    expect(mockLocalEdit).toHaveBeenCalledWith({ content: 'ORIGINAL BODY', extension: '.txt' });
     expect(mockNoteUpdate).toHaveBeenCalledWith(5, { title: 'Parsed', content: 'Body' });
   });
 
   it('reports no changes when the editor leaves the note untouched', async () => {
     mockNoteGet.mockResolvedValue(ok({ title: 'T', content: 'old' }));
-    // default spawnSync leaves the temp file as formatted
+    // the default editor hands the body back unchanged
     const env = await builtin_feed(['note', 'edit', '5']);
     expect(env.rendered).toContain('(no changes)');
     expect(mockNoteUpdate).not.toHaveBeenCalled();
+  });
+
+  it('refuses where the surface cannot open an editor, by name', async () => {
+    editorSurface_install(false);
+    const env = await builtin_feed(['note', 'edit', '5']);
+    expect(env.renderedErr).toContain('feed note edit: this surface cannot open an editor.');
+    expect(mockNoteGet).not.toHaveBeenCalled();
+  });
+
+  it('reports an editor failure', async () => {
+    mockNoteGet.mockResolvedValue(ok({ title: 'T', content: 'old' }));
+    mockLocalEdit.mockRejectedValueOnce(new Error('editor crashed'));
+    const env = await builtin_feed(['note', 'edit', '5']);
+    expect(env.renderedErr).toContain('feed note edit: editor crashed');
   });
 
   it('rejects a non-numeric note edit id and reports a failed fetch', async () => {

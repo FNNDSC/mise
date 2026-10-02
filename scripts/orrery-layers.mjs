@@ -16,7 +16,14 @@
  *   - a surface (ARGUS) imports only orrery's public entries
  *     (`@fnndsc/orrery`, `@fnndsc/orrery/layout`), never its insides.
  *
- * Exits non-zero naming every import that crosses a seam.
+ * And a part stays a part: no orrery function or method runs past
+ * FUNCTION_LINES, no file past FILE_LINES. The scene (`scene/orrery.ts`)
+ * once held sixty-five methods in one class; it is composed of its parts
+ * now, and the ceilings keep it so. A ceiling is lifted for a named file in
+ * LENGTH_ALLOWED, with a reason beside it, never by raising the number.
+ *
+ * Exits non-zero naming every import that crosses a seam and every length
+ * past its ceiling.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve, dirname, sep } from 'node:path';
@@ -26,6 +33,14 @@ const ORRERY = join(ROOT, 'packages/orrery/src');
 const SURFACES = [join(ROOT, 'apps/argus/src')];
 const PUBLIC_ENTRIES = new Set(['@fnndsc/orrery', '@fnndsc/orrery/layout']);
 const LAYOUT_PACKAGES = new Set(['d3-force-3d']);
+/** The longest a function or method may run, in lines, brace to brace. */
+const FUNCTION_LINES = 150;
+/** The longest a file may run, in lines. */
+const FILE_LINES = 1200;
+/** Files allowed past a ceiling, each with its reason. */
+const LENGTH_ALLOWED = new Map([
+  // (none: every orrery file stands under its ceiling)
+]);
 
 /** Every .ts file under a directory. */
 function files_under(dir) {
@@ -60,8 +75,56 @@ function layer_of(path) {
   return ['layout', 'draw', 'controls', 'scene', 'types'].includes(first) ? first : 'root';
 }
 
+/**
+ * Every function and method a file declares, with where it opens and closes.
+ * A declaration is a line ending in `{` whose head reads as a signature:
+ * `function name(`, or a class member `name(...)` with an optional modifier
+ * and return type. Braces are counted with strings, template literals and
+ * comments blanked, so a brace in a string does not open a scope.
+ */
+function functions_of(text) {
+  const blank = text
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length))
+    .replace(/`(?:\\.|[^`\\])*`/g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/'(?:\\.|[^'\\\n])*'/g, (m) => ' '.repeat(m.length))
+    .replace(/"(?:\\.|[^"\\\n])*"/g, (m) => ' '.repeat(m.length));
+  const lines = blank.split('\n');
+  const head = /^\s*(?:export\s+)?(?:(?:public|private|protected|static|async|readonly|get|set)\s+)*(?:function\s+)?([A-Za-z_$][\w$]*)\s*(?:<[^>]*>)?\s*\([^)]*\)\s*(?::\s*[^{=]+)?\s*\{\s*$/;
+  const skip = new Set(['if', 'for', 'while', 'switch', 'catch', 'constructor', 'return', 'else', 'do', 'try']);
+  const found = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const match = head.exec(lines[i]);
+    if (match === null || skip.has(match[1])) continue;
+    let depth = 0;
+    for (let j = i; j < lines.length; j += 1) {
+      for (const ch of lines[j]) {
+        if (ch === '{') depth += 1;
+        else if (ch === '}') depth -= 1;
+      }
+      if (depth === 0) {
+        found.push({ name: match[1], from: i + 1, to: j + 1 });
+        break;
+      }
+    }
+  }
+  return found;
+}
+
 const failures = [];
 const fail = (path, line, why) => failures.push(`${relative(ROOT, path)}:${line} ${why}`);
+
+for (const path of files_under(ORRERY)) {
+  const rel = relative(ROOT, path);
+  if (LENGTH_ALLOWED.has(rel)) continue;
+  const text = readFileSync(path, 'utf8');
+  const lineCount = text.split('\n').length;
+  if (lineCount > FILE_LINES) fail(path, 1, `runs ${lineCount} lines; the ceiling is ${FILE_LINES}: split it into parts`);
+  for (const fn of functions_of(text)) {
+    const length = fn.to - fn.from + 1;
+    if (length > FUNCTION_LINES) fail(path, fn.from, `${fn.name} runs ${length} lines; the ceiling is ${FUNCTION_LINES}: split it into steps`);
+  }
+}
 
 for (const path of files_under(ORRERY)) {
   const layer = layer_of(path);
@@ -96,4 +159,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  ${failure}`);
   process.exit(1);
 }
-console.log(`orrery-layers: every seam holds (${files_under(ORRERY).length} orrery files, surfaces clean)`);
+console.log(`orrery-layers: every seam holds and every length is under its ceiling (${files_under(ORRERY).length} orrery files, surfaces clean)`);

@@ -60,14 +60,21 @@ export async function page_open(url) {
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   let id = 0;
   const pending = new Map();
-  const send = (method, params = {}) => new Promise((resolve) => {
+  // A CDP call the browser refuses rejects, by method and CDP's own words:
+  // resolving its absent result made a refused call look like success, and
+  // a stage measured nothing without knowing it (#830).
+  const send = (method, params = {}) => new Promise((resolve, reject) => {
     const i = ++id;
-    pending.set(i, resolve);
+    pending.set(i, { resolve, reject, method });
     ws.send(JSON.stringify({ id: i, method, params }));
   });
   ws.on('message', (d) => {
     const m = JSON.parse(d);
-    if (m.id && pending.has(m.id)) { pending.get(m.id)(m.result); pending.delete(m.id); }
+    if (!m.id || !pending.has(m.id)) return;
+    const { resolve, reject, method } = pending.get(m.id);
+    pending.delete(m.id);
+    if (m.error) reject(new Error(`cdp ${method}: ${m.error.message ?? JSON.stringify(m.error)}`));
+    else resolve(m.result);
   });
   await new Promise((r) => ws.on('open', r));
   await send('Page.enable');

@@ -2189,13 +2189,26 @@ try {
   // DOWNLOAD saves the file under its own name, or saves nothing and says
   // why. It once let the browser fetch the byte route itself, which saved
   // whatever came back — a login page, a `not found` — as a broken file
-  // named `vfs`, and the surface said nothing.
-  const { mkdtempSync, readdirSync, statSync } = await import('node:fs');
-  const { tmpdir } = await import('node:os');
-  const { join } = await import('node:path');
-  const landing = mkdtempSync(join(tmpdir(), 'argus-smoke-download-'));
-  await page.cdp('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: landing, eventsEnabled: true });
-  const landed = () => readdirSync(landing).filter((n) => !n.endsWith('.crdownload')).map((n) => ({ name: n, bytes: statSync(join(landing, n)).size }));
+  // named `vfs`, and the surface said nothing. Proven at the surface's
+  // hand-off: what ARGUS gives the browser to save (the name, the bytes).
+  // The browser's own save is the browser's; headless Chromium saves no
+  // download at all (#830), so the disk proves nothing about ARGUS.
+  await evalIn(`
+    window.__argusHandoffs = [];
+    if (!window.__argusHandoffWrapped) {
+      window.__argusHandoffWrapped = true;
+      const press = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () {
+        if (this.download) {
+          const entry = { name: this.download, href: this.href, text: null };
+          window.__argusHandoffs.push(entry);
+          if (this.href.startsWith('blob:')) fetch(this.href).then((r) => r.text()).then((t) => { entry.text = t; }).catch(() => { entry.text = '(unreadable)'; });
+          return;
+        }
+        return press.call(this);
+      };
+    }
+    return true;`);
   const dl = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(800);
     const fp = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
@@ -2230,15 +2243,15 @@ try {
     await say('cd ~', 2500);
     await say('rm -r ~/smoke-download', 3000);
     return { uploaded, pressed: verb !== null, stalePressed: stale !== null, lines };`);
-  for (let i = 0; i < 40 && landed().length === 0; i++) await new Promise((r) => setTimeout(r, 250));
-  const files = landed();
-  check('DOWNLOAD saves the file under its own name, whole',
-    dl.pressed && files.length === 1 && files[0].name === 'smoke-download.csv' && files[0].bytes === 8 && dl.lines.some((l) => l === 'download: smoke-download.csv'),
-    JSON.stringify({ dl, files }));
-  check('a file the session cannot read is saved as nothing, and the console says why',
-    dl.stalePressed && landed().length === 1 && dl.lines.some((l) => /smoke-download\.csv: the session could not read that file — nothing was saved$/.test(l)),
-    JSON.stringify({ lines: dl.lines, files: landed() }));
-  await page.cdp('Browser.setDownloadBehavior', { behavior: 'default' });
+  const handed = await evalIn(`
+    for (let i = 0; i < 20 && (window.__argusHandoffs ?? []).some((h) => h.text === null); i++) await sleep(150);
+    return (window.__argusHandoffs ?? []).map((h) => ({ name: h.name, blob: h.href.startsWith('blob:'), text: h.text }));`);
+  check('DOWNLOAD hands the browser the file under its own name, whole',
+    dl.pressed && handed.length >= 1 && handed[0].name === 'smoke-download.csv' && handed[0].blob && handed[0].text === 'a,b\n1,2\n' && dl.lines.some((l) => l === 'download: smoke-download.csv'),
+    JSON.stringify({ dl, handed }));
+  check('a file the session cannot read is handed over as nothing, and the console says why',
+    dl.stalePressed && handed.length === 1 && dl.lines.some((l) => /smoke-download\.csv: the session could not read that file — nothing was saved$/.test(l)),
+    JSON.stringify({ lines: dl.lines, handed }));
   }
 
   if (stage('place-verbs')) {

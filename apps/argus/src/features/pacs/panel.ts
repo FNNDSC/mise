@@ -51,6 +51,7 @@ import {
   progress_aggregate, progressCell_build,
   type ListingAction, type ListingProgress, type ListingTrait,
 } from '../roster/row.js';
+import { PACS_LEAD_TRACKS } from './tracks.js';
 
 /** What the workspace asks of its host. */
 export interface PacsPanelHandlers {
@@ -734,7 +735,7 @@ export class PacsPanel {
         capped: false,
         // The cell is the fold CONTROL, drawn as a capsule that reads what
         // it will do next (OPEN, CLOSE); the track holds the longer word.
-        width: '5.2em',
+        width: PACS_LEAD_TRACKS.fold,
         cell: (row: PatientRow): HTMLElement => {
           const fold: HTMLSpanElement = document.createElement('span');
           fold.className = row.studies.length === 0 ? 'pacs-fold pacs-fold-none' : 'pacs-fold';
@@ -745,14 +746,14 @@ export class PacsPanel {
         key: 'patient',
         label: 'PATIENT',
         className: 'pacs-patient-name',
-        width: '13em',
+        width: PACS_LEAD_TRACKS.patient,
         cell: (row: PatientRow): string => row.patient.patientName || '(unknown)',
       },
       {
         key: 'mrn',
         label: 'MRN',
         className: 'pacs-patient-mrn',
-        width: '7.5em',
+        width: PACS_LEAD_TRACKS.mrn,
         cell: (row: PatientRow): string => row.patient.patientId || '—',
       },
       {
@@ -924,7 +925,7 @@ export class PacsPanel {
         label: '',
         className: 'pacs-fold',
         capped: false,
-        width: '5.2em',
+        width: PACS_LEAD_TRACKS.fold,
         cell: (): HTMLElement => {
           const fold: HTMLSpanElement = document.createElement('span');
           fold.className = 'pacs-fold';
@@ -935,14 +936,14 @@ export class PacsPanel {
         key: 'patient',
         label: 'PATIENT',
         className: 'pacs-study-patient',
-        width: '13em',
+        width: PACS_LEAD_TRACKS.patient,
         cell: (row: StudyRow): string => row.study.patientName || '(unknown)',
       },
       {
         key: 'mrn',
         label: 'MRN',
         className: 'pacs-study-mrn',
-        width: '7.5em',
+        width: PACS_LEAD_TRACKS.mrn,
         cell: (row: StudyRow): string => row.study.patientId || '—',
       },
       {
@@ -1098,7 +1099,6 @@ export class PacsPanel {
       (series: PacsSeries): HTMLElement => this.badge_build(series),
     );
   }
-
 
   /**
    * A series' verbs. A series already in CUBE is gathered, not pulled; one

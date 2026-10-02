@@ -825,7 +825,12 @@
                    ignores it (docs/CUBE-gaps.adoc), and a control that does
                    nothing is worse than none. -->
               <div id="pacs-form">
-                <span class="pacs-form-gutter"></span>
+                <!-- The listing's control column (the row's kind capsule),
+                     then the fold gutter: the form has a cell for every
+                     leading track the levels have, or every term below
+                     stands one column to the left of its cap. -->
+                <span class="pacs-form-gutter" data-key="control"></span>
+                <span class="pacs-form-gutter" data-key="fold"></span>
                 <label data-key="patient">PATIENT <input id="pacs-f-name" autocomplete="off" /></label>
                 <label data-key="mrn">MRN <input id="pacs-f-mrn" autocomplete="off" /></label>
                 <span class="pacs-form-blank" data-key="study" title="a PACS does not narrow on study description"></span>

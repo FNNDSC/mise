@@ -1,5 +1,16 @@
 # @fnndsc/argus
 
+## 0.18.13
+
+### Patch Changes
+
+- 403e480: Cleanup, slice 2e: where a question stands — on the pane that provoked it, as an errand beside it, or on the console when no pane can carry it — is a module of the host (`app/asks.ts`, `asks_wire(context, hooks)`): the errand host, the errand, its abandon, the pressed verb's pane and the pane ask. No behaviour changes.
+- 0da0f73: Cleanup, slice 2f: a /bin entry as the graph it is — the pipeline's and the plugin's readers, the stage, the dive into a node, the readout painter, the form a bound catalogue makes of it and the diagram's mode frame — is a module of the host (`app/binView.ts`, `binView_wire(context, hooks)`), its pure parts exported and unit-tested. No behaviour changes.
+- 403e480: Cleanup, slice 2d: the session's cohort — the header band, the GATHER pane, the file it is kept in, its reveal and retreat — is a module of the host (`app/cohort.ts`, `cohort_wire(context, hooks)`), and the band's and the pane's handler sets, spelled twice before, are one set parameterised by where the work lands and where a question stands. Stage verbs unit-tested in jsdom. No behaviour changes.
+- ea8003e: Cleanup, slice 2b: the desktop — the stage captured as a script of console lines and replayed, with the births the opens record and the replay place they read — is a module of the host (`app/desktop.ts`, `desktop_wire(context, hooks)`), its capture split into one action per pane and its replay into one step per action, unit-tested in jsdom with a recording stage. The host hands it its open verbs as hooks and keeps its call sites. One dead constant (console sub-verbs no one read) removed. No behaviour changes.
+- 0bdc87c: Cleanup, slice 2g: the keys the stage answers — Esc as a ladder of named steps retreating one level a press, the prefix chords, the prefix itself — are a module of the host (`app/keys.ts`, `keys_wire(context, hooks)`), the command line, the errand, the dives and the chrome its hooks. No behaviour changes.
+- 0b90f54: Cleanup, slice 2c: inside a node — the rooted browser over the canvas once the camera has flown into a sphere, its hops, its way out, Esc's two levels and BACK — is a module of the host (`app/nodeOverlay.ts`, `nodeOverlay_wire(context, hooks)`), the host's files body, rooted listing, row verbs and file readers its hooks; the host context stands above its first module now, the layout and the dormant groups read when called. The image-panes smoke scenario enters the FILES domain before it opens the viewer, which its restore check assumed. No behaviour changes.
+
 ## 0.18.12
 
 ### Patch Changes

@@ -1885,10 +1885,10 @@ try {
       await sleep(2500);
       const pill = document.querySelector('.node-overlay .node-overlay-exit');
       // On the node's own frame, first among its verbs, inside the node's box.
-      const box = document.querySelector('.node-overlay')?.getBoundingClientRect();
+      const ovBox = document.querySelector('.node-overlay')?.getBoundingClientRect();
       const onFrame = pill?.parentElement?.classList.contains('mode-frame') === true && pill?.parentElement?.firstElementChild === pill;
       const pb = pill?.getBoundingClientRect();
-      const pillWhole = onFrame && !!pb && !!box && pb.right <= box.right + 1 && pb.left >= box.left - 1;
+      const pillWhole = onFrame && !!pb && !!ovBox && pb.right <= ovBox.right + 1 && pb.left >= ovBox.left - 1;
       // One frame: no strip of its own above the node's browser.
       const oneFrame = document.querySelectorAll('.node-overlay > *').length === 1;
       const upRow = [...document.querySelectorAll('.node-overlay .listing-row')].find((r) => /EXIT NODE/.test(r.textContent));
@@ -5056,6 +5056,10 @@ try {
     const panes = await evalIn(`
       await console_idle();
       const run = async (line) => { const i = document.querySelector('#terminal input'); i.value = line; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(400); };
+      // The desktop is opened in the FILES domain (the restore check below
+      // reads it back); a stage an earlier scenario left elsewhere would be
+      // captured as that domain instead.
+      document.getElementById('gutter-files').click(); await sleep(600);
       await run('image ${dicomSeries}');
       let viewer = null;
       for (let i = 0; i < 160; i++) { await sleep(300); viewer = [...document.querySelectorAll('.pane-image')].find((p) => /SLICE \\d+ OF \\d+/.test(p.querySelector('.pane-state')?.textContent || '')); if (viewer) break; }

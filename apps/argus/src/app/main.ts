@@ -84,6 +84,7 @@ import { LayoutManager, type LayoutNode } from './layout.js';
 import type { HostContext } from './hostContext.js';
 import { paneVerbs_wire } from './paneVerbs.js';
 import { desktop_wire, type CatalogueBinding, type Desktop } from './desktop.js';
+import { nodeOverlay_wire, type FileText, type NodeOverlay } from './nodeOverlay.js';
 import { SIDES, place_of, side_ofArrow, side_ofPlace, splitSelector_of, type Side } from './sides.js';
 import { stalePage_watch } from './stalePage.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
@@ -935,6 +936,22 @@ async function surface_start(token: string): Promise<void> {
     pacsStage_relight();
   });
 
+  /**
+   * The host as its modules read it (app/hostContext.ts). The layout, the
+   * dormant groups, the terminal and the client are made further down; a
+   * module reads them when it is called, never at wiring.
+   */
+  const context: HostContext = {
+    get layout(): LayoutManager { return layout; },
+    panels,
+    paneInstance_get,
+    subjects,
+    get dormant(): DormantRegistry { return dormant; },
+    sound: sound_play,
+    get terminal(): ArgusTerminal { return terminal; },
+    get client(): ArgusClient { return client; },
+  };
+
   /** Builds the byte route for a path, from where this page was served. */
   const vfsUrl_build = (path: string): string => routeVfsUrl_build(path, token);
   const downloadUrl_build = (path: string): string => routeDownloadUrl_build(path, token);
@@ -1013,11 +1030,6 @@ async function surface_start(token: string): Promise<void> {
    * @property ok - Whether the session returned contents.
    * @property text - The contents, or the refusal in the session's words.
    */
-  interface FileText {
-    ok: boolean;
-    text: string;
-  }
-
   /**
    * Fetches a file's text through a silent, pane-local cat.
    *
@@ -2879,171 +2891,24 @@ async function surface_start(token: string): Promise<void> {
     };
   };
 
-  // Builds one DAG pane instance. Only the primary follows the session cwd
-  // and summons itself; a split's instance stays with what it was given.
-  // The fly-in overlay: dblclick dives the camera into a node, and a rooted
-  // browser on the node's data directory overlays the same pane. The overlay
-  // IS the DAG pane transformed — same id, same group — so file clicks write
-  // the pane's regard and slaved viewers follow. Esc reverses the dolly.
-  const nodeOverlays: Map<string, { element: HTMLElement; panel: FilesPanel; history: string[] }> =
-    new Map();
-
-  /** The scene a pane flies in: the DAG pane's or the universe's. */
-  const flier_of = (id: string): { flight_back: (onDone: () => void) => void; node_flyTo: (instanceID: number) => boolean } | undefined =>
-    panels.get('dag', id) ?? panels.get('universe', id);
-
-  const nodeOverlay_open = (id: string, vfsPath: string): void => {
-    const mount: HTMLElement | undefined = paneInstance_get(id)?.mount;
-    const canvas: HTMLElement | null = mount?.querySelector<HTMLElement>('.dag-canvas, .universe-canvas') ?? null;
-    // A record whose element is no longer in the document is a ghost: the
-    // pane was rebuilt (a layout change, a preset) while a node was open,
-    // which takes the overlay's DOM with it and leaves this map holding a
-    // dead reference. That reference then refused EVERY later dive on this
-    // pane — and a refused dive is not nothing, because the camera has
-    // already flown inside. One wedged pane looked like a broken viewer.
-    const held = nodeOverlays.get(id);
-    if (held !== undefined && !held.element.isConnected) nodeOverlays.delete(id);
-    if (canvas === null || nodeOverlays.has(id)) {
-      // By the time this runs the camera is already INSIDE the node — the
-      // fly-in dollies to just shy of its surface, which is the whole point
-      // of the gesture. Returning quietly therefore does not cancel a dive;
-      // it strands the operator looking at the inside of a sphere, filling
-      // the pane with one flat colour, with the scene held so nothing even
-      // moves. It reads exactly like a crash, and an operator reported it
-      // as one. So: fly back out, and say what happened.
-      terminal.line_note(
-        `dag: ${vfsPath}: ${canvas === null ? 'this pane has no scene to fly in' : 'a node is already open here'} — flew back out`,
-      );
-      flier_of(id)?.flight_back((): void => undefined);
-      return;
-    }
-    const element: HTMLElement = document.createElement('div');
-    element.className = 'node-overlay';
-    element.setAttribute('aria-label', `inside ${vfsPath}`);
-    // The node's browser is a files body like any other: the same frame
-    // (rule, elbow, spine, mode bar) and the same caps grid. It covers the
-    // pane's own frame, so one frame stands — a strip of its own above it
-    // left the pane's elbow hanging beside it, and the breadcrumb already
-    // says where inside the node the operator is.
-    const body: HTMLElement = filesBody_stamp();
-    body.classList.add('node-overlay-body');
-    // The way out is a control on the frame, first among the field's verbs
-    // and beside BACK: a phone has no Esc. It leaves the node, as its word
-    // says, from wherever inside it; Esc keeps its gentler first step back
-    // to the listing.
-    const exit: HTMLButtonElement = document.createElement('button');
-    exit.type = 'button';
-    exit.className = 'strategy-pill node-overlay-exit';
-    exit.title = 'leave the node (Esc)';
-    exit.textContent = 'EXIT NODE';
-    body.querySelector('.mode-frame')?.prepend(exit);
-    element.append(body);
-    const history: string[] = [];
-    const panel: FilesPanel = new FilesPanel(pane_find(body, '.files-panel'), (action: FileAction): void => {
-      if (action.kind === 'dir') {
-        // Above the node's own root is outside the node: the way up is the
-        // way out (the updir row there reads EXIT NODE), never a walk out of
-        // the graph into /proc — nor a hop, since `feed_<id>` looks like one.
-        const root: string = vfsPath.replace(/\/+$/, '');
-        if (action.path !== root && !action.path.startsWith(`${root}/`)) {
-          nodeOverlay_close(id);
-          sound_play('audio3');
-          return;
-        }
-        // A descendant plugin instance is a node of the same graph: the
-        // experience is a hop — fly out of this node, fly into that one —
-        // never a directory descent that leaves the graph behind.
-        const instMatch: RegExpMatchArray | null =
-          action.path.startsWith('/proc/jobs/') ? (action.path.split('/').pop() ?? '').match(/_(\d+)$/) : null;
-        if (instMatch !== null) {
-          const instanceID: number = parseInt(instMatch[1] ?? '', 10);
-          nodeOverlay_close(id, (): void => {
-            if (flier_of(id)?.node_flyTo(instanceID) !== true) {
-              // Not a node of this graph after all: fall back to descent.
-              nodeOverlay_open(id, action.path);
-            }
-          });
-          return;
-        }
-        const previous: string | null = panel.path_current();
-        if (previous !== null) {
-          history.push(previous);
-        }
-        rootedListing_show(id, panel, action.path);
-        return;
-      }
-      // A file click inside the node is an indication on the DAG pane's own
-      // group (the overlay shares its identity), feeding any slaved viewer.
-      subjects.regard_write(id, { address: action.path, modelKind: 'fs.file' });
-      if (subjects.groupHasViewer(id)) {
-        return;
-      }
-      // A run's own output is usually a volume, and a volume is an image:
-      // it opens beside the graph, joined to its group, exactly as it does
-      // from the browser. Reading it as text is what the kernel refuses.
-      if (imagery_is(action.path)) {
-        void image_open(id, action.path).then((line: string): void => terminal.line_note(line));
-        return;
-      }
-      if (extension_isImage(action.path)) {
-        panel.contentImage_show(action.path, vfsUrl_build(action.path));
-        return;
-      }
-      void fileText_fetch(action.path).then((read: FileText): void => {
-        if (!read.ok) {
-          panel.contentRefused_show(action.path, read.text);
-          return;
-        }
-        // A CSV is a table, and every table on this surface is a listing.
-        if (TABLE_FILE_PATTERN.test(action.path)) panel.contentTable_show(action.path, read.text);
-        else panel.content_show(action.path, read.text);
-      });
-    }, previewProvider);
-    // A listing inside a node is a listing. Declaring no row verbs left the
-    // façade with nothing to hide behind an indication, so it kept its old
-    // bargain — one click activates — and the node's browser alone behaved
-    // unlike every other listing on the surface: a click walked into the
-    // row instead of indicating it, and the frame never opened. The verbs
-    // are the same ones the browser offers, computed by the same roster, so
-    // a node's own `data` is offered PROCESS here exactly as it is outside.
-    panel.rowVerbs_declare(
-      (entry, path: string) => rowVerbs_of(id, entry, path),
-      (_entry, path: string): void => {
-        // Indicating IS the regard, on the DAG pane's own group: the
-        // overlay shares its identity, so a slaved viewer follows.
-        subjects.regard_write(id, { address: path, modelKind: 'fs.file' });
-      },
-    );
-    nodeOverlays.set(id, { element, panel, history });
-    panel.ceiling_set(vfsPath, 'EXIT NODE');
-    exit.addEventListener('click', (): void => {
-      nodeOverlay_close(id);
-      sound_play('audio3');
-    });
-    canvas.appendChild(element);
-    window.requestAnimationFrame((): void => element.classList.add('node-overlay-open'));
-    rootedListing_show(id, panel, vfsPath);
-  };
-
-  const nodeOverlay_close = (id: string, onDone?: () => void): void => {
-    const record = nodeOverlays.get(id);
-    if (record === undefined) {
-      onDone?.();
-      return;
-    }
-    nodeOverlays.delete(id);
-    record.element.classList.remove('node-overlay-open');
-    const finish = (): void => {
-      record.element.remove();
-      onDone?.();
-    };
-    const panel = flier_of(id);
-    if (panel !== undefined) {
-      panel.flight_back(finish);
-    } else {
-      finish();
-    }
-  };
+  /**
+   * Inside a node: the rooted browser over the canvas once the camera has
+   * flown into a sphere (app/nodeOverlay.ts). The host's files body, rooted
+   * listing, row verbs and file readers are its hooks.
+   */
+  const nodeOverlay: NodeOverlay = nodeOverlay_wire(context, {
+    filesBody_stamp,
+    rootedListing_show,
+    rowVerbs_of,
+    image_open: (fromId: string, path: string): Promise<string> => image_open(fromId, path),
+    imagery_is,
+    tableFile_is: (path: string): boolean => TABLE_FILE_PATTERN.test(path),
+    vfsUrl_build,
+    fileText_fetch,
+    previewProvider,
+  });
+  const nodeOverlay_open = nodeOverlay.open;
+  const nodeOverlay_close = nodeOverlay.close;
 
   const dagInstance_build = (id: string, primary: boolean): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-dag');
@@ -3134,8 +2999,7 @@ async function surface_start(token: string): Promise<void> {
       kind: 'dag',
       mount,
       dispose: (): void => {
-        nodeOverlays.get(id)?.element.remove();
-        nodeOverlays.delete(id);
+        nodeOverlay.dispose(id);
         panels.delete(id);
         subjects.pane_leave(id);
         panel.dispose();
@@ -3515,20 +3379,6 @@ async function surface_start(token: string): Promise<void> {
     return spawned.id;
   };
   const dormant: DormantRegistry = new DormantRegistry(DORMANT_CAP, localKeyStore());
-  /**
-   * The host as its modules read it (app/hostContext.ts). The terminal and
-   * the client are made below; a module reads them when called, not now.
-   */
-  const context: HostContext = {
-    layout,
-    panels,
-    paneInstance_get,
-    subjects,
-    dormant,
-    sound: sound_play,
-    get terminal(): ArgusTerminal { return terminal; },
-    get client(): ArgusClient { return client; },
-  };
   // The dormant set is read (and, at slice 3, restored) by the PANES view.
   // Exposed for verification until that view exists.
   Object.assign(globalThis as Record<string, unknown>, {
@@ -4046,11 +3896,7 @@ async function surface_start(token: string): Promise<void> {
         if (feedId !== null) terminal.line_run(`cd "/proc/jobs/feed_${feedId}"`);
       });
       child_offer('BACK', 'return to the previous listing inside the node', (): void => {
-        const record = nodeOverlays.get(id);
-        const previous: string | undefined = record?.history.pop();
-        if (record !== undefined && previous !== undefined) {
-          rootedListing_show(id, record.panel, previous);
-        }
+        nodeOverlay.back(id);
       });
       child_offer('CLEAR DETAIL', 'dismiss the node facts (a click on empty space does too)', (): void => {
         panels.get('dag', id)?.detail_clear();
@@ -4227,18 +4073,7 @@ async function surface_start(token: string): Promise<void> {
           sound_play('audio3');
           return;
         }
-        const overlayId: string | undefined = [...nodeOverlays.keys()].pop();
-        if (overlayId !== undefined) {
-          // Inside a node, a file view is a level of its own: the first
-          // Esc returns to the node's listing, the next leaves the node.
-          // Directory depth inside the node stays BACK's job — it is not
-          // visible, and Esc never walks invisible depth.
-          const record = nodeOverlays.get(overlayId);
-          if (record !== undefined && record.panel.content_isShown()) {
-            record.panel.listing_restore();
-          } else {
-            nodeOverlay_close(overlayId);
-          }
+        if (nodeOverlay.escape()) {
           event.stopImmediatePropagation();
           sound_play('audio3');
           return;

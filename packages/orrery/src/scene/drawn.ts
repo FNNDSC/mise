@@ -1,13 +1,14 @@
 /**
  * @file Where the drawn nodes stand: a sphere, a star or a census member
- * alike, in the world, for flights and framing; and the census's reading of
- * a placement.
+ * alike, in the world, for flights and framing; and the fields' readings of
+ * a placement — as the census shells it, as the hand-off draws it solid, as
+ * the tubes hang from it.
  *
  * Pure over the fields; the scene composes it.
  */
 import * as THREE from 'three';
 import { NODE_RADIUS } from '../layout/index.js';
-import { paint_resolve, type CensusField, type CensusNode, type Palette, type StarEntry, type StarField } from '../draw/index.js';
+import { paint_resolve, type CensusField, type CensusNode, type HandoffLook, type Palette, type StarEntry, type StarField, type TubeNode } from '../draw/index.js';
 import type { WorldReach } from '../controls/index.js';
 import type { SpaceNode } from './node.js';
 import type { PlacedNode } from './settle.js';
@@ -115,4 +116,57 @@ export function censusNodes_of(placed: ReadonlyArray<PlacedNode>, palette: Palet
       ghost: node.ghost === true,
     };
   });
+}
+
+/**
+ * How a placed node's sphere is drawn when its molecule turns solid.
+ *
+ * @param placed - The node.
+ * @param palette - The colours.
+ * @returns Where it stands, how large, what hue.
+ */
+export function handoffLook_of(placed: PlacedNode, palette: Palette): HandoffLook {
+  return { position: placed.position, radius: placed.radius, color: paint_resolve(placed.node.look.paint, palette) };
+}
+
+/**
+ * A placed node as the tubes read it.
+ *
+ * @param placed - The node.
+ * @returns Where it stands, how large, what it hangs from, its state.
+ */
+export function tubeNode_of(placed: PlacedNode): TubeNode {
+  return {
+    position: placed.position,
+    radius: placed.radius,
+    parents: placed.node.parentIds,
+    // A faint join is a thread, never a tube.
+    joins: placed.node.joinFaint === true ? [] : placed.node.joinParentIds,
+    state: placed.node.look.state,
+  };
+}
+
+/**
+ * The view the hand-off measures spheres in: the group's bodies as the
+ * camera sees them.
+ *
+ * @param camera - The camera.
+ * @param group - The group every body stands in.
+ * @returns The matrix from the group's space into the camera's.
+ */
+export function handoffView_of(camera: THREE.Camera, group: THREE.Object3D): THREE.Matrix4 {
+  group.updateMatrixWorld(true);
+  camera.updateMatrixWorld();
+  return new THREE.Matrix4().multiplyMatrices(camera.matrixWorldInverse, group.matrixWorld);
+}
+
+/**
+ * Pixels per scene unit at unit distance, for a canvas height and a field of view.
+ *
+ * @param heightPx - The canvas height in pixels.
+ * @param fovDeg - The vertical field of view.
+ * @returns Pixels per unit.
+ */
+export function perUnit_of(heightPx: number, fovDeg: number): number {
+  return heightPx / (2 * Math.tan((fovDeg * Math.PI) / 360));
 }

@@ -38,6 +38,7 @@ import { Listing, type ListingStateParts } from '../roster/listing.js';
 import { progressCell_build, type ListingProgress, type ListingTrait, type ListingAction } from '../roster/row.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
+import { dagGraph_build, dagMetric_of, hueLegend_build, type HueMode, type MetricMode } from './sceneGraph.js';
 import { LandedFeeds, universeGraph_build, universeTip_of, type LandedFeed } from './universe.js';
 
 /** What the pane asks of its host. */
@@ -295,7 +296,7 @@ export class DagPanel {
   private requestedFeedId: number | null = null;
   private readonly defaultTitle: string;
   /** What scales a molecule node: execution wall time, or output bytes. */
-  private metricMode: 'time' | 'size' = 'time';
+  private metricMode: MetricMode = 'time';
   /** The last shown model, re-projected locally when the scale flips. */
   private lastModel: FeedDagModel | null = null;
   /** The roster last shown, re-rendered on any order change. */
@@ -663,7 +664,7 @@ export class DagPanel {
    */
   private modeSpan: HTMLElement | null = null;
   /** What colors a node: its status, or the compute resource it ran on. */
-  private hueMode: 'status' | 'compute' = 'status';
+  private hueMode: HueMode = 'status';
   private huePill: HTMLElement | null = null;
   /** The compute legend of the graph on stage: resource → hue. */
   private hueLegend: Map<string, string> = new Map();
@@ -685,13 +686,7 @@ export class DagPanel {
     const cycle: string[] = ['--harvestgold', '--daybreak', '--orange', '--honey', '--butter', '--october-sunset']
       .map((name: string): string => style.getPropertyValue(name).trim())
       .filter((value: string): boolean => value !== '');
-    const legend: Map<string, string> = new Map();
-    for (const node of model.nodes) {
-      const resource: string | undefined = node.computeResource;
-      if (resource === undefined || resource === 'mixed' || legend.has(resource)) continue;
-      legend.set(resource, cycle[legend.size % Math.max(1, cycle.length)] ?? '#888');
-    }
-    return legend;
+    return hueLegend_build(model, cycle);
   }
 
   /**
@@ -849,11 +844,9 @@ export class DagPanel {
 
   /** Renders a model into the scene under the current metric mode. */
   private graph_show(model: FeedDagModel, wave: boolean = true): void {
-    const metric_of = (node: FeedDagNode): number | undefined =>
-      this.metricMode === 'time' ? node.metrics?.computeSeconds : node.metrics?.dataBytes;
     // Honesty on the pill itself: a mode with no data behind it dims and
     // says so, instead of silently rendering an unchanged graph.
-    const hasData: boolean = model.nodes.some((node: FeedDagNode): boolean => metric_of(node) !== undefined);
+    const hasData: boolean = model.nodes.some((node: FeedDagNode): boolean => dagMetric_of(node, this.metricMode) !== undefined);
     this.scalePill?.classList.toggle('rail-na', !hasData);
     if (this.scalePill !== null) {
       this.scalePill.title = hasData
@@ -871,26 +864,7 @@ export class DagPanel {
         ? 'what colors a node: its status, or the compute resource it ran on'
         : "no compute resource reported for this feed's nodes yet";
     }
-    const hue_of = (node: FeedDagNode): string | undefined => {
-      if (this.hueMode !== 'compute') return undefined;
-      if (node.computeResource === undefined) return '#555';
-      return this.hueLegend.get(node.computeResource) ?? '#555';
-    };
-    this.scene.graph_set({
-      nodes: model.nodes.map((node: FeedDagNode): SceneNode => {
-        const hue: string | undefined = hue_of(node);
-        return {
-          id: node.id,
-          label: node.label,
-          parentIds: node.parentIds,
-          joinParentIds: node.joinParentIds,
-          status: node.status,
-          metric: metric_of(node),
-          count: node.tally?.count,
-          ...(hue !== undefined ? { hue } : {}),
-        };
-      }),
-    }, { wave });
+    this.scene.graph_set(dagGraph_build(model, this.metricMode, this.hueMode, this.hueLegend), { wave });
     this.scene.size_fit();
     if (this.hueMode === 'compute') this.modes_render();
     this.factsPayloads.clear();

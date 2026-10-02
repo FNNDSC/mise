@@ -363,6 +363,32 @@ LINT_CHECKS['an-instruments-field-is-foreign'] = () => {
   }
 };
 
+LINT_CHECKS['a-fact-has-one-source'] = () => {
+  // Four facts the surface spelled in many places now have one source each,
+  // and every other file is held to it: the sides (app/sides.ts), the bar's
+  // states (features/roster/bar.ts), the primaries and the pane kinds
+  // (app/panes.ts). A re-spelling fails here, not in review.
+  const argusFiles = readdirSync('apps/argus/src', { recursive: true })
+    .map((name) => `apps/argus/src/${String(name).replaceAll('\\', '/')}`)
+    .filter((path) => path.endsWith('.ts') && !path.endsWith('.d.ts'));
+  const rules = [
+    { source: 'apps/argus/src/app/sides.ts', what: 'a side', pattern: /'(leftmost|rightmost|topmost|bottommost)'|\[data-split="|=== 'before' \?|\? 'before' : 'after'|ArrowLeft: 'left'|ArrowUp: 'up'/ },
+    { source: 'apps/argus/src/features/roster/bar.ts', what: "the bar's state", pattern: /classList\.(add|remove|toggle|contains)\(\s*['`]state-|'state-(live|settled|stale|wait|note|refused)'/ },
+    { source: 'apps/argus/src/app/panes.ts', what: 'the primaries', pattern: /\b(id|instance\.id|paneId) === '(files|dag|pacs)' \|\| [^\n]*=== '(files|dag|pacs)'|\['files', 'dag', 'pacs'\]|\['pacs', 'files', 'dag'\]/ },
+  ];
+  for (const path of argusFiles) {
+    const text = readFileSync(path, 'utf8');
+    for (const rule of rules) {
+      if (path === rule.source) continue;
+      const m = text.match(rule.pattern);
+      if (m) {
+        const line = text.slice(0, m.index).split('\n').length;
+        fail('a-fact-has-one-source', `${path}:${line} spells ${rule.what} itself (${m[0].slice(0, 40)}); read ${rule.source}`);
+      }
+    }
+  }
+};
+
 LINT_CHECKS['keys-are-documented'] = () => {
   // The keys reference is generated from DRAWER_CHORDS; the written file
   // and the table may never disagree (scripts/keys-doc.mjs --check).

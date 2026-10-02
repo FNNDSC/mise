@@ -1,3 +1,4 @@
+import { SIDES, type Side } from './sides.js';
 /**
  * @file The tiling layout: a binary split tree over the pane registry.
  *
@@ -27,11 +28,9 @@ export type LayoutNode =
   | { pane: string }
   | { dir: 'row' | 'col'; ratio: number; first: LayoutNode; second: LayoutNode };
 
-/** The side a pane moves to (aegis.adoc: a-pane-can-be-moved). */
-export type MoveDir = 'left' | 'right' | 'above' | 'below';
-
 /** Why a move was refused: the only pane on stage, or already at that edge. */
 export type MoveRefusal = 'lone' | 'edge';
+export type { Side as MoveDir } from './sides.js';
 
 /** One step of the path from the root to a leaf: the split, and which side the path took. */
 interface PathStep {
@@ -86,13 +85,13 @@ function tree_replaceBlock(node: LayoutNode, block: LayoutNode, replacement: Lay
  * @param dir - The side it moves to.
  * @returns The new tree, or why the move is refused.
  */
-export function tree_moveLeaf(root: LayoutNode, target: string, dir: MoveDir): LayoutNode | MoveRefusal {
+export function tree_moveLeaf(root: LayoutNode, target: string, dir: Side): LayoutNode | MoveRefusal {
   const path: PathStep[] | null = tree_path(root, target);
   if (path === null || path.length === 0) return 'lone';
-  const axis: 'row' | 'col' = dir === 'left' || dir === 'right' ? 'col' : 'row';
+  const axis: 'row' | 'col' = SIDES[dir].axis;
   // To move further right (or below) the mover must stand first in a split
   // on that axis; to move left (or above), second.
-  const near: 'first' | 'second' = dir === 'right' || dir === 'below' ? 'first' : 'second';
+  const near: 'first' | 'second' = SIDES[dir].place === 'after' ? 'first' : 'second';
   const parent: PathStep = path[path.length - 1] as PathStep;
   let block: LayoutNode | null = null;
   for (let index: number = path.length - 1; index >= 0; index -= 1) {
@@ -241,7 +240,7 @@ export class LayoutManager {
    * @param dir - The side it moves to.
    * @returns True when it moved, else why not.
    */
-  public leaf_move(target: string, dir: MoveDir): true | MoveRefusal {
+  public leaf_move(target: string, dir: Side): true | MoveRefusal {
     if (this.tree === null) return 'lone';
     const moved: LayoutNode | MoveRefusal = tree_moveLeaf(this.tree, target, dir);
     if (typeof moved === 'string') return moved;
@@ -293,16 +292,16 @@ export class LayoutManager {
    * @param step - The share moved, as a fraction of the split.
    * @returns True when a split on that axis holds the pane.
    */
-  public leaf_resize(target: string, dir: MoveDir, step: number = 0.05): boolean {
+  public leaf_resize(target: string, dir: Side, step: number = 0.05): boolean {
     if (this.tree === null) return false;
     const path: PathStep[] | null = tree_path(this.tree, target);
     if (path === null || path.length === 0) return false;
-    const axis: 'row' | 'col' = dir === 'left' || dir === 'right' ? 'col' : 'row';
+    const axis: 'row' | 'col' = SIDES[dir].axis;
     for (let index: number = path.length - 1; index >= 0; index -= 1) {
       const step_: PathStep = path[index] as PathStep;
       if (step_.node.dir !== axis) continue;
       // The boundary moves right or down when the first side grows.
-      const forward: boolean = dir === 'right' || dir === 'below';
+      const forward: boolean = SIDES[dir].place === 'after';
       const ratio: number = Math.min(0.85, Math.max(0.15, step_.node.ratio + (forward ? step : -step)));
       const balanced: LayoutNode = { ...step_.node, ratio };
       const replaced: LayoutNode | null = tree_replaceBlock(this.tree, step_.node, balanced);
@@ -322,7 +321,7 @@ export class LayoutManager {
    * @param dir - The side.
    * @returns True when the move is possible.
    */
-  public move_possible(target: string, dir: MoveDir): boolean {
+  public move_possible(target: string, dir: Side): boolean {
     return this.tree !== null && typeof tree_moveLeaf(this.tree, target, dir) !== 'string';
   }
 

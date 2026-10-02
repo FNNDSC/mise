@@ -31,6 +31,7 @@ import { csvTable_read, type CsvTable } from './csv.js';
 import { JSON_FILE_PATTERN, jsonPretty_build } from './json.js';
 import { more_wire } from '../roster/more.js';
 import type { ListingAction, ListingTrait } from '../roster/row.js';
+import { barState_toggle } from '../roster/bar.js';
 
 /**
  * One entry of a directory listing, as the `fs.listing` payload carries it.
@@ -1272,7 +1273,7 @@ export class FilesPanel {
     // Honest-wait: a listing served stale says so on the bar until the
     // session's refresh replaces it.
     this.stale = listings.some((listing: FsListing): boolean => listing.fresh === false);
-    this.stateSpan?.classList.toggle('state-stale', this.stale);
+    barState_toggle(this.stateSpan, 'stale', this.stale);
     this.listing.painter_set(this.viewMode === 'list' ? null : (block: ListingBlock<FileRow>, into: HTMLElement): void => this.cards_paint(block, into));
     const blocks: ListingBlock<FileRow>[] = listings.map((listing: FsListing): ListingBlock<FileRow> => this.block_of(listing));
     // A catalogue leads with what ran lately: the same rows /bin holds,

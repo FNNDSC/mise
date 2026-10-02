@@ -76,8 +76,12 @@ import {
   paneInstance_get,
   paneInstances_list,
   type PaneInstance,
+  pane_isPrimary,
+  type PaneKind,
 } from './panes.js';
-import { LayoutManager, type LayoutNode, type MoveDir, type MoveRefusal } from './layout.js';
+import { LayoutManager, type LayoutNode, type MoveRefusal } from './layout.js';
+import { SIDES, place_of, side_ofArrow, side_ofPlace, splitSelector_of, type Side } from './sides.js';
+import { barState_set } from '../features/roster/bar.js';
 import { stalePage_watch } from './stalePage.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
 // from `tests/smoke/canon/lcars.json` — the computed style of this surface's own
@@ -3666,9 +3670,9 @@ async function surface_start(token: string): Promise<void> {
       const target: number = actionIndexOf.get(birth?.parent ?? '') ?? 0;
       // The real split the pane was born with \u2014 a stacked or before-split pane
       // carries its own orientation and side, not the column-right default.
-      const place = { dir: birth?.dir ?? 'col', side: (birth?.before ? 'before' : 'after') as 'before' | 'after' };
+      const place = { dir: birth?.dir ?? 'col', side: place_of(birth?.before ?? false) };
       const emit = (action: DesktopAction): void => { actionIndexOf.set(id, actions.length); actions.push(action); };
-      if (id === 'pacs' || id === 'files' || id === 'dag') {
+      if (pane_isPrimary(id)) {
         const domain = (preset === 'dag' ? 'runs' : preset) as 'pacs' | 'files' | 'runs';
         const query: string | null = preset === 'pacs' ? pacsPanel.query_get() : null;
         // The runs domain with a graph on stage is content, as a PACS
@@ -3815,7 +3819,7 @@ async function surface_start(token: string): Promise<void> {
       // The primaries are the domains' own panes and outlive any preset;
       // the launcher is one of them, and disposing it left the word that
       // opens it pointing at a pane that no longer existed (an empty stage).
-      if (instance.id === 'files' || instance.id === 'dag' || instance.id === 'pacs'
+      if (pane_isPrimary(instance.id)
         || instance.id === 'panes' || instance.id === 'launcher' || instance.id === 'universe') continue;
       paneInstance_dispose(instance.id);
       layout.mount_remove(instance.id);
@@ -4198,7 +4202,7 @@ async function surface_start(token: string): Promise<void> {
   // the semantic tracing; otherwise it starts a group of its own. A viewer
   // marks itself and subscribes here, after joining, so the retained cell
   // replays immediately.
-  const instance_spawn = (kind: string, inheritFrom?: string): PaneInstance => {
+  const instance_spawn = (kind: PaneKind, inheritFrom?: string): PaneInstance => {
     const instance: PaneInstance = paneInstance_create(kind);
     subjects.pane_join(
       instance.id,
@@ -4242,8 +4246,7 @@ async function surface_start(token: string): Promise<void> {
     const pending: ReturnType<typeof setTimeout> | undefined = barNotes.get(bar);
     if (pending !== undefined) clearTimeout(pending);
     const stood: { text: string; className: string } = { text: bar.textContent ?? '', className: bar.className };
-    bar.className = 'pane-state state-note';
-    bar.textContent = text;
+    barState_set(bar, 'note', text);
     barNotes.set(bar, setTimeout((): void => {
       barNotes.delete(bar);
       // Something else may have written the bar meanwhile; that stands.
@@ -4252,8 +4255,6 @@ async function surface_start(token: string): Promise<void> {
       bar.textContent = stood.text;
     }, 4000));
   };
-  /** The edge a pane cannot move past, named for its refusal. */
-  const EDGE_WORDS: Readonly<Record<MoveDir, string>> = { left: 'leftmost', right: 'rightmost', above: 'topmost', below: 'bottommost' };
   /**
    * Moves a pane to a side (aegis.adoc: a-pane-can-be-moved): the drawer's
    * MOVE and the typed `pane move` both come here. The mover keeps focus and
@@ -4263,10 +4264,10 @@ async function surface_start(token: string): Promise<void> {
    * @param side - Where it goes.
    * @returns The readout: what happened, or why not.
    */
-  const pane_move = (paneId: string, side: MoveDir): string => {
+  const pane_move = (paneId: string, side: Side): string => {
     const moved: true | MoveRefusal = layout.leaf_move(paneId, side);
     if (moved === 'lone') return 'pane move: the only pane on stage';
-    if (moved === 'edge') return `pane move ${side}: already ${EDGE_WORDS[side]}`;
+    if (moved === 'edge') return `pane move ${side}: already ${SIDES[side].edge}`;
     paneBar_note(paneId, `MOVED ${side.toUpperCase()}`);
     sound_play('audio3');
     return `moved ${side}`;
@@ -4286,10 +4287,9 @@ async function surface_start(token: string): Promise<void> {
     return 'flipped';
   };
   /** Moves the boundary beside a pane a step (Ctrl-arrow, `pane resize`). */
-  const pane_resize = (paneId: string, dir: 'left' | 'right' | 'up' | 'down', step: number): string => {
-    const side: MoveDir = dir === 'up' ? 'above' : dir === 'down' ? 'below' : dir;
-    if (!layout.leaf_resize(paneId, side, step)) return `pane resize ${dir}: no boundary that way`;
-    return `resized ${dir}`;
+  const pane_resize = (paneId: string, side: Side, step: number): string => {
+    if (!layout.leaf_resize(paneId, side, step)) return `pane resize ${SIDES[side].focusWord}: no boundary that way`;
+    return `resized ${SIDES[side].focusWord}`;
   };
   const pane_chrome_wire = (id: string, kind: string, mount: HTMLElement): void => {
     const drawer: HTMLElement | null = mount.querySelector<HTMLElement>('.pane-drawer');
@@ -4330,19 +4330,17 @@ async function surface_start(token: string): Promise<void> {
     // pane on that side (the one verb that creates a pane; the selected
     // binding says what it IS), MOVE walks this pane there for one press.
     const splitters: HTMLButtonElement[] = [...drawer.querySelectorAll<HTMLButtonElement>('[data-split]')];
-    const sideOf = (splitter: HTMLElement): MoveDir => splitter.dataset['split'] === 'row'
-      ? (splitter.dataset['place'] === 'before' ? 'above' : 'below')
-      : (splitter.dataset['place'] === 'before' ? 'left' : 'right');
+    const sideOf = (splitter: HTMLElement): Side => side_ofPlace(splitter.dataset['split'], splitter.dataset['place']) ?? 'right';
     const mode_set = (mode: 'split' | 'move'): void => {
       drawer.dataset['mode'] = mode;
       for (const pill of drawer.querySelectorAll<HTMLElement>('.drawer-mode')) {
         pill.classList.toggle('drawer-mode-selected', pill.dataset['mode'] === mode);
       }
       for (const splitter of splitters) {
-        const side: MoveDir = sideOf(splitter);
+        const side: Side = sideOf(splitter);
         // A side this pane cannot go dims before the press.
         splitter.disabled = mode === 'move' && !layout.move_possible(id, side);
-        const selector: string = `[data-split="${splitter.dataset['split'] ?? ''}"][data-place="${splitter.dataset['place'] ?? ''}"]`;
+        const selector: string = splitSelector_of(side);
         splitter.title = mode === 'move'
           ? `this pane moves ${side}${chordKeys_of(selector, true)}`
           : `new pane opens ${side}${chordKeys_of(selector, false)}`;
@@ -4782,21 +4780,20 @@ async function surface_start(token: string): Promise<void> {
       // is never a chord.
       const openDrawer: HTMLElement | null = document.querySelector<HTMLElement>('.pane-drawer:not([hidden])');
       const typing: boolean = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
-      const arrows: Readonly<Record<string, string>> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
+      const arrowSide: Side | null = side_ofArrow(event.key);
       const claim = (): void => { event.preventDefault(); event.stopImmediatePropagation(); };
       // Ctrl-arrow with the drawer open: the boundary beside this pane moves
       // a step; the drawer stays, so the next press moves it again.
-      if (openDrawer !== null && !typing && event.ctrlKey && !event.metaKey && !event.altKey && arrows[event.key] !== undefined) {
+      if (openDrawer !== null && !typing && event.ctrlKey && !event.metaKey && !event.altKey && arrowSide !== null) {
         const focused: string | null = layout.focused_get();
-        if (focused !== null) pane_resize(focused, arrows[event.key] as 'left' | 'right' | 'up' | 'down', 0.05);
+        if (focused !== null) pane_resize(focused, arrowSide, 0.05);
         claim();
         return;
       }
       if (openDrawer !== null && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
-        const direction: string | undefined = arrows[event.key];
-        if (direction !== undefined) {
+        if (arrowSide !== null) {
           drawers_close();
-          if (focus_move(argusHost, direction) !== null) sound_play('audio3');
+          if (focus_move(argusHost, SIDES[arrowSide].focusWord) !== null) sound_play('audio3');
           claim();
           return;
         }
@@ -4965,7 +4962,7 @@ async function surface_start(token: string): Promise<void> {
       return;
     }
     const panel: FilesPanel | DagPanel | undefined =
-      kind === 'files' || (kind as string) === 'catalogue' ? filesPanels.get(instance.id) : dagPanels.get(instance.id);
+      kind === 'files' ? filesPanels.get(instance.id) : dagPanels.get(instance.id);
     for (const envelope of envelopes) {
       panel?.envelope_observe(envelope);
     }
@@ -5096,7 +5093,7 @@ async function surface_start(token: string): Promise<void> {
   // ------------------------------------------------------------ the language
   // Every gesture as a sentence (docs/aegis.adoc: the argus language). The
   // host hands the language the same controls the mouse uses.
-  const paneKind_get = (id: string): string | null => paneInstance_get(id)?.kind ?? null;
+  const paneKind_get = (id: string): PaneKind | null => paneInstance_get(id)?.kind ?? null;
   const argusHost: ArgusHost = {
     focused_get: (): string | null => {
       const zoomed: string | undefined = document.body.dataset['zoom'];

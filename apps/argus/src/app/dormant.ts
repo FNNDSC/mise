@@ -43,7 +43,7 @@ export interface DesktopSeries {
 }
 
 export interface DesktopAction {
-  op: 'domain' | 'image' | 'dir' | 'tags' | 'fs' | 'view' | 'empty' | 'catalogue' | 'graph' | 'gather';
+  op: 'domain' | 'image' | 'dir' | 'tags' | 'fs' | 'view' | 'empty' | 'catalogue' | 'graph' | 'gather' | 'edit';
   domain?: 'pacs' | 'files' | 'runs';
   query?: string;
   /**

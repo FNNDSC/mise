@@ -1799,6 +1799,68 @@ try {
     both.removed && both.confirmRecorded, JSON.stringify(both));
   }
 
+  if (stage('edit-pane')) {
+  // The kernel's edit answered with a pane (#831): the file in a guest field,
+  // SAVE and REVERT on the frame, and every save a touch line in the console
+  // that the kernel reads back character for character.
+  const edited = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const settle = async (want, tries = 60) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
+    document.getElementById('gutter-files').click(); await sleep(700);
+    await say("touch --withContents 'line one' ~/smoke-edit.txt", 2500);
+    await say('edit ~/smoke-edit.txt', 500);
+    const shownPane = () => [...document.querySelectorAll('.pane-edit')].find((p) => p.offsetParent !== null);
+    const opened = await settle(() => shownPane()?.querySelector('.cm-content') !== null && shownPane()?.querySelector('.cm-content') !== undefined);
+    const pane = shownPane();
+    const state = () => pane?.querySelector('.pane-state')?.textContent ?? '';
+    const content = pane?.querySelector('.cm-content');
+    const text = () => [...(pane?.querySelectorAll('.cm-line') ?? [])].map((l) => l.textContent).join('\\n');
+    const answered = /opened in the editor/.test(document.querySelector('#terminal')?.textContent ?? '');
+    const openState = state();
+    const saveDimmed = pane?.querySelector('.edit-save')?.disabled === true;
+    const titled = pane?.querySelector('.pane-title')?.textContent ?? '';
+    // type at the end of the file: a second line with every hard character
+    content?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); content?.focus(); await sleep(200);
+    const focusLit = pane?.querySelector('.edit-focus')?.hidden === false;
+    const sel = window.getSelection(); sel.selectAllChildren(content); sel.collapseToEnd();
+    document.execCommand('insertText', false, "\\nline two $HOME @1 it's a\\\\b; x | y > z");
+    await sleep(300);
+    const dirtyState = state();
+    const saveLit = pane?.querySelector('.edit-save')?.disabled === false;
+    content?.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true }));
+    const saved = await settle(() => state() === 'SAVED', 40);
+    const echoes = [...document.querySelectorAll('#terminal .argus-echo')].map((e) => e.textContent);
+    const saveLine = echoes.reverse().find((e) => /touch --withContents/.test(e)) ?? '';
+    await say('cat ~/smoke-edit.txt', 2500);
+    const results = [...document.querySelectorAll('#terminal .argus-result, #terminal .argus-output, #terminal pre')].map((e) => e.textContent).join('\\n');
+    const readBack = results.includes("line two $HOME @1 it's a\\\\b; x | y > z");
+    // REVERT throws away what was typed since the save
+    content?.focus(); sel.selectAllChildren(content); sel.collapseToEnd();
+    document.execCommand('insertText', false, ' DISCARD');
+    await sleep(300);
+    pane?.querySelector('.edit-revert')?.click(); await sleep(300);
+    const reverted = !text().includes('DISCARD') && state() === 'SAVED';
+    // Esc gives the keyboard back, and the FOCUS mark goes
+    content?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); content?.focus(); await sleep(200);
+    const heldBefore = pane?.querySelector('.edit-focus')?.hidden === false;
+    content?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); await sleep(300);
+    const released = heldBefore && pane?.querySelector('.edit-focus')?.hidden === true && !pane.contains(document.activeElement);
+    // a second edit of the same file finds its pane
+    await say('edit ~/smoke-edit.txt', 2500);
+    const onePane = [...document.querySelectorAll('.pane-edit')].filter((p) => p.offsetParent !== null).length === 1;
+    await say('rm ~/smoke-edit.txt', 2000);
+    pane?.querySelector('.drawer-close')?.click(); await sleep(400);
+    return { opened, answered, openState, saveDimmed, titled, focusLit, dirtyState, saveLit, saved, saveLine: saveLine.slice(0, 160), readBack, reverted, released, onePane };`);
+  check('edit opens an EDIT pane beside the focused one, answered "opened in the editor", SAVED with SAVE dimmed',
+    edited.opened && edited.answered && edited.openState === 'SAVED' && edited.saveDimmed && edited.titled === 'EDIT SMOKE-EDIT.TXT', JSON.stringify(edited));
+  check('typing lights DIRTY and SAVE; Ctrl-S saves by a touch line in the console, and the kernel reads every character back',
+    edited.focusLit && edited.dirtyState === 'DIRTY' && edited.saveLit && edited.saved && /touch --withContents='/.test(edited.saveLine) && edited.readBack, JSON.stringify(edited));
+  check('an edit pane: REVERT throws away unsaved text, Esc gives the keyboard back, a second edit finds the pane',
+    edited.reverted && edited.released && edited.onePane, JSON.stringify(edited));
+  }
+
   if (stage('contrast')) {
   // The frame's type, measured against WCAG 2.1 AA in every scheme.
   //

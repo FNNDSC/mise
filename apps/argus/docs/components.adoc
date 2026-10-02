@@ -396,3 +396,74 @@ listing.rows_set([{ key: 'keys', header, rows: chords }, { key: 'verbs', header,
 * Do not write a key or a verb into this pane by hand: add it to the table in the console language and it appears here, in the drawer's titles, in `argus keys` and in `docs/keys.adoc`.
 * Do not make a row act: the pane is a reference, and the drawer's capsules are where a chord is pressed.
 * Do not take bare `help` from the session: the kernel's `help` answers it.
+
+== Edit pane
+
+Source: `apps/argus/src/features/edit/panel.ts` (the pane), over `features/edit/field.ts` (the guest field: CodeMirror 6, loaded on demand), `features/edit/line.ts` (the lines it runs) and `app/editor.ts` (the host's wiring: the kernel's `edit` answered with a pane).
+
+Status: on stage since 2026-10-02 (#831, slice 3). Opens on the kernel's `edit <file>` and `feed note edit <id>` typed in the console, and on a desktop card that held one.
+
+=== Purpose
+
+One file, edited where the panes are. The kernel's `edit` reads the file and asks the surface to edit it: a terminal opens `$EDITOR`, this surface opens an EDIT pane beside the focused one and answers at once that it opened. The field is the guest's; SAVE and REVERT are mise's; and a save is the line the operator could have typed, `touch --withContents='<text>' '<path>'`, so the transcript holds every save and a feed's note (`/proc/jobs/feed_N/note`) is written through its projection like any file.
+
+=== Anatomy
+
+image::images/edit-pane-anatomy.svg[Edit pane anatomy,1180]
+
+[cols="1,2,3",options="header"]
+|===
+| Part | Selector | What it is
+
+| bar | `.pane-handle` | `.pane-title` `EDIT` and the file's name (the whole path is the pane's tooltip); `.pane-state` the file's state against the field.
+| frame | `.mode-frame` | `.edit-save` writes the field to the file; `.edit-revert` puts the file's text back; both lit only while the field differs from the file. `.edit-focus` is lit while the field holds the keyboard.
+| field | `.edit-field` | The guest's: CodeMirror 6 with line numbers, undo, search (Ctrl-F), bracket matching and the syntax colours of JSON, YAML, Markdown, Python, JavaScript and TypeScript, painted from the theme's tokens. Ctrl-S saves; Esc gives the keyboard back. No mise control sits inside it.
+|===
+
+=== Declaration
+
+[source,ts]
+----
+// app/editor.ts: the host answers the kernel's edit with a pane
+const editor = editor_wire(context, { instance_spawn, birth_record, launcher_yield, template_stamp, replayPlace_get, errandHost_find });
+paneFactory_register('edit', editor.instance_build);
+ArgusClient.session_attach(url, token, { edit_receive: (request) => editor.edit_receive(request) });
+
+// features/edit/panel.ts: the pane over its template
+const panel = new EditPanel(mount, {
+  save: (path, text) => /* echo saveLine_compose(path, text), run it, true when every envelope is ok */,
+  note: (line) => terminal.line_note(line),
+});
+panel.content_show({ path, content, extension });
+----
+
+=== States
+
+[cols="1,2,3",options="header"]
+|===
+| State | Where | Meaning
+
+| OPENING | the bar | A desktop card's pane stands before the kernel has read its file.
+| SAVED | the bar; SAVE and REVERT dim | The field holds the file's text, as read or as last saved.
+| DIRTY | the bar; SAVE and REVERT lit | The field differs from the file.
+| SAVING | the bar | The save's line is running.
+| NOT SAVED | the bar | The kernel refused the save; the console, where the line ran, says why. The field keeps the text.
+| NOT OPENED | the bar | The kernel could not read the file a desktop card asked for.
+| unsaved, asked again | the console | A second `edit` of a file whose pane is DIRTY focuses that pane and leaves the change standing; REVERT reads the file again.
+|===
+
+=== Laws
+
+* `an-editors-save-is-a-line` — the field is the guest's, the frame mise's; a save is a touch line in the console; the pane reaches no byte route.
+* `focus-stays-in-the-field` — the field holds the keyboard until Esc gives it back; FOCUS says so.
+* `drawer-everywhere` — the pane carries the handle and the drawer.
+
+=== Stylesheet
+
+`.edit-body` (the image body's shape), `.edit-field` (inset from the spine; the guest's editor fills it), the frame's pills dimmed while disabled. The guest's look is a theme of its own in `field.ts`, every colour a token of the page's.
+
+=== Do not
+
+* Do not write a file from the pane any other way than the touch line: a save the transcript does not show is a save the operator cannot account for.
+* Do not put a control inside the field: what acts on the field rides the frame.
+* Do not name the guest library outside `field.ts`: the pane asks it for five things and could be given them by another.

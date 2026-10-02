@@ -296,6 +296,7 @@ LINT_CHECKS['a-component-lands-with-its-reference'] = () => {
     'apps/argus/src/features/roster/listing.ts',
     'apps/argus/src/features/image/panel.ts',
     'apps/argus/src/features/universe/panel.ts',
+    'apps/argus/src/features/edit/panel.ts',
   ];
   if (!existsSync('apps/argus/docs/components.adoc')) {
     fail('a-component-lands-with-its-reference', 'apps/argus/docs/components.adoc is missing');
@@ -360,6 +361,35 @@ LINT_CHECKS['an-instruments-field-is-foreign'] = () => {
   }
   if (!/class="mode-frame"[\s\S]*?image-tool/.test(template[1])) {
     fail('an-instruments-field-is-foreign', 'the image pane\'s tool blocks are not on its mode frame');
+  }
+};
+
+LINT_CHECKS['an-editors-save-is-a-line'] = () => {
+  // The EDIT pane's field is CodeMirror's and the frame is mise's, as an
+  // image pane's is; and a save is the line the operator could have typed,
+  // echoed and run through the kernel. The template declares the first; the
+  // pane's sources, which reach no byte route and save through the one line
+  // composer, hold the second.
+  const law = 'an-editors-save-is-a-line';
+  const template = html.match(/<template id="tpl-pane-edit">([\s\S]*?)<\/template>/);
+  if (!template) { fail(law, 'index.html has no tpl-pane-edit template'); return; }
+  const field = template[1].match(/<section class="edit-field"[^>]*>([\s\S]*?)<\/section>/);
+  if (!field) { fail(law, 'tpl-pane-edit has no .edit-field section'); return; }
+  if (/<(button|input|select|textarea)\b|strategy-pill|pacs-capsule/.test(field[1])) {
+    fail(law, 'a control sits inside .edit-field; what acts on the field rides the frame');
+  }
+  if (!/class="mode-frame"[\s\S]*?edit-save[\s\S]*?edit-revert/.test(template[1])) {
+    fail(law, "the edit pane's SAVE and REVERT are not on its mode frame");
+  }
+  const sources = ['apps/argus/src/app/editor.ts', ...readdirSync('apps/argus/src/features/edit').map((name) => `apps/argus/src/features/edit/${name}`)];
+  for (const path of sources) {
+    if (/\bfetch\(|XMLHttpRequest|vfsUrl_build|method: 'POST'/.test(readFileSync(path, 'utf8'))) {
+      fail(law, `${path} reaches a byte route; an editor writes only by the touch line`);
+    }
+  }
+  const host = readFileSync('apps/argus/src/app/editor.ts', 'utf8');
+  if (!/saveLine_compose\(path, text\)[\s\S]{0,80}line_echo\(line\)/.test(host)) {
+    fail(law, 'app/editor.ts does not save by echoing the line saveLine_compose made');
   }
 };
 
@@ -449,8 +479,8 @@ LINT_CHECKS['a-part-stays-a-part'] = () => {
   const FUNCTION_LINES = 150;
   const FILE_LINES = 1200;
   const allowed = new Map([
-    ['apps/argus/src/app/main.ts', [2973, 'the host: the pane factories, the opens, the wire observers and the boot; each concern left goes to a module']],
-    ['apps/argus/src/app/main.ts#surface_start', [2004, 'the host closure itself; it shrinks as the file does']],
+    ['apps/argus/src/app/main.ts', [2945, 'the host: the pane factories, the opens, the wire observers and the boot; each concern left goes to a module']],
+    ['apps/argus/src/app/main.ts#surface_start', [1974, 'the host closure itself; it shrinks as the file does']],
     ['apps/argus/src/console/argusLang.ts#argusLine_run', [266, 'the language dispatcher: one branch per subject; a verb table is the next cut']],
     ['apps/argus/src/features/image/slabScene.ts#slabScene_open', [155, 'the slab scene setup: one WebGL program; split when it next changes']],
     ['apps/argus/src/features/pacs/panel.ts', [1941, 'the PACS panel: three listing levels and the form; the levels are the next cut']],

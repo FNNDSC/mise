@@ -107,6 +107,8 @@ export interface AskRequest {
   message: string;
   kind: AskKind;
   suggest?: string;
+  /** Whether the input line takes focus; false when the question also stands on a pane, whose field has it. */
+  focus?: boolean;
 }
 
 /**
@@ -584,9 +586,23 @@ export class ArgusTerminal {
         no.addEventListener('click', (): void => settle('n'));
         asked.append(' ', yes, ' ', no);
       }
-      this.input.focus();
+      if (request.focus !== false) this.input.focus();
       this.size_fit();
     });
+  }
+
+  /**
+   * Answers the open question from elsewhere — the pane it also stands on —
+   * so the transcript records the answer and the input line is free again.
+   *
+   * @param answer - The answer, or null when it was abandoned.
+   * @returns Whether a question was open.
+   */
+  public ask_settle(answer: string | null): boolean {
+    const ask = this.pendingAsk;
+    if (ask === null) return false;
+    ask.settle(answer);
+    return true;
   }
 
 

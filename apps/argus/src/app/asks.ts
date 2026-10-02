@@ -10,12 +10,49 @@
  * replay place, the rooted listing and the console drawer as hooks.
  */
 import type { SurfaceAsk } from '../calypso/client.js';
-import { paneAsk_open, type PaneAskRequest } from '../features/ask/paneAsk.js';
+import { paneAsk_abandon, paneAsk_open, type PaneAskRequest } from '../features/ask/paneAsk.js';
+import type { ArgusTerminal } from '../console/terminal.js';
 import type { FilesPanel } from '../features/files/panel.js';
 import type { ReplayPlace } from './desktop.js';
 import type { HostContext } from './hostContext.js';
 import type { LayoutNode } from './layout.js';
 import { paneInstance_dispose, type PaneInstance, type PaneKind } from './panes.js';
+
+/**
+ * Stands a question on a pane AND on the console's input line (#826): an
+ * operator answers where their hand is. Typed at the prompt, an answer
+ * used to run as a command while the pane waited forever. Whichever place
+ * answers first wins and the other closes; the console's transcript
+ * records the answer either way (a secret masked). When the console is
+ * already asking something of its own, the pane alone asks and the
+ * console notes it.
+ *
+ * @param terminal - The console.
+ * @param mount - Where the question stands.
+ * @param request - The question.
+ * @returns The answer, or null when abandoned.
+ */
+export async function question_stand(terminal: ArgusTerminal, mount: HTMLElement, request: PaneAskRequest): Promise<string | null> {
+  if (terminal.ask_isOpen()) {
+    const noted: (answer: string | null) => void = terminal.ask_note(request.message);
+    const answer: string | null = await paneAsk_open(mount, request);
+    noted(request.kind === 'secret' && answer !== null ? '••••••' : answer);
+    return answer;
+  }
+  const onPane: Promise<{ from: 'pane'; answer: string | null }> = paneAsk_open(mount, request).then((answer: string | null) => ({ from: 'pane' as const, answer }));
+  const onConsole: Promise<{ from: 'console'; answer: string | null }> = terminal.ask_open({
+    message: request.message,
+    kind: request.kind,
+    focus: false,
+    ...(request.suggest === undefined ? {} : { suggest: request.suggest }),
+  }).then((answer: string | null) => ({ from: 'console' as const, answer }));
+  const first = await Promise.race([onPane, onConsole]);
+  // The other place closes: the pane's bar goes, or the console records the
+  // pane's answer and frees its line. The loser's own resolution is ignored.
+  if (first.from === 'console') paneAsk_abandon();
+  else terminal.ask_settle(first.answer);
+  return first.answer;
+}
 
 /** What the asks need of the host. */
 export interface AskHooks {
@@ -196,11 +233,7 @@ export function asks_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
         ...(request.suggest === undefined ? {} : { suggest: request.suggest }),
       });
     }
-    const noted: (answer: string | null) => void = terminal.ask_note(request.message);
-    const answer: string | null = await paneAsk_open(mount, request);
-    // A secret never enters the transcript, not even as a length.
-    noted(request.kind === 'secret' && answer !== null ? '••••••' : answer);
-    return answer;
+    return question_stand(terminal, mount, request);
   };
 
   return { errandHost_find, errand_open, errand_abandon, verbLine_run, askingPane_take, ask_onPane };

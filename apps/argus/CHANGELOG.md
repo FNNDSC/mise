@@ -1,5 +1,13 @@
 # @fnndsc/argus
 
+## 0.18.11
+
+### Patch Changes
+
+- 72a7ccc: Help lives on the stage: a HELP pane (the prefix chords and the verbs as a listing, filterable) opens from a HELP tile on the dashboard and from the typed `help pane`; `help keys` and `help verbs` print the tables in the console. The keys reference `docs/keys.adoc` is generated from the one chord table (`npm run docs:keys`) and the aegis lint holds it to the table.
+- affc300: The rest of tmux's table as prefix chords: `;` the last pane, `q` every pane's `@id` on its bar, Space flips the pane's split (beside becomes above), `!` breaks the pane out (alone on stage, the arrangement it leaves a PANES card), Ctrl-arrow moves the boundary beside the pane a step (the first keyboard resize: `pane resize left|right|up|down [percent]`), `w` PANES, `[` the console's scrollback takes the keys; `pane flip` and `pane focus last` as verbs.
+- 629c1c3: Prefix chords: with a pane's drawer open (Ctrl-B), one key presses one of its capsules — tmux's `%` `"` `z` `x` `o` `:`, `h j k l` to split, `H J K L` to move the pane, `m` to arm MOVE, `u f v` the binding, `1 2 3` the claim, `?` the table — and the arrows focus the pane in that direction; Tab still walks the verbs. Each capsule's title names its key; `argus keys` prints the table.
+
 ## 0.18.10
 
 ### Patch Changes

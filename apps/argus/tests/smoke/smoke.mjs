@@ -2817,8 +2817,13 @@ try {
   }
   if (stage('stale-page')) {
   // A page older than its server's build says so: a failed on-demand chunk
-  // (the event Vite's loader raises for it) puts a notice with RELOAD over
-  // the stage and a line on the console, once.
+  // (the event Vite's loader raises for it) puts a notice over the stage
+  // and a line on the console, once; the sentence's word `refresh` is the
+  // control. The words are read from the module, so the two cannot drift.
+  const { readFileSync: readSource } = await import('node:fs');
+  const source = readSource(new URL('../../src/app/stalePage.ts', import.meta.url), 'utf8');
+  const part = (key) => (source.match(new RegExp(`${key}: '([^']*)'`)) ?? [])[1] ?? '';
+  const sentence = `${part('before')}${part('refresh')}${part('after')}`;
   const stale = await evalIn(`
     await console_idle();
     const before = document.querySelectorAll('.stale-page').length;
@@ -2827,12 +2832,13 @@ try {
     await sleep(300);
     const notices = [...document.querySelectorAll('.stale-page')];
     const words = notices[0]?.textContent ?? '';
-    const lines = document.getElementById('terminal').innerText.split('\\n').filter(l => /server has a newer argus/.test(l)).length;
+    const control = notices[0]?.querySelector('.stale-page-reload')?.textContent ?? '';
+    const lines = document.getElementById('terminal').innerText.split('\\n').filter(l => l.includes(${JSON.stringify(sentence)})).length;
     notices.forEach(n => n.remove());
-    return { before, count: notices.length, words, lines };`);
-  check('a page older than its server\'s build says so once, with RELOAD, on the stage and the console',
-    stale.before === 0 && stale.count === 1 && /THIS PAGE IS OLDER/.test(stale.words) && /RELOAD/.test(stale.words) && stale.lines === 1,
-    JSON.stringify(stale));
+    return { before, count: notices.length, words, control, lines };`);
+  check('a page older than its server\'s build says so once, in plain words whose "refresh" reloads, on the stage and the console',
+    sentence !== '' && stale.before === 0 && stale.count === 1 && stale.words === sentence && stale.control === part('refresh') && stale.lines === 1,
+    JSON.stringify({ sentence, ...stale }));
   }
 
   if (stage('home-trail')) {

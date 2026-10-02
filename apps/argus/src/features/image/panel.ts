@@ -16,6 +16,7 @@
  * @module
  */
 import { STALE_PAGE_READOUT, stalePage_is } from '../../app/stalePage.js';
+import { barState_set } from '../roster/bar.js';
 import type { DicomSeriesModel, DicomTagsModel } from '@fnndsc/menu';
 import {
   IMAGE_COLORMAPS,
@@ -329,9 +330,7 @@ export class ImagePanel {
     } catch (error: unknown) {
       if (!stalePage_is(error)) throw error;
     }
-    this.stateSpan.textContent = STALE_PAGE_READOUT;
-    this.stateSpan.classList.remove('state-live', 'state-settled', 'state-wait');
-    this.stateSpan.classList.add('state-stale');
+    barState_set(this.stateSpan, 'stale', STALE_PAGE_READOUT);
     this.handlers.note(`image: ${STALE_PAGE_READOUT.toLowerCase()} — the viewer's code is of an older build than the server has`);
     return null;
   }

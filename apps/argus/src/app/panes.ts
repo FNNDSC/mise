@@ -11,10 +11,35 @@
  * @module
  */
 
+/**
+ * Every kind of pane the surface can stand on the stage. One union, so a
+ * switch on a kind is checked and a new kind is added here first
+ * (aegis.adoc: a-fact-has-one-source).
+ */
+export type PaneKind =
+  | 'files' | 'catalogue' | 'dag' | 'pacs' | 'image' | 'tags' | 'gather' | 'view' | 'empty'
+  | 'universe' | 'help' | 'panes' | 'launcher';
+
+/**
+ * The three primaries: the domain panes that never go dormant and are not
+ * cards in PANES. Tested in five spellings before this set.
+ */
+export const PRIMARIES: ReadonlySet<string> = new Set(['files', 'dag', 'pacs']);
+
+/**
+ * Whether a pane id is a primary.
+ *
+ * @param id - A pane id.
+ * @returns True for the files, dag and pacs primaries.
+ */
+export function pane_isPrimary(id: string): boolean {
+  return PRIMARIES.has(id);
+}
+
 /** One live pane: its identity, kind, mount, and cleanup. */
 export interface PaneInstance {
   id: string;
-  kind: string;
+  kind: PaneKind;
   mount: HTMLElement;
   dispose?: () => void;
 }
@@ -32,7 +57,7 @@ let nextInstance: number = 0;
  * @param kind - The kind name (a template's identity).
  * @param factory - The instance builder.
  */
-export function paneFactory_register(kind: string, factory: PaneFactory): void {
+export function paneFactory_register(kind: PaneKind, factory: PaneFactory): void {
   factories.set(kind, factory);
 }
 
@@ -43,7 +68,7 @@ export function paneFactory_register(kind: string, factory: PaneFactory): void {
  * @returns The new instance.
  * @throws {Error} When the kind has no factory.
  */
-export function paneInstance_create(kind: string): PaneInstance {
+export function paneInstance_create(kind: PaneKind): PaneInstance {
   const factory: PaneFactory | undefined = factories.get(kind);
   if (factory === undefined) {
     throw new Error(`no pane factory registered for kind '${kind}'`);

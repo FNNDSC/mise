@@ -18,6 +18,7 @@
  *
  * @module
  */
+import { side_is, side_ofFocusWord, splitSelector_of, type Side } from '../app/sides.js';
 
 /** What the language needs from its host (assembled in main.ts). */
 export interface ArgusHost {
@@ -28,11 +29,11 @@ export interface ArgusHost {
   /** Every pane id currently on stage. */
   panes_shown(): string[];
   /** Moves a pane to a side; answers with what happened, or the refusal by name. */
-  pane_move(paneId: string, side: 'left' | 'right' | 'above' | 'below'): string;
+  pane_move(paneId: string, side: Side): string;
   /** Flips the axis of the split the pane stands in. */
   pane_flip(paneId: string): string;
   /** Moves the boundary beside the pane a step; answers what happened. */
-  pane_resize(paneId: string, dir: 'left' | 'right' | 'up' | 'down', step: number): string;
+  pane_resize(paneId: string, side: Side, step: number): string;
   /** Focuses the pane focused before this one; answers it, or null when none. */
   focus_last(): string | null;
   /** Opens the HELP pane (the keys and the verbs) on the stage; answers what happened. */
@@ -218,12 +219,6 @@ export function focus_move(host: ArgusHost, direction: string): string | null {
   return best.id;
 }
 
-const SPLIT_PLACES: Readonly<Record<string, { split: string; place: string }>> = {
-  left: { split: 'col', place: 'before' },
-  right: { split: 'col', place: 'after' },
-  above: { split: 'row', place: 'before' },
-  below: { split: 'row', place: 'after' },
-};
 
 /**
  * One drawer verb, one key: with a drawer open (the prefix pressed), a chord
@@ -246,16 +241,16 @@ export interface DrawerChord {
 }
 
 export const DRAWER_CHORDS: ReadonlyArray<DrawerChord> = [
-  { key: '%', topic: 'pane', selector: '[data-split="col"][data-place="after"]', does: 'split right (tmux)' },
-  { key: '"', topic: 'pane', selector: '[data-split="row"][data-place="after"]', does: 'split below (tmux)' },
-  { key: 'h', topic: 'pane', selector: '[data-split="col"][data-place="before"]', does: 'split left' },
-  { key: 'j', topic: 'pane', selector: '[data-split="row"][data-place="after"]', does: 'split below' },
-  { key: 'k', topic: 'pane', selector: '[data-split="row"][data-place="before"]', does: 'split above' },
-  { key: 'l', topic: 'pane', selector: '[data-split="col"][data-place="after"]', does: 'split right' },
-  { key: 'H', topic: 'pane', selector: '[data-split="col"][data-place="before"]', does: 'move this pane left', move: true },
-  { key: 'J', topic: 'pane', selector: '[data-split="row"][data-place="after"]', does: 'move this pane below', move: true },
-  { key: 'K', topic: 'pane', selector: '[data-split="row"][data-place="before"]', does: 'move this pane above', move: true },
-  { key: 'L', topic: 'pane', selector: '[data-split="col"][data-place="after"]', does: 'move this pane right', move: true },
+  { key: '%', topic: 'pane', selector: splitSelector_of('right'), does: 'split right (tmux)' },
+  { key: '"', topic: 'pane', selector: splitSelector_of('below'), does: 'split below (tmux)' },
+  { key: 'h', topic: 'pane', selector: splitSelector_of('left'), does: 'split left' },
+  { key: 'j', topic: 'pane', selector: splitSelector_of('below'), does: 'split below' },
+  { key: 'k', topic: 'pane', selector: splitSelector_of('above'), does: 'split above' },
+  { key: 'l', topic: 'pane', selector: splitSelector_of('right'), does: 'split right' },
+  { key: 'H', topic: 'pane', selector: splitSelector_of('left'), does: 'move this pane left', move: true },
+  { key: 'J', topic: 'pane', selector: splitSelector_of('below'), does: 'move this pane below', move: true },
+  { key: 'K', topic: 'pane', selector: splitSelector_of('above'), does: 'move this pane above', move: true },
+  { key: 'L', topic: 'pane', selector: splitSelector_of('right'), does: 'move this pane right', move: true },
   { key: 'm', topic: 'pane', selector: '.drawer-mode[data-mode="move"]', does: 'arm MOVE (then a direction)' },
   { key: 'z', topic: 'pane', selector: '.drawer-zoom', does: 'zoom (tmux)' },
   { key: 'x', topic: 'pane', selector: '.drawer-close', does: 'close (tmux)' },
@@ -500,10 +495,9 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
 
   if (subject === 'pane') {
     if (verb === 'split') {
-      const shape: { split: string; place: string } | undefined = SPLIT_PLACES[arg];
-      if (shape === undefined) return 'pane split left|right|above|below';
+      if (!side_is(arg)) return 'pane split left|right|above|below';
       const beforeIds: Set<string> = new Set(host.panes_shown());
-      if (!control_click(host, paneId, `[data-split="${shape.split}"][data-place="${shape.place}"]`)) {
+      if (!control_click(host, paneId, splitSelector_of(arg))) {
         return `pane split: '${paneId}' has no drawer`;
       }
       const created: string | undefined = host.panes_shown().find((id: string): boolean => !beforeIds.has(id));
@@ -512,8 +506,8 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     }
     if (verb === 'move') {
       // The drawer's MOVE: the pane walks to that side (aegis.adoc: a-pane-can-be-moved).
-      if (!(arg in SPLIT_PLACES)) return 'pane move left|right|above|below';
-      return host.pane_move(paneId, arg as 'left' | 'right' | 'above' | 'below');
+      if (!side_is(arg)) return 'pane move left|right|above|below';
+      return host.pane_move(paneId, arg);
     }
     if (verb === 'zoom') return control_click(host, paneId, '.drawer-zoom') ? `zoomed ${paneId}` : 'pane zoom: no drawer';
     if (verb === 'close') return control_click(host, paneId, '.drawer-close') ? `closed ${paneId}` : 'pane close: no drawer';
@@ -531,10 +525,11 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     }
     if (verb === 'flip') return host.pane_flip(paneId);
     if (verb === 'resize') {
-      if (!['left', 'right', 'up', 'down'].includes(arg)) return 'pane resize left|right|up|down [percent]';
+      const side: Side | null = side_ofFocusWord(arg);
+      if (side === null) return 'pane resize left|right|up|down [percent]';
       const percent: number = words[2] !== undefined ? Number(words[2]) : 5;
       if (!Number.isFinite(percent) || percent <= 0 || percent > 70) return 'pane resize: the step is a percent, 1 to 70';
-      return host.pane_resize(paneId, arg as 'left' | 'right' | 'up' | 'down', percent / 100);
+      return host.pane_resize(paneId, side, percent / 100);
     }
     if (verb === 'focus') {
       if (arg === 'last') return host.focus_last() ?? 'pane focus last: no pane was focused before this one';

@@ -18,6 +18,7 @@
  * @module
  */
 import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope } from '@fnndsc/menu';
+import { barState_clear, barState_set, type BarState } from '../roster/bar.js';
 import { PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, UNIVERSE_REACH, procLayoutModelSchema, procUniverseModelSchema, universeKey_of, universeReach_of, type ProcUniverseModel } from '@fnndsc/menu';
 import { ChrisSpace, PHYSICS_DEFAULT, type DrawMode, type PhysicsTerms, type SceneGraph, type SceneNode, type SettleMode } from '../../scene/chrisSpace.js';
 import {
@@ -1223,12 +1224,10 @@ export class UniversePanel {
    * @param cls - The state class (`state-live`, `state-wait`, ...).
    * @param text - The standing readout.
    */
-  private state_stand(cls: string, text: string): void {
+  private state_stand(cls: BarState, text: string): void {
     if (this.state === null) return;
     if (this.noteTimer !== null) return;
-    this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait', 'state-note');
-    this.state.classList.add(cls);
-    this.state.textContent = text;
+    barState_set(this.state, cls, text);
   }
 
   /**
@@ -1242,12 +1241,10 @@ export class UniversePanel {
     if (this.state === null) return;
     if (this.noteTimer !== null) clearTimeout(this.noteTimer);
     this.noteTimer = null;
-    this.state.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
-    this.state.classList.add('state-note');
-    this.state.textContent = line;
+    barState_set(this.state, 'note', line);
     this.noteTimer = setTimeout((): void => {
       this.noteTimer = null;
-      this.state?.classList.remove('state-note');
+      barState_clear(this.state, 'note');
       this.title_paint();
     }, NOTE_HOLD_MS);
   }
@@ -1257,13 +1254,13 @@ export class UniversePanel {
     if (this.entering !== null && this.inside === null) {
       const feed: LandedFeed | undefined = this.landed.get(this.entering);
       this.title.textContent = `UNIVERSE — ENTERING FEED ${this.entering}${feed !== undefined && feed.title.length > 0 ? ` · ${feed.title}` : ''} …`;
-      this.state_stand('state-wait', 'ASKING');
+      this.state_stand('wait', 'ASKING');
       return;
     }
     if (this.inside !== null) {
       const jobs: number = this.inside.entered.nodes.reduce((sum: number, node: SceneNode): number => sum + (node.count ?? 1), 0);
       this.title.textContent = `UNIVERSE — INSIDE FEED ${this.inside.feedId} · ${this.inside.title} · ${jobs.toLocaleString('en-US')} JOBS`;
-      this.state_stand('state-live', 'INSIDE');
+      this.state_stand('live', 'INSIDE');
       return;
     }
     if (this.cluster !== null) {
@@ -1271,21 +1268,21 @@ export class UniversePanel {
       // The bar is not the place for eleven plugin names: the first few and
       // the count, the whole shape on the halo's tip.
       this.title.textContent = `UNIVERSE — SHAPE ${shapeWords_brief(this.cluster.shape)} · ${count} FEED${count === 1 ? '' : 'S'}`;
-      this.state_stand('state-live', 'CLUSTER');
+      this.state_stand('live', 'CLUSTER');
       return;
     }
     if (this.asking && !this.shown) {
       // Nothing has been told yet: say that, not "0 FEEDS", which reads
       // as an empty lab.
       this.title.textContent = 'UNIVERSE — ASKING THE SESSION …';
-      this.state_stand('state-wait', 'ASKING');
+      this.state_stand('wait', 'ASKING');
       return;
     }
     const figure: string = `${this.landed.size()} FEEDS · ${this.landed.shapes()} SHAPES`;
     this.title.textContent = this.whole
       ? `UNIVERSE — ${figure}`
       : `UNIVERSE — ${figure}${this.warming.length > 0 ? ` · ${this.warming}` : ' · INDEX WARMING'}`;
-    this.state_stand(this.whole ? 'state-settled' : 'state-wait', this.whole ? 'WHOLE' : 'LANDING');
+    this.state_stand(this.whole ? 'settled' : 'wait', this.whole ? 'WHOLE' : 'LANDING');
     if (this.scene.replay_state() !== null) this.replay_paint();
   }
 
@@ -1433,7 +1430,7 @@ export class UniversePanel {
     const day: string = `${state.playing ? 'REPLAY' : 'PAUSED'} ${new Date(state.at).toISOString().slice(0, 10)}`;
     if (day === this.replayDay) return;
     this.replayDay = day;
-    this.state_stand('state-live', day);
+    this.state_stand('live', day);
   }
 
   /** Learns whose universe this is, once, and seeds it if a space is already up. */

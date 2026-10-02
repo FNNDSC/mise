@@ -32,6 +32,7 @@ import {
   type WireEnvelope,
   type WatchState,
 } from '@fnndsc/menu';
+import { barState_clear, barState_set } from '../roster/bar.js';
 import { ChrisSpace, type LayoutStrategy, type PhysicsTerms, type SceneNode } from '../../scene/chrisSpace.js';
 import { Listing, type ListingStateParts } from '../roster/listing.js';
 import { progressCell_build, type ListingProgress, type ListingTrait, type ListingAction } from '../roster/row.js';
@@ -603,7 +604,7 @@ export class DagPanel {
     this.universe_end(false);
     this.shownFeedId = model.feedId;
     this.pendingFeedId = null;
-    this.stateSpan?.classList.remove('state-wait');
+    barState_clear(this.stateSpan, 'wait');
     this.title.textContent = `DAG · FEED ${model.feedId} — ${model.feedName}`.toUpperCase();
     this.empty.style.display = 'none';
     // A graph arrival always takes the whole pane: selecting a feed IS
@@ -729,13 +730,11 @@ export class DagPanel {
   private liveState_show(state: WatchState | null): void {
     this.liveState = state;
     if (this.stateSpan === null) return;
-    this.stateSpan.classList.remove('state-live', 'state-settled', 'state-stale');
     if (state === null) {
-      if (this.canvas.style.display !== 'none') this.stateSpan.textContent = '';
+      barState_set(this.stateSpan, null, this.canvas.style.display !== 'none' ? '' : undefined);
       return;
     }
-    this.stateSpan.textContent = state.toUpperCase();
-    this.stateSpan.classList.add(`state-${state}`);
+    barState_set(this.stateSpan, state, state.toUpperCase());
   }
 
   /** The watched feed's last reported liveness (null before any report). */
@@ -1051,11 +1050,7 @@ export class DagPanel {
     this.title.textContent = `DAG · FEED ${feedId}`;
     this.empty.textContent = `RETRIEVING FEED ${feedId}…`;
     this.empty.style.display = 'block';
-    if (this.stateSpan !== null) {
-      this.stateSpan.classList.remove('state-live', 'state-settled', 'state-stale');
-      this.stateSpan.classList.add('state-wait');
-      this.stateSpan.textContent = 'LOADING';
-    }
+    barState_set(this.stateSpan, 'wait', 'LOADING');
   }
 
   /**
@@ -1078,11 +1073,7 @@ export class DagPanel {
       ? `INDEXING FEED ${indexing.feedId} FAILED AT ${count} — ${indexing.failed.toUpperCase()} — REFRESH RETRIES`
       : `INDEXING FEED ${indexing.feedId} — ${count}`;
     this.empty.style.display = 'block';
-    if (this.stateSpan !== null) {
-      this.stateSpan.classList.remove('state-live', 'state-settled', 'state-stale');
-      this.stateSpan.classList.add('state-wait');
-      this.stateSpan.textContent = indexing.failed !== undefined ? 'FAILED' : 'LOADING';
-    }
+    barState_set(this.stateSpan, 'wait', indexing.failed !== undefined ? 'FAILED' : 'LOADING');
     if (indexing.failed === undefined) this.watch_open(indexing.feedId);
   }
 
@@ -1099,7 +1090,7 @@ export class DagPanel {
     this.empty.style.display = 'block';
     this.roster_show(true);
     this.title.textContent = this.defaultTitle;
-    this.stateSpan?.classList.remove('state-wait');
+    barState_clear(this.stateSpan, 'wait');
     this.listing.state_refresh();
   }
 
@@ -1204,11 +1195,7 @@ export class DagPanel {
     this.title.textContent = this.universeLive
       ? `UNIVERSE — ${figure}${this.universeWarming.length > 0 ? ` · ${this.universeWarming}` : ' · INDEX WARMING'}`
       : `UNIVERSE — ${figure}`;
-    if (this.stateSpan !== null) {
-      this.stateSpan.classList.remove('state-live', 'state-settled', 'state-stale', 'state-wait');
-      this.stateSpan.classList.add(this.universeLive ? 'state-wait' : 'state-settled');
-      this.stateSpan.textContent = this.universeLive ? 'LANDING' : 'WHOLE';
-    }
+    barState_set(this.stateSpan, this.universeLive ? 'wait' : 'settled', this.universeLive ? 'LANDING' : 'WHOLE');
   }
 
   /** Takes the prompt's landings into the universe, repainting at most once a second. */
@@ -1275,7 +1262,7 @@ export class DagPanel {
    */
   public list_reset(): void {
     this.pendingFeedId = null;
-    this.stateSpan?.classList.remove('state-wait');
+    barState_clear(this.stateSpan, 'wait');
     this.watch_release();
     this.facts.replaceChildren();
     this.scene.selection_clear();
@@ -1308,7 +1295,7 @@ export class DagPanel {
       this.empty.style.display = 'none';
       this.roster_show(true);
       this.title.textContent = this.defaultTitle;
-      this.stateSpan?.classList.remove('state-wait');
+      barState_clear(this.stateSpan, 'wait');
       this.listing.state_refresh();
       return true;
     }

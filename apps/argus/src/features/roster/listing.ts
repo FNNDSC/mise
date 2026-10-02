@@ -32,6 +32,7 @@
  * @module
  */
 import { RosterOrder } from './order.js';
+import { barState_clear, barState_set } from './bar.js';
 import { ListingHost } from './host.js';
 import {
   actionCell_build,
@@ -1210,11 +1211,7 @@ export class Listing<T> {
     this.activating?.element?.classList.remove('listing-activating');
     this.activating = { key, element };
     element?.classList.add('listing-activating');
-    if (this.stateSpan !== null) {
-      this.stateSpan.classList.remove('state-stale', 'state-refused');
-      this.stateSpan.classList.add('state-wait');
-      this.stateSpan.textContent = `OPENING ${name}`;
-    }
+    barState_set(this.stateSpan, 'wait', `OPENING ${name}`);
   }
 
   /** Stands the press down: the answer has landed. */
@@ -1222,7 +1219,7 @@ export class Listing<T> {
     if (this.activating === null) return;
     this.activating.element?.classList.remove('listing-activating');
     this.activating = null;
-    this.stateSpan?.classList.remove('state-wait');
+    barState_clear(this.stateSpan, 'wait');
   }
 
   /**
@@ -1234,9 +1231,7 @@ export class Listing<T> {
   public activation_refuse(reason: string): void {
     if (this.activating === null) return;
     this.activation_settle();
-    if (this.stateSpan === null) return;
-    this.stateSpan.classList.add('state-refused');
-    this.stateSpan.textContent = reason.toUpperCase();
+    barState_set(this.stateSpan, 'refused', reason.toUpperCase());
   }
 
   /** The row a press is waiting on, or null. */

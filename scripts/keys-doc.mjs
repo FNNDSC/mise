@@ -22,7 +22,7 @@ export function chords_read(text) {
   if (start < 0 || end < 0) throw new Error(`${SOURCE}: DRAWER_CHORDS not found`);
   const block = text.slice(start, end);
   const chords = [];
-  for (const m of block.matchAll(/\{ key: '((?:[^'\\]|\\.)+)', topic: '([a-z]+)', selector: (?:'[^']*'|null), does: '((?:[^'\\]|\\.)+)'(?:, move: true)? \}/g)) {
+  for (const m of block.matchAll(/\{ key: '((?:[^'\\]|\\.)+)', topic: '([a-z]+)', selector: (?:'[^']*'|null|splitSelector_of\('[a-z]+'\)), does: '((?:[^'\\]|\\.)+)'(?:, move: true)? \}/g)) {
     chords.push({ key: m[1].replace(/\\'/g, "'"), topic: m[2], does: m[3].replace(/\\'/g, "'") });
   }
   if (chords.length === 0) throw new Error(`${SOURCE}: no chord entries parsed`);

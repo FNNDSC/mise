@@ -212,6 +212,11 @@ export function long_render(items: ListingItem[], options: ViewOptions = {}): st
       line += `    ${chalk.greenBright(item.title)}`;
     }
 
+    // A feed's tags, as #tags after its title (setfattr hangs them).
+    if (item.tags !== undefined && item.tags.length > 0) {
+      line += `    ${chalk.cyan(item.tags.map((tag: string): string => `#${tag}`).join(' '))}`;
+    }
+
     // Link Target
     if (item.type === 'link' && item.target) {
       line += ` -> ${item.target}`;

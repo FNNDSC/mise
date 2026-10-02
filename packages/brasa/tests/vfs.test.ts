@@ -14,7 +14,9 @@ const mockListCache = {
   cache_invalidate: jest.fn(),
 };
 
+const mockFeedTagsByFeed = jest.fn(async (): Promise<{ ok: boolean; value?: Map<number, string[]> }> => ({ ok: true, value: new Map() }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  feedTags_byFeed: mockFeedTagsByFeed,
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   listCache_get: () => mockListCache,
@@ -210,6 +212,34 @@ describe('VFS', () => {
 
       expect(mockLong_render).toHaveBeenCalled();
       expect(mockGrid_render).not.toHaveBeenCalled();
+    });
+
+    it("hangs each feed's tags on its row in a long listing, one map for all, none read without a feed", async () => {
+      mockGetCWD.mockResolvedValue('/');
+      mockFiles_list.mockResolvedValue([
+        { name: 'feed_12', type: 'dir', size: 0, owner: 'user', date: '2025-01-01' },
+        { name: 'feed_13', type: 'dir', size: 0, owner: 'user', date: '2025-01-01' },
+      ]);
+      mockFeedTagsByFeed.mockResolvedValueOnce({ ok: true, value: new Map([[12, ['urgent']]]) });
+      await vfs.list('/', { long: true });
+      const rows = (mockLong_render.mock.calls.at(-1) as unknown[])[0] as Array<{ name: string; tags?: string[] }>;
+      expect(rows.find((r) => r.name === 'feed_12')?.tags).toEqual(['urgent']);
+      expect(rows.find((r) => r.name === 'feed_13')?.tags).toBeUndefined();
+      expect(mockFeedTagsByFeed).toHaveBeenCalledTimes(1);
+
+      mockFeedTagsByFeed.mockClear();
+      mockFiles_list.mockResolvedValue([{ name: 'file.txt', type: 'file', size: 1, owner: 'user', date: '2025-01-01' }]);
+      await vfs.list('/', { long: true });
+      expect(mockFeedTagsByFeed).not.toHaveBeenCalled();
+    });
+
+    it('leaves the rows as they were when the tag map cannot be read', async () => {
+      mockGetCWD.mockResolvedValue('/');
+      mockFiles_list.mockResolvedValue([{ name: 'feed_12', type: 'dir', size: 0, owner: 'user', date: '2025-01-01' }]);
+      mockFeedTagsByFeed.mockResolvedValueOnce({ ok: false });
+      await vfs.list('/', { long: true });
+      const rows = (mockLong_render.mock.calls.at(-1) as unknown[])[0] as Array<{ tags?: string[] }>;
+      expect(rows[0]?.tags).toBeUndefined();
     });
 
     it('should pass human option to render functions', async () => {

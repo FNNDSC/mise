@@ -89,6 +89,16 @@ describe('ls grid_render', () => {
 });
 
 describe('ls long_render', () => {
+  it("shows a feed's tags as #tags after its title, and nothing for a row with none", () => {
+    const out = long_render([
+      item({ name: 'feed_12', type: 'job', status: 'finishedSuccessfully', title: 'brain', tags: ['urgent', 'review'] }),
+      item({ name: 'feed_13', type: 'job', status: 'finishedSuccessfully', title: 'spine' }),
+    ]);
+    const lines = out.split('\n');
+    expect(lines[0]).toMatch(/brain\s+#urgent #review$/);
+    expect(lines[1]).not.toContain('#');
+  });
+
   it('renders type chars, sizes, dates, titles and link targets', () => {
     const out = long_render([
       item({ name: 'dir1', type: 'dir', size: 4096 }),

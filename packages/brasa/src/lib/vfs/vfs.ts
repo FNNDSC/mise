@@ -14,7 +14,7 @@ import { ambient_publish, ambient_hasListeners } from '../../core/ambient.js';
 import { ListingItem } from '@fnndsc/chili/models/listing.js';
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
-import { listCache_get, Result, Ok, Err, errorStack, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { listCache_get, Result, Ok, Err, errorStack, feedTags_byFeed, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { spinner } from '../spinner.js';
 import { error_stripDebugPrefix } from '../../builtins/utils.js';
 import { listingItemsFromVfs_make } from './listing.js';
@@ -281,9 +281,10 @@ export class VFS {
       return partial === '' ? envelope_ok('') : envelope_error('', undefined, partial);
     }
 
-    // Render based on options
+    // Render based on options. A long listing over feeds shows their tags:
+    // one map for the whole listing, never a read per feed.
     let rendered: string = options.long
-      ? `${long_render(result.value, { human: !!options.human })}\n`
+      ? `${long_render(await feedTags_annotate(result.value), { human: !!options.human })}\n`
       : `${grid_render(result.value, { oneColumn: !!options.oneColumn })}\n`;
 
     // Served stale: say so. The refresh is already running behind this
@@ -306,3 +307,29 @@ export class VFS {
  * Shared VFS singleton.
  */
 export const vfs: VFS = new VFS();
+
+/**
+ * Hangs each feed's tags on its row, for a long listing that holds feeds
+ * (`feed_N` rows). A listing with no feed in it reads nothing; a map that
+ * cannot be read leaves the rows as they were.
+ *
+ * @param items - The rows.
+ * @returns The rows, feeds carrying their tags.
+ */
+async function feedTags_annotate(items: ListingItem[]): Promise<ListingItem[]> {
+  const feedOf = (name: string): number | null => {
+    const match: RegExpMatchArray | null = name.match(/^feed_(\d+)$/);
+    return match === null ? null : Number(match[1]);
+  };
+  if (!items.some((item: ListingItem): boolean => feedOf(item.name) !== null)) return items;
+  const map: Result<Map<number, string[]>> = await feedTags_byFeed();
+  if (!map.ok) {
+    errorStack.stack_pop();
+    return items;
+  }
+  return items.map((item: ListingItem): ListingItem => {
+    const feedId: number | null = feedOf(item.name);
+    const tags: string[] | undefined = feedId === null ? undefined : map.value.get(feedId);
+    return tags === undefined ? item : { ...item, tags };
+  });
+}

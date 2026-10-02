@@ -60,7 +60,8 @@ import { IndexInstrument } from './indexInstrument.js';
 import { LaneInstrument } from './laneInstrument.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler } from './cycler.js';
-import { argusLine_run, DRAWER_CHORDS, focus_move, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
+import { argusLine_run, DRAWER_CHORDS, VERB_LINES, focus_move, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
+import { HelpPanel } from '../features/help/panel.js';
 
 /** Console zoom, exposed for the language (the bar carries no control). */
 let consoleZoom_set: (pane: string | null) => void = () => undefined;
@@ -2139,6 +2140,22 @@ async function surface_start(token: string): Promise<void> {
     };
   };
 
+  // The HELP pane: the keys and the verbs, as a listing.
+  const helpPanels: Map<string, HelpPanel> = new Map();
+  const helpInstance_build = (id: string): PaneInstance => {
+    const mount: HTMLElement = template_stamp('tpl-pane-help');
+    helpPanels.set(id, new HelpPanel(mount));
+    return {
+      id,
+      kind: 'help',
+      mount,
+      dispose: (): void => {
+        helpPanels.delete(id);
+        subjects.pane_leave(id);
+      },
+    };
+  };
+
   /** Asks the kernel for a file's tags, silently, and paints them on a tags pane. */
   const tags_ask = async (path: string): Promise<DicomTagsModel | null> => {
     try {
@@ -4008,6 +4025,29 @@ async function surface_start(token: string): Promise<void> {
    *
    * @returns The blocks, the one with most to say first.
    */
+  /**
+   * Opens the HELP pane beside the focused pane (the dashboard's HELP tile,
+   * the typed `help`); a HELP pane already on stage takes focus instead.
+   *
+   * @returns What happened, for the console.
+   */
+  const help_open = (): string => {
+    const already: string | undefined = [...helpPanels.keys()].find((id: string): boolean => layout.panes_shown().includes(id));
+    if (already !== undefined) {
+      layout.focus_set(already);
+      return 'help: on stage';
+    }
+    launcher_yield();
+    const host: string = layout.focused_get() ?? 'files';
+    const spawned: PaneInstance = instance_spawn('help');
+    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
+      paneInstance_dispose(spawned.id);
+      layout.mount_remove(spawned.id);
+      return 'help: could not open a pane';
+    }
+    birth_record(spawned.id, host, 'col', false);
+    return 'help: the keys and the verbs, as a pane (help keys, help verbs print them here)';
+  };
   const launcherTiles_build = async (): Promise<ReadonlyArray<LauncherTile>> => {
     const [roster, home]: [ExecuteOutcome, ExecuteOutcome] = await Promise.all([
       client.line_execute('proc feeds', { silent: true, observe: false }),
@@ -4103,9 +4143,16 @@ async function surface_start(token: string): Promise<void> {
       verb: 'SEE DESKTOPS',
       enter: (): void => { domain_enter('panes'); panesPanel.render(); layout.focus_set('panes'); },
     };
+    const help: LauncherTile = {
+      key: 'help', name: 'HELP', hue: '--butter', numeral: '',
+      figures: [{ text: `${DRAWER_CHORDS.length} KEYS` }, { text: `${VERB_LINES.length} VERBS` }],
+      rows: DRAWER_CHORDS.slice(0, 5).map((chord: DrawerChord): LauncherRow => ({ text: `${chord.key.padEnd(6)} ${chord.does}`, open: (): void => { help_open(); } })),
+      verb: 'OPEN THE KEYS',
+      enter: (): void => { help_open(); },
+    };
     // The block with the most to say takes the wide seat.
-    const rest: LauncherTile[] = [files, pacs, panes, universe];
-    return feeds.length >= entries.length ? [analyses, ...rest] : [files, analyses, pacs, panes, universe];
+    const rest: LauncherTile[] = [files, pacs, panes, universe, help];
+    return feeds.length >= entries.length ? [analyses, ...rest] : [files, analyses, pacs, panes, universe, help];
   };
 
   const launcherPanel: LauncherPanel = new LauncherPanel(launcherMount, {
@@ -4931,6 +4978,7 @@ async function surface_start(token: string): Promise<void> {
   paneFactory_register('view', viewInstance_build);
   paneFactory_register('image', imageInstance_build);
   paneFactory_register('tags', tagsInstance_build);
+  paneFactory_register('help', helpInstance_build);
   paneFactory_register('gather', gatherInstance_build);
   paneFactory_register('empty', (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-empty');
@@ -5066,6 +5114,7 @@ async function surface_start(token: string): Promise<void> {
     pane_move,
     pane_flip,
     pane_resize,
+    help_open,
     focus_last: (): string | null => { const back: string | null = layout.focus_last(); if (back !== null) sound_play('audio3'); return back === null ? null : `focused ${back}`; },
     paneRect_get: (id: string): DOMRect | null => {
       const leaf: HTMLElement | null = document.querySelector<HTMLElement>(`.layout-leaf[data-leaf="${id}"]`);
@@ -5317,11 +5366,12 @@ async function surface_start(token: string): Promise<void> {
     else palette_close();
   });
   const LANG_SUBJECT_WORDS: string[] = [
-    'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'header', 'console', 'back', 'desktop', 'argus',
+    'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'header', 'console', 'back', 'desktop', 'argus', 'help',
   ];
   const LANG_FOLLOWERS: Record<string, string[]> = {
     pane: ['split', 'zoom', 'close', 'bind', 'claim', 'focus', 'flip', 'resize'],
     resize: ['left', 'right', 'up', 'down'],
+    help: ['keys', 'verbs'],
     focus: ['left', 'right', 'up', 'down', 'last'],
     view: ['files', 'runs', 'pacs'],
     runs: ['enter', 'sort', 'filter'],

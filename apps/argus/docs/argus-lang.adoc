@@ -210,7 +210,17 @@ A desktop is the composition written *in this language*: a script of verbs with 
 
 === argus
 
-`argus verbs` prints the short table.
+`argus verbs` prints the short table; `argus keys` the prefix chords.
+
+=== help — the keys and the verbs
+
+[cols="2,3,3",options="header"]
+|===
+| Sentence | Lowers to | Notes
+| `help pane` | the HELP pane | Opens beside the focused pane (the dashboard's HELP tile does the same); already on stage, it takes focus. Bare `help` and `help <command>` are the session's.
+| `help keys` | the chord table, in the console | The same table as link:keys.adoc[docs/keys.adoc], generated from it.
+| `help verbs` | the verb table, in the console | `argus verbs`.
+|===
 
 == Completion vocabulary
 
@@ -219,7 +229,8 @@ Tab completes from this table (first word, then the follower of the previous wor
 [cols="1,4",options="header"]
 |===
 | After | Candidates
-| (start) | pane view runs node dag file pacs header console back desktop argus
+| (start) | pane view runs node dag file pacs header console back desktop argus help
+| help | pane keys verbs
 | pane | split zoom close bind claim focus flip resize
 | resize | left right up down
 | focus | left right up down last

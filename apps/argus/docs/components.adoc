@@ -329,3 +329,70 @@ A theme may set `--harvestgold` per `data-modality` on `.image-body` (the frame'
 * Do not fetch bytes anywhere but through `ImageSource`: the engine never talks to CUBE.
 * Do not draw a tool behaviour of your own: bind the library's, or say by name that the engine lacks it.
 * Do not swallow Esc in the field: it gives the keyboard back, one press, one level.
+
+== Help pane
+
+Source: `apps/argus/src/features/help/panel.ts` (the pane), over `console/argusLang.ts` (`DRAWER_CHORDS`, `VERB_LINES`: the tables it lists).
+
+Status: on stage since 2026-10-01. Opens from the dashboard's HELP tile and the typed `help pane`.
+
+=== Purpose
+
+The keys and the verbs where the panes are. The prefix chords (`DRAWER_CHORDS`) and the console's verb table (`VERB_LINES`) are owned by the console language; this pane is their projection on the stage — rows under caps, filterable, folding into N MORE like every listing, a drawer like any pane — so a newcomer reads them without leaving the surface, and nothing about a key is written by hand twice (`keys-are-documented-from-one-table`). `help keys` and `help verbs` print the same tables in the console; `docs/keys.adoc` is generated from the chord table and lint-held to it.
+
+=== Anatomy
+
+image::images/help-pane-anatomy.svg[Help pane anatomy,1180]
+
+[cols="1,2,3",options="header"]
+|===
+| Part | Selector | What it is
+
+| bar | `.pane-handle` | `.pane-title` `HELP`; `.pane-state` the listing's state line (`FILTERED n/m` when filtered).
+| frame | `.mode-frame` | `.help-filter`, the façade's filter pill.
+| field | `.help-panel` (the mount) › `.listing-field` | Two blocks, each led by a `.help-block-head` line saying how to use it: `keys` (rows `.help-row.help-<topic>`, the topic one of pane, focus, binding, claim, stage, console) and `verbs` (rows `.help-row.help-verb`). Each row: `.help-key` the key or the verb's subject, `.help-does` what it does. No row activates; the rows are a readout.
+|===
+
+=== Declaration
+
+[source,ts]
+----
+new Listing<HelpRow>({
+  mount: panel,                               // .help-panel
+  traits: [KEY · VERB, DOES],                 // two columns; the second takes the expanse
+  key: (row) => row.key,                      // k:<key> or v:<index>
+  chrome: { root: mount, prefix: 'help' },    // binds .pane-state and .help-filter
+  caps: 'root',
+  activatable: () => false,                   // a readout
+  row: { className: (row) => `help-row help-${row.topic}` },
+});
+listing.rows_set([{ key: 'keys', header, rows: chords }, { key: 'verbs', header, rows: verbs }], { field: 'help' });
+----
+
+=== States
+
+[cols="1,2,3",options="header"]
+|===
+| State | Where | Meaning
+
+| listed | the field | Both blocks, every row; the bar carries the listing's own state line.
+| filtered | `.help-filter`, the bar | The filter pill lit and the bar reading `FILTERED n/m`: the façade's filter over both blocks.
+| on stage already | the bar | A second `help pane` (or HELP tile press) focuses the pane that is there rather than opening another; the console answers `help: on stage`.
+|===
+
+=== Laws
+
+* `keys-are-documented-from-one-table` — the rows are `DRAWER_CHORDS` and `VERB_LINES`, never a copy.
+* `a-drawer-verb-has-a-chord` — the chords it lists are the ones the drawer answers.
+* `a-field-says-it-holds-more` — the field wears the chip.
+* `surface-never-shadows-the-session` — bare `help` is the session's; the surface claims `pane`, `keys`, `verbs`.
+
+=== Stylesheet
+
+`.help-body` (the tags body's shape), `.help-panel`, `.help-key` (mono, butter), `.help-does` (harvest gold; `.help-verb` rows in daybreak), `.help-block-head`.
+
+=== Do not
+
+* Do not write a key or a verb into this pane by hand: add it to the table in the console language and it appears here, in the drawer's titles, in `argus keys` and in `docs/keys.adoc`.
+* Do not make a row act: the pane is a reference, and the drawer's capsules are where a chord is pressed.
+* Do not take bare `help` from the session: the kernel's `help` answers it.

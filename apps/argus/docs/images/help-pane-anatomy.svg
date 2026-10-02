@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="520" viewBox="0 0 1180 520" font-family="Antonio, 'Share Tech Mono', monospace">
+  <title>Help pane anatomy</title>
+  <rect width="1180" height="520" fill="#000"/>
+  <!-- the bar -->
+  <rect x="20" y="20" width="1140" height="34" rx="17" fill="#55aaff"/>
+  <text x="44" y="43" font-size="18" fill="#000" font-weight="bold">HELP</text>
+  <text x="1020" y="43" font-size="13" fill="#000" font-style="italic">FILTERED 12/61</text>
+  <text x="44" y="78" font-size="12" fill="#ffcc99">.pane-handle · .pane-title · .pane-state (the listing's state line)</text>
+  <!-- the frame -->
+  <rect x="20" y="92" width="1140" height="30" rx="4" fill="none" stroke="#ffcc99" stroke-dasharray="4 3"/>
+  <rect x="34" y="97" width="92" height="20" rx="10" fill="#ff9966"/>
+  <text x="46" y="111" font-size="11" fill="#000">FILTER OFF</text>
+  <text x="140" y="111" font-size="12" fill="#ffcc99">.mode-frame · .help-filter (the façade's filter pill)</text>
+  <!-- caps -->
+  <rect x="20" y="134" width="1140" height="22" fill="#cc99cc"/>
+  <text x="34" y="150" font-size="12" fill="#000" font-weight="bold">KEY · VERB</text>
+  <text x="214" y="150" font-size="12" fill="#000" font-weight="bold">DOES</text>
+  <text x="900" y="150" font-size="11" fill="#000">.listing-caps (sortable)</text>
+  <!-- block head: keys -->
+  <text x="34" y="182" font-size="12" fill="#ffcc99">KEYS — Ctrl-B opens the focused pane's drawer; then one key presses one of its verbs</text>
+  <text x="900" y="182" font-size="11" fill="#ff9966">.help-block-head (ListingBlock.header)</text>
+  <!-- rows -->
+  <g font-size="13">
+    <text x="34" y="208" fill="#ffcc99" font-family="'Share Tech Mono', monospace">%</text>
+    <text x="214" y="208" fill="#ff9966">split right (tmux)</text>
+    <text x="34" y="232" fill="#ffcc99" font-family="'Share Tech Mono', monospace">H</text>
+    <text x="214" y="232" fill="#ff9966">move this pane left</text>
+    <text x="34" y="256" fill="#ffcc99" font-family="'Share Tech Mono', monospace">;</text>
+    <text x="214" y="256" fill="#ff9966">focus the last pane (tmux)</text>
+  </g>
+  <text x="900" y="232" font-size="11" fill="#ffcc99">.listing-row.help-row.help-&lt;topic&gt;</text>
+  <text x="900" y="250" font-size="11" fill="#ffcc99">.help-key · .help-does</text>
+  <!-- block head: verbs -->
+  <text x="34" y="300" font-size="12" fill="#ffcc99">VERBS — the console language; the long form is docs/argus-lang.adoc</text>
+  <g font-size="13">
+    <text x="34" y="326" fill="#ffcc99" font-family="'Share Tech Mono', monospace">pane</text>
+    <text x="214" y="326" fill="#55aaff">[@id|%n] split left|right|above|below · zoom · close · bind unlinked|fs|viewer</text>
+    <text x="34" y="350" fill="#ffcc99" font-family="'Share Tech Mono', monospace">image</text>
+    <text x="214" y="350" fill="#55aaff">[@id] [--force] &lt;path&gt; · layout single|mpr|3d|slab · slice &lt;n&gt; …</text>
+  </g>
+  <text x="900" y="340" font-size="11" fill="#ffcc99">.help-row.help-verb</text>
+  <!-- the chip -->
+  <rect x="540" y="420" width="100" height="24" rx="12" fill="#ffcc99"/>
+  <text x="556" y="437" font-size="12" fill="#000">▼ 41 MORE</text>
+  <text x="660" y="437" font-size="11" fill="#ffcc99">.more-chip (a-field-says-it-holds-more)</text>
+  <!-- the field label -->
+  <rect x="20" y="166" width="1140" height="300" fill="none" stroke="#55aaff" stroke-dasharray="6 4"/>
+  <text x="34" y="490" font-size="12" fill="#55aaff">.help-body › .help-panel (the mount) › .listing-field — two blocks: keys, verbs; no row activates</text>
+</svg>

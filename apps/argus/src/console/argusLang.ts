@@ -35,6 +35,8 @@ export interface ArgusHost {
   pane_resize(paneId: string, dir: 'left' | 'right' | 'up' | 'down', step: number): string;
   /** Focuses the pane focused before this one; answers it, or null when none. */
   focus_last(): string | null;
+  /** Opens the HELP pane (the keys and the verbs) on the stage; answers what happened. */
+  help_open(): string;
   /** A shown pane's bounding rect (for spatial focus), or null. */
   paneRect_get(id: string): DOMRect | null;
   /** A pane's mount element (drawer, mode frame, chooser live inside), or null. */
@@ -79,7 +81,7 @@ interface Sentence {
 
 /** Subjects this language owns; all other lines belong to the session. */
 const SUBJECTS: ReadonlySet<string> = new Set([
-  'pane', 'view', 'runs', 'node', 'dag', 'universe', 'file', 'pacs', 'image', 'tags', 'header', 'console', 'back', 'desktop', 'dashboard', 'launcher', 'attach', 'argus',
+  'pane', 'view', 'runs', 'node', 'dag', 'universe', 'file', 'pacs', 'image', 'tags', 'header', 'console', 'back', 'desktop', 'dashboard', 'help', 'launcher', 'attach', 'argus',
 ]);
 
 /**
@@ -99,6 +101,9 @@ const IMAGE_SURFACE_VERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'se
 
 const SHARED_SUBJECTS: Readonly<Record<string, ReadonlySet<string>>> = {
   pacs: new Set(['sort', 'filter']),
+  // `help` is the kernel's: bare `help` and `help <command>` are the session's
+  // answer; the surface claims only its own three words.
+  help: new Set(['pane', 'keys', 'verbs']),
   // `tags` is the kernel's tag resource; the surface claims only the two
   // verbs its tags pane has and the session lacks.
   tags: new Set(['redact', 'filter']),
@@ -230,6 +235,8 @@ const SPLIT_PLACES: Readonly<Record<string, { split: string; place: string }>> =
 export interface DrawerChord {
   /** The key, as KeyboardEvent.key. */
   key: string;
+  /** The group the key belongs to: pane, focus, binding, claim, stage, console. */
+  topic: string;
   /** The capsule it presses, as a selector under the open drawer; null when the host acts (focus, help). */
   selector: string | null;
   /** What it does, for the table. */
@@ -239,37 +246,37 @@ export interface DrawerChord {
 }
 
 export const DRAWER_CHORDS: ReadonlyArray<DrawerChord> = [
-  { key: '%', selector: '[data-split="col"][data-place="after"]', does: 'split right (tmux)' },
-  { key: '"', selector: '[data-split="row"][data-place="after"]', does: 'split below (tmux)' },
-  { key: 'h', selector: '[data-split="col"][data-place="before"]', does: 'split left' },
-  { key: 'j', selector: '[data-split="row"][data-place="after"]', does: 'split below' },
-  { key: 'k', selector: '[data-split="row"][data-place="before"]', does: 'split above' },
-  { key: 'l', selector: '[data-split="col"][data-place="after"]', does: 'split right' },
-  { key: 'H', selector: '[data-split="col"][data-place="before"]', does: 'move this pane left', move: true },
-  { key: 'J', selector: '[data-split="row"][data-place="after"]', does: 'move this pane below', move: true },
-  { key: 'K', selector: '[data-split="row"][data-place="before"]', does: 'move this pane above', move: true },
-  { key: 'L', selector: '[data-split="col"][data-place="after"]', does: 'move this pane right', move: true },
-  { key: 'm', selector: '.drawer-mode[data-mode="move"]', does: 'arm MOVE (then a direction)' },
-  { key: 'z', selector: '.drawer-zoom', does: 'zoom (tmux)' },
-  { key: 'x', selector: '.drawer-close', does: 'close (tmux)' },
-  { key: 'u', selector: '.drawer-bind[data-bind="unlinked"]', does: 'the next split is unlinked' },
-  { key: 'f', selector: '.drawer-bind[data-bind="fs"]', does: 'the next split is a linked filesystem' },
-  { key: 'v', selector: '.drawer-bind[data-bind="viewer"]', does: 'the next split is a linked viewer' },
-  { key: '1', selector: '.empty-go-files', does: 'claim an empty pane as FILES' },
-  { key: '2', selector: '.empty-go-dag', does: 'claim an empty pane as RUNS' },
-  { key: '3', selector: '.empty-go-pacs', does: 'claim an empty pane as PACS' },
-  { key: 'o', selector: null, does: 'focus the next pane (tmux)' },
-  { key: ';', selector: null, does: 'focus the last pane (tmux)' },
-  { key: 'q', selector: null, does: 'show every pane\'s @id on its bar (tmux)' },
-  { key: 'Space', selector: null, does: 'flip this pane\'s split: beside becomes above (tmux next layout)' },
-  { key: '!', selector: null, does: 'break this pane out: alone on stage, the rest a PANES card (tmux)' },
-  { key: 'Ctrl-←↑↓→', selector: null, does: 'move the boundary beside this pane a step (tmux)' },
-  { key: 'w', selector: null, does: 'PANES, the desktops (tmux window chooser)' },
-  { key: '[', selector: null, does: 'the console\'s scrollback takes the keys (tmux)' },
-  { key: 'O', selector: null, does: 'focus the previous pane' },
-  { key: '←↑↓→', selector: null, does: 'focus the pane in that direction (tmux)' },
-  { key: ':', selector: null, does: 'the command line (tmux)' },
-  { key: '?', selector: null, does: 'this table' },
+  { key: '%', topic: 'pane', selector: '[data-split="col"][data-place="after"]', does: 'split right (tmux)' },
+  { key: '"', topic: 'pane', selector: '[data-split="row"][data-place="after"]', does: 'split below (tmux)' },
+  { key: 'h', topic: 'pane', selector: '[data-split="col"][data-place="before"]', does: 'split left' },
+  { key: 'j', topic: 'pane', selector: '[data-split="row"][data-place="after"]', does: 'split below' },
+  { key: 'k', topic: 'pane', selector: '[data-split="row"][data-place="before"]', does: 'split above' },
+  { key: 'l', topic: 'pane', selector: '[data-split="col"][data-place="after"]', does: 'split right' },
+  { key: 'H', topic: 'pane', selector: '[data-split="col"][data-place="before"]', does: 'move this pane left', move: true },
+  { key: 'J', topic: 'pane', selector: '[data-split="row"][data-place="after"]', does: 'move this pane below', move: true },
+  { key: 'K', topic: 'pane', selector: '[data-split="row"][data-place="before"]', does: 'move this pane above', move: true },
+  { key: 'L', topic: 'pane', selector: '[data-split="col"][data-place="after"]', does: 'move this pane right', move: true },
+  { key: 'm', topic: 'pane', selector: '.drawer-mode[data-mode="move"]', does: 'arm MOVE (then a direction)' },
+  { key: 'z', topic: 'pane', selector: '.drawer-zoom', does: 'zoom (tmux)' },
+  { key: 'x', topic: 'pane', selector: '.drawer-close', does: 'close (tmux)' },
+  { key: 'u', topic: 'binding', selector: '.drawer-bind[data-bind="unlinked"]', does: 'the next split is unlinked' },
+  { key: 'f', topic: 'binding', selector: '.drawer-bind[data-bind="fs"]', does: 'the next split is a linked filesystem' },
+  { key: 'v', topic: 'binding', selector: '.drawer-bind[data-bind="viewer"]', does: 'the next split is a linked viewer' },
+  { key: '1', topic: 'claim', selector: '.empty-go-files', does: 'claim an empty pane as FILES' },
+  { key: '2', topic: 'claim', selector: '.empty-go-dag', does: 'claim an empty pane as RUNS' },
+  { key: '3', topic: 'claim', selector: '.empty-go-pacs', does: 'claim an empty pane as PACS' },
+  { key: 'o', topic: 'focus', selector: null, does: 'focus the next pane (tmux)' },
+  { key: ';', topic: 'focus', selector: null, does: 'focus the last pane (tmux)' },
+  { key: 'q', topic: 'focus', selector: null, does: 'show every pane\'s @id on its bar (tmux)' },
+  { key: 'Space', topic: 'pane', selector: null, does: 'flip this pane\'s split: beside becomes above (tmux next layout)' },
+  { key: '!', topic: 'pane', selector: null, does: 'break this pane out: alone on stage, the rest a PANES card (tmux)' },
+  { key: 'Ctrl-←↑↓→', topic: 'pane', selector: null, does: 'move the boundary beside this pane a step (tmux)' },
+  { key: 'w', topic: 'stage', selector: null, does: 'PANES, the desktops (tmux window chooser)' },
+  { key: '[', topic: 'console', selector: null, does: 'the console\'s scrollback takes the keys (tmux)' },
+  { key: 'O', topic: 'focus', selector: null, does: 'focus the previous pane' },
+  { key: '←↑↓→', topic: 'focus', selector: null, does: 'focus the pane in that direction (tmux)' },
+  { key: ':', topic: 'console', selector: null, does: 'the command line (tmux)' },
+  { key: '?', topic: 'console', selector: null, does: 'this table' },
 ];
 
 /** The chord table, as the console prints it. */
@@ -279,7 +286,8 @@ export const KEYS_HELP: string = [
   '  Tab    walks the verbs; Enter fires; Esc closes the drawer',
 ].join('\n');
 
-const VERBS_HELP: string = [
+/** The verb table, one line per subject; `argus verbs` prints it, the HELP pane lists it. */
+export const VERB_LINES: ReadonlyArray<string> = [
   'pane [@id|%n] split left|right|above|below · zoom · close · bind unlinked|fs|viewer',
   'pane [@id|%n] claim files|runs|pacs · focus left|right|up|down|@id|last · flip · resize left|right|up|down [percent]',
   'view files|runs|pacs        (the gutter givens, workspace scope)',
@@ -297,7 +305,10 @@ const VERBS_HELP: string = [
   'attach [--reveal]           (how to reach THIS session from a terminal or another browser)',
   'argus verbs                 (this table; the long form is docs/argus-lang.adoc)',
   'argus keys                  (the prefix chords: one key, one drawer verb)',
-].join('\n');
+  'help pane|keys|verbs        (the HELP pane on the stage; keys and verbs print the tables here; bare help is the session\'s)',
+];
+
+const VERBS_HELP: string = VERB_LINES.join('\n');
 
 /**
  * How to reach this session from somewhere else, as lines that can be run.
@@ -470,6 +481,13 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     return `runs: unknown verb '${verb}' (enter)`;
   }
 
+  if (subject === 'help') {
+    // Typed, the table answers here; bare, the HELP pane opens on the stage.
+    if (verb === 'keys') return KEYS_HELP;
+    if (verb === 'verbs') return VERBS_HELP;
+    if (verb === 'pane') return host.help_open();
+    return 'help pane|keys|verbs';
+  }
   if (subject === 'desktop') {
     return desktop_handle(host, verb, words[1]);
   }

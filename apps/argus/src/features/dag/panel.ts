@@ -572,26 +572,41 @@ export class DagPanel {
       return;
     }
     if (envelope.model?.kind === DAG_MODEL_KINDS.feedIndexing) {
-      // The session answered at once: the feed's topology is on its way.
-      // The pane holds its LOADING posture, names the walk, and opens the
-      // feed's watch, which carries the graph in when the walk lands.
-      const indexing = feedIndexingModelSchema.safeParse(envelope.model.data);
-      if (!indexing.success) return;
-      if (this.requestedFeedId === indexing.data.feedId) {
-        this.requestedFeedId = null;
-      } else if (this.pendingFeedId !== indexing.data.feedId) {
-        // The operator asked for this one by hand (the console, or another
-        // surface): it is the feed on its way, so pin it as a graph would be.
-        this.pinnedFeedId = indexing.data.feedId;
-        this.pendingFeedId = indexing.data.feedId;
-      }
-      this.feedIndexing_show(indexing.data);
+      this.feedIndexing_take(envelope.model.data);
       return;
     }
-    if (envelope.model?.kind !== DAG_MODEL_KINDS.feedDag) {
-      return;
+    if (envelope.model?.kind === DAG_MODEL_KINDS.feedDag) this.feedDag_take(envelope.model.data);
+  }
+
+  /**
+   * The session answered at once: the feed's topology is on its way. The
+   * pane holds its LOADING posture, names the walk, and opens the feed's
+   * watch, which carries the graph in when the walk lands.
+   *
+   * @param data - The model's data, unparsed.
+   */
+  private feedIndexing_take(data: unknown): void {
+    const indexing = feedIndexingModelSchema.safeParse(data);
+    if (!indexing.success) return;
+    if (this.requestedFeedId === indexing.data.feedId) {
+      this.requestedFeedId = null;
+    } else if (this.pendingFeedId !== indexing.data.feedId) {
+      // The operator asked for this one by hand (the console, or another
+      // surface): it is the feed on its way, so pin it as a graph would be.
+      this.pinnedFeedId = indexing.data.feedId;
+      this.pendingFeedId = indexing.data.feedId;
     }
-    const parsed = feedDagModelSchema.safeParse(envelope.model.data);
+    this.feedIndexing_show(indexing.data);
+  }
+
+  /**
+   * A feed's graph arrived: it takes the whole pane, patches in place when
+   * it is the feed on stage in the same shape, and opens the feed's watch.
+   *
+   * @param data - The model's data, unparsed.
+   */
+  private feedDag_take(data: unknown): void {
+    const parsed = feedDagModelSchema.safeParse(data);
     if (!parsed.success) {
       return;
     }

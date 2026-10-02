@@ -298,29 +298,29 @@ export class UniversePanel {
       // feed climbs out, as a double tap went in.
       gesture_end: (): void => this.pinch_leave(),
     });
-    mount.backPill?.addEventListener('click', (): void => this.ascend());
-    mount.openPill?.addEventListener('click', (): void => {
-      if (this.inside !== null) this.handlers.feed_open?.(this.inside.feedId);
-    });
-    // Esc climbs out, one press, one level — the same key that leaves a
-    // node overlay in the DAG pane.
-    this.escape_listen = (event: KeyboardEvent): void => {
-      // A replay is a level of its own: Esc ends it, the space shown whole.
-      if (event.key === 'Escape' && this.scene.replay_state() !== null && (this.pane === null || this.pane.offsetParent !== null)) {
-        this.replay_end();
-        return;
-      }
-      // Inside a node (the overlay up) Esc is the overlay's: it flies back out.
-      if (event.key !== 'Escape' || (this.inside === null && this.cluster === null) || this.scene.moving() || this.scene.holding_get()) return;
-      if (this.pane !== null && this.pane.offsetParent === null) return;
-      this.ascend();
-    };
-    window.addEventListener('keydown', this.escape_listen);
     // A taxonomy is a molecule, not a rank order: gravity pulls the
     // clusters into a crown, and a bounded reach lets a lone molecule hug
     // itself rather than spread across the field as dots.
     this.scene.strategy_set('molecule');
     this.scene.physics_set(this.physics);
+    this.frame_wire(mount);
+    this.escape_listen = this.escape_wire();
+    this.scene.draw_set(this.drawMode);
+    this.canvas.style.display = 'none';
+    this.title_paint();
+  }
+
+  /**
+   * Wires the frame's pills: BACK and OPEN, projection, refresh, replay,
+   * scale, view, gravity, density, draw, captions and arrangement.
+   *
+   * @param mount - The pane's mount points.
+   */
+  private frame_wire(mount: UniversePanelMount): void {
+    mount.backPill?.addEventListener('click', (): void => this.ascend());
+    mount.openPill?.addEventListener('click', (): void => {
+      if (this.inside !== null) this.handlers.feed_open?.(this.inside.feedId);
+    });
     mount.projectionPill?.addEventListener('click', (): void => {
       const next: '3d' | '2d' = this.scene.projection_get() === '3d' ? '2d' : '3d';
       this.scene.projection_set(next);
@@ -358,9 +358,27 @@ export class UniversePanel {
       const cycle: Arrangement[] = ['galaxy', 'spokes', 'clumps', 'constellations', 'data', 'accretion'];
       this.bar_note(this.arrangement_set(cycle[(cycle.indexOf(this.arrangement) + 1) % cycle.length] as Arrangement));
     });
-    this.scene.draw_set(this.drawMode);
-    this.canvas.style.display = 'none';
-    this.title_paint();
+  }
+
+  /**
+   * Esc climbs out, one press, one level: a replay first, then a feed or a cluster.
+   *
+   * @returns The listener, for dispose to remove.
+   */
+  private escape_wire(): (event: KeyboardEvent) => void {
+    const listen = (event: KeyboardEvent): void => {
+      // A replay is a level of its own: Esc ends it, the space shown whole.
+      if (event.key === 'Escape' && this.scene.replay_state() !== null && (this.pane === null || this.pane.offsetParent !== null)) {
+        this.replay_end();
+        return;
+      }
+      // Inside a node (the overlay up) Esc is the overlay's: it flies back out.
+      if (event.key !== 'Escape' || (this.inside === null && this.cluster === null) || this.scene.moving() || this.scene.holding_get()) return;
+      if (this.pane !== null && this.pane.offsetParent === null) return;
+      this.ascend();
+    };
+    window.addEventListener('keydown', listen);
+    return listen;
   }
 
   /**
@@ -464,22 +482,62 @@ export class UniversePanel {
    * @param args - Its words.
    * @returns What happened, for the console.
    */
+  /** The verbs the console addresses the universe with, by name. */
+  private verbs_get(): Readonly<Record<string, (args: string[]) => string>> {
+    return {
+      enter: (args: string[]): string => this.verb_enter(args),
+      node: (args: string[]): string => this.verb_node(args),
+      state: (): string => this.verb_state(),
+      plugin: (args: string[]): string => this.verb_plugin(args),
+      replay: (args: string[]): string => this.verb_replay(args),
+      layout: (args: string[]): string => this.verb_layout(args),
+      draw: (args: string[]): string => this.verb_draw(args),
+      regrow: (): string => this.verb_regrow(),
+      captions: (args: string[]): string => this.verb_captions(args),
+      density: (args: string[]): string => this.verb_density(args),
+      physics: (args: string[]): string => this.verb_physics(args),
+      view: (args: string[]): string => this.verb_view(args),
+      cluster: (args: string[]): string => this.verb_cluster(args),
+      back: (): string => this.verb_back(),
+      open: (): string => this.verb_open(),
+    };
+  }
+
+  /**
+   * Runs a typed `universe` verb: each is its own method, found by name;
+   * a verb that moves the camera waits while a flight is under way.
+   *
+   * @param verb - The verb.
+   * @param args - Its words.
+   * @returns What happened, in words.
+   */
   public control(verb: string, args: string[]): string {
-    if (verb === 'enter') {
+    if (this.scene.moving() && (verb === 'cluster' || verb === 'back')) return 'universe: still moving; ask again';
+    const run: ((args: string[]) => string) | undefined = this.verbs_get()[verb];
+    if (run === undefined) return 'universe enter <feed>|node <instance>|cluster <feed>|view feeds|shapes|density shape|census|draw stars|spheres|captions on|off|layout galaxy|spokes|clumps|constellations|data|accretion|regrow|plugin <name>|off|replay [speed]|pause|stop|at <date>|state|physics <term> on|off|reset|back|open';
+    return run(args);
+  }
+
+  /** `universe enter`. */
+  private verb_enter(args: string[]): string {
       const feedId: number = parseInt(args[0] ?? '', 10);
       if (!Number.isFinite(feedId)) return 'universe enter <feed id>';
       if (this.landed.get(feedId) === undefined) return `universe enter: feed ${feedId} has not landed here`;
       if (this.inside !== null) return `universe enter: already inside feed ${this.inside.feedId}; universe back first`;
       this.descend(feedId);
       return `entering feed ${feedId}`;
-    }
-    if (verb === 'node') {
+  }
+
+  /** `universe node`. */
+  private verb_node(args: string[]): string {
       const instanceID: number = parseInt(args[0] ?? '', 10);
       if (!Number.isFinite(instanceID)) return 'universe node <instance id>: fly into the entered feed\'s node that hosts it';
       if (this.inside === null) return 'universe node: not inside a feed (universe enter <feed> first)';
       return this.node_flyTo(instanceID) ? `flying into instance ${instanceID}` : `universe node: no node of feed ${this.inside.feedId} hosts instance ${instanceID}`;
-    }
-    if (verb === 'state') {
+  }
+
+  /** `universe state`. */
+  private verb_state(): string {
       // A surface can be asked what it holds: the draw, the kept choices,
       // and whether the entered feed's nodes are solid or stars.
       const scene: Record<string, unknown> = this.scene.state_get();
@@ -496,8 +554,10 @@ export class UniversePanel {
         `session layout: ${(() => { const kept = this.sessionPlaces.get(this.sessionLayoutName_of(this.arrangement)); return kept === undefined ? 'not asked' : kept === null ? 'none kept' : `${kept} places kept`; })()}`,
         `replay: ${(() => { const r = this.scene.replay_state(); return r === null ? 'none' : `${r.playing ? 'playing' : 'paused'} at ${new Date(r.at).toISOString().slice(0, 10)} of ${new Date(r.span[0]).toISOString().slice(0, 10)}..${new Date(r.span[1]).toISOString().slice(0, 10)}`; })()}`,
       ].join('\n');
-    }
-    if (verb === 'plugin') {
+  }
+
+  /** `universe plugin`. */
+  private verb_plugin(args: string[]): string {
       const name: string = args[0] ?? '';
       if (name === '' ) return 'universe plugin <name> | off';
       if (this.arrangement !== 'constellations' || this.inside !== null || this.cluster !== null) return 'universe plugin: the CONSTELLATIONS layout only (universe layout constellations)';
@@ -505,8 +565,10 @@ export class UniversePanel {
       if (!this.landed.all().some((feed: LandedFeed): boolean => feed.groups.some((group): boolean => group.plugin === name))) return `universe plugin: no feed here ran ${name}`;
       this.plugin_light(name);
       return pluginTip_of(`plugin:${name}`, this.landed) ?? name;
-    }
-    if (verb === 'replay') {
+  }
+
+  /** `universe replay`. */
+  private verb_replay(args: string[]): string {
       const word: string = (args[0] ?? '').toLowerCase();
       if (word === 'stop') {
         if (this.scene.replay_state() === null) return 'universe replay: none is running';
@@ -536,18 +598,24 @@ export class UniversePanel {
         return `replaying at ×${speed}`;
       }
       return this.replay_start(speed);
-    }
-    if (verb === 'layout') {
+  }
+
+  /** `universe layout`. */
+  private verb_layout(args: string[]): string {
       const wanted: string = (args[0] ?? '').toLowerCase();
       if (wanted !== 'galaxy' && wanted !== 'spokes' && wanted !== 'clumps' && wanted !== 'constellations' && wanted !== 'data' && wanted !== 'accretion') return 'universe layout galaxy|spokes|clumps|constellations|data|accretion';
       return this.arrangement_set(wanted);
-    }
-    if (verb === 'draw') {
+  }
+
+  /** `universe draw`. */
+  private verb_draw(args: string[]): string {
       const wanted: string = (args[0] ?? '').toLowerCase();
       if (wanted !== 'stars' && wanted !== 'spheres') return 'universe draw stars|spheres';
       return this.draw_set(wanted);
-    }
-    if (verb === 'regrow') {
+  }
+
+  /** `universe regrow`. */
+  private verb_regrow(): string {
       // A coral keeps what has grown, and a removed feed leaves its gap:
       // regrowing forgets the kept places and grows the space afresh.
       if (this.arrangement !== 'accretion' || this.inside !== null || this.cluster !== null) return 'universe regrow: the ACCRETION layout only (universe layout accretion)';
@@ -556,51 +624,62 @@ export class UniversePanel {
       try { if (key !== null) this.store?.setItem(key, '{}'); } catch { /* a refused store forgets nothing; the space still regrows */ }
       this.paint(true, 'full');
       return 'the space regrown from its first feed';
-    }
-    if (verb === 'captions') {
+  }
+
+  /** `universe captions`. */
+  private verb_captions(args: string[]): string {
       const wanted: string = (args[0] ?? '').toLowerCase();
       if (wanted !== 'on' && wanted !== 'off') return 'universe captions on|off';
       return this.captions_set(wanted === 'on');
-    }
-    if (verb === 'density') {
+  }
+
+  /** `universe density`. */
+  private verb_density(args: string[]): string {
       const wanted: string = (args[0] ?? '').toLowerCase();
       if (wanted !== 'shape' && wanted !== 'census') return 'universe density shape|census';
       return this.density_set(wanted);
-    }
-    if (verb === 'physics') {
+  }
+
+  /** `universe physics`. */
+  private verb_physics(args: string[]): string {
       const term: string = (args[0] ?? '').toLowerCase();
       if (term === 'reset') return this.physics_reset();
       if (!['charge', 'link', 'collide', 'gravity'].includes(term)) return 'universe physics charge|link|collide|gravity [on|off] | reset';
       const on: boolean = (args[1] ?? 'on').toLowerCase() !== 'off';
       return this.physics_set(term as keyof PhysicsTerms, on);
-    }
-    if (verb === 'view') {
+  }
+
+  /** `universe view`. */
+  private verb_view(args: string[]): string {
       const wanted: string = (args[0] ?? '').toLowerCase();
       if (wanted !== 'feeds' && wanted !== 'shapes') return 'universe view feeds|shapes';
       if (this.inside !== null || this.cluster !== null) return 'universe view: climb out first (universe back)';
       this.view_set(wanted);
       return wanted === 'feeds' ? 'every feed its own molecule' : 'the shapes folded, one molecule each';
-    }
-    if (this.scene.moving() && (verb === 'enter' || verb === 'cluster' || verb === 'back')) return 'universe: still moving; ask again';
-    if (verb === 'cluster') {
+  }
+
+  /** `universe cluster`. */
+  private verb_cluster(args: string[]): string {
       const feedId: number = parseInt(args[0] ?? '', 10);
       const feed: LandedFeed | undefined = Number.isFinite(feedId) ? this.landed.get(feedId) : undefined;
       if (feed === undefined) return 'universe cluster <feed id>: the cluster of a feed that landed here';
       if (this.inside !== null) return `universe cluster: inside feed ${this.inside.feedId}; universe back first`;
       this.cluster_enter(shape_of(feed));
       return `viewing the cluster of feed ${feedId}: ${shapeWords_of(shape_of(feed))}`;
-    }
-    if (verb === 'back') {
+  }
+
+  /** `universe back`. */
+  private verb_back(): string {
       if (this.inside === null && this.cluster === null) return 'universe back: not inside a feed or a cluster';
       this.ascend();
       return 'climbing out';
-    }
-    if (verb === 'open') {
+  }
+
+  /** `universe open`. */
+  private verb_open(): string {
       if (this.inside === null) return 'universe open: not inside a feed';
       this.handlers.feed_open?.(this.inside.feedId);
       return `opening feed ${this.inside.feedId}`;
-    }
-    return 'universe enter <feed>|node <instance>|cluster <feed>|view feeds|shapes|density shape|census|draw stars|spheres|captions on|off|layout galaxy|spokes|clumps|constellations|data|accretion|regrow|plugin <name>|off|replay [speed]|pause|stop|at <date>|state|physics <term> on|off|reset|back|open';
   }
 
   /**

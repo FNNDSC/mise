@@ -115,3 +115,125 @@ export function paneInstance_dispose(id: string): void {
   instance.dispose?.();
   instance.mount.remove();
 }
+
+/**
+ * Every panel controller a pane kind stands on, by the roster key it is
+ * filed under. A files browser and a catalogue are both a `FilesPanel`, so
+ * both file under `files`; the key is the controller's type, not the pane's
+ * kind.
+ */
+export interface PanelKinds {
+  files: import('../features/files/panel.js').FilesPanel;
+  dag: import('../features/dag/panel.js').DagPanel;
+  universe: import('../features/universe/panel.js').UniversePanel;
+  gather: import('../features/gather/panel.js').GatherPanel;
+  image: import('../features/image/panel.js').ImagePanel;
+  tags: import('../features/tags/panel.js').TagsPanel;
+  view: import('../features/view/panel.js').ViewerPanel;
+  help: import('../features/help/panel.js').HelpPanel;
+}
+
+/** A roster key: which controller type a panel is. */
+export type PanelKind = keyof PanelKinds;
+
+/**
+ * The live panel controllers, one roster for every kind: filed by pane id
+ * when a pane is built, struck when it is disposed, read by kind for
+ * routing (a progress message to its DAG, a prompt context to every files
+ * browser). Eight maps of one shape each used to stand where this does.
+ */
+export class PanelRoster {
+  private readonly byId: Map<string, { kind: PanelKind; panel: PanelKinds[PanelKind] }> = new Map();
+
+  /**
+   * Files a panel under its pane id.
+   *
+   * @param kind - The controller's kind.
+   * @param id - The pane id.
+   * @param panel - The controller.
+   */
+  public set<K extends PanelKind>(kind: K, id: string, panel: PanelKinds[K]): void {
+    this.byId.set(id, { kind, panel });
+  }
+
+  /**
+   * The panel of a kind filed under a pane id.
+   *
+   * @param kind - The controller's kind.
+   * @param id - The pane id.
+   * @returns The controller, or undefined when none of that kind is filed there.
+   */
+  public get<K extends PanelKind>(kind: K, id: string): PanelKinds[K] | undefined {
+    const entry = this.byId.get(id);
+    return entry !== undefined && entry.kind === kind ? (entry.panel as PanelKinds[K]) : undefined;
+  }
+
+  /**
+   * Whether a panel of a kind is filed under a pane id.
+   *
+   * @param kind - The controller's kind.
+   * @param id - The pane id.
+   * @returns True when one is.
+   */
+  public has(kind: PanelKind, id: string): boolean {
+    return this.byId.get(id)?.kind === kind;
+  }
+
+  /**
+   * Strikes whatever is filed under a pane id.
+   *
+   * @param id - The pane id.
+   * @returns True when something was filed there.
+   */
+  public delete(id: string): boolean {
+    return this.byId.delete(id);
+  }
+
+  /**
+   * The pane ids holding a kind, in filing order.
+   *
+   * @param kind - The controller's kind.
+   * @returns The ids.
+   */
+  public ids(kind: PanelKind): string[] {
+    return this.entries(kind).map(([id]: [string, PanelKinds[PanelKind]]): string => id);
+  }
+
+  /**
+   * Every panel of a kind, with its pane id, in filing order.
+   *
+   * @param kind - The controller's kind.
+   * @returns The pairs.
+   */
+  public entries<K extends PanelKind>(kind: K): Array<[string, PanelKinds[K]]> {
+    const out: Array<[string, PanelKinds[K]]> = [];
+    for (const [id, entry] of this.byId) {
+      if (entry.kind === kind) out.push([id, entry.panel as PanelKinds[K]]);
+    }
+    return out;
+  }
+
+  /**
+   * Every panel of a kind, in filing order.
+   *
+   * @param kind - The controller's kind.
+   * @returns The controllers.
+   */
+  public values<K extends PanelKind>(kind: K): Array<PanelKinds[K]> {
+    return this.entries(kind).map(([, panel]: [string, PanelKinds[K]]): PanelKinds[K] => panel);
+  }
+
+  /**
+   * The pane id a panel is filed under.
+   *
+   * @param kind - The controller's kind.
+   * @param panel - The controller.
+   * @returns Its pane id, or null when it is not filed.
+   */
+  public idOf<K extends PanelKind>(kind: K, panel: PanelKinds[K]): string | null {
+    for (const [id, entry] of this.byId) {
+      if (entry.kind === kind && entry.panel === panel) return id;
+    }
+    return null;
+  }
+}

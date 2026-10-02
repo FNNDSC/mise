@@ -18,11 +18,10 @@
  * @module
  */
 import { more_wire } from '../features/roster/more.js';
-import { feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagModelSchema, pipelineDiagramModelSchema, pluginInfoModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, PLUGIN_INFO_MODEL_KIND, type PipelineDiagramNode, type PluginInfoModel, type PluginParameter, type PromptContext, type WireEnvelope, type WatchState, type FeedDagModel, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
-import { ChrisSpace, type SceneNode } from '../scene/chrisSpace.js';
+import { feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagModelSchema, pipelineDiagramModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, type PipelineDiagramNode, type PromptContext, type WireEnvelope, type WatchState, type FeedDagModel, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
+import { type SceneNode } from '../scene/chrisSpace.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction, type DesktopShape } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
-import { ansi_toHtml, html_escape } from '../console/ansi.js';
 import { logo_linesRender } from '@fnndsc/menu/logo';
 import { wireUrl_resolve, vfsUrl_build as routeVfsUrl_build, downloadUrl_build as routeDownloadUrl_build, door_isPresent, doorUrl_build } from '../calypso/routes.js';
 import {
@@ -43,7 +42,7 @@ import type { ListingAction } from '../features/roster/row.js';
 import { FILE_ROW_ROSTER, FILES_SELECTION_ROSTER, RUNS_ROW_ROSTER, type FileRowFacts, type FilesSelectionFacts, type RunsRowFacts } from '../features/roster/verbs.js';
 import { GatherPanel, type GatherSeries, type GatherFeed } from '../features/gather/panel.js';
 import { LauncherPanel, type LauncherTile, type LauncherRow } from '../features/launcher/panel.js';
-import { runLine_compose, runLine_executable, runLine_flagGet, runLine_flagSet, runLine_hasTitle, runLine_titleAppend, pipelineNode_selector, type RunFlagValue } from '../features/files/runLine.js';
+import { runLine_compose, runLine_executable, runLine_hasTitle, runLine_titleAppend } from '../features/files/runLine.js';
 import { DagPanel } from '../features/dag/panel.js';
 import { UniversePanel } from '../features/universe/panel.js';
 import { paneAsk_open, paneAsk_abandon, type PaneAskRequest } from '../features/ask/paneAsk.js';
@@ -83,6 +82,7 @@ import { LayoutManager, type LayoutNode } from './layout.js';
 import type { HostContext } from './hostContext.js';
 import { paneVerbs_wire } from './paneVerbs.js';
 import { desktop_wire, type CatalogueBinding, type Desktop, type ReplayPlace } from './desktop.js';
+import { binView_wire, type BinView } from './binView.js';
 import { nodeOverlay_wire, type FileText, type NodeOverlay } from './nodeOverlay.js';
 import { cohort_wire, type CohortModule } from './cohort.js';
 import { asks_wire, type Asks } from './asks.js';
@@ -287,14 +287,6 @@ function headerHeight_track(header: HTMLElement, body: HTMLElement): void {
 }
 
 /** Shortest the console may be dragged, so its strip stays grabbable. */
-/**
- * How long PULSE stays lit after it is pressed.
- *
- * The wave itself is the scene's business; this only says the press landed,
- * long enough to read and short enough that the frame is at rest again
- * before anyone looks away.
- */
-const DIAGRAM_PULSE_LIT_MS: number = 2200;
 
 const DRAWER_MIN_HEIGHT_PX: number = 120;
 
@@ -1190,490 +1182,16 @@ async function surface_start(token: string): Promise<void> {
    * sent plain text: section headings, `Key:` labels, flags, and quoted
    * values. ANSI-colored text is rendered as sent.
    */
-  const binText_highlight = (text: string): string => {
-    if (/\x1b\[/.test(text)) return ansi_toHtml(text);
-    // Passes run inline-first, line-anchored last: the later patterns are
-    // anchored at line starts and cannot match inside markup the earlier
-    // ones inserted.
-    return html_escape(text)
-      .replace(/(&quot;[^&]*&quot;)/g, '<span class="man-str">$1</span>')
-      .replace(/(^|\s)(--?[a-zA-Z][\w-]*)/g, '$1<span class="man-flag">$2</span>')
-      .replace(/^(\s{0,2})([A-Za-z_ ]+):(\s)/gm, '$1<span class="man-key">$2:</span>$3')
-      .replace(/^([A-Z][A-Z ]{2,})$/gm, '<span class="man-head">$1</span>');
-  };
-
   /**
-   * What a /bin entry contributes to the one graph view: a summary above the
-   * stage (empty when the graph says it all), the graph itself, and how one
-   * of its nodes reads out.
-   *
-   * @property text - Summary HTML shown above the stage; '' for none.
-   * @property nodes - The graph, as the scene wants it.
-   * @property facts_show - Fills the overlay for one node, selected or immersed,
-   *   writing into the form's line when the view is a form.
+   * A /bin entry as the graph it is (app/binView.ts): a pipeline's nodes or
+   * a plugin's one, the dive into a node, the form a bound catalogue makes
+   * of it. The catalogue bindings and RUN are its hooks.
    */
-  interface BinGraph {
-    text: string;
-    nodes: SceneNode[];
-    facts_show: (facts: HTMLElement, nodeId: string, immersed: boolean, form: BinForm | null) => void;
-  }
-
-  /**
-   * The graph as a form: the line a bound catalogue holds, read and written
-   * by the dive's VALUE cells. The line is the only state — a value typed
-   * here is a flag there, and a hand edit there is what a cell reads here.
-   *
-   * @property line_get - The line as the strip holds it.
-   * @property line_set - Writes the line back to the strip.
-   * @property run - Runs the line, as RUN in the row zone does.
-   */
-  interface BinForm {
-    line_get: () => string;
-    line_set: (line: string) => void;
-    run: () => void;
-  }
-
-  /**
-   * One row of a node's readout: a label and what it says, and — in a form —
-   * the flag the row edits, with the kind of value it takes.
-   */
-  interface FactRow {
-    label: string;
-    value: string;
-    edit?: { flag: string; type: string; placeholder: string };
-  }
-
-  /**
-   * Opens a /bin entry as the graph it is.
-   *
-   * Both kinds take this path: a pipeline is many nodes, a plugin is one,
-   * and there is no third rendering. What used to be a plugin's wall of
-   * scraped text is now the same stage, the same mode frame and the same
-   * dive-in gesture every other entry answers to.
-   *
-   * @param panel - The pane to open the view in.
-   * @param path - The /bin entry.
-   * @param graph_fetch - Reads the entry, once the view is up.
-   */
-  const binGraph_show = (
-    panel: FilesPanel,
-    path: string,
-    graph_fetch: () => Promise<BinGraph | null>,
-    form: BinForm | null,
-  ): void => {
-    let scene: ChrisSpace | null = null;
-    let modeRelease: (() => void) | null = null;
-    const mount: HTMLElement | null = panel.contentHtml_show(path, '', {
-      diagram: true,
-      release: (): void => {
-        binDive = null;
-        modeRelease?.();
-        modeRelease = null;
-        panel.mode_annunciate('');
-        scene?.dispose();
-        scene = null;
-      },
-    });
-    if (mount === null) return;
-
-    void graph_fetch().then((graph: BinGraph | null): void => {
-      if (!mount.isConnected) return;
-      if (graph === null || graph.nodes.length === 0) {
-        mount.textContent = 'NOTHING TO DRAW FOR THIS ENTRY';
-        mount.classList.add('files-diagram-empty');
-        return;
-      }
-      if (graph.text !== '') panel.contentText_set(graph.text);
-      const facts: HTMLElement = document.createElement('div');
-      facts.className = 'dag-facts';
-      // Immersed in a node (dag-facts-immersed) the readout scrolls; it says what it holds.
-      more_wire(facts);
-      mount.appendChild(facts);
-      const built: ChrisSpace = new ChrisSpace(mount, {
-        // A node's substance already arrived with the graph, so a touch
-        // reads it out and a dive goes in. Nothing is fetched for either.
-        select: (node: SceneNode): void => graph.facts_show(facts, node.id, false, form),
-        activate: (node: SceneNode): void => dive(node),
-        deselect: (): void => facts.replaceChildren(),
-      }, {});
-      const dive = (node: SceneNode): void => {
-        built.flight_into(node.id, (): void => {
-          binDive = { scene: built, facts };
-          graph.facts_show(facts, node.id, true, form);
-        });
-      };
-      scene = built;
-      built.graph_set({ nodes: graph.nodes }, { wave: false });
-      built.size_fit();
-      modeRelease = diagramModes_wire(mount, built, panel, form === null ? undefined : form.run);
-      // A level of one opens itself: a plugin is one node, and the only
-      // thing to do on its stage is go in. The camera still flies, so the
-      // dive reads as the same gesture a pipeline's node answers to.
-      const only: SceneNode | undefined = graph.nodes.length === 1 ? graph.nodes[0] : undefined;
-      if (only !== undefined) dive(only);
-    });
-  };
-
-  /**
-   * Reads a registered pipeline as its authored graph.
-   *
-   * @param path - The /bin entry.
-   * @returns The graph, or null when the pipeline has no diagram.
-   */
-  const pipelineGraph_fetch = async (path: string): Promise<BinGraph | null> => {
-    const specifier: string = /_id(\d+)$/.exec(path)?.[1] ?? path.replace(/^.*\//, '');
-    // Asked together: the summary is a cache-only read and the diagram a
-    // slow one, and making the stage wait on the text buys nothing.
-    const [summary, diagram]: [ExecuteOutcome, ExecuteOutcome] = await Promise.all([
-      client.line_execute(`cat "${path}"`, { silent: true, observe: false }),
-      client.line_execute(`pipeline diagram ${specifier}`, { silent: true, observe: false }),
-    ]);
-    const text: string = summary.envelopes.map((envelope): string => envelope.rendered).join('\n');
-    for (const envelope of diagram.envelopes) {
-      if (envelope.model?.kind !== DAG_MODEL_KINDS.pipelineDiagram) continue;
-      const parsed = pipelineDiagramModelSchema.safeParse(envelope.model.data);
-      if (!parsed.success) continue;
-      const authored: Map<string, PipelineDiagramNode> = new Map(
-        parsed.data.nodes.map((node: PipelineDiagramNode): [string, PipelineDiagramNode] => [node.id, node]),
-      );
-      return {
-        text: binText_highlight(text),
-        nodes: parsed.data.nodes.map((node: PipelineDiagramNode): SceneNode => ({
-          id: node.id,
-          label: node.label,
-          parentIds: node.parentIds,
-          joinParentIds: node.joinParentIds,
-        })),
-        facts_show: (facts: HTMLElement, nodeId: string, immersed: boolean, form: BinForm | null): void => {
-          const titles: string[] = parsed.data.nodes.map((node: PipelineDiagramNode): string => node.label);
-          facts_paint(facts, pipelineNodeRows_build(authored.get(nodeId), immersed, form !== null, titles), immersed, form);
-        },
-      };
-    }
-    return null;
-  };
-
-  /**
-   * Reads a registered plugin as the one-node graph it is.
-   *
-   * @param path - The /bin entry.
-   * @returns The graph, or null when the kernel could not read the plugin.
-   */
-  const pluginGraph_fetch = async (path: string): Promise<BinGraph | null> => {
-    const entry: string = path.replace(/^.*\//, '');
-    const outcome: ExecuteOutcome = await client.line_execute(`plugin info "${entry}"`, { silent: true, observe: false });
-    for (const envelope of outcome.envelopes) {
-      if (envelope.model?.kind !== PLUGIN_INFO_MODEL_KIND) continue;
-      const parsed = pluginInfoModelSchema.safeParse(envelope.model.data);
-      if (!parsed.success) continue;
-      const model: PluginInfoModel = parsed.data;
-      return {
-        text: '',
-        nodes: [{ id: entry, label: model.name, parentIds: [], joinParentIds: [] }],
-        facts_show: (facts: HTMLElement, _nodeId: string, immersed: boolean, form: BinForm | null): void => {
-          facts_paint(facts, pluginRows_build(model, immersed, form !== null), immersed, form);
-        },
-      };
-    }
-    return null;
-  };
-
-  /**
-   * Opens a /bin entry as context.
-   *
-   * @param panel - The pane to open it in.
-   * @param path - The entry's path.
-   * @param kind - Whether the entry is a plugin or a pipeline.
-   */
-  const binEntry_show = (id: string, panel: FilesPanel, path: string, kind: 'plugin' | 'pipeline'): void => {
-    binGraph_show(panel, path, (): Promise<BinGraph | null> =>
-      kind === 'plugin' ? pluginGraph_fetch(path) : pipelineGraph_fetch(path), binForm_of(id, panel, path, kind));
-  };
-
-  /**
-   * The form a /bin entry's graph is, when the pane is a catalogue bound to
-   * an input: the strip's line, started afresh for this executable unless
-   * it already runs it (a hand edit stands; another entry's line does not).
-   *
-   * @param id - The pane.
-   * @param panel - Its files panel.
-   * @param path - The entry on stage.
-   * @param kind - Whether it is a plugin or a pipeline.
-   * @returns The form, or null when the pane is a browser.
-   */
-  const binForm_of = (id: string, panel: FilesPanel, path: string, kind: 'plugin' | 'pipeline'): BinForm | null => {
-    const binding: CatalogueBinding | undefined = catalogueBindings.get(id);
-    if (binding === undefined) return null;
-    const executable: string = path.replace(/^.*\//, '');
-    if (runLine_executable(panel.commandLine_get()) !== executable) {
-      panel.commandLine_set(runLine_compose(binding.input, executable));
-    }
-    return {
-      line_get: (): string => panel.commandLine_get(),
-      line_set: (line: string): void => panel.commandLine_set(line),
-      run: (): void => { void run_press(id, executable, kind); },
-    };
-  };
-
-
-/**
- * Wires the pane's mode frame to a diagram on stage.
- *
- * A pane has ONE frame, and its blocks answer to what the field holds: the
- * listing's projection and filter step aside for the modes a graph has.
- * Offering LIST over a pipeline's DAG was a control that could not act.
- *
- * PULSE is a verb here, not a state. The cockpit animates nothing at rest —
- * a law written after rotating thumbnails were proposed and rejected — so
- * the wave runs once, when a hand asks for it. And a registered pipeline has
- * never run, so what the wave replays is dependency order, not history.
- *
- * @param mount - The diagram's mount, used to find the pane's frame.
- * @param scene - The scene the blocks act on.
- * @param panel - The panel whose bar annunciates the modes in force.
- * @returns A function releasing the listeners when the view closes.
- */
-
-  /**
-   * The /bin diagram currently flown into, if any: the scene holding the
-   * camera and the overlay to clear when it comes home.
-   */
-  let binDive: { scene: ChrisSpace; facts: HTMLElement } | null = null;
-
-  /**
-   * Leaves a /bin node, flying the camera back to where it was.
-   *
-   * @returns True when a dive was in progress and this ended it.
-   */
-  function binDive_leave(): boolean {
-    const dive: { scene: ChrisSpace; facts: HTMLElement } | null = binDive;
-    if (dive === null) return false;
-    binDive = null;
-    dive.scene.flight_back((): void => {
-      dive.facts.classList.remove('dag-facts-immersed');
-      dive.facts.replaceChildren();
-    });
-    return true;
-  }
-
-  /**
-   * Paints a node's readout as `text : detail` pairs.
-   *
-   * One painter for every /bin entry: a pipeline's node and a plugin differ
-   * in what they have to say, never in how it is said.
-   *
-   * In a form, a row that edits a flag carries a VALUE cell: what the line
-   * says for that flag now, written back to the line on every keystroke. A
-   * boolean is a check, since the console takes it bare.
-   *
-   * @param facts - The overlay to fill.
-   * @param rows - The rows, in reading order.
-   * @param immersed - Whether the camera has flown into the node.
-   * @param form - The line the cells read and write, or null for a readout.
-   */
-  function facts_paint(
-    facts: HTMLElement,
-    rows: ReadonlyArray<FactRow>,
-    immersed: boolean,
-    form: BinForm | null,
-  ): void {
-    facts.replaceChildren();
-    facts.classList.toggle('dag-facts-immersed', immersed);
-    for (const { label, value, edit } of rows) {
-      const row: HTMLDivElement = document.createElement('div');
-      row.className = 'telemetry-row';
-      const name: HTMLSpanElement = document.createElement('span');
-      name.className = 'telemetry-label';
-      name.textContent = label;
-      row.appendChild(name);
-      if (edit === undefined || form === null) {
-        const figure: HTMLSpanElement = document.createElement('span');
-        figure.className = 'telemetry-value';
-        figure.textContent = value;
-        row.appendChild(figure);
-      } else {
-        const current: RunFlagValue = runLine_flagGet(form.line_get(), edit.flag);
-        const input: HTMLInputElement = document.createElement('input');
-        input.className = 'telemetry-input';
-        input.spellcheck = false;
-        input.autocomplete = 'off';
-        input.title = `${edit.flag} — ${value}`;
-        if (edit.type === 'boolean') {
-          input.type = 'checkbox';
-          input.checked = current === true;
-          input.addEventListener('change', (): void => {
-            form.line_set(runLine_flagSet(form.line_get(), edit.flag, input.checked ? true : null));
-          });
-        } else {
-          input.type = 'text';
-          input.placeholder = edit.placeholder;
-          input.value = current === null || current === true ? '' : current;
-          input.addEventListener('input', (): void => {
-            form.line_set(runLine_flagSet(form.line_get(), edit.flag, input.value));
-          });
-        }
-        const hint: HTMLSpanElement = document.createElement('span');
-        hint.className = 'telemetry-hint';
-        hint.textContent = value;
-        row.append(input, hint);
-      }
-      facts.appendChild(row);
-    }
-  }
-
-  /**
-   * What a pipeline node has to say: what it WILL run with — a plugin, a
-   * version, and the arguments the author fixed. All of it rides the
-   * `pipeline.diagram` model already, so neither a touch nor a dive fetches
-   * anything.
-   *
-   * Immersed, every argument is listed. Selected, the node is one of many
-   * on stage, so the readout says what it is plus how much there is to
-   * see — a glance is not a wall of text, the complaint that started this
-   * epic.
-   *
-   * As a form, the node's header reads `title · @id` and each authored
-   * argument is a VALUE cell writing `--<node>.<param>` — the node its
-   * title when shell-safe and unique, else `@<pipingId>`, as the kernel
-   * resolves it. Only edited values reach the line: a sparse overlay on
-   * what the author fixed.
-   *
-   * @param node - The authored node, when the model carried one.
-   * @param immersed - Whether the camera has flown into it.
-   * @param form - Whether the view is a form.
-   * @param titles - Every node title in the pipeline, for the selector.
-   * @returns The rows to paint.
-   */
-  function pipelineNodeRows_build(
-    node: PipelineDiagramNode | undefined,
-    immersed: boolean,
-    form: boolean,
-    titles: ReadonlyArray<string>,
-  ): FactRow[] {
-    if (node === undefined) return [];
-    const args: ReadonlyArray<{ name: string; value?: unknown }> = node.arguments ?? [];
-    const rows: FactRow[] = [
-      { label: 'NODE', value: `${node.label} · @${node.id}` },
-      { label: 'PLUGIN', value: node.pluginName },
-      ...(node.pluginVersion !== undefined ? [{ label: 'VERSION', value: node.pluginVersion }] : []),
-    ];
-    if (immersed) {
-      // An authored node with nothing fixed says so: an empty panel would
-      // read as a failure to load rather than as a plugin run on defaults.
-      const selector: string = pipelineNode_selector(node.label, node.id, titles);
-      rows.push(...(args.length === 0
-        ? [{ label: 'ARGUMENTS', value: 'none — this node runs on the plugin\'s defaults' }]
-        : args.map((argument): FactRow => ({
-          label: argument.name,
-          value: String(argument.value ?? ''),
-          ...(form ? { edit: { flag: `--${selector}.${argument.name}`, type: typeof argument.value === 'boolean' ? 'boolean' : 'string', placeholder: String(argument.value ?? '') } } : {}),
-        }))));
-    } else {
-      rows.push({ label: 'ARGUMENTS', value: args.length === 0 ? 'none' : `${args.length} — open the node to read them` });
-    }
-    return rows;
-  }
-
-  /**
-   * What a plugin has to say: what it CAN run with — every parameter it
-   * declares, with the flag as an operator types it.
-   *
-   * The pipeline node's readout says the arguments an author already fixed;
-   * a plugin's says the ones nobody has fixed yet. Same gesture, same
-   * shape, and the difference is honest.
-   *
-   * As a form, every parameter is a VALUE cell writing its flag into the
-   * line; what the readout said (type, required, default, help) stays as
-   * the cell's hint.
-   *
-   * @param model - The plugin model.
-   * @param immersed - Whether the camera has flown into the node.
-   * @param form - Whether the view is a form.
-   * @returns The rows to paint.
-   */
-  function pluginRows_build(model: PluginInfoModel, immersed: boolean, form: boolean): FactRow[] {
-    const rows: FactRow[] = [
-      { label: 'PLUGIN', value: model.name },
-      { label: 'VERSION', value: model.version },
-      { label: 'TYPE', value: model.type.toUpperCase() },
-    ];
-    const parameters: ReadonlyArray<PluginParameter> = model.parameters;
-    if (!immersed) {
-      rows.push({ label: 'PARAMETERS', value: parameters.length === 0
-        ? 'none'
-        : `${parameters.length} — open the node to read them` });
-      return rows;
-    }
-    if (parameters.length === 0) {
-      rows.push({ label: 'PARAMETERS', value: 'none — this plugin takes no arguments' });
-      return rows;
-    }
-    for (const parameter of parameters) {
-      const parts: string[] = [parameter.type];
-      if (!parameter.optional) parts.push('required');
-      const fallback: string = parameter.default === undefined || parameter.default === null ? '' : String(parameter.default);
-      if (fallback !== '') parts.push(`default ${fallback}`);
-      const meta: string = parts.join(' · ');
-      rows.push({
-        label: parameter.flag,
-        value: parameter.help === undefined ? meta : `${meta} — ${parameter.help}`,
-        // The cell's ghost is the default alone: the hint beside it says the rest.
-        ...(form ? { edit: { flag: parameter.flag, type: parameter.type, placeholder: fallback } } : {}),
-      });
-    }
-    return rows;
-  }
-
-  function diagramModes_wire(mount: HTMLElement, scene: ChrisSpace, panel: FilesPanel, run?: () => void): () => void {
-  const body: HTMLElement | null = mount.closest<HTMLElement>('.files-body');
-  const strategyPill: HTMLElement | null = body?.querySelector<HTMLElement>('.diagram-strategy') ?? null;
-  const projectionPill: HTMLElement | null = body?.querySelector<HTMLElement>('.diagram-projection') ?? null;
-  const pulsePill: HTMLElement | null = body?.querySelector<HTMLElement>('.diagram-pulse') ?? null;
-  // RUN rides the graph's frame only when the graph is a form.
-  const runPill: HTMLElement | null = run === undefined ? null : body?.querySelector<HTMLElement>('.diagram-run') ?? null;
-  const run_press = (): void => run?.();
-
-  const modes_annunciate = (): void => {
-    // Only what is NOT the default is worth saying; a bar that repeats the
-    // resting state says nothing and costs a glance.
-    const parts: string[] = [];
-    if (scene.strategy_get() !== 'ranked') parts.push('MOLECULE');
-    if (scene.projection_get() !== '3d') parts.push('2D');
-    panel.mode_annunciate(parts.join(' · '));
-  };
-
-  const strategy_flip = (): void => {
-    scene.strategy_set(scene.strategy_get() === 'ranked' ? 'molecule' : 'ranked');
-    if (strategyPill !== null) strategyPill.textContent = scene.strategy_get().toUpperCase();
-    modes_annunciate();
-  };
-  const projection_flip = (): void => {
-    scene.projection_set(scene.projection_get() === '3d' ? '2d' : '3d');
-    if (projectionPill !== null) projectionPill.textContent = scene.projection_get().toUpperCase();
-    modes_annunciate();
-  };
-  const pulse_fire = (): void => {
-    scene.wave_start();
-    pulsePill?.classList.add('pulse-running');
-    window.setTimeout((): void => pulsePill?.classList.remove('pulse-running'), DIAGRAM_PULSE_LIT_MS);
-  };
-
-  if (strategyPill !== null) strategyPill.textContent = scene.strategy_get().toUpperCase();
-  if (projectionPill !== null) projectionPill.textContent = scene.projection_get().toUpperCase();
-  strategyPill?.addEventListener('click', strategy_flip);
-  projectionPill?.addEventListener('click', projection_flip);
-  pulsePill?.addEventListener('click', pulse_fire);
-  runPill?.addEventListener('click', run_press);
-  modes_annunciate();
-
-  return (): void => {
-    strategyPill?.removeEventListener('click', strategy_flip);
-    projectionPill?.removeEventListener('click', projection_flip);
-    pulsePill?.removeEventListener('click', pulse_fire);
-    runPill?.removeEventListener('click', run_press);
-    pulsePill?.classList.remove('pulse-running');
-  };
-  }
+  const binView: BinView = binView_wire(context, {
+    catalogue_of: (paneId: string): CatalogueBinding | undefined => catalogueBindings.get(paneId),
+    run_press: (paneId: string, executable: string, kind: 'plugin' | 'pipeline'): void => { void run_press(paneId, executable, kind); },
+  });
+  const binEntry_show = binView.entry_show;
 
   const fileAction_handle = (
     id: string,
@@ -3606,7 +3124,7 @@ async function surface_start(token: string): Promise<void> {
         // Inside a /bin node, the first Esc flies back out to the graph.
         // Immersion is a level of its own, ahead of closing the view that
         // holds it: Esc retreats exactly one level, never two.
-        if (binDive_leave()) {
+        if (binView.dive_leave()) {
           event.stopImmediatePropagation();
           sound_play('audio3');
           return;

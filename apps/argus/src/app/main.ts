@@ -50,7 +50,7 @@ import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
 import { ViewerPanel } from '../features/view/panel.js';
 import { ImagePanel, type SeriesChoice } from '../features/image/panel.js';
 import { TagsPanel } from '../features/tags/panel.js';
-import { DICOM_FILE_PATTERN, SERIES_FOLDER_PATTERN, VOLUME_FILE_PATTERN, IMAGE_LAYOUTS, IMAGE_COLORMAPS, type ImageLayout, type ImageColormap } from '../features/image/engine.js';
+import { DICOM_FILE_PATTERN, SERIES_FOLDER_PATTERN, VOLUME_FILE_PATTERN } from '../features/image/engine.js';
 import { SubjectBus, type RegardValue } from './subjects.js';
 import { StatusBar } from './status.js';
 import { IndexInstrument } from './indexInstrument.js';
@@ -87,6 +87,7 @@ import { cohort_wire, type CohortModule } from './cohort.js';
 import { asks_wire, type Asks } from './asks.js';
 import { keys_wire } from './keys.js';
 import { paneChrome_wire } from './paneChrome.js';
+import { argusHost_build } from './consoleHost.js';
 import { browser_wire, feedOf_path, imagery_is, shares_read, TABLE_FILE_PATTERN, type Browser } from './browser.js';
 import { place_of, type Side } from './sides.js';
 import { stalePage_watch } from './stalePage.js';
@@ -2474,246 +2475,22 @@ async function surface_start(token: string): Promise<void> {
   // Every gesture as a sentence (docs/aegis.adoc: the argus language). The
   // host hands the language the same controls the mouse uses.
   const paneKind_get = (id: string): PaneKind | null => paneInstance_get(id)?.kind ?? null;
-  const argusHost: ArgusHost = {
-    focused_get: (): string | null => {
-      const zoomed: string | undefined = document.body.dataset['zoom'];
-      if (zoomed !== undefined && zoomed !== 'console') return zoomed;
-      // Before any click nothing is focused; the first shown pane is the
-      // sentence's natural default target.
-      return layout.focused_get() ?? layout.panes_shown()[0] ?? null;
-    },
-    focus_set: (id: string): boolean => {
-      if (paneInstance_get(id) === undefined) return false;
-      layout.focus_set(id);
-      return true;
-    },
-    panes_shown: (): string[] => layout.panes_shown(),
-    pane_move,
-    pane_flip,
-    pane_resize,
+  /**
+   * The console language's host (app/consoleHost.ts): what a typed sentence
+   * may do to the stage, built from the same controls the mouse uses.
+   */
+  const argusHost: ArgusHost = argusHost_build(context, {
+    verbs: { move: pane_move, flip: pane_flip, resize: pane_resize },
     help_open,
-    focus_last: (): string | null => { const back: string | null = layout.focus_last(); if (back !== null) sound_play('audio3'); return back === null ? null : `focused ${back}`; },
-    paneRect_get: (id: string): DOMRect | null => {
-      const leaf: HTMLElement | null = document.querySelector<HTMLElement>(`.layout-leaf[data-leaf="${id}"]`);
-      return leaf?.getBoundingClientRect() ?? null;
-    },
-    paneMount_get: (id: string): HTMLElement | null => paneInstance_get(id)?.mount ?? null,
-    paneKind_get,
-    paneLinked_get: (id: string): boolean => subjects.group_of(id) !== id,
-    feed_enter: (feedId: number): void => dagPanel.feed_enter(feedId),
-    consoleZoom_toggle,
     launcher_enter,
-    // The prompt already says who and where; `attach` repeats it rather
-    // than asking the session a question it has just been told the answer to.
     identity_get: (): string | null => promptIdentity,
-    node_immerse: (paneId: string): boolean => {
-      const regard: RegardValue | null = subjects.regard_get(paneId);
-      const match: RegExpMatchArray | null = regard?.address.match(/_(\d+)(?:\/data)?\/?$/) ?? null;
-      if (match === null) return false;
-      return panels.get('dag', paneId)?.node_flyTo(parseInt(match[1] ?? '', 10)) ?? false;
-    },
-    // The two row verbs, as the surface's own capability: the console
-    // language presses them today and the row's action track presses the
-    // same pair next, so neither has to know where the other's control is.
-    file_download: (paneId: string): boolean => {
-      const regard: RegardValue | null = subjects.regard_get(paneId);
-      if (regard === null || regard.modelKind !== 'fs.file') return false;
-      file_save(regard.address);
-      return true;
-    },
-    image_open: (paneId: string | null, path: string, options?: { force?: boolean }): Promise<string> => image_open(paneId, path, options ?? {}),
-    image_control: async (paneId: string, verb: string, args: string[]): Promise<string> => {
-      // The verb reaches the image pane the target stands for: itself, the
-      // one in its link group, or the only one on stage.
-      const shown: Set<string> = new Set(layout.panes_shown());
-      const group: string = subjects.group_of(paneId);
-      const onStage: Array<[string, ImagePanel]> = panels.entries('image').filter(([id]: [string, ImagePanel]): boolean => shown.has(id));
-      const panel: ImagePanel | undefined =
-        panels.get('image', paneId)
-        ?? onStage.find(([id]: [string, ImagePanel]): boolean => subjects.group_of(id) === group)?.[1]
-        ?? (onStage.length === 1 ? onStage[0]?.[1] : undefined);
-      if (panel === undefined) return `image ${verb}: no image pane on stage for '${paneId}'`;
-      if (verb === 'state') {
-        // A surface can be asked what it holds: the layout, the tool, the
-        // slices, and each viewport's zoom, focus and live window — what a
-        // drag on the field changed, read from the field itself.
-        const state = panel.state_get();
-        if (state === null) return 'image state: no image on the field';
-        const views: string = (state.viewports ?? [])
-          .map((v) => `${v.id.replace(/^.*-/, '')} scale=${v.scale.toFixed(3)} focus=${v.focus.map((n: number): string => n.toFixed(2)).join(',')} voi=${v.voi === null ? '-' : `${v.voi.lower.toFixed(1)}..${v.voi.upper.toFixed(1)}`}`)
-          .join(' | ');
-        return `image: layout=${state.layout} tool=${state.tool} primary=${state.primaryTool ?? '-'} slice=${state.slice}/${state.slices} refused=${state.refused} annotations=${state.annotations} filled=${state.filled}\nviewports: ${views || '(none)'}`;
-      }
-      if (verb === 'layout') {
-        const layout: string = args[0] ?? '';
-        if (!(IMAGE_LAYOUTS as readonly string[]).includes(layout)) return 'image layout single|mpr|3d|slab';
-        if (await panel.layout_set(layout as ImageLayout)) return `image layout ${layout}`;
-        return panel.state_get()?.waiting === layout ? `image layout ${layout}: waiting for LOAD` : `image layout ${layout}: not offered`;
-      }
-      if (verb === 'slice') {
-        const slice: number = Number(args[0]);
-        if (!Number.isInteger(slice) || slice < 1) return 'image slice <n>';
-        return panel.slice_set(slice) ? `image slice ${slice}` : `image slice ${slice}: not offered`;
-      }
-      if (verb === 'series') {
-        const n: number = Number(args[0]);
-        const siblings: readonly SeriesChoice[] = panel.siblings_get();
-        if (siblings.length === 0) return 'image series: this pane holds one series, not a study';
-        const choice: SeriesChoice | undefined = siblings[n - 1];
-        if (choice === undefined) return `image series <1..${siblings.length}>: ${siblings.map((sibling: SeriesChoice, index: number): string => `${index + 1} ${sibling.label}`).join(' · ')}`;
-        const series: DicomSeriesModel | null = await series_ask(choice.path);
-        if (series === null) return `image series ${n}: ${choice.path}: not a readable DICOM series`;
-        void panel.series_show(series, { siblings: [...siblings] });
-        return `image series ${n} ${choice.label}`;
-      }
-      if (verb === 'wl') {
-        if ((args[0] ?? '').toLowerCase() === 'preset') {
-          const name: string = args[1] ?? '';
-          if (name === '') return 'image wl preset <brain|bone|lung|soft|liver>';
-          return panel.wlPreset_set(name) ? `image wl preset ${name}` : `image wl preset ${name}: none for this modality`;
-        }
-        const lower: number = Number(args[0]);
-        const upper: number = Number(args[1]);
-        if (!Number.isFinite(lower) || !Number.isFinite(upper) || lower >= upper) return 'image wl <lower> <upper> | image wl preset <name>';
-        return panel.wl_set(lower, upper) ? `image wl ${lower} ${upper}` : 'image wl: not offered';
-      }
-      if (verb === 'colormap') {
-        const name: string = (args[0] ?? '').toLowerCase();
-        if (!(IMAGE_COLORMAPS as readonly string[]).includes(name)) return 'image colormap gray|hot|jet|cool';
-        return panel.colormap_set(name as ImageColormap) ? `image colormap ${name}` : `image colormap ${name}: not offered`;
-      }
-      if (verb === 'save') {
-        return (await panel.annotations_save()) ? 'image save' : 'image save: nothing saved (the console says why)';
-      }
-      if (verb === 'load') {
-        return (await panel.load_press()) ? 'image load' : 'image load: nothing was waiting';
-      }
-      if (verb === 'guard') {
-        const word: string = (args[0] ?? '').toLowerCase();
-        if (word === 'off') {
-          panel.guard_set(null);
-          return 'image guard off';
-        }
-        const bytes: number = Number(args[0]);
-        if (!Number.isFinite(bytes) || bytes < 0) return `image guard <bytes>|off (now ${panel.guard_get() === null ? 'off' : panel.guard_get()})`;
-        panel.guard_set(bytes);
-        return `image guard ${bytes}`;
-      }
-      if (verb === 'ghost') {
-        const word: string = (args[0] ?? '').toLowerCase();
-        const level: number | null = word === 'off' ? null : Number(args[0]);
-        if (level !== null && (!Number.isFinite(level) || level < 0 || level > 1)) return 'image ghost <0..1>|off (SLAB layout)';
-        return panel.ghost_set(level) ? `image ghost ${level === null ? 'off' : level}` : 'image ghost: SLAB layout only';
-      }
-      if (verb === 'tags') {
-        const imageId: string | undefined = panels.idOf('image', panel) ?? undefined;
-        return imageId === undefined ? 'image tags: no image pane' : tagsPane_open(imageId);
-      }
-      return 'image <path> · layout single|mpr|3d · slice <n> · series <n> · wl <lo> <hi> | wl preset <name> · colormap <name> · save';
-    },
-    universe_control: (paneId: string | null, verb: string, args: string[]): string => {
-      // The universe in focus, or the one on stage: the console addresses
-      // the space, not a pane number.
-      const shown: Set<string> = new Set(layout.panes_shown());
-      const panel: UniversePanel | undefined = (paneId !== null ? panels.get('universe', paneId) : undefined)
-        ?? panels.entries('universe').find(([id]): boolean => shown.has(id))?.[1];
-      if (panel === undefined) return 'universe: no universe pane on stage (press the dashboard tile)';
-      return panel.control(verb, args);
-    },
-    tags_control: (paneId: string, verb: string, args: string[]): string => {
-      const shown: Set<string> = new Set(layout.panes_shown());
-      const group: string = subjects.group_of(paneId);
-      const onStage: Array<[string, TagsPanel]> = panels.entries('tags').filter(([id]: [string, TagsPanel]): boolean => shown.has(id));
-      const panel: TagsPanel | undefined =
-        panels.get('tags', paneId)
-        ?? onStage.find(([id]: [string, TagsPanel]): boolean => subjects.group_of(id) === group)?.[1]
-        ?? (onStage.length === 1 ? onStage[0]?.[1] : undefined);
-      if (panel === undefined) return `tags ${verb}: no tags pane on stage for '${paneId}'`;
-      if (verb === 'redact') {
-        const wanted: string = (args[0] ?? '').toLowerCase();
-        if (wanted !== 'on' && wanted !== 'off') return 'tags redact on|off';
-        panel.redact_set(wanted === 'on');
-        return `tags redact ${wanted}`;
-      }
-      if (verb === 'filter') {
-        const text: string = args.join(' ');
-        if (text === '' || text.toLowerCase() === 'off') {
-          panel.filter_set(null);
-          return 'tags filter off';
-        }
-        panel.filter_set(text);
-        return `tags filter ${text}`;
-      }
-      return 'tags redact on|off · filter <text>|off';
-    },
-    file_delete: (paneId: string): boolean => {
-      const regard: RegardValue | null = subjects.regard_get(paneId);
-      if (regard === null || regard.modelKind !== 'fs.file') return false;
-      // A destructive verb runs as a VISIBLE terminal command: auditable in
-      // the transcript, never a silent mutation behind a control.
-      terminal.line_run(`rm "${regard.address}"`);
-      return true;
-    },
-    session_run: async (line: string): Promise<string> => {
-      try {
-        const outcome: ExecuteOutcome = await client.line_execute(line, { silent: true, observe: false });
-        return outcome.envelopes.map((envelope): string => envelope.renderedErr ?? envelope.rendered).join('\n');
-      } catch (error: unknown) {
-        return error instanceof Error ? error.message : String(error);
-      }
-    },
-    desktop_serialize: (): string => {
-      const tree = layout.tree_get();
-      if (tree === null) return '# empty desktop';
-      const lines: string[] = [];
-      type Node = { pane: string } | { dir: 'row' | 'col'; first: Node; second: Node };
-      const firstLeaf = (node: Node): string => 'pane' in node ? node.pane : firstLeaf(node.first);
-      const anchorId: string = firstLeaf(tree as Node);
-      const anchorKind: string | null = paneKind_get(anchorId);
-      lines.push(`view ${anchorKind === 'dag' ? 'runs' : anchorKind === 'pacs' ? 'pacs' : 'files'}`);
-      let counter: number = 1;
-      const dress = (paneId: string, ordinal: number): void => {
-        const kind: string | null = paneKind_get(paneId);
-        if (kind === 'dag' && paneId !== anchorId) lines.push(`pane %${ordinal} claim runs`);
-        if (kind === 'files' && paneId !== anchorId && !(subjects.group_of(paneId) !== paneId)) {
-          lines.push(`pane %${ordinal} claim files`);
-        }
-        if (kind === 'dag') {
-          const mount: HTMLElement | undefined = paneInstance_get(paneId)?.mount;
-          const strategy: string = mount?.querySelector('.dag-strategy')?.textContent?.toLowerCase() ?? 'ranked';
-          const projection: string = mount?.querySelector('.dag-projection')?.textContent?.toLowerCase() ?? '3d';
-          const hue: string = mount?.querySelector('.dag-hue')?.textContent?.toLowerCase() ?? 'status';
-          if (strategy !== 'ranked') lines.push(`dag %${ordinal} layout ${strategy}`);
-          if (projection !== '3d') lines.push(`dag %${ordinal} projection ${projection}`);
-          if (hue !== 'status') lines.push(`dag %${ordinal} hue ${hue}`);
-        }
-      };
-      const build = (node: Node, ordinal: number): void => {
-        if ('pane' in node) {
-          dress(node.pane, ordinal);
-          return;
-        }
-        const secondAnchor: string = firstLeaf(node.second);
-        const secondKind: string | null = paneKind_get(secondAnchor);
-        const binding: string = secondKind === 'view'
-          ? 'viewer'
-          : secondKind === 'files' && subjects.group_of(secondAnchor) !== secondAnchor
-            ? 'fs'
-            : 'unlinked';
-        lines.push(`pane %${ordinal} bind ${binding}`);
-        lines.push(`pane %${ordinal} split ${node.dir === 'col' ? 'right' : 'below'}`);
-        const newOrdinal: number = ++counter;
-        build(node.first, ordinal);
-        build(node.second, newOrdinal);
-      };
-      build(tree as Node, counter);
-      const headerFace: string | undefined = document.body.dataset['header'];
-      if (headerFace !== undefined) lines.push(`header ${headerFace}`);
-      const drawerEl: HTMLElement | null = document.getElementById('drawer');
-      if (drawerEl?.classList.contains('drawer-closed')) lines.push('console close');
-      return lines.join('\n');
-    },
-  };
+    consoleZoom_toggle,
+    feed_enter: (feedId: number): void => dagPanel.feed_enter(feedId),
+    file_save,
+    image_open: (paneId: string | null, path: string, options: { force?: boolean }): Promise<string> => image_open(paneId, path, options),
+    series_ask,
+    tagsPane_open,
+  });
 
   // The command line: prefix-: (tmux tradition) or the LANG capsule. One
   // floating line; sentences run client-side, anything else falls through

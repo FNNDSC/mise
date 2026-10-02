@@ -1,5 +1,14 @@
 # @fnndsc/argus
 
+## 0.18.14
+
+### Patch Changes
+
+- e5f44e8: Cleanup, slice 2h: the browser — the files pane as the host builds it, its readers and preview provider, its rooted listings and history, its binding to the cwd, delivery and MKDIR, its row and selection verbs — is a module of the host (`app/browser.ts`, `browser_wire(context, hooks)`), its path readings exported and unit-tested. No behaviour changes.
+- 790daf6: Cleanup, slice 2i: a pane's chrome — the drawer behind its handle (the binding radio, SPLIT and MOVE with their direction capsules, chord titles, CLOSE) and the children a kind adds (a browser's CWD binding and frame verbs, a graph's node and feed verbs) — is a module of the host (`app/paneChrome.ts`, `paneChrome_wire(context, hooks)`), one named function per part. No behaviour changes.
+- 3620f4d: Cleanup, slice 2j: the console language's host — what a typed sentence may do to the stage: focus and the pane verbs, the opens, the image and tags verbs on the pane a target stands for, a desktop serialized as the lines that put it back — is a module of the host (`app/consoleHost.ts`, `argusHost_build(context, hooks)`); the "itself, its group's, or the only one on stage" resolution, spelled twice, is one function. No behaviour changes.
+- c1bc5b4: Cleanup, slice 5a: the UNIVERSE pane's `control` (one run of fifteen `if (verb === …)` blocks, 138 lines) is a table of named verb methods, and its constructor's frame pills and Esc are wirers of their own; the DAG pane's `envelope_observe` hands an indexing answer and a graph to two named takers. The aegis lint holds every argus function under 150 lines and every file under 1,200 (law a-part-stays-a-part), a module factory measured by the functions inside it and what still stands past a ceiling named with its reason and capped where it stood. No behaviour changes.
+
 ## 0.18.13
 
 ### Patch Changes

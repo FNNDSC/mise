@@ -83,6 +83,7 @@ import {
 import { LayoutManager, type LayoutNode } from './layout.js';
 import type { HostContext } from './hostContext.js';
 import { paneVerbs_wire } from './paneVerbs.js';
+import { desktop_wire, type CatalogueBinding, type Desktop } from './desktop.js';
 import { SIDES, place_of, side_ofArrow, side_ofPlace, splitSelector_of, type Side } from './sides.js';
 import { stalePage_watch } from './stalePage.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
@@ -1764,11 +1765,6 @@ async function surface_start(token: string): Promise<void> {
   };
 
   /** What a bound catalogue processes: the input, and where a run of it lands. */
-  interface CatalogueBinding {
-    input: string;
-    feed: number | null;
-    node: number | null;
-  }
   const catalogueBindings: Map<string, CatalogueBinding> = new Map();
 
   const feedOf_path = (path: string): number | null => {
@@ -2196,12 +2192,12 @@ async function surface_start(token: string): Promise<void> {
     }
     if (!shown.has(imageId)) return 'image tags: the image pane is not on stage';
     const spawned: PaneInstance = instance_spawn('tags', imageId);
-    if (!layout.leaf_split(imageId, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
+    if (!layout.leaf_split(imageId, desktop.replayPlace_get()?.dir ?? 'col', spawned.id, desktop.replayPlace_get()?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return 'image tags: could not open beside the image pane';
     }
-    birth_record(spawned.id, imageId, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
+    birth_record(spawned.id, imageId, desktop.replayPlace_get()?.dir ?? 'col', desktop.replayPlace_get()?.before ?? false);
     return 'image tags';
   };
 
@@ -2270,12 +2266,12 @@ async function surface_start(token: string): Promise<void> {
     const host: string | null = fromId !== null && shown.has(fromId) ? fromId : errandHost_find();
     if (host === null) return null;
     const spawned: PaneInstance = instance_spawn('image', fromId ?? undefined);
-    if (!layout.leaf_split(host, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
+    if (!layout.leaf_split(host, desktop.replayPlace_get()?.dir ?? 'col', spawned.id, desktop.replayPlace_get()?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return null;
     }
-    birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
+    birth_record(spawned.id, host, desktop.replayPlace_get()?.dir ?? 'col', desktop.replayPlace_get()?.before ?? false);
     anchor_set(spawned.id);
     return panels.get('image', spawned.id) ?? null;
   };
@@ -2307,7 +2303,7 @@ async function surface_start(token: string): Promise<void> {
     // Structure-first: the pane exists now (spawned + split synchronously), so
     // hand its id back before the header read over the wire — a replay resolves
     // its next action's target against it without waiting for pixels to land.
-    const openedId: string | null = imagePane_idOf(panel);
+    const openedId: string | null = panels.idOf('image', panel);
     if (openedId !== null) onOpen?.(openedId);
     if (VOLUME_FILE_PATTERN.test(path)) {
       panel.opening_show(path);
@@ -2361,12 +2357,12 @@ async function surface_start(token: string): Promise<void> {
     }
     const host: string = shown.has(fromId) ? fromId : (errandHost_find() ?? fromId);
     const spawned: PaneInstance = instance_spawn('catalogue', fromId);
-    if (!layout.leaf_split(host, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
+    if (!layout.leaf_split(host, desktop.replayPlace_get()?.dir ?? 'col', spawned.id, desktop.replayPlace_get()?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return;
     }
-    birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
+    birth_record(spawned.id, host, desktop.replayPlace_get()?.dir ?? 'col', desktop.replayPlace_get()?.before ?? false);
     catalogueBindings.set(spawned.id, binding);
     const panel: FilesPanel | undefined = panels.get('files', spawned.id);
     if (panel === undefined) return;
@@ -2427,12 +2423,12 @@ async function surface_start(token: string): Promise<void> {
     }
     const host: string = shown.has(fromId) ? fromId : (errandHost_find() ?? fromId);
     const spawned: PaneInstance = instance_spawn('dag', fromId);
-    if (!layout.leaf_split(host, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
+    if (!layout.leaf_split(host, desktop.replayPlace_get()?.dir ?? 'col', spawned.id, desktop.replayPlace_get()?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return;
     }
-    birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
+    birth_record(spawned.id, host, desktop.replayPlace_get()?.dir ?? 'col', desktop.replayPlace_get()?.before ?? false);
     panels.get('dag', spawned.id)?.feed_enter(feedId);
   };
 
@@ -2519,12 +2515,12 @@ async function surface_start(token: string): Promise<void> {
     const host: string | null = errandHost_find();
     if (host === null) return;
     const spawned: PaneInstance = instance_spawn('files', inheritFrom);
-    if (!layout.leaf_split(host, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
+    if (!layout.leaf_split(host, desktop.replayPlace_get()?.dir ?? 'col', spawned.id, desktop.replayPlace_get()?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return;
     }
-    birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
+    birth_record(spawned.id, host, desktop.replayPlace_get()?.dir ?? 'col', desktop.replayPlace_get()?.before ?? false);
     if (inheritFrom === undefined) subjects.regard_write(spawned.id, { address: folderPath, modelKind: 'dicom.series' });
     const panel: FilesPanel | undefined = panels.get('files', spawned.id);
     if (panel !== undefined) rootedListing_show(spawned.id, panel, folderPath);
@@ -2844,12 +2840,12 @@ async function surface_start(token: string): Promise<void> {
     if (id === null) {
       const from: string = shown.has(host) ? host : (errandHost_find() ?? host);
       const spawned: PaneInstance = instance_spawn('gather', 'pacs');
-      if (!layout.leaf_split(from, replayPlace?.dir ?? 'row', spawned.id, replayPlace?.before ?? false)) {
+      if (!layout.leaf_split(from, desktop.replayPlace_get()?.dir ?? 'row', spawned.id, desktop.replayPlace_get()?.before ?? false)) {
         paneInstance_dispose(spawned.id);
         layout.mount_remove(spawned.id);
         return null;
       }
-      birth_record(spawned.id, from, replayPlace?.dir ?? 'row', replayPlace?.before ?? false);
+      birth_record(spawned.id, from, desktop.replayPlace_get()?.dir ?? 'row', desktop.replayPlace_get()?.before ?? false);
       id = spawned.id;
     }
     const panel: GatherPanel | undefined = panels.get('gather', id);
@@ -3227,12 +3223,12 @@ async function surface_start(token: string): Promise<void> {
     const host: string | null = errandHost_find();
     if (host === null) return null;
     const spawned: PaneInstance = instance_spawn('files');
-    if (!layout.leaf_split(host, replayPlace?.dir ?? 'col', spawned.id, replayPlace?.before ?? false)) {
+    if (!layout.leaf_split(host, desktop.replayPlace_get()?.dir ?? 'col', spawned.id, desktop.replayPlace_get()?.before ?? false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);
       return null;
     }
-    birth_record(spawned.id, host, replayPlace?.dir ?? 'col', replayPlace?.before ?? false);
+    birth_record(spawned.id, host, desktop.replayPlace_get()?.dir ?? 'col', desktop.replayPlace_get()?.before ?? false);
     const panel: FilesPanel | undefined = panels.get('files', spawned.id);
     const anchor: string = request.path?.anchor ?? '~';
     if (panel !== undefined) rootedListing_show(spawned.id, panel, anchor);
@@ -3487,19 +3483,6 @@ async function surface_start(token: string): Promise<void> {
   // Groups that have left the stage are not gone: a snapshot of each is kept
   // dormant so the PANES view can bring it back. Rehydrated from the surface's
   // own storage on load — dormant, never onto the stage.
-  // Each pane's origin: the pane it split from at creation, so a desktop
-  // records what each action acted FROM (its target), not a guessed context.
-  /**
-   * How each pane was born, for replaying a desktop faithfully: the pane it
-   * split FROM, the split's orientation and side, and — for a pane the drawer's
-   * SPLIT pill created — the binding it was created with (`view`/`fs`/`empty`).
-   * A desktop replays by re-running each birth, so a stacked or before-split
-   * pane returns where it was, not as another column on the right.
-   */
-  const paneBirth: Map<string, { parent: string; dir: 'row' | 'col'; before: boolean; binding?: string }> = new Map();
-  const birth_record = (childId: string, parent: string, dir: 'row' | 'col', before: boolean, binding?: string): void => {
-    paneBirth.set(childId, { parent, dir, before, ...(binding !== undefined ? { binding } : {}) });
-  };
   /**
    * Re-runs the drawer SPLIT pill's spawn: a pane of `binding` split from
    * `parentId` at `dir`/`before`, an `fs` binding wired to follow the parent's
@@ -3556,455 +3539,29 @@ async function surface_start(token: string): Promise<void> {
     },
   });
 
-  /** A glyph standing in for a pane whose surface is not a raster (a listing, tags). */
-  const kindGlyph_of = (id: string): string => {
-    if (id === 'pacs') return '⊞';
-    if (id === 'dag') return '⋔';
-    const kind: string | null = paneKind_get(id);
-    if (kind === 'image') return '▣';
-    if (kind === 'tags') return '≣';
-    return '▤';
-  };
-
   /**
-   * A strip of the whole stage: each shown pane drawn as a tile in stage order,
-   * at a width proportional to the width it holds on screen — a raster where a
-   * pane has a canvas, a glyph tile where it does not. This is the card's
-   * figure, so a desktop reads as the arrangement it is (PACS | DIR | viewer),
-   * not as one lone viewer.
+   * The desktop: the stage captured as a script of console lines, and
+   * replayed (app/desktop.ts). The host's open verbs are its hooks.
    */
-  const stageStrip_capture = (stageIds: readonly string[]): string | undefined => {
-    if (stageIds.length === 0) return undefined;
-    // A true mini-map: each pane drawn at its real position and size, scaled
-    // into the figure — so a stack reads as a stack and a column as a column,
-    // whatever order the panes were opened. Measured from the live boxes.
-    const rects: { id: string; left: number; top: number; width: number; height: number }[] = [];
-    for (const id of stageIds) {
-      const mount = paneInstance_get(id)?.mount;
-      if (mount === undefined) continue;
-      const box: DOMRect = mount.getBoundingClientRect();
-      if (box.width > 0 && box.height > 0) rects.push({ id, left: box.left, top: box.top, width: box.width, height: box.height });
-    }
-    if (rects.length === 0) return undefined;
-    const minLeft: number = Math.min(...rects.map((rect): number => rect.left));
-    const minTop: number = Math.min(...rects.map((rect): number => rect.top));
-    const spanW: number = Math.max(...rects.map((rect): number => rect.left + rect.width)) - minLeft;
-    const spanH: number = Math.max(...rects.map((rect): number => rect.top + rect.height)) - minTop;
-    if (spanW <= 0 || spanH <= 0) return undefined;
-    const budget: number = 240;
-    const scale: number = budget / spanW;
-    const canvasH: number = Math.max(40, Math.min(260, Math.round(spanH * scale)));
-    try {
-      const off: HTMLCanvasElement = document.createElement('canvas');
-      off.width = budget;
-      off.height = canvasH;
-      const ctx: CanvasRenderingContext2D | null = off.getContext('2d');
-      if (ctx === null) return undefined;
-      const style: CSSStyleDeclaration = getComputedStyle(document.documentElement);
-      const accent: string = style.getPropertyValue('--harvestgold').trim() || '#c9a15a';
-      ctx.fillStyle = '#05070a';
-      ctx.fillRect(0, 0, budget, canvasH);
-      for (const rect of rects) {
-        const tx: number = Math.round((rect.left - minLeft) * scale);
-        const ty: number = Math.round((rect.top - minTop) * scale);
-        const tw: number = Math.max(6, Math.round(rect.width * scale));
-        const th: number = Math.max(6, Math.round(rect.height * scale));
-        const canvas = paneInstance_get(rect.id)?.mount.querySelector<HTMLCanvasElement>('canvas');
-        if (canvas !== null && canvas !== undefined && canvas.width > 0) {
-          const fit: number = Math.min(tw / canvas.width, th / canvas.height);
-          const dw: number = Math.round(canvas.width * fit);
-          const dh: number = Math.round(canvas.height * fit);
-          ctx.fillStyle = '#000';
-          ctx.fillRect(tx, ty, tw, th);
-          ctx.drawImage(canvas, tx + Math.round((tw - dw) / 2), ty + Math.round((th - dh) / 2), dw, dh);
-        } else {
-          ctx.fillStyle = 'rgba(255,255,255,0.05)';
-          ctx.fillRect(tx, ty, tw, th);
-          ctx.fillStyle = accent;
-          ctx.font = `${Math.max(9, Math.min(28, Math.round(Math.min(tw, th) * 0.5)))}px serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(kindGlyph_of(rect.id), tx + tw / 2, ty + th / 2 + 1);
-        }
-        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(tx + 0.5, ty + 0.5, tw - 1, th - 1);
-      }
-      return off.toDataURL('image/png');
-    } catch {
-      return undefined;
-    }
-  };
-
-  /** Whether a desktop replay is in flight; capture is suppressed during it. */
-  let desktopReplaying: boolean = false;
-  /**
-   * The split a replayed open must use, set from the action being replayed so a
-   * pane returns at its captured orientation and side; null in normal use, when
-   * an automatic open falls to the column-after default.
-   */
-  let replayPlace: { dir: 'row' | 'col'; before: boolean } | null = null;
-
-  /** Console-line verbs that tune an open viewer rather than open one. */
-  const IMAGE_SUBVERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags', 'load', 'guard', 'ghost', 'state']);
-
-  /**
-   * Captures the current stage as a DESKTOP: a script of console lines that
-   * reproduces it when replayed — the domain, its content (a PACS query, a
-   * viewer at its layout/slice/W-L/colormap/ghost, its tags), and, by replay,
-   * the tiles as they were. A desktop is a replay of actions, not a pixel
-   * snapshot. Keyed by the on-stage viewer's series so returning to the same
-   * arrangement updates its one card. A stage with no viewer is a bare domain,
-   * reachable from its gutter button, so it is not carded.
-   */
-  const stageDesktop_capture = (): void => {
-    if (desktopReplaying) return;
-    const shown: Set<string> = new Set(layout.panes_shown());
-    const preset: string = layout.activePreset_get();
-    if (preset === 'panes' || preset === 'launcher') return;
-    // Panes on stage in creation order (the registry's insertion order): the
-    // domain primary is earliest (action 0), content follows as opened. Each
-    // action records the pane it split FROM, as that pane's index in this
-    // action log — which is what replay resolves against its produced table.
-    const stageIds: string[] = paneInstances_list().map((instance): string => instance.id).filter((id): boolean => shown.has(id));
-    const actionIndexOf: Map<string, number> = new Map<string, number>();
-    let anchor: string | undefined;
-    let label: string | undefined;
-    const actions: DesktopAction[] = [];
-    for (const id of stageIds) {
-      const kind: string | null = paneKind_get(id);
-      const birth = paneBirth.get(id);
-      const target: number = actionIndexOf.get(birth?.parent ?? '') ?? 0;
-      // The real split the pane was born with \u2014 a stacked or before-split pane
-      // carries its own orientation and side, not the column-right default.
-      const place = { dir: birth?.dir ?? 'col', side: place_of(birth?.before ?? false) };
-      const emit = (action: DesktopAction): void => { actionIndexOf.set(id, actions.length); actions.push(action); };
-      if (pane_isPrimary(id)) {
-        const domain = (preset === 'dag' ? 'runs' : preset) as 'pacs' | 'files' | 'runs';
-        const query: string | null = preset === 'pacs' ? pacsPanel.query_get() : null;
-        // The runs domain with a graph on stage is content, as a PACS
-        // query is: the feed, and the view the operator chose for it.
-        const dagPanel: DagPanel | undefined = preset === 'dag' ? panels.get('dag', 'dag') : undefined;
-        const feed: number | null = dagPanel !== undefined && dagPanel.graph_isShown() ? dagPanel.feed_get() : null;
-        const dagView: string[] = feed !== null && dagPanel !== undefined ? dagPanel.view_lines() : [];
-        if (feed !== null && label === undefined) label = dagPanel?.feedTitle_get();
-        emit({
-          op: 'domain',
-          domain,
-          ...(query !== null ? { query } : {}),
-          ...(feed !== null ? { feed } : {}),
-          ...(dagView.length > 0 ? { view: dagView } : {}),
-        });
-      } else if (birth?.binding === 'fs' || birth?.binding === 'view' || birth?.binding === 'empty') {
-        // A drawer SPLIT-pill pane replays as its own birth, whatever it holds.
-        emit({ op: birth.binding, target, ...place });
-      } else if (kind === 'image') {
-        const panel = panels.get('image', id);
-        const state = panel?.state_get() ?? null;
-        if (panel === undefined || state === null || state.path === null) continue;
-        const view: string[] = [];
-        if (state.layout !== 'single') view.push(`image layout ${state.layout}`);
-        if (state.colormap !== undefined && state.colormap !== 'gray') view.push(`image colormap ${state.colormap}`);
-        if (state.voi !== undefined && state.voi !== null) view.push(`image wl ${state.voi.lower} ${state.voi.upper}`);
-        if (state.slice > 1) view.push(`image slice ${state.slice}`);
-        if (state.ghost !== undefined && state.ghost !== null && state.layout === 'slab') view.push(`image ghost ${state.ghost}`);
-        emit({ op: 'image', path: state.path, target, ...place, ...(view.length > 0 ? { view } : {}) });
-        if (anchor === undefined) {
-          anchor = state.path;
-          const series = panel.series_get();
-          const parts: string[] = [series?.seriesDescription ?? '', series?.modality ?? ''].filter((part): boolean => part !== '');
-          if (parts.length > 0) label = parts.join(' \u00b7 ');
-        }
-      } else if (catalogueBindings.has(id)) {
-        // A catalogue is a files pane by kind and a catalogue by its binding:
-        // what PROCESS was pressed on, where a run lands, and the line RUN
-        // would run, verbatim. Asked before the files branch, or it would
-        // be logged as a browser at /bin.
-        const bound: CatalogueBinding | undefined = catalogueBindings.get(id);
-        if (bound === undefined) continue;
-        const line: string = panels.get('files', id)?.commandLine_get() ?? '';
-        emit({
-          op: 'catalogue', input: bound.input, target, ...place,
-          ...(bound.feed !== null ? { feed: bound.feed } : {}),
-          ...(bound.node !== null ? { node: bound.node } : {}),
-          ...(line !== '' ? { line } : {}),
-        });
-        if (label === undefined) label = `PROCESS ${bound.input.split('/').filter(Boolean).pop() ?? bound.input}`;
-      } else if (kind === 'files') {
-        const path: string | null = panels.get('files', id)?.path_current() ?? null;
-        if (typeof path !== 'string' || path.length === 0) continue;
-        emit({ op: 'dir', path, target, ...place });
-      } else if (kind === 'gather') {
-        // The cohort travels with the desktop: its series, and its name.
-        const panel: GatherPanel | undefined = panels.get('gather', id);
-        if (panel === undefined) continue;
-        const series: GatherSeries[] = [...panel.entries_get()];
-        const name: string | null = panel.name_get();
-        const made: GatherFeed | null = panel.feed_get();
-        emit({
-          op: 'gather', series, target, ...place,
-          ...(name !== null ? { name } : {}),
-          ...(made !== null ? { feed: made.feedId, root: { instance: made.rootInstanceId, path: made.path } } : {}),
-        });
-        if (label === undefined) label = name ?? `GATHER · ${series.length} series`;
-      } else if (kind === 'dag') {
-        // A run's graph beside its catalogue: the feed it graphs.
-        const graphed: number | null = panels.get('dag', id)?.feed_get() ?? null;
-        if (graphed === null) continue;
-        emit({ op: 'graph', feed: graphed, target, ...place });
-      } else if (kind === 'tags') {
-        emit({ op: 'tags', target, ...place });
-      }
-    }
-    // A desktop is any arrangement with content beyond the bare domain — a
-    // wall of browsers, a runs layout, a viewer and its tags. A single primary
-    // pane is NOT carded: it is one gutter press away. It used to take a VIEWER
-    // to be carded at all, so a files or runs layout with no image left nothing
-    // behind; content of any kind is enough now.
-    // A bare domain is one gutter press away and is not carded; a domain
-    // with a feed on stage is content, like every pane opened beside it.
-    const content = actions.filter((action): boolean => action.op !== 'domain' || action.feed !== undefined);
-    if (content.length === 0) return;
-    const thumbnail: string | undefined = stageStrip_capture(stageIds);
-    // The tiling as it stands, leaves as action indices: a pane moved after
-    // its birth stands where it was moved to, which its birth cannot say.
-    const shape_of = (node: LayoutNode): DesktopShape | null => {
-      if ('pane' in node) {
-        const index: number | undefined = actionIndexOf.get(node.pane);
-        return index === undefined ? null : { leaf: index };
-      }
-      const first: DesktopShape | null = shape_of(node.first);
-      const second: DesktopShape | null = shape_of(node.second);
-      if (first === null) return second;
-      if (second === null) return first;
-      return { dir: node.dir, ratio: node.ratio, first, second };
-    };
-    const stageTree: LayoutNode | null = layout.tree_get();
-    const shape: DesktopShape | null = stageTree === null ? null : shape_of(stageTree);
-    const memberOf: Record<string, string> = { image: 'viewer', view: 'viewer', dir: 'files', fs: 'files', tags: 'tags', empty: 'pane', domain: 'dag', catalogue: 'catalogue', graph: 'dag', gather: 'gather' };
-    const members: string[] = [...new Set(content.map((action): string => memberOf[action.op] ?? 'pane'))];
-    // A viewer desktop is keyed by its series, so returning to it updates the
-    // one card. A viewer-less desktop is keyed by the SET of content it holds,
-    // so the same arrangement of browsers updates its own card rather than
-    // minting a new one each time it is left.
-    let id: string;
-    let cardLabel: string;
-    let regard: { address: string; modelKind: string };
-    if (anchor !== undefined) {
-      id = anchor;
-      cardLabel = label ?? (anchor.split('/').pop() ?? anchor);
-      regard = { address: anchor, modelKind: 'dicom.series' };
-    } else {
-      const firstPath: string | undefined = content.map((action): string | undefined => action.path).find((path): boolean => path !== undefined);
-      const signature: string = content.map((action): string => action.path
-        ?? (action.input !== undefined ? `catalogue:${action.input}`
-          : action.series !== undefined ? `gather:${action.series.map((one): string => one.seriesUID).join(',')}`
-            : action.feed !== undefined ? `feed:${action.feed}` : action.op)).sort().join('|');
-      const domainName: string = preset === 'dag' ? 'RUNS' : preset.toUpperCase();
-      id = `${preset}:${signature}`;
-      cardLabel = label !== undefined && label !== ''
-        ? label
-        : firstPath !== undefined ? (firstPath.split('/').pop() ?? firstPath) : `${domainName} · ${content.length + 1} panes`;
-      regard = { address: id, modelKind: 'argus.desktop' };
-    }
-    dormant.add({
-      id,
-      label: cardLabel,
-      regard,
-      members,
-      actions,
-      ...(shape === null ? {} : { shape }),
-      ...(thumbnail === undefined ? {} : { thumbnail }),
-      lastTouched: Date.now(),
-    });
-  };
-
-  const orphans_dispose = (): void => {
-    const shown: Set<string> = new Set(layout.panes_shown());
-    for (const instance of paneInstances_list()) {
-      if (shown.has(instance.id)) continue;
-      // The primaries are the domains' own panes and outlive any preset;
-      // the launcher is one of them, and disposing it left the word that
-      // opens it pointing at a pane that no longer existed (an empty stage).
-      if (pane_isPrimary(instance.id)
-        || instance.id === 'panes' || instance.id === 'launcher' || instance.id === 'universe') continue;
-      paneInstance_dispose(instance.id);
-      layout.mount_remove(instance.id);
-    }
-    pacsStage_relight();
-  };
-
-  /**
-   * Enters a gutter domain. The one chokepoint every domain switch routes
-   * through: it captures the outgoing stage as a desktop BEFORE the preset
-   * changes (so the context a switch would lose becomes a PANES card), then
-   * applies the new preset and disposes what it left behind.
-   */
-  const domain_enter = (preset: string): void => {
-    stageDesktop_capture();
-    layout.preset_apply(preset);
-    orphans_dispose();
-  };
-
-
+  const desktop: Desktop = desktop_wire(context, {
+    image_open,
+    dir_open,
+    process_open,
+    gather_open,
+    feed_open,
+    pillPane_spawn,
+    pacsQuery_get: (): string | null => pacsPanel.query_get(),
+    catalogue_of: (paneId: string): CatalogueBinding | undefined => catalogueBindings.get(paneId),
+    catalogueIds: (): string[] => [...catalogueBindings.keys()],
+    stage_relight: (): void => pacsStage_relight(),
+  });
+  const { birth_record, domain_enter, orphans_dispose } = desktop;
+  const stageDesktop_capture = desktop.capture;
+  const group_restore = desktop.restore;
 
   const home_apply = (): void => {
     domain_enter('files');
     dagPanel.size_fit();
-  };
-
-  /** The image pane id backing a panel, for wiring members after a restore. */
-  const imagePane_idOf = (panel: ImagePanel): string | null =>
-    panels.idOf('image', panel);
-
-  /**
-   * Brings a dormant group back onto the stage: leaves the PANES domain,
-   * re-opens the series or volume it regarded at its saved view state
-   * (layout, slice, window/level, colormap, ghost), and re-opens its tags
-   * member. The group is taken out of the dormant set — it is live again, and
-   * re-snapshots when it next leaves.
-   */
-  const group_restore = async (id: string): Promise<void> => {
-    const snapshot: GroupSnapshot | undefined = dormant.get(id);
-    if (snapshot === undefined || snapshot.actions === undefined) return;
-    dormant.dismiss(id);
-    // Replay the action log. `produced[i]` is the pane action i made, so an
-    // action's `target` resolves to the exact pane it split from — the domain
-    // for a from-PACS open, a viewer for its tags, whatever it actually was —
-    // and each open is launched FROM that pane (focus it first), reproducing
-    // the arrangement's order and geometry.
-    const paneOf = (kind: string): string[] => paneInstances_list().filter((instance): boolean => layout.panes_shown().includes(instance.id) && paneKind_get(instance.id) === kind).map((instance): string => instance.id);
-    desktopReplaying = true;
-    try {
-      const produced: Array<string | null> = [];
-      // Structure-first: every pane's FRAME opens synchronously and its id is
-      // known at once, so the whole arrangement appears in one pass and the
-      // slow parts — a series' header read, a query — load in parallel behind
-      // it. No pane waits for another's pixels; nothing sleeps a fixed guess.
-      for (const action of snapshot.actions) {
-        const host: string | null = produced[action.target ?? 0] ?? null;
-        // The split this pane was born with — replayed opens read it so a
-        // stacked or before-split pane returns where it was.
-        const place = { dir: action.dir ?? 'col', before: action.side === 'before' };
-        if (action.op === 'domain') {
-          // The domain switch must FINISH before the content panes open, or its
-          // orphan sweep would dispose the panes opened after it. domain_enter
-          // is synchronous — call it directly rather than a deferred console
-          // line — so the preset is applied and swept before this pass moves
-          // on. The query then fires async; no pane targets its results.
-          const preset: string = action.domain === 'runs' ? 'dag' : action.domain === 'pacs' ? 'pacs' : 'files';
-          domain_enter(preset);
-          if (action.query !== undefined) terminal.line_run(action.query);
-          if (action.feed !== undefined) {
-            // The graph comes back as the roster would bring it, then the
-            // view the operator had chosen, once the graph has landed.
-            const feed: number = action.feed;
-            const view: readonly string[] = action.view ?? [];
-            const dagPanel: DagPanel | undefined = panels.get('dag', 'dag');
-            dagPanel?.feed_enter(feed);
-            if (view.length > 0 && dagPanel !== undefined) {
-              const landed = (tries: number): void => {
-                if (dagPanel.graph_isShown() && dagPanel.feed_get() === feed) {
-                  for (const line of view) terminal.line_run(line);
-                  return;
-                }
-                if (tries > 0) window.setTimeout((): void => landed(tries - 1), 250);
-              };
-              landed(240);
-            }
-          }
-          produced.push(preset);
-        } else if (action.op === 'image' && action.path !== undefined) {
-          if (host !== null) layout.focus_set(host);
-          let viewerId: string | null = null;
-          replayPlace = place;
-          const done: Promise<string> = image_open(null, action.path, {}, (openedId: string): void => { viewerId = openedId; });
-          replayPlace = null;
-          produced.push(viewerId);
-          // The saved view state lands when the series does — applied on the
-          // viewer's own completion, never blocking the other panes.
-          const view: readonly string[] | undefined = action.view;
-          const vid: string | null = viewerId;
-          if (view !== undefined && view.length > 0 && vid !== null) {
-            void done.then((): void => { for (const line of view) { layout.focus_set(vid); terminal.line_run(line); } }).catch((): void => { /* the pane stands; its view state simply did not land */ });
-          }
-        } else if (action.op === 'dir' && action.path !== undefined) {
-          if (host !== null) layout.focus_set(host);
-          const before: Set<string> = new Set(paneOf('files'));
-          replayPlace = place;
-          dir_open(action.path);
-          replayPlace = null;
-          produced.push(paneOf('files').find((paneId): boolean => !before.has(paneId)) ?? null);
-        } else if (action.op === 'tags') {
-          if (host !== null) layout.focus_set(host);
-          const before: Set<string> = new Set(paneOf('tags'));
-          replayPlace = place;
-          terminal.line_run('image tags');
-          replayPlace = null;
-          produced.push(paneOf('tags').find((paneId): boolean => !before.has(paneId)) ?? null);
-        } else if (action.op === 'catalogue' && action.input !== undefined) {
-          // The catalogue returns bound as it was, its line intact and RUN
-          // ready — the listing, not the dive: what to run is a choice again.
-          if (host !== null) layout.focus_set(host);
-          const catalogues = (): string[] => [...catalogueBindings.keys()].filter((paneId: string): boolean => layout.panes_shown().includes(paneId));
-          const before: Set<string> = new Set(catalogues());
-          replayPlace = place;
-          process_open(host ?? 'files', { input: action.input, feed: action.feed ?? null, node: action.node ?? null });
-          replayPlace = null;
-          const opened: string | null = catalogues().find((paneId): boolean => !before.has(paneId)) ?? null;
-          if (opened !== null && action.line !== undefined) panels.get('files', opened)?.commandLine_set(action.line);
-          produced.push(opened);
-        } else if (action.op === 'gather' && action.series !== undefined) {
-          // The cohort returns as it was gathered, named if it was named.
-          if (host !== null) layout.focus_set(host);
-          replayPlace = place;
-          const opened: string | null = gather_open([...action.series], host ?? 'pacs');
-          replayPlace = null;
-          if (opened !== null && action.name !== undefined) panels.get('gather', opened)?.name_set(action.name);
-          if (opened !== null && action.feed !== undefined && action.root !== undefined) {
-            panels.get('gather', opened)?.feed_set({ feedId: action.feed, rootInstanceId: action.root.instance, path: action.root.path });
-          }
-          produced.push(opened);
-        } else if (action.op === 'graph' && action.feed !== undefined) {
-          if (host !== null) layout.focus_set(host);
-          const before: Set<string> = new Set(paneOf('dag'));
-          replayPlace = place;
-          feed_open(host ?? 'files', action.feed);
-          replayPlace = null;
-          produced.push(paneOf('dag').find((paneId): boolean => !before.has(paneId)) ?? null);
-        } else if (action.op === 'fs' || action.op === 'view' || action.op === 'empty') {
-          // A drawer-pill pane replays as its own birth: the pill's spawn, at
-          // the same parent, orientation and side.
-          if (host === null) { produced.push(null); continue; }
-          layout.focus_set(host);
-          produced.push(pillPane_spawn(host, action.op, place.dir, place.before));
-        } else {
-          produced.push(null);
-        }
-      }
-      // The tiling returns as it stood: every frame is open now, so the
-      // recorded shape is laid over them — a moved pane where it was moved
-      // to, a block beside a block. A leaf whose action produced nothing
-      // is left out of the shape.
-      if (snapshot.shape !== undefined) {
-        const tree_of = (node: DesktopShape): LayoutNode | null => {
-          if ('leaf' in node) {
-            const pane: string | null = produced[node.leaf] ?? null;
-            return pane === null ? null : { pane };
-          }
-          const first: LayoutNode | null = tree_of(node.first);
-          const second: LayoutNode | null = tree_of(node.second);
-          if (first === null) return second;
-          if (second === null) return first;
-          return { dir: node.dir, ratio: node.ratio, first, second };
-        };
-        const tree: LayoutNode | null = tree_of(snapshot.shape);
-        if (tree !== null && !('pane' in tree)) layout.tree_set(tree);
-      }
-    } finally {
-      desktopReplaying = false;
-      pacsStage_relight();
-    }
   };
 
   /**

@@ -95,6 +95,9 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   plugin_find: jest.fn(async () => null),
   pluginParameters_drain: jest.fn(async () => []),
   feedShares_list: jest.fn(async () => ({ ok: true, value: [] })),
+  feedTags_list: jest.fn(async () => ({ ok: true, value: [] })),
+  feedTag_add: jest.fn(async () => ({ ok: true, value: true })),
+  feedTag_remove: jest.fn(async () => ({ ok: true, value: true })),
   path_extractFeedID: (p: string) => { const m = /\/feeds\/feed_(\d+)(?:\/|$)/.exec(p); return m ? Number(m[1]) : null; },
   // The payload helpers are pure and side-effect free: forward the real ones.
   tag_extractValue: dicomPayload.tag_extractValue,

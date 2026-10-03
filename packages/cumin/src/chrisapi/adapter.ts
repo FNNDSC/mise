@@ -50,6 +50,11 @@ export type {
   PACSFile,
   PipelineSourceFile,
   PipelineSourceFileList,
+  Tag,
+  TagList,
+  Tagging,
+  FeedTagList,
+  FeedTaggingList,
 } from '@fnndsc/chrisapi';
 
 /**

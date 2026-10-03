@@ -14,6 +14,7 @@ export * from "./";
 export * from "./error/errorStack";
 export * from "./config/config";
 export * from "./feeds/chrisFeed";
+export * from "./feeds/chrisTags";
 export * from "./connect/chrisConnection";
 export * from "./context/chrisContext";
 export * from "./plugins/chrisPlugins";

@@ -233,3 +233,66 @@ describe('bootRow_parse', () => {
     expect(bootRow_parse('[+] Session initialized.')).toBeNull();
   });
 });
+
+describe('ProcessHost restart', () => {
+  const CUBE: string = 'https://cube.example.org/api/v1/';
+
+  it('leaves the old daemon its reason, ends it, and boots a fresh one on the saved login, all as one boot', async () => {
+    const children: FakeChild[] = [new FakeChild(), new FakeChild()];
+    const calls: string[][] = [];
+    const host: ProcessHost = new ProcessHost({
+      stateDir, chellEntry: '/opt/chell/dist/index.js', alive: async (): Promise<boolean> => alive, bootTimeoutMs: 2_000, pollMs: 20,
+      spawn: (_command, args): SpawnedSession => { calls.push(args); return children[calls.length - 1] as FakeChild; },
+    });
+    const first: Promise<unknown> = host.spawn(IDENTITY, 'chris', CUBE, 'MINTED');
+    berth_plant(host);
+    await first;
+
+    host.restart_begin(IDENTITY, 'chris', CUBE);
+    const lines: string[] = [];
+    const followed = host.boot_follow(IDENTITY, { line: (line: BootLine): void => { lines.push(line.text); }, done: (): void => undefined });
+    expect(followed?.report.state).toBe('booting');
+    expect(followed?.report.lines[0]?.text).toMatch(/Restarting the calypso daemon/);
+    await new Promise((r) => setTimeout(r, 80));
+    expect(children[0]?.killed).toBe('SIGTERM');
+    const closing: string = join(host.dirs_of(IDENTITY).runtime, 'calypso', `closing-${(await import('@fnndsc/calypso/berth')).berthKey_compute(IDENTITY)}.json`);
+    expect(existsSync(closing)).toBe(true);
+    expect(calls[1]).toEqual(['/opt/chell/dist/index.js', `chris@${CUBE}`, '--daemon', '--saved-token', '--no-logo']);
+    expect(children[1]?.stdinText).toBe('');
+    expect(lines.some((text: string): boolean => /fresh calypso daemon/.test(text))).toBe(true);
+    berth_plant(host);
+    await new Promise((r) => setTimeout(r, 80));
+    expect(host.boot_follow(IDENTITY, { line: (): void => undefined, done: (): void => undefined })?.report.state).toBe('ready');
+  });
+
+  it('ends the boot failed, with the reason, when the saved login is refused', async () => {
+    const children: FakeChild[] = [new FakeChild(), new FakeChild()];
+    let n: number = 0;
+    const host: ProcessHost = new ProcessHost({
+      stateDir, chellEntry: '/opt/chell/dist/index.js', alive: async (): Promise<boolean> => alive, bootTimeoutMs: 2_000, pollMs: 20,
+      spawn: (): SpawnedSession => children[n++] as FakeChild,
+    });
+    const first: Promise<unknown> = host.spawn(IDENTITY, 'chris', CUBE, 'MINTED');
+    berth_plant(host);
+    await first;
+    rmSync(berth_pathIn(host.dirs_of(IDENTITY).runtime, IDENTITY));
+    host.restart_begin(IDENTITY, 'chris', CUBE);
+    await new Promise((r) => setTimeout(r, 60));
+    children[1]?.exit(1);
+    await new Promise((r) => setTimeout(r, 60));
+    const report = host.boot_follow(IDENTITY, { line: (): void => undefined, done: (): void => undefined })?.report;
+    expect(report?.state).toBe('failed');
+    expect(report?.reason).toMatch(/exited during boot/);
+  });
+
+  it('an administrator\'s end leaves the daemon the reason "end"', async () => {
+    const host: ProcessHost = host_make();
+    const first: Promise<unknown> = host.spawn(IDENTITY, 'chris', CUBE, 'MINTED');
+    berth_plant(host);
+    await first;
+    expect(await host.evict(IDENTITY)).toBe(true);
+    const { berthKey_compute } = await import('@fnndsc/calypso/berth');
+    const left = JSON.parse((await import('node:fs')).readFileSync(join(host.dirs_of(IDENTITY).runtime, 'calypso', `closing-${berthKey_compute(IDENTITY)}.json`), 'utf8')) as { cause: string };
+    expect(left.cause).toBe('end');
+  });
+});

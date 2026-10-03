@@ -34,7 +34,7 @@ import { token_matches } from './token.js';
 import { RequestBroker } from './broker.js';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
 import { clientMessage_parse, attach_parse } from '@fnndsc/menu';
-import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, PromptKind, PromptPath, FileDeliverRequest, Regard, WatchState, AmbientEvent } from '@fnndsc/menu';
+import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, PromptKind, PromptPath, FileDeliverRequest, Regard, WatchState, AmbientEvent, ClosingCause } from '@fnndsc/menu';
 import type { z } from 'zod';
 
 /**
@@ -1158,6 +1158,28 @@ export class CalypsoDaemon {
    * @param socket - The destination surface.
    * @param message - The message to send.
    */
+  /**
+   * Tells every attached surface the daemon is going away, and why; resolves
+   * once each message has left (or a short wait has passed), so the process
+   * can exit after it rather than before.
+   *
+   * @param cause - Why: a door restart, an administrator's end, or a plain stop.
+   * @param waitMs - The longest it waits for the sends to leave.
+   */
+  public closing_announce(cause: ClosingCause, waitMs: number = 500): Promise<void> {
+    const sends: Array<Promise<void>> = [];
+    for (const surface of this.surfaces) {
+      if (surface.socket.readyState !== WebSocket.OPEN) continue;
+      sends.push(new Promise<void>((resolve: () => void): void => {
+        surface.socket.send(JSON.stringify({ type: 'closing', cause }), (): void => resolve());
+      }));
+    }
+    return Promise.race([
+      Promise.all(sends).then((): void => undefined),
+      new Promise<void>((resolve: () => void): void => { setTimeout(resolve, waitMs).unref(); }),
+    ]);
+  }
+
   private send(socket: WebSocket, message: ServerMessage): void {
     if (socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(message));

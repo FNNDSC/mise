@@ -7,6 +7,9 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
+  closing_write,
+  closing_take,
+  closing_pathIn,
   identity_normalise,
   identity_forSession,
   DISCONNECTED_IDENTITY,
@@ -199,5 +202,24 @@ describe('LocalBerthResolver', () => {
     expect(listed).toEqual([live]);
     expect(existsSync(berth_path(dead.identity))).toBe(false);
     expect(existsSync(berth_path(live.identity))).toBe(true);
+  });
+});
+
+describe('closing reasons', () => {
+  const IDENTITY: string = 'chris@https://cube.example.org/api/v1/';
+  it('takes the reason a host left, once, and only while it is fresh', () => {
+    const runtime: string = mkdtempSync(join(tmpdir(), 'closing-'));
+    try {
+      expect(closing_take(IDENTITY, runtime)).toBeNull();
+      closing_write(runtime, IDENTITY, 'restart');
+      expect(existsSync(closing_pathIn(runtime, IDENTITY))).toBe(true);
+      expect(closing_take(IDENTITY, runtime)).toBe('restart');
+      expect(existsSync(closing_pathIn(runtime, IDENTITY))).toBe(false);
+      expect(closing_take(IDENTITY, runtime)).toBeNull();
+      writeFileSync(closing_pathIn(runtime, IDENTITY), JSON.stringify({ cause: 'end', at: Date.now() - 3_600_000 }));
+      expect(closing_take(IDENTITY, runtime)).toBeNull();
+    } finally {
+      rmSync(runtime, { recursive: true, force: true });
+    }
   });
 });

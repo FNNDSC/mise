@@ -55,6 +55,13 @@ export interface ChellCLIConfig {
    * can still be refused by name.
    */
   authTokenStdin?: boolean;
+  /**
+   * `--saved-token`: log in with the token this identity saved last time, and
+   * refuse (rather than fall back to offline) when there is none or the
+   * server will not have it — how a porter restarts a session without the
+   * operator's password.
+   */
+  savedToken?: boolean;
   output?: string; // For help/version text
 }
 
@@ -82,6 +89,7 @@ export interface CliActionOptions {
   token?: string;
   door?: string;
   authTokenStdin?: boolean;
+  savedToken?: boolean;
   info?: boolean;
 }
 
@@ -166,6 +174,9 @@ export function cliConfig_fromArgs(
 
   if (options.authTokenStdin) {
     config.authTokenStdin = true;
+  }
+  if (options.savedToken) {
+    config.savedToken = true;
   }
 
   // Apply startup preference toggles when provided
@@ -284,6 +295,7 @@ ${chalk.bold.cyan('DESCRIPTION')}
     .option('--token <token>', 'Attach token, when the --attach URL does not carry one')
     .option('--door <url>', 'With --remote: come through a porter — log in there (-u, -p, or be asked), and attach to the session it mounts')
     .option('--auth-token-stdin', 'Log in with a CUBE auth token read from stdin (one line) instead of a password; needs <user>@<url>')
+    .option('--saved-token', 'Log in with the token <user>@<url> saved last time, refusing if there is none or it is refused (no offline fallback)')
     .option('--info', 'Show a detailed table of the stack packages, roles, and versions, then exit')
     .addHelpText('after', `
 ${chalk.bold.cyan('INTERACTIVE COMMANDS')}

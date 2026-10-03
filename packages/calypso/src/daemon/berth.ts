@@ -21,8 +21,9 @@
  *
  * @module
  */
-import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, rmSync } from 'fs';
+import { dirname, join } from 'path';
+import { CLOSING_CAUSES, type ClosingCause } from '@fnndsc/menu';
 import { tmpdir } from 'os';
 import { createHash } from 'node:crypto';
 import { connect as net_connect, type Socket } from 'node:net';
@@ -362,5 +363,56 @@ export class LocalBerthResolver implements BerthResolver {
       }
     }
     return live;
+  }
+}
+
+/** The file beside a berth that says why its daemon is being ended. */
+const CLOSING_FILE_PREFIX: string = 'closing-';
+
+/**
+ * Where a host leaves the reason it is ending an identity's daemon: beside
+ * the berth, in the same runtime directory.
+ *
+ * @param runtimeDir - The runtime directory the daemon writes its berth in.
+ * @param identity - The normalised identity.
+ * @returns The path.
+ */
+export function closing_pathIn(runtimeDir: string, identity: string): string {
+  return join(runtimeDir, BERTH_SUBDIR, `${CLOSING_FILE_PREFIX}${berthKey_compute(identity)}.json`);
+}
+
+/**
+ * Leaves the reason an identity's daemon is about to be ended, for the
+ * daemon to read when the signal arrives and tell its surfaces.
+ *
+ * @param runtimeDir - The daemon's runtime directory.
+ * @param identity - The normalised identity.
+ * @param cause - Why: `restart` or `end`.
+ */
+export function closing_write(runtimeDir: string, identity: string, cause: ClosingCause): void {
+  const path: string = closing_pathIn(runtimeDir, identity);
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  writeFileSync(path, `${JSON.stringify({ cause, at: Date.now() })}\n`, { mode: 0o600 });
+}
+
+/** How long a left reason stays believable; an older one is a leftover. */
+const CLOSING_FRESH_MS: number = 60_000;
+
+/**
+ * Takes the reason a host left for this daemon's ending, removing it.
+ *
+ * @param identity - The daemon's normalised identity.
+ * @param runtimeDir - Its runtime directory; this process's by default.
+ * @returns The cause, or null when none was left (or it is stale).
+ */
+export function closing_take(identity: string, runtimeDir: string = process.env.XDG_RUNTIME_DIR || tmpdir()): ClosingCause | null {
+  const path: string = closing_pathIn(runtimeDir, identity);
+  try {
+    const left: { cause?: unknown; at?: unknown } = JSON.parse(readFileSync(path, 'utf-8')) as { cause?: unknown; at?: unknown };
+    rmSync(path, { force: true });
+    const fresh: boolean = typeof left.at === 'number' && Date.now() - left.at < CLOSING_FRESH_MS;
+    return fresh && (CLOSING_CAUSES as readonly unknown[]).includes(left.cause) ? (left.cause as ClosingCause) : null;
+  } catch {
+    return null;
   }
 }

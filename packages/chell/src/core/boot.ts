@@ -343,6 +343,51 @@ async function connection_fromToken(
 }
 
 /**
+ * Connect with the token this identity saved last time, or refuse. Unlike a
+ * saved-session restore, nothing falls back to offline: a porter restarting
+ * a session needs to know it did not come up, so it can send the operator
+ * to the login door. Refusals are by name: the flag without an identity,
+ * beside another login, no saved token for that identity, and a token the
+ * server will not have.
+ */
+async function connection_fromSavedToken(
+  config: ChellCLIConfig,
+  boot: BootLogger | null,
+): Promise<Result<SingleContext>> {
+  const user: string | undefined = config.connectConfig?.user;
+  const url: string | undefined = config.connectConfig?.url;
+  if (!user || !url) {
+    console.error(chalk.red('Error: --saved-token needs a <user>@<url> target to say whose token it is.'));
+    return Err();
+  }
+  if (config.connectConfig?.password !== undefined || config.authTokenStdin) {
+    console.error(chalk.red('Error: --saved-token is a login of its own; give it alone.'));
+    return Err();
+  }
+  spinner.start(`Validating the token ${user} saved`);
+  const result: SavedSessionResult = await sessionConnect_fromSaved();
+  spinner.stop();
+  const ctx: SingleContext = result.context;
+  const theirs: boolean = ctx.user === user && url_sameServer(ctx.URL ?? '', url);
+  if (result.status !== 'restored' || !theirs) {
+    const why: string = !theirs && result.status === 'restored'
+      ? `the saved token is ${ctx.user}@${ctx.URL}'s, not ${user}@${url}'s`
+      : result.status === 'invalid-token' ? `the server refused the saved token${result.error ? ` (${result.error})` : ''}`
+        : 'no token is saved for this identity';
+    console.error(chalk.red(`[!] Connection refused: ${why}`));
+    boot?.log('fail', 'Connect', why);
+    return Err();
+  }
+  boot?.log('ok', 'Connect', `Connected to ${url} (saved token)`);
+  return Ok(ctx);
+}
+
+/** Whether two CUBE API URLs name one server (a trailing slash is no difference). */
+function url_sameServer(a: string, b: string): boolean {
+  return a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
+}
+
+/**
  * Restore a saved session from disk. Always succeeds — falls back to offline mode.
  */
 async function connection_fromSavedSession(
@@ -408,6 +453,9 @@ async function connection_establish(
 ): Promise<Result<SingleContext>> {
   if (config.authTokenStdin) {
     return await connection_fromToken(config, boot);
+  }
+  if (config.savedToken) {
+    return await connection_fromSavedToken(config, boot);
   }
   if (config.connectConfig) {
     return await connection_fromArgs(config, boot);

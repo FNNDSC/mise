@@ -240,6 +240,22 @@ export const staleMessageSchema = z.object({
   stale: z.boolean(),
 });
 
+/** Why a daemon is going away, as it tells its surfaces before it does. */
+export const CLOSING_CAUSES = ['restart', 'end', 'stop'] as const;
+
+/**
+ * The daemon is going away: sent to every surface just before it exits.
+ * `restart` — a door restarts it and a fresh one follows; `end` — an
+ * administrator ended it; `stop` — it was stopped, for no reason it was told.
+ */
+export const closingMessageSchema = z.object({
+  type: z.literal('closing'),
+  cause: z.enum(CLOSING_CAUSES),
+});
+
+/** Why the daemon is going away. */
+export type ClosingCause = (typeof CLOSING_CAUSES)[number];
+
 /** A pushed change in whether the daemon's own code still matches its disk. */
 export type StaleMessage = z.infer<typeof staleMessageSchema>;
 
@@ -741,6 +757,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   regardMessageSchema,
   watchedMessageSchema,
   staleMessageSchema,
+  closingMessageSchema,
   numberedMessageSchema,
 ]);
 

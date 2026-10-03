@@ -64,6 +64,14 @@ describe('cliConfig_fromArgs', () => {
     expect(alone.connectConfig).toBeUndefined();
   });
 
+  it('carries --saved-token beside the identity, so a porter can restart a session without the password', () => {
+    const c = cliConfig_fromArgs('chris@https://cube.example.org/api/v1/', { daemon: true, savedToken: true }, noFile);
+    expect(c.mode).toBe('daemon');
+    expect(c.savedToken).toBe(true);
+    expect(c.authTokenStdin).toBeUndefined();
+    expect(c.connectConfig).toEqual({ user: 'chris', password: undefined, url: 'https://cube.example.org/api/v1/' });
+  });
+
   it('applies startup preference toggles', () => {
     const c = cliConfig_fromArgs(undefined, { prefetchFeeds: false, logo: false, asciiBoot: true }, noFile);
     expect(c.prefetchFeeds).toBe(false);

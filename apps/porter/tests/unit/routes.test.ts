@@ -58,6 +58,8 @@ class FakeHost implements SessionHost {
     return { report: this.report, release: (): void => { this.listener = null; } };
   }
   async evict(): Promise<boolean> { return true; }
+  public restarted: Array<{ identity: string; user: string }> = [];
+  restart_begin(identity: string, user: string): void { this.restarted.push({ identity, user }); }
 }
 
 let host: FakeHost;
@@ -259,6 +261,26 @@ describe('the door', () => {
     const session = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'right' } });
     const key: string = (session.json() as { key: string }).key;
     expect((await built.app.inject({ method: 'GET', url: '/', headers: { cookie: cookie_of(session) } })).headers.location).toBe(`/s/${key}/?door`);
+  });
+
+  it('restarts only the cookie\'s own session, sends the browser to the greeter, and refuses one with no session', async () => {
+    const refused = await built.app.inject({ method: 'POST', url: '/restart', headers: { accept: 'application/json' } });
+    expect(refused.statusCode).toBe(401);
+    expect(host.restarted).toEqual([]);
+    host.found = { identity: 'chris@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4444', token: 'ATTACH' };
+    const session = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'right' } });
+    const key: string = (session.json() as { key: string }).key;
+    const restart = await built.app.inject({ method: 'POST', url: '/restart', headers: { accept: 'application/json', cookie: cookie_of(session) } });
+    expect(restart.json()).toEqual({ key, greet: `/greet/${key}`, state: 'restarting' });
+    expect(host.restarted).toEqual([{ identity: 'chris@https://cube.example.org/api/v1/', user: 'chris' }]);
+    // Until the fresh berth answers, the mount refuses rather than proxy to a daemon on its way out.
+    const mount = await built.app.inject({ method: 'GET', url: `/s/${key}/`, headers: { cookie: cookie_of(session) } });
+    expect(mount.statusCode).toBe(404);
+    // A second press while it boots joins that boot rather than starting another.
+    const again = await built.app.inject({ method: 'POST', url: '/restart', headers: { accept: 'text/html', cookie: cookie_of(session) } });
+    expect(again.statusCode).toBe(303);
+    expect(again.headers.location).toBe(`/greet/${key}`);
+    expect(host.restarted).toHaveLength(1);
   });
 
   it('logs a browser out by clearing its cookie, and leaves the session alone', async () => {

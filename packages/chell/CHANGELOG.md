@@ -1,5 +1,22 @@
 # @fnndsc/chell
 
+## 5.10.0
+
+### Minor Changes
+
+- 33e4f1d: A session restarts from its own browser and stays logged in. Porter's new `POST /restart` (cookie-gated: only the cookie's own session) tells the old calypso daemon why, ends it, and boots a fresh one with chell's new `--saved-token` login, which uses the token the identity saved and refuses rather than come up offline. The browser follows the boot on the greeter; a refused saved token ends at the door with the reason. On SIGTERM the daemon sends `closing` (restart, end or stop) to every surface before it exits, and a remote chell prints why it went. `porter --end` leaves `end` as the reason.
+
+### Patch Changes
+
+- Updated dependencies [51315ec]
+- Updated dependencies [33e4f1d]
+- Updated dependencies [fe4b6b4]
+- Updated dependencies [2d26368]
+  - @fnndsc/calypso@0.19.0
+  - @fnndsc/menu@0.17.0
+  - @fnndsc/cumin@3.27.2
+  - @fnndsc/brasa@0.31.2
+
 ## 5.9.8
 
 ### Patch Changes

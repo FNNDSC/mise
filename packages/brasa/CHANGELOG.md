@@ -1,5 +1,16 @@
 # @fnndsc/brasa
 
+## 0.31.2
+
+### Patch Changes
+
+- Updated dependencies [51315ec]
+- Updated dependencies [33e4f1d]
+- Updated dependencies [fe4b6b4]
+- Updated dependencies [2d26368]
+  - @fnndsc/menu@0.17.0
+  - @fnndsc/cumin@3.27.2
+
 ## 0.31.1
 
 ### Patch Changes

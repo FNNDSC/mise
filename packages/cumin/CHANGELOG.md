@@ -1,5 +1,15 @@
 # @fnndsc/cumin
 
+## 3.27.2
+
+### Patch Changes
+
+- 2d26368: Four defects the smoke suite's reds were hiding, fixed. `feed rm` now drops the feed from the session's index at once, so the RUNS roster stops listing a feed this session removed. The RUNS pane records the cwd on every promptline, so a pick is no longer replaced by a stale "move" minutes later. A follow superseded by a hand pick no longer takes the pane when its answer arrives late. RUNS pressed over a graph now leaves the graph whole (watch released, title and canvas cleared), and a feed listing brought by another command no longer pulls the roster over a graph.
+- Updated dependencies [51315ec]
+- Updated dependencies [33e4f1d]
+- Updated dependencies [fe4b6b4]
+  - @fnndsc/menu@0.17.0
+
 ## 3.27.1
 
 ### Patch Changes

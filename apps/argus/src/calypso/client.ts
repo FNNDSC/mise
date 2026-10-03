@@ -15,6 +15,8 @@
  * @module
  */
 import { vfsUrl_build } from './routes.js';
+import type { ClosingCause } from '@fnndsc/menu';
+import type { SurfaceSeen } from '../app/restart.js';
 import { type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry,
   CONTRACT_VERSION,
   serverMessage_parse,
@@ -94,6 +96,8 @@ export interface AttachInfo {
   stack?: StackInfo;
   /** Whether the daemon's own code on disk has moved on; absent from older daemons. */
   stale?: boolean;
+  /** This surface's own id on the daemon; absent from older daemons. */
+  surface?: string;
 }
 
 /**
@@ -152,7 +156,9 @@ export interface ClientHandlers {
    * its own command line.
    */
   edit_receive?: (request: SurfaceEdit) => boolean;
-  telemetry_receive?: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry; state?: JobsStateTelemetry }) => void;
+  telemetry_receive?: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry; state?: JobsStateTelemetry; surfaces?: SurfaceSeen[] }) => void;
+  /** The daemon is going away, and says why. */
+  closing_receive?: (cause: ClosingCause) => void;
   session_receive?: (surface: string, envelope: WireEnvelope) => void;
   envelope_observe?: (envelope: WireEnvelope) => void;
   /** The session's retained regard, pushed on any surface's write and on attach. */
@@ -296,6 +302,7 @@ export class ArgusClient {
             ...(message.stack !== undefined ? { stack: message.stack } : {}),
             ...(message.hostControl !== undefined ? { hostControl: message.hostControl } : {}),
             ...(message.stale !== undefined ? { stale: message.stale } : {}),
+            ...(message.surface !== undefined ? { surface: message.surface } : {}),
           },
         });
       };
@@ -453,6 +460,7 @@ export class ArgusClient {
         break;
       }
       case 'stale': this.handlers.stale_receive?.(message.stale); break;
+      case 'closing': this.handlers.closing_receive?.(message.cause); break;
       case 'numbered': {
         this.handlers.numbered_receive?.({
           id: message.id,
@@ -467,7 +475,7 @@ export class ArgusClient {
         break;
       }
       case 'telemetry': {
-        this.handlers.telemetry_receive?.(message.index, { lane: message.lane, cube: message.cube, state: message.state });
+        this.handlers.telemetry_receive?.(message.index, { lane: message.lane, cube: message.cube, state: message.state, surfaces: message.surfaces });
         break;
       }
       case 'regard': {

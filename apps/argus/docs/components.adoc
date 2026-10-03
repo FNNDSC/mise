@@ -468,3 +468,69 @@ panel.content_show({ path, content, extension });
 * Do not write a file from the pane any other way than the touch line: a save the transcript does not show is a save the operator cannot account for.
 * Do not put a control inside the field: what acts on the field rides the frame.
 * Do not name the guest library outside `field.ts`: the pane asks it for five things and could be given them by another.
+
+== Restart question
+
+Source: `apps/argus/src/app/restart.ts` (the question, the RESTART pill, the request to the door and what a closing daemon says), raised from `app/buildMatch.ts` (the out-of-date notice's cure) and `app/door.ts` (the door's pills).
+
+Status: on stage since 2026-10-03 (#863, slice 3). Stands only on a page that came through a door (`?door`).
+
+=== Purpose
+
+The calypso daemon restarted by its own operator, never from under them. Two controls ask: the standing RESTART pill beside LOG OUT, and the cure in the CALYPSO DAEMON OUT OF DATE notice. Both raise one question in the notice's spot. It names what a restart would cut off right now, and the door does the rest: it ends the daemon, boots a fresh one on the saved login, and sends the browser through the greeter. The operator stays logged in.
+
+=== Anatomy
+
+image::images/restart-question-anatomy.svg[Restart question anatomy,1180]
+
+[cols="1,2,3",options="header"]
+|===
+| Part | Selector | What it is
+
+| pill | `#restart-pill` | RESTART, beside LOG OUT in the header's controls; hidden without a door.
+| cure | `.build-mismatch-restart` | "Restart the calypso daemon" in the out-of-date notice, as a control (behind a door only).
+| question | `.stale-page.restart-question` | The notice's spot and clothes: the sentence, `.restart-cuts` (only what applies now), `.restart-answers` with `.restart-yes` (focused) and `.restart-no`.
+| said | `.stale-page.restart-said` | What this page says while it restarts, or what another page says when the daemon closes ("…asked from another browser or surface. Following it…").
+|===
+
+=== Declaration
+
+[source,ts]
+----
+// app/main.ts: the host hands it the unsaved edits and feeds it the wire
+const restart = restart_wire({ unsaved: () => dirtyEditPaths });
+const buildWatch = buildMatch_wire(statusBar, note, restart.ask); // the notice's cure asks too
+restart.attach_take(attached.attach);              // this surface's own id
+telemetry_receive: (index, extra) => restart.telemetry_take(extra); // lane + surfaces
+closing_receive: (cause) => restart.closing_take(cause);
+----
+
+=== States
+
+[cols="1,2,3",options="header"]
+|===
+| State | Where | Meaning
+
+| hidden | the pill, the cure | No door: there is nothing to restart through, so the cure stays words.
+| asking | the question | YES / NO; Enter and Esc; the stage sees neither key.
+| restarting | `.restart-said` | YES pressed: the door was asked; the browser goes to the greeter.
+| refused | `.restart-said` | The door could not restart it; its words are shown.
+| followed | `.restart-said` on another page | The daemon closed with cause restart; this page follows to the greeter.
+|===
+
+=== Laws
+
+* `a-daemon-is-restarted-by-its-own-operator`: asked first, by the operator's own press, behind a door. The door does it and keeps the login.
+* `a-question-is-answered-where-the-hand-is`: the question stands where the notice stood.
+* `a-surface-leaves-by-the-door-it-came-in`: RESTART stands beside LOG OUT only behind a door.
+
+=== Stylesheet
+
+`.restart-pill` (the door pills' shape, its own hue), `.restart-question` / `.restart-cuts` / `.restart-answers` / `.restart-yes` / `.restart-no` over the stale-page notice's frame. Colours are tokens.
+
+=== Do not
+
+* Do not restart without asking, and do not ask in the console: a door action is not a kernel line.
+* Do not list what is not live: a generic warning teaches the operator to ignore the question.
+* Do not show the controls without a door: a bare daemon has no supervisor to restart it.
+

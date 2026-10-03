@@ -328,9 +328,12 @@ export class CalypsoDaemon {
           : null,
         waiting: this.queueWaiting,
       };
+      // Who else is here: a restart asked from one surface names the rest.
+      // A surface that runs host shells is a terminal; one that does not, a browser.
+      const surfaces = [...this.surfaces].map((each: Surface) => ({ id: each.id, kind: each.capabilities.shellCommands ? 'chell' as const : 'browser' as const }));
       for (const surface of this.surfaces) {
         this.send(surface.socket, {
-          type: 'telemetry', index, lane,
+          type: 'telemetry', index, lane, surfaces,
           ...(snapshot.cube !== undefined ? { cube: snapshot.cube } : {}),
           ...(snapshot.state !== undefined ? { state: snapshot.state } : {}),
         });
@@ -718,6 +721,8 @@ export class CalypsoDaemon {
     this.send(socket, {
       type: 'attached',
       session: this.sessionId,
+      // This surface's own id, so it can find itself among the heartbeat's surfaces.
+      surface: surface.id,
       protocolVersion: CONTRACT_VERSION,
       ...(this.stack !== undefined ? { stack: this.stack } : {}),
       // Declared state, present from the first frame: a surface's lamp and a

@@ -122,6 +122,7 @@ try {
   check('session reaches READY', ready === true);
   // The LOG OUT pill leaves by a door; at a daemon's root there is none.
   check('the LOG OUT pill stands only behind a door', await evalIn(`return document.getElementById('door-pill')?.hidden === true;`) === true);
+  check('the RESTART pill stands only behind a door', await evalIn(`return document.getElementById('restart-pill')?.hidden === true;`) === true);
   if (!ready) throw new Error('no session');
 
   if (stage('universe-pane')) {
@@ -399,6 +400,35 @@ try {
       edge.bottom === 'bottom' && edge.flare === 'edge-flare-bottom' && edge.bounce === 'edge-bounce-bottom' && edge.cleared, JSON.stringify(edge));
     check('a wheel past a field\'s top flares the top', edge.top === 'top' && edge.topFlare === 'edge-flare-top', JSON.stringify(edge));
   }
+  }
+
+  if (stage('restart-question')) {
+  // #863: behind a door the RESTART pill asks first, in the notice's spot,
+  // naming what a restart would cut off; Esc answers no and the keys never
+  // reach the stage. A daemon's root has no door to restart through, so the
+  // stage borrows the door's mark (?door) and never answers yes.
+  await evalIn(`location.assign(location.href + (location.search ? '&' : '?') + 'door'); return 1;`).catch(() => 1);
+  await new Promise((r) => setTimeout(r, 1500));
+  const asked = await evalIn(`
+    for (let i = 0; i < 120 && !/READY/.test(document.getElementById('drawer-status')?.textContent ?? ''); i++) await sleep(500);
+    const pill = document.getElementById('restart-pill');
+    const shown = pill?.hidden === false;
+    pill?.click(); await sleep(300);
+    const question = document.querySelector('.restart-question');
+    const words = question?.querySelector('.stale-page-words div')?.textContent ?? '';
+    const focused = document.activeElement?.classList.contains('restart-yes') ?? false;
+    let stageSawEsc = false;
+    const spy = (event) => { if (event.key === 'Escape') stageSawEsc = true; };
+    document.addEventListener('keydown', spy);
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.removeEventListener('keydown', spy);
+    await sleep(200);
+    return { shown, words, focused, gone: document.querySelector('.restart-question') === null, stageSawEsc };`);
+  await evalIn(`location.assign(location.href.replace(/[?&]door/, '')); return 1;`).catch(() => 1);
+  await new Promise((r) => setTimeout(r, 1500));
+  await evalIn(`for (let i = 0; i < 120 && !/READY/.test(document.getElementById('drawer-status')?.textContent ?? ''); i++) await sleep(500); return 1;`);
+  check('behind a door the RESTART pill asks first, in words, with YES focused', asked.shown && /^Restart the calypso daemon\? You'll stay logged in/.test(asked.words) && asked.focused, JSON.stringify(asked));
+  check('Esc answers the restart question no, and the stage never sees the key', asked.gone && !asked.stageSawEsc, JSON.stringify(asked));
   }
 
   if (stage('roster-returns-unlit')) {

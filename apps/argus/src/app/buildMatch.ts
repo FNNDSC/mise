@@ -22,6 +22,7 @@
  * @module
  */
 import type { StackInfo } from '../calypso/client.js';
+import { door_isPresent } from '../calypso/routes.js';
 
 /** A build's identity: the commit and the UTC minute it was built (`YYYY-MM-DD HH:MM`). */
 export interface BuildStamp {
@@ -101,6 +102,7 @@ export function buildMismatch_tell(
   stack: StackInfo,
   note: (line: string) => void,
   host: HTMLElement = document.body,
+  restart?: () => void,
 ): void {
   host.querySelector('.build-mismatch')?.remove();
   const served: string = stack.surface !== undefined
@@ -129,6 +131,15 @@ export function buildMismatch_tell(
     refresh.title = 'reload this tab to load the new ARGUS';
     refresh.addEventListener('click', (): void => { window.location.reload(); });
     cure = refresh;
+  } else if (restart !== undefined) {
+    // Behind a door the daemon's cure is a control too: it asks first.
+    const restartCure: HTMLButtonElement = document.createElement('button');
+    restartCure.type = 'button';
+    restartCure.className = 'stale-page-reload build-mismatch-restart';
+    restartCure.textContent = words.cure;
+    restartCure.title = 'restart the calypso daemon (asks first; you stay logged in)';
+    restartCure.addEventListener('click', restart);
+    cure = restartCure;
   }
   sentence.append(document.createTextNode(words.before), cure, document.createTextNode(words.after));
   // The operator may carry on knowingly; the status strip keeps the readout.
@@ -159,12 +170,14 @@ export interface BuildWatch {
  *
  * @param strip - The status strip's readout.
  * @param note - Writes a line to the console.
+ * @param restart - Asks to restart the daemon, behind a door; the notice's cure calls it.
  * @param host - Where the notice stands.
  * @returns The watch.
  */
 export function buildMatch_wire(
   strip: { build_show: (readout: string | null, title?: string) => void },
   note: (line: string) => void,
+  restart?: () => void,
   host: HTMLElement = document.body,
 ): BuildWatch {
   const page: BuildStamp = { git: __ARGUS_GIT__, built: __ARGUS_BUILT__ };
@@ -183,7 +196,7 @@ export function buildMatch_wire(
       return;
     }
     strip.build_show(BUILD_MISMATCH_WORDS[mismatch].readout, buildMismatch_sentence(mismatch));
-    buildMismatch_tell(mismatch, page, stack, say, host);
+    buildMismatch_tell(mismatch, page, stack, say, host, door_isPresent(window.location.search) ? restart : undefined);
   };
   return {
     attach_take: (attach): void => { stack = attach.stack; judge(attach.stale); },

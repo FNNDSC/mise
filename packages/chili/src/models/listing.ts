@@ -35,6 +35,9 @@ export interface ListingItem extends SimpleRecord {
   /** Version string (for plugins). */
   version?: string;
 
+  /** A feed's tags, when the listing shows them (`ls -l` over feeds). */
+  tags?: string[];
+
   /** Title or description (for feeds, plugin instances). */
   title?: string;
 

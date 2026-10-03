@@ -55,6 +55,7 @@ export type {
   Tagging,
   FeedTagList,
   FeedTaggingList,
+  TagFeedList,
 } from '@fnndsc/chrisapi';
 
 /**

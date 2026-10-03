@@ -15,7 +15,9 @@ const mockCacheSet = jest.fn((key: string, data: unknown) => { cacheStore.set(ke
 const mockCacheInvalidate = jest.fn((key: string) => { cacheStore.delete(key); });
 const mockStackPush = jest.fn();
 const mockStackSearch = jest.fn<(needle: string) => string[]>(() => []);
+const mockFeedTagsByFeed = jest.fn(async (): Promise<{ ok: boolean; value?: Map<number, string[]> }> => ({ ok: true, value: new Map() }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  feedTags_byFeed: mockFeedTagsByFeed,
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   listCache_get: () => ({

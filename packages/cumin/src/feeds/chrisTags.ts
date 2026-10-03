@@ -19,6 +19,8 @@ import {
   type FeedTaggingList,
   type TagList,
   type Tagging,
+  type Tag,
+  type TagFeedList,
 } from "../chrisapi/adapter.js";
 import { chrisConnection } from "../connect/chrisConnection.js";
 import { collectionPage_wrap, listPages_drain, type ListPage } from "../chrisapi/contract.js";
@@ -30,6 +32,17 @@ export interface FeedTag {
   id: number;
   name: string;
   color: string;
+}
+
+/** How long the feed→tags map serves before it is read again, ms. */
+export const TAGS_MAP_TTL_MS: number = 60_000;
+
+/** The feed→tags map, and when it was read; null until first asked. */
+let tagsMap: { at: number; byFeed: Map<number, string[]> } | null = null;
+
+/** Forgets the feed→tags map: a tag changed here, or a test starts clean. */
+export function feedTagsMap_forget(): void {
+  tagsMap = null;
 }
 
 /** The colour a tag is made in when the kernel makes it: CUBE requires one. */
@@ -111,6 +124,7 @@ export async function feedTag_add(feedId: number, name: string): Promise<Result<
       return Err();
     }
     await reached.feed.addTagging(tagId);
+    feedTagsMap_forget();
     return Ok(true);
   } catch (error: unknown) {
     errorStack.stack_push('error', `Failed to tag feed ${feedId} with ${name}: ${error instanceof Error ? error.message : String(error)}`);
@@ -137,9 +151,52 @@ export async function feedTag_remove(feedId: number, name: string): Promise<Resu
       .find((one: Tagging): boolean => itemData_get<{ tag_id?: number }>(one)?.tag_id === tag.id);
     if (tagging === undefined) return Ok(false);
     await tagging.delete();
+    feedTagsMap_forget();
     return Ok(true);
   } catch (error: unknown) {
     errorStack.stack_push('error', `Failed to untag feed ${feedId} of ${name}: ${error instanceof Error ? error.message : String(error)}`);
+    return Err();
+  }
+}
+
+/**
+ * Every feed's tags at once, for a listing that shows them: the user's
+ * tags (one read) and each tag's feeds (one read per tag) — a listing of a
+ * thousand feeds costs as many reads as the user has tags, never one per
+ * feed. Kept for {@link TAGS_MAP_TTL_MS}, and forgotten whenever a tag is
+ * added or removed here.
+ *
+ * @param now - The clock (a test hands in its own).
+ * @returns Feed id to its tag names.
+ */
+export async function feedTags_byFeed(now: number = Date.now()): Promise<Result<Map<number, string[]>>> {
+  if (tagsMap !== null && now - tagsMap.at < TAGS_MAP_TTL_MS) return Ok(tagsMap.byFeed);
+  const client: Client | null = await chrisConnection.client_get();
+  if (!client) {
+    errorStack.stack_push('error', 'Not connected to ChRIS.');
+    return Err();
+  }
+  try {
+    const byFeed: Map<number, string[]> = new Map();
+    const tags: Tag[] = [];
+    for (let offset: number = 0; ; offset += 100) {
+      const page: TagList = await client.getTags({ limit: 100, offset });
+      tags.push(...((page.getItems() ?? []) as Tag[]));
+      if (!page.hasNextPage) break;
+    }
+    for (const tag of tags) {
+      const name: string = itemData_get<FeedTag>(tag)?.name ?? '';
+      if (name === '') continue;
+      const feeds: Array<{ id: number }> = await listPages_drain(async (offset: number, limit: number): Promise<ListPage<{ id: number }>> => {
+        const list: TagFeedList = await tag.getTaggedFeeds({ limit, offset });
+        return collectionPage_wrap(list, listData_get<{ id: number }>(list));
+      });
+      for (const feed of feeds) byFeed.set(feed.id, [...(byFeed.get(feed.id) ?? []), name]);
+    }
+    tagsMap = { at: now, byFeed };
+    return Ok(byFeed);
+  } catch (error: unknown) {
+    errorStack.stack_push('error', `Failed to read the feeds' tags: ${error instanceof Error ? error.message : String(error)}`);
     return Err();
   }
 }

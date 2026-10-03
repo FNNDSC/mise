@@ -8,7 +8,7 @@ jest.mock('../src/connect/chrisConnection', () => ({
 }));
 
 import { chrisConnection } from '../src/connect/chrisConnection';
-import { feedTags_list, feedTag_add, feedTag_remove, TAG_COLOR_DEFAULT } from '../src/feeds/chrisTags';
+import { feedTags_list, feedTag_add, feedTag_remove, feedTags_byFeed, feedTagsMap_forget, TAG_COLOR_DEFAULT, TAGS_MAP_TTL_MS } from '../src/feeds/chrisTags';
 import { errorStack } from '../src/error/errorStack';
 
 const mockClientGet: jest.Mock = chrisConnection.client_get as unknown as jest.Mock;
@@ -114,5 +114,48 @@ describe('feedTag_remove', () => {
     mockClientGet.mockResolvedValue({ getFeed: async () => { throw new Error('boom'); } });
     expect((await feedTag_remove(12, 'x')).ok).toBe(false);
     expect(errorStack.stack_pop()?.message).toMatch(/Failed to untag feed 12 of x: boom/);
+  });
+});
+
+describe('feedTags_byFeed', () => {
+  function mapClient_make(reads: { count: number }): unknown {
+    const tag = (id: number, name: string, feeds: number[]) => ({
+      data: { id, name, color: '#888888' },
+      getTaggedFeeds: async () => { reads.count += 1; return list_make(feeds.map((f) => ({ id: f }))); },
+    });
+    return {
+      getTags: async () => { reads.count += 1; return { ...list_make([]), getItems: () => [tag(1, 'urgent', [12, 13]), tag(2, 'review', [12])] }; },
+    };
+  }
+
+  beforeEach(() => feedTagsMap_forget());
+
+  it("maps every feed to its tags in one read per tag, never one per feed", async () => {
+    const reads = { count: 0 };
+    mockClientGet.mockResolvedValue(mapClient_make(reads));
+    const result = await feedTags_byFeed(1_000);
+    expect(result.ok && [...result.value.entries()]).toEqual([[12, ['urgent', 'review']], [13, ['urgent']]]);
+    expect(reads.count).toBe(3);
+  });
+
+  it('serves the map within its time and reads again after, or after a change', async () => {
+    const reads = { count: 0 };
+    mockClientGet.mockResolvedValue(mapClient_make(reads));
+    await feedTags_byFeed(1_000);
+    await feedTags_byFeed(1_000 + TAGS_MAP_TTL_MS - 1);
+    expect(reads.count).toBe(3);
+    await feedTags_byFeed(1_000 + TAGS_MAP_TTL_MS);
+    expect(reads.count).toBe(6);
+    feedTagsMap_forget();
+    await feedTags_byFeed(1_000 + TAGS_MAP_TTL_MS + 1);
+    expect(reads.count).toBe(9);
+  });
+
+  it('says so when not connected or CUBE refuses', async () => {
+    mockClientGet.mockResolvedValue(null);
+    expect((await feedTags_byFeed()).ok).toBe(false);
+    mockClientGet.mockResolvedValue({ getTags: async () => { throw new Error('down'); } });
+    expect((await feedTags_byFeed()).ok).toBe(false);
+    expect(errorStack.stack_pop()?.message).toMatch(/Failed to read the feeds' tags: down/);
   });
 });

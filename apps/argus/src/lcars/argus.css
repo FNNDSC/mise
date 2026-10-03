@@ -2572,6 +2572,63 @@ body[data-zoom]:not([data-zoom='console'])
   display: none;
 }
 
+/* A field meets its edge: a scroll come to rest at the top or the foot, or a
+   wheel or a finger pushing past one. That edge flares in the theme's hue and
+   the field's contents give a few pixels and spring back, as a phone's list
+   does. The script only says which edge (`data-edge` on a field `more_wire`
+   wired); everything that moves is declared here, and nothing moves for a
+   reader who asked for less motion. */
+:root {
+  --edge-flare: var(--harvestgold);
+}
+
+[data-more="wired"][data-edge="top"] {
+  animation: edge-flare-top 0.45s ease-out;
+}
+
+[data-more="wired"][data-edge="bottom"] {
+  animation: edge-flare-bottom 0.45s ease-out;
+}
+
+[data-more="wired"][data-edge="top"] > * {
+  animation: edge-bounce-top 0.32s cubic-bezier(0.2, 0.7, 0.3, 1.4);
+}
+
+[data-more="wired"][data-edge="bottom"] > * {
+  animation: edge-bounce-bottom 0.32s cubic-bezier(0.2, 0.7, 0.3, 1.4);
+}
+
+@keyframes edge-flare-top {
+  0% { box-shadow: inset 0 0 0 0 transparent; }
+  30% { box-shadow: inset 0 26px 24px -14px var(--edge-flare); }
+  100% { box-shadow: inset 0 0 0 0 transparent; }
+}
+
+@keyframes edge-flare-bottom {
+  0% { box-shadow: inset 0 0 0 0 transparent; }
+  30% { box-shadow: inset 0 -26px 24px -14px var(--edge-flare); }
+  100% { box-shadow: inset 0 0 0 0 transparent; }
+}
+
+@keyframes edge-bounce-top {
+  0% { transform: translateY(0); }
+  35% { transform: translateY(6px); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes edge-bounce-bottom {
+  0% { transform: translateY(0); }
+  35% { transform: translateY(-6px); }
+  100% { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-more="wired"][data-edge],
+  [data-more="wired"][data-edge] > * {
+    animation: none;
+  }
+}
+
 .more-chip {
   position: sticky;
   bottom: 0.3rem;

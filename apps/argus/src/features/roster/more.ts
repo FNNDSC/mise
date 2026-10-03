@@ -9,7 +9,43 @@
  * press moves one page. N is what the field counts: rows for a listing,
  * lines for text. One helper, so every field says it the same way
  * (aegis.adoc: a-field-says-it-holds-more).
+ *
+ * A field also answers its own edges: a scroll that comes to rest at the top
+ * or the foot, or a wheel or finger that pushes past one, flares that edge
+ * in the theme's hue and gives the rows a small bounce, as a phone's list
+ * does. The script only says which edge was met (`data-edge`); the
+ * stylesheet owns the flare and the bounce (single-animation-author), and
+ * draws neither under reduced motion.
  */
+
+/** Which edge of a field was met. */
+export type FieldEdge = 'top' | 'bottom';
+
+/** How long one edge waits before it flares again, ms: a spinning wheel is one meeting, not twenty. */
+export const EDGE_REST_MS: number = 450;
+
+/** How far a finger pushes past an edge before it counts, px. */
+const EDGE_PUSH_PX: number = 12;
+
+/**
+ * Says a field met an edge: the stylesheet flares it. Met again while the
+ * flare still shows, within its rest, it is left alone.
+ *
+ * @param field - The field.
+ * @param edge - The edge met.
+ * @param now - The clock (a test hands in its own).
+ * @returns Whether it flared.
+ */
+export function edge_meet(field: HTMLElement, edge: FieldEdge, now: number = Date.now()): boolean {
+  const last: number = Number(field.dataset['edgeAt'] ?? 0);
+  if (field.dataset['edge'] === edge && now - last < EDGE_REST_MS) return false;
+  // Off and on again, so a second meeting replays the flare from its start.
+  delete field.dataset['edge'];
+  void field.offsetWidth;
+  field.dataset['edge'] = edge;
+  field.dataset['edgeAt'] = String(now);
+  return true;
+}
 
 /**
  * Every scrolling field on the surface, by the class its stylesheet rule
@@ -128,10 +164,49 @@ export function more_wire(field: HTMLElement, options: MoreOptions = {}): HTMLBu
     }
   };
   field.addEventListener('scroll', count, { passive: true });
+  edges_wire(field, atFoot);
   // A test's document lays nothing out and has no ResizeObserver; the chip
   // still counts on scroll and refill.
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(count).observe(field);
   new MutationObserver(count).observe(field, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class', 'style'] });
   count();
   return chip;
+}
+
+/**
+ * Wires a field's edges: a scroll at rest on an edge it moved to, and a wheel
+ * or a finger pushing past an edge it already stands on. The flare's end
+ * clears the state, so the next meeting starts clean.
+ *
+ * @param field - The scrolling field.
+ * @param atFoot - Whether the field stands at its foot.
+ */
+function edges_wire(field: HTMLElement, atFoot: () => boolean): void {
+  const overflowing = (): boolean => field.scrollHeight > field.clientHeight + 2;
+  const atTop = (): boolean => field.scrollTop <= 0;
+  let restedAt: number = field.scrollTop;
+  field.addEventListener('scrollend', (): void => {
+    const moved: boolean = field.scrollTop !== restedAt;
+    restedAt = field.scrollTop;
+    if (!moved || !overflowing()) return;
+    if (atTop()) edge_meet(field, 'top');
+    else if (atFoot()) edge_meet(field, 'bottom');
+  });
+  field.addEventListener('wheel', (event: WheelEvent): void => {
+    if (!overflowing() || event.deltaY === 0) return;
+    if (event.deltaY < 0 && atTop()) edge_meet(field, 'top');
+    else if (event.deltaY > 0 && atFoot()) edge_meet(field, 'bottom');
+  }, { passive: true });
+  let touchY: number | null = null;
+  field.addEventListener('touchstart', (event: TouchEvent): void => { touchY = event.touches[0]?.clientY ?? null; }, { passive: true });
+  field.addEventListener('touchmove', (event: TouchEvent): void => {
+    const y: number | undefined = event.touches[0]?.clientY;
+    if (touchY === null || y === undefined || !overflowing()) return;
+    // A finger drawing the list down at its top, or up at its foot, pushes past that edge.
+    if (y - touchY > EDGE_PUSH_PX && atTop()) { edge_meet(field, 'top'); touchY = null; }
+    else if (touchY - y > EDGE_PUSH_PX && atFoot()) { edge_meet(field, 'bottom'); touchY = null; }
+  }, { passive: true });
+  field.addEventListener('animationend', (event: AnimationEvent): void => {
+    if (event.target === field && event.animationName.startsWith('edge-flare')) delete field.dataset['edge'];
+  });
 }

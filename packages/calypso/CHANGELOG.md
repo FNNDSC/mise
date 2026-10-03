@@ -1,5 +1,28 @@
 # @fnndsc/calypso
 
+## 0.17.0
+
+### Minor Changes
+
+- c1cf57e: An edit crosses the wire to a browser (#831, slice 2). The daemon's `edit` request now names the file being edited (`path`), and a surface may answer `opened`: it took the file into an editor that stays open, so the command saves nothing and says `(opened in the editor)`; each save made in that editor will run as its own command line. The argus client hands an edit to a host editor hook and answers at once that it opened, or refuses in words when it has none (the hook is installed by the editor pane, slice 3). `feed note edit N` is now `edit /proc/jobs/feed_N/note`: a terminal's editor and a browser's pane open the same text and save it the same way, and the title is set with `feed note N --title`.
+
+### Patch Changes
+
+- Updated dependencies [e057d20]
+- Updated dependencies [2826f2b]
+- Updated dependencies [c1cf57e]
+- Updated dependencies [50d41d7]
+- Updated dependencies [1c8b92d]
+- Updated dependencies [e20fb09]
+- Updated dependencies [ddbd551]
+- Updated dependencies [32e3919]
+- Updated dependencies [59399fe]
+- Updated dependencies [51da853]
+  - @fnndsc/argus@0.19.0
+  - @fnndsc/brasa@0.31.0
+  - @fnndsc/menu@0.15.0
+  - @fnndsc/cumin@3.27.0
+
 ## 0.16.10
 
 ### Patch Changes

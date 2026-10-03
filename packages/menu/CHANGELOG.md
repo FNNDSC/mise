@@ -1,5 +1,13 @@
 # @fnndsc/menu
 
+## 0.15.0
+
+### Minor Changes
+
+- 2826f2b: A text file offers EDIT (#831, slice 3b). A file row whose extension is not on the binary list offers EDIT in ARGUS, a feed's note seen through `/proc` included; it runs `edit '<path>'` as a visible line and the kernel opens the editor pane, asking first for a file of a megabyte or more. The binary list moved into the contract package (`EDIT_BINARY_EXTENSIONS`, `path_isEditable`, `EDIT_CONFIRM_BYTES` in @fnndsc/menu), read by the kernel's `edit` for its refusal and by the surface for its offer, so the two cannot disagree. `feed note edit` help now says it edits in the surface's editor. New `docs/cube-feed-coverage.adoc`: each part of a CUBE feed, the kernel verb or path that reaches it, and the known gaps (rename, group permissions, revoking a grant, making a feed private again).
+- c1cf57e: An edit crosses the wire to a browser (#831, slice 2). The daemon's `edit` request now names the file being edited (`path`), and a surface may answer `opened`: it took the file into an editor that stays open, so the command saves nothing and says `(opened in the editor)`; each save made in that editor will run as its own command line. The argus client hands an edit to a host editor hook and answers at once that it opened, or refuses in words when it has none (the hook is installed by the editor pane, slice 3). `feed note edit N` is now `edit /proc/jobs/feed_N/note`: a terminal's editor and a browser's pane open the same text and save it the same way, and the title is set with `feed note N --title`.
+- 51da853: ARGUS shows and changes a feed's tags (#831, slice 4b). The kernel's roster model (`feed.list`) carries each feed's tags from the cached tags index (one read per tag, never per feed). The runs roster marks a feed with its tags after its title, in one theme hue; a press on a mark filters the roster by it (`tag:`, a new filter-only term in the listing façade), and its × on the indicated row takes it off. A feed row offers NOTE (the editor on `/proc/jobs/feed_N/note`) and TAG. TAG asks a new `choose` question: your tags as pills (the worn ones dimmed), a field for a new name, DONE to end; each pick runs `setfattr`, a new name `mkdir /proc/tags/<name>` first, all as visible lines, and the question comes back with the tag held. A graph on stage reads its feed's note and tags when entered and shows ADD NOTE or EDIT NOTE, TAG and the marks under BACK, re-read after an editor save. A note is never read for the roster (CUBE's feed list says nothing about notes: ChRIS_ultron_backEnd#737).
+
 ## 0.14.0
 
 ### Minor Changes

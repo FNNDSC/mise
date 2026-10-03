@@ -402,7 +402,7 @@ listing.rows_set([{ key: 'keys', header, rows: chords }, { key: 'verbs', header,
 
 Source: `apps/argus/src/features/edit/panel.ts` (the pane), over `features/edit/field.ts` (the guest field: CodeMirror 6, loaded on demand), `features/edit/line.ts` (the lines it runs) and `app/editor.ts` (the host's wiring: the kernel's `edit` answered with a pane).
 
-Status: on stage since 2026-10-02 (#831, slice 3). Opens on the kernel's `edit <file>` and `feed note edit <id>` typed in the console, and on a desktop card that held one.
+Status: on stage since 2026-10-02 (#831, slice 3). Opens on the kernel's `edit <file>` and `feed note edit <id>` typed in the console, on EDIT in a text file's row verbs (a file of a megabyte or more asks first), and on a desktop card that held one.
 
 === Purpose
 

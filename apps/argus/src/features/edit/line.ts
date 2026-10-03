@@ -45,13 +45,15 @@ export function editLine_compose(path: string): string {
 }
 
 /**
- * A file's extension, with its dot, lower case; empty when it has none.
+ * The question EDIT asks before opening a large file, or none: the field
+ * holds a file whole, so a megabyte or more is asked about first.
  *
- * @param path - The file.
- * @returns The extension.
+ * @param name - The file's name, as the row shows it.
+ * @param bytes - Its size.
+ * @param threshold - The size that earns the question (EDIT_CONFIRM_BYTES).
+ * @returns The question's words, or null to open at once.
  */
-export function extension_of(path: string): string {
-  const name: string = path.split('/').pop() ?? path;
-  const dot: number = name.lastIndexOf('.');
-  return dot > 0 ? name.slice(dot).toLowerCase() : '';
+export function editAsk_of(name: string, bytes: number, threshold: number): string | null {
+  if (bytes < threshold) return null;
+  return `edit: ${name} is ${(bytes / (1024 * 1024)).toFixed(1)} MB; open it in the editor? `;
 }

@@ -12,7 +12,8 @@
  * asks, the cohort and the /bin view as hooks; the module keeps each
  * browser's binding and history, the preview provider and the readers.
  */
-import { DAG_MODEL_KINDS, pipelineDiagramModelSchema, type PipelineDiagramNode } from '@fnndsc/menu';
+import { DAG_MODEL_KINDS, EDIT_CONFIRM_BYTES, path_isEditable, pipelineDiagramModelSchema, type PipelineDiagramNode } from '@fnndsc/menu';
+import { editAsk_of, editLine_compose } from '../features/edit/line.js';
 import type { ExecuteOutcome } from '../calypso/client.js';
 import type { PaneAskRequest } from '../features/ask/paneAsk.js';
 import { browserDownload_save, type DownloadOutcome } from '../features/files/download.js';
@@ -405,6 +406,7 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
       node: feed === null ? null : nodeOf_path(path),
       bound: hooks.catalogue_of(id) !== undefined,
       projection: path_isProjection(path),
+      editable: entry.type === 'file' && path_isEditable(path),
     };
     const runs: Record<string, () => void> = {
       image: (): void => { void hooks.image_open(id, path).then((line: string): void => context.terminal.line_note(line)); },
@@ -427,6 +429,15 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
       }]),
       // RUN runs the line on the catalogue's input, as the console would.
       run: (): void => hooks.run_press(id, entry.name, entry.type === 'pipeline' ? 'pipeline' : 'plugin'),
+      // EDIT is the kernel's `edit`, which opens the editor pane; a file of a
+      // megabyte or more is asked about first, since the field holds it whole.
+      edit: (): void => {
+        const line: string = editLine_compose(path);
+        const question: string | null = editAsk_of(entry.name, entry.size, EDIT_CONFIRM_BYTES);
+        if (question === null) { hooks.verbLine_run(id, line); return; }
+        void hooks.ask_onPane(id, { kind: 'confirm', message: question })
+          .then((answer: string | null): void => { if (answer === 'y') hooks.verbLine_run(id, line); });
+      },
       move: (): void => hooks.verbLine_run(id, `mv ${quoted}`),
       copy: (): void => hooks.verbLine_run(id, `cp ${quoted}`),
       delete: (): void => hooks.verbLine_run(id, `rm ${directory ? '-ri' : '-i'} ${quoted}`),

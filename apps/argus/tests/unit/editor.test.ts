@@ -33,7 +33,8 @@ jest.unstable_mockModule('../../src/features/edit/field.js', () => ({
 }));
 
 const { editor_wire } = await import('../../src/app/editor.js');
-const { saveLine_compose, word_quote, editLine_compose, extension_of } = await import('../../src/features/edit/line.js');
+const { saveLine_compose, word_quote, editLine_compose, editAsk_of } = await import('../../src/features/edit/line.js');
+const { editExtension_of: extension_of } = await import('@fnndsc/menu');
 const { PanelRoster, paneFactory_register, paneInstance_create, paneInstance_dispose, paneInstances_list } = await import('../../src/app/panes.js');
 import type { EditorModule } from '../../src/app/editor.js';
 import type { HostContext } from '../../src/app/hostContext.js';
@@ -120,6 +121,11 @@ describe('the lines an editor runs', () => {
     expect(word_quote('l1; a | b > c\nl2 $HOME @1')).toBe("'l1; a | b > c\nl2 $HOME @1'");
     expect(saveLine_compose('/home/u/my notes.txt', 'x')).toBe("touch --withContents='x' '/home/u/my notes.txt'");
     expect(editLine_compose('/proc/jobs/feed_12/note')).toBe("edit '/proc/jobs/feed_12/note'");
+  });
+
+  it('asks before opening a file of a megabyte or more, and not below', () => {
+    expect(editAsk_of('small.txt', 1024 * 1024 - 1, 1024 * 1024)).toBeNull();
+    expect(editAsk_of('big.csv', 3.5 * 1024 * 1024, 1024 * 1024)).toBe('edit: big.csv is 3.5 MB; open it in the editor? ');
   });
 
   it('reads an extension, lower case, with its dot', () => {

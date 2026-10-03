@@ -31,6 +31,7 @@ export {
   type ProgressStatus,
 } from './progress.js';
 export { CONTRACT_VERSION, version_isCompatible } from './version.js';
+export { EDIT_BINARY_EXTENSIONS, EDIT_CONFIRM_BYTES, editExtension_of, path_isEditable } from './edit.js';
 export {
   commandEnvelopeSchema,
   envelopeModelSchema,

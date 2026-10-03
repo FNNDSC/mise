@@ -504,7 +504,7 @@ export const helpText: Record<string, CommandHelp> = {
       'SUBCOMMANDS:',
       '  create <path>                    Create a new feed from a data directory',
       '  note <feedId>                    Show the feed\'s note',
-      '  note edit <feedId>              Open note in $EDITOR',
+      '  note edit <feedId>               Edit the note in the surface\'s editor (edit /proc/jobs/feed_N/note)',
       '  note <feedId> --title <t>        Update note title',
       '  note <feedId> --content <c>      Update note content',
       '  comments <feedId>                List all comments on a feed',

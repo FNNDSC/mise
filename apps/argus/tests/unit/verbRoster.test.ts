@@ -167,6 +167,8 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
     // What a projection IS for stays: reading, opening, processing.
     "a node's data seen through /proc": ['PROCESS'],
     'a file seen through /proc': ['DOWNLOAD'],
+    'a text file': ['GATHER', 'EDIT', 'DOWNLOAD', 'MOVE', 'COPY', 'DELETE'],
+    "a feed's note seen through /proc": ['EDIT', 'DOWNLOAD'],
   },
   'files.selection': {
     'a selection outside any feed': ['DELETE 3', 'MOVE 3', 'COPY 3'],

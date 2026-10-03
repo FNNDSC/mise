@@ -1921,6 +1921,38 @@ try {
     tagged.entered && /NOTE$/.test(tagged.noteLabel) && tagged.tagShown && tagged.removed && tagged.untagLine, JSON.stringify(tagged));
   }
 
+  if (stage('edit-row')) {
+  // EDIT on a text file's row (#831): the kernel's edit, as a visible line,
+  // opens the editor pane on the file; a binary file is offered no EDIT.
+  const row = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const settle = async (want, tries = 60) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
+    document.getElementById('gutter-files').click(); await sleep(700);
+    await say('mkdir -p ~/smoke-edit-row', 2000);
+    await say("touch --withContents='row text' ~/smoke-edit-row/notes.yaml", 2500);
+    await say("touch --withContents='x' ~/smoke-edit-row/scan.dcm", 2500);
+    await say('cd ~/smoke-edit-row', 2000);
+    const pane = [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+    const named = (n) => [...pane.querySelectorAll('.files-row')].find((r) => r.querySelector('.files-name')?.textContent.trim() === n);
+    await settle(() => named('notes.yaml') !== undefined && named('scan.dcm') !== undefined);
+    const verbsOf = async (n) => {
+      named(n).querySelector('.files-name').dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(500);
+      return [...pane.querySelectorAll('.files-row-zone .listing-action')].map((b) => b.textContent.trim());
+    };
+    const binaryVerbs = await verbsOf('scan.dcm');
+    const textVerbs = await verbsOf('notes.yaml');
+    [...pane.querySelectorAll('.files-row-zone .listing-action')].find((b) => b.textContent.trim() === 'EDIT')?.click();
+    const opened = await settle(() => [...document.querySelectorAll('.pane-edit')].some((p) => p.offsetParent !== null && /row text/.test(p.querySelector('.cm-content')?.textContent ?? '')), 80);
+    const echoed = [...document.querySelectorAll('#terminal .argus-echo')].some((e) => /edit '.*smoke-edit-row\\/notes\\.yaml'/.test(e.textContent));
+    [...document.querySelectorAll('.pane-edit')].find((p) => p.offsetParent !== null)?.querySelector('.drawer-close')?.click(); await sleep(400);
+    await say('cd ~', 1500); await say('rm -r ~/smoke-edit-row', 2500);
+    return { binaryVerbs, textVerbs, opened, echoed };`);
+  check('a text file offers EDIT, a binary one does not; EDIT opens the editor by a visible edit line',
+    row.textVerbs.includes('EDIT') && !row.binaryVerbs.includes('EDIT') && row.opened && row.echoed, JSON.stringify(row));
+  }
+
   if (stage('contrast')) {
   // The frame's type, measured against WCAG 2.1 AA in every scheme.
   //

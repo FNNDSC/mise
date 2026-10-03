@@ -17,7 +17,8 @@
 import type { ExecuteOutcome, SurfaceEdit } from '../calypso/client.js';
 import { lineVisible_run } from './lines.js';
 import { EditPanel } from '../features/edit/panel.js';
-import { editLine_compose, extension_of, saveLine_compose } from '../features/edit/line.js';
+import { editExtension_of } from '@fnndsc/menu';
+import { editLine_compose, saveLine_compose } from '../features/edit/line.js';
 import type { ReplayPlace } from './desktop.js';
 import type { HostContext } from './hostContext.js';
 import { paneInstance_dispose, type PaneInstance, type PaneKind } from './panes.js';
@@ -138,7 +139,7 @@ export function editor_wire(context: Pick<HostContext, 'layout' | 'panels' | 'su
       context.terminal.line_note(`edit: ${path}: its pane has unsaved changes; they stand (REVERT reads the file again)`);
       return true;
     }
-    void panel.content_show({ path, content: request.content, extension: request.extension ?? extension_of(path) });
+    void panel.content_show({ path, content: request.content, extension: request.extension ?? editExtension_of(path) });
     return true;
   };
 

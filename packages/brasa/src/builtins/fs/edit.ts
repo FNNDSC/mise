@@ -14,12 +14,8 @@ import { surface_get, capability_require, CapabilityError, type LocalEditResult 
 import { files_cat } from '@fnndsc/chili/commands/fs/cat.js';
 import { file_replaceContent, EditResult } from '@fnndsc/chili/commands/fs/edit.js';
 import { errorStack, Result, StackMessage, listCache_get, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { path_isEditable } from '@fnndsc/menu';
 
-const BINARY_EXTENSIONS: Set<string> = new Set([
-  '.dcm', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico',
-  '.pdf', '.zip', '.tar', '.gz', '.bz2', '.xz', '.7z',
-  '.exe', '.dll', '.so', '.bin', '.mp3', '.mp4', '.avi', '.wav',
-]);
 
 /** What `edit` says when the surface opened an editor that stays open. */
 export const EDIT_OPENED_LINE: string = '(opened in the editor)';
@@ -51,7 +47,7 @@ export async function builtin_edit(args: string[]): Promise<CommandEnvelope> {
   const target: string = await path_resolve(args[0]);
   const ext: string = extname(target).toLowerCase();
 
-  if (BINARY_EXTENSIONS.has(ext)) {
+  if (!path_isEditable(target)) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red(`edit: ${args[0]}: binary file (${ext}), cannot edit as text`)}\n`);
   }

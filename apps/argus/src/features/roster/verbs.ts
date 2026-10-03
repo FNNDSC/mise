@@ -87,6 +87,11 @@ export interface FileRowFacts {
    * opening and processing remain: they are what a projection is for.
    */
   projection?: boolean;
+  /**
+   * Whether the row is a file the kernel's `edit` opens as text (the shared
+   * list in @fnndsc/menu says which extensions are bytes).
+   */
+  editable?: boolean;
 }
 
 /** What a browser selection is. */
@@ -158,6 +163,9 @@ export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
         (f.kind === 'directory' || f.kind === 'seriesFolder') && (f.feed === null || (f.node ?? null) !== null),
     },
     { name: 'run', label: (): string => 'RUN', offered: (f: FileRowFacts): boolean => f.kind === 'catalogue' && f.bound === true },
+    // EDIT opens a text file in the editor pane, a projection's writable one
+    // (a feed's note) included; the kernel refuses a read-only one's save.
+    { name: 'edit', label: (): string => 'EDIT', offered: (f: FileRowFacts): boolean => f.kind === 'file' && f.editable === true },
     { name: 'download', label: (): string => 'DOWNLOAD', offered: (f: FileRowFacts): boolean => f.kind === 'file' },
     { name: 'move', label: (): string => 'MOVE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.projection !== true },
     { name: 'copy', label: (): string => 'COPY', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.projection !== true },
@@ -181,6 +189,8 @@ export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
     { name: 'a catalogue entry in a bound catalogue', facts: { kind: 'catalogue', feed: null, bound: true } },
     { name: "a node's data seen through /proc", facts: { kind: 'directory', feed: 12, node: 456, projection: true } },
     { name: 'a file seen through /proc', facts: { kind: 'file', feed: 12, projection: true } },
+    { name: 'a text file', facts: { kind: 'file', feed: null, editable: true } },
+    { name: "a feed's note seen through /proc", facts: { kind: 'file', feed: 12, projection: true, editable: true } },
   ],
 };
 

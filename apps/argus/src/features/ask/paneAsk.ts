@@ -26,7 +26,14 @@
  */
 
 /** What kind of value answers a question. */
-export type PaneAskKind = 'text' | 'secret' | 'confirm';
+export type PaneAskKind = 'text' | 'secret' | 'confirm' | 'choose';
+
+/** One offered answer of a `choose` question: a pill, dimmed when it already holds. */
+export interface PaneAskChoice {
+  value: string;
+  /** Already true of the subject (a tag the feed wears): shown, dimmed, not pressable. */
+  held?: boolean;
+}
 
 /**
  * A question put on a pane.
@@ -35,12 +42,18 @@ export type PaneAskKind = 'text' | 'secret' | 'confirm';
  * @property kind - What kind of value answers it.
  * @property suggest - A value to offer, for a kind that takes one.
  * @property commit - The committing verb's words, reading what it will do.
+ * @property choices - For `choose`: the answers offered as pills, beside a
+ *   field that takes a new one.
+ * @property close - The closing capsule's words (ABANDON unless a question
+ *   that is answered several times names its own end, DONE).
  */
 export interface PaneAskRequest {
   message: string;
   kind: PaneAskKind;
   suggest?: string;
   commit?: string;
+  choices?: ReadonlyArray<PaneAskChoice>;
+  close?: string;
 }
 
 /** The questions open on the surface, oldest first; Esc abandons the last. */
@@ -106,7 +119,7 @@ export function paneAsk_open(pane: HTMLElement, request: PaneAskRequest): Promis
   const commit: HTMLButtonElement = document.createElement('button');
   const abandon: HTMLButtonElement = document.createElement('button');
   abandon.className = 'pacs-capsule ask-bar-abandon';
-  abandon.textContent = 'ABANDON';
+  abandon.textContent = request.close ?? 'ABANDON';
   abandon.title = 'abandon the question (Esc)';
 
   if (request.kind === 'confirm') {
@@ -116,6 +129,16 @@ export function paneAsk_open(pane: HTMLElement, request: PaneAskRequest): Promis
     no.textContent = 'NO';
     bar.append(yes, no, abandon);
   } else {
+    // A choice is a pill that answers on a press; the field beside them
+    // takes an answer none of them is.
+    for (const choice of request.choices ?? []) {
+      const pill: HTMLButtonElement = document.createElement('button');
+      pill.className = `pacs-capsule ask-bar-choice${choice.held === true ? ' ask-bar-held' : ''}`;
+      pill.textContent = choice.value;
+      pill.dataset['value'] = choice.value;
+      pill.disabled = choice.held === true;
+      bar.append(pill);
+    }
     field.className = 'ask-bar-field';
     field.spellcheck = false;
     if (request.kind === 'secret') field.type = 'password';
@@ -151,6 +174,9 @@ export function paneAsk_open(pane: HTMLElement, request: PaneAskRequest): Promis
       settle(wanted === '' ? null : wanted);
     };
     commit.addEventListener('click', typed);
+    for (const pill of bar.querySelectorAll<HTMLButtonElement>('.ask-bar-choice')) {
+      pill.addEventListener('click', (): void => settle(pill.dataset['value'] ?? null));
+    }
     yes.addEventListener('click', (): void => settle('y'));
     no.addEventListener('click', (): void => settle('n'));
     abandon.addEventListener('click', close);

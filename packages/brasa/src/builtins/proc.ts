@@ -4,7 +4,7 @@
  */
 import chalk from 'chalk';
 import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procFeed_refreshStart, type FeedTopologyReadiness, procRoster_sync, procTopologyCatchup_status, procRoster_syncStart, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
-import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, feedStatus_ofCounts, procLayout_get, procLayout_set, procLayoutName_check, procLayoutPositions_check, type ProcLayoutRecord, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, feedStatus_ofCounts, procLayout_get, procLayout_set, procLayoutName_check, procLayoutPositions_check, type ProcLayoutRecord, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type Result, type CommandEnvelope, type SingleContext, envelope_ok, envelope_error, errorStack, feedTags_byFeed } from '@fnndsc/cumin';
 import { FEED_LIST_MODEL_KIND, PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, type FeedListModel, type ProcLayoutModel, type ProcUniverseModel } from '@fnndsc/menu';
 import { spinner } from '../lib/spinner.js';
 import { universeLayout_underWay, universeLayouts_warm } from '../universe/universeLayout.js';
@@ -406,6 +406,21 @@ async function procHere_handle(args: string[]): Promise<CommandEnvelope> {
 }
 
 /**
+ * Every feed's tags, for the roster: the kernel's tags index, read once per
+ * tag and kept. A read that fails leaves the roster without marks and
+ * leaves nothing on the error stack: the roster asked, it did not fail.
+ *
+ * @returns Feed id to its tag names, or null when the index could not be read.
+ */
+async function feedTags_read(): Promise<Map<number, string[]> | null> {
+  const mark: number = errorStack.checkpoint_mark();
+  const read: Result<Map<number, string[]>> = await feedTags_byFeed();
+  if (read.ok) return read.value;
+  errorStack.checkpoint_drain(mark);
+  return null;
+}
+
+/**
  * Handles `proc feeds <query>`: lists cached feeds whose title matches.
  *
  * @param args - Full command args (`args[1]` is the query).
@@ -441,6 +456,7 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
     const status: string = feedStatus_derive(feed);
     rendered += `/proc/jobs/feed_${feed.id}  ${statusColor(status)}  ${chalk.dim(feed.title)}\n`;
   }
+  const tagsOf: Map<number, string[]> | null = await feedTags_read();
   const model: FeedListModel = {
     feeds: matches.map((feed: ProcFeed): FeedListModel['feeds'][number] => ({
       id: feed.id,
@@ -450,6 +466,7 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
       createdAt: feed.creationDate,
       ...feedJobs_count(feed),
       ...feedTotals_derive(cache, feed.id),
+      ...(tagsOf === null ? {} : { tags: tagsOf.get(feed.id) ?? [] }),
     })),
   };
   return envelope_ok(rendered, { kind: FEED_LIST_MODEL_KIND, data: model });

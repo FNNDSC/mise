@@ -177,6 +177,12 @@ export const feedListEntrySchema = z.object({
    * (`jobsDone - jobsErrored`) rather than run it full in the error hue.
    */
   jobsErrored: z.number().optional(),
+  /**
+   * The user's tags this feed wears, by name: read from the kernel's tags
+   * index (one read per tag, never per feed). Absent when the index could
+   * not be read, which a surface shows as no marks rather than as untagged.
+   */
+  tags: z.array(z.string()).optional(),
 });
 
 /**

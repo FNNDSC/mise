@@ -248,6 +248,11 @@
                   <span class="mode-elbow"></span>
                   <aside class="mode-frame">
                     <button class="strategy-pill dag-back" title="return to the feed roster (Esc)">BACK</button>
+                    <!-- The feed on stage: its note (read when the feed is
+                         entered) and its tags, and the verbs that change them. -->
+                    <button class="strategy-pill dag-note" hidden title="the feed's note, in the editor (edit /proc/jobs/feed_N/note)">NOTE</button>
+                    <button class="strategy-pill dag-tag" hidden title="hang a tag on the feed (setfattr; a new tag is made with mkdir /proc/tags/&lt;name&gt;)">TAG</button>
+                    <span class="dag-marks" hidden></span>
                     <button class="strategy-pill dag-strategy" title="layout: ranked tiers or force molecule">RANKED</button>
                     <button class="strategy-pill dag-projection" title="projection: sculpted 3D or flat schematic">3D</button>
                     <button class="strategy-pill dag-pulse" title="replay execution as a dependency wave">PULSE OFF</button>

@@ -304,3 +304,38 @@ export function expansion_toggle(expansion: Expansion, key: string): boolean {
   expansion.open.add(key);
   return true;
 }
+
+/**
+ * Whether a track is deterministic: a fixed length, a share of the
+ * remaining space (`1fr`), or a `minmax` whose minimum is a fixed length.
+ *
+ * Not `auto`, not `min-content`, `max-content` or `fit-content`, and not
+ * `minmax(0, …)`: on a per-row grid each of those sizes to the row's own
+ * content, so a short value narrows the track for that row alone and every
+ * column after it jogs — the misalignment a listing exists to prevent.
+ *
+ * @param track - The declared track.
+ * @returns True when the track is the same width on every row.
+ */
+export function track_isFixed(track: string): boolean {
+  const declared: string = track.trim();
+  if (/^(auto|min-content|max-content)$/.test(declared) || /^fit-content\(/.test(declared)) return false;
+  const minmax: RegExpMatchArray | null = /^minmax\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)$/.exec(declared);
+  if (minmax !== null) {
+    const minimum: string = minmax[1] ?? '';
+    // A zero minimum is content-sizing in disguise: the track grows with
+    // the row's content up to its maximum, which differs row by row.
+    return /^(?:[1-9]\d*|0*\.\d*[1-9]\d*|[1-9]\d*\.\d+)(px|em|rem|ch|vw|vh|%)$/.test(minimum);
+  }
+  return /^(?:\d+\.?\d*|\.\d+)(px|em|rem|ch|vw|vh|%|fr)$/.test(declared);
+}
+
+/** The count of leading uncapped traits: the cells the caps row blanks. */
+export function leadingCells_of<T>(traits: ReadonlyArray<ListingTrait<T>>): number {
+  let count: number = 0;
+  for (const trait of traits) {
+    if (trait.capped !== false) break;
+    count += 1;
+  }
+  return count;
+}

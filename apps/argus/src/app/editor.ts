@@ -15,6 +15,7 @@
  * module keeps the pane instances and their saves.
  */
 import type { ExecuteOutcome, SurfaceEdit } from '../calypso/client.js';
+import { lineVisible_run } from './lines.js';
 import { EditPanel } from '../features/edit/panel.js';
 import { editLine_compose, extension_of, saveLine_compose } from '../features/edit/line.js';
 import type { ReplayPlace } from './desktop.js';
@@ -32,6 +33,8 @@ export interface EditorHooks {
   /** The launcher steps aside before a pane opens. */
   launcher_yield: () => void;
   template_stamp: (templateId: string) => HTMLElement;
+  /** A save took: whatever shows the file (a feed's note on a graph's frame) reads it again. */
+  saved?: (path: string) => void;
 }
 
 /** The editor verbs a wired host has. */
@@ -67,18 +70,9 @@ export function editor_wire(context: Pick<HostContext, 'layout' | 'panels' | 'su
    * says ok.
    */
   const save = async (path: string, text: string): Promise<boolean> => {
-    const { terminal, client } = context;
-    const line: string = saveLine_compose(path, text);
-    terminal.line_echo(line);
-    let outcome: ExecuteOutcome;
-    try {
-      outcome = await client.line_execute(line);
-    } catch (error: unknown) {
-      terminal.output_write('err', `\x1b[31m${error instanceof Error ? error.message : String(error)}\x1b[0m\n`);
-      return false;
-    }
-    terminal.outcome_write(outcome);
-    return outcome.envelopes.length > 0 && outcome.envelopes.every((envelope): boolean => envelope.status === 'ok');
+    const took: boolean = await lineVisible_run(context, saveLine_compose(path, text));
+    if (took) hooks.saved?.(path);
+    return took;
   };
 
   const instance_build = (id: string): PaneInstance => {

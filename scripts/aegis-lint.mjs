@@ -388,9 +388,31 @@ LINT_CHECKS['an-editors-save-is-a-line'] = () => {
     }
   }
   const host = readFileSync('apps/argus/src/app/editor.ts', 'utf8');
-  if (!/saveLine_compose\(path, text\)[\s\S]{0,80}line_echo\(line\)/.test(host)) {
-    fail(law, 'app/editor.ts does not save by echoing the line saveLine_compose made');
+  if (!/lineVisible_run\(context, saveLine_compose\(path, text\)\)/.test(host)) {
+    fail(law, 'app/editor.ts does not save by running the line saveLine_compose made, visibly');
   }
+  const lines = readFileSync('apps/argus/src/app/lines.ts', 'utf8');
+  if (!/terminal\.line_echo\(line\)/.test(lines) || /line_execute\(line, \{ silent: true/.test(lines)) {
+    fail(law, 'app/lines.ts does not echo the line and run it as a typed line runs');
+  }
+};
+
+LINT_CHECKS['a-tag-is-a-mark-and-a-line'] = () => {
+  // A feed's tags change only by the lines an operator could type, run
+  // visibly; the marks are one theme hue; a note is never read for a listing.
+  const law = 'a-tag-is-a-mark-and-a-line';
+  const tags = readFileSync('apps/argus/src/app/tags.ts', 'utf8');
+  if (!/lineVisible_run\(context, line\)/.test(tags) || !/lineVisible_run\(context, `setfattr -x tag/.test(tags)) {
+    fail(law, 'app/tags.ts does not change a tag by a visible setfattr line');
+  }
+  if (/line_execute\([^)]*setfattr|line_execute\([^)]*mkdir|fetch\(/.test(tags)) {
+    fail(law, 'app/tags.ts changes a tag some other way than a visible line');
+  }
+  const css = readFileSync('apps/argus/src/lcars/argus.css', 'utf8');
+  const mark = css.match(/\.feedlist-tag \{([^}]*)\}/);
+  if (!mark || !/--tag-hue: var\(--[a-z-]+\)/.test(mark[1])) fail(law, '.feedlist-tag does not wear one theme token as its hue');
+  const roster = readFileSync('apps/argus/src/features/dag/roster.ts', 'utf8') + readFileSync('apps/argus/src/app/feedRows.ts', 'utf8');
+  if (/feed_verbs[\s\S]{0,400}\/note`, \{ silent/.test(roster)) fail(law, 'a roster row reads a note; a note is read only when its feed is entered');
 };
 
 LINT_CHECKS['a-fact-has-one-source'] = () => {
@@ -479,15 +501,15 @@ LINT_CHECKS['a-part-stays-a-part'] = () => {
   const FUNCTION_LINES = 150;
   const FILE_LINES = 1200;
   const allowed = new Map([
-    ['apps/argus/src/app/main.ts', [2945, 'the host: the pane factories, the opens, the wire observers and the boot; each concern left goes to a module']],
-    ['apps/argus/src/app/main.ts#surface_start', [1974, 'the host closure itself; it shrinks as the file does']],
+    ['apps/argus/src/app/main.ts', [2921, 'the host: the pane factories, the opens, the wire observers and the boot; each concern left goes to a module']],
+    ['apps/argus/src/app/main.ts#surface_start', [1949, 'the host closure itself; it shrinks as the file does']],
     ['apps/argus/src/console/argusLang.ts#argusLine_run', [266, 'the language dispatcher: one branch per subject; a verb table is the next cut']],
     ['apps/argus/src/features/image/slabScene.ts#slabScene_open', [155, 'the slab scene setup: one WebGL program; split when it next changes']],
     ['apps/argus/src/features/pacs/panel.ts', [1941, 'the PACS panel: three listing levels and the form; the levels are the next cut']],
     ['apps/argus/src/features/files/panel.ts', [1814, 'the files panel: the listing, the content views and the previews; the content views are the next cut']],
-    ['apps/argus/src/features/dag/panel.ts', [1732, 'the DAG panel: the roster and the graph; the roster is the next cut']],
+    ['apps/argus/src/features/dag/panel.ts', [1674, 'the DAG panel: the roster and the graph; the roster is the next cut']],
     ['apps/argus/src/features/universe/panel.ts', [1684, 'the universe panel: the verbs, the session layout and the replay; the session layout is the next cut']],
-    ['apps/argus/src/features/roster/listing.ts', [1675, 'the listing facade: one class every pane declares into; the traits are the next cut']],
+    ['apps/argus/src/features/roster/listing.ts', [1648, 'the listing facade: one class every pane declares into; the traits are the next cut']],
   ]);
   const files = readdirSync('apps/argus/src', { recursive: true })
     .map((name) => `apps/argus/src/${String(name).replaceAll('\\', '/')}`)

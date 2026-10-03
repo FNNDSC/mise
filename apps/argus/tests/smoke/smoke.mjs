@@ -151,6 +151,21 @@ const evalIn = (body) => page.eval(`(async () => {
     }
     return false;
   };
+  // Finds a node on a drawn graph by touch: sweeps a grid of the canvas
+  // until the facts plate answers (a press on empty space selects nothing,
+  // so the sweep is harmless). Blind probe points missed small graphs.
+  const node_find = async (canvas, facts) => {
+    const box = canvas.getBoundingClientRect();
+    for (const fy of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8]) {
+      for (const fx of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8]) {
+        const at = { clientX: Math.round(box.left + box.width * fx), clientY: Math.round(box.top + box.height * fy), bubbles: true, cancelable: true };
+        canvas.dispatchEvent(new MouseEvent('mousemove', at)); await sleep(60);
+        canvas.dispatchEvent(new MouseEvent('click', at)); await sleep(220);
+        if (facts().trim() !== '') return at;
+      }
+    }
+    return null;
+  };
   // A RUNS pane left on a graph goes back to its roster by its own BACK.
   const runs_back = async () => {
     const onGraph = (p) => p.offsetParent !== null && p.querySelector('.dag-feedlist') && p.querySelector('.roster-shown') === null && p.querySelector('.dag-canvas')?.style.display === 'block';
@@ -3845,9 +3860,30 @@ try {
     // from every series already in CUBE. Nothing caught it, because nothing
     // had ever asked whether a capsule lands inside the cell holding it.
     // Whatever listing is on stage answers: this needs no PACS of its own.
+    // Verbs stand in a row's own track (a listing with no frame) or in the
+    // frame's row zone (every framed listing): indicate a row in Home so
+    // there are verbs on stage to measure, wherever they stand.
     const fit = await evalIn(`
+      await console_idle();
+      document.getElementById('gutter-files').click(); await sleep(800);
+      const fp = [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+      for (let i = 0; i < 40 && (fp?.querySelectorAll('.files-row').length ?? 0) < 2; i++) await sleep(250);
+      const row = [...(fp?.querySelectorAll('.files-row') ?? [])].find((r) => r.querySelector('.files-name')?.textContent.trim() !== '..');
+      row?.querySelector('.files-name')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 20 && !fp?.querySelector('.listing-zone .listing-action'); i++) await sleep(150);
       const bad = [];
       let cells = 0;
+      for (const zone of document.querySelectorAll('.listing-zone')) {
+        const box = zone.getBoundingClientRect();
+        if (box.width === 0) continue;
+        const verbs = [...zone.querySelectorAll('.listing-action')].filter((b) => b.getBoundingClientRect().width > 0);
+        if (verbs.length === 0) continue;
+        cells += 1;
+        for (const verb of verbs) {
+          const v = verb.getBoundingClientRect();
+          if (v.left < box.left - 1 || v.right > box.right + 1) bad.push(\`\${verb.textContent.trim()} in a \${Math.round(box.width)}px zone\`);
+        }
+      }
       for (const cell of document.querySelectorAll('.listing-actions')) {
         const box = cell.getBoundingClientRect();
         if (box.width === 0) continue;
@@ -3862,11 +3898,14 @@ try {
           }
         }
       }
+      // Leave as found: the row stands down.
+      document.getElementById('status-strip')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await sleep(200);
       return { cells, bad: bad.slice(0, 6) };`);
     if (fit.cells === 0) {
       console.log('  skipped: no listing with row verbs on stage');
     } else {
-      check('every row verb fits inside the track that holds it', fit.bad.length === 0, `${fit.cells} cells · ${fit.bad.join('; ')}`);
+      check('every row verb fits inside the track or zone that holds it', fit.bad.length === 0, `${fit.cells} cells · ${fit.bad.join('; ')}`);
     }
   }
 
@@ -4110,31 +4149,32 @@ try {
   // stands the plate down, as a tap on empty space does — on a phone the
   // plate reads as the background.
   const dagBack = await evalIn(`
-    const row = [...document.querySelectorAll('.launcher-row')].find((e) => /^\\d{3,}\\s/.test(e.textContent.trim()) && !/ERRORED|FEEDS|ENTRIES/.test(e.textContent));
+    // The dashboard's analyses tile lists feeds: put it on stage rather than hope an earlier scenario left it there.
+    document.getElementById('gutter-dashboard')?.click();
+    const feedRow = () => [...document.querySelectorAll('.launcher-row')].find((e) => /^\\d{3,}\\s/.test(e.textContent.trim()) && !/ERRORED|FEEDS|ENTRIES/.test(e.textContent));
+    for (let i = 0; i < 40 && !feedRow(); i++) await sleep(250);
+    const row = feedRow();
     if (!row) return { skipped: 'no feed row on the dashboard' };
     row.click(); await sleep(1500);
     let canvas = null;
     for (let i = 0; i < 160; i++) { await sleep(500); canvas = [...document.querySelectorAll('.pane-dag canvas')].find((c) => c.offsetParent !== null); if (canvas) break; }
-    if (!canvas) return { skipped: 'no graph drawn in time' };
+    if (!canvas) { await home_return(); return { skipped: 'no graph drawn in time' }; }
     await sleep(2500);
     const pane = canvas.closest('.pane-dag');
     const facts = pane.querySelector('.dag-facts'); const back = pane.querySelector('.dag-back');
     const backOnGraph = { hidden: back.hidden, first: back.parentElement.firstElementChild === back, text: back.textContent.trim() };
     const box = canvas.getBoundingClientRect();
-    const hit = (x, y, type = 'click') => canvas.dispatchEvent(new MouseEvent(type, { clientX: Math.round(x), clientY: Math.round(y), bubbles: true, cancelable: true }));
-    let shown = false;
-    for (const [fx, fy] of [[0.5, 0.5], [0.5, 0.35], [0.5, 0.65], [0.4, 0.5], [0.6, 0.5], [0.5, 0.25], [0.5, 0.75]]) {
-      hit(box.left + box.width * fx, box.top + box.height * fy, 'mousemove'); await sleep(120);
-      hit(box.left + box.width * fx, box.top + box.height * fy); await sleep(500);
-      if (facts.textContent.trim() !== '') { shown = true; break; }
-    }
-    if (!shown) return { skipped: 'no node under the probe points', backOnGraph };
+    const shown = (await node_find(canvas, () => facts.textContent)) !== null;
+    if (!shown) { await home_return(); return { skipped: 'no node found on the graph', backOnGraph }; }
     const fb = facts.getBoundingClientRect();
     const ground = document.elementFromPoint(fb.left + 3, fb.top + 3);
     ground.dispatchEvent(new MouseEvent('click', { clientX: fb.left + 3, clientY: fb.top + 3, bubbles: true })); await sleep(400);
     const cleared = facts.textContent.trim() === '';
     back.click(); await sleep(1500);
-    return { backOnGraph, groundWas: ground.className, cleared, rosterShown: pane.querySelector('.dag-roster').classList.contains('roster-shown'), backHidden: back.hidden };`);
+    const rosterShown = pane.querySelector('.dag-roster').classList.contains('roster-shown');
+    const backHidden = back.hidden;
+    await home_return();
+    return { backOnGraph, groundWas: ground.className, cleared, rosterShown, backHidden };`);
   if (dagBack.skipped) {
     console.log(`  skipped: ${dagBack.skipped}`);
   } else {

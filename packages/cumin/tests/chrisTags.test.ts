@@ -8,7 +8,7 @@ jest.mock('../src/connect/chrisConnection', () => ({
 }));
 
 import { chrisConnection } from '../src/connect/chrisConnection';
-import { feedTags_list, feedTag_add, feedTag_remove, feedTags_byFeed, feedTagsMap_forget, TAG_COLOR_DEFAULT, TAGS_MAP_TTL_MS } from '../src/feeds/chrisTags';
+import { feedTags_list, feedTag_add, feedTag_remove, feedTags_byFeed, feedTagsMap_forget, tags_index, tag_create, tag_delete, tag_rename, TAG_COLOR_DEFAULT, TAGS_MAP_TTL_MS } from '../src/feeds/chrisTags';
 import { errorStack } from '../src/error/errorStack';
 
 const mockClientGet: jest.Mock = chrisConnection.client_get as unknown as jest.Mock;
@@ -76,12 +76,13 @@ describe('feedTag_add', () => {
     expect(fake.created).toEqual([]);
   });
 
-  it('makes the tag when the user has none of that name', async () => {
+  it('refuses a tag the user has not made, naming the cure, and makes none', async () => {
     const fake = fake_make();
     mockClientGet.mockResolvedValue(client_make(fake));
-    expect((await feedTag_add(12, 'new')).ok).toBe(true);
-    expect(fake.created).toEqual([{ name: 'new', color: TAG_COLOR_DEFAULT }]);
-    expect(fake.added).toEqual([99]);
+    expect((await feedTag_add(12, 'new')).ok).toBe(false);
+    expect(errorStack.stack_pop()?.message).toContain('| new: No such tag (mkdir /proc/tags/new)');
+    expect(fake.created).toEqual([]);
+    expect(fake.added).toEqual([]);
   });
 
   it('is idempotent: a tag the feed already wears is not added twice', async () => {
@@ -156,6 +157,66 @@ describe('feedTags_byFeed', () => {
     expect((await feedTags_byFeed()).ok).toBe(false);
     mockClientGet.mockResolvedValue({ getTags: async () => { throw new Error('down'); } });
     expect((await feedTags_byFeed()).ok).toBe(false);
-    expect(errorStack.stack_pop()?.message).toMatch(/Failed to read the feeds' tags: down/);
+    expect(errorStack.stack_pop()?.message).toMatch(/Failed to read the tags: down/);
+  });
+});
+
+describe('the vocabulary: tags_index, tag_create, tag_delete, tag_rename', () => {
+  interface VocabFake { tags: Array<{ id: number; name: string; color: string; feeds: number[] }>; created: string[]; deleted: number[]; renamed: Array<[number, string]> }
+  function vocabClient_make(fake: VocabFake): unknown {
+    const resource = (row: VocabFake['tags'][number]) => ({
+      data: { id: row.id, name: row.name, color: row.color },
+      getTaggedFeeds: async () => list_make(row.feeds.map((f) => ({ id: f }))),
+      delete: async () => { fake.deleted.push(row.id); },
+      put: async (data: { name: string; color: string }) => { fake.renamed.push([row.id, data.name]); putColors.push(data.color); },
+    });
+    return {
+      getTags: async (search: { name?: string }) => {
+        const rows = fake.tags.filter((t) => search.name === undefined || t.name === search.name);
+        return { ...list_make(rows.map((t) => ({ id: t.id, name: t.name, color: t.color }))), getItems: () => rows.map(resource) };
+      },
+      createTag: async (data: { name: string; color: string }) => { fake.created.push(data.name); return { data: { id: 50, ...data } }; },
+    };
+  }
+  const putColors: string[] = [];
+  const vocab = (): VocabFake => ({ tags: [{ id: 1, name: 'urgent', color: '#888888', feeds: [12, 13] }, { id: 2, name: 'spare', color: '#888888', feeds: [] }], created: [], deleted: [], renamed: [] });
+
+  beforeEach(() => feedTagsMap_forget());
+
+  it('lists every tag the user has, an unworn one too, with the feeds wearing each', async () => {
+    mockClientGet.mockResolvedValue(vocabClient_make(vocab()));
+    const result = await tags_index(1_000);
+    expect(result.ok && [...result.value.values()].map((t) => [t.name, t.feeds])).toEqual([['urgent', [12, 13]], ['spare', []]]);
+  });
+
+  it('makes a tag in the default colour, and refuses a name the user has: File exists', async () => {
+    const fake = vocab();
+    mockClientGet.mockResolvedValue(vocabClient_make(fake));
+    expect((await tag_create('qc')).ok).toBe(true);
+    expect(fake.created).toEqual(['qc']);
+    expect((await tag_create('urgent')).ok).toBe(false);
+    expect(errorStack.stack_pop()?.message).toContain('| urgent: File exists');
+    expect(TAG_COLOR_DEFAULT).toBe('#888888');
+  });
+
+  it('deletes an unworn tag, and refuses one feeds wear: Directory not empty', async () => {
+    const fake = vocab();
+    mockClientGet.mockResolvedValue(vocabClient_make(fake));
+    expect((await tag_delete('spare')).ok).toBe(true);
+    expect(fake.deleted).toEqual([2]);
+    expect((await tag_delete('urgent')).ok).toBe(false);
+    expect(errorStack.stack_pop()?.message).toContain('| urgent: Directory not empty (2 feeds wear it)');
+    expect((await tag_delete('nope')).ok).toBe(false);
+    expect(errorStack.stack_pop()?.message).toContain('| nope: No such file or directory');
+  });
+
+  it('renames a tag, and refuses a name already taken', async () => {
+    const fake = vocab();
+    mockClientGet.mockResolvedValue(vocabClient_make(fake));
+    expect((await tag_rename('urgent', 'URGENT')).ok).toBe(true);
+    expect(fake.renamed).toEqual([[1, 'URGENT']]);
+    expect(putColors).toEqual(['#888888']);
+    expect((await tag_rename('urgent', 'spare')).ok).toBe(false);
+    expect(errorStack.stack_pop()?.message).toContain('| spare: File exists');
   });
 });

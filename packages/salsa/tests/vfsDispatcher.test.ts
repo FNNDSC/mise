@@ -137,7 +137,7 @@ describe('list', () => {
     if (result.ok) {
       const names: string[] = result.value.map((i: VFSItem) => i.name).sort();
       // 'etc' from native is deduplicated against the virtual 'etc'
-      expect(names).toEqual(['etc', 'home', 'net', 'proc', 'tags', 'usr']);
+      expect(names).toEqual(['etc', 'home', 'net', 'proc', 'usr']);
     }
   });
 

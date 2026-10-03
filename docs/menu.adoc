@@ -123,15 +123,15 @@ Three resources have no path today. Each is a relation, and each resolves to a d
 
 === Tags
 
-A `Tag` is a first-class user-owned resource pointing at many feeds; a `Tagging` is the join. A per-feed list would flatten a many-to-many and make editing the same tag from two feeds ambiguous.
+A `Tag` is a first-class user-owned resource pointing at many feeds; a `Tagging` is the join. A per-feed list would flatten a many-to-many and make editing the same tag from two feeds ambiguous. The tags are a vocabulary of folders under `/proc/tags`, beside `/proc/jobs`; a feed is tagged by its extended attribute, so the join has one writer.
 
 [source]
 ----
-~/tags/urgent                      the tag itself
-~/feeds/feed_WXYZ/tags/urgent  →   symlink to ~/tags/urgent
+/proc/tags/urgent              the tag: a folder
+/proc/tags/urgent/feed_WXYZ →  link to /proc/jobs/feed_WXYZ (a feed wearing it)
 ----
 
-The operations fall out: `ln` is tagging, `rm` is untagging, editing the tag file renames it everywhere. The `Tagging` join object *is* the symlink.
+`mkdir /proc/tags/<name>` makes a tag, `rmdir` deletes one no feed wears ("Directory not empty" otherwise), and `mv` renames one. `setfattr -n tag -v <name> <feed>` hangs a tag (naming one with no folder is an error) and `setfattr -x tag -v <name> <feed>` takes it off; `getfattr <feed>` reads them, and `ls -l` shows them as `#tag` after a feed's title. `rm` inside `/proc/tags` is refused and names the verb that does the job. (An earlier design put tags at `/tags` with per-feed symlinks; it was retired for this one, grilled 2026-10-02.)
 
 === Workflows
 

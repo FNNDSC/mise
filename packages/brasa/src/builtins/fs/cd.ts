@@ -150,6 +150,9 @@ async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<Com
     if (!target) {
       return envelope_error('', undefined, `${chalk.red(`cd: ${pathArg}: No such file or directory`)}\n`);
     }
+    // A link may point into another projection (a tag's feed_N is a link to
+    // /proc/jobs/feed_N): that target is entered as the projection it is.
+    if (vfsDispatcher.path_isVirtual(target)) return cdVirtual_handle(vfsPath_normalize(target), pathArg);
     return cdReal_handle(target, pathArg);
   }
   if (entry && !['dir', 'job', 'vfs'].includes(entry.type)) {

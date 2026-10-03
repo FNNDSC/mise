@@ -3,8 +3,14 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 
 // Deps of builtins/utils + the builtins themselves, so real commandArgs_process
 // and path_resolve run.
+const mockVirtual = jest.fn((_p: string): boolean => false);
+const mockVfsMkdir = jest.fn(async (_p: string): Promise<boolean> => true);
+const mockVfsRename = jest.fn(async (_a: string, _b: string): Promise<boolean> => true);
+const mockVfsList = jest.fn(async (_p: string): Promise<{ ok: boolean; value?: Array<{ name: string }> }> => ({ ok: true, value: [] }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(async () => ({ user: 'chris', URL: 'x', folder: '/home/chris' })),
+  PROC_TAGS_PREFIX: '/proc/tags',
+  vfsDispatcher: { path_isVirtual: mockVirtual, mkdir: mockVfsMkdir, rename: mockVfsRename, list: mockVfsList },
 }));
 jest.unstable_mockModule('../src/session/index.js', () => ({
   session: { getCWD: jest.fn(async () => '/home/chris') },
@@ -287,5 +293,45 @@ describe('builtin_mv', () => {
     const envelope: CommandEnvelope = await builtin_mv(['a.txt', 'b.txt']);
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('nope');
+  });
+});
+
+describe('mkdir and mv inside a projection (/proc/tags)', () => {
+  const inTags = (p: string): boolean => p.startsWith('/proc/');
+  afterEach(() => { mockVirtual.mockImplementation((): boolean => false); });
+
+  it('mkdir makes a tag through the projection, never the store', async () => {
+    mockVirtual.mockImplementation(inTags);
+    mockVfsMkdir.mockResolvedValueOnce(true);
+    const envelope: CommandEnvelope = await builtin_mkdir(['/proc/tags/qc']);
+    expect(mockVfsMkdir).toHaveBeenCalledWith('/proc/tags/qc');
+    expect(mockMkdirCmd).not.toHaveBeenCalled();
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('mkdir:/proc/tags/qc:true');
+  });
+
+  it("says the projection's refusal in mkdir's words, and takes an existing tag as done under -p", async () => {
+    mockVirtual.mockImplementation(inTags);
+    mockVfsMkdir.mockResolvedValueOnce(false);
+    mockStackPop.mockReturnValueOnce({ message: '[tag_create   ] | qc: File exists' } as never);
+    const refused: CommandEnvelope = await builtin_mkdir(['/proc/tags/qc']);
+    expect(refused.renderedErr).toContain("mkdir: cannot create directory '/proc/tags/qc': File exists");
+    mockVfsList.mockResolvedValueOnce({ ok: true, value: [{ name: 'qc' }] });
+    const existing: CommandEnvelope = await builtin_mkdir(['-p', '/proc/tags/qc']);
+    expect(existing.status).toBe('ok');
+    expect(mockVfsMkdir).toHaveBeenCalledTimes(1);
+  });
+
+  it('mv renames inside the projection and passes its refusal on once, never "mv: mv:"', async () => {
+    mockVirtual.mockImplementation(inTags);
+    mockVfsRename.mockResolvedValueOnce(true);
+    expect((await builtin_mv(['/proc/tags/a', '/proc/tags/b'])).status).toBe('ok');
+    expect(mockVfsRename).toHaveBeenCalledWith('/proc/tags/a', '/proc/tags/b');
+    expect(mockMvCmd).not.toHaveBeenCalled();
+    mockVfsRename.mockResolvedValueOnce(false);
+    mockStackPop.mockReturnValueOnce({ message: "[dispatcher] | mv: cannot move '/proc/tags/a' to '/home/x': Invalid cross-device link" } as never);
+    const refused: CommandEnvelope = await builtin_mv(['/proc/tags/a', '/home/x']);
+    expect(refused.renderedErr).toContain("mv: cannot move '/proc/tags/a' to '/home/x': Invalid cross-device link");
+    expect(refused.renderedErr).not.toContain('mv: mv:');
   });
 });

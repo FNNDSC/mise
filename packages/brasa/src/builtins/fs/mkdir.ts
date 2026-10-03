@@ -5,7 +5,10 @@
 import chalk from 'chalk';
 import { CommandEnvelope, listCache_get, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import type { ListCache } from '@fnndsc/cumin';
-import { path_resolve } from '../utils.js';
+import { path_resolve, error_stripDebugPrefix } from '../utils.js';
+import { vfsDispatcher } from '@fnndsc/salsa';
+import { errorStack, type Result, type StackMessage } from '@fnndsc/cumin';
+import type { VFSItem } from '@fnndsc/salsa';
 import { folder_checkExists } from './folderExists.js';
 import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
 import { mkdir_render } from '@fnndsc/chili/views/fs.js';
@@ -28,6 +31,39 @@ export interface MkdirOptions {
    * target is an error.
    */
   parents?: boolean;
+}
+
+/**
+ * Makes a folder in a projection. Under `-p` a folder already there is
+ * fine, as it is on a disk; without it the projection's own refusal stands.
+ *
+ * @param targetPath - The absolute virtual path.
+ * @param parents - Whether `-p` was given.
+ * @returns The outcome.
+ */
+async function virtualFolder_make(targetPath: string, parents: boolean): Promise<MkdirOutcome> {
+  if (parents) {
+    const slash: number = targetPath.lastIndexOf('/');
+    const siblings: Result<VFSItem[]> = await vfsDispatcher.list(targetPath.slice(0, slash) || '/');
+    if (siblings.ok && siblings.value.some((item: VFSItem): boolean => item.name === targetPath.slice(slash + 1))) {
+      return { path: targetPath, created: false, existed: true };
+    }
+  }
+  return { path: targetPath, created: await vfsDispatcher.mkdir(targetPath) };
+}
+
+/**
+ * The kernel's reason a verb failed, after what it was doing.
+ *
+ * @param doing - The verb and its operand, as the refusal opens.
+ * @returns `doing: reason`, the reason the stack held (its debug prefix stripped).
+ */
+function refusal_said(doing: string): string {
+  const reason: StackMessage | undefined = errorStack.stack_pop();
+  if (reason === undefined) return `${doing}: failed`;
+  const said: string = error_stripDebugPrefix(reason.message);
+  // The dispatcher's refusal already names the verb; a provider's names the operand first.
+  return said.startsWith('mkdir:') ? said : `${doing}: ${said.replace(/^[^:]*: /, '')}`;
 }
 
 /** Parsed `mkdir` arguments, or the option it refuses. */
@@ -90,6 +126,16 @@ export async function mkdir_run(options: MkdirOptions): Promise<CommandEnvelope>
     try {
       const targetPath: string = await path_resolve(pathArg);
       const parentDir: string = targetPath.substring(0, targetPath.lastIndexOf('/')) || '/';
+      // A projection that makes folders (a tag under /proc/tags) makes them
+      // itself; one that makes none refuses by name.
+      if (vfsDispatcher.path_isVirtual(targetPath)) {
+        const made: MkdirOutcome = await virtualFolder_make(targetPath, parents);
+        if (made.created) rendered += `${mkdir_render(targetPath, true)}\n`;
+        else if (made.existed !== true) renderedErr += `${chalk.red(refusal_said(`mkdir: cannot create directory '${pathArg}'`))}\n`;
+        outcomes.push(made);
+        if (made.created) listCache_get().cache_invalidate(parentDir);
+        continue;
+      }
       if (await folder_checkExists(targetPath)) {
         if (parents) {
           outcomes.push({ path: targetPath, created: false, existed: true });

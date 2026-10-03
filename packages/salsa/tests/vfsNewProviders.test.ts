@@ -2,20 +2,18 @@
  * @file Tests for the three projections that complete the namespace.
  *
  * Each covers a relation CUBE owns that the filesystem could not previously
- * reach: the tags a feed carries, the runs a pipeline produced, and what is
+ * reach: the runs a pipeline produced, and what is
  * known about a plugin as opposed to how to invoke it.
  *
  * The assertions worth keeping are about *shape*: a workflow's jobs are links
- * into `/proc/jobs` rather than copies of them, a tag is one object rather than
- * one per feed, and plugin metadata sits beside `/bin` rather than nested
- * inside it.
+ * into `/proc/jobs` rather than copies of them, and plugin metadata sits
+ * beside `/bin` rather than nested inside it. (The tags moved to /proc/tags:
+ * procTagsProvider.test.ts.)
  */
 const workflowsListAll = jest.fn();
-const tagsListAll = jest.fn();
 const metasListAll = jest.fn();
 
 jest.mock('../src/workflows/index', () => ({ workflows_listAll: (...a: unknown[]) => workflowsListAll(...a) }));
-jest.mock('../src/tags/index', () => ({ tags_listAll: (...a: unknown[]) => tagsListAll(...a) }));
 jest.mock('../src/pluginmetas/index', () => ({ pluginMetas_listAll: (...a: unknown[]) => metasListAll(...a) }));
 const PACKAGE_FIXTURE = {
   id: 7,
@@ -31,7 +29,6 @@ jest.mock('../src/pipelines/packages', () => ({
 }));
 
 import { WorkflowsVfsProvider } from '../src/vfs/providers/workflows';
-import { TagsVfsProvider } from '../src/vfs/providers/tags';
 import { ShareVfsProvider } from '../src/vfs/providers/share';
 
 describe('WorkflowsVfsProvider', () => {
@@ -133,59 +130,6 @@ describe('WorkflowsVfsProvider', () => {
     });
 
     const result = await new WorkflowsVfsProvider().list('/proc/workflows/8/jobs');
-
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.value).toEqual([]);
-  });
-});
-
-describe('TagsVfsProvider', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    tagsListAll.mockResolvedValue({
-      tableData: [
-        { id: 1, name: 'urgent', color: 'red', owner_username: 'me', creation_date: '2026-08-01' },
-        { id: 2, name: 'review', color: 'blue', owner_username: 'me', creation_date: '2026-08-02' },
-      ],
-      selectedFields: [],
-    });
-  });
-
-  it('lists each tag once, however many feeds carry it', async () => {
-    // A tag points at many feeds. Projecting it per-feed would flatten that
-    // many-to-many and make editing ambiguous about which copy changed.
-    const result = await new TagsVfsProvider().list('/tags');
-
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.value.map((item) => item.name)).toEqual(['urgent', 'review']);
-  });
-
-  it('reads a tag as its own properties', async () => {
-    const result = await new TagsVfsProvider().read('/tags/urgent');
-
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value).toContain('name: urgent');
-      expect(result.value).toContain('color: red');
-    }
-  });
-
-  it('refuses to copy a tag, because copying is not what tagging means', async () => {
-    expect(await new TagsVfsProvider().cp('/tags/urgent', '/tags/urgent2', {})).toBe(false);
-  });
-
-  it('reports an unknown tag', async () => {
-    expect((await new TagsVfsProvider().read('/tags/nope')).ok).toBe(false);
-  });
-
-  it('treats a tag as a leaf, not a directory', async () => {
-    expect((await new TagsVfsProvider().list('/tags/urgent')).ok).toBe(false);
-  });
-
-  it('lists nothing when the tag fetch fails, rather than inventing tags', async () => {
-    tagsListAll.mockResolvedValue(null);
-
-    const result = await new TagsVfsProvider().list('/tags');
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value).toEqual([]);

@@ -857,7 +857,6 @@ export class ProcVfsProvider implements VFSProvider {
 
   async cp(_src: string, _dst: string, _options?: CpOptions): Promise<boolean> { return false; }
   async mv(_src: string, _dst: string): Promise<boolean> { return false; }
-  async mkdir(_pathStr: string): Promise<boolean> { return false; }
   async touch(_pathStr: string): Promise<boolean> { return false; }
   async upload(_localPath: string, _remotePath: string): Promise<boolean> { return false; }
   /**

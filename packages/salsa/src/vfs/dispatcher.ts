@@ -14,7 +14,7 @@ import { PacsVfsProvider } from "./providers/pacs.js";
 import { EtcVfsProvider } from "./providers/etc.js";
 import { ProcVfsProvider } from "./providers/proc.js";
 import { WorkflowsVfsProvider } from "./providers/workflows.js";
-import { TagsVfsProvider } from "./providers/tags.js";
+import { ProcTagsVfsProvider } from "./providers/procTags.js";
 import { ShareVfsProvider } from "./providers/share.js";
 
 /**
@@ -37,7 +37,7 @@ export class VFSDispatcher {
     // feed can carry, the runs a pipeline produced, and what is known about a
     // plugin as opposed to how to invoke it.
     this.provider_register(new WorkflowsVfsProvider());
-    this.provider_register(new TagsVfsProvider());
+    this.provider_register(new ProcTagsVfsProvider());
     this.provider_register(new ShareVfsProvider());
   }
 
@@ -252,6 +252,53 @@ export class VFSDispatcher {
    * @param content - The file's new content, whole.
    * @returns True when the provider took it.
    */
+  /**
+   * Dispatches a folder's making to the matched provider; a projection that
+   * makes no folders refuses by name.
+   *
+   * @param pathStr - The absolute virtual path of the new folder.
+   * @returns True when the provider made it.
+   */
+  async mkdir(pathStr: string): Promise<boolean> {
+    const provider: VFSProvider = this.provider_get(pathStr);
+    if (provider !== this.defaultProvider && provider.mkdir) return provider.mkdir(pathStr);
+    errorStack.stack_push("error", `mkdir: cannot create directory '${pathStr}': Read-only file system`);
+    return false;
+  }
+
+  /**
+   * Dispatches an empty folder's removal to the matched provider; a
+   * projection that removes no folders refuses by name.
+   *
+   * @param pathStr - The absolute virtual path of the folder.
+   * @returns True when the provider removed it.
+   */
+  async rmdir(pathStr: string): Promise<boolean> {
+    const provider: VFSProvider = this.provider_get(pathStr);
+    if (provider !== this.defaultProvider && provider.rmdir) return provider.rmdir(pathStr);
+    errorStack.stack_push("error", `rmdir: failed to remove '${pathStr}': Read-only file system`);
+    return false;
+  }
+
+  /**
+   * Dispatches a rename within one projection; a rename across providers, or
+   * in a projection that renames nothing, is refused by name.
+   *
+   * @param src - The absolute virtual path now.
+   * @param dest - The absolute virtual path it takes.
+   * @returns True when the provider renamed it.
+   */
+  async rename(src: string, dest: string): Promise<boolean> {
+    const provider: VFSProvider = this.provider_get(src);
+    if (provider !== this.provider_get(dest)) {
+      errorStack.stack_push("error", `mv: cannot move '${src}' to '${dest}': Invalid cross-device link`);
+      return false;
+    }
+    if (provider !== this.defaultProvider && provider.rename) return provider.rename(src, dest);
+    errorStack.stack_push("error", `mv: cannot move '${src}': Read-only file system`);
+    return false;
+  }
+
   async write(pathStr: string, content: string): Promise<boolean> {
     const provider: VFSProvider = this.provider_get(pathStr);
     if (provider !== this.defaultProvider && provider.write) {

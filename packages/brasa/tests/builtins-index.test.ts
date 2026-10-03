@@ -219,6 +219,7 @@ jest.unstable_mockModule('../src/builtins/fs/archive.js', () => ({
   directory_archive: archiveMock,
 }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  PROC_TAGS_PREFIX: '/proc/tags',
   // The wait for a run to settle asks for statuses in one batch.
   jobs_statusBatch: async (ids: number[]): Promise<Map<number, string>> =>
     new Map(ids.map((id: number): [number, string] => [id, 'finishedSuccessfully'])),
@@ -285,6 +286,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
     ]),
     list: mockVfsDispatcherList,
     linkTarget_resolve: mockVfsDispatcherLinkTargetResolve,
+    path_isVirtual: (path: string): boolean => /^\/(proc|net|bin|usr|etc)(\/|$)/.test(path),
   },
   pipelines_list: jest.fn().mockResolvedValue(null),
   pipelines_listAll: jest.fn().mockResolvedValue(null),
@@ -572,6 +574,16 @@ describe('Builtins - Core Functions', () => {
       expect(envelope.status).toBe('error');
       expect(envelope.renderedErr).toContain('Not a directory');
       expect(mockSetCWD).not.toHaveBeenCalled();
+    });
+
+    it("follows a tag folder's feed link into /proc/jobs as the projection it is", async () => {
+      mockVfsListingGet
+        .mockResolvedValueOnce({ ok: true, value: { path: '/proc/tags/urgent', fresh: true, items: [{ name: 'feed_12', type: 'link', size: 0, owner: '', date: '', target: '/proc/jobs/feed_12' }] } })
+        .mockResolvedValueOnce({ ok: true, value: { path: '/proc/jobs', fresh: true, items: [{ name: 'feed_12', type: 'job', size: 0, owner: '', date: '' }] } })
+        .mockResolvedValueOnce({ ok: true, value: { path: '/proc/jobs/feed_12', fresh: true, items: [] } });
+      const envelope: CommandEnvelope = await builtin_cd(['/proc/tags/urgent/feed_12']);
+      expect(envelope.status).toBe('ok');
+      expect(mockSetCWD).toHaveBeenCalledWith('/proc/jobs/feed_12');
     });
 
     it('resolves an unresolved virtual job data link only when cd follows it', async () => {
@@ -1192,6 +1204,14 @@ describe('Builtins - Core Functions', () => {
   });
 
   describe('builtin_rm()', () => {
+    it('refuses under /proc/tags and names the verb that does the job', async () => {
+      const inside: CommandEnvelope = await builtin_rm(['/proc/tags/urgent/feed_12']);
+      expect(inside.renderedErr).toContain("rm: cannot remove '/proc/tags/urgent/feed_12': Operation not permitted (setfattr -x tag -v urgent feed_12 untags the feed)");
+      const folder: CommandEnvelope = await builtin_rm(['-r', '/proc/tags/urgent']);
+      expect(folder.renderedErr).toContain('Is a directory (rmdir deletes a tag no feed wears)');
+      expect(mockChefsRm).not.toHaveBeenCalled();
+    });
+
     it('should remove a single file', async () => {
       mockChefsRm.mockResolvedValue({ success: true });
       mockRmRender.mockReturnValue('Removed');

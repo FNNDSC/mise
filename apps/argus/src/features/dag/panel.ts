@@ -523,6 +523,8 @@ export class DagPanel {
     this.universe_end(false);
     this.shownFeedId = model.feedId;
     this.pendingFeedId = null;
+    // The graph is the press's answer: the roster row it lit stands down.
+    this.listing.activation_settle();
     barState_clear(this.stateSpan, 'wait');
     this.title.textContent = `DAG · FEED ${model.feedId} — ${model.feedName}`.toUpperCase();
     this.empty.style.display = 'none';
@@ -995,6 +997,7 @@ export class DagPanel {
   private feedRequest_refuse(reason: string): void {
     const feedId: number | null = this.pendingFeedId;
     this.pendingFeedId = null;
+    this.listing.activation_settle();
     this.empty.textContent = `FEED ${feedId ?? '?'}: ${reason.trim() || 'not available'}`.toUpperCase();
     this.empty.style.display = 'block';
     this.roster_show(true);
@@ -1201,6 +1204,7 @@ export class DagPanel {
       this.pendingFeedId = null;
       this.pinnedFeedId = null;
       this.requestedFeedId = null;
+      this.listing.activation_settle();
       this.empty.style.display = 'none';
       this.roster_show(true);
       this.title.textContent = this.defaultTitle;

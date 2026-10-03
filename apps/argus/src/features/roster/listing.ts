@@ -1187,8 +1187,8 @@ export class Listing<T> {
     barState_set(this.stateSpan, 'wait', `OPENING ${name}`);
   }
 
-  /** Stands the press down: the answer has landed. */
-  private activation_settle(): void {
+  /** Stands the press down: the answer landed (rows here, or a pane's own answer — a graph). */
+  public activation_settle(): void {
     if (this.activating === null) return;
     this.activating.element?.classList.remove('listing-activating');
     this.activating = null;

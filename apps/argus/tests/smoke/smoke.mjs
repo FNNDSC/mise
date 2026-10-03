@@ -401,6 +401,43 @@ try {
   }
   }
 
+  if (stage('roster-returns-unlit')) {
+  // The operator: OPEN a run, Esc back, and the run stood lit with the
+  // others dimmed, and no press anywhere took it away. The press's
+  // acknowledgement (listing-activating) waited for the roster's own rows
+  // to settle it, and a run's answer is a graph taking the pane. The graph
+  // settles it now; the roster comes back with nothing lit, and a press
+  // off the listing stands an indication down.
+  const unlit = await evalIn(`
+    await console_idle();
+    document.getElementById('gutter-runs').click(); await sleep(1200);
+    const dp = [...document.querySelectorAll('.pane-dag')].find((p) => p.offsetParent !== null);
+    const settle = async (want, tries = 60) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
+    await settle(() => dp?.querySelector('.feedlist-row') != null);
+    const row = () => dp.querySelector('.feedlist-row');
+    if (row() === null) return { skipped: 'no runs listed' };
+    const lit = () => dp.querySelectorAll('.listing-indicated, .listing-activating').length;
+    row().querySelector('.feedlist-title').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await settle(() => dp.querySelector('.listing-indicated .listing-control') !== null);
+    dp.querySelector('.listing-indicated .listing-control').click();
+    const entered = await settle(() => dp.querySelector('.roster-shown') === null && dp.querySelector('canvas')?.offsetParent != null, 80);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    const back = await settle(() => dp.querySelector('.roster-shown') !== null);
+    await sleep(300);
+    const afterEsc = lit();
+    row().querySelector('.feedlist-title').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await settle(() => lit() === 1);
+    document.getElementById('status-strip').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await sleep(400);
+    return { entered, back, afterEsc, afterPress: lit() };`);
+  if (unlit.skipped !== undefined) {
+    console.log('  skip  roster returns unlit (' + unlit.skipped + ')');
+  } else {
+    check('a run OPENed and left by Esc returns to a roster with nothing lit', unlit.entered && unlit.back && unlit.afterEsc === 0, JSON.stringify(unlit));
+    check('a press off the listing stands an indicated run down', unlit.afterPress === 0, JSON.stringify(unlit));
+  }
+  }
+
   if (stage('more-everywhere')) {
   // Every scrolling field wears the chip: the fields a page has at rest are
   // wired the moment they are stamped, and a node's readout once immersed.

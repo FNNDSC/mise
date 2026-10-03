@@ -1,5 +1,16 @@
 # @fnndsc/chell
 
+## 5.9.8
+
+### Patch Changes
+
+- 685ed59: ARGUS and the calypso daemon say when they are different builds. ARGUS's build writes its stamp into the bundle; the calypso daemon reads it once at start and reports it in its attach ack (`stack.surface`, optional in the wire schema). When ARGUS's own stamp differs, it says which is older and what to restart — on the status strip, in a dismissible notice, and on the console: "ARGUS is newer than the calypso daemon, so some controls won't work. Restart the calypso daemon." or "ARGUS is older than the calypso daemon. Refresh to load the new ARGUS." A remote chell prints one line at attach when its build differs from the daemon's.
+- Updated dependencies [685ed59]
+  - @fnndsc/calypso@0.18.0
+  - @fnndsc/menu@0.16.0
+  - @fnndsc/brasa@0.31.1
+  - @fnndsc/cumin@3.27.1
+
 ## 5.9.7
 
 ### Patch Changes

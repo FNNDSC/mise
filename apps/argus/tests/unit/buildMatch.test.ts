@@ -95,12 +95,12 @@ describe('buildMismatch_tell', () => {
     const host: HTMLElement = document.createElement('div');
     buildMismatch_tell('daemon-older', PAGE, stack({ git: '4128890', built: '2026-10-01 09:00' }), (line: string): void => { notes.push(line); }, host);
     expect(notes).toEqual([
-      'argus: ARGUS is newer than the calypso daemon, so some controls won\'t work. Restart the calypso daemon.',
+      'argus: The calypso daemon has been updated and should be restarted; some controls may not work until then. Restart the calypso daemon.',
       'argus: ARGUS 7bedda5 built 2026-10-03 14:20Z · calypso daemon started with ARGUS 4128890 built 2026-10-01 09:00Z',
     ]);
     expect(notes[0]).toBe(`argus: ${buildMismatch_sentence('daemon-older')}`);
     const notice: HTMLElement | null = host.querySelector('.build-mismatch');
-    expect(notice?.textContent).toBe('ARGUS is newer than the calypso daemon, so some controls won\'t work. Restart the calypso daemon.×');
+    expect(notice?.textContent).toBe('The calypso daemon has been updated and should be restarted; some controls may not work until then. Restart the calypso daemon.×');
     expect(notice?.querySelector('.stale-page-reload')).toBeNull();
     (notice?.querySelector('.build-mismatch-dismiss') as HTMLButtonElement).click();
     expect(host.querySelector('.build-mismatch')).toBeNull();

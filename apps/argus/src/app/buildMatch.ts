@@ -61,7 +61,7 @@ export function buildMismatch_of(page: BuildStamp, stack: StackInfo | undefined,
 export const BUILD_MISMATCH_WORDS: Readonly<Record<BuildMismatch, { readout: string; before: string; cure: string; after: string }>> = {
   'daemon-older': {
     readout: 'CALYPSO DAEMON OUT OF DATE',
-    before: 'ARGUS is newer than the calypso daemon, so some controls won\'t work. ',
+    before: 'The calypso daemon has been updated and should be restarted; some controls may not work until then. ',
     cure: 'Restart the calypso daemon',
     after: '.',
   },

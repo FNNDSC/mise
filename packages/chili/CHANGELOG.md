@@ -1,5 +1,21 @@
 # @fnndsc/chili
 
+## 3.7.0
+
+### Minor Changes
+
+- 32e3919: `ls -l` shows a feed's tags (#831, slice 1c): a long listing that holds feeds (`feed_N` rows, as in `/proc/jobs` or `~/feeds`) prints each feed's tags as `#tags` after its title. The tags come from one map for the whole listing — the user's tags, then each tag's feeds — so a thousand feeds cost as many reads as the user has tags, never one per feed; the map is kept a minute and forgotten whenever a tag is added or removed here. A listing with no feed in it reads nothing.
+
+### Patch Changes
+
+- Updated dependencies [1c8b92d]
+- Updated dependencies [e20fb09]
+- Updated dependencies [ddbd551]
+- Updated dependencies [32e3919]
+- Updated dependencies [59399fe]
+  - @fnndsc/cumin@3.27.0
+  - @fnndsc/salsa@3.21.0
+
 ## 3.6.7
 
 ### Patch Changes

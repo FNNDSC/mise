@@ -1,5 +1,21 @@
 # @fnndsc/salsa
 
+## 3.21.0
+
+### Minor Changes
+
+- 1c8b92d: A feed's name and sharing, whole, in the kernel (#853, slice 1). `/proc/jobs/feed_N/title` is writable: its first line renames the feed (`touch --withContents=`, `edit`), and the roster says so at once. `setfacl` speaks every entry CUBE has: `-m u:<user>:r`, `-m g:<group>:r`, `-m o::r` (public) and `-m o::-` (private again); `-x u:<user>` and `-x g:<group>` withdraw a grant (a feed that held none is said). `chmod o+r` / `o-r` is the other entry spelled as a mode. `getfacl` shows users, groups and `other::`. A feed is also named by `/proc/jobs/feed_N`. `feeds share` is retired and refuses by name; SHARE's question no longer says a grant is permanent; the access and tag verbs get a help category. cumin gains `feedAccess_read`, `feedShare_group`, `feedShare_revoke` and `feed_rename`.
+- e20fb09: A feed's note is a file (#831, slice 1b): `/proc/jobs/feed_N/note` lists beside `status` and `title`, `cat` reads it and `touch --withContents` writes it whole (its title stands), and `edit /proc/jobs/feed_N/note` opens it in the surface's editor and saves it back through the projection — a projected file is never uploaded into CUBE's store. `feed note edit` now edits through the surface's editor seam (`localEdit`) instead of spawning `$EDITOR` itself, so a browser surface can offer its own editor; a surface without one refuses by name. Fixed on the way: an empty `# Title:` line no longer takes the note's first line as its title.
+- 59399fe: Tags are a vocabulary of folders under `/proc/tags` (#831, slice 4a). `ls /proc/tags` lists your tags (an unworn one too); `ls /proc/tags/<tag>` lists the feeds wearing it as links to `/proc/jobs/feed_N`, and `cd` through one lands in the feed. `mkdir /proc/tags/<name>` makes a tag, `rmdir` deletes one no feed wears ("Directory not empty" otherwise), and `mv` renames one. `setfattr -n tag -v <name>` no longer makes a tag: naming one that does not exist is an error naming the cure (`mkdir /proc/tags/<name>`). `rm` under `/proc/tags` is refused and names the verb that does the job. New builtin `rmdir` (empty folders only, as on Linux, on the store and in projections); `mkdir` and `mv` route a projection's paths to it, and a projection that makes or renames nothing refuses by name ("Read-only file system", "Invalid cross-device link"). The old read-only `/tags` projection is retired. cumin gains `tags_index`, `tag_create`, `tag_delete`, `tag_rename` over one cached index of the user's tags and their feeds.
+
+### Patch Changes
+
+- Updated dependencies [1c8b92d]
+- Updated dependencies [ddbd551]
+- Updated dependencies [32e3919]
+- Updated dependencies [59399fe]
+  - @fnndsc/cumin@3.27.0
+
 ## 3.20.1
 
 ### Patch Changes

@@ -33,6 +33,25 @@ function sleep(ms: number): Promise<void> {
   return new Promise<void>((resolve: () => void): void => { setTimeout(resolve, ms); });
 }
 
+/**
+ * Waits until a check passes, or fails with its last error at the deadline.
+ * The watcher writes on a timer and the write itself is asynchronous, so a
+ * fixed sleep races the disk: a slow runner read a shard that had not
+ * landed yet (ENOENT). A positive expectation polls instead.
+ */
+async function eventually(check: () => Promise<void>, timeoutMs: number = 3000): Promise<void> {
+  const deadline: number = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      await check();
+      return;
+    } catch (error: unknown) {
+      if (Date.now() > deadline) throw error;
+      await sleep(10);
+    }
+  }
+}
+
 async function shardNames(): Promise<string[]> {
   return (await readdir(dir)).filter((name: string): boolean => name.startsWith('feed-')).sort();
 }
@@ -169,9 +188,10 @@ it('the watcher writes the whole checkpoint when the sweep makes the cache curre
   expect(await shardNames().catch((): string[] => [])).toEqual([]);
   // The sweep ends. Nothing else will happen on a quiet night.
   procCache_get().warmup_complete();
-  await sleep(40);
-  expect(await readFile(join(dir, 'roster.json'), 'utf8')).toContain('feed 10');
-  expect(await shardNames()).toEqual(['feed-10.json', 'feed-9.json']);
+  await eventually(async (): Promise<void> => {
+    expect(await readFile(join(dir, 'roster.json'), 'utf8')).toContain('feed 10');
+    expect(await shardNames()).toEqual(['feed-10.json', 'feed-9.json']);
+  });
   expect(await procCheckpoint_restore(identity, root)).toMatchObject({ restored: true, count: 2 });
   watch_stop();
 });
@@ -181,32 +201,38 @@ it('the watcher writes only the shard a mutation touched', async () => {
   procCache_get().lifecycle_set('current');
   procCache_get().feed_add(feed_create(9));
   procCache_get().instance_add({ id: 90, feedID: 9, parentID: null, pluginName: 'pl-root', params: null, status: 'started' });
-  await sleep(40);
-  expect(await readFile(join(dir, 'roster.json'), 'utf8')).toContain('feed 9');
+  await eventually(async (): Promise<void> => {
+    expect(await readFile(join(dir, 'roster.json'), 'utf8')).toContain('feed 9');
+    expect(await readFile(join(dir, 'feed-9.json'), 'utf8')).toContain('pl-root');
+  });
   expect(await shardNames()).toEqual(['feed-9.json']);
   const rosterBefore = await stat(join(dir, 'roster.json'));
 
   await sleep(25);
   procCache_get().status_update(90, 'finishedSuccessfully');
-  await sleep(40);
-  expect(await readFile(join(dir, 'feed-9.json'), 'utf8')).toContain('finishedSuccessfully');
+  await eventually(async (): Promise<void> => {
+    expect(await readFile(join(dir, 'feed-9.json'), 'utf8')).toContain('finishedSuccessfully');
+  });
   expect((await stat(join(dir, 'roster.json'))).mtimeMs).toBe(rosterBefore.mtimeMs);
   watch_stop();
 });
 
 it('the watcher spaces writes of one shard by the floor, never dropping the last change', async () => {
-  const watch_stop: () => void = procCheckpoint_watch(identity, root, 5, 150);
+  // A floor wide enough that the check inside it never races a slow runner.
+  const watch_stop: () => void = procCheckpoint_watch(identity, root, 5, 1000);
   procCache_get().lifecycle_set('current');
   procCache_get().feed_add(feed_create(9));
   procCache_get().instance_add({ id: 90, feedID: 9, parentID: null, pluginName: 'pl-a', params: null, status: 'finishedSuccessfully' });
-  await sleep(30);
-  expect(await readFile(join(dir, 'feed-9.json'), 'utf8')).toContain('pl-a');
+  await eventually(async (): Promise<void> => {
+    expect(await readFile(join(dir, 'feed-9.json'), 'utf8')).toContain('pl-a');
+  });
 
   procCache_get().instance_add({ id: 91, feedID: 9, parentID: 90, pluginName: 'pl-b', params: null, status: 'finishedSuccessfully' });
-  await sleep(30);
+  await sleep(50);
   expect(await readFile(join(dir, 'feed-9.json'), 'utf8')).not.toContain('pl-b'); // inside the floor
-  await sleep(200);
-  expect(await readFile(join(dir, 'feed-9.json'), 'utf8')).toContain('pl-b'); // trailing write landed
+  await eventually(async (): Promise<void> => {
+    expect(await readFile(join(dir, 'feed-9.json'), 'utf8')).toContain('pl-b'); // trailing write landed
+  });
   watch_stop();
 });
 

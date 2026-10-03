@@ -21,8 +21,9 @@ import chalk from 'chalk';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { REPL } from '../core/repl.js';
 import { RemoteEngine, type DaemonStack } from './remoteEngine.js';
+import { buildMismatch_line } from './buildMatch.js';
 import { LocalBerthResolver, type Berth } from '@fnndsc/calypso';
-import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, stackBanner_rows, stackBannerRow_paint } from '@fnndsc/brasa';
+import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, stackBanner_rows, stackBannerRow_paint, buildHash_get } from '@fnndsc/brasa';
 import { cliSurface_create } from '../core/cliSurface.js';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { TerminalProgressRenderer } from '../core/progressRenderer.js';
@@ -299,6 +300,8 @@ export async function remote_run(
       console.log(`    ${stackBannerRow_paint(row, { name: chalk.bold.cyan, phrase: chalk.white, version: chalk.gray })}`);
     }
   }
+  const buildWarning: string | null = stack !== undefined ? buildMismatch_line(buildHash_get(), stack.build) : null;
+  if (buildWarning !== null) console.log(chalk.yellow(buildWarning));
   const hostControl: string[] = engine.hostControl ?? [];
   if (hostControl.length > 0) {
     // The daemon acts on its own host: `!`, pipes, and the disk are the

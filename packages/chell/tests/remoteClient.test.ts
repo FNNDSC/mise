@@ -86,6 +86,7 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
       .map(([pkg, version]: [string, string | undefined]) => ({ pkg, name: `${pkg.toUpperCase()} written out`, version, nameWidth: 20 })),
   ),
   stackBannerRow_paint: jest.fn((row: { name: string; version: string }): string => `${row.name}  ${row.version}`),
+  buildHash_get: jest.fn((): string => 'dev'),
 }));
 jest.unstable_mockModule('../src/remote/remoteEngine.js', () => ({
   RemoteEngine: MockRemoteEngine,

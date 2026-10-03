@@ -128,6 +128,19 @@ export class StatusBar {
   }
 
   /**
+   * Reads out a page and kernel of different builds on the mismatch field,
+   * unless a contract mismatch already holds it (that one is graver).
+   *
+   * @param readout - What the field says.
+   * @param title - The whole sentence, on hover.
+   */
+  public build_show(readout: string, title: string): void {
+    if (this.fields.mismatch.textContent !== '') return;
+    this.fields.mismatch.textContent = readout;
+    this.fields.mismatch.title = title;
+  }
+
+  /**
    * The HOST lamp: amber while calypso acts on its own host, absent
    * otherwise — an annunciation, not an alert, and never at rest.
    *

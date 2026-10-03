@@ -93,6 +93,8 @@ import { argusHost_build } from './consoleHost.js';
 import { browser_wire, feedOf_path, imagery_is, TABLE_FILE_PATTERN, type Browser } from './browser.js';
 import { place_of, type Side } from './sides.js';
 import { stalePage_watch } from './stalePage.js';
+import { buildMatch_check } from './buildMatch.js';
+import { greeting_ask } from './greeting.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
 // from `tests/smoke/canon/lcars.json` — the computed style of this surface's own
 // rendered page — and proven against it at zero differences across 275 elements.
@@ -2760,6 +2762,8 @@ async function surface_start(token: string): Promise<void> {
   const client: ArgusClient = attached.client;
 
   statusBar.attach_show(attached.attach);
+  const buildNotes: string[] = [];
+  buildMatch_check(attached.attach.stack, statusBar, (line: string): void => { buildNotes.push(line); });
   statusBar.connection_show(true);
   cascade?.connection_show(true);
   aboutFace_fill(attached.attach);
@@ -2800,19 +2804,8 @@ async function surface_start(token: string): Promise<void> {
   terminal.splash_write(SPLASH_BRAIN);
   terminal.prompt_draw();
   terminal.focus_take();
-  // The greeting is the session's to give: asked once, silently, and
-  // written beneath the brain as it arrives. An older daemon without
-  // `motd`, or a refused ask, leaves the brain alone rather than an error.
-  void client.line_execute(`motd ${SURFACE_NAME}`, { silent: true, observe: false })
-    .then((outcome: ExecuteOutcome): void => {
-      const text: string = outcome.envelopes
-        .filter((envelope: WireEnvelope): boolean => envelope.status === 'ok')
-        .map((envelope: WireEnvelope): string => envelope.rendered)
-        .join('')
-        .trimEnd();
-      if (text.length > 0) terminal.greeting_write(text.split('\n'));
-    })
-    .catch((): void => undefined);
+  // The greeting is the session's to give, beneath the brain; the build notes follow it.
+  greeting_ask(client, terminal, SURFACE_NAME, buildNotes);
 
   consoleClosed_set = drawer_wire(
     element_require('drawer'),

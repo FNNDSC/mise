@@ -325,6 +325,8 @@ export const attachedMessageSchema = z.object({
       chell: z.string(),
       calypso: z.string(),
       build: z.string(),
+      /** The web bundle's build stamp as it stood when the daemon started. */
+      surface: z.object({ git: z.string(), built: z.string() }).optional(),
       brasa: z.string().optional(),
       chili: z.string().optional(),
       salsa: z.string().optional(),

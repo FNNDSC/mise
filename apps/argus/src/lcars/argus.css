@@ -6914,3 +6914,17 @@ body[data-zoom] #header-strip {
     font-size: 1.4rem;
   }
 }
+
+/* A page and kernel of different builds say so in the stale-page notice;
+   the operator may dismiss it, and the status strip keeps the readout. */
+.build-mismatch-dismiss {
+  flex: none;
+  padding: 0 0.4rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 1.2em;
+  line-height: 1;
+  cursor: pointer;
+}

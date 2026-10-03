@@ -14,7 +14,7 @@
 import * as path from 'node:path';
 import chalk from 'chalk';
 import { CalypsoDaemon } from './server.js';
-import { bundledWebRoot_find, installedWebRoot_find, webRoot_resolve, webRootVersion_read } from './static.js';
+import { bundledWebRoot_find, installedWebRoot_find, webRoot_resolve, webRootBuild_read, webRootVersion_read, type WebRootBuild } from './static.js';
 import { hostFqdn_get } from './host.js';
 import { token_generate } from './token.js';
 import type { BrasaEngine } from '@fnndsc/brasa';
@@ -206,6 +206,10 @@ export async function daemon_launch(
     console.error(chalk.red(`[!] ${refusal}`));
     process.exit(1);
   }
+  // The page this kernel starts beside, remembered now: a bundle rebuilt on
+  // disk later is served fresh while this process keeps its old code, and a
+  // surface compares its own stamp against this one to say so.
+  const surfaceBuild: WebRootBuild | null = webRoot !== null ? webRootBuild_read(webRoot) : null;
   const daemon: CalypsoDaemon = new CalypsoDaemon({
     engine,
     token,
@@ -225,7 +229,7 @@ export async function daemon_launch(
     }),
     // Report this process's own versions and build hash so attaching surfaces
     // greet with the daemon's truth rather than their local install's.
-    stack: { ...versions_get(), build: buildHash_get() },
+    stack: { ...versions_get(), build: buildHash_get(), ...(surfaceBuild !== null ? { surface: surfaceBuild } : {}) },
     hostControl: hostControl_tiers(hostControl),
   });
   sink_set(new DaemonSink(daemon));

@@ -66,11 +66,13 @@ export type { ProgressMessage };
  * @property chell - The daemon's installed chell version.
  * @property calypso - The daemon's installed calypso version.
  * @property build - The daemon's short build hash.
+ * @property surface - The page the daemon started beside, when it says.
  */
 export interface StackInfo {
   chell: string;
   calypso: string;
   build: string;
+  surface?: { git: string; built: string };
   brasa?: string;
   chili?: string;
   salsa?: string;

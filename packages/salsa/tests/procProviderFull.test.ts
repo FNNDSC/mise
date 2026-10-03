@@ -14,11 +14,13 @@ const mockJobs = {
 
 const mockFeedNoteGet = jest.fn();
 const mockFeedNoteUpdate = jest.fn();
+const mockFeedRename = jest.fn();
 jest.mock('@fnndsc/cumin', () => ({
   ...jest.requireActual('@fnndsc/cumin'),
   chrisConnection: { client_get: mockClientGet },
   feedNote_get: (...args: unknown[]) => mockFeedNoteGet(...args),
   feedNote_update: (...args: unknown[]) => mockFeedNoteUpdate(...args),
+  feed_rename: (...args: unknown[]) => mockFeedRename(...args),
 }));
 jest.mock('../src/jobs/index', () => mockJobs);
 
@@ -352,8 +354,17 @@ describe("a feed's note under /proc", () => {
     expect(puts).toEqual([{ content: 'new words' }]);
   });
 
-  it('refuses any other write by name', async () => {
+  it('renames the feed by its title, first line trimmed, and the cache says so at once', async () => {
+    mockFeedRename.mockResolvedValueOnce(Ok(true));
+    expect(await provider.write('/proc/jobs/feed_5/title', '  Brain run v2  \nignored')).toBe(true);
+    expect(mockFeedRename).toHaveBeenCalledWith(5, 'Brain run v2');
+    expect((await provider.read('/proc/jobs/feed_5/title')).ok && (await provider.read('/proc/jobs/feed_5/title'))).toEqual({ ok: true, value: 'Brain run v2' });
+    mockFeedRename.mockResolvedValueOnce(Err());
     expect(await provider.write('/proc/jobs/feed_5/title', 'x')).toBe(false);
+  });
+
+  it('refuses any other write by name', async () => {
+    expect(await provider.write('/proc/jobs/feed_5/status', 'x')).toBe(false);
     expect(errorStack.stack_pop()?.message).toMatch(/Read-only file system/);
   });
 

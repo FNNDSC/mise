@@ -297,6 +297,11 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
       // so one declaration serves the terminal and a graphical surface alike.
       return await feedDag_handle(feedResult.value, options.focusID, options.maxNodes, options.flat);
     }
+    if (subcommand === 'share') {
+      // Retired: sharing is an access entry, and a shell has the verbs.
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red('feeds share is retired: setfacl -m o::r <feed> (or chmod o+r <feed>) makes a feed public; setfacl -m u:<user>:r or g:<group>:r shares it')}\n`);
+    }
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: feed <list|create|inspect|search|note|comments|comment|rm|tree|diagram>`)}\n`);
   } catch (e: unknown) {

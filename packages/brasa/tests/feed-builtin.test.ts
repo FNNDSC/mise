@@ -223,6 +223,11 @@ describe('builtin_feed', () => {
     expect(env.rendered).toBe('SAVED');
   });
 
+  it('refuses the retired feeds share by name, pointing at the access verbs', async () => {
+    const env = await builtin_feed(['share', '12']);
+    expect(env.renderedErr).toContain('feeds share is retired: setfacl -m o::r <feed> (or chmod o+r <feed>)');
+  });
+
   it('rejects a non-numeric note edit id', async () => {
     const usage = await builtin_feed(['note', 'edit', 'abc']);
     expect(usage.renderedErr).toContain('Usage: feed note edit');

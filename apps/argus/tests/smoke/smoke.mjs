@@ -1953,6 +1953,85 @@ try {
     row.textVerbs.includes('EDIT') && !row.binaryVerbs.includes('EDIT') && row.opened && row.echoed, JSON.stringify(row));
   }
 
+  if (stage('feed-share')) {
+  // A feed's sharing and name (#853): SHARE asks with the operator's groups
+  // and EVERYONE as pills; a pick runs setfacl and comes back held; the
+  // holders are marks on the row, each × asking before it withdraws; RENAME
+  // asks for the name and writes the title. Feed SMOKE_DAG_FEED, the
+  // operator's personal group (it holds only them), restored at the end.
+  const feed = process.env.SMOKE_DAG_FEED ?? '880';
+  const shared = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const settle = async (want, tries = 60) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
+    const me = window.__argusPromptContext?.user ?? '';
+    document.getElementById('gutter-runs').click(); await sleep(1200);
+    const dp = [...document.querySelectorAll('.pane-dag')].find(p => p.offsetParent !== null);
+    const row = () => dp.querySelector('.feedlist-row[data-feed="${feed}"]');
+    await say('runs filter id:${feed}', 1500);
+    await settle(() => row() !== null);
+    const indicate = () => row().querySelector('.feedlist-title').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    indicate();
+    const zone = () => dp.querySelector('.runs-row-zone');
+    const verb = (name) => [...(zone()?.querySelectorAll('.listing-action') ?? [])].find(b => b.textContent.trim() === name);
+    await settle(() => verb('SHARE') !== undefined);
+    const readout = () => zone()?.querySelector('.listing-readout')?.textContent ?? '';
+    await settle(() => readout() !== '');
+    const before = readout();
+    const echoes = () => [...document.querySelectorAll('#terminal .argus-echo')].map(e => e.textContent);
+    const bar = () => dp.querySelector('.ask-bar');
+    verb('SHARE').click();
+    await settle(() => bar() !== null);
+    const pills = [...bar().querySelectorAll('.ask-bar-choice')].map(p => p.textContent.trim());
+    const mine = bar().querySelector('.ask-bar-choice[data-value="g:' + me + ':r"]');
+    if (mine === null) { bar().querySelector('.ask-bar-abandon').click(); return { skipped: 'no personal group named ' + me, pills }; }
+    mine.click();
+    const groupHeld = await settle(() => bar()?.querySelector('.ask-bar-held[data-value="g:' + me + ':r"]') != null, 80);
+    bar().querySelector('.ask-bar-choice[data-value="o::r"]').click();
+    const publicHeld = await settle(() => bar()?.querySelector('.ask-bar-held[data-value="o::r"]') != null, 80);
+    const grantLines = echoes().some(e => e.includes("setfacl -m g:" + me + ":r feed_${feed}")) && echoes().some(e => e.includes('setfacl -m o::r feed_${feed}'));
+    bar().querySelector('.ask-bar-abandon').click(); await sleep(400);
+    const marked = await settle(() => /group /.test(readout()) && /PUBLIC/.test(readout()), 80);
+    // × on each, answering yes on the pane
+    const removeMark = async (cls) => {
+      zone().querySelector('.holder-mark.' + cls + ' .holder-mark-x')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle(() => dp.querySelector('.ask-bar-yes') !== null, 40);
+      const asked = dp.querySelector('.ask-bar-caption')?.textContent ?? '';
+      dp.querySelector('.ask-bar-yes')?.click();
+      return asked;
+    };
+    const askedGroup = await removeMark('holder-group');
+    // A readout mid-refresh is empty for a moment: wait for the marks to stand again.
+    await settle(() => readout() !== '' && !/group /.test(readout()) && zone().querySelector('.holder-mark.holder-public') !== null, 80);
+    const askedPublic = await removeMark('holder-public');
+    const restored = await settle(() => /SHARED WITH NOBODY/.test(readout()), 80);
+    const revokeLines = echoes().some(e => e.includes("setfacl -x g:'" + me + "' feed_${feed}")) && echoes().some(e => e.includes('setfacl -m o::- feed_${feed}'));
+    // Whatever the checks saw, the feed leaves as it came: no group, not public.
+    await say('setfacl -x g:' + me + ' feed_${feed}', 2000); await say('setfacl -m o::- feed_${feed}', 2000);
+    // RENAME, and back
+    const title = row().querySelector('.feedlist-title-text, .feedlist-title').textContent.trim();
+    indicate(); await settle(() => verb('RENAME') !== undefined);
+    verb('RENAME').click(); await settle(() => bar() !== null);
+    const suggested = bar().querySelector('.ask-bar-field').value;
+    bar().querySelector('.ask-bar-field').value = title + ' smoke';
+    bar().querySelector('.ask-bar-commit').click();
+    const renamed = await settle(() => (row()?.querySelector('.feedlist-title')?.textContent ?? '').includes(title + ' smoke'), 80);
+    await say("touch --withContents='" + title + "' /proc/jobs/feed_${feed}/title", 2500);
+    await say('runs filter off', 800);
+    return { pills, groupHeld, publicHeld, grantLines, marked, askedGroup, askedPublic, restored, revokeLines, before, suggested, title, renamed };`);
+  if (shared.skipped !== undefined) {
+    console.log('  skip  feed sharing (' + shared.skipped + ')');
+  } else {
+    check('SHARE offers the groups and EVERYONE as pills; each pick runs setfacl and comes back held',
+      shared.pills.includes('EVERYONE') && shared.groupHeld && shared.publicHeld && shared.grantLines, JSON.stringify(shared));
+    check("the holders are marks on the row; each × asks, then withdraws by a visible line",
+      shared.marked && /Stop sharing feed_\d+ with group /.test(shared.askedGroup) && /with PUBLIC/.test(shared.askedPublic) && shared.restored && shared.revokeLines, JSON.stringify(shared));
+    check('RENAME asks with the name it has, and the roster shows the new one',
+      shared.suggested === shared.title && shared.renamed, JSON.stringify(shared));
+  }
+  }
+
   if (stage('contrast')) {
   // The frame's type, measured against WCAG 2.1 AA in every scheme.
   //
@@ -2797,14 +2876,14 @@ try {
     for (let i = 0; i < 60; i++) { await sleep(400); if (!rosterShown()) { entered = true; break; } }
     return { verbs, readout, others, moved: before.join(',') !== after.join(','), stayed, asked, confirm, feedsBefore, feedsAfter, laneAfter, entered };`);
   check('a feed row carries the verbs that act on a feed',
-    shares.verbs.join(',') === 'NOTE,TAG,SHARE,DELETE' && shares.others);
+    shares.verbs.join(',') === 'NOTE,TAG,RENAME,SHARE,DELETE' && shares.others);
   check('the row reads back who holds it', /^SHARED WITH /.test(shares.readout));
   check('no roster row moves when one is indicated', !shares.moved);
   check('indicating a feed does not enter it', shares.stayed);
   check('abandoning the confirmation releases the command that asked it',
     !/feed rm/.test(shares.laneAfter ?? ''), `LANE ${shares.laneAfter}`);
-  check('SHARE asks who, and says the grant cannot be taken back',
-    /with which user/.test(shares.asked) && /cannot be taken back/.test(shares.asked));
+  check('SHARE asks with whom (a group, everyone, or a user), and no longer says a grant is permanent',
+    /with a group, everyone, or a user/.test(shares.asked) && !/cannot be taken back/.test(shares.asked));
   check('DELETE raises the kernel\'s own confirmation', /Remove feed \d+ and everything in it/.test(shares.confirm));
   check('answering no removes nothing', shares.feedsBefore === shares.feedsAfter);
   check('a double-click still enters the feed', shares.entered);

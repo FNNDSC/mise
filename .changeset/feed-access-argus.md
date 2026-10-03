@@ -1,0 +1,5 @@
+---
+"@fnndsc/argus": minor
+---
+
+ARGUS shares and renames a feed (#853, slice 2). A feed row offers RENAME (and so does an entered feed's graph frame): it asks for the name with the one it has and writes `/proc/jobs/feed_N/title`, and the graph's bar reads the new name at once. SHARE asks a choose question: the CUBE groups you belong to (from /etc/group) and EVERYONE as pills, the ones that already hold dimmed, and a field for a user; each pick runs `setfacl -m` visibly and the question comes back until DONE. The row's SHARED WITH readout becomes marks — each user, each group, and PUBLIC — each with a × that asks "Stop sharing feed_N with …?" before `setfacl -x` (or `setfacl -m o::-`) runs. The listing façade's readout takes an element as well as words; a choose question's pill can carry a label and the bar wraps when its pills outgrow a line. Fixed on the way: a press in a pane's question bar retracted the mode frame and dropped the row's indication, and consecutive visible lines' answers piled into the first one's console block.

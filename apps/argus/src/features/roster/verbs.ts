@@ -225,6 +225,7 @@ export const RUNS_ROW_ROSTER: VerbRoster<RunsRowFacts> = {
   rules: [
     { name: 'note', label: (): string => 'NOTE', offered: (): boolean => true },
     { name: 'tag', label: (): string => 'TAG', offered: (): boolean => true },
+    { name: 'rename', label: (): string => 'RENAME', offered: (): boolean => true },
     { name: 'share', label: (): string => 'SHARE', offered: (): boolean => true },
     { name: 'delete', label: (): string => 'DELETE', offered: (): boolean => true },
   ],

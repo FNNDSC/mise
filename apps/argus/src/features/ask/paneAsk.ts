@@ -30,7 +30,10 @@ export type PaneAskKind = 'text' | 'secret' | 'confirm' | 'choose';
 
 /** One offered answer of a `choose` question: a pill, dimmed when it already holds. */
 export interface PaneAskChoice {
+  /** What the question answers when the pill is pressed. */
   value: string;
+  /** What the pill reads, when not the value itself (EVERYONE for `o::r`). */
+  label?: string;
   /** Already true of the subject (a tag the feed wears): shown, dimmed, not pressable. */
   held?: boolean;
 }
@@ -104,7 +107,7 @@ export function paneAsk_open(pane: HTMLElement, request: PaneAskRequest): Promis
   if (pane.querySelector(':scope > .ask-bar') !== null) return Promise.resolve(null);
 
   const bar: HTMLElement = document.createElement('div');
-  bar.className = 'ask-bar';
+  bar.className = request.kind === 'choose' ? 'ask-bar ask-bar-choose' : 'ask-bar';
   const glyph: HTMLElement = document.createElement('span');
   glyph.className = 'ask-bar-glyph';
   glyph.textContent = '?';
@@ -134,7 +137,7 @@ export function paneAsk_open(pane: HTMLElement, request: PaneAskRequest): Promis
     for (const choice of request.choices ?? []) {
       const pill: HTMLButtonElement = document.createElement('button');
       pill.className = `pacs-capsule ask-bar-choice${choice.held === true ? ' ask-bar-held' : ''}`;
-      pill.textContent = choice.value;
+      pill.textContent = choice.label ?? choice.value;
       pill.dataset['value'] = choice.value;
       pill.disabled = choice.held === true;
       bar.append(pill);

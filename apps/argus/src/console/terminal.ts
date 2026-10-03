@@ -443,6 +443,8 @@ export class ArgusTerminal {
    * @param line - The command line to show.
    */
   public line_echo(line: string): void {
+    // The line's own answer starts beneath it, not in the block an earlier line streamed into.
+    this.stream_close();
     this.block_append('argus-echo', `<span class="prompt-glyph">❯</span> <span class="user-input">${html_escape(line)}</span>`);
     this.size_fit();
   }

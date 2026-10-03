@@ -2299,6 +2299,45 @@ body[data-zoom]:not([data-zoom='console'])
   display: inline;
 }
 
+/* Who holds a feed, on its indicated row's readout: a mark per user, per
+   group and PUBLIC, each with the × that withdraws it (asking first). The
+   readout's own type, so the marks read as part of what it says. */
+.holder-marks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35em;
+}
+
+/* In the frame's row zone, a column: the zone is one block wide. */
+.mode-frame .holder-marks {
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 100%;
+}
+
+.holder-mark {
+  display: inline-flex;
+  max-width: 100%;
+  border: 1px solid currentColor;
+  border-radius: 0.6em;
+  padding: 0 0.4em;
+}
+
+/* A long name gives way, never its ×. */
+.holder-mark-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holder-mark-x {
+  flex: none;
+  margin-left: 0.3em;
+  cursor: pointer;
+}
+
 .dag-note-line {
   flex: 1 1 100%;
   color: var(--butter);
@@ -6381,6 +6420,17 @@ button.launcher-row:hover {
   overflow: hidden;
   border-bottom: 2px solid var(--harvestgold);
   transition: max-height 0.16s ease-out, padding 0.16s ease-out;
+}
+
+/* A choose question may offer more pills than one line holds (a user in
+   fourteen groups): it wraps, and grows to show them all with its field. */
+.ask-bar-choose {
+  flex-wrap: wrap;
+  row-gap: 0.35rem;
+}
+
+.ask-bar-choose.ask-bar-shown {
+  max-height: 14rem;
 }
 
 .ask-bar-shown {

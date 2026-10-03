@@ -176,7 +176,7 @@ const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
     'a selection spanning feeds': ['DELETE 5', 'MOVE 5', 'COPY 5', 'SHARE 2 FEEDS'],
   },
   'runs.row': {
-    'any feed': ['NOTE', 'TAG', 'SHARE', 'DELETE'],
+    'any feed': ['NOTE', 'TAG', 'RENAME', 'SHARE', 'DELETE'],
   },
   'pacs.study': {
     // A study with a path can be gathered: its addressable series are the

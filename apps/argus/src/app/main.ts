@@ -84,8 +84,7 @@ import { binView_wire, type BinView } from './binView.js';
 import { nodeOverlay_wire, type FileText, type NodeOverlay } from './nodeOverlay.js';
 import { cohort_wire, type CohortModule } from './cohort.js';
 import { editor_wire, type EditorModule } from './editor.js';
-import { feedRowHandlers_make } from './feedRows.js';
-import { tags_wire, type TagVerbs } from './tags.js';
+import { feedRowHandlers_make, feedVerbs_wire, type FeedVerbs } from './feedRows.js';
 import { helpPane_wire, type HelpPaneHooks, type HelpPaneModule } from './helpPane.js';
 import { asks_wire, type Asks } from './asks.js';
 import { keys_wire } from './keys.js';
@@ -634,7 +633,7 @@ function gatherMore_wire(field: HTMLElement): void {
  * @param frame - The frame.
  */
 function frameMore_wire(frame: HTMLElement): void {
-  more_wire(frame, { rows: '.strategy-pill, .listing-action', className: 'frame-more' });
+  more_wire(frame, { rows: '.strategy-pill, .listing-action, .holder-mark', className: 'frame-more' });
 }
 
 /** Wires every mode frame on the page, now and as panes mint theirs. */
@@ -1659,7 +1658,7 @@ async function surface_start(token: string): Promise<void> {
         feed_regard: (procPath: string): void => {
           subjects.regard_write(id, { address: procPath, modelKind: 'feed' });
         },
-        ...feedRowHandlers_make(context, id, tagVerbs),
+        ...feedRowHandlers_make(context, id, feedVerbs),
         ...(primary ? { feed_shown: (): void => dag_summon() } : {}),
       },
     );
@@ -1677,8 +1676,8 @@ async function surface_start(token: string): Promise<void> {
     };
   };
 
-  // A feed's tags: TAG's question and the ×, each a visible line (app/tags.ts).
-  const tagVerbs: TagVerbs = tags_wire(context, { ask_onPane: (paneId, request) => ask_onPane(paneId, request), tags_changed: (): void => { for (const dag of panels.values('dag')) { dag.roster_ask(); dag.marks_refresh(); } } });
+  // A feed's tags, name and access: TAG, RENAME, SHARE and the marks' ×, each a visible line (app/tags.ts, app/access.ts).
+  const feedVerbs: FeedVerbs = feedVerbs_wire(context, { ask_onPane: (paneId, request) => ask_onPane(paneId, request), promptUser: (): string | null => promptUser, changed: (): void => { for (const dag of panels.values('dag')) { dag.roster_ask(); dag.marks_refresh(); dag.indicated_refresh(); } } });
   // The primary instances carry the preset ids the gutter's trees name.
   const filesPrimary: PaneInstance = filesInstance_build('files', true);
   paneInstance_adopt(filesPrimary);
@@ -2211,8 +2210,8 @@ async function surface_start(token: string): Promise<void> {
     // A row of a listing whose verbs ride the frame is the frame's other
     // half: touching one puts its verbs there and opens the frame, and
     // the field's retraction must not close what the same press opened.
-    // The façade retracts it when the row stands down.
-    if (event.target.closest('.listing-framed .listing-row') !== null) return;
+    // The façade retracts it when the row stands down. A question on the pane is not the field either.
+    if (event.target.closest('.listing-framed .listing-row, .ask-bar') !== null) return;
     const strip: HTMLElement | null = event.target.closest<HTMLElement>('.mode-strip');
     const pane: HTMLElement | null = strip?.closest<HTMLElement>('.workspace-pane, [data-frame-host]') ?? null;
     const wasOpen: boolean = pane?.dataset['modes'] === 'open';

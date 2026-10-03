@@ -397,6 +397,18 @@ LINT_CHECKS['an-editors-save-is-a-line'] = () => {
   }
 };
 
+LINT_CHECKS['a-holder-is-a-mark-and-a-line'] = () => {
+  // A feed's access changes only by visible setfacl lines and the title file,
+  // and a holder is never withdrawn without the question first.
+  const law = 'a-holder-is-a-mark-and-a-line';
+  const access = readFileSync('apps/argus/src/app/access.ts', 'utf8');
+  if (!/kind: 'confirm', message: `Stop sharing/.test(access)) fail(law, 'app/access.ts withdraws a holder without asking first');
+  if (!/lineVisible_run\(context, holderLine_of\(/.test(access) || !/lineVisible_run\(context, `setfacl -m \$\{shareEntry_of/.test(access)) {
+    fail(law, 'app/access.ts changes access some other way than a visible setfacl line');
+  }
+  if (/line_execute\([^)]*setfacl|fetch\(/.test(access)) fail(law, 'app/access.ts runs setfacl quietly or reaches a byte route');
+};
+
 LINT_CHECKS['a-tag-is-a-mark-and-a-line'] = () => {
   // A feed's tags change only by the lines an operator could type, run
   // visibly; the marks are one theme hue; a note is never read for a listing.

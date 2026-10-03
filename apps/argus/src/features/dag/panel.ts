@@ -37,6 +37,7 @@ import { ChrisSpace, type LayoutStrategy, type PhysicsTerms, type SceneNode } fr
 import { Listing, type ListingStateParts } from '../roster/listing.js';
 import { type ListingAction } from '../roster/row.js';
 import { FEED_TRAITS, duration_format, size_format } from './roster.js';
+import { FeedFrame, type FeedFrameFacts } from './feedFrame.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
 import { dagGraph_build, dagMetric_of, hueLegend_build, type HueMode, type MetricMode } from './sceneGraph.js';
@@ -84,6 +85,8 @@ export interface DagPanelHandlers {
   feed_note?: (feedId: number) => void;
   /** TAG on the frame: ask which tags to hang on the feed. */
   feed_tag?: (feedId: number, worn: ReadonlyArray<string>) => void;
+  /** RENAME on the frame: ask for the feed's name. */
+  feed_rename?: (feedId: number, title: string) => void;
   /**
    * The pane is the subscription: it holds a watch on the feed it shows
    * and releases it when it stops showing one.
@@ -173,9 +176,7 @@ export class DagPanel {
   /** BACK on the frame: out of the graph, to the roster. */
   private backPill: HTMLElement | null = null;
   /** The feed on stage: NOTE, TAG, and its marks (tags, the note's first line). */
-  private notePill: HTMLElement | null = null;
-  private tagPill: HTMLElement | null = null;
-  private marks: HTMLElement | null = null;
+  private readonly feedFrame: FeedFrame;
   private readonly feedList: HTMLElement;
   private readonly handlers: DagPanelHandlers;
   private rosterTimer: ReturnType<typeof setInterval> | null = null;
@@ -306,11 +307,16 @@ export class DagPanel {
     // beneath; a graph that arrived with no roster beneath it (cwd-follow)
     // asks for one. Hidden while the roster is what is shown.
     this.backPill = strategyPill.parentElement?.querySelector<HTMLElement>('.dag-back') ?? null;
-    this.notePill = strategyPill.parentElement?.querySelector<HTMLElement>('.dag-note') ?? null;
-    this.tagPill = strategyPill.parentElement?.querySelector<HTMLElement>('.dag-tag') ?? null;
-    this.marks = strategyPill.parentElement?.querySelector<HTMLElement>('.dag-marks') ?? null;
-    this.notePill?.addEventListener('click', (): void => { if (this.shownFeedId !== null) this.handlers.feed_note?.(this.shownFeedId); });
-    this.tagPill?.addEventListener('click', (): void => { if (this.shownFeedId !== null) this.handlers.feed_tag?.(this.shownFeedId, this.marksTags); });
+    this.feedFrame = new FeedFrame(strategyPill.parentElement, {
+      ...handlers,
+      shown: (): number | null => this.shownFeedId,
+      name: (): string => this.lastModel?.feedName ?? '',
+      // A renamed feed's bar says its new name without waiting for the graph to be asked again.
+      renamed: (feedId: number, title: string): void => {
+        if (this.lastModel !== null) this.lastModel = { ...this.lastModel, feedName: title };
+        this.title.textContent = `DAG · FEED ${feedId} — ${title}`.toUpperCase();
+      },
+    });
     this.backPill?.addEventListener('click', (): void => {
       if (!this.nav_pop()) this.feedsChooser_request();
     });
@@ -543,56 +549,23 @@ export class DagPanel {
     }
     this.watch_open(model.feedId);
     // A feed entered (not a repaint of the one on stage) reads its note and tags.
-    if (this.marksFeedId !== model.feedId) this.marks_refresh();
+    this.feedFrame.arrived(model.feedId);
     this.handlers.feed_shown?.();
   }
 
-  /** The feed whose marks the frame holds, or asked for. */
-  private marksFeedId: number | null = null;
-  /** The tags the feed on stage wears, as last read. */
-  private marksTags: string[] = [];
-
-  /** Asks the host to read the note and tags of the feed on stage again. */
+  /** Reads the entered feed's note, tags and name again (one of them changed). */
   public marks_refresh(): void {
-    if (this.shownFeedId === null) return;
-    this.marksFeedId = this.shownFeedId;
-    this.handlers.feed_entered?.(this.shownFeedId);
+    this.feedFrame.refresh();
   }
 
   /**
-   * Shows the entered feed's note and tags on the frame: NOTE reads ADD NOTE
-   * or EDIT NOTE, the tags stand as marks (each with its ×), then the note's
-   * first line. A read for a feed no longer on stage is dropped.
+   * Shows the entered feed's facts on the frame (see FeedFrame).
    *
    * @param feedId - The feed read.
-   * @param marks - Its note (null when it could not be read) and its tags.
+   * @param facts - Its note, tags and name.
    */
-  public feedMarks_show(feedId: number, marks: { note: string | null; tags: ReadonlyArray<string> }): void {
-    if (feedId !== this.shownFeedId || this.marks === null) return;
-    this.marksTags = [...marks.tags];
-    const note: string = (marks.note ?? '').trim();
-    if (this.notePill !== null) this.notePill.textContent = marks.note === null ? 'NOTE' : note === '' ? 'ADD NOTE' : 'EDIT NOTE';
-    this.marks.replaceChildren();
-    for (const tag of marks.tags) {
-      const mark: HTMLSpanElement = document.createElement('span');
-      mark.className = 'feedlist-tag dag-mark';
-      mark.dataset['tag'] = tag;
-      mark.textContent = `#${tag}`;
-      const remove: HTMLSpanElement = document.createElement('span');
-      remove.className = 'feedlist-tag-x';
-      remove.title = `take ${tag} off this feed (setfattr -x)`;
-      remove.textContent = '×';
-      remove.addEventListener('click', (): void => this.handlers.feed_untag?.(feedId, tag));
-      mark.append(remove);
-      this.marks.append(mark);
-    }
-    if (note !== '') {
-      const line: HTMLSpanElement = document.createElement('span');
-      line.className = 'dag-note-line';
-      line.textContent = note.split('\n')[0] ?? '';
-      line.title = note;
-      this.marks.append(line);
-    }
+  public feedMarks_show(feedId: number, facts: FeedFrameFacts): void {
+    this.feedFrame.show(feedId, facts);
   }
 
   /**
@@ -1325,6 +1298,13 @@ export class DagPanel {
    * @param feedId - The feed the readout belongs to.
    * @param text - What to say beside the verbs.
    */
+  /** The indicated feed's readout reads again (its holders changed). */
+  public indicated_refresh(): void {
+    const key: string | null = this.listing.indicated_get();
+    const feed: FeedListEntry | undefined = key === null ? undefined : this.lastRoster.find((one: FeedListEntry): boolean => String(one.id) === key);
+    if (feed !== undefined) this.handlers.feed_indicated?.(feed);
+  }
+
   /** Asks the session for the roster again now (a tag changed). */
   public roster_ask(): void {
     this.rosterAskedAt = Date.now();
@@ -1353,7 +1333,7 @@ export class DagPanel {
     this.roster_filter(`tag:${tag}`);
   }
 
-  public rowReadout_show(feedId: number, text: string): void {
+  public rowReadout_show(feedId: number, text: string | Node): void {
     // The feed id is stringified at the boundary: the façade keys by string.
     this.listing.readout_show(String(feedId), text);
   }
@@ -1408,9 +1388,7 @@ export class DagPanel {
     this.rosterShown = on;
     if (this.backPill !== null) this.backPill.hidden = on;
     // The feed's own verbs and marks stand only while a feed is on stage.
-    for (const element of [this.notePill, this.tagPill, this.marks]) if (element !== null) element.hidden = on;
-    // Back at the roster, the next feed entered is read afresh, the same one included.
-    if (on) this.marksFeedId = null;
+    this.feedFrame.shown_set(!on);
     // Flex, not block: the frame sits above a scrolling field. Nothing
     // asks this element what it is showing; `rosterShown` is the answer.
     this.feedList.style.display = on ? 'flex' : 'none';

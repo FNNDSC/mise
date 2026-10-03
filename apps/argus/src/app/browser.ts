@@ -90,7 +90,8 @@ export function path_isProjection(path: string): boolean {
 
 /**
  * Reads an access list out of a silent `getfacl`: the envelope's own model
- * carries the identities. A feed shared with nobody says so.
+ * carries the users, the groups and the public flag. A feed shared with
+ * nobody says so.
  *
  * @param outcome - What the silent command returned.
  * @returns The readout for the row.
@@ -102,8 +103,10 @@ export function shares_read(outcome: ExecuteOutcome): string {
     const data: unknown = (model as { kind?: unknown; data?: unknown }).data;
     if ((model as { kind?: unknown }).kind !== 'fs.acl' || !Array.isArray(data)) continue;
     const names: string[] = [];
-    for (const held of data as Array<{ usernames?: unknown }>) {
+    for (const held of data as Array<{ usernames?: unknown; groups?: unknown; public?: unknown }>) {
       if (Array.isArray(held.usernames)) names.push(...held.usernames.map(String));
+      if (Array.isArray(held.groups)) names.push(...held.groups.map((group: unknown): string => `group ${String(group)}`));
+      if (held.public === true) names.push('PUBLIC');
     }
     return names.length === 0 ? 'SHARED WITH NOBODY' : `SHARED WITH ${names.join(', ')}`;
   }

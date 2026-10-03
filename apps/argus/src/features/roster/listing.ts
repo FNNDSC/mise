@@ -338,7 +338,7 @@ interface LevelHost {
   /** Draws the indicated row's verbs in the row zone; none empties it. */
   zoneVerbs_set(capsules: ReadonlyArray<Node>): void;
   /** Says something beneath the zone's verbs, about the indicated row. */
-  zoneReadout_set(text: string): void;
+  zoneReadout_set(text: string | Node): void;
   /**
    * A level indicated a row: the listing holds ONE indication across its
    * levels, so the level that held it before stands down quietly, and the
@@ -988,7 +988,7 @@ class Level<T> {
    * @param key - The row the readout belongs to.
    * @param text - What to say beside the verbs.
    */
-  public readout_show(key: string, text: string): void {
+  public readout_show(key: string, text: string | Node): void {
     if (this.indicated !== key) return;
     if (this.host.framed()) {
       this.host.zoneReadout_set(text);
@@ -998,7 +998,7 @@ class Level<T> {
     if (cell === undefined) return;
     const readout: HTMLSpanElement = document.createElement('span');
     readout.className = 'listing-readout';
-    readout.textContent = text;
+    readout.append(text);
     cell.querySelector('.listing-readout')?.remove();
     cell.appendChild(readout);
   }
@@ -1102,7 +1102,7 @@ export class Listing<T> {
         activating_is: (key: string): boolean => this.activating?.key === key,
         activation_begin: (key: string, element: HTMLElement | null, name: string): void => this.activation_begin(key, element, name),
         zoneVerbs_set: (capsules: ReadonlyArray<Node>): void => this.zoneVerbs_set(capsules),
-        zoneReadout_set: (text: string): void => this.zoneReadout_set(text),
+        zoneReadout_set: (text: string | Node): void => this.zoneReadout_set(text),
         indication_claim: (claim: IndicationClaim): void => {
           if (this.claim !== null && this.claim.level !== claim.level) this.claim.drop();
           this.claim = claim;
@@ -1307,7 +1307,7 @@ export class Listing<T> {
    * @param key - The row the readout belongs to.
    * @param text - What to say.
    */
-  public readout_show(key: string, text: string): void {
+  public readout_show(key: string, text: string | Node): void {
     this.level.readout_show(key, text);
   }
 
@@ -1547,13 +1547,13 @@ export class Listing<T> {
    *
    * @param text - The readout.
    */
-  private zoneReadout_set(text: string): void {
+  private zoneReadout_set(text: string | Node): void {
     const zone: HTMLElement | null = this.zone;
     if (zone === null) return;
     zone.querySelector('.listing-readout')?.remove();
     const readout: HTMLSpanElement = document.createElement('span');
     readout.className = 'listing-readout';
-    readout.textContent = text;
+    readout.append(text);
     zone.appendChild(readout);
     zone.hidden = false;
   }

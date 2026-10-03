@@ -27,8 +27,8 @@ Status as of 2026-10-03. A row marked *not covered* would be a gap in mise, not 
 
 | A feed's title (`name`)
 | `/proc/jobs/feed_N/title`: `cat` reads it, `touch --withContents=` and `edit` rename the feed (its first line)
-| chell; ARGUS bars and roster (RENAME arrives with #853's ARGUS slice)
-| Covered in the kernel (#853).
+| chell; ARGUS RENAME on a feed row and an entered feed's frame
+| Covered (#853).
 
 | A feed's note
 | `/proc/jobs/feed_N/note` (`cat` reads, `touch --withContents=` writes, `edit` edits); `feed note N [--title\|--content]`; `feed note edit N` (= `edit` on the file)
@@ -47,18 +47,18 @@ Status as of 2026-10-03. A row marked *not covered* would be a gap in mise, not 
 
 | User permissions (sharing to an identity)
 | `setfacl -m u:<user>:r feed_N`, `setfacl -x u:<user> feed_N`, `getfacl feed_N`
-| chell; ARGUS SHARE verb and the row's SHARED WITH readout
-| Covered in the kernel: grant, read and withdraw (#853).
+| chell; ARGUS SHARE question (a user typed), holder marks on the indicated row with an asking ×
+| Covered (#853).
 
 | Group permissions
 | `setfacl -m g:<group>:r feed_N`, `setfacl -x g:<group> feed_N`; `getfacl` shows `group:<name>:r--`
-| chell
-| Covered in the kernel (#853).
+| chell; ARGUS SHARE question (your groups as pills), group marks with an asking ×
+| Covered (#853).
 
 | Public flag (`makePublic` / `makeUnpublic`)
 | `setfacl -m o::r` / `o::-` (or `chmod o+r` / `o-r`); `getfacl` shows `other::r--` or `other::---`
-| chell
-| Covered in the kernel (#853). The old `feeds share` is retired and refuses by name.
+| chell; ARGUS SHARE question (EVERYONE), the PUBLIC mark's asking ×
+| Covered (#853). The old `feeds share` is retired and refuses by name.
 
 | The feed's folder of files
 | `/home/<user>/feeds/feed_N/…`, every file verb (`ls`, `cat`, `cp`, `mv`, `rm`, `download`, `edit`)

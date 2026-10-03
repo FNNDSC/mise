@@ -361,6 +361,46 @@ try {
   check('a frame pill writes nothing to the console', pill.error === undefined && pill.consoleGrew === false, JSON.stringify(pill));
   }
 
+  if (stage('edge-flare')) {
+  // A field meets its edge (the operator's ask: "a slight flare pulse effect
+  // and a bounce like on mobile devices"): a wheel past a listing's foot,
+  // and past its top, sets data-edge and the stylesheet runs the flare on
+  // the field and the bounce on its rows; the flare's end clears it.
+  const edge = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_idle(); };
+    document.getElementById('gutter-files').click(); await sleep(700);
+    await say('cd /bin');
+    const fp = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+    const field = () => fp()?.querySelector('.listing-field');
+    for (let i = 0; i < 60; i++) { await sleep(400); const f = field(); if (f && f.scrollHeight > f.clientHeight + 40) break; }
+    const f = field();
+    if (!f || f.scrollHeight <= f.clientHeight + 2) return { skipped: 'no overflowing listing' };
+    f.scrollTop = f.scrollHeight; await sleep(300);
+    f.dispatchEvent(new WheelEvent('wheel', { deltaY: 60, bubbles: true }));
+    await sleep(60);
+    const bottom = f.dataset.edge ?? '';
+    const flare = getComputedStyle(f).animationName;
+    const bounce = getComputedStyle(f.firstElementChild).animationName;
+    let cleared = false;
+    for (let i = 0; i < 20; i++) { await sleep(100); if (f.dataset.edge === undefined) { cleared = true; break; } }
+    f.scrollTop = 0; await sleep(300);
+    f.dispatchEvent(new WheelEvent('wheel', { deltaY: -60, bubbles: true }));
+    await sleep(60);
+    const top = f.dataset.edge ?? '';
+    const topFlare = getComputedStyle(f).animationName;
+    await say('cd ~');
+    return { bottom, flare, bounce, cleared, top, topFlare };`);
+  if (edge.skipped !== undefined) {
+    console.log('  skip  edge flare (' + edge.skipped + ')');
+  } else {
+    check('a wheel past a field\'s foot flares it and bounces its rows; the flare\'s end clears it',
+      edge.bottom === 'bottom' && edge.flare === 'edge-flare-bottom' && edge.bounce === 'edge-bounce-bottom' && edge.cleared, JSON.stringify(edge));
+    check('a wheel past a field\'s top flares the top', edge.top === 'top' && edge.topFlare === 'edge-flare-top', JSON.stringify(edge));
+  }
+  }
+
   if (stage('more-everywhere')) {
   // Every scrolling field wears the chip: the fields a page has at rest are
   // wired the moment they are stamped, and a node's readout once immersed.

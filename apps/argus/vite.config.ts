@@ -10,7 +10,7 @@
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 
 const require: NodeRequire = createRequire(import.meta.url);
 
@@ -26,8 +26,32 @@ function gitHash_read(): string {
   }
 }
 
-export default defineConfig({
+/**
+ * This build's identity, read once so the bundle's constants and the
+ * `build.json` written beside it agree to the minute.
+ */
+const ARGUS_BUILD: { git: string; built: string } = {
+  git: gitHash_read(),
+  built: new Date().toISOString().slice(0, 16).replace('T', ' '),
+};
+
+/**
+ * Writes `build.json` into the bundle: the daemon reads it when it starts,
+ * remembers which page it served, and reports that page in its attach ack,
+ * so a page rebuilt under a running daemon knows the kernel is older than it.
+ */
+function buildStamp_emit(): Plugin {
+  return {
+    name: 'argus-build-stamp',
+    generateBundle(): void {
+      this.emitFile({ type: 'asset', fileName: 'build.json', source: `${JSON.stringify(ARGUS_BUILD)}\n` });
+    },
+  };
+}
+
+export default defineConfig(({ command }) => ({
   base: './',
+  plugins: [buildStamp_emit()],
   // Cornerstone3D's documented Vite recipe: the image loader carries its own
   // workers and wasm codecs, and dicom-parser is CommonJS.
   optimizeDeps: {
@@ -44,8 +68,10 @@ export default defineConfig({
     },
   },
   define: {
-    __ARGUS_GIT__: JSON.stringify(gitHash_read()),
-    __ARGUS_BUILT__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),
+    __ARGUS_GIT__: JSON.stringify(ARGUS_BUILD.git),
+    __ARGUS_BUILT__: JSON.stringify(ARGUS_BUILD.built),
+    // The dev server's page is never the bundle a daemon serves.
+    __ARGUS_DEV__: JSON.stringify(command === 'serve'),
     __ARGUS_MENU__: JSON.stringify(
       (require('@fnndsc/menu/package.json') as { version: string }).version,
     ),
@@ -60,4 +86,4 @@ export default defineConfig({
       include: [/node_modules/, /packages\/(cumin|brasa)\/dist/],
     },
   },
-});
+}));

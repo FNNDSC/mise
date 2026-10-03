@@ -153,6 +153,36 @@ export function webRootVersion_read(webRoot: string): string {
   }
 }
 
+/** Which page a web root holds: the commit and the minute its bundle was built. */
+export interface WebRootBuild {
+  git: string;
+  built: string;
+}
+
+/**
+ * Reads the build stamp a web root's bundle carries (`build.json`, written
+ * by the bundle's own build).
+ *
+ * Read once, when the daemon starts: the stamp is then the page this
+ * daemon's kernel was started beside, and a page served later from a bundle
+ * rebuilt on disk disagrees with it — which is how a surface learns that the
+ * kernel it talks to is older than it is.
+ *
+ * @param webRoot - The resolved web root.
+ * @returns The stamp, or null when the bundle carries none (a build older
+ *   than the stamp).
+ */
+export function webRootBuild_read(webRoot: string): WebRootBuild | null {
+  try {
+    const stamp: { git?: unknown; built?: unknown } = JSON.parse(
+      readFileSync(path.join(webRoot, 'build.json'), 'utf8'),
+    ) as { git?: unknown; built?: unknown };
+    return typeof stamp.git === 'string' && typeof stamp.built === 'string' ? { git: stamp.git, built: stamp.built } : null;
+  } catch {
+    return null;
+  }
+}
+
 const CHECKOUT_SEARCH_DEPTH: number = 6;
 
 /**

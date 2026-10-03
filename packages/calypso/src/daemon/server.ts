@@ -56,11 +56,14 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
  * @property chell - The daemon's installed chell version.
  * @property calypso - The daemon's installed calypso version.
  * @property build - The daemon's short build hash.
+ * @property surface - The web bundle's build stamp as it stood when the
+ *   daemon started, when the bundle carries one.
  */
 export interface DaemonStackInfo {
   chell: string;
   calypso: string;
   build: string;
+  surface?: { git: string; built: string };
   brasa?: string;
   chili?: string;
   salsa?: string;

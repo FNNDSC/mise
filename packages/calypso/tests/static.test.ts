@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { WebSocket } from 'ws';
 import { CalypsoDaemon } from '../src/daemon/server';
-import { bundledWebRoot_find, cacheControl_forPath, contentDisposition_forPath, webRoot_resolve, webRootVersion_read } from '../src/daemon/static';
+import { bundledWebRoot_find, cacheControl_forPath, contentDisposition_forPath, webRoot_resolve, webRootBuild_read, webRootVersion_read } from '../src/daemon/static';
 import type { HostedEngine } from '../src/daemon/engine';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
 import type { CommandEnvelope } from '@fnndsc/cumin';
@@ -109,6 +109,21 @@ describe('webRootVersion_read', () => {
       expect(webRootVersion_read(path.join(app, 'dist'))).toBe('unknown');
     } finally {
       rmSync(app, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('webRootBuild_read', () => {
+  it('reads the stamp the bundle carries, and nothing from a bundle without one', () => {
+    const root: string = mkdtempSync(path.join(tmpdir(), 'argus-stamp-'));
+    try {
+      expect(webRootBuild_read(root)).toBeNull();
+      writeFileSync(path.join(root, 'build.json'), JSON.stringify({ git: '7bedda5', built: '2026-10-03 14:20' }));
+      expect(webRootBuild_read(root)).toEqual({ git: '7bedda5', built: '2026-10-03 14:20' });
+      writeFileSync(path.join(root, 'build.json'), JSON.stringify({ git: 7 }));
+      expect(webRootBuild_read(root)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

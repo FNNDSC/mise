@@ -10,3 +10,6 @@ declare const __ARGUS_BUILT__: string;
 
 /** The bundled @fnndsc/menu wire-contract package version. */
 declare const __ARGUS_MENU__: string;
+
+/** True on the dev server, whose page is not the bundle a daemon serves. */
+declare const __ARGUS_DEV__: boolean;

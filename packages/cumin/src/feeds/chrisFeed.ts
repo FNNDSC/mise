@@ -34,6 +34,7 @@ import {
   ChRISObjectParams,
 } from "../utils/keypair.js";
 import { errorStack } from "../error/errorStack.js";
+import { procCache_get } from "../cache/procCache.js";
 import { Result, Ok, Err } from "../utils/result.js";
 
 /**
@@ -393,6 +394,11 @@ export async function feed_delete(feedId: number): Promise<Result<boolean>> {
     }
 
     await feed.delete();
+    // The session's own index forgets it at once: a roster read from the
+    // cache must not go on listing a feed this session just removed (it did,
+    // until a later sweep happened to notice, and a verb on that row then
+    // met "feed not found").
+    procCache_get().feed_remove(feedId);
     return Ok(true);
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);

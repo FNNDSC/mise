@@ -61,9 +61,10 @@ function stage_close() {
  * Announces a scenario and says whether to run it.
  *
  * @param {string} name - The scenario's name.
- * @returns {boolean} True when this run includes it.
+ * @returns {Promise<boolean>} True when this run includes it.
  */
-function stage(name) {
+async function stage(name) {
+  if (stageName !== null) await stage_leaks(stageName);
   stage_close();
   const wanted = (only.length === 0 || only.some((s) => name.includes(s)))
     && !skip.some((s) => name.includes(s));
@@ -75,6 +76,47 @@ function stage(name) {
 }
 
 const page = await page_open(argusUrl_discover());
+/** The session's place when the suite began; every scenario leaves it there. */
+let leakBaseline = null;
+
+/**
+ * Fails a scenario that leaves the session other than it found it: the
+ * working directory moved, a row left lit (indicated or mid-press), or a
+ * question left open. A leftover is how one scenario breaks the next, and
+ * the next is then blamed: this names the scenario that leaked instead.
+ *
+ * @param {string} name - The scenario that just ran.
+ */
+async function stage_leaks(name) {
+  let state = null;
+  try {
+    state = await evalIn(`
+      await console_idle();
+      for (let i = 0; i < 20 && document.querySelectorAll('.listing-activating').length > 0; i++) await sleep(250);
+      // A RUNS pane left on a graph rather than its roster: the next scenario's cwd then repaints it.
+      const graphs = [...document.querySelectorAll('.pane-dag')].filter((p) => p.offsetParent !== null && p.querySelector('.dag-feedlist') && p.querySelector('.roster-shown') === null && p.querySelector('.dag-canvas')?.style.display === 'block').length;
+      return { cwd: window.__argusPromptContext?.cwd ?? null, lit: document.querySelectorAll('.listing-indicated, .listing-activating').length, asks: document.querySelectorAll('.ask-bar').length, graphs };`);
+  } catch {
+    return;
+  }
+  const moved = leakBaseline !== null && state.cwd !== null && state.cwd !== leakBaseline;
+  if (moved || state.lit > 0 || state.asks > 0 || state.graphs > 0) {
+    check(`${name} leaves the session as it found it (cwd ${leakBaseline}, nothing lit, no open question, no RUNS pane left on a graph)`, false, JSON.stringify(state));
+    // Put it back, so the leak is named once, against the scenario that
+    // made it, and not again against every one after.
+    await evalIn(`
+      await console_idle();
+      document.getElementById('status-strip')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await runs_back();
+      if (${JSON.stringify(state.cwd)} !== ${JSON.stringify(leakBaseline)}) {
+        const input = document.querySelector('#terminal input');
+        input.value = 'cd ' + ${JSON.stringify(leakBaseline ?? '~')}; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        for (let i = 0; i < 40 && window.__argusPromptContext?.cwd !== ${JSON.stringify(leakBaseline)}; i++) await sleep(250);
+      }
+      return 1;`).catch(() => undefined);
+  }
+}
+
 // `settled` waits for a measured value to stop changing, so a scenario can
 // follow a CSS glide without guessing at its duration: a fixed sleep either
 // samples mid-flight or, when a click has yet to register, before it starts.
@@ -109,6 +151,23 @@ const evalIn = (body) => page.eval(`(async () => {
     }
     return false;
   };
+  // A RUNS pane left on a graph goes back to its roster by its own BACK.
+  const runs_back = async () => {
+    const onGraph = (p) => p.offsetParent !== null && p.querySelector('.dag-feedlist') && p.querySelector('.roster-shown') === null && p.querySelector('.dag-canvas')?.style.display === 'block';
+    for (const p of document.querySelectorAll('.pane-dag')) {
+      for (let i = 0; i < 4 && onGraph(p); i++) { p.querySelector('.dag-back')?.click(); await sleep(500); }
+    }
+  };
+  // A scenario leaves the session as it found it: RUNS panes on their
+  // rosters, and the session's place at home, where the suite began.
+  const home_return = async () => {
+    await runs_back();
+    await console_idle();
+    if ((window.__argusPromptContext?.cwd ?? '').endsWith('/' + (window.__argusPromptContext?.user ?? '\u0000'))) return;
+    const input = document.querySelector('#terminal input');
+    input.value = 'cd ~'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    for (let i = 0; i < 40 && !(window.__argusPromptContext?.cwd ?? '').endsWith('/' + (window.__argusPromptContext?.user ?? '\u0000')); i++) await sleep(250);
+  };
   ${body}
 })()`);
 
@@ -120,12 +179,13 @@ try {
       if (m && m.textContent.includes('READY')) return true; }
     return false;`);
   check('session reaches READY', ready === true);
+  leakBaseline = await evalIn(`return window.__argusPromptContext?.cwd ?? null;`);
   // The LOG OUT pill leaves by a door; at a daemon's root there is none.
   check('the LOG OUT pill stands only behind a door', await evalIn(`return document.getElementById('door-pill')?.hidden === true;`) === true);
   check('the RESTART pill stands only behind a door', await evalIn(`return document.getElementById('restart-pill')?.hidden === true;`) === true);
   if (!ready) throw new Error('no session');
 
-  if (stage('universe-pane')) {
+  if (await stage('universe-pane')) {
     // The UNIVERSE is its own pane kind: pressing the dashboard's tile
     // opens one beside the errand host and asks the session for the space;
     // the title says what landed and whether the index is whole; a second
@@ -325,7 +385,7 @@ try {
       `${universe.densityCensus} | ${universe.censusTitle} | ${universe.densityShape}`);
   }
 
-  if (stage('universe-pill-bar')) {
+  if (await stage('universe-pill-bar')) {
   // A frame pill answers on its pane's own bar, not in the console: the
   // UNIVERSE layout pill cycled six times once filled the console with the
   // layouts' descriptions, no command typed.
@@ -362,7 +422,7 @@ try {
   check('a frame pill writes nothing to the console', pill.error === undefined && pill.consoleGrew === false, JSON.stringify(pill));
   }
 
-  if (stage('edge-flare')) {
+  if (await stage('edge-flare')) {
   // A field meets its edge (the operator's ask: "a slight flare pulse effect
   // and a bounce like on mobile devices"): a wheel past a listing's foot,
   // and past its top, sets data-edge and the stylesheet runs the flare on
@@ -402,7 +462,7 @@ try {
   }
   }
 
-  if (stage('restart-question')) {
+  if (await stage('restart-question')) {
   // #863: behind a door the RESTART pill asks first, in the notice's spot,
   // naming what a restart would cut off; Esc answers no and the keys never
   // reach the stage. A daemon's root has no door to restart through, so the
@@ -431,7 +491,7 @@ try {
   check('Esc answers the restart question no, and the stage never sees the key', asked.gone && !asked.stageSawEsc, JSON.stringify(asked));
   }
 
-  if (stage('roster-returns-unlit')) {
+  if (await stage('roster-returns-unlit')) {
   // The operator: OPEN a run, Esc back, and the run stood lit with the
   // others dimmed, and no press anywhere took it away. The press's
   // acknowledgement (listing-activating) waited for the roster's own rows
@@ -468,7 +528,7 @@ try {
   }
   }
 
-  if (stage('more-everywhere')) {
+  if (await stage('more-everywhere')) {
   // Every scrolling field wears the chip: the fields a page has at rest are
   // wired the moment they are stamped, and a node's readout once immersed.
   const more = await evalIn(`
@@ -488,7 +548,7 @@ try {
     if (!fp()) { document.getElementById('gutter-files').click(); for (let i = 0; i < 40; i++) { await sleep(250); if (fp()) break; } }
     let plugin = null;
     for (let i = 0; i < 60; i++) { await sleep(500); plugin = fp()?.querySelector('.files-row.files-type-plugin'); if (plugin) break; }
-    if (!plugin) return { atRest, mounts, node: 'no plugin row' };
+    if (!plugin) { await say('cd ~'); return { atRest, mounts, node: 'no plugin row' }; }
     plugin.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     let facts = null;
     for (let i = 0; i < 60; i++) { await sleep(500); facts = document.querySelector('.dag-facts-immersed'); if (facts) break; }
@@ -496,6 +556,10 @@ try {
     const chip = facts?.querySelector('.more-chip');
     const overflowing = facts !== null && facts.scrollHeight > facts.clientHeight + 2;
     const chipRight = chip === null || chip === undefined ? 'absent' : (overflowing ? (!chip.hidden && /MORE|TOP/.test(chip.textContent) ? 'shown' : 'hidden-while-overflowing') : (chip.hidden ? 'hidden' : 'shown-while-fitting'));
+    // Leave as it came: out of the dive, the diagram closed, back home.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(800);
+    fp()?.querySelector('.files-close-pill')?.click(); await sleep(500);
+    await say('cd ~');
     return { atRest, mounts, node, chipRight, overflowing };`);
   check('the fields a page has at rest wear the chip and hide their scrollbars: the dashboard, the desktop, the PACS workspace',
     more.atRest !== undefined && Object.values(more.atRest).every((v) => v === 'wired' || v === 'absent') && Object.values(more.atRest).some((v) => v === 'wired'),
@@ -505,7 +569,7 @@ try {
     more.node === 'wired' && (more.chipRight === 'shown' || more.chipRight === 'hidden'), JSON.stringify(more));
   }
 
-  if (stage('pane-move')) {
+  if (await stage('pane-move')) {
   // A pane can be moved: the drawer's MOVE arms the direction capsules for
   // one press; the typed verb is the same move, refused by name.
   const move = await evalIn(`
@@ -548,7 +612,7 @@ try {
     move.error === undefined && /^moved above/.test(move.typed) && move.aboveOf && /already topmost/.test(move.refused), JSON.stringify(move));
   }
 
-  if (stage('pane-move-restore')) {
+  if (await stage('pane-move-restore')) {
   // A moved pane returns where it was moved to: the desktop records the
   // stage's tiling at dormancy and lays it over the replayed panes.
   const back = await evalIn(`
@@ -585,7 +649,7 @@ try {
     back.error === undefined && back.movedBelow && back.carded && back.shaped && back.cardFound && back.returned && back.belowAgain, JSON.stringify(back));
   }
 
-  if (stage('prefix-chords')) {
+  if (await stage('prefix-chords')) {
   // With the drawer open, one key presses one capsule; the arrows focus.
   const chord = await evalIn(`
     await console_idle();
@@ -633,7 +697,7 @@ try {
     chord.focusedUp && chord.table, JSON.stringify(chord));
   }
 
-  if (stage('prefix-chords-2')) {
+  if (await stage('prefix-chords-2')) {
   // The rest of tmux's table: last pane, pane ids, flip, resize, PANES, scrollback, break out.
   const more = await evalIn(`
     await console_idle();
@@ -684,7 +748,7 @@ try {
     more.error === undefined && more.scrollback && more.alone && more.carded && more.panesShown, JSON.stringify(more));
   }
 
-  if (stage('help-pane')) {
+  if (await stage('help-pane')) {
   // Help lives on the stage: a HELP tile on the dashboard, a HELP pane of
   // the chords and the verbs, and the same tables typed into the console.
   const help = await evalIn(`
@@ -721,7 +785,7 @@ try {
     help.typedKeys && help.typedVerbs && help.again && help.panes === 1, JSON.stringify(help));
   }
 
-  if (stage('universe-constellations')) {
+  if (await stage('universe-constellations')) {
     // CONSTELLATIONS: every plugin a ringed star, every feed pulled to the
     // stars it ran. A plugin lit by word shows its facts and its verb, and
     // OPEN IN /BIN opens its graph in the files browser.
@@ -786,7 +850,7 @@ try {
     }
   }
 
-  if (stage('universe-data')) {
+  if (await stage('universe-data')) {
     // DATA: every feed hung from what it began from — format, modality,
     // series — each hub a captioned nebula. A feed not yet read hangs from
     // a hub that says so.
@@ -830,7 +894,7 @@ try {
       JSON.stringify({ off: data.off, on: data.on }));
   }
 
-  if (stage('universe-layouts')) {
+  if (await stage('universe-layouts')) {
     // Each layout keeps its own places: switching files the space as it
     // stands under the layout it was, never under the one it becomes (a
     // galaxy once filed as spokes, and every layout recalled the one before).
@@ -861,7 +925,7 @@ try {
       kept.both === true && kept.differ === true, JSON.stringify(kept));
   }
 
-  if (stage('universe-session-layout')) {
+  if (await stage('universe-session-layout')) {
     // The universe is laid out once per identity: the first browser to
     // settle a layout puts it to the session, which keeps it beside the
     // index, and the next browser draws from it at once.
@@ -899,7 +963,7 @@ try {
       JSON.stringify(kept));
   }
 
-  if (stage('universe-accretion')) {
+  if (await stage('universe-accretion')) {
     // ACCRETION grows the space in the order it was made, kin sticking to
     // kin; REGROW forgets the kept coral and grows it afresh.
     const acc = await evalIn(`
@@ -935,7 +999,7 @@ try {
       JSON.stringify(acc));
   }
 
-  if (stage('universe-replay')) {
+  if (await stage('universe-replay')) {
     // REPLAY plays the space's history: every feed hidden until the day it
     // was made, then shown where it stands now, the day on the bar. A word
     // starts it, pauses it, moves it to a date; the block names its state;
@@ -979,7 +1043,7 @@ try {
       replay.stopped.block === 'REPLAY' && /WHOLE|LANDING/.test(replay.stopped.readout), JSON.stringify(replay.stopped));
   }
 
-  if (stage('drawer-everywhere (files, runs, pacs)')) {
+  if (await stage('drawer-everywhere (files, runs, pacs)')) {
   for (const preset of ['gutter-files', 'gutter-runs', 'gutter-tools']) {
     const result = await evalIn(`
       document.getElementById('${preset}').click(); await sleep(700);
@@ -999,7 +1063,7 @@ try {
   }
   }
 
-  if (stage('gutter-idempotency')) {
+  if (await stage('gutter-idempotency')) {
   const pacsTwice = await evalIn(`
     document.getElementById('gutter-tools').click(); await sleep(500);
     document.getElementById('gutter-tools').click(); await sleep(500);
@@ -1019,7 +1083,7 @@ try {
   check('CONSOLE-05 always renders the console open (never toggles)', consoleGiven.first && consoleGiven.second);
   }
 
-  if (stage('zoom-completeness')) {
+  if (await stage('zoom-completeness')) {
   const zoom = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(700);
     const pane = document.querySelector('.pane-files');
@@ -1066,7 +1130,7 @@ try {
   check('Esc restores the header', zoom.restoredHeaderBottom > 50, `bottom=${zoom.restoredHeaderBottom}`);
   }
 
-  if (stage('split-zoom')) {
+  if (await stage('split-zoom')) {
   const splitZoom = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(600);
     const pane = document.querySelector('.pane-files');
@@ -1090,7 +1154,7 @@ try {
   check('a zoomed leaf inside a split conquers the whole region', splitZoom.leaves >= 2 && splitZoom.full, `leaves=${splitZoom.leaves} w=${splitZoom.w}`);
   }
 
-  if (stage('lid-parity + single-beckon-author')) {
+  if (await stage('lid-parity + single-beckon-author')) {
   const lid = await evalIn(`
     const bar = document.getElementById('drawer-toggle');
     const segs = () => [...bar.querySelectorAll('div')].map((d) => { const r = d.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.width)]; });
@@ -1112,7 +1176,7 @@ try {
   check('closed lid: the end block beckons', lid.capAnim !== 'none', lid.capAnim);
   }
 
-  if (stage('lang-toggle')) {
+  if (await stage('lang-toggle')) {
   const lang = await evalIn(`
     const pill = document.getElementById('lang-pill');
     const palette = document.getElementById('lang-palette');
@@ -1125,7 +1189,7 @@ try {
   check('LANG again removes the line and dims the given', !lang.b.open && !lang.b.lit);
   }
 
-  if (stage('runs-honesty')) {
+  if (await stage('runs-honesty')) {
   const runs = await evalIn(`
     document.getElementById('gutter-runs').click();
     for (let i=0;i<60;i++){ await sleep(500);
@@ -1139,7 +1203,7 @@ try {
   check('a refused roster repeats no frozen count', !/\(\s*[\d,]+\/[\d,]+/.test(refusalText), refusalText);
   }
 
-  if (stage('console-grammar')) {
+  if (await stage('console-grammar')) {
   const consoleGrammar = await evalIn(`
     const drawerEl = document.getElementById('drawer');
     if (drawerEl.classList.contains('drawer-closed')) {
@@ -1167,7 +1231,7 @@ try {
   check('console drawer CLOSE retracts the console', consoleGrammar.retracted === true);
   }
 
-  if (stage('console-height')) {
+  if (await stage('console-height')) {
   // The operator divides the stage, not a constant. A workspace floor is a
   // console ceiling: the drawer can only grow into space the workspace will
   // give up, so a `min-height` on main silently capped the console at
@@ -1185,9 +1249,14 @@ try {
     out.stripFound = !!strip;
     if (strip) {
       const start = drawerEl.getBoundingClientRect().height;
-      strip.dispatchEvent(new MouseEvent('mousedown', { clientY: 0, bubbles: true }));
-      window.dispatchEvent(new MouseEvent('mousemove', { clientY: window.innerHeight, bubbles: true }));
-      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      // Pointer events on the strip itself, as it captures them (a finger
+      // drags it as a mouse does); mouse events on the window were the old
+      // grammar, and the strip stopped hearing them.
+      const at = strip.getBoundingClientRect().top + 2;
+      const pointer = (type, clientY) => strip.dispatchEvent(new PointerEvent(type, { pointerId: 1, pointerType: 'mouse', isPrimary: true, clientY, bubbles: true }));
+      pointer('pointerdown', at);
+      pointer('pointermove', window.innerHeight);
+      pointer('pointerup', window.innerHeight);
       await sleep(200);
       out.start = start;
       out.grown = drawerEl.getBoundingClientRect().height;
@@ -1211,7 +1280,7 @@ try {
   }
   }
 
-  if (stage('warmup-failure')) {
+  if (await stage('warmup-failure')) {
   // A warm-up moved off the boot gate has no readout left to be printed
   // to, so it is named on the JOBS readout and stays there until a later
   // attempt clears it. Driven through the surface's own prompt-context
@@ -1252,7 +1321,7 @@ try {
   }
   }
 
-  if (stage('focus-citizenship')) {
+  if (await stage('focus-citizenship')) {
   const focusCit = await evalIn(`
     const prefix = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true }));
     const cdrawer = document.getElementById('console-drawer');
@@ -1285,7 +1354,7 @@ try {
   check('focus citizenship: CONSOLE-05 hands the prefix to the console', focusCit.givenGot === true);
   }
 
-  if (stage('census-pill')) {
+  if (await stage('census-pill')) {
   const censusPill = await evalIn(`
     document.getElementById('gutter-runs').click(); await sleep(500);
     const pill = document.querySelector('.dag-census');
@@ -1314,7 +1383,7 @@ try {
   check('the HUE block reads STATUS, COMPUTE puts the legend on the bar, and it restores', censusPill.hBefore === 'STATUS' && censusPill.hAfter === 'COMPUTE' && censusPill.legend && censusPill.hRestored, JSON.stringify({ b: censusPill.hBefore, a: censusPill.hAfter, l: censusPill.legend }));
   }
 
-  if (stage('mode-frame')) {
+  if (await stage('mode-frame')) {
   // The field carries content only: at rest the mode frame is a strip at
   // the field's edge and no control stands in the field; touching the
   // strip slides the frame in (its pills work there); touching the field
@@ -1328,13 +1397,17 @@ try {
     const frame = fp.querySelector('.mode-frame');
     const bodyRect = body.getBoundingClientRect();
     // Column caps are the table's own frame (caps-are-the-sort), not chrome over the field.
-    const inField = [...body.querySelectorAll('button')].filter(b => !b.closest('.mode-frame') && !b.closest('.mode-strip') && ![...b.classList].some(k => k.startsWith('roster-')));
+    // The field's MORE chip is its one sanctioned control (a-field-says-it-holds-more).
+    const inField = [...body.querySelectorAll('button')].filter(b => !b.closest('.mode-frame') && !b.closest('.mode-strip') && !b.classList.contains('more-chip') && ![...b.classList].some(k => k.startsWith('roster-')));
     const rule = fp.querySelector('.field-rule').getBoundingClientRect();
     const elbow = fp.querySelector('.mode-elbow').getBoundingClientRect();
     const stripRect = strip.getBoundingClientRect();
+    // At rest the strip IS the spine, drawn at the spine's width (--spine-w),
+    // not a sliver: retracting returns it to that width.
+    const spineW = parseFloat(getComputedStyle(strip).getPropertyValue('--spine-w')) || stripRect.width;
     const atRest = {
       stripShown: stripRect.width > 0 && stripRect.height > 40,
-      frameOff: getComputedStyle(frame).visibility === 'hidden' && stripRect.width < 12,
+      frameOff: getComputedStyle(frame).visibility === 'hidden' && Math.abs(stripRect.width - spineW) <= 1,
       fieldClean: inField.length === 0,
       // the frame is drawn at rest: a rule along the top meeting the spine through an elbow
       ruleDrawn: rule.width > 100 && rule.height >= 4 && Math.abs(rule.right - stripRect.left) <= 1,
@@ -1362,10 +1435,10 @@ try {
     const filterOpen = fp.querySelector('.roster-filter').getBoundingClientRect().height > 0 && fb.textContent === 'FILTER ON';
     fb.click(); await sleep(250);
     const filterClosed = fp.querySelector('.roster-filter').getBoundingClientRect().height === 0 && fb.textContent === filterBefore;
-    // Retraction is a glide too: the strip narrows back to a sliver.
+    // Retraction is a glide too: the strip narrows back to the spine.
     fp.querySelector('.files-panel').click();
     await settled(() => Math.round(strip.getBoundingClientRect().width));
-    const fieldRetracts = fp.dataset.modes === undefined && getComputedStyle(frame).visibility === 'hidden' && strip.getBoundingClientRect().width < 12;
+    const fieldRetracts = fp.dataset.modes === undefined && getComputedStyle(frame).visibility === 'hidden' && Math.abs(strip.getBoundingClientRect().width - spineW) <= 1;
     strip.click();
     await settled(() => Math.round(strip.getBoundingClientRect().width));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -1383,7 +1456,7 @@ try {
   check('touching the field retracts the mode frame; so does Esc', modeFrame.fieldRetracts && modeFrame.escRetracts && modeFrame.restored, JSON.stringify({ field: modeFrame.fieldRetracts, esc: modeFrame.escRetracts, restored: modeFrame.restored }));
   }
 
-  if (stage('cards')) {
+  if (await stage('cards')) {
   // CARDS projects the same listing: the pill reads the mode, cards carry
   // the kind as badge, the count equals the rows', and LIST comes back.
   // PREVIEW is the third projection: every card leads with a glimpse.
@@ -1410,7 +1483,7 @@ try {
   check('PREVIEW leads every card with a glimpse', cards.previewLabel === 'PREVIEW' && cards.previewCards === cards.rows && cards.thumbs === cards.rows && cards.previewRead === 'PREVIEW' && cards.restored, JSON.stringify({ p: cards.previewLabel, n: cards.previewCards, t: cards.thumbs, r: cards.restored }));
   }
 
-  if (stage('bin-context')) {
+  if (await stage('bin-context')) {
   // Everything in /bin is a graph: a plugin is the one-node case, drawn on
   // the same stage a pipeline gets, and its node opens as its parameters.
   // The wall of scraped text it used to be is gone.
@@ -1537,7 +1610,7 @@ try {
   }
   }
 
-  if (stage('diagram-modes')) {
+  if (await stage('diagram-modes')) {
   // A pane has one mode frame, and its blocks answer to what the field
   // holds. A wave is a verb you press, never something breathing at rest.
   //
@@ -1557,7 +1630,7 @@ try {
     const listing = { view: shown('.files-view'), pulse: shown('.diagram-pulse') };
 
     const pipeline = fp.querySelector('.files-row.files-type-pipeline');
-    if (!pipeline) return { skipped: 'no pipeline in /bin' };
+    if (!pipeline) { await home_return(); return { skipped: 'no pipeline in /bin' }; }
     pipeline.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     for (let i=0;i<40;i++){ await sleep(250); if (fp.querySelector('.files-diagram')) break; }
     const diagram = { view: shown('.files-view'), pulse: shown('.diagram-pulse'),
@@ -1606,6 +1679,8 @@ try {
     fp.querySelector('.files-close-pill')?.click(); await sleep(700);
     const restored = { view: shown('.files-view'), pulse: shown('.diagram-pulse'),
       bar: fp.querySelector('.pane-mode').textContent.trim() };
+    // Leave as it came: back home, for the scenarios that follow.
+    await home_return();
     return { listing, diagram, scene, node, blocks, restored };`);
   if (diagramModes.skipped) {
     console.log(`  skipped: ${diagramModes.skipped}`);
@@ -1653,7 +1728,7 @@ try {
   // camera sat parked inside a sphere filling the pane with one flat
   // colour, which an operator reasonably read as a crash.
   const dagFeed = process.env.SMOKE_DAG_FEED;
-  if (stage('pane-title')) {
+  if (await stage('pane-title')) {
   // A pane's header is one line of a fixed height. A long name (a series
   // description, a converter's filename) wrapped inside it, which cut the
   // letters top and bottom and pushed the mode and state readouts onto a
@@ -1683,7 +1758,7 @@ try {
     header.bars > 0 && header.wrapped.length === 0, JSON.stringify(header.wrapped ?? header));
   }
 
-  if (stage('console-zoom')) {
+  if (await stage('console-zoom')) {
   // The console's zoom owns the stage. The regression this guards: the
   // drawer was given a height measured from the viewport while it still
   // began below the header's gap, so it ran past the foot of the screen —
@@ -1732,7 +1807,7 @@ try {
     zoom.fillet?.before === 'none' && zoom.fillet?.after === 'none', JSON.stringify(zoom.fillet));
   }
 
-  if (stage('launcher')) {
+  if (await stage('launcher')) {
   // Where a session begins when nothing is open: one block per domain,
   // each carrying what it holds and ending in the verb that opens it, its
   // rows doors into recent work. The launcher is the empty state, so it
@@ -1775,6 +1850,7 @@ try {
     const named2 = document.getElementById('gutter-dashboard')?.textContent?.trim() ?? '';
     const paneTitle = document.querySelector('.pane-launcher .pane-title')?.textContent?.trim() ?? '';
     await say('view files', 2000);
+    await home_return();
     return { painted, alone, wanted, landed, yielded, returned, gutter: named2, paneTitle };`);
   check('the launcher opens as blocks, one per domain, each with its verb',
     launcher.painted.length >= 3
@@ -1792,7 +1868,7 @@ try {
     JSON.stringify({ gutter: launcher.gutter, pane: launcher.paneTitle }));
   }
 
-  if (stage('attach')) {
+  if (await stage('attach')) {
   // The surface holds what a second surface needs: this page reached the
   // daemon by a URL carrying the attach token, so `attach` can say how to
   // reach the same session from a terminal or another browser without
@@ -1823,7 +1899,7 @@ try {
     JSON.stringify({ tokenLength: attach.token, leaks: attach.leaks, reveals: attach.reveals }));
   }
 
-  if (stage('pane-ask')) {
+  if (await stage('pane-ask')) {
   // A question the surface asks stands on the pane that asked it. The
   // console is closed here on purpose: that is the state the question used
   // to vanish into, taking the press with it and leaving the surface
@@ -1859,7 +1935,7 @@ try {
     JSON.stringify(asked));
   }
 
-  if (stage('question-both-places')) {
+  if (await stage('question-both-places')) {
   // A question on a pane stands on the console's line too (#826): answered
   // on the pane, the console records it and frees its line; answered at the
   // console, the pane's bar goes. Nothing typed at the prompt runs as a
@@ -1906,7 +1982,7 @@ try {
     both.removed && both.confirmRecorded, JSON.stringify(both));
   }
 
-  if (stage('edit-pane')) {
+  if (await stage('edit-pane')) {
   // The kernel's edit answered with a pane (#831): the file in a guest field,
   // SAVE and REVERT on the frame, and every save a touch line in the console
   // that the kernel reads back character for character.
@@ -1968,7 +2044,7 @@ try {
     edited.reverted && edited.released && edited.onePane, JSON.stringify(edited));
   }
 
-  if (stage('feed-tags')) {
+  if (await stage('feed-tags')) {
   // A feed's tags (#831): TAG asks with the user's tags as pills and a field
   // for a new one (mkdir then setfattr, visible lines), the roster marks the
   // feed, a mark's press filters by its tag, the graph's frame shows the
@@ -2028,7 +2104,7 @@ try {
     tagged.entered && /NOTE$/.test(tagged.noteLabel) && tagged.tagShown && tagged.removed && tagged.untagLine, JSON.stringify(tagged));
   }
 
-  if (stage('edit-row')) {
+  if (await stage('edit-row')) {
   // EDIT on a text file's row (#831): the kernel's edit, as a visible line,
   // opens the editor pane on the file; a binary file is offered no EDIT.
   const row = await evalIn(`
@@ -2060,7 +2136,7 @@ try {
     row.textVerbs.includes('EDIT') && !row.binaryVerbs.includes('EDIT') && row.opened && row.echoed, JSON.stringify(row));
   }
 
-  if (stage('feed-share')) {
+  if (await stage('feed-share')) {
   // A feed's sharing and name (#853): SHARE asks with the operator's groups
   // and EVERYONE as pills; a pick runs setfacl and comes back held; the
   // holders are marks on the row, each × asking before it withdraws; RENAME
@@ -2126,7 +2202,12 @@ try {
     const renamed = await settle(() => (row()?.querySelector('.feedlist-title')?.textContent ?? '').includes(title + ' smoke'), 80);
     await say("touch --withContents='" + title + "' /proc/jobs/feed_${feed}/title", 2500);
     await say('runs filter off', 800);
-    return { pills, groupHeld, publicHeld, grantLines, marked, askedGroup, askedPublic, restored, revokeLines, before, suggested, title, renamed };`);
+    // Leave the roster as it came: RENAME left the row indicated (the frame
+    // open, every other row dimmed), and the stages after this one measure
+    // a roster at rest. A press off the listing stands it down.
+    document.getElementById('status-strip').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await settle(() => dp.querySelectorAll('.listing-indicated, .listing-activating').length === 0, 20);
+    return { pills, groupHeld, publicHeld, grantLines, marked, askedGroup, askedPublic, restored, revokeLines, before, suggested, title, renamed };`)
   if (shared.skipped !== undefined) {
     console.log('  skip  feed sharing (' + shared.skipped + ')');
   } else {
@@ -2139,7 +2220,7 @@ try {
   }
   }
 
-  if (stage('contrast')) {
+  if (await stage('contrast')) {
   // The frame's type, measured against WCAG 2.1 AA in every scheme.
   //
   // docs/WCAG-AA.adoc records the audit that found and fixed three defects;
@@ -2232,7 +2313,7 @@ try {
     failing.length === 0, detail === '' ? JSON.stringify(themes) : detail);
   }
 
-  if (stage('node-dive')) {
+  if (await stage('node-dive')) {
   if (!dagFeed) {
     console.log('  skipped: set SMOKE_DAG_FEED=<a feed id whose DAG has at least one node>');
   } else {
@@ -2307,7 +2388,7 @@ try {
   }
   }
 
-  if (stage('node-volume')) {
+  if (await stage('node-volume')) {
   // Imagery a run produced opens at the address the graph gives for it.
   // Two faults met here: a file click read every non-raster file as text
   // (so a NIfTI in a node answered READ REFUSED), and the kernel could not
@@ -2372,7 +2453,7 @@ try {
   }
   }
 
-  if (stage('follow-declared')) {
+  if (await stage('follow-declared')) {
   // The following browser says so on its bar, and the binding is a verb
   // both ways: ROOT HERE drops CWD from the bar, FOLLOW CWD brings it back.
   const follow = await evalIn(`
@@ -2388,7 +2469,7 @@ try {
   check('ROOT HERE and FOLLOW CWD re-bind the browser, and the bar follows', follow.rooted && !/^CWD\b/.test(follow.afterRoot) && follow.followed && /^CWD\b/.test(follow.afterFollow));
   }
 
-  if (stage('control-homes')) {
+  if (await stage('control-homes')) {
   // A control lives where it acts: the drawer acts on the pane, the frame on
   // the field, the row on the row. Each verb is found in its new home, and
   // the browser's drawer is down to two groups.
@@ -2484,7 +2565,7 @@ try {
   check('BACK returns a rooted browser to where it was', walk.back.join(',') === walk.home.join(','), JSON.stringify(backDiff));
   }
 
-  if (stage('row-verbs')) {
+  if (await stage('row-verbs')) {
   // A row's verbs live in the FRAME, never on the row: indicating a row
   // puts them in the frame's row zone and opens the frame, the row carries
   // only its light, and no row reserves a track. A directory is offered no
@@ -2572,7 +2653,7 @@ try {
     JSON.stringify(grid));
   }
 
-  if (stage('file-download')) {
+  if (await stage('file-download')) {
   // DOWNLOAD saves the file under its own name, or saves nothing and says
   // why. It once let the browser fetch the byte route itself, which saved
   // whatever came back — a login page, a `not found` — as a broken file
@@ -2641,7 +2722,7 @@ try {
     JSON.stringify({ lines: dl.lines, handed }));
   }
 
-  if (stage('place-verbs')) {
+  if (await stage('place-verbs')) {
   // Two verbs that act on the PLACE: they ride the field's frame, they make
   // and land things in the listing on stage, and the listing shows what
   // they did. Every artefact is removed again at the end.
@@ -2702,7 +2783,7 @@ try {
   check('the artefacts are removed again', place.cleared);
   }
 
-  if (stage('process-workflow')) {
+  if (await stage('process-workflow')) {
   // Building compute from the surface: PROCESS on a directory opens /bin as
   // a catalogue bound to it, joined to the pane; RUN on a plugin composes
   // the line the console would take, asks the new feed's title once, runs
@@ -2767,6 +2848,7 @@ try {
     if (Number.isFinite(feedId)) await say('feed rm -f ' + feedId, 5000);
     await say('cd ~', 2000);
     await say('rm -r ~/smoke-process', 3000);
+    await home_return();
     return { dirVerbs, opened, catalogue, pluginVerbs, asked, askText, echoed, scheduled, capsule, graph };`);
   check('PROCESS is offered on a directory', proc.dirVerbs.includes('PROCESS'), proc.dirVerbs.join(','));
   check('PROCESS opens a catalogue bound to the place, and RUN schedules a run on it',
@@ -2778,7 +2860,7 @@ try {
   check('the FEED capsule opens the run\'s graph beside the catalogue', proc.graph, proc.capsule);
   }
 
-  if (stage('process-form')) {
+  if (await stage('process-form')) {
   // The graph is the form: opening a plugin from a bound catalogue dives
   // straight into its one node, whose parameters are VALUE cells writing
   // their flags into the run strip's line; a hand edit on the line stands;
@@ -2838,6 +2920,7 @@ try {
     if (Number.isFinite(feedId)) await say('feed rm -f ' + feedId, 5000);
     await say('cd ~', 2000);
     await say('rm -r ~/smoke-form', 3000);
+    await home_return();
     return { dived, lineBefore, cells, lineWritten, lineHand, runPill, asked, echoed, scheduled };`);
   check('a plugin opened from a bound catalogue dives into its one node, its parameters as cells',
     form.dived && form.cells.some(([l, t]) => l === '--prefix' && t === 'text') && form.cells.some(([l, t]) => l === '--ignoreInputDir' && t === 'checkbox'),
@@ -2851,7 +2934,7 @@ try {
     JSON.stringify({ runPill: form.runPill, asked: form.asked, echoed: form.echoed, scheduled: form.scheduled }));
   }
 
-  if (stage('process-desktop')) {
+  if (await stage('process-desktop')) {
   // A catalogue is a desktop: left for another domain, it returns from PANES
   // bound as it was, its line verbatim and RUN ready; and it leads with
   // RECENT, the operator's lately-run executables from the kernel's listing.
@@ -2918,7 +3001,7 @@ try {
   }
   }
 
-  if (stage('roster-shares')) {
+  if (await stage('roster-shares')) {
   // The roster's rows carry the verbs that act on a FEED: setfacl grants to
   // an identity on a feed, so sharing belongs here. Indicating is not
   // entering, the geometry holds, and both verbs ask before they act.
@@ -2981,10 +3064,11 @@ try {
     target.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     let entered = false;
     for (let i = 0; i < 60; i++) { await sleep(400); if (!rosterShown()) { entered = true; break; } }
-    return { verbs, readout, others, moved: before.join(',') !== after.join(','), stayed, asked, confirm, feedsBefore, feedsAfter, laneAfter, entered };`);
+    await home_return();
+    return { feed: target?.dataset.feed ?? null, verbs, readout, others, moved: before.join(',') !== after.join(','), stayed, asked, confirm, feedsBefore, feedsAfter, laneAfter, entered };`);
   check('a feed row carries the verbs that act on a feed',
     shares.verbs.join(',') === 'NOTE,TAG,RENAME,SHARE,DELETE' && shares.others);
-  check('the row reads back who holds it', /^SHARED WITH /.test(shares.readout));
+  check('the row reads back who holds it', /^SHARED WITH /.test(shares.readout), JSON.stringify({ feed: shares.feed, readout: shares.readout }));
   check('no roster row moves when one is indicated', !shares.moved);
   check('indicating a feed does not enter it', shares.stayed);
   check('abandoning the confirmation releases the command that asked it',
@@ -3023,7 +3107,7 @@ try {
   }
   }
 
-  if (stage('select-mode')) {
+  if (await stage('select-mode')) {
   // SELECT is a mode: it changes what a click means. The selection is the
   // field's — it survives a filter, it is cleared by navigation — and its
   // verbs are ONE command over many operands.
@@ -3097,7 +3181,7 @@ try {
   check('navigation clears the selection', !/SELECTED/.test(select.afterNav));
   }
 
-  if (stage('select-wait')) {
+  if (await stage('select-wait')) {
   // Selecting a feed answers at once: the roster steps aside, the pane says
   // what it is retrieving, and the bar reads LOADING until the graph lands.
   const selectWait = await evalIn(`
@@ -3121,6 +3205,7 @@ try {
     const landed = dp.querySelector('.dag-canvas').style.display === 'block' && dp.querySelector('.dag-empty').style.display === 'none';
     const stateAfter = dp.querySelector('.pane-state').textContent;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
+    await home_return();
     return { skipped: null, atOnce, landed, stateAfter };`);
   if (selectWait.skipped) {
     console.log(`  skipped: ${selectWait.skipped}`);
@@ -3130,7 +3215,7 @@ try {
   }
   }
 
-  if (stage('pin-survives')) {
+  if (await stage('pin-survives')) {
   // A pick survives promptlines: with the session cwd parked inside another
   // feed, picking a feed must hold — the follow answers a move, not a
   // promptline. (The regression this guards replaced every pick with the
@@ -3151,14 +3236,15 @@ try {
     await run('proc feeds', 1500); // a promptline, as any command brings
     await sleep(5000);
     const later = dp.querySelector('.dag-title').textContent;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
+    // Back to the roster (Esc retreats one level a press), then home.
+    for (let i = 0; i < 4 && dp.querySelector('.roster-shown') === null; i++) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400); }
     await run('cd ~', 1500);
     return { skipped: null, picked, later };`);
   if (pin.skipped) console.log(`  skipped: ${pin.skipped}`);
   else check('a pick survives promptlines while the cwd sits elsewhere', pin.picked === pin.later && !/FEED 21\b/.test(pin.later), `${pin.picked} -> ${pin.later}`);
   }
 
-  if (stage('roster-settles')) {
+  if (await stage('roster-settles')) {
   // A run the surface can see must stop reading RUNNING when it finishes.
   // The regression this guards: the roster asked its flex-laid-out element
   // whether it was `block`, so it never re-asked the session and every row
@@ -3203,19 +3289,20 @@ try {
     await say('cd ~/feeds/feed_' + feed, 4000);
     const rosterUp = dp()?.querySelector('.dag-feedlist')?.style.display !== 'none'
       && dp()?.querySelector('.dag-canvas')?.style.display !== 'block';
+    const seen = { panes: [...document.querySelectorAll('.pane-dag')].filter((p) => p.offsetParent !== null).length, title: dp()?.querySelector('.dag-title')?.textContent ?? null, roster: dp()?.querySelector('.dag-feedlist')?.style.display ?? null };
     await say('cd ~', 2000);
     await say('feed rm -f ' + feed, 5000);
     await say('rm -r ~/smoke-roster', 3000);
-    return { feed, first, seenAfterMs, settled: reached, rosterUp };`);
+    return { feed, first, seenAfterMs, settled: reached, rosterUp, seen };`);
   // A row that reads RUNNING must stop; one the roster first drew after the
   // run had already finished is honest as it stands.
   check('a run the roster lists stops reading RUNNING when it finishes, with nothing asked of it',
     settles.error === undefined && settles.first !== null && /finishedsuccessfully/i.test(settles.settled ?? ''),
     JSON.stringify(settles));
   check('a cwd inside a feed does not paint its graph over the roster',
-    settles.error === undefined && settles.rosterUp === true, JSON.stringify({ rosterUp: settles.rosterUp }));
+    settles.error === undefined && settles.rosterUp === true, JSON.stringify({ rosterUp: settles.rosterUp, seen: settles.seen }));
   }
-  if (stage('stale-page')) {
+  if (await stage('stale-page')) {
   // A page older than its server's build says so: a failed on-demand chunk
   // (the event Vite's loader raises for it) puts a notice over the stage
   // and a line on the console, once; the sentence's word `refresh` is the
@@ -3241,7 +3328,7 @@ try {
     JSON.stringify({ sentence, ...stale }));
   }
 
-  if (stage('home-trail')) {
+  if (await stage('home-trail')) {
   // The way home is one press: a `~` lead row above `..` anywhere but home,
   // and the path line a trail whose every segment but the last goes there.
   const trail = await evalIn(`
@@ -3286,18 +3373,21 @@ try {
     trail.bin.crumbs.join('|') === '/|bin' && trail.root.here === '/' && trail.root.leads[0] === '~', `${JSON.stringify(trail.bin)} | ${JSON.stringify(trail.root)}`);
   }
 
-  if (stage('enter-place')) {
+  if (await stage('enter-place')) {
   // ENTER always lands in a place: from the roster pick, ENTER FEED moves the
   // session (and so the cwd-following browser) into /proc/jobs/feed_N.
   const enterPlace = await evalIn(`
     document.getElementById('gutter-runs').click();
     for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.feedlist-row')) break; }
-    const dp = document.querySelector('.pane-dag');
+    const dp = [...document.querySelectorAll('.pane-dag')].find((p) => p.offsetParent !== null && p.querySelector('.feedlist-row')) ?? document.querySelector('.pane-dag');
     const rows = dp.querySelectorAll('.feedlist-row');
     if (rows.length === 0) return { skipped: 'no roster' };
     const row = rows[rows.length - 1];
     const feedId = row.querySelector('.feedlist-id') ? row.querySelector('.feedlist-id').textContent.trim() : null;
-    row.click();
+    // A single press indicates a run; its OPEN cell enters it (#454).
+    row.querySelector('.feedlist-title').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 20 && !row.querySelector('.listing-control'); i++) await sleep(150);
+    (row.querySelector('.listing-control') ?? row).click();
     for (let i = 0; i < 120; i++) { await sleep(500); if (dp.querySelector('.dag-canvas').style.display === 'block') break; }
     dp.querySelector('.pane-handle').click(); await sleep(150);
     const cap = [...dp.querySelectorAll('.drawer-child')].find(c => c.textContent === 'ENTER FEED');
@@ -3320,7 +3410,7 @@ try {
   }
   }
 
-  if (stage('live-watch')) {
+  if (await stage('live-watch')) {
   // The pane is the subscription: entering a feed opens a watch, the bar
   // reports its liveness, the drawer offers REFRESH, leaving releases it.
   // A daemon older than the watch wire answers `error`; that is reported
@@ -3328,10 +3418,13 @@ try {
   const live = await evalIn(`
     document.getElementById('gutter-runs').click();
     for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.feedlist-row')) break; }
-    const row = document.querySelector('.feedlist-row');
+    const dp = [...document.querySelectorAll('.pane-dag')].find((p) => p.offsetParent !== null && p.querySelector('.feedlist-row')) ?? document.querySelector('.pane-dag');
+    const row = dp.querySelector('.feedlist-row');
     if (!row) return { skipped: 'no roster' };
-    row.click();
-    const dp = document.querySelector('.pane-dag');
+    // A single press indicates a run; its OPEN cell enters it (#454).
+    row.querySelector('.feedlist-title').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 20 && !row.querySelector('.listing-control'); i++) await sleep(150);
+    (row.querySelector('.listing-control') ?? row).click();
     for (let i = 0; i < 60; i++) { await sleep(500); if (dp.querySelector('.dag-canvas').style.display === 'block') break; }
     const state = dp.querySelector('.pane-state');
     let text = '';
@@ -3359,7 +3452,7 @@ try {
   }
   }
 
-  if (stage('roster-order')) {
+  if (await stage('roster-order')) {
   const roster = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(800);
     const pill = document.getElementById('lang-pill');
@@ -3387,7 +3480,7 @@ try {
   check('FILTER summons the strip and the bar carries FILTERED n/m', roster.strip && /(^|· )FILTERED 0\//.test(roster.state), roster.state);
   }
 
-  if (stage('pacs-listing')) {
+  if (await stage('pacs-listing')) {
   // A query's answer is the same listing the other two panes are: a frame
   // that sorts and filters, caps minted per study over one column
   // declaration, verbs outside the grid, progress at every level.
@@ -3745,7 +3838,7 @@ try {
   }
   }
 
-  if (stage('verbs-fit-their-track')) {
+  if (await stage('verbs-fit-their-track')) {
     // A row's verbs must fit the track declared for them. The PACS series
     // track was sized for one verb; adding a second pushed the first out of
     // its cell, and the GATHER a whole workflow starts with went missing
@@ -3777,7 +3870,7 @@ try {
     }
   }
 
-  if (stage('gather-pane')) {
+  if (await stage('gather-pane')) {
   // GATHER is a listing pane, not a tray: gathering the first series opens
   // it below the PACS results, joined to the workspace; the cohort row
   // carries SAVE / EXPORT CSV / CREATE FEED / DISMISS, a series row REMOVE /
@@ -3853,7 +3946,7 @@ try {
       JSON.stringify({ afterRemove: gather.afterRemove, dismissed: gather.dismissed }));
   }
   }
-  if (stage('gather-series-parity')) {
+  if (await stage('gather-series-parity')) {
   // A series looks the same wherever it is listed: the cohort's rows ARE
   // the PACS answer's series rows, so the one series, measured in both
   // listings, paints alike — plain, indicated, and dimmed beside another
@@ -3962,7 +4055,7 @@ try {
       JSON.stringify(parity.error ?? { bar: parity.indicated?.pacs.bar, idleTrack: parity.idleTrack, row: parity.indicated?.pacs.row }));
   }
   }
-  if (stage('files-json')) {
+  if (await stage('files-json')) {
   // A JSON file is shown as the structure it is: pretty-printed, keys and
   // strings and numbers and literals in their own hues, RAW for the bytes
   // as written. The cohort manifest is the file every session has.
@@ -3980,7 +4073,7 @@ try {
     for (let i = 0; i < 40; i++) { await sleep(250); if (rowOf('current.json') || rowOf('gather')) break; }
     if (!rowOf('current.json') && rowOf('gather')) { (rowOf('gather').querySelector('.listing-control') ?? rowOf('gather')).click(); for (let i = 0; i < 40; i++) { await sleep(250); if (rowOf('current.json')) break; } }
     const row = rowOf('current.json');
-    if (!row) return { error: 'no current.json row' };
+    if (!row) { await home_return(); return { error: 'no current.json row' }; }
     (row.querySelector('.listing-control') ?? row).click();
     for (let i = 0; i < 40; i++) { await sleep(250); if (fp().querySelector('.files-content')) break; }
     const pane = fp(); const body = () => pane.querySelector('.files-content');
@@ -3996,6 +4089,7 @@ try {
     pill('PRETTY')?.click(); await sleep(400);
     const back = body().classList.contains('files-json');
     pill('CLOSE')?.click(); await sleep(300);
+    await home_return();
     return { pretty, raw, back, field };`);
   check('the content view scrolls inside the pane and never runs past its foot',
     json.error === undefined && json.field.overflowY === 'auto' && json.field.inside === true,
@@ -4010,7 +4104,7 @@ try {
     json.error === undefined && !json.raw.json && json.raw.lines < json.pretty.lines && json.raw.pills.join(',') === 'DOWNLOAD,PRETTY,CLOSE' && json.back === true,
     JSON.stringify(json.error ?? json.raw));
   }
-  if (stage('dag-back-facts')) {
+  if (await stage('dag-back-facts')) {
   // The way out of a graph is a press: BACK heads the graph's frame and
   // returns to the roster; a tap on the node facts plate's own ground
   // stands the plate down, as a tap on empty space does — on a phone the
@@ -4052,7 +4146,7 @@ try {
       JSON.stringify({ groundWas: dagBack.groundWas, cleared: dagBack.cleared }));
   }
   }
-  if (stage('header-grip')) {
+  if (await stage('header-grip')) {
   // The band's foot is a grip that stands whenever a face does — the
   // resting face included — and breathes; dragged, it resizes the band.
   const grip = await evalIn(`
@@ -4075,7 +4169,7 @@ try {
     grip.after > grip.before + 40 && Math.abs(grip.restored - grip.before) <= 2,
     JSON.stringify({ before: grip.before, after: grip.after, restored: grip.restored }));
   }
-  if (stage('netstat')) {
+  if (await stage('netstat')) {
   // The wire is a readout: netstat counts what the session asked of CUBE,
   // by family, timed — and a navigation's cost is read from it, which is
   // how the budgets below are held.
@@ -4176,7 +4270,7 @@ try {
       && net.diagram.firstFamilies.every(([f, n]) => /^pipelines\/(search|:id\/(pipings|parameters))$/.test(f) && n <= 1))),
     JSON.stringify(net.diagram));
   }
-  if (stage('press-ack')) {
+  if (await stage('press-ack')) {
   // A press is acknowledged before anything answers: the row lights, the
   // rest dims, its capsule works, the bar reads OPENING <name>; the
   // listing that lands stands it down.
@@ -4190,7 +4284,7 @@ try {
     const pane = fp(); const state = pane.querySelector('.pane-state');
     const rowOf = (word) => [...pane.querySelectorAll('.listing-row')].find((r) => r.textContent.includes(word) && !r.textContent.includes('..'));
     for (let i = 0; i < 40; i++) { await sleep(250); if (rowOf('feeds')) break; }
-    const row = rowOf('feeds'); if (!row) return { error: 'no feeds row' };
+    const row = rowOf('feeds'); if (!row) { await home_return(); return { error: 'no feeds row' }; }
     const pathOf = () => pane.querySelector('.files-path')?.textContent.trim() ?? '';
     const before = pathOf();
     (row.querySelector('.listing-control') ?? row).click();
@@ -4201,6 +4295,7 @@ try {
     let landed = null; for (let i = 0; i < 200; i++) { await sleep(50); if (pathOf() !== before) { landed = pathOf(); break; } }
     await sleep(300);
     const after = { landed, lit: pane.querySelector('.listing-activating') !== null, bar: state?.textContent ?? '', wait: state?.classList.contains('state-wait') ?? false };
+    await home_return();
     return { atOnce, after };`);
   check('the instant a row is pressed it lights, the rest dims, and the bar reads OPENING <name>',
     ack.error === undefined && ack.atOnce.lit && ack.atOnce.others.length > 0 && ack.atOnce.others.every((o) => Number(o) < 0.5) && /^OPENING feeds$/.test(ack.atOnce.bar) && ack.atOnce.wait,
@@ -4209,7 +4304,7 @@ try {
     ack.error === undefined && ack.after.landed === '~/feeds' && !ack.after.lit && !ack.after.wait && !/OPENING/.test(ack.after.bar),
     JSON.stringify(ack.error ?? ack.after));
   }
-  if (stage('favicon')) {
+  if (await stage('favicon')) {
   // The tab wears the mark: the page links an SVG icon and a PNG, relative
   // to where it is mounted, and both are served.
   const icon = await evalIn(`
@@ -4221,7 +4316,7 @@ try {
     icon.links.includes('favicon.svg') && icon.links.includes('favicon.png') && /^200 image\/svg\+xml/.test(icon.fetched['favicon.svg'] ?? '') && /^200 image\/png/.test(icon.fetched['favicon.png'] ?? ''),
     JSON.stringify(icon));
   }
-  if (stage('gather-process')) {
+  if (await stage('gather-process')) {
   // PROCESS on the cohort: its feed first (made by the pull the operator
   // could have typed, named at the ask), then a catalogue bound to the
   // feed's root; the cohort row lights FEED N. A real feed on the user's
@@ -4290,7 +4385,7 @@ try {
       cohort.binding);
   }
   }
-  if (stage('pacs-server-control')) {
+  if (await stage('pacs-server-control')) {
     // SERVER is a choice, not a phrase: the cell reads its own state and
     // unfolds a strip of segments — the FILTER gesture, in the caps'
     // vocabulary. No dropdown, because LCARS has no popup layer, and no
@@ -4340,7 +4435,7 @@ try {
       servers.closedByEsc === true, JSON.stringify(servers.closedByEsc));
   }
 
-  if (stage('console-asks')) {
+  if (await stage('console-asks')) {
     // The session can ask this surface a question now. A `text` or a
     // `secret` is answered in the console — where the session speaks, and
     // where the scrollback keeps what was asked — and a secret never enters
@@ -4411,7 +4506,7 @@ try {
     }
   }
 
-  if (stage('ask-errand')) {
+  if (await stage('ask-errand')) {
     // An ask is never a box: a location borrows the instrument that already
     // shows that space. A NEW browser opens beside the asker, anchored
     // where the ask said, with the errand's controls on its own frame.
@@ -4484,7 +4579,7 @@ try {
     }
   }
 
-  if (stage('host-control')) {
+  if (await stage('host-control')) {
   // The HOST lamp reads the attach ack's declared tiers and nothing else:
   // present exactly when the daemon declared host control, absent at rest.
   // And `!` on a daemon without the policy refuses by name.
@@ -4513,7 +4608,7 @@ try {
   }
   }
 
-  if (stage('roster-totals')) {
+  if (await stage('roster-totals')) {
   // The roster's totals ride the same grid as its other columns: caps for
   // SIZE and TIME, one cell per cap on every row, a dash (never a zero)
   // where a feed's nodes are not resident, a number where they are.
@@ -4537,7 +4632,7 @@ try {
   check('the roster carries SIZE and TIME on its grid, dashes where nodes are not resident', totals.caps.includes('SIZE') && totals.caps.includes('TIME') && totals.cellsUniform && totals.rows > 0 && totals.honest, JSON.stringify(totals));
   }
 
-  if (stage('theme-cycle')) {
+  if (await stage('theme-cycle')) {
   // A theme is one declaration on the root element, and the pill cycles it.
   // PHAROS is the theme with shapes of its own: reached by the pill, it must
   // be readable back off the caps — a chamfered cap in the language's face —
@@ -4571,7 +4666,7 @@ try {
   check('leaving PHAROS restores the theme the browser had', themed.restored, JSON.stringify(themed));
   }
 
-  if (stage('nameplate')) {
+  if (await stage('nameplate')) {
   const seal = await evalIn(`
     const mark = document.querySelector('.brand-mark');
     if (!mark) return { present: false };
@@ -4581,7 +4676,7 @@ try {
   check('the nameplate seal is present, masked, and visible', seal.present && seal.masked && seal.visible);
   }
 
-  if (stage('running-row')) {
+  if (await stage('running-row')) {
   // The RUNNING row on the ARGUS WEB face reads the lab's pulse, and its
   // ERRORED figure is a press: it opens the runs roster filtered to the
   // feeds with errored jobs, and the bar says FILTERED.
@@ -4602,7 +4697,7 @@ try {
   check('the ERRORED figure opens the roster filtered to errored feeds', pulse.rows > 0 && pulse.allErrored && pulse.filterOpen, JSON.stringify(pulse));
   }
 
-  if (stage('lane-instrument')) {
+  if (await stage('lane-instrument')) {
   // LANE, BEAT and CUBE on the ARGUS WEB face: the lane reads IDLE while a
   // feed indexes (the walk is off the lane), the beat is fresh, and CUBE's
   // pace is a number once a page has been fetched.
@@ -4629,7 +4724,7 @@ try {
   }
   }
 
-  if (stage('header-index')) {
+  if (await stage('header-index')) {
   // The INDEX instrument on the header's resting face: a quiet index reads
   // CURRENT; a feed's walk takes a row with a bar and its count; the row
   // goes when the walk lands. Same context the status line reads.
@@ -4661,7 +4756,7 @@ try {
   }
   }
 
-  if (stage('lane')) {
+  if (await stage('lane')) {
   // Index movement never holds the lane: `proc refresh <id>` starts a feed's
   // re-walk and answers at once that the feed is indexing; a command sent
   // right behind it answers while the walk still counts on the JOBS readout.
@@ -4696,7 +4791,7 @@ try {
   }
   }
 
-  if (stage('index-annunciation')) {
+  if (await stage('index-annunciation')) {
   // A feed's first-visit topology load is never a silent hang: the JOBS
   // readout names the feed and counts its instances while the daemon walks
   // it. `proc refresh <id>` drops and re-walks one feed, which is the same
@@ -4773,7 +4868,7 @@ try {
       }
     }
   }
-  if (stage('image-pane')) {
+  if (await stage('image-pane')) {
   if (dicomSeries === '') {
     console.log('  skipped: set SMOKE_DICOM_SERIES=<series folder on the daemon>');
   } else {
@@ -4826,7 +4921,7 @@ try {
     check('the pane says in the console when the first slice landed', opened.noted === true, JSON.stringify(opened));
   }
   }
-  if (stage('image-annotations')) {
+  if (await stage('image-annotations')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');
   } else {
@@ -4866,7 +4961,7 @@ try {
     check('a measurement saved as an SR comes back when the series reopens', saved.error === undefined && /measurements\.dcm$/.test(saved.file ?? '') && saved.before === '0' && saved.placed === '1', JSON.stringify(saved));
   }
   }
-  if (stage('image-answers')) {
+  if (await stage('image-answers')) {
   if (dicomSeries === '') {
     console.log('  skipped: set SMOKE_DICOM_SERIES=<series folder on the daemon>');
   } else {
@@ -4906,7 +5001,7 @@ try {
     check('a bad image path is refused in the console by the kernel', refused.said === true, JSON.stringify(refused));
   }
   }
-  if (stage('image-field')) {
+  if (await stage('image-field')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');
   } else {
@@ -5020,7 +5115,7 @@ try {
     check('the field keeps its shape when the frame opens beside it', shaped.open === true && shaped.after.css < shaped.before.css && Math.abs(shaped.after.px - shaped.after.css * shaped.dpr) < 4, JSON.stringify(shaped));
   }
   }
-  if (stage('image-focus')) {
+  if (await stage('image-focus')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');
   } else {
@@ -5047,7 +5142,7 @@ try {
     check('Esc from the field is one level: the open frame waits for the next press', focus.frameStillOpen && focus.frameClosedNext, JSON.stringify(focus));
   }
   }
-  if (stage('image-verbs')) {
+  if (await stage('image-verbs')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');
   } else {
@@ -5090,7 +5185,7 @@ try {
     check('image layout single returns and the mode annunciation clears', verbs.back === '', JSON.stringify(verbs));
   }
   }
-  if (stage('image-tools')) {
+  if (await stage('image-tools')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');
   } else {
@@ -5153,7 +5248,7 @@ try {
     await evalIn(`const input = document.querySelector('#terminal input'); input.value = 'image layout single'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(600); return 1;`);
   }
   }
-  if (stage('image-study')) {
+  if (await stage('image-study')) {
   if (dicomSeries === '' || fixtureFolder === null) {
     console.log('  skipped: needs the image fixtures');
   } else {
@@ -5176,7 +5271,7 @@ try {
   }
   }
 
-  if (stage('image-frame')) {
+  if (await stage('image-frame')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');
   } else {
@@ -5316,7 +5411,7 @@ try {
     await say('image layout single');
   }
   }
-  if (stage('image-slab')) {
+  if (await stage('image-slab')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');
   } else {
@@ -5353,7 +5448,7 @@ try {
     check('SLAB returns to SINGLE', swept.back === '', JSON.stringify(swept));
   }
   }
-  if (stage('image-tags')) {
+  if (await stage('image-tags')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');
   } else {
@@ -5404,7 +5499,7 @@ try {
     check("the tags pane wears the slice's modality as its hue", tags.hue === 'MR', JSON.stringify(tags));
   }
   }
-  if (stage('image-guard')) {
+  if (await stage('image-guard')) {
   if (dicomSeries === '' || !(await evalIn(`return document.querySelector('.pane-image') !== null;`))) {
     console.log('  skipped: needs the image pane from image-pane');
   } else {
@@ -5413,6 +5508,10 @@ try {
       const image = document.querySelector('.pane-image');
       const input = document.querySelector('#terminal input');
       const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      // The series shown afresh: LOAD is consent for one showing of a series,
+      // and an earlier scenario may already have given it for this one.
+      await run('image ${dicomSeries}');
+      for (let i = 0; i < 60 && !/SERIES/.test(image.querySelector('.pane-state')?.textContent ?? ''); i++) await sleep(250);
       await run('image layout single');
       for (let i = 0; i < 40 && !image.querySelector('.image-viewport-stack'); i++) await sleep(150);
       const fetches = () => performance.getEntriesByType('resource').filter((e) => e.name.includes('/vfs?')).length;
@@ -5436,7 +5535,7 @@ try {
     check('LOAD consents and the waiting layout follows', guard.planes === 3 && guard.loadHidden === true, JSON.stringify(guard));
   }
   }
-  if (stage('image-volume')) {
+  if (await stage('image-volume')) {
   if (niftiPath === '') {
     console.log('  skipped: set SMOKE_NIFTI=<volume path on the daemon>');
   } else {
@@ -5455,7 +5554,7 @@ try {
     check('image <volume> opens a NIfTI on the same pane kind and says when it drew', volume.error === undefined && volume.drawn === true && volume.fits === true, JSON.stringify(volume));
   }
   }
-  if (stage('image-panes')) {
+  if (await stage('image-panes')) {
   if (dicomSeries === '') {
     console.log('  skipped: set SMOKE_DICOM_SERIES=<series folder on the daemon>');
   } else {
@@ -5507,6 +5606,7 @@ try {
     console.log(`  fixtures: removed ${fixtureFolder}`);
   }
 } finally {
+  if (stageName !== null) await stage_leaks(stageName).catch(() => undefined);
   stage_close();
   page.close();
 }

@@ -38,6 +38,7 @@ import { Listing, type ListingStateParts } from '../roster/listing.js';
 import { type ListingAction } from '../roster/row.js';
 import { FEED_TRAITS, duration_format, size_format } from './roster.js';
 import { FeedFrame, type FeedFrameFacts } from './feedFrame.js';
+import { FollowGuard } from './follow.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
 import { dagGraph_build, dagMetric_of, hueLegend_build, type HueMode, type MetricMode } from './sceneGraph.js';
@@ -183,6 +184,8 @@ export class DagPanel {
   private shownFeedId: number | null = null;
   private pinnedFeedId: number | null = null;
   private requestedFeedId: number | null = null;
+  /** A hand pick holds against a follow it superseded (its late answer is dropped). */
+  private readonly follow: FollowGuard = new FollowGuard();
   private readonly defaultTitle: string;
   /** What scales a molecule node: execution wall time, or output bytes. */
   private metricMode: MetricMode = 'time';
@@ -450,9 +453,11 @@ export class DagPanel {
       return;
     }
     if (envelope.model?.kind === FEED_LIST_MODEL_KIND) {
+      // Taken when asked for, or onto a roster: another command's listing never pulls a graph off stage.
+      const asked: boolean = this.rosterPending || this.rosterShown;
       this.rosterPending = false;
       const roster = feedListModelSchema.safeParse(envelope.model.data);
-      if (roster.success) {
+      if (roster.success && (asked || this.canvas.style.display === 'none')) {
         this.universe_end(true);
         this.chooser_show(roster.data.feeds);
       }
@@ -490,7 +495,7 @@ export class DagPanel {
    */
   private feedIndexing_take(data: unknown): void {
     const indexing = feedIndexingModelSchema.safeParse(data);
-    if (!indexing.success) return;
+    if (!indexing.success || this.follow.drops(indexing.data.feedId, this.pinnedFeedId)) return;
     if (this.requestedFeedId === indexing.data.feedId) {
       this.requestedFeedId = null;
     } else if (this.pendingFeedId !== indexing.data.feedId) {
@@ -514,6 +519,7 @@ export class DagPanel {
       return;
     }
     const model: FeedDagModel = parsed.data;
+    if (this.follow.drops(model.feedId, this.pinnedFeedId)) return;
     if (this.requestedFeedId === model.feedId) {
       this.requestedFeedId = null;
     } else {
@@ -871,6 +877,16 @@ export class DagPanel {
     if (walk !== undefined) {
       this.feedIndexing_show({ feedId: walk.id, loaded: walk.loaded, total: walk.total, ...(walk.failed !== undefined ? { failed: walk.failed } : {}) });
     }
+    // Promptlines arrive after every command, the pane's own silent ones
+    // included; only a cwd that actually MOVED is a reason to follow. A
+    // pinned feed therefore survives until the operator cds somewhere else
+    // (observed: a session parked inside feed 21 replaced every pick with
+    // feed 21 a few seconds later). The cwd is recorded on EVERY promptline,
+    // before the reasons not to follow: recorded only when following, it
+    // went stale while the roster stood, and the next promptline after a
+    // pick read a move from minutes ago and replaced the pick with it.
+    const moved: boolean = this.lastCwd !== null && context.cwd !== this.lastCwd;
+    this.lastCwd = context.cwd;
     // An offstage pane must not queue diagram traffic: following the cwd
     // while nobody can see the graph is pure session-queue congestion (and
     // exactly the kind of delay RUNS-02 then sits behind).
@@ -879,17 +895,11 @@ export class DagPanel {
     }
     // The roster is a place the operator chose (RUNS-02 always lands on
     // it): while it is on stage, a cwd that happens to sit inside a feed
-    // must not paint that feed over it. Following resumes once a graph is up.
+    // must not paint that feed over it. Following resumes on the next move
+    // once a graph is up.
     if (this.rosterShown || this.pendingFeedId !== null) {
       return;
     }
-    // Promptlines arrive after every command, the pane's own silent ones
-    // included; only a cwd that actually MOVED is a reason to follow. A
-    // pinned feed therefore survives until the operator cds somewhere else
-    // (observed: a session parked inside feed 21 replaced every pick with
-    // feed 21 a few seconds later).
-    const moved: boolean = this.lastCwd !== null && context.cwd !== this.lastCwd;
-    this.lastCwd = context.cwd;
     if (!moved) {
       return;
     }
@@ -939,6 +949,7 @@ export class DagPanel {
 
   /** Enters a feed by id: pins it and fetches its graph (the textual verb). */
   public feed_enter(feedId: number): void {
+    this.follow.pick(this.requestedFeedId, feedId);
     this.pinnedFeedId = feedId;
     this.requestedFeedId = null;
     this.feedRequest_show(feedId);
@@ -1015,6 +1026,7 @@ export class DagPanel {
     loading.className = 'feedlist-loading';
     loading.textContent = 'RETRIEVING FEED ROSTER…';
     this.feedList.replaceChildren(loading);
+    if (this.canvas.style.display !== 'none') this.graph_leave();
     this.roster_show(true);
     this.rosterPending = true;
     this.rosterAskedAt = Date.now();
@@ -1220,6 +1232,14 @@ export class DagPanel {
       // there is no list level beneath it to return to.
       return false;
     }
+    this.graph_leave();
+    this.roster_show(true);
+    this.listing.state_refresh();
+    return true;
+  }
+
+  /** Leaves the graph whole (watch, canvas, pin, title, facts): RUNS over a graph once left all of it standing. */
+  private graph_leave(): void {
     this.watch_release();
     this.canvas.style.display = 'none';
     this.pinnedFeedId = null;
@@ -1227,9 +1247,6 @@ export class DagPanel {
     this.title.textContent = this.defaultTitle;
     this.facts.replaceChildren();
     this.scene.selection_clear();
-    this.roster_show(true);
-    this.listing.state_refresh();
-    return true;
   }
 
   /**
@@ -1276,6 +1293,7 @@ export class DagPanel {
    * @param entry - The feed to enter.
    */
   private feed_activate(entry: FeedListEntry): void {
+    this.follow.pick(this.requestedFeedId, entry.id);
     this.pinnedFeedId = entry.id;
     this.requestedFeedId = null;
     this.handlers.feed_regard?.(`/proc/jobs/feed_${entry.id}`);

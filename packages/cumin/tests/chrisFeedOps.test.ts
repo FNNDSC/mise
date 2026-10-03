@@ -33,6 +33,7 @@ import {
   feedComment_update,
 } from '../src/feeds/chrisFeed';
 import { errorStack } from '../src/error/errorStack';
+import { procCache_get } from '../src/cache/procCache';
 import type { FeedRecord } from '../src/feeds/chrisFeed';
 import type { Result } from '../src/utils/result';
 
@@ -181,11 +182,23 @@ describe('feed visibility and lifecycle', () => {
     expect(makeUnpublic).toHaveBeenCalled();
   });
 
-  it('deletes a feed', async () => {
+  it('deletes a feed, and the session\'s index forgets it at once', async () => {
+    procCache_get().cache_clear();
+    procCache_get().feed_add({ id: 5, name: 'gone soon', creation_date: '2026-10-03', owner_username: 'chris' } as never);
+    expect(procCache_get().feedIDs_get()).toContain(5);
     const del = jest.fn(async () => ({}));
     mockClientGet.mockResolvedValue({ getFeed: jest.fn(async () => ({ delete: del })) });
     expect((await feed_delete(5)).ok).toBe(true);
     expect(del).toHaveBeenCalled();
+    expect(procCache_get().feedIDs_get()).not.toContain(5);
+  });
+
+  it('keeps the feed in the index when CUBE refuses the delete', async () => {
+    procCache_get().cache_clear();
+    procCache_get().feed_add({ id: 6, name: 'stays', creation_date: '2026-10-03', owner_username: 'chris' } as never);
+    mockClientGet.mockResolvedValue({ getFeed: jest.fn(async () => ({ delete: jest.fn(async () => { throw new Error('403'); }) })) });
+    expect((await feed_delete(6)).ok).toBe(false);
+    expect(procCache_get().feedIDs_get()).toContain(6);
   });
 
   it('fetches a feed resource', async () => {

@@ -93,7 +93,7 @@ import { argusHost_build } from './consoleHost.js';
 import { browser_wire, feedOf_path, imagery_is, TABLE_FILE_PATTERN, type Browser } from './browser.js';
 import { place_of, type Side } from './sides.js';
 import { stalePage_watch } from './stalePage.js';
-import { buildMatch_check } from './buildMatch.js';
+import { buildMatch_wire, type BuildWatch } from './buildMatch.js';
 import { greeting_ask } from './greeting.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
 // from `tests/smoke/canon/lcars.json` — the computed style of this surface's own
@@ -2600,7 +2600,7 @@ async function surface_start(token: string): Promise<void> {
     terminal.progressRegion_get(),
     (text: string): void => terminal.output_write('err', text),
   );
-
+  const buildWatch: BuildWatch = buildMatch_wire(statusBar, (line: string): void => terminal.line_note(line));
   const attached: { client: ArgusClient; attach: AttachInfo } = await ArgusClient.session_attach(
     wsUrl_resolve(),
     token,
@@ -2701,6 +2701,7 @@ async function surface_start(token: string): Promise<void> {
         dagPanel.model_refresh(parsed.data);
         for (const panel of panels.values('dag')) panel.model_refresh(parsed.data);
       },
+      stale_receive: (stale: boolean): void => buildWatch.stale_take(stale),
       watched_receive: (subject: string, state: WatchState): void => {
         dagPanel.watched_observe(subject, state);
         for (const panel of panels.values('dag')) panel.watched_observe(subject, state);
@@ -2762,8 +2763,7 @@ async function surface_start(token: string): Promise<void> {
   const client: ArgusClient = attached.client;
 
   statusBar.attach_show(attached.attach);
-  const buildNotes: string[] = [];
-  buildMatch_check(attached.attach.stack, statusBar, (line: string): void => { buildNotes.push(line); });
+  buildWatch.attach_take(attached.attach);
   statusBar.connection_show(true);
   cascade?.connection_show(true);
   aboutFace_fill(attached.attach);
@@ -2805,7 +2805,7 @@ async function surface_start(token: string): Promise<void> {
   terminal.prompt_draw();
   terminal.focus_take();
   // The greeting is the session's to give, beneath the brain; the build notes follow it.
-  greeting_ask(client, terminal, SURFACE_NAME, buildNotes);
+  greeting_ask(client, terminal, SURFACE_NAME, buildWatch.release);
 
   consoleClosed_set = drawer_wire(
     element_require('drawer'),

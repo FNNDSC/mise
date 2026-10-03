@@ -108,6 +108,28 @@ describe('CalypsoDaemon', () => {
     expect(typeof msg.session).toBe('string');
   });
 
+  it('says in the ack whether its own code moved, checks again on each attach, and pushes the flip', async () => {
+    await daemon.stop();
+    let checks: number = 0;
+    daemon = new CalypsoDaemon({ engine, token: TOKEN, codeCheck: (): void => { checks++; } });
+    port = await daemon.start();
+    const ws = await client_open(port);
+    clients.push(ws);
+    const acked = message_next(ws);
+    send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+    const msg = await acked;
+    expect(msg.stale).toBe(false);
+    expect(checks).toBe(1);
+    const pushed = message_next(ws);
+    daemon.stale_set(true);
+    expect(await pushed).toEqual({ type: 'stale', stale: true });
+    // Only a flip is told: the same answer again sends nothing.
+    daemon.stale_set(true);
+    const late = await client_attach(port);
+    clients.push(late);
+    expect(checks).toBe(2);
+  });
+
   it('takes the attach token from the upgrade URL when the attach carries none', async () => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}/?token=${TOKEN}`);
     await new Promise<void>((resolve, reject) => { ws.once('open', () => resolve()); ws.once('error', reject); });

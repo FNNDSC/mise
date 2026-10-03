@@ -7,12 +7,15 @@
  * control the new ARGUS sends that the old daemon does not know simply does
  * nothing — EDIT opened no pane, and nothing said why.
  *
- * The daemon remembers ARGUS's build stamp when it starts and reports it in
- * its attach ack; ARGUS compares its own stamp against it. Agreeing says
- * nothing. Disagreeing says, once, on the console and in a notice over the
- * stage, which one is older and what to restart: the calypso daemon when
- * ARGUS is newer, ARGUS itself (Refresh, the control in the sentence) when
- * it is older. The words name the two processes, never "session" or "page".
+ * Two questions, asked of the one who can answer each. Is the daemon's own
+ * code still the code on its disk? The daemon answers (`stale`, at attach
+ * and pushed when it flips); an ARGUS-only release changes no daemon code
+ * and so says nothing. Is this ARGUS older than the one the daemon started
+ * beside? The daemon's stamp of ARGUS answers. Either says, on the console,
+ * the status strip and in a notice over the stage, what is older and what to
+ * restart: the calypso daemon, or ARGUS itself (Refresh, the control in the
+ * sentence). The words name the two processes, never "session" or "page".
+ * A daemon too old to report `stale` falls back to the stamp alone.
  *
  * Law honest-wait: a failure is visible and truthful.
  *
@@ -32,17 +35,22 @@ export type BuildMismatch = 'daemon-older' | 'argus-older';
 /**
  * Whether ARGUS and the calypso daemon are different builds, and which is older.
  *
- * A daemon that reports its stack but no ARGUS build predates the stamp, and
- * so is older than any ARGUS that carries one. A daemon that reports no stack at all
- * says too little to judge.
+ * A daemon that says whether it is stale is believed: stale means its own
+ * code moved on disk; not stale leaves only the question of an ARGUS older
+ * than the one it started beside. A daemon too old to say falls back to the
+ * stamp: no stamp at all is older than any ARGUS that carries one, and a
+ * stamp unlike this ARGUS's is ordered by its build minute.
  *
  * @param page - This ARGUS's stamp.
  * @param stack - What the daemon reported.
+ * @param stale - Whether the daemon says its own code moved; undefined from older daemons.
  * @returns The older one, or null when they agree or nothing can be said.
  */
-export function buildMismatch_of(page: BuildStamp, stack: StackInfo | undefined): BuildMismatch | null {
+export function buildMismatch_of(page: BuildStamp, stack: StackInfo | undefined, stale?: boolean): BuildMismatch | null {
+  if (stale === true) return 'daemon-older';
   if (stack === undefined) return null;
   const served: BuildStamp | undefined = stack.surface;
+  if (stale === false) return served !== undefined && page.built < served.built ? 'argus-older' : null;
   if (served === undefined) return 'daemon-older';
   if (served.git === page.git && served.built === page.built) return null;
   // The minute stamps are ISO-ordered, so they compare as strings.
@@ -94,11 +102,17 @@ export function buildMismatch_tell(
   note: (line: string) => void,
   host: HTMLElement = document.body,
 ): void {
+  host.querySelector('.build-mismatch')?.remove();
   const served: string = stack.surface !== undefined
     ? `ARGUS ${stack.surface.git} built ${stack.surface.built}Z`
     : 'an ARGUS too old to say its build';
   note(`argus: ${buildMismatch_sentence(mismatch)}`);
-  note(`argus: ARGUS ${page.git} built ${page.built}Z · calypso daemon started with ${served}`);
+  // The evidence is what differs: the two ARGUS builds when they do,
+  // otherwise the daemon's own code on its disk.
+  const sameArgus: boolean = stack.surface !== undefined && stack.surface.git === page.git && stack.surface.built === page.built;
+  note(sameArgus
+    ? `argus: the calypso daemon's own code on disk has changed since it started (ARGUS ${page.git} built ${page.built}Z)`
+    : `argus: ARGUS ${page.git} built ${page.built}Z · calypso daemon started with ${served}`);
   const words = BUILD_MISMATCH_WORDS[mismatch];
   const notice: HTMLDivElement = document.createElement('div');
   notice.className = 'stale-page build-mismatch';
@@ -128,25 +142,56 @@ export function buildMismatch_tell(
   host.appendChild(notice);
 }
 
+/** What the host does with the build question, at attach and after. */
+export interface BuildWatch {
+  /** The attach ack arrived: judge it. */
+  attach_take: (attach: { stack?: StackInfo; stale?: boolean }) => void;
+  /** The daemon pushed a change in whether its own code moved. */
+  stale_take: (stale: boolean) => void;
+  /** The boot's greeting stands: console lines held for it are written, later ones at once. */
+  release: () => void;
+}
+
 /**
- * Says when this ARGUS and the calypso daemon are different builds: the
- * status strip reads it out, the console and a notice say which is older and
- * what to restart. The dev server's ARGUS is never the bundle a daemon
- * serves, so it is not compared.
+ * Wires the build question to a host: the status strip reads it out, the
+ * console and a notice say which is older and what to restart. The dev
+ * server's ARGUS is never the bundle a daemon serves, so it is not compared.
  *
- * @param stack - What the daemon reported in its attach ack.
  * @param strip - The status strip's readout.
  * @param note - Writes a line to the console.
+ * @param host - Where the notice stands.
+ * @returns The watch.
  */
-export function buildMatch_check(
-  stack: StackInfo | undefined,
-  strip: { build_show: (readout: string, title: string) => void },
+export function buildMatch_wire(
+  strip: { build_show: (readout: string | null, title?: string) => void },
   note: (line: string) => void,
-): void {
-  if (__ARGUS_DEV__ || stack === undefined) return;
+  host: HTMLElement = document.body,
+): BuildWatch {
   const page: BuildStamp = { git: __ARGUS_GIT__, built: __ARGUS_BUILT__ };
-  const mismatch: BuildMismatch | null = buildMismatch_of(page, stack);
-  if (mismatch === null) return;
-  strip.build_show(BUILD_MISMATCH_WORDS[mismatch].readout, buildMismatch_sentence(mismatch));
-  buildMismatch_tell(mismatch, page, stack, note);
+  let held: string[] | null = [];
+  let stack: StackInfo | undefined;
+  let shown: BuildMismatch | null = null;
+  const say = (line: string): void => { if (held !== null) held.push(line); else note(line); };
+  const judge = (stale: boolean | undefined): void => {
+    if (__ARGUS_DEV__ || stack === undefined) return;
+    const mismatch: BuildMismatch | null = buildMismatch_of(page, stack, stale);
+    if (mismatch === shown) return;
+    shown = mismatch;
+    if (mismatch === null) {
+      strip.build_show(null);
+      host.querySelector('.build-mismatch')?.remove();
+      return;
+    }
+    strip.build_show(BUILD_MISMATCH_WORDS[mismatch].readout, buildMismatch_sentence(mismatch));
+    buildMismatch_tell(mismatch, page, stack, say, host);
+  };
+  return {
+    attach_take: (attach): void => { stack = attach.stack; judge(attach.stale); },
+    stale_take: (stale: boolean): void => judge(stale),
+    release: (): void => {
+      const lines: string[] = held ?? [];
+      held = null;
+      for (const line of lines) note(line);
+    },
+  };
 }

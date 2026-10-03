@@ -1,5 +1,13 @@
 # @fnndsc/menu
 
+## 0.17.0
+
+### Minor Changes
+
+- 51315ec: The calypso daemon knows when it is stale. It fingerprints its own packages' code (version and compiled scripts' content) when it starts, reads the fingerprint again on every attach and once a minute, says `stale` in its attach ack, and pushes a `stale` message when the answer flips. ARGUS says CALYPSO DAEMON OUT OF DATE only when the daemon says so, so an ARGUS-only release no longer alarms every running daemon; an open ARGUS learns of an upgrade within a minute. A daemon too old to report `stale` falls back to the build-stamp comparison.
+- 33e4f1d: A session restarts from its own browser and stays logged in. Porter's new `POST /restart` (cookie-gated: only the cookie's own session) tells the old calypso daemon why, ends it, and boots a fresh one with chell's new `--saved-token` login, which uses the token the identity saved and refuses rather than come up offline. The browser follows the boot on the greeter; a refused saved token ends at the door with the reason. On SIGTERM the daemon sends `closing` (restart, end or stop) to every surface before it exits, and a remote chell prints why it went. `porter --end` leaves `end` as the reason.
+- fe4b6b4: The calypso daemon is restarted by its own operator, behind a door. A RESTART pill stands beside LOG OUT, and the out-of-date notice's cure "Restart the calypso daemon" is a control. Both ask first in the notice's spot ("Restart the calypso daemon? You'll stay logged in; …"), naming what a restart would cut off right now: the running command, unsaved edits, other attached browsers and chells. YES asks the door to restart and follows the greeter back in; another ARGUS on the session says why it dropped and follows on its own. The daemon's heartbeat now lists the attached surfaces (id and kind) and its attach ack gives each surface its own id.
+
 ## 0.16.0
 
 ### Minor Changes

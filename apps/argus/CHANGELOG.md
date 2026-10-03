@@ -1,5 +1,20 @@
 # @fnndsc/argus
 
+## 0.22.0
+
+### Minor Changes
+
+- 51315ec: The calypso daemon knows when it is stale. It fingerprints its own packages' code (version and compiled scripts' content) when it starts, reads the fingerprint again on every attach and once a minute, says `stale` in its attach ack, and pushes a `stale` message when the answer flips. ARGUS says CALYPSO DAEMON OUT OF DATE only when the daemon says so, so an ARGUS-only release no longer alarms every running daemon; an open ARGUS learns of an upgrade within a minute. A daemon too old to report `stale` falls back to the build-stamp comparison.
+- fe4b6b4: The calypso daemon is restarted by its own operator, behind a door. A RESTART pill stands beside LOG OUT, and the out-of-date notice's cure "Restart the calypso daemon" is a control. Both ask first in the notice's spot ("Restart the calypso daemon? You'll stay logged in; …"), naming what a restart would cut off right now: the running command, unsaved edits, other attached browsers and chells. YES asks the door to restart and follows the greeter back in; another ARGUS on the session says why it dropped and follows on its own. The daemon's heartbeat now lists the attached surfaces (id and kind) and its attach ack gives each surface its own id.
+
+### Patch Changes
+
+- 2d26368: Four defects the smoke suite's reds were hiding, fixed. `feed rm` now drops the feed from the session's index at once, so the RUNS roster stops listing a feed this session removed. The RUNS pane records the cwd on every promptline, so a pick is no longer replaced by a stale "move" minutes later. A follow superseded by a hand pick no longer takes the pane when its answer arrives late. RUNS pressed over a graph now leaves the graph whole (watch released, title and canvas cleared), and a feed listing brought by another command no longer pulls the roster over a graph.
+- Updated dependencies [51315ec]
+- Updated dependencies [33e4f1d]
+- Updated dependencies [fe4b6b4]
+  - @fnndsc/menu@0.17.0
+
 ## 0.21.1
 
 ### Patch Changes

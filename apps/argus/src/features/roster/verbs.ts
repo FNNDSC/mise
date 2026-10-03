@@ -205,10 +205,16 @@ export const FILES_SELECTION_ROSTER: VerbRoster<FilesSelectionFacts> = {
   ],
 };
 
-/** A feed row's verbs. Sharing grants the feed; removal is the kernel's, and it asks. */
+/**
+ * A feed row's verbs. NOTE opens the feed's note in the editor (read then,
+ * never for the roster); TAG asks which tags to hang. Sharing grants the
+ * feed; removal is the kernel's, and it asks.
+ */
 export const RUNS_ROW_ROSTER: VerbRoster<RunsRowFacts> = {
   listing: 'runs.row',
   rules: [
+    { name: 'note', label: (): string => 'NOTE', offered: (): boolean => true },
+    { name: 'tag', label: (): string => 'TAG', offered: (): boolean => true },
     { name: 'share', label: (): string => 'SHARE', offered: (): boolean => true },
     { name: 'delete', label: (): string => 'DELETE', offered: (): boolean => true },
   ],

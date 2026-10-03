@@ -26,6 +26,16 @@ export interface RosterOrderState {
   filter: string;
 }
 
+/**
+ * A filter term that is not a column: `key:text` keeps the rows whose value
+ * holds the text, and a bare word searches it too (a feed's tags, which are
+ * marks beside its title rather than a column of their own).
+ */
+export interface RosterTerm<T> {
+  key: string;
+  value: (row: T) => string;
+}
+
 /** Row accessors the pane provides: a comparable value per column key. */
 export type RosterValue_of<T> = (row: T, key: string) => string | number;
 
@@ -47,6 +57,7 @@ export class RosterOrder<T> {
   private readonly value_of: RosterValue_of<T>;
   private readonly onChange: () => void;
   private readonly leadingCells: number;
+  private readonly terms: ReadonlyArray<RosterTerm<T>>;
   private state: RosterOrderState = { sortKey: null, sortDir: 'asc', filter: '' };
   private changeQueued: boolean = false;
 
@@ -85,6 +96,7 @@ export class RosterOrder<T> {
    * @param capsInRoot - Whether the frame carries a caps row of its own.
    *   False for a grouped listing, whose caps are minted per group; the
    *   frame then carries the filter strip alone.
+   * @param terms - Filter terms that are not columns.
    */
   constructor(
     columns: RosterColumn[],
@@ -93,7 +105,9 @@ export class RosterOrder<T> {
     defaultSort?: { key: string; dir: 'asc' | 'desc' },
     leadingCells: number = 0,
     capsInRoot: boolean = true,
+    terms: ReadonlyArray<RosterTerm<T>> = [],
   ) {
+    this.terms = terms;
     this.columns = columns;
     this.value_of = value_of;
     this.onChange = onChange;
@@ -251,10 +265,16 @@ export class RosterOrder<T> {
    */
   public matches(row: T): boolean {
     return this.terms_parse().every((term: { key: string | null; text: string }): boolean => {
+      const named: RosterTerm<T> | undefined = term.key === null ? undefined : this.terms.find((one: RosterTerm<T>): boolean => one.key === term.key);
       const haystack: string =
-        term.key !== null
-          ? String(this.value_of(row, term.key)).toLowerCase()
-          : this.columns.map((column: RosterColumn): string => String(this.value_of(row, column.key))).join(' ').toLowerCase();
+        named !== undefined
+          ? named.value(row).toLowerCase()
+          : term.key !== null
+            ? String(this.value_of(row, term.key)).toLowerCase()
+            : [
+              ...this.columns.map((column: RosterColumn): string => String(this.value_of(row, column.key))),
+              ...this.terms.map((one: RosterTerm<T>): string => one.value(row)),
+            ].join(' ').toLowerCase();
       return haystack.includes(term.text);
     });
   }
@@ -303,7 +323,7 @@ export class RosterOrder<T> {
         const colon: number = term.indexOf(':');
         if (colon > 0) {
           const key: string = term.slice(0, colon);
-          if (this.columns.some((column: RosterColumn): boolean => column.key === key)) {
+          if (this.columns.some((column: RosterColumn): boolean => column.key === key) || this.terms.some((one: RosterTerm<T>): boolean => one.key === key)) {
             return { key, text: term.slice(colon + 1) };
           }
         }

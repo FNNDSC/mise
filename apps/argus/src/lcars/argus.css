@@ -2229,6 +2229,85 @@ body[data-zoom]:not([data-zoom='console'])
   text-overflow: ellipsis;
 }
 
+/* A feed's tags: marks after its title, one theme hue for every tag (a
+   tag's colour stored in CUBE is not ARGUS's to paint), the listing's own
+   font size. A press filters the roster by the tag; the × that takes it
+   off stands only on the indicated row, where a hand is already working. */
+.feedlist-titled {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
+  min-width: 0;
+}
+
+.feedlist-title-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feedlist-tag {
+  --tag-hue: var(--honey);
+  flex: none;
+  color: var(--tag-hue);
+  border: 1px solid color-mix(in srgb, var(--tag-hue) 55%, transparent);
+  border-radius: 0.6em;
+  padding: 0 0.4em;
+  cursor: pointer;
+}
+
+.feedlist-tag:hover {
+  border-color: var(--tag-hue);
+}
+
+.feedlist-tag-x {
+  display: none;
+  margin-left: 0.3em;
+  color: var(--october-sunset);
+}
+
+.listing-indicated .feedlist-tag-x {
+  display: inline;
+}
+
+/* On the indicated row the marks take the row's own dark type, as every
+   other cell there does: honey on the highlight could not be read. */
+.listing-indicated .feedlist-tag {
+  --tag-hue: #000;
+}
+
+.listing-indicated .feedlist-tag-x {
+  color: #000;
+}
+
+/* The feed on stage, on its graph's frame: its tags as marks (each with
+   its ×, since the feed is the subject here), then its note's first line. */
+.dag-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3em;
+  padding: 0.3em 0.4em;
+  font-size: 0.8rem;
+}
+
+.dag-marks[hidden] {
+  display: none;
+}
+
+.dag-marks .feedlist-tag-x {
+  display: inline;
+}
+
+.dag-note-line {
+  flex: 1 1 100%;
+  color: var(--butter);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .feedlist-status {
   color: var(--honey);
   font-size: 0.7rem;
@@ -6355,6 +6434,17 @@ button.launcher-row:hover {
 .ask-bar-no,
 .ask-bar-abandon {
   background-color: var(--october-sunset);
+}
+
+/* A choose question's offers: a pill per answer, pressed to answer; one
+   that already holds (a tag the feed wears) stands dimmed and unpressable. */
+.ask-bar-choice {
+  background-color: var(--honey);
+}
+
+.ask-bar-held {
+  opacity: 0.35;
+  cursor: default;
 }
 
 

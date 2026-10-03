@@ -35,7 +35,8 @@ import {
 import { barState_clear, barState_set } from '../roster/bar.js';
 import { ChrisSpace, type LayoutStrategy, type PhysicsTerms, type SceneNode } from '../../scene/chrisSpace.js';
 import { Listing, type ListingStateParts } from '../roster/listing.js';
-import { progressCell_build, type ListingProgress, type ListingTrait, type ListingAction } from '../roster/row.js';
+import { type ListingAction } from '../roster/row.js';
+import { FEED_TRAITS, duration_format, size_format } from './roster.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
 import { dagGraph_build, dagMetric_of, hueLegend_build, type HueMode, type MetricMode } from './sceneGraph.js';
@@ -75,6 +76,14 @@ export interface DagPanelHandlers {
   feed_indicated?: (feed: FeedListEntry) => void;
   /** A feed came into view: the layout should summon this pane. */
   feed_shown?: () => void;
+  /** The × on a feed's tag: take it off. */
+  feed_untag?: (feedId: number, tag: string) => void;
+  /** A feed was entered: read its note and tags for the frame (feedMarks_show). */
+  feed_entered?: (feedId: number) => void;
+  /** NOTE on the frame: the feed's note, in the editor. */
+  feed_note?: (feedId: number) => void;
+  /** TAG on the frame: ask which tags to hang on the feed. */
+  feed_tag?: (feedId: number, worn: ReadonlyArray<string>) => void;
   /**
    * The pane is the subscription: it holds a watch on the feed it shows
    * and releases it when it stops showing one.
@@ -105,47 +114,6 @@ const CWD_FEED_PATTERNS: readonly RegExp[] = [
   /\/feeds?\/feed_(\d+)(?:\/|$)/,
 ];
 
-/** Progress statuses mapped onto the DAG vocabulary. */
-const PROGRESS_STATUS_MAP: Readonly<Record<string, string>> = {
-  running: 'started',
-  done: 'finishedSuccessfully',
-  error: 'finishedWithError',
-};
-
-/**
- * The DAG pane controller.
- */
-/**
- * A feed's progress, from the job counters that come with its row.
- *
- * @param feed - The roster row.
- * @returns Its progress, or null when the daemon reported no counts.
- */
-function feedProgress_of(feed: FeedListEntry): ListingProgress | null {
-  if (feed.jobsTotal === undefined || feed.jobsDone === undefined) return null;
-  const failed: boolean = feed.status === 'finishedWithError' || feed.status === 'cancelled';
-  // The nodes that finished cleanly, when the daemon reported the errored
-  // count: an errored feed's bar fills to these, not to every settled node.
-  const succeeded: number | undefined = feed.jobsErrored === undefined ? undefined : feed.jobsDone - feed.jobsErrored;
-  return {
-    done: feed.jobsDone,
-    total: feed.jobsTotal,
-    ...(failed ? { failed: true } : {}),
-    ...(succeeded !== undefined ? { succeeded } : {}),
-  };
-}
-
-/**
- * The runs roster's columns, declared once, each with its grid track.
- *
- * Identity, description, then PROGRESS as the one expanse — a running feed
- * says how far it has got without anyone opening it, and the bar is what
- * the eye scans, so it takes the middle of the row — then the trailing
- * facts. Every other track is a fixed length: a row is its own grid, and a
- * track sized to its content would size per row and jog every column after
- * it. Totals are derived from resident nodes, so a feed not yet resident
- * reads a dash and sorts below every known value rather than as a zero.
- */
 /**
  * The console lines that put a graph back into a view, from what its mode
  * blocks read. A block at its default says nothing: the defaults are what
@@ -164,100 +132,16 @@ export function dagView_lines(modes: { layout: string; projection: string; scale
   return lines;
 }
 
-const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
-  {
-    // The row's control, as the browser's and PACS's: OPEN enters the
-    // feed; the rest of the row selects it and puts its verbs in the frame.
-    key: 'control',
-    label: '',
-    className: 'feedlist-control',
-    capped: false,
-    width: '5.2em',
-    cell: (): HTMLElement => {
-      const cell: HTMLSpanElement = document.createElement('span');
-      cell.className = 'feedlist-control listing-capsule';
-      cell.textContent = 'OPEN';
-      return cell;
-    },
-  },
-  {
-    key: 'id',
-    label: 'ID',
-    className: 'feedlist-id',
-    width: '4em',
-    cell: (feed: FeedListEntry): string => String(feed.id),
-    compare: (feed: FeedListEntry): number => feed.id,
-  },
-  {
-    key: 'title',
-    label: 'TITLE',
-    className: 'feedlist-title',
-    width: '24em',
-    cell: (feed: FeedListEntry): string => feed.title || '(untitled)',
-    compare: (feed: FeedListEntry): string => feed.title,
-  },
-  {
-    key: 'progress',
-    label: 'PROGRESS',
-    className: 'feedlist-progress',
-    width: '1fr',
-    // A feed with nothing scheduled still gets a track: nothing has
-    // happened yet reads differently from there is nothing here.
-    cell: (feed: FeedListEntry): HTMLElement => progressCell_build(feedProgress_of(feed)),
-    compare: (feed: FeedListEntry): number => {
-      const progress: ListingProgress | null = feedProgress_of(feed);
-      if (progress === null || progress.total === 0) return -1;
-      return progress.done / progress.total;
-    },
-  },
-  {
-    key: 'status',
-    label: 'STATUS',
-    className: 'feedlist-status',
-    width: '8em',
-    cell: (feed: FeedListEntry): string => feed.status.toUpperCase(),
-    compare: (feed: FeedListEntry): string => feed.status,
-  },
-  {
-    key: 'nodes',
-    label: 'NODES',
-    className: 'feedlist-nodes',
-    width: '4em',
-    cell: (feed: FeedListEntry): string => (feed.jobsTotal === undefined ? '—' : String(feed.jobsTotal)),
-    compare: (feed: FeedListEntry): number => feed.jobsTotal ?? -1,
-  },
-  {
-    key: 'sizeBytes',
-    label: 'SIZE',
-    className: 'feedlist-size',
-    width: '5.5em',
-    cell: (feed: FeedListEntry): string => (feed.sizeBytes === undefined ? '—' : size_format(feed.sizeBytes)),
-    compare: (feed: FeedListEntry): number => feed.sizeBytes ?? -1,
-  },
-  {
-    key: 'wallSeconds',
-    label: 'TIME',
-    className: 'feedlist-time',
-    width: '6em',
-    cell: (feed: FeedListEntry): string => (feed.wallSeconds === undefined ? '—' : duration_format(feed.wallSeconds)),
-    compare: (feed: FeedListEntry): number => feed.wallSeconds ?? -1,
-  },
-  {
-    key: 'owner',
-    label: 'OWNER',
-    className: 'feedlist-owner',
-    width: '7em',
-    cell: (feed: FeedListEntry): string => feed.owner,
-  },
-  {
-    key: 'createdAt',
-    label: 'CREATED',
-    className: 'feedlist-created',
-    width: '7em',
-    cell: (feed: FeedListEntry): string => feed.createdAt.slice(0, 10),
-    compare: (feed: FeedListEntry): string => feed.createdAt,
-  },
-];
+/** Progress statuses mapped onto the DAG vocabulary. */
+const PROGRESS_STATUS_MAP: Readonly<Record<string, string>> = {
+  running: 'started',
+  done: 'finishedSuccessfully',
+  error: 'finishedWithError',
+};
+
+/**
+ * The DAG pane controller.
+ */
 
 
 /**
@@ -288,6 +172,10 @@ export class DagPanel {
   private readonly strategyPill: HTMLElement;
   /** BACK on the frame: out of the graph, to the roster. */
   private backPill: HTMLElement | null = null;
+  /** The feed on stage: NOTE, TAG, and its marks (tags, the note's first line). */
+  private notePill: HTMLElement | null = null;
+  private tagPill: HTMLElement | null = null;
+  private marks: HTMLElement | null = null;
   private readonly feedList: HTMLElement;
   private readonly handlers: DagPanelHandlers;
   private rosterTimer: ReturnType<typeof setInterval> | null = null;
@@ -359,6 +247,7 @@ export class DagPanel {
       // given none keeps its single click. OPEN is the control either way.
       actions: verbs === undefined ? undefined : { of: (feed: FeedListEntry): ReadonlyArray<ListingAction<FeedListEntry>> => verbs(feed) },
       control: 'control',
+      terms: [{ key: 'tag', value: (feed: FeedListEntry): string => (feed.tags ?? []).join(' ') }],
       activate: (feed: FeedListEntry): void => this.feed_activate(feed),
       indicated: (feed: FeedListEntry): void => this.handlers.feed_indicated?.(feed),
       row: {
@@ -379,6 +268,9 @@ export class DagPanel {
         this.canvas.style.display === 'block' ? null : parts.filter,
       defaultSort: { key: 'createdAt', dir: 'desc' },
     });
+    // A tag mark answers its own press before the row hears it.
+    this.feedList.addEventListener('click', (event: MouseEvent): void => this.tagMark_press(event), { capture: true });
+    this.feedList.addEventListener('dblclick', (event: MouseEvent): void => { if (event.target instanceof Element && event.target.closest('.feedlist-tag') !== null) event.stopPropagation(); }, { capture: true });
     // The roster is the subscription too: while the list stays on screen it
     // re-asks the session, so a feed run from a console — or from this very
     // surface — shows up, and settles, without a reload. Nothing is asked
@@ -414,6 +306,11 @@ export class DagPanel {
     // beneath; a graph that arrived with no roster beneath it (cwd-follow)
     // asks for one. Hidden while the roster is what is shown.
     this.backPill = strategyPill.parentElement?.querySelector<HTMLElement>('.dag-back') ?? null;
+    this.notePill = strategyPill.parentElement?.querySelector<HTMLElement>('.dag-note') ?? null;
+    this.tagPill = strategyPill.parentElement?.querySelector<HTMLElement>('.dag-tag') ?? null;
+    this.marks = strategyPill.parentElement?.querySelector<HTMLElement>('.dag-marks') ?? null;
+    this.notePill?.addEventListener('click', (): void => { if (this.shownFeedId !== null) this.handlers.feed_note?.(this.shownFeedId); });
+    this.tagPill?.addEventListener('click', (): void => { if (this.shownFeedId !== null) this.handlers.feed_tag?.(this.shownFeedId, this.marksTags); });
     this.backPill?.addEventListener('click', (): void => {
       if (!this.nav_pop()) this.feedsChooser_request();
     });
@@ -645,7 +542,57 @@ export class DagPanel {
       this.graph_show(model);
     }
     this.watch_open(model.feedId);
+    // A feed entered (not a repaint of the one on stage) reads its note and tags.
+    if (this.marksFeedId !== model.feedId) this.marks_refresh();
     this.handlers.feed_shown?.();
+  }
+
+  /** The feed whose marks the frame holds, or asked for. */
+  private marksFeedId: number | null = null;
+  /** The tags the feed on stage wears, as last read. */
+  private marksTags: string[] = [];
+
+  /** Asks the host to read the note and tags of the feed on stage again. */
+  public marks_refresh(): void {
+    if (this.shownFeedId === null) return;
+    this.marksFeedId = this.shownFeedId;
+    this.handlers.feed_entered?.(this.shownFeedId);
+  }
+
+  /**
+   * Shows the entered feed's note and tags on the frame: NOTE reads ADD NOTE
+   * or EDIT NOTE, the tags stand as marks (each with its ×), then the note's
+   * first line. A read for a feed no longer on stage is dropped.
+   *
+   * @param feedId - The feed read.
+   * @param marks - Its note (null when it could not be read) and its tags.
+   */
+  public feedMarks_show(feedId: number, marks: { note: string | null; tags: ReadonlyArray<string> }): void {
+    if (feedId !== this.shownFeedId || this.marks === null) return;
+    this.marksTags = [...marks.tags];
+    const note: string = (marks.note ?? '').trim();
+    if (this.notePill !== null) this.notePill.textContent = marks.note === null ? 'NOTE' : note === '' ? 'ADD NOTE' : 'EDIT NOTE';
+    this.marks.replaceChildren();
+    for (const tag of marks.tags) {
+      const mark: HTMLSpanElement = document.createElement('span');
+      mark.className = 'feedlist-tag dag-mark';
+      mark.dataset['tag'] = tag;
+      mark.textContent = `#${tag}`;
+      const remove: HTMLSpanElement = document.createElement('span');
+      remove.className = 'feedlist-tag-x';
+      remove.title = `take ${tag} off this feed (setfattr -x)`;
+      remove.textContent = '×';
+      remove.addEventListener('click', (): void => this.handlers.feed_untag?.(feedId, tag));
+      mark.append(remove);
+      this.marks.append(mark);
+    }
+    if (note !== '') {
+      const line: HTMLSpanElement = document.createElement('span');
+      line.className = 'dag-note-line';
+      line.textContent = note.split('\n')[0] ?? '';
+      line.title = note;
+      this.marks.append(line);
+    }
   }
 
   /**
@@ -1378,6 +1325,34 @@ export class DagPanel {
    * @param feedId - The feed the readout belongs to.
    * @param text - What to say beside the verbs.
    */
+  /** Asks the session for the roster again now (a tag changed). */
+  public roster_ask(): void {
+    this.rosterAskedAt = Date.now();
+    this.handlers.command_run('proc feeds');
+  }
+
+  /**
+   * A press on a tag mark: its × takes the tag off, the mark itself filters
+   * the roster by it. Neither reaches the row beneath, which would indicate
+   * or enter the feed.
+   *
+   * @param event - The press.
+   */
+  private tagMark_press(event: MouseEvent): void {
+    const target: Element | null = event.target instanceof Element ? event.target : null;
+    const mark: HTMLElement | null = target?.closest<HTMLElement>('.feedlist-tag') ?? null;
+    if (mark === null) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const tag: string = mark.dataset['tag'] ?? '';
+    const feedId: number = Number(mark.closest<HTMLElement>('[data-feed]')?.dataset['feed']);
+    if (target?.closest('.feedlist-tag-x') !== null && Number.isFinite(feedId)) {
+      this.handlers.feed_untag?.(feedId, tag);
+      return;
+    }
+    this.roster_filter(`tag:${tag}`);
+  }
+
   public rowReadout_show(feedId: number, text: string): void {
     // The feed id is stringified at the boundary: the façade keys by string.
     this.listing.readout_show(String(feedId), text);
@@ -1432,6 +1407,10 @@ export class DagPanel {
   private roster_show(on: boolean): void {
     this.rosterShown = on;
     if (this.backPill !== null) this.backPill.hidden = on;
+    // The feed's own verbs and marks stand only while a feed is on stage.
+    for (const element of [this.notePill, this.tagPill, this.marks]) if (element !== null) element.hidden = on;
+    // Back at the roster, the next feed entered is read afresh, the same one included.
+    if (on) this.marksFeedId = null;
     // Flex, not block: the frame sits above a scrolling field. Nothing
     // asks this element what it is showing; `rosterShown` is the answer.
     this.feedList.style.display = on ? 'flex' : 'none';
@@ -1595,43 +1574,6 @@ export class DagPanel {
     }
     return false;
   }
-}
-
-/**
- * Formats a wall-clock duration for the facts chip.
- *
- * @param seconds - The duration in seconds.
- * @returns The human form (e.g. `42s`, `4m 12s`, `2h 05m`).
- */
-function duration_format(seconds: number): string {
-  const whole: number = Math.round(seconds);
-  if (whole < 60) {
-    return `${whole}s`;
-  }
-  if (whole < 3600) {
-    return `${Math.floor(whole / 60)}m ${String(whole % 60).padStart(2, '0')}s`;
-  }
-  return `${Math.floor(whole / 3600)}h ${String(Math.floor((whole % 3600) / 60)).padStart(2, '0')}m`;
-}
-
-/**
- * Formats a byte count for the facts chip, compactly.
- *
- * @param bytes - The size in bytes.
- * @returns The human form (e.g. `2.4K`, `13M`).
- */
-function size_format(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes}B`;
-  }
-  const units: string[] = ['K', 'M', 'G', 'T'];
-  let value: number = bytes;
-  let unitIndex: number = -1;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value = value / 1024;
-    unitIndex = unitIndex + 1;
-  }
-  return `${value < 10 ? value.toFixed(1) : Math.round(value)}${units[unitIndex]}`;
 }
 
 /** The job lifecycle, in order — the subway line a node rides. */

@@ -31,14 +31,16 @@
  *
  * @module
  */
-import { RosterOrder } from './order.js';
+import { RosterOrder, type RosterTerm } from './order.js';
 import { barState_clear, barState_set } from './bar.js';
 import { ListingHost } from './host.js';
 import {
   actionCell_build,
   expansion_isOpen,
   expansion_toggle,
+  leadingCells_of,
   listingRow_build,
+  track_isFixed,
   traitColumns_of,
   traitValue_of,
   type Expansion,
@@ -228,6 +230,12 @@ export interface ListingLevel<T> {
   indicated?: (row: T) => void;
   row?: ListingRowBuild<T>;
   defaultSort?: { key: string; dir: 'asc' | 'desc' };
+  /**
+   * Filter terms that are not columns: `key:text` keeps the rows whose value
+   * holds the text, and a bare word searches them too (the runs roster's
+   * `tag:`, whose tags are marks beside the title rather than a column).
+   */
+  terms?: ReadonlyArray<RosterTerm<T>>;
   child?: ListingChild<T>;
   control?: string;
 }
@@ -407,42 +415,6 @@ export function listingTemplate_of<T>(
   }
   return tracks.join(' ');
 }
-
-/**
- * Whether a track is deterministic: a fixed length, a share of the
- * remaining space (`1fr`), or a `minmax` whose minimum is a fixed length.
- *
- * Not `auto`, not `min-content`, `max-content` or `fit-content`, and not
- * `minmax(0, …)`: on a per-row grid each of those sizes to the row's own
- * content, so a short value narrows the track for that row alone and every
- * column after it jogs — the misalignment a listing exists to prevent.
- *
- * @param track - The declared track.
- * @returns True when the track is the same width on every row.
- */
-export function track_isFixed(track: string): boolean {
-  const declared: string = track.trim();
-  if (/^(auto|min-content|max-content)$/.test(declared) || /^fit-content\(/.test(declared)) return false;
-  const minmax: RegExpMatchArray | null = /^minmax\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)$/.exec(declared);
-  if (minmax !== null) {
-    const minimum: string = minmax[1] ?? '';
-    // A zero minimum is content-sizing in disguise: the track grows with
-    // the row's content up to its maximum, which differs row by row.
-    return /^(?:[1-9]\d*|0*\.\d*[1-9]\d*|[1-9]\d*\.\d+)(px|em|rem|ch|vw|vh|%)$/.test(minimum);
-  }
-  return /^(?:\d+\.?\d*|\.\d+)(px|em|rem|ch|vw|vh|%|fr)$/.test(declared);
-}
-
-/** The count of leading uncapped traits: the cells the caps row blanks. */
-function leadingCells_of<T>(traits: ReadonlyArray<ListingTrait<T>>): number {
-  let count: number = 0;
-  for (const trait of traits) {
-    if (trait.capped !== false) break;
-    count += 1;
-  }
-  return count;
-}
-
 
 /** One numbered row as the kernel tells it: its kind, its place, its address. */
 export interface NumberedHandle {
@@ -634,6 +606,7 @@ class Level<T> {
       declaration.defaultSort,
       leadingCells_of(declaration.traits),
       capsInRoot,
+      declaration.terms ?? [],
     );
     this.expansion = { mode: declaration.child === undefined ? 'replace' : 'fold', open: new Set<string>() };
     this.child = declaration.child === undefined ? null : this.childSeat_build(declaration.child);

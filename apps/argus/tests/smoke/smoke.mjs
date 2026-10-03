@@ -1861,6 +1861,66 @@ try {
     edited.reverted && edited.released && edited.onePane, JSON.stringify(edited));
   }
 
+  if (stage('feed-tags')) {
+  // A feed's tags (#831): TAG asks with the user's tags as pills and a field
+  // for a new one (mkdir then setfattr, visible lines), the roster marks the
+  // feed, a mark's press filters by its tag, the graph's frame shows the
+  // marks and NOTE, and × takes a tag off. Feed SMOKE_DAG_FEED, a throwaway tag.
+  const feed = process.env.SMOKE_DAG_FEED ?? '880';
+  const tagged = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const settle = async (want, tries = 60) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
+    const TAG = 'smoke-tag-${Date.now() % 100000}';
+    document.getElementById('gutter-runs').click(); await sleep(1200);
+    const dp = [...document.querySelectorAll('.pane-dag')].find(p => p.offsetParent !== null);
+    const row = () => dp.querySelector('.feedlist-row[data-feed="${feed}"]');
+    await say('runs filter id:${feed}', 1500);
+    await settle(() => row() !== null);
+    row().querySelector('.feedlist-title').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const zone = () => dp.querySelector('.runs-row-zone');
+    await settle(() => [...(zone()?.querySelectorAll('.listing-action') ?? [])].some(b => b.textContent.trim() === 'TAG'));
+    const verbs = [...zone().querySelectorAll('.listing-action')].map(b => b.textContent.trim());
+    [...zone().querySelectorAll('.listing-action')].find(b => b.textContent.trim() === 'TAG').click();
+    const bar = () => dp.querySelector('.ask-bar');
+    const asked = await settle(() => bar() !== null);
+    const done = bar()?.querySelector('.ask-bar-abandon')?.textContent?.trim() ?? '';
+    bar().querySelector('.ask-bar-field').value = TAG;
+    bar().querySelector('.ask-bar-commit').click();
+    // the question comes back with the new tag held
+    const reasked = await settle(() => bar()?.querySelector('.ask-bar-held[data-value="' + TAG + '"]') != null, 80);
+    const echoes = () => [...document.querySelectorAll('#terminal .argus-echo')].map(e => e.textContent);
+    const madeLine = echoes().some(e => e.includes("mkdir '/proc/tags/" + TAG + "'"));
+    const setLine = echoes().some(e => e.includes("setfattr -n tag -v '" + TAG + "' feed_${feed}"));
+    bar()?.querySelector('.ask-bar-abandon')?.click(); await sleep(400);
+    const marked = await settle(() => row()?.querySelector('.feedlist-tag[data-tag="' + TAG + '"]') != null, 80);
+    // a mark's press filters the roster by its tag
+    row()?.querySelector('.feedlist-tag[data-tag="' + TAG + '"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await sleep(800);
+    const filterText = dp.querySelector('.roster-filter-input')?.value ?? '';
+    const onlyTagged = [...dp.querySelectorAll('.feedlist-row')].every(r => r.querySelector('.feedlist-tag[data-tag="' + TAG + '"]') !== null);
+    // enter the feed: the frame shows the mark and NOTE
+    row()?.querySelector('.feedlist-control')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const entered = await settle(() => dp.querySelector('.dag-marks .feedlist-tag[data-tag="' + TAG + '"]') !== null, 120);
+    const noteLabel = dp.querySelector('.dag-note')?.textContent?.trim() ?? '';
+    const tagShown = dp.querySelector('.dag-tag')?.hidden === false;
+    // × takes it off, and the frame reads again
+    dp.querySelector('.dag-marks .feedlist-tag[data-tag="' + TAG + '"] .feedlist-tag-x')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const removed = await settle(() => dp.querySelector('.dag-marks .feedlist-tag[data-tag="' + TAG + '"]') === null, 80);
+    const untagLine = echoes().some(e => e.includes("setfattr -x tag -v '" + TAG + "' feed_${feed}"));
+    await say('rmdir /proc/tags/' + TAG, 2500);
+    await say('runs filter off', 800);
+    dp.querySelector('.dag-back')?.click(); await sleep(600);
+    return { verbs, asked, done, reasked, madeLine, setLine, marked, filterText, onlyTagged, entered, noteLabel, tagShown, removed, untagLine };`);
+  check('TAG asks with the tags as pills and a field; a new tag runs mkdir then setfattr, and the question comes back with it held',
+    tagged.verbs.includes('TAG') && tagged.verbs.includes('NOTE') && tagged.asked && tagged.done === 'DONE' && tagged.madeLine && tagged.setLine && tagged.reasked, JSON.stringify(tagged));
+  check("the roster marks the feed with its tag, and a mark's press filters the roster by it",
+    tagged.marked && /^tag:smoke-tag-/.test(tagged.filterText) && tagged.onlyTagged, JSON.stringify(tagged));
+  check("the graph's frame shows the feed's marks and NOTE; × takes a tag off by a visible setfattr -x",
+    tagged.entered && /NOTE$/.test(tagged.noteLabel) && tagged.tagShown && tagged.removed && tagged.untagLine, JSON.stringify(tagged));
+  }
+
   if (stage('contrast')) {
   // The frame's type, measured against WCAG 2.1 AA in every scheme.
   //
@@ -2705,7 +2765,7 @@ try {
     for (let i = 0; i < 60; i++) { await sleep(400); if (!rosterShown()) { entered = true; break; } }
     return { verbs, readout, others, moved: before.join(',') !== after.join(','), stayed, asked, confirm, feedsBefore, feedsAfter, laneAfter, entered };`);
   check('a feed row carries the verbs that act on a feed',
-    shares.verbs.join(',') === 'SHARE,DELETE' && shares.others);
+    shares.verbs.join(',') === 'NOTE,TAG,SHARE,DELETE' && shares.others);
   check('the row reads back who holds it', /^SHARED WITH /.test(shares.readout));
   check('no roster row moves when one is indicated', !shares.moved);
   check('indicating a feed does not enter it', shares.stayed);

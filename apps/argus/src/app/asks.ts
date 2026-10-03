@@ -42,7 +42,8 @@ export async function question_stand(terminal: ArgusTerminal, mount: HTMLElement
   const onPane: Promise<{ from: 'pane'; answer: string | null }> = paneAsk_open(mount, request).then((answer: string | null) => ({ from: 'pane' as const, answer }));
   const onConsole: Promise<{ from: 'console'; answer: string | null }> = terminal.ask_open({
     message: request.message,
-    kind: request.kind,
+    // The console has no pills: a choice is typed there, by name.
+    kind: request.kind === 'choose' ? 'text' : request.kind,
     focus: false,
     ...(request.suggest === undefined ? {} : { suggest: request.suggest }),
   }).then((answer: string | null) => ({ from: 'console' as const, answer }));
@@ -229,7 +230,7 @@ export function asks_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
       hooks.console_expose();
       return terminal.ask_open({
         message: request.message,
-        kind: request.kind,
+        kind: request.kind === 'choose' ? 'text' : request.kind,
         ...(request.suggest === undefined ? {} : { suggest: request.suggest }),
       });
     }

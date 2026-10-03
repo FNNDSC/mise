@@ -85,7 +85,11 @@ jest.unstable_mockModule('../src/universe/universeLayout.js', () => ({
 
 const mockLayouts: Map<string, { name: string; positions: Record<string, [number, number, number]>; writtenAt: string }> = new Map();
 
+// The roster's tags come from the kernel's tags index; one feed wears one here.
+const mockFeedTagsByFeed = jest.fn(async (): Promise<{ ok: boolean; value?: Map<number, string[]> }> => ({ ok: true, value: new Map<number, string[]>([[5, ['urgent']]]) }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
+  feedTags_byFeed: mockFeedTagsByFeed,
+  errorStack: { checkpoint_mark: (): number => 0, checkpoint_drain: (): void => undefined, stack_pop: (): undefined => undefined, stack_search: (): unknown[] => [] },
   feedStatus_ofCounts: (feed: { erroredJobs: number }): string => (feed.erroredJobs > 0 ? 'finishedWithError' : 'finishedSuccessfully'),
   Context: {},
   SingleContext: class TestSingleContext {},
@@ -455,6 +459,13 @@ describe('builtin_proc warm-up policy', () => {
     // feed's bar to the work that succeeded: feed 5 errored its one job.
     expect(model?.data.feeds[0]).toMatchObject({ jobsDone: 1, jobsTotal: 1, jobsErrored: 1 });
     expect(model?.data.feeds[1]).toMatchObject({ jobsDone: 1, jobsTotal: 1, jobsErrored: 0 });
+    // Each feed carries its tags from the kernel's index; an untagged one an empty list.
+    expect(model?.data.feeds[0]).toMatchObject({ tags: ['urgent'] });
+    expect(model?.data.feeds[1]).toMatchObject({ tags: [] });
+    // An index that cannot be read leaves the rows without marks rather than untagged.
+    mockFeedTagsByFeed.mockResolvedValueOnce({ ok: false });
+    const unread = (await builtin_proc(['feeds'])) as { model?: { data: { feeds: Array<Record<string, unknown>> } } };
+    expect(unread.model?.data.feeds[0]).not.toHaveProperty('tags');
   });
 
   it('reports zero loaded jobs deterministically after an empty sweep', async () => {

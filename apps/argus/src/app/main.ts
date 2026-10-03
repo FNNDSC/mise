@@ -39,7 +39,6 @@ import { ArgusProgress } from '../console/progress.js';
 import { listingNumbering_set } from '../features/roster/listing.js';
 import { type DownloadOutcome } from '../features/files/download.js';
 import { FilesPanel, type FsListing, type FsListingEntry, extension_isImage } from '../features/files/panel.js';
-import { RUNS_ROW_ROSTER, type RunsRowFacts } from '../features/roster/verbs.js';
 import { GatherPanel, type GatherSeries, type GatherFeed } from '../features/gather/panel.js';
 import { LauncherPanel, type LauncherTile, type LauncherRow } from '../features/launcher/panel.js';
 import { runLine_compose, runLine_executable, runLine_hasTitle, runLine_titleAppend } from '../features/files/runLine.js';
@@ -85,12 +84,14 @@ import { binView_wire, type BinView } from './binView.js';
 import { nodeOverlay_wire, type FileText, type NodeOverlay } from './nodeOverlay.js';
 import { cohort_wire, type CohortModule } from './cohort.js';
 import { editor_wire, type EditorModule } from './editor.js';
+import { feedRowHandlers_make } from './feedRows.js';
+import { tags_wire, type TagVerbs } from './tags.js';
 import { helpPane_wire, type HelpPaneHooks, type HelpPaneModule } from './helpPane.js';
 import { asks_wire, type Asks } from './asks.js';
 import { keys_wire } from './keys.js';
 import { paneChrome_wire } from './paneChrome.js';
 import { argusHost_build } from './consoleHost.js';
-import { browser_wire, feedOf_path, imagery_is, shares_read, TABLE_FILE_PATTERN, type Browser } from './browser.js';
+import { browser_wire, feedOf_path, imagery_is, TABLE_FILE_PATTERN, type Browser } from './browser.js';
 import { place_of, type Side } from './sides.js';
 import { stalePage_watch } from './stalePage.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
@@ -1658,34 +1659,7 @@ async function surface_start(token: string): Promise<void> {
         feed_regard: (procPath: string): void => {
           subjects.regard_write(id, { address: procPath, modelKind: 'feed' });
         },
-        // `setfacl` grants to an identity on a FEED, so the roster is where
-        // sharing belongs — a browser row offers it only because the path
-        // it holds names a feed. DELETE is the kernel's own removal, which
-        // asks before it acts.
-        feed_verbs: (feed) => {
-          const facts: RunsRowFacts = { feedId: feed.id };
-          const runs: Record<string, () => void> = {
-            share: (): void => terminal.line_run(`setfacl feed_${feed.id}`),
-            delete: (): void => terminal.line_run(`feed rm feed_${feed.id}`),
-          };
-          return RUNS_ROW_ROSTER.rules
-            .filter((rule): boolean => rule.offered(facts))
-            .map((rule) => ({
-              label: rule.label(facts),
-              run: (): void => runs[rule.name]?.(),
-            }));
-        },
-        feed_indicated: (feed): void => {
-          subjects.regard_write(id, { address: `/proc/jobs/feed_${feed.id}`, modelKind: 'feed' });
-          // Who holds it is a readout, not a verb: it says what the grant
-          // capsule would be adding to.
-          void client
-            .line_execute(`getfacl feed_${feed.id}`, { silent: true, observe: false })
-            .then((outcome: ExecuteOutcome): void => {
-              panels.get('dag', id)?.rowReadout_show(feed.id, shares_read(outcome));
-            })
-            .catch((): void => { panels.get('dag', id)?.rowReadout_show(feed.id, 'ACCESS UNREAD'); });
-        },
+        ...feedRowHandlers_make(context, id, tagVerbs),
         ...(primary ? { feed_shown: (): void => dag_summon() } : {}),
       },
     );
@@ -1703,6 +1677,8 @@ async function surface_start(token: string): Promise<void> {
     };
   };
 
+  // A feed's tags: TAG's question and the ×, each a visible line (app/tags.ts).
+  const tagVerbs: TagVerbs = tags_wire(context, { ask_onPane: (paneId, request) => ask_onPane(paneId, request), tags_changed: (): void => { for (const dag of panels.values('dag')) { dag.roster_ask(); dag.marks_refresh(); } } });
   // The primary instances carry the preset ids the gutter's trees name.
   const filesPrimary: PaneInstance = filesInstance_build('files', true);
   paneInstance_adopt(filesPrimary);
@@ -2318,7 +2294,7 @@ async function surface_start(token: string): Promise<void> {
   const paneHooks: HelpPaneHooks = { instance_spawn, birth_record, launcher_yield, template_stamp };
   const helpPane: HelpPaneModule = helpPane_wire(context, paneHooks);
   const help_open: () => string = helpPane.open;
-  const editorModule: EditorModule = editor_wire(context, { ...paneHooks, replayPlace_get: desktop.replayPlace_get, errandHost_find });
+  const editorModule: EditorModule = editor_wire(context, { ...paneHooks, replayPlace_get: desktop.replayPlace_get, errandHost_find, saved: (): void => { for (const dag of panels.values('dag')) dag.marks_refresh(); } });
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
   paneFactory_register('catalogue', (id: string): PaneInstance => filesInstance_build(id, false, true));
   paneFactory_register('dag', (id: string): PaneInstance => dagInstance_build(id, false));

@@ -12,9 +12,13 @@ const mockJobs = {
   jobs_statusBatch: jest.fn(),
 };
 
+const mockFeedNoteGet = jest.fn();
+const mockFeedNoteUpdate = jest.fn();
 jest.mock('@fnndsc/cumin', () => ({
   ...jest.requireActual('@fnndsc/cumin'),
   chrisConnection: { client_get: mockClientGet },
+  feedNote_get: (...args: unknown[]) => mockFeedNoteGet(...args),
+  feedNote_update: (...args: unknown[]) => mockFeedNoteUpdate(...args),
 }));
 jest.mock('../src/jobs/index', () => mockJobs);
 
@@ -47,6 +51,7 @@ import {
 
 const cache = procCache_get();
 const provider = new ProcVfsProvider();
+const { errorStack } = jest.requireActual<typeof import('@fnndsc/cumin')>('@fnndsc/cumin');
 
 function feed(over: Partial<ProcFeed> = {}): ProcFeed {
   return {
@@ -138,7 +143,7 @@ describe('ProcVfsProvider.list', () => {
 
     const r = await provider.list('/proc/jobs/feed_5');
     const items = r.ok ? r.value : [];
-    expect(items.filter((i) => i.type === 'file').map((i) => i.name)).toEqual(['status', 'title']);
+    expect(items.filter((i) => i.type === 'file').map((i) => i.name)).toEqual(['status', 'title', 'note']);
     expect(items.find((i) => i.type === 'job')).toMatchObject({ name: 'pl-dircopy_10', status: 'finishedSuccessfully' });
     expect(client.getPluginInstances).not.toHaveBeenCalled();
     expect(mockJobs.jobs_statusBatch).not.toHaveBeenCalled();
@@ -323,6 +328,38 @@ describe('ProcVfsProvider.list', () => {
     expect(r).toEqual({ ok: true, value: '/home/alice/outputs/result-set' });
     expect(cache.instance_get(10)?.outputPath).toBe('/home/alice/outputs/result-set');
     expect(getPluginInstance).toHaveBeenCalledWith(10);
+  });
+});
+
+describe("a feed's note under /proc", () => {
+  const puts: Array<Record<string, string>> = [];
+  beforeEach(() => {
+    puts.length = 0;
+    cache.built_set();
+    cache.feed_add(feed({ id: 5, title: 'brain', finishedJobs: 1 }));
+    cache.topologyLoaded_mark(5);
+    mockFeedNoteGet.mockResolvedValue(Ok({ title: 'kept', content: 'the scratchpad' }));
+    mockFeedNoteUpdate.mockImplementation(async (_id: number, data: Record<string, string>) => { puts.push(data); return Ok(true); });
+  });
+
+  it('reads the note as a file', async () => {
+    const r = await provider.read('/proc/jobs/feed_5/note');
+    expect(r.ok && r.value).toBe('the scratchpad');
+  });
+
+  it('writes the note whole, leaving its title', async () => {
+    expect(await provider.write('/proc/jobs/feed_5/note', 'new words')).toBe(true);
+    expect(puts).toEqual([{ content: 'new words' }]);
+  });
+
+  it('refuses any other write by name', async () => {
+    expect(await provider.write('/proc/jobs/feed_5/title', 'x')).toBe(false);
+    expect(errorStack.stack_pop()?.message).toMatch(/Read-only file system/);
+  });
+
+  it('fails the read when the note cannot be fetched', async () => {
+    mockFeedNoteGet.mockResolvedValueOnce(Err());
+    expect((await provider.read('/proc/jobs/feed_5/note')).ok).toBe(false);
   });
 });
 

@@ -46,6 +46,9 @@ import { type ProcRosterSyncKind,
   PluginInstanceData,
   PluginInstanceHandle,
   InstanceParameterData,
+  feedNote_get,
+  feedNote_update,
+  type FeedNote,
 } from '@fnndsc/cumin';
 import { VFSProvider, VFSItem, CpOptions } from '../provider.js';
 import { job_cancel, job_delete, job_statusFetch, job_logFetch, jobs_statusBatch } from '../../jobs/index.js';
@@ -59,7 +62,7 @@ type FeedPageFetch = (params: Record<string, unknown>) => Promise<ListPage<FeedD
 /** Virtual filenames inside each instance directory. */
 const INSTANCE_FILES: ReadonlySet<string> = new Set(['status', 'params', 'log', 'data']);
 /** Virtual filenames inside each feed directory. */
-const FEED_FILES: ReadonlySet<string> = new Set(['status', 'title']);
+const FEED_FILES: ReadonlySet<string> = new Set(['status', 'title', 'note']);
 
 const PROC_JOBS_PREFIX: string = '/proc/jobs';
 const PAGE: number = 100;
@@ -649,6 +652,8 @@ export class ProcVfsProvider implements VFSProvider {
       const items: VFSItem[] = [];
       items.push({ name: 'status', type: 'file', size: 0, owner: '', date: '' });
       items.push({ name: 'title',  type: 'file', size: 0, owner: '', date: '' });
+      // The feed's note: CUBE's one scratchpad per feed, read and written as a file.
+      items.push({ name: 'note',   type: 'file', size: 0, owner: '', date: '' });
 
       for (const rootID of rootIDs) {
         const inst: ProcInstance | undefined = cache.instance_get(rootID);
@@ -753,6 +758,10 @@ export class ProcVfsProvider implements VFSProvider {
       if (!feed) return Ok('');
       if (virtualFile === 'status') return Ok(feedStatus_derive(feed));
       if (virtualFile === 'title') return Ok(feed.title);
+      if (virtualFile === 'note') {
+        const note: Result<FeedNote> = await feedNote_get(feedID);
+        return note.ok ? Ok(note.value.content) : Err();
+      }
       return Ok('');
     }
 
@@ -851,7 +860,24 @@ export class ProcVfsProvider implements VFSProvider {
   async mkdir(_pathStr: string): Promise<boolean> { return false; }
   async touch(_pathStr: string): Promise<boolean> { return false; }
   async upload(_localPath: string, _remotePath: string): Promise<boolean> { return false; }
-  async write(_pathStr: string, _content: string): Promise<boolean> { return false; }
+  /**
+   * Writes a projected file. One file under /proc takes writes: a feed's
+   * note (`/proc/jobs/feed_N/note`), whose content is replaced whole; its
+   * title stands. Anything else is refused by name.
+   *
+   * @param pathStr - The projected path.
+   * @param content - The new content, whole.
+   * @returns True when it was written.
+   */
+  async write(pathStr: string, content: string): Promise<boolean> {
+    const { feedID, instanceID, virtualFile } = procPath_parse(pathStr.replace(/\/$/, ''));
+    if (feedID !== null && instanceID === null && virtualFile === 'note') {
+      const done: Result<boolean> = await feedNote_update(feedID, { content });
+      return done.ok;
+    }
+    errorStack.stack_push('error', `${pathStr}: Read-only file system (only a feed's note is written under /proc)`);
+    return false;
+  }
 }
 
 /**

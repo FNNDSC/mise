@@ -244,6 +244,24 @@ export class VFSDispatcher {
   }
 
   /**
+   * Dispatches a whole-file write to the matched provider: a projection
+   * that holds writable files (a feed's note) takes the content; any other
+   * path is refused by name rather than written somewhere it does not live.
+   *
+   * @param pathStr - The absolute virtual path of the file.
+   * @param content - The file's new content, whole.
+   * @returns True when the provider took it.
+   */
+  async write(pathStr: string, content: string): Promise<boolean> {
+    const provider: VFSProvider = this.provider_get(pathStr);
+    if (provider !== this.defaultProvider && provider.write) {
+      return provider.write(pathStr, content);
+    }
+    errorStack.stack_push("error", `File write not supported for path: ${pathStr}`);
+    return false;
+  }
+
+  /**
    * Dispatches binary file read operation to the matched provider.
    *
    * @param pathStr - The absolute virtual path of the file to read.

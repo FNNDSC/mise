@@ -240,6 +240,18 @@ export async function files_touch(
 ): Promise<boolean> {
   const fileContent: string | Buffer | Blob = content ?? new Blob([""]);
 
+  // A projection's file (a feed's note under /proc) is written through the
+  // projection that owns it, never uploaded into CUBE's store as a file of
+  // that name.
+  const { vfsDispatcher } = await import("../vfs/dispatcher.js");
+  if (vfsDispatcher.path_isVirtual(target)) {
+    if (typeof content !== "string") {
+      errorStack.stack_push("error", `touch: ${target}: a projected file takes text (--withContents)`);
+      return false;
+    }
+    return vfsDispatcher.write(target, content);
+  }
+
   // CUBE's upload does not replace: uploading over a path that already holds
   // a file leaves the OLD content in place and still reports success, so a
   // caller writing content to a file it has written before was silently

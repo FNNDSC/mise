@@ -98,6 +98,16 @@ export interface VFSProvider {
   readBinary?(path: string): Promise<Result<Buffer>>;
 
   /**
+   * Writes a file whole, when the provider holds writable files (a feed's
+   * note under /proc). Absent or false, the path is read-only.
+   *
+   * @param path - The absolute path of the file.
+   * @param content - The new content, whole.
+   * @returns True when it was written.
+   */
+  write?(path: string, content: string): Promise<boolean>;
+
+  /**
    * Resolves the target of a provider-defined lazy link when an operation
    * actually follows it.
    *

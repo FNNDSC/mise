@@ -13,6 +13,10 @@ describe('noteEditBody_format', () => {
 });
 
 describe('noteEditBody_parse', () => {
+  it('reads an empty title as empty, never the first line of the content', () => {
+    expect(noteEditBody_parse('# Title: \n\nthe content\n', 'old')).toEqual({ title: '', content: 'the content\n' });
+  });
+
   it('round-trips a formatted note', () => {
     const body = noteEditBody_format({ title: 'Hi', content: 'line1\nline2' } as any);
     expect(noteEditBody_parse(body, 'fallback')).toEqual({ title: 'Hi', content: 'line1\nline2' });

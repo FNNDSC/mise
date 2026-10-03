@@ -53,6 +53,11 @@ export async function builtin_edit(args: string[]): Promise<CommandEnvelope> {
     return envelope_error('', undefined, `${chalk.red(`edit: ${args[0]}: binary file (${ext}), cannot edit as text`)}\n`);
   }
 
+  // A projection's file (a feed's note under /proc) is read and written
+  // through the projection that owns it, never through CUBE's store.
+  const { vfsDispatcher } = await import('@fnndsc/salsa');
+  if (vfsDispatcher.path_isVirtual(target)) return projectedFile_edit(args[0], target, ext, vfsDispatcher);
+
   const catResult: Result<string> = await files_cat(target);
   if (!catResult.ok) {
     const err: StackMessage | undefined = errorStack.stack_pop();
@@ -96,4 +101,42 @@ export async function builtin_edit(args: string[]): Promise<CommandEnvelope> {
       try { unlinkSync(tmpPath); } catch { /* ignore */ }
     }
   }
+}
+
+/**
+ * Edits a file a projection holds (a feed's note at
+ * /proc/jobs/feed_N/note): read through the projection, handed to the
+ * surface's editor, written back through the projection. A read-only
+ * projected file is refused by the projection, in its own words.
+ *
+ * @param named - The path as the operator typed it.
+ * @param target - The resolved path.
+ * @param ext - Its extension, for the editor's highlighting.
+ * @param dispatcher - The VFS dispatcher.
+ * @returns An envelope carrying the outcome.
+ */
+async function projectedFile_edit(
+  named: string,
+  target: string,
+  ext: string,
+  dispatcher: { read: (path: string) => Promise<Result<string>>; write: (path: string, content: string) => Promise<boolean> },
+): Promise<CommandEnvelope> {
+  const read: Result<string> = await dispatcher.read(target);
+  if (!read.ok) {
+    const err: StackMessage | undefined = errorStack.stack_pop();
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`edit: ${err ? error_stripDebugPrefix(err.message) : `${named}: could not read`}`)}\n`);
+  }
+  let edit: LocalEditResult;
+  try {
+    edit = await surface_get().localEdit({ content: read.value, extension: ext || '.txt' });
+  } catch (err: unknown) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`edit: ${err instanceof Error ? err.message : String(err)}`)}\n`);
+  }
+  if (!edit.changed) return envelope_ok(`${chalk.gray('(no changes)')}\n`);
+  if (await dispatcher.write(target, edit.content)) return envelope_ok(`${chalk.green(`Saved: ${named}`)}\n`);
+  const err: StackMessage | undefined = errorStack.stack_pop();
+  process.exitCode = 1;
+  return envelope_error('', undefined, `${chalk.red(`edit: ${err ? error_stripDebugPrefix(err.message) : `${named}: could not save`}`)}\n`);
 }

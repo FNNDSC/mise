@@ -27,8 +27,10 @@ export function noteEditBody_format(note: FeedNote): string {
  * @returns The parsed title and content.
  */
 export function noteEditBody_parse(edited: string, fallbackTitle: string): { title: string; content: string } {
-  const titleMatch: RegExpMatchArray | null = edited.match(/^#\s*Title:\s*(.+)/m);
-  const title: string = titleMatch ? titleMatch[1].trim() : fallbackTitle;
+  // Horizontal space only: `\s` crossed the newline after an empty title
+  // and took the first line of the content as the title.
+  const titleMatch: RegExpMatchArray | null = edited.match(/^#[ \t]*Title:[ \t]*(.*)$/m);
+  const title: string = titleMatch ? (titleMatch[1] ?? '').trim() : fallbackTitle;
   const content: string = edited.replace(/^#\s*Title:.*\n?/m, '').replace(/^\n+/, '');
   return { title, content };
 }

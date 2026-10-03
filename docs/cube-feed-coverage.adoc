@@ -7,7 +7,7 @@ toc::[]
 
 A CUBE feed is more than its graph of jobs: it has a title, a note, comments, tags, permissions, a public flag and a folder of files. This page lists each part of the feed resource the CUBE API offers, the kernel verb or path that reaches it, and what the surfaces do with it. It exists because #831 began from a gap ("two CUBE feed API features that are not covered — tags and notes"), and a gap nobody lists is a gap nobody sees. The rule it holds to is the house one: missing functionality is materialized in the kernel first (cumin, salsa, brasa), and a surface only ever runs the kernel's verbs (no bypassing mise).
 
-Status as of 2026-10-03. A row marked *not covered* is a known gap, not an oversight.
+Status as of 2026-10-03. A row marked *not covered* is a gap in mise, not in CUBE: CUBE's API offers every one of them (its feeds views allow a feed's name and public flag to be changed, group permissions to be granted, and user and group permissions to be removed by the owner). They are tracked as one epic, #853. A gap in CUBE itself is recorded in `docs/CUBE-gaps.adoc` instead.
 
 == The feed resource
 
@@ -28,7 +28,7 @@ Status as of 2026-10-03. A row marked *not covered* is a known gap, not an overs
 | A feed's title (`name`)
 | `/proc/jobs/feed_N/title` (read)
 | chell `cat`; ARGUS bars and roster
-| Read only. Renaming a feed (`PUT name`) is *not covered*.
+| Read only. Renaming a feed (`PUT name`) is *not covered* (#853: the title file becomes writable).
 
 | A feed's note
 | `/proc/jobs/feed_N/note` (`cat` reads, `touch --withContents=` writes, `edit` edits); `feed note N [--title\|--content]`; `feed note edit N` (= `edit` on the file)
@@ -48,17 +48,17 @@ Status as of 2026-10-03. A row marked *not covered* is a known gap, not an overs
 | User permissions (sharing to an identity)
 | `setfacl -m u:<user>:r feed_N`, `getfacl feed_N`
 | chell; ARGUS SHARE verb and the row's SHARED WITH readout
-| Grant and read covered. Revoking a grant is *not covered* (refused by name).
+| Grant and read covered. Revoking a grant is *not covered* (refused by name; #853: `setfacl -x`).
 
 | Group permissions
 | none
 | none
-| *Not covered*: the API offers `addGroupPermission` and `getGroupPermissions`; `setfacl` refuses group entries.
+| *Not covered*: the API offers `addGroupPermission` and `getGroupPermissions`; `setfacl` refuses group entries (#853: `setfacl -m g:<group>:r`).
 
 | Public flag (`makePublic` / `makeUnpublic`)
 | `feeds share <id>` (make public)
 | chell
-| Make public covered; making a feed private again is *not covered*, and the verb is a sentence rather than a shell metaphor (a `chmod`-like verb would fit the house rule).
+| Make public covered; making a feed private again is *not covered*, and the verb is a sentence rather than a shell metaphor (#853: `setfacl -m o::r` / `o::-`, `chmod o±r`; `feeds share` retires).
 
 | The feed's folder of files
 | `/home/<user>/feeds/feed_N/…`, every file verb (`ls`, `cat`, `cp`, `mv`, `rm`, `download`, `edit`)

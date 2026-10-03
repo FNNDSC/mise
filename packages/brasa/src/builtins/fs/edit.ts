@@ -21,6 +21,9 @@ const BINARY_EXTENSIONS: Set<string> = new Set([
   '.exe', '.dll', '.so', '.bin', '.mp3', '.mp4', '.avi', '.wav',
 ]);
 
+/** What `edit` says when the surface opened an editor that stays open. */
+export const EDIT_OPENED_LINE: string = '(opened in the editor)';
+
 /**
  * Opens a ChRIS file in the surface's local editor. On save, replaces the
  * original via delete + re-upload. No-ops if content is unchanged.
@@ -68,12 +71,17 @@ export async function builtin_edit(args: string[]): Promise<CommandEnvelope> {
   // Hand the content to the surface's editor.
   let edit: LocalEditResult;
   try {
-    edit = await surface_get().localEdit({ content: catResult.value, extension: ext || '.txt' });
+    edit = await surface_get().localEdit({ content: catResult.value, extension: ext || '.txt', path: target });
   } catch (err: unknown) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red(`edit: ${err instanceof Error ? err.message : String(err)}`)}\n`);
   }
 
+  // An editor that stays open (a browser pane) has taken the file; each save
+  // made there runs as its own command line, so there is nothing to save here.
+  if (edit.opened) {
+    return envelope_ok(`${chalk.gray(EDIT_OPENED_LINE)}\n`);
+  }
   if (!edit.changed) {
     return envelope_ok(`${chalk.gray('(no changes)')}\n`);
   }
@@ -129,11 +137,12 @@ async function projectedFile_edit(
   }
   let edit: LocalEditResult;
   try {
-    edit = await surface_get().localEdit({ content: read.value, extension: ext || '.txt' });
+    edit = await surface_get().localEdit({ content: read.value, extension: ext || '.txt', path: target });
   } catch (err: unknown) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red(`edit: ${err instanceof Error ? err.message : String(err)}`)}\n`);
   }
+  if (edit.opened) return envelope_ok(`${chalk.gray(EDIT_OPENED_LINE)}\n`);
   if (!edit.changed) return envelope_ok(`${chalk.gray('(no changes)')}\n`);
   if (await dispatcher.write(target, edit.content)) return envelope_ok(`${chalk.green(`Saved: ${named}`)}\n`);
   const err: StackMessage | undefined = errorStack.stack_pop();

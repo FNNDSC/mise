@@ -63,10 +63,9 @@ jest.unstable_mockModule('@fnndsc/chili/views/feed.js', () => ({
 const mockTableDisplay = jest.fn();
 const mockTableRender = jest.fn(() => 'FIELDS_TABLE');
 jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ table_display: mockTableDisplay, table_render: mockTableRender }));
-jest.unstable_mockModule('../src/builtins/res/feed.notes.js', () => ({
-  noteEditBody_format: jest.fn(() => 'ORIGINAL BODY'),
-  noteEditBody_parse: jest.fn(() => ({ title: 'Parsed', content: 'Body' })),
-}));
+// The note is a file; editing it is `edit` on that file (#831).
+const mockBuiltinEdit = jest.fn(async (_a: string[]): Promise<unknown> => ({ rendered: '' }));
+jest.unstable_mockModule('../src/builtins/fs/edit.js', () => ({ builtin_edit: mockBuiltinEdit }));
 
 const mockFeedTreeHandle = jest.fn(async (id: number) => ({ status: 'ok', rendered: `TREE ${id}` }));
 const mockFeedDiagramHandle = jest.fn(async (id: number) => ({ status: 'ok', rendered: `SIGNALFLOW ${id}` }));
@@ -82,19 +81,6 @@ const mockConfirm = jest.fn(async (): Promise<boolean> => true);
 jest.unstable_mockModule('../src/core/question.js', () => ({ repl_confirm: mockConfirm }));
 
 const { builtin_feed } = await import('../src/builtins/res/feed.js');
-const { surface_set } = await import('../src/core/surface.js');
-import type { LocalEditRequest, LocalEditResult } from '../src/core/surface.js';
-
-// The surface's editor: the note is edited where the surface edits (#831).
-const mockLocalEdit = jest.fn(async (r: LocalEditRequest): Promise<LocalEditResult> => ({ content: r.content, changed: false }));
-function editorSurface_install(localEdit: boolean = true): void {
-  surface_set({
-    capabilities: { localEdit } as never,
-    prompt: async (): Promise<string> => '',
-    pipeSegment: async (_c: string, i: Buffer): Promise<Buffer> => i,
-    localEdit: mockLocalEdit,
-  } as never);
-}
 
 const ok = <T>(value: T) => ({ ok: true as const, value });
 const err = () => ({ ok: false as const });
@@ -104,8 +90,6 @@ let errSpy: jest.SpiedFunction<typeof console.error>;
 beforeEach(() => {
   jest.clearAllMocks();
   process.exitCode = 0;
-  mockLocalEdit.mockReset().mockImplementation(async (r: LocalEditRequest): Promise<LocalEditResult> => ({ content: r.content, changed: false }));
-  editorSurface_install();
   mockCwdGet.mockResolvedValue('/');
   mockFeedResolve.mockResolvedValue(ok({ id: 12, name: 'Brain Run' }));
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -232,44 +216,17 @@ describe('builtin_feed', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('edits a note through the editor and saves changes', async () => {
-    mockNoteGet.mockResolvedValue(ok({ title: 'T', content: 'old' }));
-    mockLocalEdit.mockResolvedValueOnce({ content: 'EDITED BODY', changed: true });
-    mockNoteUpdate.mockResolvedValue(ok(true));
-    await builtin_feed(['note', 'edit', '5']);
-    expect(mockLocalEdit).toHaveBeenCalledWith({ content: 'ORIGINAL BODY', extension: '.txt' });
-    expect(mockNoteUpdate).toHaveBeenCalledWith(5, { title: 'Parsed', content: 'Body' });
-  });
-
-  it('reports no changes when the editor leaves the note untouched', async () => {
-    mockNoteGet.mockResolvedValue(ok({ title: 'T', content: 'old' }));
-    // the default editor hands the body back unchanged
+  it('edits a note as the file it is: edit on /proc/jobs/feed_N/note', async () => {
+    mockBuiltinEdit.mockResolvedValueOnce({ rendered: 'SAVED' });
     const env = await builtin_feed(['note', 'edit', '5']);
-    expect(env.rendered).toContain('(no changes)');
-    expect(mockNoteUpdate).not.toHaveBeenCalled();
+    expect(mockBuiltinEdit).toHaveBeenCalledWith(['/proc/jobs/feed_5/note']);
+    expect(env.rendered).toBe('SAVED');
   });
 
-  it('refuses where the surface cannot open an editor, by name', async () => {
-    editorSurface_install(false);
-    const env = await builtin_feed(['note', 'edit', '5']);
-    expect(env.renderedErr).toContain('feed note edit: this surface cannot open an editor.');
-    expect(mockNoteGet).not.toHaveBeenCalled();
-  });
-
-  it('reports an editor failure', async () => {
-    mockNoteGet.mockResolvedValue(ok({ title: 'T', content: 'old' }));
-    mockLocalEdit.mockRejectedValueOnce(new Error('editor crashed'));
-    const env = await builtin_feed(['note', 'edit', '5']);
-    expect(env.renderedErr).toContain('feed note edit: editor crashed');
-  });
-
-  it('rejects a non-numeric note edit id and reports a failed fetch', async () => {
+  it('rejects a non-numeric note edit id', async () => {
     const usage = await builtin_feed(['note', 'edit', 'abc']);
     expect(usage.renderedErr).toContain('Usage: feed note edit');
-
-    mockNoteGet.mockResolvedValue(err());
-    await builtin_feed(['note', 'edit', '5']);
-    expect(process.exitCode).toBe(1);
+    expect(mockBuiltinEdit).not.toHaveBeenCalled();
   });
 
   it('adds, edits and deletes comments', async () => {

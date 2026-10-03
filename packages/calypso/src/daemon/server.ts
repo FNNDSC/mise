@@ -167,6 +167,12 @@ export interface DaemonOptions {
   webRoot?: string;
   /** The host-control tiers this daemon declares (empty or absent when off). */
   hostControl?: string[];
+  /**
+   * Reads the daemon's own code on disk again; called on each attach, so a
+   * surface arriving after an upgrade learns at once. The host answers
+   * through `stale_set`. Omitted, the daemon never calls itself stale.
+   */
+  codeCheck?: () => void;
 }
 
 /**
@@ -218,6 +224,9 @@ export class CalypsoDaemon {
   /** Whether the last pushed prompt context carried active warm-up. */
   private promptWarmupActive: boolean = false;
   private readonly stack: DaemonStackInfo | undefined;
+  /** Whether the daemon's own code on disk has moved on since it started. */
+  private stale: boolean = false;
+  private readonly codeCheck: (() => void) | undefined;
   private readonly hostControl: string[];
   /** The one session all surfaces share; returned in each attach ack. */
   private readonly sessionId: string = randomBytes(8).toString('hex');
@@ -281,6 +290,19 @@ export class CalypsoDaemon {
     this.stack = options.stack;
     this.webRoot = options.webRoot;
     this.hostControl = options.hostControl ?? [];
+    this.codeCheck = options.codeCheck;
+  }
+
+  /**
+   * Records whether the daemon's own code still matches its disk, and tells
+   * every attached surface when that changes.
+   *
+   * @param stale - True when the code on disk is not the code this process runs.
+   */
+  public stale_set(stale: boolean): void {
+    if (stale === this.stale) return;
+    this.stale = stale;
+    for (const surface of this.surfaces) this.send(surface.socket, { type: 'stale', stale });
   }
 
   /**
@@ -701,7 +723,12 @@ export class CalypsoDaemon {
       // Declared state, present from the first frame: a surface's lamp and a
       // remote shell's banner read it, never infer it.
       hostControl: this.hostControl,
+      // Whether this process still runs the code on its disk; a surface
+      // says CALYPSO DAEMON OUT OF DATE only on this, never on its own
+      // build alone (an ARGUS-only release changes no daemon code).
+      stale: this.stale,
     });
+    this.codeCheck?.();
     this.scrollback_replay(socket);
     // The newcomer shows the right prompt immediately, before any command.
     void this.promptline_push(surface);

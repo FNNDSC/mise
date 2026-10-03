@@ -13,14 +13,14 @@ import type { ArgusTerminal } from '../console/terminal.js';
 /**
  * Asks the session for its greeting and writes it, then the lines after it.
  * An older daemon without `motd`, or a refused ask, leaves the brain alone
- * rather than an error; the lines after are written either way.
+ * rather than an error; what follows it is told either way.
  *
  * @param client - The wire.
  * @param terminal - The console.
  * @param surface - The surface's name, for `motd`.
- * @param after - Lines to write once the greeting stands.
+ * @param after - Told once the greeting stands (or was refused), to write what waited for it.
  */
-export function greeting_ask(client: ArgusClient, terminal: ArgusTerminal, surface: string, after: readonly string[]): void {
+export function greeting_ask(client: ArgusClient, terminal: ArgusTerminal, surface: string, after: () => void): void {
   void client.line_execute(`motd ${surface}`, { silent: true, observe: false })
     .then((outcome: ExecuteOutcome): void => {
       const text: string = outcome.envelopes
@@ -31,5 +31,5 @@ export function greeting_ask(client: ArgusClient, terminal: ArgusTerminal, surfa
       if (text.length > 0) terminal.greeting_write(text.split('\n'));
     })
     .catch((): void => undefined)
-    .finally((): void => { for (const line of after) terminal.line_note(line); });
+    .finally(after);
 }

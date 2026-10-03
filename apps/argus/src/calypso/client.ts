@@ -92,6 +92,8 @@ export interface AttachInfo {
   hostControl?: string[];
   protocolVersion: number;
   stack?: StackInfo;
+  /** Whether the daemon's own code on disk has moved on; absent from older daemons. */
+  stale?: boolean;
 }
 
 /**
@@ -163,6 +165,8 @@ export interface ClientHandlers {
   ambient_receive?: (envelope: WireEnvelope) => void;
   /** A watched subject's liveness changed: live, settled, or stale. */
   watched_receive?: (subject: string, state: WatchState) => void;
+  /** The daemon's own code on disk changed (or changed back) since it started. */
+  stale_receive?: (stale: boolean) => void;
   /**
    * Which listing the session's numbers currently count.
    *
@@ -291,6 +295,7 @@ export class ArgusClient {
             protocolVersion: message.protocolVersion,
             ...(message.stack !== undefined ? { stack: message.stack } : {}),
             ...(message.hostControl !== undefined ? { hostControl: message.hostControl } : {}),
+            ...(message.stale !== undefined ? { stale: message.stale } : {}),
           },
         });
       };
@@ -447,6 +452,7 @@ export class ArgusClient {
         this.handlers.watched_receive?.(message.subject, message.state);
         break;
       }
+      case 'stale': this.handlers.stale_receive?.(message.stale); break;
       case 'numbered': {
         this.handlers.numbered_receive?.({
           id: message.id,

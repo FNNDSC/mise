@@ -82,6 +82,8 @@ const ACTIVITY_FRAME_MS: number = 100;
  */
 export class StatusBar {
   private readonly fields: StatusFields;
+  /** Whether the mismatch field holds the build readout (and may replace it). */
+  private buildShown: boolean = false;
   private readonly running: Set<string> = new Set<string>();
   private activityTimer: number | null = null;
   private activityFrame: number = 0;
@@ -128,15 +130,17 @@ export class StatusBar {
   }
 
   /**
-   * Reads out a page and kernel of different builds on the mismatch field,
-   * unless a contract mismatch already holds it (that one is graver).
+   * Reads out ARGUS and the calypso daemon as different builds on the
+   * mismatch field, or takes that readout down; never over a contract
+   * mismatch, which is graver.
    *
-   * @param readout - What the field says.
+   * @param readout - What the field says; null takes the build readout down.
    * @param title - The whole sentence, on hover.
    */
-  public build_show(readout: string, title: string): void {
-    if (this.fields.mismatch.textContent !== '') return;
-    this.fields.mismatch.textContent = readout;
+  public build_show(readout: string | null, title: string = ''): void {
+    if (this.fields.mismatch.textContent !== '' && !this.buildShown) return;
+    this.buildShown = readout !== null;
+    this.fields.mismatch.textContent = readout ?? '';
     this.fields.mismatch.title = title;
   }
 

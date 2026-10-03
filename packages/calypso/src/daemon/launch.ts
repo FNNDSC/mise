@@ -16,6 +16,7 @@ import chalk from 'chalk';
 import { CalypsoDaemon } from './server.js';
 import { bundledWebRoot_find, installedWebRoot_find, webRoot_resolve, webRootBuild_read, webRootVersion_read, type WebRootBuild } from './static.js';
 import { hostFqdn_get } from './host.js';
+import { codeWatch_start, type CodeWatch } from './codeIdentity.js';
 import { token_generate } from './token.js';
 import type { BrasaEngine } from '@fnndsc/brasa';
 import { sink_set, type OutputSink } from '@fnndsc/brasa';
@@ -210,6 +211,9 @@ export async function daemon_launch(
   // disk later is served fresh while this process keeps its old code, and a
   // surface compares its own stamp against this one to say so.
   const surfaceBuild: WebRootBuild | null = webRoot !== null ? webRootBuild_read(webRoot) : null;
+  // The daemon's own code, fingerprinted now: read again on a slow clock and
+  // on every attach, and the answer pushed when it flips.
+  let codeWatch: CodeWatch | null = null;
   const daemon: CalypsoDaemon = new CalypsoDaemon({
     engine,
     token,
@@ -231,7 +235,9 @@ export async function daemon_launch(
     // greet with the daemon's truth rather than their local install's.
     stack: { ...versions_get(), build: buildHash_get(), ...(surfaceBuild !== null ? { surface: surfaceBuild } : {}) },
     hostControl: hostControl_tiers(hostControl),
+    codeCheck: (): void => { void codeWatch?.check().catch((): void => undefined); },
   });
+  codeWatch = await codeWatch_start((stale: boolean): void => daemon.stale_set(stale)).catch((): null => null);
   sink_set(new DaemonSink(daemon));
   surface_set(daemonSurface_create(daemon, hostControl));
 

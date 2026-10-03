@@ -230,6 +230,19 @@ export type WatchState = z.infer<typeof watchStateSchema>;
  * The daemon's report on a watched subject's liveness, pushed to every
  * surface whenever it changes (a subject settling is news to all of them).
  */
+/**
+ * The daemon's own code on disk changed (or changed back) since it started:
+ * pushed to every surface when the answer flips, so an open page learns of
+ * an upgrade without reattaching.
+ */
+export const staleMessageSchema = z.object({
+  type: z.literal('stale'),
+  stale: z.boolean(),
+});
+
+/** A pushed change in whether the daemon's own code still matches its disk. */
+export type StaleMessage = z.infer<typeof staleMessageSchema>;
+
 export const watchedMessageSchema = z.object({
   type: z.literal('watched'),
   subject: z.string(),
@@ -335,6 +348,8 @@ export const attachedMessageSchema = z.object({
     .optional(),
   /** The host-control tiers the daemon declared (`shell`, `files`, `pipes`); empty or absent when off. */
   hostControl: z.array(z.string()).optional(),
+  /** Whether the daemon's own code on disk has moved on since it started; absent from older daemons. */
+  stale: z.boolean().optional(),
 });
 
 /** The final result of one executed line: one envelope per command. */
@@ -725,6 +740,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   deliverMessageSchema,
   regardMessageSchema,
   watchedMessageSchema,
+  staleMessageSchema,
   numberedMessageSchema,
 ]);
 

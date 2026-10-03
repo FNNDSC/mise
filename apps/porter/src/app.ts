@@ -15,6 +15,9 @@
  * - `GET /greeter/brain.js`, `/greeter/ansi.js` — the wire package's own
  *   modules, served from where they are installed, so the greeter draws
  *   the brain and the rows from the same source the console does.
+ * - `POST /restart` — the cookie's own session restarts: the old daemon is
+ *   told why and ended, a fresh one boots on the login it saved, and the
+ *   browser follows the boot on the greeter (no password asked again).
  * - `POST /logout` — the cookie is cleared; the session lives on.
  * - `GET /boot/<key>` — the session's boot as it happens, server-sent, one
  *   event per line the daemon wrote, ending with `ready` or `failed`.
@@ -310,6 +313,29 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     }
     void reply.type(served.type);
     return served.source;
+  });
+
+  // A session restarted by its own operator: the old daemon is told why and
+  // ended, a fresh one boots on the login it saved, and the browser follows
+  // the boot on the greeter and comes back in. The cookie names the session
+  // and the only session it can name is its own.
+  app.post('/restart', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    const wantsJson: boolean = request_wantsJson(request);
+    const key: string | null = key_ofRequest(request);
+    const entry: SessionEntry | null = key !== null ? registry.get(key) : null;
+    if (key !== null && entry === null && registry.identity_of(key) !== null) {
+      // Already restarting (or booting): a second press joins that boot.
+      return wantsJson ? { key, greet: `/greet/${key}`, state: 'restarting' } : reply.redirect(`/greet/${key}`, 303);
+    }
+    if (key === null || entry === null) {
+      return wantsJson ? reply.code(401).send({ error: 'this browser holds no session to restart' }) : reply.redirect('/login', 303);
+    }
+    // Pending from here: the mount refuses until the fresh berth answers,
+    // rather than proxying to a daemon on its way out.
+    registry.pending_note(entry.identity, entry.user);
+    host.restart_begin(entry.identity, entry.user, config.cubeUrl);
+    options.log?.(`restarting ${entry.user}'s session, asked from their browser`);
+    return wantsJson ? { key, greet: `/greet/${key}`, state: 'restarting' } : reply.redirect(`/greet/${key}`, 303);
   });
 
   app.post('/logout', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {

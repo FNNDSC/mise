@@ -130,6 +130,17 @@ describe('CalypsoDaemon', () => {
     expect(checks).toBe(2);
   });
 
+  it('tells every surface why it is going before it goes', async () => {
+    const a = await client_attach(port);
+    const b = await client_attach(port);
+    clients.push(a, b);
+    const toA = message_next(a);
+    const toB = message_next(b);
+    await daemon.closing_announce('restart');
+    expect(await toA).toEqual({ type: 'closing', cause: 'restart' });
+    expect(await toB).toEqual({ type: 'closing', cause: 'restart' });
+  });
+
   it('takes the attach token from the upgrade URL when the attach carries none', async () => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}/?token=${TOKEN}`);
     await new Promise<void>((resolve, reject) => { ws.once('open', () => resolve()); ws.once('error', reject); });

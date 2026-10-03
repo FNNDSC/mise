@@ -111,10 +111,26 @@ export interface SessionHost {
   boot_follow(identity: string, listener: BootListener): { report: BootReport; release: () => void } | null;
 
   /**
-   * Ends an identity's session.
+   * Ends an identity's session, leaving the daemon the reason so it can tell
+   * its surfaces before it goes.
    *
    * @param identity - The normalised `<user>@<url>`.
+   * @param cause - Why: an administrator's end by default.
    * @returns Whether there was one to end.
    */
-  evict(identity: string): Promise<boolean>;
+  evict(identity: string, cause?: 'restart' | 'end'): Promise<boolean>;
+
+  /**
+   * Restarts an identity's session and returns at once: the old daemon is
+   * told why and ended, and a fresh one boots on the token the session saved
+   * — the operator's password is not asked again. The whole of it is one
+   * boot, followed through {@link boot_follow} from the first word, so a
+   * greeter never sees a gap; a saved token the server refuses ends the boot
+   * failed, with the reason.
+   *
+   * @param identity - The normalised `<user>@<url>`.
+   * @param user - The CUBE username.
+   * @param cubeUrl - The CUBE API base.
+   */
+  restart_begin(identity: string, user: string, cubeUrl: string): void;
 }

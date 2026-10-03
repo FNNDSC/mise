@@ -15,7 +15,7 @@ import chalk from 'chalk';
 import { serverMessage_parse, CONTRACT_VERSION, RequestBroker, type ServerMessage } from '@fnndsc/calypso';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
-import { SERVER_MESSAGE_TYPES, type FileDeliverRequest, type FileDeliverResult } from '@fnndsc/menu';
+import { SERVER_MESSAGE_TYPES, type ClosingCause, type FileDeliverRequest, type FileDeliverResult } from '@fnndsc/menu';
 import { envelope_deliver, sink_get, type OutputSink } from '@fnndsc/brasa';
 import { promptFromContext_render } from '../core/prompt/session.js';
 
@@ -40,6 +40,8 @@ export interface RemoteEngineOptions {
   onDeliver?: (request: FileDeliverRequest) => Promise<FileDeliverResult>;
   /** Called when the connection closes unexpectedly. */
   onClose?: () => void;
+  /** Told why, when the daemon says it is going away before it does. */
+  onClosing?: (cause: ClosingCause) => void;
 }
 
 /**
@@ -78,6 +80,7 @@ export class RemoteEngine implements BrasaEngine {
   private readonly onShell: ((command: string) => Promise<number>) | undefined;
   private readonly onEdit: ((content: string, extension: string | undefined) => Promise<{ content: string; changed: boolean }>) | undefined;
   private readonly onDeliver: ((request: FileDeliverRequest) => Promise<FileDeliverResult>) | undefined;
+  private readonly onClosing: ((cause: ClosingCause) => void) | undefined;
   private latestPrompt: string = '';
   private stackReport: DaemonStack | undefined;
   /** Calypso's declared host-control tiers (empty when off). */
@@ -98,6 +101,7 @@ export class RemoteEngine implements BrasaEngine {
     this.onShell = options.onShell;
     this.onEdit = options.onEdit;
     this.onDeliver = options.onDeliver;
+    this.onClosing = options.onClosing;
   }
 
   /**
@@ -297,6 +301,9 @@ export class RemoteEngine implements BrasaEngine {
           ...(message.size !== undefined ? { size: message.size } : {}),
           ...(message.contentType !== undefined ? { contentType: message.contentType } : {}),
         });
+        break;
+      case 'closing':
+        this.onClosing?.(message.cause);
         break;
       case 'error':
         if (message.id !== undefined) {

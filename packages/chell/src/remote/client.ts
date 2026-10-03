@@ -21,7 +21,8 @@ import chalk from 'chalk';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { REPL } from '../core/repl.js';
 import { RemoteEngine, type DaemonStack } from './remoteEngine.js';
-import { buildMismatch_line } from './buildMatch.js';
+import { buildMismatch_line, closingLine_of } from './buildMatch.js';
+import type { ClosingCause } from '@fnndsc/menu';
 import { LocalBerthResolver, type Berth } from '@fnndsc/calypso';
 import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, stackBanner_rows, stackBannerRow_paint, buildHash_get } from '@fnndsc/brasa';
 import { cliSurface_create } from '../core/cliSurface.js';
@@ -216,6 +217,8 @@ export async function remote_run(
 
   let engine: RemoteEngine;
   let intentionalClose: boolean = false;
+  // Why the daemon went, when it says before it goes.
+  let closing: ClosingCause | null = null;
   try {
     engine = await RemoteEngine.connect({
       url: berth.url,
@@ -246,9 +249,11 @@ export async function remote_run(
       onDeliver: (request: FileDeliverRequest): Promise<FileDeliverResult> =>
         // A downloaded file lands on this machine's disk, never the daemon's.
         surface_get().fileDeliver(request),
+      onClosing: (cause: ClosingCause): void => { closing = cause; },
       onClose: (): void => {
         if (intentionalClose) return;
-        console.log(chalk.yellow('\n[!] Daemon disconnected.'));
+        // A daemon that said why it went is believed; an unannounced drop is a disconnect.
+        console.log(chalk.yellow(`\n${closing !== null ? closingLine_of(closing) : '[!] Daemon disconnected.'}`));
         process.exit(0);
       },
     });

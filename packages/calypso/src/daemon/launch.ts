@@ -26,7 +26,8 @@ import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { procIndex_snapshot, sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
 import { stackBanner_rows, stackBannerRow_paint, versions_get, buildHash_get } from '@fnndsc/brasa';
 import { chrisContext } from '@fnndsc/cumin';
-import { identity_forSession, berth_write, berth_read, berth_path, berthUrl_isAlive, DISCONNECTED_IDENTITY, type Berth } from './berth.js';
+import { identity_forSession, berth_write, berth_read, berth_path, berthUrl_isAlive, closing_take, DISCONNECTED_IDENTITY, type Berth } from './berth.js';
+import type { ClosingCause } from '@fnndsc/menu';
 import { attachFile_write, attachFile_remove } from './attachFile.js';
 import { HOST_CONTROL_OFF, hostControl_describe, hostControl_guard, hostControl_tiers, hostPipe_run, hostShell_run, type HostControlPolicy } from './hostControl.js';
 
@@ -273,12 +274,18 @@ export async function daemon_launch(
       : []),
   ];
   const notePath: string | null = attachFile_write(noteLines);
+  const cleanup = (): void => { if (notePath !== null) attachFile_remove(); };
   if (notePath !== null) {
-    const cleanup = (): void => attachFile_remove();
     process.once('exit', cleanup);
     process.once('SIGINT', (): void => { cleanup(); process.exit(0); });
-    process.once('SIGTERM', (): void => { cleanup(); process.exit(0); });
   }
+  // Ended from outside (a porter's restart or end, a plain kill): every
+  // surface is told why before the process goes, from the reason the host
+  // left beside the berth, so a dropped wire is never mistaken for a crash.
+  process.once('SIGTERM', (): void => {
+    const cause: ClosingCause = closing_take(identity) ?? 'stop';
+    void daemon.closing_announce(cause).finally((): void => { cleanup(); process.exit(0); });
+  });
 
   // The stack, every package written out once, versions in a clean column:
   // the build hash rides the listening line below rather than one row's

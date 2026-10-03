@@ -2,7 +2,7 @@
  * @file A remote chell says when it and its daemon are different builds.
  */
 import { describe, it, expect } from '@jest/globals';
-import { buildMismatch_line } from '../src/remote/buildMatch.js';
+import { buildMismatch_line, closingLine_of } from '../src/remote/buildMatch.js';
 
 describe('buildMismatch_line', () => {
   it('names both builds and the cure when they differ', () => {
@@ -14,5 +14,13 @@ describe('buildMismatch_line', () => {
     expect(buildMismatch_line('7bedda', '7bedda')).toBeNull();
     expect(buildMismatch_line('dev', '7bedda')).toBeNull();
     expect(buildMismatch_line('7bedda', 'unknown')).toBeNull();
+  });
+});
+
+describe('closingLine_of', () => {
+  it('says why the daemon went, as it told', () => {
+    expect(closingLine_of('restart')).toMatch(/restarting/);
+    expect(closingLine_of('end')).toMatch(/ended by an administrator/);
+    expect(closingLine_of('stop')).toBe('[!] The calypso daemon stopped.');
   });
 });

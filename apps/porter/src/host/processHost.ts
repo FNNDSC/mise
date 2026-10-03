@@ -19,11 +19,14 @@
 import { spawn as childSpawn, type ChildProcess } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { berthKey_compute, berth_pathIn, berthUrl_isAlive } from '@fnndsc/calypso/berth';
+import { berthKey_compute, berth_pathIn, berthUrl_isAlive, closing_write } from '@fnndsc/calypso/berth';
 import type { Berth, BootLine, BootListener, BootReport, SessionHost, SessionSighting } from './sessionHost.js';
 
 /** How many boot lines a session keeps for late followers. */
 export const BOOT_LINES_KEPT: number = 2_000;
+
+/** How long a restart waits for the old daemon to go before it gives up. */
+export const STOP_WAIT_MS: number = 15_000;
 
 /** The four directories a session owns. */
 export interface SessionDirs {
@@ -40,6 +43,8 @@ export interface SpawnedSession {
   stderr: NodeJS.ReadableStream | null;
   stdin: NodeJS.WritableStream | null;
   exitCode: number | null;
+  /** The signal that ended it, when one did (`exitCode` stays null then). */
+  signalCode?: NodeJS.Signals | null;
   kill(signal?: NodeJS.Signals): boolean;
   once(event: 'exit', listener: (code: number | null) => void): unknown;
 }
@@ -263,8 +268,14 @@ export class ProcessHost implements SessionHost {
     void this.spawn(identity, user, cubeUrl, token).catch((): void => undefined);
   }
 
-  /** Starts the child and waits for its berth to answer. */
-  private async boot_run(record: SessionRecord, user: string, cubeUrl: string, token: string): Promise<Berth> {
+  /**
+   * Starts the child and waits for its berth to answer.
+   *
+   * @param token - The CUBE token the door minted, handed on stdin; null
+   *   boots on the token the session saved (`--saved-token`), which refuses
+   *   rather than come up offline.
+   */
+  private async boot_run(record: SessionRecord, user: string, cubeUrl: string, token: string | null): Promise<Berth> {
     const dirs: SessionDirs = this.dirs_of(record.identity);
     for (const dir of Object.values(dirs)) mkdirSync(dir, { recursive: true, mode: 0o700 });
     const env: NodeJS.ProcessEnv = {
@@ -279,7 +290,8 @@ export class ProcessHost implements SessionHost {
     };
     // The greeter draws the brain itself, from the same frames; the boot's
     // own copy on stdout would stand a second, still brain under the rows.
-    const child: SpawnedSession = this.spawner(process.execPath, [this.chellEntry, `${user}@${cubeUrl}`, '--daemon', '--auth-token-stdin', '--no-logo'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    const login: string = token !== null ? '--auth-token-stdin' : '--saved-token';
+    const child: SpawnedSession = this.spawner(process.execPath, [this.chellEntry, `${user}@${cubeUrl}`, '--daemon', login, '--no-logo'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
     record.child = child;
     const line_note = (channel: 'out' | 'err', text: string): void => {
       const row: BootRow | null = bootRow_parse(text);
@@ -306,7 +318,7 @@ export class ProcessHost implements SessionHost {
     };
     stream_lines(child.stdout, (text: string): void => line_note('out', text));
     stream_lines(child.stderr, (text: string): void => line_note('err', text));
-    child.stdin?.end(`${token}\n`);
+    child.stdin?.end(token !== null ? `${token}\n` : '');
     let exited: number | null = null;
     child.once('exit', (code: number | null): void => { exited = code ?? 0; });
 
@@ -347,21 +359,97 @@ export class ProcessHost implements SessionHost {
   }
 
   /** @inheritdoc */
-  public async evict(identity: string): Promise<boolean> {
+  public async evict(identity: string, cause: 'restart' | 'end' = 'end'): Promise<boolean> {
     const record: SessionRecord | undefined = this.sessions.get(identity);
     this.sessions.delete(identity);
+    return (await this.process_signal(identity, record, cause)) !== null;
+  }
+
+  /** @inheritdoc */
+  public restart_begin(identity: string, user: string, cubeUrl: string): void {
+    const old: SessionRecord | undefined = this.sessions.get(identity);
+    const record: SessionRecord = {
+      identity,
+      child: null,
+      adoptedPid: null,
+      lines: [],
+      serial: 0,
+      open: new Map(),
+      state: 'booting',
+      listeners: new Set(),
+      starting: null,
+    };
+    // The new record stands before the old daemon is touched: a greeter that
+    // asks for the boot from here on follows this one, never a gap that
+    // reads as "up" while nothing is.
+    this.sessions.set(identity, record);
+    const say = (text: string): void => {
+      const line: BootLine = { channel: 'out', text, id: record.serial++ };
+      record.lines.push(line);
+      for (const listener of record.listeners) listener.line(line);
+    };
+    record.starting = (async (): Promise<Berth> => {
+      say('Restarting the calypso daemon: the old one is told why and ended');
+      const ended: SpawnedSession | number | null = await this.process_signal(identity, old, 'restart');
+      if (ended !== null && !(await this.gone_wait(identity, ended))) {
+        return this.boot_end(record, 'failed', 'the old calypso daemon did not stop');
+      }
+      say('Starting a fresh calypso daemon on the saved login');
+      return this.boot_run(record, user, cubeUrl, null);
+    })().finally((): void => { record.starting = null; });
+    // The failure is already on the boot record for whoever follows it.
+    void record.starting.catch((): void => undefined);
+  }
+
+  /**
+   * Leaves a daemon the reason it is ending, then signals it: the child this
+   * porter started, or the pid an earlier porter's berth names — the latter
+   * only while the berth answers, since a pid whose daemon is gone may be
+   * somebody else's by now.
+   *
+   * @returns The child or pid signalled, or null when there was none.
+   */
+  private async process_signal(identity: string, record: SessionRecord | undefined, cause: 'restart' | 'end'): Promise<SpawnedSession | number | null> {
     if (record?.child && record.child.exitCode === null) {
+      this.closing_leave(identity, cause);
       record.child.kill('SIGTERM');
-      return true;
+      return record.child;
     }
-    // A session an earlier porter started is known by its berth, and the
-    // berth carries the pid. It is signalled only while the berth answers:
-    // a pid whose daemon is gone may be somebody else's by now.
     const berth: Berth | null = this.berth_read(identity);
     const pid: number | null = record?.adoptedPid ?? berth?.pid ?? null;
     if (berth !== null && pid !== null && (await this.alive(berth.url))) {
+      this.closing_leave(identity, cause);
       this.kill(pid, 'SIGTERM');
-      return true;
+      return pid;
+    }
+    return null;
+  }
+
+  /** Leaves the reason beside the berth; a daemon that finds none says it was stopped. */
+  private closing_leave(identity: string, cause: 'restart' | 'end'): void {
+    try {
+      closing_write(this.dirs_of(identity).runtime, identity, cause);
+    } catch {
+      // Unwritable: the daemon still goes, and says only that it stopped.
+    }
+  }
+
+  /**
+   * Waits until a signalled daemon is gone: its child has exited, or its
+   * berth no longer answers.
+   *
+   * @returns True once it is gone; false when it outlived the wait.
+   */
+  private async gone_wait(identity: string, ended: SpawnedSession | number): Promise<boolean> {
+    const deadline: number = Date.now() + STOP_WAIT_MS;
+    while (Date.now() < deadline) {
+      if (typeof ended !== 'number') {
+        if (ended.exitCode !== null || (ended.signalCode ?? null) !== null) return true;
+      } else {
+        const berth: Berth | null = this.berth_read(identity);
+        if (berth === null || !(await this.alive(berth.url))) return true;
+      }
+      await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, this.pollMs); });
     }
     return false;
   }

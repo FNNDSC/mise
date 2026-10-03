@@ -547,6 +547,35 @@ Repeatable, and the body is the bare string `Internal server error`. Whether the
 `resources_getAll` keeps what it gathered and reports where it stopped (`incomplete`), rather than returning a prefix that reads as the whole collection; a walk that fails on its FIRST page stays a failure, because a listing that never started is not a short listing. The `listing-bounds` gate (`npm run lint:listings`) keeps single-page fetches from being passed off as answers in the first place.
 
 [[candidate-proposal-change-discovery]]
+== Confirmed gap: the feed collection says nothing about a feed's note
+
+Upstream: https://github.com/FNNDSC/ChRIS_ultron_backEnd/issues/737[ChRIS_ultron_backEnd#737].
+
+=== Operator requirement
+
+A list of feeds should say which feeds carry a note, so an operator can scan for the ones someone wrote something on. In ARGUS the RUNS roster was to mark such rows with a glyph and show the note's first line beside the selected row (#831).
+
+=== The burden today
+
+A feed item in the feeds collection carries a `note` link and nothing about the note itself: not whether it has content, not its title. Knowing which feeds have a note costs one `GET` of each feed's note resource. Measured 2026-10-02 against a live CUBE, one note read takes 100–220 ms. A roster of 730 feeds is therefore about 80 seconds of sequential requests, and an identity with 2,435 feeds about four and a half minutes, before a single glyph is truthful. Every note changed outside the client goes stale until it is read again.
+
+=== Proposed interface
+
+Either of two, the first preferred:
+
+* *Note facts on the feed item.* The feeds collection carries `note_title` and a boolean `note_has_content` (or the note's length) on each item, as it already carries counters. One page of feeds then answers the question for a hundred feeds.
+* *A notes collection.* `GET /api/v1/notes/?has_content=true` lists the requesting user's notes with their feed's id, paginated as any C-J collection, so a client reads the notes that exist rather than probing every feed.
+
+A search parameter on the feeds collection, `has_note=true`, would serve a filter but not a listing that shows every feed with its mark.
+
+=== Why an existing collection is insufficient
+
+The feed item's `note` link names where the note is and says nothing about it. No collection lists notes, and the feeds collection cannot be searched by note content.
+
+=== Client policy until then
+
+`mise` reads a feed's note only when the feed is entered (its graph on stage), never for a listing. The RUNS roster carries no note mark. Tags, by contrast, are marked on every row, because the tags collection answers by tag: one read for the user's tags and one per tag, never one per feed.
+
 == Candidate proposal: change discovery
 
 Upstream: https://github.com/FNNDSC/ChRIS_ultron_backEnd/issues/644[ChRIS_ultron_backEnd#644].

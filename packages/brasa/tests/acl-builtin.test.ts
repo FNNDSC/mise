@@ -1,18 +1,26 @@
 /**
- * @file Unit tests for the `setfacl` / `getfacl` builtins.
- *
- * The kernel is mocked, as it is for every other builtin here.
+ * @file Unit tests for the `setfacl` / `getfacl` / `chmod` builtins. The
+ * kernel is mocked, as it is for every other builtin here.
  */
 
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 
-const mockFeedShare = jest.fn<(feedID: number, username: string) => Promise<{ ok: boolean; value?: boolean }>>();
-const mockFeedSharesList = jest.fn<(feedID: number) => Promise<{ ok: boolean; value?: string[] }>>();
+type R = { ok: boolean; value?: unknown };
+const mockFeedShare = jest.fn<(feedID: number, username: string) => Promise<R>>();
+const mockShareGroup = jest.fn<(feedID: number, group: string) => Promise<R>>();
+const mockRevoke = jest.fn<(feedID: number, kind: string, name: string) => Promise<R>>();
+const mockAccess = jest.fn<(feedID: number) => Promise<R>>();
+const mockPublic = jest.fn<(feedID: number) => Promise<R>>();
+const mockPrivate = jest.fn<(feedID: number) => Promise<R>>();
 const mockStackPop = jest.fn<() => { type: string; message: string } | undefined>();
 
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   feed_share: mockFeedShare,
-  feedShares_list: mockFeedSharesList,
+  feedShare_group: mockShareGroup,
+  feedShare_revoke: mockRevoke,
+  feedAccess_read: mockAccess,
+  feed_makePublic: mockPublic,
+  feed_makePrivate: mockPrivate,
   errorStack: { stack_pop: mockStackPop, stack_search: () => [] },
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string) => ({ status: 'error', rendered }),
@@ -20,110 +28,90 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 }));
 
 const mockQuestion = jest.fn<(prompt: string) => Promise<string>>();
-jest.unstable_mockModule('../src/core/question.js', () => ({
-  repl_question: mockQuestion,
-}));
+jest.unstable_mockModule('../src/core/question.js', () => ({ repl_question: mockQuestion }));
 
-const { builtin_setfacl, builtin_getfacl } = await import('../src/builtins/fs/acl.js');
+const { builtin_setfacl, builtin_getfacl, builtin_chmod } = await import('../src/builtins/fs/acl.js');
 
-describe('setfacl', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockStackPop.mockReturnValue(undefined);
-    mockQuestion.mockResolvedValue('');
-    mockFeedShare.mockResolvedValue({ ok: true, value: true });
-    mockFeedSharesList.mockResolvedValue({ ok: true, value: [] });
-  });
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockStackPop.mockReturnValue(undefined);
+  mockQuestion.mockResolvedValue('');
+  for (const mock of [mockFeedShare, mockShareGroup, mockPublic, mockPrivate]) mock.mockResolvedValue({ ok: true, value: true });
+  mockRevoke.mockResolvedValue({ ok: true, value: true });
+  mockAccess.mockResolvedValue({ ok: true, value: { users: ['ann'], groups: ['lab'], public: false } });
+});
 
-  it('grants read on a feed named by path', async () => {
-    const envelope = await builtin_setfacl(['-m', 'u:someone:r', '/home/me/feeds/feed_12']);
+describe('setfacl -m', () => {
+  it('grants a user, a group, and makes a feed public or private by the other entry', async () => {
+    expect((await builtin_setfacl(['-m', 'u:someone:r', '/home/me/feeds/feed_12'])).rendered).toBe('someone granted read on feed_12\n');
     expect(mockFeedShare).toHaveBeenCalledWith(12, 'someone');
-    expect(envelope.status).toBe('ok');
-    expect(envelope.rendered).toBe('someone granted read on feed_12');
+    expect((await builtin_setfacl(['-m', 'g:lab:r', 'feed_12', 'feed_13'])).rendered).toBe('group lab granted read on feed_12 feed_13\n');
+    expect(mockShareGroup).toHaveBeenCalledTimes(2);
+    expect((await builtin_setfacl(['-m', 'o::r', '/proc/jobs/feed_12'])).rendered).toBe('feed_12 public\n');
+    expect(mockPublic).toHaveBeenCalledWith(12);
+    expect((await builtin_setfacl(['-m', 'o::-', 'feed_12'])).rendered).toBe('feed_12 private\n');
+    expect(mockPrivate).toHaveBeenCalledWith(12);
   });
 
-  it('grants on several targets in one invocation', async () => {
-    await builtin_setfacl(['-m', 'u:someone:r', 'feed_1', 'feed_2']);
-    expect(mockFeedShare).toHaveBeenCalledTimes(2);
-  });
-
-  it('asks who when given a feed and no entry, and grants the answer', async () => {
+  it('asks who when given a feed and no entry, without saying a grant is permanent', async () => {
     mockQuestion.mockResolvedValue('someone');
     const envelope = await builtin_setfacl(['/home/me/feeds/feed_12']);
-    expect(mockQuestion).toHaveBeenCalledWith('Share feed 12 with which user? (a grant cannot be taken back) ');
+    expect(mockQuestion).toHaveBeenCalledWith('Share feed 12 with which user? ');
     expect(mockFeedShare).toHaveBeenCalledWith(12, 'someone');
     expect(envelope.status).toBe('ok');
   });
 
-  it('grants nothing when the question is abandoned', async () => {
-    mockQuestion.mockResolvedValue('');
-    const envelope = await builtin_setfacl(['feed_12']);
-    expect(mockFeedShare).not.toHaveBeenCalled();
-    expect(envelope.status).toBe('error');
-    expect(envelope.rendered).toContain('feed_12 shared with no one new');
-  });
-
-  it('does not ask about something that names no feed', async () => {
-    const envelope = await builtin_setfacl(['/home/me/notes.txt']);
-    expect(mockQuestion).not.toHaveBeenCalled();
-    expect(envelope.status).toBe('error');
-    expect(envelope.rendered).toContain('does not name a feed');
-  });
-
-  it('still refuses a usage it cannot read rather than asking', async () => {
-    const envelope = await builtin_setfacl(['-m', 'nonsense', 'feed_12']);
-    expect(mockQuestion).not.toHaveBeenCalled();
-    expect(envelope.status).toBe('error');
-  });
-
-  it('refuses an entry that grants no read, since that is what a share is', async () => {
-    const envelope = await builtin_setfacl(['-m', 'u:someone:w', 'feed_1']);
-    expect(envelope.status).toBe('error');
+  it('grants nothing when the question is abandoned, nor for something that names no feed', async () => {
+    expect((await builtin_setfacl(['feed_12'])).rendered).toContain('feed_12 shared with no one new');
+    expect((await builtin_setfacl(['/home/me/notes.txt'])).rendered).toContain('does not name a feed');
     expect(mockFeedShare).not.toHaveBeenCalled();
   });
 
-  it('refuses -x by name rather than appearing to revoke', async () => {
-    const envelope = await builtin_setfacl(['-x', 'u:someone', 'feed_1']);
-    expect(envelope.status).toBe('error');
-    expect(envelope.rendered).toContain('cannot revoke');
-  });
-
-  it('refuses a path that names no feed', async () => {
-    const envelope = await builtin_setfacl(['-m', 'u:someone:r', '/home/me/uploads']);
-    expect(envelope.status).toBe('error');
-    expect(envelope.rendered).toContain('does not name a feed');
-  });
-
-  it('reports the kernel\'s own words when a grant is refused', async () => {
+  it('refuses an entry that grants no read to a user or group, and passes the kernel\'s refusal on', async () => {
+    expect((await builtin_setfacl(['-m', 'u:someone:w', 'feed_1'])).status).toBe('error');
+    expect(mockFeedShare).not.toHaveBeenCalled();
     mockFeedShare.mockResolvedValue({ ok: false });
     mockStackPop.mockReturnValue({ type: 'error', message: 'CUBE refused: not the owner' });
-    const envelope = await builtin_setfacl(['-m', 'u:someone:r', 'feed_12']);
-    expect(envelope.rendered).toBe('CUBE refused: not the owner');
+    expect((await builtin_setfacl(['-m', 'u:someone:r', 'feed_12'])).rendered).toBe('CUBE refused: not the owner\n');
+  });
+});
+
+describe('setfacl -x', () => {
+  it('withdraws a user or a group grant, and says when a feed held none', async () => {
+    expect((await builtin_setfacl(['-x', 'u:ann', 'feed_12'])).rendered).toBe('user ann no longer reads feed_12\n');
+    expect(mockRevoke).toHaveBeenCalledWith(12, 'user', 'ann');
+    mockRevoke.mockResolvedValueOnce({ ok: true, value: false });
+    expect((await builtin_setfacl(['-x', 'g:lab', 'feed_13'])).rendered).toBe('setfacl: feed_13: no entry for group lab\n');
+  });
+
+  it('refuses -x on the other entry and points at o::-', async () => {
+    const envelope = await builtin_setfacl(['-x', 'o', 'feed_1']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.rendered).toContain('setfacl -m o::-');
+    expect(mockRevoke).not.toHaveBeenCalled();
+  });
+});
+
+describe('chmod', () => {
+  it('makes a feed public with o+r and private with o-r, and refuses any other mode', async () => {
+    expect((await builtin_chmod(['o+r', 'feed_12'])).rendered).toBe('feed_12 public\n');
+    expect((await builtin_chmod(['o-r', 'feed_12'])).rendered).toBe('feed_12 private\n');
+    expect((await builtin_chmod(['u+x', 'feed_12'])).rendered).toContain("mode 'u+x'");
+    expect((await builtin_chmod(['o+r', '/home/me/uploads'])).rendered).toContain('does not name a feed');
   });
 });
 
 describe('getfacl', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockStackPop.mockReturnValue(undefined);
-    mockFeedSharesList.mockResolvedValue({ ok: true, value: ['ann', 'bo'] });
-  });
-
-  it('renders the access list in getfacl\'s shape', async () => {
+  it('renders users, groups and the other entry', async () => {
     const envelope = await builtin_getfacl(['/home/me/feeds/feed_12']);
-    expect(envelope.status).toBe('ok');
-    expect(envelope.rendered).toContain('# file: home/me/feeds/feed_12');
-    expect(envelope.rendered).toContain('user:ann:r--');
-    expect(envelope.rendered).toContain('user:bo:r--');
+    expect(envelope.rendered).toBe(['# file: home/me/feeds/feed_12', 'user::rw-', 'user:ann:r--', 'group:lab:r--', 'other::---'].join('\n') + '\n');
+    expect(envelope.model).toEqual({ kind: 'fs.acl', data: [{ path: '/home/me/feeds/feed_12', usernames: ['ann'], groups: ['lab'], public: false }] });
   });
 
-  it('asks for a path rather than guessing', async () => {
+  it('asks for a path, and reports a failed read', async () => {
     expect((await builtin_getfacl([])).status).toBe('error');
-  });
-
-  it('reports a failed read', async () => {
-    mockFeedSharesList.mockResolvedValue({ ok: false });
+    mockAccess.mockResolvedValue({ ok: false });
     mockStackPop.mockReturnValue({ type: 'error', message: 'feed 12 not found' });
-    expect((await builtin_getfacl(['feed_12'])).rendered).toBe('feed 12 not found');
+    expect((await builtin_getfacl(['feed_12'])).rendered).toBe('feed 12 not found\n');
   });
 });

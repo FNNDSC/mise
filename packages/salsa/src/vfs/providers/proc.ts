@@ -48,6 +48,7 @@ import { type ProcRosterSyncKind,
   InstanceParameterData,
   feedNote_get,
   feedNote_update,
+  feed_rename,
   type FeedNote,
 } from '@fnndsc/cumin';
 import { VFSProvider, VFSItem, CpOptions } from '../provider.js';
@@ -874,7 +875,18 @@ export class ProcVfsProvider implements VFSProvider {
       const done: Result<boolean> = await feedNote_update(feedID, { content });
       return done.ok;
     }
-    errorStack.stack_push('error', `${pathStr}: Read-only file system (only a feed's note is written under /proc)`);
+    if (feedID !== null && instanceID === null && virtualFile === 'title') {
+      // The title is the feed's name: its first line, trimmed, renames it,
+      // and the roster the cache serves says so at once.
+      const name: string = (content.split('\n')[0] ?? '').trim();
+      const done: Result<boolean> = await feed_rename(feedID, name);
+      if (done.ok) {
+        const feed: ProcFeed | undefined = procCache_get().feed_get(feedID);
+        if (feed !== undefined) feed.title = name;
+      }
+      return done.ok;
+    }
+    errorStack.stack_push('error', `${pathStr}: Read-only file system (a feed's note and title are written under /proc, nothing else)`);
     return false;
   }
 }

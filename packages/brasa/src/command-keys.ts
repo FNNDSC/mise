@@ -8,7 +8,7 @@
 
 export const COMMAND_HANDLERS_KEYS: string[] = [
   // filesystem
-  'cd', 'pwd', 'ls', 'cat', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'rmdir', 'tree', 'du',
+  'cd', 'pwd', 'ls', 'cat', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'rmdir', 'chmod', 'tree', 'du',
   'upload', 'download', 'pull',
   // net
   'connect', 'logout', 'pacs', 'query', 'cubepath',

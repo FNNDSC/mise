@@ -162,33 +162,48 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   setfacl: {
-    usage: 'setfacl -m u:<user>:<perms> <path>...',
-    summary: 'Grant another identity access to a feed',
+    usage: 'setfacl -m u:<user>:r|g:<group>:r|o::r|o::- <path>... | setfacl -x u:<user>|g:<group> <path>...',
+    summary: 'Share a feed with a user, a group or everyone, or stop sharing it',
     description:
-      'Grant another identity access to a feed. A feed is named by id, by the feed_N a '
-      + 'listing shows, or by any path holding one, so a path under /SHARED resolves by the '
-      + 'same rule as one under a home folder. Only user entries exist: CUBE grants to an '
-      + 'identity, not to a group. Given a feed and no entry, it asks who to share it '
-      + 'with: the grant CUBE offers is read, so the identity is the only thing missing. '
-      + 'A grant cannot be taken back, which the question says before it is answered.',
+      'A feed\'s access list, as POSIX ACL entries. -m u:<user>:r shares it with a user, -m g:<group>:r '
+      + 'with a group, -m o::r with everyone (a public feed) and -m o::- makes it private again. '
+      + '-x u:<user> or -x g:<group> withdraws that grant. A feed is named by id, by the feed_N a '
+      + 'listing shows, by any path through /feeds/, or by /proc/jobs/feed_N. Given a feed and no '
+      + 'entry, it asks which user to share it with.',
     options: [
-      '-m u:<user>:<perms>   Add or modify a user entry; the perms must include r',
-      '-x u:<user>           Remove an entry (not supported: mise cannot revoke a grant)',
+      '-m u:<user>:r     Share with a user (the perms must include r)',
+      '-m g:<group>:r    Share with a group',
+      '-m o::r | o::-    Make the feed public, or private again (chmod o+r / o-r is the same)',
+      '-x u:<user>       Stop sharing with a user',
+      '-x g:<group>      Stop sharing with a group',
     ],
     examples: [
       'setfacl -m u:someone:r /home/me/feeds/feed_12',
-      'setfacl -m u:someone:r feed_12 feed_13',
+      'setfacl -m g:grantlab:r feed_12 feed_13',
+      'setfacl -m o::r feed_12                  # public',
+      'setfacl -x u:someone feed_12',
       'setfacl feed_12                          # asks who to share it with',
     ],
   },
   getfacl: {
     usage: 'getfacl <path>...',
-    summary: 'Show which identities a feed is shared with',
+    summary: 'Show who can read a feed: users, groups, and whether it is public',
     description:
-      'Show which identities a feed is shared with, in the familiar block: a # file: line, '
-      + 'then one user: line per identity holding access.',
+      'Show who can read a feed, in the familiar block: a # file: line, the owner\'s user:: entry, '
+      + 'one user: line per user and one group: line per group holding access, then other:: '
+      + '(r-- when the feed is public).',
     examples: [
       'getfacl /home/me/feeds/feed_12',
+    ],
+  },
+  chmod: {
+    usage: 'chmod o+r|o-r <feed>...',
+    summary: 'Make a feed public, or private again',
+    description: 'The other entry of a feed\'s access list spelled as a mode: o+r makes it public, o-r private, '
+      + 'exactly as setfacl -m o::r and o::- do. No other mode is one a feed has.',
+    examples: [
+      'chmod o+r feed_12',
+      'chmod o-r /proc/jobs/feed_12',
     ],
   },
   setfattr: {
@@ -547,7 +562,6 @@ export const helpText: Record<string, CommandHelp> = {
       '',
       'RESOURCE-SPECIFIC SUBCOMMANDS:',
       '  delete <id>       Remove a feed',
-      '  share <id>        Share a feed with other users',
     ],
     examples: [
       'feeds list',
@@ -559,7 +573,6 @@ export const helpText: Record<string, CommandHelp> = {
       'feeds list --all --user radstar',
       'feeds inspect',
       'feeds delete 123',
-      'feeds share 123',
     ],
   },
   files: {
@@ -1711,6 +1724,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   const categories: Record<string, string[]> = {
     Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
     'File Operations': ['cat', 'edit', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'rmdir', 'upload', 'download'],
+    'Sharing & Tags': ['setfacl', 'getfacl', 'chmod', 'getfattr', 'setfattr'],
     Connection: ['connect', 'logout', 'context', 'id', 'whoami', 'whereami', 'netstat'],
     Monitoring: ['proc'],
     Imaging: ['dcm', 'image'],

@@ -153,7 +153,58 @@ export async function client_adminRequest(
   const url: string = new URL(path, adminURL.endsWith('/') ? adminURL : `${adminURL}/`).toString();
   if (method === 'get') return (await request.get(url)).data;
   const template = { template: { data: Object.entries(data ?? {}).map(([name, value]) => ({ name, value })) } };
-  return (await request.post(url, template)).data;
+  // Posted directly rather than through chrisapi's Request: on a refusal
+  // whose body is not Collection+JSON (Django REST's field errors are plain
+  // JSON), chrisapi replaces the message with "Bad server response!" and
+  // overwrites the body with it, so CUBE's reason never reached anyone.
+  const response: Response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Token ${client_authGet(client).token}`,
+      'Content-Type': 'application/vnd.collection+json',
+      Accept: 'application/vnd.collection+json',
+    },
+    body: JSON.stringify(template),
+  });
+  const text: string = await response.text();
+  if (!response.ok) throw new Error(`CUBE refused POST ${url} (HTTP ${response.status}): ${refusalReason_of(text)}`);
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(`CUBE answered HTTP ${response.status} with a body that is not JSON`);
+  }
+}
+
+/**
+ * CUBE's own words for a refusal, from whatever body it sent: a
+ * Collection+JSON error, Django REST field errors (\`{"username": ["…"]}\`)
+ * or a \`detail\`, else the body itself.
+ *
+ * @param body - The response body, as text.
+ * @returns The reason, one line.
+ */
+export function refusalReason_of(body: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    // An HTML error page (Django's own 403 or 500) says why in its text:
+    // the title, the heading, the first paragraph. Styles and scripts go.
+    const text: string = body
+      .replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return text.slice(0, 300) || 'no reason given';
+  }
+  const record: Record<string, unknown> = (parsed && typeof parsed === 'object' ? parsed : {}) as Record<string, unknown>;
+  const collection: { error?: { message?: unknown } } | undefined = record['collection'] as { error?: { message?: unknown } } | undefined;
+  if (collection?.error?.message !== undefined) return refusalReason_of(String(collection.error.message));
+  if (typeof record['detail'] === 'string') return record['detail'];
+  const parts: string[] = Object.entries(record).map(([field, value]): string =>
+    `${field}: ${Array.isArray(value) ? value.map(String).join(' ') : String(value)}`);
+  return parts.length > 0 ? parts.join('; ') : 'no reason given';
 }
 
 /**

@@ -11,6 +11,7 @@ import { repl_confirm } from '../../core/question.js';
 import { files_rm as chefs_rm_cmd, RmResult, RmOptions } from '@fnndsc/chili/commands/fs/rm.js';
 import { rm_render } from '@fnndsc/chili/views/fs.js';
 import { sink_get } from '../../core/sink.js';
+import { PROC_TAGS_PREFIX } from '@fnndsc/salsa';
 
 /**
  * Prompts the user for confirmation.
@@ -161,6 +162,24 @@ export interface RmOutcome {
 }
 
 /**
+ * What rm says under /proc/tags, where nothing is removed by rm: a tag is a
+ * folder (`rmdir` deletes it) and a feed inside one is a tagging (`setfattr
+ * -x` takes it off).
+ *
+ * @param target - The resolved path.
+ * @param pathArg - The operand as typed.
+ * @returns The refusal, or null for a path outside /proc/tags.
+ */
+export function tagPath_refusal(target: string, pathArg: string): string | null {
+  if (target !== PROC_TAGS_PREFIX && !target.startsWith(`${PROC_TAGS_PREFIX}/`)) return null;
+  const parts: string[] = target.slice(PROC_TAGS_PREFIX.length).split('/').filter(Boolean);
+  if (parts.length === 2) {
+    return `rm: cannot remove '${pathArg}': Operation not permitted (setfattr -x tag -v ${parts[0]} ${parts[1]} untags the feed)`;
+  }
+  return `rm: cannot remove '${pathArg}': Is a directory (rmdir deletes a tag no feed wears)`;
+}
+
+/**
  * Removes one or more files or directories.
  *
  * In interactive mode (-i) output is streamed live through the sink so each
@@ -260,6 +279,16 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
     const pathArg: string = paths[index] as string;
     try {
       const target: string = await path_resolve(pathArg);
+
+      // A tag's folder is a tag, and the feeds in it are its taggings: each
+      // has its own verb, and rm names it rather than guess.
+      const tagRefusal: string | null = tagPath_refusal(target, pathArg);
+      if (tagRefusal !== null) {
+        err_emit(chalk.red(tagRefusal));
+        outcomes.push({ path: pathArg, removed: false, skipped: false });
+        failCount++;
+        continue;
+      }
 
       if (target.startsWith('/bin/')) {
         err_emit(chalk.red(`rm: cannot remove '${pathArg}': virtual /bin directory`));

@@ -108,6 +108,29 @@ export interface VFSProvider {
   write?(path: string, content: string): Promise<boolean>;
 
   /**
+   * Makes a folder, when the provider's folders are things a user makes (a
+   * tag under /proc/tags). Absent, the provider is read-only for mkdir.
+   * @param path - The absolute path of the new folder.
+   * @returns True when made; false with the reason stacked.
+   */
+  mkdir?(path: string): Promise<boolean>;
+
+  /**
+   * Removes an empty folder (`rmdir`).
+   * @param path - The absolute path of the folder.
+   * @returns True when removed; false with the reason stacked.
+   */
+  rmdir?(path: string): Promise<boolean>;
+
+  /**
+   * Renames an entry within this provider (`mv`).
+   * @param src - The absolute path now.
+   * @param dest - The absolute path it takes.
+   * @returns True when renamed; false with the reason stacked.
+   */
+  rename?(src: string, dest: string): Promise<boolean>;
+
+  /**
    * Resolves the target of a provider-defined lazy link when an operation
    * actually follows it.
    *

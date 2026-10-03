@@ -19,6 +19,10 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   CommandEnvelope: class {},
 }));
 
+jest.unstable_mockModule('../src/builtins/utils.js', () => ({
+  error_stripDebugPrefix: (message: string): string => message.replace(/^\[[^\]]*\]\s*\|\s*/, ''),
+}));
+
 const { builtin_getfattr, builtin_setfattr } = await import('../src/builtins/fs/xattr.js');
 
 const tag = (name: string) => ({ id: 1, name, color: '#888888' });
@@ -75,7 +79,11 @@ describe('setfattr', () => {
     expect((await builtin_setfattr(['-n', 'tag', '-v', 'x', 'nowhere'])).rendered).toBe("setfattr: 'nowhere' does not name a feed\n");
     expect((await builtin_setfattr(['-n', 'color', '-v', 'x', 'feed_12'])).rendered).toMatch(/Operation not supported/);
     mockAdd.mockResolvedValueOnce({ ok: false });
-    expect((await builtin_setfattr(['-n', 'tag', '-v', 'x', 'feed_12'])).rendered).toBe('setfattr: feed_12: could not add tag x\n'.replace('feed_12: ', 'feed 12: '));
+    expect((await builtin_setfattr(['-n', 'tag', '-v', 'x', 'feed_12'])).rendered).toBe('setfattr: feed_12: could not add tag x\n');
+    // A tag that is not in the vocabulary: the kernel's words, the cure named.
+    mockAdd.mockResolvedValueOnce({ ok: false });
+    mockStackPop.mockReturnValueOnce({ type: 'error', message: '[feedTag_add      ] | x: No such tag (mkdir /proc/tags/x)' });
+    expect((await builtin_setfattr(['-n', 'tag', '-v', 'x', 'feed_12'])).rendered).toBe('setfattr: feed_12: x: No such tag (mkdir /proc/tags/x)\n');
     mockList.mockResolvedValueOnce({ ok: false });
     expect((await builtin_setfattr(['-x', 'tag', 'feed_12'])).rendered).toBe('setfattr: could not read the tags of feed 12\n');
   });

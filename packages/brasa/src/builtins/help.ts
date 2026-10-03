@@ -196,8 +196,9 @@ export const helpText: Record<string, CommandHelp> = {
     summary: 'Hang a tag on a feed, or take it off',
     description:
       'A feed\'s tags are the values of one extended attribute, tag (also user.tag): CUBE\'s '
-      + 'freeform labels. -n tag -v <value> hangs a tag (your tag of that name, made if it does '
-      + 'not exist yet); -x tag -v <value> takes it off; -x tag alone takes every tag off, as '
+      + 'freeform labels. -n tag -v <value> hangs one of your tags (a folder under /proc/tags: '
+      + 'mkdir /proc/tags/<name> makes a tag, and naming one that does not exist is an error); '
+      + '-x tag -v <value> takes it off; -x tag alone takes every tag off, as '
       + 'setfattr removes the whole attribute. A feed is named by id, by feed_N, by any path '
       + 'through /feeds/, or by its projection /proc/jobs/feed_N. Silent on success.',
     options: [
@@ -317,6 +318,17 @@ export const helpText: Record<string, CommandHelp> = {
       'mkdir newdir               # Create single directory',
       'mkdir dir1 dir2            # Create multiple directories',
       'mkdir -p experiments/run1  # Create nested directory, parents included',
+      'mkdir /proc/tags/urgent    # Make a tag (setfattr hangs it on a feed)',
+    ],
+  },
+  rmdir: {
+    usage: 'rmdir <directory> [directory...]',
+    summary: 'Remove empty directories',
+    description: 'Removes each folder only when it is empty, as on Linux: one that holds anything is '
+      + '"Directory not empty". Under /proc/tags a folder is a tag: rmdir deletes a tag no feed wears.',
+    examples: [
+      'rmdir scratch              # Remove an empty folder',
+      'rmdir /proc/tags/old       # Delete a tag no feed wears',
     ],
   },
   upload: {
@@ -1698,7 +1710,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   // Group commands by category
   const categories: Record<string, string[]> = {
     Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
-    'File Operations': ['cat', 'edit', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'upload', 'download'],
+    'File Operations': ['cat', 'edit', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'rmdir', 'upload', 'download'],
     Connection: ['connect', 'logout', 'context', 'id', 'whoami', 'whereami', 'netstat'],
     Monitoring: ['proc'],
     Imaging: ['dcm', 'image'],

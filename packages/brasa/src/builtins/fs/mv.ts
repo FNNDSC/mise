@@ -6,7 +6,8 @@ import chalk from 'chalk';
 import path from 'path';
 import { CommandEnvelope, listCache_get, envelope_ok, envelope_error, errorStack } from '@fnndsc/cumin';
 import type { ListCache, StackMessage } from '@fnndsc/cumin';
-import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
+import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve, error_stripDebugPrefix } from '../utils.js';
+import { vfsDispatcher } from '@fnndsc/salsa';
 import { destination_ask, destination_missing } from './destination.js';
 import { files_mv as chefs_mv_cmd } from '@fnndsc/chili/commands/fs/mv.js';
 import { mv_render } from '@fnndsc/chili/views/fs.js';
@@ -123,7 +124,11 @@ export async function mv_run(options: MvOptions): Promise<CommandEnvelope> {
         rendered += `Moving ${srcPath} to ${destPath}...\n`;
       }
 
-      const success: boolean = await chefs_mv_cmd(srcPath, destPath);
+      // A rename inside a projection (a tag under /proc/tags) is the
+      // projection's; across one, or in one that renames nothing, it refuses.
+      const success: boolean = vfsDispatcher.path_isVirtual(srcPath) || vfsDispatcher.path_isVirtual(destPath)
+        ? await vfsDispatcher.rename(srcPath, destPath)
+        : await chefs_mv_cmd(srcPath, destPath);
 
       if (sources.length === 1) {
         rendered += `${mv_render(srcPath, destPath, success)}\n`;
@@ -132,7 +137,10 @@ export async function mv_run(options: MvOptions): Promise<CommandEnvelope> {
         // The kernel said WHY on the stack; a bare "Failed to move" makes
         // an operator guess at a reason that was already known.
         const reason: StackMessage | undefined = errorStack.stack_pop();
-        if (reason !== undefined) renderedErr += `${chalk.red(`mv: ${reason.message}`)}\n`;
+        if (reason !== undefined) {
+          const said: string = error_stripDebugPrefix(reason.message);
+          renderedErr += `${chalk.red(said.startsWith('mv:') ? said : `mv: ${said}`)}\n`;
+        }
       }
 
       outcomes.push({ source: srcPath, moved: success });

@@ -14,6 +14,7 @@ export * from './fs/acl.js';
 export * from './fs/xattr.js';
 export * from './fs/cat.js';
 export * from './fs/mkdir.js';
+export * from './fs/rmdir.js';
 export * from './fs/touch.js';
 export * from './fs/upload.js';
 export * from './fs/pull.js';

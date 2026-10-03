@@ -15,6 +15,7 @@ import {
   getfattrArgs_parse, setfattrArgs_parse, xattrTarget_resolve, xattr_render,
   type GetfattrArgs, type SetfattrArgs,
 } from './xattr.args.js';
+import { error_stripDebugPrefix } from '../utils.js';
 
 /**
  * A refusal, on a line of its own.
@@ -85,7 +86,10 @@ export async function builtin_setfattr(args: string[]): Promise<CommandEnvelope>
     }
     for (const name of names) {
       const done: Result<boolean> = parsed.mode === 'set' ? await feedTag_add(feedId, name) : await feedTag_remove(feedId, name);
-      if (!done.ok) return refusal(error_said(`setfattr: feed ${feedId}: could not ${parsed.mode === 'set' ? 'add' : 'remove'} tag ${name}`));
+      if (!done.ok) {
+        const said: string = error_stripDebugPrefix(error_said(`could not ${parsed.mode === 'set' ? 'add' : 'remove'} tag ${name}`));
+        return refusal(`setfattr: ${path}: ${said}`);
+      }
       if (parsed.mode === 'remove' && parsed.value !== null && !done.value) {
         return refusal(`setfattr: ${path}: tag="${name}": No such attribute value`);
       }

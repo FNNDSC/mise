@@ -479,10 +479,9 @@ describe('ProcVfsProvider.rm', () => {
     expect(await provider.rm('/proc/jobs/garbage')).toBe(false);
   });
 
-  it('cp/mv/mkdir/touch/upload/write are unsupported', async () => {
+  it('cp/mv/touch/upload/write are unsupported; mkdir is refused by the dispatcher', async () => {
     expect(await provider.cp('a', 'b')).toBe(false);
     expect(await provider.mv('a', 'b')).toBe(false);
-    expect(await provider.mkdir('a')).toBe(false);
     expect(await provider.touch('a')).toBe(false);
     expect(await provider.upload('a', 'b')).toBe(false);
     expect(await provider.write('a', 'b')).toBe(false);

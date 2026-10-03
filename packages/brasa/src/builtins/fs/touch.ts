@@ -46,7 +46,8 @@ export async function touch_run(runOptions: TouchRunOptions): Promise<CommandEnv
   }
 
   const options: TouchOptions = {};
-  if (runOptions.contents) {
+  // Empty text is text: `--withContents ''` writes an empty file.
+  if (runOptions.contents !== undefined) {
     options.withContents = runOptions.contents;
   }
   if (runOptions.contentsFromFile) {
@@ -54,7 +55,7 @@ export async function touch_run(runOptions: TouchRunOptions): Promise<CommandEnv
   }
 
   // Only process the first file argument when injecting content
-  const filesToTouch: string[] = (options.withContents || options.withContentsFromFile)
+  const filesToTouch: string[] = (options.withContents !== undefined || options.withContentsFromFile)
     ? [pathArgs[0]]
     : pathArgs;
 

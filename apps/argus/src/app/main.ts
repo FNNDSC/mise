@@ -31,6 +31,7 @@ import {
   type OutputChannel,
   type ProgressMessage,
   type SurfaceAsk,
+  type SurfaceEdit,
 } from '../calypso/client.js';
 import { ArgusTerminal } from '../console/terminal.js';
 import { consolePalette_publish } from '../console/ansi.js';
@@ -58,7 +59,6 @@ import { LaneInstrument } from './laneInstrument.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler } from './cycler.js';
 import { argusLine_run, DRAWER_CHORDS, VERB_LINES, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
-import { HelpPanel } from '../features/help/panel.js';
 
 /** Console zoom, exposed for the language (the bar carries no control). */
 let consoleZoom_set: (pane: string | null) => void = () => undefined;
@@ -84,6 +84,8 @@ import { desktop_wire, type CatalogueBinding, type Desktop, type ReplayPlace } f
 import { binView_wire, type BinView } from './binView.js';
 import { nodeOverlay_wire, type FileText, type NodeOverlay } from './nodeOverlay.js';
 import { cohort_wire, type CohortModule } from './cohort.js';
+import { editor_wire, type EditorModule } from './editor.js';
+import { helpPane_wire, type HelpPaneHooks, type HelpPaneModule } from './helpPane.js';
 import { asks_wire, type Asks } from './asks.js';
 import { keys_wire } from './keys.js';
 import { paneChrome_wire } from './paneChrome.js';
@@ -1148,21 +1150,6 @@ async function surface_start(token: string): Promise<void> {
     };
   };
 
-  // The HELP pane: the keys and the verbs, as a listing.
-  const helpInstance_build = (id: string): PaneInstance => {
-    const mount: HTMLElement = template_stamp('tpl-pane-help');
-    panels.set('help', id, new HelpPanel(mount));
-    return {
-      id,
-      kind: 'help',
-      mount,
-      dispose: (): void => {
-        panels.delete(id);
-        subjects.pane_leave(id);
-      },
-    };
-  };
-
   /** Asks the kernel for a file's tags, silently, and paints them on a tags pane. */
   const tags_ask = async (path: string): Promise<DicomTagsModel | null> => {
     try {
@@ -1939,6 +1926,7 @@ async function surface_start(token: string): Promise<void> {
     process_open,
     gather_open,
     feed_open,
+    edit_open: (path: string): string | null => editorModule.edit_open(path),
     pillPane_spawn,
     pacsQuery_get: (): string | null => pacsPanel.query_get(),
     catalogue_of: (paneId: string): CatalogueBinding | undefined => catalogueBindings.get(paneId),
@@ -1983,29 +1971,6 @@ async function surface_start(token: string): Promise<void> {
    *
    * @returns The blocks, the one with most to say first.
    */
-  /**
-   * Opens the HELP pane beside the focused pane (the dashboard's HELP tile,
-   * the typed `help`); a HELP pane already on stage takes focus instead.
-   *
-   * @returns What happened, for the console.
-   */
-  const help_open = (): string => {
-    const already: string | undefined = panels.ids('help').find((id: string): boolean => layout.panes_shown().includes(id));
-    if (already !== undefined) {
-      layout.focus_set(already);
-      return 'help: on stage';
-    }
-    launcher_yield();
-    const host: string = layout.focused_get() ?? 'files';
-    const spawned: PaneInstance = instance_spawn('help');
-    if (!layout.leaf_split(host, 'col', spawned.id, false)) {
-      paneInstance_dispose(spawned.id);
-      layout.mount_remove(spawned.id);
-      return 'help: could not open a pane';
-    }
-    birth_record(spawned.id, host, 'col', false);
-    return 'help: the keys and the verbs, as a pane (help keys, help verbs print them here)';
-  };
   const launcherTiles_build = async (): Promise<ReadonlyArray<LauncherTile>> => {
     const [roster, home]: [ExecuteOutcome, ExecuteOutcome] = await Promise.all([
       client.line_execute('proc feeds', { silent: true, observe: false }),
@@ -2349,6 +2314,11 @@ async function surface_start(token: string): Promise<void> {
     }
   };
 
+  // The HELP pane and the editor: modules of their own (app/helpPane.ts, app/editor.ts).
+  const paneHooks: HelpPaneHooks = { instance_spawn, birth_record, launcher_yield, template_stamp };
+  const helpPane: HelpPaneModule = helpPane_wire(context, paneHooks);
+  const help_open: () => string = helpPane.open;
+  const editorModule: EditorModule = editor_wire(context, { ...paneHooks, replayPlace_get: desktop.replayPlace_get, errandHost_find });
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
   paneFactory_register('catalogue', (id: string): PaneInstance => filesInstance_build(id, false, true));
   paneFactory_register('dag', (id: string): PaneInstance => dagInstance_build(id, false));
@@ -2356,7 +2326,8 @@ async function surface_start(token: string): Promise<void> {
   paneFactory_register('view', viewInstance_build);
   paneFactory_register('image', imageInstance_build);
   paneFactory_register('tags', tagsInstance_build);
-  paneFactory_register('help', helpInstance_build);
+  paneFactory_register('help', helpPane.instance_build);
+  paneFactory_register('edit', editorModule.instance_build);
   paneFactory_register('gather', gatherInstance_build);
   paneFactory_register('empty', (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-empty');
@@ -2707,6 +2678,7 @@ async function surface_start(token: string): Promise<void> {
         noted(answer);
         return answer;
       },
+      edit_receive: (request: SurfaceEdit): boolean => editorModule.edit_receive(request), // `edit` opens a pane here
       promptline_receive: (context: PromptContext): void => {
         promptUser = context.user;
         // The prompt's own two facts, in the shape every attach line takes.

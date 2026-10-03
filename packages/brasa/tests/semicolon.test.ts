@@ -71,4 +71,15 @@ describe('semicolons_parse', () => {
       "echo 'line3;line4'"
     ]);
   });
+
+  it('reads an escaped quote as text, so a later semicolon inside the quotes does not split', () => {
+    expect(semicolons_parse("touch --withContents 'it\\'s a\\\\b; x | y > z' f.txt; cat f.txt")).toEqual([
+      "touch --withContents 'it\\'s a\\\\b; x | y > z' f.txt",
+      'cat f.txt',
+    ]);
+  });
+
+  it('reads an escaped semicolon outside quotes as text', () => {
+    expect(semicolons_parse('echo a\\;b; pwd')).toEqual(['echo a\\;b', 'pwd']);
+  });
 });

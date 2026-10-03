@@ -2291,6 +2291,7 @@ body[data-zoom]:not([data-zoom='console'])
  * A hover only lights the spine — a beckon, never an opening. */
 .files-body,
 .image-body,
+.edit-body,
 .tags-body,
 .help-body,
 .dag-canvas,
@@ -2318,6 +2319,7 @@ body[data-zoom]:not([data-zoom='console'])
 
 .workspace-pane[data-modes='open'] .files-body,
 .workspace-pane[data-modes='open'] .image-body,
+.workspace-pane[data-modes='open'] .edit-body,
 .workspace-pane[data-modes='open'] .tags-body,
 .workspace-pane[data-modes='open'] .dag-canvas,
 .workspace-pane[data-modes='open'] .universe-canvas,
@@ -5731,6 +5733,32 @@ body[data-zoom] #header-restore {
   flex-direction: column;
   padding-right: var(--spine-w);
 }
+
+/* The EDIT pane's body: the image body's shape. The field is the guest's
+ * (CodeMirror), set in from the spine like the image field; the frame's
+ * SAVE and REVERT are lit only while the field differs from the file. */
+.edit-body {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.edit-field {
+  position: absolute;
+  top: calc(var(--frame-top) + var(--rule-h));
+  left: 0;
+  right: var(--spine-w);
+  bottom: 0;
+  background: #000;
+  overflow: hidden;
+  transition: right 0.22s ease-out;
+}
+
+.edit-field .cm-editor { height: 100%; }
+.edit-field .cm-editor.cm-focused { outline: none; }
+
+.edit-body .mode-frame .strategy-pill:disabled { opacity: 0.35; cursor: default; }
 
 /* The HELP pane's body: the tags body's shape, one listing of two blocks. */
 .help-body {

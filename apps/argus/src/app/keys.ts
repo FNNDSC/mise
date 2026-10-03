@@ -74,6 +74,8 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
     (): Retreat => (hooks.errand_abandon() ? 'claimed' : 'passed'),
     // An image field holding the keyboard gives it back first (focus-stays-in-the-field).
     (): Retreat => (panels.values('image').some((panel): boolean => panel.field_release()) ? 'claimed' : 'passed'),
+    // So does an editor's field: Esc takes the keyboard back, the text stands.
+    (): Retreat => (panels.values('edit').some((panel): boolean => panel.field_release()) ? 'claimed' : 'passed'),
     // SELECT is transient chrome of its own; an open question owns Esc, so
     // a press that also left a mode would answer two things at once.
     (): Retreat => {
@@ -236,7 +238,9 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
       return;
     }
     const openDrawer: HTMLElement | null = document.querySelector<HTMLElement>('.pane-drawer:not([hidden])');
-    const typing: boolean = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
+    // An editor's field is contenteditable: a key typed there is text, never a chord.
+    const typing: boolean = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement
+      || (event.target instanceof HTMLElement && event.target.isContentEditable);
     if (openDrawer !== null && !typing && chord_handle(event, openDrawer)) return;
     prefix_handle(event);
   };

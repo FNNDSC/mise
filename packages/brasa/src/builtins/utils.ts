@@ -98,7 +98,8 @@ export function commandArgs_process(args: string[], options: CommandArgsOptions 
       const key: string = separator === -1 ? rawKey : rawKey.slice(0, separator);
       if (separator !== -1) {
         result[key] = rawKey.slice(separator + 1);
-      } else if (!booleanLongOptions.has(key) && args[i + 1] && !args[i + 1].startsWith('-')) {
+      } else if (!booleanLongOptions.has(key) && args[i + 1] !== undefined && !args[i + 1].startsWith('-')) {
+        // An empty word is a value (`--flag ''`), never a missing one.
         result[key] = args[i + 1];
         i++;
       } else {

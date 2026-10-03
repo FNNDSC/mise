@@ -40,6 +40,8 @@ export interface ReplayPlace {
 /** The host's open verbs, as a replay drives them. */
 export interface DesktopHooks {
   image_open: (fromId: string | null, path: string, options: { force?: boolean }, onOpen?: (id: string) => void) => Promise<string>;
+  /** Opens a file in an EDIT pane, the pane first; its id, or null when none could stand. */
+  edit_open: (path: string) => string | null;
   dir_open: (folderPath: string) => void;
   process_open: (fromId: string, binding: CatalogueBinding) => void;
   gather_open: (entries: ReadonlyArray<GatherSeries>, host: string) => string | null;
@@ -76,7 +78,7 @@ export interface Desktop {
 }
 
 /** The members a card badges, by the action that opened each. */
-const MEMBER_OF: Readonly<Record<string, string>> = { image: 'viewer', view: 'viewer', dir: 'files', fs: 'files', tags: 'tags', empty: 'pane', domain: 'dag', catalogue: 'catalogue', graph: 'dag', gather: 'gather' };
+const MEMBER_OF: Readonly<Record<string, string>> = { image: 'viewer', view: 'viewer', dir: 'files', fs: 'files', tags: 'tags', empty: 'pane', domain: 'dag', catalogue: 'catalogue', graph: 'dag', gather: 'gather', edit: 'editor' };
 
 /** The width of a card's strip, in pixels. */
 const STRIP_WIDTH_PX: number = 240;
@@ -106,6 +108,7 @@ export function desktop_wire(context: Pick<HostContext, 'layout' | 'panels' | 'p
     const kind: string | null = paneKind_get(id);
     if (kind === 'image') return '▣';
     if (kind === 'tags') return '≣';
+    if (kind === 'edit') return '✎';
     return '▤';
   };
 
@@ -257,6 +260,13 @@ export function desktop_wire(context: Pick<HostContext, 'layout' | 'panels' | 'p
       return { action: { op: 'graph', feed: graphed, target, ...place } };
     }
     if (kind === 'tags') return { action: { op: 'tags', target, ...place } };
+    if (kind === 'edit') {
+      // An editor comes back on its file, read again: unsaved text is the
+      // operator's to save before leaving, never carried in a card.
+      const path: string | null = panels.get('edit', id)?.path_get() ?? null;
+      if (path === null) return null;
+      return { action: { op: 'edit', path, target, ...place }, label: `EDIT ${path.split('/').pop() ?? path}` };
+    }
     return null;
   };
 
@@ -470,6 +480,10 @@ export function desktop_wire(context: Pick<HostContext, 'layout' | 'panels' | 'p
       const feed: number = action.feed;
       placed((): void => hooks.feed_open(host ?? 'files', feed));
       return newOf('dag', before);
+    }
+    if (action.op === 'edit' && action.path !== undefined) {
+      const path: string = action.path;
+      return placed((): string | null => hooks.edit_open(path));
     }
     if (action.op === 'fs' || action.op === 'view' || action.op === 'empty') {
       // A drawer-pill pane replays as its own birth: the pill's spawn, at

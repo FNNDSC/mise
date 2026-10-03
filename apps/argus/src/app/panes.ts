@@ -18,7 +18,7 @@
  */
 export type PaneKind =
   | 'files' | 'catalogue' | 'dag' | 'pacs' | 'image' | 'tags' | 'gather' | 'view' | 'empty'
-  | 'universe' | 'help' | 'panes' | 'launcher';
+  | 'universe' | 'help' | 'panes' | 'launcher' | 'edit';
 
 /**
  * The three primaries: the domain panes that never go dormant and are not
@@ -131,6 +131,7 @@ export interface PanelKinds {
   tags: import('../features/tags/panel.js').TagsPanel;
   view: import('../features/view/panel.js').ViewerPanel;
   help: import('../features/help/panel.js').HelpPanel;
+  edit: import('../features/edit/panel.js').EditPanel;
 }
 
 /** A roster key: which controller type a panel is. */

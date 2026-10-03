@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="540" viewBox="0 0 1180 540" font-family="Antonio, 'Share Tech Mono', monospace">
+  <title>Edit pane anatomy</title>
+  <rect width="1180" height="540" fill="#000"/>
+  <!-- the bar -->
+  <rect x="20" y="20" width="1140" height="34" rx="17" fill="#ff9966"/>
+  <text x="44" y="43" font-size="18" fill="#000" font-weight="bold">EDIT NOTE</text>
+  <text x="1060" y="43" font-size="13" fill="#000" font-style="italic">DIRTY</text>
+  <text x="44" y="78" font-size="12" fill="#ffcc99">.pane-handle · .pane-title (EDIT and the file's name) · .pane-state (OPENING · DIRTY · SAVING · SAVED · NOT SAVED)</text>
+  <!-- the field -->
+  <rect x="20" y="96" width="900" height="380" fill="none" stroke="#55aaff" stroke-dasharray="6 4"/>
+  <g font-size="14" font-family="'Share Tech Mono', monospace">
+    <text x="34" y="126" fill="#cc6633">1</text>
+    <text x="70" y="126" fill="#ffeecc">Run on the second scanner; the first had a coil fault.</text>
+    <text x="34" y="150" fill="#cc6633">2</text>
+    <text x="70" y="150" fill="#ffeecc">Re-run node 6 with --threshold 0.4 once the</text>
+    <text x="34" y="174" fill="#ffaa44">3</text>
+    <rect x="66" y="160" width="850" height="20" fill="#ff7700" opacity="0.12"/>
+    <text x="70" y="174" fill="#ffeecc">atlas is fixed.</text>
+    <rect x="186" y="160" width="2" height="18" fill="#ffaa44"/>
+  </g>
+  <text x="34" y="226" font-size="12" fill="#55aaff">.edit-field: the guest's (CodeMirror 6) — the typing, the undo, the search, the line numbers,</text>
+  <text x="34" y="244" font-size="12" fill="#55aaff">the syntax colours (from the theme's tokens); no mise control sits inside it</text>
+  <text x="34" y="268" font-size="12" fill="#ffcc99">Ctrl-S saves · Esc gives the keyboard back</text>
+  <!-- the frame -->
+  <rect x="940" y="96" width="220" height="380" rx="4" fill="none" stroke="#ffcc99" stroke-dasharray="4 3"/>
+  <rect x="956" y="112" width="120" height="24" rx="12" fill="#ff9966"/>
+  <text x="996" y="129" font-size="12" fill="#000">SAVE</text>
+  <rect x="956" y="146" width="120" height="24" rx="12" fill="#ff9966"/>
+  <text x="988" y="163" font-size="12" fill="#000">REVERT</text>
+  <rect x="956" y="180" width="120" height="24" rx="12" fill="#ffcc99" opacity="0.5"/>
+  <text x="994" y="197" font-size="12" fill="#000">FOCUS</text>
+  <text x="956" y="232" font-size="11" fill="#ffcc99">.mode-frame</text>
+  <text x="956" y="250" font-size="11" fill="#ffcc99">.edit-save · .edit-revert</text>
+  <text x="956" y="268" font-size="11" fill="#ffcc99">(lit only while DIRTY)</text>
+  <text x="956" y="286" font-size="11" fill="#ffcc99">.edit-focus (the field</text>
+  <text x="956" y="302" font-size="11" fill="#ffcc99">holds the keyboard)</text>
+  <!-- the save line -->
+  <rect x="20" y="490" width="1140" height="30" rx="4" fill="none" stroke="#cc99cc"/>
+  <text x="34" y="510" font-size="13" fill="#cc99cc" font-family="'Share Tech Mono', monospace">❯ touch --withContents='Run on the second scanner; …' '/proc/jobs/feed_880/note'</text>
+  <text x="790" y="510" font-size="11" fill="#cc99cc">the console: every save is a line</text>
+</svg>

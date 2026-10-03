@@ -63,7 +63,7 @@ describe('buildMatch_wire', () => {
     const notes: string[] = [];
     const host: HTMLElement = document.createElement('div');
     const readout = strip();
-    const watch = buildMatch_wire(readout, (line: string): void => { notes.push(line); }, host);
+    const watch = buildMatch_wire(readout, (line: string): void => { notes.push(line); }, undefined, host);
     watch.attach_take({ stack: stack({ ...PAGE }), stale: false });
     expect(readout.shown).toEqual([]);
     watch.stale_take(true);
@@ -78,7 +78,7 @@ describe('buildMatch_wire', () => {
   it('takes the readout and the notice down when the daemon says it is current again', () => {
     const host: HTMLElement = document.createElement('div');
     const readout = strip();
-    const watch = buildMatch_wire(readout, (): void => undefined, host);
+    const watch = buildMatch_wire(readout, (): void => undefined, undefined, host);
     watch.release();
     watch.attach_take({ stack: stack({ ...PAGE }), stale: true });
     watch.stale_take(true);

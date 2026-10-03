@@ -129,10 +129,10 @@ export function door_isPresent(search: string): boolean {
  * page's mount, wherever a front has put the door itself.
  *
  * @param pathname - The page's path.
- * @param leaf - The door route wanted: `login` or `logout`.
+ * @param leaf - The door route wanted: `login`, `logout`, `restart`, or `greet`.
  * @returns An absolute path on this origin.
  */
-export function doorUrl_build(pathname: string, leaf: 'login' | 'logout'): string {
+export function doorUrl_build(pathname: string, leaf: 'login' | 'logout' | 'restart' | 'greet'): string {
   const parts: string[] = pageMount_of(pathname).split('/').filter((part: string): boolean => part.length > 0);
   const above: string[] = parts.slice(0, -2);
   return `/${above.length > 0 ? `${above.join('/')}/` : ''}${leaf}`;

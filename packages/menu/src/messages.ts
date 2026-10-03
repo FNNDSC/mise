@@ -348,6 +348,8 @@ export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export const attachedMessageSchema = z.object({
   type: z.literal('attached'),
   session: z.string(),
+  /** This surface's own id on the daemon; absent from older daemons. */
+  surface: z.string().optional(),
   protocolVersion: z.number().int(),
   stack: z
     .object({
@@ -716,6 +718,8 @@ export const telemetryMessageSchema = z.object({
     }).nullable(),
     waiting: z.number(),
   }).optional(),
+  /** Every surface attached now, by id: a terminal (`chell`) or a `browser`. Absent on older daemons. */
+  surfaces: z.array(z.object({ id: z.string(), kind: z.enum(['chell', 'browser']) })).optional(),
   /** CUBE's pace: the median page fetch over the last twenty, or absent before any was timed. */
   cube: z.object({
     msPerPage: z.number(),

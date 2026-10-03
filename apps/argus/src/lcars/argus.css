@@ -4244,6 +4244,12 @@ body[data-zoom] #header-restore {
   background-color: var(--orange);
 }
 
+/* RESTART stands beside LOG OUT, a door's other act; its own hue says it acts
+   on the daemon rather than on this browser. */
+.restart-pill {
+  background-color: var(--butter);
+}
+
 .audio-pill:hover,
 .theme-pill:hover,
 .door-pill:hover {
@@ -6927,4 +6933,52 @@ body[data-zoom] #header-strip {
   font-size: 1.2em;
   line-height: 1;
   cursor: pointer;
+}
+
+/* The restart question stands where the out-of-date notice stands, in its
+   clothes: the sentence, what it would cut off now, and YES / NO. */
+.restart-question {
+  align-items: flex-start;
+}
+
+.restart-cuts {
+  margin: 0.45rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.restart-cuts-lead {
+  list-style: none;
+  margin-left: -1.1rem;
+}
+
+.restart-answers {
+  display: flex;
+  flex: none;
+  gap: 0.5rem;
+}
+
+.restart-yes,
+.restart-no {
+  padding: 0.15rem 0.9rem;
+  border: none;
+  border-radius: 0.8rem;
+  color: #000;
+  font: inherit;
+  font-weight: bold;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.restart-yes {
+  background: var(--butter);
+}
+
+.restart-no {
+  background: var(--orange);
+}
+
+.restart-yes:focus-visible,
+.restart-no:focus-visible {
+  outline: 2px solid var(--butter);
+  outline-offset: 2px;
 }

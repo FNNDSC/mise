@@ -56,7 +56,7 @@ import { StatusBar } from './status.js';
 import { IndexInstrument } from './indexInstrument.js';
 import { LaneInstrument } from './laneInstrument.js';
 import { Cascade } from './cascade.js';
-import { PipelineCycler } from './cycler.js';
+import { PipelineCycler, cyclerNames_seed } from './cycler.js';
 import { argusLine_run, DRAWER_CHORDS, VERB_LINES, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
 
 /** Console zoom, exposed for the language (the bar carries no control). */
@@ -94,6 +94,9 @@ import { browser_wire, feedOf_path, imagery_is, TABLE_FILE_PATTERN, type Browser
 import { place_of, type Side } from './sides.js';
 import { stalePage_watch } from './stalePage.js';
 import { buildMatch_wire, type BuildWatch } from './buildMatch.js';
+import { doorPill_wire } from './door.js';
+import { restart_wire, type RestartControl, type SurfaceSeen } from './restart.js';
+import type { ClosingCause } from '@fnndsc/menu';
 import { greeting_ask } from './greeting.js';
 // TheLCARS.com's stylesheet is NOT imported. ARGUS's frame is its own, written
 // from `tests/smoke/canon/lcars.json` — the computed style of this surface's own
@@ -2600,7 +2603,8 @@ async function surface_start(token: string): Promise<void> {
     terminal.progressRegion_get(),
     (text: string): void => terminal.output_write('err', text),
   );
-  const buildWatch: BuildWatch = buildMatch_wire(statusBar, (line: string): void => terminal.line_note(line));
+  const restart: RestartControl = restart_wire({ unsaved: (): string[] => [...panels.values('edit')].filter((pane) => pane.dirty_is()).map((pane) => pane.path_get() ?? '?') });
+  const buildWatch: BuildWatch = buildMatch_wire(statusBar, (line: string): void => terminal.line_note(line), restart.ask);
   const attached: { client: ArgusClient; attach: AttachInfo } = await ArgusClient.session_attach(
     wsUrl_resolve(),
     token,
@@ -2676,10 +2680,11 @@ async function surface_start(token: string): Promise<void> {
         for (const universe of panels.values('universe')) universe.promptContext_observe(context);
         for (const panel of panels.values('files')) panel.home_set(context.user === '' ? null : `/home/${context.user}`);
       },
-      telemetry_receive: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry; state?: JobsStateTelemetry }): void => {
+      telemetry_receive: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry; state?: JobsStateTelemetry; surfaces?: SurfaceSeen[] }): void => {
         indexInstrument.counts_show(index);
         if (extra?.state !== undefined) indexInstrument.state_show(extra.state);
         laneInstrument.telemetry_show(extra ?? {});
+        restart.telemetry_take(extra);
         if (extra?.cube !== undefined) indexInstrument.pace_show(extra.cube.msPerPage);
         cascade?.index_observe(index);
       },
@@ -2702,6 +2707,7 @@ async function surface_start(token: string): Promise<void> {
         for (const panel of panels.values('dag')) panel.model_refresh(parsed.data);
       },
       stale_receive: (stale: boolean): void => buildWatch.stale_take(stale),
+      closing_receive: (cause: ClosingCause): void => restart.closing_take(cause),
       watched_receive: (subject: string, state: WatchState): void => {
         dagPanel.watched_observe(subject, state);
         for (const panel of panels.values('dag')) panel.watched_observe(subject, state);
@@ -2764,25 +2770,13 @@ async function surface_start(token: string): Promise<void> {
 
   statusBar.attach_show(attached.attach);
   buildWatch.attach_take(attached.attach);
+  restart.attach_take(attached.attach);
   statusBar.connection_show(true);
   cascade?.connection_show(true);
   aboutFace_fill(attached.attach);
 
-  // Seed the ambient cycler: the registered pipelines are already listed
-  // in /bin, so one silent ls names them all. Unobserved: this is an
-  // instrument's read, and a browser that follows the session must not be
-  // steered to /bin by it — which is how every boot used to open there.
-  void client.line_execute('ls /bin', { silent: true, observe: false }).then((outcome: ExecuteOutcome): void => {
-    const listing: WireEnvelope | undefined = outcome.envelopes.find(
-      (envelope: WireEnvelope): boolean => envelope.model?.kind === 'fs.listing',
-    );
-    const data: FsListing[] | undefined = listing?.model?.data as FsListing[] | undefined;
-    const names: string[] = (data ?? [])
-      .flatMap((entry: FsListing) => entry.items)
-      .filter((item): boolean => item.type === 'pipeline')
-      .map((item): string => item.name);
-    cycler.names_set(names);
-  });
+  // Seed the ambient cycler with the pipelines /bin lists (an unobserved read).
+  cyclerNames_seed(client, cycler);
   // The browser that follows the session shows the session's place from
   // the first moment: one silent, observed listing of the working
   // directory. (The seed above used to do this by accident, at /bin.)
@@ -2840,25 +2834,6 @@ async function surface_start(token: string): Promise<void> {
  * Page entry: use the URL token when present, otherwise show the attach
  * form and start on submit.
  */
-/**
- * Wires the LOG OUT pill: shown only on a page that came through a door,
- * it leaves by that door. The session is not touched — a daemon outlives
- * every surface, and the door's own policy decides when it ends — so the
- * pill tells the door to forget this browser and goes back to its login.
- */
-function doorPill_wire(): void {
-  const pill: HTMLElement = element_require('door-pill');
-  if (!door_isPresent(window.location.search)) return;
-  pill.hidden = false;
-  pill.addEventListener('click', (): void => {
-    const logout: string = doorUrl_build(window.location.pathname, 'logout');
-    const login: string = doorUrl_build(window.location.pathname, 'login');
-    void fetch(logout, { method: 'POST', headers: { accept: 'application/json' } })
-      .catch((): void => undefined)
-      .then((): void => { window.location.assign(login); });
-  });
-}
-
 function page_boot(): void {
   cascade = cascade_build();
   headerFaces_wire();

@@ -17,6 +17,8 @@ import {
   type WireEnvelope,
 } from '@fnndsc/menu';
 import { ChrisSpace, type SceneNode } from '../scene/chrisSpace.js';
+import type { ArgusClient, ExecuteOutcome } from '../calypso/client.js';
+import type { FsListing } from '../features/files/panel.js';
 
 /** How long each pipeline holds the stage. */
 const CYCLE_MS: number = 20000;
@@ -129,4 +131,27 @@ export class PipelineCycler {
     }
     this.command_run(`pipeline diagram ${name}`);
   }
+}
+
+/**
+ * Seeds the ambient cycler: the registered pipelines are already listed in
+ * /bin, so one silent ls names them all. Unobserved: this is an
+ * instrument's read, and a browser that follows the session must not be
+ * steered to /bin by it — which is how every boot used to open there.
+ *
+ * @param client - The wire.
+ * @param cycler - The cycler to name the pipelines to.
+ */
+export function cyclerNames_seed(client: Pick<ArgusClient, 'line_execute'>, cycler: Pick<PipelineCycler, 'names_set'>): void {
+  void client.line_execute('ls /bin', { silent: true, observe: false }).then((outcome: ExecuteOutcome): void => {
+    const listing: WireEnvelope | undefined = outcome.envelopes.find(
+      (envelope: WireEnvelope): boolean => envelope.model?.kind === 'fs.listing',
+    );
+    const data: FsListing[] | undefined = listing?.model?.data as FsListing[] | undefined;
+    const names: string[] = (data ?? [])
+      .flatMap((entry: FsListing) => entry.items)
+      .filter((item): boolean => item.type === 'pipeline')
+      .map((item): string => item.name);
+    cycler.names_set(names);
+  });
 }

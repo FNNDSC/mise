@@ -297,6 +297,7 @@ LINT_CHECKS['a-component-lands-with-its-reference'] = () => {
     'apps/argus/src/features/image/panel.ts',
     'apps/argus/src/features/universe/panel.ts',
     'apps/argus/src/features/edit/panel.ts',
+    'apps/argus/src/app/restart.ts',
   ];
   if (!existsSync('apps/argus/docs/components.adoc')) {
     fail('a-component-lands-with-its-reference', 'apps/argus/docs/components.adoc is missing');
@@ -513,8 +514,8 @@ LINT_CHECKS['a-part-stays-a-part'] = () => {
   const FUNCTION_LINES = 150;
   const FILE_LINES = 1200;
   const allowed = new Map([
-    ['apps/argus/src/app/main.ts', [2913, 'the host: the pane factories, the opens, the wire observers and the boot; each concern left goes to a module']],
-    ['apps/argus/src/app/main.ts#surface_start', [1941, 'the host closure itself; it shrinks as the file does']],
+    ['apps/argus/src/app/main.ts', [2888, 'the host: the pane factories, the opens, the wire observers and the boot; each concern left goes to a module']],
+    ['apps/argus/src/app/main.ts#surface_start', [1931, 'the host closure itself; it shrinks as the file does']],
     ['apps/argus/src/console/argusLang.ts#argusLine_run', [266, 'the language dispatcher: one branch per subject; a verb table is the next cut']],
     ['apps/argus/src/features/image/slabScene.ts#slabScene_open', [155, 'the slab scene setup: one WebGL program; split when it next changes']],
     ['apps/argus/src/features/pacs/panel.ts', [1941, 'the PACS panel: three listing levels and the form; the levels are the next cut']],

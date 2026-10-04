@@ -1,13 +1,10 @@
 /**
  * @file Materializes ARGUS's voice from the original TheLCARS.com beeps.
  *
- * The operator asked for the real LCARS sounds back; the synthesised ones
- * (scripts/sounds_make.mjs) are the committed fallback. TheLCARS.com's
- * template is free to USE but its EULA forbids REDISTRIBUTION, so the beeps
- * are never committed: this extracts them from the operator's own
- * `LCARS-26.zip` into `public/sounds/*.mp3`, which `.gitignore` keeps out of
- * the repo. index.html prefers the `.mp3` and falls back to the committed
- * `.wav`, so a clone without the zip still has a voice.
+ * ARGUS's sounds are the LCARS beeps, committed as `public/sounds/*.mp3`
+ * (the synthesised `.wav` from scripts/sounds_make.mjs are the fallback a
+ * page uses only if an `.mp3` is missing). This re-extracts them from an
+ * `LCARS-26.zip`, should they ever need refreshing.
  *
  * Zip discovery: the `LCARS_ZIP` environment variable, then
  * `~/Downloads/LCARS-26.zip`. The four beeps map to the four events in

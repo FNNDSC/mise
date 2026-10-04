@@ -1,5 +1,14 @@
 # @fnndsc/porter
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [73c0087]
+  - @fnndsc/menu@0.18.0
+  - @fnndsc/calypso@0.19.2
+  - @fnndsc/chell@5.10.1
+
 ## 0.5.0
 
 ### Minor Changes

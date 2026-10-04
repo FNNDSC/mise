@@ -1,5 +1,12 @@
 # @fnndsc/cumin
 
+## 3.27.4
+
+### Patch Changes
+
+- Updated dependencies [73c0087]
+  - @fnndsc/menu@0.18.0
+
 ## 3.27.3
 
 ### Patch Changes

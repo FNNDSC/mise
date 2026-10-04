@@ -264,6 +264,43 @@ describe('retrieve_fireAndWatch', () => {
     expect(late.lonkConfirmed).toBe(true);
   });
 
+  it('asks whether to keep waiting after twenty silent seconds, CUBE checked first; yes waits, no ends it unconfirmed', async () => {
+    jest.useFakeTimers();
+    const t = task();
+    mockStorageResolve.mockResolvedValue(ok({ fileCount: 0, folderPath: null }));
+    const answers: boolean[] = [true, false];
+    const asked: number[] = [];
+    const run = retrieve_fireAndWatch([t], 'PACSDCM', fakeClient, {
+      stillWaiting: async (waiting, waitedS) => { asked.push(waitedS); expect(waiting).toEqual([t]); return answers.shift() ?? false; },
+    });
+    await flush();
+    await jest.advanceTimersByTimeAsync(15_000);
+    expect(asked).toEqual([]);
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(asked.length).toBe(1);
+    expect(mockStorageResolve).toHaveBeenCalled();
+    expect(t.status).toBe('pending');
+    await jest.advanceTimersByTimeAsync(25_000);
+    await run;
+    expect(asked.length).toBe(2);
+    expect(t.status).toBe('unconfirmed');
+    expect(t.reason).toMatch(/stopped waiting/);
+  });
+
+  it('a series CUBE already has when the silence is noticed is done, and nobody is asked', async () => {
+    jest.useFakeTimers();
+    const t = task();
+    mockStorageResolve.mockResolvedValue(ok({ fileCount: 2, folderPath: '/SERVICES/PACS/w' }));
+    const asked: number[] = [];
+    const run = retrieve_fireAndWatch([t], 'PACSDCM', fakeClient, { stillWaiting: async (_w, s) => { asked.push(s); return true; } });
+    await flush();
+    await jest.advanceTimersByTimeAsync(25_000);
+    await run;
+    expect(asked).toEqual([]);
+    expect(t.status).toBe('pulled');
+    expect(t.lonkConfirmed).toBe(true);
+  });
+
   it('reconnects a dropped socket and keeps watching the same retrieve', async () => {
     // The retrieve runs on the server; the socket is only how the client
     // watches it. Losing the view is not losing the work, so a reconnect

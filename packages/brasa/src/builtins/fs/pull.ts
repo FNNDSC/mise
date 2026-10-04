@@ -48,6 +48,7 @@ import {
 import { builtin_cubepath } from '../net/cubepath.js';
 import { pullArgs_parse, type PullArgs, type PullAttachment } from './pull.args.js';
 import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
+import { repl_confirm } from '../../core/question.js';
 import type { ProgressStatus } from '../../core/progress.js';
 import { newFeed_cacheAdd, run_follow } from '../feedCreation.js';
 import { builtin_pipeline } from '../res/pipeline.js';
@@ -119,6 +120,17 @@ async function pulledFolders_announce(allTasks: RetrieveTask[]): Promise<void> {
  */
 function pullEvents_make(): RetrieveWatchEvents {
   return {
+    // A silent PACS is the operator's call, not a timer's: CUBE has been
+    // checked already, and the question says what it found.
+    stillWaiting: async (waiting: RetrieveTask[], waitedS: number): Promise<boolean> => {
+      const which: string = waiting.length === 1 ? (waiting[0] as RetrieveTask).label : `${waiting.length} series`;
+      try {
+        return await repl_confirm(`No files from the PACS yet for ${which} after ${waitedS}s, and none in CUBE. Keep waiting? (y/n)`);
+      } catch {
+        // Nobody to ask (a script, a pipe): wait the longer window, then stop.
+        return waitedS < 60;
+      }
+    },
     task: (task: RetrieveTask, status: RetrieveProgressStatus, phase: 'watching' | 'retrying'): void =>
       pullProgress_emit(task, status, phase),
     retryRound: (attempt: number, retryMax: number, count: number): void =>

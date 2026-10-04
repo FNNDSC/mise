@@ -67,6 +67,9 @@ const STALL_TIMEOUT_MS: number = 30_000;
 // several series are queued: fifteen seconds called many a series lost
 // that was simply waiting its turn.
 const NO_ACTIVITY_TIMEOUT_MS: number = 60_000;
+// With someone to ask, the question comes sooner and repeats: twenty
+// seconds of silence, CUBE checked, then "keep waiting?".
+const ASK_AFTER_MS: number = 20_000;
 const SERIES_TIMEOUT_MS: number = 5 * 60 * 1_000;
 const CHECKER_INTERVAL_MS: number = 2_000;
 
@@ -126,6 +129,17 @@ export interface RetrieveWatchEvents {
    * reconnection during a long pull looks identical to a stall.
    */
   reconnect?: (attempt: number, maxAttempts: number, watching: number) => void;
+  /**
+   * The PACS has sent nothing for a while and CUBE does not have these
+   * series either: whether to keep waiting. A surface that can be asked
+   * answers it (the operator decides, never a timer); with no answerer the
+   * watch waits its longer window and calls the series unconfirmed.
+   *
+   * @param waiting - The series still waiting on a first file.
+   * @param waitedS - How long the PACS has been silent, in seconds.
+   * @returns True to keep waiting another window.
+   */
+  stillWaiting?: (waiting: RetrieveTask[], waitedS: number) => Promise<boolean>;
 }
 
 
@@ -357,6 +371,8 @@ export async function retrieve_fireAndWatch(
     // sending the first series has not gone silent on the ten queued
     // behind it, and they cannot report files they have not been sent yet.
     let lastActivityAt: number = Date.now();
+    // While the operator is being asked, the silence rule holds its tongue.
+    let asking: boolean = false;
     const done = (): void => {
       if (resolved) return;
       resolved = true;
@@ -442,7 +458,7 @@ export async function retrieve_fireAndWatch(
         // per series from its own fire time, this declared every series
         // after the first few dead fifteen seconds into any study large
         // enough that the PACS served them in turn.
-        if (t.startTime > 0 && t.actualFiles === 0 && now - lastActivityAt > NO_ACTIVITY_TIMEOUT_MS) {
+        if (events.stillWaiting === undefined && t.startTime > 0 && t.actualFiles === 0 && now - lastActivityAt > NO_ACTIVITY_TIMEOUT_MS) {
           t.status = 'pulled';
           t.lonkConfirmed = false;
           emit(t, 'unconfirmed');
@@ -450,7 +466,46 @@ export async function retrieve_fireAndWatch(
         }
       }
 
-      if (allTerminal) done();
+      if (allTerminal) { done(); return; }
+
+      // With someone to ask: after a short silence, CUBE first (a series
+      // may have landed unseen), then the operator decides whether to keep
+      // waiting for the rest.
+      const ask = events.stillWaiting;
+      if (ask !== undefined && !asking && now - lastActivityAt > ASK_AFTER_MS) {
+        const silent: RetrieveTask[] = fired.filter((t: RetrieveTask) => t.status === 'pending' && t.startTime > 0 && t.actualFiles === 0);
+        if (silent.length === 0) return;
+        asking = true;
+        const silenceStart: number = lastActivityAt;
+        void (async (): Promise<void> => {
+          await Promise.all(silent.map(async (t: RetrieveTask): Promise<void> => {
+            const stateResult: Result<SeriesStorageState> = await seriesStorage_resolve(t.seriesUID);
+            if (stateResult.ok && stateResult.value.folderPath !== null && t.status === 'pending') {
+              t.status = 'pulled';
+              t.lonkConfirmed = true;
+              t.cubePathDir = stateResult.value.folderPath;
+              t.actualFiles = stateResult.value.fileCount;
+              emit(t, 'done');
+            }
+          }));
+          const waiting: RetrieveTask[] = silent.filter((t: RetrieveTask) => t.status === 'pending');
+          // Files arrived while CUBE was asked: the question is moot.
+          if (waiting.length === 0 || lastActivityAt !== silenceStart || resolved) { asking = false; return; }
+          const keep: boolean = await ask(waiting, Math.round((Date.now() - silenceStart) / 1000)).catch((): boolean => false);
+          if (resolved) return;
+          if (keep || lastActivityAt !== silenceStart) {
+            lastActivityAt = Date.now();
+          } else {
+            for (const t of waiting) {
+              if (t.status !== 'pending') continue;
+              t.status = 'unconfirmed';
+              t.reason = 'stopped waiting: the PACS had sent nothing and CUBE had none of it';
+              emit(t, 'unconfirmed');
+            }
+          }
+          asking = false;
+        })();
+      }
     }, CHECKER_INTERVAL_MS);
 
     /** Attaches this watch's handlers to whichever socket is current. */
@@ -589,7 +644,7 @@ export async function retrieve_confirmLoop(
       // Not seen to finish and not in CUBE yet: unknown, not failed. A
       // PACS slow to begin keeps sending after the watch ends.
       t.status = 'unconfirmed';
-      t.reason = 'the watch ended before any file arrived; the PACS may still be sending (check with pacs status)';
+      t.reason ??= 'the watch ended before any file arrived; the PACS may still be sending (check with pacs status)';
       events.task?.(t, 'unconfirmed', 'retrying');
     }
   }

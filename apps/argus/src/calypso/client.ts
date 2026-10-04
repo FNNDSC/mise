@@ -313,12 +313,17 @@ export class ArgusClient {
    * Executes one input line through the session.
    *
    * @param line - The command line as the operator typed it.
+   * @param options - `silent` swallows the live output (a pane draws the
+   *   answer); `operator` marks a silent command as the operator's own act
+   *   (a button press that changes state), so it is not instrument traffic
+   *   and may ask the operator a question; `observe: false` keeps the
+   *   envelopes from the observers.
    * @returns The line's envelopes and which channels already streamed live.
    * @throws {Error} When the daemon reports an execution error.
    */
   public line_execute(
     line: string,
-    options?: { silent?: boolean; observe?: boolean },
+    options?: { silent?: boolean; observe?: boolean; operator?: boolean },
   ): Promise<ExecuteOutcome> {
     const id: string = `argus-${this.nextId++}`;
     if (options?.silent === true) {
@@ -340,7 +345,9 @@ export class ArgusClient {
           type: 'execute',
           id,
           line,
-          ...(options?.silent === true ? { instrument: true } : {}),
+          // A state-changing act the operator pressed for is theirs, never
+          // instrument traffic: the daemon lets it ask them a question.
+          ...(options?.silent === true && options.operator !== true ? { instrument: true } : {}),
         }),
       );
     });

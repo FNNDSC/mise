@@ -468,7 +468,7 @@ export function seriesTraits_build<T>(
       label: 'SERIES',
       className: 'pacs-series-desc',
       width: '35.5em',
-      cell: (row: T): string => series_of(row).description,
+      cell: (row: T): string => series_of(row).description ?? '',
     },
     {
       key: 'state',

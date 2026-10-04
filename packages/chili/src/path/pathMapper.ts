@@ -13,7 +13,7 @@
  * @module
  */
 
-import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
+import { Result, Ok, Err, errorStack, type StackMessage } from '@fnndsc/cumin';
 import { files_listAll } from '@fnndsc/salsa';
 import * as path from 'path';
 import { listCache_get } from '@fnndsc/cumin';
@@ -82,6 +82,10 @@ export class PathMapper {
   private cache: Map<string, CachedMapping> = new Map();
   private readonly defaultTTL: number = 30000; // 30 seconds
   private stats: { hits: number; misses: number } = { hits: 0, misses: 0 };
+  /** Walked paths whose parent could not be asked for links, by the parent. */
+  private blind: Map<string, string> = new Map();
+  /** Parents found blind by resolutions since the last {@link blindParents_take}. */
+  private blindSeen: Set<string> = new Set();
 
   /**
    * Private constructor enforces singleton pattern.
@@ -150,6 +154,7 @@ export class PathMapper {
     const exactMatch: string | null = this.cache_get(normalizedPath);
     if (exactMatch !== null) {
       this.stats.hits++;
+      this.blind_note(normalizedPath);
       return Ok(exactMatch);
     }
 
@@ -163,6 +168,7 @@ export class PathMapper {
       prefixMatch.prefixLogical
     );
 
+    this.blind_note(normalizedPath);
     if (!resolvedPhysical.ok) {
       this.stats.misses++;
       return Err();
@@ -342,35 +348,76 @@ export class PathMapper {
       ? candidatePhysical
       : `/${candidatePhysical}`;
 
+    // The probe is a side question: a parent this identity may not read (a
+    // shared feed's owner's home, walked on the way to the feed) says so on
+    // the error stack, and that refusal would mark the command it serves an
+    // error though its answer came. The refusal is kept here instead: the
+    // walk goes on as written, and a command whose answer then fails can say
+    // which parent's links went unchecked (blindParents_take).
+    const probeMark: number = errorStack.checkpoint_mark();
+    const fetchOpts: Record<string, string | number> = { limit: 1000, offset: 0 };
+    let linksResult: Awaited<ReturnType<typeof files_listAll>> = null;
+    let refused: boolean = false;
     try {
-      const fetchOpts: Record<string, string | number> = { limit: 1000, offset: 0 };
-      const linksResult = await files_listAll(fetchOpts, 'links', parentDir);
+      linksResult = await files_listAll(fetchOpts, 'links', parentDir);
+    } catch {
+      refused = true;
+    }
+    const said: StackMessage[] = errorStack.checkpoint_drain(probeMark);
+    if (refused || (linksResult === null && said.some((message: StackMessage): boolean => message.type === 'error'))) {
+      this.blind.set(candidateLogical, parentDir);
+      return null;
+    }
+    this.blind.delete(candidateLogical);
 
-      if (linksResult && linksResult.tableData) {
-        for (const linkRaw of linksResult.tableData) {
-          const linkFname: string = (linkRaw.fname as string) || '';
-          const linkPath: string = (linkRaw.path as string) || '';
+    if (linksResult && linksResult.tableData) {
+      for (const linkRaw of linksResult.tableData) {
+        const linkFname: string = (linkRaw.fname as string) || '';
+        const linkPath: string = (linkRaw.path as string) || '';
 
-          const normalizedLinkFname: string = linkFname.startsWith('/')
-            ? linkFname
-            : `/${linkFname}`;
+        const normalizedLinkFname: string = linkFname.startsWith('/')
+          ? linkFname
+          : `/${linkFname}`;
 
-          if (normalizedLinkFname.endsWith('.chrislink')) {
-            const logicalPath: string = normalizedLinkFname.slice(0, -10);
+        if (normalizedLinkFname.endsWith('.chrislink')) {
+          const logicalPath: string = normalizedLinkFname.slice(0, -10);
 
-            if (logicalPath === normalizedCandidate) {
-              const target: string = linkPath.startsWith('/') ? linkPath : `/${linkPath}`;
-              return target;
-            }
+          if (logicalPath === normalizedCandidate) {
+            const target: string = linkPath.startsWith('/') ? linkPath : `/${linkPath}`;
+            return target;
           }
         }
       }
-
-      return null;
-    } catch (error: unknown) {
-      // Re-throw to be handled by caller
-      throw error;
     }
+
+    return null;
+  }
+
+  /**
+   * Records the parents a resolution of this path walked past without
+   * seeing their links.
+   *
+   * @param logicalPath - The path just resolved.
+   */
+  private blind_note(logicalPath: string): void {
+    for (const [walked, parent] of this.blind) {
+      if (logicalPath === walked || logicalPath.startsWith(walked + '/')) {
+        this.blindSeen.add(parent);
+      }
+    }
+  }
+
+  /**
+   * The parents whose links could not be read by the resolutions since the
+   * last call, emptied by the call. A command whose answer failed reports
+   * them: a link in one of them, had it been seen, would have led elsewhere.
+   *
+   * @returns The parents, in the order first met.
+   */
+  blindParents_take(): string[] {
+    const parents: string[] = [...this.blindSeen];
+    this.blindSeen.clear();
+    return parents;
   }
 
   /**
@@ -446,6 +493,7 @@ export class PathMapper {
 
     for (const key of keysToDelete) {
       this.cache.delete(key);
+      this.blind.delete(key);
     }
   }
 
@@ -454,6 +502,8 @@ export class PathMapper {
    */
   cache_clear(): void {
     this.cache.clear();
+    this.blind.clear();
+    this.blindSeen.clear();
     this.stats = { hits: 0, misses: 0 };
   }
 

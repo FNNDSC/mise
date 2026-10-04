@@ -125,6 +125,11 @@ jest.unstable_mockModule('@fnndsc/chili/commands/fs/ls.js', () => ({
   files_list: mockFiles_list
 }));
 
+const mockBlindParentsTake = jest.fn((): string[] => []);
+jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
+  pathMapper_get: () => ({ blindParents_take: mockBlindParentsTake }),
+}));
+
 jest.unstable_mockModule('@fnndsc/chili/views/ls.js', () => ({
   grid_render: mockGrid_render,
   long_render: mockLong_render

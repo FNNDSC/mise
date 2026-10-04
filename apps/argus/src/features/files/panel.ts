@@ -29,6 +29,7 @@ import { rankedLayout_compute, type RankedLayout } from '@fnndsc/orrery/layout';
 import { Listing, type ListingBlock, type ListingStateParts } from '../roster/listing.js';
 import { csvTable_read, type CsvTable } from './csv.js';
 import { JSON_FILE_PATTERN, jsonPretty_build } from './json.js';
+import { listing_isAnswered, refusalWords_of } from './answer.js';
 import { more_wire } from '../roster/more.js';
 import type { ListingAction, ListingTrait } from '../roster/row.js';
 import { barState_toggle } from '../roster/bar.js';
@@ -614,11 +615,9 @@ export class FilesPanel {
    * @param envelope - Any envelope the session showed this surface.
    */
   public envelope_observe(envelope: WireEnvelope): void {
-    // A press the kernel refused: the row stands down and the bar reads
-    // the kernel's own words (cd: x: Not a directory; not yours to read).
-    if (envelope.status === 'error') {
-      const said: string = (envelope.renderedErr ?? envelope.rendered ?? '').replace(/\x1b\[[0-9;]*m/g, '').trim().split('\n')[0] ?? '';
-      if (/^(cd|ls): /.test(said)) this.listing.activation_refuse(said);
+    // A drawn listing answers the press even when marked an error (answer.ts).
+    if (envelope.status === 'error' && !listing_isAnswered(envelope)) {
+      this.listing.activation_refuse(refusalWords_of(envelope));
       return;
     }
     if (envelope.model?.kind !== 'fs.listing') {

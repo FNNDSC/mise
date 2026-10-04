@@ -1,5 +1,12 @@
 # @fnndsc/argus
 
+## 0.22.2
+
+### Patch Changes
+
+- ff80b59: A shared feed's `data` opens again. Listing a /proc link into a feed another user owns walked the owner's home asking for links, and that refusal, a side question, marked the whole `ls` an error though its listing came. chili's path walk no longer leaves its link probe's refusal on the error stack; it remembers the parent it could not read instead. When a listing then fails, `ls` says so after the reason (`ls: links in '/home/<owner>' could not be read; the path was walked as written`), because a link there, unseen, may be why the path was not found; when the listing succeeds nothing is said. ARGUS's files panel draws a listing the kernel sent even when the command is marked an error, and a refused press reads every line the kernel said, so the note reaches the bar too.
+- 39ffe27: ARGUS ships the LCARS sounds. The four beeps (press, arrive, retreat, refuse) are committed as `public/sounds/*.mp3`, so every install plays them; the synthesised `.wav` remain only as the fallback for a missing `.mp3`. Previously they were extracted per machine and a published install fell back to the synthesised beeps.
+
 ## 0.22.1
 
 ### Patch Changes

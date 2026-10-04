@@ -14,7 +14,7 @@
 
 import { PathMapper, pathMapper_get } from '../src/path/pathMapper';
 import { files_listAll } from '@fnndsc/salsa';
-import { Ok, Err } from '@fnndsc/cumin';
+import { Ok, Err, errorStack } from '@fnndsc/cumin';
 
 // Mock the salsa files_listAll function
 jest.mock('@fnndsc/salsa');
@@ -509,6 +509,27 @@ describe('PathMapper', () => {
       if (result.ok) {
         expect(result.value).toBe('/home/user/files');
       }
+    });
+
+    it('leaves no error behind when a link probe cannot read a parent', async () => {
+      // A shared feed's owner's home: the probe for links there is refused,
+      // and the refusal must not mark the command the walk serves an error.
+      mockFilesListAll.mockImplementation(async (_opts, _asset, parent) => {
+        if (parent === '/home/owner') {
+          errorStack.stack_push('error', 'could not initialize context folder:/home/owner for Links');
+          return null;
+        }
+        return { tableData: [], selectedFields: [] };
+      });
+      const before: number = errorStack.checkpoint_mark();
+
+      const result = await mapper.logical_toPhysical('/home/owner/feeds/feed_1');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBe('/home/owner/feeds/feed_1');
+      }
+      expect(errorStack.checkpoint_drain(before)).toEqual([]);
     });
 
     it('should handle malformed link data', async () => {

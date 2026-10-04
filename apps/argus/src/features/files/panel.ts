@@ -614,11 +614,20 @@ export class FilesPanel {
    * @param envelope - Any envelope the session showed this surface.
    */
   public envelope_observe(envelope: WireEnvelope): void {
-    // A press the kernel refused: the row stands down and the bar reads
-    // the kernel's own words (cd: x: Not a directory; not yours to read).
-    if (envelope.status === 'error') {
+    // A listing the kernel sent is drawn even when the command is marked an
+    // error: that mark can come from a side lookup that failed while the
+    // listing itself succeeded (a shared feed's `data`, whose owner's home
+    // this identity may not read). Dropping it left the press hanging,
+    // neither drawn nor refused, and the dive looked dead.
+    const answered: boolean = envelope.model?.kind === 'fs.listing';
+    if (envelope.status === 'error' && !answered) {
+      // A press the kernel refused: the row stands down and the bar reads
+      // the kernel's own words, whatever they are, so no press is ever left
+      // waiting on an answer that came.
       const said: string = (envelope.renderedErr ?? envelope.rendered ?? '').replace(/\x1b\[[0-9;]*m/g, '').trim().split('\n')[0] ?? '';
-      if (/^(cd|ls): /.test(said)) this.listing.activation_refuse(said);
+      const drained: string = [...((envelope as { errors?: Array<{ type?: string; message?: string }> }).errors ?? [])]
+        .reverse().find((error) => error.type === 'error')?.message?.replace(/^\[[^\]]*\]\s*\|\s*/, '') ?? '';
+      this.listing.activation_refuse(said || drained || 'refused');
       return;
     }
     if (envelope.model?.kind !== 'fs.listing') {

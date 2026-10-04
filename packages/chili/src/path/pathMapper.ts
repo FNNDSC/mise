@@ -342,6 +342,11 @@ export class PathMapper {
       ? candidatePhysical
       : `/${candidatePhysical}`;
 
+    // The probe is a side question: a parent this identity may not read (a
+    // shared feed's owner's home, walked on the way to the feed) says so on
+    // the error stack, and that refusal would mark the command it serves an
+    // error though its answer came. What the probe could not see is no link.
+    const probeMark: number = errorStack.checkpoint_mark();
     try {
       const fetchOpts: Record<string, string | number> = { limit: 1000, offset: 0 };
       const linksResult = await files_listAll(fetchOpts, 'links', parentDir);
@@ -367,9 +372,8 @@ export class PathMapper {
       }
 
       return null;
-    } catch (error: unknown) {
-      // Re-throw to be handled by caller
-      throw error;
+    } finally {
+      errorStack.checkpoint_drain(probeMark);
     }
   }
 

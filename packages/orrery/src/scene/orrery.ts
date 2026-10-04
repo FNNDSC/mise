@@ -55,6 +55,7 @@ import {
   type PlacedNode,
 } from './settle.js';
 import { bodies_draw, edges_draw, type DrawnBodies, type DrawPorts } from './bodies.js';
+import { FlatMolecule } from './flat.js';
 import { DrawnNodes, censusNodes_of, handoffLook_of, handoffView_of, perUnit_of, tubeNode_of } from './drawn.js';
 import { Flights, type Approach, type FlightGraph, type UnfoldPlan } from './flights.js';
 import type { CensusNode } from '../draw/index.js';
@@ -287,6 +288,8 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
   private disposed: boolean = false;
   /** The active projection: the sculpted 3D stage, or the flat schematic. */
   private projection: '3d' | '2d' = '3d';
+  /** One molecule laid flat in a standing space (flat.ts); a new graph ends it. */
+  private readonly flat: FlatMolecule = new FlatMolecule();
   /** Counts rebuilds, so a sliced settle overtaken by a newer one stops. */
   private rebuildGen: number = 0;
   /** Whether a settle is running in slices, its readout up. */
@@ -414,7 +417,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     } else {
       // A touched graph holds still; the idle spin resumes after the wait.
       // A flight or a stay inside a node holds it unconditionally.
-      this.rig.spin_step(!(this.gestures?.pointerOver() ?? false) && this.projection === '3d');
+      this.rig.spin_step(!(this.gestures?.pointerOver() ?? false) && this.projection === '3d' && !this.flat.active());
       if (this.grab.step()) this.positions_sync();
       this.wave.animate();
       this.rig.flight_step();
@@ -466,6 +469,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
    */
   public graph_set(graph: SpaceGraph<N>, options: GraphSetOptions = {}): void {
     this.graph = graph;
+    this.flat.clear();
     // Nodes to hold still through this settle, and physics for it alone:
     // a descent settles one feed while the field around it stands, with
     // no gravity — gravity pulls to the origin, and a feed unfolding far
@@ -756,6 +760,13 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
   public projection_get(): '3d' | '2d' {
     return this.projection;
   }
+
+  /** Lays some nodes flat facing the eye (a spin would turn them edge-on, so it rests), the rest standing; null stands them back up. */
+  public flat_set(ids: ReadonlyArray<string> | null): void {
+    if (this.flat.set(ids, this.graph.nodes, this.lastPositions, { camera: this.camera, focus: this.rig.focus, world: this.group }, this.physics)) this.rebuild(false, 'hold');
+  }
+  /** @returns Whether a subset lies flat. */
+  public flat_get(): boolean { return this.flat.active(); }
 
   /**
    * Updates one node's look in place (its state changed on the progress

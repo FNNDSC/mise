@@ -79,6 +79,7 @@ function ownGraph_is(arrangement: Arrangement): boolean {
 }
 import type { KeyStore } from '../../app/dormant.js';
 import { WaitProgress } from '../wait/progress.js';
+import { projection_paint, projection_press } from './projection.js';
 
 /** What the pane asks of its host. */
 export interface UniversePanelHandlers {
@@ -321,11 +322,7 @@ export class UniversePanel {
     mount.openPill?.addEventListener('click', (): void => {
       if (this.inside !== null) this.handlers.feed_open?.(this.inside.feedId);
     });
-    mount.projectionPill?.addEventListener('click', (): void => {
-      const next: '3d' | '2d' = this.scene.projection_get() === '3d' ? '2d' : '3d';
-      this.scene.projection_set(next);
-      if (mount.projectionPill !== null) mount.projectionPill.textContent = next.toUpperCase();
-    });
+    mount.projectionPill?.addEventListener('click', (): void => projection_press(this.pane, this.scene, this.inside?.ids ?? null, (line: string): void => this.bar_note(line)));
     mount.refreshPill?.addEventListener('click', (): void => this.request());
     this.replayPill = mount.replayPill ?? null;
     mount.replayPill?.addEventListener('click', (): void => {
@@ -1058,6 +1055,7 @@ export class UniversePanel {
         drawn: (): void => {
           this.inside = { feedId, title: model.feedName, entered, ids };
           this.pane?.classList.add('universe-inside');
+          projection_paint(this.pane, this.scene, this.inside !== null);
           this.title_paint();
         },
       };
@@ -1075,6 +1073,7 @@ export class UniversePanel {
       this.inside = null;
       this.facts_clear();
       this.pane?.classList.remove('universe-inside');
+      projection_paint(this.pane, this.scene, this.inside !== null);
       if (this.cluster !== null) {
         this.cluster_show(this.cluster.shape);
         return;

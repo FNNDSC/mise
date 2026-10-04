@@ -422,9 +422,17 @@ try {
       const insideState = first?.querySelector('.pane-state')?.textContent?.trim() ?? '';
       const insideBlocks = ['.universe-back', '.universe-open'].every((sel) => { const e = first?.querySelector(sel); return e !== null && e !== undefined && getComputedStyle(e).display !== 'none'; });
       const outsideBlocksHiddenBefore = true;
+      // 3D / 2D inside a feed flattens that feed only: the block reads 2D,
+      // the pane stays inside, and the climb finds the space still in depth
+      // (the feed is left flat on purpose: BACK takes the flat reading with it).
+      const projectionPill = first?.querySelector('.universe-projection');
+      projectionPill?.click();
+      await sleep(1200);
+      const insideFlat = { pill: projectionPill?.textContent?.trim() ?? '', title: first?.querySelector('.universe-title')?.textContent?.trim() ?? '' };
       await say('universe back', 500);
       for (let i = 0; i < 60; i++) { await sleep(500); if (!/INSIDE FEED/.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
       await sleep(2000);
+      const backProjection = projectionPill?.textContent?.trim() ?? '';
       const backTitle = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';
       const backBlocksHidden = ['.universe-back', '.universe-open'].every((sel) => { const e = first?.querySelector(sel); return e === null || e === undefined || getComputedStyle(e).display === 'none'; });
       // The cluster, by word: the shape of that feed in view, the rest dimmed,
@@ -495,7 +503,7 @@ try {
       await sleep(1000);
       const count = document.querySelectorAll('.pane-universe').length;
       await say('view files', 2000);
-      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle, viewPill, unfoldTitle, viewPillBack, gravityOff, gravityReset, densityCensus, censusTitle, densityShape, clickKept, fitsBefore, fitsAfter, clickTitle, waited, drawDefault, drawSpheres, keptSpheres, drawStars, readoutGone, layoutDefault, layoutClumps, keptClumps, censusState };`);
+      return { hadTile: tile !== undefined, title, state, drawn, framed, runsIsFeedViewer, count, landedId, insideTitle, insideState, insideBlocks, outsideBlocksHiddenBefore, insideFlat, backProjection, backTitle, backBlocksHidden, clusterTitle, clusterState, clusterBack, clusterBackTitle, viewPill, unfoldTitle, viewPillBack, gravityOff, gravityReset, densityCensus, censusTitle, densityShape, clickKept, fitsBefore, fitsAfter, clickTitle, waited, drawDefault, drawSpheres, keptSpheres, drawStars, readoutGone, layoutDefault, layoutClumps, keptClumps, censusState };`);
     check('the UNIVERSE tile opens a pane of its own kind, titled by what landed',
       universe.hadTile && /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.title), universe.title);
     check('the universe pane says whether the index is whole', universe.state === 'WHOLE' || universe.state === 'LANDING', universe.state);
@@ -530,6 +538,9 @@ try {
     check('universe enter <feed> descends: the title names the feed inside, the state says INSIDE, BACK and OPEN FEED stand on the frame',
       universe.landedId !== '' && new RegExp('^UNIVERSE — INSIDE FEED ' + universe.landedId + ' · ').test(universe.insideTitle) && universe.insideState === 'INSIDE' && universe.insideBlocks,
       `${universe.landedId} | ${universe.insideTitle} | ${universe.insideState}`);
+    check('2D inside a feed flattens that feed only: the block reads 2D inside, and the space climbed back to reads 3D',
+      universe.insideFlat?.pill === '2D' && /INSIDE FEED/.test(universe.insideFlat?.title ?? '') && universe.backProjection === '3D',
+      `inside ${universe.insideFlat?.pill} | back ${universe.backProjection}`);
     check('universe back climbs out: the space is titled whole again and the descent blocks retract',
       /^UNIVERSE — [1-9]\d* FEEDS · [1-9]\d* SHAPES/.test(universe.backTitle) && universe.backBlocksHidden, universe.backTitle);
     check('universe cluster <feed> brings its shape into view: the title names the shape and its count, the state says CLUSTER, BACK stands',

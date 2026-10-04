@@ -1341,6 +1341,29 @@ try {
     return { zoomed, drawerKept, selected, restored: document.body.dataset.zoom ?? null, paneId: pane.closest('[data-pane-id]')?.dataset.paneId ?? null };`);
   check('a double click on a pane frame zooms it, a second restores it; the drawer ends as it was',
     typeof dbl.zoomed === 'string' && dbl.zoomed.length > 0 && dbl.drawerKept && dbl.selected === 0 && dbl.restored === null, JSON.stringify(dbl));
+  // The console is a pane in this: its frame zooms on a double click, and
+  // the lid closes it even while it is zoomed (it used to do nothing there).
+  const con = await evalIn(`
+    const drawerEl = document.getElementById('drawer');
+    if (drawerEl.classList.contains('drawer-closed')) { document.getElementById('drawer-toggle').click(); await sleep(500); }
+    const handle = document.getElementById('console-handle');
+    const cdrawer = document.getElementById('console-drawer');
+    const drawerBefore = cdrawer.hidden;
+    const double = () => { handle.click(); handle.click(); handle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); };
+    double(); await sleep(700);
+    const zoomed = document.body.dataset.zoom ?? null;
+    const drawerKept = cdrawer.hidden === drawerBefore;
+    double(); await sleep(700);
+    const restored = document.body.dataset.zoom ?? null;
+    double(); await sleep(700);
+    const lid = document.getElementById('drawer-toggle');
+    const lidShown = lid.getBoundingClientRect().height > 0;
+    lid.click(); await sleep(900);
+    const afterLid = { zoom: document.body.dataset.zoom ?? null, closed: drawerEl.classList.contains('drawer-closed') };
+    lid.click(); await sleep(700);
+    return { zoomed, drawerKept, restored, lidShown, afterLid, reopened: !drawerEl.classList.contains('drawer-closed') };`);
+  check('a double click on the console frame zooms it, a second restores it; the lid closes a zoomed console',
+    con.zoomed === 'console' && con.drawerKept && con.restored === null && con.lidShown && con.afterLid.zoom === null && con.afterLid.closed && con.reopened, JSON.stringify(con));
   }
 
   if (await stage('split-zoom')) {

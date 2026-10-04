@@ -252,7 +252,7 @@ export const DRAWER_CHORDS: ReadonlyArray<DrawerChord> = [
   { key: 'K', topic: 'pane', selector: splitSelector_of('above'), does: 'move this pane above', move: true },
   { key: 'L', topic: 'pane', selector: splitSelector_of('right'), does: 'move this pane right', move: true },
   { key: 'm', topic: 'pane', selector: '.drawer-mode[data-mode="move"]', does: 'arm MOVE (then a direction)' },
-  { key: 'z', topic: 'pane', selector: '.drawer-zoom', does: 'zoom (tmux)' },
+  { key: 'z', topic: 'pane', selector: '.drawer-zoom', does: 'zoom (tmux), or double-click the pane\'s header' },
   { key: 'x', topic: 'pane', selector: '.drawer-close', does: 'close (tmux)' },
   { key: 'u', topic: 'binding', selector: '.drawer-bind[data-bind="unlinked"]', does: 'the next split is unlinked' },
   { key: 'f', topic: 'binding', selector: '.drawer-bind[data-bind="fs"]', does: 'the next split is a linked filesystem' },

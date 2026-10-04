@@ -60,6 +60,14 @@ export function paneChrome_wire(context: Pick<HostContext, 'layout' | 'panels' |
     });
     const zoomCapsule: HTMLElement | null = drawer.querySelector<HTMLElement>('.drawer-zoom');
     if (zoomCapsule !== null) zoomCapsule.dataset['pane'] = id;
+    // A double click on the frame zooms or restores the pane, as a title
+    // bar does on every desktop; its two clicks have opened and closed the
+    // drawer, which ends as it was. ZOOM in the drawer stays the visible way.
+    handle.addEventListener('dblclick', (event: Event): void => {
+      if (event.target instanceof Element && event.target.closest('button') !== null) return;
+      window.getSelection()?.removeAllRanges();
+      zoomCapsule?.click();
+    });
     // The binding radio: what the next split creates. UNLINKED is the
     // unmarked case; the selection is per-pane drawer state.
     for (const bind of drawer.querySelectorAll<HTMLElement>('.drawer-bind')) {

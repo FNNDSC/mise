@@ -63,7 +63,13 @@ const FIRE_BACKOFF_MS: readonly number[] = [250, 500];
 const WATCH_RECONNECT_ATTEMPTS: number = 3;
 
 const STALL_TIMEOUT_MS: number = 30_000;
-const NO_ACTIVITY_TIMEOUT_MS: number = 15_000;
+// A hospital PACS can take most of a minute to begin sending, more when
+// several series are queued: fifteen seconds called many a series lost
+// that was simply waiting its turn.
+const NO_ACTIVITY_TIMEOUT_MS: number = 60_000;
+// With someone to ask, the question comes sooner and repeats: twenty
+// seconds of silence, CUBE checked, then "keep waiting?".
+const ASK_AFTER_MS: number = 20_000;
 const SERIES_TIMEOUT_MS: number = 5 * 60 * 1_000;
 const CHECKER_INTERVAL_MS: number = 2_000;
 
@@ -87,6 +93,8 @@ const CHECKER_INTERVAL_MS: number = 2_000;
  * @property startTime - Timestamp when the retrieve was fired.
  * @property lonkConfirmed - True only after an explicit LONK `done` or a storage confirmation.
  * @property cubePathDir - CUBE folder the series landed in (resolved post-pull).
+ * @property reason - Why a series ended badly, in words a surface can show
+ *   (an ERROR that cannot say why is the defect this field closes).
  */
 export interface RetrieveTask {
   label: string;
@@ -104,6 +112,7 @@ export interface RetrieveTask {
   startTime: number;
   lonkConfirmed: boolean;
   cubePathDir: string | null;
+  reason?: string;
 }
 
 /**
@@ -120,6 +129,17 @@ export interface RetrieveWatchEvents {
    * reconnection during a long pull looks identical to a stall.
    */
   reconnect?: (attempt: number, maxAttempts: number, watching: number) => void;
+  /**
+   * The PACS has sent nothing for a while and CUBE does not have these
+   * series either: whether to keep waiting. A surface that can be asked
+   * answers it (the operator decides, never a timer); with no answerer the
+   * watch waits its longer window and calls the series unconfirmed.
+   *
+   * @param waiting - The series still waiting on a first file.
+   * @param waitedS - How long the PACS has been silent, in seconds.
+   * @returns True to keep waiting another window.
+   */
+  stillWaiting?: (waiting: RetrieveTask[], waitedS: number) => Promise<boolean>;
 }
 
 
@@ -223,6 +243,7 @@ async function task_fire(task: RetrieveTask, pacsserver: string): Promise<void> 
 
   if (fired === null) {
     task.status = 'unfired';
+    task.reason = `the retrieve could not be started: CUBE refused the query or the retrieve ${FIRE_ATTEMPTS} times`;
     return;
   }
   task.syntheticQueryId = fired.queryId;
@@ -350,6 +371,8 @@ export async function retrieve_fireAndWatch(
     // sending the first series has not gone silent on the ten queued
     // behind it, and they cannot report files they have not been sent yet.
     let lastActivityAt: number = Date.now();
+    // While the operator is being asked, the silence rule holds its tongue.
+    let asking: boolean = false;
     const done = (): void => {
       if (resolved) return;
       resolved = true;
@@ -435,7 +458,7 @@ export async function retrieve_fireAndWatch(
         // per series from its own fire time, this declared every series
         // after the first few dead fifteen seconds into any study large
         // enough that the PACS served them in turn.
-        if (t.startTime > 0 && t.actualFiles === 0 && now - lastActivityAt > NO_ACTIVITY_TIMEOUT_MS) {
+        if (events.stillWaiting === undefined && t.startTime > 0 && t.actualFiles === 0 && now - lastActivityAt > NO_ACTIVITY_TIMEOUT_MS) {
           t.status = 'pulled';
           t.lonkConfirmed = false;
           emit(t, 'unconfirmed');
@@ -443,7 +466,46 @@ export async function retrieve_fireAndWatch(
         }
       }
 
-      if (allTerminal) done();
+      if (allTerminal) { done(); return; }
+
+      // With someone to ask: after a short silence, CUBE first (a series
+      // may have landed unseen), then the operator decides whether to keep
+      // waiting for the rest.
+      const ask = events.stillWaiting;
+      if (ask !== undefined && !asking && now - lastActivityAt > ASK_AFTER_MS) {
+        const silent: RetrieveTask[] = fired.filter((t: RetrieveTask) => t.status === 'pending' && t.startTime > 0 && t.actualFiles === 0);
+        if (silent.length === 0) return;
+        asking = true;
+        const silenceStart: number = lastActivityAt;
+        void (async (): Promise<void> => {
+          await Promise.all(silent.map(async (t: RetrieveTask): Promise<void> => {
+            const stateResult: Result<SeriesStorageState> = await seriesStorage_resolve(t.seriesUID);
+            if (stateResult.ok && stateResult.value.folderPath !== null && t.status === 'pending') {
+              t.status = 'pulled';
+              t.lonkConfirmed = true;
+              t.cubePathDir = stateResult.value.folderPath;
+              t.actualFiles = stateResult.value.fileCount;
+              emit(t, 'done');
+            }
+          }));
+          const waiting: RetrieveTask[] = silent.filter((t: RetrieveTask) => t.status === 'pending');
+          // Files arrived while CUBE was asked: the question is moot.
+          if (waiting.length === 0 || lastActivityAt !== silenceStart || resolved) { asking = false; return; }
+          const keep: boolean = await ask(waiting, Math.round((Date.now() - silenceStart) / 1000)).catch((): boolean => false);
+          if (resolved) return;
+          if (keep || lastActivityAt !== silenceStart) {
+            lastActivityAt = Date.now();
+          } else {
+            for (const t of waiting) {
+              if (t.status !== 'pending') continue;
+              t.status = 'unconfirmed';
+              t.reason = 'stopped waiting: the PACS had sent nothing and CUBE had none of it';
+              emit(t, 'unconfirmed');
+            }
+          }
+          asking = false;
+        })();
+      }
     }, CHECKER_INTERVAL_MS);
 
     /** Attaches this watch's handlers to whichever socket is current. */
@@ -474,6 +536,7 @@ export async function retrieve_fireAndWatch(
           emit(t, 'done');
         } else if ('error' in message && typeof message.error === 'string') {
           t.status = 'error';
+          t.reason = `the receiver could not store a file: ${message.error}`;
           emit(t, 'error');
         }
       } catch {
@@ -523,8 +586,9 @@ export async function retrieve_confirmLoop(
     (t: RetrieveTask) => (t.status === 'pulled' && !t.lonkConfirmed) || t.status === 'unconfirmed',
   );
 
-  for (let attempt: number = 1; attempt <= retryMax && retryCandidates.length > 0; attempt++) {
-    await Promise.all(retryCandidates.map(async (t: RetrieveTask): Promise<void> => {
+  /** Asks CUBE about each candidate; a series found there arrived. */
+  const storage_ask = async (tasks: RetrieveTask[]): Promise<void> => {
+    await Promise.all(tasks.map(async (t: RetrieveTask): Promise<void> => {
       const stateResult: Result<SeriesStorageState> = await seriesStorage_resolve(t.seriesUID);
       if (stateResult.ok && stateResult.value.folderPath !== null) {
         t.lonkConfirmed = true;
@@ -535,11 +599,18 @@ export async function retrieve_confirmLoop(
         events.task?.(t, 'done', 'retrying');
       }
     }));
+  };
 
-    retryCandidates = retryCandidates.filter((t: RetrieveTask) => !t.lonkConfirmed);
-    if (retryCandidates.length === 0) break;
+  // CUBE is asked at least once, whatever the retry count: with no retries
+  // the loop below never ran, and every series the watch had not seen
+  // finish was declared an error unasked, while its files were landing.
+  await storage_ask(retryCandidates);
+  retryCandidates = retryCandidates.filter((t: RetrieveTask) => !t.lonkConfirmed);
 
+  let refired: boolean = false;
+  for (let attempt: number = 1; attempt <= retryMax && retryCandidates.length > 0; attempt++) {
     events.retryRound?.(attempt, retryMax, retryCandidates.length);
+    refired = true;
 
     for (const t of retryCandidates) {
       t.status = 'pending';
@@ -557,13 +628,25 @@ export async function retrieve_confirmLoop(
     extraFiringErrors += await retrieve_fireAndWatch(retryCandidates, pacsserver, client, events, 'retrying');
 
     retryCandidates = retryCandidates.filter(
-      (t: RetrieveTask) => t.status === 'pulled' && !t.lonkConfirmed,
+      (t: RetrieveTask) => (t.status === 'pulled' && !t.lonkConfirmed) || t.status === 'unconfirmed',
     );
+    await storage_ask(retryCandidates);
+    retryCandidates = retryCandidates.filter((t: RetrieveTask) => !t.lonkConfirmed);
   }
 
   for (const t of retryCandidates) {
-    t.status = 'error';
-    events.task?.(t, 'error', 'retrying');
+    if (refired) {
+      // Fired again and still nowhere in CUBE: that is a failure observed.
+      t.status = 'error';
+      t.reason = `nothing reached CUBE after ${retryMax} more ${retryMax === 1 ? 'try' : 'tries'}`;
+      events.task?.(t, 'error', 'retrying');
+    } else {
+      // Not seen to finish and not in CUBE yet: unknown, not failed. A
+      // PACS slow to begin keeps sending after the watch ends.
+      t.status = 'unconfirmed';
+      t.reason ??= 'the watch ended before any file arrived; the PACS may still be sending (check with pacs status)';
+      events.task?.(t, 'unconfirmed', 'retrying');
+    }
   }
   return extraFiringErrors;
 }

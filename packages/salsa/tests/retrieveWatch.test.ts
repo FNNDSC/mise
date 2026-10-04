@@ -192,7 +192,10 @@ describe('retrieve_fireAndWatch', () => {
     const t = task();
     const run = retrieve_fireAndWatch([t], 'PACSDCM', fakeClient, {});
     await flush();
-    await jest.advanceTimersByTimeAsync(20_000);
+    // A quiet PACS is given a minute before a series is called unconfirmed.
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(t.status).toBe('pending');
+    await jest.advanceTimersByTimeAsync(40_000);
     await run;
     expect(t.status).toBe('pulled');
     expect(t.lonkConfirmed).toBe(false);
@@ -210,7 +213,7 @@ describe('retrieve_fireAndWatch', () => {
     const run = retrieve_fireAndWatch([first, ...queued], 'PACSDCM', fakeClient, {});
     await flush();
 
-    // Twenty-four seconds of the PACS sending series one, well past the
+    // Twenty-four seconds of the PACS sending series one, past the old
     // fifteen-second window, in ticks it would have fired on.
     for (let file = 1; file <= 4; file++) {
       wsInstances[0].emit('message', lonk('1.1', { ndicom: file }));
@@ -228,8 +231,8 @@ describe('retrieve_fireAndWatch', () => {
     expect(queued[0].status).toBe('pulling');
 
     // Now the PACS goes quiet on everything. That is the real evidence,
-    // and it is what the guard is for.
-    await jest.advanceTimersByTimeAsync(40_000);
+    // and it is what the guard is for (a minute of silence).
+    await jest.advanceTimersByTimeAsync(70_000);
     await run;
     expect(first.status).toBe('pulled');
     expect(first.lonkConfirmed).toBe(true);
@@ -259,6 +262,43 @@ describe('retrieve_fireAndWatch', () => {
     await run;
     expect(late.status).toBe('pulled');
     expect(late.lonkConfirmed).toBe(true);
+  });
+
+  it('asks whether to keep waiting after twenty silent seconds, CUBE checked first; yes waits, no ends it unconfirmed', async () => {
+    jest.useFakeTimers();
+    const t = task();
+    mockStorageResolve.mockResolvedValue(ok({ fileCount: 0, folderPath: null }));
+    const answers: boolean[] = [true, false];
+    const asked: number[] = [];
+    const run = retrieve_fireAndWatch([t], 'PACSDCM', fakeClient, {
+      stillWaiting: async (waiting, waitedS) => { asked.push(waitedS); expect(waiting).toEqual([t]); return answers.shift() ?? false; },
+    });
+    await flush();
+    await jest.advanceTimersByTimeAsync(15_000);
+    expect(asked).toEqual([]);
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(asked.length).toBe(1);
+    expect(mockStorageResolve).toHaveBeenCalled();
+    expect(t.status).toBe('pending');
+    await jest.advanceTimersByTimeAsync(25_000);
+    await run;
+    expect(asked.length).toBe(2);
+    expect(t.status).toBe('unconfirmed');
+    expect(t.reason).toMatch(/stopped waiting/);
+  });
+
+  it('a series CUBE already has when the silence is noticed is done, and nobody is asked', async () => {
+    jest.useFakeTimers();
+    const t = task();
+    mockStorageResolve.mockResolvedValue(ok({ fileCount: 2, folderPath: '/SERVICES/PACS/w' }));
+    const asked: number[] = [];
+    const run = retrieve_fireAndWatch([t], 'PACSDCM', fakeClient, { stillWaiting: async (_w, s) => { asked.push(s); return true; } });
+    await flush();
+    await jest.advanceTimersByTimeAsync(25_000);
+    await run;
+    expect(asked).toEqual([]);
+    expect(t.status).toBe('pulled');
+    expect(t.lonkConfirmed).toBe(true);
   });
 
   it('reconnects a dropped socket and keeps watching the same retrieve', async () => {
@@ -338,13 +378,30 @@ describe('retrieve_confirmLoop', () => {
     expect(t.cubePathDir).toBe('/SERVICES/PACS/y');
   });
 
-  it('marks still-unconfirmed series errored after retries are exhausted', async () => {
+  it('asks CUBE even with no retries, and a series found there is pulled, not errored', async () => {
+    // The defect this closes: with retryMax 0 (what ARGUS runs) the check
+    // sat inside a loop that never ran, so a PACS slow to begin sending
+    // turned every series red while its files were landing in CUBE.
+    const t = task();
+    t.status = 'pulled';
+    t.lonkConfirmed = false;
+    mockStorageResolve.mockResolvedValue(ok({ fileCount: 131, folderPath: '/SERVICES/PACS/z' }));
+    await retrieve_confirmLoop([t], 0, 'PACSDCM', fakeClient, {});
+    expect(mockStorageResolve).toHaveBeenCalled();
+    expect(t.status).toBe('pulled');
+    expect(t.lonkConfirmed).toBe(true);
+    expect(t.actualFiles).toBe(131);
+  });
+
+  it('with no retries, a series not yet in CUBE is unconfirmed with a reason, never an error', async () => {
     const t = task();
     t.status = 'pulled';
     t.lonkConfirmed = false;
     mockStorageResolve.mockResolvedValue(ok({ fileCount: 0, folderPath: null }));
-    // retryMax 0: no refire rounds, straight to the error downgrade.
-    await retrieve_confirmLoop([t], 0, 'PACSDCM', fakeClient, {});
-    expect(t.status).toBe('error');
+    const seen: string[] = [];
+    await retrieve_confirmLoop([t], 0, 'PACSDCM', fakeClient, { task: (_t, status) => { seen.push(status); } });
+    expect(t.status).toBe('unconfirmed');
+    expect(t.reason).toMatch(/may still be sending/);
+    expect(seen).toEqual(['unconfirmed']);
   });
 });

@@ -463,6 +463,11 @@ export const progressMessageSchema = z.object({
    * PACS row) needs the place, and only the kernel can say it.
    */
   path: z.string().optional(),
+  /**
+   * Why an item ended badly, in words a surface can show: an ERROR that
+   * cannot say why reads as a mystery and is answered by pulling again.
+   */
+  reason: z.string().optional(),
 });
 
 /** A progress event as it appears on the wire, correlated to its command. */

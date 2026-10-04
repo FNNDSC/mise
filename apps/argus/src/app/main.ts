@@ -1752,8 +1752,11 @@ async function surface_start(token: string): Promise<void> {
       // is the whole story of the session, not only of what was typed —
       // then run silently so a long retrieve never locks the prompt. The
       // incidental probes (`pacs list`, `mkdir -p ~/gather`) are not echoed.
-      if (/^(pacs query|pull )/.test(line)) terminal.line_echo(line);
-      void client.line_execute(line, { silent: true }).then((outcome: ExecuteOutcome): void => {
+      // The operator's own acts run as theirs, not as instrument traffic: a
+      // pull may need to ask (keep waiting on a silent PACS?).
+      const operatorAct: boolean = /^(pacs query|pull )/.test(line);
+      if (operatorAct) terminal.line_echo(line);
+      void client.line_execute(line, { silent: true, operator: operatorAct }).then((outcome: ExecuteOutcome): void => {
         for (const envelope of outcome.envelopes) pacsPanel.envelope_observe(envelope);
       });
     },

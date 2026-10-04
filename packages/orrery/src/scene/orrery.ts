@@ -55,7 +55,7 @@ import {
   type PlacedNode,
 } from './settle.js';
 import { bodies_draw, edges_draw, type DrawnBodies, type DrawPorts } from './bodies.js';
-import { flatPositions_of } from './flat.js';
+import { FlatMolecule } from './flat.js';
 import { DrawnNodes, censusNodes_of, handoffLook_of, handoffView_of, perUnit_of, tubeNode_of } from './drawn.js';
 import { Flights, type Approach, type FlightGraph, type UnfoldPlan } from './flights.js';
 import type { CensusNode } from '../draw/index.js';
@@ -288,8 +288,8 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
   private disposed: boolean = false;
   /** The active projection: the sculpted 3D stage, or the flat schematic. */
   private projection: '3d' | '2d' = '3d';
-  /** A subset laid flat in a standing space, and where each stood before. */
-  private flatRestore: Map<string, THREE.Vector3> | null = null;
+  /** One molecule laid flat in a standing space (flat.ts); a new graph ends it. */
+  private readonly flat: FlatMolecule = new FlatMolecule();
   /** Counts rebuilds, so a sliced settle overtaken by a newer one stops. */
   private rebuildGen: number = 0;
   /** Whether a settle is running in slices, its readout up. */
@@ -417,8 +417,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     } else {
       // A touched graph holds still; the idle spin resumes after the wait.
       // A flight or a stay inside a node holds it unconditionally.
-      // A molecule laid flat faces the eye; a spin would turn it edge-on.
-      this.rig.spin_step(!(this.gestures?.pointerOver() ?? false) && this.projection === '3d' && this.flatRestore === null);
+      this.rig.spin_step(!(this.gestures?.pointerOver() ?? false) && this.projection === '3d' && !this.flat.active());
       if (this.grab.step()) this.positions_sync();
       this.wave.animate();
       this.rig.flight_step();
@@ -470,8 +469,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
    */
   public graph_set(graph: SpaceGraph<N>, options: GraphSetOptions = {}): void {
     this.graph = graph;
-    // A new graph owes nothing to a molecule laid flat in the old one.
-    this.flatRestore = null;
+    this.flat.clear();
     // Nodes to hold still through this settle, and physics for it alone:
     // a descent settles one feed while the field around it stands, with
     // no gravity — gravity pulls to the origin, and a feed unfolding far
@@ -763,43 +761,12 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     return this.projection;
   }
 
-  /**
-   * Lays some nodes flat, or stands them back up, while the rest of the
-   * space keeps its depth: the 2D reading of one molecule (a feed entered in
-   * the universe) rather than of the whole scene. The nodes settle in two
-   * dimensions on the plane through their centre that faces the eye, and
-   * the idle spin rests while they lie flat. Called with nothing, they
-   * stand where they stood before. A new graph ends it.
-   *
-   * @param ids - The nodes to lay flat; empty or null to stand them back up.
-   */
+  /** Lays some nodes flat facing the eye (a spin would turn them edge-on, so it rests), the rest standing; null stands them back up. */
   public flat_set(ids: ReadonlyArray<string> | null): void {
-    if (ids === null || ids.length === 0) {
-      if (this.flatRestore === null) return;
-      for (const [id, at] of this.flatRestore) this.lastPositions.set(id, at);
-      this.flatRestore = null;
-      this.rebuild(false, 'hold');
-      return;
-    }
-    if (this.flatRestore !== null) return;
-    const wanted: Set<string> = new Set(ids);
-    const nodes: N[] = this.graph.nodes.filter((node: N): boolean => wanted.has(node.id));
-    // The eye's direction and up, in the space the nodes stand in (the
-    // world group turns under the camera).
-    const toLocal: THREE.Quaternion = this.group.quaternion.clone().invert();
-    const normal: THREE.Vector3 = this.camera.position.clone().sub(this.rig.focus).normalize().applyQuaternion(toLocal);
-    const up: THREE.Vector3 = this.camera.up.clone().applyQuaternion(this.camera.quaternion.clone()).applyQuaternion(toLocal);
-    const flat: Map<string, THREE.Vector3> = flatPositions_of(nodes, this.lastPositions, normal, up, this.physics);
-    if (flat.size === 0) return;
-    this.flatRestore = new Map([...flat.keys()].map((id: string): [string, THREE.Vector3] => [id, (this.lastPositions.get(id) as THREE.Vector3).clone()]));
-    for (const [id, at] of flat) this.lastPositions.set(id, at);
-    this.rebuild(false, 'hold');
+    if (this.flat.set(ids, this.graph.nodes, this.lastPositions, { camera: this.camera, focus: this.rig.focus, world: this.group }, this.physics)) this.rebuild(false, 'hold');
   }
-
   /** @returns Whether a subset lies flat. */
-  public flat_get(): boolean {
-    return this.flatRestore !== null;
-  }
+  public flat_get(): boolean { return this.flat.active(); }
 
   /**
    * Updates one node's look in place (its state changed on the progress

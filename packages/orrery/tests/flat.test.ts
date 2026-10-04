@@ -5,7 +5,7 @@
 import { describe, it, expect } from '@jest/globals';
 import * as THREE from 'three';
 import { PHYSICS_DEFAULT } from '../src/layout/index.js';
-import { flatPositions_of } from '../src/scene/flat.js';
+import { FlatMolecule, flatPositions_of } from '../src/scene/flat.js';
 import type { SpaceNode } from '../src/scene/node.js';
 
 function node_make(id: string, parents: string[] = []): SpaceNode {
@@ -47,5 +47,21 @@ describe('a molecule laid flat', () => {
   it('leaves out a node with nowhere to stand', () => {
     const flat: Map<string, THREE.Vector3> = flatPositions_of([...nodes, node_make('e')], standing, new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0), PHYSICS_DEFAULT);
     expect(flat.has('e')).toBe(false);
+  });
+
+  it('stands the molecule back up where it stood, and leaves the rest alone', () => {
+    const flat: FlatMolecule = new FlatMolecule();
+    const positions: Map<string, THREE.Vector3> = new Map([...standing].map(([id, at]) => [id, at.clone()]));
+    positions.set('far', new THREE.Vector3(-50, 3, 7));
+    const camera: THREE.PerspectiveCamera = new THREE.PerspectiveCamera();
+    camera.position.set(0, 0, 30);
+    const eye = { camera, focus: new THREE.Vector3(), world: new THREE.Object3D() };
+    expect(flat.set(['a', 'b', 'c', 'd'], nodes, positions, eye, PHYSICS_DEFAULT)).toBe(true);
+    expect(flat.active()).toBe(true);
+    expect(positions.get('far')).toEqual(new THREE.Vector3(-50, 3, 7));
+    expect(positions.get('d')?.z).toBeCloseTo(1, 6);
+    expect(flat.set(null, nodes, positions, eye, PHYSICS_DEFAULT)).toBe(true);
+    expect(flat.active()).toBe(false);
+    for (const [id, at] of standing) expect(positions.get(id)?.distanceTo(at)).toBeLessThan(1e-9);
   });
 });

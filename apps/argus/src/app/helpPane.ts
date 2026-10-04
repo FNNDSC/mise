@@ -15,6 +15,8 @@ export interface HelpPaneHooks {
   birth_record: (childId: string, parent: string, dir: 'row' | 'col', before: boolean) => void;
   /** The launcher steps aside before a pane opens. */
   launcher_yield: () => void;
+  /** Whether the dashboard holds the stage. */
+  launcher_active: () => boolean;
   template_stamp: (templateId: string) => HTMLElement;
 }
 
@@ -56,9 +58,17 @@ export function helpPane_wire(context: Pick<HostContext, 'layout' | 'panels' | '
       layout.focus_set(already);
       return 'help: on stage';
     }
+    // From the dashboard the keys stand alone: the home the dashboard
+    // yields to is not what was asked for, and a file listing beside the
+    // keys reads as a mistake. Mid-task, they open beside the work.
+    const fromDashboard: boolean = hooks.launcher_active();
     hooks.launcher_yield();
     const host: string = layout.focused_get() ?? 'files';
     const spawned: PaneInstance = hooks.instance_spawn('help');
+    if (fromDashboard && layout.leaf_replace('files', spawned.id)) {
+      layout.focus_set(spawned.id);
+      return 'help: the keys and the verbs, as a pane (help keys, help verbs print them here)';
+    }
     if (!layout.leaf_split(host, 'col', spawned.id, false)) {
       paneInstance_dispose(spawned.id);
       layout.mount_remove(spawned.id);

@@ -6265,6 +6265,29 @@ button.launcher-figure {
   background-color: #000;
 }
 
+/* What the tile is for, in plain words: the first thing a new user reads,
+ * a size under the name and above the rows. */
+.launcher-about {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-family: var(--face-label);
+  font-size: 0.95rem;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  text-align: left;
+  white-space: normal;
+}
+
+.launcher-about-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding-left: 0.6rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+}
+
 .launcher-rows {
   display: flex;
   flex-direction: column;
@@ -6909,7 +6932,14 @@ body[data-zoom] #header-strip {
 
   .launcher-grid {
     grid-template-columns: 1fr;
-    grid-auto-rows: auto;
+    grid-auto-rows: max-content;
+  }
+
+  /* A tile in the column is as tall as what it says: its parts never
+   * shrink (an overflow-hidden flex child otherwise gives its height away
+   * and the words and the verb are cut). */
+  .launcher-tile > * {
+    flex: none;
   }
 
   .launcher-tile-wide {

@@ -243,6 +243,17 @@ try {
       if (m && m.textContent.includes('READY')) return true; }
     return false;`);
   check('session reaches READY', ready === true);
+  // A fresh browser begins at the dashboard alone on the screen: no header,
+  // no gutter, no console. The scenarios want the full surface, so the
+  // suite steps out with Esc (the landing's own way out) once it has looked.
+  const landing = await evalIn(`
+    const shown = (id) => { const e = document.getElementById(id); if (e === null || e.offsetParent === null) return false; const r = e.getBoundingClientRect(); return r.height > 0 && r.width > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight; };
+    const seen = { zoom: document.body.dataset.zoom ?? null, tiles: document.querySelectorAll('.launcher-tile').length, drawer: shown('drawer'), gutter: shown('gutter-files') };
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await sleep(400);
+    return { ...seen, after: document.body.dataset.zoom ?? null };`);
+  check('a fresh browser lands on the dashboard alone: zoomed, no console, no gutter; Esc gives the full surface',
+    landing.zoom === 'launcher' && landing.tiles >= 7 && !landing.drawer && !landing.gutter && landing.after === null, JSON.stringify(landing));
   // The baseline is home, not whatever cwd the session kept from before
   // the suite: a session left in a since-removed directory made every
   // scenario read as a leak and every repair cd into nothing.
@@ -940,11 +951,15 @@ try {
     for (let i = 0; i < 60; i++) { await sleep(500); if ([...document.querySelectorAll('.pane-universe')].some((p) => p.offsetParent !== null)) break; }
     document.getElementById('gutter-dashboard')?.click();
     for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelectorAll('.launcher-tile').length > 0) break; }
-    const tile = [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'HELP');
+    const tile = [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'KEYS');
     const figures = tile ? [...tile.querySelectorAll('.launcher-figure')].map((f) => f.textContent.trim()) : [];
     tile?.querySelector('.launcher-verb')?.click();
     const pane = () => [...document.querySelectorAll('.pane-help')].find((p) => p.offsetParent !== null);
     for (let i = 0; i < 40; i++) { await sleep(250); if (pane()) break; }
+    // From the dashboard the keys stand alone: no file listing beside them,
+    // and the dashboard's zoom has given the frame back.
+    const alone = [...document.querySelectorAll('#layout-root .workspace-pane')].filter((p) => p.offsetParent !== null).map((p) => (p.className.match(/pane-(files|help|dag|universe|pacs|launcher)/) ?? [])[1] ?? '?');
+    const unzoomed = document.body.dataset.zoom === undefined;
     const rows = pane() ? pane().querySelectorAll('.listing-row').length : 0;
     const keyRows = pane() ? pane().querySelectorAll('.help-row.help-pane').length : 0;
     const verbRows = pane() ? pane().querySelectorAll('.help-row.help-verb').length : 0;
@@ -953,8 +968,10 @@ try {
     await say('help verbs'); const typedVerbs = /argus verbs/.test(after('help verbs'));
     await say('help pane'); const again = /on stage/.test(after('help pane'));
     const panes = document.querySelectorAll('.pane-help').length;
-    return { tile: tile !== undefined, figures, rows, keyRows, verbRows, chip, typedKeys, typedVerbs, again, panes };`);
-  check('the dashboard has a HELP tile that opens the HELP pane: the chords and the verbs as a listing',
+    return { tile: tile !== undefined, figures, alone, unzoomed, rows, keyRows, verbRows, chip, typedKeys, typedVerbs, again, panes };`);
+  check('the dashboard KEYS tile opens the keys alone on the stage, the full surface back: no file listing beside them',
+    help.tile && help.unzoomed && help.alone.length === 1 && help.alone[0] === 'help', JSON.stringify({ alone: help.alone, unzoomed: help.unzoomed }));
+  check('the dashboard has a KEYS tile that opens the KEYS pane: the chords and the verbs as a listing',
     help.tile && help.figures.some((f) => /KEYS/.test(f)) && help.rows > 30 && help.keyRows >= 10 && help.verbRows >= 10, JSON.stringify(help));
   check('help keys and help verbs answer in the console; a second help pane focuses the pane on stage rather than opening another',
     help.typedKeys && help.typedVerbs && help.again && help.panes === 1, JSON.stringify(help));

@@ -41,6 +41,7 @@ import { type DownloadOutcome } from '../features/files/download.js';
 import { FilesPanel, type FsListing, type FsListingEntry, extension_isImage } from '../features/files/panel.js';
 import { GatherPanel, type GatherSeries, type GatherFeed } from '../features/gather/panel.js';
 import { LauncherPanel, type LauncherTile, type LauncherRow } from '../features/launcher/panel.js';
+import { dashboardTiles_build } from './dashboardTiles.js';
 import { runLine_compose, runLine_executable, runLine_hasTitle, runLine_titleAppend } from '../features/files/runLine.js';
 import { DagPanel } from '../features/dag/panel.js';
 import { UniversePanel } from '../features/universe/panel.js';
@@ -1842,6 +1843,10 @@ async function surface_start(token: string): Promise<void> {
   // drag) refits the measured canvases once the DOM has settled; a
   // reparented WebGL canvas otherwise keeps its old pixel size.
   layout.renderObserver_set((): void => {
+    // The dashboard alone on the screen lasts only while it holds the
+    // stage: whatever takes the stage (a gutter, a numeral, a typed verb)
+    // gets the full surface back.
+    if (document.body.dataset['zoom'] === 'launcher' && !layout.panes_shown().includes('launcher')) consoleZoom_set(null);
     window.requestAnimationFrame((): void => {
       for (const panel of panels.values('dag')) {
         panel.size_fit();
@@ -1934,9 +1939,18 @@ async function surface_start(token: string): Promise<void> {
     domain_enter('launcher');
     launcherPanel.render();
     layout.focus_set('launcher');
+    // The dashboard stands alone on the screen: no header, no gutter, no
+    // console, until a press opens something to frame.
+    consoleZoom_set('launcher');
+  };
+
+  /** The dashboard alone on the screen steps aside for the full surface. */
+  const landing_leave = (): void => {
+    if (document.body.dataset['zoom'] === 'launcher') consoleZoom_set(null);
   };
 
   const launcher_yield = (): void => {
+    landing_leave();
     if (layout.activePreset_get() !== 'launcher') return;
     dagShown = false;
     home_apply();
@@ -1951,115 +1965,26 @@ async function surface_start(token: string): Promise<void> {
    *
    * @returns The blocks, the one with most to say first.
    */
-  const launcherTiles_build = async (): Promise<ReadonlyArray<LauncherTile>> => {
-    const [roster, home]: [ExecuteOutcome, ExecuteOutcome] = await Promise.all([
-      client.line_execute('proc feeds', { silent: true, observe: false }),
-      client.line_execute('ls ~', { silent: true, observe: false }),
-    ]);
-    interface RosterFeed { id: number; title: string; status: string }
-    let feeds: RosterFeed[] = [];
-    for (const envelope of roster.envelopes) {
-      const model = envelope.model;
-      if (model === undefined || model.kind !== FEED_LIST_MODEL_KIND) continue;
-      const parsed = feedListModelSchema.safeParse(model.data);
-      if (parsed.success) feeds = parsed.data.feeds as RosterFeed[];
-    }
-    // A roster refused for warming is not an empty roster: the tiles say
-    // the index is warming rather than counting feeds that are not yet known.
-    const rosterWarming: boolean = feeds.length === 0 && roster.envelopes.some((envelope): boolean => envelope.status === 'error');
-    const feedsFigure: string = rosterWarming ? 'INDEX WARMING' : `${feeds.length} FEEDS`;
-    const errored: number = feeds.filter((feed: RosterFeed): boolean => /error/i.test(feed.status)).length;
-    const live: number = feeds.filter((feed: RosterFeed): boolean => /running|scheduled|created|started/i.test(feed.status)).length;
-    let entries: FsListingEntry[] = [];
-    let homePath: string = '~';
-    for (const envelope of home.envelopes) {
-      if (envelope.model?.kind !== 'fs.listing') continue;
-      const listings = envelope.model.data as Array<{ path?: unknown; items?: unknown }>;
-      const first = listings[0];
-      if (first !== undefined && Array.isArray(first.items)) {
-        entries = first.items as FsListingEntry[];
-        if (typeof first.path === 'string') homePath = first.path;
-      }
-    }
-    const folders: FsListingEntry[] = entries.filter((entry: FsListingEntry): boolean => entry.type === 'dir');
-    const desktops: GroupSnapshot[] = dormant.list();
-
-    const universe: LauncherTile = {
-      key: 'universe', name: 'UNIVERSE', hue: '--honey', numeral: '',
-      figures: [{ text: feedsFigure }],
-      rows: [{ text: 'every feed as it landed — branches by pipeline, feeds as leaves', open: (): void => universe_show() }],
-      verb: 'SEE THE SPACE',
-      enter: (): void => universe_show(),
-    };
-    const analyses: LauncherTile = {
-      key: 'analyses', name: 'ANALYSES', hue: '--october-sunset', numeral: '3',
-      figures: [
-        { text: feedsFigure },
-        ...(live > 0 ? [{ text: `${live} RUNNING` }] : []),
-        ...(errored > 0 ? [{ text: `${errored} ERRORED`, errored: true, open: (): void => runs_show('status:error') }] : []),
-      ],
-      rows: feeds.slice(0, 6).map((feed: RosterFeed): LauncherRow => ({
-        text: `${feed.id}  ${feed.title}`,
-        errored: /error/i.test(feed.status),
-        open: (): void => { runs_show(); panels.get('dag', 'dag')?.feed_enter(feed.id); },
-      })),
-      verb: 'OPEN THE ROSTER',
-      enter: (): void => runs_show(),
-    };
-    const files: LauncherTile = {
-      key: 'files', name: 'FILES', hue: '--harvestgold', numeral: '2',
-      figures: [{ text: `${entries.length} ENTRIES` }],
-      rows: folders.slice(0, 5).map((entry: FsListingEntry): LauncherRow => ({
-        text: entry.name,
-        open: (): void => {
-          dagShown = false;
-          home_apply();
-          const at: string = homePath.endsWith('/') ? `${homePath}${entry.name}` : `${homePath}/${entry.name}`;
-          terminal.line_run(`cd "${at}"`);
-        },
-      })),
-      verb: 'OPEN HOME',
-      enter: (): void => { dagShown = false; home_apply(); layout.focus_set('files'); },
-    };
-    const pacsAnswer: string = pacsPanel.query_get() ?? '';
-    const pacs: LauncherTile = {
-      key: 'pacs', name: 'PACS', hue: '--daybreak', numeral: '4',
-      figures: [{ text: pacsAnswer === '' ? 'NO ANSWER' : 'ANSWERED' }],
-      // With nothing asked yet the block teaches instead of apologising:
-      // the line it would take, dropped into the console ready to finish.
-      rows: pacsAnswer === ''
-        ? [
-          { text: 'pacs query PatientID:…', open: (): void => terminal.line_offer('pacs query PatientID:') },
-          { text: 'pacs query AccessionNumber:…', open: (): void => terminal.line_offer('pacs query AccessionNumber:') },
-        ]
-        : [{ text: pacsAnswer.slice(0, 48) }],
-      verb: 'ASK A PACS',
-      enter: (): void => { domain_enter('pacs'); layout.focus_set('pacs'); },
-    };
-    const panes: LauncherTile = {
-      key: 'panes', name: 'PANES', hue: '--butter', numeral: '6',
-      figures: [{ text: desktops.length === 0 ? 'EMPTY' : `${desktops.length} DESKTOPS` }],
-      rows: desktops.slice(0, 5).map((group: GroupSnapshot): LauncherRow => ({
-        text: group.label,
-        open: (): void => { void group_restore(group.id); },
-      })),
-      verb: 'SEE DESKTOPS',
-      enter: (): void => { domain_enter('panes'); panesPanel.render(); layout.focus_set('panes'); },
-    };
-    const help: LauncherTile = {
-      key: 'help', name: 'HELP', hue: '--butter', numeral: '',
-      figures: [{ text: `${DRAWER_CHORDS.length} KEYS` }, { text: `${VERB_LINES.length} VERBS` }],
-      rows: DRAWER_CHORDS.slice(0, 5).map((chord: DrawerChord): LauncherRow => ({ text: `${chord.key.padEnd(6)} ${chord.does}`, open: (): void => { help_open(); } })),
-      verb: 'OPEN THE KEYS',
-      enter: (): void => { help_open(); },
-    };
-    // The block with the most to say takes the wide seat.
-    const rest: LauncherTile[] = [files, pacs, panes, universe, help];
-    return feeds.length >= entries.length ? [analyses, ...rest] : [files, analyses, pacs, panes, universe, help];
-  };
+  const launcherTiles_build = dashboardTiles_build({
+    ask: (line: string): Promise<ExecuteOutcome> => client.line_execute(line, { silent: true, observe: false }),
+    universe_show: (): void => universe_show(),
+    runs_show: (filter?: string): void => runs_show(filter),
+    feed_enter: (feedId: number): void => { runs_show(); panels.get('dag', 'dag')?.feed_enter(feedId); },
+    home_open: (): void => { dagShown = false; home_apply(); layout.focus_set('files'); },
+    home_cd: (path: string): void => { dagShown = false; home_apply(); terminal.line_run(`cd "${path}"`); },
+    line_offer: (line: string): void => terminal.line_offer(line),
+    pacs_query: (): string => pacsPanel.query_get() ?? '',
+    pacs_open: (): void => { domain_enter('pacs'); layout.focus_set('pacs'); },
+    desktops: (): GroupSnapshot[] => dormant.list(),
+    desktop_restore: (id: string): void => { void group_restore(id); },
+    panes_open: (): void => { domain_enter('panes'); panesPanel.render(); layout.focus_set('panes'); },
+    keys_open: (): void => { help_open(); },
+    console_open: (): void => element_require('gutter-console').click(),
+  });
 
   const launcherPanel: LauncherPanel = new LauncherPanel(launcherMount, {
     tiles: launcherTiles_build,
+    leave: (): void => landing_leave(),
     startHere_get: landing_isLauncher,
     startHere_set: landing_set,
   });
@@ -2295,7 +2220,7 @@ async function surface_start(token: string): Promise<void> {
   };
 
   // The HELP pane and the editor: modules of their own (app/helpPane.ts, app/editor.ts).
-  const paneHooks: HelpPaneHooks = { instance_spawn, birth_record, launcher_yield, template_stamp };
+  const paneHooks: HelpPaneHooks = { instance_spawn, birth_record, launcher_yield, launcher_active: (): boolean => layout.activePreset_get() === 'launcher', template_stamp };
   const helpPane: HelpPaneModule = helpPane_wire(context, paneHooks);
   const help_open: () => string = helpPane.open;
   const editorModule: EditorModule = editor_wire(context, { ...paneHooks, replayPlace_get: desktop.replayPlace_get, errandHost_find, saved: (): void => { for (const dag of panels.values('dag')) dag.marks_refresh(); } });
@@ -2826,6 +2751,8 @@ async function surface_start(token: string): Promise<void> {
     element_require('drawer-toggle').click();
   });
   consoleZoom_set = zoom_wire(terminal);
+  // A session that begins at the dashboard begins with it alone on the screen.
+  if (layout.activePreset_get() === 'launcher') consoleZoom_set('launcher');
   panelSounds_wire();
   window.addEventListener('resize', (): void => terminal.size_fit());
 }

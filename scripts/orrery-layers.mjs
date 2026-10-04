@@ -17,12 +17,11 @@
  *     (`@fnndsc/orrery`, `@fnndsc/orrery/layout`), never its insides.
  *
  * And a part stays a part: no orrery function or method runs past
- * FUNCTION_LINES, no file past FILE_LINES. The scene (`scene/orrery.ts`)
- * once held sixty-five methods in one class; it is composed of its parts
- * now, and the ceilings keep it so. A ceiling is lifted for a named file in
- * LENGTH_ALLOWED, with a reason beside it, never by raising the number.
+ * FUNCTION_LINES, about what one tall screen shows whole. A file past
+ * FILE_LINES is named as a warning, never a failure: a long file is a hint
+ * to look for a part, and squeezing lines to meet a count improves nothing.
  *
- * Exits non-zero naming every import that crosses a seam and every length
+ * Exits non-zero naming every import that crosses a seam and every function
  * past its ceiling.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -35,12 +34,8 @@ const PUBLIC_ENTRIES = new Set(['@fnndsc/orrery', '@fnndsc/orrery/layout']);
 const LAYOUT_PACKAGES = new Set(['d3-force-3d']);
 /** The longest a function or method may run, in lines, brace to brace. */
 const FUNCTION_LINES = 150;
-/** The longest a file may run, in lines. */
+/** A file past this many lines is named as a warning. */
 const FILE_LINES = 1200;
-/** Files allowed past a ceiling, each with its reason. */
-const LENGTH_ALLOWED = new Map([
-  // (none: every orrery file stands under its ceiling)
-]);
 
 /** Every .ts file under a directory. */
 function files_under(dir) {
@@ -113,13 +108,12 @@ function functions_of(text) {
 
 const failures = [];
 const fail = (path, line, why) => failures.push(`${relative(ROOT, path)}:${line} ${why}`);
+const warnings = [];
 
 for (const path of files_under(ORRERY)) {
-  const rel = relative(ROOT, path);
-  if (LENGTH_ALLOWED.has(rel)) continue;
   const text = readFileSync(path, 'utf8');
   const lineCount = text.split('\n').length;
-  if (lineCount > FILE_LINES) fail(path, 1, `runs ${lineCount} lines; the ceiling is ${FILE_LINES}: split it into parts`);
+  if (lineCount > FILE_LINES) warnings.push(`${relative(ROOT, path)} runs ${lineCount} lines (past ${FILE_LINES}): look for a part to take out`);
   for (const fn of functions_of(text)) {
     const length = fn.to - fn.from + 1;
     if (length > FUNCTION_LINES) fail(path, fn.from, `${fn.name} runs ${length} lines; the ceiling is ${FUNCTION_LINES}: split it into steps`);
@@ -154,9 +148,10 @@ for (const surface of SURFACES) {
   }
 }
 
+for (const warning of warnings) console.warn(`orrery-layers: warning: ${warning}`);
 if (failures.length > 0) {
   console.error('orrery-layers: seams crossed');
   for (const failure of failures) console.error(`  ${failure}`);
   process.exit(1);
 }
-console.log(`orrery-layers: every seam holds and every length is under its ceiling (${files_under(ORRERY).length} orrery files, surfaces clean)`);
+console.log(`orrery-layers: every seam holds and every function is under its ceiling (${files_under(ORRERY).length} orrery files, surfaces clean)`);

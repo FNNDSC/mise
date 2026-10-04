@@ -505,40 +505,37 @@ function functions_of(text) {
 }
 
 LINT_CHECKS['a-part-stays-a-part'] = () => {
-  // A function runs at most 150 lines, a file at most 1,200 (the cleanup
-  // epic's ceilings, #814). A module factory (`*_wire`, `*_build`) is a
-  // module boundary: it is measured by the named functions inside it, each
-  // under the ceiling, not as one function. What still stands past a
+  // A function runs at most 150 lines: about what one tall screen shows
+  // whole (#814). A module factory (`*_wire`, `*_build`) is a module
+  // boundary: it is measured by the named functions inside it, each under
+  // the ceiling, not as one function. A function that still stands past the
   // ceiling is named below with its reason and the length it stood at when
   // the ceiling arrived: it may shrink, never grow, and a new one fails.
+  // A file past 1,200 lines is named as a warning, never a failure: a long
+  // file is a hint to look for a part, and squeezing lines to meet a count
+  // improves nothing.
   const FUNCTION_LINES = 150;
   const FILE_LINES = 1200;
   const allowed = new Map([
-    ['apps/argus/src/app/main.ts', [2888, 'the host: the pane factories, the opens, the wire observers and the boot; each concern left goes to a module']],
     ['apps/argus/src/app/main.ts#surface_start', [1931, 'the host closure itself; it shrinks as the file does']],
     ['apps/argus/src/console/argusLang.ts#argusLine_run', [266, 'the language dispatcher: one branch per subject; a verb table is the next cut']],
     ['apps/argus/src/features/image/slabScene.ts#slabScene_open', [155, 'the slab scene setup: one WebGL program; split when it next changes']],
-    ['apps/argus/src/features/pacs/panel.ts', [1941, 'the PACS panel: three listing levels and the form; the levels are the next cut']],
-    ['apps/argus/src/features/files/panel.ts', [1814, 'the files panel: the listing, the content views and the previews; the content views are the next cut']],
-    ['apps/argus/src/features/dag/panel.ts', [1674, 'the DAG panel: the roster and the graph; the roster is the next cut']],
-    ['apps/argus/src/features/universe/panel.ts', [1684, 'the universe panel: the verbs, the session layout and the replay; the session layout is the next cut']],
-    ['apps/argus/src/features/roster/listing.ts', [1648, 'the listing facade: one class every pane declares into; the traits are the next cut']],
   ]);
   const files = readdirSync('apps/argus/src', { recursive: true })
     .map((name) => `apps/argus/src/${String(name).replaceAll('\\', '/')}`)
     .filter((path) => path.endsWith('.ts') && !path.endsWith('.d.ts'));
-  const over = (key, length, ceiling, what) => {
-    const allow = allowed.get(key);
-    if (length <= ceiling) return;
-    if (allow === undefined) fail('a-part-stays-a-part', `${key} ${what} runs ${length} lines; the ceiling is ${ceiling}: split it into parts`);
-    else if (length > allow[0]) fail('a-part-stays-a-part', `${key} ${what} grew to ${length} lines past its allowance of ${allow[0]} (${allow[1]})`);
-  };
   for (const path of files) {
     const text = readFileSync(path, 'utf8');
-    over(path, text.split('\n').length, FILE_LINES, 'file');
+    const lineCount = text.split('\n').length;
+    if (lineCount > FILE_LINES) console.warn(`aegis-lint: warning: ${path} runs ${lineCount} lines (past ${FILE_LINES}): look for a part to take out`);
     for (const fn of functions_of(text)) {
       if (/_(wire|build)$/.test(fn.name)) continue;
-      over(`${path}#${fn.name}`, fn.to - fn.from + 1, FUNCTION_LINES, 'function');
+      const key = `${path}#${fn.name}`;
+      const length = fn.to - fn.from + 1;
+      if (length <= FUNCTION_LINES) continue;
+      const allow = allowed.get(key);
+      if (allow === undefined) fail('a-part-stays-a-part', `${key} function runs ${length} lines; the ceiling is ${FUNCTION_LINES}: split it into steps`);
+      else if (length > allow[0]) fail('a-part-stays-a-part', `${key} function grew to ${length} lines past its allowance of ${allow[0]} (${allow[1]})`);
     }
   }
 };

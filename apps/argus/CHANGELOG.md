@@ -1,5 +1,11 @@
 # @fnndsc/argus
 
+## 0.23.1
+
+### Patch Changes
+
+- 9888eff: The console answers a double click on its header as every pane does (zoom, and again to restore), and the lid closes the console even while it is zoomed (it did nothing there, and so did CLOSE in the console's drawer).
+
 ## 0.23.0
 
 ### Minor Changes

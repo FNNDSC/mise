@@ -64,7 +64,7 @@ A projection is the product of independent choices, each a block on the pane's m
 | DENSITY | SHAPE · CENSUS | a group as one sphere with its count, or every job its own point
 | LAYOUT | GALAXY · SPOKES · CLUMPS · CONSTELLATIONS · DATA · ACCRETION | where every molecule stands
 | DRAW | STARS · SPHERES | points of light far off, or lit spheres everywhere
-| 3D / 2D | 3D · 2D | the space in depth, or flattened onto the screen
+| 3D / 2D | 3D · 2D | the space in depth, or flattened onto the screen; inside a feed, that feed alone lies flat facing the eye while the space behind keeps its depth (each feed is entered in 3D)
 | CAPTIONS | ON · OFF | hub names over the picture
 | REPLAY | play · pause · at a date | the space's history, feed by feed
 |===

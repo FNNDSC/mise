@@ -29,6 +29,7 @@ import { rankedLayout_compute, type RankedLayout } from '@fnndsc/orrery/layout';
 import { Listing, type ListingBlock, type ListingStateParts } from '../roster/listing.js';
 import { csvTable_read, type CsvTable } from './csv.js';
 import { JSON_FILE_PATTERN, jsonPretty_build } from './json.js';
+import { listing_isAnswered, refusalWords_of } from './answer.js';
 import { more_wire } from '../roster/more.js';
 import type { ListingAction, ListingTrait } from '../roster/row.js';
 import { barState_toggle } from '../roster/bar.js';
@@ -614,26 +615,9 @@ export class FilesPanel {
    * @param envelope - Any envelope the session showed this surface.
    */
   public envelope_observe(envelope: WireEnvelope): void {
-    // A listing the kernel sent is drawn even when the command is marked an
-    // error: that mark can come from a side lookup that failed while the
-    // listing itself succeeded (a shared feed's `data`, whose owner's home
-    // this identity may not read). Dropping it left the press hanging,
-    // neither drawn nor refused, and the dive looked dead.
-    // A listing that failed outright still carries the model, empty: that one
-    // is a refusal, and is said as one.
-    const answered: boolean = envelope.model?.kind === 'fs.listing'
-      && Array.isArray(envelope.model.data) && envelope.model.data.length > 0;
-    if (envelope.status === 'error' && !answered) {
-      // A press the kernel refused: the row stands down and the bar reads
-      // the kernel's own words, whatever they are, so no press is ever left
-      // waiting on an answer that came.
-      // Every line the kernel said: after the reason may come why the path
-      // may not be where it looked (a parent whose links it could not read).
-      const said: string = (envelope.renderedErr ?? envelope.rendered ?? '').replace(/\x1b\[[0-9;]*m/g, '').split('\n')
-        .map((line: string): string => line.trim()).filter((line: string): boolean => line.length > 0).join(' \u00b7 ');
-      const drained: string = [...((envelope as { errors?: Array<{ type?: string; message?: string }> }).errors ?? [])]
-        .reverse().find((error) => error.type === 'error')?.message?.replace(/^\[[^\]]*\]\s*\|\s*/, '') ?? '';
-      this.listing.activation_refuse(said || drained || 'refused');
+    // A drawn listing answers the press even when marked an error (answer.ts).
+    if (envelope.status === 'error' && !listing_isAnswered(envelope)) {
+      this.listing.activation_refuse(refusalWords_of(envelope));
       return;
     }
     if (envelope.model?.kind !== 'fs.listing') {

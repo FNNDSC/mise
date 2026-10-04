@@ -960,6 +960,10 @@ try {
     // and the dashboard's zoom has given the frame back.
     const alone = [...document.querySelectorAll('#layout-root .workspace-pane')].filter((p) => p.offsetParent !== null).map((p) => (p.className.match(/pane-(files|help|dag|universe|pacs|launcher)/) ?? [])[1] ?? '?');
     const unzoomed = document.body.dataset.zoom === undefined;
+    // A block's press opens only what it names: header folded away, console closed.
+    const quiet = { header: document.body.dataset.header ?? null, consoleClosed: document.getElementById('drawer').classList.contains('drawer-closed') };
+    // The rest of the scenario types into the console: open it as the operator would.
+    document.getElementById('gutter-console').click(); await sleep(400);
     const rows = pane() ? pane().querySelectorAll('.listing-row').length : 0;
     const keyRows = pane() ? pane().querySelectorAll('.help-row.help-pane').length : 0;
     const verbRows = pane() ? pane().querySelectorAll('.help-row.help-verb').length : 0;
@@ -968,9 +972,10 @@ try {
     await say('help verbs'); const typedVerbs = /argus verbs/.test(after('help verbs'));
     await say('help pane'); const again = /on stage/.test(after('help pane'));
     const panes = document.querySelectorAll('.pane-help').length;
-    return { tile: tile !== undefined, figures, alone, unzoomed, rows, keyRows, verbRows, chip, typedKeys, typedVerbs, again, panes };`);
-  check('the dashboard KEYS tile opens the keys alone on the stage, the full surface back: no file listing beside them',
-    help.tile && help.unzoomed && help.alone.length === 1 && help.alone[0] === 'help', JSON.stringify({ alone: help.alone, unzoomed: help.unzoomed }));
+    return { tile: tile !== undefined, figures, alone, unzoomed, quiet, rows, keyRows, verbRows, chip, typedKeys, typedVerbs, again, panes };`);
+  check('the dashboard KEYS tile opens the keys alone on the stage: no file listing beside them, the header folded away, the console closed',
+    help.tile && help.unzoomed && help.alone.length === 1 && help.alone[0] === 'help' && help.quiet.header === 'away' && help.quiet.consoleClosed,
+    JSON.stringify({ alone: help.alone, unzoomed: help.unzoomed, quiet: help.quiet }));
   check('the dashboard has a KEYS tile that opens the KEYS pane: the chords and the verbs as a listing',
     help.tile && help.figures.some((f) => /KEYS/.test(f)) && help.rows > 30 && help.keyRows >= 10 && help.verbRows >= 10, JSON.stringify(help));
   check('help keys and help verbs answer in the console; a second help pane focuses the pane on stage rather than opening another',

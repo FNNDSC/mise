@@ -1948,8 +1948,23 @@ async function surface_start(token: string): Promise<void> {
   };
 
   /** The dashboard alone on the screen steps aside for the full surface. */
-  const landing_leave = (): void => {
-    if (document.body.dataset['zoom'] === 'launcher') consoleZoom_set(null);
+  /**
+   * The dashboard alone on the screen steps aside. A press on a block opens
+   * only what it names: the gutter comes back, the header stays folded away
+   * and the console closed — most people never need either, and the strip
+   * and CONSOLE-05 are there for those who do (the CONSOLE block opens it).
+   * Esc, the operator's own way out, gives the whole surface back.
+   *
+   * @param quiet - True for a block's press: header away, console closed.
+   */
+  const landing_leave = (quiet: boolean = false): void => {
+    if (document.body.dataset['zoom'] !== 'launcher') return;
+    consoleZoom_set(null);
+    if (!quiet) return;
+    const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
+    if (header !== null) headerHeight_track(header, document.body);
+    document.body.dataset['header'] = 'away';
+    consoleClosed_set?.(true);
   };
 
   const launcher_yield = (): void => {
@@ -1987,7 +2002,7 @@ async function surface_start(token: string): Promise<void> {
 
   const launcherPanel: LauncherPanel = new LauncherPanel(launcherMount, {
     tiles: launcherTiles_build,
-    leave: (): void => landing_leave(),
+    leave: (): void => landing_leave(true),
     startHere_get: landing_isLauncher,
     startHere_set: landing_set,
   });

@@ -8,9 +8,9 @@ The first implementation increment is live: the LCARS frame, the terminal as a r
 
 ## Running the demo
 
-First fetch the LCARS theme: download `LCARS-26.zip` from [TheLCARS.com](https://www.thelcars.com/download.php) into `~/Downloads` (or point `LCARS_ZIP` at it). The theme is EULA-restricted and never committed here; the build extracts it locally, and falls back to a plain generated stand-in when the zip is absent.
+ARGUS needs no download: its frame, font and LCARS sounds are all in the repository.
 
-Then build the workspace from the repository root and start a daemon from that same root:
+Build the workspace from the repository root and start a daemon from that same root:
 
 ```sh
 npm install

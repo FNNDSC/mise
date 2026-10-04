@@ -760,6 +760,11 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
  * layout verbs first, then the kind's semantic children (docs/aegis.adoc). */
 .pane-handle {
   cursor: pointer;
+  /* A double click zooms the pane: it must not select the title's words,
+   * and a double tap on a phone must not zoom the page instead. */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
 }
 
 /* The whole bar is the drawer handle; hovering brightens the frame itself

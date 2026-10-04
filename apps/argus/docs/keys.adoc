@@ -21,7 +21,7 @@ Ctrl-B is the prefix: it opens the focused pane's drawer with keyboard focus on 
 | `K` | move this pane above
 | `L` | move this pane right
 | `m` | arm MOVE (then a direction)
-| `z` | zoom (tmux)
+| `z` | zoom (tmux), or double-click the pane's header
 | `x` | close (tmux)
 | `Space` | flip this pane's split: beside becomes above (tmux next layout)
 | `!` | break this pane out: alone on stage, the rest a PANES card (tmux)

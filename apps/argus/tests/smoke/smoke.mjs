@@ -1322,6 +1322,27 @@ try {
   check('Esc restores the header', zoom.restoredHeaderBottom > 50, `bottom=${zoom.restoredHeaderBottom}`);
   }
 
+  if (await stage('header-dblclick-zoom')) {
+  // A double click on a pane's frame zooms it and a second restores it, as
+  // a title bar does; the drawer the two clicks toggle ends as it was, and
+  // the title's words are not left selected.
+  const dbl = await evalIn(`
+    document.getElementById('gutter-files').click(); await sleep(700);
+    const pane = document.querySelector('.pane-files');
+    const handle = pane.querySelector('.pane-handle');
+    const drawer = pane.querySelector('.pane-drawer');
+    const drawerBefore = drawer.hidden;
+    const double = () => { handle.click(); handle.click(); handle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); };
+    double(); await sleep(700);
+    const zoomed = document.body.dataset.zoom ?? null;
+    const drawerKept = drawer.hidden === drawerBefore;
+    const selected = (window.getSelection()?.toString() ?? '').length;
+    double(); await sleep(700);
+    return { zoomed, drawerKept, selected, restored: document.body.dataset.zoom ?? null, paneId: pane.closest('[data-pane-id]')?.dataset.paneId ?? null };`);
+  check('a double click on a pane frame zooms it, a second restores it; the drawer ends as it was',
+    typeof dbl.zoomed === 'string' && dbl.zoomed.length > 0 && dbl.drawerKept && dbl.selected === 0 && dbl.restored === null, JSON.stringify(dbl));
+  }
+
   if (await stage('split-zoom')) {
   const splitZoom = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(600);

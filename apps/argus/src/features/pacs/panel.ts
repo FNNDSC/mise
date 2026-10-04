@@ -221,10 +221,12 @@ interface PatientRow {
 }
 
 /** What a series' badge is currently saying. */
-interface BadgeState {
+export interface BadgeState {
   status: string;
   current?: number;
   total?: number;
+  /** Why it ended badly, when the kernel said (shown on hover, and in the console's summary). */
+  reason?: string;
 }
 
 /**
@@ -370,6 +372,8 @@ const badgeStateLast: Map<string, BadgeState> = new Map();
 function badge_paint(badge: HTMLElement, state: BadgeState): void {
   badge.replaceChildren();
   badge.dataset['state'] = state.status;
+  if (state.reason !== undefined) badge.title = state.reason;
+  else badge.removeAttribute('title');
   const note: HTMLSpanElement = document.createElement('span');
   note.className = 'pacs-badge-note';
 
@@ -390,13 +394,12 @@ function badge_paint(badge: HTMLElement, state: BadgeState): void {
     return;
   }
   // A running pull shows how far it has got, not just that it is going.
-  // Without a total there is no fraction to draw, so the bar paces
-  // instead — still motion, still honest about knowing no better.
+  // Without a total there is no fraction to draw, and before the first file
+  // there is nothing to fill: the bar paces instead — still motion, still
+  // honest about knowing no better. (A fired pull says its total at once,
+  // so a waiting series drew a still, empty bar that read as stuck.)
   const counted: string = state.total !== undefined ? ` ${state.current ?? 0}/${state.total}` : '';
-  const fraction: number | null =
-    state.status === 'queued' || state.total === undefined || state.total === 0
-      ? null
-      : Math.min(1, (state.current ?? 0) / state.total);
+  const fraction: number | null = badgeFraction_of(state);
   const track: HTMLSpanElement = document.createElement('span');
   track.className = fraction === null ? 'pacs-bar pacs-bar-pacing' : 'pacs-bar';
   const fill: HTMLSpanElement = document.createElement('span');
@@ -407,6 +410,31 @@ function badge_paint(badge: HTMLElement, state: BadgeState): void {
     ? (BADGE_TEXT['queued'] ?? 'QUEUED')
     : `${BADGE_TEXT['running']}${counted}`;
   badge.append(track, note);
+}
+
+/**
+ * How full a pull's bar is, or null when it should pace: queued, no total
+ * to divide by, or fired and waiting on its first file.
+ *
+ * @param state - The series' state.
+ * @returns The fraction, 0..1, or null to pace.
+ */
+export function badgeFraction_of(state: BadgeState): number | null {
+  if (state.status === 'queued' || state.total === undefined || state.total === 0 || (state.current ?? 0) === 0) return null;
+  return Math.min(1, (state.current ?? 0) / state.total);
+}
+
+/**
+ * Whether an answer finding a series home in CUBE outranks what the wire
+ * last said of it: it does over a pull that ended badly (the files arrived,
+ * whatever the watch saw), never over one still in flight.
+ *
+ * @param series - The series as the answer has it.
+ * @param held - What the wire last said.
+ * @returns True when the answer's word stands.
+ */
+export function answer_outranksBadge(series: Pick<PacsSeries, 'pulled'>, held: BadgeState): boolean {
+  return series.pulled === true && held.status !== 'done' && held.status !== 'running' && held.status !== 'queued';
 }
 
 function badgeElements_paint(seriesUID: string, paint: (badge: HTMLElement) => void): void {
@@ -1543,6 +1571,7 @@ export class PacsPanel {
     const state: BadgeState = { status };
     if (message.current !== undefined) state.current = message.current;
     if (message.total !== undefined) state.total = message.total;
+    if (message.reason !== undefined) state.reason = message.reason;
     this.badgeState_set(message.itemId, state);
     // A retrieve that finished has changed what the row can do. Repaint it
     // now rather than waiting for the operator to ask the same question
@@ -1646,7 +1675,14 @@ export class PacsPanel {
       for (const series of study.series) {
         // What the wire has said outranks what the answer said: a retrieve
         // reported since the query would otherwise be erased by a repeat.
-        if (sameQuery && this.badgeStates.has(series.seriesUID)) continue;
+        // Except that an answer finding the series home in CUBE outranks a
+        // pull that ended badly: the files arrived, whatever the watch saw.
+        const held: BadgeState | undefined = this.badgeStates.get(series.seriesUID);
+        if (held !== undefined && answer_outranksBadge(series, held)) {
+          this.badgeState_set(series.seriesUID, { status: 'done', ...(series.pulledFiles !== undefined ? { total: series.pulledFiles } : {}) });
+          continue;
+        }
+        if (sameQuery && held !== undefined) continue;
         this.seriesProgress.set(series.seriesUID, progress_ofSeries(series));
       }
     }

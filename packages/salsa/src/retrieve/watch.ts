@@ -63,7 +63,10 @@ const FIRE_BACKOFF_MS: readonly number[] = [250, 500];
 const WATCH_RECONNECT_ATTEMPTS: number = 3;
 
 const STALL_TIMEOUT_MS: number = 30_000;
-const NO_ACTIVITY_TIMEOUT_MS: number = 15_000;
+// A hospital PACS can take most of a minute to begin sending, more when
+// several series are queued: fifteen seconds called many a series lost
+// that was simply waiting its turn.
+const NO_ACTIVITY_TIMEOUT_MS: number = 60_000;
 const SERIES_TIMEOUT_MS: number = 5 * 60 * 1_000;
 const CHECKER_INTERVAL_MS: number = 2_000;
 
@@ -87,6 +90,8 @@ const CHECKER_INTERVAL_MS: number = 2_000;
  * @property startTime - Timestamp when the retrieve was fired.
  * @property lonkConfirmed - True only after an explicit LONK `done` or a storage confirmation.
  * @property cubePathDir - CUBE folder the series landed in (resolved post-pull).
+ * @property reason - Why a series ended badly, in words a surface can show
+ *   (an ERROR that cannot say why is the defect this field closes).
  */
 export interface RetrieveTask {
   label: string;
@@ -104,6 +109,7 @@ export interface RetrieveTask {
   startTime: number;
   lonkConfirmed: boolean;
   cubePathDir: string | null;
+  reason?: string;
 }
 
 /**
@@ -223,6 +229,7 @@ async function task_fire(task: RetrieveTask, pacsserver: string): Promise<void> 
 
   if (fired === null) {
     task.status = 'unfired';
+    task.reason = `the retrieve could not be started: CUBE refused the query or the retrieve ${FIRE_ATTEMPTS} times`;
     return;
   }
   task.syntheticQueryId = fired.queryId;
@@ -474,6 +481,7 @@ export async function retrieve_fireAndWatch(
           emit(t, 'done');
         } else if ('error' in message && typeof message.error === 'string') {
           t.status = 'error';
+          t.reason = `the receiver could not store a file: ${message.error}`;
           emit(t, 'error');
         }
       } catch {
@@ -523,8 +531,9 @@ export async function retrieve_confirmLoop(
     (t: RetrieveTask) => (t.status === 'pulled' && !t.lonkConfirmed) || t.status === 'unconfirmed',
   );
 
-  for (let attempt: number = 1; attempt <= retryMax && retryCandidates.length > 0; attempt++) {
-    await Promise.all(retryCandidates.map(async (t: RetrieveTask): Promise<void> => {
+  /** Asks CUBE about each candidate; a series found there arrived. */
+  const storage_ask = async (tasks: RetrieveTask[]): Promise<void> => {
+    await Promise.all(tasks.map(async (t: RetrieveTask): Promise<void> => {
       const stateResult: Result<SeriesStorageState> = await seriesStorage_resolve(t.seriesUID);
       if (stateResult.ok && stateResult.value.folderPath !== null) {
         t.lonkConfirmed = true;
@@ -535,11 +544,18 @@ export async function retrieve_confirmLoop(
         events.task?.(t, 'done', 'retrying');
       }
     }));
+  };
 
-    retryCandidates = retryCandidates.filter((t: RetrieveTask) => !t.lonkConfirmed);
-    if (retryCandidates.length === 0) break;
+  // CUBE is asked at least once, whatever the retry count: with no retries
+  // the loop below never ran, and every series the watch had not seen
+  // finish was declared an error unasked, while its files were landing.
+  await storage_ask(retryCandidates);
+  retryCandidates = retryCandidates.filter((t: RetrieveTask) => !t.lonkConfirmed);
 
+  let refired: boolean = false;
+  for (let attempt: number = 1; attempt <= retryMax && retryCandidates.length > 0; attempt++) {
     events.retryRound?.(attempt, retryMax, retryCandidates.length);
+    refired = true;
 
     for (const t of retryCandidates) {
       t.status = 'pending';
@@ -557,13 +573,25 @@ export async function retrieve_confirmLoop(
     extraFiringErrors += await retrieve_fireAndWatch(retryCandidates, pacsserver, client, events, 'retrying');
 
     retryCandidates = retryCandidates.filter(
-      (t: RetrieveTask) => t.status === 'pulled' && !t.lonkConfirmed,
+      (t: RetrieveTask) => (t.status === 'pulled' && !t.lonkConfirmed) || t.status === 'unconfirmed',
     );
+    await storage_ask(retryCandidates);
+    retryCandidates = retryCandidates.filter((t: RetrieveTask) => !t.lonkConfirmed);
   }
 
   for (const t of retryCandidates) {
-    t.status = 'error';
-    events.task?.(t, 'error', 'retrying');
+    if (refired) {
+      // Fired again and still nowhere in CUBE: that is a failure observed.
+      t.status = 'error';
+      t.reason = `nothing reached CUBE after ${retryMax} more ${retryMax === 1 ? 'try' : 'tries'}`;
+      events.task?.(t, 'error', 'retrying');
+    } else {
+      // Not seen to finish and not in CUBE yet: unknown, not failed. A
+      // PACS slow to begin keeps sending after the watch ends.
+      t.status = 'unconfirmed';
+      t.reason = 'the watch ended before any file arrived; the PACS may still be sending (check with pacs status)';
+      events.task?.(t, 'unconfirmed', 'retrying');
+    }
   }
   return extraFiringErrors;
 }

@@ -80,6 +80,7 @@ function pullProgress_emit(task: RetrieveTask, status?: ProgressStatus, phase: '
     unit: 'files',
     status: status ?? retrieveProgress_classify(task),
     ...(task.cubePathDir !== null ? { path: task.cubePathDir } : {}),
+    ...(task.reason !== undefined ? { reason: task.reason } : {}),
   });
 }
 
@@ -252,6 +253,7 @@ function pullSummary_print(allTasks: RetrieveTask[], totalFiringErrors: number):
         sink_dataLine(chalk.red(`  ✗ ${f.label} [FAILED TO FIRE — will not arrive; re-run pull]`));
       } else {
         sink_dataLine(chalk.yellow(`  ✗ ${f.label} [${f.status.toUpperCase()} — verify with: pacs status]`));
+        if (f.reason !== undefined) sink_dataLine(chalk.yellow(`      ${f.reason}`));
       }
     }
     for (const u of unconfirmed) {

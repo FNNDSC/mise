@@ -1,5 +1,15 @@
 # @fnndsc/argus
 
+## 0.23.0
+
+### Minor Changes
+
+- c9f9156: A session begins at the dashboard alone on the screen: no header, no gutter, no console, just the blocks, each now saying in plain words what it is for. Any press opens what it names and gives the full surface back (so does Esc). HELP is KEYS, and from the dashboard it opens alone instead of beside a file listing; CONSOLE is a block of its own. On a phone every block shows all it says.
+
+### Patch Changes
+
+- d04a2ef: A double click (or double tap) on a pane's header zooms the pane, and another restores it, as a title bar does on every desktop. ZOOM in the pane's drawer stays the visible way; KEYS lists the double click beside the `z` chord.
+
 ## 0.22.3
 
 ### Patch Changes

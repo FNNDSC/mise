@@ -530,6 +530,29 @@ describe('PathMapper', () => {
         expect(result.value).toBe('/home/owner/feeds/feed_1');
       }
       expect(errorStack.checkpoint_drain(before)).toEqual([]);
+      expect(mapper.blindParents_take()).toEqual(['/home/owner']);
+      expect(mapper.blindParents_take()).toEqual([]);
+    });
+
+    it('names an unreadable parent again when a cached walk passes it', async () => {
+      mockFilesListAll.mockImplementation(async (_opts, _asset, parent) => {
+        if (parent === '/home/owner') throw new Error('403');
+        return { tableData: [], selectedFields: [] };
+      });
+      await mapper.logical_toPhysical('/home/owner/feeds');
+      mapper.blindParents_take();
+
+      await mapper.logical_toPhysical('/home/owner/feeds');
+
+      expect(mapper.blindParents_take()).toEqual(['/home/owner']);
+    });
+
+    it('names no parent when every probe could read', async () => {
+      mockFilesListAll.mockResolvedValue({ tableData: [], selectedFields: [] });
+
+      await mapper.logical_toPhysical('/home/user/files');
+
+      expect(mapper.blindParents_take()).toEqual([]);
     });
 
     it('should handle malformed link data', async () => {

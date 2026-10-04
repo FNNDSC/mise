@@ -250,8 +250,13 @@ export class VFS {
       }, 500);
     }
 
+    // Only this listing's walk may name a parent whose links went unchecked.
+    const { pathMapper_get } = await import('@fnndsc/chili/utils');
+    pathMapper_get().blindParents_take();
+
     // Fetch data (may be from cache)
     const listing: Result<VfsListing> = await this.listing_get(targetPath, options);
+    const blindParents: string[] = pathMapper_get().blindParents_take();
     const result: Result<ListingItem[]> = listing.ok ? Ok(listing.value.items) : Err();
 
     // Clear loading timeout and indicator
@@ -264,7 +269,13 @@ export class VFS {
 
     if (!result.ok) {
       const lastError = errorStack.stack_pop();
-      const renderedErr: string = lastError ? `${chalk.red(error_stripDebugPrefix(lastError.message))}\n` : '';
+      let renderedErr: string = lastError ? `${chalk.red(error_stripDebugPrefix(lastError.message))}\n` : '';
+      // The walk to this path passed a folder whose links this identity may
+      // not read (a shared feed's owner's home): a link there was not seen,
+      // and may be why the path is not where the walk looked.
+      for (const parent of blindParents) {
+        renderedErr += `${chalk.yellow(`ls: links in '${parent}' could not be read; the path was walked as written`)}\n`;
+      }
       return envelope_error('', undefined, renderedErr);
     }
 

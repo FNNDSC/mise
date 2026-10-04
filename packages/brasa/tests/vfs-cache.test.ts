@@ -40,6 +40,11 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 const mockGridRender = jest.fn(() => 'GRID');
 const mockLongRender = jest.fn(() => 'LONG');
+const mockBlindParentsTake = jest.fn((): string[] => []);
+jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
+  pathMapper_get: () => ({ blindParents_take: mockBlindParentsTake }),
+}));
+
 jest.unstable_mockModule('@fnndsc/chili/views/ls.js', () => ({
   grid_render: mockGridRender,
   long_render: mockLongRender,
@@ -204,6 +209,23 @@ describe('VFS.list rendering and refresh', () => {
     mockDispatcherList.mockResolvedValue(err());
     const envelope = await new VFS().list('/nope');
     expect(envelope.renderedErr).toContain('listing failed');
+  });
+
+  it('names a parent whose links the walk could not read when the listing fails', async () => {
+    mockDispatcherList.mockResolvedValue(err());
+    mockBlindParentsTake.mockReturnValueOnce([]).mockReturnValueOnce(['/home/owner']);
+    const envelope = await new VFS().list('/home/owner/feeds/feed_1');
+    expect(envelope.renderedErr).toContain('listing failed');
+    expect(envelope.renderedErr).toContain("links in '/home/owner' could not be read");
+  });
+
+  it('says nothing of an unreadable parent when the listing succeeds', async () => {
+    mockStackSearch.mockReturnValue([]);
+    mockDispatcherList.mockResolvedValue(ok([item('a')]));
+    mockBlindParentsTake.mockReturnValueOnce([]).mockReturnValueOnce(['/home/owner']);
+    const envelope = await new VFS().list('/home/owner/feeds/feed_1');
+    expect(envelope.status).toBe('ok');
+    expect(envelope.renderedErr ?? '').not.toContain('/home/owner');
   });
 
   it('at a plain console a stale entry is refetched in line: fresh answer, no indicator', async () => {

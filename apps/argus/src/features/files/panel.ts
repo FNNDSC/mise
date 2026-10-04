@@ -619,12 +619,18 @@ export class FilesPanel {
     // listing itself succeeded (a shared feed's `data`, whose owner's home
     // this identity may not read). Dropping it left the press hanging,
     // neither drawn nor refused, and the dive looked dead.
-    const answered: boolean = envelope.model?.kind === 'fs.listing';
+    // A listing that failed outright still carries the model, empty: that one
+    // is a refusal, and is said as one.
+    const answered: boolean = envelope.model?.kind === 'fs.listing'
+      && Array.isArray(envelope.model.data) && envelope.model.data.length > 0;
     if (envelope.status === 'error' && !answered) {
       // A press the kernel refused: the row stands down and the bar reads
       // the kernel's own words, whatever they are, so no press is ever left
       // waiting on an answer that came.
-      const said: string = (envelope.renderedErr ?? envelope.rendered ?? '').replace(/\x1b\[[0-9;]*m/g, '').trim().split('\n')[0] ?? '';
+      // Every line the kernel said: after the reason may come why the path
+      // may not be where it looked (a parent whose links it could not read).
+      const said: string = (envelope.renderedErr ?? envelope.rendered ?? '').replace(/\x1b\[[0-9;]*m/g, '').split('\n')
+        .map((line: string): string => line.trim()).filter((line: string): boolean => line.length > 0).join(' \u00b7 ');
       const drained: string = [...((envelope as { errors?: Array<{ type?: string; message?: string }> }).errors ?? [])]
         .reverse().find((error) => error.type === 'error')?.message?.replace(/^\[[^\]]*\]\s*\|\s*/, '') ?? '';
       this.listing.activation_refuse(said || drained || 'refused');

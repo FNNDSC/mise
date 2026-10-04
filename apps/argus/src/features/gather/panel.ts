@@ -520,7 +520,10 @@ export class GatherPanel {
         // A cohort restored from an older desktop kept facts but not the
         // series; the row still reads, from what was kept.
         seriesUID: row.entry.seriesUID,
-        description: row.entry.description,
+        // A gathered PLACE (\`gather add <dir>\`) has no description: it
+        // reads as its path. Without one its row's first cell was undefined,
+        // and the throw took every later GATHER down with it.
+        description: row.entry.description ?? row.entry.vfsPath ?? '',
         modality: row.entry.modality,
         ...(row.entry.files === undefined ? {} : { fileCount: row.entry.files }),
         ...(row.entry.folderPath === undefined ? {} : { pulled: true, folderPath: row.entry.folderPath }),

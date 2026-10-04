@@ -1052,3 +1052,16 @@ describe('a-press-is-acknowledged', () => {
     expect(state.textContent).toBe('CD: B: NOT A DIRECTORY');
   });
 });
+
+describe('listingRow_build with a cell that comes back with no fact', () => {
+  it('draws undefined, null and a number as text, never throws', async () => {
+    const { listingRow_build } = await import('../../src/features/roster/row.js');
+    const traits: ReadonlyArray<ListingTrait<{ n: number }>> = [
+      { key: 'gone', label: 'GONE', className: 'c-gone', width: '4em', cell: (): string => undefined as unknown as string },
+      { key: 'nil', label: 'NIL', className: 'c-nil', width: '4em', cell: (): string => null as unknown as string },
+      { key: 'num', label: 'NUM', className: 'c-num', width: '4em', cell: (row: { n: number }): string => row.n as unknown as string },
+    ];
+    const element: HTMLElement = listingRow_build({ n: 7 }, traits, { className: (): string => 'listing-row' });
+    expect([...element.children].map((c) => [c.className, c.textContent])).toEqual([['c-gone', ''], ['c-nil', ''], ['c-num', '7']]);
+  });
+});

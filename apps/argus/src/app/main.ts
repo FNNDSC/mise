@@ -2751,6 +2751,19 @@ async function surface_start(token: string): Promise<void> {
     element_require('drawer-toggle').click();
   });
   consoleZoom_set = zoom_wire(terminal);
+  // The console's frame answers a double click as every pane's does: zoom,
+  // and again to restore.
+  element_require('console-handle').addEventListener('dblclick', (event: Event): void => {
+    if (event.target instanceof Element && event.target.closest('button') !== null) return;
+    window.getSelection()?.removeAllRanges();
+    consoleZoom_toggle();
+  });
+  // The lid closes the console wherever it stands: a zoomed console's
+  // height is the zoom's, so the lid first gives the stage back, then its
+  // own press closes (CLOSE in the drawer rides this too).
+  element_require('drawer-toggle').addEventListener('click', (): void => {
+    if (document.body.dataset['zoom'] === 'console') consoleZoom_set(null);
+  }, { capture: true });
   // A session that begins at the dashboard begins with it alone on the screen.
   if (layout.activePreset_get() === 'launcher') consoleZoom_set('launcher');
   panelSounds_wire();

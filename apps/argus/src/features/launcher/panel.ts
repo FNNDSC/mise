@@ -20,6 +20,7 @@
  * @module
  */
 import { more_wire } from '../roster/more.js';
+import type { TileAbout } from './about.js';
 
 /** One row of a tile: a thing that exists, and what pressing it opens. */
 export interface LauncherRow {
@@ -55,12 +56,21 @@ export interface LauncherTile {
   /** What the block's own press does, read as the verb it is. */
   verb: string;
   enter: () => void;
+  /** What the tile is for, in plain words (about.ts). */
+  about?: TileAbout;
+  /** Takes two columns wherever it stands (the first block always does). */
+  wide?: boolean;
 }
 
 /** What the launcher asks of the surface. */
 export interface LauncherHost {
   /** The tiles to paint, in reading order; the first is the wide block. */
   tiles: () => Promise<ReadonlyArray<LauncherTile>>;
+  /**
+   * Called before any press acts: the dashboard alone on the screen steps
+   * aside for the full surface (the pane the press opens has a frame again).
+   */
+  leave?: () => void;
   /** Whether a session starts here, and setting it. */
   startHere_get: () => boolean;
   startHere_set: (on: boolean) => void;
@@ -104,7 +114,7 @@ export class LauncherPanel {
       .then((tiles: ReadonlyArray<LauncherTile>): void => {
         if (id !== this.paintId || !this.grid.isConnected) return;
         this.grid.replaceChildren(...tiles.map((tile: LauncherTile, index: number): HTMLElement =>
-          this.tile_build(tile, index === 0)));
+          this.tile_build(tile, index === 0 || tile.wide === true)));
         this.startHere_render();
       })
       .catch((): void => {
@@ -148,6 +158,7 @@ export class LauncherPanel {
     block.addEventListener('click', (event: Event): void => {
       // A press inside a row or a figure is that row's, not the block's.
       if (event.target instanceof Element && event.target.closest('.launcher-row, .launcher-figure') !== null) return;
+      this.host.leave?.();
       tile.enter();
     });
 
@@ -166,7 +177,7 @@ export class LauncherPanel {
       chip.textContent = figure.text;
       if (figure.open !== undefined) {
         const open: () => void = figure.open;
-        chip.addEventListener('click', (event: Event): void => { event.stopPropagation(); open(); });
+        chip.addEventListener('click', (event: Event): void => { event.stopPropagation(); this.host.leave?.(); open(); });
       }
       head.appendChild(chip);
     }
@@ -192,7 +203,7 @@ export class LauncherPanel {
         go.className = 'launcher-go';
         go.textContent = '›';
         element.appendChild(go);
-        element.addEventListener('click', (event: Event): void => { event.stopPropagation(); open(); });
+        element.addEventListener('click', (event: Event): void => { event.stopPropagation(); this.host.leave?.(); open(); });
       }
       rows.appendChild(element);
     }
@@ -201,7 +212,42 @@ export class LauncherPanel {
     verb.className = 'launcher-verb';
     verb.textContent = tile.verb;
 
-    block.append(head, rule, rows, verb);
+    block.append(head, rule);
+    if (tile.about !== undefined) block.appendChild(about_build(tile.about));
+    block.append(rows, verb);
     return block;
   }
+}
+
+/**
+ * A tile's plain-words description: its paragraph, its list, its tail.
+ *
+ * @param about - The description.
+ * @returns The element.
+ */
+function about_build(about: TileAbout): HTMLElement {
+  const block: HTMLElement = document.createElement('span');
+  block.className = 'launcher-about';
+  const text: HTMLElement = document.createElement('span');
+  text.className = 'launcher-about-text';
+  text.textContent = about.text;
+  block.appendChild(text);
+  if (about.list !== undefined && about.list.length > 0) {
+    const list: HTMLElement = document.createElement('span');
+    list.className = 'launcher-about-list';
+    for (const line of about.list) {
+      const item: HTMLElement = document.createElement('span');
+      item.className = 'launcher-about-item';
+      item.textContent = line;
+      list.appendChild(item);
+    }
+    block.appendChild(list);
+  }
+  if (about.tail !== undefined) {
+    const tail: HTMLElement = document.createElement('span');
+    tail.className = 'launcher-about-text';
+    tail.textContent = about.tail;
+    block.appendChild(tail);
+  }
+  return block;
 }

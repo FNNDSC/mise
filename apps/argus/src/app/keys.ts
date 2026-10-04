@@ -116,6 +116,9 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
   ];
 
   const escape_handle = (event: KeyboardEvent): void => {
+    // The dashboard alone on the screen: Esc's one answer is the full
+    // surface (the zoom's own listener), not a retreat in a pane unseen.
+    if (document.body.dataset['zoom'] === 'launcher') return;
     for (const step of escape_steps) {
       const outcome: Retreat = step();
       if (outcome === 'yielded') return;

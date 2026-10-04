@@ -88,6 +88,8 @@ export async function page_open(url) {
   await send('Page.navigate', { url });
   await new Promise((r) => setTimeout(r, 4000));
   return {
+    /** Sends one raw CDP command (a viewport change, say). */
+    send,
     /** Evaluates an async expression body; returns its JSON value. */
     eval: async (expression) => {
       const out = await send('Runtime.evaluate', {

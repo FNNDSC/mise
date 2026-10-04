@@ -300,7 +300,7 @@ export const VERB_LINES: ReadonlyArray<string> = [
   'attach [--reveal]           (how to reach THIS session from a terminal or another browser)',
   'argus verbs                 (this table; the long form is docs/argus-lang.adoc)',
   'argus keys                  (the prefix chords: one key, one drawer verb)',
-  'help pane|keys|verbs        (the HELP pane on the stage; keys and verbs print the tables here; bare help is the session\'s)',
+  'help pane|keys|verbs        (the KEYS pane on the stage; keys and verbs print the tables here; bare help is the session\'s)',
 ];
 
 const VERBS_HELP: string = VERB_LINES.join('\n');

@@ -85,7 +85,7 @@ export function traitValue_of<T>(
     const held: string | HTMLElement = trait.cell(row);
     // An element cell with no declared ordering sorts by its text, which
     // is what the operator can actually see.
-    return typeof held === 'string' ? held : held.textContent ?? '';
+    return held instanceof Node ? held.textContent ?? '' : held === undefined || held === null ? '' : String(held);
   };
 }
 
@@ -117,13 +117,16 @@ export function listingRow_build<T>(
   for (const cell of build.leading?.(row) ?? []) element.appendChild(cell);
   for (const trait of traits) {
     const held: string | HTMLElement = trait.cell(row);
-    if (typeof held !== 'string') {
+    if (held instanceof Node) {
       element.appendChild(held);
       continue;
     }
+    // Anything else is text, and a missing fact reads as nothing: a cell
+    // that came back undefined once threw here, and the throw took the
+    // whole listing (and the GATHER that drew it) down with it, silently.
     const cell: HTMLSpanElement = document.createElement('span');
     cell.className = trait.className;
-    cell.textContent = held;
+    cell.textContent = held === undefined || held === null ? '' : String(held);
     element.appendChild(cell);
   }
   build.decorate?.(element, row);

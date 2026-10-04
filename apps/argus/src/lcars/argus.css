@@ -1425,7 +1425,11 @@ main {
   grid-template-columns: var(--roster-cols);
   align-items: end;
   column-gap: var(--roster-gap);
-  padding: 0 calc(var(--roster-pad) + var(--elbow-clear, 0px)) 0 var(--roster-pad);
+  /* The form stands on the study grid, so it ends where the study rows do:
+   * the results field's spine and its 0.5rem field gutter, then the rows'
+   * own pad and elbow clearance. Without the first two its 1fr track ran
+   * wider and every term after PROGRESS stood right of its cap. */
+  padding: 0 calc(var(--roster-pad) + var(--elbow-clear) + var(--spine-w) + 0.5rem) 0 var(--roster-pad);
   margin: 0.3rem 0 0.5rem;
   font-size: 0.8rem;
 }
@@ -2418,7 +2422,8 @@ body[data-zoom]:not([data-zoom='console'])
 .gather-listing,
 .header-gather-field,
 .files-table-field,
-.pacs-listing {
+.pacs-listing,
+#pacs-form {
   --frame-top: var(--mode-frame-top, 0px);
   /* The closed spine is a CONTROL — pressing it opens the mode frame — and
    * at 8px it was a hairline that happened to be clickable. Doubled, which

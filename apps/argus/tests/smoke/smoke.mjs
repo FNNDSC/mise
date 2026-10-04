@@ -2332,7 +2332,7 @@ try {
     await settle(() => bar() !== null);
     const pills = [...bar().querySelectorAll('.ask-bar-choice')].map(p => p.textContent.trim());
     const mine = bar().querySelector('.ask-bar-choice[data-value="g:' + me + ':r"]');
-    if (mine === null) { bar().querySelector('.ask-bar-abandon').click(); return { skipped: 'no personal group named ' + me, pills }; }
+    if (mine === null) { bar().querySelector('.ask-bar-abandon').click(); await home_return(); return { skipped: 'no personal group named ' + me, pills }; }
     mine.click();
     const groupHeld = await settle(() => bar()?.querySelector('.ask-bar-held[data-value="g:' + me + ':r"]') != null, 80);
     bar().querySelector('.ask-bar-choice[data-value="o::r"]').click();

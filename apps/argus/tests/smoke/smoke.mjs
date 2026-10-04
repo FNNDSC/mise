@@ -15,6 +15,18 @@
  * synthesize its own (tests/smoke/fixtures/synth.mjs), put them under the
  * identity's uploads through /vfs, and remove them at the end;
  * SMOKE_NO_FIXTURES=1 skips that and the scenarios say why they skipped.
+ * The node scenarios get a feed rooted on those fixtures the same way,
+ * unless SMOKE_DAG_FEED names one.
+ *
+ * What the suite cannot make for itself is named, never committed: a big
+ * feed (SMOKE_BIG_FEED, about a thousand nodes, slow to create) and the
+ * PACS fixtures, which name real studies and patients. SMOKE_PACS_QUERY is
+ * a `pacs query ...` line finding a study of two or more series, one of
+ * them already in CUBE; SMOKE_PACS_MRN an MRN with imaging; SMOKE_PACS_COHORT
+ * a `pacs query --patients a,b` line where one MRN is a miss. They are read
+ * from a local file, `$XDG_CONFIG_HOME/mise/smoke.env` (or the path in
+ * SMOKE_ENV), one KEY=value a line; a variable set in the environment wins.
+ * The file is the operator's, outside the tree: an MRN is a patient.
  *
  * The whole suite drives a real browser against a live daemon — about three
  * minutes for twenty-seven scenarios — so while building one thing,
@@ -23,6 +35,22 @@
  * before a merge, where the whole suite is the point.
  */
 import { argusUrl_discover, page_open } from './driver.mjs';
+import { existsSync as envFile_exists, readFileSync as envFile_read } from 'node:fs';
+import { homedir as envFile_home } from 'node:os';
+import { join as envFile_join } from 'node:path';
+
+// The fixtures the suite cannot make for itself, from the operator's own
+// file outside the tree; what the environment already sets wins.
+const smokeEnv = process.env.SMOKE_ENV ?? envFile_join(process.env.XDG_CONFIG_HOME ?? envFile_join(envFile_home(), '.config'), 'mise', 'smoke.env');
+if (envFile_exists(smokeEnv)) {
+  for (const line of envFile_read(smokeEnv, 'utf8').split('\n')) {
+    const at = line.indexOf('=');
+    if (line.trim().startsWith('#') || at <= 0) continue;
+    const key = line.slice(0, at).trim();
+    if (process.env[key] === undefined) process.env[key] = line.slice(at + 1).trim();
+  }
+  console.log(`fixtures from ${smokeEnv}`);
+}
 
 const failures = [];
 let passes = 0;
@@ -78,6 +106,11 @@ async function stage(name) {
 const page = await page_open(argusUrl_discover());
 /** The session's place when the suite began; every scenario leaves it there. */
 let leakBaseline = null;
+/** The operator's cohort file as the suite found it, put back at the end. */
+let cohortKept = null;
+/** The suite's own fixtures on the operator's CUBE, removed at the end whatever fails. */
+let fixtureFolder = null;
+let fixtureFeed = null;
 
 /**
  * Fails a scenario that leaves the session other than it found it: the
@@ -166,6 +199,20 @@ const evalIn = (body) => page.eval(`(async () => {
     }
     return null;
   };
+  // Empties the cohort where ARGUS keeps it: the band's CLEAR, and its
+  // question answered. (The console's \`gather clear\` empties the file but
+  // not the surface's own copy, which the next GATHER writes back: the
+  // surface still owns the cohort.) Returns whether it stands empty.
+  const cohort_empty = async () => {
+    const band = document.getElementById('header-gather');
+    if (band.querySelector('.gather-series')) {
+      band.querySelector('.gather-remove')?.click();
+      // An unsaved cohort asks "Save the cohort first?": no, just clear.
+      for (let i = 0; i < 20; i++) { await sleep(200); const no = document.querySelector('#header-gather .ask-bar-no, .ask-bar-no'); if (no) { no.click(); break; } if (!band.querySelector('.gather-series')) break; }
+      for (let i = 0; i < 20 && band.querySelector('.gather-series'); i++) await sleep(250);
+    }
+    return band.querySelector('.gather-series') === null;
+  };
   // A RUNS pane left on a graph goes back to its roster by its own BACK.
   const runs_back = async () => {
     const onGraph = (p) => p.offsetParent !== null && p.querySelector('.dag-feedlist') && p.querySelector('.roster-shown') === null && p.querySelector('.dag-canvas')?.style.display === 'block';
@@ -177,6 +224,8 @@ const evalIn = (body) => page.eval(`(async () => {
   // rosters, and the session's place at home, where the suite began.
   const home_return = async () => {
     await runs_back();
+    // A row left indicated stands down (a press off every listing).
+    if (document.querySelector('.listing-indicated')) { document.getElementById('status-strip')?.dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(200); }
     await console_idle();
     if ((window.__argusPromptContext?.cwd ?? '').endsWith('/' + (window.__argusPromptContext?.user ?? '\u0000'))) return;
     const input = document.querySelector('#terminal input');
@@ -194,7 +243,105 @@ try {
       if (m && m.textContent.includes('READY')) return true; }
     return false;`);
   check('session reaches READY', ready === true);
-  leakBaseline = await evalIn(`return window.__argusPromptContext?.cwd ?? null;`);
+  // The baseline is home, not whatever cwd the session kept from before
+  // the suite: a session left in a since-removed directory made every
+  // scenario read as a leak and every repair cd into nothing.
+  leakBaseline = await evalIn(`await home_return(); return window.__argusPromptContext?.cwd ?? null;`);
+  // A fresh identity's first boot builds its whole job index, and the
+  // universe and node scenarios read that index: wait for the sweep to
+  // finish (up to fifteen minutes) rather than test a half-built one.
+  {
+    const warmed = await evalIn(`
+      const t0 = Date.now();
+      const sweeping = () => { const w = window.__argusPromptContext?.procWarmup; return w !== undefined && w.sweeping !== false; };
+      for (let i = 0; i < 1800 && sweeping(); i++) await sleep(500);
+      const w = window.__argusPromptContext?.procWarmup;
+      return { waitedS: Math.round((Date.now() - t0) / 1000), still: sweeping(), loaded: w?.loaded ?? null, total: w?.total ?? null };`);
+    console.log(warmed.still
+      ? `  index: still warming after ${warmed.waitedS}s (${warmed.loaded}/${warmed.total}); index scenarios may fail`
+      : `  index: whole${warmed.waitedS > 1 ? ` after ${warmed.waitedS}s` : ''}`);
+  }
+  // The operator's working cohort is theirs: every GATHER press rewrites
+  // ~/gather/current.json (the session's own working state, shared with
+  // every surface of this identity), so the suite keeps it as it found it.
+  // Read now through /vfs, written back in the finally below, whatever fails.
+  {
+    const url = new URL(argusUrl_discover());
+    const token = url.searchParams.get('token') ?? '';
+    const cohortPath = leakBaseline !== null ? `${leakBaseline}/gather/current.json` : null;
+    if (cohortPath !== null) {
+      try {
+        const response = await fetch(`${url.origin}/vfs?path=${encodeURIComponent(cohortPath)}&token=${encodeURIComponent(token)}`);
+        cohortKept = { path: cohortPath, body: response.ok ? Buffer.from(await response.arrayBuffer()) : null, origin: url.origin, token };
+        console.log(cohortKept.body !== null ? `  cohort: ${cohortPath} kept (${cohortKept.body.length} bytes), restored at the end` : `  cohort: none at ${cohortPath}`);
+      } catch (error) {
+        console.log(`  cohort: could not read ${cohortPath} (${error.message}); the GATHER scenarios may change it`);
+      }
+    }
+  }
+  let dicomSeries = process.env.SMOKE_DICOM_SERIES ?? '';
+  let niftiPath = process.env.SMOKE_NIFTI ?? '';
+  fixtureFolder = null;
+  if (dicomSeries === '' && process.env.SMOKE_NO_FIXTURES === undefined) {
+    const { series_write, nifti_write, SERIES_FOLDER } = await import('./fixtures/synth.mjs');
+    const { mkdtempSync, readFileSync: read } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join, basename } = await import('node:path');
+    const local = mkdtempSync(join(tmpdir(), 'argus-smoke-fixtures-'));
+    const slices = series_write(local);
+    const nifti = nifti_write(join(local, 'sphere.nii.gz'));
+    const home = await evalIn(`
+      await console_idle();
+      const input = document.querySelector('#terminal input');
+      input.value = 'cd ~; pwd'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 40; i++) { await sleep(250); const m = document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).reverse().find((l) => /^\\/home\\/[^\\s]+$/.test(l)); if (m) return m; }
+      return null;`);
+    if (home === null) {
+      console.log('  fixtures: could not learn the identity\'s home; image scenarios will skip');
+    } else {
+      const url = new URL(argusUrl_discover());
+      const token = url.searchParams.get('token') ?? '';
+      fixtureFolder = `${home}/uploads/argus-smoke-${Date.now()}`;
+      const put = async (localPath, remotePath) => {
+        const response = await fetch(`${url.origin}/vfs?path=${encodeURIComponent(remotePath)}&token=${encodeURIComponent(token)}`, { method: 'POST', body: read(localPath) });
+        if (!response.ok) throw new Error(`upload ${remotePath}: HTTP ${response.status}`);
+      };
+      try {
+        for (const slice of slices) await put(slice, `${fixtureFolder}/${SERIES_FOLDER}/${basename(slice)}`);
+        await put(nifti, `${fixtureFolder}/sphere.nii.gz`);
+        dicomSeries = `${fixtureFolder}/${SERIES_FOLDER}`;
+        niftiPath = `${fixtureFolder}/sphere.nii.gz`;
+        console.log(`  fixtures: ${slices.length} slices and a NIfTI put under ${fixtureFolder}`);
+      } catch (error) {
+        console.log(`  fixtures: ${error.message}; image scenarios will skip`);
+        fixtureFolder = null;
+      }
+    }
+  }
+  // A feed for the node scenarios, unless one is named: the fixture folder
+  // rooted as a feed (cd into it, run a DS plugin; the dircopy root holds
+  // the series and the NIfTI), so node-dive has a node and node-volume a
+  // volume without a feed id in the environment. Removed at the end.
+  fixtureFeed = null;
+  if (!process.env.SMOKE_DAG_FEED && fixtureFolder !== null) {
+    fixtureFeed = await evalIn(`
+      await console_idle();
+      const outEl = document.querySelector('#terminal .argus-output');
+      const before = outEl.children.length;
+      const input = document.querySelector('#terminal input');
+      input.value = ${JSON.stringify(`cd "${fixtureFolder}"; pl-simpledsapp-v2.1.5 -- feed_title="argus smoke fixture"`)}; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      let feed = null;
+      for (let i = 0; i < 360; i++) {
+        await sleep(250);
+        const text = [...outEl.children].slice(before).map((e) => e.textContent).join(' ');
+        feed = feed ?? (text.match(/Feed created: (\\d+)/) ?? [])[1] ?? null;
+        if (/finished successfully|finished with error|refused/i.test(text)) break;
+      }
+      await home_return();
+      return feed;`);
+    console.log(fixtureFeed !== null ? `  fixtures: feed ${fixtureFeed} rooted on them for the node scenarios` : '  fixtures: no feed could be rooted on them; node scenarios will skip');
+  }
+
   // The LOG OUT pill leaves by a door; at a daemon's root there is none.
   check('the LOG OUT pill stands only behind a door', await evalIn(`return document.getElementById('door-pill')?.hidden === true;`) === true);
   check('the RESTART pill stands only behind a door', await evalIn(`return document.getElementById('restart-pill')?.hidden === true;`) === true);
@@ -526,7 +673,9 @@ try {
     await settle(() => dp.querySelector('.listing-indicated .listing-control') !== null);
     dp.querySelector('.listing-indicated .listing-control').click();
     const entered = await settle(() => dp.querySelector('.roster-shown') === null && dp.querySelector('canvas')?.offsetParent != null, 80);
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    // Esc retreats one level a press: a frame open on the graph takes the
+    // first, the graph the next.
+    for (let i = 0; i < 3 && dp.querySelector('.roster-shown') === null; i++) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(500); }
     const back = await settle(() => dp.querySelector('.roster-shown') !== null);
     await sleep(300);
     const afterEsc = lit();
@@ -1742,7 +1891,7 @@ try {
   // asked whether the second half ever arrived — and when it did not, the
   // camera sat parked inside a sphere filling the pane with one flat
   // colour, which an operator reasonably read as a crash.
-  const dagFeed = process.env.SMOKE_DAG_FEED;
+  const dagFeed = process.env.SMOKE_DAG_FEED ?? fixtureFeed ?? undefined;
   if (await stage('pane-title')) {
   // A pane's header is one line of a fixed height. A long name (a series
   // description, a converter's filename) wrapped inside it, which cut the
@@ -2064,7 +2213,7 @@ try {
   // for a new one (mkdir then setfattr, visible lines), the roster marks the
   // feed, a mark's press filters by its tag, the graph's frame shows the
   // marks and NOTE, and × takes a tag off. Feed SMOKE_DAG_FEED, a throwaway tag.
-  const feed = process.env.SMOKE_DAG_FEED ?? '880';
+  const feed = process.env.SMOKE_DAG_FEED ?? fixtureFeed ?? '880';
   const tagged = await evalIn(`
     await console_idle();
     const input = document.querySelector('#terminal input');
@@ -2157,7 +2306,7 @@ try {
   // holders are marks on the row, each × asking before it withdraws; RENAME
   // asks for the name and writes the title. Feed SMOKE_DAG_FEED, the
   // operator's personal group (it holds only them), restored at the end.
-  const feed = process.env.SMOKE_DAG_FEED ?? '880';
+  const feed = process.env.SMOKE_DAG_FEED ?? fixtureFeed ?? '880';
   const shared = await evalIn(`
     await console_idle();
     const input = document.querySelector('#terminal input');
@@ -2333,13 +2482,15 @@ try {
     console.log('  skipped: set SMOKE_DAG_FEED=<a feed id whose DAG has at least one node>');
   } else {
     const dive = await evalIn(`
+      // A graph needs a pane to stand in: RUNS first, then the feed.
+      document.getElementById('gutter-runs').click(); await sleep(1200);
       const input = document.querySelector('#terminal input');
       input.value = 'feed diagram ${dagFeed}';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       for (let i = 0; i < 160; i++) { await sleep(500); if (document.querySelector('.dag-canvas canvas')) break; }
       await sleep(4500);
       const canvas = document.querySelector('.dag-canvas canvas');
-      if (canvas === null) return { drew: false };
+      if (canvas === null) { await home_return(); return { drew: false }; }
       const box = canvas.getBoundingClientRect();
       const facts = () => (document.querySelector('.dag-facts')?.textContent ?? '').replace(/\\s+/g, ' ');
       // Walk down the middle until a click lands on a node.
@@ -2351,7 +2502,7 @@ try {
         hit('click'); await sleep(500);
         if (facts() !== '') { touched = facts(); hit('dblclick'); redive = () => { hit('click'); hit('dblclick'); }; break; }
       }
-      if (touched === '') return { drew: true, touched: '' };
+      if (touched === '') { await home_return(); return { drew: true, touched: '' }; }
       for (let i = 0; i < 50; i++) { await sleep(400); if (document.querySelector('.node-overlay')) break; }
       await sleep(2500);
       const ov = document.querySelector('.node-overlay');
@@ -2381,6 +2532,7 @@ try {
       const rowReads = upRow !== undefined;
       (upRow?.querySelector('.listing-name, .row-name') ?? upRow)?.click();
       await sleep(2500);
+      await home_return();
       return { drew: true, touched, inside, left,
         pill: { shown: pill !== null, word: pill?.textContent.trim() ?? '', whole: pillWhole, oneFrame, rowReads, left: document.querySelector('.node-overlay') === null },
         keptScene: document.querySelector('.dag-canvas canvas') !== null };`);
@@ -2438,12 +2590,26 @@ try {
       const tree = [...outEl.children].slice(before).map((e) => e.textContent).join(' ');
       const nodes = [...new Set((tree.match(/pl-[A-Za-z0-9_.-]+_\\d+/g) ?? []))];
       let at = null;
+      const seen = [];
       for (const node of nodes) {
-        await say('cd "/proc/jobs/feed_${dagFeed}/' + node + '/data"', 3500);
+        const data = '/proc/jobs/feed_${dagFeed}/' + node + '/data';
+        await say('cd "' + data + '"', 3500);
         await settleRows(() => rows().length > 0);
+        seen.push([node, rows().map((r) => name(r) + (r.classList.contains('files-type-dir') ? '/' : '')).slice(0, 6)]);
         if (imagery()) { at = node; break; }
+        // A copied folder nests under one directory (dircopy flattens its
+        // source path into a name): a volume one level down is still the
+        // node's imagery.
+        // (Not the trail row (~/…) or the way up: only the node's own entries.)
+        const dirs = rows().filter((r) => r.classList.contains('files-type-dir') && !/^(\\.\\.|~|\\/)/.test(name(r)));
+        if (dirs.length === 1) {
+          await say('cd "' + data + '/' + name(dirs[0]).replace(/\\/$/, '') + '"', 3500);
+          await settleRows(() => rows().length > 0);
+          seen.push([node + '/' + name(dirs[0]), rows().map((r) => name(r)).slice(0, 6)]);
+          if (imagery()) { at = node; break; }
+        }
       }
-      if (at === null) return { nodes, volume: null };
+      if (at === null) { await home_return(); return { nodes, volume: null, seen }; }
       const found = imagery();
       const volumeName = name(found);
       // In a browser a row with verbs indicates on a click and opens from
@@ -2456,10 +2622,10 @@ try {
       await sleep(1500);
       const state = viewer?.querySelector('.pane-state')?.textContent.trim() ?? null;
       const refused = pane()?.textContent.includes('READ REFUSED') ?? false;
-      await say('cd ~', 2500);
+      await home_return();
       return { nodes, node: at, volume: volumeName, state, refused };`);
     if (volume.volume === null) {
-      console.log('  skipped: no node of this feed holds a volume');
+      console.log('  skipped: no node of this feed holds a volume ' + JSON.stringify({ nodes: volume.nodes, seen: volume.seen }));
     } else {
       check('a volume under a node opens as an image at its projected address',
         volume.refused === false && /SLICES/.test(volume.state ?? ''),
@@ -2560,9 +2726,10 @@ try {
     await say('file follow'); const followed = bound();
     await say('file home'); await sleep(1200);
     const rows = fp.querySelectorAll('.files-row').length;
-    return { rooted, followed, rows };`);
+    const stage = [...document.querySelectorAll('.workspace-pane')].filter((p) => p.offsetParent !== null).map((p) => (p.className.match(/pane-[a-z]+/g) ?? []).filter((c) => c !== 'pane-handle').join('+') + (p.contains(fp) ? '*' : ''));
+    return { rooted, followed, rows, stage };`);
   check('the language re-binds a browser where the binding now lives',
-    spoken.rooted === 'ROOT HERE' && spoken.followed === 'FOLLOW CWD');
+    spoken.rooted === 'ROOT HERE' && spoken.followed === 'FOLLOW CWD', JSON.stringify({ rooted: spoken.rooted, followed: spoken.followed, stage: spoken.stage }));
   check('the language still reaches HOME on the frame', spoken.rows > 1);
 
   check('HOME lands a rooted browser home', walk.home.length > 1 && walk.into !== '');
@@ -3031,7 +3198,10 @@ try {
     for (let i = 0; i < 60; i++) { await sleep(400); if (rows().length > 1) break; }
 
     const before = tops();
-    const target = rows()[1];
+    // A feed the session's own user holds: the roster also lists other
+    // owners' public feeds, whose access the session cannot read.
+    const me = window.__argusPromptContext?.user ?? '';
+    const target = rows().find((r) => r.querySelector('.feedlist-owner')?.textContent.trim() === me) ?? rows()[1];
     // A roster row's verbs live in the frame's row zone, like every listing's.
     const dp = [...document.querySelectorAll('.pane-dag')].find(p => p.offsetParent !== null);
     const zone = () => dp.querySelector('.runs-row-zone');
@@ -3817,16 +3987,25 @@ try {
       const bar = ws.querySelector('.pane-state')?.textContent ?? '';
       const tracks = rows().filter(r => r.querySelector('.pacs-patient-progress .listing-progress')).length;
       // A crowd arrives folded; unfolding one patient shows its studies.
-      const first = rows()[0];
-      const foldedBefore = first.parentElement.classList.contains('pacs-patient-collapsed');
-      first.click(); await sleep(400);
-      const openAfter = !first.parentElement.classList.contains('pacs-patient-collapsed');
-      const studyCaps = [...first.parentElement.querySelectorAll('.pacs-study-level .roster-cap')]
+      // The first patient the PACS answered (a miss has nothing to unfold).
+      // A folding row's group wears listing-open, and its control cell folds
+      // it: a press on the row itself selects and folds nothing.
+      const firstKey = (rows().find((r) => r.classList.contains('listing-activatable')) ?? rows()[0])?.dataset.key;
+      const patient = () => rows().find((r) => r.dataset.key === firstKey);
+      const foldedBefore = !patient()?.parentElement.classList.contains('listing-open');
+      // The press re-renders the listing: the patient is found again by its key.
+      (patient()?.querySelector('.listing-control') ?? patient())?.click(); await sleep(800);
+      const first = patient();
+      const openAfter = first?.parentElement.classList.contains('listing-open') ?? false;
+      // The patient's study level is the first nested level inside its group
+      // (the façade's .listing-level); its caps are minted there.
+      const studyLevel = first?.parentElement.querySelector('.listing-level') ?? null;
+      const studyCaps = [...(studyLevel?.querySelectorAll(':scope > .roster-caps .roster-cap') ?? [])]
         .map(c => c.textContent.trim());
       // A term is typed in the column it fills: the study-level terms of
       // the form stand over the study caps, which are minted a level down.
       const l = (el) => Math.round(el.getBoundingClientRect().left);
-      const caps = new Map([...first.parentElement.querySelectorAll('.pacs-study-level > .roster-caps .roster-cap')]
+      const caps = new Map([...(studyLevel?.querySelectorAll(':scope > .roster-caps .roster-cap') ?? [])]
         .map(c => [c.dataset.key, l(c)]));
       const studyTerms = [...document.querySelectorAll('#pacs-form [data-key]')]
         .filter(c => ['date', 'accession', 'modality', 'server'].includes(c.dataset.key))
@@ -3834,7 +4013,8 @@ try {
       return { count: rows().length, mrns, studies, answered, bar, tracks, foldedBefore, openAfter, studyCaps, studyTerms };`);
     check('every patient asked gets a row, misses included',
       cohort.count >= 2 && cohort.studies.includes('0'),
-      JSON.stringify({ n: cohort.count, mrns: cohort.mrns, studies: cohort.studies }));
+      // Counts, never the MRNs themselves: a test log is not a place for patient identifiers.
+      JSON.stringify({ n: cohort.count, mrns: (cohort.mrns ?? []).length, studies: cohort.studies }));
     check('the bar counts what was found, what was not, and what could not be asked',
       /FOUND \d+ · NONE \d+ · UNASKED \d+/.test(cohort.bar), JSON.stringify(cohort.bar));
     check('each patient row says how old its own answer is',
@@ -3868,7 +4048,8 @@ try {
       document.getElementById('gutter-files').click(); await sleep(800);
       const fp = [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
       for (let i = 0; i < 40 && (fp?.querySelectorAll('.files-row').length ?? 0) < 2; i++) await sleep(250);
-      const row = [...(fp?.querySelectorAll('.files-row') ?? [])].find((r) => r.querySelector('.files-name')?.textContent.trim() !== '..');
+      // An entry of the directory: not the way up, not the trail row (~/…).
+      const row = [...(fp?.querySelectorAll('.files-row') ?? [])].find((r) => !/^(\\.\\.|~|\\/)/.test(r.querySelector('.files-name')?.textContent.trim() ?? '..'));
       row?.querySelector('.files-name')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       for (let i = 0; i < 20 && !fp?.querySelector('.listing-zone .listing-action'); i++) await sleep(150);
       const bad = [];
@@ -3910,15 +4091,21 @@ try {
   }
 
   if (await stage('gather-pane')) {
-  // GATHER is a listing pane, not a tray: gathering the first series opens
-  // it below the PACS results, joined to the workspace; the cohort row
-  // carries SAVE / EXPORT CSV / CREATE FEED / DISMISS, a series row REMOVE /
-  // IMAGE / PROCESS; REMOVE takes the row out, DISMISS closes the pane.
+  // GATHER lands in the cohort, the header's third face (since 2026-09-18
+  // the cohort rides the header; a pane is its escape, ON STAGE). The first
+  // gather reveals the band; the cohort row carries SAVE / EXPORT CSV /
+  // CREATE FEED / PROCESS / DISMISS, a series row REMOVE / IMAGE / PROCESS;
+  // REMOVE takes the row out, DISMISS sends the band away. The suite starts
+  // the cohort empty (`gather clear`) and the operator's file is restored at
+  // the end.
   if (!process.env.SMOKE_PACS_QUERY) {
     console.log('  skipped: set SMOKE_PACS_QUERY=<a `pacs query ...` line that finds a study with a series in CUBE>');
   } else {
     const gather = await evalIn(`
-      document.getElementById('gutter-tools').click(); await sleep(500);
+      await console_idle();
+      const startedEmpty = await cohort_empty();
+      const band = document.getElementById('header-gather');
+      document.getElementById('gutter-tools')?.click(); await sleep(500);
       const ws = document.getElementById('pacs-workspace');
       const cmd = document.getElementById('pacs-command');
       const studies = () => document.querySelectorAll('#pacs-results .pacs-study').length;
@@ -3929,7 +4116,7 @@ try {
       await sleep(2500);
       const study = document.querySelector('#pacs-results .pacs-study');
       if (!study) return { error: 'no study' };
-      if (!study.classList.contains('listing-open')) { study.querySelector('.pacs-study-row .listing-control').click(); await sleep(400); }
+      if (!study.classList.contains('listing-open')) { study.querySelector('.pacs-study-row .listing-control')?.click(); await sleep(400); }
       const zoneVerbs = (root, zone) => [...root.querySelectorAll(zone + ' .listing-action')].map(b => b.textContent.trim());
       const series = [...study.querySelectorAll('.pacs-series')];
       // a series CUBE holds is gathered, not pulled
@@ -3937,54 +4124,50 @@ try {
       for (const row of series) { row.click(); await sleep(300); if (zoneVerbs(ws, '.pacs-row-zone').includes('GATHER')) { picked = row; break; } }
       if (!picked) return { error: 'no series in CUBE to gather' };
       const uid = picked.dataset.seriesuid;
-      const desc = picked.querySelector('.pacs-series-desc')?.textContent.trim();
-      const pane = () => [...document.querySelectorAll('.pane-gather')].find(p => p.offsetParent !== null);
-      const before = pane() !== undefined;
-      [...ws.querySelectorAll('.pacs-row-zone .listing-action')].find(b => b.textContent.trim() === 'GATHER').click();
-      for (let i = 0; i < 40; i++) { await sleep(250); if (pane()) break; }
+      [...ws.querySelectorAll('.pacs-row-zone .listing-action')].find(b => b.textContent.trim() === 'GATHER')?.click();
+      for (let i = 0; i < 40; i++) { await sleep(250); if (band.querySelector('.gather-series')) break; }
       await sleep(600);
-      const opened = pane() !== undefined;
-      if (!opened) return { error: 'no gather pane', before };
-      const gp = pane();
-      const below = gp.getBoundingClientRect().top > ws.getBoundingClientRect().top;
-      const header = gp.querySelector('.gather-title')?.textContent.trim();
-      const caps = [...gp.querySelectorAll('.roster-cap')].map(c => c.textContent.trim());
-      const rows = () => [...gp.querySelectorAll('.gather-series')].map(r => r.dataset.seriesuid);
+      const revealed = document.body.dataset.header === 'gather';
+      const rows = () => [...band.querySelectorAll('.gather-series')].map(r => r.dataset.seriesuid);
       const listed = rows();
-      const state = gp.querySelector('.pane-state')?.textContent.trim();
+      const caps = [...band.querySelectorAll('.roster-cap')].map(c => c.textContent.trim());
+      const count = band.querySelector('.gather-cohort-count')?.textContent.trim() ?? null;
       // the PACS row's GATHER lights from the cohort
       picked.click(); await sleep(300);
       const lit = [...ws.querySelectorAll('.pacs-row-zone .listing-action')].find(b => b.textContent.trim() === 'GATHER')?.classList.contains('listing-action-selected') ?? false;
+      document.getElementById('status-strip').dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(200);
       // series row: its verbs
-      gp.querySelector('.gather-series').click(); await sleep(400);
-      const seriesVerbs = zoneVerbs(gp, '.gather-row-zone');
+      band.querySelector('.gather-series')?.click(); await sleep(400);
+      const seriesVerbs = zoneVerbs(band, '.gather-row-zone');
       // cohort row: its verbs
-      gp.querySelector('.gather-cohort-row .gather-cohort-name').click(); await sleep(400);
-      const cohortVerbs = zoneVerbs(gp, '.gather-row-zone');
+      band.querySelector('.gather-cohort-row .gather-cohort-name')?.click(); await sleep(400);
+      const cohortVerbs = zoneVerbs(band, '.gather-row-zone');
       // REMOVE takes the row out
-      gp.querySelector('.gather-series').click(); await sleep(300);
-      [...gp.querySelectorAll('.gather-row-zone .listing-action')].find(b => b.textContent.trim() === 'REMOVE')?.click(); await sleep(500);
+      band.querySelector('.gather-series')?.click(); await sleep(300);
+      [...band.querySelectorAll('.gather-row-zone .listing-action')].find(b => b.textContent.trim() === 'REMOVE')?.click(); await sleep(600);
       const afterRemove = rows();
-      // DISMISS closes the pane
-      gp.querySelector('.gather-cohort-row .gather-cohort-name').click(); await sleep(300);
-      [...gp.querySelectorAll('.gather-row-zone .listing-action')].find(b => b.textContent.trim() === 'DISMISS')?.click(); await sleep(800);
-      const dismissed = pane() === undefined;
-      return { before, opened, below, header, caps, listed, uid, desc, state, lit, seriesVerbs, cohortVerbs, afterRemove, dismissed };`);
-    check('gathering the first series opens the GATHER pane below the PACS results, listing it',
-      gather.error === undefined && !gather.before && gather.opened && gather.below && gather.header === 'GATHER' && gather.listed.length === 1 && gather.listed[0] === gather.uid,
-      JSON.stringify(gather));
-    check('the cohort and its series wear caps, and the bar counts the cohort',
-      gather.error === undefined && gather.caps.includes('COHORT') && gather.caps.includes('SERIES') && /1 SERIES · 1 PATIENTS/.test(gather.state ?? ''),
-      JSON.stringify({ caps: gather.caps, state: gather.state }));
+      // DISMISS sends the band away
+      band.querySelector('.gather-cohort-row .gather-cohort-name')?.click(); await sleep(300);
+      [...band.querySelectorAll('.gather-row-zone .listing-action')].find(b => b.textContent.trim() === 'DISMISS')?.click(); await sleep(800);
+      const dismissed = document.body.dataset.header !== 'gather';
+      await home_return();
+      return { startedEmpty, revealed, listed, uid, caps, count, lit, seriesVerbs, cohortVerbs, afterRemove, dismissed };`);
+    check('gathering a series reveals the cohort in the header, listing it',
+      gather.error === undefined && gather.revealed && gather.listed.length === 1 && gather.listed[0] === gather.uid,
+      JSON.stringify({ error: gather.error, startedEmpty: gather.startedEmpty, revealed: gather.revealed, listed: (gather.listed ?? []).length }));
+    check('the cohort and its series wear caps, and the cohort row counts its series',
+      gather.error === undefined && gather.caps.includes('COHORT') && gather.caps.includes('SERIES') && /^1\b/.test(gather.count ?? ''),
+      JSON.stringify({ caps: gather.caps, count: gather.count }));
     check("the PACS row's GATHER lights from the cohort", gather.error === undefined && gather.lit === true, String(gather.lit));
     check('a series row carries REMOVE / IMAGE / PROCESS, the cohort row SAVE / EXPORT CSV / CREATE FEED / PROCESS / DISMISS',
       gather.error === undefined && gather.seriesVerbs.join(',') === 'REMOVE,IMAGE,PROCESS' && gather.cohortVerbs.join(',') === 'SAVE,EXPORT CSV,CREATE FEED,PROCESS,DISMISS',
       JSON.stringify({ series: gather.seriesVerbs, cohort: gather.cohortVerbs }));
-    check('REMOVE takes the series out; DISMISS closes the pane',
+    check('REMOVE takes the series out; DISMISS sends the band away',
       gather.error === undefined && gather.afterRemove.length === 0 && gather.dismissed === true,
-      JSON.stringify({ afterRemove: gather.afterRemove, dismissed: gather.dismissed }));
+      JSON.stringify({ afterRemove: (gather.afterRemove ?? []).length, dismissed: gather.dismissed }));
   }
   }
+
   if (await stage('gather-series-parity')) {
   // A series looks the same wherever it is listed: the cohort's rows ARE
   // the PACS answer's series rows, so the one series, measured in both
@@ -4365,6 +4548,8 @@ try {
     console.log('  skipped: set SMOKE_PACS_QUERY=<a `pacs query ...` line that finds a study with a series in CUBE>');
   } else {
     const cohort = await evalIn(`
+      await console_idle();
+      await cohort_empty();
       document.getElementById('gutter-tools').click(); await sleep(500);
       const ws = document.getElementById('pacs-workspace');
       const term = document.querySelector('#terminal input');
@@ -4385,11 +4570,16 @@ try {
       for (const row of [...study.querySelectorAll('.pacs-series')]) { row.click(); await sleep(300); if (zoneVerbs(ws, '.pacs-row-zone').includes('GATHER')) { picked = row; break; } }
       if (!picked) return { error: 'no series in CUBE to gather' };
       [...ws.querySelectorAll('.pacs-row-zone .listing-action')].find(b => b.textContent.trim() === 'GATHER').click();
+      // The gather lands in the band; ON STAGE gives the cohort its pane,
+      // where this scenario's checks are read.
+      const band = document.getElementById('header-gather');
+      for (let i = 0; i < 40 && !band.querySelector('.gather-series'); i++) await sleep(250);
+      band.querySelector('.gather-stage')?.click();
       const pane = () => [...document.querySelectorAll('.pane-gather')].find(p => p.offsetParent !== null);
       for (let i = 0; i < 40; i++) { await sleep(250); if (pane()) break; }
       await sleep(600);
       const gp = pane();
-      if (!gp) return { error: 'no gather pane' };
+      if (!gp) { await home_return(); return { error: 'no gather pane' }; }
       gp.querySelector('.gather-cohort-row .gather-cohort-name').click(); await sleep(400);
       const cohortVerbs = zoneVerbs(gp, '.gather-row-zone');
       const echoesBefore = document.querySelectorAll('#terminal .argus-echo').length;
@@ -4412,6 +4602,7 @@ try {
       const verbsAfter = zoneVerbs(gp, '.gather-row-zone');
       if (Number.isFinite(feedId)) await say('feed rm -f ' + feedId, 5000);
       [...gp.querySelectorAll('.gather-row-zone .listing-action')].find(b => b.textContent.trim() === 'DISMISS')?.click(); await sleep(500);
+      await home_return();
       return { cohortVerbs, asked, askText, echoed, capsule, feedId, binding, title, verbsAfter };`);
     check('the cohort row offers PROCESS beside CREATE FEED', cohort.error === undefined && cohort.cohortVerbs.join(',') === 'SAVE,EXPORT CSV,CREATE FEED,PROCESS,DISMISS', JSON.stringify(cohort.cohortVerbs ?? cohort));
     check('PROCESS asks the cohort\'s name once and makes its feed by the pull the operator could have typed',
@@ -4869,45 +5060,7 @@ try {
   // Without a series named in the environment, the suite makes its own:
   // synthesized fixtures written now, put on the daemon through its own
   // /vfs route under the identity's uploads, and removed at the end.
-  let dicomSeries = process.env.SMOKE_DICOM_SERIES ?? '';
-  let niftiPath = process.env.SMOKE_NIFTI ?? '';
-  let fixtureFolder = null;
-  if (dicomSeries === '' && process.env.SMOKE_NO_FIXTURES === undefined) {
-    const { series_write, nifti_write, SERIES_FOLDER } = await import('./fixtures/synth.mjs');
-    const { mkdtempSync, readFileSync: read } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const { join, basename } = await import('node:path');
-    const local = mkdtempSync(join(tmpdir(), 'argus-smoke-fixtures-'));
-    const slices = series_write(local);
-    const nifti = nifti_write(join(local, 'sphere.nii.gz'));
-    const home = await evalIn(`
-      await console_idle();
-      const input = document.querySelector('#terminal input');
-      input.value = 'cd ~; pwd'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      for (let i = 0; i < 40; i++) { await sleep(250); const m = document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).reverse().find((l) => /^\\/home\\/[^\\s]+$/.test(l)); if (m) return m; }
-      return null;`);
-    if (home === null) {
-      console.log('  fixtures: could not learn the identity\'s home; image scenarios will skip');
-    } else {
-      const url = new URL(argusUrl_discover());
-      const token = url.searchParams.get('token') ?? '';
-      fixtureFolder = `${home}/uploads/argus-smoke-${Date.now()}`;
-      const put = async (localPath, remotePath) => {
-        const response = await fetch(`${url.origin}/vfs?path=${encodeURIComponent(remotePath)}&token=${encodeURIComponent(token)}`, { method: 'POST', body: read(localPath) });
-        if (!response.ok) throw new Error(`upload ${remotePath}: HTTP ${response.status}`);
-      };
-      try {
-        for (const slice of slices) await put(slice, `${fixtureFolder}/${SERIES_FOLDER}/${basename(slice)}`);
-        await put(nifti, `${fixtureFolder}/sphere.nii.gz`);
-        dicomSeries = `${fixtureFolder}/${SERIES_FOLDER}`;
-        niftiPath = `${fixtureFolder}/sphere.nii.gz`;
-        console.log(`  fixtures: ${slices.length} slices and a NIfTI put under ${fixtureFolder}`);
-      } catch (error) {
-        console.log(`  fixtures: ${error.message}; image scenarios will skip`);
-        fixtureFolder = null;
-      }
-    }
-  }
+  // (The fixtures are made at boot, beside the session's first READY.)
   if (await stage('image-pane')) {
   if (dicomSeries === '') {
     console.log('  skipped: set SMOKE_DICOM_SERIES=<series folder on the daemon>');
@@ -5636,17 +5789,39 @@ try {
     check('the restored desktop brings its domain back beside the viewer', restored.domainBack === true, JSON.stringify(restored));
   }
   }
-  if (fixtureFolder !== null) {
-    // The identity's CFS is left as it was found.
-    await evalIn(`
-      await console_idle();
-      const input = document.querySelector('#terminal input');
-      input.value = 'rm -r ${fixtureFolder}'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      for (let i = 0; i < 40; i++) { await sleep(250); if (document.getElementById('terminal').innerText.includes('Removed dir: ${fixtureFolder}')) return; }`);
-    console.log(`  fixtures: removed ${fixtureFolder}`);
-  }
 } finally {
   if (stageName !== null) await stage_leaks(stageName).catch(() => undefined);
+  // The suite's own fixtures go, whatever failed: a crash once left two
+  // feeds and an upload folder behind on the operator's CUBE.
+  try {
+    if (fixtureFeed !== null) {
+      await evalIn(`
+        await console_idle();
+        const input = document.querySelector('#terminal input');
+        input.value = 'feed rm -f ${fixtureFeed}'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        for (let i = 0; i < 40; i++) { await sleep(250); if (document.getElementById('terminal').innerText.includes('removed feed ${fixtureFeed}')) return; }`);
+      console.log(`  fixtures: removed feed ${fixtureFeed}`);
+    }
+    if (fixtureFolder !== null) {
+      // The identity's CFS is left as it was found.
+      await evalIn(`
+        await console_idle();
+        const input = document.querySelector('#terminal input');
+        input.value = 'rm -r ${fixtureFolder}'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        for (let i = 0; i < 40; i++) { await sleep(250); if (document.getElementById('terminal').innerText.includes('Removed dir: ${fixtureFolder}')) return; }`);
+      console.log(`  fixtures: removed ${fixtureFolder}`);
+    }
+  } catch (error) {
+    console.log(`  fixtures: cleanup failed (${error.message}); feed ${fixtureFeed ?? '-'} and ${fixtureFolder ?? '-'} may remain`);
+  }
+  if (cohortKept !== null && cohortKept.body !== null) {
+    try {
+      const back = await fetch(`${cohortKept.origin}/vfs?path=${encodeURIComponent(cohortKept.path)}&token=${encodeURIComponent(cohortKept.token)}`, { method: 'POST', body: cohortKept.body });
+      console.log(back.ok ? `  cohort: ${cohortKept.path} restored` : `  cohort: restore answered HTTP ${back.status}; ${cohortKept.path} may differ from how it was found`);
+    } catch (error) {
+      console.log(`  cohort: restore failed (${error.message}); ${cohortKept.path} may differ from how it was found`);
+    }
+  }
   stage_close();
   page.close();
 }

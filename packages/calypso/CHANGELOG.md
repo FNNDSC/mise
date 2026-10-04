@@ -1,5 +1,15 @@
 # @fnndsc/calypso
 
+## 0.19.2
+
+### Patch Changes
+
+- Updated dependencies [73c0087]
+  - @fnndsc/menu@0.18.0
+  - @fnndsc/brasa@0.31.5
+  - @fnndsc/argus@0.23.2
+  - @fnndsc/cumin@3.27.4
+
 ## 0.19.1
 
 ### Patch Changes

@@ -163,6 +163,14 @@ export class RosterOrder<T> {
       cap.dataset['key'] = column.key;
       cap.title = `sort by ${column.label.toLowerCase()} (again to reverse)`;
       cap.addEventListener('click', (): void => this.sort_toggle(column.key));
+      // A grip on the right edge sizes the column by hand (columns.ts); the
+      // last cap has nothing to its right to trade with and wears none.
+      if (column !== this.columns[this.columns.length - 1]) {
+        const grip: HTMLSpanElement = document.createElement('span');
+        grip.className = 'roster-grip';
+        grip.title = 'drag to size the column; press twice to give it back';
+        cap.appendChild(grip);
+      }
       caps.appendChild(cap);
     }
     this.capsRows.push(caps);
@@ -364,7 +372,14 @@ export class RosterOrder<T> {
         const column: RosterColumn | undefined = this.columns.find((c: RosterColumn): boolean => c.key === key);
         const active: boolean = key === this.state.sortKey;
         cap.classList.toggle('roster-active', active);
-        cap.textContent = `${column?.label ?? key}${active ? (this.state.sortDir === 'asc' ? ' ▲' : ' ▼') : ''}`;
+        // The words go in a span of their own: the cap also carries its grip (columns.ts).
+        let words: HTMLElement | null = cap.querySelector<HTMLElement>('.roster-cap-words');
+        if (words === null) {
+          words = document.createElement('span');
+          words.className = 'roster-cap-words';
+          cap.prepend(words);
+        }
+        words.textContent = `${column?.label ?? key}${active ? (this.state.sortDir === 'asc' ? ' ▲' : ' ▼') : ''}`;
       }
     }
   }

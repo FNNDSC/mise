@@ -86,6 +86,13 @@ export interface MoreOptions {
   className?: string;
   /** Where the chip is appended; the field itself by default, where it sticks to the foot. */
   mount?: HTMLElement;
+  /**
+   * Whether this field is the one that scrolls just now. A field that
+   * scrolls only in one layout (a phone's column) says nothing in another,
+   * where a field inside it scrolls and speaks for itself — two chips
+   * stacked, one for each, read as a glitch.
+   */
+  scrolls?: () => boolean;
 }
 
 /** The chip's default words. */
@@ -153,7 +160,7 @@ export function more_wire(field: HTMLElement, options: MoreOptions = {}): HTMLBu
       // A sticky foot must be the last thing in the flow; a refill that
       // appended rows after the chip puts it back at the end.
       if (mount === field && field.lastElementChild !== chip) field.appendChild(chip);
-      const overflowing: boolean = field.scrollHeight > field.clientHeight + 2;
+      const overflowing: boolean = (options.scrolls?.() ?? true) && field.scrollHeight > field.clientHeight + 2;
       if (chip.hidden !== !overflowing) chip.hidden = !overflowing;
       if (!overflowing) return;
       const below: number = options.rows !== undefined ? rowsBelow_count(field, options.rows) : linesBelow_count(field);

@@ -33,7 +33,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "rm -fr dist && tsc && chmod +x ./dist/calypso.js",
+    "build": "rm -fr dist && tsc && chmod +x ./dist/calypso.js && node ../../scripts/notes-build.mjs",
     "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --coverage",
     "prepublishOnly": "test -f dist/index.js && test -f dist/index.d.ts"
   },

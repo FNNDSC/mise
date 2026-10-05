@@ -96,6 +96,45 @@ export function buildMismatch_sentence(mismatch: BuildMismatch): string {
  * @param note - Writes a line to the console.
  * @param host - Where the notice stands; the page body by default.
  */
+/** What the page's own bundle says is new: its newest release's first headline, for the notice. */
+export interface PageNews {
+  version: string;
+  headline: string;
+}
+
+/**
+ * Reads the page's own shipped notes (`notes.json` beside the bundle): the
+ * page is the one ahead when the daemon is out of date, so only it can say
+ * why a restart is worth it (a-readout-names-the-release-it-reads).
+ *
+ * @param fetcher - The fetch to use.
+ * @returns The newest release's version and first operator headline, or null.
+ */
+export async function pageNews_read(fetcher?: typeof fetch): Promise<PageNews | null> {
+  try {
+    const ask: typeof fetch | undefined = fetcher ?? (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : undefined);
+    if (ask === undefined) return null;
+    const response: Response = await ask('notes.json', { cache: 'no-store' });
+    if (!response.ok) return null;
+    const notes = await response.json() as { version?: unknown; releases?: Array<{ version?: unknown; changes?: Array<{ headline?: unknown; internal?: unknown }> }> };
+    const release = notes.releases?.[0];
+    const headline: unknown = release?.changes?.find((change): boolean => change.internal !== true)?.headline;
+    if (typeof headline !== 'string' || typeof notes.version !== 'string') return null;
+    return { version: notes.version, headline };
+  } catch {
+    return null;
+  }
+}
+
+/** A headline longer than this is cut on the notice; the NOTES pane has the whole. */
+const NEWS_LINE_MAX: number = 96;
+
+/** The notice's one line of news: the version, the headline (cut to a line), where the rest is. */
+export function pageNews_line(news: PageNews): string {
+  const headline: string = news.headline.length > NEWS_LINE_MAX ? `${news.headline.slice(0, NEWS_LINE_MAX - 1).trimEnd()}…` : news.headline;
+  return `argus ${news.version} · ${headline} — WHAT'S NEW after restart`;
+}
+
 export function buildMismatch_tell(
   mismatch: BuildMismatch,
   page: BuildStamp,
@@ -151,6 +190,16 @@ export function buildMismatch_tell(
   dismiss.addEventListener('click', (): void => { notice.remove(); });
   notice.append(sentence, dismiss);
   host.appendChild(notice);
+  // Why restart: the page's newest release, in one line, once its notes arrive.
+  if (mismatch === 'daemon-older') {
+    void pageNews_read().then((news: PageNews | null): void => {
+      if (news === null || !notice.isConnected) return;
+      const line: HTMLSpanElement = document.createElement('span');
+      line.className = 'build-mismatch-news';
+      line.textContent = pageNews_line(news);
+      sentence.appendChild(line);
+    });
+  }
 }
 
 /** What the host does with the build question, at attach and after. */

@@ -461,6 +461,76 @@ A program is `PROGRAMS[name]()`: `{ title, tick, step(size, random), draw(grid, 
 * Do not add a program by teaching the pane a word: the kernel's command answers `games.show` and the pane's `PROGRAMS` table gains a factory of the same name.
 * Do not let a game take the keyboard without the mark: the FOCUS pill and the ring say who has it.
 
+== Notes pane
+
+Source: `apps/argus/src/features/notes/panel.ts` (the pane), over the kernel's `notes` command (`packages/brasa/src/builtins/sys/notes.ts`) and the `session.notes` model (`packages/menu/src/notes.ts`).
+
+Status: on stage since 2026-10-05 (epic #897). Opens from the dashboard's WHAT'S NEW block (alone on the stage) and the typed `notes pane` (beside the focused pane); a second ask focuses the one there. Bare `notes` and `help notes` print the same in the console; `/usr/share/doc/NEWS` is the same for chell.
+
+=== Purpose
+
+What the installed releases changed, for the operator. The notes are written once, as changesets, shipped as `dist/notes.json` with each package, and read by the kernel from the disk the daemon runs from; this pane is their projection on the stage — one block per release (the packages one Version Packages merge published), one row per change's first sentence, the rest unfolding beneath on a press — so an operator who sees CALYPSO DAEMON OUT OF DATE can read why a restart is worth it. The pane writes nothing of its own and names the release it reads on its bar.
+
+=== Anatomy
+
+image::images/notes-pane-anatomy.svg[Notes pane anatomy,1180]
+
+[cols="1,2,3",options="header"]
+|===
+| Part | Selector | What it is
+
+| bar | `.pane-handle` | `.pane-title` `NOTES`; `.pane-state` the release read: `DAEMON · argus 0.24.1 · brasa 0.32.1` (the façade's state line when filtered).
+| frame | `.mode-frame` | `.notes-since` (LATEST RELEASE → LAST 5 RELEASES → ALL RELEASES, each a fresh ask of the kernel), `.notes-internal` (INTERNAL OFF/ON: the changes written "Internal:"), `.notes-filter` the façade's filter pill.
+| field | `.notes-panel` (the mount) › `.listing-field` | One block per release led by a `.notes-block-head` (`2026-10-05 · argus 0.24.1 · brasa 0.32.1`); rows `.notes-row` with `.notes-tag` the package and `.notes-text` the headline; a row with more is `.notes-row-more` and wears ▸, its press adds a `.notes-row-body` beneath with the rest; `.notes-row-internal` is dimmer.
+|===
+
+=== Declaration
+
+[source,ts]
+----
+new Listing<NotesRow>({
+  mount: panel,                               // .notes-panel
+  traits: [PACKAGE, CHANGE],                  // the second takes the expanse
+  key: (row) => row.key,                      // <merge>:<package>:<index>[:body]
+  chrome: { root: mount, prefix: 'notes' },   // binds .pane-state and .notes-filter
+  caps: 'root',
+  activatable: (row) => row.more,             // only a headline with more answers a press
+  activate: (row) => unfold_toggle(row.of),
+  row: { className: (row) => `notes-row …` },
+});
+panel.model_show(model);                      // the kernel's session.notes
+----
+
+=== States
+
+[cols="1,2,3",options="header"]
+|===
+| State | Where | Meaning
+
+| latest | `.notes-since` | The newest release only (the kernel's default).
+| last 5 · all | `.notes-since` | More releases, asked of the kernel (`notes --since 5`, `--since 9999`).
+| internal on | `.notes-internal` | The changes written "Internal:" are listed too (`notes --all`).
+| unfolded | `.notes-row-body` | A headline's rest stands beneath it; a second press folds it.
+| filtered | `.notes-filter`, the bar | The façade's filter over every block.
+|===
+
+=== Laws
+
+* `a-readout-names-the-release-it-reads` — the bar names the daemon's installed versions; the dashboard block reads AFTER RESTART when the daemon's disk moved; the stale-page notice's one line of news is the page's own.
+* `surface-never-shadows-the-session` — bare `notes` is the kernel's; the surface claims only `pane`.
+* `a-field-says-it-holds-more` — the field wears the chip.
+* `a-fact-has-one-source` — the rows are the kernel's answer, the notes the changesets; nothing is written here.
+
+=== Stylesheet
+
+`.notes-body` (the KEYS body's shape), `.notes-panel`, `.notes-tag` (mono, butter), `.notes-text` (harvest gold, wrapping), `.notes-row-body` (butter, quieter, indented), `.notes-row-internal` (dimmer), `.notes-block-head`; `.build-mismatch-news` for the notice's line.
+
+=== Do not
+
+* Do not write a note into this pane by hand: write the changeset; its first sentence is the row.
+* Do not fetch the notes around the kernel: the pane asks `notes`; only the stale-page notice reads the page's own bundle, because the page is the one ahead.
+* Do not take bare `notes` from the session: the kernel's `notes` answers it.
+
 == Edit pane
 
 Source: `apps/argus/src/features/edit/panel.ts` (the pane), over `features/edit/field.ts` (the guest field: CodeMirror 6, loaded on demand), `features/edit/line.ts` (the lines it runs) and `app/editor.ts` (the host's wiring: the kernel's `edit` answered with a pane).

@@ -128,7 +128,8 @@ async function stage_leaks(name) {
       for (let i = 0; i < 20 && document.querySelectorAll('.listing-activating').length > 0; i++) await sleep(250);
       // A RUNS pane left on a graph rather than its roster: the next scenario's cwd then repaints it.
       const graphs = [...document.querySelectorAll('.pane-dag')].filter((p) => p.offsetParent !== null && p.querySelector('.dag-feedlist') && p.querySelector('.roster-shown') === null && p.querySelector('.dag-canvas')?.style.display === 'block').length;
-      return { cwd: window.__argusPromptContext?.cwd ?? null, lit: document.querySelectorAll('.listing-indicated, .listing-activating').length, asks: document.querySelectorAll('.ask-bar').length, graphs };`);
+      // Lit rows on stage: a folded band's open cohort is indicated by design and is not a leak.
+      return { cwd: window.__argusPromptContext?.cwd ?? null, lit: [...document.querySelectorAll('.listing-indicated, .listing-activating')].filter((e) => e.offsetParent !== null).length, asks: document.querySelectorAll('.ask-bar').length, graphs };`);
   } catch {
     return;
   }
@@ -1006,6 +1007,66 @@ try {
     games.gallows && /the word was [a-z]+/.test(games.hanged), JSON.stringify({ gallows: games.gallows, hanged: games.hanged.slice(0, 80) }));
   }
 
+  if (await stage('notes')) {
+  // What's new (#897): the kernel's notes in the console and as NEWS; the
+  // dashboard's WHAT'S NEW block naming the installed release; the NOTES
+  // pane on the listing façade, a headline's rest unfolding on a press.
+  const notes = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_idle(); };
+    const text = () => document.getElementById('terminal').innerText;
+    const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2).trim(); };
+    await say('notes'); const typed = after('notes');
+    await say('help notes'); const helped = after('help notes');
+    await say('cat /usr/share/doc/NEWS'); const news = after('cat /usr/share/doc/NEWS');
+    await say('notes --since soon'); const refused = after('notes --since soon');
+    // The dashboard block, then the pane it opens, alone on the stage.
+    document.getElementById('gutter-dashboard')?.click();
+    for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelectorAll('.launcher-tile').length > 0) break; }
+    const tile = [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === "WHAT'S NEW");
+    const figures = tile ? [...tile.querySelectorAll('.launcher-figure')].map((f) => f.textContent.trim()) : [];
+    const tileRows = tile ? tile.querySelectorAll('.launcher-row').length : 0;
+    tile?.querySelector('.launcher-verb')?.click();
+    const pane = () => [...document.querySelectorAll('.pane-notes')].find((p) => p.offsetParent !== null);
+    for (let i = 0; i < 40; i++) { await sleep(250); if (pane() && pane().querySelectorAll('.notes-row').length > 0) break; }
+    const alone = [...document.querySelectorAll('#layout-root .workspace-pane')].filter((p) => p.offsetParent !== null).map((p) => (p.className.match(/pane-(files|help|notes|dag|universe|pacs|launcher)/) ?? [])[1] ?? '?');
+    const heads = pane() ? [...pane().querySelectorAll('.notes-block-head')].map((h) => h.textContent.trim()) : [];
+    const rows = pane() ? pane().querySelectorAll('.notes-row:not(.notes-row-body)').length : 0;
+    const bar = pane()?.querySelector('.pane-state')?.textContent ?? '';
+    // A headline with more unfolds its rest on a press, and folds it on the next.
+    const more = pane()?.querySelector('.notes-row-more');
+    more?.querySelector('.notes-text')?.click(); await sleep(400);
+    const unfolded = pane()?.querySelectorAll('.notes-row-body').length ?? 0;
+    more?.querySelector('.notes-text')?.click(); await sleep(400);
+    const refolded = pane()?.querySelectorAll('.notes-row-body').length ?? 0;
+    // LAST 5 RELEASES asks the kernel again and the blocks grow.
+    pane()?.querySelector('.notes-since')?.click();
+    let grown = 0; for (let i = 0; i < 40; i++) { await sleep(250); grown = pane()?.querySelectorAll('.notes-block-head').length ?? 0; if (grown > heads.length) break; }
+    const sincePill = pane()?.querySelector('.notes-since')?.textContent ?? '';
+    // Typed from the console: a second ask focuses the pane that is there.
+    document.getElementById('gutter-console').click(); await sleep(400);
+    await say('notes pane'); const again = after('notes pane');
+    const panes = [...document.querySelectorAll('.pane-notes')].filter((p) => p.offsetParent !== null).length;
+    pane()?.querySelector('.drawer-close')?.click(); await sleep(400);
+    document.getElementById('header-restore')?.click(); await sleep(600);
+    return { typed: typed.slice(0, 300), helped: helped.slice(0, 120), news: news.slice(0, 200), refused: refused.slice(0, 120), figures, tileRows, alone, heads, rows, bar, unfolded, refolded, grown, sincePill, again: again.slice(0, 80), panes };`);
+  check('notes, help notes and NEWS say what the installed releases changed, and a bad --since is refused by name',
+    /^\d{4}-\d{2}-\d{2} · /.test(notes.typed) && /argus\s+\S/.test(notes.typed) && notes.helped.slice(0, 10) === notes.typed.slice(0, 10) && /^\d{4}-\d{2}-\d{2} · /.test(notes.news) && /--since wants a count or a date/.test(notes.refused),
+    JSON.stringify({ typed: notes.typed.slice(0, 80), news: notes.news.slice(0, 60), refused: notes.refused.slice(0, 60) }));
+  check("the dashboard's WHAT'S NEW block names the installed release and its first headlines",
+    notes.figures.length === 2 && /^\d{4}-\d{2}-\d{2}$|AFTER RESTART/.test(notes.figures[0]) && /CHANGES?$/.test(notes.figures[1]) && notes.tileRows >= 1,
+    JSON.stringify({ figures: notes.figures, rows: notes.tileRows }));
+  check('the NOTES pane opens alone from the dashboard: a block per release, a row per headline, the bar naming the release read',
+    notes.alone.join(',') === 'notes' && notes.heads.length >= 1 && /^\d{4}-\d{2}-\d{2} · /.test(notes.heads[0] ?? '') && notes.rows >= 1 && /^DAEMON · /.test(notes.bar),
+    JSON.stringify({ alone: notes.alone, heads: notes.heads.slice(0, 2), rows: notes.rows, bar: notes.bar }));
+  check('a headline with more unfolds its rest on a press and folds on the next; LAST 5 RELEASES asks the kernel again',
+    notes.unfolded === 1 && notes.refolded === 0 && notes.grown > notes.heads.length && /LAST 5/.test(notes.sincePill),
+    JSON.stringify({ unfolded: notes.unfolded, refolded: notes.refolded, grown: notes.grown, was: notes.heads.length, pill: notes.sincePill }));
+  check('notes pane typed again focuses the pane on stage rather than opening another',
+    /on stage/.test(notes.again) && notes.panes === 1, JSON.stringify({ again: notes.again, panes: notes.panes }));
+  }
+
   if (await stage('help-pane')) {
   // Help lives on the stage: a HELP tile on the dashboard, a HELP pane of
   // the chords and the verbs, and the same tables typed into the console.
@@ -1721,7 +1782,9 @@ try {
     const bodyRect = body.getBoundingClientRect();
     // Column caps are the table's own frame (caps-are-the-sort), not chrome over the field.
     // The field's MORE chip is its one sanctioned control (a-field-says-it-holds-more).
-    const inField = [...body.querySelectorAll('button')].filter(b => !b.closest('.mode-frame') && !b.closest('.mode-strip') && !b.classList.contains('more-chip') && ![...b.classList].some(k => k.startsWith('roster-')));
+    // The path's crumbs are the listing's own frame too, as the caps are: a browser away
+    // from home wears them above the caps (#899 found the check had only ever run at home).
+    const inField = [...body.querySelectorAll('button')].filter(b => !b.closest('.mode-frame') && !b.closest('.mode-strip') && !b.closest('.files-path') && !b.classList.contains('more-chip') && ![...b.classList].some(k => k.startsWith('roster-')));
     const rule = fp.querySelector('.field-rule').getBoundingClientRect();
     const elbow = fp.querySelector('.mode-elbow').getBoundingClientRect();
     const stripRect = strip.getBoundingClientRect();
@@ -1732,6 +1795,8 @@ try {
       stripShown: stripRect.width > 0 && stripRect.height > 40,
       frameOff: getComputedStyle(frame).visibility === 'hidden' && Math.abs(stripRect.width - spineW) <= 1,
       fieldClean: inField.length === 0,
+      pane: (fp.querySelector('.pane-title')?.textContent ?? '') + ' · ' + (fp.querySelector('.files-binding')?.textContent ?? ''),
+      controls: inField.slice(0, 4).map(b => b.className.replace(/\s+/g, '.') + ':' + b.textContent.trim().slice(0, 20)),
       // the frame is drawn at rest: a rule along the top meeting the spine through an elbow
       ruleDrawn: rule.width > 100 && rule.height >= 4 && Math.abs(rule.right - stripRect.left) <= 1,
       elbowJoins: elbow.width > 20 && Math.abs(elbow.right - stripRect.right) <= 1 && Math.abs(elbow.top - rule.top) <= 1,
@@ -1787,13 +1852,16 @@ try {
     document.getElementById('gutter-files').click(); await sleep(800);
     const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
     for (let i = 0; i < 40; i++) { await sleep(300); if (fp.querySelectorAll('.files-row').length > 1) break; }
-    const rows = [...fp.querySelectorAll('.files-row')].filter(r => r.querySelector('.files-name')?.textContent !== '..').length;
+    // The lead rows (.. and ~, away from home) are not cards: count the listing's own rows.
+    const rows = fp.querySelectorAll('.files-row:not(.files-lead-up):not(.files-lead-home)').length;
     const pill = fp.querySelector('.files-view');
     const before = pill.textContent;
     pill.click(); await sleep(300);
     const after = pill.textContent;
     const cardEls = [...fp.querySelectorAll('.files-card:not(.files-card-up)')];
-    const badgesMatch = cardEls.every(c => c.querySelector('.files-card-badge').textContent.toLowerCase() === [...c.classList].find(k => k.startsWith('files-type-')).replace('files-type-', ''));
+    const mismatched = cardEls.map(c => [c.querySelector('.files-card-badge')?.textContent.toLowerCase() ?? null, [...c.classList].find(k => k.startsWith('files-type-'))?.replace('files-type-', '') ?? null]).filter(([b, t]) => b !== t);
+    const badgesMatch = mismatched.length === 0;
+    const paneName = (fp.querySelector('.pane-title')?.textContent ?? '') + ' · ' + (fp.querySelector('.files-binding')?.textContent ?? '');
     pill.click(); await sleep(600);
     const previewLabel = pill.textContent;
     const previewCards = [...fp.querySelectorAll('.files-card:not(.files-card-up)')];
@@ -1801,9 +1869,9 @@ try {
     const previewRead = fp.querySelector('.pane-mode').textContent;
     pill.click(); await sleep(300);
     const restored = pill.textContent === before && fp.querySelectorAll('.files-row').length > 1;
-    return { before, after, rows, cardCount: cardEls.length, badgesMatch, previewLabel, previewCards: previewCards.length, thumbs, previewRead, restored };`);
-  check('CARDS projects the same listing', cards.before === 'LIST' && cards.after === 'CARDS' && cards.cardCount === cards.rows && cards.badgesMatch);
-  check('PREVIEW leads every card with a glimpse', cards.previewLabel === 'PREVIEW' && cards.previewCards === cards.rows && cards.thumbs === cards.rows && cards.previewRead === 'PREVIEW' && cards.restored, JSON.stringify({ p: cards.previewLabel, n: cards.previewCards, t: cards.thumbs, r: cards.restored }));
+    return { before, after, rows, cardCount: cardEls.length, badgesMatch, mismatched: mismatched.slice(0, 4), paneName, previewLabel, previewCards: previewCards.length, thumbs, previewRead, restored };`);
+  check('CARDS projects the same listing', cards.before === 'LIST' && cards.after === 'CARDS' && cards.cardCount === cards.rows && cards.badgesMatch, JSON.stringify({ pane: cards.paneName, before: cards.before, after: cards.after, rows: cards.rows, cards: cards.cardCount, mismatched: cards.mismatched }));
+  check('PREVIEW leads every card with a glimpse', cards.previewLabel === 'PREVIEW' && cards.previewCards === cards.rows && cards.thumbs === cards.rows && cards.previewRead === 'PREVIEW' && cards.restored, JSON.stringify({ pane: cards.paneName, p: cards.previewLabel, n: cards.previewCards, rows: cards.rows, t: cards.thumbs, read: cards.previewRead, r: cards.restored }));
   }
 
   if (await stage('bin-context')) {
@@ -3674,7 +3742,8 @@ try {
     const notices = [...document.querySelectorAll('.stale-page')];
     const words = notices[0]?.textContent ?? '';
     const control = notices[0]?.querySelector('.stale-page-reload')?.textContent ?? '';
-    const lines = document.getElementById('terminal').innerText.split('\\n').filter(l => l.includes(${JSON.stringify(sentence)})).length;
+    // The console's own line, not any line that quotes the sentence (the release notes do).
+    const lines = document.getElementById('terminal').innerText.split('\\n').filter(l => l.startsWith('argus: ' + ${JSON.stringify(sentence)})).length;
     notices.forEach(n => n.remove());
     return { before, count: notices.length, words, control, lines };`);
   check('a page older than its server\'s build says so once, in plain words whose "refresh" reloads, on the stage and the console',

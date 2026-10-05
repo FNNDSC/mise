@@ -386,6 +386,8 @@ async function vfsProviders_register(): Promise<void> {
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr'));
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr/bin'));
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr/games'));
+  vfsDispatcher.provider_register(new StaticVfsProvider('/usr/share'));
+  vfsDispatcher.provider_register(new StaticVfsProvider('/usr/share/doc'));
 
   vfsDispatcher.pathResolver_register(async (logicalPath: string): Promise<string> => {
     if (session.physicalMode_get()) {

@@ -1,5 +1,12 @@
 # @fnndsc/argus
 
+## 0.23.4
+
+### Patch Changes
+
+- c198398: The dashboard shows one ▼ MORE chip, not two stacked: its body speaks only in the phone layout where it is the field that scrolls.
+- 316ad34: Zooming the console (or any pane) after leaving the dashboard takes the whole page again: the header's height was measured mid-glide and the zoom slid it only a few pixels. And FILES-02 brings the files back after KEYS was opened from the dashboard (it used to think it was already home and fold the gutter away).
+
 ## 0.23.3
 
 ### Patch Changes

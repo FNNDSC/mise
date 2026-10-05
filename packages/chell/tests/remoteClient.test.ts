@@ -147,6 +147,29 @@ describe('remote_run', () => {
     jest.restoreAllMocks();
   });
 
+  it('says the daemon is out of date when it attaches to one, and again when the daemon says so mid-session', async () => {
+    remoteConnect_mock.mockResolvedValue({
+      close: remoteClose_mock,
+      promptLine: jest.fn((): string => ''),
+      daemonStack: jest.fn(() => undefined),
+      daemonStale: true,
+    });
+    const logged: string[] = [];
+    const logSpy = jest.spyOn(console, 'log').mockImplementation((line?: unknown): void => { logged.push(String(line)); });
+    const written: string[] = [];
+    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(((chunk: unknown): boolean => { written.push(String(chunk)); return true; }) as never);
+    // Interactive: the greeting and its warnings print; a one-shot command prints only its answer.
+    await remote_run(berth.identity);
+    expect(logged.some((line: string): boolean => /out of date/.test(line))).toBe(true);
+    const options = remoteConnect_mock.mock.calls[0]?.[0] as { onStale?: (stale: boolean) => void } | undefined;
+    options?.onStale?.(false);
+    expect(written.some((line: string): boolean => /out of date/.test(line))).toBe(false);
+    options?.onStale?.(true);
+    expect(written.some((line: string): boolean => /out of date/.test(line))).toBe(true);
+    logSpy.mockRestore();
+    writeSpy.mockRestore();
+  });
+
   it('executes a one-shot command, closes, and does not start the REPL', async () => {
     await remote_run(berth.identity, 'pwd');
 

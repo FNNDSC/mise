@@ -12,6 +12,13 @@
  *
  * @module
  */
+import { builtin_rev, builtin_tac, builtin_yes, builtin_seq, builtin_shuf, builtin_rot13 } from '../builtins/games/text.js';
+import { builtin_factor, builtin_primes, builtin_roll, builtin_calc, builtin_units } from '../builtins/games/numbers.js';
+import { builtin_cowsay, builtin_cowthink } from '../builtins/games/cowsay.js';
+import { builtin_figlet, builtin_banner } from '../builtins/games/figlet.js';
+import { builtin_lolcat } from '../builtins/games/lolcat.js';
+import { builtin_morse } from '../builtins/games/morse.js';
+import { stdin_set } from '../builtins/games/stdin.js';
 import { builtin_netstat } from '../builtins/net/netstat.js';
 import { writeFileSync, appendFileSync } from 'fs';
 import chalk from 'chalk';
@@ -183,6 +190,23 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   debug: builtin_debug,
   version: builtin_version,
   fortune: builtin_fortune,
+  cowsay: builtin_cowsay,
+  cowthink: builtin_cowthink,
+  figlet: builtin_figlet,
+  banner: builtin_banner,
+  lolcat: builtin_lolcat,
+  rev: builtin_rev,
+  tac: builtin_tac,
+  yes: builtin_yes,
+  seq: builtin_seq,
+  factor: builtin_factor,
+  primes: builtin_primes,
+  shuf: builtin_shuf,
+  roll: builtin_roll,
+  rot13: builtin_rot13,
+  morse: builtin_morse,
+  calc: builtin_calc,
+  units: builtin_units,
   weather: builtin_weather,
   motd: builtin_motd,
   date: builtin_date,
@@ -285,6 +309,23 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   whereami: envelopeHandler_wrap(builtin_whereami),
   debug: envelopeHandler_wrap(builtin_debug),
   fortune: envelopeHandler_wrap(builtin_fortune),
+  cowsay: envelopeHandler_wrap(builtin_cowsay),
+  cowthink: envelopeHandler_wrap(builtin_cowthink),
+  figlet: envelopeHandler_wrap(builtin_figlet),
+  banner: envelopeHandler_wrap(builtin_banner),
+  lolcat: envelopeHandler_wrap(builtin_lolcat),
+  rev: envelopeHandler_wrap(builtin_rev),
+  tac: envelopeHandler_wrap(builtin_tac),
+  yes: envelopeHandler_wrap(builtin_yes),
+  seq: envelopeHandler_wrap(builtin_seq),
+  factor: envelopeHandler_wrap(builtin_factor),
+  primes: envelopeHandler_wrap(builtin_primes),
+  shuf: envelopeHandler_wrap(builtin_shuf),
+  roll: envelopeHandler_wrap(builtin_roll),
+  rot13: envelopeHandler_wrap(builtin_rot13),
+  morse: envelopeHandler_wrap(builtin_morse),
+  calc: envelopeHandler_wrap(builtin_calc),
+  units: envelopeHandler_wrap(builtin_units),
   weather: envelopeHandler_wrap(builtin_weather),
   motd: envelopeHandler_wrap(builtin_motd),
   date: envelopeHandler_wrap(builtin_date),
@@ -771,21 +812,30 @@ export async function pipe_execute(segments: string[]): Promise<CommandEnvelope>
     return { status: 'ok', rendered: '' };
   }
 
-  // The first segment is a chell command run in-engine; the rest run through
-  // the surface, so nothing spawns on a daemon host — a surface without the
-  // capability (a browser) fails the pipeline with a clear message.
-  if (segments.length > 1) {
-    capability_require('pipeSegments', 'this surface cannot run pipeline segments');
-  }
-
-  // Execute first segment in chell and capture output
+  // The first segment is a chell command run in-engine. A later segment
+  // that names a builtin runs in-engine too, reading what came before it
+  // (`fortune | cowsay` is the kernel's own, in a browser as in a terminal);
+  // any other goes through the surface's host shell, so nothing spawns on a
+  // daemon host — a surface without the capability (a browser) fails that
+  // segment with a clear message.
   const firstCommand: string = segments[0];
   const { buffer } = await chellCommand_executeAndCapture(firstCommand);
 
-  // Chain remaining segments through the surface's own tools.
   let currentInput: Buffer = buffer;
   for (let i: number = 1; i < segments.length; i++) {
-    currentInput = await surface_get().pipeSegment(segments[i], currentInput);
+    const segment: string = segments[i];
+    const word: string = segment.trim().split(/\s+/)[0] ?? '';
+    if (word !== '' && (word in ENVELOPE_HANDLERS || word in COMMAND_HANDLERS)) {
+      stdin_set(currentInput.toString('utf-8'));
+      try {
+        currentInput = (await chellCommand_executeAndCapture(segment)).buffer;
+      } finally {
+        stdin_set(null);
+      }
+      continue;
+    }
+    capability_require('pipeSegments', 'this surface cannot run pipeline segments');
+    currentInput = await surface_get().pipeSegment(segment, currentInput);
   }
 
   // Output final result

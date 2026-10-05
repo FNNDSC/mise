@@ -28,7 +28,7 @@ export const GAMES_SHELF: ReadonlyArray<GamesCategory> = [
   {
     title: 'Text toys',
     note: 'pipe fodder: fortune | cowsay, and friends',
-    commands: ['fortune', 'cowsay', 'figlet', 'banner', 'lolcat', 'rev', 'tac', 'yes', 'seq', 'factor', 'primes', 'shuf', 'roll', 'rot13', 'morse', 'calc', 'units'],
+    commands: ['fortune', 'cowsay', 'cowthink', 'figlet', 'banner', 'lolcat', 'rev', 'tac', 'yes', 'seq', 'factor', 'primes', 'shuf', 'roll', 'rot13', 'morse', 'calc', 'units'],
   },
   {
     title: 'Time and sky',

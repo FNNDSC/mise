@@ -934,6 +934,30 @@ try {
     more.error === undefined && more.scrollback && more.alone && more.carded && more.panesShown, JSON.stringify(more));
   }
 
+  if (await stage('games')) {
+  // The games shelf (#892): `help games` is the session's page, the toys
+  // run in the kernel so a pipe of builtins works in a browser, and a
+  // segment the browser cannot run is refused in words rather than hung.
+  const games = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_idle(); };
+    const text = () => document.getElementById('terminal').innerText;
+    const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2).trim(); };
+    await say('help games'); const page = after('help games');
+    await say('fortune | cowsay'); const cow = after('fortune | cowsay');
+    await say('figlet HI | rev'); const big = after('figlet HI | rev');
+    await say('fortune | wc -l'); const refused = after('fortune | wc -l');
+    await say('ls /usr/games'); const shelf = after('ls /usr/games');
+    return { page: page.slice(0, 2000), cow: cow.slice(0, 600), big: big.slice(0, 200), refused: refused.slice(0, 200), shelf: shelf.slice(0, 800) };`);
+  check('help games lists the shelf by category, and ls /usr/games walks it',
+    /Text toys/.test(games.page) && /cowsay/.test(games.page) && /Time and sky/.test(games.page) && /cowsay/.test(games.shelf) && /fortune/.test(games.shelf), JSON.stringify({ page: games.page.slice(0, 120), shelf: games.shelf.slice(0, 120) }));
+  check('fortune | cowsay runs in the kernel, brain and all; builtins chain',
+    /\(\(\(\)\)\)/.test(games.cow) && /[<(] .+ [>)]/.test(games.cow) && games.big.length > 0 && !/not found|error/i.test(games.big), JSON.stringify({ cow: games.cow.slice(0, 160), big: games.big.slice(0, 80) }));
+  check('a pipe segment the browser cannot run is refused in words, not hung',
+    /cannot run pipeline segments/.test(games.refused), games.refused.slice(0, 160));
+  }
+
   if (await stage('help-pane')) {
   // Help lives on the stage: a HELP tile on the dashboard, a HELP pane of
   // the chords and the verbs, and the same tables typed into the console.

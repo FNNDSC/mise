@@ -175,8 +175,6 @@ export function dashboardTiles_build(hooks: DashboardHooks): () => Promise<Reado
       figures: [],
       rows: [],
       verb: 'OPEN THE CONSOLE',
-      // Wide: the grid of three closes on it, and the typed door reads as a door.
-      wide: true,
       about: TILE_ABOUT['console'],
       enter: (): void => hooks.console_open(),
     };

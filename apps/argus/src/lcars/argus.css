@@ -5995,30 +5995,37 @@ body[data-zoom] #header-restore {
 
 /* ----------------------------------------------------- columns by hand */
 
-/* A cap's right edge is a grip (columns.ts): a drag sizes the column, a
- * double-press gives it back; the expanse is never grabbed. Under a coarse
- * pointer there is no grip — a finger cannot find a six-pixel edge. */
+/* The gutter between two caps is the grip (columns.ts): a drag on it sizes
+ * the column to its left, a double-press gives it back. The hit zone is
+ * centred on the boundary and wide enough for a finger as well as a mouse;
+ * the hairline shows whenever the hand is on the cap, so the grip is found
+ * before it is felt, and brightens under the grip and during a drag. */
 .roster-grip {
   position: absolute;
-  top: 0;
-  right: -3px;
-  width: 7px;
-  height: 100%;
+  top: -2px;
+  right: -11px;
+  width: 20px;
+  height: calc(100% + 4px);
   cursor: col-resize;
   touch-action: none;
   z-index: 1;
 }
 
+.roster-cap:hover .roster-grip {
+  background: linear-gradient(to right, transparent 9px, #000 9px, #000 11px, transparent 11px);
+}
+
 .roster-grip:hover,
 .roster-sizing .roster-grip {
-  background: linear-gradient(to right, transparent 2px, var(--harvestgold) 2px, var(--harvestgold) 4px, transparent 4px);
+  background: linear-gradient(to right, transparent 8px, var(--harvestgold) 8px, var(--harvestgold) 12px, transparent 12px);
   filter: brightness(1.35);
 }
 
-.roster-sizing { cursor: col-resize; user-select: none; }
-
+/* A finger has no hover: under a coarse pointer every grip shows its hairline. */
 @media (pointer: coarse) {
-  .roster-grip { display: none; }
+  .roster-grip {
+    background: linear-gradient(to right, transparent 9px, #000 9px, #000 11px, transparent 11px);
+  }
 }
 
 /* ------------------------------------------------------------ notes pane */

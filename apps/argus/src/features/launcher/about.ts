@@ -22,7 +22,7 @@ export interface TileAbout {
 /** The descriptions, by tile key. */
 export const TILE_ABOUT: Readonly<Record<string, TileAbout>> = {
   universe: {
-    text: 'Every analysis you can see, drawn as a galaxy you can fly through. Analyses that ran the same pipeline cluster together, and failures glow red. Rearrange the space to ask different questions:',
+    text: 'Every analysis, drawn as a galaxy. Alike analyses cluster; failures glow red. Rearrange it:',
     list: [
       'GALAXY: grouped by pipeline (the default)',
       'SPOKES · CLUMPS: the same groups, tidier',
@@ -33,24 +33,24 @@ export const TILE_ABOUT: Readonly<Record<string, TileAbout>> = {
     tail: 'Replay its history, or fly in to any one analysis to see its steps.',
   },
   analyses: {
-    text: 'Your analyses (ChRIS "feeds"), newest first. Each is a chain of processing steps run on your data. Open one to follow its progress, read its logs and browse what it made.',
+    text: 'Your analyses, newest first. Open one to follow it, read its logs and browse its results.',
   },
   files: {
-    text: 'Your ChRIS home folder: uploads, results and anything shared with you. Browse, preview images and text, download, or send files into an analysis.',
+    text: 'Your ChRIS home: uploads, results and what others shared with you.',
   },
   pacs: {
-    text: 'Find imaging studies in the hospital PACS by patient, accession number or date. Pull the series you need into ChRIS, ready to analyse.',
+    text: 'Find studies in the hospital PACS and pull the series you need into ChRIS.',
   },
   panes: {
-    text: 'Saved workspaces. A desktop remembers which views you had open and how they were arranged, so you can return to a piece of work as you left it.',
+    text: 'Saved workspaces: return to a piece of work as you left it.',
   },
   keys: {
-    text: 'Keyboard shortcuts, and the commands ARGUS understands. Everything you can click can also be typed.',
+    text: 'Keyboard shortcuts and the commands ARGUS understands.',
   },
   notes: {
-    text: 'What changed in the releases installed here, newest first: one line per change, the package named. Open it to read the rest of each, or earlier releases.',
+    text: 'A list of updates since the previous release.',
   },
   console: {
-    text: 'A command line into the same session. Type help to start. Anything done here shows up in the panes, and the other way round.',
+    text: 'A command line into the same session; what you do here shows in the panes, and the other way round.',
   },
 };

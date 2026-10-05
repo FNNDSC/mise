@@ -101,7 +101,7 @@ export const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
     key: 'title',
     label: 'TITLE',
     className: 'feedlist-title',
-    width: '24em',
+    width: 'minmax(12em, 24em)',
     // The feed's tags are marks after its title, not a column: a press on
     // one filters the roster by it, and its × (on the indicated row) takes it off.
     cell: (feed: FeedListEntry): string | HTMLElement => feedTitle_build(feed),
@@ -111,7 +111,7 @@ export const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
     key: 'progress',
     label: 'PROGRESS',
     className: 'feedlist-progress',
-    width: '1fr',
+    width: 'minmax(8em, 1fr)',
     // A feed with nothing scheduled still gets a track: nothing has
     // happened yet reads differently from there is nothing here.
     cell: (feed: FeedListEntry): HTMLElement => progressCell_build(feedProgress_of(feed)),

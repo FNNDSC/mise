@@ -953,13 +953,18 @@ try {
     await say('who'); const who = after('who');
     await say('qr hi'); const qr = after('qr hi');
     await say('say hello there'); const said = after('say hello there');
-    return { page: page.slice(0, 2000), cow: cow.slice(0, 600), big: big.slice(0, 200), refused: refused.slice(0, 200), shelf: shelf.slice(0, 800), wtf: wtf.slice(0, 200), who: who.slice(0, 300), qr: qr.slice(0, 400), said: said.slice(0, 80) };`);
+    await say('pom'); const pom = after('pom');
+    await say('timer 2s the kettle'); const timerSet = after('timer 2s the kettle');
+    let chimed = ''; for (let i = 0; i < 20; i++) { await sleep(300); if (/🔔 the kettle/.test(text())) { chimed = 'yes'; break; } }
+    return { pom: pom.slice(0, 80), timerSet: timerSet.slice(0, 80), chimed, page: page.slice(0, 2000), cow: cow.slice(0, 600), big: big.slice(0, 200), refused: refused.slice(0, 200), shelf: shelf.slice(0, 800), wtf: wtf.slice(0, 200), who: who.slice(0, 300), qr: qr.slice(0, 400), said: said.slice(0, 80) };`);
   check('help games lists the shelf by category, and ls /usr/games walks it',
     /Text toys/.test(games.page) && /cowsay/.test(games.page) && /Time and sky/.test(games.page) && /cowsay/.test(games.shelf) && /fortune/.test(games.shelf), JSON.stringify({ page: games.page.slice(0, 120), shelf: games.shelf.slice(0, 120) }));
   check('fortune | cowsay runs in the kernel, brain and all; builtins chain',
     /\(\(\(\)\)\)/.test(games.cow) && /[<(] .+ [>)]/.test(games.cow) && games.big.length > 0 && !/not found|error/i.test(games.big), JSON.stringify({ cow: games.cow.slice(0, 160), big: games.big.slice(0, 80) }));
   check('a pipe segment the browser cannot run is refused in words, not hung',
     /cannot run pipeline segments/.test(games.refused), games.refused.slice(0, 160));
+  check('time and sky: pom names the moon; a 2-second timer chimes into the console',
+    /Moon is/.test(games.pom) && /^timer \d+ set/.test(games.timerSet) && games.chimed === 'yes', JSON.stringify({ pom: games.pom.slice(0, 40), timerSet: games.timerSet.slice(0, 40), chimed: games.chimed }));
   check('the lab\'s own: wtf knows LONK, who sees this browser, qr draws blocks, say prints the words',
     /Light Oxidicom NotifiKations/.test(games.wtf) && /browser/.test(games.who) && /\(you\)/.test(games.who) && /█/.test(games.qr) && /♪ hello there/.test(games.said),
     JSON.stringify({ wtf: games.wtf.slice(0, 60), who: games.who.slice(0, 80), qr: games.qr.slice(0, 30), said: games.said }));

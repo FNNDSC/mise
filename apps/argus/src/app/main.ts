@@ -2664,6 +2664,12 @@ async function surface_start(token: string): Promise<void> {
       // The sampler's refreshed models: every DAG pane showing that feed
       // repaints in place; nothing pins, nothing reaches the transcript.
       ambient_receive: (envelope: WireEnvelope): void => {
+        // A chime (timer, leave): noted in the console, and spoken.
+        if (envelope.model?.kind === 'games.chime') {
+          const text: unknown = (envelope.model.data as { text?: unknown } | null)?.text;
+          if (typeof text === 'string') { terminal.line_note(`🔔 ${text}`); voice_say({ text }); }
+          return;
+        }
         if (envelope.model?.kind === 'fs.listing') {
           // A stale listing's refresh: every Files pane showing that path
           // swaps it in and drops its STALE readout.

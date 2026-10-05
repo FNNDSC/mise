@@ -22,6 +22,8 @@ import { builtin_who, builtin_uptime, builtin_ping, builtin_chrisfetch, builtin_
 import { builtin_wtf } from '../builtins/games/wtf.js';
 import { builtin_file, builtin_xxd, builtin_strings, builtin_sha256sum, builtin_md5sum } from '../builtins/games/bytes.js';
 import { builtin_qr } from '../builtins/games/qr.js';
+import { builtin_pom, builtin_stardate, builtin_ddate, builtin_sunrise } from '../builtins/games/sky.js';
+import { builtin_timer, builtin_leave, builtin_stopwatch } from '../builtins/games/chimes.js';
 import { stdin_set } from '../builtins/games/stdin.js';
 import { builtin_netstat } from '../builtins/net/netstat.js';
 import { writeFileSync, appendFileSync } from 'fs';
@@ -223,6 +225,13 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   sha256sum: builtin_sha256sum,
   md5sum: builtin_md5sum,
   qr: builtin_qr,
+  pom: builtin_pom,
+  stardate: builtin_stardate,
+  ddate: builtin_ddate,
+  sunrise: builtin_sunrise,
+  timer: builtin_timer,
+  leave: builtin_leave,
+  stopwatch: builtin_stopwatch,
   weather: builtin_weather,
   motd: builtin_motd,
   date: builtin_date,
@@ -354,6 +363,13 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   sha256sum: envelopeHandler_wrap(builtin_sha256sum),
   md5sum: envelopeHandler_wrap(builtin_md5sum),
   qr: envelopeHandler_wrap(builtin_qr),
+  pom: envelopeHandler_wrap(builtin_pom),
+  stardate: envelopeHandler_wrap(builtin_stardate),
+  ddate: envelopeHandler_wrap(builtin_ddate),
+  sunrise: envelopeHandler_wrap(builtin_sunrise),
+  timer: envelopeHandler_wrap(builtin_timer),
+  leave: envelopeHandler_wrap(builtin_leave),
+  stopwatch: envelopeHandler_wrap(builtin_stopwatch),
   weather: envelopeHandler_wrap(builtin_weather),
   motd: envelopeHandler_wrap(builtin_motd),
   date: envelopeHandler_wrap(builtin_date),

@@ -1011,6 +1011,48 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Draws a QR code of the text — a URL, mostly — in half-block characters, light modules bright so a phone camera reads it off a dark screen. Up to 271 bytes (QR versions 1 to 10, error correction L), encoded here with no library.',
     examples: ['qr https://titan.tch.harvard.edu', 'whereami | qr'],
   },
+  pom: {
+    usage: 'pom [date]',
+    summary: 'The phase of the moon',
+    description: 'BSD\'s pom: the Moon\'s phase today (or on a date), how much of it is lit, the days to the next full and new moons, and a small moon drawn as it looks.',
+    examples: ['pom', 'pom 2026-12-25'],
+  },
+  stardate: {
+    usage: 'stardate [date]',
+    summary: 'The stardate, two ways',
+    description: 'The day as a stardate: by the Kelvin films\' reckoning (the year, then the day of it), with TNG\'s thousand-a-year count from 2323 beside it.',
+    examples: ['stardate', 'stardate 2366-01-01'],
+  },
+  ddate: {
+    usage: 'ddate [date]',
+    summary: 'The Discordian date',
+    description: 'Today in the Discordian calendar: five seasons of 73 days, a five-day week, St. Tib\'s Day in a leap year, and the holy days called out. Hail Eris.',
+    examples: ['ddate', 'ddate 2028-02-29'],
+  },
+  sunrise: {
+    usage: 'sunrise [place]',
+    summary: 'When the sun rises and sets at a place',
+    description: 'Asks Open-Meteo (the service weather uses; no key) for sunrise, sunset and the length of the day at a place, today and tomorrow, in the place\'s own time. Boston when no place is named. Needs the session host to reach the internet.',
+    examples: ['sunrise', 'sunrise Cape Town', 'sunrise Tromsø'],
+  },
+  timer: {
+    usage: 'timer <duration> [words] | timer | timer cancel [id|all]',
+    summary: 'A chime after a while: timer 5m tea',
+    description: 'Sets a chime for later — 90s, 5m, 1h30m, 2:30, or a bare number of minutes — with the words to say when it sounds. The chime reaches every surface on the session: ARGUS notes it in the console and speaks it, a remote chell prints it. Nothing waits: the console is yours meanwhile. Bare timer lists the chimes waiting; timer cancel ends them. A chime lives as long as the session\'s process.',
+    examples: ['timer 5m tea', 'timer 25m pomodoro over', 'timer 1:30', 'timer', 'timer cancel 2'],
+  },
+  leave: {
+    usage: 'leave [+hhmm | hhmm] | leave cancel',
+    summary: 'A word when it is time to go home: leave +0030',
+    description: 'BSD\'s leave: tell it when you must leave — +hhmm from now, or a clock time — and it says so five minutes before, at the time, and a minute after. Bare leave says when; leave cancel forgets it.',
+    examples: ['leave +0030', 'leave 1730', 'leave', 'leave cancel'],
+  },
+  stopwatch: {
+    usage: 'stopwatch [start|stop|lap|reset]',
+    summary: 'A stopwatch, with laps',
+    description: 'One stopwatch per session: start, stop (and start again to resume), lap, reset. Bare stopwatch shows the time and the laps.',
+    examples: ['stopwatch start', 'stopwatch lap', 'stopwatch', 'stopwatch stop'],
+  },
   weather: {
     usage: 'weather [place] [-u|--units metric|imperial] [-d|--days N]',
     summary: 'The weather at a place, now and the next few days',

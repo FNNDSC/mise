@@ -78,9 +78,13 @@ export class HelpPanel {
         topic: 'verb',
       };
     });
+    // The shelf is the session's page (`help games` in the console); the
+    // pane names the way there rather than copying it.
+    const games: HelpRow[] = [{ key: 'g:games', name: 'help games', does: 'the /usr/games shelf — fortune, cal, weather and their kin, by category (type it in the console)', topic: 'verb' }];
     this.listing.rows_set([
       { key: 'keys', header: head('KEYS — Ctrl-B opens the focused pane\'s drawer; then one key presses one of its verbs'), rows: chords },
       { key: 'verbs', header: head('VERBS — the console language; the long form is docs/argus-lang.adoc'), rows: verbs },
+      { key: 'games', header: head('GAMES — the small pleasures, kept apart from the tools as BSD kept them'), rows: games },
     ], { field: 'help' });
   }
 }

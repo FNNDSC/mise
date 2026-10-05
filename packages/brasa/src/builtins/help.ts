@@ -5,6 +5,7 @@
  *
  * @module
  */
+import { gamesShelf_render } from './games/shelf.js';
 import chalk from 'chalk';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { CAT_USAGE } from './fs/cat.args.js';
@@ -1309,6 +1310,7 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Display help information',
     examples: [
       'help                  # List all commands',
+      'help games            # The /usr/games shelf, by category',
       'help ls               # Show help for ls',
       'help timing           # Show help for timing',
     ],
@@ -1705,6 +1707,10 @@ export function args_checkHasHelpFlag(args: string[], command?: string): boolean
 export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   const commandName: string | undefined = args.length > 0 ? args.join(' ') : undefined;
 
+  // The shelf: its own page, in the style of this one.
+  if (commandName === 'games') {
+    return { status: 'ok', rendered: gamesShelf_render(commandSummary_get) };
+  }
   // If a specific command is requested, return its help
   if (commandName) {
     if (/-v[^/]+$/.test(commandName)) {
@@ -1756,6 +1762,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   rendered += '\n';
 
   rendered += `${chalk.gray('Type "help <command>" for detailed information about a command.')}\n`;
+  rendered += `${chalk.gray('Type "help games" for the /usr/games shelf: fortune, cal, weather and their kin.')}\n`;
   rendered += `${chalk.gray('Type "<command> --help" for quick help on any command.')}\n`;
   rendered += '\n';
 
@@ -1769,6 +1776,18 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
  */
 export function builtinCommands_list(): string[] {
   return Object.keys(helpText);
+}
+
+/**
+ * A command's one-line summary (its `summary`, else its description), for
+ * a listing that names many commands at once.
+ *
+ * @param command - The command.
+ * @returns The line, or undefined for a command with no help entry.
+ */
+export function commandSummary_get(command: string): string | undefined {
+  const help: CommandHelp | undefined = helpText[command];
+  return help === undefined ? undefined : (help.summary ?? help.description);
 }
 
 /**

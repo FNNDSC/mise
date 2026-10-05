@@ -379,6 +379,7 @@ listing.rows_set([{ key: 'keys', header, rows: chords }, { key: 'verbs', header,
 | listed | the field | Both blocks, every row; the bar carries the listing's own state line.
 | filtered | `.help-filter`, the bar | The filter pill lit and the bar reading `FILTERED n/m`: the façade's filter over both blocks.
 | on stage already | the bar | A second `help pane` (or HELP tile press) focuses the pane that is there rather than opening another; the console answers `help: on stage`.
+| GAMES | a third block | One row naming the way to the session's games shelf: `help games` typed in the console lists `/usr/games` by category (#892). The shelf is the kernel's page; the pane does not copy it.
 |===
 
 === Laws

@@ -38,8 +38,8 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
       effectivePath = effectivePath.slice(0, -1);
     }
 
-    if (prefix === "/usr/bin") {
-      const commandName: string = effectivePath.substring("/usr/bin/".length);
+    if (prefix === "/usr/bin" || prefix === "/usr/games") {
+      const commandName: string = effectivePath.substring(`${prefix}/`.length);
       const helpStr: string | undefined = commandHelp_get(commandName);
       if (helpStr !== undefined) {
         return Ok(helpStr);

@@ -424,12 +424,12 @@ describe('engine_create', () => {
   it('initializes the session, registers VFS providers, and returns the facade', async () => {
     const engine = await engine_create();
     expect(mockSessionInit).toHaveBeenCalledTimes(1);
-    expect(mockProviderRegister).toHaveBeenCalledTimes(3);
+    expect(mockProviderRegister).toHaveBeenCalledTimes(4);
     expect(mockPathResolverRegister).toHaveBeenCalledTimes(1);
     const roots: string[] = mockProviderRegister.mock.calls.map(
       (call: unknown[]) => (call[0] as FakeStaticProvider).root,
     );
-    expect(roots).toEqual(['/bin', '/usr', '/usr/bin']);
+    expect(roots).toEqual(['/bin', '/usr', '/usr/bin', '/usr/games']);
 
     const envelopes = await engine.line_execute('whoami');
     expect(envelopes).toHaveLength(1);

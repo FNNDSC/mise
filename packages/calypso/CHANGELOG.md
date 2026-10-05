@@ -1,5 +1,18 @@
 # @fnndsc/calypso
 
+## 0.19.4
+
+### Patch Changes
+
+- 5a0eef5: The package ships its release notes, so a session can say what changed. They are read from CHANGELOG.md at build into dist/notes.json.
+- Updated dependencies [5a0eef5]
+- Updated dependencies [5a0eef5]
+- Updated dependencies [5a0eef5]
+  - @fnndsc/brasa@0.33.0
+  - @fnndsc/menu@0.19.0
+  - @fnndsc/argus@0.25.0
+  - @fnndsc/cumin@3.27.5
+
 ## 0.19.3
 
 ### Patch Changes

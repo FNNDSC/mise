@@ -24,6 +24,8 @@ import { builtin_file, builtin_xxd, builtin_strings, builtin_sha256sum, builtin_
 import { builtin_qr } from '../builtins/games/qr.js';
 import { builtin_pom, builtin_stardate, builtin_ddate, builtin_sunrise } from '../builtins/games/sky.js';
 import { builtin_timer, builtin_leave, builtin_stopwatch } from '../builtins/games/chimes.js';
+import { builtin_sl, builtin_cmatrix, builtin_rain, builtin_asciiquarium, builtin_tetris, builtin_snake } from '../builtins/games/show.js';
+import { builtin_quiz, builtin_hangman, builtin_2048 } from '../builtins/games/play.js';
 import { stdin_set } from '../builtins/games/stdin.js';
 import { builtin_netstat } from '../builtins/net/netstat.js';
 import { writeFileSync, appendFileSync } from 'fs';
@@ -232,6 +234,15 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   timer: builtin_timer,
   leave: builtin_leave,
   stopwatch: builtin_stopwatch,
+  sl: builtin_sl,
+  cmatrix: builtin_cmatrix,
+  rain: builtin_rain,
+  asciiquarium: builtin_asciiquarium,
+  tetris: builtin_tetris,
+  snake: builtin_snake,
+  quiz: builtin_quiz,
+  hangman: builtin_hangman,
+  '2048': builtin_2048,
   weather: builtin_weather,
   motd: builtin_motd,
   date: builtin_date,
@@ -370,6 +381,15 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   timer: envelopeHandler_wrap(builtin_timer),
   leave: envelopeHandler_wrap(builtin_leave),
   stopwatch: envelopeHandler_wrap(builtin_stopwatch),
+  sl: envelopeHandler_wrap(builtin_sl),
+  cmatrix: envelopeHandler_wrap(builtin_cmatrix),
+  rain: envelopeHandler_wrap(builtin_rain),
+  asciiquarium: envelopeHandler_wrap(builtin_asciiquarium),
+  tetris: envelopeHandler_wrap(builtin_tetris),
+  snake: envelopeHandler_wrap(builtin_snake),
+  quiz: envelopeHandler_wrap(builtin_quiz),
+  hangman: envelopeHandler_wrap(builtin_hangman),
+  '2048': envelopeHandler_wrap(builtin_2048),
   weather: envelopeHandler_wrap(builtin_weather),
   motd: envelopeHandler_wrap(builtin_motd),
   date: envelopeHandler_wrap(builtin_date),

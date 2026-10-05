@@ -43,7 +43,7 @@ export const GAMES_SHELF: ReadonlyArray<GamesCategory> = [
   {
     title: 'Showpieces and games',
     note: 'drawn in ARGUS; the console gets the text',
-    commands: ['sl', 'cmatrix', 'asciiquarium', 'starwars', 'rain', 'tetris', '2048', 'snake', 'quiz', 'hangman'],
+    commands: ['sl', 'cmatrix', 'asciiquarium', 'rain', 'tetris', '2048', 'snake', 'quiz', 'hangman'],
   },
 ];
 

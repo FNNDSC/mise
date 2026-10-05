@@ -680,6 +680,52 @@
                 </div>
               </div>
             </template>
+            <!-- The GAMES pane: a canvas the showpieces and the arcade run on
+                 (`sl`, `cmatrix`, `rain`, `asciiquarium`, `tetris`, `snake`;
+                 the games shelf, #892). The field holds the keyboard while a
+                 game plays; Esc gives it back. -->
+            <template id="tpl-pane-games">
+              <div class="workspace-pane pane-games">
+                <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
+                  <div class="lcars-bar-horizontal">
+                    <span class="lcars-title pane-title">GAMES</span>
+                    <span class="pane-mode"></span>
+                    <span class="pane-state"></span>
+                  </div>
+                  <div class="lcars-bar-end bar-punctuation"></div>
+                </div>
+                <div class="pane-drawer" hidden>
+                  <span class="drawer-group drawer-structure">
+                    <button class="pacs-capsule drawer-mode drawer-mode-selected" data-mode="split" title="the direction capsules open a new pane">SPLIT</button>
+                    <button class="pacs-capsule drawer-mode" data-mode="move" title="the direction capsules move this pane (one press)">MOVE</button>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="before" title="new pane opens left">LEFT</button>
+                    <button class="pacs-capsule drawer-split" data-split="col" data-place="after" title="new pane opens right">RIGHT</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="before" title="new pane opens above">ABOVE</button>
+                    <button class="pacs-capsule drawer-split" data-split="row" data-place="after" title="new pane opens below">BELOW</button>
+                    <button class="pacs-capsule drawer-zoom" data-pane="" title="zoom (Esc restores)">ZOOM</button>
+                    <button class="pacs-capsule drawer-close" title="close pane">CLOSE</button>
+                  </span>
+                  <span class="drawer-group drawer-binding" role="radiogroup" title="what the next split creates">
+                    <button class="pacs-capsule drawer-bind drawer-bind-selected" data-bind="unlinked">UNLINKED</button>
+                    <button class="pacs-capsule drawer-bind" data-bind="fs">LINKED FS</button>
+                    <button class="pacs-capsule drawer-bind" data-bind="viewer">LINKED VIEWER</button>
+                  </span>
+                  <span class="drawer-group drawer-children"></span>
+                </div>
+                <div class="games-body">
+                  <span class="field-rule"></span>
+                  <button class="mode-strip" title="game modes" aria-label="game modes"></button>
+                  <span class="mode-elbow"></span>
+                  <aside class="mode-frame">
+                    <button class="strategy-pill games-pause" title="pause and resume (Space in the field)">PAUSE</button>
+                    <button class="strategy-pill games-restart" title="start the program over">RESTART</button>
+                    <span class="games-focus strategy-pill rail-off" hidden title="the field holds the keyboard; Esc gives it back">FOCUS</span>
+                    <span class="mode-fill"></span>
+                  </aside>
+                  <section class="games-field" aria-label="Games"><canvas class="games-canvas"></canvas></section>
+                </div>
+              </div>
+            </template>
             <!-- The EDIT pane: one file in a guest field (CodeMirror); SAVE and
                  REVERT on the frame; every save a touch line in the console. -->
             <template id="tpl-pane-edit">

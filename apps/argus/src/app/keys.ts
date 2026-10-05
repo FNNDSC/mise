@@ -76,6 +76,8 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
     (): Retreat => (panels.values('image').some((panel): boolean => panel.field_release()) ? 'claimed' : 'passed'),
     // So does an editor's field: Esc takes the keyboard back, the text stands.
     (): Retreat => (panels.values('edit').some((panel): boolean => panel.field_release()) ? 'claimed' : 'passed'),
+    // And a GAMES field: the game keeps running, the keys go back to the stage.
+    (): Retreat => (panels.values('games').some((panel): boolean => panel.field_release()) ? 'claimed' : 'passed'),
     // SELECT is transient chrome of its own; an open question owns Esc, so
     // a press that also left a mode would answer two things at once.
     (): Retreat => {

@@ -297,6 +297,7 @@ LINT_CHECKS['a-component-lands-with-its-reference'] = () => {
     'apps/argus/src/features/image/panel.ts',
     'apps/argus/src/features/universe/panel.ts',
     'apps/argus/src/features/edit/panel.ts',
+    'apps/argus/src/features/games/panel.ts',
     'apps/argus/src/app/restart.ts',
   ];
   if (!existsSync('apps/argus/docs/components.adoc')) {

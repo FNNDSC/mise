@@ -956,7 +956,35 @@ try {
     await say('pom'); const pom = after('pom');
     await say('timer 2s the kettle'); const timerSet = after('timer 2s the kettle');
     let chimed = ''; for (let i = 0; i < 20; i++) { await sleep(300); if (/🔔 the kettle/.test(text())) { chimed = 'yes'; break; } }
-    return { pom: pom.slice(0, 80), timerSet: timerSet.slice(0, 80), chimed, page: page.slice(0, 2000), cow: cow.slice(0, 600), big: big.slice(0, 200), refused: refused.slice(0, 200), shelf: shelf.slice(0, 800), wtf: wtf.slice(0, 200), who: who.slice(0, 300), qr: qr.slice(0, 400), said: said.slice(0, 80) };`);
+    // The showpieces and the arcade: a still in the console, the moving one
+    // on a GAMES pane; a game takes the keyboard, Esc gives it back, a
+    // second program reuses the pane on stage.
+    await say('sl'); const slNote = after('sl');
+    const gamesPane = () => [...document.querySelectorAll('.pane-games')].find((p) => p.offsetParent !== null);
+    for (let i = 0; i < 40; i++) { await sleep(250); if (gamesPane()) break; }
+    const slPane = gamesPane();
+    const slDrawn = slPane ? { canvas: slPane.querySelector('.games-canvas') !== null, state: slPane.querySelector('.pane-state')?.textContent ?? '', controlsInField: slPane.querySelector('.games-field button') !== null } : null;
+    await say('tetris'); await sleep(600);
+    const panes = [...document.querySelectorAll('.pane-games')].filter((p) => p.offsetParent !== null).length;
+    const tetrisPane = gamesPane();
+    const focused = tetrisPane ? tetrisPane.classList.contains('games-field-focused') && tetrisPane.querySelector('.games-field').contains(document.activeElement) : false;
+    const tetrisState = tetrisPane?.querySelector('.pane-state')?.textContent ?? '';
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(200);
+    const released = tetrisPane ? !tetrisPane.classList.contains('games-field-focused') && !tetrisPane.querySelector('.games-field').contains(document.activeElement) : false;
+    tetrisPane?.querySelector('.games-pause')?.click(); await sleep(100);
+    const paused = tetrisPane?.querySelector('.pane-state')?.textContent ?? '';
+    tetrisPane?.querySelector('.drawer-close')?.click(); await sleep(400);
+    const closed = gamesPane() === undefined;
+    // A game by question: hangman asks in the console (the glyph turns ?);
+    // the answer goes down the same input. Not through say(): console_idle
+    // presses Escape at an open question, which is an answer of its own.
+    input.value = 'hangman'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    let asked = false; for (let i = 0; i < 40; i++) { await sleep(250); if (document.querySelector('.argus-ask') !== null && (document.querySelector('.argus-input-glyph')?.textContent ?? '') !== '❯') { asked = true; break; } }
+    const gallows = asked && text().includes('+---+');
+    input.value = 'q'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_idle();
+    const hanged = after('hangman');
+    return { pom: pom.slice(0, 80), timerSet: timerSet.slice(0, 80), chimed, page: page.slice(0, 2000), cow: cow.slice(0, 600), big: big.slice(0, 200), refused: refused.slice(0, 200), shelf: shelf.slice(0, 800), wtf: wtf.slice(0, 200), who: who.slice(0, 300), qr: qr.slice(0, 400), said: said.slice(0, 80),
+      slNote: slNote.slice(0, 300), slDrawn, panes, focused, tetrisState, released, paused, closed, gallows, hanged: hanged.slice(0, 120) };`);
   check('help games lists the shelf by category, and ls /usr/games walks it',
     /Text toys/.test(games.page) && /cowsay/.test(games.page) && /Time and sky/.test(games.page) && /cowsay/.test(games.shelf) && /fortune/.test(games.shelf), JSON.stringify({ page: games.page.slice(0, 120), shelf: games.shelf.slice(0, 120) }));
   check('fortune | cowsay runs in the kernel, brain and all; builtins chain',
@@ -968,6 +996,14 @@ try {
   check('the lab\'s own: wtf knows LONK, who sees this browser, qr draws blocks, say prints the words',
     /Light Oxidicom NotifiKations/.test(games.wtf) && /browser/.test(games.who) && /\(you\)/.test(games.who) && /█/.test(games.qr) && /♪ hello there/.test(games.said),
     JSON.stringify({ wtf: games.wtf.slice(0, 60), who: games.who.slice(0, 80), qr: games.qr.slice(0, 30), said: games.said }));
+  check('sl prints a still and opens a GAMES pane with a canvas and no control in its field',
+    /ARGUS/.test(games.slNote) && /GAMES pane/.test(games.slNote) && games.slDrawn?.canvas === true && games.slDrawn?.controlsInField === false && /SL/.test(games.slDrawn?.state ?? ''),
+    JSON.stringify({ note: games.slNote.slice(0, 120), drawn: games.slDrawn }));
+  check('tetris reuses the pane on stage, takes the keyboard, Esc gives it back, PAUSE reads on the bar, CLOSE closes',
+    games.panes === 1 && games.focused && /TETRIS/.test(games.tetrisState) && games.released && /PAUSED/.test(games.paused) && games.closed,
+    JSON.stringify({ panes: games.panes, focused: games.focused, state: games.tetrisState, released: games.released, paused: games.paused, closed: games.closed }));
+  check('hangman asks in the console and q gives the word up',
+    games.gallows && /the word was [a-z]+/.test(games.hanged), JSON.stringify({ gallows: games.gallows, hanged: games.hanged.slice(0, 80) }));
   }
 
   if (await stage('help-pane')) {

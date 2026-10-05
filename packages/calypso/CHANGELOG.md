@@ -1,5 +1,12 @@
 # @fnndsc/calypso
 
+## 0.19.5
+
+### Patch Changes
+
+- Updated dependencies [c806e86]
+  - @fnndsc/argus@0.26.0
+
 ## 0.19.4
 
 ### Patch Changes

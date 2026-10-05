@@ -964,6 +964,14 @@ try {
     const quiet = { header: document.body.dataset.header ?? null, consoleClosed: document.getElementById('drawer').classList.contains('drawer-closed') };
     // The rest of the scenario types into the console: open it as the operator would.
     document.getElementById('gutter-console').click(); await sleep(400);
+    // And zoomed from here the console owns the whole page: the header the
+    // dashboard folded away does not come back with the zoom (it did — its
+    // height was measured mid-glide, a few pixels, so the zoom slid it a few).
+    document.querySelector('#console-drawer .drawer-zoom')?.click(); await sleep(1200);
+    const consoleZoom = { zoom: document.body.dataset.zoom ?? null, headerBottom: Math.round(document.querySelector('.wrap:not(#gap)').getBoundingClientRect().bottom) };
+    document.querySelector('#console-drawer .drawer-zoom')?.click(); await sleep(800);
+    // Leave the page as the next scenario expects it: the header back, by its strip.
+    document.getElementById('header-restore')?.click(); await sleep(800);
     const rows = pane() ? pane().querySelectorAll('.listing-row').length : 0;
     const keyRows = pane() ? pane().querySelectorAll('.help-row.help-pane').length : 0;
     const verbRows = pane() ? pane().querySelectorAll('.help-row.help-verb').length : 0;
@@ -972,10 +980,12 @@ try {
     await say('help verbs'); const typedVerbs = /argus verbs/.test(after('help verbs'));
     await say('help pane'); const again = /on stage/.test(after('help pane'));
     const panes = document.querySelectorAll('.pane-help').length;
-    return { tile: tile !== undefined, figures, alone, unzoomed, quiet, rows, keyRows, verbRows, chip, typedKeys, typedVerbs, again, panes };`);
+    return { tile: tile !== undefined, figures, alone, unzoomed, quiet, consoleZoom, rows, keyRows, verbRows, chip, typedKeys, typedVerbs, again, panes };`);
   check('the dashboard KEYS tile opens the keys alone on the stage: no file listing beside them, the header folded away, the console closed',
     help.tile && help.unzoomed && help.alone.length === 1 && help.alone[0] === 'help' && help.quiet.header === 'away' && help.quiet.consoleClosed,
     JSON.stringify({ alone: help.alone, unzoomed: help.unzoomed, quiet: help.quiet }));
+  check('a console zoomed after leaving the dashboard owns the whole page: the header stays off it',
+    help.consoleZoom.zoom === 'console' && help.consoleZoom.headerBottom <= 1, JSON.stringify(help.consoleZoom));
   check('the dashboard has a KEYS tile that opens the KEYS pane: the chords and the verbs as a listing',
     help.tile && help.figures.some((f) => /KEYS/.test(f)) && help.rows > 30 && help.keyRows >= 10 && help.verbRows >= 10, JSON.stringify(help));
   check('help keys and help verbs answer in the console; a second help pane focuses the pane on stage rather than opening another',

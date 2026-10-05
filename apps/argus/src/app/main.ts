@@ -286,7 +286,11 @@ function headerHeight_track(header: HTMLElement, body: HTMLElement): void {
     // distance it has to travel, and tracking it there would shorten the
     // slide until the header reappeared.
     if (body.dataset['zoom'] !== undefined || body.dataset['header'] === 'away') return;
-    headerRestHeight = Math.ceil(header.getBoundingClientRect().bottom);
+    // Layout, not paint: the bounding box carries the slide's translate, so
+    // a header still gliding back (the dashboard letting go of its zoom)
+    // measured a few pixels, and every later zoom slid it up by those few
+    // and left it on screen. Offsets ignore the translate.
+    headerRestHeight = Math.ceil(header.offsetTop + header.offsetHeight);
     body.style.setProperty('--zoom-header-height', `${headerRestHeight}px`);
   };
   sync();
@@ -2274,7 +2278,12 @@ async function surface_start(token: string): Promise<void> {
     sound_play('audio3');
   };
   const domainPress = (preset: string, navigate: () => void): void => {
-    if (layout.activePreset_get() === preset) {
+    // Already there means the domain's own pane is on stage, not only that
+    // its preset was the last applied: KEYS opened from the dashboard
+    // stands in home's place, and FILES-02 then sent the gutter away
+    // instead of bringing the files back. (Each preset's primary pane
+    // shares its name.)
+    if (layout.activePreset_get() === preset && layout.panes_shown().includes(preset)) {
       gutterAway_set(true);
       return;
     }

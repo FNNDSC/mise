@@ -84,6 +84,10 @@ jobs:
       - name: Upload coverage to Codecov
         if: matrix.node == 24
         uses: codecov/codecov-action@v4
+        # Coverage is reported, never a gate: an outage at Codecov (its
+        # uploader failing a TLS handshake, 2026-10-05) must not block a
+        # release. fail_ci_if_error does not catch the action itself crashing.
+        continue-on-error: true
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false

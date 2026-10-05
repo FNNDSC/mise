@@ -48,7 +48,7 @@ export const TILE_ABOUT: Readonly<Record<string, TileAbout>> = {
     text: 'Keyboard shortcuts, and the commands ARGUS understands. Everything you can click can also be typed.',
   },
   notes: {
-    text: 'What changed in the releases installed here, newest first: one line per change, the package named. Open it to read the rest of each, or earlier releases.',
+    text: 'A list of updates since the previous release.',
   },
   console: {
     text: 'A command line into the same session. Type help to start. Anything done here shows up in the panes, and the other way round.',

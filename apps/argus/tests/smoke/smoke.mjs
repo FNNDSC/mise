@@ -128,7 +128,8 @@ async function stage_leaks(name) {
       for (let i = 0; i < 20 && document.querySelectorAll('.listing-activating').length > 0; i++) await sleep(250);
       // A RUNS pane left on a graph rather than its roster: the next scenario's cwd then repaints it.
       const graphs = [...document.querySelectorAll('.pane-dag')].filter((p) => p.offsetParent !== null && p.querySelector('.dag-feedlist') && p.querySelector('.roster-shown') === null && p.querySelector('.dag-canvas')?.style.display === 'block').length;
-      return { cwd: window.__argusPromptContext?.cwd ?? null, lit: document.querySelectorAll('.listing-indicated, .listing-activating').length, asks: document.querySelectorAll('.ask-bar').length, graphs };`);
+      // Lit rows on stage: a folded band's open cohort is indicated by design and is not a leak.
+      return { cwd: window.__argusPromptContext?.cwd ?? null, lit: [...document.querySelectorAll('.listing-indicated, .listing-activating')].filter((e) => e.offsetParent !== null).length, asks: document.querySelectorAll('.ask-bar').length, graphs };`);
   } catch {
     return;
   }
@@ -1781,7 +1782,9 @@ try {
     const bodyRect = body.getBoundingClientRect();
     // Column caps are the table's own frame (caps-are-the-sort), not chrome over the field.
     // The field's MORE chip is its one sanctioned control (a-field-says-it-holds-more).
-    const inField = [...body.querySelectorAll('button')].filter(b => !b.closest('.mode-frame') && !b.closest('.mode-strip') && !b.classList.contains('more-chip') && ![...b.classList].some(k => k.startsWith('roster-')));
+    // The path's crumbs are the listing's own frame too, as the caps are: a browser away
+    // from home wears them above the caps (#899 found the check had only ever run at home).
+    const inField = [...body.querySelectorAll('button')].filter(b => !b.closest('.mode-frame') && !b.closest('.mode-strip') && !b.closest('.files-path') && !b.classList.contains('more-chip') && ![...b.classList].some(k => k.startsWith('roster-')));
     const rule = fp.querySelector('.field-rule').getBoundingClientRect();
     const elbow = fp.querySelector('.mode-elbow').getBoundingClientRect();
     const stripRect = strip.getBoundingClientRect();
@@ -1849,7 +1852,8 @@ try {
     document.getElementById('gutter-files').click(); await sleep(800);
     const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
     for (let i = 0; i < 40; i++) { await sleep(300); if (fp.querySelectorAll('.files-row').length > 1) break; }
-    const rows = [...fp.querySelectorAll('.files-row')].filter(r => r.querySelector('.files-name')?.textContent !== '..').length;
+    // The lead rows (.. and ~, away from home) are not cards: count the listing's own rows.
+    const rows = fp.querySelectorAll('.files-row:not(.files-lead-up):not(.files-lead-home)').length;
     const pill = fp.querySelector('.files-view');
     const before = pill.textContent;
     pill.click(); await sleep(300);

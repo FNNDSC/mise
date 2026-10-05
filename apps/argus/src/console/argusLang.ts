@@ -162,6 +162,20 @@ function target_resolve(host: ArgusHost, target: string | null): string | null {
   return replayPanes[ordinal - 1] ?? null;
 }
 
+/**
+ * The pane a kind-named subject acts on: the targeted pane when it is of the
+ * kind, else the first shown pane of the kind, else null.
+ *
+ * @param host - The surface.
+ * @param paneId - The targeted pane (the focused one when none was named).
+ * @param kinds - The kinds the subject acts on.
+ * @returns A pane id, or null when no such pane is on stage.
+ */
+function kindPane_resolve(host: ArgusHost, paneId: string | null, kinds: ReadonlyArray<string>): string | null {
+  if (paneId !== null && kinds.includes(host.paneKind_get(paneId) ?? '')) return paneId;
+  return host.panes_shown().find((id: string): boolean => kinds.includes(host.paneKind_get(id) ?? '')) ?? null;
+}
+
 /** Clicks the first matching control inside a pane's mount. */
 function control_click(host: ArgusHost, paneId: string, selector: string): boolean {
   const mount: HTMLElement | null = host.paneMount_get(paneId);
@@ -571,27 +585,30 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   }
 
   if (subject === 'file') {
+    // The subject names the kind: a focused image or graph beside the browser is not where `file` acts.
+    const filesId: string | null = kindPane_resolve(host, paneId, ['files', 'catalogue']);
+    if (filesId === null) return `file ${verb}: no files pane on stage`;
     if (verb === 'list' || verb === 'cards' || verb === 'preview') {
-      return modePill_setTo(host, paneId, '.files-view', verb.toUpperCase()) ? `file ${verb}` : `file ${verb}: no files mode frame`;
+      return modePill_setTo(host, filesId, '.files-view', verb.toUpperCase()) ? `file ${verb}` : `file ${verb}: no files mode frame`;
     }
     // Each verb is reached where it now lives: binding on the drawer's
     // binding group, field navigation on the frame, and the row verbs
     // through the host, which is what the row's own track presses too.
     if (verb === 'follow' || verb === 'root') {
-      return cwdBind_click(host, paneId, verb === 'follow')
+      return cwdBind_click(host, filesId, verb === 'follow')
         ? `file ${verb}`
-        : `file ${verb}: not offered by '${paneId}'`;
+        : `file ${verb}: not offered by '${filesId}'`;
     }
     if (verb === 'home' || verb === 'back') {
-      return control_click(host, paneId, verb === 'home' ? '.files-home' : '.files-back')
+      return control_click(host, filesId, verb === 'home' ? '.files-home' : '.files-back')
         ? `file ${verb}`
-        : `file ${verb}: not offered by '${paneId}'`;
+        : `file ${verb}: not offered by '${filesId}'`;
     }
     if (verb === 'download') {
-      return host.file_download(paneId) ? 'file download' : 'file download: nothing indicated';
+      return host.file_download(filesId) ? 'file download' : 'file download: nothing indicated';
     }
     if (verb === 'delete') {
-      return host.file_delete(paneId) ? 'file delete' : 'file delete: nothing indicated';
+      return host.file_delete(filesId) ? 'file delete' : 'file delete: nothing indicated';
     }
     return 'file home|back|download|delete|sort|filter|follow|root|list|cards|preview';
   }

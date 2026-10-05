@@ -38,7 +38,8 @@ image::images/listing-anatomy.svg[Listing anatomy,1180]
 
 | grid host | (the mount, or `gridHost`) | The custom property `--roster-cols`, written by the façade from the traits. Every part below reads it.
 | frame | `.roster-order` | The caps row and the filter strip, seated at the head of the mount, never re-inserted.
-| caps | `.roster-caps` › `.roster-cap` | One cap per capped trait, blank cells over uncapped traits; the active cap wears `.roster-active` and its direction glyph.
+| caps | `.roster-caps` › `.roster-cap` | One cap per capped trait, blank cells over uncapped traits; the active cap wears `.roster-active` and its direction glyph. Every cap but the last carries a `.roster-grip` on its right edge: a drag sizes that column by hand (the expanse takes the difference; the column keeps its declared floor), a double-press gives it back; the row wears `.roster-sizing` during a drag; no grip under a coarse pointer.
+| columns block | `<prefix>-columns` on the mode frame | Reads `COLUMNS` at rest and `COLUMNS · SIZED` once any column is hand-sized; a press gives every column back. What was sized is remembered per device (`localStorage`, `argus.columns.<prefix>.<trait>`), so a tablet and a desk keep their own.
 | strip | `.roster-filter` › `.roster-filter-input` | The filter, hidden until FILTER or the language opens it.
 | field | `.listing-field` | The scrolling region beneath the frame, opened fresh on every render. A JPEG or PNG opened here is `.files-image`: it fills the field and keeps its shape (`object-fit: contain`), letterboxed on the field's black. Every scrolling field on the surface wears the `▼ N MORE` chip through `more_wire`; `MORE_FIELDS` in `features/roster/more.ts` is the list the lint holds the stylesheet to.
 | block | `.listing-block` | One group of rows: a header when given, its own caps when `caps: 'each'`, then its rows or its painted form.
@@ -137,6 +138,7 @@ As the roster uses it: one block, the constant field `roster`; a leading control
 | activatable | `.listing-activatable` on the row | Any row `activatable` does not refuse.
 | filtered | `FILTER ON` on the block, `FILTERED n/m` on the bar | The strip opening; the counts are taken across every block.
 | numbered | `.numbered` on the row's `.listing-index` pill | The session's last answer holding this row's `address`. EVERY level leads with an index pill: a row the session reaches wears its HANDLE — the kind it counts and its place in that kind's sequence, `SER003`, `STD001`, `FIL012`, `DIR004`, padded to three or to the sequence's width — lit in the pane's frame hue; every other row wears its own place in the listing, dim, a counter and plainly not a promise since a bare number is nothing the operator can type. The handle is found BY ADDRESS, so a sorted or filtered listing keeps each row's own code rather than renumbering down the screen. A lead row (`..`) keeps the cell and shows nothing. Painted by `listingNumbering_set` and after every render.
+| sized by hand | `.roster-cap` widths · the columns block | One or more columns dragged to a width: the template carries their px, the expanse absorbs the difference, the block reads `COLUMNS · SIZED`; a reload keeps it on this device.
 |===
 
 Row state that belongs to the pane (a refused read, an arrival, a status) goes through `row.className` at build or `row_element(key)` between renders; it is a mark on the row, never a column.
@@ -152,6 +154,8 @@ Row state that belongs to the pane (a refused read, an arrival, a status) goes t
 `caps-are-the-sort` and `roster-grid-single-source`. The caps are the frame, the track list is computed once from the traits and written as `--roster-cols`, and caps and rows read it alike. A pane never states a column count; the façade refuses a trait without a width at construction, so a miscount is a boot error and not a shifted row.
 
 `listing-is-one-abstraction`. A pane declares its listing and never builds one. Reaching past the façade — to `RosterOrder`, `ListingHost`, the row or capsule builders, or a hand-typed `--roster-cols` — is the violation the lint names (S5); the PACS pane carries the one allowance, printed as debt, until S4.
+
+* `the-expanse-is-never-sized-by-hand` — a grip sizes a fixed track; the `1fr` expanse is never grabbed and takes the difference, so bars keep one x across levels whatever was sized.
 
 === Stylesheet
 

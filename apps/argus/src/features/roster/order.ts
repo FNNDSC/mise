@@ -163,6 +163,14 @@ export class RosterOrder<T> {
       cap.dataset['key'] = column.key;
       cap.title = `sort by ${column.label.toLowerCase()} (again to reverse)`;
       cap.addEventListener('click', (): void => this.sort_toggle(column.key));
+      // A grip on the right edge sizes the column by hand (columns.ts); the
+      // last cap has nothing to its right to trade with and wears none.
+      if (column !== this.columns[this.columns.length - 1]) {
+        const grip: HTMLSpanElement = document.createElement('span');
+        grip.className = 'roster-grip';
+        grip.title = 'drag to size the column; press twice to give it back';
+        cap.appendChild(grip);
+      }
       caps.appendChild(cap);
     }
     this.capsRows.push(caps);

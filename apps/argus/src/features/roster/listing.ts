@@ -31,6 +31,7 @@
  *
  * @module
  */
+import { columnStore_default, columns_read, column_write, floor_of, grips_wire, length_px, track_isExpanse, type ColumnStore } from './columns.js';
 import { RosterOrder, type RosterTerm } from './order.js';
 import { barState_clear, barState_set } from './bar.js';
 import { ListingHost } from './host.js';
@@ -387,6 +388,7 @@ type LevelSelect<T> = ((key: string, row: T) => boolean) | null;
 export function listingTemplate_of<T>(
   traits: ReadonlyArray<ListingTrait<T>>,
   actions?: ListingActions<T>,
+  sized?: ReadonlyMap<string, number>,
 ): string {
   const tracks: string[] = [];
   let cappedSeen: boolean = false;
@@ -402,7 +404,9 @@ export function listingTemplate_of<T>(
     } else {
       cappedSeen = true;
     }
-    tracks.push(trait.width.trim());
+    // A column sized by hand takes its px; the expanse is never sized (columns.ts).
+    const px: number | undefined = sized?.get(trait.key);
+    tracks.push(px !== undefined && !track_isExpanse(trait.width) ? `${px}px` : trait.width.trim());
   }
   if (actions !== undefined) {
     if (actions.width === undefined || actions.width.trim() === '') {
@@ -595,7 +599,7 @@ class Level<T> {
     this.host = host;
     this.select = select;
     this.depth = depth;
-    this.template = listingTemplate_of(declaration.traits, this.trackActions_get());
+    this.template = listingTemplate_of(declaration.traits, this.trackActions_get(), this.sized);
     const capped: ReadonlyArray<ListingTrait<T>> = declaration.traits.filter(
       (trait: ListingTrait<T>): boolean => trait.capped !== false,
     );
@@ -653,7 +657,32 @@ class Level<T> {
    */
   public actions_set(actions: ListingActions<T> | null): void {
     this.declaration = { ...this.declaration, ...(actions === null ? { actions: undefined } : { actions }) };
-    this.template = listingTemplate_of(this.declaration.traits, this.trackActions_get());
+    this.template = listingTemplate_of(this.declaration.traits, this.trackActions_get(), this.sized);
+  }
+
+  /** The columns sized by hand, trait key → px; the template follows (columns.ts). */
+  public readonly sized: Map<string, number> = new Map();
+
+  /** Sizes one column (null gives it back to its declaration) and rewrites the template. */
+  public column_size(key: string, px: number | null): void {
+    if (px === null) this.sized.delete(key); else this.sized.set(key, px);
+    this.template = listingTemplate_of(this.declaration.traits, this.trackActions_get(), this.sized);
+  }
+
+  /** The declared track of a trait, for its floor. */
+  public track_of(key: string): string | null {
+    return this.declaration.traits.find((trait: ListingTrait<T>): boolean => trait.key === key)?.width ?? null;
+  }
+
+  /** The trait keys, in grid order. */
+  public traitKeys(): string[] {
+    return this.declaration.traits.map((trait: ListingTrait<T>): string => trait.key);
+  }
+
+  /** The expanse trait's key and track, when the level declares one. */
+  public expanse_of(): { key: string; width: string } | null {
+    const expanse: ListingTrait<T> | undefined = this.declaration.traits.find((trait: ListingTrait<T>): boolean => track_isExpanse(trait.width ?? ''));
+    return expanse === undefined ? null : { key: expanse.key, width: expanse.width ?? '' };
   }
 
   /**
@@ -1132,6 +1161,7 @@ export class Listing<T> {
     this.selectBlock = chrome?.root.querySelector<HTMLElement>(`.${chrome.prefix}-select`) ?? null;
     this.filterBlock?.classList.add('rail-off');
     this.filterBlock?.addEventListener('click', (): void => this.filter_toggle());
+    this.columns_wire(chrome);
     this.level.order.stripChange_observe((): void => this.filterBlock_sync());
     this.selectBlock?.addEventListener('click', (): void => this.select_toggle());
     // The language reaches ordering through a DOM event on the pane.
@@ -1379,6 +1409,68 @@ export class Listing<T> {
     this.level.actions_set(actions);
     this.gridHost.style.setProperty('--roster-cols', this.level.template);
     if (this.field !== null) this.render();
+  }
+
+  /** The frame's COLUMNS block, when the pane has one: reads SIZED, resets all. */
+  private columnsBlock: HTMLElement | null = null;
+  /** Where sized columns are remembered, keyed by the chrome prefix. */
+  private columnsPrefix: string | null = null;
+
+  /**
+   * Hand-sizeable columns: the grips on the root caps, the device's memory
+   * of what was sized, and the COLUMNS block (columns.ts).
+   */
+  private columns_wire(chrome: ListingChrome | undefined): void {
+    this.columnsPrefix = chrome?.prefix ?? null;
+    this.columnsBlock = chrome?.root.querySelector<HTMLElement>(`.${chrome.prefix}-columns`) ?? null;
+    this.columnsBlock?.addEventListener('click', (): void => this.columns_reset());
+    const caps: HTMLElement | null = this.declaration.mount.querySelector<HTMLElement>('.roster-order .roster-caps');
+    if (caps === null) return;
+    const store: ColumnStore | null = columnStore_default();
+    if (this.columnsPrefix !== null) {
+      for (const [key, px] of columns_read(store, this.columnsPrefix, this.level.traitKeys())) {
+        this.level.column_size(key, px);
+      }
+      this.gridHost.style.setProperty('--roster-cols', this.level.template);
+    }
+    grips_wire(caps, {
+      key_of: (cap: HTMLElement): string | null => cap.dataset['key'] ?? null,
+      floor_of: (key: string): number => length_px(floor_of(this.level.track_of(key) ?? '3em'), caps),
+      expanseSlack: (): number => {
+        const expanse: { key: string; width: string } | null = this.level.expanse_of();
+        const cap: HTMLElement | null = expanse === null ? null : caps.querySelector<HTMLElement>(`.roster-cap[data-key="${expanse.key}"]`);
+        return cap === null || expanse === null ? 0 : Math.max(0, cap.getBoundingClientRect().width - length_px(floor_of(expanse.width), caps));
+      },
+      size: (key: string, px: number): void => this.column_size(key, px, store),
+      reset: (key: string): void => this.column_size(key, null, store),
+    });
+    this.columnsBlock_paint();
+  }
+
+  private column_size(key: string, px: number | null, store: ColumnStore | null): void {
+    this.level.column_size(key, px);
+    this.gridHost.style.setProperty('--roster-cols', this.level.template);
+    if (this.columnsPrefix !== null) column_write(store, this.columnsPrefix, key, px);
+    this.columnsBlock_paint();
+  }
+
+  /** Every column back to its declaration (the COLUMNS block). */
+  public columns_reset(): void {
+    const store: ColumnStore | null = columnStore_default();
+    for (const key of [...this.level.sized.keys()]) this.column_size(key, null, store);
+  }
+
+  /** The trait keys sized by hand, for a readout or a test. */
+  public columns_sized(): string[] {
+    return [...this.level.sized.keys()];
+  }
+
+  private columnsBlock_paint(): void {
+    if (this.columnsBlock === null) return;
+    const sized: boolean = this.level.sized.size > 0;
+    this.columnsBlock.textContent = sized ? 'COLUMNS · SIZED' : 'COLUMNS';
+    this.columnsBlock.classList.toggle('rail-off', !sized);
+    this.columnsBlock.title = sized ? 'columns sized by hand; press to give them all back' : 'drag a cap\'s edge to size its column; a double-press gives one back';
   }
 
   /** Shows or hides the filter strip (the mode frame's FILTER, or the language). */

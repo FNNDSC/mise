@@ -1026,6 +1026,7 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
  * column gap (a cap grows into a wide gap, or gives up 3px of a tight one),
  * each in its own hue from the frame's cycle, rounded at the bar's ends. */
 .roster-cap {
+  position: relative;
   min-width: 0;
   height: 24px;
   margin-right: calc(3px - var(--roster-gap));
@@ -5990,6 +5991,33 @@ body[data-zoom] #header-restore {
   font-family: var(--face-label);
   font-size: 0.68rem;
   letter-spacing: 0.08em;
+}
+
+/* ----------------------------------------------------- columns by hand */
+
+/* A cap's right edge is a grip (columns.ts): a drag sizes the column, a
+ * double-press gives it back; the expanse is never grabbed. Under a coarse
+ * pointer there is no grip — a finger cannot find a six-pixel edge. */
+.roster-grip {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+.roster-grip:hover,
+.roster-sizing .roster-grip {
+  background: linear-gradient(to right, transparent 2px, var(--butter) 2px, var(--butter) 4px, transparent 4px);
+}
+
+.roster-sizing { cursor: col-resize; user-select: none; }
+
+@media (pointer: coarse) {
+  .roster-grip { display: none; }
 }
 
 /* ------------------------------------------------------------ notes pane */

@@ -73,6 +73,8 @@ export interface PorterAppOptions {
 export interface PorterApp {
   app: FastifyInstance;
   registry: SessionRegistry;
+  /** Adopts the sessions the state directory holds that still answer; called once the door is bound. */
+  adopt: () => Promise<void>;
 }
 
 const loginSchema = z.object({
@@ -205,12 +207,16 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   // A porter restarted adopts the sessions its predecessor started: their
   // berths are in the state directory, and a cookie that names one still
   // opens it, because the key is the identity's and not this process's.
-  for (const sighting of await host.sessions_adopt()) {
-    if (!sighting.alive) continue;
-    const user: string = sighting.identity.slice(0, sighting.identity.indexOf('@'));
-    registry.note(sighting.identity, user, sighting.berth);
-    options.log?.(`adopted ${user}'s session at ${sighting.berth.url}`);
-  }
+  // Not at build: the entry adopts after the door is bound, so a second
+  // porter that cannot hold the port claims nothing.
+  const adopt = async (): Promise<void> => {
+    for (const sighting of await host.sessions_adopt()) {
+      if (!sighting.alive) continue;
+      const user: string = sighting.identity.slice(0, sighting.identity.indexOf('@'));
+      registry.note(sighting.identity, user, sighting.berth);
+      options.log?.(`adopted ${user}'s session at ${sighting.berth.url}`);
+    }
+  };
   await app.register(fastifyCookie, { secret: config.secret });
   await app.register(fastifyFormbody);
   await app.register(replyFrom);
@@ -476,5 +482,5 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     app.addHook('onClose', async (): Promise<void> => { clearInterval(sweep); });
   });
 
-  return { app, registry };
+  return { app, registry, adopt };
 }

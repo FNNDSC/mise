@@ -7,7 +7,8 @@
  * headline and the rest unfolds beneath it; a headline that begins
  * "Internal:" marks a change the surface hides by default. A release's
  * date is the day its Version Packages merge landed on this branch's
- * first-parent line, read from git; without history (a shallow checkout,
+ * first-parent line, read from git, and that merge's hash is what groups
+ * the packages of one release (two releases can land on one day); without history (a shallow checkout,
  * a tarball) the date is null and the surface groups by version alone.
  *
  * Runs from the package directory: `node ../../scripts/notes-build.mjs`.
@@ -96,7 +97,7 @@ export function changelog_parse(markdown) {
  * first-parent line: the Version Packages merge that released it.
  *
  * @param {string} file - The CHANGELOG path.
- * @returns {Map<string, string>} version → ISO date; empty without history.
+ * @returns {Map<string, { date: string, merge: string }>} version → the day and the merge commit; empty without history.
  */
 function dates_read(file) {
   const dates = new Map();
@@ -116,7 +117,7 @@ function dates_read(file) {
       continue;
     }
     for (const m of text.matchAll(/^## (\d+\.\d+\.\d+\S*)\s*$/gm)) {
-      if (!dates.has(m[1])) dates.set(m[1], date.slice(0, 10));
+      if (!dates.has(m[1])) dates.set(m[1], { date: date.slice(0, 10), merge: hash.slice(0, 12) });
     }
   }
   return dates;
@@ -129,7 +130,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === new URL(import.meta.url
     package: manifest.name,
     version: manifest.version,
     built: new Date().toISOString(),
-    releases: releases.map((r) => ({ version: r.version, date: dates.get(r.version) ?? null, bump: r.bump, changes: r.changes })),
+    releases: releases.map((r) => ({ version: r.version, date: dates.get(r.version)?.date ?? null, merge: dates.get(r.version)?.merge ?? null, bump: r.bump, changes: r.changes })),
   };
   const distDir = path.join(packageDir, 'dist');
   mkdirSync(distDir, { recursive: true });

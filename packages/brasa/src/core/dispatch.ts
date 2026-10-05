@@ -26,6 +26,7 @@ import { builtin_pom, builtin_stardate, builtin_ddate, builtin_sunrise } from '.
 import { builtin_timer, builtin_leave, builtin_stopwatch } from '../builtins/games/chimes.js';
 import { builtin_sl, builtin_cmatrix, builtin_rain, builtin_asciiquarium, builtin_tetris, builtin_snake } from '../builtins/games/show.js';
 import { builtin_quiz, builtin_hangman, builtin_2048 } from '../builtins/games/play.js';
+import { builtin_notes } from '../builtins/sys/notes.js';
 import { stdin_set } from '../builtins/games/stdin.js';
 import { builtin_netstat } from '../builtins/net/netstat.js';
 import { writeFileSync, appendFileSync } from 'fs';
@@ -245,6 +246,7 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   '2048': builtin_2048,
   weather: builtin_weather,
   motd: builtin_motd,
+  notes: builtin_notes,
   date: builtin_date,
   cal: builtin_cal,
   ls: builtin_ls,
@@ -392,6 +394,7 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   '2048': envelopeHandler_wrap(builtin_2048),
   weather: envelopeHandler_wrap(builtin_weather),
   motd: envelopeHandler_wrap(builtin_motd),
+  notes: envelopeHandler_wrap(builtin_notes),
   date: envelopeHandler_wrap(builtin_date),
   cal: envelopeHandler_wrap(builtin_cal),
   help: envelopeHandler_wrap(builtin_help),

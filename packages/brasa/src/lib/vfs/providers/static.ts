@@ -112,6 +112,15 @@ export class StaticVfsProvider implements VFSProvider {
         return Ok(this.staticVfsItems_sort(items, options?.sort, options?.reverse));
       }
 
+      // /usr/share holds doc alone (the dispatcher lists it as a prefix of its own);
+      // /usr/share/doc holds NEWS: the installed releases' notes (builtins/sys/notes.ts).
+      if (effectivePath === "/usr/share") {
+        return Ok([]);
+      }
+      if (effectivePath === "/usr/share/doc") {
+        return Ok([{ name: "NEWS", type: "file", size: 0, owner: "root", date: new Date().toISOString() }]);
+      }
+
       if (effectivePath === "/usr/bin") {
         const builtinNames: string[] = builtinCommands_list();
         const items: VFSItem[] = builtinNames.map((name: string) => ({

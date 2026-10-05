@@ -48,6 +48,15 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
       return Err();
     }
 
+    if (prefix === "/usr/share/doc") {
+      if (effectivePath === "/usr/share/doc/NEWS") {
+        const { news_text } = await import('../../../builtins/sys/notes.js');
+        return Ok(news_text());
+      }
+      errorStack.stack_push("error", `No such document: ${effectivePath}`);
+      return Err();
+    }
+
     if (prefix === "/bin") {
       const commandName: string = effectivePath.substring("/bin/".length);
       const pipelineSummary: BinPipelineSummary | null = binPipelineSummary_try(commandName);

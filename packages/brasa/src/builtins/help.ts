@@ -1107,6 +1107,12 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'The 4×4 board, a move per answer: w a s d (or h j k l) slide, q stops. Two tiles alike join; reach 2048.',
     examples: ['2048'],
   },
+  notes: {
+    usage: 'notes [--since N|YYYY-MM-DD] [--all] [--long]',
+    summary: 'What the installed releases changed, for the operator',
+    description: 'Reads the release notes shipped with the packages installed where this session runs — argus, brasa, chell, calypso, porter — and lists the newest release: one row per change, the package tagged. --since N shows the last N releases, --since DATE everything from a day on; --long unfolds each change beneath its first sentence; --all includes the changes marked Internal. help notes is the same. In ARGUS the WHAT\'S NEW block opens them as a listing.',
+    examples: ['notes', 'notes --since 3', 'notes --since 2026-10-01 --long', 'notes --all'],
+  },
   weather: {
     usage: 'weather [place] [-u|--units metric|imperial] [-d|--days N]',
     summary: 'The weather at a place, now and the next few days',
@@ -1989,6 +1995,13 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   if (commandName === 'games') {
     return { status: 'ok', rendered: gamesShelf_render(commandSummary_get) };
   }
+  // The release notes: `help notes` is `notes`. Loaded on the press, not at
+  // import: the notes module reads the wire's model schemas, which this page
+  // otherwise never needs.
+  if (commandName === 'notes') {
+    const { builtin_notes } = await import('./sys/notes.js');
+    return builtin_notes([]);
+  }
   // If a specific command is requested, return its help
   if (commandName) {
     if (/-v[^/]+$/.test(commandName)) {
@@ -2018,7 +2031,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
     Administration: ['sudo', 'user'],
     'Shell Settings': ['physicalmode', 'prompt', 'timing', 'debug'],
     'Games and utilities': ['fortune', 'cal', 'weather', 'motd'],
-    General: ['help', 'date', 'exit', '!'],
+    General: ['help', 'notes', 'date', 'exit', '!'],
   };
 
   // Display commands by category

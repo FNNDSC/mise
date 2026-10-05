@@ -225,6 +225,17 @@ export {
   type SessionMotd,
 } from './motd.js';
 export {
+  SESSION_NOTES_MODEL_KIND,
+  notesChangeSchema,
+  notesEntrySchema,
+  notesReleaseSchema,
+  sessionNotesSchema,
+  type NotesChange,
+  type NotesEntry,
+  type NotesRelease,
+  type SessionNotes,
+} from './notes.js';
+export {
   type UniverseNode,
   type UniverseGraph,
   type LandedGroup,

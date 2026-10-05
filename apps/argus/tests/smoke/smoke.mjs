@@ -983,7 +983,7 @@ try {
     const gallows = asked && text().includes('+---+');
     input.value = 'q'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_idle();
     const hanged = after('hangman');
-    return { pom: pom.slice(0, 80), timerSet: timerSet.slice(0, 80), chimed, page: page.slice(0, 2000), cow: cow.slice(0, 600), big: big.slice(0, 200), refused: refused.slice(0, 200), shelf: shelf.slice(0, 800), wtf: wtf.slice(0, 200), who: who.slice(0, 300), qr: qr.slice(0, 400), said: said.slice(0, 80),
+    return { pom: pom.slice(0, 80), timerSet: timerSet.slice(0, 80), chimed, page: page.slice(0, 2000), cow: cow.slice(0, 2000), big: big.slice(0, 200), refused: refused.slice(0, 200), shelf: shelf.slice(0, 800), wtf: wtf.slice(0, 200), who: who.slice(0, 300), qr: qr.slice(0, 400), said: said.slice(0, 80),
       slNote: slNote.slice(0, 900), slDrawn, panes, focused, tetrisState, released, paused, closed, gallows, hanged: hanged.slice(0, 120) };`);
   check('help games lists the shelf by category, and ls /usr/games walks it',
     /Text toys/.test(games.page) && /cowsay/.test(games.page) && /Time and sky/.test(games.page) && /cowsay/.test(games.shelf) && /fortune/.test(games.shelf), JSON.stringify({ page: games.page.slice(0, 120), shelf: games.shelf.slice(0, 120) }));
@@ -997,7 +997,7 @@ try {
     /Light Oxidicom NotifiKations/.test(games.wtf) && /browser/.test(games.who) && /\(you\)/.test(games.who) && /█/.test(games.qr) && /♪ hello there/.test(games.said),
     JSON.stringify({ wtf: games.wtf.slice(0, 60), who: games.who.slice(0, 80), qr: games.qr.slice(0, 30), said: games.said }));
   check('sl prints a still and opens a GAMES pane with a canvas and no control in its field',
-    /NCC-1701/.test(games.slNote) && /GAMES pane/.test(games.slNote) && games.slDrawn?.canvas === true && games.slDrawn?.controlsInField === false && /SL/.test(games.slDrawn?.state ?? ''),
+    /a still; ARGUS draws sl/.test(games.slNote) && /GAMES pane/.test(games.slNote) && games.slDrawn?.canvas === true && games.slDrawn?.controlsInField === false && /SL/.test(games.slDrawn?.state ?? ''),
     JSON.stringify({ note: games.slNote.slice(0, 120), drawn: games.slDrawn }));
   check('tetris reuses the pane on stage, takes the keyboard, Esc gives it back, PAUSE reads on the bar, CLOSE closes',
     games.panes === 1 && games.focused && /TETRIS/.test(games.tetrisState) && games.released && /PAUSED/.test(games.paused) && games.closed,

@@ -15,16 +15,21 @@ import chalk from 'chalk';
 /** The programs a GAMES pane can run. */
 export type ShowProgram = 'sl' | 'cmatrix' | 'rain' | 'aquarium' | 'tetris' | 'snake';
 
-/** The starship `sl` sends across the screen (a typo's punishment, as the train was): the Enterprise, drawn here. */
+/**
+ * The starship `sl` sends across the screen (a typo's punishment, as the
+ * train was): the Constitution-class refit, side view, from the Star Trek
+ * ASCII Art blog (startrekasciiart.blogspot.com, "Constitution Class -
+ * Refit", 2011; artist uncredited there; re-use granted with attribution
+ * retained). Nose to the right: it flies left to right.
+ */
 export const STARSHIP: ReadonlyArray<string> = [
-  '          ______________________________                                    ',
-  '         /  ___________________________  \\                                  ',
-  '        |  |   NCC-1701      ARGUS     |  |     ____________________________',
-  '         \\__|_________________________|_/    /[============================>',
-  '             \\______________   ______/      /                               ',
-  '                            \\ \\____________/                                ',
-  '                             \\______________________________                ',
-  '                             [==============================>               ',
+  '___________________          _-_         ',
+  '\\__(==========/_=_/ ____.---\'---`---.____',
+  '            \\_ \\    \\----._________.----/',
+  '              \\ \\   /  /    `-_-\'        ',
+  '          __,--`.`-\'..\'-_                ',
+  '         /____          ||               ',
+  '              `--.____,-\'                ',
 ];
 
 /** The glyphs `cmatrix` rains. */

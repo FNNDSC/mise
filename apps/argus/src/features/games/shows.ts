@@ -6,39 +6,44 @@
  */
 import type { GameProgram, Grid, Palette } from './program.js';
 
-/** The starship, as the kernel's still draws it (the Enterprise; the kernel's `show.ts` holds the same rows). */
+/**
+ * The starship `sl` sends across the screen (a typo's punishment, as the
+ * train was): the Constitution-class refit, side view, from the Star Trek
+ * ASCII Art blog (startrekasciiart.blogspot.com, "Constitution Class -
+ * Refit", 2011; artist uncredited there; re-use granted with attribution
+ * retained). Nose to the right: it flies left to right.
+ * The kernel's `show.ts` holds the same rows for the console still.
+ */
 const STARSHIP: ReadonlyArray<string> = [
-  '          ______________________________                                    ',
-  '         /  ___________________________  \\                                  ',
-  '        |  |   NCC-1701      ARGUS     |  |     ____________________________',
-  '         \\__|_________________________|_/    /[============================>',
-  '             \\______________   ______/      /                               ',
-  '                            \\ \\____________/                                ',
-  '                             \\______________________________                ',
-  '                             [==============================>               ',
+  '___________________          _-_         ',
+  '\\__(==========/_=_/ ____.---\'---`---.____',
+  '            \\_ \\    \\----._________.----/',
+  '              \\ \\   /  /    `-_-\'        ',
+  '          __,--`.`-\'..\'-_                ',
+  '         /____          ||               ',
+  '              `--.____,-\'                ',
 ];
 
-/** `sl`: the starship glides right to left, forever, with a wake. */
+/** `sl`: the starship crosses left to right, forever, a warp wake behind the nacelle. */
 export function sl_make(): GameProgram {
+  const width: number = (STARSHIP[0] as string).length;
   let x: number = Number.NaN;
   let frame: number = 0;
   return {
     title: 'SL',
     tick: 60,
     step: (size): void => {
-      // A field that shrank (a zoom undone, a split) leaves the ship past the
-      // right edge: bring it to the edge rather than wait for it to arrive.
-      if (Number.isNaN(x) || x > size.cols) x = size.cols;
-      x -= 1;
+      if (Number.isNaN(x)) x = -width;
+      x += 1;
       frame += 1;
-      if (x < -(STARSHIP[0] as string).length - 6) x = size.cols;
+      if (x > size.cols + 6) x = -width;
     },
     draw: (grid: Grid, palette: Palette): void => {
       const top: number = Math.max(0, Math.floor((grid.rows - STARSHIP.length) / 2));
       STARSHIP.forEach((line: string, row: number): void => grid.text(Math.round(x), top + row, line, palette.lit));
-      const wake: string = frame % 2 === 0 ? '=~-' : '~=-';
-      const tail: number = STARSHIP.length - 1;
-      grid.text(Math.round(x) + (STARSHIP[tail] as string).trimEnd().length, top + tail, wake, palette.cool);
+      // The wake trails the top nacelle, which begins the second row.
+      const wake: string = frame % 2 === 0 ? '-~=' : '-=~';
+      grid.text(Math.round(x) - wake.length, top + 1, wake, palette.cool);
     },
   };
 }

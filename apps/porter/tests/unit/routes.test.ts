@@ -322,6 +322,9 @@ describe('a porter restarted', () => {
     ];
     const said: string[] = [];
     const restarted: PorterApp = await porterApp_build({ config, host: adopting, mint: async () => ({ token: 'x' }), log: (line: string): void => { said.push(line); } });
+    // Nothing is claimed at build: the entry adopts once the door is bound.
+    expect(restarted.registry.all()).toEqual([]);
+    await restarted.adopt();
     expect(restarted.registry.all().map((e) => e.user)).toEqual(['chris']);
     expect(said).toEqual(["adopted chris's session at ws://127.0.0.1:4444"]);
     await restarted.app.close();

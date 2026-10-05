@@ -78,21 +78,54 @@ async function session_end(stateDir: string, who: string): Promise<void> {
   if (ended) console.log('    state kept; the next login boots a fresh session on this porter\'s kernel');
 }
 
+/** What the command line asks for. */
+export type PorterAsk =
+  | { mode: 'serve' }
+  | { mode: 'status' }
+  | { mode: 'end'; who: string }
+  | { mode: 'help' };
+
+/** The usage, one line per word the entry takes. */
+export const PORTER_USAGE: string = [
+  'porter                      serve the door (PORTER_CUBE_URL, PORTER_PORT, … from the environment)',
+  'porter --status             the sessions this porter carries (--sessions says the same)',
+  'porter --end <who>          end one session: its berth key, user, or user@cube',
+  'porter --help               this',
+].join('\n');
+
+/**
+ * Reads the command line. A word the entry does not know is refused by
+ * name: left to fall through it once started a second door that adopted
+ * the live sessions before dying on the port.
+ *
+ * @param argv - The words after the entry (process.argv.slice(2)).
+ * @returns What was asked, or the refusal.
+ */
+export function porterArgs_parse(argv: ReadonlyArray<string>): PorterAsk | { refusal: string } {
+  if (argv.length === 0) return { mode: 'serve' };
+  const [word, ...rest] = argv;
+  if (word === '--help' || word === '-h') return { mode: 'help' };
+  if (word === '--status' || word === '--sessions') {
+    return rest.length === 0 ? { mode: 'status' } : { refusal: `${word} takes no argument ('${rest[0] ?? ''}')` };
+  }
+  if (word === '--end') {
+    const who: string | undefined = rest[0];
+    if (who === undefined || who.startsWith('--')) return { refusal: '--end wants <berth key | user | user@cube>' };
+    if (rest.length > 1) return { refusal: `--end takes one name ('${rest[1] ?? ''}' is extra)` };
+    return { mode: 'end', who };
+  }
+  return { refusal: `unknown word '${word ?? ''}'` };
+}
+
 async function porter_start(): Promise<void> {
-  if (process.argv.includes('--status')) {
-    await status_print(porterStateDir_resolve(process.env));
-    return;
+  const ask: PorterAsk | { refusal: string } = porterArgs_parse(process.argv.slice(2));
+  if ('refusal' in ask) {
+    console.error(`[!] porter: ${ask.refusal}\n${PORTER_USAGE}`);
+    process.exit(1);
   }
-  const endAt: number = process.argv.indexOf('--end');
-  if (endAt >= 0) {
-    const who: string | undefined = process.argv[endAt + 1];
-    if (who === undefined || who.startsWith('--')) {
-      console.error('[!] porter --end <berth key | user | user@cube>');
-      process.exit(1);
-    }
-    await session_end(porterStateDir_resolve(process.env), who);
-    return;
-  }
+  if (ask.mode === 'help') { console.log(PORTER_USAGE); return; }
+  if (ask.mode === 'status') { await status_print(porterStateDir_resolve(process.env)); return; }
+  if (ask.mode === 'end') { await session_end(porterStateDir_resolve(process.env), ask.who); return; }
   let config: PorterConfig;
   try {
     config = porterConfig_resolve(process.env);
@@ -111,6 +144,9 @@ async function porter_start(): Promise<void> {
     ...(sweepText !== undefined && Number(sweepText) > 0 ? { sweepMs: Number(sweepText) * 1000 } : {}),
   });
   await built.app.listen({ host: config.host, port: config.port });
+  // The port first, the sessions after: a porter that cannot hold its door
+  // has no business claiming what the one holding it carries.
+  await built.adopt();
   console.log(`[+] PORTER at http://${config.host}:${config.port}/ for ${config.cubeUrl}`);
   console.log(`    state:  ${config.stateDir}`);
   console.log(`    chell:  ${config.chellEntry}`);
@@ -126,4 +162,4 @@ async function porter_start(): Promise<void> {
   process.once('SIGTERM', (): void => { void stop(); });
 }
 
-void porter_start();
+if (process.argv[1] !== undefined && /\/porter\.js$/.test(process.argv[1])) void porter_start();

@@ -18,6 +18,10 @@ import { builtin_cowsay, builtin_cowthink } from '../builtins/games/cowsay.js';
 import { builtin_figlet, builtin_banner } from '../builtins/games/figlet.js';
 import { builtin_lolcat } from '../builtins/games/lolcat.js';
 import { builtin_morse } from '../builtins/games/morse.js';
+import { builtin_who, builtin_uptime, builtin_ping, builtin_chrisfetch, builtin_say } from '../builtins/games/lab.js';
+import { builtin_wtf } from '../builtins/games/wtf.js';
+import { builtin_file, builtin_xxd, builtin_strings, builtin_sha256sum, builtin_md5sum } from '../builtins/games/bytes.js';
+import { builtin_qr } from '../builtins/games/qr.js';
 import { stdin_set } from '../builtins/games/stdin.js';
 import { builtin_netstat } from '../builtins/net/netstat.js';
 import { writeFileSync, appendFileSync } from 'fs';
@@ -207,6 +211,18 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   morse: builtin_morse,
   calc: builtin_calc,
   units: builtin_units,
+  who: builtin_who,
+  uptime: builtin_uptime,
+  ping: builtin_ping,
+  chrisfetch: builtin_chrisfetch,
+  say: builtin_say,
+  wtf: builtin_wtf,
+  file: builtin_file,
+  xxd: builtin_xxd,
+  strings: builtin_strings,
+  sha256sum: builtin_sha256sum,
+  md5sum: builtin_md5sum,
+  qr: builtin_qr,
   weather: builtin_weather,
   motd: builtin_motd,
   date: builtin_date,
@@ -326,6 +342,18 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   morse: envelopeHandler_wrap(builtin_morse),
   calc: envelopeHandler_wrap(builtin_calc),
   units: envelopeHandler_wrap(builtin_units),
+  who: envelopeHandler_wrap(builtin_who),
+  uptime: envelopeHandler_wrap(builtin_uptime),
+  ping: envelopeHandler_wrap(builtin_ping),
+  chrisfetch: envelopeHandler_wrap(builtin_chrisfetch),
+  say: envelopeHandler_wrap(builtin_say),
+  wtf: envelopeHandler_wrap(builtin_wtf),
+  file: envelopeHandler_wrap(builtin_file),
+  xxd: envelopeHandler_wrap(builtin_xxd),
+  strings: envelopeHandler_wrap(builtin_strings),
+  sha256sum: envelopeHandler_wrap(builtin_sha256sum),
+  md5sum: envelopeHandler_wrap(builtin_md5sum),
+  qr: envelopeHandler_wrap(builtin_qr),
   weather: envelopeHandler_wrap(builtin_weather),
   motd: envelopeHandler_wrap(builtin_motd),
   date: envelopeHandler_wrap(builtin_date),

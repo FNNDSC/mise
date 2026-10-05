@@ -663,6 +663,21 @@ function modeFrames_watch(): void {
   wire(document);
 }
 
+/**
+ * Speaks what `say` said, through the page's own speech when it has one.
+ * A page without it (or a muted one) says nothing: the console already
+ * printed the words.
+ *
+ * @param data - The envelope's model data: `{ text }`.
+ */
+function voice_say(data: unknown): void {
+  const text: unknown = (data as { text?: unknown } | null)?.text;
+  if (typeof text !== 'string' || text.length === 0 || typeof window.speechSynthesis === 'undefined') return;
+  const words: SpeechSynthesisUtterance = new SpeechSynthesisUtterance(text);
+  words.rate = 1;
+  window.speechSynthesis.speak(words);
+}
+
 function headerFaces_wire(): void {
   const body: HTMLElement = document.body;
   const header: HTMLElement | null = document.querySelector<HTMLElement>('.wrap:not(#gap)');
@@ -2526,6 +2541,10 @@ async function surface_start(token: string): Promise<void> {
       try {
         const outcome: ExecuteOutcome = await client.line_execute(line);
         terminal.outcome_write(outcome);
+        // `say`: a surface with a voice speaks the words (games shelf, #892).
+        for (const envelope of outcome.envelopes) {
+          if (envelope.model?.kind === 'games.say') voice_say(envelope.model.data);
+        }
         // The panel is slaved to the working directory: any command that
         // moved it (an fs.cwd model) triggers a silent listing refresh,
         // whose fs.listing envelope repaints the panel on observation.

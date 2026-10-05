@@ -21,7 +21,7 @@ import { token_generate } from './token.js';
 import type { BrasaEngine } from '@fnndsc/brasa';
 import { sink_set, type OutputSink } from '@fnndsc/brasa';
 import type { ProgressEvent } from '@fnndsc/brasa';
-import { surface_set, type Surface, type SurfaceCapabilities, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
+import { surface_set, type Surface, type SurfaceCapabilities, type SurfacePeer, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { procIndex_snapshot, sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
 import { stackBanner_rows, stackBannerRow_paint, versions_get, buildHash_get } from '@fnndsc/brasa';
@@ -107,6 +107,7 @@ export function daemonSurface_create(daemon: CalypsoDaemon, policy: HostControlP
         localFilesystem: attached?.localFilesystem ?? false,
       };
     },
+    peers: (): SurfacePeer[] => daemon.surfaces_list(),
     prompt: (request: PromptRequest): Promise<string> =>
       daemon.prompt_current({
         message: request.message,

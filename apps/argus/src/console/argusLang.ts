@@ -105,6 +105,9 @@ const SHARED_SUBJECTS: Readonly<Record<string, ReadonlySet<string>>> = {
   // `help` is the kernel's: bare `help` and `help <command>` are the session's
   // answer; the surface claims only its own three words.
   help: new Set(['pane', 'keys', 'verbs']),
+  // `file` is the kernel's too (what a file is, by its bytes — games shelf);
+  // the surface claims only its files-pane verbs.
+  file: new Set(['home', 'back', 'download', 'delete', 'follow', 'root', 'list', 'cards', 'preview', 'sort', 'filter']),
   // `tags` is the kernel's tag resource; the surface claims only the two
   // verbs its tags pane has and the session lacks.
   tags: new Set(['redact', 'filter']),

@@ -949,13 +949,20 @@ try {
     await say('figlet HI | rev'); const big = after('figlet HI | rev');
     await say('fortune | wc -l'); const refused = after('fortune | wc -l');
     await say('ls /usr/games'); const shelf = after('ls /usr/games');
-    return { page: page.slice(0, 2000), cow: cow.slice(0, 600), big: big.slice(0, 200), refused: refused.slice(0, 200), shelf: shelf.slice(0, 800) };`);
+    await say('wtf is lonk'); const wtf = after('wtf is lonk');
+    await say('who'); const who = after('who');
+    await say('qr hi'); const qr = after('qr hi');
+    await say('say hello there'); const said = after('say hello there');
+    return { page: page.slice(0, 2000), cow: cow.slice(0, 600), big: big.slice(0, 200), refused: refused.slice(0, 200), shelf: shelf.slice(0, 800), wtf: wtf.slice(0, 200), who: who.slice(0, 300), qr: qr.slice(0, 400), said: said.slice(0, 80) };`);
   check('help games lists the shelf by category, and ls /usr/games walks it',
     /Text toys/.test(games.page) && /cowsay/.test(games.page) && /Time and sky/.test(games.page) && /cowsay/.test(games.shelf) && /fortune/.test(games.shelf), JSON.stringify({ page: games.page.slice(0, 120), shelf: games.shelf.slice(0, 120) }));
   check('fortune | cowsay runs in the kernel, brain and all; builtins chain',
     /\(\(\(\)\)\)/.test(games.cow) && /[<(] .+ [>)]/.test(games.cow) && games.big.length > 0 && !/not found|error/i.test(games.big), JSON.stringify({ cow: games.cow.slice(0, 160), big: games.big.slice(0, 80) }));
   check('a pipe segment the browser cannot run is refused in words, not hung',
     /cannot run pipeline segments/.test(games.refused), games.refused.slice(0, 160));
+  check('the lab\'s own: wtf knows LONK, who sees this browser, qr draws blocks, say prints the words',
+    /Light Oxidicom NotifiKations/.test(games.wtf) && /browser/.test(games.who) && /\(you\)/.test(games.who) && /█/.test(games.qr) && /♪ hello there/.test(games.said),
+    JSON.stringify({ wtf: games.wtf.slice(0, 60), who: games.who.slice(0, 80), qr: games.qr.slice(0, 30), said: games.said }));
   }
 
   if (await stage('help-pane')) {

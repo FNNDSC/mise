@@ -21,6 +21,9 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     checkpoint_drain: jest.fn(() => []),
     scope_run: (fn: () => unknown) => fn(),
   },
+  procCache_get: () => ({ feeds_find: () => [], feedScopeCounts_get: () => ({ user: 0, public: 0, shared: 0, total: 0 }), warmupProgress_get: () => ({ active: false, loaded: 0, total: 0 }), lifecycle_get: () => ({ state: 'cold' }) }),
+  requestLedger_snapshot: () => ({ since: '', total: 0, ms: 0, families: [], last: [] }),
+  chrisContext: { ChRISURL_get: async () => null, ChRISuser_get: async () => null },
 }));
 
 // The /bin listing model is type-only at runtime.
@@ -143,13 +146,14 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
     readBinary: mockReadBinary,
     linkTarget_resolve: mockLinkTarget,
   },
+  context_getSingle: jest.fn(() => ({ user: 'u', URL: 'http://x' })),
 }));
 
 // The two doors `file_read` reaches for: ChILI's binary cat, and the link
 // walk that turns a logical path into the file CUBE actually stores.
 const mockCatBinary = jest.fn(async (_path: string): Promise<{ ok: boolean; value?: Buffer }> => ({ ok: false }));
 const mockToPhysical = jest.fn(async (path: string): Promise<{ ok: boolean; value?: string }> => ({ ok: true, value: path }));
-jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({ files_catBinary: mockCatBinary }));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({ files_cat: jest.fn(), files_catBinary: mockCatBinary }));
 jest.unstable_mockModule('@fnndsc/chili/utils', () => ({ logical_toPhysical: mockToPhysical }));
 
 // The path a caller gave, already absolute in these cases.
@@ -157,6 +161,7 @@ jest.unstable_mockModule('../src/builtins/utils.js', () => ({
   path_resolve: jest.fn(async (path: string): Promise<string> => path),
   path_resolvePure: jest.fn((path: string): string => path),
   commandArgs_process: jest.fn(),
+  error_stripDebugPrefix: (s: string): string => s,
 }));
 class FakeStaticProvider { constructor(public readonly root: string) {} }
 jest.unstable_mockModule('../src/lib/vfs/providers/static.js', () => ({ StaticVfsProvider: FakeStaticProvider }));

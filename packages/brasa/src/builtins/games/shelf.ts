@@ -38,7 +38,7 @@ export const GAMES_SHELF: ReadonlyArray<GamesCategory> = [
   {
     title: "The lab's own",
     note: 'small tools that happen to be fun',
-    commands: ['motd', 'wtf', 'chrisfetch', 'who', 'uptime', 'ping', 'df', 'qr', 'file', 'xxd', 'strings', 'sha256sum', 'say'],
+    commands: ['motd', 'wtf', 'chrisfetch', 'who', 'uptime', 'ping', 'qr', 'file', 'xxd', 'strings', 'sha256sum', 'md5sum', 'say'],
   },
   {
     title: 'Showpieces and games',

@@ -1,5 +1,15 @@
 # @fnndsc/calypso
 
+## 0.19.3
+
+### Patch Changes
+
+- 6901a81: The daemon answers the kernel's `peers` seam with the surfaces attached to the session, so `who` can name them (the games shelf, #892).
+- Updated dependencies [6901a81]
+- Updated dependencies [6901a81]
+  - @fnndsc/brasa@0.32.0
+  - @fnndsc/argus@0.24.0
+
 ## 0.19.2
 
 ### Patch Changes

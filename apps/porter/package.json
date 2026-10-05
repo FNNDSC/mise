@@ -8,7 +8,7 @@
     "porter": "dist/porter.js"
   },
   "scripts": {
-    "build": "rm -fr dist && tsc && chmod +x ./dist/porter.js",
+    "build": "rm -fr dist && tsc && chmod +x ./dist/porter.js && node ../../scripts/notes-build.mjs",
     "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --coverage",
     "start": "node dist/porter.js"
   },

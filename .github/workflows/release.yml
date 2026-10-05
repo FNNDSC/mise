@@ -24,6 +24,10 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The whole history: a release's date in dist/notes.json is the
+          # day its Version Packages merge landed (scripts/notes-build.mjs).
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24

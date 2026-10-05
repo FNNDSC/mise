@@ -30,7 +30,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "rm -fr dist && tsc && node ../../scripts/buildinfo.mjs",
+    "build": "rm -fr dist && tsc && node ../../scripts/buildinfo.mjs && node ../../scripts/notes-build.mjs",
     "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --forceExit --passWithNoTests --coverage"
   },
   "keywords": [

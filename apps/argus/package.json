@@ -4,7 +4,7 @@
   "description": "ARGUS: the LCARS web surface for mise — a browser console over a calypso session",
   "type": "module",
   "scripts": {
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node ../../scripts/notes-build.mjs",
     "dev": "vite",
     "test": "tsc --noEmit && NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest",
     "smoke": "node tests/smoke/smoke.mjs",

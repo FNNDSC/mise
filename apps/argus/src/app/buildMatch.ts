@@ -126,9 +126,13 @@ export async function pageNews_read(fetcher?: typeof fetch): Promise<PageNews | 
   }
 }
 
-/** The notice's one line of news. */
+/** A headline longer than this is cut on the notice; the NOTES pane has the whole. */
+const NEWS_LINE_MAX: number = 96;
+
+/** The notice's one line of news: the version, the headline (cut to a line), where the rest is. */
 export function pageNews_line(news: PageNews): string {
-  return `argus ${news.version} · ${news.headline} — WHAT'S NEW after restart`;
+  const headline: string = news.headline.length > NEWS_LINE_MAX ? `${news.headline.slice(0, NEWS_LINE_MAX - 1).trimEnd()}…` : news.headline;
+  return `argus ${news.version} · ${headline} — WHAT'S NEW after restart`;
 }
 
 export function buildMismatch_tell(

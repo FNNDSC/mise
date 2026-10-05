@@ -23,8 +23,11 @@ const packageDir = process.cwd();
 const manifest = JSON.parse(readFileSync(path.join(packageDir, 'package.json'), 'utf8'));
 const changelogPath = path.join(packageDir, 'CHANGELOG.md');
 
-/** The words the headline convention marks as the operator's. */
-export const HEADLINE_INTERNAL = /^internal:/i;
+/**
+ * A headline that is ours alone: written "Internal: …", or the bullet
+ * changesets write by itself when a package's dependencies moved.
+ */
+export const HEADLINE_INTERNAL = /^(internal:|updated dependencies\b)/i;
 
 /**
  * Splits one changeset's prose into the operator headline and the rest.

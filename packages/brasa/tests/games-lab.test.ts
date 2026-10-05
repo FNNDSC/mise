@@ -20,7 +20,7 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     lifecycle_get: () => ({ state: 'current' }),
   }),
 }));
-jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({ files_catBinary: mockCatBinary, files_cat: jest.fn() }));
+jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({ files_catBinary: mockCatBinary, files_cat: jest.fn(async () => ({ ok: false })) }));
 jest.unstable_mockModule('../src/builtins/utils.js', () => ({ path_resolve: async (p: string): Promise<string> => p, error_stripDebugPrefix: (s: string): string => s }));
 jest.unstable_mockModule('../src/core/surface.js', () => ({ surface_get: () => ({ peers: () => [{ id: 's1', kind: 'browser', you: true }, { id: 's2', kind: 'chell', you: false }] }) }));
 jest.unstable_mockModule('../src/core/jobsState.js', () => ({ jobsState_derive: () => ({ running: 0, scheduled: 0 }) }));

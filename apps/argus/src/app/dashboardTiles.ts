@@ -5,7 +5,7 @@
  * A module of the host: the host hands in its verbs (open the roster, open
  * home, ask the session) and the dashboard builds its blocks from them.
  */
-import { feedListModelSchema, FEED_LIST_MODEL_KIND } from '@fnndsc/menu';
+import { feedListModelSchema, FEED_LIST_MODEL_KIND, type SessionNotes } from '@fnndsc/menu';
 import type { ExecuteOutcome } from '../calypso/client.js';
 import { DRAWER_CHORDS, VERB_LINES, type DrawerChord } from '../console/argusLang.js';
 import type { FsListingEntry } from '../features/files/panel.js';
@@ -35,6 +35,11 @@ export interface DashboardHooks {
   desktop_restore: (id: string) => void;
   panes_open: () => void;
   keys_open: () => void;
+  notes_open: () => void;
+  /** The newest installed release's notes, from the session; null when it has none. */
+  notes_latest: () => Promise<SessionNotes | null>;
+  /** Whether the daemon's code on disk has moved since it started: its notes are the running one's. */
+  daemon_stale: () => boolean;
   console_open: () => void;
 }
 
@@ -46,9 +51,10 @@ export interface DashboardHooks {
  */
 export function dashboardTiles_build(hooks: DashboardHooks): () => Promise<ReadonlyArray<LauncherTile>> {
   return async (): Promise<ReadonlyArray<LauncherTile>> => {
-    const [roster, home]: [ExecuteOutcome, ExecuteOutcome] = await Promise.all([
+    const [roster, home, notes]: [ExecuteOutcome, ExecuteOutcome, SessionNotes | null] = await Promise.all([
       hooks.ask('proc feeds'),
       hooks.ask('ls ~'),
+      hooks.notes_latest(),
     ]);
     interface RosterFeed { id: number; title: string; status: string }
     let feeds: RosterFeed[] = [];
@@ -148,6 +154,21 @@ export function dashboardTiles_build(hooks: DashboardHooks): () => Promise<Reado
       about: TILE_ABOUT['keys'],
       enter: (): void => hooks.keys_open(),
     };
+    // What the installed releases changed: the daemon's notes, the newest
+    // release's headlines. Behind a daemon whose code moved on disk the
+    // block says so, since what it lists is the running one's.
+    const release = notes?.releases[0];
+    const changes = release?.entries.flatMap((entry) => entry.changes.filter((change) => !change.internal)) ?? [];
+    const whatsNew: LauncherTile = {
+      key: 'notes', name: "WHAT'S NEW", hue: '--butter', numeral: '',
+      figures: release === undefined
+        ? [{ text: 'NO NOTES' }]
+        : [{ text: hooks.daemon_stale() ? 'AFTER RESTART' : (release.date ?? 'UNDATED') }, { text: `${changes.length} CHANGE${changes.length === 1 ? '' : 'S'}` }],
+      rows: changes.slice(0, 3).map((change): LauncherRow => ({ text: `${change.package.padEnd(7)} ${change.headline}`, open: (): void => hooks.notes_open() })),
+      verb: 'OPEN THE NOTES',
+      about: TILE_ABOUT['notes'],
+      enter: (): void => hooks.notes_open(),
+    };
     // The console is a door too: the same session, typed.
     const console_: LauncherTile = {
       key: 'console', name: 'CONSOLE', hue: '--daybreak', numeral: '5',
@@ -160,7 +181,7 @@ export function dashboardTiles_build(hooks: DashboardHooks): () => Promise<Reado
       enter: (): void => hooks.console_open(),
     };
     // The block with the most to say takes the wide seat.
-    const rest: LauncherTile[] = [files, pacs, panes, universe, help, console_];
-    return feeds.length >= entries.length ? [analyses, ...rest] : [files, analyses, pacs, panes, universe, help, console_];
+    const rest: LauncherTile[] = [files, pacs, panes, universe, help, whatsNew, console_];
+    return feeds.length >= entries.length ? [analyses, ...rest] : [files, analyses, pacs, panes, universe, help, whatsNew, console_];
   };
 }

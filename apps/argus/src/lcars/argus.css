@@ -2422,6 +2422,7 @@ body[data-zoom]:not([data-zoom='console'])
 .tags-body,
 .help-body,
 .games-body,
+.notes-body,
 .dag-canvas,
 .universe-canvas,
 .dag-roster,
@@ -5989,6 +5990,58 @@ body[data-zoom] #header-restore {
   font-family: var(--face-label);
   font-size: 0.68rem;
   letter-spacing: 0.08em;
+}
+
+/* ------------------------------------------------------------ notes pane */
+
+/* What the installed releases changed (#897): the KEYS pane's shape, one
+ * block per release. A headline with more wears ▸ and unfolds its rest as a
+ * quiet, indented row beneath; an Internal change is dimmer still. */
+.notes-body {
+  --roster-gap: 0px;
+  --roster-pad: 0px;
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-right: var(--spine-w);
+}
+
+.notes-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.notes-panel > .roster-order { position: static; z-index: auto; flex: none; }
+.notes-panel > .listing-field { padding-right: 0.5rem; }
+
+.notes-tag {
+  font-family: 'Share Tech Mono', monospace;
+  color: var(--butter);
+}
+
+.notes-text { color: var(--harvestgold); white-space: normal; }
+.notes-row-body .notes-text { color: var(--butter); opacity: 0.75; padding-left: 1.2em; white-space: pre-wrap; }
+.notes-row-internal .notes-text, .notes-row-internal .notes-tag { opacity: 0.5; }
+
+.notes-block-head {
+  margin: 0.4rem 0 0.2rem;
+  color: var(--butter);
+  font-family: var(--face-label);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+
+/* The stale-page notice's one line of what is new, beneath the cure. */
+.build-mismatch-news {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--butter);
+  font-size: 0.85em;
 }
 
 /* ------------------------------------------------------------ games pane */

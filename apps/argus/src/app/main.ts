@@ -18,7 +18,7 @@
  * @module
  */
 import { more_wire } from '../features/roster/more.js';
-import { feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, type PromptContext, type WireEnvelope, type WatchState, type FeedDagModel, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
+import { type SessionNotes, feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, type PromptContext, type WireEnvelope, type WatchState, type FeedDagModel, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { type SceneNode } from '../scene/chrisSpace.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction, type DesktopShape } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
@@ -88,6 +88,7 @@ import { editor_wire, type EditorModule } from './editor.js';
 import { feedRowHandlers_make, feedVerbs_wire, type FeedVerbs } from './feedRows.js';
 import { helpPane_wire, type HelpPaneHooks, type HelpPaneModule } from './helpPane.js';
 import { gamesPane_wire, type GamesPaneModule } from './gamesPane.js';
+import { notesPane_wire, type NotesPaneModule } from './notesPane.js';
 import { asks_wire, type Asks } from './asks.js';
 import { keys_wire } from './keys.js';
 import { paneChrome_wire } from './paneChrome.js';
@@ -2003,6 +2004,10 @@ async function surface_start(token: string): Promise<void> {
    *
    * @returns The blocks, the one with most to say first.
    */
+  // Whether the daemon's own code on disk has moved since it started (the
+  // attach ack says, and the push after): the dashboard's WHAT'S NEW block
+  // then reads AFTER RESTART, since the notes it shows are the running daemon's.
+  let daemonStale: boolean = false;
   const launcherTiles_build = dashboardTiles_build({
     ask: (line: string): Promise<ExecuteOutcome> => client.line_execute(line, { silent: true, observe: false }),
     universe_show: (): void => universe_show(),
@@ -2017,6 +2022,9 @@ async function surface_start(token: string): Promise<void> {
     desktop_restore: (id: string): void => { void group_restore(id); },
     panes_open: (): void => { domain_enter('panes'); panesPanel.render(); layout.focus_set('panes'); },
     keys_open: (): void => { help_open(); },
+    notes_open: (): void => { notesPane.open(); },
+    notes_latest: (): Promise<SessionNotes | null> => notesPane.latest(),
+    daemon_stale: (): boolean => daemonStale,
     console_open: (): void => element_require('gutter-console').click(),
   });
 
@@ -2262,6 +2270,7 @@ async function surface_start(token: string): Promise<void> {
   const helpPane: HelpPaneModule = helpPane_wire(context, paneHooks);
   const help_open: () => string = helpPane.open;
   const gamesPane: GamesPaneModule = gamesPane_wire(context, paneHooks);
+  const notesPane: NotesPaneModule = notesPane_wire(context, { ...paneHooks, ask: (line: string): Promise<ExecuteOutcome> => client.line_execute(line, { silent: true }) });
   const editorModule: EditorModule = editor_wire(context, { ...paneHooks, replayPlace_get: desktop.replayPlace_get, errandHost_find, saved: (): void => { for (const dag of panels.values('dag')) dag.marks_refresh(); } });
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
   paneFactory_register('catalogue', (id: string): PaneInstance => filesInstance_build(id, false, true));
@@ -2272,6 +2281,7 @@ async function surface_start(token: string): Promise<void> {
   paneFactory_register('tags', tagsInstance_build);
   paneFactory_register('help', helpPane.instance_build);
   paneFactory_register('games', gamesPane.instance_build);
+  paneFactory_register('notes', notesPane.instance_build);
   paneFactory_register('edit', editorModule.instance_build);
   paneFactory_register('gather', gatherInstance_build);
   paneFactory_register('empty', (id: string): PaneInstance => {
@@ -2403,6 +2413,7 @@ async function surface_start(token: string): Promise<void> {
   const argusHost: ArgusHost = argusHost_build(context, {
     verbs: { move: pane_move, flip: pane_flip, resize: pane_resize },
     help_open,
+    notes_open: notesPane.open,
     launcher_enter,
     identity_get: (): string | null => promptIdentity,
     consoleZoom_toggle,
@@ -2441,12 +2452,13 @@ async function surface_start(token: string): Promise<void> {
     else palette_close();
   });
   const LANG_SUBJECT_WORDS: string[] = [
-    'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'header', 'console', 'back', 'desktop', 'argus', 'help',
+    'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'header', 'console', 'back', 'desktop', 'argus', 'help', 'notes',
   ];
   const LANG_FOLLOWERS: Record<string, string[]> = {
     pane: ['split', 'zoom', 'close', 'bind', 'claim', 'focus', 'flip', 'resize'],
     resize: ['left', 'right', 'up', 'down'],
     help: ['keys', 'verbs'],
+    notes: ['pane'],
     focus: ['left', 'right', 'up', 'down', 'last'],
     view: ['files', 'runs', 'pacs'],
     runs: ['enter', 'sort', 'filter'],
@@ -2688,7 +2700,7 @@ async function surface_start(token: string): Promise<void> {
         dagPanel.model_refresh(parsed.data);
         for (const panel of panels.values('dag')) panel.model_refresh(parsed.data);
       },
-      stale_receive: (stale: boolean): void => buildWatch.stale_take(stale),
+      stale_receive: (stale: boolean): void => { daemonStale = stale; buildWatch.stale_take(stale); },
       closing_receive: (cause: ClosingCause): void => restart.closing_take(cause),
       watched_receive: (subject: string, state: WatchState): void => {
         dagPanel.watched_observe(subject, state);
@@ -2751,6 +2763,7 @@ async function surface_start(token: string): Promise<void> {
   const client: ArgusClient = attached.client;
 
   statusBar.attach_show(attached.attach);
+  daemonStale = attached.attach.stale === true;
   buildWatch.attach_take(attached.attach);
   restart.attach_take(attached.attach);
   statusBar.connection_show(true);

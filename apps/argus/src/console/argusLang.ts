@@ -38,6 +38,8 @@ export interface ArgusHost {
   focus_last(): string | null;
   /** Opens the HELP pane (the keys and the verbs) on the stage; answers what happened. */
   help_open(): string;
+  /** Opens the NOTES pane (what the installed releases changed); answers what happened. */
+  notes_open(): string;
   /** A shown pane's bounding rect (for spatial focus), or null. */
   paneRect_get(id: string): DOMRect | null;
   /** A pane's mount element (drawer, mode frame, chooser live inside), or null. */
@@ -82,7 +84,7 @@ interface Sentence {
 
 /** Subjects this language owns; all other lines belong to the session. */
 const SUBJECTS: ReadonlySet<string> = new Set([
-  'pane', 'view', 'runs', 'node', 'dag', 'universe', 'file', 'pacs', 'image', 'tags', 'header', 'console', 'back', 'desktop', 'dashboard', 'help', 'launcher', 'attach', 'argus',
+  'pane', 'view', 'runs', 'node', 'dag', 'universe', 'file', 'pacs', 'image', 'tags', 'header', 'console', 'back', 'desktop', 'dashboard', 'help', 'notes', 'launcher', 'attach', 'argus',
 ]);
 
 /**
@@ -105,6 +107,9 @@ const SHARED_SUBJECTS: Readonly<Record<string, ReadonlySet<string>>> = {
   // `help` is the kernel's: bare `help` and `help <command>` are the session's
   // answer; the surface claims only its own three words.
   help: new Set(['pane', 'keys', 'verbs']),
+  // `notes` is the kernel's (what the installed releases changed); the surface
+  // claims only the pane that lists it.
+  notes: new Set(['pane']),
   // `file` is the kernel's too (what a file is, by its bytes — games shelf);
   // the surface claims only its files-pane verbs.
   file: new Set(['home', 'back', 'download', 'delete', 'follow', 'root', 'list', 'cards', 'preview', 'sort', 'filter']),
@@ -304,6 +309,7 @@ export const VERB_LINES: ReadonlyArray<string> = [
   'argus verbs                 (this table; the long form is docs/argus-lang.adoc)',
   'argus keys                  (the prefix chords: one key, one drawer verb)',
   'help pane|keys|verbs        (the KEYS pane on the stage; keys and verbs print the tables here; bare help is the session\'s)',
+  'notes pane                  (what the installed releases changed, as a pane; bare notes prints it here)',
 ];
 
 const VERBS_HELP: string = VERB_LINES.join('\n');
@@ -479,13 +485,7 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     return `runs: unknown verb '${verb}' (enter)`;
   }
 
-  if (subject === 'help') {
-    // Typed, the table answers here; bare, the HELP pane opens on the stage.
-    if (verb === 'keys') return KEYS_HELP;
-    if (verb === 'verbs') return VERBS_HELP;
-    if (verb === 'pane') return host.help_open();
-    return 'help pane|keys|verbs';
-  }
+  if (subject === 'help' || subject === 'notes') return pages_handle(host, subject, verb);
   if (subject === 'desktop') {
     return desktop_handle(host, verb, words[1]);
   }
@@ -627,6 +627,24 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   }
 
   return null;
+}
+
+/**
+ * The two reference pages: `help` (typed, the tables answer here; `pane`
+ * opens the KEYS pane) and `notes` (`pane` opens the NOTES pane; bare
+ * `notes`, like bare `help`, is the kernel's).
+ *
+ * @param host - The surface.
+ * @param subject - `help` or `notes`.
+ * @param verb - The word after it.
+ * @returns What happened, or the verbs the subject takes.
+ */
+function pages_handle(host: ArgusHost, subject: string, verb: string | undefined): string {
+  if (subject === 'notes') return verb === 'pane' ? host.notes_open() : 'notes pane';
+  if (verb === 'keys') return KEYS_HELP;
+  if (verb === 'verbs') return VERBS_HELP;
+  if (verb === 'pane') return host.help_open();
+  return 'help pane|keys|verbs';
 }
 
 /**

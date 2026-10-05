@@ -24,6 +24,7 @@ import type { RegardValue } from './subjects.js';
 export interface ConsoleHostHooks {
   verbs: Pick<PaneVerbs, 'move' | 'flip' | 'resize'>;
   help_open: () => string;
+  notes_open: () => string;
   launcher_enter: () => void;
   /** The session's identity, as the prompt last named it. */
   identity_get: () => string | null;
@@ -226,6 +227,7 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
     pane_flip: hooks.verbs.flip,
     pane_resize: hooks.verbs.resize,
     help_open: hooks.help_open,
+    notes_open: hooks.notes_open,
     focus_last: (): string | null => {
       const back: string | null = layout.focus_last();
       if (back !== null) context.sound('audio3');

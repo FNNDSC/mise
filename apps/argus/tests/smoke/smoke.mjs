@@ -1006,6 +1006,66 @@ try {
     games.gallows && /the word was [a-z]+/.test(games.hanged), JSON.stringify({ gallows: games.gallows, hanged: games.hanged.slice(0, 80) }));
   }
 
+  if (await stage('notes')) {
+  // What's new (#897): the kernel's notes in the console and as NEWS; the
+  // dashboard's WHAT'S NEW block naming the installed release; the NOTES
+  // pane on the listing façade, a headline's rest unfolding on a press.
+  const notes = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_idle(); };
+    const text = () => document.getElementById('terminal').innerText;
+    const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2).trim(); };
+    await say('notes'); const typed = after('notes');
+    await say('help notes'); const helped = after('help notes');
+    await say('cat /usr/share/doc/NEWS'); const news = after('cat /usr/share/doc/NEWS');
+    await say('notes --since soon'); const refused = after('notes --since soon');
+    // The dashboard block, then the pane it opens, alone on the stage.
+    document.getElementById('gutter-dashboard')?.click();
+    for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelectorAll('.launcher-tile').length > 0) break; }
+    const tile = [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === "WHAT'S NEW");
+    const figures = tile ? [...tile.querySelectorAll('.launcher-figure')].map((f) => f.textContent.trim()) : [];
+    const tileRows = tile ? tile.querySelectorAll('.launcher-row').length : 0;
+    tile?.querySelector('.launcher-verb')?.click();
+    const pane = () => [...document.querySelectorAll('.pane-notes')].find((p) => p.offsetParent !== null);
+    for (let i = 0; i < 40; i++) { await sleep(250); if (pane() && pane().querySelectorAll('.notes-row').length > 0) break; }
+    const alone = [...document.querySelectorAll('#layout-root .workspace-pane')].filter((p) => p.offsetParent !== null).map((p) => (p.className.match(/pane-(files|help|notes|dag|universe|pacs|launcher)/) ?? [])[1] ?? '?');
+    const heads = pane() ? [...pane().querySelectorAll('.notes-block-head')].map((h) => h.textContent.trim()) : [];
+    const rows = pane() ? pane().querySelectorAll('.notes-row:not(.notes-row-body)').length : 0;
+    const bar = pane()?.querySelector('.pane-state')?.textContent ?? '';
+    // A headline with more unfolds its rest on a press, and folds it on the next.
+    const more = pane()?.querySelector('.notes-row-more');
+    more?.querySelector('.notes-text')?.click(); await sleep(400);
+    const unfolded = pane()?.querySelectorAll('.notes-row-body').length ?? 0;
+    more?.querySelector('.notes-text')?.click(); await sleep(400);
+    const refolded = pane()?.querySelectorAll('.notes-row-body').length ?? 0;
+    // LAST 5 RELEASES asks the kernel again and the blocks grow.
+    pane()?.querySelector('.notes-since')?.click();
+    let grown = 0; for (let i = 0; i < 40; i++) { await sleep(250); grown = pane()?.querySelectorAll('.notes-block-head').length ?? 0; if (grown > heads.length) break; }
+    const sincePill = pane()?.querySelector('.notes-since')?.textContent ?? '';
+    // Typed from the console: a second ask focuses the pane that is there.
+    document.getElementById('gutter-console').click(); await sleep(400);
+    await say('notes pane'); const again = after('notes pane');
+    const panes = [...document.querySelectorAll('.pane-notes')].filter((p) => p.offsetParent !== null).length;
+    pane()?.querySelector('.drawer-close')?.click(); await sleep(400);
+    document.getElementById('header-restore')?.click(); await sleep(600);
+    return { typed: typed.slice(0, 300), helped: helped.slice(0, 120), news: news.slice(0, 200), refused: refused.slice(0, 120), figures, tileRows, alone, heads, rows, bar, unfolded, refolded, grown, sincePill, again: again.slice(0, 80), panes };`);
+  check('notes, help notes and NEWS say what the installed releases changed, and a bad --since is refused by name',
+    /^\d{4}-\d{2}-\d{2} · /.test(notes.typed) && /argus\s+\S/.test(notes.typed) && notes.helped.slice(0, 10) === notes.typed.slice(0, 10) && /^\d{4}-\d{2}-\d{2} · /.test(notes.news) && /--since wants a count or a date/.test(notes.refused),
+    JSON.stringify({ typed: notes.typed.slice(0, 80), news: notes.news.slice(0, 60), refused: notes.refused.slice(0, 60) }));
+  check("the dashboard's WHAT'S NEW block names the installed release and its first headlines",
+    notes.figures.length === 2 && /^\d{4}-\d{2}-\d{2}$|AFTER RESTART/.test(notes.figures[0]) && /CHANGES?$/.test(notes.figures[1]) && notes.tileRows >= 1,
+    JSON.stringify({ figures: notes.figures, rows: notes.tileRows }));
+  check('the NOTES pane opens alone from the dashboard: a block per release, a row per headline, the bar naming the release read',
+    notes.alone.join(',') === 'notes' && notes.heads.length >= 1 && /^\d{4}-\d{2}-\d{2} · /.test(notes.heads[0] ?? '') && notes.rows >= 1 && /^DAEMON · /.test(notes.bar),
+    JSON.stringify({ alone: notes.alone, heads: notes.heads.slice(0, 2), rows: notes.rows, bar: notes.bar }));
+  check('a headline with more unfolds its rest on a press and folds on the next; LAST 5 RELEASES asks the kernel again',
+    notes.unfolded === 1 && notes.refolded === 0 && notes.grown > notes.heads.length && /LAST 5/.test(notes.sincePill),
+    JSON.stringify({ unfolded: notes.unfolded, refolded: notes.refolded, grown: notes.grown, was: notes.heads.length, pill: notes.sincePill }));
+  check('notes pane typed again focuses the pane on stage rather than opening another',
+    /on stage/.test(notes.again) && notes.panes === 1, JSON.stringify({ again: notes.again, panes: notes.panes }));
+  }
+
   if (await stage('help-pane')) {
   // Help lives on the stage: a HELP tile on the dashboard, a HELP pane of
   // the chords and the verbs, and the same tables typed into the console.

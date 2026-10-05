@@ -988,7 +988,7 @@ try {
   check('help games lists the shelf by category, and ls /usr/games walks it',
     /Text toys/.test(games.page) && /cowsay/.test(games.page) && /Time and sky/.test(games.page) && /cowsay/.test(games.shelf) && /fortune/.test(games.shelf), JSON.stringify({ page: games.page.slice(0, 120), shelf: games.shelf.slice(0, 120) }));
   check('fortune | cowsay runs in the kernel, brain and all; builtins chain',
-    /\(\(\(\)\)\)/.test(games.cow) && /[<(] .+ [>)]/.test(games.cow) && games.big.length > 0 && !/not found|error/i.test(games.big), JSON.stringify({ cow: games.cow.slice(0, 160), big: games.big.slice(0, 80) }));
+    /\(\(\(\)\)\)/.test(games.cow) && /^[<(\/|] .+ [>)\\|]$/m.test(games.cow) && games.big.length > 0 && !/not found|error/i.test(games.big), JSON.stringify({ cow: games.cow.slice(0, 160), big: games.big.slice(0, 80) }));
   check('a pipe segment the browser cannot run is refused in words, not hung',
     /cannot run pipeline segments/.test(games.refused), games.refused.slice(0, 160));
   check('time and sky: pom names the moon; a 2-second timer chimes into the console',

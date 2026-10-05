@@ -20,7 +20,7 @@ jest.unstable_mockModule('../src/core/question.js', () => ({
 }));
 jest.unstable_mockModule('../src/core/sink.js', () => ({ sink_dataLine: (text: string): void => { lines.push(text); } }));
 
-const { still_of, builtin_sl, builtin_tetris, STARSHIP } = await import('../src/builtins/games/show.js');
+const { still_of, builtin_sl, builtin_tetris, builtin_cmatrix, builtin_rain, builtin_asciiquarium, builtin_snake, STARSHIP } = await import('../src/builtins/games/show.js');
 const { answer_matches, QUIZ_BANK, QUIZ_ROUND, builtin_quiz, word_mask, builtin_hangman, HANGMAN_WORDS, row_slide, board_move, board_spawn, board_canMove, board_render, builtin_2048 } = await import('../src/builtins/games/play.js');
 
 const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
@@ -38,6 +38,9 @@ describe('showpieces', () => {
     const tetris = await builtin_tetris(['-x']);
     expect(tetris.model).toEqual({ kind: 'games.show', data: { program: 'tetris', args: ['-x'], arcade: true } });
     expect(plain(tetris.rendered)).toContain('plays in ARGUS');
+    for (const [run, program, arcade] of [[builtin_cmatrix, 'cmatrix', false], [builtin_rain, 'rain', false], [builtin_asciiquarium, 'aquarium', false], [builtin_snake, 'snake', true]] as const) {
+      expect((await run([])).model).toEqual({ kind: 'games.show', data: { program, args: [], arcade } });
+    }
   });
 });
 

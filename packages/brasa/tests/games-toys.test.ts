@@ -7,11 +7,11 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
 }));
-const { text_rev, text_tac, text_rot13, seq_numbers, lines_shuffle, builtin_yes, builtin_seq, builtin_rev, YES_DEFAULT } = await import('../src/builtins/games/text.js');
-const { factors_of, primes_between, dice_roll, calc_evaluate, units_convert, builtin_units, builtin_roll } = await import('../src/builtins/games/numbers.js');
+const { text_rev, text_tac, text_rot13, seq_numbers, lines_shuffle, builtin_yes, builtin_seq, builtin_rev, builtin_tac, builtin_shuf, builtin_rot13, YES_DEFAULT } = await import('../src/builtins/games/text.js');
+const { factors_of, primes_between, dice_roll, calc_evaluate, units_convert, builtin_units, builtin_roll, builtin_factor, builtin_primes, builtin_calc } = await import('../src/builtins/games/numbers.js');
 const { cowsay_render, text_wrap, bubble_draw, BRAIN, builtin_cowsay } = await import('../src/builtins/games/cowsay.js');
-const { figlet_render, FACE_ROWS } = await import('../src/builtins/games/figlet.js');
-const { lolcat_paint, rainbow_rgb } = await import('../src/builtins/games/lolcat.js');
+const { figlet_render, FACE_ROWS, builtin_figlet, builtin_banner } = await import('../src/builtins/games/figlet.js');
+const { lolcat_paint, rainbow_rgb, builtin_lolcat } = await import('../src/builtins/games/lolcat.js');
 const { morse_encode, morse_decode, builtin_morse } = await import('../src/builtins/games/morse.js');
 const { stdin_set, stdin_take, text_input } = await import('../src/builtins/games/stdin.js');
 
@@ -162,5 +162,53 @@ describe('cowsay, figlet, lolcat, morse', () => {
     expect(morse_decode('.... ........')).toBe('H?');
     expect(plain((await builtin_morse(['-d', '...', '---', '...'])).rendered)).toBe('SOS\n');
     expect((await builtin_morse(['~'])).status).toBe('error');
+  });
+});
+
+describe('the toys as commands', () => {
+  it('tac, shuf and rot13 read the pipe or the words, and refuse nothing to work on', async () => {
+    stdin_set('1\n2\n');
+    expect((await builtin_tac([])).rendered).toBe('2\n1\n');
+    expect((await builtin_tac([])).status).toBe('error');
+    stdin_set('a\nb\nc\n');
+    const shuffled = await builtin_shuf([]);
+    expect(((shuffled.model as { data: { lines: string[] } }).data.lines).sort()).toEqual(['a', 'b', 'c']);
+    expect((await builtin_shuf(['x'])).rendered).toBe('x\n');
+    expect((await builtin_shuf([])).status).toBe('error');
+    expect((await builtin_rot13(['Hello'])).rendered).toBe('Uryyb\n');
+    expect((await builtin_rot13([])).status).toBe('error');
+    expect((await builtin_seq(['x'])).status).toBe('error');
+  });
+
+  it('factor, primes and calc answer and refuse by name', async () => {
+    expect((await builtin_factor(['12', '7'])).rendered).toBe('12: 2 2 3\n7: 7\n');
+    expect((await builtin_factor(['1'])).rendered).toBe('1:\n');
+    expect((await builtin_factor([])).status).toBe('error');
+    expect((await builtin_factor(['-3'])).status).toBe('error');
+    expect((await builtin_primes(['10'])).rendered).toBe('2 3 5 7\n');
+    expect((await builtin_primes(['10', '20'])).rendered).toBe('11 13 17 19\n');
+    expect((await builtin_primes([])).status).toBe('error');
+    expect((await builtin_primes(['a'])).status).toBe('error');
+    expect((await builtin_calc(['2^10'])).rendered).toBe('1024\n');
+    expect((await builtin_calc(['1/3'])).rendered).toBe('0.333333333333\n');
+    expect((await builtin_calc([])).status).toBe('error');
+    expect((await builtin_calc(['2 +'])).status).toBe('error');
+  });
+
+  it('figlet and banner set the words; lolcat paints them, with its two flags', async () => {
+    const big = await builtin_figlet(['HI']);
+    expect(big.rendered.split('\n').length - 1).toBe(FACE_ROWS);
+    expect(big.rendered).toContain('█');
+    expect((await builtin_banner(['HI'])).rendered).toContain('#');
+    expect((await builtin_figlet([])).status).toBe('error');
+    const painted = await builtin_lolcat(['-p', '10', '-S', '3', 'rainbow']);
+    expect(plain(painted.rendered)).toBe('rainbow\n');
+    expect(painted.model).toEqual({ kind: 'games.lolcat', data: { text: 'rainbow', spread: 10, phase: 3 } });
+    stdin_set('piped\n');
+    expect(plain((await builtin_lolcat([])).rendered)).toBe('piped\n');
+    expect((await builtin_lolcat([])).status).toBe('error');
+    expect((await builtin_lolcat(['-p', 'x'])).status).toBe('error');
+    expect((await builtin_lolcat(['-p', '0'])).status).toBe('error');
+    expect((await builtin_lolcat(['-z'])).status).toBe('error');
   });
 });

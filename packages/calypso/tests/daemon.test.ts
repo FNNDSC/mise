@@ -454,6 +454,17 @@ describe('CalypsoDaemon', () => {
     expect(typeof bMsg.surface).toBe('string');
   });
 
+  it('lists the attached surfaces by kind, marking the one asking (the kernel\'s peers seam, for who)', async () => {
+    const shell = await client_attach(port, true);
+    const browser = await client_attach(port, false);
+    clients.push(shell, browser);
+    const listed = daemon.surfaces_list();
+    expect(listed.map((each) => each.kind)).toEqual(['chell', 'browser']);
+    // Nobody is running a command, so nobody is "you".
+    expect(listed.every((each) => each.you === false)).toBe(true);
+    expect(new Set(listed.map((each) => each.id)).size).toBe(2);
+  });
+
   it('replays scrollback to a newly attached surface', async () => {
     const a = await client_attach(port);
     clients.push(a);

@@ -98,7 +98,12 @@ export class LauncherPanel {
     // of the grid (.launcher-body): wired too, and only the one that
     // overflows speaks.
     const body: HTMLElement | null = mount.querySelector<HTMLElement>('.launcher-body');
-    if (body !== null) more_wire(body, { rows: '.launcher-tile' });
+    if (body !== null) {
+      more_wire(body, {
+        rows: '.launcher-tile',
+        scrolls: (): boolean => /auto|scroll/.test(getComputedStyle(body).overflowY),
+      });
+    }
     this.startHere = mount.querySelector<HTMLButtonElement>('.launcher-start') as HTMLButtonElement;
     this.startHere.addEventListener('click', (): void => {
       this.host.startHere_set(!this.host.startHere_get());

@@ -324,6 +324,9 @@ vp-approve:
 		gh api -X POST "repos/{owner}/{repo}/actions/runs/$$id/approve" >/dev/null; \
 	done
 
+# A bot-opened run waits for approval, and its run may not exist yet when
+# publish starts (the Version Packages PR is still being rewritten): publish
+# re-approves on every pass of its wait, not once before it.
 # The release step. Merging the Version Packages PR triggers the Release
 # workflow on main, which publishes every bumped package to npm — an
 # irreversible, outward-facing act, which is why it is its own target and
@@ -332,7 +335,7 @@ publish: vp-approve
 	@pr=$$(gh pr list --head changeset-release/main --state open --json number --jq '.[0].number'); \
 	if [ -z "$$pr" ]; then echo "No open Version Packages PR (nothing to publish)."; exit 1; fi; \
 	echo "Version Packages PR #$$pr — waiting for required checks..."; \
-	until gh pr checks $$pr --required 2>/dev/null | grep -q .; do sleep 15; done; \
+	until gh pr checks $$pr --required 2>/dev/null | grep -q .; do $(MAKE) --no-print-directory vp-approve; sleep 15; done; \
 	gh pr checks $$pr --watch --interval 30 --required && \
 	gh pr merge $$pr --merge
 	@echo "Publish merge done; the Release workflow on main now pushes to npm."

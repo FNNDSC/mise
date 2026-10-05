@@ -155,7 +155,7 @@ Row state that belongs to the pane (a refused read, an arrival, a status) goes t
 
 `listing-is-one-abstraction`. A pane declares its listing and never builds one. Reaching past the façade — to `RosterOrder`, `ListingHost`, the row or capsule builders, or a hand-typed `--roster-cols` — is the violation the lint names (S5); the PACS pane carries the one allowance, printed as debt, until S4.
 
-* `the-expanse-is-never-sized-by-hand` — a grip sizes a fixed track; the `1fr` expanse is never grabbed and takes the difference, so bars keep one x across levels whatever was sized.
+`the-expanse-is-never-sized-by-hand`. A grip sizes a fixed track within its declared floor; the `1fr` expanse is never grabbed and takes the difference, so bars keep one x across levels whatever was sized. The COLUMNS block reads SIZED while anything is, and gives all back.
 
 === Stylesheet
 

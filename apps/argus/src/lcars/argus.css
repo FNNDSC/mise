@@ -6011,7 +6011,8 @@ body[data-zoom] #header-restore {
 
 .roster-grip:hover,
 .roster-sizing .roster-grip {
-  background: linear-gradient(to right, transparent 2px, var(--butter) 2px, var(--butter) 4px, transparent 4px);
+  background: linear-gradient(to right, transparent 2px, var(--harvestgold) 2px, var(--harvestgold) 4px, transparent 4px);
+  filter: brightness(1.35);
 }
 
 .roster-sizing { cursor: col-resize; user-select: none; }

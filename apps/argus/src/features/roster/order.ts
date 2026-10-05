@@ -372,7 +372,14 @@ export class RosterOrder<T> {
         const column: RosterColumn | undefined = this.columns.find((c: RosterColumn): boolean => c.key === key);
         const active: boolean = key === this.state.sortKey;
         cap.classList.toggle('roster-active', active);
-        cap.textContent = `${column?.label ?? key}${active ? (this.state.sortDir === 'asc' ? ' ▲' : ' ▼') : ''}`;
+        // The words go in a span of their own: the cap also carries its grip (columns.ts).
+        let words: HTMLElement | null = cap.querySelector<HTMLElement>('.roster-cap-words');
+        if (words === null) {
+          words = document.createElement('span');
+          words.className = 'roster-cap-words';
+          cap.prepend(words);
+        }
+        words.textContent = `${column?.label ?? key}${active ? (this.state.sortDir === 'asc' ? ' ▲' : ' ▼') : ''}`;
       }
     }
   }

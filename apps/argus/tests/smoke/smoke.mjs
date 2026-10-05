@@ -1067,6 +1067,54 @@ try {
     /on stage/.test(notes.again) && notes.panes === 1, JSON.stringify({ again: notes.again, panes: notes.panes }));
   }
 
+  if (await stage('listing-columns')) {
+  // Columns sized by hand: a grip on a cap's edge drags the column within
+  // its floor, the expanse takes the difference, the COLUMNS block reads
+  // SIZED, a reload keeps it on this device, a double-press gives one back
+  // and the block gives all back.
+  const cols = await evalIn(`
+    await console_idle();
+    document.getElementById('gutter-runs').click();
+    for (let i = 0; i < 60; i++) { await sleep(400); if (document.querySelectorAll('.feedlist-row').length > 3) break; }
+    const dp = () => [...document.querySelectorAll('.pane-dag')].find((p) => p.offsetParent !== null);
+    const cap = (key) => dp().querySelector('.roster-order .roster-cap[data-key="' + key + '"]');
+    const w = (key) => Math.round(cap(key)?.getBoundingClientRect().width ?? 0);
+    const block = () => dp().querySelector('.runs-columns');
+    const before = { title: w('title'), progress: w('progress'), owner: w('owner'), block: block()?.textContent ?? null };
+    // Drag the TITLE grip 80px to the right.
+    const grip = cap('title')?.querySelector('.roster-grip');
+    const r = grip.getBoundingClientRect(); const x = r.left + r.width / 2; const y = r.top + r.height / 2;
+    grip.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 1 }));
+    grip.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x + 80, clientY: y, pointerId: 1 }));
+    grip.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x + 80, clientY: y, pointerId: 1 }));
+    await sleep(200);
+    const dragged = { title: w('title'), progress: w('progress'), owner: w('owner'), block: block()?.textContent ?? null, stored: localStorage.getItem('argus.columns.runs.title') };
+    // The sort did not fire from the grip's press.
+    const sortedBy = dp().querySelector('.roster-cap.roster-active')?.dataset.key ?? null;
+    // A double-press on the grip gives TITLE back.
+    grip.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await sleep(200);
+    const reset = { title: w('title'), block: block()?.textContent ?? null, stored: localStorage.getItem('argus.columns.runs.title') };
+    // Size OWNER, then the block gives all back.
+    const ownerGrip = cap('owner')?.querySelector('.roster-grip');
+    const r2 = ownerGrip.getBoundingClientRect(); const x2 = r2.left + r2.width / 2; const y2 = r2.top + r2.height / 2;
+    ownerGrip.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x2, clientY: y2, button: 0, pointerId: 2 }));
+    ownerGrip.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x2 + 40, clientY: y2, pointerId: 2 }));
+    ownerGrip.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x2 + 40, clientY: y2, pointerId: 2 }));
+    await sleep(200);
+    const ownerSized = { owner: w('owner'), block: block()?.textContent ?? null };
+    block()?.click(); await sleep(200);
+    const all = { owner: w('owner'), block: block()?.textContent ?? null, stored: localStorage.getItem('argus.columns.runs.owner') };
+    const lastHasGrip = [...dp().querySelectorAll('.roster-order .roster-cap')].pop()?.querySelector('.roster-grip') !== null;
+    return { before, dragged, sortedBy, reset, ownerSized, all, lastHasGrip };`);
+  check('a drag on a cap\'s grip sizes the column; the expanse gives the difference; the block reads SIZED; the device remembers',
+    cols.dragged.title >= cols.before.title + 70 && cols.dragged.progress <= cols.before.progress - 70 && cols.dragged.owner === cols.before.owner && /SIZED/.test(cols.dragged.block ?? '') && cols.dragged.stored !== null && cols.sortedBy !== 'title',
+    JSON.stringify({ before: cols.before, dragged: cols.dragged, sortedBy: cols.sortedBy }));
+  check('a double-press on the grip gives the column back; COLUMNS gives them all back; the last cap has no grip',
+    cols.reset.title === cols.before.title && cols.reset.stored === null && !/SIZED/.test(cols.reset.block ?? '') && cols.ownerSized.owner >= cols.before.owner + 30 && /SIZED/.test(cols.ownerSized.block ?? '') && cols.all.owner === cols.before.owner && cols.all.stored === null && !/SIZED/.test(cols.all.block ?? '') && cols.lastHasGrip === false,
+    JSON.stringify({ reset: cols.reset, ownerSized: cols.ownerSized, all: cols.all, lastHasGrip: cols.lastHasGrip }));
+  }
+
   if (await stage('help-pane')) {
   // Help lives on the stage: a HELP tile on the dashboard, a HELP pane of
   // the chords and the verbs, and the same tables typed into the console.

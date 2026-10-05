@@ -1197,6 +1197,7 @@ export class Listing<T> {
     // The listing that answers a press settles it, wherever it landed.
     this.activation_settle();
     this.render();
+    this.grips_ensure();
   }
 
   /**
@@ -1424,15 +1425,26 @@ export class Listing<T> {
     this.columnsPrefix = chrome?.prefix ?? null;
     this.columnsBlock = chrome?.root.querySelector<HTMLElement>(`.${chrome.prefix}-columns`) ?? null;
     this.columnsBlock?.addEventListener('click', (): void => this.columns_reset());
-    const caps: HTMLElement | null = this.declaration.mount.querySelector<HTMLElement>('.roster-order .roster-caps');
-    if (caps === null) return;
-    const store: ColumnStore | null = columnStore_default();
+    // What this device remembers applies before any row lands.
     if (this.columnsPrefix !== null) {
-      for (const [key, px] of columns_read(store, this.columnsPrefix, this.level.traitKeys())) {
+      for (const [key, px] of columns_read(columnStore_default(), this.columnsPrefix, this.level.traitKeys())) {
         this.level.column_size(key, px);
       }
       this.gridHost.style.setProperty('--roster-cols', this.level.template);
     }
+    this.columnsBlock_paint();
+    this.grips_ensure();
+  }
+
+  /**
+   * Wires the grips on the root caps. The caps row is seated when the first
+   * rows land, so this runs at construction and again on every render;
+   * a grip already wired is left alone.
+   */
+  private grips_ensure(): void {
+    const caps: HTMLElement | null = this.declaration.mount.querySelector<HTMLElement>('.roster-order .roster-caps');
+    if (caps === null) return;
+    const store: ColumnStore | null = columnStore_default();
     grips_wire(caps, {
       key_of: (cap: HTMLElement): string | null => cap.dataset['key'] ?? null,
       floor_of: (key: string): number => length_px(floor_of(this.level.track_of(key) ?? '3em'), caps),
@@ -1444,7 +1456,6 @@ export class Listing<T> {
       size: (key: string, px: number): void => this.column_size(key, px, store),
       reset: (key: string): void => this.column_size(key, null, store),
     });
-    this.columnsBlock_paint();
   }
 
   private column_size(key: string, px: number | null, store: ColumnStore | null): void {

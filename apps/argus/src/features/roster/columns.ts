@@ -18,7 +18,8 @@
 
 /** Whether a track is the expanse: the one `fr` track the rule allows. */
 export function track_isExpanse(width: string): boolean {
-  return /\bfr\b/.test(width);
+  // `1fr`, `minmax(8em, 1fr)`: a digit then `fr` at a word's end (no boundary stands between `1` and `f`).
+  return /\dfr\b/.test(width);
 }
 
 /**
@@ -130,7 +131,10 @@ export function grips_wire(caps: HTMLElement, hooks: GripHooks): void {
       if (key === null || down.button !== 0) return;
       down.preventDefault();
       down.stopPropagation();
-      grip.setPointerCapture(down.pointerId);
+      // Capture keeps a fast drag on the grip; a pointer the browser does not
+      // know (a scripted press) cannot be captured, and the drag still works
+      // because the moves are heard on the window, not the grip.
+      try { grip.setPointerCapture(down.pointerId); } catch { /* an unknown pointer id */ }
       const startX: number = down.clientX;
       const startWidth: number = cap.getBoundingClientRect().width;
       const floor: number = hooks.floor_of(key);
@@ -142,13 +146,13 @@ export function grips_wire(caps: HTMLElement, hooks: GripHooks): void {
       };
       const up = (): void => {
         caps.classList.remove('roster-sizing');
-        grip.removeEventListener('pointermove', move);
-        grip.removeEventListener('pointerup', up);
-        grip.removeEventListener('pointercancel', up);
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', up);
       };
-      grip.addEventListener('pointermove', move);
-      grip.addEventListener('pointerup', up);
-      grip.addEventListener('pointercancel', up);
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
     });
   }
 }

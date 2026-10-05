@@ -3090,7 +3090,8 @@ try {
     // went on passing its ask check while the answer went nowhere.
     fp().querySelector('.files-mkdir').click();
     let asked = '';
-    for (let i = 0; i < 40; i++) { await sleep(300); const a = document.querySelector('#terminal .argus-ask'); if (a) { asked = a.textContent.trim(); break; } }
+    const asksBefore = document.querySelectorAll('#terminal .argus-ask').length;
+    for (let i = 0; i < 40; i++) { await sleep(300); const all = document.querySelectorAll('#terminal .argus-ask'); if (all.length > asksBefore) { asked = all[all.length - 1].textContent.trim(); break; } }
     let bar = null;
     for (let i = 0; i < 40; i++) { await sleep(150); bar = fp().querySelector('.ask-bar'); if (bar) break; }
     const field = bar?.querySelector('.ask-bar-field');
@@ -3171,8 +3172,9 @@ try {
     click(plugin.querySelector('.files-name')); await sleep(600);
     const pluginVerbs = [...cat.querySelectorAll('.files-row-zone .listing-action')].map(b => b.textContent.trim());
     const echoesBefore = document.querySelectorAll('#terminal .argus-echo').length;
+    const asksBefore = document.querySelectorAll('#terminal .argus-ask').length;
     [...cat.querySelectorAll('.files-row-zone .listing-action')].find(b => b.textContent.trim() === 'RUN')?.click();
-    const asked = await settle(() => document.querySelector('#terminal .argus-ask') !== null, 20);
+    const asked = await settle(() => document.querySelectorAll('#terminal .argus-ask').length > asksBefore, 20);
     const askText = [...document.querySelectorAll('#terminal .argus-ask')].pop()?.textContent.trim() ?? '';
     term.value = 'smoke process run';
     term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -3250,8 +3252,9 @@ try {
     const runPill = getComputedStyle(cat.querySelector('.diagram-run')).display;
 
     const echoesBefore = document.querySelectorAll('#terminal .argus-echo').length;
+    const asksBefore = document.querySelectorAll('#terminal .argus-ask').length;
     cat.querySelector('.diagram-run').click();
-    const asked = await settle(() => document.querySelector('#terminal .argus-ask') !== null, 20);
+    const asked = await settle(() => document.querySelectorAll('#terminal .argus-ask').length > asksBefore, 20);
     term.value = 'smoke form run';
     term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await settle(() => document.querySelectorAll('#terminal .argus-echo').length > echoesBefore, 30);
@@ -3374,16 +3377,20 @@ try {
     const stayed = rosterShown();
 
     // SHARE asks who, and says what cannot be undone before it is answered
+    // The scrollback keeps every question ever asked (a game by question
+    // earlier in the run, say), so a NEW ask is one more block, not any block.
+    const asksBeforeShare = asks().length;
     zoneVerbs().find(b => b.textContent === 'SHARE')?.click();
     let asked = '';
-    for (let i = 0; i < 50; i++) { await sleep(400); const a = asks().pop(); if (a) { asked = a.textContent.trim(); break; } }
+    for (let i = 0; i < 50; i++) { await sleep(400); if (asks().length > asksBeforeShare) { asked = asks().pop().textContent.trim(); break; } }
     key('Escape'); await sleep(600);
 
     // DELETE raises the kernel's own confirmation, and NO removes nothing
     const feedsBefore = rows().length;
+    const asksBeforeDelete = asks().length;
     zoneVerbs().find(b => b.textContent === 'DELETE')?.click();
     let confirm = '';
-    for (let i = 0; i < 50; i++) { await sleep(400); const a = asks().pop(); if (a && a.textContent.trim() !== asked) { confirm = a.textContent.trim(); break; } }
+    for (let i = 0; i < 50; i++) { await sleep(400); if (asks().length > asksBeforeDelete) { confirm = asks().pop().textContent.trim(); break; } }
     // Escape from the ROW, which is where the hand already is after pressing
     // the row's own verb. Pressed at the console input a question was always
     // abandoned; pressed anywhere else it reached nothing at all.
@@ -3438,8 +3445,9 @@ try {
       const target = rows()[1];
       target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       for (let i = 0; i < 50; i++) { await sleep(400); if (target.querySelector('.listing-readout')) break; }
+      const asksBefore = document.querySelectorAll('#terminal .argus-ask').length;
       zoneVerbs().find(b => b.textContent === 'SHARE')?.click();
-      for (let i = 0; i < 50; i++) { await sleep(400); if (document.querySelector('#terminal .argus-ask')) break; }
+      for (let i = 0; i < 50; i++) { await sleep(400); if (document.querySelectorAll('#terminal .argus-ask').length > asksBefore) break; }
       term.value = ${JSON.stringify(shareUser)};
       term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       await sleep(3000);
@@ -4742,9 +4750,10 @@ try {
       gp.querySelector('.gather-cohort-row .gather-cohort-name').click(); await sleep(400);
       const cohortVerbs = zoneVerbs(gp, '.gather-row-zone');
       const echoesBefore = document.querySelectorAll('#terminal .argus-echo').length;
+      const asksBefore = document.querySelectorAll('#terminal .argus-ask').length;
       [...gp.querySelectorAll('.gather-row-zone .listing-action')].find(b => b.textContent.trim() === 'PROCESS')?.click();
       let asked = false;
-      for (let i = 0; i < 20; i++) { await sleep(500); if (document.querySelector('#terminal .argus-ask')) { asked = true; break; } }
+      for (let i = 0; i < 20; i++) { await sleep(500); if (document.querySelectorAll('#terminal .argus-ask').length > asksBefore) { asked = true; break; } }
       const askText = [...document.querySelectorAll('#terminal .argus-ask')].pop()?.textContent.trim() ?? '';
       term.value = 'smoke cohort';
       term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));

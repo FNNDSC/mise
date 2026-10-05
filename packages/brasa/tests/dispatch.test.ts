@@ -18,6 +18,12 @@ jest.unstable_mockModule('@fnndsc/cumin', () => ({
     checkpoint_drain: mockCheckpointDrain,
     scope_run: (fn: () => unknown) => fn(),
   },
+  procCache_get: () => ({ feeds_find: () => [], feedScopeCounts_get: () => ({ user: 0, public: 0, shared: 0, total: 0 }), warmupProgress_get: () => ({ active: false, loaded: 0, total: 0 }), lifecycle_get: () => ({ state: 'cold' }) }),
+  requestLedger_snapshot: () => ({ since: '', total: 0, ms: 0, families: [], last: [] }),
+  chrisContext: { ChRISURL_get: async () => null, ChRISuser_get: async () => null },
+  listCache_get: jest.fn(),
+  Context: jest.fn(),
+  keyPairParams_apply: jest.fn(),
 }));
 
 // The /bin listing model is type-only at runtime.

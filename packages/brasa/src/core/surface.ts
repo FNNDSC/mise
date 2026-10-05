@@ -144,9 +144,25 @@ export interface LocalEditResult {
  * {@link surface_get}; hosts declare their capabilities and back the
  * prompt and local-edit operations with whatever their surface supports.
  */
+/** Another surface on the same session, as the host sees it. */
+export interface SurfacePeer {
+  /** The host's name for it. */
+  id: string;
+  /** A terminal or a browser. */
+  kind: 'chell' | 'browser';
+  /** Whether it is the surface running the current command. */
+  you: boolean;
+}
+
 export interface Surface {
   /** What this surface can do; read by builtins before they interact. */
   readonly capabilities: SurfaceCapabilities;
+
+  /**
+   * The surfaces attached to this session, when the host knows of more than
+   * itself (a daemon does; a local shell is alone). Absent means unknown.
+   */
+  peers?(): SurfacePeer[];
 
   /**
    * Prompts for a line of input.

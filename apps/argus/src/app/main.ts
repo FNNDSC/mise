@@ -87,6 +87,7 @@ import { cohort_wire, type CohortModule } from './cohort.js';
 import { editor_wire, type EditorModule } from './editor.js';
 import { feedRowHandlers_make, feedVerbs_wire, type FeedVerbs } from './feedRows.js';
 import { helpPane_wire, type HelpPaneHooks, type HelpPaneModule } from './helpPane.js';
+import { gamesPane_wire, type GamesPaneModule } from './gamesPane.js';
 import { asks_wire, type Asks } from './asks.js';
 import { keys_wire } from './keys.js';
 import { paneChrome_wire } from './paneChrome.js';
@@ -661,6 +662,21 @@ function modeFrames_watch(): void {
     }
   }).observe(document.body, { childList: true, subtree: true });
   wire(document);
+}
+
+/**
+ * Speaks what `say` said, through the page's own speech when it has one.
+ * A page without it (or a muted one) says nothing: the console already
+ * printed the words.
+ *
+ * @param data - The envelope's model data: `{ text }`.
+ */
+function voice_say(data: unknown): void {
+  const text: unknown = (data as { text?: unknown } | null)?.text;
+  if (typeof text !== 'string' || text.length === 0 || typeof window.speechSynthesis === 'undefined') return;
+  const words: SpeechSynthesisUtterance = new SpeechSynthesisUtterance(text);
+  words.rate = 1;
+  window.speechSynthesis.speak(words);
 }
 
 function headerFaces_wire(): void {
@@ -2245,6 +2261,7 @@ async function surface_start(token: string): Promise<void> {
   const paneHooks: HelpPaneHooks = { instance_spawn, birth_record, launcher_yield, launcher_active: (): boolean => layout.activePreset_get() === 'launcher', template_stamp };
   const helpPane: HelpPaneModule = helpPane_wire(context, paneHooks);
   const help_open: () => string = helpPane.open;
+  const gamesPane: GamesPaneModule = gamesPane_wire(context, paneHooks);
   const editorModule: EditorModule = editor_wire(context, { ...paneHooks, replayPlace_get: desktop.replayPlace_get, errandHost_find, saved: (): void => { for (const dag of panels.values('dag')) dag.marks_refresh(); } });
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
   paneFactory_register('catalogue', (id: string): PaneInstance => filesInstance_build(id, false, true));
@@ -2254,6 +2271,7 @@ async function surface_start(token: string): Promise<void> {
   paneFactory_register('image', imageInstance_build);
   paneFactory_register('tags', tagsInstance_build);
   paneFactory_register('help', helpPane.instance_build);
+  paneFactory_register('games', gamesPane.instance_build);
   paneFactory_register('edit', editorModule.instance_build);
   paneFactory_register('gather', gatherInstance_build);
   paneFactory_register('empty', (id: string): PaneInstance => {
@@ -2526,6 +2544,12 @@ async function surface_start(token: string): Promise<void> {
       try {
         const outcome: ExecuteOutcome = await client.line_execute(line);
         terminal.outcome_write(outcome);
+        // `say`: a surface with a voice speaks the words (games shelf, #892).
+        for (const envelope of outcome.envelopes) {
+          if (envelope.model?.kind === 'games.say') voice_say(envelope.model.data);
+          // A showpiece or a game: the console keeps the still, the GAMES pane runs it.
+          if (envelope.model?.kind === 'games.show') terminal.line_note(gamesPane.show(envelope.model.data));
+        }
         // The panel is slaved to the working directory: any command that
         // moved it (an fs.cwd model) triggers a silent listing refresh,
         // whose fs.listing envelope repaints the panel on observation.
@@ -2645,6 +2669,12 @@ async function surface_start(token: string): Promise<void> {
       // The sampler's refreshed models: every DAG pane showing that feed
       // repaints in place; nothing pins, nothing reaches the transcript.
       ambient_receive: (envelope: WireEnvelope): void => {
+        // A chime (timer, leave): noted in the console, and spoken.
+        if (envelope.model?.kind === 'games.chime') {
+          const text: unknown = (envelope.model.data as { text?: unknown } | null)?.text;
+          if (typeof text === 'string') { terminal.line_note(`🔔 ${text}`); voice_say({ text }); }
+          return;
+        }
         if (envelope.model?.kind === 'fs.listing') {
           // A stale listing's refresh: every Files pane showing that path
           // swaps it in and drops its STALE readout.

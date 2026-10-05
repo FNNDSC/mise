@@ -7,7 +7,8 @@
  */
 import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 import { VFSProvider, VFSItem, CpOptions, plugins_listAll, pipelines_getAll, PipelineRecord } from '@fnndsc/salsa';
-import { builtinCommands_list } from '../../../builtins/help.js';
+import { builtinCommands_list, commandSummary_get } from '../../../builtins/help.js';
+import { gamesShelf_names } from '../../../builtins/games/shelf.js';
 import { staticVfs_read, staticVfs_readBinary } from './static_content.js';
 
 /**
@@ -85,6 +86,8 @@ export class StaticVfsProvider implements VFSProvider {
       }
 
       if (effectivePath === "/usr") {
+        // bin alone: the dispatcher adds every registered prefix beneath
+        // (/usr/games, /usr/share) as a folder of its own.
         const items: VFSItem[] = [
           {
             name: "bin",
@@ -95,6 +98,18 @@ export class StaticVfsProvider implements VFSProvider {
           }
         ];
         return Ok(items);
+      }
+
+      // The shelf (builtins/games/shelf.ts): the commands on it that exist.
+      if (effectivePath === "/usr/games") {
+        const items: VFSItem[] = gamesShelf_names(commandSummary_get).map((name: string): VFSItem => ({
+          name,
+          type: "plugin",
+          size: 0,
+          owner: "games",
+          date: new Date().toISOString(),
+        }));
+        return Ok(this.staticVfsItems_sort(items, options?.sort, options?.reverse));
       }
 
       if (effectivePath === "/usr/bin") {

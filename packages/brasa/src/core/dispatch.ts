@@ -12,6 +12,21 @@
  *
  * @module
  */
+import { builtin_rev, builtin_tac, builtin_yes, builtin_seq, builtin_shuf, builtin_rot13 } from '../builtins/games/text.js';
+import { builtin_factor, builtin_primes, builtin_roll, builtin_calc, builtin_units } from '../builtins/games/numbers.js';
+import { builtin_cowsay, builtin_cowthink } from '../builtins/games/cowsay.js';
+import { builtin_figlet, builtin_banner } from '../builtins/games/figlet.js';
+import { builtin_lolcat } from '../builtins/games/lolcat.js';
+import { builtin_morse } from '../builtins/games/morse.js';
+import { builtin_who, builtin_uptime, builtin_ping, builtin_chrisfetch, builtin_say } from '../builtins/games/lab.js';
+import { builtin_wtf } from '../builtins/games/wtf.js';
+import { builtin_file, builtin_xxd, builtin_strings, builtin_sha256sum, builtin_md5sum } from '../builtins/games/bytes.js';
+import { builtin_qr } from '../builtins/games/qr.js';
+import { builtin_pom, builtin_stardate, builtin_ddate, builtin_sunrise } from '../builtins/games/sky.js';
+import { builtin_timer, builtin_leave, builtin_stopwatch } from '../builtins/games/chimes.js';
+import { builtin_sl, builtin_cmatrix, builtin_rain, builtin_asciiquarium, builtin_tetris, builtin_snake } from '../builtins/games/show.js';
+import { builtin_quiz, builtin_hangman, builtin_2048 } from '../builtins/games/play.js';
+import { stdin_set } from '../builtins/games/stdin.js';
 import { builtin_netstat } from '../builtins/net/netstat.js';
 import { writeFileSync, appendFileSync } from 'fs';
 import chalk from 'chalk';
@@ -183,6 +198,51 @@ export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
   debug: builtin_debug,
   version: builtin_version,
   fortune: builtin_fortune,
+  cowsay: builtin_cowsay,
+  cowthink: builtin_cowthink,
+  figlet: builtin_figlet,
+  banner: builtin_banner,
+  lolcat: builtin_lolcat,
+  rev: builtin_rev,
+  tac: builtin_tac,
+  yes: builtin_yes,
+  seq: builtin_seq,
+  factor: builtin_factor,
+  primes: builtin_primes,
+  shuf: builtin_shuf,
+  roll: builtin_roll,
+  rot13: builtin_rot13,
+  morse: builtin_morse,
+  calc: builtin_calc,
+  units: builtin_units,
+  who: builtin_who,
+  uptime: builtin_uptime,
+  ping: builtin_ping,
+  chrisfetch: builtin_chrisfetch,
+  say: builtin_say,
+  wtf: builtin_wtf,
+  file: builtin_file,
+  xxd: builtin_xxd,
+  strings: builtin_strings,
+  sha256sum: builtin_sha256sum,
+  md5sum: builtin_md5sum,
+  qr: builtin_qr,
+  pom: builtin_pom,
+  stardate: builtin_stardate,
+  ddate: builtin_ddate,
+  sunrise: builtin_sunrise,
+  timer: builtin_timer,
+  leave: builtin_leave,
+  stopwatch: builtin_stopwatch,
+  sl: builtin_sl,
+  cmatrix: builtin_cmatrix,
+  rain: builtin_rain,
+  asciiquarium: builtin_asciiquarium,
+  tetris: builtin_tetris,
+  snake: builtin_snake,
+  quiz: builtin_quiz,
+  hangman: builtin_hangman,
+  '2048': builtin_2048,
   weather: builtin_weather,
   motd: builtin_motd,
   date: builtin_date,
@@ -285,6 +345,51 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   whereami: envelopeHandler_wrap(builtin_whereami),
   debug: envelopeHandler_wrap(builtin_debug),
   fortune: envelopeHandler_wrap(builtin_fortune),
+  cowsay: envelopeHandler_wrap(builtin_cowsay),
+  cowthink: envelopeHandler_wrap(builtin_cowthink),
+  figlet: envelopeHandler_wrap(builtin_figlet),
+  banner: envelopeHandler_wrap(builtin_banner),
+  lolcat: envelopeHandler_wrap(builtin_lolcat),
+  rev: envelopeHandler_wrap(builtin_rev),
+  tac: envelopeHandler_wrap(builtin_tac),
+  yes: envelopeHandler_wrap(builtin_yes),
+  seq: envelopeHandler_wrap(builtin_seq),
+  factor: envelopeHandler_wrap(builtin_factor),
+  primes: envelopeHandler_wrap(builtin_primes),
+  shuf: envelopeHandler_wrap(builtin_shuf),
+  roll: envelopeHandler_wrap(builtin_roll),
+  rot13: envelopeHandler_wrap(builtin_rot13),
+  morse: envelopeHandler_wrap(builtin_morse),
+  calc: envelopeHandler_wrap(builtin_calc),
+  units: envelopeHandler_wrap(builtin_units),
+  who: envelopeHandler_wrap(builtin_who),
+  uptime: envelopeHandler_wrap(builtin_uptime),
+  ping: envelopeHandler_wrap(builtin_ping),
+  chrisfetch: envelopeHandler_wrap(builtin_chrisfetch),
+  say: envelopeHandler_wrap(builtin_say),
+  wtf: envelopeHandler_wrap(builtin_wtf),
+  file: envelopeHandler_wrap(builtin_file),
+  xxd: envelopeHandler_wrap(builtin_xxd),
+  strings: envelopeHandler_wrap(builtin_strings),
+  sha256sum: envelopeHandler_wrap(builtin_sha256sum),
+  md5sum: envelopeHandler_wrap(builtin_md5sum),
+  qr: envelopeHandler_wrap(builtin_qr),
+  pom: envelopeHandler_wrap(builtin_pom),
+  stardate: envelopeHandler_wrap(builtin_stardate),
+  ddate: envelopeHandler_wrap(builtin_ddate),
+  sunrise: envelopeHandler_wrap(builtin_sunrise),
+  timer: envelopeHandler_wrap(builtin_timer),
+  leave: envelopeHandler_wrap(builtin_leave),
+  stopwatch: envelopeHandler_wrap(builtin_stopwatch),
+  sl: envelopeHandler_wrap(builtin_sl),
+  cmatrix: envelopeHandler_wrap(builtin_cmatrix),
+  rain: envelopeHandler_wrap(builtin_rain),
+  asciiquarium: envelopeHandler_wrap(builtin_asciiquarium),
+  tetris: envelopeHandler_wrap(builtin_tetris),
+  snake: envelopeHandler_wrap(builtin_snake),
+  quiz: envelopeHandler_wrap(builtin_quiz),
+  hangman: envelopeHandler_wrap(builtin_hangman),
+  '2048': envelopeHandler_wrap(builtin_2048),
   weather: envelopeHandler_wrap(builtin_weather),
   motd: envelopeHandler_wrap(builtin_motd),
   date: envelopeHandler_wrap(builtin_date),
@@ -771,21 +876,30 @@ export async function pipe_execute(segments: string[]): Promise<CommandEnvelope>
     return { status: 'ok', rendered: '' };
   }
 
-  // The first segment is a chell command run in-engine; the rest run through
-  // the surface, so nothing spawns on a daemon host — a surface without the
-  // capability (a browser) fails the pipeline with a clear message.
-  if (segments.length > 1) {
-    capability_require('pipeSegments', 'this surface cannot run pipeline segments');
-  }
-
-  // Execute first segment in chell and capture output
+  // The first segment is a chell command run in-engine. A later segment
+  // that names a builtin runs in-engine too, reading what came before it
+  // (`fortune | cowsay` is the kernel's own, in a browser as in a terminal);
+  // any other goes through the surface's host shell, so nothing spawns on a
+  // daemon host — a surface without the capability (a browser) fails that
+  // segment with a clear message.
   const firstCommand: string = segments[0];
   const { buffer } = await chellCommand_executeAndCapture(firstCommand);
 
-  // Chain remaining segments through the surface's own tools.
   let currentInput: Buffer = buffer;
   for (let i: number = 1; i < segments.length; i++) {
-    currentInput = await surface_get().pipeSegment(segments[i], currentInput);
+    const segment: string = segments[i];
+    const word: string = segment.trim().split(/\s+/)[0] ?? '';
+    if (word !== '' && (word in ENVELOPE_HANDLERS || word in COMMAND_HANDLERS)) {
+      stdin_set(currentInput.toString('utf-8'));
+      try {
+        currentInput = (await chellCommand_executeAndCapture(segment)).buffer;
+      } finally {
+        stdin_set(null);
+      }
+      continue;
+    }
+    capability_require('pipeSegments', 'this surface cannot run pipeline segments');
+    currentInput = await surface_get().pipeSegment(segment, currentInput);
   }
 
   // Output final result

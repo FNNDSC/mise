@@ -1091,6 +1091,20 @@ export class CalypsoDaemon {
    * @returns The executing surface's declared capabilities; nothing when no
    *   command is running.
    */
+  /**
+   * The surfaces attached now, each named a terminal or a browser, the one
+   * running the current command marked: what `who` answers.
+   *
+   * @returns The surfaces, in attach order.
+   */
+  public surfaces_list(): Array<{ id: string; kind: 'chell' | 'browser'; you: boolean }> {
+    return [...this.surfaces].map((each: Surface) => ({
+      id: each.id,
+      kind: each.capabilities.shellCommands ? 'chell' as const : 'browser' as const,
+      you: each === this.currentOrigin,
+    }));
+  }
+
   public capabilities_current(): { fileDelivery: boolean; localFilesystem: boolean; color: boolean } | null {
     const origin: Surface | null = this.currentOrigin;
     return origin ? {

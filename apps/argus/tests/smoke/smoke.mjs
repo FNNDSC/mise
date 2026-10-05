@@ -934,6 +934,78 @@ try {
     more.error === undefined && more.scrollback && more.alone && more.carded && more.panesShown, JSON.stringify(more));
   }
 
+  if (await stage('games')) {
+  // The games shelf (#892): `help games` is the session's page, the toys
+  // run in the kernel so a pipe of builtins works in a browser, and a
+  // segment the browser cannot run is refused in words rather than hung.
+  const games = await evalIn(`
+    await console_idle();
+    const input = document.querySelector('#terminal input');
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_idle(); };
+    const text = () => document.getElementById('terminal').innerText;
+    const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2).trim(); };
+    await say('help games'); const page = after('help games');
+    await say('fortune | cowsay'); const cow = after('fortune | cowsay');
+    await say('figlet HI | rev'); const big = after('figlet HI | rev');
+    await say('fortune | wc -l'); const refused = after('fortune | wc -l');
+    await say('ls /usr/games'); const shelf = after('ls /usr/games');
+    await say('wtf is lonk'); const wtf = after('wtf is lonk');
+    await say('who'); const who = after('who');
+    await say('qr hi'); const qr = after('qr hi');
+    await say('say hello there'); const said = after('say hello there');
+    await say('pom'); const pom = after('pom');
+    await say('timer 2s the kettle'); const timerSet = after('timer 2s the kettle');
+    let chimed = ''; for (let i = 0; i < 20; i++) { await sleep(300); if (/🔔 the kettle/.test(text())) { chimed = 'yes'; break; } }
+    // The showpieces and the arcade: a still in the console, the moving one
+    // on a GAMES pane; a game takes the keyboard, Esc gives it back, a
+    // second program reuses the pane on stage.
+    await say('sl'); const slNote = after('sl');
+    const gamesPane = () => [...document.querySelectorAll('.pane-games')].find((p) => p.offsetParent !== null);
+    for (let i = 0; i < 40; i++) { await sleep(250); if (gamesPane()) break; }
+    const slPane = gamesPane();
+    const slDrawn = slPane ? { canvas: slPane.querySelector('.games-canvas') !== null, state: slPane.querySelector('.pane-state')?.textContent ?? '', controlsInField: slPane.querySelector('.games-field button') !== null } : null;
+    await say('tetris'); await sleep(600);
+    const panes = [...document.querySelectorAll('.pane-games')].filter((p) => p.offsetParent !== null).length;
+    const tetrisPane = gamesPane();
+    const focused = tetrisPane ? tetrisPane.classList.contains('games-field-focused') && tetrisPane.querySelector('.games-field').contains(document.activeElement) : false;
+    const tetrisState = tetrisPane?.querySelector('.pane-state')?.textContent ?? '';
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(200);
+    const released = tetrisPane ? !tetrisPane.classList.contains('games-field-focused') && !tetrisPane.querySelector('.games-field').contains(document.activeElement) : false;
+    tetrisPane?.querySelector('.games-pause')?.click(); await sleep(100);
+    const paused = tetrisPane?.querySelector('.pane-state')?.textContent ?? '';
+    tetrisPane?.querySelector('.drawer-close')?.click(); await sleep(400);
+    const closed = gamesPane() === undefined;
+    // A game by question: hangman asks in the console (the glyph turns ?);
+    // the answer goes down the same input. Not through say(): console_idle
+    // presses Escape at an open question, which is an answer of its own.
+    input.value = 'hangman'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    let asked = false; for (let i = 0; i < 40; i++) { await sleep(250); if (document.querySelector('.argus-ask') !== null && (document.querySelector('.argus-input-glyph')?.textContent ?? '') !== '❯') { asked = true; break; } }
+    const gallows = asked && text().includes('+---+');
+    input.value = 'q'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_idle();
+    const hanged = after('hangman');
+    return { pom: pom.slice(0, 80), timerSet: timerSet.slice(0, 80), chimed, page: page.slice(0, 2000), cow: cow.slice(0, 600), big: big.slice(0, 200), refused: refused.slice(0, 200), shelf: shelf.slice(0, 800), wtf: wtf.slice(0, 200), who: who.slice(0, 300), qr: qr.slice(0, 400), said: said.slice(0, 80),
+      slNote: slNote.slice(0, 300), slDrawn, panes, focused, tetrisState, released, paused, closed, gallows, hanged: hanged.slice(0, 120) };`);
+  check('help games lists the shelf by category, and ls /usr/games walks it',
+    /Text toys/.test(games.page) && /cowsay/.test(games.page) && /Time and sky/.test(games.page) && /cowsay/.test(games.shelf) && /fortune/.test(games.shelf), JSON.stringify({ page: games.page.slice(0, 120), shelf: games.shelf.slice(0, 120) }));
+  check('fortune | cowsay runs in the kernel, brain and all; builtins chain',
+    /\(\(\(\)\)\)/.test(games.cow) && /^[<(\/|] .+ [>)\\|]$/m.test(games.cow) && games.big.length > 0 && !/not found|error/i.test(games.big), JSON.stringify({ cow: games.cow.slice(0, 160), big: games.big.slice(0, 80) }));
+  check('a pipe segment the browser cannot run is refused in words, not hung',
+    /cannot run pipeline segments/.test(games.refused), games.refused.slice(0, 160));
+  check('time and sky: pom names the moon; a 2-second timer chimes into the console',
+    /Moon is/.test(games.pom) && /^timer \d+ set/.test(games.timerSet) && games.chimed === 'yes', JSON.stringify({ pom: games.pom.slice(0, 40), timerSet: games.timerSet.slice(0, 40), chimed: games.chimed }));
+  check('the lab\'s own: wtf knows LONK, who sees this browser, qr draws blocks, say prints the words',
+    /Light Oxidicom NotifiKations/.test(games.wtf) && /browser/.test(games.who) && /\(you\)/.test(games.who) && /█/.test(games.qr) && /♪ hello there/.test(games.said),
+    JSON.stringify({ wtf: games.wtf.slice(0, 60), who: games.who.slice(0, 80), qr: games.qr.slice(0, 30), said: games.said }));
+  check('sl prints a still and opens a GAMES pane with a canvas and no control in its field',
+    /ARGUS/.test(games.slNote) && /GAMES pane/.test(games.slNote) && games.slDrawn?.canvas === true && games.slDrawn?.controlsInField === false && /SL/.test(games.slDrawn?.state ?? ''),
+    JSON.stringify({ note: games.slNote.slice(0, 120), drawn: games.slDrawn }));
+  check('tetris reuses the pane on stage, takes the keyboard, Esc gives it back, PAUSE reads on the bar, CLOSE closes',
+    games.panes === 1 && games.focused && /TETRIS/.test(games.tetrisState) && games.released && /PAUSED/.test(games.paused) && games.closed,
+    JSON.stringify({ panes: games.panes, focused: games.focused, state: games.tetrisState, released: games.released, paused: games.paused, closed: games.closed }));
+  check('hangman asks in the console and q gives the word up',
+    games.gallows && /the word was [a-z]+/.test(games.hanged), JSON.stringify({ gallows: games.gallows, hanged: games.hanged.slice(0, 80) }));
+  }
+
   if (await stage('help-pane')) {
   // Help lives on the stage: a HELP tile on the dashboard, a HELP pane of
   // the chords and the verbs, and the same tables typed into the console.
@@ -3016,9 +3088,11 @@ try {
     // the exchange — so the ask is READ in the transcript and ANSWERED on
     // the bar. This scenario used to type the answer into the console, and
     // went on passing its ask check while the answer went nowhere.
+    // The question is stood inside the press itself, so what was last is read BEFORE it.
+    const askBefore = [...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null;
     fp().querySelector('.files-mkdir').click();
     let asked = '';
-    for (let i = 0; i < 40; i++) { await sleep(300); const a = document.querySelector('#terminal .argus-ask'); if (a) { asked = a.textContent.trim(); break; } }
+    for (let i = 0; i < 40; i++) { await sleep(300); const last = [...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null; if (last !== askBefore && last !== null) { asked = last.textContent.trim(); break; } }
     let bar = null;
     for (let i = 0; i < 40; i++) { await sleep(150); bar = fp().querySelector('.ask-bar'); if (bar) break; }
     const field = bar?.querySelector('.ask-bar-field');
@@ -3046,7 +3120,7 @@ try {
     return { onFrame, asked, made, landed, cleared };`);
   check('MKDIR, UPLOAD and REFRESH ride the frame that answers to the field',
     place.onFrame.includes('MKDIR') && place.onFrame.includes('UPLOAD') && place.onFrame.includes('REFRESH'));
-  check('MKDIR asks for a name, in the place the field holds', /New directory in \//.test(place.asked));
+  check('MKDIR asks for a name, in the place the field holds', /New directory in \//.test(place.asked), JSON.stringify({ asked: place.asked }));
   check('the directory it made is in the listing', place.made);
   check("a file the operator picked lands in the folder on stage", place.landed);
   check('the artefacts are removed again', place.cleared);
@@ -3099,8 +3173,9 @@ try {
     click(plugin.querySelector('.files-name')); await sleep(600);
     const pluginVerbs = [...cat.querySelectorAll('.files-row-zone .listing-action')].map(b => b.textContent.trim());
     const echoesBefore = document.querySelectorAll('#terminal .argus-echo').length;
+    const askBefore = [...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null;
     [...cat.querySelectorAll('.files-row-zone .listing-action')].find(b => b.textContent.trim() === 'RUN')?.click();
-    const asked = await settle(() => document.querySelector('#terminal .argus-ask') !== null, 20);
+    const asked = await settle(() => ([...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null) !== askBefore, 20);
     const askText = [...document.querySelectorAll('#terminal .argus-ask')].pop()?.textContent.trim() ?? '';
     term.value = 'smoke process run';
     term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -3178,8 +3253,9 @@ try {
     const runPill = getComputedStyle(cat.querySelector('.diagram-run')).display;
 
     const echoesBefore = document.querySelectorAll('#terminal .argus-echo').length;
+    const askBefore = [...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null;
     cat.querySelector('.diagram-run').click();
-    const asked = await settle(() => document.querySelector('#terminal .argus-ask') !== null, 20);
+    const asked = await settle(() => ([...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null) !== askBefore, 20);
     term.value = 'smoke form run';
     term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await settle(() => document.querySelectorAll('#terminal .argus-echo').length > echoesBefore, 30);
@@ -3302,16 +3378,21 @@ try {
     const stayed = rosterShown();
 
     // SHARE asks who, and says what cannot be undone before it is answered
+    // The scrollback keeps every question ever asked (a game by question
+    // earlier in the run, say) and is capped, so a NEW ask is a block that was
+    // not the last one before — not any block, and not one more block.
+    const askBeforeShare = asks().pop() ?? null;
     zoneVerbs().find(b => b.textContent === 'SHARE')?.click();
     let asked = '';
-    for (let i = 0; i < 50; i++) { await sleep(400); const a = asks().pop(); if (a) { asked = a.textContent.trim(); break; } }
+    for (let i = 0; i < 50; i++) { await sleep(400); if ((asks().pop() ?? null) !== askBeforeShare) { asked = asks().pop().textContent.trim(); break; } }
     key('Escape'); await sleep(600);
 
     // DELETE raises the kernel's own confirmation, and NO removes nothing
     const feedsBefore = rows().length;
+    const askBeforeDelete = asks().pop() ?? null;
     zoneVerbs().find(b => b.textContent === 'DELETE')?.click();
     let confirm = '';
-    for (let i = 0; i < 50; i++) { await sleep(400); const a = asks().pop(); if (a && a.textContent.trim() !== asked) { confirm = a.textContent.trim(); break; } }
+    for (let i = 0; i < 50; i++) { await sleep(400); if ((asks().pop() ?? null) !== askBeforeDelete) { confirm = asks().pop().textContent.trim(); break; } }
     // Escape from the ROW, which is where the hand already is after pressing
     // the row's own verb. Pressed at the console input a question was always
     // abandoned; pressed anywhere else it reached nothing at all.
@@ -3366,8 +3447,9 @@ try {
       const target = rows()[1];
       target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       for (let i = 0; i < 50; i++) { await sleep(400); if (target.querySelector('.listing-readout')) break; }
+      const askBefore = [...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null;
       zoneVerbs().find(b => b.textContent === 'SHARE')?.click();
-      for (let i = 0; i < 50; i++) { await sleep(400); if (document.querySelector('#terminal .argus-ask')) break; }
+      for (let i = 0; i < 50; i++) { await sleep(400); if (([...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null) !== askBefore) break; }
       term.value = ${JSON.stringify(shareUser)};
       term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       await sleep(3000);
@@ -4670,9 +4752,10 @@ try {
       gp.querySelector('.gather-cohort-row .gather-cohort-name').click(); await sleep(400);
       const cohortVerbs = zoneVerbs(gp, '.gather-row-zone');
       const echoesBefore = document.querySelectorAll('#terminal .argus-echo').length;
+      const askBefore = [...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null;
       [...gp.querySelectorAll('.gather-row-zone .listing-action')].find(b => b.textContent.trim() === 'PROCESS')?.click();
       let asked = false;
-      for (let i = 0; i < 20; i++) { await sleep(500); if (document.querySelector('#terminal .argus-ask')) { asked = true; break; } }
+      for (let i = 0; i < 20; i++) { await sleep(500); if (([...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null) !== askBefore) { asked = true; break; } }
       const askText = [...document.querySelectorAll('#terminal .argus-ask')].pop()?.textContent.trim() ?? '';
       term.value = 'smoke cohort';
       term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));

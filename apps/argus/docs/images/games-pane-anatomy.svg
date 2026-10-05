@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="520" viewBox="0 0 1180 520" font-family="Antonio, 'Share Tech Mono', monospace">
+  <title>Games pane anatomy</title>
+  <rect width="1180" height="520" fill="#000"/>
+  <!-- (1) the bar -->
+  <rect x="20" y="20" width="1140" height="34" rx="17" fill="#55aaff"/>
+  <text x="44" y="43" font-size="18" fill="#000" font-weight="bold">GAMES</text>
+  <text x="940" y="43" font-size="13" fill="#000" font-style="italic">TETRIS · 300 · 2 lines</text>
+  <text x="44" y="78" font-size="12" fill="#ffcc99">(1) .pane-handle · .pane-title · .pane-state (the program, its score, OVER or PAUSED)</text>
+  <!-- (2) the frame -->
+  <rect x="20" y="92" width="1140" height="30" rx="4" fill="none" stroke="#ffcc99" stroke-dasharray="4 3"/>
+  <rect x="34" y="97" width="70" height="20" rx="10" fill="#ff9966"/>
+  <text x="46" y="111" font-size="11" fill="#000">PAUSE</text>
+  <rect x="112" y="97" width="84" height="20" rx="10" fill="#ff9966"/>
+  <text x="124" y="111" font-size="11" fill="#000">RESTART</text>
+  <rect x="204" y="97" width="66" height="20" rx="10" fill="#444"/>
+  <text x="216" y="111" font-size="11" fill="#ccc">FOCUS</text>
+  <text x="290" y="111" font-size="12" fill="#ffcc99">(2) .mode-frame · .games-pause · .games-restart · .games-focus (shown while the field holds the keyboard)</text>
+  <!-- (3) the field -->
+  <rect x="20" y="134" width="1100" height="360" fill="#000" stroke="#ffcc66" stroke-width="2"/>
+  <rect x="1120" y="134" width="40" height="360" fill="#55aaff"/>
+  <text x="1128" y="320" font-size="11" fill="#000" transform="rotate(-90 1128 320)">spine</text>
+  <text x="40" y="160" font-size="12" fill="#ffcc99">(3) .games-field (tabindex=0; the inset ring while focused) › .games-canvas</text>
+  <g font-family="'Share Tech Mono', monospace" font-size="16" fill="#ffff99">
+    <text x="480" y="200">|                    |</text>
+    <text x="480" y="216">|                    |</text>
+    <text x="480" y="232">|        <tspan fill="#ffcc66">[][]</tspan>        |</text>
+    <text x="480" y="248">|        <tspan fill="#ffcc66">[][]</tspan>        |</text>
+    <text x="480" y="264">|                    |</text>
+    <text x="480" y="280">|                    |</text>
+    <text x="480" y="296">|                    |</text>
+    <text x="480" y="312">|                    |</text>
+    <text x="480" y="328">|                    |</text>
+    <text x="480" y="344">|                    |</text>
+    <text x="480" y="360">|                    |</text>
+    <text x="480" y="376">|                    |</text>
+    <text x="480" y="392">|  <tspan fill="#55aaff">[][][][]</tspan>    <tspan fill="#ff7766">[][]</tspan>  |</text>
+    <text x="480" y="408">|<tspan fill="#55aaff">[][]</tspan><tspan fill="#ffcc66">[][][]</tspan>  <tspan fill="#ff7766">[][][]</tspan>|</text>
+    <text x="480" y="424">|<tspan fill="#ffcc66">[][][][][][]</tspan>  <tspan fill="#55aaff">[][]</tspan>|</text>
+    <text x="480" y="440">+--------------------+</text>
+  </g>
+  <text x="40" y="470" font-size="12" fill="#ffcc99">Arrows (hjkl, wasd) steer; Esc gives the keyboard back and the game keeps running. Hues are the theme's tokens, read each frame.</text>
+</svg>

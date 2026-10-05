@@ -5,6 +5,7 @@
  *
  * @module
  */
+import { gamesShelf_render } from './games/shelf.js';
 import chalk from 'chalk';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { CAT_USAGE } from './fs/cat.args.js';
@@ -828,6 +829,284 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Prints a random fortune — the classic UNIX fortune cookie, bundled and self-contained.',
     examples: ['fortune'],
   },
+  cowsay: {
+    usage: 'cowsay [-W N] [text]',
+    summary: 'The ChRIS brain says it — fortune | cowsay',
+    description: 'The classic, with the ChRIS brain for a cow: a speech bubble over the mascot. Says what is piped in, else the words given; -W N wraps at N columns (40 by default).',
+    options: ['  -W N    Wrap the bubble at N columns (8 or more)'],
+    examples: ['fortune | cowsay', 'cowsay hello, world', 'motd | cowsay -W 60'],
+  },
+  cowthink: {
+    usage: 'cowthink [-W N] [text]',
+    summary: 'The ChRIS brain thinks it',
+    description: 'cowsay with a thought bubble.',
+    examples: ['fortune | cowthink'],
+  },
+  figlet: {
+    usage: 'figlet [text]',
+    summary: 'Big letters, solid',
+    description: 'Sets words in a five-row face of solid blocks. Letters, digits and the punctuation a title needs; lowercase is set as capitals. Reads what is piped in, else the words given.',
+    examples: ['figlet LCARS', 'date +%H:%M | figlet'],
+  },
+  banner: {
+    usage: 'banner [text]',
+    summary: 'Big letters in #, as banner drew them',
+    description: 'figlet in the face banner used: # for ink.',
+    examples: ['banner ChRIS'],
+  },
+  lolcat: {
+    usage: 'lolcat [-p SPREAD] [-S PHASE] [text]',
+    summary: 'Text in a rainbow',
+    description: 'Paints each character the next hue along a rainbow, drifting down the lines. -p sets how many characters one cycle spans (24), -S where it starts (random). Reads what is piped in, else the words given.',
+    options: ['  -p SPREAD   Characters per rainbow cycle (1 or more)', '  -S PHASE    Where the rainbow starts'],
+    examples: ['fortune | lolcat', 'figlet ARGUS | lolcat', 'motd | lolcat -p 12'],
+  },
+  rev: {
+    usage: 'rev [text]',
+    summary: 'Reverse each line',
+    description: 'Reverses the characters of each line, keeping the lines in order. Reads what is piped in, else the words given.',
+    examples: ['rev stressed', 'fortune | rev'],
+  },
+  tac: {
+    usage: 'tac [text]',
+    summary: 'Lines last to first',
+    description: 'cat backwards: prints the lines in reverse order. Reads what is piped in.',
+    examples: ['help games | tac', 'seq 5 | tac'],
+  },
+  yes: {
+    usage: 'yes [word] [-n N]',
+    summary: 'Repeat a word (ten times, not forever)',
+    description: 'Prints a word on its own line, over and over — but bounded: ten times unless -n N asks for more (up to 10000), and it says how many it printed. The real yes runs until killed; a session is not the place.',
+    options: ['  -n N    Lines to print (default 10, at most 10000)'],
+    examples: ['yes', 'yes no -n 3', 'yes | head -n 2'],
+  },
+  seq: {
+    usage: 'seq [FIRST [STEP]] LAST',
+    summary: 'Count from one number to another',
+    description: 'Prints the numbers from FIRST to LAST by STEP, one per line, as seq does: seq 5 is 1 to 5, seq 2 10 is 2 to 10, seq 10 -2 0 counts down. At most 100000 numbers.',
+    examples: ['seq 5', 'seq 0 5 30', 'seq 10 -1 1 | tac'],
+  },
+  factor: {
+    usage: 'factor N [N...]',
+    summary: 'Prime factors of a number',
+    description: 'Prints each number with its prime factors, smallest first, repeats included, as factor does.',
+    examples: ['factor 360', 'factor 2026 1729'],
+  },
+  primes: {
+    usage: 'primes [FROM] TO',
+    summary: 'The primes up to a number',
+    description: 'Lists the primes from FROM (2 when omitted) to TO, at most 10000 of them.',
+    examples: ['primes 100', 'primes 1000 1100'],
+  },
+  shuf: {
+    usage: 'shuf [words...]',
+    summary: 'Shuffle lines',
+    description: 'Prints the lines piped in, or the words given, in a random order.',
+    examples: ['shuf a b c d', 'ls | shuf', 'seq 10 | shuf'],
+  },
+  roll: {
+    usage: 'roll [NdS[+M]...]',
+    summary: 'Roll dice: roll 2d6+1, roll d20',
+    description: 'Rolls dice written the tabletop way: N dice of S sides, plus or minus a modifier. Bare roll is one six-sided die. Shows each face and the total.',
+    examples: ['roll', 'roll 2d6', 'roll d20 3d8+2'],
+  },
+  rot13: {
+    usage: 'rot13 [text]',
+    summary: 'Turn letters half the alphabet round',
+    description: 'ROT13: each letter moved thirteen places, so applying it twice gives the text back. Reads what is piped in, else the words given.',
+    examples: ['rot13 hello', 'fortune | rot13 | rot13'],
+  },
+  morse: {
+    usage: 'morse [-d] [text]',
+    summary: 'Text to Morse code and back',
+    description: 'Taps text out in International Morse — one space between letters, a slash between words — or, with -d, reads code back into text. Reads what is piped in, else the words given.',
+    options: ['  -d, --decode   Read code into text'],
+    examples: ['morse sos', 'morse -d ... --- ...', 'fortune | morse'],
+  },
+  calc: {
+    usage: 'calc <expression>',
+    summary: 'Arithmetic: calc 2^10, calc sqrt(2)*pi',
+    description: 'Evaluates an arithmetic expression: + - * / % ^, parentheses, sqrt, abs, ln, log, log2, exp, sin, cos, tan, asin, acos, atan, floor, ceil, round, and the constants pi, e and tau. No shell is involved.',
+    examples: ['calc 2^10', 'calc (3+4)*5', 'calc sqrt(2)*pi', 'calc 1024*1024'],
+  },
+  units: {
+    usage: 'units VALUE FROM [to] TO | units list',
+    summary: 'Convert between units: units 10 mm in',
+    description: 'Converts a quantity between two units of one kind: length (mm cm m km in ft yd mi), mass (g kg mg lb oz), time (ms s min h d wk yr), data (B kB MB GB TB KiB MiB GiB TiB bit) and temperature (C F K). units list names them all.',
+    examples: ['units 10 mm in', 'units 72 F to C', 'units 1 GiB MB', 'units list'],
+  },
+  who: {
+    usage: 'who',
+    summary: 'Who is attached to this session',
+    description: 'Lists the surfaces on this session — each terminal and browser, by the host\'s name for it — marking the one you are at. A local shell answers for itself alone.',
+    examples: ['who'],
+  },
+  uptime: {
+    usage: 'uptime',
+    summary: 'How long this session\'s process has been up',
+    description: 'The time, how long the process serving this session has run, how many surfaces are attached, since when, and its pid.',
+    examples: ['uptime'],
+  },
+  ping: {
+    usage: 'ping [-c N] [cube]',
+    summary: 'Round trips to CUBE, timed',
+    description: 'Makes N (3) HTTP round trips to the CUBE this session talks to and times each, then sums up as ping does — and adds the average of this session\'s own calls to CUBE so far. Only CUBE is pinged from here: a hosted session is not a probe for the network it sits on.',
+    options: ['  -c N    Round trips to make (default 3, at most 20)'],
+    examples: ['ping', 'ping -c 10'],
+  },
+  chrisfetch: {
+    usage: 'chrisfetch',
+    summary: 'The brain beside the session\'s facts, neofetch style',
+    description: 'Who you are and where, feeds by scope, jobs run and the failure rate, the index\'s state, the surfaces attached, the uptime — beside the ChRIS brain. All from what the session already holds: no extra calls.',
+    examples: ['chrisfetch', 'chrisfetch | lolcat'],
+  },
+  say: {
+    usage: 'say [text]',
+    summary: 'A surface with a voice speaks it',
+    description: 'Hands words to the surface: a browser speaks them (ARGUS, through the page\'s speech), a terminal prints them. Reads what is piped in, else the words given.',
+    examples: ['say analysis complete', 'fortune | say'],
+  },
+  wtf: {
+    usage: 'wtf [is] <term>... | wtf -l',
+    summary: 'What an acronym means: wtf is lonk',
+    description: 'BSD\'s acronym expander with the lab\'s own book: ChRIS, CUBE, pfdcm, oxidicom, LONK, PACS, DICOM, MRN, SeaGaP, the mise packages and more. A term the book lacks is said so; -l lists every term it has.',
+    options: ['  -l, --list   Every term in the book'],
+    examples: ['wtf is lonk', 'wtf cube pfdcm', 'wtf -l'],
+  },
+  file: {
+    usage: 'file <path>...',
+    summary: 'What a file is, by its first bytes',
+    description: 'Reads a CFS file\'s head and names it by its magic: DICOM, NIfTI, gzip, PNG, JPEG, PDF, ZIP, JSON, text and more, with its size.',
+    examples: ['file 0001.dcm', 'file ~/data/*'],
+  },
+  xxd: {
+    usage: 'xxd [-s OFFSET] [-l LENGTH] <path>',
+    summary: 'A hex dump of a file',
+    description: 'The canonical hex dump — offset, sixteen bytes in pairs, the text beside — of a CFS file. 256 bytes unless -l asks for more; -s starts further in. Says how much of the file it showed.',
+    options: ['  -s OFFSET   Start at this byte (default 0)', '  -l LENGTH   Show this many bytes (default 256)'],
+    examples: ['xxd 0001.dcm', 'xxd -s 128 -l 16 0001.dcm', 'xxd -l 4096 image.nii'],
+  },
+  strings: {
+    usage: 'strings [-n MIN] [-l LIMIT] <path>',
+    summary: 'The readable runs in a file',
+    description: 'Prints the runs of printable characters, MIN (4) or longer, in a CFS file — the way to see what a binary carries. 200 lines unless -l asks for more; says how many there were.',
+    options: ['  -n MIN      Shortest run to show (default 4)', '  -l LIMIT    Most runs to show (default 200)'],
+    examples: ['strings 0001.dcm', 'strings -n 8 report.pdf'],
+  },
+  sha256sum: {
+    usage: 'sha256sum <path>...',
+    summary: 'The SHA-256 digest of a file',
+    description: 'Prints each CFS file\'s SHA-256 as hex, then its name, in the format the coreutils tool uses.',
+    examples: ['sha256sum image.nii.gz', 'sha256sum ~/uploads/*'],
+  },
+  md5sum: {
+    usage: 'md5sum <path>...',
+    summary: 'The MD5 digest of a file',
+    description: 'Prints each CFS file\'s MD5 as hex, then its name.',
+    examples: ['md5sum image.nii.gz'],
+  },
+  qr: {
+    usage: 'qr <text or URL>',
+    summary: 'A QR code in the console, for a phone',
+    description: 'Draws a QR code of the text — a URL, mostly — in half-block characters, light modules bright so a phone camera reads it off a dark screen. Up to 271 bytes (QR versions 1 to 10, error correction L), encoded here with no library.',
+    examples: ['qr https://titan.tch.harvard.edu', 'whereami | qr'],
+  },
+  pom: {
+    usage: 'pom [date]',
+    summary: 'The phase of the moon',
+    description: 'BSD\'s pom: the Moon\'s phase today (or on a date), how much of it is lit, the days to the next full and new moons, and a small moon drawn as it looks.',
+    examples: ['pom', 'pom 2026-12-25'],
+  },
+  stardate: {
+    usage: 'stardate [date]',
+    summary: 'The stardate, two ways',
+    description: 'The day as a stardate: by the Kelvin films\' reckoning (the year, then the day of it), with TNG\'s thousand-a-year count from 2323 beside it.',
+    examples: ['stardate', 'stardate 2366-01-01'],
+  },
+  ddate: {
+    usage: 'ddate [date]',
+    summary: 'The Discordian date',
+    description: 'Today in the Discordian calendar: five seasons of 73 days, a five-day week, St. Tib\'s Day in a leap year, and the holy days called out. Hail Eris.',
+    examples: ['ddate', 'ddate 2028-02-29'],
+  },
+  sunrise: {
+    usage: 'sunrise [place]',
+    summary: 'When the sun rises and sets at a place',
+    description: 'Asks Open-Meteo (the service weather uses; no key) for sunrise, sunset and the length of the day at a place, today and tomorrow, in the place\'s own time. Boston when no place is named. Needs the session host to reach the internet.',
+    examples: ['sunrise', 'sunrise Cape Town', 'sunrise Tromsø'],
+  },
+  timer: {
+    usage: 'timer <duration> [words] | timer | timer cancel [id|all]',
+    summary: 'A chime after a while: timer 5m tea',
+    description: 'Sets a chime for later — 90s, 5m, 1h30m, 2:30, or a bare number of minutes — with the words to say when it sounds. The chime reaches every surface on the session: ARGUS notes it in the console and speaks it, a remote chell prints it. Nothing waits: the console is yours meanwhile. Bare timer lists the chimes waiting; timer cancel ends them. A chime lives as long as the session\'s process.',
+    examples: ['timer 5m tea', 'timer 25m pomodoro over', 'timer 1:30', 'timer', 'timer cancel 2'],
+  },
+  leave: {
+    usage: 'leave [+hhmm | hhmm] | leave cancel',
+    summary: 'A word when it is time to go home: leave +0030',
+    description: 'BSD\'s leave: tell it when you must leave — +hhmm from now, or a clock time — and it says so five minutes before, at the time, and a minute after. Bare leave says when; leave cancel forgets it.',
+    examples: ['leave +0030', 'leave 1730', 'leave', 'leave cancel'],
+  },
+  stopwatch: {
+    usage: 'stopwatch [start|stop|lap|reset]',
+    summary: 'A stopwatch, with laps',
+    description: 'One stopwatch per session: start, stop (and start again to resume), lap, reset. Bare stopwatch shows the time and the laps.',
+    examples: ['stopwatch start', 'stopwatch lap', 'stopwatch', 'stopwatch stop'],
+  },
+  sl: {
+    usage: 'sl',
+    summary: 'A starship crosses the screen (the punishment for mistyping ls)',
+    description: 'The train of old, refitted: in ARGUS the GAMES pane opens and a starship glides across it; a console with no canvas gets a still of it.',
+    examples: ['sl'],
+  },
+  cmatrix: {
+    usage: 'cmatrix',
+    summary: 'The glyph rain',
+    description: 'Columns of glyphs falling in ARGUS\'s GAMES pane; a console with no canvas gets one frame of it.',
+    examples: ['cmatrix'],
+  },
+  rain: {
+    usage: 'rain',
+    summary: 'Rain',
+    description: 'Drops falling and ringing out on the floor in ARGUS\'s GAMES pane; a console with no canvas gets one frame of it.',
+    examples: ['rain'],
+  },
+  asciiquarium: {
+    usage: 'asciiquarium',
+    summary: 'An aquarium: fish, weed, bubbles',
+    description: 'Fish swimming both ways, weed swaying, bubbles rising, in ARGUS\'s GAMES pane; a console with no canvas gets a still.',
+    examples: ['asciiquarium'],
+  },
+  tetris: {
+    usage: 'tetris',
+    summary: 'Falling blocks (in ARGUS)',
+    description: 'Played in ARGUS\'s GAMES pane: left/right move, up rotates, down drops, Esc gives the keyboard back. A terminal gets a still and the words that the game lives in ARGUS.',
+    examples: ['tetris'],
+  },
+  snake: {
+    usage: 'snake',
+    summary: 'The snake (in ARGUS)',
+    description: 'Played in ARGUS\'s GAMES pane: arrows steer, eat the food, do not eat yourself. A terminal gets a still and the words that the game lives in ARGUS.',
+    examples: ['snake'],
+  },
+  quiz: {
+    usage: 'quiz',
+    summary: 'Five questions about the lab and its words',
+    description: 'Asks five questions from the lab\'s own book — CUBE, DICOM, plugins, the services — one at a time; answer, or q to stop. Plays anywhere a question can be answered: a terminal or the ARGUS console.',
+    examples: ['quiz'],
+  },
+  hangman: {
+    usage: 'hangman',
+    summary: 'Hangman, with the lab\'s words',
+    description: 'A word from the lab, six misses allowed: a letter a turn, the whole word when you know it, q to give up.',
+    examples: ['hangman'],
+  },
+  '2048': {
+    usage: '2048',
+    summary: 'Slide the tiles, join the powers of two',
+    description: 'The 4×4 board, a move per answer: w a s d (or h j k l) slide, q stops. Two tiles alike join; reach 2048.',
+    examples: ['2048'],
+  },
   weather: {
     usage: 'weather [place] [-u|--units metric|imperial] [-d|--days N]',
     summary: 'The weather at a place, now and the next few days',
@@ -1309,6 +1588,7 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Display help information',
     examples: [
       'help                  # List all commands',
+      'help games            # The /usr/games shelf, by category',
       'help ls               # Show help for ls',
       'help timing           # Show help for timing',
     ],
@@ -1705,6 +1985,10 @@ export function args_checkHasHelpFlag(args: string[], command?: string): boolean
 export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   const commandName: string | undefined = args.length > 0 ? args.join(' ') : undefined;
 
+  // The shelf: its own page, in the style of this one.
+  if (commandName === 'games') {
+    return { status: 'ok', rendered: gamesShelf_render(commandSummary_get) };
+  }
   // If a specific command is requested, return its help
   if (commandName) {
     if (/-v[^/]+$/.test(commandName)) {
@@ -1756,6 +2040,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   rendered += '\n';
 
   rendered += `${chalk.gray('Type "help <command>" for detailed information about a command.')}\n`;
+  rendered += `${chalk.gray('Type "help games" for the /usr/games shelf: fortune, cal, weather and their kin.')}\n`;
   rendered += `${chalk.gray('Type "<command> --help" for quick help on any command.')}\n`;
   rendered += '\n';
 
@@ -1769,6 +2054,18 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
  */
 export function builtinCommands_list(): string[] {
   return Object.keys(helpText);
+}
+
+/**
+ * A command's one-line summary (its `summary`, else its description), for
+ * a listing that names many commands at once.
+ *
+ * @param command - The command.
+ * @returns The line, or undefined for a command with no help entry.
+ */
+export function commandSummary_get(command: string): string | undefined {
+  const help: CommandHelp | undefined = helpText[command];
+  return help === undefined ? undefined : (help.summary ?? help.description);
 }
 
 /**

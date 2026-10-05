@@ -106,6 +106,11 @@ describe('staticVfs_read Pipeline executable', () => {
 });
 
 describe('staticVfs_read other entries', () => {
+  it('serves a shelf command\'s help under /usr/games, as /usr/bin does', async () => {
+    await expect(staticVfs_read('/usr/games/fortune', '/usr/games')).resolves.toMatchObject({ ok: true });
+    await expect(staticVfs_read('/usr/games/not-a-game', '/usr/games')).resolves.toEqual({ ok: false });
+  });
+
   it('serves builtin help and reports missing builtin help', async () => {
     await expect(staticVfs_read('/usr/bin/pipeline/', '/usr/bin')).resolves.toMatchObject({
       ok: true,

@@ -1792,6 +1792,8 @@ try {
       stripShown: stripRect.width > 0 && stripRect.height > 40,
       frameOff: getComputedStyle(frame).visibility === 'hidden' && Math.abs(stripRect.width - spineW) <= 1,
       fieldClean: inField.length === 0,
+      pane: (fp.querySelector('.pane-title')?.textContent ?? '') + ' · ' + (fp.querySelector('.files-binding')?.textContent ?? ''),
+      controls: inField.slice(0, 4).map(b => b.className.replace(/\s+/g, '.') + ':' + b.textContent.trim().slice(0, 20)),
       // the frame is drawn at rest: a rule along the top meeting the spine through an elbow
       ruleDrawn: rule.width > 100 && rule.height >= 4 && Math.abs(rule.right - stripRect.left) <= 1,
       elbowJoins: elbow.width > 20 && Math.abs(elbow.right - stripRect.right) <= 1 && Math.abs(elbow.top - rule.top) <= 1,
@@ -1853,7 +1855,9 @@ try {
     pill.click(); await sleep(300);
     const after = pill.textContent;
     const cardEls = [...fp.querySelectorAll('.files-card:not(.files-card-up)')];
-    const badgesMatch = cardEls.every(c => c.querySelector('.files-card-badge').textContent.toLowerCase() === [...c.classList].find(k => k.startsWith('files-type-')).replace('files-type-', ''));
+    const mismatched = cardEls.map(c => [c.querySelector('.files-card-badge')?.textContent.toLowerCase() ?? null, [...c.classList].find(k => k.startsWith('files-type-'))?.replace('files-type-', '') ?? null]).filter(([b, t]) => b !== t);
+    const badgesMatch = mismatched.length === 0;
+    const paneName = (fp.querySelector('.pane-title')?.textContent ?? '') + ' · ' + (fp.querySelector('.files-binding')?.textContent ?? '');
     pill.click(); await sleep(600);
     const previewLabel = pill.textContent;
     const previewCards = [...fp.querySelectorAll('.files-card:not(.files-card-up)')];
@@ -1861,9 +1865,9 @@ try {
     const previewRead = fp.querySelector('.pane-mode').textContent;
     pill.click(); await sleep(300);
     const restored = pill.textContent === before && fp.querySelectorAll('.files-row').length > 1;
-    return { before, after, rows, cardCount: cardEls.length, badgesMatch, previewLabel, previewCards: previewCards.length, thumbs, previewRead, restored };`);
-  check('CARDS projects the same listing', cards.before === 'LIST' && cards.after === 'CARDS' && cards.cardCount === cards.rows && cards.badgesMatch);
-  check('PREVIEW leads every card with a glimpse', cards.previewLabel === 'PREVIEW' && cards.previewCards === cards.rows && cards.thumbs === cards.rows && cards.previewRead === 'PREVIEW' && cards.restored, JSON.stringify({ p: cards.previewLabel, n: cards.previewCards, t: cards.thumbs, r: cards.restored }));
+    return { before, after, rows, cardCount: cardEls.length, badgesMatch, mismatched: mismatched.slice(0, 4), paneName, previewLabel, previewCards: previewCards.length, thumbs, previewRead, restored };`);
+  check('CARDS projects the same listing', cards.before === 'LIST' && cards.after === 'CARDS' && cards.cardCount === cards.rows && cards.badgesMatch, JSON.stringify({ pane: cards.paneName, before: cards.before, after: cards.after, rows: cards.rows, cards: cards.cardCount, mismatched: cards.mismatched }));
+  check('PREVIEW leads every card with a glimpse', cards.previewLabel === 'PREVIEW' && cards.previewCards === cards.rows && cards.thumbs === cards.rows && cards.previewRead === 'PREVIEW' && cards.restored, JSON.stringify({ pane: cards.paneName, p: cards.previewLabel, n: cards.previewCards, rows: cards.rows, t: cards.thumbs, read: cards.previewRead, r: cards.restored }));
   }
 
   if (await stage('bin-context')) {
@@ -3734,7 +3738,8 @@ try {
     const notices = [...document.querySelectorAll('.stale-page')];
     const words = notices[0]?.textContent ?? '';
     const control = notices[0]?.querySelector('.stale-page-reload')?.textContent ?? '';
-    const lines = document.getElementById('terminal').innerText.split('\\n').filter(l => l.includes(${JSON.stringify(sentence)})).length;
+    // The console's own line, not any line that quotes the sentence (the release notes do).
+    const lines = document.getElementById('terminal').innerText.split('\\n').filter(l => l.startsWith('argus: ' + ${JSON.stringify(sentence)})).length;
     notices.forEach(n => n.remove());
     return { before, count: notices.length, words, control, lines };`);
   check('a page older than its server\'s build says so once, in plain words whose "refresh" reloads, on the stage and the console',

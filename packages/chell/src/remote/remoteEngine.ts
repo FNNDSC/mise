@@ -29,6 +29,8 @@ export interface RemoteEngineOptions {
   headers?: Record<string, string>;
   /** Called with each session-bus broadcast from another surface. */
   onSession?: (surface: string, envelope: CommandEnvelope) => void;
+  /** The daemon says whether its own code on disk still matches what it runs. */
+  onStale?: (stale: boolean) => void;
   /** Answers a prompt the daemon raised during a command (password, confirmation). */
   onPrompt?: (message: string, hidden: boolean) => Promise<string>;
   /** Runs a pipeline segment on this machine and returns its output. */
@@ -81,6 +83,9 @@ export class RemoteEngine implements BrasaEngine {
   private readonly onEdit: ((content: string, extension: string | undefined) => Promise<{ content: string; changed: boolean }>) | undefined;
   private readonly onDeliver: ((request: FileDeliverRequest) => Promise<FileDeliverResult>) | undefined;
   private readonly onClosing: ((cause: ClosingCause) => void) | undefined;
+  private readonly onStale: ((stale: boolean) => void) | undefined;
+  /** Whether the daemon said, at attach, that its code on disk had moved. */
+  public daemonStale: boolean = false;
   private latestPrompt: string = '';
   private stackReport: DaemonStack | undefined;
   /** Calypso's declared host-control tiers (empty when off). */
@@ -102,6 +107,7 @@ export class RemoteEngine implements BrasaEngine {
     this.onEdit = options.onEdit;
     this.onDeliver = options.onDeliver;
     this.onClosing = options.onClosing;
+    this.onStale = options.onStale;
   }
 
   /**
@@ -154,6 +160,7 @@ export class RemoteEngine implements BrasaEngine {
           }
           const engine: RemoteEngine = new RemoteEngine(ws, options);
           engine.stackReport = message.stack;
+          engine.daemonStale = message.stale === true;
           engine.hostControl = message.hostControl ?? [];
           ws.on('message', (payload: Buffer) => engine.message_handle(payload));
           if (options.onClose) {
@@ -304,6 +311,10 @@ export class RemoteEngine implements BrasaEngine {
         break;
       case 'closing':
         this.onClosing?.(message.cause);
+        break;
+      case 'stale':
+        this.daemonStale = message.stale;
+        this.onStale?.(message.stale);
         break;
       case 'error':
         if (message.id !== undefined) {

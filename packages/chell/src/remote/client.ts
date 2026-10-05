@@ -21,7 +21,7 @@ import chalk from 'chalk';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { REPL } from '../core/repl.js';
 import { RemoteEngine, type DaemonStack } from './remoteEngine.js';
-import { buildMismatch_line, closingLine_of } from './buildMatch.js';
+import { buildMismatch_line, closingLine_of, staleLines_of, surfaceNews_read } from './buildMatch.js';
 import type { ClosingCause } from '@fnndsc/menu';
 import { LocalBerthResolver, type Berth } from '@fnndsc/calypso';
 import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, stackBanner_rows, stackBannerRow_paint, buildHash_get } from '@fnndsc/brasa';
@@ -250,6 +250,11 @@ export async function remote_run(
         // A downloaded file lands on this machine's disk, never the daemon's.
         surface_get().fileDeliver(request),
       onClosing: (cause: ClosingCause): void => { closing = cause; },
+      // The daemon's code moved on disk mid-session: say so where the operator is looking.
+      onStale: (stale: boolean): void => {
+        if (!stale) return;
+        process.stdout.write(`\n${staleLines_of(surfaceNews_read()).map((line: string): string => chalk.yellow(line)).join('\n')}\n`);
+      },
       onClose: (): void => {
         if (intentionalClose) return;
         // A daemon that said why it went is believed; an unannounced drop is a disconnect.
@@ -307,6 +312,8 @@ export async function remote_run(
   }
   const buildWarning: string | null = stack !== undefined ? buildMismatch_line(buildHash_get(), stack.build) : null;
   if (buildWarning !== null) console.log(chalk.yellow(buildWarning));
+  // The daemon's own word on itself: its disk code moved since it started.
+  if (engine.daemonStale) for (const line of staleLines_of(surfaceNews_read())) console.log(chalk.yellow(line));
   const hostControl: string[] = engine.hostControl ?? [];
   if (hostControl.length > 0) {
     // The daemon acts on its own host: `!`, pipes, and the disk are the

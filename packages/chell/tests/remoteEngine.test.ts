@@ -137,6 +137,17 @@ describe('RemoteEngine live output', () => {
     sink_set(new StdoutSink());
   });
 
+  it('carries the daemon\'s word on its own code: stale at attach, and the push that flips it', async () => {
+    attachResponse = { type: 'attached', session: 'test-session', protocolVersion: 1, stale: true };
+    const flips: boolean[] = [];
+    remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token', onStale: (stale: boolean): void => { flips.push(stale); } });
+    expect(remote.daemonStale).toBe(true);
+    FakeWebSocket.instances[0].emit('message', Buffer.from(JSON.stringify({ type: 'stale', stale: false })));
+    expect(remote.daemonStale).toBe(false);
+    FakeWebSocket.instances[0].emit('message', Buffer.from(JSON.stringify({ type: 'stale', stale: true })));
+    expect(flips).toEqual([false, true]);
+  });
+
   it('renders streamed stdout once and suppresses duplicate final data envelope text', async () => {
     scenario = (ws: FakeWebSocket, sent: Record<string, unknown>): void => {
       const id = String(sent.id);

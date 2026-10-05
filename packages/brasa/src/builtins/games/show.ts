@@ -15,14 +15,16 @@ import chalk from 'chalk';
 /** The programs a GAMES pane can run. */
 export type ShowProgram = 'sl' | 'cmatrix' | 'rain' | 'aquarium' | 'tetris' | 'snake';
 
-/** The starship `sl` sends across the screen (a typo's punishment, as the train was). */
+/** The starship `sl` sends across the screen (a typo's punishment, as the train was): the Enterprise, drawn here. */
 export const STARSHIP: ReadonlyArray<string> = [
-  '                 __                 ',
-  '        _______/  \\______           ',
-  '   ____/  [] [] [] [] [] \\____      ',
-  '  <____  ARGUS  ================>>  ',
-  '       \\_______  ______/            ',
-  '               \\/                   ',
+  '          ______________________________                                    ',
+  '         /  ___________________________  \\                                  ',
+  '        |  |   NCC-1701      ARGUS     |  |     ____________________________',
+  '         \\__|_________________________|_/    /[============================>',
+  '             \\______________   ______/      /                               ',
+  '                            \\ \\____________/                                ',
+  '                             \\______________________________                ',
+  '                             [==============================>               ',
 ];
 
 /** The glyphs `cmatrix` rains. */

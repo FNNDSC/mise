@@ -6,14 +6,16 @@
  */
 import type { GameProgram, Grid, Palette } from './program.js';
 
-/** The starship, as the kernel's still draws it. */
+/** The starship, as the kernel's still draws it (the Enterprise; the kernel's `show.ts` holds the same rows). */
 const STARSHIP: ReadonlyArray<string> = [
-  '                 __                 ',
-  '        _______/  \\______           ',
-  '   ____/  [] [] [] [] [] \\____      ',
-  '  <____  ARGUS  ================>>  ',
-  '       \\_______  ______/            ',
-  '               \\/                   ',
+  '          ______________________________                                    ',
+  '         /  ___________________________  \\                                  ',
+  '        |  |   NCC-1701      ARGUS     |  |     ____________________________',
+  '         \\__|_________________________|_/    /[============================>',
+  '             \\______________   ______/      /                               ',
+  '                            \\ \\____________/                                ',
+  '                             \\______________________________                ',
+  '                             [==============================>               ',
 ];
 
 /** `sl`: the starship glides right to left, forever, with a wake. */
@@ -24,16 +26,19 @@ export function sl_make(): GameProgram {
     title: 'SL',
     tick: 60,
     step: (size): void => {
-      if (Number.isNaN(x)) x = size.cols;
+      // A field that shrank (a zoom undone, a split) leaves the ship past the
+      // right edge: bring it to the edge rather than wait for it to arrive.
+      if (Number.isNaN(x) || x > size.cols) x = size.cols;
       x -= 1;
       frame += 1;
       if (x < -(STARSHIP[0] as string).length - 6) x = size.cols;
     },
     draw: (grid: Grid, palette: Palette): void => {
-      const top: number = Math.max(0, Math.floor(grid.rows / 2) - 3);
+      const top: number = Math.max(0, Math.floor((grid.rows - STARSHIP.length) / 2));
       STARSHIP.forEach((line: string, row: number): void => grid.text(Math.round(x), top + row, line, palette.lit));
       const wake: string = frame % 2 === 0 ? '=~-' : '~=-';
-      grid.text(Math.round(x) + (STARSHIP[3] as string).length, top + 3, wake, palette.cool);
+      const tail: number = STARSHIP.length - 1;
+      grid.text(Math.round(x) + (STARSHIP[tail] as string).trimEnd().length, top + tail, wake, palette.cool);
     },
   };
 }

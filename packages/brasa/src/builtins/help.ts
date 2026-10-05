@@ -5,7 +5,7 @@
  *
  * @module
  */
-import { gamesShelf_render } from './games/shelf.js';
+import { gamesShelf_render, gamesShelf_names } from './games/shelf.js';
 import chalk from 'chalk';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { CAT_USAGE } from './fs/cat.args.js';
@@ -2017,7 +2017,8 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
     PACS: ['pacs', 'pacsservers', 'pacsqueries', 'pacsretrieve'],
     Administration: ['sudo', 'user'],
     'Shell Settings': ['physicalmode', 'prompt', 'timing', 'debug'],
-    General: ['help', 'motd', 'date', 'cal', 'fortune', 'weather', 'exit', '!'],
+    'Games and utilities': ['fortune', 'cal', 'weather', 'motd'],
+    General: ['help', 'date', 'exit', '!'],
   };
 
   // Display commands by category
@@ -2029,6 +2030,12 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
         rendered += `  ${chalk.cyan(cmd.padEnd(20))} ${chalk.gray(help.summary ?? help.description)}\n`;
       }
     });
+    // The four above are the shelf's best known; the rest of /usr/games is
+    // its own page, and the count is read from the shelf so it never goes stale.
+    if (category === 'Games and utilities') {
+      const more: number = gamesShelf_names(commandSummary_get).length - commands.length;
+      rendered += `  ${chalk.cyan('help games'.padEnd(20))} ${chalk.gray(`The /usr/games shelf by category: ${more} more small tools and games`)}\n`;
+    }
     rendered += '\n';
   }
 
@@ -2040,7 +2047,6 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   rendered += '\n';
 
   rendered += `${chalk.gray('Type "help <command>" for detailed information about a command.')}\n`;
-  rendered += `${chalk.gray('Type "help games" for the /usr/games shelf: fortune, cal, weather and their kin.')}\n`;
   rendered += `${chalk.gray('Type "<command> --help" for quick help on any command.')}\n`;
   rendered += '\n';
 

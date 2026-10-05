@@ -1,5 +1,11 @@
 # @fnndsc/menu
 
+## 0.19.0
+
+### Minor Changes
+
+- 5a0eef5: The session.notes model: what the installed releases changed, release by release, for a surface to list.
+
 ## 0.18.0
 
 ### Minor Changes

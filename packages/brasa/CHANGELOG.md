@@ -1,5 +1,17 @@
 # @fnndsc/brasa
 
+## 0.33.0
+
+### Minor Changes
+
+- 5a0eef5: The session can say what the installed releases changed. `notes` lists the newest release — one row per change, the package named — and `notes --since N|DATE`, `--long` and `--all` reach further; `help notes` is the same; `/usr/share/doc/NEWS` holds every release. The notes are read from the packages installed where the session runs, so they describe the code that is running.
+
+### Patch Changes
+
+- Updated dependencies [5a0eef5]
+  - @fnndsc/menu@0.19.0
+  - @fnndsc/cumin@3.27.5
+
 ## 0.32.1
 
 ### Patch Changes

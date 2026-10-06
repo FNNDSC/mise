@@ -6076,6 +6076,12 @@ try {
     check('the restored desktop brings its domain back beside the viewer', restored.domainBack === true, JSON.stringify(restored));
   }
   }
+} catch (error) {
+  // A crash is a red like any other: it is named with the scenario it
+  // happened in, and the summary still prints. The first nightly ended
+  // with no summary at all — "no summary (crashed?)" in the ledger — and
+  // the scenarios after the crash were never run, which this says too.
+  check(`${stageName ?? 'boot'} crashed, and the scenarios after it did not run`, false, error.message.split('\n')[0]);
 } finally {
   if (stageName !== null) await stage_leaks(stageName).catch(() => undefined);
   // The suite's own fixtures go, whatever failed: a crash once left two

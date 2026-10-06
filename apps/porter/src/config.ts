@@ -63,6 +63,18 @@ export interface PorterEnv {
   XDG_STATE_HOME?: string;
 }
 
+/**
+ * Where the door's token store is: `PORTER_TOKENS_FILE`, else beside the
+ * session directories (which the adopt scan skips as a file). The CLI's
+ * token verbs resolve it the same way the serving porter does.
+ *
+ * @param env - The environment.
+ * @returns The file's path.
+ */
+export function porterTokensFile_resolve(env: PorterEnv): string {
+  return env.PORTER_TOKENS_FILE !== undefined && env.PORTER_TOKENS_FILE.length > 0 ? env.PORTER_TOKENS_FILE : join(porterStateDir_resolve(env), 'tokens.json');
+}
+
 /** The port a porter takes when told none. */
 export const PORTER_DEFAULT_PORT: number = 4180;
 
@@ -168,7 +180,7 @@ export function porterConfig_resolve(env: PorterEnv, locateChell: () => string =
     idleHours,
     tokenDays,
     // Beside the session directories, which the adopt scan skips as a file.
-    tokensFile: env.PORTER_TOKENS_FILE !== undefined && env.PORTER_TOKENS_FILE.length > 0 ? env.PORTER_TOKENS_FILE : join(stateDir, 'tokens.json'),
+    tokensFile: porterTokensFile_resolve(env),
     soundsDir: env.PORTER_SOUNDS_DIR !== undefined && env.PORTER_SOUNDS_DIR.length > 0 ? env.PORTER_SOUNDS_DIR : null,
   };
 }

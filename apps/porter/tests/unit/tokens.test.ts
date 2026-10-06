@@ -68,6 +68,22 @@ describe('TokenStore', () => {
     }
   });
 
+  it('notices a change another process made to the file: a revocation from the CLI is seen by the running door', () => {
+    const path: string = join(dir, 'tokens.json');
+    const door = new TokenStore(path, 30);
+    door.load();
+    const minted = door.mint('chris@c/', 'chris', 'cron@titan');
+    expect(door.check(minted.token).ok).toBe(true);
+    // The CLI, in another process: its own store over the same file.
+    const cli = new TokenStore(path, 30);
+    cli.load();
+    expect(cli.revoke('chris', 'cron@titan')).toBe(1);
+    expect(door.check(minted.token)).toEqual({ ok: false, why: 'unknown' });
+    const byCli = cli.mint('kim@c/', 'kim', 'laptop');
+    expect(door.check(byCli.token).ok).toBe(true);
+    expect(door.list().map((t) => t.user)).toEqual(['kim']);
+  });
+
   it('refuses a file that is not a token store rather than starting empty', async () => {
     const path: string = join(dir, 'tokens.json');
     await (await import('node:fs/promises')).writeFile(path, '{"nope":true}');

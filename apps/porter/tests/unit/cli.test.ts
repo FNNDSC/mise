@@ -13,6 +13,10 @@ describe('porterArgs_parse', () => {
     expect(porterArgs_parse(['--end', 'chris'])).toEqual({ mode: 'end', who: 'chris' });
     expect(porterArgs_parse(['--help'])).toEqual({ mode: 'help' });
     expect(porterArgs_parse(['-h'])).toEqual({ mode: 'help' });
+    expect(porterArgs_parse(['--tokens'])).toEqual({ mode: 'tokens' });
+    expect(porterArgs_parse(['--revoke', 'chris'])).toEqual({ mode: 'revoke', user: 'chris' });
+    expect(porterArgs_parse(['--revoke', 'chris', 'cron@titan'])).toEqual({ mode: 'revoke', user: 'chris', name: 'cron@titan' });
+    expect(porterArgs_parse(['--mint', 'mise-e2e', '--name', 'nightly'])).toEqual({ mode: 'mint', user: 'mise-e2e', name: 'nightly' });
   });
 
   it('refuses an unknown word, a missing name and an extra one, by name', () => {
@@ -20,6 +24,11 @@ describe('porterArgs_parse', () => {
     expect(porterArgs_parse(['--end'])).toMatchObject({ refusal: expect.stringContaining('--end wants') });
     expect(porterArgs_parse(['--end', '--status'])).toMatchObject({ refusal: expect.stringContaining('--end wants') });
     expect(porterArgs_parse(['--end', 'a', 'b'])).toMatchObject({ refusal: expect.stringContaining("'b' is extra") });
+    expect(porterArgs_parse(['--tokens', 'x'])).toMatchObject({ refusal: expect.stringContaining('--tokens takes no argument') });
+    expect(porterArgs_parse(['--revoke'])).toMatchObject({ refusal: expect.stringContaining('--revoke wants') });
+    expect(porterArgs_parse(['--revoke', 'a', 'b', 'c'])).toMatchObject({ refusal: expect.stringContaining("'c' is extra") });
+    expect(porterArgs_parse(['--mint', 'chris'])).toMatchObject({ refusal: expect.stringContaining('--name <name>') });
+    expect(porterArgs_parse(['--mint', 'chris', 'nightly'])).toMatchObject({ refusal: expect.stringContaining('--name <name>') });
     expect(porterArgs_parse(['--status', 'x'])).toMatchObject({ refusal: expect.stringContaining('takes no argument') });
     expect(PORTER_USAGE).toContain('--sessions');
   });

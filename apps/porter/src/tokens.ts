@@ -21,7 +21,7 @@
  * @module
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 /** What the plaintext starts with, so a token is recognisable in a log or a leak. */
@@ -80,6 +80,8 @@ export function token_looksLike(value: string): boolean {
  */
 export class TokenStore {
   private tokens: DoorToken[] = [];
+  /** The file as last read or written (mtime and size), so a change made by another process is noticed. */
+  private stamp: string = '';
 
   /**
    * @param path - The JSON file; its directory is made (0700) when missing.
@@ -100,6 +102,7 @@ export class TokenStore {
   public load(): void {
     if (!existsSync(this.path)) {
       this.tokens = [];
+      this.stamp = '';
       return;
     }
     const parsed: unknown = JSON.parse(readFileSync(this.path, 'utf8'));
@@ -107,6 +110,26 @@ export class TokenStore {
       throw new Error(`the door's token store at ${this.path} is not a token file`);
     }
     this.tokens = (parsed as TokenFile).tokens;
+    this.stamp = this.stamp_read();
+  }
+
+  /** The file's mtime and size as one string; empty when there is no file. */
+  private stamp_read(): string {
+    try {
+      const facts = statSync(this.path);
+      return `${facts.mtimeMs}:${facts.size}`;
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Re-reads the file when another process changed it: the porter's CLI
+   * (`--revoke`, `--mint`) writes the store from outside the running door,
+   * and a revocation the door did not notice would be no revocation.
+   */
+  private refresh(): void {
+    if (this.stamp_read() !== this.stamp) this.load();
   }
 
   /**
@@ -120,6 +143,7 @@ export class TokenStore {
    * @returns The plaintext, shown once, and the record kept.
    */
   public mint(identity: string, user: string, name: string): { token: string; record: DoorToken } {
+    this.refresh();
     const token: string = token_make();
     const created: Date = this.now();
     const record: DoorToken = {
@@ -145,6 +169,7 @@ export class TokenStore {
    * @returns The record when it lets someone in.
    */
   public check(plain: string): TokenCheck {
+    this.refresh();
     const presented: Buffer = Buffer.from(token_hash(plain), 'hex');
     for (const record of this.tokens) {
       const kept: Buffer = Buffer.from(record.hash, 'hex');
@@ -161,6 +186,7 @@ export class TokenStore {
    * @param record - The token that did.
    */
   public touch(record: DoorToken): void {
+    this.refresh();
     record.lastUsed = this.now().toISOString();
     this.save();
   }
@@ -173,6 +199,7 @@ export class TokenStore {
    * @returns How many went.
    */
   public revoke(user: string, name?: string): number {
+    this.refresh();
     const before: number = this.tokens.length;
     this.tokens = this.tokens.filter((held: DoorToken): boolean => !(held.user === user && (name === undefined || held.name === name)));
     if (this.tokens.length !== before) this.save();
@@ -181,6 +208,7 @@ export class TokenStore {
 
   /** @returns Every token the door knows, as kept (no plaintext exists to show). */
   public list(): DoorToken[] {
+    this.refresh();
     return [...this.tokens];
   }
 
@@ -192,6 +220,7 @@ export class TokenStore {
     writeFileSync(temporary, `${JSON.stringify(file, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
     renameSync(temporary, this.path);
     chmodSync(this.path, 0o600);
+    this.stamp = this.stamp_read();
   }
 }
 

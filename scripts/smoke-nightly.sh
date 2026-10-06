@@ -15,7 +15,9 @@ STATE=${SMOKE_STATE:-$HOME/.local/state/mise/smoke}
 P=${SMOKE_PRIVATE:-/tmp/pde2e-nightly}
 mkdir -p "$STATE" "$P/tmp" "$P/run" "$P/config" "$P/cache" /tmp/smN
 day=$(date +%F)
-log="$STATE/$day.log"
+# One log per run, never one per day: a second run the same day (a rerun by
+# hand) once overwrote the night's log and took its evidence with it.
+log="$STATE/$day-$(date +%H%M).log"
 ledger="$STATE/ledger.txt"
 
 # A private daemon of our own: its own XDG dirs (cwd.txt and proc shards are per identity).
@@ -36,6 +38,10 @@ pid=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['pid'])" "
 
 run() { # name, port, extra env…
   local name=$1 port=$2; shift 2
+  # A fresh browser every run: the profile holds localStorage (sized columns,
+  # the landing), and a run that inherits last night's remembers what the
+  # scenarios expect a new device to have forgotten.
+  rm -rf "/tmp/smN/$name"
   env "$@" TMPDIR=/tmp/smN ARGUS_URL="$url" SMOKE_CDP_PORT="$port" SMOKE_CHROME_FLAGS="--no-sandbox --user-data-dir=/tmp/smN/$name" \
     timeout 2700 node apps/argus/tests/smoke/smoke.mjs > "$log.$name" 2>&1
   local line; line=$(grep -E '^[0-9]+ ok' "$log.$name" | head -1 | cut -c1-400)

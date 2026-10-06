@@ -562,6 +562,10 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   }: BootFlags = bootFlags_compute(config, !!process.stdout.isTTY);
   const boot: ReturnType<typeof bootLogger_create> | null = isInteractiveSession ? bootLogger_create('ChELL Boot', useAsciiBoot) : null;
 
+  if (config.mode === 'auth' && config.auth !== undefined) {
+    const { auth_run } = await import('../remote/auth.js');
+    process.exit(await auth_run(config.auth));
+  }
   if (config.mode === 'help' || config.mode === 'version' || config.mode === 'info') {
     if (config.output) console.log(config.output);
     return;

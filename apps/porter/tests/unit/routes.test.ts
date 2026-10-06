@@ -554,6 +554,27 @@ describe('door tokens (chell auth)', () => {
     expect(host.spawned).toEqual([]);
   });
 
+  it('a token login answers whose token it was, lists the identity\'s tokens by one of them, and the token in hand can end itself', async () => {
+    host.found = up;
+    const mine = built.tokens.mint('chris@https://cube.example.org/api/v1/', 'chris', 'laptop');
+    built.tokens.mint('chris@https://cube.example.org/api/v1/', 'chris', 'cron@titan');
+    built.tokens.mint('kim@https://cube.example.org/api/v1/', 'kim', 'laptop');
+    const byToken = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json', authorization: `Bearer ${mine.token}` } });
+    expect(byToken.json()).toMatchObject({ state: 'attached', user: 'chris', tokenName: 'laptop' });
+    const listed = await built.app.inject({ method: 'GET', url: '/auth/tokens', headers: { authorization: `Bearer ${mine.token}` } });
+    const list = listed.json() as { user: string; tokens: Array<{ name: string }> };
+    expect(list.user).toBe('chris');
+    expect(list.tokens.map((t) => t.name).sort()).toEqual(['cron@titan', 'laptop']);
+    const bare = await built.app.inject({ method: 'GET', url: '/auth/tokens' });
+    expect(bare.statusCode).toBe(401);
+    const revoked = await built.app.inject({ method: 'DELETE', url: '/auth/token', headers: { authorization: `Bearer ${mine.token}` } });
+    expect(revoked.json()).toEqual({ revoked: true, name: 'laptop' });
+    expect(built.tokens.list().map((t) => `${t.user}/${t.name}`).sort()).toEqual(['chris/cron@titan', 'kim/laptop']);
+    const again = await built.app.inject({ method: 'DELETE', url: '/auth/token', headers: { authorization: `Bearer ${mine.token}` } });
+    expect(again.statusCode).toBe(401);
+    expect(said.some((line) => line.includes('chris revoked their door token "laptop"'))).toBe(true);
+  });
+
   it('a login during a boot joins it rather than starting another: scripts arriving together never kill each other\'s boot', async () => {
     host.found = null;
     host.report = { state: 'booting', lines: [] };

@@ -25,6 +25,19 @@ describe('CLI Parser', () => {
     expect(config.output).toBe(VERSION);
   });
 
+  it('reads chell auth as a subcommand with words of its own, and refuses what it does not know by name', async () => {
+    expect(await cli_parse(['node', 'chell', 'auth', 'login', '--door', 'https://titan/', '--with-password', '-u', 'chris'], VERSION)).toEqual({ mode: 'auth', auth: { verb: 'login', door: 'https://titan/', withPassword: true, user: 'chris' } });
+    expect(await cli_parse(['node', 'chell', 'auth', 'status'], VERSION)).toEqual({ mode: 'auth', auth: { verb: 'status' } });
+    expect(await cli_parse(['node', 'chell', 'auth', 'token', '--name', 'cron on titan'], VERSION)).toEqual({ mode: 'auth', auth: { verb: 'token', name: 'cron on titan' } });
+    const unknown = await cli_parse(['node', 'chell', 'auth', 'frobnicate'], VERSION);
+    expect(unknown.mode).toBe('help');
+    expect(unknown.output).toContain("unknown verb 'frobnicate'");
+    const nameless = await cli_parse(['node', 'chell', 'auth', 'token'], VERSION);
+    expect(nameless.output).toContain('--name <name> is required');
+    const both = await cli_parse(['node', 'chell', 'auth', 'login', '--with-password', '--with-token'], VERSION);
+    expect(both.output).toContain('pick one');
+  });
+
   it('should handle --info', async () => {
     const INFO = 'SURFACES\n  chell  ...  5.0.2';
     const config = await cli_parse(['node', 'chell', '--info'], VERSION, INFO);

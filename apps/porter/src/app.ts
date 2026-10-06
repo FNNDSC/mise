@@ -28,7 +28,8 @@
  * - `POST /auth/device` — chell asks for a one-time code to show its
  *   human; `GET /login?code=…` is the login page saying what it is for;
  *   `GET /auth/device/<code>` is chell's poll: pending, then the token
- *   once, then unknown.
+ *   once, then unknown. `GET /auth/tokens` lists the identity's tokens
+ *   by one of them; `DELETE /auth/token` revokes the token in hand.
  * - `GET /boot/<key>` — the session's boot as it happens, server-sent, one
  *   event per line the daemon wrote, ending with `ready` or `failed`.
  * - `/s/<key>/…` — the session itself: the argus page and its assets, the
@@ -317,6 +318,40 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     return { code: issued.code, expires: issued.expires, url: `/login?code=${encodeURIComponent(issued.code)}` };
   });
 
+  /** The token a self-service route is called with, checked; or the refusal sent. */
+  const bearer_check = async (request: FastifyRequest, reply: FastifyReply): Promise<DoorToken | null> => {
+    const bearer: string | null = bearer_ofRequest(request);
+    if (bearer === null || !token_looksLike(bearer)) {
+      await reply.code(401).send({ error: 'a door token is required (Authorization: Bearer …)' });
+      return null;
+    }
+    const checked: TokenCheck = tokens.check(bearer);
+    if (!checked.ok) {
+      await reply.code(401).send({ error: checked.why === 'expired' ? `the door token "${checked.record.name}" expired on ${checked.record.expires.slice(0, 10)}` : 'the door does not know that token' });
+      return null;
+    }
+    return checked.record;
+  };
+
+  // This identity's tokens, by a token of its own: `chell auth tokens`.
+  app.get('/auth/tokens', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    const holder: DoorToken | null = await bearer_check(request, reply);
+    if (holder === null) return reply;
+    return {
+      user: holder.user,
+      tokens: tokens.list().filter((token: DoorToken): boolean => token.identity === holder.identity).map((token: DoorToken) => ({ name: token.name, created: token.created, expires: token.expires, lastUsed: token.lastUsed })),
+    };
+  });
+
+  // The token in hand ends itself: `chell auth logout`.
+  app.delete('/auth/token', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    const holder: DoorToken | null = await bearer_check(request, reply);
+    if (holder === null) return reply;
+    tokens.revoke(holder.user, holder.name);
+    options.log?.(`${holder.user} revoked their door token "${holder.name}"`);
+    return { revoked: true, name: holder.name };
+  });
+
   app.get('/auth/device/:code', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const code: string = (request.params as { code: string }).code;
     const taken = codes.take(code);
@@ -387,7 +422,13 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
       granted = { token: made.token, name: wanted.tokenName, expires: made.record.expires };
       options.log?.(`minted a door token "${wanted.tokenName}" for ${username} (dies ${made.record.expires.slice(0, 10)})`);
     }
-    const answer = (body: { key: string; mount: string; state: 'attached' | 'starting' }): unknown => (granted === null ? body : { ...body, token: granted });
+    // The answer carries the grant a password login asked for, or, on a
+    // token login, whose token it was: a pasted token becomes a whole door file.
+    const answer = (body: { key: string; mount: string; state: 'attached' | 'starting' }): unknown => {
+      if (granted !== null) return { ...body, token: granted };
+      if (byToken !== null) return { ...body, user: byToken.user, tokenName: byToken.name, expires: byToken.expires };
+      return body;
+    };
     const found: Berth | null = await host.find(identity);
     const key: string = registry.key_of(identity);
     void reply.setCookie(DOOR_COOKIE, key, doorCookie_options(config.cookieHours, request.protocol === 'https'));

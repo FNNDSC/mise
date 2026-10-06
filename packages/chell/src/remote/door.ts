@@ -14,6 +14,7 @@
 import * as readline from 'node:readline';
 import { Writable } from 'node:stream';
 import chalk from 'chalk';
+import { doorCredential_resolve, door_carriesTokens, days_until } from './doorFile.js';
 
 /** What the door said to a login. */
 export interface DoorEntry {
@@ -227,6 +228,194 @@ export function bootEvents_read(text: string, onLine: (text: string) => void): {
   return bootEvents_feed(`${text}\n\n`, onLine).verdict ?? { state: 'failed', reason: 'the boot stream ended without a verdict' };
 }
 
+/** A door token as the door hands it over: what the door file keeps. */
+export interface DoorTokenGrant {
+  token: string;
+  user: string;
+  name: string;
+  expires: string;
+}
+
+/** What a bearer login answers beside the entry: whose token it was. */
+export interface DoorTokenEntry extends DoorEntry {
+  user: string;
+  tokenName: string;
+  expires: string;
+}
+
+/** Reads the door's refusal out of a response, or names the status. */
+async function refusal_read(response: Response): Promise<string> {
+  let reason: string = `the door answered ${response.status}`;
+  try {
+    const body: unknown = await response.json();
+    if (typeof body === 'object' && body !== null && typeof (body as { error?: unknown }).error === 'string') reason = (body as { error: string }).error;
+  } catch {
+    // The status is the reason, then.
+  }
+  return reason;
+}
+
+/** The session cookie out of a login's answer, or undefined. */
+function cookie_read(response: Response): string | undefined {
+  return response.headers.getSetCookie().map((line: string): string => line.split(';')[0] ?? '').find((pair: string): boolean => pair.startsWith('porter_session='));
+}
+
+/**
+ * Logs in at the door with a door token: a script's way in. The door
+ * answers with the session and whose token it was, so a pasted token can
+ * be kept in a complete door file.
+ *
+ * @param door - The door's URL.
+ * @param token - The door token.
+ * @param fetchLike - The HTTP client.
+ * @returns The entry with the token's user and name, or the refusal (expired and unknown tokens are refused by name).
+ */
+export async function door_loginByToken(door: string, token: string, fetchLike: DoorFetch = fetch): Promise<DoorTokenEntry | { refused: string }> {
+  const response = await fetchLike(`${door_normalise(door)}login`, {
+    method: 'POST',
+    headers: { accept: 'application/json', authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) return { refused: await refusal_read(response) };
+  const body = (await response.json()) as { key?: unknown; state?: unknown; user?: unknown; tokenName?: unknown; expires?: unknown };
+  const doorCookie: string | undefined = cookie_read(response);
+  if (typeof body.key !== 'string' || (body.state !== 'attached' && body.state !== 'starting') || doorCookie === undefined) {
+    return { refused: 'the door answered without a session' };
+  }
+  return {
+    key: body.key,
+    state: body.state,
+    cookie: doorCookie,
+    user: typeof body.user === 'string' ? body.user : '',
+    tokenName: typeof body.tokenName === 'string' ? body.tokenName : '',
+    expires: typeof body.expires === 'string' ? body.expires : '',
+  };
+}
+
+/**
+ * Logs in with a password and asks the door for a token beside the session.
+ *
+ * @param door - The door's URL.
+ * @param username - The CUBE username.
+ * @param password - The password; sent once, kept nowhere.
+ * @param tokenName - What the token is for (`chris@titan`).
+ * @param fetchLike - The HTTP client.
+ * @returns The entry and the grant, or the refusal.
+ */
+export async function door_loginForToken(door: string, username: string, password: string, tokenName: string, fetchLike: DoorFetch = fetch): Promise<{ entry: DoorEntry; grant: DoorTokenGrant } | { refused: string }> {
+  const response = await fetchLike(`${door_normalise(door)}login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ username, password, tokenName }),
+  });
+  if (!response.ok) return { refused: await refusal_read(response) };
+  const body = (await response.json()) as { key?: unknown; state?: unknown; token?: { token?: unknown; name?: unknown; expires?: unknown } };
+  const doorCookie: string | undefined = cookie_read(response);
+  if (typeof body.key !== 'string' || (body.state !== 'attached' && body.state !== 'starting') || doorCookie === undefined) {
+    return { refused: 'the door answered without a session' };
+  }
+  const token = body.token;
+  if (token === undefined || typeof token.token !== 'string' || typeof token.name !== 'string' || typeof token.expires !== 'string') {
+    return { refused: 'the door let you in but gave no token: it may be an older porter (upgrade it to use chell auth)' };
+  }
+  return { entry: { key: body.key, state: body.state, cookie: doorCookie }, grant: { token: token.token, user: username, name: token.name, expires: token.expires } };
+}
+
+/**
+ * Asks the door for a device code to show the human.
+ *
+ * @param door - The door's URL.
+ * @param host - Where this chell runs, for the page and the token's name.
+ * @param fetchLike - The HTTP client.
+ * @returns The code and when it stops being accepted, or the refusal.
+ */
+export async function doorDevice_begin(door: string, host: string, fetchLike: DoorFetch = fetch): Promise<{ code: string; expires: string } | { refused: string }> {
+  const response = await fetchLike(`${door_normalise(door)}auth/device`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ host }),
+  });
+  if (!response.ok) return { refused: response.status === 404 ? 'this porter has no device codes (upgrade it to use chell auth login)' : await refusal_read(response) };
+  const body = (await response.json()) as { code?: unknown; expires?: unknown };
+  if (typeof body.code !== 'string') return { refused: 'the door answered without a code' };
+  return { code: body.code, expires: typeof body.expires === 'string' ? body.expires : '' };
+}
+
+/** One poll of a device code. */
+export async function doorDevice_poll(door: string, code: string, fetchLike: DoorFetch = fetch): Promise<{ state: 'pending' } | { state: 'unknown' } | { state: 'authorised'; grant: DoorTokenGrant } | { state: 'refused'; refused: string }> {
+  const response = await fetchLike(`${door_normalise(door)}auth/device/${encodeURIComponent(code)}`, { headers: { accept: 'application/json' } });
+  if (response.status === 404) return { state: 'unknown' };
+  if (!response.ok) return { state: 'refused', refused: await refusal_read(response) };
+  const body = (await response.json()) as { state?: unknown; token?: unknown; user?: unknown; name?: unknown; expires?: unknown };
+  if (body.state === 'pending') return { state: 'pending' };
+  if (body.state === 'authorised' && typeof body.token === 'string' && typeof body.user === 'string' && typeof body.name === 'string' && typeof body.expires === 'string') {
+    return { state: 'authorised', grant: { token: body.token, user: body.user, name: body.name, expires: body.expires } };
+  }
+  return { state: 'refused', refused: 'the door answered the code with something unexpected' };
+}
+
+/**
+ * Waits for the human to authorise a device code, polling the door.
+ *
+ * @param door - The door's URL.
+ * @param code - The code shown.
+ * @param options - The client, how long to wait, how often to ask.
+ * @returns The grant, or why there is none.
+ */
+export async function doorDevice_wait(
+  door: string,
+  code: string,
+  options: { fetchLike?: DoorFetch; deadlineMs?: number; intervalMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{ state: 'authorised'; grant: DoorTokenGrant } | { state: 'expired' } | { state: 'refused'; refused: string }> {
+  const fetchLike: DoorFetch = options.fetchLike ?? fetch;
+  const deadline: number = Date.now() + (options.deadlineMs ?? 10 * 60 * 1000);
+  const interval: number = options.intervalMs ?? 2000;
+  const sleep = options.sleep ?? ((ms: number): Promise<void> => new Promise((resolve: () => void): void => { setTimeout(resolve, ms); }));
+  for (;;) {
+    const polled = await doorDevice_poll(door, code, fetchLike);
+    if (polled.state === 'authorised') return polled;
+    if (polled.state === 'unknown') return { state: 'expired' };
+    if (polled.state === 'refused') return polled;
+    if (Date.now() >= deadline) return { state: 'expired' };
+    await sleep(interval);
+  }
+}
+
+/** One token as the door lists it to its own identity. */
+export interface DoorTokenListed {
+  name: string;
+  created: string;
+  expires: string;
+  lastUsed: string | null;
+}
+
+/**
+ * This identity's tokens at the door, by the token in hand.
+ *
+ * @param door - The door's URL.
+ * @param token - A door token of the identity.
+ * @param fetchLike - The HTTP client.
+ */
+export async function doorTokens_list(door: string, token: string, fetchLike: DoorFetch = fetch): Promise<{ user: string; tokens: DoorTokenListed[] } | { refused: string }> {
+  const response = await fetchLike(`${door_normalise(door)}auth/tokens`, { headers: { accept: 'application/json', authorization: `Bearer ${token}` } });
+  if (!response.ok) return { refused: await refusal_read(response) };
+  const body = (await response.json()) as { user?: unknown; tokens?: unknown };
+  if (typeof body.user !== 'string' || !Array.isArray(body.tokens)) return { refused: 'the door answered without a list' };
+  return { user: body.user, tokens: body.tokens as DoorTokenListed[] };
+}
+
+/**
+ * Revokes the token in hand at the door: `chell auth logout`.
+ *
+ * @param door - The door's URL.
+ * @param token - The token to end.
+ * @param fetchLike - The HTTP client.
+ */
+export async function doorToken_revoke(door: string, token: string, fetchLike: DoorFetch = fetch): Promise<{ revoked: true } | { refused: string }> {
+  const response = await fetchLike(`${door_normalise(door)}auth/token`, { method: 'DELETE', headers: { accept: 'application/json', authorization: `Bearer ${token}` } });
+  if (!response.ok) return { refused: await refusal_read(response) };
+  return { revoked: true };
+}
+
 /** A writable that can be told to swallow what it is given: the password. */
 type MutableWritable = Writable & { muted: boolean };
 
@@ -279,12 +468,34 @@ export interface DoorReach {
  * @param fetchLike - The HTTP client.
  * @returns The reach, or null when the door refused (already said why).
  */
-export async function door_enter(door: string, username: string | undefined, password: string | undefined, fetchLike: DoorFetch = fetch): Promise<DoorReach | null> {
+export async function door_enter(door: string, username: string | undefined, password: string | undefined, fetchLike: DoorFetch = fetch, env: NodeJS.ProcessEnv = process.env): Promise<DoorReach | null> {
   let doorUrl: string;
   try {
     doorUrl = door_normalise(door);
   } catch (error: unknown) {
     console.error(chalk.red(`[!] ${error instanceof Error ? error.message : String(error)}`));
+    return null;
+  }
+  // A token first, when no password was given: the environment, then the
+  // door file (`chell auth login`). A refused token is said and is the end;
+  // a script is never left at a prompt it cannot answer.
+  if (doorCredential_missing(password)) {
+    const credential = doorCredential_resolve(doorUrl, env);
+    if ('refused' in credential) {
+      console.error(chalk.red(`[!] ${credential.refused}`));
+      return null;
+    }
+    if (credential.kind === 'token') {
+      if (!door_carriesTokens(doorUrl)) {
+        console.error(chalk.red(`[!] ${doorUrl} is plain http to another host: the door token is not sent there. Use the https door.`));
+        return null;
+      }
+      return doorByToken_enter(doorUrl, credential.token, credential.name, credential.expires, fetchLike);
+    }
+  }
+  // Off a terminal there is nobody to ask: say so in one line.
+  if ((doorCredential_missing(username) || doorCredential_missing(password)) && process.stdin.isTTY !== true) {
+    console.error(chalk.red(`[!] No credential for ${doorUrl} and no terminal to ask on: run chell auth login once, or set CHELL_DOOR_TOKEN.`));
     return null;
   }
   const user: string = doorCredential_missing(username) ? await terminalLine_ask(`Username at ${doorUrl}: `, false) : username;
@@ -326,6 +537,48 @@ export async function door_enter(door: string, username: string | undefined, pas
   }
   return {
     identity: `${user} through the door at ${doorUrl}`,
+    url: doorWire_build(doorUrl, entered.key),
+    headers: { cookie: entered.cookie },
+  };
+}
+
+/**
+ * Takes a terminal through the door on a door token, following the boot
+ * when there is one. The token's remaining life is said from seven days
+ * out, so a script's owner hears before it stops.
+ */
+async function doorByToken_enter(doorUrl: string, token: string, name: string | null, expires: string | null, fetchLike: DoorFetch): Promise<DoorReach | null> {
+  if (expires !== null) {
+    const left: number = days_until(expires);
+    if (left >= 0 && left < 7) console.error(chalk.yellow(`[!] the door token${name === null ? '' : ` "${name}"`} expires in ${left} day${left === 1 ? '' : 's'}; run chell auth login`));
+  }
+  let entered: DoorTokenEntry | { refused: string };
+  try {
+    entered = await door_loginByToken(doorUrl, token, fetchLike);
+  } catch (error: unknown) {
+    console.error(chalk.red(`[!] The door at ${doorUrl} could not be reached: ${doorUnreached_reason(error)}`));
+    return null;
+  }
+  if ('refused' in entered) {
+    console.error(chalk.red(`[!] The door refused the token: ${entered.refused}`));
+    return null;
+  }
+  if (entered.state === 'starting') {
+    console.log(chalk.gray(`[+] Starting your session at ${doorUrl} — the boot as it happens:`));
+    let ended: { state: 'ready' } | { state: 'failed'; reason: string };
+    try {
+      ended = await doorBoot_follow(doorUrl, entered, (text: string): void => { console.log(text); }, fetchLike);
+    } catch (error: unknown) {
+      console.error(chalk.red(`[!] The door at ${doorUrl} could not be reached: ${doorUnreached_reason(error)}`));
+      return null;
+    }
+    if (ended.state === 'failed') {
+      console.error(chalk.red(`[!] The session did not start: ${ended.reason}`));
+      return null;
+    }
+  }
+  return {
+    identity: `${entered.user || 'you'} through the door at ${doorUrl}`,
     url: doorWire_build(doorUrl, entered.key),
     headers: { cookie: entered.cookie },
   };

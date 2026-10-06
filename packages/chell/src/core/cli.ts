@@ -6,6 +6,7 @@
  *
  * @module
  */
+import { authArgs_parse, type AuthAsk } from '../remote/auth.js';
 import { Command, type Help } from 'commander';
 import { existsSync } from 'fs';
 import chalk from 'chalk';
@@ -14,7 +15,9 @@ import chalk from 'chalk';
  * Parsed chell CLI configuration.
  */
 export interface ChellCLIConfig {
-  mode: 'interactive' | 'connect' | 'help' | 'version' | 'info' | 'execute' | 'script' | 'daemon' | 'remote';
+  mode: 'interactive' | 'connect' | 'help' | 'version' | 'info' | 'execute' | 'script' | 'daemon' | 'remote' | 'auth';
+  /** `chell auth …`: the verb and its words, parsed by the auth module. */
+  auth?: AuthAsk;
   physicalFS?: boolean;
   prefetchPlugins?: boolean;
   prefetchFeeds?: boolean;
@@ -298,6 +301,14 @@ ${chalk.bold.cyan('DESCRIPTION')}
     .option('--saved-token', 'Log in with the token <user>@<url> saved last time, refusing if there is none or it is refused (no offline fallback)')
     .option('--info', 'Show a detailed table of the stack packages, roles, and versions, then exit')
     .addHelpText('after', `
+${chalk.bold.cyan('AUTH')}
+  ${chalk.bold.green('chell auth login')}     log in at a porter once (a browser code, a password, or a pasted token) and keep a door token
+  ${chalk.bold.green('chell auth status')}    who you are at the door and how long the token lives
+  ${chalk.bold.green('chell auth logout')}    revoke the token at the door and remove its file
+  ${chalk.bold.green('chell auth token')}     mint a token to carry to another machine (--name <what it is for>)
+  ${chalk.bold.green('chell auth tokens')}    this identity's tokens at the door
+`)
+    .addHelpText('after', `
 ${chalk.bold.cyan('INTERACTIVE COMMANDS')}
   ${chalk.bold.green('connect')}     Connect to a ChRIS CUBE
   ${chalk.bold.green('logout')}      Log out from the current CUBE session
@@ -339,6 +350,12 @@ ${chalk.bold.cyan('EXAMPLES')}
  * @returns A Promise resolving to a ChellCLIConfig containing the parsed parameters.
  */
 export function cli_parse(argv: string[], version: string, info: string = ''): Promise<ChellCLIConfig> {
+  // `chell auth …` is a subcommand with words of its own, read before the
+  // program's own parser would take `auth` for a target.
+  if (argv[2] === 'auth') {
+    const asked: AuthAsk | { refusal: string } = authArgs_parse(argv.slice(3));
+    return Promise.resolve('refusal' in asked ? { mode: 'help', output: asked.refusal } : { mode: 'auth', auth: asked });
+  }
   return new Promise((resolve) => {
     const program: Command = cliProgram_build(version);
     let config: ChellCLIConfig = { mode: 'interactive' };

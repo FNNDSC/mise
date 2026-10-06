@@ -111,6 +111,8 @@ export interface ProcCheckpointRestoreResult {
   writtenAt?: string;
   reason?: string;
   migrated?: boolean;
+  /** Feeds whose shard was left out of a restore, each with why (`feed 800: instance 7209 names parent 7203, …`). */
+  torn?: string[];
 }
 
 /** Returns the default directory for persistent process-cache files. */
@@ -196,6 +198,43 @@ function procInstance_check(value: unknown): value is ProcInstance {
     instance.params === null &&
     statusValid &&
     joinsValid;
+}
+
+/**
+ * Why one feed's shard cannot stand on its own, or null when it can: every
+ * instance well formed and of this feed, ids unique, every parent and join
+ * parent present in the shard, no cycle. A shard written from a walk that
+ * lost a row (observed: 475 of a feed's 477 instances, two naming a parent
+ * the walk never saw) fails here and costs its feed, not the checkpoint.
+ *
+ * @param feedID - The feed the shard claims.
+ * @param instances - The shard's instances, unvalidated.
+ * @returns The first fault found, in words, or null.
+ */
+function shardGraph_fault(feedID: number, instances: unknown[]): string | null {
+  if (!instances.every(procInstance_check)) return 'an instance is malformed';
+  const byID: Map<number, ProcInstance> = new Map();
+  for (const instance of instances) {
+    if (instance.feedID !== feedID) return `instance ${instance.id} belongs to feed ${instance.feedID}`;
+    if (byID.has(instance.id)) return `instance ${instance.id} appears twice`;
+    byID.set(instance.id, instance);
+  }
+  for (const instance of byID.values()) {
+    if (instance.parentID !== null && !byID.has(instance.parentID)) {
+      return `instance ${instance.id} names parent ${instance.parentID}, which the shard does not hold`;
+    }
+    for (const id of instance.joinParentIDs ?? []) {
+      if (id === instance.id || !byID.has(id)) return `instance ${instance.id} names join parent ${id}, which the shard does not hold`;
+    }
+    const ancestors: Set<number> = new Set([instance.id]);
+    let ancestor: ProcInstance | undefined = instance.parentID === null ? undefined : byID.get(instance.parentID);
+    while (ancestor) {
+      if (ancestors.has(ancestor.id)) return `instance ${instance.id} sits on a cycle`;
+      ancestors.add(ancestor.id);
+      ancestor = ancestor.parentID === null ? undefined : byID.get(ancestor.parentID);
+    }
+  }
+  return null;
 }
 
 /**
@@ -311,17 +350,21 @@ async function dir_ensure(dir: string): Promise<void> {
  * Assembles the sharded checkpoint into one snapshot. Shards whose feed is
  * absent from the roster are orphans (a feed removed after its shard was
  * written) and are skipped; a shard that fails its own header check is
- * skipped too, so one bad file costs one feed, not the checkpoint.
+ * skipped too; a shard whose graph does not stand on its own (see
+ * {@link shardGraph_fault}) is left out and named, and its feed stays in
+ * the roster with no topology, to be walked again. One bad file costs one
+ * feed, not the checkpoint: on titan a single torn shard once refused
+ * 210,010 instances and a restart booted cold.
  *
  * @param dir - The checkpoint directory.
  * @param identity - Canonical ChRIS identity string.
- * @returns The assembled snapshot with its roster's write time, or null
- *   when there is no roster.
+ * @returns The assembled snapshot with its roster's write time and the
+ *   torn shards' feeds, or null when there is no roster.
  */
 async function shards_assemble(
   dir: string,
   identity: string,
-): Promise<{ snapshot: ProcCacheSnapshot; writtenAt: string } | null> {
+): Promise<{ snapshot: ProcCacheSnapshot; writtenAt: string; torn: string[] } | null> {
   const roster: unknown = await json_read(join(dir, ROSTER_FILE));
   if (roster === null) return null;
   if (!rosterFile_check(roster, identity)) throw new Error('incompatible checkpoint');
@@ -330,6 +373,7 @@ async function shards_assemble(
 
   const snapshot: ProcCacheSnapshot = { feeds: roster.feeds, instances: [], topologyLoaded: [], dataFacts: {} };
   let skipped: number = 0;
+  const torn: string[] = [];
   for (const name of await fs.readdir(dir)) {
     const match: RegExpMatchArray | null = SHARD_PATTERN.exec(name);
     if (!match) continue;
@@ -337,6 +381,8 @@ async function shards_assemble(
     if (!feedIDs.has(feedID)) { skipped++; continue; }
     const shard: unknown = await json_read(join(dir, name));
     if (!shardFile_check(shard, identity) || shard.feedID !== feedID) { skipped++; continue; }
+    const fault: string | null = shardGraph_fault(feedID, shard.instances);
+    if (fault !== null) { torn.push(`feed ${feedID}: ${fault}`); continue; }
     snapshot.instances.push(...shard.instances);
     if (shard.loaded) snapshot.topologyLoaded.push(feedID);
     if (shard.dataFacts !== undefined && dataFacts_check(shard.dataFacts) && snapshot.dataFacts !== undefined) snapshot.dataFacts[feedID] = shard.dataFacts;
@@ -344,7 +390,10 @@ async function shards_assemble(
   if (skipped > 0) {
     errorStack.stack_push('warning', `proc checkpoint: ${skipped} feed shard(s) skipped (orphaned or unreadable)`);
   }
-  return { snapshot, writtenAt: roster.writtenAt };
+  if (torn.length > 0) {
+    errorStack.stack_push('warning', `proc checkpoint: ${torn.length} feed shard(s) torn, those feeds walk again — ${torn.join('; ')}`);
+  }
+  return { snapshot, writtenAt: roster.writtenAt, torn };
 }
 
 /**
@@ -362,13 +411,18 @@ export async function procCheckpoint_restore(
 ): Promise<ProcCheckpointRestoreResult> {
   const dir: string = procCheckpointDir_get(identity, root);
   try {
-    const assembled: { snapshot: ProcCacheSnapshot; writtenAt: string } | null = await shards_assemble(dir, identity);
+    const assembled: { snapshot: ProcCacheSnapshot; writtenAt: string; torn: string[] } | null = await shards_assemble(dir, identity);
     if (assembled) {
       if (!procCacheSnapshot_check(assembled.snapshot)) {
         return { restored: false, count: 0, reason: 'incompatible checkpoint' };
       }
       procCache_get().snapshot_restore(assembled.snapshot, assembled.writtenAt);
-      return { restored: true, count: assembled.snapshot.instances.length, writtenAt: assembled.writtenAt };
+      return {
+        restored: true,
+        count: assembled.snapshot.instances.length,
+        writtenAt: assembled.writtenAt,
+        ...(assembled.torn.length > 0 ? { torn: assembled.torn } : {}),
+      };
     }
 
     const legacy: unknown = await json_read(procCheckpointPath_get(identity, root));

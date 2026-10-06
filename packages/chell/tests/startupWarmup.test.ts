@@ -251,6 +251,38 @@ describe('daemonSession_run', () => {
     }
   });
 
+  it('says that a checkpoint was refused, and why, instead of reading like a first boot', async () => {
+    mockCheckpointRestore.mockResolvedValueOnce({ restored: false, count: 0, reason: 'incompatible checkpoint' });
+    const report = jest.fn();
+    const engine: BrasaEngine = {
+      line_execute: jest.fn(async () => []),
+      line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+    };
+
+    await daemonSession_run(engine, 'rudolph', { plugins: false, feeds: false, publicFeeds: false, jobs: true }, false, { log: report });
+
+    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Checkpoint refused (incompatible checkpoint); indexed 3 feeds — topology reconciling in background');
+    expect(mockProcCacheRefresh).toHaveBeenCalled();
+  });
+
+  it('names the feeds a restore left out for a torn shard', async () => {
+    mockCheckpointRestore.mockResolvedValueOnce({
+      restored: true, count: 209535, writtenAt: '2026-07-16T00:00:00Z',
+      torn: ['feed 800: instance 7209 names parent 7203, which the shard does not hold'],
+    });
+    mockRosterBootSync.mockResolvedValueOnce([]);
+    mockRosterSync.mockResolvedValueOnce([]);
+    const report = jest.fn();
+    const engine: BrasaEngine = {
+      line_execute: jest.fn(async () => []),
+      line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+    };
+
+    await daemonSession_run(engine, 'rudolph', { plugins: false, feeds: false, publicFeeds: false, jobs: true }, false, { log: report });
+
+    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Restored 209535 jobs; 3 feeds, 0 new — full roster refresh in background; 1 feed with a torn shard walks again');
+  });
+
   it('brings a restored checkpoint into service on a roster delta, with the full walk behind the listening daemon', async () => {
     mockCheckpointRestore.mockResolvedValueOnce({ restored: true, count: 7009, writtenAt: '2026-07-16T00:00:00Z' });
     mockRosterBootSync.mockResolvedValueOnce([4446]);

@@ -84,7 +84,15 @@ export async function page_open(url) {
   // build's own chrome leaves of 1440, and the canon recorded on one
   // machine then scores a hundred moved heights on the next.
   const dpr = Number(process.env.SMOKE_DPR ?? '1');
-  await send('Emulation.setDeviceMetricsOverride', { width: 2560, height: 1440, deviceScaleFactor: dpr, mobile: false });
+  // SMOKE_WIDTH / SMOKE_HEIGHT run the suite at another size (a tablet's
+  // 1024×768); SMOKE_TOUCH=1 makes the pointer coarse, as a finger is. The
+  // desk width stays the canon's; the nightly runs the listing stages again
+  // at the tablet size and under a finger (epic #915).
+  const width = Number(process.env.SMOKE_WIDTH ?? '2560');
+  const height = Number(process.env.SMOKE_HEIGHT ?? '1440');
+  const touch = process.env.SMOKE_TOUCH === '1';
+  await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: dpr, mobile: touch });
+  if (touch) await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   await send('Page.navigate', { url });
   await new Promise((r) => setTimeout(r, 4000));
   return {

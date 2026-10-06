@@ -8,7 +8,9 @@
  *
  * @module
  */
-import { porterConfig_resolve, porterStateDir_resolve, chellEntry_locate, type PorterConfig } from './config.js';
+import { porterConfig_resolve, porterStateDir_resolve, porterTokensFile_resolve, chellEntry_locate, PORTER_DEFAULT_TOKEN_DAYS, type PorterConfig } from './config.js';
+import { TokenStore, type DoorToken } from './tokens.js';
+import { identity_normalise } from '@fnndsc/calypso/berth';
 import { ProcessHost } from './host/processHost.js';
 import { porterApp_build, type PorterApp } from './app.js';
 import type { SessionSighting } from './host/sessionHost.js';
@@ -78,11 +80,87 @@ async function session_end(stateDir: string, who: string): Promise<void> {
   if (ended) console.log('    state kept; the next login boots a fresh session on this porter\'s kernel');
 }
 
+/**
+ * Lists the door tokens the store holds: who, which name, when minted,
+ * when it dies, when it last let someone in. There is no plaintext to
+ * show; a lost token is revoked and minted again.
+ *
+ * @param file - The token store.
+ */
+function tokens_print(file: string): void {
+  const store: TokenStore = new TokenStore(file, PORTER_DEFAULT_TOKEN_DAYS);
+  store.load();
+  const tokens: DoorToken[] = store.list();
+  console.log(`tokens: ${file}`);
+  if (tokens.length === 0) {
+    console.log('no door tokens');
+    return;
+  }
+  const now: number = Date.now();
+  for (const token of tokens) {
+    const dies: string = Date.parse(token.expires) <= now ? `died ${token.expires.slice(0, 10)}` : `dies ${token.expires.slice(0, 10)}`;
+    const used: string = token.lastUsed === null ? 'never used' : `last used ${token.lastUsed.slice(0, 16).replace('T', ' ')}`;
+    console.log(`${token.user.padEnd(18)}  ${token.name.padEnd(24)}  minted ${token.created.slice(0, 10)}  ${dies.padEnd(16)}  ${used}`);
+  }
+}
+
+/**
+ * Revokes a user's door tokens: one by name, or every one of theirs. A
+ * running porter notices on the token's next use, since it re-reads the
+ * store when the file changed under it.
+ *
+ * @param file - The token store.
+ * @param user - The CUBE username.
+ * @param name - The token's name, or undefined for all of the user's.
+ */
+function token_revoke(file: string, user: string, name: string | undefined): void {
+  const store: TokenStore = new TokenStore(file, PORTER_DEFAULT_TOKEN_DAYS);
+  store.load();
+  const gone: number = store.revoke(user, name);
+  if (gone === 0) {
+    console.error(`[!] no door token ${name === undefined ? `for ${user}` : `named "${name}" for ${user}`}; 'porter --tokens' lists them`);
+    process.exit(1);
+  }
+  console.log(`revoked ${gone} door token${gone === 1 ? '' : 's'} ${name === undefined ? `of ${user}` : `("${name}") of ${user}`}; a script carrying one is refused on its next call`);
+}
+
+/**
+ * Mints a door token for a user by the operator's hand, on the host: the
+ * way a service identity gets its key, or a user who cannot reach the
+ * login page from anywhere. Printed once; the store keeps the hash.
+ *
+ * @param env - The environment: the CUBE (`PORTER_CUBE_URL`) names the identity, `PORTER_TOKEN_DAYS` its life.
+ * @param user - The CUBE username.
+ * @param name - The token's name.
+ */
+function token_mint(env: NodeJS.ProcessEnv, user: string, name: string): void {
+  const cubeUrl: string | undefined = env['PORTER_CUBE_URL'];
+  if (cubeUrl === undefined || cubeUrl.length === 0) {
+    console.error('[!] --mint needs PORTER_CUBE_URL: the token is for an identity at one CUBE');
+    process.exit(1);
+  }
+  const daysText: string = env['PORTER_TOKEN_DAYS'] ?? String(PORTER_DEFAULT_TOKEN_DAYS);
+  const days: number = Number(daysText);
+  if (!Number.isFinite(days) || days <= 0) {
+    console.error(`[!] PORTER_TOKEN_DAYS is not a span of days: ${daysText}`);
+    process.exit(1);
+  }
+  const store: TokenStore = new TokenStore(porterTokensFile_resolve(env), days);
+  store.load();
+  const made: { token: string; record: DoorToken } = store.mint(identity_normalise(user, cubeUrl.endsWith('/') ? cubeUrl : `${cubeUrl}/`), user, name);
+  console.log(`minted a door token "${name}" for ${user}; it dies ${made.record.expires.slice(0, 10)} and is shown once:`);
+  console.log(made.token);
+  console.log('hand it over out of band; the script keeps it in ~/.config/chell/doors/<door-host>.json (0600) or CHELL_DOOR_TOKEN');
+}
+
 /** What the command line asks for. */
 export type PorterAsk =
   | { mode: 'serve' }
   | { mode: 'status' }
   | { mode: 'end'; who: string }
+  | { mode: 'tokens' }
+  | { mode: 'revoke'; user: string; name?: string }
+  | { mode: 'mint'; user: string; name: string }
   | { mode: 'help' };
 
 /** The usage, one line per word the entry takes. */
@@ -90,6 +168,9 @@ export const PORTER_USAGE: string = [
   'porter                      serve the door (PORTER_CUBE_URL, PORTER_PORT, … from the environment)',
   'porter --status             the sessions this porter carries (--sessions says the same)',
   'porter --end <who>          end one session: its berth key, user, or user@cube',
+  'porter --tokens             the door tokens the store holds: user, name, minted, dies, last used',
+  'porter --revoke <user> [<name>]   revoke one door token by name, or every one of the user\'s',
+  'porter --mint <user> --name <name>   mint a door token by hand (PORTER_CUBE_URL names the CUBE); shown once',
   'porter --help               this',
 ].join('\n');
 
@@ -114,6 +195,23 @@ export function porterArgs_parse(argv: ReadonlyArray<string>): PorterAsk | { ref
     if (rest.length > 1) return { refusal: `--end takes one name ('${rest[1] ?? ''}' is extra)` };
     return { mode: 'end', who };
   }
+  if (word === '--tokens') {
+    return rest.length === 0 ? { mode: 'tokens' } : { refusal: `--tokens takes no argument ('${rest[0] ?? ''}')` };
+  }
+  if (word === '--revoke') {
+    const user: string | undefined = rest[0];
+    if (user === undefined || user.startsWith('--')) return { refusal: '--revoke wants <user> [<name>]' };
+    if (rest.length > 2) return { refusal: `--revoke takes a user and at most a name ('${rest[2] ?? ''}' is extra)` };
+    const name: string | undefined = rest[1];
+    return name === undefined ? { mode: 'revoke', user } : { mode: 'revoke', user, name };
+  }
+  if (word === '--mint') {
+    const user: string | undefined = rest[0];
+    if (user === undefined || user.startsWith('--')) return { refusal: '--mint wants <user> --name <name>' };
+    if (rest[1] !== '--name' || rest[2] === undefined || rest[2].startsWith('--')) return { refusal: '--mint wants --name <name> after the user: the operator names what the token is for' };
+    if (rest.length > 3) return { refusal: `--mint takes a user and a name ('${rest[3] ?? ''}' is extra)` };
+    return { mode: 'mint', user, name: rest[2] };
+  }
   return { refusal: `unknown word '${word ?? ''}'` };
 }
 
@@ -126,6 +224,9 @@ async function porter_start(): Promise<void> {
   if (ask.mode === 'help') { console.log(PORTER_USAGE); return; }
   if (ask.mode === 'status') { await status_print(porterStateDir_resolve(process.env)); return; }
   if (ask.mode === 'end') { await session_end(porterStateDir_resolve(process.env), ask.who); return; }
+  if (ask.mode === 'tokens') { tokens_print(porterTokensFile_resolve(process.env)); return; }
+  if (ask.mode === 'revoke') { token_revoke(porterTokensFile_resolve(process.env), ask.user, ask.name); return; }
+  if (ask.mode === 'mint') { token_mint(process.env, ask.user, ask.name); return; }
   let config: PorterConfig;
   try {
     config = porterConfig_resolve(process.env);

@@ -102,6 +102,12 @@ describe('bootEvents_read', () => {
     expect(seen).toEqual(['[ OK ] Connect', '[ OK ] Jobs']);
   });
 
+  it('reads a boot answered without a streaming body the old way, whole', async () => {
+    const fetchLike: DoorFetch = async (): Promise<Response> => new Response(null, { status: 200 });
+    const ended = await doorBoot_follow('http://d/', { key: '0123456789abcdef', state: 'starting', cookie: 'c' }, (): void => undefined, fetchLike);
+    expect(ended).toEqual({ state: 'failed', reason: 'the boot stream ended without a verdict' });
+  });
+
   it('follows the boot with the cookie on the request', async () => {
     const fetchLike = answer(200, null, undefined, 'event: ready\ndata: {}\n\n');
     const ended = await doorBoot_follow('http://d/', { key: '0123456789abcdef', state: 'starting', cookie: 'porter_session=c' }, (): void => undefined, fetchLike);

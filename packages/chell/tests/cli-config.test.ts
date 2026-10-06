@@ -100,3 +100,28 @@ describe('cliConfig_fromArgs', () => {
     expect(c).toEqual({ mode: 'remote', connectConfig: undefined });
   });
 });
+
+describe('the default door', () => {
+  const door = (): string | null => 'https://titan.tch.harvard.edu/';
+  const none = (): string | null => null;
+
+  it('a bare chell and a chell -c with no target go through the default door, carrying -e, -u and -p', () => {
+    expect(cliConfig_fromArgs(undefined, {}, noFile, door)).toEqual({ mode: 'remote', door: 'https://titan.tch.harvard.edu/', physicalFS: undefined });
+    expect(cliConfig_fromArgs(undefined, { command: 'ls /proc/jobs', e: true }, noFile, door)).toEqual({ mode: 'remote', door: 'https://titan.tch.harvard.edu/', physicalFS: undefined, commandToExecute: 'ls /proc/jobs', stopOnError: true });
+    expect(cliConfig_fromArgs(undefined, { command: 'pwd', user: 'chris', password: 'pw' }, noFile, door)).toMatchObject({ mode: 'remote', connectConfig: { user: 'chris', password: 'pw' } });
+  });
+
+  it('a target, --no-door, a script, a daemon and --remote are never re-routed', () => {
+    expect(cliConfig_fromArgs('chris@cube.example.org', {}, noFile, door).mode).toBe('connect');
+    expect(cliConfig_fromArgs(undefined, { noDoor: true }, noFile, door)).toEqual({ mode: 'interactive', physicalFS: undefined });
+    expect(cliConfig_fromArgs(undefined, { noDoor: true, command: 'pwd' }, noFile, door).mode).toBe('execute');
+    expect(cliConfig_fromArgs(undefined, { file: 's.chell' }, noFile, door).mode).toBe('script');
+    expect(cliConfig_fromArgs(undefined, { daemon: true }, noFile, door).mode).toBe('daemon');
+    expect(cliConfig_fromArgs(undefined, { remote: true, door: 'https://other/', command: 'pwd', e: true }, noFile, door)).toMatchObject({ mode: 'remote', door: 'https://other/', stopOnError: true });
+  });
+
+  it('with no default door nothing changes', () => {
+    expect(cliConfig_fromArgs(undefined, {}, noFile, none)).toEqual({ mode: 'interactive', physicalFS: undefined });
+    expect(cliConfig_fromArgs(undefined, { command: 'pwd' }, noFile, none).mode).toBe('execute');
+  });
+});

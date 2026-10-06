@@ -7,6 +7,7 @@
  * @module
  */
 import { authArgs_parse, type AuthAsk } from '../remote/auth.js';
+import { doorDefault_read } from '../remote/doorFile.js';
 import { Command, type Help } from 'commander';
 import { existsSync } from 'fs';
 import chalk from 'chalk';
@@ -74,6 +75,8 @@ export interface ChellCLIConfig {
 export interface CliActionOptions {
   user?: string;
   password?: string;
+  /** `--no-door`: never route through the default door. (commander: `door: false` when given; see `noDoor`.) */
+  noDoor?: boolean;
   command?: string;
   file?: string;
   e?: boolean;
@@ -109,7 +112,8 @@ export interface CliActionOptions {
 export function cliConfig_fromArgs(
   target: string | undefined,
   options: CliActionOptions,
-  fileExists: (path: string) => boolean
+  fileExists: (path: string) => boolean,
+  defaultDoor: () => string | null = doorDefault_read,
 ): ChellCLIConfig {
   let user: string | undefined = options.user;
   let url: string | undefined = target;
@@ -154,6 +158,7 @@ export function cliConfig_fromArgs(
     if (options.command !== undefined) {
       config.commandToExecute = options.command;
     }
+    if (options.e) config.stopOnError = true;
   } else if (options.daemon) {
     config = {
       mode: 'daemon',
@@ -175,6 +180,26 @@ export function cliConfig_fromArgs(
     config = { mode: 'interactive', physicalFS: options.physicalFS };
   }
 
+  // A default door (`chell auth login`) is the way in when nothing else was
+  // said: a bare `chell` or a `chell -c "…"` with no target goes through it,
+  // the way `gh` reaches GitHub with no flags once logged in. `--no-door`
+  // asks for the local chell anyway; a target (`user@url`) names a CUBE
+  // directly and is never routed through a door.
+  if ((config.mode === 'interactive' || config.mode === 'execute') && connectConfig === undefined && !options.noDoor) {
+    const door: string | null = defaultDoor();
+    if (door !== null) {
+      config = {
+        mode: 'remote',
+        door,
+        physicalFS: options.physicalFS,
+        ...(config.commandToExecute !== undefined ? { commandToExecute: config.commandToExecute } : {}),
+        ...(config.stopOnError ? { stopOnError: true } : {}),
+        ...(options.user !== undefined || options.password !== undefined
+          ? { connectConfig: { ...(options.user !== undefined ? { user: options.user } : {}), ...(options.password !== undefined ? { password: options.password } : {}) } }
+          : {}),
+      };
+    }
+  }
   if (options.authTokenStdin) {
     config.authTokenStdin = true;
   }
@@ -296,7 +321,8 @@ ${chalk.bold.cyan('DESCRIPTION')}
     .option('--remote', 'Attach to a running calypso as a remote surface')
     .option('--attach <url>', 'Address of calypso on another machine; accepts the URL it prints, token and all')
     .option('--token <token>', 'Attach token, when the --attach URL does not carry one')
-    .option('--door <url>', 'With --remote: come through a porter — log in there (-u, -p, or be asked), and attach to the session it mounts')
+    .option('--door <url>', 'With --remote: come through a porter — log in there (a door token from chell auth login, -u/-p, or be asked), and attach to the session it mounts')
+    .option('--no-door', 'The local chell, even when chell auth login has set a default door')
     .option('--auth-token-stdin', 'Log in with a CUBE auth token read from stdin (one line) instead of a password; needs <user>@<url>')
     .option('--saved-token', 'Log in with the token <user>@<url> saved last time, refusing if there is none or it is refused (no offline fallback)')
     .option('--info', 'Show a detailed table of the stack packages, roles, and versions, then exit')
@@ -363,7 +389,13 @@ export function cli_parse(argv: string[], version: string, info: string = ''): P
 
     program
       .action((target: string | undefined, options: CliActionOptions) => {
-        config = options.info ? { mode: 'info', output: info } : cliConfig_fromArgs(target, options, existsSync);
+        // commander reads `--no-door` as `door: false`; a door URL and the
+        // refusal of one are two words here.
+        const doorRaw: unknown = (options as { door?: unknown }).door;
+        const normalised: CliActionOptions = doorRaw === false
+          ? { ...options, door: undefined, noDoor: true }
+          : doorRaw === true ? { ...options, door: undefined } : options;
+        config = options.info ? { mode: 'info', output: info } : cliConfig_fromArgs(target, normalised, existsSync);
       });
 
     // Capture help/version output instead of writing to stdout

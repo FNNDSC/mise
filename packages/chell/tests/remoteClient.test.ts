@@ -105,7 +105,7 @@ jest.unstable_mockModule('../src/core/surfaceDispatch.js', () => ({
   surfaceLine_execute: surfaceLineExecute_mock,
 }));
 
-const { berth_probeLive, remote_run, berth_fromAddress } = await import('../src/remote/client.js');
+const { berth_probeLive, remote_run, berth_fromAddress, commands_split } = await import('../src/remote/client.js');
 
 describe('berth_probeLive', () => {
   beforeEach(() => {
@@ -213,6 +213,39 @@ describe('remote_run', () => {
     await expect(remote_run(undefined, 'pwd')).rejects.toThrow('exit 1');
     expect(error_spy).toHaveBeenCalledWith(expect.stringContaining('No calypso found'));
     expect(exit_spy).toHaveBeenCalledWith(1);
+  });
+
+  it('with -e, runs a one-shot a segment at a time and stops at the first error; without it, the kernel takes the whole line', async () => {
+    surfaceLineExecute_mock.mockImplementation(async (_engine: unknown, line: string): Promise<CommandEnvelope[]> =>
+      [{ status: line.startsWith('cd nowhere') ? 'error' : 'ok', rendered: `${line}\n` }]);
+    await remote_run(berth.identity, 'pwd; cd nowhere; rm -r "a;b"', undefined, { stopOnError: true });
+    expect(surfaceLineExecute_mock.mock.calls.map((call: unknown[]) => call[1])).toEqual(['pwd', 'cd nowhere']);
+    expect(process.exitCode).toBe(1);
+    surfaceLineExecute_mock.mockReset();
+    surfaceLineExecute_mock.mockResolvedValue([{ status: 'ok', rendered: '' }]);
+    await remote_run(berth.identity, 'pwd; cd nowhere; rm -r "a;b"', undefined, { stopOnError: false });
+    expect(surfaceLineExecute_mock.mock.calls.map((call: unknown[]) => call[1])).toEqual(['pwd; cd nowhere; rm -r "a;b"']);
+  });
+
+  it('splits a line on semicolons outside quotes', () => {
+    expect(commands_split('pwd; cd "a;b"; echo \'x;y\' ;; ls')).toEqual(['pwd', 'cd "a;b"', "echo 'x;y'", 'ls']);
+    expect(commands_split('say "a\\"b;c"; pwd')).toEqual(['say "a\\"b;c"', 'pwd']);
+    expect(commands_split('  ')).toEqual([]);
+  });
+
+  it('with several sessions and no terminal to pick on, names them and exits 1', async () => {
+    const errors: string[] = [];
+    const errSpy = jest.spyOn(console, 'error').mockImplementation((line?: unknown): void => { errors.push(String(line)); });
+    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(((): never => { throw new Error('exit 1'); }) as typeof process.exit);
+    const tty = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
+    Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true });
+    resolverResolve_mock.mockResolvedValue(null);
+    resolverList_mock.mockResolvedValue([berth, { ...berth, identity: 'kim@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:5555' }]);
+    await expect(remote_run(undefined)).rejects.toThrow('exit 1');
+    expect(errors.join('\n')).toContain('Several calypso sessions are running');
+    expect(errors.join('\n')).toContain('kim@https://cube.example.org/api/v1/');
+    if (tty) Object.defineProperty(process.stdin, 'isTTY', tty);
+    errSpy.mockRestore(); exitSpy.mockRestore();
   });
 
   it('returns failure status and still closes when an envelope reports error', async () => {

@@ -1,11 +1,11 @@
 /**
  * @file `chell auth`: the verbs against a scripted door and a scripted terminal.
  */
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { mkdtemp, rm, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { auth_run, authArgs_parse, type AuthWorld } from '../src/remote/auth.js';
+import { auth_run, authArgs_parse, authWorld_real, type AuthWorld } from '../src/remote/auth.js';
 import { doorFile_read, doorFile_write, doorFile_path, doorDefault_read, doorDefault_write } from '../src/remote/doorFile.js';
 import type { DoorFetch } from '../src/remote/door.js';
 
@@ -263,5 +263,22 @@ describe('chell auth edges', () => {
     warned = [];
     expect(await auth_run({ verb: 'tokens', door: DOOR }, world_make(door_script([])))).toBe(1);
     expect(warned.join('\n')).toContain('readable by others');
+  });
+});
+
+describe('the real world', () => {
+  it('is built from the process: a TTY flag, this host\'s short name, ten minutes for a browser code', () => {
+    const world: AuthWorld = authWorld_real();
+    expect(typeof world.isTTY).toBe('boolean');
+    expect(world.hostname()).not.toContain('.');
+    expect(world.hostname().length).toBeGreaterThan(0);
+    expect(world.deviceWaitMs).toBe(10 * 60 * 1000);
+    expect(world.now()).toBeGreaterThan(Date.parse('2026-01-01T00:00:00Z'));
+    const said: string[] = [];
+    const log = jest.spyOn(console, 'log').mockImplementation((line?: unknown): void => { said.push(String(line)); });
+    const err = jest.spyOn(console, 'error').mockImplementation((line?: unknown): void => { said.push(String(line)); });
+    world.say('a'); world.warn('b');
+    expect(said).toEqual(['a', 'b']);
+    log.mockRestore(); err.mockRestore();
   });
 });

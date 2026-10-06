@@ -38,6 +38,13 @@ export interface UnfoldPlan<N extends SpaceNode> {
   from: ReadonlyArray<ReadonlyArray<string>>;
   /** Physics for this settle alone (no gravity: the feed opens where it stood). */
   physics?: Partial<PhysicsTerms>;
+  /**
+   * Where each unfolding node stands, as an offset from the start's centre,
+   * when the surface has laid it out itself (a feed opened as its tree,
+   * root on top). Placed nodes are held where they are put rather than
+   * settled; a node with no place settles as before.
+   */
+  placed?: Places;
   /** The nodes the camera frames once drawn. */
   frame: ReadonlyArray<string>;
   durationMs: number;
@@ -132,10 +139,14 @@ export class Flights<N extends SpaceNode> {
     const centre: [number, number, number] = centre_of(places, plan.from);
     const random: () => number = this.ports.random ?? ((): number => Math.random() - 0.5);
     for (const id of plan.unfolding) {
-      places[id] = [centre[0] + random() * UNFOLD_SCATTER, centre[1] + random() * UNFOLD_SCATTER, centre[2] + random() * UNFOLD_SCATTER];
+      const at: [number, number, number] | undefined = plan.placed?.[id];
+      places[id] = at !== undefined
+        ? [centre[0] + at[0], centre[1] + at[1], centre[2] + at[2]]
+        : [centre[0] + random() * UNFOLD_SCATTER, centre[1] + random() * UNFOLD_SCATTER, centre[2] + random() * UNFOLD_SCATTER];
     }
     this.ports.positions_seed(places);
-    const unfolding: Set<string> = new Set(plan.unfolding);
+    // A placed node is held: it is where the surface laid it, not a seed to settle from.
+    const unfolding: Set<string> = new Set(plan.unfolding.filter((id: string): boolean => plan.placed?.[id] === undefined));
     const frozen: string[] = plan.graph.nodes.filter((node: N): boolean => !unfolding.has(node.id)).map((node: N): string => node.id);
     this.ports.graph_set(plan.graph, { wave: false, fit: false, frozen, ...(plan.physics !== undefined ? { physics: plan.physics } : {}) });
     plan.drawn?.();

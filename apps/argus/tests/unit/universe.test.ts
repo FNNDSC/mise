@@ -2,8 +2,9 @@
  * @file The space of everything run here: every feed its own collapsed DAG,
  * floating free, like shapes pulled together by an unseen anchor.
  */
+import { feedGraph_build } from '../../src/scene/feedGraph.js';
 import { describe, it, expect } from '@jest/globals';
-import { universeGraph_build, LandedFeeds, shape_of, groupId_of, anchorId_of, universeTip_of, universeStoreKey_of, storedPositions_parse, jobsMetric_of, erroredShare_of, enteredFeed_build, descendedGraph_build, sphereIds_of, instanceId_of, shapeWords_of, shapeWords_brief, clusterTip_of, clusterIds_of, clusterGraph_build, foldedGraph_build, foldTip_of, foldId_of, foldShape_of, foldIds_of, unfoldedGraph_build, type LandedFeed } from '../../src/features/dag/universe.js';
+import { universeGraph_build, LandedFeeds, shape_of, groupId_of, anchorId_of, universeTip_of, universeStoreKey_of, storedPositions_parse, jobsMetric_of, erroredShare_of, descendedGraph_build, sphereIds_of, instanceId_of, shapeWords_of, shapeWords_brief, clusterTip_of, clusterIds_of, clusterGraph_build, foldedGraph_build, foldTip_of, foldId_of, foldShape_of, foldIds_of, unfoldedGraph_build, type LandedFeed } from '../../src/features/dag/universe.js';
 import type { FeedDagModel } from '@fnndsc/menu';
 
 const chain: LandedFeed = { id: 1, title: 'chain', jobs: 3, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [
@@ -115,17 +116,19 @@ describe('the descent into a feed', () => {
       { id: '12', label: 'pl-fastsurfer', parentIds: ['11', '99'], joinParentIds: [], instanceId: 12, pluginName: 'pl-fastsurfer', status: 'started', vfsPath: '/proc/jobs/feed_2/x/pl-fastsurfer_12/data' },
     ],
   };
-  it('turns the kernel graph into scene nodes: ids by feed, the fan kept ×N with its share, roots free of any anchor', () => {
-    const entered = enteredFeed_build(model);
+  // The descent reads a feed with the feed view's own builder (scene/feedGraph.ts), its ids scoped to the space.
+  const entered_of = (m: FeedDagModel) => feedGraph_build(m, { metric: 'time', hue: 'status', legend: new Map(), id_of: (id: string): string => instanceId_of(m.feedId, id) });
+  it('turns the kernel graph into scene nodes: ids by feed, the fan kept ×N with its share, roots free of any anchor, every node solid', () => {
+    const entered = entered_of(model);
     expect(entered.nodes.map((n) => n.id)).toEqual([instanceId_of(2, '10'), instanceId_of(2, '11'), instanceId_of(2, '12')]);
-    expect(entered.nodes[0]).toMatchObject({ label: 'pl-dircopy', parentIds: [], metric: jobsMetric_of(1) });
-    expect(entered.nodes[1]).toMatchObject({ parentIds: [instanceId_of(2, '10')], count: 300, share: 12 / 300, metric: jobsMetric_of(300) });
+    expect(entered.nodes[0]).toMatchObject({ label: 'pl-dircopy', parentIds: [], solid: true });
+    expect(entered.nodes[1]).toMatchObject({ parentIds: [instanceId_of(2, '10')], count: 300, share: 12 / 300, solid: true });
     // A parent the model does not carry is dropped, not invented.
     expect(entered.nodes[2]?.parentIds).toEqual([instanceId_of(2, '11')]);
     expect(entered.payloads.get(instanceId_of(2, '11'))?.instanceId).toBe(11);
   });
   it('replaces the entered feed molecule and dims every other feed, halos included', () => {
-    const entered = enteredFeed_build(model);
+    const entered = entered_of(model);
     const graph = descendedGraph_build([chain, fan, other], 2, entered);
     expect(graph.nodes.some((n) => n.id.startsWith('feed:2:'))).toBe(false);
     expect(graph.nodes.filter((n) => n.id.startsWith('inst:2:'))).toHaveLength(3);

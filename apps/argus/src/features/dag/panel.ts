@@ -41,7 +41,7 @@ import { FeedFrame, type FeedFrameFacts } from './feedFrame.js';
 import { FollowGuard } from './follow.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
-import { dagGraph_build, dagMetric_of, hueLegend_build, type HueMode, type MetricMode } from './sceneGraph.js';
+import { feedGraph_build, feedMetric_of, hueLegend_build, type HueMode, type MetricMode } from '../../scene/feedGraph.js';
 import { LandedFeeds, universeGraph_build, universeTip_of, type LandedFeed } from './universe.js';
 
 /** What the pane asks of its host. */
@@ -789,7 +789,7 @@ export class DagPanel {
   private graph_show(model: FeedDagModel, wave: boolean = true): void {
     // Honesty on the pill itself: a mode with no data behind it dims and
     // says so, instead of silently rendering an unchanged graph.
-    const hasData: boolean = model.nodes.some((node: FeedDagNode): boolean => dagMetric_of(node, this.metricMode) !== undefined);
+    const hasData: boolean = model.nodes.some((node: FeedDagNode): boolean => feedMetric_of(node, this.metricMode) !== undefined);
     this.scalePill?.classList.toggle('rail-na', !hasData);
     if (this.scalePill !== null) {
       this.scalePill.title = hasData
@@ -807,7 +807,8 @@ export class DagPanel {
         ? 'what colors a node: its status, or the compute resource it ran on'
         : "no compute resource reported for this feed's nodes yet";
     }
-    this.scene.graph_set(dagGraph_build(model, this.metricMode, this.hueMode, this.hueLegend), { wave });
+    // The feed view's own reading (law a-feed-has-one-view), the descent's too.
+    this.scene.graph_set({ nodes: feedGraph_build(model, { metric: this.metricMode, hue: this.hueMode, legend: this.hueLegend }).nodes }, { wave });
     this.scene.size_fit();
     if (this.hueMode === 'compute') this.modes_render();
     this.factsPayloads.clear();

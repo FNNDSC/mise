@@ -281,7 +281,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
       return refuse(401, minted.reason ?? 'refused');
     }
     const identity: string = identity_normalise(username, config.cubeUrl);
-    let found: Berth | null = await host.find(identity);
+    const found: Berth | null = await host.find(identity);
     const key: string = registry.key_of(identity);
     void reply.setCookie(DOOR_COOKIE, key, doorCookie_options(config.cookieHours, request.protocol === 'https'));
     // A login never lands on a kernel older than the door's: a session whose
@@ -290,10 +290,13 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     if (found !== null) {
       const behind: string[] = berth_behind(found, installed);
       if (behind.length > 0) {
+        // The restart the RESTART pill takes: the old daemon is told why and
+        // waited out before the new one boots, so the mount never reaches a
+        // port that is about to close.
         options.log?.(`restarting ${username}'s session for the new release (${behind.join(', ')})`);
-        await host.evict(identity, 'restart');
-        registry.forget(key);
-        found = null;
+        registry.pending_note(identity, username);
+        host.restart_begin(identity, username, config.cubeUrl);
+        return wantsJson ? { key, mount: `/s/${key}/`, state: 'starting' } : reply.redirect(`/greet/${key}`, 303);
       }
     }
     if (found !== null) {

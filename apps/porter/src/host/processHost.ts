@@ -189,7 +189,15 @@ export class ProcessHost implements SessionHost {
     try {
       const parsed: Partial<Berth> = JSON.parse(readFileSync(path, 'utf-8')) as Partial<Berth>;
       if (typeof parsed.url === 'string' && typeof parsed.token === 'string' && typeof parsed.identity === 'string') {
-        return { identity: parsed.identity, url: parsed.url, token: parsed.token, ...(typeof parsed.pid === 'number' ? { pid: parsed.pid } : {}) };
+        return {
+          identity: parsed.identity,
+          url: parsed.url,
+          token: parsed.token,
+          ...(typeof parsed.pid === 'number' ? { pid: parsed.pid } : {}),
+          // What the daemon runs and when it booted: the door compares these with its own tree.
+          ...(typeof parsed.versions === 'object' && parsed.versions !== null ? { versions: parsed.versions } : {}),
+          ...(typeof parsed.booted === 'string' ? { booted: parsed.booted } : {}),
+        };
       }
     } catch {
       // A half-written berth reads as none; the next poll reads it whole.

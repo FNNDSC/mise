@@ -324,8 +324,8 @@ describe('a login never lands on a kernel older than the door\'s', () => {
     const door: PorterApp = await porterApp_build({ config, host: older, mint: async () => ({ token: 'x' }), installed: { brasa: '0.33.0', calypso: '0.19.5', chell: '5.10.4' }, log: (line: string): void => { said.push(line); } });
     const reply = await door.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'right' } });
     expect(reply.json()).toMatchObject({ state: 'starting' });
-    expect(older.evicted).toEqual(['chris@https://cube.example.org/api/v1/']);
-    expect(older.spawned.length).toBe(1);
+    expect(older.restarted).toEqual([{ identity: 'chris@https://cube.example.org/api/v1/', user: 'chris' }]);
+    expect(older.spawned.length).toBe(0);
     expect(said.some((line: string): boolean => /restarting chris's session for the new release \(brasa 0.31.5 → 0.33.0/.test(line))).toBe(true);
     await door.app.close();
   });
@@ -336,7 +336,7 @@ describe('a login never lands on a kernel older than the door\'s', () => {
     const door: PorterApp = await porterApp_build({ config, host: current, mint: async () => ({ token: 'x' }), installed: { brasa: '0.33.0', calypso: '0.19.5', chell: '5.10.4' } });
     const reply = await door.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'right' } });
     expect(reply.json()).toMatchObject({ state: 'attached' });
-    expect(current.evicted).toEqual([]);
+    expect(current.restarted).toEqual([]);
     await door.app.close();
   });
 });

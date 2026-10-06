@@ -81,6 +81,27 @@ describe('bootEvents_read', () => {
     expect(bootEvents_read('', (): void => undefined).state).toBe('failed');
   });
 
+  it('hands each line over as its bytes arrive, before the door closes the stream', async () => {
+    // Two chunks: the first carries one whole line and half of the next; the
+    // door closes the stream only after the test has seen the first line.
+    const seen: string[] = [];
+    let release: () => void = (): void => undefined;
+    const firstSeen: Promise<void> = new Promise((resolve: () => void): void => { release = resolve; });
+    const encoder: TextEncoder = new TextEncoder();
+    const body: ReadableStream<Uint8Array> = new ReadableStream<Uint8Array>({
+      async start(controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> {
+        controller.enqueue(encoder.encode('event: line\ndata: {"channel":"out","text":"[ OK ] Connect"}\n\nevent: line\ndata: {"chan'));
+        await firstSeen;
+        controller.enqueue(encoder.encode('nel":"out","text":"[ OK ] Jobs"}\n\nevent: ready\ndata: {}\n\n'));
+        controller.close();
+      },
+    });
+    const fetchLike: DoorFetch = async (): Promise<Response> => new Response(body, { status: 200 });
+    const ended = await doorBoot_follow('http://d/', { key: '0123456789abcdef', state: 'starting', cookie: 'c' }, (t: string): void => { seen.push(t); if (seen.length === 1) release(); }, fetchLike);
+    expect(ended).toEqual({ state: 'ready' });
+    expect(seen).toEqual(['[ OK ] Connect', '[ OK ] Jobs']);
+  });
+
   it('follows the boot with the cookie on the request', async () => {
     const fetchLike = answer(200, null, undefined, 'event: ready\ndata: {}\n\n');
     const ended = await doorBoot_follow('http://d/', { key: '0123456789abcdef', state: 'starting', cookie: 'porter_session=c' }, (): void => undefined, fetchLike);

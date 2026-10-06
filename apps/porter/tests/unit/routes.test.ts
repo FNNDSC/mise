@@ -85,7 +85,7 @@ describe('the deployment\'s own sounds', () => {
     const soundHost = new FakeHost();
     // A session already up: the login attaches to it and the key has an entry at once.
     soundHost.found = { identity: 'chris@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4444', token: 'ATTACH' };
-    const withSounds = await porterApp_build({ config: { ...config, soundsDir: dir }, host: soundHost, mint: async () => ({ token: 'T' }) });
+    const withSounds = await porterApp_build({ installed: {}, config: { ...config, soundsDir: dir }, host: soundHost, mint: async () => ({ token: 'T' }) });
     const login = await withSounds.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'x' } });
     const { key } = login.json() as { key: string };
     const sound = await withSounds.app.inject({ method: 'GET', url: `/s/${key}/sounds/press.mp3`, headers: { cookie: cookie_of(login) } });

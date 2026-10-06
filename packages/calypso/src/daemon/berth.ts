@@ -50,6 +50,10 @@ export interface Berth {
   url: string;
   token: string;
   pid?: number;
+  /** The package versions this daemon runs (brasa, calypso, chell, …), so a door can tell an older session from its own code. */
+  versions?: Record<string, string>;
+  /** When the daemon booted, ISO. */
+  booted?: string;
 }
 
 /**

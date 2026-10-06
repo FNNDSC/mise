@@ -33,6 +33,7 @@
  *
  * @module
  */
+import { berth_behind, installed_read } from './versions.js';
 import { FAVICON_SVG } from './favicon.js';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyCookie, { unsign as cookie_unsign } from '@fastify/cookie';
@@ -57,6 +58,8 @@ import { idleSweep_run } from './sweep.js';
 
 /** What the routes are built over. */
 export interface PorterAppOptions {
+  /** What this porter ships (brasa, calypso, chell versions); a test names its own. */
+  installed?: Record<string, string>;
   config: PorterConfig;
   host: SessionHost;
   /** How a password becomes a token; CUBE's `auth-token/` by default. */
@@ -200,6 +203,7 @@ const SESSION_ENDED: string = 'your session ended; log in to start it again';
  */
 export async function porterApp_build(options: PorterAppOptions): Promise<PorterApp> {
   const { config, host } = options;
+  const installed: Record<string, string> = options.installed ?? installed_read();
   const mint = options.mint ?? cubeToken_mint;
   const registry: SessionRegistry = new SessionRegistry();
   const app: FastifyInstance = Fastify({ logger: options.logger ?? false, trustProxy: true });
@@ -277,9 +281,21 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
       return refuse(401, minted.reason ?? 'refused');
     }
     const identity: string = identity_normalise(username, config.cubeUrl);
-    const found: Berth | null = await host.find(identity);
+    let found: Berth | null = await host.find(identity);
     const key: string = registry.key_of(identity);
     void reply.setCookie(DOOR_COOKIE, key, doorCookie_options(config.cookieHours, request.protocol === 'https'));
+    // A login never lands on a kernel older than the door's: a session whose
+    // daemon runs code this porter no longer ships is ended here and boots
+    // afresh on the way in, its saved state kept.
+    if (found !== null) {
+      const behind: string[] = berth_behind(found, installed);
+      if (behind.length > 0) {
+        options.log?.(`restarting ${username}'s session for the new release (${behind.join(', ')})`);
+        await host.evict(identity, 'restart');
+        registry.forget(key);
+        found = null;
+      }
+    }
     if (found !== null) {
       registry.note(identity, username, found);
       options.log?.(`attached ${username} to the session up at ${found.url}`);

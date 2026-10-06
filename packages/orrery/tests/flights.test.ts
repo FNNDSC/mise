@@ -90,6 +90,22 @@ describe('Flights', () => {
     expect(flights.moving()).toBe(false);
   });
 
+  it('unfolds a laid-out graph where the surface put it, held rather than settled; an unplaced node still settles', () => {
+    const { flights, seeded, graph } = scene_make({ s1: [2, 2, 2], s2: [4, 4, 4] });
+    flights.unfold({
+      graph: { nodes: [node_make('s1'), node_make('root'), node_make('kid'), node_make('loose')] },
+      unfolding: ['root', 'kid', 'loose'],
+      from: [['s1', 's2']],
+      // A tree, root on top: the root above the centre, the child beneath it.
+      placed: { root: [0, 1.3, 0], kid: [0, -1.3, 0] },
+      frame: ['root', 'kid', 'loose'],
+      durationMs: 650,
+    }, (): void => undefined);
+    expect(seeded()?.['root']).toEqual([3, 4.3, 3]);
+    expect(seeded()?.['kid']).toEqual([3, 1.7, 3]);
+    expect(graph()?.frozen).toEqual(['s1', 'root', 'kid']);
+  });
+
   it('descends toward a node, asks, and unfolds the answer', async () => {
     const { flights, log, land } = scene_make({ s1: [1, 0, 0] });
     let done: number = 0;

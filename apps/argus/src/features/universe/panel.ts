@@ -17,13 +17,15 @@
  *
  * @module
  */
+import { feedGraph_build } from '../../scene/feedGraph.js';
+import { ranked_layout } from '@fnndsc/orrery';
 import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope } from '@fnndsc/menu';
 import { barState_clear, barState_set, type BarState } from '../roster/bar.js';
 import { PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, UNIVERSE_REACH, procLayoutModelSchema, procUniverseModelSchema, universeKey_of, universeReach_of, type ProcUniverseModel } from '@fnndsc/menu';
 import { ChrisSpace, PHYSICS_DEFAULT, type DrawMode, type PhysicsTerms, type SceneGraph, type SceneNode, type SettleMode, type ScenePlan } from '../../scene/chrisSpace.js';
 import {
   LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse,
-  enteredFeed_build, descendedGraph_build, sphereIds_of, clusterTip_of, clusterGraph_build, clusterIds_of, shapeWords_of, shapeWords_brief, shape_of,
+  instanceId_of, descendedGraph_build, sphereIds_of, clusterTip_of, clusterGraph_build, clusterIds_of, shapeWords_of, shapeWords_brief, shape_of,
   foldedGraph_build, foldTip_of, foldShape_of, foldIds_of, unfoldedGraph_build,
   type LandedFeed, type UniverseScale, type EnteredFeed,
   universeSettings_of,
@@ -1017,10 +1019,14 @@ export class UniversePanel {
         this.handlers.note?.(`universe: feed ${feedId}: the session gave no graph for it (feed diagram feed_${feedId} refused or answered nothing after ${Math.round((Date.now() - asked) / 1000)}s)`);
         return null;
       }
-      const entered: EnteredFeed = enteredFeed_build(model);
-      // The feed the operator is at is solid, however small: its nodes
-      // are hovered and pressed.
-      for (const node of entered.nodes) node.solid = true;
+      // The feed view's own reading (law a-feed-has-one-view): the same
+      // builder the RUNS pane draws with, its ids scoped to the space.
+      const entered: EnteredFeed = feedGraph_build(model, { metric: 'time', hue: 'status', legend: new Map(), id_of: (nodeId: string): string => instanceId_of(feedId, nodeId) });
+      // A feed opens as its tree, root on top, as it does from the roster:
+      // laid out here and held where it is put, not settled into a burst.
+      const tree = ranked_layout(entered.nodes.map((node: SceneNode) => ({ id: node.id, parentIds: node.parentIds, ...(node.metric !== undefined ? { metric: node.metric } : {}) })));
+      const placed: Record<string, [number, number, number]> = {};
+      for (const at of tree) placed[at.id] = [at.position[0], at.position[1], at.position[2]];
       // The base is what stands behind the feed: every feed, or its own
       // shape unfolded with the rest still folded; the feed's molecule
       // replaced by its graph, everything but the graph dimmed.
@@ -1048,6 +1054,7 @@ export class UniversePanel {
         unfolding: [...ids],
         from: [spheres, foldIds_of(shape_of(feed), this.landed)],
         physics: { reach: UNIVERSE_REACH, gravity: false },
+        placed,
         frame: [...ids],
         durationMs: DESCENT_MS,
         bulk: 1,

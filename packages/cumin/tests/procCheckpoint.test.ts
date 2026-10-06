@@ -98,24 +98,68 @@ it('ignores corrupt and wrong-identity checkpoints without changing the cache', 
   expect((await procCheckpoint_restore(identity, root)).reason).toBe('incompatible checkpoint');
 });
 
-it('rejects malformed topology atomically without replacing live cache data', async () => {
+it('leaves out a torn shard, names it, and restores the rest — one bad file costs one feed, not the checkpoint', async () => {
   await mkdir(dir, { recursive: true });
   const writtenAt: string = '2026-07-16T12:00:00.000Z';
   await writeFile(join(dir, 'roster.json'), JSON.stringify({
-    schemaVersion: 3, identity, writtenAt, feeds: [feed_create(5)],
+    schemaVersion: 3, identity, writtenAt, feeds: [feed_create(5), feed_create(6)],
   }));
+  // A walk that lost a row: the child names a parent the shard never held
+  // (titan, feed 800: 475 of 477 instances, and a cold boot for all 729 feeds).
   await writeFile(join(dir, 'feed-5.json'), JSON.stringify({
     schemaVersion: 3, identity, writtenAt, feedID: 5, loaded: true,
     instances: [{ id: 10, feedID: 5, parentID: 999, pluginName: 'pl-child', params: null, status: 'finishedSuccessfully' }],
   }));
-  procCache_get().feed_add(feed_create(9));
+  await writeFile(join(dir, 'feed-6.json'), JSON.stringify({
+    schemaVersion: 3, identity, writtenAt, feedID: 6, loaded: true,
+    instances: [{ id: 60, feedID: 6, parentID: null, pluginName: 'pl-root', params: null, status: 'finishedSuccessfully' }],
+  }));
 
-  expect(await procCheckpoint_restore(identity, root)).toMatchObject({
-    restored: false,
-    reason: 'incompatible checkpoint',
+  expect(await procCheckpoint_restore(identity, root)).toEqual({
+    restored: true,
+    count: 1,
+    writtenAt,
+    torn: ['feed 5: instance 10 names parent 999, which the shard does not hold'],
   });
-  expect(procCache_get().feed_get(9)?.title).toBe('feed 9');
-  expect(procCache_get().feed_get(5)).toBeUndefined();
+  // The torn feed stays in the roster, with no topology: the sweep walks it again.
+  expect(procCache_get().feed_get(5)?.title).toBe('feed 5');
+  expect(procCache_get().topologyLoaded_has(5)).toBe(false);
+  expect(procCache_get().topologyLoaded_has(6)).toBe(true);
+  expect(procCache_get().instance_get?.(10) ?? undefined).toBeUndefined();
+});
+
+it('a torn shard is one whose graph does not stand on its own: a cycle, a twin, a stray, a missing join parent', async () => {
+  await mkdir(dir, { recursive: true });
+  const writtenAt: string = '2026-07-16T12:00:00.000Z';
+  const feeds: ProcFeed[] = [1, 2, 3, 4].map(feed_create);
+  await writeFile(join(dir, 'roster.json'), JSON.stringify({ schemaVersion: 3, identity, writtenAt, feeds }));
+  const shard = (feedID: number, instances: unknown[]): Promise<void> => writeFile(
+    join(dir, `feed-${feedID}.json`),
+    JSON.stringify({ schemaVersion: 3, identity, writtenAt, feedID, loaded: true, instances }),
+  );
+  await shard(1, [
+    { id: 11, feedID: 1, parentID: 12, pluginName: 'pl-a', params: null, status: 'finishedSuccessfully' },
+    { id: 12, feedID: 1, parentID: 11, pluginName: 'pl-b', params: null, status: 'finishedSuccessfully' },
+  ]);
+  await shard(2, [
+    { id: 21, feedID: 2, parentID: null, pluginName: 'pl-a', params: null, status: 'finishedSuccessfully' },
+    { id: 21, feedID: 2, parentID: null, pluginName: 'pl-a', params: null, status: 'finishedSuccessfully' },
+  ]);
+  await shard(3, [{ id: 31, feedID: 7, parentID: null, pluginName: 'pl-a', params: null, status: 'finishedSuccessfully' }]);
+  await shard(4, [
+    { id: 41, feedID: 4, parentID: null, pluginName: 'pl-a', params: null, status: 'finishedSuccessfully' },
+    { id: 42, feedID: 4, parentID: 41, pluginName: 'pl-ts', params: null, status: 'finishedSuccessfully', joinParentIDs: [43] },
+  ]);
+
+  const outcome = await procCheckpoint_restore(identity, root);
+  expect(outcome.restored).toBe(true);
+  expect(outcome.count).toBe(0);
+  expect(outcome.torn).toEqual([
+    'feed 1: instance 11 sits on a cycle',
+    'feed 2: instance 21 appears twice',
+    'feed 3: instance 31 belongs to feed 7',
+    'feed 4: instance 42 names join parent 43, which the shard does not hold',
+  ]);
 });
 
 it('skips a shard whose feed left the roster, and restores the rest', async () => {

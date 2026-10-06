@@ -582,9 +582,13 @@ export async function startupWarmup_run(
       },
     );
     if (jobsResult.ok) {
+      // A checkpoint that was there and refused is said, with why: a boot
+      // that reads like a first boot hides a torn index (titan, 2026-10-05).
+      const torn: number = checkpoint?.torn?.length ?? 0;
+      const refused: boolean = checkpoint !== null && !checkpoint.restored && checkpoint.reason !== undefined && checkpoint.reason !== 'no checkpoint';
       const jobsMessage: string = checkpoint?.restored
-        ? `Restored ${count_noun(checkpoint.count, 'job')}${checkpoint.migrated ? ' (checkpoint migrated to per-feed shards)' : ''}; ${count_noun(jobsResult.count ?? 0, 'feed')}, ${rosterAdded.length} new — full roster refresh in background`
-        : `Indexed ${count_noun(jobsResult.count ?? 0, 'feed')} — topology reconciling in background`;
+        ? `Restored ${count_noun(checkpoint.count, 'job')}${checkpoint.migrated ? ' (checkpoint migrated to per-feed shards)' : ''}; ${count_noun(jobsResult.count ?? 0, 'feed')}, ${rosterAdded.length} new — full roster refresh in background${torn > 0 ? `; ${count_noun(torn, 'feed')} with a torn shard walks again` : ''}`
+        : `${refused ? `Checkpoint refused (${checkpoint?.reason}); indexed` : 'Indexed'} ${count_noun(jobsResult.count ?? 0, 'feed')} — topology reconciling in background`;
       reporter?.log('ok', 'Jobs', jobsMessage);
       errorStack.scope_run((): void => {
         let topologySweep: Promise<void>;

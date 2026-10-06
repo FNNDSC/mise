@@ -104,17 +104,48 @@ ${shell.script}
  * @param reason - Why the last try was refused, when it was.
  * @returns The page.
  */
-export function loginPage_render(cubeUrl: string, reason: string | null): string {
+export function loginPage_render(cubeUrl: string, reason: string | null, authorise: { code: string; host: string } | null = null): string {
   const notice: string = reason === null ? '' : `<p class="reason" role="alert">${attribute_escape(reason)}</p>`;
+  // The device-code variant: the same login, with what it is for said
+  // above it and the code carried along, so the door knows which chell to
+  // hand the token to.
+  const purpose: string = authorise === null
+    ? ''
+    : `<p class="purpose">Authorise <b>chell</b> on <b>${attribute_escape(authorise.host)}</b> with code <code>${attribute_escape(authorise.code)}</code></p>`;
+  const carried: string = authorise === null ? '' : `<input type="hidden" name="code" value="${attribute_escape(authorise.code)}" />`;
   return shell_render({
-    title: 'ChRIS · login',
+    title: authorise === null ? 'ChRIS · login' : 'ChRIS · authorise chell',
     root: './',
     body: `<form method="post" action="login">
+    ${purpose}
     ${notice}
+    ${carried}
     <label>Username <input name="username" autocomplete="username" required autofocus /></label>
     <label>Password <input name="password" type="password" autocomplete="current-password" required /></label>
-    <button type="submit">LOG IN</button>
+    <button type="submit">${authorise === null ? 'LOG IN' : 'AUTHORISE'}</button>
   </form>`,
+    script: `document.getElementById('cube').textContent = ${JSON.stringify(cubeUrl)};
+brain_draw(0, true);`,
+  });
+}
+
+/**
+ * The page after a device code was authorised: chell has its token, the
+ * browser was only here to say so.
+ *
+ * @param cubeUrl - The CUBE the door serves.
+ * @param host - Where chell runs.
+ * @param name - The token's name.
+ * @param expires - ISO time the token dies.
+ * @returns The page.
+ */
+export function authorisedPage_render(cubeUrl: string, host: string, name: string, expires: string): string {
+  return shell_render({
+    title: 'ChRIS · chell authorised',
+    root: './',
+    body: `<p class="purpose"><b>chell</b> on <b>${attribute_escape(host)}</b> is authorised.</p>
+  <p>Its door token is named <code>${attribute_escape(name)}</code> and dies on ${attribute_escape(expires.slice(0, 10))}. You can close this tab; chell has already received it.</p>
+  <a class="pill" href="login">BACK TO THE DOOR</a>`,
     script: `document.getElementById('cube').textContent = ${JSON.stringify(cubeUrl)};
 brain_draw(0, true);`,
   });

@@ -12,6 +12,7 @@ import { porterApp_build, upstreamPath_build, mountUrl_split, berthHttp_of, type
 import type { Berth, BootListener, BootReport, SessionHost } from '../../src/host/sessionHost.js';
 import type { PorterConfig } from '../../src/config.js';
 import { mkdtemp, writeFile } from 'node:fs/promises';
+import { TokenStore } from '../../src/tokens.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -25,6 +26,8 @@ const config: PorterConfig = {
   secretGenerated: false,
   cookieHours: 24,
   idleHours: 24, soundsDir: null,
+  tokenDays: 30,
+  tokensFile: '/tmp/porter-test-tokens-unused.json',
 };
 
 /** The door's cookie as a browser would send it back, from a login reply. */
@@ -65,14 +68,19 @@ class FakeHost implements SessionHost {
 
 let host: FakeHost;
 let built: PorterApp;
+let tokensDir: string;
+let said: string[];
 
 beforeEach(async () => {
   host = new FakeHost();
+  tokensDir = await mkdtemp(join(tmpdir(), 'porter-routes-tokens-'));
+  said = [];
   built = await porterApp_build({
     // A fake berth names no versions; the shared door ships none to compare, so a login mounts as before.
     installed: {},
-    config,
+    config: { ...config, tokensFile: join(tokensDir, 'tokens.json') },
     host,
+    log: (line: string): void => { said.push(line); },
     mint: async (_cube: string, username: string, password: string) =>
       password === 'right' ? { token: `TOKEN-${username}` } : { token: null, reason: 'CUBE refused the login' },
   });
@@ -509,5 +517,113 @@ describe('a session whose daemon is gone', () => {
     expect(response.statusCode).toBe(303);
     expect(response.headers.location).toMatch(/^\/login\?reason=your%20session%20ended/);
     expect((await built.app.inject({ method: 'GET', url: `/s/${key}/`, headers: { cookie } })).statusCode).toBe(404);
+  });
+});
+
+describe('door tokens (chell auth)', () => {
+  const up: Berth = { identity: 'chris@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4444', token: 'ATTACH' };
+
+  it('a JSON password login asking for a token is given one beside its session, and the token lets a script in later', async () => {
+    host.found = up;
+    const login = await built.app.inject({ method: 'POST', url: '/login', headers: { 'content-type': 'application/json' }, payload: { username: 'chris', password: 'right', tokenName: 'cron@titan' } });
+    expect(login.statusCode).toBe(200);
+    const body = login.json() as { state: string; token?: { token: string; name: string; expires: string } };
+    expect(body.state).toBe('attached');
+    expect(body.token?.name).toBe('cron@titan');
+    expect(body.token?.token.startsWith('pdt_')).toBe(true);
+    expect(said.some((line) => line.includes('minted a door token "cron@titan" for chris'))).toBe(true);
+    // The store on disk holds the hash, never the plaintext.
+    const kept: string = await (await import('node:fs/promises')).readFile(join(tokensDir, 'tokens.json'), 'utf8');
+    expect(kept).not.toContain(body.token?.token as string);
+
+    const byToken = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json', authorization: `Bearer ${body.token?.token}` } });
+    expect(byToken.statusCode).toBe(200);
+    expect(byToken.json()).toMatchObject({ state: 'attached' });
+    expect(cookie_of(byToken)).toMatch(/^porter_session=/);
+    expect(said.some((line) => line.includes('chris came through by door token "cron@titan"'))).toBe(true);
+    expect(built.tokens.list()[0]?.lastUsed).not.toBeNull();
+  });
+
+  it('a token login with no session up boots one on the saved login (no CUBE token travels), and a password is never asked', async () => {
+    const minted = built.tokens.mint('chris@https://cube.example.org/api/v1/', 'chris', 'laptop');
+    host.found = null;
+    const byToken = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json', authorization: `Bearer ${minted.token}` } });
+    expect(byToken.statusCode).toBe(200);
+    expect(byToken.json()).toMatchObject({ state: 'starting' });
+    expect(host.restarted).toEqual([{ identity: 'chris@https://cube.example.org/api/v1/', user: 'chris' }]);
+    expect(host.spawned).toEqual([]);
+  });
+
+  it('a login during a boot joins it rather than starting another: scripts arriving together never kill each other\'s boot', async () => {
+    host.found = null;
+    host.report = { state: 'booting', lines: [] };
+    const first = await built.app.inject({ method: 'POST', url: '/login', headers: { 'content-type': 'application/json' }, payload: { username: 'chris', password: 'right' } });
+    expect(first.json()).toMatchObject({ state: 'starting' });
+    const minted = built.tokens.mint('chris@https://cube.example.org/api/v1/', 'chris', 'laptop');
+    const second = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json', authorization: `Bearer ${minted.token}` } });
+    expect(second.json()).toMatchObject({ state: 'starting' });
+    expect(host.spawned).toEqual([]);
+    expect(host.restarted).toEqual([]);
+    expect(said.filter((line) => line.includes('joins the boot already under way'))).toHaveLength(2);
+  });
+
+  it('refuses an unknown, a malformed and an expired token by name, and says so in the journal', async () => {
+    const unknown = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json', authorization: `Bearer pdt_${'q'.repeat(43)}` } });
+    expect(unknown.statusCode).toBe(401);
+    expect((unknown.json() as { error: string }).error).toContain('does not know that token');
+    const malformed = await built.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json', authorization: 'Bearer TOKEN-chris' } });
+    expect(malformed.statusCode).toBe(401);
+    expect((malformed.json() as { error: string }).error).toBe('that is not a door token');
+
+    let now: number = Date.parse('2026-10-06T00:00:00Z');
+    const store = new TokenStore(join(tokensDir, 'aged.json'), 1, (): Date => new Date(now));
+    store.load();
+    const aged = store.mint('chris@https://cube.example.org/api/v1/', 'chris', 'old');
+    now = Date.parse('2026-10-08T00:00:00Z');
+    const lines: string[] = [];
+    const door: PorterApp = await porterApp_build({ installed: {}, config, host, mint: async () => ({ token: 'x' }), tokens: store, log: (line: string): void => { lines.push(line); } });
+    const expired = await door.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json', authorization: `Bearer ${aged.token}` } });
+    expect(expired.statusCode).toBe(401);
+    expect((expired.json() as { error: string }).error).toBe('the door token "old" expired on 2026-10-07; run chell auth login');
+    expect(lines.some((line) => line.includes('refused chris\'s door token "old"'))).toBe(true);
+    await door.app.close();
+  });
+
+  it('the device code: chell asks, the human authorises on the login page, chell polls the token once', async () => {
+    const asked = await built.app.inject({ method: 'POST', url: '/auth/device', headers: { 'content-type': 'application/json' }, payload: { host: 'titan' } });
+    expect(asked.statusCode).toBe(200);
+    const { code, url } = asked.json() as { code: string; url: string };
+    expect(code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    expect(url).toBe(`/login?code=${encodeURIComponent(code)}`);
+
+    const pending = await built.app.inject({ method: 'GET', url: `/auth/device/${code}` });
+    expect(pending.json()).toEqual({ state: 'pending' });
+
+    const page = await built.app.inject({ method: 'GET', url });
+    expect(page.body).toContain('Authorise <b>chell</b> on <b>titan</b>');
+    expect(page.body).toContain(`name="code" value="${code}"`);
+    expect(page.body).toContain('AUTHORISE');
+
+    host.found = up;
+    const authorised = await built.app.inject({ method: 'POST', url: '/login', payload: `username=chris&password=right&code=${encodeURIComponent(code)}`, headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+    expect(authorised.statusCode).toBe(200);
+    expect(authorised.body).toContain('is authorised');
+    expect(authorised.body).toContain('chris@titan');
+    expect(said.some((line) => line.includes('minted a door token "chris@titan" for chris by device code'))).toBe(true);
+
+    const granted = await built.app.inject({ method: 'GET', url: `/auth/device/${code}` });
+    const grant = granted.json() as { state: string; token: string; user: string; name: string; expires: string };
+    expect(grant.state).toBe('authorised');
+    expect(grant.user).toBe('chris');
+    expect(grant.name).toBe('chris@titan');
+    expect(grant.token.startsWith('pdt_')).toBe(true);
+    expect(built.tokens.check(grant.token).ok).toBe(true);
+
+    const spent = await built.app.inject({ method: 'GET', url: `/auth/device/${code}` });
+    expect(spent.statusCode).toBe(404);
+    const dead = await built.app.inject({ method: 'GET', url });
+    expect(dead.body).toContain('is not waiting');
+    const wrongPassword = await built.app.inject({ method: 'POST', url: '/login', payload: `username=chris&password=wrong&code=${encodeURIComponent(code)}`, headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+    expect(wrongPassword.statusCode).toBe(303); // the door's usual refusal, back to the page
   });
 });

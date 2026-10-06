@@ -19,6 +19,16 @@
  *   told why and ended, a fresh one boots on the login it saved, and the
  *   browser follows the boot on the greeter (no password asked again).
  * - `POST /logout` — the cookie is cleared; the session lives on.
+ * - Door tokens (`chell auth`): `POST /login` also takes `Authorization:
+ *   Bearer <token>`, a token the door minted for a human login earlier,
+ *   and lets its identity in the same way (a session not up boots on the
+ *   login it saved); a JSON password login carrying `tokenName` is given
+ *   a fresh token in its answer; a form login carrying a device `code`
+ *   authorises the chell that asked for it.
+ * - `POST /auth/device` — chell asks for a one-time code to show its
+ *   human; `GET /login?code=…` is the login page saying what it is for;
+ *   `GET /auth/device/<code>` is chell's poll: pending, then the token
+ *   once, then unknown.
  * - `GET /boot/<key>` — the session's boot as it happens, server-sent, one
  *   event per line the daemon wrote, ending with `ready` or `failed`.
  * - `/s/<key>/…` — the session itself: the argus page and its assets, the
@@ -53,7 +63,8 @@ import { cubeToken_mint, type TokenMint } from './cube/auth.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { DOOR_COOKIE, doorCookie_options } from './door.js';
-import { loginPage_render, greetPage_render } from './greeter.js';
+import { loginPage_render, greetPage_render, authorisedPage_render } from './greeter.js';
+import { DeviceCodes, TokenStore, token_looksLike, type DeviceGrant, type DoorToken, type TokenCheck } from './tokens.js';
 import { idleSweep_run } from './sweep.js';
 
 /** What the routes are built over. */
@@ -70,12 +81,18 @@ export interface PorterAppOptions {
   log?: (line: string) => void;
   /** How often the idle sweep runs, in ms; a minute by default. */
   sweepMs?: number;
+  /** The door's token store; built from the config's file when not given (a test gives its own). */
+  tokens?: TokenStore;
+  /** The device codes out; fresh when not given. */
+  codes?: DeviceCodes;
 }
 
 /** A porter application: the Fastify instance and the registry behind it. */
 export interface PorterApp {
   app: FastifyInstance;
   registry: SessionRegistry;
+  /** The door's token store, for the porter's own CLI (`--tokens`, `--revoke`, `--mint`). */
+  tokens: TokenStore;
   /** Adopts the sessions the state directory holds that still answer; called once the door is bound. */
   adopt: () => Promise<void>;
 }
@@ -83,7 +100,23 @@ export interface PorterApp {
 const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
+  /** A JSON caller asking for a door token with this name, beside its session. */
+  tokenName: z.string().min(1).max(80).optional(),
+  /** A device code the login authorises, carried by the page variant. */
+  code: z.string().min(1).max(20).optional(),
 });
+
+const deviceSchema = z.object({
+  /** Where the chell asking for the code runs, for the page and the token's name. */
+  host: z.string().min(1).max(120),
+});
+
+/** The token a request presents as a bearer, or null. */
+export function bearer_ofRequest(request: FastifyRequest): string | null {
+  const header: string = String(request.headers.authorization ?? '');
+  const match: RegExpMatchArray | null = /^Bearer\s+(\S+)$/i.exec(header);
+  return match === null ? null : (match[1] as string);
+}
 
 /**
  * The upstream base for a berth: its `ws://host:port` as `http://`.
@@ -206,6 +239,9 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   const installed: Record<string, string> = options.installed ?? installed_read();
   const mint = options.mint ?? cubeToken_mint;
   const registry: SessionRegistry = new SessionRegistry();
+  const tokens: TokenStore = options.tokens ?? new TokenStore(config.tokensFile, config.tokenDays);
+  tokens.load();
+  const codes: DeviceCodes = options.codes ?? new DeviceCodes();
   const app: FastifyInstance = Fastify({ logger: options.logger ?? false, trustProxy: true });
 
   // A porter restarted adopts the sessions its predecessor started: their
@@ -262,28 +298,114 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   });
 
   app.get('/login', async (request: FastifyRequest, reply: FastifyReply): Promise<string> => {
-    const reason: unknown = (request.query as { reason?: unknown }).reason;
+    const query = request.query as { reason?: unknown; code?: unknown };
+    const reason: string | null = typeof query.reason === 'string' && query.reason.length > 0 ? query.reason : null;
     void reply.type('text/html; charset=utf-8');
-    return loginPage_render(config.cubeUrl, typeof reason === 'string' && reason.length > 0 ? reason : null);
+    if (typeof query.code === 'string' && query.code.length > 0) {
+      // The device-code variant: the same door, saying which chell it is for.
+      const host: string | null = codes.host_of(query.code);
+      if (host === null) return loginPage_render(config.cubeUrl, `the code ${query.code} is not waiting (ten minutes, once); run chell auth login again`);
+      return loginPage_render(config.cubeUrl, reason, { code: query.code, host });
+    }
+    return loginPage_render(config.cubeUrl, reason);
+  });
+
+  app.post('/auth/device', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    const parsed = deviceSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'the host chell runs on is required' });
+    const issued: { code: string; expires: string } = codes.issue(parsed.data.host);
+    return { code: issued.code, expires: issued.expires, url: `/login?code=${encodeURIComponent(issued.code)}` };
+  });
+
+  app.get('/auth/device/:code', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    const code: string = (request.params as { code: string }).code;
+    const taken = codes.take(code);
+    if (taken.state === 'unknown') return reply.code(404).send({ state: 'unknown' });
+    if (taken.state === 'pending') return { state: 'pending' };
+    return { state: 'authorised', ...taken.grant };
   });
 
   app.post('/login', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const wantsJson: boolean = request_wantsJson(request);
     const refuse = async (status: number, reason: string): Promise<unknown> =>
       wantsJson ? reply.code(status).send({ error: reason }) : reply.redirect(`/login?reason=${encodeURIComponent(reason)}`, 303);
-    const parsed = loginSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return refuse(400, 'a username and a password are required');
-    }
-    const { username, password } = parsed.data;
-    const minted: TokenMint = await mint(config.cubeUrl, username, password);
-    if (minted.token === null) {
-      return refuse(401, minted.reason ?? 'refused');
+    // A script's way in: a door token minted for a human login earlier.
+    // Checked before any body, so a token never travels beside a password.
+    const bearer: string | null = bearer_ofRequest(request);
+    let username: string;
+    let cubeToken: string | null;
+    let byToken: DoorToken | null = null;
+    let wanted: { tokenName?: string; code?: string } = {};
+    if (bearer !== null) {
+      if (!token_looksLike(bearer)) return refuse(401, 'that is not a door token');
+      const checked: TokenCheck = tokens.check(bearer);
+      if (!checked.ok) {
+        if (checked.why === 'expired') {
+          options.log?.(`refused ${checked.record.user}'s door token "${checked.record.name}": it expired on ${checked.record.expires.slice(0, 10)}`);
+          return refuse(401, `the door token "${checked.record.name}" expired on ${checked.record.expires.slice(0, 10)}; run chell auth login`);
+        }
+        options.log?.('refused a door token nobody holds (revoked, or never minted here)');
+        return refuse(401, 'the door does not know that token (revoked, or minted elsewhere); run chell auth login');
+      }
+      byToken = checked.record;
+      tokens.touch(byToken);
+      username = byToken.user;
+      cubeToken = null;
+    } else {
+      const parsed = loginSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return refuse(400, 'a username and a password are required');
+      }
+      username = parsed.data.username;
+      wanted = { ...(parsed.data.tokenName === undefined ? {} : { tokenName: parsed.data.tokenName }), ...(parsed.data.code === undefined ? {} : { code: parsed.data.code }) };
+      const minted: TokenMint = await mint(config.cubeUrl, username, parsed.data.password);
+      if (minted.token === null) {
+        return refuse(401, minted.reason ?? 'refused');
+      }
+      cubeToken = minted.token;
     }
     const identity: string = identity_normalise(username, config.cubeUrl);
+    // A device code: the human came to authorise a chell, not to open a
+    // session here. The token is minted, handed to the waiting poll, and
+    // the browser is told it can go.
+    if (wanted.code !== undefined) {
+      const forHost: string | null = codes.host_of(wanted.code);
+      if (forHost === null) return refuse(410, `the code ${wanted.code} is not waiting (ten minutes, once); run chell auth login again`);
+      const name: string = `${username}@${forHost}`;
+      const made: { token: string; record: DoorToken } = tokens.mint(identity, username, name);
+      const grant: DeviceGrant = { token: made.token, user: username, name, expires: made.record.expires };
+      codes.authorise(wanted.code, grant);
+      options.log?.(`minted a door token "${name}" for ${username} by device code (dies ${made.record.expires.slice(0, 10)})`);
+      if (wantsJson) return { authorised: true, name, expires: made.record.expires };
+      void reply.type('text/html; charset=utf-8');
+      return authorisedPage_render(config.cubeUrl, forHost, name, made.record.expires);
+    }
+    // A password login asking for a token beside its session.
+    let granted: { token: string; name: string; expires: string } | null = null;
+    if (wanted.tokenName !== undefined) {
+      const made: { token: string; record: DoorToken } = tokens.mint(identity, username, wanted.tokenName);
+      granted = { token: made.token, name: wanted.tokenName, expires: made.record.expires };
+      options.log?.(`minted a door token "${wanted.tokenName}" for ${username} (dies ${made.record.expires.slice(0, 10)})`);
+    }
+    const answer = (body: { key: string; mount: string; state: 'attached' | 'starting' }): unknown => (granted === null ? body : { ...body, token: granted });
     const found: Berth | null = await host.find(identity);
     const key: string = registry.key_of(identity);
     void reply.setCookie(DOOR_COOKIE, key, doorCookie_options(config.cookieHours, request.protocol === 'https'));
+    if (byToken !== null) options.log?.(`${username} came through by door token "${byToken.name}"`);
+    // A boot already under way is joined, never restarted: two scripts
+    // arriving together, or a browser and a script, would otherwise take
+    // turns killing each other's boot and nobody would ever get in.
+    if (found === null) {
+      const booting = host.boot_follow(identity, { line: (): void => undefined, done: (): void => undefined });
+      if (booting !== null) {
+        booting.release();
+        if (booting.report.state === 'booting') {
+          registry.pending_note(identity, username);
+          options.log?.(`${username} joins the boot already under way`);
+          return wantsJson ? answer({ key, mount: `/s/${key}/`, state: 'starting' }) : reply.redirect(`/greet/${key}`, 303);
+        }
+      }
+    }
     // A login never lands on a kernel older than the door's: a session whose
     // daemon runs code this porter no longer ships is ended here and boots
     // afresh on the way in, its saved state kept.
@@ -296,21 +418,29 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
         options.log?.(`restarting ${username}'s session for the new release (${behind.join(', ')})`);
         registry.pending_note(identity, username);
         host.restart_begin(identity, username, config.cubeUrl);
-        return wantsJson ? { key, mount: `/s/${key}/`, state: 'starting' } : reply.redirect(`/greet/${key}`, 303);
+        return wantsJson ? answer({ key, mount: `/s/${key}/`, state: 'starting' }) : reply.redirect(`/greet/${key}`, 303);
       }
     }
     if (found !== null) {
       registry.note(identity, username, found);
       options.log?.(`attached ${username} to the session up at ${found.url}`);
-      return wantsJson ? { key, mount: `/s/${key}/`, state: 'attached' } : reply.redirect(`/s/${key}/?door`, 303);
+      return wantsJson ? answer({ key, mount: `/s/${key}/`, state: 'attached' }) : reply.redirect(`/s/${key}/?door`, 303);
     }
     // The boot is watched, not waited for: the door answers now, and the
     // greet follows the rows until the berth answers. The berth reaches the
     // registry when the boot ends, so the mount refuses until then.
     registry.pending_note(identity, username);
-    host.spawn_begin(identity, username, config.cubeUrl, minted.token);
-    options.log?.(`starting a session for ${username}`);
-    return wantsJson ? { key, mount: `/s/${key}/`, state: 'starting' } : reply.redirect(`/greet/${key}`, 303);
+    if (cubeToken === null) {
+      // A door token carries no CUBE token: the session boots on the login
+      // it saved when a human last came through, as a restart does; a
+      // session that never saved one refuses, and says so on the boot.
+      host.restart_begin(identity, username, config.cubeUrl);
+      options.log?.(`starting a session for ${username} on its saved login`);
+    } else {
+      host.spawn_begin(identity, username, config.cubeUrl, cubeToken);
+      options.log?.(`starting a session for ${username}`);
+    }
+    return wantsJson ? answer({ key, mount: `/s/${key}/`, state: 'starting' }) : reply.redirect(`/greet/${key}`, 303);
   });
 
   app.get('/greet/:key', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
@@ -501,5 +631,5 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     app.addHook('onClose', async (): Promise<void> => { clearInterval(sweep); });
   });
 
-  return { app, registry, adopt };
+  return { app, registry, adopt, tokens };
 }

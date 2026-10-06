@@ -34,6 +34,10 @@ export interface PorterConfig {
   cookieHours: number;
   /** How long a session may stand with no surface on it before it is ended, in hours. */
   idleHours: number;
+  /** How long a door token lives from its minting, in days; a fixed horizon, never slid. */
+  tokenDays: number;
+  /** The door's token store: hashes and names, mode 0600, in the porter's own state. */
+  tokensFile: string;
   /**
    * A folder of sounds served in place of the page's own (`sounds/<name>`),
    * when the deployment has them: the original LCARS beeps, which may not
@@ -53,6 +57,8 @@ export interface PorterEnv {
   PORTER_SECRET?: string;
   PORTER_COOKIE_HOURS?: string;
   PORTER_IDLE_HOURS?: string;
+  PORTER_TOKEN_DAYS?: string;
+  PORTER_TOKENS_FILE?: string;
   PORTER_SOUNDS_DIR?: string;
   XDG_STATE_HOME?: string;
 }
@@ -74,6 +80,9 @@ export const PORTER_DEFAULT_COOKIE_HOURS: number = 24;
  * boots warm from it.
  */
 export const PORTER_DEFAULT_IDLE_HOURS: number = 24;
+
+/** How long a door token lives when the operator set nothing: a month, then a human logs in again. */
+export const PORTER_DEFAULT_TOKEN_DAYS: number = 30;
 
 /**
  * Finds the chell this porter will start sessions with: the one installed
@@ -135,6 +144,12 @@ export function porterConfig_resolve(env: PorterEnv, locateChell: () => string =
   if (!Number.isFinite(idleHours) || idleHours <= 0) {
     throw new Error(`PORTER_IDLE_HOURS is not a span of hours: ${idleText}`);
   }
+  const daysText: string = env.PORTER_TOKEN_DAYS ?? String(PORTER_DEFAULT_TOKEN_DAYS);
+  const tokenDays: number = Number(daysText);
+  if (!Number.isFinite(tokenDays) || tokenDays <= 0) {
+    throw new Error(`PORTER_TOKEN_DAYS is not a span of days: ${daysText}`);
+  }
+  const stateDir: string = porterStateDir_resolve(env);
   // A secret nobody set is made up here: the door still works, but every
   // browser is asked again when this porter restarts. Said out loud at start.
   const secretGiven: boolean = env.PORTER_SECRET !== undefined && env.PORTER_SECRET.length >= 20;
@@ -143,7 +158,7 @@ export function porterConfig_resolve(env: PorterEnv, locateChell: () => string =
   }
   return {
     cubeUrl: cubeUrl.endsWith('/') ? cubeUrl : `${cubeUrl}/`,
-    stateDir: porterStateDir_resolve(env),
+    stateDir,
     host: env.PORTER_HOST ?? '127.0.0.1',
     port,
     chellEntry: env.PORTER_CHELL ?? locateChell(),
@@ -151,6 +166,9 @@ export function porterConfig_resolve(env: PorterEnv, locateChell: () => string =
     secretGenerated: !secretGiven,
     cookieHours,
     idleHours,
+    tokenDays,
+    // Beside the session directories, which the adopt scan skips as a file.
+    tokensFile: env.PORTER_TOKENS_FILE !== undefined && env.PORTER_TOKENS_FILE.length > 0 ? env.PORTER_TOKENS_FILE : join(stateDir, 'tokens.json'),
     soundsDir: env.PORTER_SOUNDS_DIR !== undefined && env.PORTER_SOUNDS_DIR.length > 0 ? env.PORTER_SOUNDS_DIR : null,
   };
 }

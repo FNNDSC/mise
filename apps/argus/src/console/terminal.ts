@@ -134,6 +134,8 @@ export class ArgusTerminal {
   private readonly complete: (prefix: string) => Promise<CompletionAnswer>;
   private promptContext: PromptContext | null = null;
   private busy: boolean = true;
+  /** The element the console lives in; it wears `data-busy` while a command runs. */
+  private readonly container: HTMLElement;
   /**
    * The question the session is waiting on, if any.
    *
@@ -180,6 +182,7 @@ export class ArgusTerminal {
   ) {
     this.submit = submit;
     this.complete = complete;
+    this.container = container;
     container.innerHTML = `
       <div class="argus-screen">
         <div class="argus-output"></div>
@@ -195,6 +198,7 @@ export class ArgusTerminal {
     this.promptBar = element_query(container, '.argus-prompt-bar');
     this.inputGlyph = element_query(container, '.argus-input-glyph');
     this.input = element_query(container, 'input') as HTMLInputElement;
+    this.busy_set(true);
 
     container.addEventListener('click', (): void => this.input.focus());
     this.input.addEventListener('keydown', (event: KeyboardEvent): void => this.key_handle(event));
@@ -235,6 +239,19 @@ export class ArgusTerminal {
   }
 
   /**
+   * Whether a command is running, declared on the console's element as
+   * `data-busy` so the state can be seen and waited on from outside: a
+   * line typed while busy queues behind the prompt, and nothing on the
+   * surface said so (#919).
+   *
+   * @param on - True from a line's submit until its prompt returns.
+   */
+  private busy_set(on: boolean): void {
+    this.busy = on;
+    this.container.dataset['busy'] = on ? 'true' : 'false';
+  }
+
+  /**
    * Redraws the prompt bar from the stored context, unlocks input, and
    * drains any typeahead-queued line.
    */
@@ -243,7 +260,7 @@ export class ArgusTerminal {
     this.promptBar.innerHTML = this.promptSegments_render();
     const exitOk: boolean = (this.promptContext?.lastExitCode ?? 0) === 0;
     this.inputGlyph.style.color = exitOk ? '#00D787' : '#FF005F';
-    this.busy = false;
+    this.busy_set(false);
     const queued: string | undefined = this.queuedLines.shift();
     if (queued !== undefined) {
       this.line_run(queued);
@@ -498,7 +515,7 @@ export class ArgusTerminal {
       void this.submit(line);
       return;
     }
-    this.busy = true;
+    this.busy_set(true);
     this.history_push(line);
     this.block_append('argus-echo', `<span class="prompt-glyph">❯</span> <span class="user-input">${html_escape(line)}</span>`);
     this.size_fit();

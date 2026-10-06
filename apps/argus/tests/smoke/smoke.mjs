@@ -128,14 +128,21 @@ async function stage_leaks(name) {
       for (let i = 0; i < 20 && document.querySelectorAll('.listing-activating').length > 0; i++) await sleep(250);
       // A RUNS pane left on a graph rather than its roster: the next scenario's cwd then repaints it.
       const graphs = [...document.querySelectorAll('.pane-dag')].filter((p) => p.offsetParent !== null && p.querySelector('.dag-feedlist') && p.querySelector('.roster-shown') === null && p.querySelector('.dag-canvas')?.style.display === 'block').length;
+      // A console left busy (#919): a prompt that never came back queues every
+      // line typed after it, and the next scenario's commands run never. The
+      // console declares the state (data-busy); a command may still be
+      // ending, so the probe waits a few seconds before calling it a leak.
+      const term = document.getElementById('terminal');
+      for (let i = 0; i < 20 && term?.dataset.busy === 'true'; i++) await sleep(250);
+      const busy = term?.dataset.busy === 'true';
       // Lit rows on stage: a folded band's open cohort is indicated by design and is not a leak.
-      return { cwd: window.__argusPromptContext?.cwd ?? null, lit: [...document.querySelectorAll('.listing-indicated, .listing-activating')].filter((e) => e.offsetParent !== null).length, asks: document.querySelectorAll('.ask-bar').length, graphs };`);
+      return { cwd: window.__argusPromptContext?.cwd ?? null, lit: [...document.querySelectorAll('.listing-indicated, .listing-activating')].filter((e) => e.offsetParent !== null).length, asks: document.querySelectorAll('.ask-bar').length, graphs, busy };`);
   } catch {
     return;
   }
   const moved = leakBaseline !== null && state.cwd !== null && state.cwd !== leakBaseline;
-  if (moved || state.lit > 0 || state.asks > 0 || state.graphs > 0) {
-    check(`${name} leaves the session as it found it (cwd ${leakBaseline}, nothing lit, no open question, no RUNS pane left on a graph)`, false, JSON.stringify(state));
+  if (moved || state.lit > 0 || state.asks > 0 || state.graphs > 0 || state.busy) {
+    check(`${name} leaves the session as it found it (cwd ${leakBaseline}, nothing lit, no open question, no RUNS pane left on a graph, the console idle)`, false, JSON.stringify(state));
     // Put it back, so the leak is named once, against the scenario that
     // made it, and not again against every one after.
     await evalIn(`
@@ -213,6 +220,21 @@ const evalIn = (body) => page.eval(`(async () => {
       for (let i = 0; i < 20 && band.querySelector('.gather-series'); i++) await sleep(250);
     }
     return band.querySelector('.gather-series') === null;
+  };
+  // A line typed at the console and run to its prompt: the console wears
+  // data-busy from a submit until the prompt returns, and a line typed
+  // while busy queues behind it (#919: fixed sleeps raced CUBE's pace, so a
+  // scenario asked a pane in a directory its cd had not reached yet).
+  const console_run = async (line, limit = 30000) => {
+    const term = document.getElementById('terminal');
+    const idle = () => term?.dataset.busy !== 'true';
+    for (let w = 0; w < limit && !idle(); w += 100) await sleep(100);
+    const input = term?.querySelector('input');
+    if (!input) return false;
+    input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await sleep(50);
+    for (let w = 0; w < limit && !idle(); w += 100) await sleep(100);
+    return idle();
   };
   // A RUNS pane left on a graph goes back to its roster by its own BACK.
   const runs_back = async () => {
@@ -2382,37 +2404,61 @@ try {
   const both = await evalIn(`
     await console_idle();
     const input = document.querySelector('#terminal input');
-    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const say = async (line, ms = 300) => { await console_run(line); await sleep(ms); };
     const settle = async (want, tries = 60) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
     document.getElementById('gutter-files').click(); await sleep(700);
+    const held = () => ({ glyph: document.querySelector('#terminal .argus-input-glyph')?.textContent ?? null, open: [...document.querySelectorAll('#terminal .argus-ask:not(.argus-ask-answered)')].map((b) => b.textContent.trim().slice(0, 50)), blocks: document.querySelectorAll('#terminal .argus-ask').length, cwd: window.__argusPromptContext?.cwd ?? null });
+    const diag = { start: held() };
     await say('rm -r ~/smoke-both', 2000); await say('mkdir -p ~/smoke-both', 2000); await say('cd ~/smoke-both', 2000);
+    diag.afterCd = held();
     const pane = [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+    diag.panes = document.querySelectorAll('.pane-files').length;
     const named = (n) => [...pane.querySelectorAll('.files-row')].find((r) => r.querySelector('.files-name')?.textContent.trim() === n);
     const lastAsk = () => [...document.querySelectorAll('#terminal .argus-ask')].pop();
+    // The pane follows the cwd by a listing of its own, which lands after the
+    // prompt does: MKDIR asks in the place the pane SHOWS, so the pane is
+    // looked at before it is pressed, as an operator would.
+    const here = () => pane.querySelector('.files-crumb-here')?.textContent?.trim() ?? '';
+    const paneAt = async (leaf) => settle(() => here() === leaf, 120);
+    diag.paneFollowed = await paneAt('smoke-both');
     // 1. a text question answered ON THE PANE
     pane.querySelector('.files-mkdir').click(); await sleep(500);
+    diag.afterClick = { ...held(), bars: pane.querySelectorAll('.ask-bar').length, caption: pane.querySelector('.ask-bar-caption')?.textContent ?? null, here: here() };
     const askedBoth = pane.querySelector('.ask-bar') !== null && /New directory/.test(lastAsk()?.textContent ?? '');
     pane.querySelector('.ask-bar-field').value = 'on-pane';
     pane.querySelector('.ask-bar-commit').click();
-    const paneMade = await settle(() => named('on-pane') !== undefined);
+    const paneMade = await settle(() => named('on-pane') !== undefined, 120);
+    diag.afterCommit = { ...held(), bars: pane.querySelectorAll('.ask-bar').length, here: here() };
     const consoleRecorded = /on-pane/.test(lastAsk()?.querySelector('.ask-answer')?.textContent ?? '');
-    // 2. a text question answered AT THE CONSOLE
+    // Where the console stands when it fails to record (#919): its glyph (? = a
+    // question of its own is open), the questions it still holds unanswered.
+    const consoleState = {
+      glyph: document.querySelector('#terminal .argus-input-glyph')?.textContent ?? [...document.querySelectorAll('#terminal span')].map((s) => s.textContent).find((t) => t === '?' || t === '❯') ?? null,
+      open: [...document.querySelectorAll('#terminal .argus-ask:not(.argus-ask-answered)')].map((b) => b.textContent.trim().slice(0, 60)),
+      asks: document.querySelectorAll('#terminal .argus-ask').length,
+      lastAsk: lastAsk()?.textContent.trim().slice(0, 80) ?? null,
+      diag,
+    };
+    // 2. a text question answered AT THE CONSOLE (the mkdir's prompt comes back first)
+    await console_run('');
+    await paneAt('smoke-both');
     pane.querySelector('.files-mkdir').click(); await sleep(500);
-    await say('at-console', 1200);
-    const consoleMade = await settle(() => named('at-console') !== undefined);
+    await say('at-console', 300);
+    const consoleMade = await settle(() => named('at-console') !== undefined, 120);
     const barGone = pane.querySelector('.ask-bar') === null;
+    diag.afterConsoleAnswer = { ...held(), tail: [...document.querySelectorAll('#terminal .argus-output > *')].slice(-4).map((b) => b.className + ': ' + b.textContent.trim().slice(0, 90)), rows: [...pane.querySelectorAll('.files-row .files-name')].map((n) => n.textContent.trim()).slice(0, 8), here: here() };
     // 3. a confirm answered ON THE PANE (a file: rm -i asks once; a
     // directory's rm -ri asks to descend and then to remove, as POSIX does)
-    await say('touch ~/smoke-both/confirm.txt', 2000); await say('ls', 1500);
-    await settle(() => named('confirm.txt') !== undefined);
+    await say('touch ~/smoke-both/confirm.txt', 300); await say('ls', 300);
+    await settle(() => named('confirm.txt') !== undefined, 120);
     named('confirm.txt').querySelector('.files-name').dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(500);
     [...pane.querySelectorAll('.files-row-zone .listing-action')].find((b) => b.textContent.trim() === 'DELETE')?.click();
     await settle(() => pane.querySelector('.ask-bar-yes') !== null, 40);
     pane.querySelector('.ask-bar-yes')?.click();
-    const removed = await settle(() => named('confirm.txt') === undefined);
+    const removed = await settle(() => named('confirm.txt') === undefined, 120);
     const confirmRecorded = /\\by\\b|yes/i.test(lastAsk()?.querySelector('.ask-answer')?.textContent ?? '');
-    await say('cd ~', 1500); await say('rm -r ~/smoke-both', 2500);
-    return { askedBoth, paneMade, consoleRecorded, consoleMade, barGone, removed, confirmRecorded };`);
+    await say('cd ~', 300); await say('rm -r ~/smoke-both', 300);
+    return { askedBoth, paneMade, consoleRecorded, consoleMade, barGone, removed, confirmRecorded, consoleState };`);
   check('a pane question stands on the console too; answered on the pane, the console records it',
     both.askedBoth && both.paneMade && both.consoleRecorded, JSON.stringify(both));
   check('answered at the console, the pane question is answered and its bar goes — nothing runs as a command',

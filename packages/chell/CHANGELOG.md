@@ -1,5 +1,16 @@
 # @fnndsc/chell
 
+## 5.11.0
+
+### Minor Changes
+
+- b4a7674: Log in at a porter once and let scripts through after, the way `gh auth login` works. `chell auth login` keeps a door token: by default a one-time code entered on the door's login page from any device, so the password never crosses the terminal; `--with-password` types it here for a door no browser can reach; `--with-token` pastes a token minted elsewhere. The token lives in `~/.config/chell/doors/<door-host>.json` at mode 0600 and is refused by name when the file is loose. `chell auth status`, `logout`, `token` and `tokens` round it out, and `chell --remote --door` uses the token when it has one, never over plain http to another host.
+- 8ae54c6: After `chell auth login`, a bare `chell` or a `chell -c "…"` goes through that door with no flags. That is how `gh` reaches GitHub once logged in; `--no-door` asks for the local chell anyway, and a `user@url` target still names a CUBE directly. `-e` now holds through a door too: the line runs a segment at a time and stops at the first whose answer is an error. A token within a week of its death is said so on every call; one past it is refused with the words to run.
+
+### Patch Changes
+
+- eea6238: Coming through a door, `chell --remote --door` shows the session's boot rows as they happen. The client read the boot stream whole, so it waited for the door to close it and printed a minute of rows in one lump after "the boot as it happens:" had promised otherwise.
+
 ## 5.10.5
 
 ### Patch Changes

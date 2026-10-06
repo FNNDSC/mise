@@ -1,5 +1,20 @@
 # @fnndsc/porter
 
+## 0.6.0
+
+### Minor Changes
+
+- 5c16c65: The door takes a token as well as a password, so a script can come through without one. A human login can mint a named door token (a JSON login asking for one, or the browser authorising a chell by one-time code on the login page); the door keeps only its hash, with the name and the day it dies (`PORTER_TOKEN_DAYS`, 30 by default), and a script presents it as `Authorization: Bearer`. A session not up boots on the login it saved. Expired and unknown tokens are refused by name, and the journal says who came through by which token.
+- 44c75f4: The porter's own command line lists, revokes and mints door tokens. `porter --tokens` shows user, name, minted, dies and last used; `porter --revoke <user> [<name>]` ends one or all of a user's; `porter --mint <user> --name <name>` mints one by the operator's hand, shown once, for a service identity or a hand-over. A running door notices a store changed under it on the token's next use, so a revocation takes effect without a restart.
+
+### Patch Changes
+
+- b4a7674: A holder can see and end their own door tokens. A token login answers whose token it was; `GET /auth/tokens` lists the identity's tokens by one of them and `DELETE /auth/token` revokes the token in hand, which is what `chell auth tokens` and `chell auth logout` call.
+- Updated dependencies [b4a7674]
+- Updated dependencies [8ae54c6]
+- Updated dependencies [eea6238]
+  - @fnndsc/chell@5.11.0
+
 ## 0.5.5
 
 ### Patch Changes

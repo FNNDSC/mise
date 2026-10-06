@@ -60,7 +60,7 @@ CI_NPM ?= 11.19.0
 BRANCH = $(shell git branch --show-current)
 
 .DEFAULT_GOAL := help
-.PHONY: help shop prep cook taste taste-flight serve scrub run binaries \
+.PHONY: help shop prep cook taste taste-flight serve scrub run binaries deploy smoke-report \
         login connect daemon remote porter porter-status taco meal install build test clean link all \
         branch save push pr ci-watch merge publish vp-approve verify-npm \
         lockfile ci-dispatch release-dispatch sync tidy
@@ -341,6 +341,18 @@ publish: vp-approve
 	@echo "Publish merge done; the Release workflow on main now pushes to npm."
 	@echo "If no Release run appears (Actions event lag): make release-dispatch"
 	@echo "Then confirm with: make verify-npm"
+
+# Publishes what main holds and puts it on the hosts, in the order that cannot
+# leave a host empty (scripts/deploy.sh): every bumped version proven on npm
+# first, install before remove, pangea then titan. HOSTS= narrows; SKIP_PUBLISH=1
+# installs a release already on npm.
+deploy:
+	@bash scripts/deploy.sh
+
+# The nightly smoke's ledger: one line per run, its reds beneath (scripts/smoke-nightly.sh,
+# fired by the mise-smoke.timer user unit on pangea). A red is never "pre-existing".
+smoke-report:
+	@tail -n 40 $$HOME/.local/state/mise/smoke/ledger.txt 2>/dev/null || echo "no nightly has run yet"
 
 # Local package.json versions against what the registry serves, one line
 # per package. After a publish the two columns must agree.

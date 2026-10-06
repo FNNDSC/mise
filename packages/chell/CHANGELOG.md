@@ -1,5 +1,13 @@
 # @fnndsc/chell
 
+## 5.10.5
+
+### Patch Changes
+
+- d988570: The boot's Jobs row says when a /proc checkpoint was there and refused, and why, instead of reading like a first boot; a restore that left out a torn shard names how many feeds walk again.
+- Updated dependencies [d988570]
+  - @fnndsc/cumin@3.27.6
+
 ## 5.10.4
 
 ### Patch Changes

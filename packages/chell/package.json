@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/chell",
-  "version": "5.10.4",
+  "version": "5.10.5",
   "description": "ChELL Executes Layered Logic - Interactive ChRIS REPL Shell",
   "repository": {
     "type": "git",
@@ -41,7 +41,7 @@
     "@fnndsc/brasa": "^0.33.0",
     "@fnndsc/calypso": "^0.19.4",
     "@fnndsc/chili": "^3.7.0",
-    "@fnndsc/cumin": "^3.27.5",
+    "@fnndsc/cumin": "^3.27.6",
     "@fnndsc/salsa": "^3.21.1",
     "chalk": "^4.1.2",
     "cli-progress": "^3.12.0",

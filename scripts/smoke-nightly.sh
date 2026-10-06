@@ -20,10 +20,15 @@ ledger="$STATE/ledger.txt"
 
 # A private daemon of our own: its own XDG dirs (cwd.txt and proc shards are per identity).
 set -a; . "$HOME/.config/mise/e2e.env"; set +a
-mkdir -p "$P/config/@fnndsc"
+# The daemon logs in with the e2e identity's SAVED token, seeded from the
+# config the e2e daemon keeps (SMOKE_SEED, default /tmp/pde2e/config): a
+# password on a command line would show in every ps on this host.
+SEED=${SMOKE_SEED:-/tmp/pde2e/config}
+[ -d "$SEED/@fnndsc" ] || { echo "$day  no e2e seed at $SEED/@fnndsc: log the e2e identity in once (restart-e2e) and run again" | tee -a "$ledger"; exit 1; }
+rm -rf "$P/config/@fnndsc" && cp -r "$SEED/@fnndsc" "$P/config/@fnndsc"
 rm -f "$P"/run/calypso/berth-*.json
 TMPDIR=$P/tmp XDG_RUNTIME_DIR=$P/run XDG_CONFIG_HOME=$P/config XDG_CACHE_HOME=$P/cache \
-  setsid nohup node "$ROOT/packages/chell/dist/index.js" --daemon --no-logo "$E2E_USER@$E2E_CUBE" > "$P/daemon.log" 2>&1 < /dev/null &
+  setsid nohup node "$ROOT/packages/chell/dist/index.js" --daemon --no-logo --saved-token "$E2E_USER@$E2E_CUBE" > "$P/daemon.log" 2>&1 < /dev/null &
 b=""; for _ in $(seq 1 180); do b=$(ls "$P/run/calypso/" 2>/dev/null | grep berth- | head -1); [ -n "$b" ] && break; sleep 1; done
 [ -n "$b" ] || { echo "$day  no berth: the daemon did not boot" | tee -a "$ledger"; exit 1; }
 url=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['url'].replace('ws://','http://')+'/?token='+d['token'])" "$P/run/calypso/$b")

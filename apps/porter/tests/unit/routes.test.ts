@@ -57,7 +57,8 @@ class FakeHost implements SessionHost {
     this.listener = listener;
     return { report: this.report, release: (): void => { this.listener = null; } };
   }
-  async evict(): Promise<boolean> { return true; }
+  public evicted: string[] = [];
+  async evict(identity: string): Promise<boolean> { this.evicted.push(identity); return true; }
   public restarted: Array<{ identity: string; user: string }> = [];
   restart_begin(identity: string, user: string): void { this.restarted.push({ identity, user }); }
 }
@@ -68,6 +69,8 @@ let built: PorterApp;
 beforeEach(async () => {
   host = new FakeHost();
   built = await porterApp_build({
+    // A fake berth names no versions; the shared door ships none to compare, so a login mounts as before.
+    installed: {},
     config,
     host,
     mint: async (_cube: string, username: string, password: string) =>
@@ -82,7 +85,7 @@ describe('the deployment\'s own sounds', () => {
     const soundHost = new FakeHost();
     // A session already up: the login attaches to it and the key has an entry at once.
     soundHost.found = { identity: 'chris@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4444', token: 'ATTACH' };
-    const withSounds = await porterApp_build({ config: { ...config, soundsDir: dir }, host: soundHost, mint: async () => ({ token: 'T' }) });
+    const withSounds = await porterApp_build({ installed: {}, config: { ...config, soundsDir: dir }, host: soundHost, mint: async () => ({ token: 'T' }) });
     const login = await withSounds.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'x' } });
     const { key } = login.json() as { key: string };
     const sound = await withSounds.app.inject({ method: 'GET', url: `/s/${key}/sounds/press.mp3`, headers: { cookie: cookie_of(login) } });
@@ -310,6 +313,31 @@ describe('the mount', () => {
     const response = await built.app.inject({ method: 'GET', url: '/s/0123456789abcdef' });
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe('/s/0123456789abcdef/');
+  });
+});
+
+describe('a login never lands on a kernel older than the door\'s', () => {
+  it('ends a session whose daemon runs older code and boots it afresh on the way in', async () => {
+    const older: FakeHost = new FakeHost();
+    older.found = { identity: 'chris@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4444', token: 'ATTACH', versions: { brasa: '0.31.5', calypso: '0.19.2', chell: '5.10.1' } };
+    const said: string[] = [];
+    const door: PorterApp = await porterApp_build({ config, host: older, mint: async () => ({ token: 'x' }), installed: { brasa: '0.33.0', calypso: '0.19.5', chell: '5.10.4' }, log: (line: string): void => { said.push(line); } });
+    const reply = await door.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'right' } });
+    expect(reply.json()).toMatchObject({ state: 'starting' });
+    expect(older.evicted).toEqual(['chris@https://cube.example.org/api/v1/']);
+    expect(older.spawned.length).toBe(1);
+    expect(said.some((line: string): boolean => /restarting chris's session for the new release \(brasa 0.31.5 → 0.33.0/.test(line))).toBe(true);
+    await door.app.close();
+  });
+
+  it('mounts a session whose daemon is current', async () => {
+    const current: FakeHost = new FakeHost();
+    current.found = { identity: 'chris@https://cube.example.org/api/v1/', url: 'ws://127.0.0.1:4444', token: 'ATTACH', versions: { brasa: '0.33.0', calypso: '0.19.5', chell: '5.10.4' } };
+    const door: PorterApp = await porterApp_build({ config, host: current, mint: async () => ({ token: 'x' }), installed: { brasa: '0.33.0', calypso: '0.19.5', chell: '5.10.4' } });
+    const reply = await door.app.inject({ method: 'POST', url: '/login', headers: { accept: 'application/json' }, payload: { username: 'chris', password: 'right' } });
+    expect(reply.json()).toMatchObject({ state: 'attached' });
+    expect(current.evicted).toEqual([]);
+    await door.app.close();
   });
 });
 

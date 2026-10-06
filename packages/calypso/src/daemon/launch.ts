@@ -255,7 +255,9 @@ export async function daemon_launch(
   // another machine, the qualified name still works.
   const displayHost: string = bindHost === '0.0.0.0' ? await hostFqdn_get() : bindHost;
   const url: string = `ws://${displayHost}:${port}`;
-  const berth: Berth = { identity, url, token, pid: process.pid };
+  // The berth says what code this daemon runs: a door that ships newer code
+  // restarts the session at the next login rather than mount an older kernel.
+  const berth: Berth = { identity, url, token, pid: process.pid, versions: { ...versions_get() } as Record<string, string>, booted: new Date().toISOString() };
   berth_write(berth);
 
   const attachHint: string = identity === DISCONNECTED_IDENTITY ? '' : ` ${identity}`;

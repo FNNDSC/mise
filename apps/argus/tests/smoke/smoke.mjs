@@ -1863,6 +1863,7 @@ try {
     const spineW = parseFloat(getComputedStyle(strip).getPropertyValue('--spine-w')) || stripRect.width;
     const atRest = {
       stripShown: stripRect.width > 0 && stripRect.height > 40,
+      strip: { w: Math.round(stripRect.width), h: Math.round(stripRect.height), spineW: Math.round(spineW), body: Math.round(bodyRect.height) },
       frameOff: getComputedStyle(frame).visibility === 'hidden' && Math.abs(stripRect.width - spineW) <= 1,
       fieldClean: inField.length === 0,
       pane: (fp.querySelector('.pane-title')?.textContent ?? '') + ' · ' + (fp.querySelector('.files-binding')?.textContent ?? ''),

@@ -15,7 +15,9 @@ STATE=${SMOKE_STATE:-$HOME/.local/state/mise/smoke}
 P=${SMOKE_PRIVATE:-/tmp/pde2e-nightly}
 mkdir -p "$STATE" "$P/tmp" "$P/run" "$P/config" "$P/cache" /tmp/smN
 day=$(date +%F)
-log="$STATE/$day.log"
+# One log per run, never one per day: a second run the same day (a rerun by
+# hand) once overwrote the night's log and took its evidence with it.
+log="$STATE/$day-$(date +%H%M).log"
 ledger="$STATE/ledger.txt"
 
 # A private daemon of our own: its own XDG dirs (cwd.txt and proc shards are per identity).

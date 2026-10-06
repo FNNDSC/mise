@@ -181,6 +181,44 @@ async function berth_select(identity: string | undefined): Promise<Berth | null>
 }
 
 /**
+ * Splits a line on `;` outside quotes, the way the kernel's batch does, so
+ * `-e` can stop between segments.
+ *
+ * @param line - The one-shot line as typed.
+ * @returns The segments, trimmed, empties dropped.
+ */
+export function commands_split(line: string): string[] {
+  const segments: string[] = [];
+  let current: string = '';
+  let quote: string | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const char: string = line[i] as string;
+    if (quote !== null) {
+      current += char;
+      if (char === quote) quote = null;
+      else if (char === '\\' && i + 1 < line.length) { current += line[i + 1] as string; i += 1; }
+      continue;
+    }
+    if (char === '"' || char === "'") { quote = char; current += char; continue; }
+    if (char === ';') { segments.push(current); current = ''; continue; }
+    current += char;
+  }
+  segments.push(current);
+  return segments.map((segment: string): string => segment.trim()).filter((segment: string): boolean => segment.length > 0);
+}
+
+/** Runs a line segment by segment, stopping at the first error envelope. */
+async function segments_execute(engine: RemoteEngine, line: string): Promise<CommandEnvelope[]> {
+  const envelopes: CommandEnvelope[] = [];
+  for (const segment of commands_split(line)) {
+    const answered: CommandEnvelope[] = await surfaceLine_execute(engine, segment);
+    envelopes.push(...answered);
+    if (answered.some((envelope: CommandEnvelope): boolean => envelope.status === 'error')) break;
+  }
+  return envelopes;
+}
+
+/**
  * Runs the remote client: resolves a daemon berth, attaches, and enters the
  * REPL.
  *
@@ -196,6 +234,7 @@ export async function remote_run(
   identity?: string,
   commandToExecute?: string,
   attach?: { address: string; token?: string; headers?: Record<string, string> },
+  options: { stopOnError?: boolean } = {},
 ): Promise<void> {
   // Through a door there is no token to carry: the cookie in the headers is
   // the credential, and the door puts the token on the daemon's side.
@@ -274,7 +313,12 @@ export async function remote_run(
     sink_set(new StdoutSink(progressRenderer));
     surface_set(cliSurface_create(undefined, berthBytes_fetch(berth, headers)));
     try {
-      const envelopes: CommandEnvelope[] = await surfaceLine_execute(engine, commandToExecute);
+      // `-e` through a door: the daemon's own stop-on-error is not this
+      // process's, so the line is run a segment at a time here and stops at
+      // the first whose answer is an error (`cd nowhere; rm -r x` removes nothing).
+      const envelopes: CommandEnvelope[] = options.stopOnError === true
+        ? await segments_execute(engine, commandToExecute)
+        : await surfaceLine_execute(engine, commandToExecute);
       process.exitCode = envelopes.some((envelope: CommandEnvelope): boolean => envelope.status === 'error') ? 1 : 0;
     } catch (error: unknown) {
       const message: string = error instanceof Error ? error.message : String(error);

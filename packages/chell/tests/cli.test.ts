@@ -38,6 +38,13 @@ describe('CLI Parser', () => {
     expect(both.output).toContain('pick one');
   });
 
+  it('--no-door keeps the local chell, and --remote --door carries -e', async () => {
+    const local = await cli_parse(['node', 'chell', '--no-door'], VERSION);
+    expect(local.mode).toBe('interactive');
+    const remote = await cli_parse(['node', 'chell', '--remote', '--door', 'https://titan/', '-e', '-c', 'pwd; ls'], VERSION);
+    expect(remote).toMatchObject({ mode: 'remote', door: 'https://titan/', commandToExecute: 'pwd; ls', stopOnError: true });
+  });
+
   it('should handle --info', async () => {
     const INFO = 'SURFACES\n  chell  ...  5.0.2';
     const config = await cli_parse(['node', 'chell', '--info'], VERSION, INFO);

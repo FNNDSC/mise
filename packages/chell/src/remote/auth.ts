@@ -36,6 +36,7 @@ import {
   doorCredential_resolve,
   doorDefault_clear,
   doorDefault_read,
+  doorDefaultOwn_read,
   doorDefault_write,
   doorFile_path,
   doorFile_read,
@@ -227,7 +228,7 @@ async function login_run(ask: AuthAsk, door: string, world: AuthWorld): Promise<
   if (grant === null) return 1;
   const file: DoorFile = { door, user: grant.user, name: grant.name, token: grant.token, minted: new Date(world.now()).toISOString(), expires: grant.expires };
   const path: string = doorFile_write(file, world.env);
-  const wasDefault: string | null = doorDefault_read(world.env);
+  const wasDefault: string | null = doorDefaultOwn_read(world.env);
   if (wasDefault === null || ask.makeDefault === true) doorDefault_write(door, world.env);
   world.say(chalk.green(`[+] Logged in at ${door} as ${grant.user}; token "${grant.name}" dies ${grant.expires.slice(0, 10)} (${days_until(grant.expires, world.now())} days).`));
   world.say(chalk.gray(`    kept in ${path} (0600)${(wasDefault === null || ask.makeDefault === true) ? '; this door is now the default: chell and chell -c go through it with no flags' : ''}`));
@@ -293,10 +294,11 @@ async function byBrowser_login(door: string, world: AuthWorld): Promise<DoorToke
     world.warn(chalk.red(`[!] The door would not give a code: ${begun.refused}`));
     return null;
   }
+  // The way gh does it: the code first, then a plain address to type it at.
   world.say('');
-  world.say(`  Open ${chalk.bold(`${door}login?code=${encodeURIComponent(begun.code)}`)} on any device,`);
-  world.say(`  log in there, and confirm the code ${chalk.bold(begun.code)}.`);
-  world.say(chalk.gray(`  (waiting up to ten minutes; Ctrl-C to stop)`));
+  world.say(`  ! First copy your one-time code: ${chalk.bold(begun.code)}`);
+  world.say(`  Then open ${chalk.bold(`${door}device`)} on any device, log in, and enter the code.`);
+  world.say(chalk.gray('  (waiting up to ten minutes; Ctrl-C to stop)'));
   world.say('');
   const outcome = await doorDevice_wait(door, begun.code, { fetchLike: world.fetchLike, deadlineMs: world.deviceWaitMs });
   if (outcome.state === 'expired') {

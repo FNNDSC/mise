@@ -104,15 +104,22 @@ ${shell.script}
  * @param reason - Why the last try was refused, when it was.
  * @returns The page.
  */
-export function loginPage_render(cubeUrl: string, reason: string | null, authorise: { code: string; host: string } | null = null): string {
+export function loginPage_render(cubeUrl: string, reason: string | null, authorise: { code: string; host: string } | 'ask' | null = null): string {
   const notice: string = reason === null ? '' : `<p class="reason" role="alert">${attribute_escape(reason)}</p>`;
-  // The device-code variant: the same login, with what it is for said
-  // above it and the code carried along, so the door knows which chell to
-  // hand the token to.
+  // The device-code variants: the same login, with what it is for said
+  // above it. `ask` (GET /device) has a field for the code chell showed, the
+  // way github.com/login/device does; a code already in the address is
+  // carried along and said.
   const purpose: string = authorise === null
     ? ''
-    : `<p class="purpose">Authorise <b>chell</b> on <b>${attribute_escape(authorise.host)}</b> with code <code>${attribute_escape(authorise.code)}</code></p>`;
-  const carried: string = authorise === null ? '' : `<input type="hidden" name="code" value="${attribute_escape(authorise.code)}" />`;
+    : authorise === 'ask'
+      ? '<p class="purpose">Authorise <b>chell</b>: enter the code it showed you, then log in.</p>'
+      : `<p class="purpose">Authorise <b>chell</b> on <b>${attribute_escape(authorise.host)}</b> with code <code>${attribute_escape(authorise.code)}</code></p>`;
+  const carried: string = authorise === null
+    ? ''
+    : authorise === 'ask'
+      ? '<label>Code <input name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" required autofocus /></label>'
+      : `<input type="hidden" name="code" value="${attribute_escape(authorise.code)}" />`;
   return shell_render({
     title: authorise === null ? 'ChRIS · login' : 'ChRIS · authorise chell',
     root: './',
@@ -120,7 +127,7 @@ export function loginPage_render(cubeUrl: string, reason: string | null, authori
     ${purpose}
     ${notice}
     ${carried}
-    <label>Username <input name="username" autocomplete="username" required autofocus /></label>
+    <label>Username <input name="username" autocomplete="username" required${authorise === 'ask' ? '' : ' autofocus'} /></label>
     <label>Password <input name="password" type="password" autocomplete="current-password" required /></label>
     <button type="submit">${authorise === null ? 'LOG IN' : 'AUTHORISE'}</button>
   </form>`,

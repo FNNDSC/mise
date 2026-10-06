@@ -38,6 +38,11 @@ describe('CLI Parser', () => {
     expect(both.output).toContain('pick one');
   });
 
+  it('auth behind a wrapper\'s leading --remote --door <url> is still auth, and takes that door', async () => {
+    expect(await cli_parse(['node', 'chell', '--remote', '--door', 'https://titan/', 'auth', 'login'], VERSION)).toEqual({ mode: 'auth', auth: { verb: 'login', door: 'https://titan/' } });
+    expect(await cli_parse(['node', 'chell', '--remote', '--door', 'https://titan/', 'auth', 'status', '--door', 'https://other/'], VERSION)).toEqual({ mode: 'auth', auth: { verb: 'status', door: 'https://other/' } });
+  });
+
   it('--no-door keeps the local chell, and --remote --door carries -e', async () => {
     const local = await cli_parse(['node', 'chell', '--no-door'], VERSION);
     expect(local.mode).toBe('interactive');

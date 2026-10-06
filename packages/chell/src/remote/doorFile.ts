@@ -146,8 +146,26 @@ function defaultPath_get(env: NodeJS.ProcessEnv): string {
   return join(doorsDir_get(env), 'default');
 }
 
-/** The door chell goes through when none is given, or null. */
+/** The env var a host sets for its own door, the default for everyone on it who chose none. */
+export const DOOR_HOST_ENV: string = 'CHELL_DOOR';
+
+/**
+ * The door chell goes through when none is given: the user's own default
+ * (`chell auth login` remembers it), else the host's (`CHELL_DOOR`, set by
+ * the host's `chell` wrapper), else null.
+ */
 export function doorDefault_read(env: NodeJS.ProcessEnv = process.env): string | null {
+  const path: string = defaultPath_get(env);
+  if (existsSync(path)) {
+    const door: string = readFileSync(path, 'utf8').trim();
+    if (door.length > 0) return door;
+  }
+  const host: string | undefined = env[DOOR_HOST_ENV];
+  return host !== undefined && host.trim().length > 0 ? host.trim() : null;
+}
+
+/** The user's own default door alone, without the host's: what `login` decides whether to set. */
+export function doorDefaultOwn_read(env: NodeJS.ProcessEnv = process.env): string | null {
   const path: string = defaultPath_get(env);
   if (!existsSync(path)) return null;
   const door: string = readFileSync(path, 'utf8').trim();

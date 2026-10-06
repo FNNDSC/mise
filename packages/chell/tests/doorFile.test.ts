@@ -60,6 +60,12 @@ describe('the door file', () => {
     expect(doorDefault_read(env)).toBeNull();
   });
 
+  it('the host\'s CHELL_DOOR is the default for a user who chose none; the user\'s own wins', () => {
+    expect(doorDefault_read({ ...env, CHELL_DOOR: 'https://titan/' })).toBe('https://titan/');
+    doorDefault_write('https://mine/', env);
+    expect(doorDefault_read({ ...env, CHELL_DOOR: 'https://titan/' })).toBe('https://mine/');
+  });
+
   it('resolves a credential by precedence: the environment, then the file, else none; a loose file is a refusal', async () => {
     expect(doorCredential_resolve(file.door, env)).toEqual({ kind: 'none' });
     doorFile_write(file, env);

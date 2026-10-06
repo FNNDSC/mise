@@ -554,6 +554,16 @@ describe('door tokens (chell auth)', () => {
     expect(host.spawned).toEqual([]);
   });
 
+  it('authorising a device code with no session up starts the session on that login\'s CUBE token, so a later token has a saved login to boot on', async () => {
+    host.found = null;
+    const asked = await built.app.inject({ method: 'POST', url: '/auth/device', headers: { 'content-type': 'application/json' }, payload: { host: 'titan' } });
+    const { code } = asked.json() as { code: string };
+    const authorised = await built.app.inject({ method: 'POST', url: '/login', payload: `username=chris&password=right&code=${encodeURIComponent(code)}`, headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+    expect(authorised.body).toContain('is authorised');
+    expect(host.spawned).toEqual([{ identity: 'chris@https://cube.example.org/api/v1/', user: 'chris', token: 'TOKEN-chris' }]);
+    expect(said.some((line) => line.includes('starting a session for chris beside the device login'))).toBe(true);
+  });
+
   it('a token login answers whose token it was, lists the identity\'s tokens by one of them, and the token in hand can end itself', async () => {
     host.found = up;
     const mine = built.tokens.mint('chris@https://cube.example.org/api/v1/', 'chris', 'laptop');
@@ -615,12 +625,15 @@ describe('door tokens (chell auth)', () => {
     expect(asked.statusCode).toBe(200);
     const { code, url } = asked.json() as { code: string; url: string };
     expect(code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
-    expect(url).toBe(`/login?code=${encodeURIComponent(code)}`);
+    expect(url).toBe('/device');
 
     const pending = await built.app.inject({ method: 'GET', url: `/auth/device/${code}` });
     expect(pending.json()).toEqual({ state: 'pending' });
 
-    const page = await built.app.inject({ method: 'GET', url });
+    const typed = await built.app.inject({ method: 'GET', url: '/device' });
+    expect(typed.body).toContain('enter the code it showed you');
+    expect(typed.body).toContain('name="code"');
+    const page = await built.app.inject({ method: 'GET', url: `/login?code=${encodeURIComponent(code)}` });
     expect(page.body).toContain('Authorise <b>chell</b> on <b>titan</b>');
     expect(page.body).toContain(`name="code" value="${code}"`);
     expect(page.body).toContain('AUTHORISE');
@@ -642,9 +655,10 @@ describe('door tokens (chell auth)', () => {
 
     const spent = await built.app.inject({ method: 'GET', url: `/auth/device/${code}` });
     expect(spent.statusCode).toBe(404);
-    const dead = await built.app.inject({ method: 'GET', url });
+    const dead = await built.app.inject({ method: 'GET', url: `/login?code=${encodeURIComponent(code)}` });
     expect(dead.body).toContain('is not waiting');
     const wrongPassword = await built.app.inject({ method: 'POST', url: '/login', payload: `username=chris&password=wrong&code=${encodeURIComponent(code)}`, headers: { 'content-type': 'application/x-www-form-urlencoded' } });
-    expect(wrongPassword.statusCode).toBe(303); // the door's usual refusal, back to the page
+    expect(wrongPassword.statusCode).toBe(303); // back to the page with the code field
+    expect(String(wrongPassword.headers.location)).toMatch(/^\/device\?reason=/);
   });
 });

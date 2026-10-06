@@ -97,7 +97,8 @@ describe('chell auth login', () => {
     const code: number = await auth_run({ verb: 'login', door: DOOR }, world_make(door, { isTTY: true, answers: [''] }));
     expect(code).toBe(0);
     expect(said.join('\n')).toContain('How would you like to log in?');
-    expect(said.join('\n')).toContain(`${DOOR}login?code=K7PD-3MXQ`);
+    expect(said.join('\n')).toContain('First copy your one-time code: K7PD-3MXQ');
+    expect(said.join('\n')).toContain(`${DOOR}device`);
     expect(JSON.parse(String(door.calls[0]?.init?.body))).toEqual({ host: 'pangea' });
     expect(doorFile_read(DOOR, { XDG_CONFIG_HOME: home })).toMatchObject({ token: 'pdt_browser', name: 'chris@pangea' });
   });
@@ -280,5 +281,16 @@ describe('the real world', () => {
     world.say('a'); world.warn('b');
     expect(said).toEqual(['a', 'b']);
     log.mockRestore(); err.mockRestore();
+  });
+});
+
+describe('the host\'s door', () => {
+  it('chell auth login with no --door goes to the host\'s CHELL_DOOR, and makes it the user\'s own default', async () => {
+    const door = door_script([{ status: 200, body: { ...ENTRY, user: 'chris', tokenName: 'laptop', expires: '2026-11-05T00:00:00.000Z' }, cookie: COOKIE }]);
+    const world = world_make(door, { stdin: 'pdt_pasted' });
+    world.env = { XDG_CONFIG_HOME: home, CHELL_DOOR: DOOR };
+    expect(await auth_run({ verb: 'login', withToken: true }, world)).toBe(0);
+    expect(door.calls[0]?.url).toBe(`${DOOR}login`);
+    expect(doorDefault_read({ XDG_CONFIG_HOME: home })).toBe(DOOR);
   });
 });

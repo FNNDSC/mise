@@ -311,11 +311,18 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     return loginPage_render(config.cubeUrl, reason);
   });
 
+  // Where a human types the code chell showed: the login page with a code field.
+  app.get('/device', async (request: FastifyRequest, reply: FastifyReply): Promise<string> => {
+    const reason: unknown = (request.query as { reason?: unknown }).reason;
+    void reply.type('text/html; charset=utf-8');
+    return loginPage_render(config.cubeUrl, typeof reason === 'string' && reason.length > 0 ? reason : null, 'ask');
+  });
+
   app.post('/auth/device', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const parsed = deviceSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: 'the host chell runs on is required' });
     const issued: { code: string; expires: string } = codes.issue(parsed.data.host);
-    return { code: issued.code, expires: issued.expires, url: `/login?code=${encodeURIComponent(issued.code)}` };
+    return { code: issued.code, expires: issued.expires, url: '/device' };
   });
 
   /** The token a self-service route is called with, checked; or the refusal sent. */
@@ -362,8 +369,11 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
 
   app.post('/login', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const wantsJson: boolean = request_wantsJson(request);
+    // A form that carried a device code goes back to the page with the code
+    // field, so a mistyped password or code is tried again where it was typed.
+    const fromDevice: boolean = typeof (request.body as { code?: unknown } | undefined)?.code === 'string';
     const refuse = async (status: number, reason: string): Promise<unknown> =>
-      wantsJson ? reply.code(status).send({ error: reason }) : reply.redirect(`/login?reason=${encodeURIComponent(reason)}`, 303);
+      wantsJson ? reply.code(status).send({ error: reason }) : reply.redirect(`/${fromDevice ? 'device' : 'login'}?reason=${encodeURIComponent(reason)}`, 303);
     // A script's way in: a door token minted for a human login earlier.
     // Checked before any body, so a token never travels beside a password.
     const bearer: string | null = bearer_ofRequest(request);
@@ -411,6 +421,20 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
       const grant: DeviceGrant = { token: made.token, user: username, name, expires: made.record.expires };
       codes.authorise(wanted.code, grant);
       options.log?.(`minted a door token "${name}" for ${username} by device code (dies ${made.record.expires.slice(0, 10)})`);
+      // A token boots a session on the login the session saved. A human who
+      // never came through before has none, so this login, which holds a
+      // fresh CUBE token, starts the session now; chell's first call then
+      // finds it up or booting (found live: a first-ever device login left
+      // `chell -c` failing with "no token is saved for this identity").
+      if (cubeToken !== null && (await host.find(identity)) === null) {
+        const booting = host.boot_follow(identity, { line: (): void => undefined, done: (): void => undefined });
+        booting?.release();
+        if (booting === null || booting.report.state !== 'booting') {
+          registry.pending_note(identity, username);
+          host.spawn_begin(identity, username, config.cubeUrl, cubeToken);
+          options.log?.(`starting a session for ${username} beside the device login`);
+        }
+      }
       if (wantsJson) return { authorised: true, name, expires: made.record.expires };
       void reply.type('text/html; charset=utf-8');
       return authorisedPage_render(config.cubeUrl, forHost, name, made.record.expires);

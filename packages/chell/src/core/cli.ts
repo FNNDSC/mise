@@ -378,9 +378,18 @@ ${chalk.bold.cyan('EXAMPLES')}
 export function cli_parse(argv: string[], version: string, info: string = ''): Promise<ChellCLIConfig> {
   // `chell auth …` is a subcommand with words of its own, read before the
   // program's own parser would take `auth` for a target.
-  if (argv[2] === 'auth') {
-    const asked: AuthAsk | { refusal: string } = authArgs_parse(argv.slice(3));
-    return Promise.resolve('refusal' in asked ? { mode: 'help', output: asked.refusal } : { mode: 'auth', auth: asked });
+  // A wrapper may put `--remote --door <url>` in front of every call (titan's
+  // did, and `chell auth login` became a plain door login); those words are
+  // stepped over, and a door given there is the auth verb's door.
+  let at: number = 2;
+  let leadDoor: string | undefined;
+  while (argv[at] === '--remote' || (argv[at] === '--door' && argv[at + 1] !== undefined)) {
+    if (argv[at] === '--door') { leadDoor = argv[at + 1]; at += 2; } else { at += 1; }
+  }
+  if (argv[at] === 'auth') {
+    const asked: AuthAsk | { refusal: string } = authArgs_parse(argv.slice(at + 1));
+    if ('refusal' in asked) return Promise.resolve({ mode: 'help', output: asked.refusal });
+    return Promise.resolve({ mode: 'auth', auth: asked.door === undefined && leadDoor !== undefined ? { ...asked, door: leadDoor } : asked });
   }
   return new Promise((resolve) => {
     const program: Command = cliProgram_build(version);

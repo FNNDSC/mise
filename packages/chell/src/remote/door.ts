@@ -147,19 +147,50 @@ export async function doorBoot_follow(
 ): Promise<{ state: 'ready' } | { state: 'failed'; reason: string }> {
   const response = await fetchLike(`${door_normalise(door)}boot/${entry.key}`, { headers: { cookie: entry.cookie, accept: 'text/event-stream' } });
   if (!response.ok) return { state: 'failed', reason: `the door would not show the boot (${response.status})` };
-  const text: string = await response.text();
-  return bootEvents_read(text, onLine);
+  // The boot as it happens: each event is handed over as its bytes arrive.
+  // Reading the body whole waited for the door to close the stream, so a
+  // minute of boot rows landed in one lump after the prompt (titan, 2026-10-06).
+  const body: ReadableStream<Uint8Array> | null = response.body;
+  if (body === null || typeof body.getReader !== 'function') return bootEvents_read(await response.text(), onLine);
+  const reader: ReadableStreamDefaultReader<Uint8Array> = body.getReader();
+  const decoder: TextDecoder = new TextDecoder();
+  let rest: string = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const fed: BootEventsFed = bootEvents_feed(rest + decoder.decode(value, { stream: true }), onLine);
+    if (fed.verdict !== null) {
+      void reader.cancel().catch((): void => undefined);
+      return fed.verdict;
+    }
+    rest = fed.rest;
+  }
+  const last: BootEventsFed = bootEvents_feed(`${rest}${decoder.decode()}\n\n`, onLine);
+  return last.verdict ?? { state: 'failed', reason: 'the boot stream ended without a verdict' };
+}
+
+/** What feeding a piece of the boot stream to the reader yielded. */
+interface BootEventsFed {
+  /** The verdict, once an end event was read. */
+  verdict: { state: 'ready' } | { state: 'failed'; reason: string } | null;
+  /** The tail not yet ending in a blank line: an event still arriving. */
+  rest: string;
 }
 
 /**
- * Reads a boot's server-sent events as the door writes them.
+ * Reads the complete events in a piece of the boot's server-sent stream,
+ * handing each `line` over, and keeps the incomplete tail for the next piece.
  *
- * @param text - The whole stream, once it closed.
+ * @param text - Bytes decoded so far, from the start of an event.
  * @param onLine - Told each `line` event's text.
- * @returns The end the stream reached.
+ * @returns The verdict when an end event was among them, and the tail.
  */
-export function bootEvents_read(text: string, onLine: (text: string) => void): { state: 'ready' } | { state: 'failed'; reason: string } {
-  for (const block of text.split('\n\n')) {
+export function bootEvents_feed(text: string, onLine: (text: string) => void): BootEventsFed {
+  const cut: number = text.lastIndexOf('\n\n');
+  if (cut < 0) return { verdict: null, rest: text };
+  const complete: string = text.slice(0, cut);
+  const rest: string = text.slice(cut + 2);
+  for (const block of complete.split('\n\n')) {
     let event: string = 'message';
     let data: string = '';
     for (const row of block.split('\n')) {
@@ -176,13 +207,24 @@ export function bootEvents_read(text: string, onLine: (text: string) => void): {
     if (event === 'line' && typeof parsed === 'object' && parsed !== null && typeof (parsed as { text?: unknown }).text === 'string') {
       onLine((parsed as { text: string }).text);
     } else if (event === 'ready') {
-      return { state: 'ready' };
+      return { verdict: { state: 'ready' }, rest };
     } else if (event === 'failed') {
       const reason: unknown = typeof parsed === 'object' && parsed !== null ? (parsed as { reason?: unknown }).reason : null;
-      return { state: 'failed', reason: typeof reason === 'string' ? reason : 'the session did not start' };
+      return { verdict: { state: 'failed', reason: typeof reason === 'string' ? reason : 'the session did not start' }, rest };
     }
   }
-  return { state: 'failed', reason: 'the boot stream ended without a verdict' };
+  return { verdict: null, rest };
+}
+
+/**
+ * Reads a boot's server-sent events given whole, once the stream closed.
+ *
+ * @param text - The whole stream.
+ * @param onLine - Told each `line` event's text.
+ * @returns The end the stream reached.
+ */
+export function bootEvents_read(text: string, onLine: (text: string) => void): { state: 'ready' } | { state: 'failed'; reason: string } {
+  return bootEvents_feed(`${text}\n\n`, onLine).verdict ?? { state: 'failed', reason: 'the boot stream ended without a verdict' };
 }
 
 /** A writable that can be told to swallow what it is given: the password. */

@@ -404,9 +404,12 @@ export function listingTemplate_of<T>(
     } else {
       cappedSeen = true;
     }
-    // A column sized by hand takes its px; the expanse is never sized (columns.ts).
+    // A column sized by hand takes its px. The expanse keeps its `1fr`, so it
+    // still takes whatever room is spare; a hand can only move its minimum,
+    // which is what it shows when the row is wider than the pane (columns.ts).
     const px: number | undefined = sized?.get(trait.key);
-    tracks.push(px !== undefined && !track_isExpanse(trait.width) ? `${px}px` : trait.width.trim());
+    if (px === undefined) tracks.push(trait.width.trim());
+    else tracks.push(track_isExpanse(trait.width) ? `minmax(${px}px, 1fr)` : `${px}px`);
   }
   if (actions !== undefined) {
     if (actions.width === undefined || actions.width.trim() === '') {
@@ -1447,6 +1450,7 @@ export class Listing<T> {
     const store: ColumnStore | null = columnStore_default();
     grips_wire(caps, {
       key_of: (cap: HTMLElement): string | null => cap.dataset['key'] ?? null,
+      expanse_is: (key: string): boolean => track_isExpanse(this.level.track_of(key) ?? ''),
       floor_of: (key: string): number => length_px(floor_of(this.level.track_of(key) ?? '3em'), caps),
       expanseSlack: (): number => {
         const expanse: { key: string; width: string } | null = this.level.expanse_of();

@@ -1090,6 +1090,40 @@ try {
   }
 
   if (await stage('listing-columns')) {
+  // On a files listing (NAME is the expanse, on the left) every boundary
+  // follows the hand: dragging a grip 24 px right moves that boundary 24 px
+  // right and leaves the column after the next one where it was. The first
+  // build moved the column away from the hand and the NAME boundary did
+  // nothing (the operator, 2026-10-06).
+  const follows = await evalIn(`
+    await console_idle();
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const fp = [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+    for (let i = 0; i < 40; i++) { await sleep(250); if (fp.querySelectorAll('.files-row').length > 1) break; }
+    const caps = () => [...fp.querySelectorAll('.roster-order .roster-cap')];
+    const out = [];
+    for (let i = 0; i < caps().length - 1; i++) {
+      const cap = caps()[i]; const grip = cap.querySelector('.roster-grip'); if (!grip) continue;
+      const before = cap.getBoundingClientRect().right;
+      const farEdge = caps()[i + 2]?.getBoundingClientRect().left ?? null;
+      const r = grip.getBoundingClientRect(); const x = r.left + r.width / 2; const y = r.top + r.height / 2;
+      grip.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 7 }));
+      window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x + 24, clientY: y, pointerId: 7 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x + 24, clientY: y, pointerId: 7 }));
+      await sleep(120);
+      const after = caps()[i].getBoundingClientRect().right;
+      const farAfter = caps()[i + 2]?.getBoundingClientRect().left ?? null;
+      const capsRow = fp.querySelector('.roster-order .roster-caps');
+      out.push({ key: cap.dataset.key, moved: Math.round(after - before), farMoved: farEdge === null ? null : Math.round(farAfter - farEdge), overflowing: capsRow.scrollWidth > capsRow.clientWidth + 1 });
+    }
+    fp.querySelector('.files-columns')?.click(); await sleep(200);
+    return out;`);
+  // Where the row fits, the two columns beside the grip trade and nothing
+  // beyond them moves; where it is already wider than the pane (a tablet),
+  // the column grows and everything after it shifts with the hand.
+  check('on a files listing every grip moves its own boundary with the hand, and nothing beyond the next column moves unless the row overflows',
+    follows.length >= 2 && follows.every((b) => Math.abs(b.moved - 24) <= 2 && (b.farMoved === null || (b.overflowing ? Math.abs(b.farMoved - 24) <= 2 : Math.abs(b.farMoved) <= 2))),
+    JSON.stringify(follows));
   // Columns sized by hand: a grip on a cap's edge drags the column within
   // its floor, the expanse takes the difference, the COLUMNS block reads
   // SIZED, a reload keeps it on this device, a double-press gives one back
@@ -1129,8 +1163,16 @@ try {
     const all = { owner: w('owner'), block: block()?.textContent ?? null, stored: localStorage.getItem('argus.columns.runs.owner') };
     const lastHasGrip = [...dp().querySelectorAll('.roster-order .roster-cap')].pop()?.querySelector('.roster-grip') !== null;
     return { before, dragged, sortedBy, reset, ownerSized, all, lastHasGrip };`);
+  // Where PROGRESS has room (the desk) the TITLE boundary follows the 80 px
+  // drag; where it is already at its minimum (a tablet, the row wider than
+  // the pane) there is nothing to give, and the boundary stays put rather
+  // than move against the hand.
+  const roomy = cols.before.progress > 260;
   check('a drag on a cap\'s grip sizes the column; the expanse gives the difference; the block reads SIZED; the device remembers',
-    cols.dragged.title >= cols.before.title + 70 && cols.dragged.progress <= cols.before.progress - 70 && cols.dragged.owner === cols.before.owner && /SIZED/.test(cols.dragged.block ?? '') && cols.dragged.stored !== null && cols.sortedBy !== 'title',
+    (roomy
+      ? cols.dragged.title >= cols.before.title + 70 && cols.dragged.progress <= cols.before.progress - 70 && /SIZED/.test(cols.dragged.block ?? '') && cols.dragged.stored !== null
+      : cols.dragged.title >= cols.before.title && Math.abs(cols.dragged.progress - cols.before.progress) <= 2)
+    && cols.dragged.owner === cols.before.owner && cols.sortedBy !== 'title',
     JSON.stringify({ before: cols.before, dragged: cols.dragged, sortedBy: cols.sortedBy }));
   check('a double-press on the grip gives the column back; COLUMNS gives them all back; the last cap has no grip',
     cols.reset.title === cols.before.title && cols.reset.stored === null && !/SIZED/.test(cols.reset.block ?? '') && cols.ownerSized.owner >= cols.before.owner + 30 && /SIZED/.test(cols.ownerSized.block ?? '') && cols.all.owner === cols.before.owner && cols.all.stored === null && !/SIZED/.test(cols.all.block ?? '') && cols.lastHasGrip === false,
@@ -1907,7 +1949,11 @@ try {
     for (let i = 0; i < 3 && pill.textContent !== 'LIST'; i++) pill.click();
     await sleep(200);
     return { atRest, opened, pillWorks, modeRead, blocksFlush, filterBefore, filterOpen, filterClosed, fieldRetracts, escRetracts, restored: pill.textContent === 'LIST' };`);
-  check('the mode frame rests as a strip, and the field carries no control', modeFrame.atRest.stripShown && modeFrame.atRest.frameOff && modeFrame.atRest.fieldClean, JSON.stringify(modeFrame.atRest));
+  // On a field too short to carry it (a 1024×768 tablet leaves the files
+  // field ~50 px tall) the strip folds away; the operator accepted that
+  // layout on 2026-10-06 (#923), so the strip is asked for where it fits.
+  const stripFits = (modeFrame.atRest.strip?.body ?? 999) >= 120;
+  check('the mode frame rests as a strip, and the field carries no control', (modeFrame.atRest.stripShown || !stripFits) && modeFrame.atRest.frameOff && modeFrame.atRest.fieldClean, JSON.stringify(modeFrame.atRest));
   check('the field is framed at rest: a rule turning through an elbow into the spine', modeFrame.atRest.ruleDrawn && modeFrame.atRest.elbowJoins, JSON.stringify(modeFrame.atRest));
   check('touching the strip slides the mode frame in, and its pills work there', modeFrame.opened && modeFrame.pillWorks && modeFrame.blocksFlush, JSON.stringify({ o: modeFrame.opened, p: modeFrame.pillWorks, f: modeFrame.blocksFlush }));
   check('filtering is a mode: folded at rest, the FILTER block unfolds it and reads its state', modeFrame.atRest.filterFolded && modeFrame.filterBefore === 'FILTER OFF' && modeFrame.filterOpen && modeFrame.filterClosed, JSON.stringify({ r: modeFrame.atRest.filterFolded, b: modeFrame.filterBefore, o: modeFrame.filterOpen, c: modeFrame.filterClosed }));

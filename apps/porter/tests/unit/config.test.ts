@@ -1,6 +1,7 @@
 /**
  * @file A porter's configuration: one CUBE, sensible defaults, refusals by name.
  */
+import { join } from 'node:path';
 import { describe, it, expect } from '@jest/globals';
 import { porterConfig_resolve, porterStateDir_resolve, chellEntry_locate, PORTER_DEFAULT_PORT } from '../../src/config.js';
 
@@ -57,6 +58,11 @@ describe('porterConfig_resolve', () => {
     expect(made.soundsDir).toBeNull();
     expect(porterConfig_resolve({ PORTER_CUBE_URL: 'https://c/api/v1/', PORTER_SOUNDS_DIR: '/etc/porter/sounds' }, locate).soundsDir).toBe('/etc/porter/sounds');
     expect(() => porterConfig_resolve({ PORTER_CUBE_URL: 'https://c/api/v1/', PORTER_IDLE_HOURS: 'never' }, locate)).toThrow('PORTER_IDLE_HOURS is not a span');
+    expect(made.tokenDays).toBe(30);
+    expect(made.tokensFile).toBe(join(made.stateDir, 'tokens.json'));
+    expect(porterConfig_resolve({ PORTER_CUBE_URL: 'https://c/api/v1/', PORTER_TOKEN_DAYS: '7' }, locate).tokenDays).toBe(7);
+    expect(porterConfig_resolve({ PORTER_CUBE_URL: 'https://c/api/v1/', PORTER_TOKENS_FILE: '/etc/porter/tokens.json' }, locate).tokensFile).toBe('/etc/porter/tokens.json');
+    expect(() => porterConfig_resolve({ PORTER_CUBE_URL: 'https://c/api/v1/', PORTER_TOKEN_DAYS: '0' }, locate)).toThrow('PORTER_TOKEN_DAYS is not a span of days');
   });
 
   it('refuses by name', () => {

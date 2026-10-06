@@ -122,9 +122,18 @@ export function trackWidth_of(cap: HTMLElement): number {
  * @param right - The column right of it.
  * @param dx - How far the pointer moved since the press.
  * @param expanseSlack - How much the expanse can still give, when it is neither side but absorbs.
- * @returns The new widths (null for the expanse side), and the boundary's actual move.
+ * @param overflowing - Whether the row is already wider than its pane. There
+ *   the neighbours are at their minimums and have nothing to trade, so the
+ *   column left of the boundary simply grows or shrinks and the row grows
+ *   with it, the way Finder's and Explorer's list views do (everything to
+ *   the right shifts; the listing scrolls).
+ * @returns The new widths (null for a side left alone), and the boundary's actual move.
  */
-export function boundary_drag(left: BoundarySide, right: BoundarySide | null, dx: number, expanseSlack: number = 0): { left: number | null; right: number | null; moved: number } {
+export function boundary_drag(left: BoundarySide, right: BoundarySide | null, dx: number, expanseSlack: number = 0, overflowing: boolean = false): { left: number | null; right: number | null; moved: number } {
+  if (overflowing && !left.expanse) {
+    const moved: number = dx >= 0 ? dx : Math.min(0, Math.max(left.floor - left.width, dx));
+    return moved === 0 ? { left: null, right: null, moved } : { left: Math.round(left.width + moved), right: null, moved };
+  }
   let lo: number;
   let hi: number;
   // A boundary never moves against the hand: a column already narrower than
@@ -233,9 +242,11 @@ export function grips_wire(caps: HTMLElement, hooks: GripHooks): void {
       // An expanse with no sizeable neighbour has nothing to trade with.
       if (left.expanse && right === null) return;
       const slack: number = hooks.expanseSlack();
+      // A row already wider than its pane: the column grows and the row with it.
+      const overflowing: boolean = caps.scrollWidth > caps.clientWidth + 1;
       caps.classList.add('roster-sizing');
       const move = (event: PointerEvent): void => {
-        const landed = boundary_drag(left, right, event.clientX - startX, slack);
+        const landed = boundary_drag(left, right, event.clientX - startX, slack, overflowing);
         if (landed.left !== null) hooks.size(key, landed.left);
         if (landed.right !== null && neighbour !== null) hooks.size(neighbour.key, landed.right);
       };

@@ -91,6 +91,15 @@ describe('a boundary follows the hand', () => {
     expect(boundary_drag(fixed(100, 120), fixed(80), -30)).toEqual({ left: null, right: null, moved: 0 });
   });
 
+  it('on a row already wider than its pane, the left column grows and the row with it; shrinking stops at its floor', () => {
+    // TITLE beside a PROGRESS pinned at its minimum, on a tablet: the drag right widens TITLE by the full 40.
+    expect(boundary_drag(fixed(211, 211), fixed(141, 141), 40, 0, true)).toEqual({ left: 251, right: null, moved: 40 });
+    expect(boundary_drag(fixed(251, 211), fixed(141, 141), -60, 0, true)).toEqual({ left: 211, right: null, moved: -40 });
+    expect(boundary_drag(fixed(211, 211), fixed(141, 141), -40, 0, true)).toEqual({ left: null, right: null, moved: 0 });
+    // A pinned NAME (no longer fluid) grows its minimum the same way.
+    expect(boundary_drag(fixed(211, 211), fixed(105, 53), 30, 0, true)).toEqual({ left: 241, right: null, moved: 30 });
+  });
+
   it('with no sizeable neighbour, the left column alone, within the expanse\'s slack', () => {
     expect(boundary_drag(fixed(100), null, 50, 20)).toEqual({ left: 120, right: null, moved: 20 });
   });

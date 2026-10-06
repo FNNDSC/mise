@@ -1113,12 +1113,16 @@ try {
       await sleep(120);
       const after = caps()[i].getBoundingClientRect().right;
       const farAfter = caps()[i + 2]?.getBoundingClientRect().left ?? null;
-      out.push({ key: cap.dataset.key, moved: Math.round(after - before), farMoved: farEdge === null ? 0 : Math.round(farAfter - farEdge) });
+      const capsRow = fp.querySelector('.roster-order .roster-caps');
+      out.push({ key: cap.dataset.key, moved: Math.round(after - before), farMoved: farEdge === null ? null : Math.round(farAfter - farEdge), overflowing: capsRow.scrollWidth > capsRow.clientWidth + 1 });
     }
     fp.querySelector('.files-columns')?.click(); await sleep(200);
     return out;`);
-  check('on a files listing every grip moves its own boundary with the hand, and nothing beyond the next column moves',
-    follows.length >= 2 && follows.every((b) => Math.abs(b.moved - 24) <= 2 && Math.abs(b.farMoved) <= 2),
+  // Where the row fits, the two columns beside the grip trade and nothing
+  // beyond them moves; where it is already wider than the pane (a tablet),
+  // the column grows and everything after it shifts with the hand.
+  check('on a files listing every grip moves its own boundary with the hand, and nothing beyond the next column moves unless the row overflows',
+    follows.length >= 2 && follows.every((b) => Math.abs(b.moved - 24) <= 2 && (b.farMoved === null || (b.overflowing ? Math.abs(b.farMoved - 24) <= 2 : Math.abs(b.farMoved) <= 2))),
     JSON.stringify(follows));
   // Columns sized by hand: a grip on a cap's edge drags the column within
   // its floor, the expanse takes the difference, the COLUMNS block reads

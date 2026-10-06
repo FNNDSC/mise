@@ -48,8 +48,17 @@ spec=""
 for d in $dirs; do
   name=$(node -pe "require('./$d/package.json').name"); want=$(node -pe "require('./$d/package.json').version")
   got=""
-  for _ in $(seq 1 40); do got=$(npm view "$name@$want" version --prefer-online 2>/dev/null || true); [ "$got" = "$want" ] && break; sleep 15; done
-  [ "$got" = "$want" ] || die "$name@$want is not on npm yet; nothing installed"
+  # Listed is not served: the registry names a version minutes before its
+  # tarball answers (2026-10-06: porter 0.6.1 listed, tarball 404 for ~4 min,
+  # and the pangea install failed). Wait for both.
+  tarball=""
+  for _ in $(seq 1 40); do
+    got=$(npm view "$name@$want" version --prefer-online 2>/dev/null || true)
+    tarball=$(npm view "$name@$want" dist.tarball --prefer-online 2>/dev/null || true)
+    [ "$got" = "$want" ] && [ -n "$tarball" ] && [ "$(curl -s -o /dev/null -w '%{http_code}' "$tarball")" = 200 ] && break
+    got=""; sleep 15
+  done
+  [ "$got" = "$want" ] || die "$name@$want is not served by npm yet; nothing installed"
   say "$name $want on npm"
   spec="$spec $name@$want"
 done

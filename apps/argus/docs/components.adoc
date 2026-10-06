@@ -38,7 +38,7 @@ image::images/listing-anatomy.svg[Listing anatomy,1180]
 
 | grid host | (the mount, or `gridHost`) | The custom property `--roster-cols`, written by the façade from the traits. Every part below reads it.
 | frame | `.roster-order` | The caps row and the filter strip, seated at the head of the mount, never re-inserted.
-| caps | `.roster-caps` › `.roster-cap` | One cap per capped trait, blank cells over uncapped traits; the active cap wears `.roster-active` and its direction glyph. Every cap but the last carries a `.roster-grip` on its right edge: a drag sizes that column by hand (the expanse takes the difference; the column keeps its declared floor), a double-press gives it back; the row wears `.roster-sizing` during a drag. The grip is the gutter between two caps, centred on the boundary and wide enough for a finger: a touch drags it too.
+| caps | `.roster-caps` › `.roster-cap` | One cap per capped trait, blank cells over uncapped traits; the active cap wears `.roster-active` and its direction glyph. Every cap but the last carries a `.roster-grip` on its right edge: a drag moves that boundary with the pointer, and the two columns beside it trade the width within their floors (where one is the expanse, it gives or takes; `boundary_drag` in `features/roster/columns.ts`), a double-press gives both back; the row wears `.roster-sizing` during a drag. The grip is the gutter between two caps, centred on the boundary and wide enough for a finger: a touch drags it too.
 | columns block | `<prefix>-columns` on the mode frame | Reads `COLUMNS` at rest and `COLUMNS · SIZED` once any column is hand-sized; a press gives every column back. What was sized is remembered per device (`localStorage`, `argus.columns.<prefix>.<trait>`), so a tablet and a desk keep their own.
 | strip | `.roster-filter` › `.roster-filter-input` | The filter, hidden until FILTER or the language opens it.
 | field | `.listing-field` | The scrolling region beneath the frame, opened fresh on every render. A JPEG or PNG opened here is `.files-image`: it fills the field and keeps its shape (`object-fit: contain`), letterboxed on the field's black. Every scrolling field on the surface wears the `▼ N MORE` chip through `more_wire`; `MORE_FIELDS` in `features/roster/more.ts` is the list the lint holds the stylesheet to.
@@ -155,7 +155,7 @@ Row state that belongs to the pane (a refused read, an arrival, a status) goes t
 
 `listing-is-one-abstraction`. A pane declares its listing and never builds one. Reaching past the façade — to `RosterOrder`, `ListingHost`, the row or capsule builders, or a hand-typed `--roster-cols` — is the violation the lint names (S5); the PACS pane carries the one allowance, printed as debt, until S4.
 
-`the-expanse-is-never-sized-by-hand`. A grip sizes a fixed track within its declared floor; the `1fr` expanse is never grabbed and takes the difference, so bars keep one x across levels whatever was sized. The COLUMNS block reads SIZED while anything is, and gives all back.
+`the-expanse-is-never-sized-by-hand`. A grip moves the boundary under it with the pointer; the two columns beside it trade, each within its floor, and a boundary never moves against the hand. The `1fr` expanse is never given a width: it gives or takes the difference while it can stretch, so bars keep one x across levels whatever was sized; pinned at its minimum, only that minimum moves. The COLUMNS block reads SIZED while anything is, and gives all back.
 
 === Stylesheet
 

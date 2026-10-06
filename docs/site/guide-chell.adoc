@@ -154,6 +154,17 @@ include::{example-root}/standalone/chell_vocabulary.ts[]
 
 The richer vocabulary (`pacs pull`, `feed`, the `/proc` tree) works through exactly the same `line_execute` call, one line in, envelopes out.
 
+== Through a door, from a script
+
+Where a host runs a porter (the mise display manager), a script reaches the session through it with a door token instead of a password: once, on a terminal, `chell auth login --door <url>` (a browser code by default); after that `chell -c "…"` goes through that door with no flags. The lines the pangea nightly runs, from `scripts/smoke-nightly.sh`:
+
+[source,sh]
+----
+include::../../scripts/smoke-nightly.sh[tag=door-login]
+----
+
+The rules the door file follows (0600 in your home, refused when loose, dies on its day, never over plain http to another host) are in the chell package's `docs/login.adoc`, "Through a door".
+
 == Where to go next
 
 The link:guide-session.html[session guide] shows how these same lines cross a WebSocket to a daemon-hosted engine, which is how a web surface or bot would speak the vocabulary remotely. The builtin implementations live in the link:api/modules/_fnndsc_brasa.html[`brasa` reference]; each one renders through the envelope model the session guide describes.

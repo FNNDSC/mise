@@ -132,6 +132,61 @@ ChELL does **not** blindly trust saved tokens. During boot, after finding a save
 
 This ensures security and prevents using expired or revoked credentials.
 
+== Through a door
+
+A porter (the mise display manager) is a door in front of a host's sessions: a browser logs in there and gets ARGUS; a terminal logs in there and gets chell. A script needs the same, with no password per call and none in the script. `chell auth` is the `gh auth` of a door.
+
+=== Once, on a terminal
+
+[source,sh]
+----
+chell auth login --door https://titan.tch.harvard.edu/
+----
+
+It asks how you would like to log in:
+
+1. **With a web browser** (the default). Chell prints a short code and the door's URL. Open the page on any device, the laptop or the phone beside the SSH session, log in there, and confirm the code. The password never crosses the terminal; chell receives a door token.
+2. **With a password typed here** (`--with-password`), for a door no browser can reach.
+3. **With a token minted elsewhere** (`--with-token`, read from stdin), from `chell auth token --name "<what it is for>"` on a machine where you can log in, or from the operator's `porter --mint`.
+
+The token lands in `~/.config/chell/doors/<door-host>.json` at mode 0600, in your own home (porter runs as a system user with a home of its own; this file is chell's). That door becomes the default when none was.
+
+=== After that, no flags
+
+[source,sh]
+----
+chell                        # interactive, through the door
+chell -c "ls /proc/jobs"     # a script's line, no password anywhere
+chell -e -c "cd x; rm -r y"  # -e stops at the first error, through a door too
+chell auth status            # who, where, token name, days left
+chell auth tokens            # every token of yours at that door, last use
+chell auth logout            # revoke the one in hand, remove the file
+----
+
+`--no-door` asks for the local chell even with a default door set; a `user@url` target names a CUBE directly and never goes through a door; `--remote --door <url>` is the long form.
+
+=== The rules the file follows
+
+* **Loose is refused.** A door file not owned by you, or readable by group or others, is refused by name (`readable by others (mode 0644); fix it with chmod 600`), the way ssh refuses a loose key. Chell never falls back to a prompt a script would hang on.
+* **Precedence.** `-u`/`-p` on the command line, then `CHELL_DOOR_TOKEN` (with `CHELL_DOOR_USER`) in the environment, then the door file, then a prompt on a terminal, else one line of refusal.
+* **It dies on its day.** The door sets the life (30 days by default); from seven days out every call says so on stderr; at expiry chell refuses with the words to run. `chell auth login` again replaces the token.
+* **Never over plain http to another host.** A token travels over TLS or to loopback; `--insecure-door` sends it anyway, knowingly.
+
+=== What not to do
+
+* Do not put `-p <password>` in a script or a cron line: it is in `ps` for every user on the host and in the file forever.
+* Do not share a door file between users or machines: mint one per machine (`chell auth login` there) or per purpose (`chell auth token --name "cron on titan"`), so revoking one costs one.
+* Do not keep a password in `CHELL_DOOR_TOKEN`'s place: there is no password variable, on purpose.
+
+=== What the nightly runs
+
+The pangea nightly logs the e2e identity in by a token the operator's hand minted and runs a line through the door; these are the lines, from `scripts/smoke-nightly.sh`:
+
+[source,sh]
+----
+include::../../../scripts/smoke-nightly.sh[tag=door-login]
+----
+
 == Authentication Commands
 
 === `connect`

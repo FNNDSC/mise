@@ -53,4 +53,34 @@ run tablet 9702 SMOKE_ONLY=listing-columns,mode-frame,cards,runs-honesty,roster-
 run finger 9703 SMOKE_ONLY=listing-columns,mode-frame,cards,notes SMOKE_WIDTH=1024 SMOKE_HEIGHT=768 SMOKE_TOUCH=1
 cat "$log".desk "$log".tablet "$log".finger > "$log" 2>/dev/null; rm -f "$log".desk "$log".tablet "$log".finger
 kill "$pid" 2>/dev/null || true
+
+# The door, scripted (#925): a token minted by the operator's hand lets a
+# script in with no password anywhere, and `chell -c` goes through the
+# default door with no flags. Against this host's own porter (loopback, so
+# a token may travel over plain http). Skipped, and said, while the
+# installed porter is older than door tokens.
+PORTER_BIN=${PORTER_BIN:-$HOME/.local/share/porter-published/node_modules/.bin/porter}
+if [ -f "$HOME/.config/porter.env" ] && [ -x "$PORTER_BIN" ]; then
+  set -a; . "$HOME/.config/porter.env"; set +a
+  if "$PORTER_BIN" --tokens >/dev/null 2>&1; then
+    door_log="$STATE/$day-door.log"
+    (
+      set -e
+      export XDG_CONFIG_HOME="$P/config"
+      # tag::door-login[]
+      # The operator mints a token for the identity by hand; the plaintext is shown once and carried on stdin.
+      "$PORTER_BIN" --mint "$E2E_USER" --name "nightly@$(hostname -s)" | sed -n 2p \
+        | node packages/chell/dist/index.js auth login --door "http://127.0.0.1:${PORTER_PORT:-4180}" --with-token
+      # From here no flags are needed: this door is the default for this config.
+      node packages/chell/dist/index.js auth status
+      node packages/chell/dist/index.js -c pwd
+      node packages/chell/dist/index.js -e -c "cd /nowhere; pwd" || true   # -e stops at the first error
+      node packages/chell/dist/index.js auth logout
+      # end::door-login[]
+    ) > "$door_log" 2>&1 && echo "$day  door  ok (mint, login by token, status, chell -c, -e, logout)" | tee -a "$ledger" \
+      || { echo "$day  door  FAIL (see $door_log)" | tee -a "$ledger"; tail -5 "$door_log" | cut -c1-300 >> "$ledger"; }
+  else
+    echo "$day  door  skipped: the installed porter has no door tokens yet" | tee -a "$ledger"
+  fi
+fi
 echo "$day  log $log" >> "$ledger"

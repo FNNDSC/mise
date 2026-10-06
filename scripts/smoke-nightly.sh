@@ -83,4 +83,8 @@ if [ -f "$HOME/.config/porter.env" ] && [ -x "$PORTER_BIN" ]; then
     echo "$day  door  skipped: the installed porter has no door tokens yet" | tee -a "$ledger"
   fi
 fi
+# The upgrade path (#915): a daemon on the previous published release, a
+# porter from this checkout, two logins; one line in the ledger of its own.
+bash "$ROOT/scripts/smoke-upgrade.sh" || true
+
 echo "$day  log $log" >> "$ledger"

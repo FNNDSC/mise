@@ -60,7 +60,7 @@ CI_NPM ?= 11.19.0
 BRANCH = $(shell git branch --show-current)
 
 .DEFAULT_GOAL := help
-.PHONY: help shop prep cook taste taste-flight serve scrub run binaries deploy smoke-report \
+.PHONY: help shop prep cook taste taste-flight serve scrub run binaries deploy smoke-report smoke-upgrade \
         login connect daemon remote porter porter-status taco meal install build test clean link all \
         branch save push pr ci-watch merge publish vp-approve verify-npm \
         lockfile ci-dispatch release-dispatch sync tidy
@@ -351,6 +351,11 @@ deploy:
 
 # The nightly smoke's ledger: one line per run, its reds beneath (scripts/smoke-nightly.sh,
 # fired by the mise-smoke.timer user unit on pangea). A red is never "pre-existing".
+# The upgrade path, live: a daemon on the previous published chell, a porter
+# from this checkout, two logins (one restart, then attach). One ledger line.
+smoke-upgrade:
+	bash scripts/smoke-upgrade.sh
+
 smoke-report:
 	@tail -n 40 $$HOME/.local/state/mise/smoke/ledger.txt 2>/dev/null || echo "no nightly has run yet"
 

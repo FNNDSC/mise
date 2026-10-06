@@ -47,6 +47,13 @@ Grilled and settled 2026-09-21; built in slices from that day. Tier 2 of link:..
 | `GET /greeter/brain.js`, `/greeter/ansi.js` | The wire package's own modules, served from where it is installed.
 | `POST /restart` | Cookie-gated: the cookie's own session, and no other. The old daemon is told why (`restart`) and ended; a fresh one boots on the login the session saved (`chell --saved-token`); the browser follows the boot on the greeter. The mount refuses until the fresh berth answers. A second press while it boots joins that boot. Form: 303 to `/greet/<key>`. JSON: `{key, greet, state: 'restarting'}`; 401 for a browser that holds no session.
 | `POST /logout` | Clears the cookie; the session lives on. Form: 303 to `/login`. JSON: `{ok: true}`.
+| `POST /login` with `Authorization: Bearer <door token>` | A script's way in: no body. The token's identity is let in as a password would be; a session not up boots on the login it saved. The JSON answer carries `user`, `tokenName`, `expires`. An expired or unknown token is refused by name (401).
+| `POST /login` JSON with `tokenName` | A password login asking for a door token beside its session: the answer carries `token: {token, name, expires}`, the plaintext shown this once.
+| `POST /auth/device` | `{host}`: a one-time code for a chell on that host (`chell auth login`). Answers `{code, expires, url}`; the code lives ten minutes and is taken once.
+| `GET /login?code=<code>` | The login page saying what it is for: "Authorise chell on <host>". The form carries the code; a password login with it mints a token named `<user>@<host>` and hands it to the waiting poll.
+| `GET /auth/device/<code>` | Chell's poll: `{state: pending}`, then `{state: authorised, token, user, name, expires}` once, then 404.
+| `GET /auth/tokens` | Bearer-gated: the identity's own tokens (`name`, `created`, `expires`, `lastUsed`), what `chell auth tokens` reads.
+| `DELETE /auth/token` | Bearer-gated: revokes the token in hand, what `chell auth logout` calls.
 | `GET /boot/<key>` | Cookie-gated (401). Server-sent events: `line` (`{channel, text}`), then `ready` or `failed` (`{reason}`).
 | `/s/<key>/…` | Cookie-gated (302 to `/login`; an upgrade without it is dropped). The session: page, assets, `/vfs`, and the WebSocket wire, proxied to that identity's daemon on loopback with the token added by the porter.
 |===
@@ -65,20 +72,46 @@ Environment only, read once at start.
 | `PORTER_SECRET` | What the cookie is signed with, at least twenty characters. Given none, one is made up per start and every browser is asked again at a restart.
 | `PORTER_COOKIE_HOURS` | How long a browser stays let in; default 24.
 | `PORTER_IDLE_HOURS` | How long a session stands with no wire on it and nothing through the door before the porter ends its process; default 24. The state directory stays.
+| `PORTER_TOKEN_DAYS` | How long a door token lives from its minting; default 30. A fixed horizon, never slid by use: a leaked key in steady use still ends, and every script is re-blessed by a human on the day.
+| `PORTER_TOKENS_FILE` | The token store; default `<PORTER_STATE_DIR>/tokens.json`, beside the session directories, owner porter, mode 0600. Hashes and names only.
 | `PORTER_SOUNDS_DIR` | Optional. A folder of sounds served in place of the page's own: a request for `/s/<key>/sounds/<name>.mp3` (or `.wav`, `.ogg`) is answered from here when the file is there, by bare file name only, and proxied to the session otherwise. For the original LCARS beeps, which TheLCARS.com's licence forbids redistributing and so never ship in a package; kept outside the install, an upgrade does not take them away.
 |===
 
 == A terminal through the door
 
+Once, on a terminal:
+
 [source,sh]
 ----
-chell --remote --door https://titan.tch.harvard.edu/          # asks for a name and a password
-chell --remote --door https://titan.tch.harvard.edu/ -u chris -c "pwd"
+chell auth login --door https://titan.tch.harvard.edu/
 ----
+
+It asks how: a web browser (the default; a code to enter on this door's login page, from any device, so the password never crosses the terminal), a password typed here, or a token minted elsewhere pasted in. The token lands in `~/.config/chell/doors/titan.tch.harvard.edu.json` at mode 0600 and the door becomes the default. After that, with no flags:
+
+[source,sh]
+----
+chell                       # interactive, through the door
+chell -c "ls /proc/jobs"    # a script's line, through the door, no password anywhere
+chell auth status           # who you are at the door, how long the token lives
+chell auth logout           # revoke the token at the door and remove the file
+----
+
+`chell --remote --door <url>` is the long form; `--no-door` asks for the local chell anyway, and a `user@url` target still names a CUBE directly. The user's side is in link:../../../packages/chell/docs/login.adoc[chell's login document].
+
+== Door tokens
+
+A door token is how a script comes through without a password: minted once by a human login (the browser code, or a password), kept by the door only as a SHA-256 hash with a name the operator can read (`chris@pangea`, `nightly@pangea`), the identity it is for, when it was minted and when it dies. Presented as `Authorization: Bearer …` on `POST /login`, it is let in the way a password would be, and the ordinary session cookie follows.
+
+* **It dies on its day.** `PORTER_TOKEN_DAYS` (30) from its minting, whatever its use; chell says so from seven days out on every call, and refuses plainly at expiry with the words to run. A `login` again on the same host replaces the old token, so the store never fills with forgotten keys.
+* **Minting needs a human.** A token is minted by a password login (a JSON login with `tokenName`, or the login page with a device code), or by the operator on the host: `porter --mint <user> --name <name>` prints the plaintext once, for a service identity or a hand-over. A token never mints a token.
+* **Revocation is by name.** `porter --tokens` lists them with last use; `porter --revoke <user> [<name>]` ends one or all of a user's; `chell auth logout` revokes the one in hand. The running door re-reads the store when the file changed under it, so a revocation from the command line is refused on the token's next call without a restart.
+* **The journal says.** `[+] <user> came through by door token "<name>"`, `[+] minted a door token "<name>" for <user>`, `[+] refused a door token nobody holds`, `[+] refused <user>'s door token "<name>": it expired on <day>`, so script traffic reads apart from a person at a keyboard.
+* **Never over plain http to another host.** Chell refuses to send a token to an `http://` door that is not loopback unless told `--insecure-door`; this door is behind Caddy TLS, and a door that is not should be.
+* **Nothing on the command line.** The token is in the user's 0600 file, or in `CHELL_DOOR_TOKEN` for a runner that injects secrets; a password belongs on no command line and in no script (`-p` is honoured and discouraged).
 
 == Running it
 
-`porter` starts the door; `porter --end <who>` ends one session by berth key, identity or user (its state kept; the next login boots on this porter's kernel); `porter --status` lists the sessions the state directory holds — key, identity, address, and whether each answers — without starting anything, and asks for nothing but `PORTER_STATE_DIR` (the CUBE, the port and the secret belong to a door, not a listing).
+`porter --tokens`, `porter --revoke <user> [<name>]` and `porter --mint <user> --name <name>` manage door tokens (above). `porter` starts the door; `porter --end <who>` ends one session by berth key, identity or user (its state kept; the next login boots on this porter's kernel); `porter --status` lists the sessions the state directory holds — key, identity, address, and whether each answers — without starting anything, and asks for nothing but `PORTER_STATE_DIR` (the CUBE, the port and the secret belong to a door, not a listing).
 
 == Deploying on titan
 

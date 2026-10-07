@@ -16,7 +16,7 @@
  *   modules, served from where they are installed, so the greeter draws
  *   the brain and the rows from the same source the console does.
  * - `POST /restart` — the cookie's own session restarts: the old daemon is
- *   told why and ended, a fresh one boots on the login it saved, and the
+ *   left the cause and ended, a fresh one boots on the login it saved, and the
  *   browser follows the boot on the greeter (no password asked again).
  * - `POST /logout` — the cookie is cleared; the session lives on.
  * - Door tokens (`chell auth`): `POST /login` also takes `Authorization:
@@ -477,12 +477,12 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     if (found !== null) {
       const behind: string[] = berth_behind(found, installed);
       if (behind.length > 0) {
-        // The restart the RESTART pill takes: the old daemon is told why and
-        // waited out before the new one boots, so the mount never reaches a
+        // The restart the RESTART pill takes: the old daemon is left the
+        // cause and waited out before the new one boots, so the mount never reaches a
         // port that is about to close.
         options.log?.(`restarting ${username}'s session for the new release (${behind.join(', ')})`);
         registry.pending_note(identity, username);
-        host.restart_begin(identity, username, config.cubeUrl);
+        host.restart_begin(identity, username, config.cubeUrl, { kind: 'stale', behind });
         return wantsJson ? answer({ key, mount: `/s/${key}/`, state: 'starting' }) : reply.redirect(`/greet/${key}`, 303);
       }
     }
@@ -499,7 +499,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
       // A door token carries no CUBE token: the session boots on the login
       // it saved when a human last came through, as a restart does; a
       // session that never saved one refuses, and says so on the boot.
-      host.restart_begin(identity, username, config.cubeUrl);
+      host.restart_begin(identity, username, config.cubeUrl, { kind: 'saved-login' });
       options.log?.(`starting a session for ${username} on its saved login`);
     } else {
       host.spawn_begin(identity, username, config.cubeUrl, cubeToken);
@@ -535,8 +535,8 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     return served.source;
   });
 
-  // A session restarted by its own operator: the old daemon is told why and
-  // ended, a fresh one boots on the login it saved, and the browser follows
+  // A session restarted by its own operator: the old daemon is left the
+  // cause and ended, a fresh one boots on the login it saved, and the browser follows
   // the boot on the greeter and comes back in. The cookie names the session
   // and the only session it can name is its own.
   app.post('/restart', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
@@ -553,7 +553,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     // Pending from here: the mount refuses until the fresh berth answers,
     // rather than proxying to a daemon on its way out.
     registry.pending_note(entry.identity, entry.user);
-    host.restart_begin(entry.identity, entry.user, config.cubeUrl);
+    host.restart_begin(entry.identity, entry.user, config.cubeUrl, { kind: 'asked' });
     options.log?.(`restarting ${entry.user}'s session, asked from their browser`);
     return wantsJson ? { key, greet: `/greet/${key}`, state: 'restarting' } : reply.redirect(`/greet/${key}`, 303);
   });

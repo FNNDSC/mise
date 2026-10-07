@@ -122,7 +122,7 @@ export interface SessionHost {
 
   /**
    * Restarts an identity's session and returns at once: the old daemon is
-   * told why and ended, and a fresh one boots on the token the session saved
+   * left the cause and ended, and a fresh one boots on the token the session saved
    * — the operator's password is not asked again. The whole of it is one
    * boot, followed through {@link boot_follow} from the first word, so a
    * greeter never sees a gap; a saved token the server refuses ends the boot
@@ -131,6 +131,32 @@ export interface SessionHost {
    * @param identity - The normalised `<user>@<url>`.
    * @param user - The CUBE username.
    * @param cubeUrl - The CUBE API base.
+   * @param why - Why, for the boot's first line; the operator's RESTART by default.
    */
-  restart_begin(identity: string, user: string, cubeUrl: string): void;
+  restart_begin(identity: string, user: string, cubeUrl: string, why?: RestartWhy): void;
+}
+
+/**
+ * Why a session restarts, for the first line its boot reads: a daemon
+ * running older code than the door ships (and which packages), the
+ * operator's own RESTART, or a session with no daemon booting on its saved
+ * login.
+ */
+export type RestartWhy =
+  | { kind: 'stale'; behind: ReadonlyArray<string> }
+  | { kind: 'asked' }
+  | { kind: 'saved-login' };
+
+/**
+ * The first line a restart's boot reads, in plain words.
+ *
+ * @param why - Why the session restarts.
+ * @returns The line.
+ */
+export function restartLine_of(why: RestartWhy): string {
+  switch (why.kind) {
+    case 'stale': return why.behind.length > 0 ? `Restarting a stale calypso daemon (${why.behind.join(', ')})` : 'Restarting a stale calypso daemon';
+    case 'asked': return 'Restarting the calypso daemon, as asked';
+    case 'saved-login': return 'Starting a calypso daemon on the saved login';
+  }
 }

@@ -20,9 +20,6 @@ import {
   feedIndexingModelSchema,
   type FeedIndexingModel,
   feedListModelSchema,
-  procUniverseModelSchema,
-  PROC_UNIVERSE_MODEL_KIND,
-  type ProcUniverseModel,
   DAG_MODEL_KINDS,
   FEED_LIST_MODEL_KIND,
   type FeedDagModel,
@@ -36,14 +33,14 @@ import { barState_clear, barState_set } from '../roster/bar.js';
 import { ChrisSpace, type LayoutStrategy, type PhysicsTerms, type SceneNode } from '../../scene/chrisSpace.js';
 import { Listing, type ListingStateParts } from '../roster/listing.js';
 import { type ListingAction } from '../roster/row.js';
-import { FEED_TRAITS, duration_format, size_format } from './roster.js';
+import { FEED_TRAITS } from './roster.js';
+import { feedFacts_render } from '../feed/facts.js';
 import { FeedFrame, type FeedFrameFacts } from './feedFrame.js';
 import { FeedViewFrame, feedHueLegend_of, feedShape_same, feedStatuses_patch, type FeedModes, type FeedVerb } from '../feed/view.js';
 import { FollowGuard } from './follow.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
 import { feedGraph_build, feedMetric_of, type HueMode, type MetricMode } from '../../scene/feedGraph.js';
-import { LandedFeeds, universeGraph_build, universeTip_of, type LandedFeed } from './universe.js';
 
 /** What the pane asks of its host. */
 export interface DagPanelHandlers {
@@ -279,9 +276,6 @@ export class DagPanel {
       select: (node: SceneNode): void => this.facts_show(node),
       activate: (node: SceneNode): void => this.node_activate(node),
       deselect: (): void => this.facts.replaceChildren(),
-      // While the wait's theater is up, a sphere is a plugin group in a
-      // feed and the tip says both; a feed's own graph keeps its labels.
-      tip: (node: SceneNode): string | null => (this.universeShown ? universeTip_of(node.id, this.landed) : null),
     });
     // BACK heads the frame: the way out of a graph is a press, as it is out
     // of a node and out of an entered feed in the universe — Esc does the
@@ -371,18 +365,12 @@ export class DagPanel {
    * @param envelope - Any envelope crossing the session.
    */
   public envelope_observe(envelope: WireEnvelope): void {
-    if (envelope.model?.kind === PROC_UNIVERSE_MODEL_KIND) {
-      const universe = procUniverseModelSchema.safeParse(envelope.model.data);
-      if (universe.success) this.universe_show(universe.data);
-      return;
-    }
     if (envelope.model?.kind === FEED_LIST_MODEL_KIND) {
       // Taken when asked for, or onto a roster: another command's listing never pulls a graph off stage.
       const asked: boolean = this.rosterPending || this.rosterShown;
       this.rosterPending = false;
       const roster = feedListModelSchema.safeParse(envelope.model.data);
       if (roster.success && (asked || this.canvas.style.display === 'none')) {
-        this.universe_end(true);
         this.chooser_show(roster.data.feeds);
       }
       return;
@@ -398,9 +386,6 @@ export class DagPanel {
       // keep the warming figure honest below it.
       this.rosterPending = false;
       this.rosterRefusal_show(envelope);
-      // The wait is drawn with what is known: the space of everything run
-      // here, as it lands. Cache-resident, so the ask costs the lane nothing.
-      this.universe_request();
       return;
     }
     if (envelope.model?.kind === DAG_MODEL_KINDS.feedIndexing) {
@@ -450,7 +435,6 @@ export class DagPanel {
       // The operator asked for this one by hand: pin it.
       this.pinnedFeedId = model.feedId;
     }
-    this.universe_end(false);
     this.shownFeedId = model.feedId;
     this.pendingFeedId = null;
     // The graph is the press's answer: the roster row it lit stands down.
@@ -811,27 +795,6 @@ export class DagPanel {
    * @param context - The pushed prompt context.
    */
   public promptContext_observe(context: PromptContext): void {
-    const landings: LandedFeed[] = context.procWarmup?.landed ?? [];
-    if (landings.length > 0) this.universeLandings_take(landings);
-    // The universe's title carries the warm-up figure whenever it is live,
-    // however the pane arrived — the refusal or the dashboard's tile.
-    if (this.universeShown && this.universeLive) {
-      const warm = context.procWarmup;
-      if (warm?.total !== undefined && warm.total > 0 && warm.sweeping !== false) {
-        const percent: number = Math.floor((warm.loaded / warm.total) * 100);
-        const warming: string = `INDEX WARMING ${warm.loaded.toLocaleString()}/${warm.total.toLocaleString()} (${percent}%)`;
-        if (warming !== this.universeWarming) {
-          this.universeWarming = warming;
-          this.universeTitle_paint();
-        }
-      } else if (warm === undefined || warm.sweeping === false || warm.state === 'cached') {
-        // The index came whole under a universe opened from the tile: it
-        // stands, and says so.
-        this.universeLive = false;
-        this.universeWarming = '';
-        this.universe_request();
-      }
-    }
     if (this.rosterProgress !== null && this.rosterProgress.isConnected) {
       const warm = context.procWarmup;
       if (warm?.total !== undefined && warm.total > 0 && warm.sweeping !== false) {
@@ -1028,107 +991,6 @@ export class DagPanel {
 
   /** The live progress line of a refused roster, fed by the prompt. */
   private rosterProgress: HTMLElement | null = null;
-
-  /** The feeds the session has reported landing, for the universe. */
-  private readonly landed: LandedFeeds = new LandedFeeds();
-  /** Whether the universe — the space of everything run here — is on the canvas. */
-  private universeShown: boolean = false;
-  /** Whether the universe still grows with the prompt's landings (the index warming). */
-  private universeLive: boolean = false;
-  /** A repaint of the universe waiting its turn, so landings never repaint faster than once a second. */
-  private universeRepaint: number | null = null;
-  /** The layout the operator had before the universe took the molecule, to give back. */
-  private universeStrategyWas: LayoutStrategy | null = null;
-  /** The warm-up figure the universe's title carries while live. */
-  private universeWarming: string = '';
-
-  /**
-   * Asks for the space of everything run here (the dashboard's UNIVERSE
-   * gesture, and the wait's own theater): every feed the index holds, as
-   * it landed. Cache-resident, answered at once whole or not.
-   */
-  public universe_request(): void {
-    this.handlers.command_run('proc universe');
-  }
-
-  /**
-   * Puts the universe on the canvas: branches by pipeline shape, feeds as
-   * leaves, sized by their jobs and hued by their status. While the index
-   * warms it keeps growing with each landing the prompt reports; whole,
-   * it stands.
-   *
-   * @param model - Every feed the index holds so far, and whether it is whole.
-   */
-  public universe_show(model: ProcUniverseModel): void {
-    this.landed.clear();
-    this.landed.take(model.feeds);
-    this.universeLive = !model.whole;
-    if (!this.universeShown) {
-      this.universeShown = true;
-      this.universeStrategyWas = this.scene.strategy_get();
-      // A taxonomy is a molecule, not a rank order: gravity pulls the
-      // branches into a crown, and shared trunks read as the trunks they are.
-      this.scene.strategy_set('molecule');
-      this.scene.physics_set({ gravity: true });
-    }
-    this.roster_show(false);
-    this.pendingFeedId = null;
-    this.pinnedFeedId = null;
-    this.empty.style.display = 'none';
-    this.canvas.style.display = 'block';
-    this.universe_paint();
-  }
-
-  /** Repaints the universe from what has landed, and titles it honestly. */
-  private universe_paint(): void {
-    // The scene holds the universe now, not the feed last shown: a feed
-    // arriving next is painted whole, never patched into this.
-    this.lastModel = null;
-    this.scene.graph_set(universeGraph_build(this.landed.all()), { wave: false });
-    this.universeTitle_paint();
-  }
-
-  /** Titles the universe with what it holds and, while live, how far the index is. */
-  private universeTitle_paint(): void {
-    const figure: string = `${this.landed.size()} FEEDS · ${this.landed.shapes()} SHAPES`;
-    this.title.textContent = this.universeLive
-      ? `UNIVERSE — ${figure}${this.universeWarming.length > 0 ? ` · ${this.universeWarming}` : ' · INDEX WARMING'}`
-      : `UNIVERSE — ${figure}`;
-    barState_set(this.stateSpan, this.universeLive ? 'wait' : 'settled', this.universeLive ? 'LANDING' : 'WHOLE');
-  }
-
-  /** Takes the prompt's landings into the universe, repainting at most once a second. */
-  private universeLandings_take(landed: ReadonlyArray<LandedFeed>): void {
-    if (!this.universeShown || !this.universeLive) return;
-    if (!this.landed.take(landed) || this.universeRepaint !== null) return;
-    this.universeRepaint = window.setTimeout((): void => {
-      this.universeRepaint = null;
-      if (this.universeShown) this.universe_paint();
-    }, 1000);
-  }
-
-  /**
-   * Takes the universe off the canvas: the roster, or a feed, takes its place.
-   *
-   * @param hideCanvas - Whether the canvas goes dark too (the roster's case).
-   */
-  private universe_end(hideCanvas: boolean): void {
-    if (!this.universeShown) return;
-    this.universeShown = false;
-    this.universeLive = false;
-    this.universeWarming = '';
-    if (this.universeRepaint !== null) {
-      window.clearTimeout(this.universeRepaint);
-      this.universeRepaint = null;
-    }
-    this.landed.clear();
-    if (this.universeStrategyWas !== null) {
-      this.scene.strategy_set(this.universeStrategyWas);
-      this.universeStrategyWas = null;
-    }
-    this.scene.selection_clear();
-    if (hideCanvas) this.canvas.style.display = 'none';
-  }
 
   /**
    * Paints the roster refusal in place of the loading row: the daemon's
@@ -1406,84 +1268,12 @@ export class DagPanel {
     // A selection is an indication: the node's data address becomes the
     // pane's regard, feeding any slaved viewer in its group.
     this.handlers.node_regard?.(payload.vfsPath);
-    this.facts.replaceChildren();
-    const settled: boolean =
-      payload.status === 'finishedSuccessfully' ||
-      payload.status === 'finishedWithError' ||
-      payload.status === 'cancelled';
-    // Metrics ride the warmed ProcCache; a settled node without them has
-    // simply not been backfilled yet.
-    const pending: string = settled ? 'awaiting warmup' : 'in flight';
-    const tally = payload.tally;
-    const rows: Array<[string, string]> = [
-      ['PLUGIN', payload.pluginName],
-      [tally ? 'REP. INSTANCE' : 'INSTANCE', String(payload.instanceId)],
-      ['STATUS', payload.status],
-      ...(tally
-        ? ([[
-            'COUNT',
-            `×${tally.count} — ${tally.done} done, ${tally.error} err, ${tally.running} live, ${tally.other} other`,
-          ]] as Array<[string, string]>)
-        : []),
-      ...(tally?.anomalies !== undefined && tally.anomalies.length > 0
-        ? ([[
-            'FAULTS',
-            tally.anomalies.map((a): string => a.id).join(' ') + (tally.count > tally.done + tally.anomalies.length ? ' …' : ''),
-          ]] as Array<[string, string]>)
-        : []),
-      [
-        'WALL',
-        payload.metrics?.computeSeconds !== undefined
-          ? duration_format(payload.metrics.computeSeconds)
-          : pending,
-      ],
-      [
-        'SIZE',
-        payload.metrics?.dataBytes !== undefined
-          ? size_format(payload.metrics.dataBytes)
-          : pending,
-      ],
-      ['DATA', payload.vfsPath],
-    ];
-    for (const [label, value] of rows) {
-      const row: HTMLDivElement = document.createElement('div');
-      row.className = 'telemetry-row';
-      const name: HTMLSpanElement = document.createElement('span');
-      name.className = 'telemetry-label';
-      name.textContent = label;
-      const figure: HTMLSpanElement = document.createElement('span');
-      figure.className = 'telemetry-value';
-      figure.textContent = value;
-      row.append(name, figure);
-      this.facts.appendChild(row);
-    }
-    this.facts.appendChild(subway_build(payload.status));
-    // The verb sits on the overlay, which is where the operator is already
-    // looking when they pick a node: the facts describe this node, and the
-    // one thing to do about it acts on this node. A collapsed ×N group is
-    // withheld rather than guessed at — an aggregate has no single instance
-    // for a run to append to, and picking a representative silently would
-    // be the surface inventing an answer.
-    if (this.handlers.node_process !== undefined) {
-      const process: (node: { vfsPath: string; instanceId: number; label: string }) => void = this.handlers.node_process;
-      const pill: HTMLButtonElement = document.createElement('button');
-      pill.className = 'pacs-capsule dag-process';
-      if (tally !== undefined) {
-        pill.textContent = 'PROCESS';
-        pill.disabled = true;
-        pill.title = `${tally.count} instances stand here: open one to process it`;
-        pill.classList.add('pacs-capsule-off');
-      } else {
-        pill.textContent = 'PROCESS';
-        pill.title = `open /bin bound to ${payload.label} — a run appends to this node`;
-        pill.addEventListener('click', (): void => process({
-          vfsPath: payload.vfsPath,
-          instanceId: payload.instanceId,
-          label: payload.label,
-        }));
-      }
-      this.facts.appendChild(pill);
-    }
+    // The feed view's one overlay (a-feed-has-one-view): the same rows,
+    // status line and verbs the universe shows for the same node.
+    feedFacts_render(this.facts, payload, {
+      ...(this.handlers.node_dive !== undefined || this.handlers.node_enter !== undefined ? { enter: (): void => this.node_activate(node) } : {}),
+      ...(this.handlers.node_process !== undefined ? { process: this.handlers.node_process } : {}),
+    });
   }
 
   /** Activation: fly into the node — literally when the host can overlay. */
@@ -1549,85 +1339,6 @@ export class DagPanel {
     }
     return false;
   }
-}
-
-/** The job lifecycle, in order — the subway line a node rides. */
-const SUBWAY_STAGES: ReadonlyArray<{ key: string; label: string }> = [
-  { key: 'created', label: 'CREATED' },
-  { key: 'waiting', label: 'WAITING' },
-  { key: 'scheduled', label: 'SCHEDULED' },
-  { key: 'started', label: 'STARTED' },
-  { key: 'registeringFiles', label: 'REGISTERING' },
-];
-
-/**
- * Builds the subway strip: the node's lifecycle as stops on a line, filled
- * to where the job actually is — the classic ChRIS UI progression carried
- * over. A happy terminal fills the whole line; an error or cancellation
- * ends the line at a red terminal stop.
- *
- * Every stop is NAMED. As bare dots the strip could only be read by a hand
- * that already knew the lifecycle, and a tooltip is not a readout: the one
- * moment the strip earns its place is a node in flight, and that is exactly
- * when the operator wants to know which stage it is standing at without
- * hunting for it. The stop it stands at says so in words, and the strip
- * says how far along the line that is. Nothing here animates: a node moves
- * when the feed says it moved, and motion on this surface is asked for.
- *
- * @param status - The node's current CUBE status.
- * @returns The strip element.
- */
-function subway_build(status: string): HTMLElement {
-  const strip: HTMLDivElement = document.createElement('div');
-  strip.className = 'dag-subway';
-  const doneAll: boolean = status === 'finishedSuccessfully';
-  const failed: boolean = status === 'finishedWithError' || status === 'cancelled';
-  const at: number = SUBWAY_STAGES.findIndex((stage): boolean => stage.key === status);
-  const reached: number = doneAll || failed ? SUBWAY_STAGES.length : at;
-  if (!doneAll && !failed) strip.classList.add('dag-subway-live');
-
-  /**
-   * One stop and the word under it.
-   *
-   * @param label - The stage's name.
-   * @param classes - The stop's state classes.
-   * @param here - Whether the node stands here.
-   * @returns The step.
-   */
-  const step_build = (label: string, classes: string, here: boolean): HTMLElement => {
-    const step: HTMLSpanElement = document.createElement('span');
-    step.className = `subway-step${here ? ' subway-step-here' : ''}`;
-    const stop: HTMLSpanElement = document.createElement('span');
-    stop.className = classes;
-    const name: HTMLSpanElement = document.createElement('span');
-    name.className = 'subway-label';
-    name.textContent = label;
-    step.append(stop, name);
-    return step;
-  };
-
-  SUBWAY_STAGES.forEach((stage, index): void => {
-    if (index > 0) {
-      const link: HTMLSpanElement = document.createElement('span');
-      link.className = 'subway-link' + (index <= reached ? ' subway-passed' : '');
-      strip.appendChild(link);
-    }
-    const here: boolean = index === at && !doneAll && !failed;
-    strip.appendChild(step_build(
-      stage.label,
-      'subway-stop' + (index < reached ? ' subway-passed' : '') + (here ? ' subway-here' : ''),
-      here,
-    ));
-  });
-  const lastLink: HTMLSpanElement = document.createElement('span');
-  lastLink.className = 'subway-link' + (doneAll || failed ? ' subway-passed' : '');
-  strip.appendChild(lastLink);
-  strip.appendChild(step_build(
-    doneAll ? 'FINISHED' : failed ? (status === 'cancelled' ? 'CANCELLED' : 'ERROR') : 'FINISHED',
-    'subway-stop subway-terminal' + (doneAll ? ' subway-done' : '') + (failed ? ' subway-failed' : ''),
-    false,
-  ));
-  return strip;
 }
 
 /**

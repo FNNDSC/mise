@@ -20,6 +20,7 @@
 import { feedGraph_build } from '../../scene/feedGraph.js';
 import { FEED_MODES_DEFAULT, FeedViewFrame, feedHueLegend_of, feedShape_same, feedStatuses_patch, type FeedModes, type FeedVerb } from '../feed/view.js';
 import { FeedFrame, type FeedFrameFacts } from '../dag/feedFrame.js';
+import { feedFacts_render } from '../feed/facts.js';
 import { ranked_layout } from '@fnndsc/orrery';
 import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope, WatchState } from '@fnndsc/menu';
 import { barState_clear, barState_set, type BarState } from '../roster/bar.js';
@@ -37,8 +38,8 @@ import {
   pluginTip_of,
   pluginOfStar,
   type UniverseSettings,
-} from '../dag/universe.js';
-import { dataGraph_build, dataHubKey_of, dataHubTip_of, dataPath_of, descriptionGroups_of } from '../dag/dataSpace.js';
+} from './space.js';
+import { dataGraph_build, dataHubKey_of, dataHubTip_of, dataPath_of, descriptionGroups_of } from './dataSpace.js';
 
 /** How the whole space is arranged: round each shape's hub, or round the plugin stars. */
 type Arrangement = UniverseSettings['arrangement'];
@@ -1405,45 +1406,15 @@ export class UniversePanel {
   /** The selected node's facts and verbs, on the field's overlay. */
   private facts_show(node: SceneNode, payload: FeedDagNode): void {
     if (this.facts === null) return;
-    this.facts.replaceChildren();
-    const tally = payload.tally;
-    const rows: Array<[string, string]> = [
-      ['PLUGIN', payload.pluginName],
-      [tally ? 'REP. INSTANCE' : 'INSTANCE', String(payload.instanceId)],
-      ['STATUS', payload.status],
-      ...(tally ? ([['COUNT', `×${tally.count} — ${tally.done} done, ${tally.error} err, ${tally.running} live`]] as Array<[string, string]>) : []),
-      ['DATA', payload.vfsPath],
-    ];
-    for (const [label, value] of rows) {
-      const row: HTMLDivElement = document.createElement('div');
-      row.className = 'telemetry-row';
-      const name: HTMLSpanElement = document.createElement('span');
-      name.className = 'telemetry-label';
-      name.textContent = label;
-      const figure: HTMLSpanElement = document.createElement('span');
-      figure.className = 'telemetry-value';
-      figure.textContent = value;
-      row.append(name, figure);
-      this.facts.append(row);
-    }
-    // The node's verbs ride its facts: a control lives where it acts.
-    const verbs: HTMLDivElement = document.createElement('div');
-    verbs.className = 'universe-node-verbs';
-    const enter: HTMLButtonElement = document.createElement('button');
-    enter.className = 'pacs-capsule universe-node-enter';
-    enter.textContent = 'ENTER NODE';
-    enter.title = 'fly into the node: its data, browsable inside (Esc flies out)';
-    enter.addEventListener('click', (): void => {
-      if (this.handlers.node_dive !== undefined) this.node_dive(node);
-      else this.handlers.node_enter?.(payload.vfsPath);
+    // The feed view's one overlay (a-feed-has-one-view): the rows, status
+    // line and verbs RUNS shows for the same node.
+    feedFacts_render(this.facts, payload, {
+      enter: (): void => {
+        if (this.handlers.node_dive !== undefined) this.node_dive(node);
+        else this.handlers.node_enter?.(payload.vfsPath);
+      },
+      ...(this.handlers.node_process !== undefined ? { process: this.handlers.node_process } : {}),
     });
-    const process: HTMLButtonElement = document.createElement('button');
-    process.className = 'pacs-capsule universe-node-process';
-    process.textContent = 'PROCESS';
-    process.title = 'a catalogue bound to this node\'s data';
-    process.addEventListener('click', (): void => this.handlers.node_process?.({ vfsPath: payload.vfsPath, instanceId: payload.instanceId, label: node.label }));
-    verbs.append(enter, process);
-    this.facts.append(verbs);
     this.facts.hidden = false;
   }
 

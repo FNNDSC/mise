@@ -22,7 +22,7 @@ A feed stem:[f] is a tree (with the occasional join) of plugin instances — job
 .A feed as run and as drawn: fourteen parallel conversions become one group of fourteen, its hue shifted toward error by the share that failed.
 image::collapse.svg[Collapse,1180]
 
-A group stem:[g] carries its plugin stem:[p_g], its job count stem:[n_g], its errored count stem:[e_g], its status, and its parent group. The shape of a feed is the string of its groups, `parent:plugin` joined by `>` (`r:pl-dircopy>0:pl-dcm2niix>1:pl-mri-preview`); feeds with the same shape ran the same pipeline (`apps/argus/src/features/dag/universe.ts`).
+A group stem:[g] carries its plugin stem:[p_g], its job count stem:[n_g], its errored count stem:[e_g], its status, and its parent group. The shape of a feed is the string of its groups, `parent:plugin` joined by `>` (`r:pl-dircopy>0:pl-dcm2niix>1:pl-mri-preview`); feeds with the same shape ran the same pipeline (`apps/argus/src/features/universe/space.ts`).
 
 === Size and colour
 
@@ -189,7 +189,7 @@ What each feed's data is — its format, and for DICOM its modality and series d
 O(A, B) = \frac{\lvert A \cap B \rvert}{\min(\lvert A \rvert, \lvert B \rvert)} \ \ge\ \tfrac12
 ++++
 
-(over the smaller, so `SAG MPRAGE` is the same series as `SAG MPRAGE 220 FOV`). Groups form greedily, most common description first, each named by the description most of its feeds carry (`apps/argus/src/features/dag/dataSpace.ts`).
+(over the smaller, so `SAG MPRAGE` is the same series as `SAG MPRAGE 220 FOV`). Groups form greedily, most common description first, each named by the description most of its feeds carry (`apps/argus/src/features/universe/dataSpace.ts`).
 
 A feed whose data lies in another feed's output (`/feeds/feed_<id>/`) is joined to that feed's root: its lineage, drawn as a faint thread and counted as a parent in the settle, so derived work drifts toward its source. Hubs are massless ghosts drawn as nebulae of radius stem:[\rho(n) = 1.6 + 0.45\sqrt{n}] for the stem:[n] feeds beneath them, and the space settles as the galaxy does. A hub is captioned when it is a format or a modality, or when stem:[n \ge \max(5,\ 0.02\,N)].
 
@@ -344,8 +344,8 @@ Each layout keeps its own positions per identity, in the browser and in the sess
 | `packages/orrery/src/layout/` | the engines: `galaxy.ts`, `hierarchy.ts` (spokes, clumps), `constellations.ts`, `accretion.ts`, `molecule.ts`, `seeded.ts`, `registry.ts`
 | `packages/orrery/src/draw/` | stars, spheres, census, halos and nebulae, tubes, captions, the hand-off
 | `packages/orrery/src/controls/` | camera, gestures, picking, replay
-| `apps/argus/src/features/dag/universe.ts` | the graphs per view and layout, sizes, shares, kept settings
-| `apps/argus/src/features/dag/dataSpace.ts` | the DATA hub tree
+| `apps/argus/src/features/universe/space.ts` | the graphs per view and layout, sizes, shares, kept settings
+| `apps/argus/src/features/universe/dataSpace.ts` | the DATA hub tree
 | `apps/argus/src/features/universe/panel.ts` | the pane: frame, verbs, memory
 | `packages/salsa/src/dag/feedData.ts` | reading each feed's data facts into the index
 |===

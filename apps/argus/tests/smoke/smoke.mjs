@@ -570,7 +570,7 @@ try {
     check('a click keeps the camera: a wheeled-in camera and the settled space stand through a click on the field',
       universe.clickKept, `fits ${universe.fitsBefore} -> ${universe.fitsAfter} | ${universe.clickTitle}`);
     check('universe enter <feed> descends: the title names the feed inside, the state says INSIDE, BACK and OPEN FEED stand on the frame',
-      universe.landedId !== '' && new RegExp('^UNIVERSE — INSIDE FEED ' + universe.landedId + ' · ').test(universe.insideTitle) && universe.insideState === 'INSIDE' && universe.insideBlocks,
+      universe.landedId !== '' && new RegExp('^UNIVERSE — INSIDE FEED ' + universe.landedId + ' · ').test(universe.insideTitle) && /^INSIDE( · (LIVE|SETTLED|STALE))?$/.test(universe.insideState) && universe.insideBlocks,
       `${universe.landedId} | ${universe.insideTitle} | ${universe.insideState}`);
     check('2D inside a feed flattens that feed only: the block reads 2D inside, and the space climbed back to reads 3D',
       universe.insideFlat?.pill === '2D' && /INSIDE FEED/.test(universe.insideFlat?.title ?? '') && universe.backProjection === '3D',

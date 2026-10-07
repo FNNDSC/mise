@@ -38,7 +38,7 @@ import { Listing, type ListingStateParts } from '../roster/listing.js';
 import { type ListingAction } from '../roster/row.js';
 import { FEED_TRAITS, duration_format, size_format } from './roster.js';
 import { FeedFrame, type FeedFrameFacts } from './feedFrame.js';
-import { FeedViewFrame, feedHueLegend_of, type FeedModes, type FeedVerb } from '../feed/view.js';
+import { FeedViewFrame, feedHueLegend_of, feedShape_same, feedStatuses_patch, type FeedModes, type FeedVerb } from '../feed/view.js';
 import { FollowGuard } from './follow.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
@@ -149,24 +149,6 @@ const PROGRESS_STATUS_MAP: Readonly<Record<string, string>> = {
  */
 
 
-/**
- * Whether two models of a feed are the same graph: the same nodes in the
- * same order, the same counts, the same edges — only statuses may differ.
- *
- * @param previous - The model on stage.
- * @param model - The model arriving.
- * @returns True when the arriving one can be patched in place.
- */
-function shape_same(previous: FeedDagModel, model: FeedDagModel): boolean {
-  return previous.nodes.length === model.nodes.length &&
-    model.nodes.every((node: FeedDagNode, index: number): boolean => {
-      const before: FeedDagNode | undefined = previous.nodes[index];
-      return before !== undefined && before.id === node.id &&
-        (before.tally?.count ?? 1) === (node.tally?.count ?? 1) &&
-        before.parentIds.length === node.parentIds.length &&
-        before.joinParentIds.length === node.joinParentIds.length;
-    });
-}
 
 export class DagPanel {
   private readonly scene: ChrisSpace;
@@ -495,7 +477,7 @@ export class DagPanel {
     // The feed on stage asked again (a second open, a watch's answer):
     // the same shape patches in place — a rebuild would resettle the graph
     // and drop its tubes and pulses mid-run.
-    if (previous !== null && previous.feedId === model.feedId && shape_same(previous, model)) {
+    if (previous !== null && previous.feedId === model.feedId && feedShape_same(previous, model)) {
       this.statuses_patch(model);
     } else {
       this.graph_show(model);
@@ -742,7 +724,7 @@ export class DagPanel {
     if (this.shownFeedId !== model.feedId || this.canvas.style.display === 'none') return;
     const previous: FeedDagModel | null = this.lastModel;
     this.lastModel = model;
-    if (previous !== null && shape_same(previous, model)) {
+    if (previous !== null && feedShape_same(previous, model)) {
       this.statuses_patch(model);
       return;
     }
@@ -756,10 +738,8 @@ export class DagPanel {
    * @param model - The model, the same shape as the one on stage.
    */
   private statuses_patch(model: FeedDagModel): void {
-    for (const node of model.nodes) {
-      this.scene.status_update(node.id, node.status);
-      this.factsPayloads.set(node.id, node);
-    }
+    feedStatuses_patch(this.scene, model);
+    for (const node of model.nodes) this.factsPayloads.set(node.id, node);
     // The pane is watching because something is moving; the facts on
     // screen are part of what moved.
     if (this.factsShown !== null) this.facts_show(this.factsShown);

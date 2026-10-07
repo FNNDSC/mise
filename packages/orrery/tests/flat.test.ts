@@ -65,3 +65,14 @@ describe('a molecule laid flat', () => {
     for (const [id, at] of standing) expect(positions.get(id)?.distanceTo(at)).toBeLessThan(1e-9);
   });
 });
+
+describe('rootsTop_of', () => {
+  it('a tree with its root above its children stands root on top; a burst does not; a lone node is not judged', async () => {
+    const { rootsTop_of } = await import('../src/scene/tree.js');
+    expect(rootsTop_of([{ id: 'r', parentIds: [], y: 2 }, { id: 'a', parentIds: ['r'], y: 0 }, { id: 'b', parentIds: ['a'], y: -2 }])).toBe(true);
+    expect(rootsTop_of([{ id: 'r', parentIds: [], y: -1 }, { id: 'a', parentIds: ['r'], y: 1.5 }])).toBe(false);
+    expect(rootsTop_of([{ id: 'r', parentIds: [], y: 0 }])).toBe(false);
+    // A parent outside the lit set (a dimmed anchor) leaves its child a root.
+    expect(rootsTop_of([{ id: 'r', parentIds: ['anchor'], y: 3 }, { id: 'a', parentIds: ['r'], y: 1 }])).toBe(true);
+  });
+});

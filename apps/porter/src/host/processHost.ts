@@ -20,7 +20,7 @@ import { spawn as childSpawn, type ChildProcess } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { berthKey_compute, berth_pathIn, berthUrl_isAlive, closing_write } from '@fnndsc/calypso/berth';
-import type { Berth, BootLine, BootListener, BootReport, SessionHost, SessionSighting } from './sessionHost.js';
+import { restartLine_of, type Berth, type BootLine, type BootListener, type BootReport, type RestartWhy, type SessionHost, type SessionSighting } from './sessionHost.js';
 
 /** How many boot lines a session keeps for late followers. */
 export const BOOT_LINES_KEPT: number = 2_000;
@@ -374,7 +374,7 @@ export class ProcessHost implements SessionHost {
   }
 
   /** @inheritdoc */
-  public restart_begin(identity: string, user: string, cubeUrl: string): void {
+  public restart_begin(identity: string, user: string, cubeUrl: string, why: RestartWhy = { kind: 'asked' }): void {
     const old: SessionRecord | undefined = this.sessions.get(identity);
     const record: SessionRecord = {
       identity,
@@ -397,12 +397,12 @@ export class ProcessHost implements SessionHost {
       for (const listener of record.listeners) listener.line(line);
     };
     record.starting = (async (): Promise<Berth> => {
-      say('Restarting the calypso daemon: the old one is told why and ended');
+      say(restartLine_of(why));
       const ended: SpawnedSession | number | null = await this.process_signal(identity, old, 'restart');
       if (ended !== null && !(await this.gone_wait(identity, ended))) {
         return this.boot_end(record, 'failed', 'the old calypso daemon did not stop');
       }
-      say('Starting a fresh calypso daemon on the saved login');
+      if (why.kind !== 'saved-login') say('Starting a fresh calypso daemon on the saved login');
       return this.boot_run(record, user, cubeUrl, null);
     })().finally((): void => { record.starting = null; });
     // The failure is already on the boot record for whoever follows it.

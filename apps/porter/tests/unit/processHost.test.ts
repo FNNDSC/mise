@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { berth_pathIn } from '@fnndsc/calypso/berth';
 import { ProcessHost, BOOT_LINES_KEPT, bootRow_parse, type SpawnedSession, type SessionSpawn } from '../../src/host/processHost.js';
-import type { BootLine } from '../../src/host/sessionHost.js';
+import { restartLine_of, type BootLine } from '../../src/host/sessionHost.js';
 
 const IDENTITY: string = 'chris@https://cube.example.org/api/v1/';
 
@@ -252,7 +252,7 @@ describe('ProcessHost restart', () => {
     const lines: string[] = [];
     const followed = host.boot_follow(IDENTITY, { line: (line: BootLine): void => { lines.push(line.text); }, done: (): void => undefined });
     expect(followed?.report.state).toBe('booting');
-    expect(followed?.report.lines[0]?.text).toMatch(/Restarting the calypso daemon/);
+    expect(followed?.report.lines[0]?.text).toBe('Restarting the calypso daemon, as asked');
     await new Promise((r) => setTimeout(r, 80));
     expect(children[0]?.killed).toBe('SIGTERM');
     const closing: string = join(host.dirs_of(IDENTITY).runtime, 'calypso', `closing-${(await import('@fnndsc/calypso/berth')).berthKey_compute(IDENTITY)}.json`);
@@ -263,6 +263,13 @@ describe('ProcessHost restart', () => {
     berth_plant(host);
     await new Promise((r) => setTimeout(r, 80));
     expect(host.boot_follow(IDENTITY, { line: (): void => undefined, done: (): void => undefined })?.report.state).toBe('ready');
+  });
+
+  it('says in plain words why a session restarts: a stale daemon names the packages that moved', () => {
+    expect(restartLine_of({ kind: 'stale', behind: ['brasa 0.31.5 → 0.33.0', 'argus 0.26.3 → 0.26.4'] })).toBe('Restarting a stale calypso daemon (brasa 0.31.5 → 0.33.0, argus 0.26.3 → 0.26.4)');
+    expect(restartLine_of({ kind: 'stale', behind: [] })).toBe('Restarting a stale calypso daemon');
+    expect(restartLine_of({ kind: 'asked' })).toBe('Restarting the calypso daemon, as asked');
+    expect(restartLine_of({ kind: 'saved-login' })).toBe('Starting a calypso daemon on the saved login');
   });
 
   it('ends the boot failed, with the reason, when the saved login is refused', async () => {

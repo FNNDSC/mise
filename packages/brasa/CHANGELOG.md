@@ -1,5 +1,12 @@
 # @fnndsc/brasa
 
+## 0.33.2
+
+### Patch Changes
+
+- Updated dependencies [bd0af06]
+  - @fnndsc/orrery@0.5.0
+
 ## 0.33.1
 
 ### Patch Changes

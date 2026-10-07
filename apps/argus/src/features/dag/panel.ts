@@ -171,6 +171,8 @@ export class DagPanel {
   private metricMode: MetricMode = 'time';
   /** The feed view's frame: its modes, the device's memory of them, the pills (features/feed/view.ts). */
   private readonly feedView: FeedViewFrame;
+  /** The feed modes as this pane last put them on its scene. */
+  private modesApplied: FeedModes | null = null;
   /** The last shown model, re-projected locally when the scale flips. */
   private lastModel: FeedDagModel | null = null;
   /** The roster last shown, re-rendered on any order change. */
@@ -322,13 +324,7 @@ export class DagPanel {
     this.huePill = this.feedView.pill_of('hue');
     // What this device last chose stands from the first graph: a feed opens
     // as its tree, root on top, unless the device chose otherwise.
-    const kept: FeedModes = this.feedView.modes_get();
-    this.scene.strategy_set(kept.strategy);
-    this.scene.projection_set(kept.projection);
-    this.scene.draw_set(kept.draw);
-    this.scene.waveLoop_set(kept.pulse);
-    this.scene.census_set(kept.census);
-    this.scene.physics_set({ gravity: kept.gravity });
+    this.feedModes_recall();
     // The language reaches the expert knobs through DOM events on the pane
     // (verbs run over the DOM, never a private API).
     const paneRoot: HTMLElement | null = strategyPill.closest<HTMLElement>('.pane-dag');
@@ -457,7 +453,7 @@ export class DagPanel {
     this.lastModel = model;
     // A feed entered stands in the device's remembered modes, whichever door
     // last turned them (a-feed-has-one-view): the universe may have, since.
-    if (previous === null || previous.feedId !== model.feedId) this.feedModes_recall();
+    this.feedModes_recall();
     // The feed on stage asked again (a second open, a watch's answer):
     // the same shape patches in place — a rebuild would resettle the graph
     // and drop its tubes and pulses mid-run.
@@ -472,18 +468,36 @@ export class DagPanel {
     this.handlers.feed_shown?.();
   }
 
-  /** Takes the device's remembered feed modes and puts every one on the scene. */
-  private feedModes_recall(): void {
+  /**
+   * Takes the device's remembered feed modes and puts on the scene what
+   * moved since this pane last applied them (the other door may have turned
+   * one): nothing that held is re-applied, so an unchanged view never relays out.
+   *
+   * @returns Whether anything that redraws the feed moved (metric, hue, draw).
+   */
+  private feedModes_recall(): boolean {
     const kept: FeedModes = this.feedView.recall();
-    this.scene.strategy_set(kept.strategy);
-    this.scene.projection_set(kept.projection);
-    this.scene.draw_set(kept.draw);
-    this.scene.waveLoop_set(kept.pulse);
-    this.scene.census_set(kept.census);
-    this.scene.physics_set({ gravity: kept.gravity });
+    const was: FeedModes | null = this.modesApplied;
+    this.modesApplied = kept;
+    if (was === null || was.strategy !== kept.strategy) this.scene.strategy_set(kept.strategy);
+    if (was === null || was.projection !== kept.projection) this.scene.projection_set(kept.projection);
+    if (was === null || was.draw !== kept.draw) this.scene.draw_set(kept.draw);
+    if (was === null || was.pulse !== kept.pulse) this.scene.waveLoop_set(kept.pulse);
+    if (was === null || was.census !== kept.census) this.scene.census_set(kept.census);
+    if (was === null || was.gravity !== kept.gravity) this.scene.physics_set({ gravity: kept.gravity });
     this.metricMode = kept.metric;
     this.hueMode = kept.hue;
     this.modes_render();
+    return was !== null && (was.metric !== kept.metric || was.hue !== kept.hue || was.draw !== kept.draw);
+  }
+
+  /**
+   * The pane is back on stage: the device's feed memory may have moved while
+   * it was away (a mode turned in the universe on the same feed), so it is
+   * taken again, and the feed on stage redrawn when what moved redraws it.
+   */
+  public stage_returned(): void {
+    if (this.feedModes_recall() && this.lastModel !== null && this.canvas.style.display !== 'none') this.graph_show(this.lastModel, false);
   }
 
   /**
@@ -494,6 +508,7 @@ export class DagPanel {
    * @param modes - The modes as they now stand.
    */
   private feedMode_apply(verb: FeedVerb, modes: FeedModes): void {
+    this.modesApplied = modes;
     switch (verb) {
       case 'strategy': this.scene.strategy_set(modes.strategy); break;
       case 'projection': this.scene.projection_set(modes.projection); break;

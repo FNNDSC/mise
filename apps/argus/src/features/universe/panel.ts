@@ -266,6 +266,8 @@ export class UniversePanel {
   private insideModel: FeedDagModel | null = null;
   /** The entered feed as last read for the scene. */
   private insideEntered: EnteredFeed | null = null;
+  /** The feed-view modes the entered feed was last drawn in, to tell when the memory moved under it. */
+  private insideModes: FeedModes | null = null;
   /** The feed this pane holds a watch on, and what the watch last said of it. */
   private watchedFeedId: number | null = null;
   private liveState: WatchState | null = null;
@@ -1082,6 +1084,7 @@ export class UniversePanel {
           // The feed view's look stands while inside: its draw style and its
           // pulse, whatever the space was drawn as; the space's comes back on the way out.
           const modes: FeedModes = this.feedView?.modes_get() ?? { ...FEED_MODES_DEFAULT };
+          this.insideModes = modes;
           this.scene.draw_set(modes.draw);
           if (this.drawPill !== null) this.drawPill.textContent = modes.draw.toUpperCase();
           this.scene.waveLoop_set(modes.pulse);
@@ -1171,6 +1174,7 @@ export class UniversePanel {
    */
   private feedMode_apply(verb: FeedVerb, modes: FeedModes): void {
     if (this.inside === null) return;
+    this.insideModes = modes;
     if (verb === 'pulse') { this.scene.waveLoop_set(modes.pulse); return; }
     if (verb === 'draw') {
       this.scene.draw_set(modes.draw);
@@ -1182,6 +1186,23 @@ export class UniversePanel {
     const inside = this.inside;
     const plan: ScenePlan = this.insidePlan_of(inside.feedId, feed, this.insideModel, [[...inside.ids]], 400);
     this.scene.unfold({ ...plan, drawn: (): void => { this.inside = { ...inside, entered: this.insideEntered as EnteredFeed }; } });
+  }
+
+  /**
+   * The pane is back on stage. Inside a feed, the device's feed memory may
+   * have moved while it was away (a mode turned in RUNS on the same feed):
+   * the frame takes it again, and the feed is redrawn under what changed,
+   * so a feed never stands in modes the device has since left.
+   */
+  public stage_returned(): void {
+    if (this.inside === null || this.feedView === null) return;
+    const before: FeedModes | null = this.insideModes;
+    const now: FeedModes = this.feedView.recall();
+    if (before === null || JSON.stringify(before) === JSON.stringify(now)) return;
+    if (before.draw !== now.draw) this.feedMode_apply('draw', now);
+    if (before.pulse !== now.pulse) this.feedMode_apply('pulse', now);
+    if (before.strategy !== now.strategy || before.metric !== now.metric || before.hue !== now.hue) this.feedMode_apply('strategy', now);
+    this.insideModes = now;
   }
 
   /**

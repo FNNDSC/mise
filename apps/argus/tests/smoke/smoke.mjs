@@ -2845,6 +2845,97 @@ try {
     failing.length === 0, detail === '' ? JSON.stringify(themes) : detail);
   }
 
+  if (await stage('feed-one-view')) {
+  // A feed is one view, whichever door opens it (law a-feed-has-one-view):
+  // entered from the universe and opened from RUNS, the same feed stands as
+  // the same tree, root on top, under the same frame words, with the same
+  // facts for the same node; a mode turned through one door stands through
+  // the other. The device's feed memory is put back as it was found.
+  const oneView = await evalIn(`
+    await console_idle();
+    const kept = localStorage.getItem('argus.feedview');
+    localStorage.removeItem('argus.feedview');
+    const input = document.querySelector('#terminal input');
+    const say = async (line, ms) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const settle = async (want, tries = 80) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
+    const universeOpen = async () => {
+      document.getElementById('gutter-dashboard')?.click();
+      await settle(() => document.querySelector('.launcher-tile') !== null);
+      [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
+      await settle(() => { const p = up(); return p !== undefined && /[1-9]\\d* FEEDS/.test(p.querySelector('.universe-title')?.textContent ?? ''); }, 240);
+      await sleep(1500);
+    };
+    const up = () => [...document.querySelectorAll('.pane-universe')].find((x) => x.offsetParent !== null);
+    const runs = () => [...document.querySelectorAll('.pane-dag')].find((x) => x.offsetParent !== null);
+    // A node's facts: sweep the field until a press lands on one.
+    const facts_of = async (pane, factsSel) => {
+      const canvas = pane.querySelector('canvas'); const r = canvas.getBoundingClientRect();
+      for (let y = 0.15; y < 0.95; y += 0.04) for (let x = 0.2; x < 0.9; x += 0.03) {
+        const cx = r.left + r.width * x, cy = r.top + r.height * y;
+        // One press only: a pointer pair and a click on the same node read
+        // as a double press, which dives into the node and leaves its overlay up.
+        canvas.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: cx, clientY: cy }));
+        await sleep(40);
+        const f = pane.querySelector(factsSel);
+        if (f && f.querySelector('.telemetry-row')) return { rows: [...f.querySelectorAll('.telemetry-label')].map((e) => e.textContent), line: f.querySelector('.dag-subway') !== null, verbs: [...f.querySelectorAll('.feed-node-verbs button')].map((b) => b.textContent) };
+      }
+      return null;
+    };
+    await universeOpen();
+    const key = Object.keys(localStorage).find((k) => k.startsWith('argus.universe.') && !k.includes('settings'));
+    const ids = key ? Object.keys(JSON.parse(localStorage.getItem(key) ?? '{}')).filter((k) => k.startsWith('feed:')).map((k) => k.split(':')[1]) : [];
+    const feedId = ids[Math.min(3, ids.length - 1)] ?? '';
+    const enter = async () => { await say('universe enter ' + feedId, 500); await settle(() => /INSIDE FEED/.test(up()?.querySelector('.universe-title')?.textContent ?? ''), 120); await sleep(1500); };
+    await enter();
+    const u = up();
+    const uWords = { strategy: u.querySelector('.universe-feed-strategy')?.textContent.trim(), metric: u.querySelector('.universe-feed-metric')?.textContent.trim(), hue: u.querySelector('.universe-feed-hue')?.textContent.trim(), draw: u.querySelector('.universe-draw')?.textContent.trim() };
+    const uTree = u.querySelector('canvas')?.dataset.rootsTop ?? '';
+    const uFacts = await facts_of(u, '.universe-facts');
+    // The RUNS door: the RUNS pane opening the same feed itself.
+    up()?.querySelector('.universe-back')?.click(); await sleep(1200);
+    document.getElementById('gutter-runs')?.click(); await sleep(1200);
+    await say('feed diagram feed_' + feedId, 500);
+    await settle(() => { const t = runs()?.querySelector('.dag-title')?.textContent ?? ''; return new RegExp('FEED ' + feedId + '\\b').test(t); }, 120);
+    await sleep(2500);
+    const d = runs();
+    const rWords = { strategy: d.querySelector('.dag-strategy')?.textContent.trim(), metric: d.querySelector('.dag-scale')?.textContent.trim(), hue: d.querySelector('.dag-hue')?.textContent.trim(), draw: d.querySelector('.dag-draw')?.textContent.trim() };
+    const rTree = d.querySelector('canvas')?.dataset.rootsTop ?? '';
+    const rFacts = await facts_of(d, '.dag-facts');
+    // A mode turned in RUNS stands when the universe enters the feed again.
+    d.querySelector('.dag-strategy')?.click(); await sleep(400);
+    const turned = d.querySelector('.dag-strategy')?.textContent.trim();
+    await universeOpen();
+    await enter();
+    const again = up()?.querySelector('.universe-feed-strategy')?.textContent.trim();
+    up()?.querySelector('.universe-back')?.click(); await sleep(1500);
+    if (kept === null) localStorage.removeItem('argus.feedview'); else localStorage.setItem('argus.feedview', kept);
+    document.getElementById('gutter-files')?.click(); await sleep(600);
+    await home_return();
+    return { feedId, uWords, rWords, uTree, rTree, uFacts, rFacts, turned, again };`);
+  // The scenario walks both doors, two universes and a mode turned and
+  // turned back; what it leaves in the page broke a later stage that passes
+  // alone (the class #873 names). It leaves a fresh page instead: a reload,
+  // the session READY again, the full surface as the suite began.
+  await page.cdp('Page.reload', { ignoreCache: false });
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  await evalIn(`
+    for (let i = 0; i < 120; i++) { await sleep(500); const m = document.getElementById('drawer-status'); if (m && m.textContent.includes('READY')) break; }
+    if (document.body.dataset.zoom === 'launcher') { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400); }
+    return true;`);
+  check('a feed entered from the universe and opened from RUNS opens as its tree, root on top, under the same frame words (RANKED · TIME · STATUS · SPHERES)',
+    oneView.feedId !== '' && oneView.uTree === 'yes' && oneView.rTree === 'yes'
+    && JSON.stringify(oneView.uWords) === JSON.stringify(oneView.rWords)
+    && oneView.uWords.strategy === 'RANKED' && oneView.uWords.draw === 'SPHERES',
+    JSON.stringify({ feedId: oneView.feedId, uWords: oneView.uWords, rWords: oneView.rWords, uTree: oneView.uTree, rTree: oneView.rTree }));
+  check('a node picked through either door shows the same facts: the rows, the line of stages, ENTER NODE and PROCESS',
+    oneView.uFacts !== null && oneView.rFacts !== null && JSON.stringify(oneView.uFacts) === JSON.stringify(oneView.rFacts)
+    && oneView.uFacts.line === true && oneView.uFacts.verbs.includes('ENTER NODE') && oneView.uFacts.verbs.includes('PROCESS'),
+    JSON.stringify({ u: oneView.uFacts, r: oneView.rFacts }));
+  check('a mode turned through one door stands through the other: MOLECULE in RUNS, MOLECULE when the universe enters the feed again',
+    oneView.turned === 'MOLECULE' && oneView.again === 'MOLECULE',
+    JSON.stringify({ turned: oneView.turned, again: oneView.again }));
+  }
+
   if (await stage('node-dive')) {
   if (!dagFeed) {
     console.log('  skipped: set SMOKE_DAG_FEED=<a feed id whose DAG has at least one node>');

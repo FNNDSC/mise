@@ -675,7 +675,7 @@ closing_receive: (cause) => restart.closing_take(cause);
 
 Source: `apps/argus/src/features/feed/view.ts` (the modes, the device's memory of them, the frame over a pane's pills) and `apps/argus/src/scene/feedGraph.ts` (the one reading of a feed for the scene); mounted by the RUNS pane (`features/dag/panel.ts`) and by the universe on descent (`features/universe/panel.ts`).
 
-Status: on stage since 2026-10-06 (#943, slices 1–4). Law `a-feed-has-one-view`.
+Status: on stage since 2026-10-06 (#943, all five slices). Smoke scenario `feed-one-view`. Law `a-feed-has-one-view`.
 
 === Purpose
 
@@ -715,6 +715,8 @@ Live in both doors: the pane holds the session's watch on the feed (`watch_set`)
 === Laws
 
 `a-feed-has-one-view`. The same feed is never drawn two ways by two doors: one builder, one frame, one remembered set of modes.
+
+A readout for a smoke, beside the fit count: the scene writes `data-roots-top` (`yes` / `no`) on its canvas after each draw, from the lit nodes' heights (`orrery/scene/tree.ts`), so a feed opened as its tree, root on top, can be said through either door.
 
 === Stylesheet
 

@@ -2357,13 +2357,13 @@ async function surface_start(token: string): Promise<void> {
    */
   const runs_show = (filter: string = ''): void => {
     domain_enter('dag');
+    dagPanel.stage_returned(); // the device's feed memory again (a-feed-has-one-view)
     dagPanel.list_reset();
     dagPanel.roster_filter(filter);
     dagPanel.feedsChooser_request();
     layout.focus_set('dag');
     consoleFocused_set(false);
   };
-  /** UNIVERSE: the space of everything run here, on the RUNS canvas. */
   // The UNIVERSE takes the stage: its own preset, its one primary pane,
   // raised whole and asked for the space. Never the RUNS pane: that stays
   // a feed viewer.
@@ -2371,6 +2371,7 @@ async function surface_start(token: string): Promise<void> {
     domain_enter('universe');
     const panel: UniversePanel | undefined = panels.get('universe', 'universe');
     if (panel !== undefined && !panel.shown_get()) panel.request();
+    panel?.stage_returned(); // inside a feed, the device's memory again (a-feed-has-one-view)
     layout.focus_set('universe');
     consoleFocused_set(false);
   };

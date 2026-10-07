@@ -26,6 +26,7 @@
  *
  * @module
  */
+import { rootsTop_of } from './tree.js';
 import * as THREE from 'three';
 import { PHYSICS_DEFAULT, type HierarchyArrangement, type PhysicsTerms } from '../layout/index.js';
 import {
@@ -172,6 +173,7 @@ export type SettleMode = 'full' | 'new' | 'hold';
 
 /** How the scene draws its nodes: lit spheres, or points of light. */
 export type DrawMode = 'spheres' | 'stars';
+
 
 /** What `graph_set` takes beside the graph. */
 export interface GraphSetOptions {
@@ -1117,6 +1119,9 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
       const entered: TubeOwner = { tubes: null, mix: 1, ...(solidAmong ? {} : { thickness: 0.25 }) };
       this.tubes.build(entered, solidIds, new Set(solidIds));
     }
+    // A readout a smoke can read, beside the fit count: whether what is
+    // lit stands as a tree with its roots on top (a feed opened as its tree).
+    this.renderer.domElement.dataset['rootsTop'] = rootsTop_of(placed.filter((item: PlacedNode): boolean => item.node.dim !== true && item.node.ghost !== true && item.node.halo !== true).map((item: PlacedNode) => ({ id: item.node.id, parentIds: item.node.parentIds, y: item.position.y }))) ? 'yes' : 'no';
     // A redraw during a replay keeps what has not arrived hidden.
     if (this.replay.active()) this.replay.paintAll();
   }

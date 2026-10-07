@@ -32,13 +32,66 @@ export function argusUrl_discover() {
   return line.replace('ARGUS:', '').trim().replace(/\/\/[^:/]+:/, '//127.0.0.1:');
 }
 
+/** Whether something already answers CDP on a port. */
+function port_answers(port) {
+  try {
+    return execSync(`curl -s --max-time 2 --noproxy "*" http://127.0.0.1:${port}/json/version`).toString().trim().startsWith('{');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ends a browser this driver started: its whole process group (the browser
+ * and every renderer, GPU and utility process under it), once.
+ *
+ * @param chrome - The spawned browser, started as its own group's leader.
+ * @param signal - SIGTERM for a close, SIGKILL when the script is going now.
+ */
+function browser_end(chrome, signal) {
+  if (chrome.pid === undefined || chrome.exitCode !== null || chrome.signalCode !== null) return;
+  try {
+    process.kill(-chrome.pid, signal);
+  } catch {
+    // The group is gone already.
+  }
+}
+
+/**
+ * Ties a browser's life to the script's: however the script ends — done, a
+ * thrown error, an unhandled rejection, Ctrl-C, a `timeout`'s SIGTERM, a
+ * closed terminal — the browser goes with it. A browser left behind kept
+ * rendering at a core or more each, for days: nineteen of them once held
+ * pangea's load at 150.
+ *
+ * @param chrome - The spawned browser.
+ */
+function browser_tether(chrome) {
+  // 'exit' runs on a normal end and after an uncaught error or rejection.
+  process.once('exit', () => browser_end(chrome, 'SIGKILL'));
+  for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
+    process.once(signal, () => {
+      browser_end(chrome, 'SIGKILL');
+      process.exit(code);
+    });
+  }
+}
+
 /** Boots chromium, navigates, and returns an evaluate/screenshot handle. */
 export async function page_open(url) {
+  // A browser already on the port (one left behind, or another run's) would
+  // be driven in place of this one: refuse, and say which port.
+  if (port_answers(DEBUG_PORT)) {
+    throw new Error(`a browser already answers on port ${DEBUG_PORT} (one left behind by an earlier run, or another run's); end it or set SMOKE_CDP_PORT`);
+  }
+  // Its own process group, so one signal ends the browser and everything
+  // under it, and tethered so it never outlives the script.
   const chrome = spawn('chromium', [
     '--headless=new', '--no-proxy-server', '--disable-gpu',
     `--remote-debugging-port=${DEBUG_PORT}`, '--window-size=2560,1440',
     '--hide-scrollbars', ...EXTRA_FLAGS, 'about:blank',
-  ], { stdio: 'ignore' });
+  ], { stdio: 'ignore', detached: true });
+  browser_tether(chrome);
   // Wait for the port to answer rather than guessing at a delay: a cold
   // profile or a slower machine takes longer than any fixed sleep, and the
   // failure then looks like a suite error rather than a slow start.
@@ -53,6 +106,7 @@ export async function page_open(url) {
     }
   }
   if (!listing.trim().startsWith('[')) {
+    browser_end(chrome, 'SIGKILL');
     throw new Error(`chromium never opened its debug port on ${DEBUG_PORT}; set SMOKE_CHROME_FLAGS (e.g. --no-sandbox --user-data-dir=/tmp/x) if it needs them`);
   }
   const list = JSON.parse(listing);
@@ -113,6 +167,6 @@ export async function page_open(url) {
     },
     /** Raw CDP access for probes. */
     cdp: send,
-    close: () => { try { chrome.kill(); } catch { /* gone */ } },
+    close: () => browser_end(chrome, 'SIGTERM'),
   };
 }

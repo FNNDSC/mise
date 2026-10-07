@@ -6,8 +6,8 @@
  * @module
  */
 import { describe, it, expect } from '@jest/globals';
-import { descriptionWords_of, wordOverlap_of, descriptionGroups_of, dataPath_of, dataGraph_build, dataHubId_of, dataHubKey_of, dataHubTip_of } from '../../src/features/dag/dataSpace.js';
-import { groupId_of, type LandedFeed } from '../../src/features/dag/universe.js';
+import { descriptionWords_of, wordOverlap_of, descriptionGroups_of, dataPath_of, dataGraph_build, dataHubId_of, dataHubKey_of, dataHubTip_of } from '../../src/features/universe/dataSpace.js';
+import { groupId_of, type LandedFeed } from '../../src/features/universe/space.js';
 
 const feed = (id: number, data?: LandedFeed['data']): LandedFeed => ({
   id, title: `f${id}`, jobs: 1, status: 'finishedSuccessfully', chain: ['pl-dircopy'],

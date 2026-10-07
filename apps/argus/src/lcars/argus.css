@@ -4758,7 +4758,8 @@ body[data-zoom] #header-restore {
   white-space: nowrap;
 }
 
-.universe-node-verbs {
+.universe-node-verbs,
+.feed-node-verbs {
   display: flex;
   gap: 0.4rem;
   margin-top: 0.35rem;

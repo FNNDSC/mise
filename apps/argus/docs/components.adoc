@@ -171,7 +171,7 @@ Do not size a track to its content, and do not put the expanse at the end of the
 
 == Universe pane
 
-Source: `apps/argus/src/features/universe/panel.ts` (the pane), over `features/dag/universe.ts` (the graph built from landed feeds, the tip, the memory) and `scene/chrisSpace.ts` (the orrery reading ChRIS — `@fnndsc/orrery`'s scene, shared with the DAG pane).
+Source: `apps/argus/src/features/universe/panel.ts` (the pane), over `features/universe/space.ts` (the graph built from landed feeds, the tip, the memory) and `scene/chrisSpace.ts` (the orrery reading ChRIS — `@fnndsc/orrery`'s scene, shared with the DAG pane).
 
 Status: on stage since 2026-09-22 (slice 1 of the universe descent). Opens from the dashboard's UNIVERSE tile as a stage of its own (the `universe` preset, one primary pane raised whole, like RUNS and PACS); the wait's theater in the DAG pane (a universe drawn while the roster is refused) shares its graph and its tip but is not this pane.
 
@@ -675,7 +675,7 @@ closing_receive: (cause) => restart.closing_take(cause);
 
 Source: `apps/argus/src/features/feed/view.ts` (the modes, the device's memory of them, the frame over a pane's pills) and `apps/argus/src/scene/feedGraph.ts` (the one reading of a feed for the scene); mounted by the RUNS pane (`features/dag/panel.ts`) and by the universe on descent (`features/universe/panel.ts`).
 
-Status: on stage since 2026-10-06 (#943, slices 1–3). Law `a-feed-has-one-view`.
+Status: on stage since 2026-10-06 (#943, slices 1–4). Law `a-feed-has-one-view`.
 
 === Purpose
 
@@ -691,6 +691,7 @@ image::images/feed-view-anatomy.svg[Feed view anatomy,1180]
 
 | verb pill | `[data-feed-verb]` on a pane's mode frame | One per mode: `strategy` (RANKED / MOLECULE), `projection` (3D / 2D), `draw` (SPHERES / STARS), `pulse` (PULSE ON / OFF), `metric` (TIME / SIZE), `census` (SHAPE / CENSUS), `gravity` (GRAVITY ON / OFF), `hue` (STATUS / COMPUTE). The pill reads the current state; `pulse` and `gravity` wear `.rail-off` while off.
 | feed verbs | `.dag-note`, `.dag-tag`, `.dag-rename`, `.dag-marks` | The feed's note, tags and name (`features/dag/feedFrame.ts`), on both panes' frames.
+| node facts | `.dag-facts`, `.universe-facts` › `.telemetry-row`, `.dag-subway`, `.feed-node-verbs` | One overlay for the picked node (`features/feed/facts.ts`): plugin, instance, status, count and faults of a `×N` group, wall time, size, data address, the line of stages, and ENTER NODE and PROCESS (refused on a group, which has no single instance to run on).
 | universe swap | `.pane-universe.universe-inside` | Inside a feed the universe frame shows `.universe-feed` pills and hides the space-only ones (view, scale, arrangement, replay, refresh); its draw pill turns the feed view's draw while inside, and the space's own comes back on the way out.
 |===
 

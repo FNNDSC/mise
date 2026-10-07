@@ -4,7 +4,7 @@
  * time; a feed with no time still stands, and grows last.
  */
 import { describe, it, expect } from '@jest/globals';
-import { accretionGraph_build, descendedGraph_build, groupId_of, universeSettings_parse, type LandedFeed } from '../../src/features/dag/universe.js';
+import { accretionGraph_build, descendedGraph_build, groupId_of, universeSettings_parse, type LandedFeed } from '../../src/features/universe/space.js';
 
 const made: LandedFeed = { id: 1, title: 'made', jobs: 3, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], createdAt: '2026-01-02T03:04:05Z', groups: [
   { plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null },

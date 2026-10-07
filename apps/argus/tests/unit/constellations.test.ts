@@ -4,7 +4,7 @@
  * by the feeds that ran it; a star's tip says what it is.
  */
 import { describe, it, expect } from '@jest/globals';
-import { constellationsGraph_build, pluginStarId_of, pluginOfStar, pluginTip_of, descendedGraph_build, groupId_of, LandedFeeds, universeSettings_parse, type LandedFeed } from '../../src/features/dag/universe.js';
+import { constellationsGraph_build, pluginStarId_of, pluginOfStar, pluginTip_of, descendedGraph_build, groupId_of, LandedFeeds, universeSettings_parse, type LandedFeed } from '../../src/features/universe/space.js';
 
 const chain: LandedFeed = { id: 1, title: 'chain', jobs: 3, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [
   { plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null },

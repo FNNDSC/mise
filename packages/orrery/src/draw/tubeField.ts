@@ -17,7 +17,7 @@ import { LAMP_BLOOM_MS, LAMP_BLOOM_REACH, LAMP_DIM, LAMP_FADE_MS, LAMP_WHITE } f
 import { nebulaTexture_get } from './nebula.js';
 import type { Palette } from './palette.js';
 import { PULSE_TRIP_MS, REPLAY_REST_MS, WAVE_STEP_MS } from './timing.js';
-import { TUBE_FRAGMENT, TUBE_VERTEX, tubeGeometry_get, tubeMesh_make, type TubeSpec } from './tubes.js';
+import { TUBE_FRAGMENT, TUBE_VERTEX, tubeGeometry_get, tubeMesh_make, lineMesh_make, type TubeSpec } from './tubes.js';
 
 /**
  * One node as the tubes read it.
@@ -97,6 +97,7 @@ export class TubeField {
   private glows: Map<string, THREE.Sprite> = new Map();
   private stale: boolean = false;
   private census: number = 0;
+  private censusLines: number = 0;
 
   /**
    * @param host - The scene the field draws in.
@@ -113,6 +114,11 @@ export class TubeField {
   /** How many job-to-job tubes the census drew; 0 when it drew lines. */
   public censusCount(): number {
     return this.census;
+  }
+
+  /** How many job-to-job lines the census drew, each carrying the wave; 0 when it drew tubes. */
+  public censusLineCount(): number {
+    return this.censusLines;
   }
 
   /** Whether any set of tubes runs through a node. */
@@ -241,6 +247,23 @@ export class TubeField {
   }
 
   /**
+   * Draws a census's job-to-job connections as lines that carry the same
+   * wave a tube does: past the tube cap, and under stars, information still
+   * travels down every connection.
+   *
+   * @param specs - The connections, as tubes would be drawn.
+   * @param deepest - The deepest stage the wave reaches, for the replay's cycle.
+   * @param rest - The resting thread: hue scale, opacity, additive under stars.
+   */
+  public censusLines_build(specs: ReadonlyArray<TubeSpec>, deepest: number, rest: { tint: number; opacity: number; additive: boolean }): void {
+    if (specs.length === 0) return;
+    const lines: THREE.LineSegments = lineMesh_make(specs, (deepest + 1) * WAVE_STEP_MS + PULSE_TRIP_MS / 2 + REPLAY_REST_MS, rest);
+    this.host.parent.add(lines);
+    if (lines.material instanceof THREE.ShaderMaterial) this.materials.push(lines.material);
+    this.censusLines = specs.length;
+  }
+
+  /**
    * Moves the tubes' clock on, re-reads states that changed, and lights the lamps.
    *
    * @param now - This frame's time.
@@ -299,6 +322,7 @@ export class TubeField {
   public clear(): void {
     this.materials = [];
     this.census = 0;
+    this.censusLines = 0;
     this.sets = [];
     for (const glow of this.glows.values()) glow.material.dispose();
     this.glows = new Map();

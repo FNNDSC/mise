@@ -36,15 +36,35 @@ void main() {
 }`;
 
 /**
- * A tube lit by its facing, carrying a pulse from parent (its foot) to
- * child (its head): mode 1 streams (live), mode 2 replays the run — each
- * stage at vStart into a cycle that rests and repeats — mode 0 rests.
+ * The wave a connection carries, from parent (along 0) to child (along 1):
+ * mode 1 streams (live), mode 2 replays the run — each stage at its start
+ * into a cycle that rests and repeats — mode 0 rests. Tubes and the
+ * census's lines carry the same wave, so information reads as travelling
+ * down a connection whichever way it is drawn.
  */
-export const TUBE_FRAGMENT: string = `
+const PULSE_GLSL: string = `
 uniform float time;
-uniform float opacity;
 uniform float born;
 uniform float cycle;
+float pulse_at(float along, float mode, float start) {
+  if (mode > 0.5 && mode < 1.5) {
+    float head = fract(time / ${PULSE_TRIP_MS.toFixed(1)});
+    return smoothstep(0.14, 0.0, abs(along - head));
+  }
+  if (mode > 1.5) {
+    // A finished feed replays its run: the wave goes stage by stage in the
+    // order the stages ran, rests, and goes again.
+    float local = mod(time - born, cycle) - start;
+    float head = local / ${(PULSE_TRIP_MS / 2).toFixed(1)};
+    if (head > -0.1 && head < 1.2) return smoothstep(0.14, 0.0, abs(along - head));
+  }
+  return 0.0;
+}`;
+
+/** A tube lit by its facing, carrying the wave from its foot to its head. */
+export const TUBE_FRAGMENT: string = `
+uniform float opacity;
+${PULSE_GLSL}
 varying vec3 vColor;
 varying float vMode;
 varying float vStart;
@@ -54,18 +74,42 @@ varying vec3 vView;
 void main() {
   float facing = abs(dot(normalize(vNormal), normalize(vView)));
   vec3 base = vColor * (0.35 + 0.65 * facing);
-  float pulse = 0.0;
-  if (vMode > 0.5 && vMode < 1.5) {
-    float head = fract(time / ${PULSE_TRIP_MS.toFixed(1)});
-    pulse = smoothstep(0.14, 0.0, abs(vAlong - head));
-  } else if (vMode > 1.5) {
-    // A finished feed replays its run: the wave goes stage by stage in the
-    // order the stages ran, rests, and goes again.
-    float local = mod(time - born, cycle) - vStart;
-    float head = local / ${(PULSE_TRIP_MS / 2).toFixed(1)};
-    if (head > -0.1 && head < 1.2) pulse = smoothstep(0.14, 0.0, abs(vAlong - head));
-  }
+  float pulse = pulse_at(vAlong, vMode, vStart);
   gl_FragColor = vec4(base + vec3(1.0, 0.95, 0.8) * pulse * 1.3, opacity);
+}`;
+
+/** A census line: each vertex says how far along its connection it stands. */
+export const LINE_VERTEX: string = `
+attribute vec3 aColor;
+attribute float aMode;
+attribute float aStart;
+attribute float aAlong;
+varying vec3 vColor;
+varying float vMode;
+varying float vStart;
+varying float vAlong;
+void main() {
+  vColor = aColor;
+  vMode = aMode;
+  vStart = aStart;
+  vAlong = aAlong;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+/**
+ * A census line at rest is a faint thread; where the wave passes it burns
+ * bright, and opaque enough to read over the cloud.
+ */
+export const LINE_FRAGMENT: string = `
+uniform float opacity;
+${PULSE_GLSL}
+varying vec3 vColor;
+varying float vMode;
+varying float vStart;
+varying float vAlong;
+void main() {
+  float pulse = pulse_at(vAlong, vMode, vStart);
+  gl_FragColor = vec4(vColor + vec3(1.0, 0.95, 0.8) * pulse * 1.3, min(1.0, opacity + pulse));
 }`;
 
 /** The tube every solid edge wears, stretched and turned per edge. */
@@ -130,4 +174,54 @@ export function tubeMesh_make(specs: ReadonlyArray<TubeSpec>, cycle: number): TH
   mesh.instanceMatrix.needsUpdate = true;
   mesh.frustumCulled = false;
   return mesh;
+}
+
+/**
+ * Makes the census's lines from the tube specs they stand in for: one draw
+ * for all of them, each carrying its hue and the same wave a tube would.
+ * Lines take the place of tubes where there are too many to draw as
+ * cylinders, and under stars, where they are the threads.
+ *
+ * @param specs - The connections.
+ * @param cycle - The replay's period, in ms.
+ * @param rest - The resting thread: its hue scale and opacity, and whether it adds light (stars).
+ * @returns The lines, not yet added to anything.
+ */
+export function lineMesh_make(specs: ReadonlyArray<TubeSpec>, cycle: number, rest: { tint: number; opacity: number; additive: boolean }): THREE.LineSegments {
+  const now: number = performance.now();
+  const positions: Float32Array = new Float32Array(specs.length * 6);
+  const colors: Float32Array = new Float32Array(specs.length * 6);
+  const modes: Float32Array = new Float32Array(specs.length * 2);
+  const starts: Float32Array = new Float32Array(specs.length * 2);
+  const along: Float32Array = new Float32Array(specs.length * 2);
+  specs.forEach((spec: TubeSpec, i: number): void => {
+    positions.set([spec.from.x, spec.from.y, spec.from.z, spec.to.x, spec.to.y, spec.to.z], i * 6);
+    const r: number = spec.color.r * rest.tint;
+    const g: number = spec.color.g * rest.tint;
+    const b: number = spec.color.b * rest.tint;
+    colors.set([r, g, b, r, g, b], i * 6);
+    modes[i * 2] = spec.mode;
+    modes[i * 2 + 1] = spec.mode;
+    starts[i * 2] = spec.start;
+    starts[i * 2 + 1] = spec.start;
+    along[i * 2] = 0;
+    along[i * 2 + 1] = 1;
+  });
+  const geometry: THREE.BufferGeometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('aColor', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute('aMode', new THREE.Float32BufferAttribute(modes, 1));
+  geometry.setAttribute('aStart', new THREE.Float32BufferAttribute(starts, 1));
+  geometry.setAttribute('aAlong', new THREE.Float32BufferAttribute(along, 1));
+  const material: THREE.ShaderMaterial = new THREE.ShaderMaterial({
+    uniforms: { time: { value: now }, opacity: { value: rest.opacity }, born: { value: now }, cycle: { value: cycle } },
+    vertexShader: LINE_VERTEX,
+    fragmentShader: LINE_FRAGMENT,
+    transparent: true,
+    depthWrite: !rest.additive,
+    ...(rest.additive ? { blending: THREE.AdditiveBlending } : {}),
+  });
+  const lines: THREE.LineSegments = new THREE.LineSegments(geometry, material);
+  lines.frustumCulled = false;
+  return lines;
 }

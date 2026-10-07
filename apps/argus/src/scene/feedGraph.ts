@@ -11,8 +11,9 @@
  * collide with the rest of the space); everything that changes how the
  * feed looks is the feed view's own: the metric that sizes a sphere, the
  * hue that colours it, the errored share a `×N` sphere wears, and every
- * node tubed, so its paths show whatever the draw style (and solid, lit and
- * pressed as a sphere, unless the view is drawn as stars).
+ * node tubed, so its paths show whatever the draw style. No node is marked
+ * solid: SPHERES draws every node lit anyway, and solid would keep a node
+ * out of the census.
  *
  * Pure over the model.
  *
@@ -36,10 +37,7 @@ export interface FeedGraphModes {
   hue: HueMode;
   /** The compute hues, read under the compute mode. */
   legend: ReadonlyMap<string, string>;
-  /**
-   * How the view draws: lit spheres mark every node solid; stars leave the
-   * nodes points of light. Either way every node keeps its tube.
-   */
+  /** How the view draws (spheres or stars); either way every node keeps its tube. Read for the record. */
   draw?: 'spheres' | 'stars';
   /** A node's scene id from the kernel's; the RUNS pane keeps the kernel's, the universe scopes it. */
   id_of?: (nodeId: string) => string;
@@ -112,8 +110,11 @@ export function feedGraph_build(model: FeedDagModel, modes: FeedGraphModes): Fee
       joinParentIds: node.joinParentIds.filter((parent: string): boolean => known.has(parent)).map(id_of),
       status: node.status,
       metric: feedMetric_of(node, modes.metric),
+      // Tubed, never solid: the tube is the feed's path whatever the draw,
+      // and solid would hold a node out of the census (orrery shells every
+      // job but solid nodes), so CENSUS on a feed showed little more than
+      // its shape (the operator, 2026-10-07).
       tubed: true,
-      ...(modes.draw !== 'stars' ? { solid: true } : {}),
       ...(count > 1 ? { count } : {}),
       ...(share !== undefined ? { share } : {}),
       ...(colour !== undefined ? { hue: colour } : {}),

@@ -118,11 +118,11 @@ describe('the descent into a feed', () => {
   };
   // The descent reads a feed with the feed view's own builder (scene/feedGraph.ts), its ids scoped to the space.
   const entered_of = (m: FeedDagModel) => feedGraph_build(m, { metric: 'time', hue: 'status', legend: new Map(), id_of: (id: string): string => instanceId_of(m.feedId, id) });
-  it('turns the kernel graph into scene nodes: ids by feed, the fan kept ×N with its share, roots free of any anchor, every node solid', () => {
+  it('turns the kernel graph into scene nodes: ids by feed, the fan kept ×N with its share, roots free of any anchor, every node tubed', () => {
     const entered = entered_of(model);
     expect(entered.nodes.map((n) => n.id)).toEqual([instanceId_of(2, '10'), instanceId_of(2, '11'), instanceId_of(2, '12')]);
-    expect(entered.nodes[0]).toMatchObject({ label: 'pl-dircopy', parentIds: [], solid: true });
-    expect(entered.nodes[1]).toMatchObject({ parentIds: [instanceId_of(2, '10')], count: 300, share: 12 / 300, solid: true });
+    expect(entered.nodes[0]).toMatchObject({ label: 'pl-dircopy', parentIds: [], tubed: true });
+    expect(entered.nodes[1]).toMatchObject({ parentIds: [instanceId_of(2, '10')], count: 300, share: 12 / 300, tubed: true });
     // A parent the model does not carry is dropped, not invented.
     expect(entered.nodes[2]?.parentIds).toEqual([instanceId_of(2, '11')]);
     expect(entered.payloads.get(instanceId_of(2, '11'))?.instanceId).toBe(11);

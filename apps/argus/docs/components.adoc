@@ -710,7 +710,7 @@ const graph = feedGraph_build(model, { metric: modes.metric, hue: modes.hue, leg
 
 === States
 
-Live in both doors: the pane holds the session's watch on the feed (`watch_set`), a fresh model of the same shape patches statuses in place (`feedShape_same`, `feedStatuses_patch`), any other redraws where it stands, and the readout says LIVE, SETTLED or STALE (the universe as `INSIDE · …`). Remembered per device in `argus.feedview`; defaults RANKED, 3D, SPHERES, PULSE OFF, TIME, SHAPE, GRAVITY OFF, STATUS. Every node is tubed whatever the draw; under SPHERES every node is also solid (lit, hovered, pressed as a sphere); under STARS the nodes are points of light on fine threads (tubes at a quarter width).
+Live in both doors: the pane holds the session's watch on the feed (`watch_set`), a fresh model of the same shape patches statuses in place (`feedShape_same`, `feedStatuses_patch`), any other redraws where it stands, and the readout says LIVE, SETTLED or STALE (the universe as `INSIDE · …`). Remembered per device in `argus.feedview`; defaults RANKED, 3D, SPHERES, PULSE OFF, TIME, SHAPE, GRAVITY OFF, STATUS. Every node is tubed whatever the draw and none is solid, so CENSUS shells every job of the feed; under SPHERES every node is a lit sphere, under STARS a point of light on a fine thread (tubes at a quarter width).
 
 === Laws
 

@@ -517,8 +517,9 @@ try {
       await say('universe density census', 4000);
       const densityCensus = first?.querySelector('.universe-density')?.textContent?.trim() ?? '';
       const censusTitle = first?.querySelector('.universe-title')?.textContent?.trim() ?? '';
-      // Census with a feed entered: the feed stays solid spheres in tubes
-      // (the census used to swallow it and re-park the camera).
+      // Census with a feed entered: the census shells every job of the feed
+      // (a feed view's nodes are tubed, never solid, so none is held out),
+      // and the camera stays where the flight put it.
       await say('universe enter ' + landedId, 500);
       for (let i = 0; i < 60; i++) { await sleep(500); if (/INSIDE FEED/.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
       await sleep(2000);
@@ -562,10 +563,10 @@ try {
       `${universe.layoutDefault} | ${universe.layoutClumps} | ${universe.keptClumps}`);
     {
       const marked = Number((universe.censusState.match(/solidMarked=(\d+)/) ?? [])[1] ?? -1);
-      const drawn = Number((universe.censusState.match(/solidDrawn=(\d+)/) ?? [])[1] ?? -2);
-      const tubes = Number((universe.censusState.match(/tubes=(\d+)/) ?? [])[1] ?? 0);
-      check('in census a feed entered stays solid spheres in tubes: every node marked solid is drawn solid',
-        marked > 0 && drawn === marked && tubes >= 1 && /census=true/.test(universe.censusState), universe.censusState);
+      const nodes = Number((universe.censusState.match(/ nodes=(\d+)/) ?? [])[1] ?? 0);
+      const members = Number((universe.censusState.match(/censusMembers=(\d+)/) ?? [])[1] ?? 0);
+      check('in census a feed entered shells every job: no node is held out as solid, and the census holds at least one member per node',
+        marked === 0 && nodes > 0 && members >= nodes && /census=true/.test(universe.censusState), universe.censusState);
     }
     check('a click keeps the camera: a wheeled-in camera and the settled space stand through a click on the field',
       universe.clickKept, `fits ${universe.fitsBefore} -> ${universe.fitsAfter} | ${universe.clickTitle}`);
@@ -2901,6 +2902,11 @@ try {
     const rWords = { strategy: d.querySelector('.dag-strategy')?.textContent.trim(), metric: d.querySelector('.dag-scale')?.textContent.trim(), hue: d.querySelector('.dag-hue')?.textContent.trim(), draw: d.querySelector('.dag-draw')?.textContent.trim() };
     const rTree = d.querySelector('canvas')?.dataset.rootsTop ?? '';
     const rFacts = await facts_of(d, '.dag-facts');
+    // CENSUS in RUNS shells every job of the feed: the canvas counts them
+    // (a feed view's nodes held out as solid once left it nothing to shell).
+    d.querySelector('.dag-census')?.click(); await sleep(2500);
+    const rCensus = { words: d.querySelector('.dag-census')?.textContent.trim(), members: Number(d.querySelector('canvas')?.dataset.census ?? -1) };
+    d.querySelector('.dag-census')?.click(); await sleep(800);
     // A mode turned in RUNS stands when the universe enters the feed again.
     d.querySelector('.dag-strategy')?.click(); await sleep(400);
     const turned = d.querySelector('.dag-strategy')?.textContent.trim();
@@ -2911,7 +2917,7 @@ try {
     if (kept === null) localStorage.removeItem('argus.feedview'); else localStorage.setItem('argus.feedview', kept);
     document.getElementById('gutter-files')?.click(); await sleep(600);
     await home_return();
-    return { feedId, uWords, rWords, uTree, rTree, uFacts, rFacts, turned, again };`);
+    return { feedId, uWords, rWords, uTree, rTree, uFacts, rFacts, rCensus, turned, again };`);
   // The scenario walks both doors, two universes and a mode turned and
   // turned back; what it leaves in the page broke a later stage that passes
   // alone (the class #873 names). It leaves a fresh page instead: a reload,
@@ -2931,6 +2937,8 @@ try {
     oneView.uFacts !== null && oneView.rFacts !== null && JSON.stringify(oneView.uFacts) === JSON.stringify(oneView.rFacts)
     && oneView.uFacts.line === true && oneView.uFacts.verbs.includes('ENTER NODE') && oneView.uFacts.verbs.includes('PROCESS'),
     JSON.stringify({ u: oneView.uFacts, r: oneView.rFacts }));
+  check('CENSUS in RUNS shells the feed\'s jobs: the census holds a member per job, not none',
+    oneView.rCensus?.words === 'CENSUS' && oneView.rCensus.members > 0, JSON.stringify(oneView.rCensus));
   check('a mode turned through one door stands through the other: MOLECULE in RUNS, MOLECULE when the universe enters the feed again',
     oneView.turned === 'MOLECULE' && oneView.again === 'MOLECULE',
     JSON.stringify({ turned: oneView.turned, again: oneView.again }));

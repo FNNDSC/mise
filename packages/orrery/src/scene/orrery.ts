@@ -660,6 +660,8 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
       solidDrawn,
       tubes: this.tubes.materialCount(),
       censusTubes: this.tubes.censusCount(),
+      // How many jobs the census shells: every one, when it stands.
+      censusMembers: this.census ? this.censusField.ids().length : 0,
       handoffGroups: this.handoffField.size(),
       handoffSolid: this.handoffField.solidCount(),
       camera: this.rig.eyeDistance().toFixed(1),
@@ -904,6 +906,9 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
   private censusBuild(placed: PlacedNode[], palette: Palette, fit: boolean = true): void {
     const nodes: CensusNode[] = censusNodes_of(placed, palette);
     const cloud = this.censusField.build(nodes, this.drawMode === 'stars', palette);
+    // How many jobs the census shells, on the canvas: a smoke reads it to
+    // prove CENSUS draws every job, not the shape.
+    this.renderer.domElement.dataset['census'] = String(this.censusField.ids().length);
     const center: THREE.Vector3 = cloud.center;
     const cloudRadius: number = cloud.radius;
 
@@ -1136,6 +1141,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     this.group.clear();
     this.spheres.clear();
     this.censusField.clear();
+    this.renderer.domElement.dataset['census'] = '0';
     this.grab.clear();
     this.starField.clear();
     this.labels.clear();

@@ -1042,6 +1042,11 @@ async function surface_start(token: string): Promise<void> {
         frame: mount.querySelector<HTMLElement>('.mode-frame'),
       },
       {
+        // The entered feed is watched, as a RUNS pane watches the feed it shows.
+        watch_set: (subject: string, on: boolean): void => {
+          if (on) client.watch_send(subject);
+          else client.unwatch_send(subject);
+        },
         // The entered feed's note, tags and name, as a RUNS pane's (a-feed-has-one-view).
         ...(({ feed_entered, feed_note, feed_tag, feed_rename, feed_untag }) => ({ feed_entered, feed_note, feed_tag, feed_rename, feed_untag }))(feedRowHandlers_make(context, id, feedVerbs)),
         command_run: (line: string): void => {
@@ -2702,12 +2707,15 @@ async function surface_start(token: string): Promise<void> {
         if (!parsed.success) return;
         dagPanel.model_refresh(parsed.data);
         for (const panel of panels.values('dag')) panel.model_refresh(parsed.data);
+        // A universe inside the feed is live too (a-feed-has-one-view).
+        for (const panel of panels.values('universe')) panel.model_refresh(parsed.data);
       },
       stale_receive: (stale: boolean): void => { daemonStale = stale; buildWatch.stale_take(stale); },
       closing_receive: (cause: ClosingCause): void => restart.closing_take(cause),
       watched_receive: (subject: string, state: WatchState): void => {
         dagPanel.watched_observe(subject, state);
         for (const panel of panels.values('dag')) panel.watched_observe(subject, state);
+        for (const panel of panels.values('universe')) panel.watched_observe(subject, state);
       },
       // Which listing the session's numbers count. Every listing's index
       // pills repaint from it, so the rows wearing a number are exactly the

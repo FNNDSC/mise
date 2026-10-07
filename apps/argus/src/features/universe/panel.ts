@@ -18,10 +18,10 @@
  * @module
  */
 import { feedGraph_build } from '../../scene/feedGraph.js';
-import { FEED_MODES_DEFAULT, FeedViewFrame, feedHueLegend_of, type FeedModes, type FeedVerb } from '../feed/view.js';
+import { FEED_MODES_DEFAULT, FeedViewFrame, feedHueLegend_of, feedShape_same, feedStatuses_patch, type FeedModes, type FeedVerb } from '../feed/view.js';
 import { FeedFrame, type FeedFrameFacts } from '../dag/feedFrame.js';
 import { ranked_layout } from '@fnndsc/orrery';
-import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope } from '@fnndsc/menu';
+import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope, WatchState } from '@fnndsc/menu';
 import { barState_clear, barState_set, type BarState } from '../roster/bar.js';
 import { PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, UNIVERSE_REACH, procLayoutModelSchema, procUniverseModelSchema, universeKey_of, universeReach_of, type ProcUniverseModel } from '@fnndsc/menu';
 import { ChrisSpace, PHYSICS_DEFAULT, type DrawMode, type PhysicsTerms, type SceneGraph, type SceneNode, type SettleMode, type ScenePlan } from '../../scene/chrisSpace.js';
@@ -89,6 +89,8 @@ import { projection_paint, projection_press } from './projection.js';
 export interface UniversePanelHandlers {
   /** Runs a session command whose envelopes come back through `envelope_observe`. */
   command_run: (line: string) => void;
+  /** Holds or releases the session's watch on a subject (a feed entered is watched, as RUNS watches it). */
+  watch_set?: (subject: string, on: boolean) => void;
   /** The entered feed's facts, verbs and marks, as the RUNS pane takes them (see FeedFrame). */
   feed_entered?: (feedId: number) => void;
   feed_note?: (feedId: number) => void;
@@ -263,6 +265,9 @@ export class UniversePanel {
   private insideModel: FeedDagModel | null = null;
   /** The entered feed as last read for the scene. */
   private insideEntered: EnteredFeed | null = null;
+  /** The feed this pane holds a watch on, and what the watch last said of it. */
+  private watchedFeedId: number | null = null;
+  private liveState: WatchState | null = null;
   private readonly escape_listen: (event: KeyboardEvent) => void;
   /** The plugin whose stages are lit across the sky, or null. */
   private lit: string | null = null;
@@ -934,6 +939,7 @@ export class UniversePanel {
   /** Releases the scene. */
   public dispose(): void {
     this.disposed = true;
+    this.watch_hold(null);
     window.removeEventListener('keydown', this.escape_listen);
     if (this.repaintTimer !== null) window.clearTimeout(this.repaintTimer);
     if (this.rememberTimer !== null) window.clearTimeout(this.rememberTimer);
@@ -1080,6 +1086,9 @@ export class UniversePanel {
           this.scene.waveLoop_set(modes.pulse);
           this.feedFrame?.shown_set(true);
           this.feedFrame?.arrived(feedId);
+          // Live, as RUNS is: the session samples the feed and its fresh
+          // models patch it in place (a-feed-has-one-view).
+          this.watch_hold(feedId);
           this.title_paint();
         },
       };
@@ -1175,6 +1184,57 @@ export class UniversePanel {
   }
 
   /**
+   * Holds the session's watch on the entered feed, releasing any other; null releases.
+   *
+   * @param feedId - The feed entered, or null on the way out.
+   */
+  private watch_hold(feedId: number | null): void {
+    if (this.watchedFeedId === feedId) return;
+    if (this.watchedFeedId !== null) this.handlers.watch_set?.(`/proc/jobs/feed_${this.watchedFeedId}`, false);
+    this.watchedFeedId = feedId;
+    this.liveState = null;
+    if (feedId !== null) this.handlers.watch_set?.(`/proc/jobs/feed_${feedId}`, true);
+  }
+
+  /**
+   * A watched subject's liveness changed; only the feed this pane is inside
+   * is its business (an unwatch is answered too, and is not painted).
+   *
+   * @param subject - The watched subject address.
+   * @param state - Its reported state.
+   */
+  public watched_observe(subject: string, state: WatchState): void {
+    const match: RegExpMatchArray | null = /feed_(\d+)$/.exec(subject);
+    if (match === null || Number(match[1]) !== this.watchedFeedId) return;
+    this.liveState = state;
+    this.title_paint();
+  }
+
+  /**
+   * A fresh model of a feed from the session's sampler: the feed this pane
+   * is inside is patched in place when its shape held, else redrawn where
+   * it stands, under the feed view's modes. Anything else is not its business.
+   *
+   * @param model - The refreshed feed model.
+   */
+  public model_refresh(model: FeedDagModel): void {
+    const inside = this.inside;
+    if (inside === null || inside.feedId !== model.feedId || this.insideModel === null) return;
+    const previous: FeedDagModel = this.insideModel;
+    this.insideModel = model;
+    if (feedShape_same(previous, model)) {
+      feedStatuses_patch(this.scene, model, (nodeId: string): string => instanceId_of(model.feedId, nodeId));
+      for (const node of model.nodes) this.insideEntered?.payloads.set(instanceId_of(model.feedId, node.id), node);
+      return;
+    }
+    const feed: LandedFeed | undefined = this.landed.get(model.feedId);
+    if (feed === undefined || this.scene.moving()) return;
+    const plan: ScenePlan = this.insidePlan_of(model.feedId, feed, model, [[...inside.ids]], 400);
+    const ids: Set<string> = new Set(plan.unfolding);
+    this.scene.unfold({ ...plan, drawn: (): void => { this.inside = { ...inside, entered: this.insideEntered as EnteredFeed, ids }; this.title_paint(); } });
+  }
+
+  /**
    * Shows the entered feed's note, tags and name on the frame (see FeedFrame).
    *
    * @param feedId - The feed read.
@@ -1201,6 +1261,7 @@ export class UniversePanel {
       this.scene.draw_set(this.drawMode);
       if (this.drawPill !== null) this.drawPill.textContent = this.drawMode.toUpperCase();
       this.feedFrame?.shown_set(false);
+      this.watch_hold(null);
       projection_paint(this.pane, this.scene, this.inside !== null);
       if (this.cluster !== null) {
         this.cluster_show(this.cluster.shape);
@@ -1435,7 +1496,9 @@ export class UniversePanel {
     if (this.inside !== null) {
       const jobs: number = this.inside.entered.nodes.reduce((sum: number, node: SceneNode): number => sum + (node.count ?? 1), 0);
       this.title.textContent = `UNIVERSE — INSIDE FEED ${this.inside.feedId} · ${this.inside.title} · ${jobs.toLocaleString('en-US')} JOBS`;
-      this.state_stand('live', 'INSIDE');
+      // Whether what is drawn is current: LIVE while sampled, SETTLED once
+      // it can no longer change, STALE when the last sample failed.
+      this.state_stand(this.liveState === 'stale' ? 'stale' : 'live', this.liveState === null ? 'INSIDE' : `INSIDE · ${this.liveState.toUpperCase()}`);
       return;
     }
     if (this.cluster !== null) {

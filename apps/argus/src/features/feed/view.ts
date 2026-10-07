@@ -157,6 +157,39 @@ export function feedHueLegend_of(model: FeedDagModel): Map<string, string> {
   return hueLegend_build(model, cycle);
 }
 
+/**
+ * Whether two models of a feed are the same graph: the same nodes in the
+ * same order, the same counts, the same edges — only statuses may differ.
+ * A watch's fresh model of the same shape patches in place; anything else
+ * redraws where it stands.
+ *
+ * @param previous - The model on stage.
+ * @param model - The model arriving.
+ * @returns True when the arriving one can be patched in place.
+ */
+export function feedShape_same(previous: FeedDagModel, model: FeedDagModel): boolean {
+  return previous.nodes.length === model.nodes.length &&
+    model.nodes.every((node, index: number): boolean => {
+      const before = previous.nodes[index];
+      return before !== undefined && before.id === node.id &&
+        (before.tally?.count ?? 1) === (node.tally?.count ?? 1) &&
+        before.parentIds.length === node.parentIds.length &&
+        before.joinParentIds.length === node.joinParentIds.length;
+    });
+}
+
+/**
+ * Patches a same-shaped model's statuses into the scene in place, under the
+ * door's ids: the live repaint both doors run (a-feed-has-one-view).
+ *
+ * @param scene - What takes a status by node id.
+ * @param model - The fresh model, the same shape as the one on stage.
+ * @param id_of - A node's scene id from the kernel's (the universe scopes it).
+ */
+export function feedStatuses_patch(scene: { status_update: (id: string, status: string) => void }, model: FeedDagModel, id_of: (nodeId: string) => string = (nodeId: string): string => nodeId): void {
+  for (const node of model.nodes) scene.status_update(id_of(node.id), node.status);
+}
+
 /** What the frame does to a pane when a mode changes; the pane decides what each means for its scene. */
 export interface FeedFrameHooks {
   /**

@@ -43,6 +43,12 @@ export interface TubeNode {
 export interface TubeOwner {
   tubes: THREE.InstancedMesh | null;
   mix: number;
+  /**
+   * The tubes' width against a sphere's: 1 joins lit spheres; a graph drawn
+   * as points of light (stars, still tubed) takes a fine thread, or the
+   * tubes read as bare sticks with the nodes lost at their ends.
+   */
+  thickness?: number;
 }
 
 /** What the field needs to know of the scene it draws in. */
@@ -181,7 +187,7 @@ export class TubeField {
       const along: THREE.Vector3 = to.position.clone().sub(from.position);
       const length: number = along.length();
       // Thick enough to read as a tube, not a hairline, at the molecule's framing.
-      const width: number = Math.max(0.06, Math.min(from.radius, to.radius) * 0.34);
+      const width: number = Math.max(0.06, Math.min(from.radius, to.radius) * 0.34) * (owner.thickness ?? 1);
       carrier.position.copy(from.position).addScaledVector(along, 0.5);
       carrier.quaternion.setFromUnitVectors(up, length > 0 ? along.clone().divideScalar(length) : up);
       carrier.scale.set(width, length, width);

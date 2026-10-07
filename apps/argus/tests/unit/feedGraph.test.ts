@@ -45,7 +45,7 @@ describe('feedGraph_build', () => {
   it('carries identity, edges, status, metric and count; every node solid; no hue under status', () => {
     const graph = feedGraph_build(model, { metric: 'size', hue: 'status', legend: new Map() });
     expect(graph.nodes.map((n) => n.id)).toEqual(['a', 'b', 'c', 'd']);
-    expect(graph.nodes[0]).toEqual({ id: 'a', label: 'a', parentIds: [], joinParentIds: [], status: 'finishedSuccessfully', metric: 400, solid: true });
+    expect(graph.nodes[0]).toEqual({ id: 'a', label: 'a', parentIds: [], joinParentIds: [], status: 'finishedSuccessfully', metric: 400, tubed: true, solid: true });
     expect(graph.nodes.every((n) => n.solid === true)).toBe(true);
     expect(graph.payloads.get('b')?.tally?.count).toBe(3);
     expect(graph.nodes[1]?.count).toBe(3);
@@ -79,5 +79,14 @@ describe('one reading for both doors', () => {
     const graph = feedGraph_build(grouped, { metric: 'time', hue: 'status', legend: new Map() });
     expect(graph.nodes[1]).toMatchObject({ count: 10, share: 0.4, parentIds: ['r'] });
     expect(graph.nodes[0]?.share).toBeUndefined();
+  });
+});
+
+describe('draw style', () => {
+  it('stars leave the nodes points of light but every node keeps its tube; spheres make them solid', () => {
+    const stars = feedGraph_build(model, { metric: 'time', hue: 'status', legend: new Map(), draw: 'stars' });
+    expect(stars.nodes.every((n) => n.tubed === true && n.solid === undefined)).toBe(true);
+    const spheres = feedGraph_build(model, { metric: 'time', hue: 'status', legend: new Map(), draw: 'spheres' });
+    expect(spheres.nodes.every((n) => n.tubed === true && n.solid === true)).toBe(true);
   });
 });

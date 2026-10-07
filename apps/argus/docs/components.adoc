@@ -671,3 +671,55 @@ closing_receive: (cause) => restart.closing_take(cause);
 * Do not list what is not live: a generic warning teaches the operator to ignore the question.
 * Do not show the controls without a door: a bare daemon has no supervisor to restart it.
 
+== Feed view
+
+Source: `apps/argus/src/features/feed/view.ts` (the modes, the device's memory of them, the frame over a pane's pills) and `apps/argus/src/scene/feedGraph.ts` (the one reading of a feed for the scene); mounted by the RUNS pane (`features/dag/panel.ts`) and by the universe on descent (`features/universe/panel.ts`).
+
+Status: on stage since 2026-10-06 (#943, slices 1 and 2). Law `a-feed-has-one-view`.
+
+=== Purpose
+
+A feed opened from the RUNS roster and the same feed entered from the universe are one view: drawn by one builder, framed by one set of verbs, in the modes this device last chose, whichever door turned them. A feed opens as its tree, root on top (RANKED), unless the device chose a molecule.
+
+=== Anatomy
+
+image::images/feed-view-anatomy.svg[Feed view anatomy,1180]
+
+[cols="1,2,3",options="header"]
+|===
+| Part | Selector | What it is
+
+| verb pill | `[data-feed-verb]` on a pane's mode frame | One per mode: `strategy` (RANKED / MOLECULE), `projection` (3D / 2D), `draw` (SPHERES / STARS), `pulse` (PULSE ON / OFF), `metric` (TIME / SIZE), `census` (SHAPE / CENSUS), `gravity` (GRAVITY ON / OFF), `hue` (STATUS / COMPUTE). The pill reads the current state; `pulse` and `gravity` wear `.rail-off` while off.
+| feed verbs | `.dag-note`, `.dag-tag`, `.dag-rename`, `.dag-marks` | The feed's note, tags and name (`features/dag/feedFrame.ts`), on both panes' frames.
+| universe swap | `.pane-universe.universe-inside` | Inside a feed the universe frame shows `.universe-feed` pills and hides the space-only ones (view, scale, arrangement, replay, refresh); its draw pill turns the feed view's draw while inside, and the space's own comes back on the way out.
+|===
+
+=== Declaration
+
+[source,ts]
+----
+// A pane mounts the frame over its own pills and applies what turns.
+this.feedView = new FeedViewFrame(modeFrame, {
+  changed: (verb: FeedVerb, modes: FeedModes): void => this.feedMode_apply(verb, modes),
+});
+// A door opening a feed takes the device's memory again (the other door may have turned it).
+const modes: FeedModes = this.feedView.recall();
+const graph = feedGraph_build(model, { metric: modes.metric, hue: modes.hue, legend, draw: modes.draw, id_of });
+----
+
+=== States
+
+Remembered per device in `argus.feedview`; defaults RANKED, 3D, SPHERES, PULSE OFF, TIME, SHAPE, GRAVITY OFF, STATUS. Every node is tubed whatever the draw; under SPHERES every node is also solid (lit, hovered, pressed as a sphere); under STARS the nodes are points of light on fine threads (tubes at a quarter width).
+
+=== Laws
+
+`a-feed-has-one-view`. The same feed is never drawn two ways by two doors: one builder, one frame, one remembered set of modes.
+
+=== Stylesheet
+
+`.pane-universe:not(.universe-inside) .universe-feed` and the space-only pills under `.universe-inside` are hidden by display; the pills themselves are the frame's `.strategy-pill`.
+
+=== Do not
+
+Do not give a pane its own copy of a feed mode, or read a feed's model into the scene anywhere but `feedGraph_build`.
+

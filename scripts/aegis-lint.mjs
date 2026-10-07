@@ -300,6 +300,7 @@ LINT_CHECKS['a-component-lands-with-its-reference'] = () => {
     'apps/argus/src/features/games/panel.ts',
     'apps/argus/src/features/notes/panel.ts',
     'apps/argus/src/app/restart.ts',
+    'apps/argus/src/features/feed/view.ts',
   ];
   if (!existsSync('apps/argus/docs/components.adoc')) {
     fail('a-component-lands-with-its-reference', 'apps/argus/docs/components.adoc is missing');

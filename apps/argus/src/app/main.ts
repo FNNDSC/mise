@@ -1039,8 +1039,11 @@ async function surface_start(token: string): Promise<void> {
         facts: mount.querySelector<HTMLElement>('.universe-facts'),
         backPill: mount.querySelector<HTMLElement>('.universe-back'),
         openPill: mount.querySelector<HTMLElement>('.universe-open'),
+        frame: mount.querySelector<HTMLElement>('.mode-frame'),
       },
       {
+        // The entered feed's note, tags and name, as a RUNS pane's (a-feed-has-one-view).
+        ...(({ feed_entered, feed_note, feed_tag, feed_rename, feed_untag }) => ({ feed_entered, feed_note, feed_tag, feed_rename, feed_untag }))(feedRowHandlers_make(context, id, feedVerbs)),
         command_run: (line: string): void => {
           void client
             .line_execute(line, { silent: true, observe: false })

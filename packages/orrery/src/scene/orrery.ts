@@ -1108,10 +1108,13 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     // — the DAG pane's graph and the universe's SPHERES alike. Dimmed
     // scenery keeps its faint lines.
     const solidIds: string[] = placed
-      .filter((item: PlacedNode): boolean => item.node.ghost !== true && item.node.halo !== true && (starring ? item.node.solid === true : item.node.dim !== true))
+      .filter((item: PlacedNode): boolean => item.node.ghost !== true && item.node.halo !== true && (starring ? item.node.solid === true || item.node.tubed === true : item.node.dim !== true))
       .map((item: PlacedNode): string => item.node.id);
     if (solidIds.length > 0) {
-      const entered: TubeOwner = { tubes: null, mix: 1 };
+      // Under stars a graph tubed but not solid (a feed drawn as points of
+      // light) is threaded finely; solid spheres keep their full tubes.
+      const solidAmong: boolean = !starring || placed.some((item: PlacedNode): boolean => item.node.solid === true && solidIds.includes(item.node.id));
+      const entered: TubeOwner = { tubes: null, mix: 1, ...(solidAmong ? {} : { thickness: 0.25 }) };
       this.tubes.build(entered, solidIds, new Set(solidIds));
     }
     // A redraw during a replay keeps what has not arrived hidden.

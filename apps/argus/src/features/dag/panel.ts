@@ -38,10 +38,11 @@ import { Listing, type ListingStateParts } from '../roster/listing.js';
 import { type ListingAction } from '../roster/row.js';
 import { FEED_TRAITS, duration_format, size_format } from './roster.js';
 import { FeedFrame, type FeedFrameFacts } from './feedFrame.js';
+import { FeedViewFrame, feedHueLegend_of, type FeedModes, type FeedVerb } from '../feed/view.js';
 import { FollowGuard } from './follow.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
-import { feedGraph_build, feedMetric_of, hueLegend_build, type HueMode, type MetricMode } from '../../scene/feedGraph.js';
+import { feedGraph_build, feedMetric_of, type HueMode, type MetricMode } from '../../scene/feedGraph.js';
 import { LandedFeeds, universeGraph_build, universeTip_of, type LandedFeed } from './universe.js';
 
 /** What the pane asks of its host. */
@@ -189,6 +190,8 @@ export class DagPanel {
   private readonly defaultTitle: string;
   /** What scales a molecule node: execution wall time, or output bytes. */
   private metricMode: MetricMode = 'time';
+  /** The feed view's frame: its modes, the device's memory of them, the pills (features/feed/view.ts). */
+  private readonly feedView: FeedViewFrame;
   /** The last shown model, re-projected locally when the scale flips. */
   private lastModel: FeedDagModel | null = null;
   /** The roster last shown, re-rendered on any order change. */
@@ -298,12 +301,6 @@ export class DagPanel {
       // feed and the tip says both; a feed's own graph keeps its labels.
       tip: (node: SceneNode): string | null => (this.universeShown ? universeTip_of(node.id, this.landed) : null),
     });
-    strategyPill.addEventListener('click', (): void => {
-      const next: LayoutStrategy = this.scene.strategy_get() === 'ranked' ? 'molecule' : 'ranked';
-      this.scene.strategy_set(next);
-      strategyPill.textContent = next.toUpperCase();
-      this.modes_render();
-    });
     // BACK heads the frame: the way out of a graph is a press, as it is out
     // of a node and out of an entered feed in the universe — Esc does the
     // same, and a phone has no Esc. From a graph it returns to the roster
@@ -336,81 +333,26 @@ export class DagPanel {
       this.factsShown = null;
       this.facts.replaceChildren();
     });
-    // The projection pill lives beside the strategy pill on the mode frame;
-    // the label always names the CURRENT mode, same as RANKED/MOLECULE.
-    const projectionPill: HTMLElement | null =
-      strategyPill.parentElement?.querySelector<HTMLElement>('.dag-projection') ?? null;
-    projectionPill?.addEventListener('click', (): void => {
-      const next: '3d' | '2d' = this.scene.projection_get() === '3d' ? '2d' : '3d';
-      this.scene.projection_set(next);
-      projectionPill.textContent = next.toUpperCase();
-      this.modes_render();
+    // The feed view's frame (law a-feed-has-one-view): arrangement,
+    // projection, draw, pulse, metric, census, gravity and hue are the feed
+    // view's own modes, remembered per device, wired once (features/feed/view.ts)
+    // and mounted by this pane and by the universe's descent alike.
+    this.feedView = new FeedViewFrame(strategyPill.parentElement, {
+      changed: (verb: FeedVerb, modes: FeedModes): void => this.feedMode_apply(verb, modes),
     });
-    // PULSE is a MODE, not a one-shot: the pill shows the current state
-    // (mode-frame convention) and carries its weight — lit when looping, dim
-    // when quiet. The one arrival-wave on graph load stays canon.
-    const pulsePill: HTMLElement | null =
-      strategyPill.parentElement?.querySelector<HTMLElement>('.dag-pulse') ?? null;
-    pulsePill?.classList.add('rail-off');
-    pulsePill?.addEventListener('click', (): void => {
-      const on: boolean = !this.scene.waveLoop_get();
-      this.scene.waveLoop_set(on);
-      pulsePill.textContent = on ? 'PULSE ON' : 'PULSE OFF';
-      pulsePill.classList.toggle('rail-off', !on);
-      this.modes_render();
-    });
-    // SCALE is a display-content control: it re-projects the remembered
-    // model locally — no wire traffic, the metrics are already resident.
-    const scalePill: HTMLElement | null =
-      strategyPill.parentElement?.querySelector<HTMLElement>('.dag-scale') ?? null;
-    scalePill?.addEventListener('click', (): void => {
-      this.metricMode = this.metricMode === 'time' ? 'size' : 'time';
-      scalePill.textContent = this.metricMode === 'time' ? 'TIME' : 'SIZE';
-      if (this.lastModel !== null) this.graph_show(this.lastModel, false);
-      this.modes_render();
-    });
-    this.scalePill = scalePill;
-    // CENSUS is spectacle: the full multiplicity, instanced. SHAPE is the
-    // semantic default; selection and facts belong to shape.
-    const censusPill: HTMLElement | null =
-      strategyPill.parentElement?.querySelector<HTMLElement>('.dag-census') ?? null;
-    censusPill?.addEventListener('click', (): void => {
-      const on: boolean = !this.scene.census_get();
-      this.scene.census_set(on);
-      censusPill.textContent = on ? 'CENSUS' : 'SHAPE';
-      this.modes_render();
-    });
-    // GRAVITY is a meaning (heaviest stage at the heart), so it earns a
-    // pill; the other physics terms are expert knobs and live in LANG.
-    const gravityPill: HTMLElement | null =
-      strategyPill.parentElement?.querySelector<HTMLElement>('.dag-gravity') ?? null;
-    gravityPill?.classList.add('rail-off');
-    gravityPill?.addEventListener('click', (): void => {
-      const on: boolean = !this.scene.physics_get().gravity;
-      this.scene.physics_set({ gravity: on });
-      gravityPill.textContent = on ? 'GRAVITY ON' : 'GRAVITY OFF';
-      gravityPill.classList.toggle('rail-off', !on);
-      this.modes_render();
-    });
-    // HUE is a mode: what colors a node. STATUS is the default; COMPUTE
-    // colors by the resource the work ran on, the legend riding the bar.
-    const huePill: HTMLElement | null =
-      strategyPill.parentElement?.querySelector<HTMLElement>('.dag-hue') ?? null;
-    huePill?.addEventListener('click', (): void => {
-      this.hueMode = this.hueMode === 'status' ? 'compute' : 'status';
-      huePill.textContent = this.hueMode.toUpperCase();
-      if (this.lastModel !== null) this.graph_show(this.lastModel, false);
-      // A feed restored from an older checkpoint may predate the cache's
-      // knowledge of compute: asking for the hue is the operator's consent
-      // to re-read the feed's nodes once, and the legend says so meanwhile.
-      if (this.hueMode === 'compute' && !this.computeKnown && this.shownFeedId !== null && this.canvas.style.display !== 'none') {
-        this.computeRereading = true;
-        this.handlers.command_run(`proc refresh ${this.shownFeedId}`);
-        this.refresh();
-      }
-      this.modes_render();
-    });
-    this.huePill = huePill;
+    this.metricMode = this.feedView.modes_get().metric;
+    this.hueMode = this.feedView.modes_get().hue;
+    this.scalePill = this.feedView.pill_of('metric');
+    this.huePill = this.feedView.pill_of('hue');
+    // What this device last chose stands from the first graph: a feed opens
+    // as its tree, root on top, unless the device chose otherwise.
+    const kept: FeedModes = this.feedView.modes_get();
+    this.scene.strategy_set(kept.strategy);
+    this.scene.projection_set(kept.projection);
+    this.scene.draw_set(kept.draw);
+    this.scene.waveLoop_set(kept.pulse);
+    this.scene.census_set(kept.census);
+    this.scene.physics_set({ gravity: kept.gravity });
     // The language reaches the expert knobs through DOM events on the pane
     // (verbs run over the DOM, never a private API).
     const paneRoot: HTMLElement | null = strategyPill.closest<HTMLElement>('.pane-dag');
@@ -421,7 +363,7 @@ export class DagPanel {
         return;
       }
       if (detail.term === 'gravity') {
-        if (this.scene.physics_get().gravity !== detail.on) gravityPill?.click();
+        if (this.scene.physics_get().gravity !== detail.on) this.feedView.press('gravity');
         return;
       }
       this.scene.physics_set({ [detail.term]: detail.on } as Partial<PhysicsTerms>);
@@ -547,6 +489,9 @@ export class DagPanel {
     }
     const previous: FeedDagModel | null = this.lastModel;
     this.lastModel = model;
+    // A feed entered stands in the device's remembered modes, whichever door
+    // last turned them (a-feed-has-one-view): the universe may have, since.
+    if (previous === null || previous.feedId !== model.feedId) this.feedModes_recall();
     // The feed on stage asked again (a second open, a watch's answer):
     // the same shape patches in place — a rebuild would resettle the graph
     // and drop its tubes and pulses mid-run.
@@ -559,6 +504,59 @@ export class DagPanel {
     // A feed entered (not a repaint of the one on stage) reads its note and tags.
     this.feedFrame.arrived(model.feedId);
     this.handlers.feed_shown?.();
+  }
+
+  /** Takes the device's remembered feed modes and puts every one on the scene. */
+  private feedModes_recall(): void {
+    const kept: FeedModes = this.feedView.recall();
+    this.scene.strategy_set(kept.strategy);
+    this.scene.projection_set(kept.projection);
+    this.scene.draw_set(kept.draw);
+    this.scene.waveLoop_set(kept.pulse);
+    this.scene.census_set(kept.census);
+    this.scene.physics_set({ gravity: kept.gravity });
+    this.metricMode = kept.metric;
+    this.hueMode = kept.hue;
+    this.modes_render();
+  }
+
+  /**
+   * Applies one feed-view mode the frame turned: a scene call, or a redraw
+   * of the feed for the metric and the hue.
+   *
+   * @param verb - The mode.
+   * @param modes - The modes as they now stand.
+   */
+  private feedMode_apply(verb: FeedVerb, modes: FeedModes): void {
+    switch (verb) {
+      case 'strategy': this.scene.strategy_set(modes.strategy); break;
+      case 'projection': this.scene.projection_set(modes.projection); break;
+      case 'draw':
+        this.scene.draw_set(modes.draw);
+        // Solid follows the draw style; the tubes stay.
+        if (this.lastModel !== null) this.graph_show(this.lastModel, false);
+        break;
+      case 'pulse': this.scene.waveLoop_set(modes.pulse); break;
+      case 'census': this.scene.census_set(modes.census); break;
+      case 'gravity': this.scene.physics_set({ gravity: modes.gravity }); break;
+      case 'metric':
+        this.metricMode = modes.metric;
+        if (this.lastModel !== null) this.graph_show(this.lastModel, false);
+        break;
+      case 'hue':
+        this.hueMode = modes.hue;
+        if (this.lastModel !== null) this.graph_show(this.lastModel, false);
+        // A feed restored from an older checkpoint may predate the cache's
+        // knowledge of compute: asking for the hue is the operator's consent
+        // to re-read the feed's nodes once, and the legend says so meanwhile.
+        if (this.hueMode === 'compute' && !this.computeKnown && this.shownFeedId !== null && this.canvas.style.display !== 'none') {
+          this.computeRereading = true;
+          this.handlers.command_run(`proc refresh ${this.shownFeedId}`);
+          this.refresh();
+        }
+        break;
+    }
+    this.modes_render();
   }
 
   /** Reads the entered feed's note, tags and name again (one of them changed). */
@@ -625,11 +623,7 @@ export class DagPanel {
    * @returns Resource → CSS color.
    */
   private hueLegend_build(model: FeedDagModel): Map<string, string> {
-    const style: CSSStyleDeclaration = getComputedStyle(document.documentElement);
-    const cycle: string[] = ['--harvestgold', '--daybreak', '--orange', '--honey', '--butter', '--october-sunset']
-      .map((name: string): string => style.getPropertyValue(name).trim())
-      .filter((value: string): boolean => value !== '');
-    return hueLegend_build(model, cycle);
+    return feedHueLegend_of(model);
   }
 
   /**
@@ -808,7 +802,7 @@ export class DagPanel {
         : "no compute resource reported for this feed's nodes yet";
     }
     // The feed view's own reading (law a-feed-has-one-view), the descent's too.
-    this.scene.graph_set({ nodes: feedGraph_build(model, { metric: this.metricMode, hue: this.hueMode, legend: this.hueLegend }).nodes }, { wave });
+    this.scene.graph_set({ nodes: feedGraph_build(model, { metric: this.metricMode, hue: this.hueMode, legend: this.hueLegend, draw: this.feedView.modes_get().draw }).nodes }, { wave });
     this.scene.size_fit();
     if (this.hueMode === 'compute') this.modes_render();
     this.factsPayloads.clear();

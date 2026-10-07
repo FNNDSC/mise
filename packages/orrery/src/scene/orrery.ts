@@ -660,6 +660,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
       solidDrawn,
       tubes: this.tubes.materialCount(),
       censusTubes: this.tubes.censusCount(),
+      censusLines: this.tubes.censusLineCount(),
       // How many jobs the census shells: every one, when it stands.
       censusMembers: this.census ? this.censusField.ids().length : 0,
       handoffGroups: this.handoffField.size(),

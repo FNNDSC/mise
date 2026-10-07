@@ -1,6 +1,7 @@
 /**
  * @file The census: shells of jobs, anchors that count but draw nothing,
- * tubes while few and lines past that, points of light under stars, the
+ * tubes while few and wave-carrying lines past that, points of light and
+ * threads under stars, the
  * wave's flare, and a job picked by a ray.
  */
 import { describe, it, expect } from '@jest/globals';
@@ -38,18 +39,35 @@ describe('CensusField', () => {
     expect(tubes.censusCount()).toBe(12);
   });
 
-  it('keeps lines past the tube cap', () => {
+  it('past the tube cap draws lines that carry the wave from parent to child, on the tubes\' clock', () => {
     const { field, tubes, parent } = census();
     field.build(nodes(20_001), false, palette);
     expect(tubes.censusCount()).toBe(0);
-    expect(parent.children.some((o) => o instanceof THREE.LineSegments)).toBe(true);
+    expect(tubes.censusLineCount()).toBe(20_001);
+    const lines = parent.children.find((o) => o instanceof THREE.LineSegments) as THREE.LineSegments;
+    const material = lines.material as THREE.ShaderMaterial;
+    expect(material).toBeInstanceOf(THREE.ShaderMaterial);
+    expect(material.fragmentShader).toContain('pulse_at');
+    const along = lines.geometry.getAttribute('aAlong').array as Float32Array;
+    expect([along[0], along[1]]).toEqual([0, 1]);
+    // Finished stages replay: every line into one carries the replay's mode.
+    expect((lines.geometry.getAttribute('aMode').array as Float32Array).every((m) => m === 2)).toBe(true);
+    // Each line starts at the parent's job (r stands at the origin) and ends at a job of f.
+    const at = lines.geometry.getAttribute('position').array as Float32Array;
+    expect([at[0], at[1], at[2]]).toEqual([0, 0, 0]);
+    tubes.frame(12_345);
+    expect(material.uniforms['time']?.value).toBe(12_345);
   });
 
-  it('draws jobs as points of light under stars', () => {
-    const { field, stars } = census();
+  it('draws jobs as points of light under stars, joined by threads that carry the wave', () => {
+    const { field, stars, tubes, parent } = census();
     field.build(nodes(4), true, palette);
     expect(field.drawn()).toBe(false);
     expect(stars.count()).toBe(5);
+    expect(tubes.censusCount()).toBe(0);
+    expect(tubes.censusLineCount()).toBe(4);
+    const lines = parent.children.find((o) => o instanceof THREE.LineSegments) as THREE.LineSegments;
+    expect((lines.material as THREE.ShaderMaterial).blending).toBe(THREE.AdditiveBlending);
   });
 
   it('flares every job of a stage with the wave, and says when the wave is done', () => {

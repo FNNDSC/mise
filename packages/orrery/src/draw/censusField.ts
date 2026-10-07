@@ -3,8 +3,9 @@
  *
  * A stage that stands for many jobs is drawn as a shell of them around its
  * place, each job its own sphere (or, under stars, its own point of light);
- * each job is joined to a job of its parent stage — by tubes that carry
- * the feed's pulses while there are few enough of them, by lines past that.
+ * each job is joined to a job of its parent stage, and every connection
+ * carries the feed's wave: by tubes while there are few enough of them, by
+ * lines carrying the same wave past that and under stars.
  * A wave down the graph flares every job of a stage together.
  *
  * @module
@@ -156,34 +157,16 @@ export class CensusField {
       this.base = instanced.instanceColor ? Float32Array.from(instanced.instanceColor.array) : null;
     }
 
-    const segments: number[] = [];
-    for (const node of nodes) {
-      const mine: THREE.Vector3[] = shells.get(node.id) ?? [];
-      for (const parentId of node.parents) {
-        const theirs: THREE.Vector3[] | undefined = shells.get(parentId);
-        if (!theirs || theirs.length === 0) continue;
-        for (let k = 0; k < mine.length; k++) {
-          const a: THREE.Vector3 | undefined = mine[k];
-          const b: THREE.Vector3 | undefined = theirs.length === mine.length ? theirs[k] : theirs[k % theirs.length];
-          if (a === undefined || b === undefined) continue;
-          segments.push(a.x, a.y, a.z, b.x, b.y, b.z);
-        }
-      }
-    }
-    // Drawn as spheres, a census joins its jobs with the tubes a feed wears,
-    // pulses and all — while there are few enough of them to draw.
-    const tubeCount: number = segments.length / 6;
-    if (!starring && tubeCount > 0 && tubeCount <= CENSUS_TUBE_CAP) {
-      this.tubes_build(nodes, shells, shellRadii, palette);
-    } else if (segments.length > 0) {
-      const edgeGeometry: THREE.BufferGeometry = new THREE.BufferGeometry();
-      edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(segments, 3));
-      this.host.parent.add(new THREE.LineSegments(
-        edgeGeometry,
-        starring
-          ? new THREE.LineBasicMaterial({ color: palette.edge, transparent: true, opacity: THREAD_OPACITY, blending: THREE.AdditiveBlending, depthWrite: false })
-          : new THREE.LineBasicMaterial({ color: palette.edge, transparent: true, opacity: 0.35 }),
-      ));
+    // Every job joins a job of its parent stage, and every connection
+    // carries the feed's wave: drawn as spheres, by the tubes a feed wears
+    // while there are few enough of them to draw; past that, and under
+    // stars, by lines that carry the same wave — information still travels
+    // down every one of them.
+    const { specs, deepest } = connections_of(nodes, shells, shellRadii, palette);
+    if (!starring && specs.length > 0 && specs.length <= CENSUS_TUBE_CAP) {
+      this.host.tubes.census_build(specs, deepest);
+    } else if (specs.length > 0) {
+      this.host.tubes.censusLines_build(specs, deepest, starring ? { tint: 1, opacity: THREAD_OPACITY, additive: true } : { tint: 1, opacity: 0.35, additive: false });
     }
     return { center, radius: cloudRadius };
   }
@@ -240,49 +223,55 @@ export class CensusField {
     this.memberIds = [];
     this.memberPositions = [];
   }
+}
 
-  /**
-   * Joins the jobs with tubes: each to the job of its parent stage it stands
-   * against, in the stage's hue (red into a failed one); a live stage
-   * streams, a finished run replays with every job of a stage together.
-   */
-  private tubes_build(
-    nodes: ReadonlyArray<CensusNode>,
-    shells: ReadonlyMap<string, THREE.Vector3[]>,
-    shellRadii: ReadonlyMap<string, number>,
-    palette: Palette,
-  ): void {
-    const byId: Map<string, CensusNode> = new Map(nodes.map((node: CensusNode): [string, CensusNode] => [node.id, node]));
-    const depth: Map<string, number> = new Map();
-    const depth_of = (id: string, seen: Set<string> = new Set()): number => {
-      const known: number | undefined = depth.get(id);
-      if (known !== undefined) return known;
-      if (seen.has(id)) return 0;
-      seen.add(id);
-      const parents: string[] = (byId.get(id)?.parents ?? []).filter((p: string): boolean => byId.has(p));
-      const d: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((p: string): number => depth_of(p, seen)));
-      depth.set(id, d);
-      return d;
-    };
-    const bright: THREE.Color = palette.edge.clone().lerp(new THREE.Color('#ffffff'), 0.45);
-    const specs: TubeSpec[] = [];
-    let deepest: number = 0;
-    for (const node of nodes) {
-      const mine: THREE.Vector3[] = shells.get(node.id) ?? [];
-      for (const parentId of node.parents) {
-        const theirs: THREE.Vector3[] | undefined = shells.get(parentId);
-        if (!theirs || theirs.length === 0) continue;
-        const width: number = Math.max(0.02, Math.min(shellRadii.get(node.id) ?? 0.1, shellRadii.get(parentId) ?? 0.1) * 0.34);
-        const start: number = depth_of(parentId) * WAVE_STEP_MS;
-        deepest = Math.max(deepest, depth_of(parentId));
-        for (let k = 0; k < mine.length; k++) {
-          const to: THREE.Vector3 | undefined = mine[k];
-          const from: THREE.Vector3 | undefined = theirs.length === mine.length ? theirs[k] : theirs[k % theirs.length];
-          if (from === undefined || to === undefined) continue;
-          specs.push({ from, to, width, color: node.state === 'failed' ? palette.error : bright, mode: tubeMode_of(node.state), start });
-        }
+/**
+ * The census's connections: each job to the job of its parent stage it
+ * stands against, in the stage's hue (red into a failed one); a live stage
+ * streams, a finished run replays with every job of a stage together.
+ *
+ * @param nodes - The stages.
+ * @param shells - Each stage's jobs, where they stand.
+ * @param shellRadii - Each stage's job radius.
+ * @param palette - The colours.
+ * @returns The connections and the deepest stage a wave reaches.
+ */
+export function connections_of(
+  nodes: ReadonlyArray<CensusNode>,
+  shells: ReadonlyMap<string, THREE.Vector3[]>,
+  shellRadii: ReadonlyMap<string, number>,
+  palette: Palette,
+): { specs: TubeSpec[]; deepest: number } {
+  const byId: Map<string, CensusNode> = new Map(nodes.map((node: CensusNode): [string, CensusNode] => [node.id, node]));
+  const depth: Map<string, number> = new Map();
+  const depth_of = (id: string, seen: Set<string> = new Set()): number => {
+    const known: number | undefined = depth.get(id);
+    if (known !== undefined) return known;
+    if (seen.has(id)) return 0;
+    seen.add(id);
+    const parents: string[] = (byId.get(id)?.parents ?? []).filter((p: string): boolean => byId.has(p));
+    const d: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((p: string): number => depth_of(p, seen)));
+    depth.set(id, d);
+    return d;
+  };
+  const bright: THREE.Color = palette.edge.clone().lerp(new THREE.Color('#ffffff'), 0.45);
+  const specs: TubeSpec[] = [];
+  let deepest: number = 0;
+  for (const node of nodes) {
+    const mine: THREE.Vector3[] = shells.get(node.id) ?? [];
+    for (const parentId of node.parents) {
+      const theirs: THREE.Vector3[] | undefined = shells.get(parentId);
+      if (!theirs || theirs.length === 0) continue;
+      const width: number = Math.max(0.02, Math.min(shellRadii.get(node.id) ?? 0.1, shellRadii.get(parentId) ?? 0.1) * 0.34);
+      const start: number = depth_of(parentId) * WAVE_STEP_MS;
+      deepest = Math.max(deepest, depth_of(parentId));
+      for (let k = 0; k < mine.length; k++) {
+        const to: THREE.Vector3 | undefined = mine[k];
+        const from: THREE.Vector3 | undefined = theirs.length === mine.length ? theirs[k] : theirs[k % theirs.length];
+        if (from === undefined || to === undefined) continue;
+        specs.push({ from, to, width, color: node.state === 'failed' ? palette.error : bright, mode: tubeMode_of(node.state), start });
       }
     }
-    this.host.tubes.census_build(specs, deepest);
   }
+  return { specs, deepest };
 }

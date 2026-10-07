@@ -115,7 +115,8 @@ export function feedRowHandlers_make(context: Pick<HostContext, 'panels' | 'subj
         context.client.line_execute(`getfattr feed_${feedId}`, quiet).catch((): null => null),
         context.client.line_execute(`cat /proc/jobs/feed_${feedId}/title`, quiet).catch((): null => null),
       ]).then(([note, held, title]: [ExecuteOutcome | null, ExecuteOutcome | null, ExecuteOutcome | null]): void => {
-        panels.get('dag', id)?.feedMarks_show(feedId, {
+        // The pane that asked: a RUNS pane, or a universe inside the feed.
+        (panels.get('dag', id) ?? panels.get('universe', id))?.feedMarks_show(feedId, {
           note: text_of(note),
           tags: held === null ? [] : feedTags_of(held),
           title: (text_of(title) ?? '').trim(),

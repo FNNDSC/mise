@@ -11,8 +11,8 @@
  * collide with the rest of the space); everything that changes how the
  * feed looks is the feed view's own: the metric that sizes a sphere, the
  * hue that colours it, the errored share a `×N` sphere wears, and every
- * node solid, so it is lit, hovered, pressed and carries its tube whatever
- * the draw style.
+ * node tubed, so its paths show whatever the draw style (and solid, lit and
+ * pressed as a sphere, unless the view is drawn as stars).
  *
  * Pure over the model.
  *
@@ -36,6 +36,11 @@ export interface FeedGraphModes {
   hue: HueMode;
   /** The compute hues, read under the compute mode. */
   legend: ReadonlyMap<string, string>;
+  /**
+   * How the view draws: lit spheres mark every node solid; stars leave the
+   * nodes points of light. Either way every node keeps its tube.
+   */
+  draw?: 'spheres' | 'stars';
   /** A node's scene id from the kernel's; the RUNS pane keeps the kernel's, the universe scopes it. */
   id_of?: (nodeId: string) => string;
 }
@@ -107,7 +112,8 @@ export function feedGraph_build(model: FeedDagModel, modes: FeedGraphModes): Fee
       joinParentIds: node.joinParentIds.filter((parent: string): boolean => known.has(parent)).map(id_of),
       status: node.status,
       metric: feedMetric_of(node, modes.metric),
-      solid: true,
+      tubed: true,
+      ...(modes.draw !== 'stars' ? { solid: true } : {}),
       ...(count > 1 ? { count } : {}),
       ...(share !== undefined ? { share } : {}),
       ...(colour !== undefined ? { hue: colour } : {}),

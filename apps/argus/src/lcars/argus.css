@@ -4742,6 +4742,13 @@ body[data-zoom] #header-restore {
   display: none;
 }
 
+/* Inside a feed the frame is the feed view's (a-feed-has-one-view): its own
+   verbs stand, and what only the whole space answers to steps aside. */
+.pane-universe:not(.universe-inside) .universe-feed,
+.pane-universe.universe-inside :is(.universe-view, .universe-scale, .universe-arrangement, .universe-replay, .universe-refresh) {
+  display: none;
+}
+
 /* A title that cannot widen the pane: what does not fit is cut, never
    pushed past the split. */
 .universe-title {

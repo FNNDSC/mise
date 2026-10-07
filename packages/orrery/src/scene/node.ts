@@ -41,6 +41,12 @@ export interface SpaceNode {
    */
   solid?: boolean;
   /**
+   * Joined to its parent by a tube whatever the draw mode: a node of a
+   * graph whose paths are the point (a feed's view), drawn as a star under
+   * stars yet still tubed. Without it, under stars only solid nodes are.
+   */
+  tubed?: boolean;
+  /**
    * Drawn faint: the rest of a field while one part of it is entered.
    * Present in the settle and drawn, but at a fraction of its opacity, and
    * its edges with it.

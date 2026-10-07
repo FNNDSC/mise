@@ -18,6 +18,8 @@
  * @module
  */
 import { feedGraph_build } from '../../scene/feedGraph.js';
+import { FEED_MODES_DEFAULT, FeedViewFrame, feedHueLegend_of, type FeedModes, type FeedVerb } from '../feed/view.js';
+import { FeedFrame, type FeedFrameFacts } from '../dag/feedFrame.js';
 import { ranked_layout } from '@fnndsc/orrery';
 import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope } from '@fnndsc/menu';
 import { barState_clear, barState_set, type BarState } from '../roster/bar.js';
@@ -87,6 +89,12 @@ import { projection_paint, projection_press } from './projection.js';
 export interface UniversePanelHandlers {
   /** Runs a session command whose envelopes come back through `envelope_observe`. */
   command_run: (line: string) => void;
+  /** The entered feed's facts, verbs and marks, as the RUNS pane takes them (see FeedFrame). */
+  feed_entered?: (feedId: number) => void;
+  feed_note?: (feedId: number) => void;
+  feed_tag?: (feedId: number, worn: ReadonlyArray<string>) => void;
+  feed_rename?: (feedId: number, title: string) => void;
+  feed_untag?: (feedId: number, tag: string) => void;
   /** The kernel's graph of one feed (`feed diagram`), or null when it cannot be had. */
   feed_dag?: (feedId: number) => Promise<FeedDagModel | null>;
   /** The operator enters a node's data: the session's cwd moves there. */
@@ -114,6 +122,8 @@ interface EnteredState {
 /** The pane's mount points inside its template. */
 export interface UniversePanelMount {
   canvas: HTMLElement;
+  /** The mode frame, holding the entered feed's pills (`data-feed-verb`, `.dag-note` …). */
+  frame?: HTMLElement | null;
   title: HTMLElement;
   state: HTMLElement | null;
   empty: HTMLElement;
@@ -245,6 +255,14 @@ export class UniversePanel {
   private readonly backPill: HTMLElement | null;
   private readonly openPill: HTMLElement | null;
   private readonly pane: HTMLElement | null;
+  /** The entered feed's note, tags and name on the frame. */
+  private feedFrame: FeedFrame | null = null;
+  /** The feed view's modes and pills while a feed is entered (features/feed/view.ts). */
+  private feedView: FeedViewFrame | null = null;
+  /** The kernel's graph of the entered feed, kept to redraw it when a mode turns. */
+  private insideModel: FeedDagModel | null = null;
+  /** The entered feed as last read for the scene. */
+  private insideEntered: EnteredFeed | null = null;
   private readonly escape_listen: (event: KeyboardEvent) => void;
   /** The plugin whose stages are lit across the sky, or null. */
   private lit: string | null = null;
@@ -307,6 +325,25 @@ export class UniversePanel {
     this.scene.strategy_set('molecule');
     this.scene.physics_set(this.physics);
     this.frame_wire(mount);
+    // The entered feed's frame is the feed view's (law a-feed-has-one-view):
+    // its note, tags and name, and its modes, wired as the RUNS pane wires them.
+    this.feedFrame = new FeedFrame(mount.frame ?? null, {
+      ...(handlers.feed_entered !== undefined ? { feed_entered: handlers.feed_entered } : {}),
+      ...(handlers.feed_note !== undefined ? { feed_note: handlers.feed_note } : {}),
+      ...(handlers.feed_tag !== undefined ? { feed_tag: handlers.feed_tag } : {}),
+      ...(handlers.feed_rename !== undefined ? { feed_rename: handlers.feed_rename } : {}),
+      ...(handlers.feed_untag !== undefined ? { feed_untag: handlers.feed_untag } : {}),
+      shown: (): number | null => this.inside?.feedId ?? null,
+      name: (): string => this.inside?.title ?? '',
+      renamed: (feedId: number, title: string): void => {
+        if (this.inside?.feedId !== feedId) return;
+        this.inside = { ...this.inside, title };
+        this.title_paint();
+      },
+    });
+    this.feedView = new FeedViewFrame(mount.frame ?? null, {
+      changed: (verb: FeedVerb, modes: FeedModes): void => this.feedMode_apply(verb, modes),
+    });
     this.escape_listen = this.escape_wire();
     this.scene.draw_set(this.drawMode);
     this.canvas.style.display = 'none';
@@ -349,7 +386,12 @@ export class UniversePanel {
     mount.densityPill?.addEventListener('click', (): void => { this.density_set(this.density === 'shape' ? 'census' : 'shape'); });
     this.drawPill = mount.drawPill ?? null;
     this.scalePill = mount.scalePill;
-    mount.drawPill?.addEventListener('click', (): void => { this.draw_set(this.drawMode === 'stars' ? 'spheres' : 'stars'); });
+    // Inside a feed the draw pill is the feed view's (remembered per device);
+    // outside, the space's (remembered per identity, with the other space choices).
+    mount.drawPill?.addEventListener('click', (): void => {
+      if (this.inside !== null) { this.feedView?.press('draw'); return; }
+      this.draw_set(this.drawMode === 'stars' ? 'spheres' : 'stars');
+    });
     this.captionsPill = mount.captionsPill ?? null;
     mount.captionsPill?.addEventListener('click', (): void => { this.bar_note(this.captions_set(!this.captions)); });
     this.arrangementPill = mount.arrangementPill ?? null;
@@ -999,6 +1041,8 @@ export class UniversePanel {
     const ask = this.handlers.feed_dag;
     if (feed === undefined || ask === undefined || this.scene.moving() || this.inside !== null) return;
     this.facts_clear();
+    // The feed is entered in the device's remembered modes, whichever door last turned them.
+    this.feedView?.recall();
     const spheres: string[] = sphereIds_of(feedId, feed);
     // The ask can take seconds on a large feed, and can be refused: the bar
     // says which feed is being entered while it waits, and the console
@@ -1019,54 +1063,125 @@ export class UniversePanel {
         this.handlers.note?.(`universe: feed ${feedId}: the session gave no graph for it (feed diagram feed_${feedId} refused or answered nothing after ${Math.round((Date.now() - asked) / 1000)}s)`);
         return null;
       }
-      // The feed view's own reading (law a-feed-has-one-view): the same
-      // builder the RUNS pane draws with, its ids scoped to the space.
-      const entered: EnteredFeed = feedGraph_build(model, { metric: 'time', hue: 'status', legend: new Map(), id_of: (nodeId: string): string => instanceId_of(feedId, nodeId) });
-      // A feed opens as its tree, root on top, as it does from the roster:
-      // laid out here and held where it is put, not settled into a burst.
-      const tree = ranked_layout(entered.nodes.map((node: SceneNode) => ({ id: node.id, parentIds: node.parentIds, ...(node.metric !== undefined ? { metric: node.metric } : {}) })));
-      const placed: Record<string, [number, number, number]> = {};
-      for (const at of tree) placed[at.id] = [at.position[0], at.position[1], at.position[2]];
-      // The base is what stands behind the feed: every feed, or its own
-      // shape unfolded with the rest still folded; the feed's molecule
-      // replaced by its graph, everything but the graph dimmed.
-      const prefix: string = `feed:${feedId}:`;
-      const graph: SceneGraph = this.view === 'feeds'
-        ? descendedGraph_build(this.landed.all(), feedId, entered, this.scale, this.arrangement === 'constellations', this.arrangement === 'data' ? dataGraph_build(this.landed.all(), this.scale).graph : this.arrangement === 'accretion' ? accretionGraph_build(this.landed.all(), this.scale) : undefined)
-        : {
-            nodes: [
-              ...unfoldedGraph_build(this.landed.all(), shape_of(feed), this.scale).graph.nodes
-                .filter((node: SceneNode): boolean => !node.id.startsWith(prefix))
-                .map((node: SceneNode): SceneNode => ({ ...node, dim: true })),
-              ...entered.nodes,
-            ],
-          };
-      const ids: Set<string> = new Set(entered.nodes.map((node: SceneNode): string => node.id));
-      // The feed unfolds from where its molecule stood — or, entered by
-      // word from the folded top, from where its shape's fold stands.
-      // Only the feed settles: the rest of the space holds still and
-      // pushes on nothing, and the feed hugs itself where the molecule
-      // stood rather than exploding into a crowd's charge. Frame the bulk
-      // of the feed, not its outliers: a node must be wide enough to hover
-      // and click, and the wheel reaches the rest.
+      const plan: ScenePlan = this.insidePlan_of(feedId, feed, model, [spheres, foldIds_of(shape_of(feed), this.landed)], DESCENT_MS);
       return {
-        graph,
-        unfolding: [...ids],
-        from: [spheres, foldIds_of(shape_of(feed), this.landed)],
-        physics: { reach: UNIVERSE_REACH, gravity: false },
-        placed,
-        frame: [...ids],
-        durationMs: DESCENT_MS,
-        bulk: 1,
-        margin: 0.95,
+        ...plan,
         drawn: (): void => {
-          this.inside = { feedId, title: model.feedName, entered, ids };
+          const ids: Set<string> = new Set(plan.unfolding);
+          this.inside = { feedId, title: model.feedName, entered: this.insideEntered as EnteredFeed, ids };
+          this.insideModel = model;
           this.pane?.classList.add('universe-inside');
           projection_paint(this.pane, this.scene, this.inside !== null);
+          // The feed view's look stands while inside: its draw style and its
+          // pulse, whatever the space was drawn as; the space's comes back on the way out.
+          const modes: FeedModes = this.feedView?.modes_get() ?? { ...FEED_MODES_DEFAULT };
+          this.scene.draw_set(modes.draw);
+          if (this.drawPill !== null) this.drawPill.textContent = modes.draw.toUpperCase();
+          this.scene.waveLoop_set(modes.pulse);
+          this.feedFrame?.shown_set(true);
+          this.feedFrame?.arrived(feedId);
           this.title_paint();
         },
       };
     }, (): void => this.landed_note());
+  }
+
+  /**
+   * The plan that draws one feed inside the space, read the feed view's way
+   * (law a-feed-has-one-view): the shared builder under the view's modes,
+   * its ids scoped to the space, laid out as its tree (root on top) and held
+   * there unless the view is arranged as a molecule, the rest of the space
+   * dimmed behind it.
+   *
+   * @param feedId - The feed.
+   * @param feed - Its landing.
+   * @param model - The kernel's graph of it.
+   * @param from - Where the feed unfolds from.
+   * @param durationMs - How long the camera takes to frame it.
+   * @returns The plan, without its drawn hook.
+   */
+  private insidePlan_of(feedId: number, feed: LandedFeed, model: FeedDagModel, from: ReadonlyArray<ReadonlyArray<string>>, durationMs: number): ScenePlan {
+    const modes: FeedModes = this.feedView?.modes_get() ?? { ...FEED_MODES_DEFAULT };
+    const entered: EnteredFeed = feedGraph_build(model, {
+      metric: modes.metric,
+      hue: modes.hue,
+      legend: modes.hue === 'compute' ? feedHueLegend_of(model) : new Map(),
+      draw: modes.draw,
+      id_of: (nodeId: string): string => instanceId_of(feedId, nodeId),
+    });
+    this.insideEntered = entered;
+    // A feed opens as its tree, root on top, as it does from the roster:
+    // laid out here and held where it is put, not settled into a burst.
+    let placed: Record<string, [number, number, number]> | undefined;
+    if (modes.strategy === 'ranked') {
+      placed = {};
+      for (const at of ranked_layout(entered.nodes.map((node: SceneNode) => ({ id: node.id, parentIds: node.parentIds, ...(node.metric !== undefined ? { metric: node.metric } : {}) })))) {
+        placed[at.id] = [at.position[0], at.position[1], at.position[2]];
+      }
+    }
+    // The base is what stands behind the feed: every feed, or its own
+    // shape unfolded with the rest still folded; the feed's molecule
+    // replaced by its graph, everything but the graph dimmed.
+    const prefix: string = `feed:${feedId}:`;
+    const graph: SceneGraph = this.view === 'feeds'
+      ? descendedGraph_build(this.landed.all(), feedId, entered, this.scale, this.arrangement === 'constellations', this.arrangement === 'data' ? dataGraph_build(this.landed.all(), this.scale).graph : this.arrangement === 'accretion' ? accretionGraph_build(this.landed.all(), this.scale) : undefined)
+      : {
+          nodes: [
+            ...unfoldedGraph_build(this.landed.all(), shape_of(feed), this.scale).graph.nodes
+              .filter((node: SceneNode): boolean => !node.id.startsWith(prefix))
+              .map((node: SceneNode): SceneNode => ({ ...node, dim: true })),
+            ...entered.nodes,
+          ],
+        };
+    const ids: string[] = entered.nodes.map((node: SceneNode): string => node.id);
+    // Only the feed moves: the rest of the space holds still. Frame the
+    // bulk of the feed, not its outliers: a node must be wide enough to
+    // hover and click, and the wheel reaches the rest.
+    return {
+      graph,
+      unfolding: ids,
+      from,
+      physics: { reach: UNIVERSE_REACH, gravity: false },
+      ...(placed !== undefined ? { placed } : {}),
+      frame: ids,
+      durationMs,
+      bulk: 1,
+      margin: 0.95,
+    };
+  }
+
+  /**
+   * A feed-view mode turned while a feed is entered: the feed redrawn in
+   * place under the new modes (arrangement, metric, hue), or the scene told
+   * (draw, pulse). Outside a feed there is nothing to apply: the modes are
+   * kept for the next one.
+   *
+   * @param verb - The mode.
+   * @param modes - The modes as they now stand.
+   */
+  private feedMode_apply(verb: FeedVerb, modes: FeedModes): void {
+    if (this.inside === null) return;
+    if (verb === 'pulse') { this.scene.waveLoop_set(modes.pulse); return; }
+    if (verb === 'draw') {
+      this.scene.draw_set(modes.draw);
+      if (this.drawPill !== null) this.drawPill.textContent = modes.draw.toUpperCase();
+      // Solid follows the draw style, so the feed is read again; the tubes stay.
+    }
+    const feed: LandedFeed | undefined = this.landed.get(this.inside.feedId);
+    if (feed === undefined || this.insideModel === null || this.scene.moving()) return;
+    const inside = this.inside;
+    const plan: ScenePlan = this.insidePlan_of(inside.feedId, feed, this.insideModel, [[...inside.ids]], 400);
+    this.scene.unfold({ ...plan, drawn: (): void => { this.inside = { ...inside, entered: this.insideEntered as EnteredFeed }; } });
+  }
+
+  /**
+   * Shows the entered feed's note, tags and name on the frame (see FeedFrame).
+   *
+   * @param feedId - The feed read.
+   * @param facts - Its note, tags and name.
+   */
+  public feedMarks_show(feedId: number, facts: FeedFrameFacts): void {
+    this.feedFrame?.show(feedId, facts);
   }
 
   /**
@@ -1078,8 +1193,14 @@ export class UniversePanel {
     this.framedAt = null;
     if (this.inside !== null) {
       this.inside = null;
+      this.insideModel = null;
       this.facts_clear();
       this.pane?.classList.remove('universe-inside');
+      // Out of the feed, the space's own look comes back.
+      this.scene.waveLoop_set(false);
+      this.scene.draw_set(this.drawMode);
+      if (this.drawPill !== null) this.drawPill.textContent = this.drawMode.toUpperCase();
+      this.feedFrame?.shown_set(false);
       projection_paint(this.pane, this.scene, this.inside !== null);
       if (this.cluster !== null) {
         this.cluster_show(this.cluster.shape);

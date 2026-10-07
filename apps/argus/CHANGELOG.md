@@ -1,5 +1,11 @@
 # @fnndsc/argus
 
+## 0.26.5
+
+### Patch Changes
+
+- dc75d9b: CENSUS on a feed shells every job again, in RUNS and inside a universe descent, instead of looking like SHAPE. A feed view's nodes are tubed but no longer marked solid, so orrery's census no longer holds them out; the canvas now says how many jobs the census holds (`data-census`).
+
 ## 0.26.4
 
 ### Patch Changes

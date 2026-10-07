@@ -1,5 +1,14 @@
 # @fnndsc/argus
 
+## 0.26.4
+
+### Patch Changes
+
+- c5e033d: A feed now looks the same from the RUNS roster and from the universe. Either way it is one tree, root on top, every node lit with its tube. Both doors read the feed with one builder, and the universe's descent lays the feed out as that tree and holds it there instead of settling it into a free-form burst. An orrery unfold can now take positions the surface laid out itself (`placed`), held where they are put.
+- 71fe8a5: A feed has one frame and one memory, whichever door opens it. RUNS and the universe's descent carry the same verbs (arrangement, 3D, SPHERES/STARS, pulse, metric, hue, census, gravity, and the feed's note, tags and name), and the modes this device last chose stand in both, so a feed switched to MOLECULE in the universe opens as MOLECULE in RUNS. Inside a feed the universe shows the feed's verbs and steps the space-only ones aside; its own draw style comes back on the way out. STARS now works inside a feed: nodes become points of light on fine threads, where before every feed node stayed a sphere. An orrery node can be `tubed` without being solid.
+- 10f843b: A feed entered from the universe is now live, as it is in RUNS. The universe holds the session's watch on the feed it is inside: fresh statuses patch the drawing in place, a feed that grew is redrawn where it stands, and the readout says INSIDE · LIVE, SETTLED or STALE. Both doors use one same-shape test and one patch.
+- 820b8f1: A node picked in a feed shows the same facts from either door. RUNS and the universe now share one overlay: plugin, instance, status, a group's count and faults, wall time, size, the line of stages, and ENTER NODE and PROCESS, with PROCESS refused on a ×N group as RUNS always did. RUNS no longer draws its own copy of the universe behind a refused roster or when the universe is asked for; the universe pane is where the space lives.
+
 ## 0.26.3
 
 ### Patch Changes

@@ -1,14 +1,17 @@
 /**
- * @file VFS Dispatcher Registry.
+ * @file The ChRIS session's filesystem: fond's dispatcher with CUBE's mounts.
  *
- * Directs filesystem requests to the matched VFSProvider instance.
- * Matches specific prefix paths first, falling back to Native.
+ * fond's `VFSDispatcher` routes a path to the mount that owns it and knows no
+ * backend. `CubeVfsDispatcher` registers the ChRIS backend's mounts on it, in
+ * an order that matters only for equal-length prefixes (the sort is stable):
+ * PACS, `/etc`, the three `/proc` relations, and `/usr/share`. Everything no
+ * mount claims is a CUBE file, through the native provider. The engine adds
+ * its own static mounts (`/bin`, `/usr`, …) to the shared instance.
  *
  * @module
  */
 
-import { Result, Ok, Err, errorStack } from "@fnndsc/cumin";
-import { VFSProvider, VFSItem, CpOptions } from "./provider.js";
+import { VFSDispatcher } from "@fnndsc/fond";
 import { NativeVfsProvider } from "./providers/native.js";
 import { PacsVfsProvider } from "./providers/pacs.js";
 import { EtcVfsProvider } from "./providers/etc.js";
@@ -17,331 +20,26 @@ import { WorkflowsVfsProvider } from "./providers/workflows.js";
 import { ProcTagsVfsProvider } from "./providers/procTags.js";
 import { ShareVfsProvider } from "./providers/share.js";
 
-/**
- * Registry and dispatcher routing filesystem commands to matched VFS providers.
- */
-export class VFSDispatcher {
-  private providers: VFSProvider[] = [];
-  private defaultProvider: VFSProvider;
-  private pathResolver?: (path: string) => Promise<string>;
+export { VFSDispatcher } from "@fnndsc/fond";
 
-  /**
-   * Initializes dispatcher and registers standard providers.
-   */
+/**
+ * fond's dispatcher with the ChRIS backend's mounts registered, and CUBE's
+ * files as the fallback.
+ */
+export class CubeVfsDispatcher extends VFSDispatcher {
   constructor() {
-    this.defaultProvider = new NativeVfsProvider();
+    super(new NativeVfsProvider());
     this.provider_register(new PacsVfsProvider());
     this.provider_register(new EtcVfsProvider());
     this.provider_register(new ProcVfsProvider());
-    // Three relations CUBE owns and the namespace did not reach: the tags a
-    // feed can carry, the runs a pipeline produced, and what is known about a
-    // plugin as opposed to how to invoke it.
+    // Three relations CUBE owns: the tags a feed can carry, the runs a
+    // pipeline produced, and what is known about a plugin as opposed to how
+    // to invoke it.
     this.provider_register(new WorkflowsVfsProvider());
     this.provider_register(new ProcTagsVfsProvider());
     this.provider_register(new ShareVfsProvider());
   }
-
-  /**
-   * Registers a path resolution hook that maps logical paths to physical paths.
-   *
-   * @param resolver - The resolver function mapping a logical path to a physical path.
-   */
-  pathResolver_register(resolver: (path: string) => Promise<string>): void {
-    this.pathResolver = resolver;
-  }
-
-  /**
-   * Registers a new VFS Provider.
-   *
-   * @param provider - The provider instance to register.
-   */
-  provider_register(provider: VFSProvider): void {
-    this.providers.push(provider);
-    // Sort by prefix length descending to match most specific prefix first
-    this.providers.sort((a: VFSProvider, b: VFSProvider) => b.prefix.length - a.prefix.length);
-  }
-
-  /**
-   * Returns all registered providers (excluding the default native provider).
-   * Used by callers that need to detect parent-of-prefix paths.
-   */
-  providers_get(): VFSProvider[] {
-    return [...this.providers];
-  }
-
-  /**
-   * Resolves the matching provider for a given virtual path.
-   *
-   * @param pathStr - The absolute virtual path.
-   * @returns The matching VFSProvider or the default native provider.
-   */
-  provider_get(pathStr: string): VFSProvider {
-    const absolutePath: string = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
-    const match: VFSProvider | undefined = this.providers.find(
-      (p: VFSProvider) => absolutePath === p.prefix || absolutePath.startsWith(p.prefix + "/")
-    );
-    return match || this.defaultProvider;
-  }
-
-  /**
-   * Whether a path belongs to a projection rather than a real CUBE folder.
-   *
-   * A projection root (`/proc`, `/net/pacs`, `/etc`, `/usr/share`) is served
-   * by its own provider and has no folder of files behind it. Three shapes
-   * count as virtual: a path a non-native provider owns (at or under its
-   * prefix), and a path that is a strict ancestor of such a prefix (`/proc`
-   * above `/proc/jobs`, `/net` above `/net/pacs`) — its only children are
-   * the projections beneath it. The real root `/` is never virtual: it is
-   * the CUBE store's own root, which the native provider lists.
-   *
-   * The point of the question is to keep the raw CUBE-files layer from
-   * being asked to build a folder context for a path that has none — the
-   * request cannot succeed and only litters the error log, once per
-   * ancestor a path walk visits.
-   *
-   * @param pathStr - The absolute (or root-relative) path to classify.
-   * @returns True when a projection owns or is owned by the path.
-   */
-  path_isVirtual(pathStr: string): boolean {
-    const absolutePath: string = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
-    const clean: string =
-      absolutePath.length > 1 && absolutePath.endsWith("/") ? absolutePath.slice(0, -1) : absolutePath;
-    if (clean === "/") return false;
-    return this.providers.some(
-      (p: VFSProvider) =>
-        p.prefix.length > 0 &&
-        (clean === p.prefix || clean.startsWith(p.prefix + "/") || p.prefix.startsWith(clean + "/")),
-    );
-  }
-
-  /**
-   * Dispatches directory listing to matched provider.
-   * Supports dynamic intermediate parent path synthesis for virtual prefixes.
-   *
-   * @param pathStr - The absolute virtual path to list.
-   * @param options - Sort controls.
-   * @returns Promise resolving to Result<VFSItem[]>.
-   */
-  async list(
-    pathStr: string,
-    options?: { sort?: "name" | "size" | "date" | "owner"; reverse?: boolean }
-  ): Promise<Result<VFSItem[]>> {
-    const absolutePath: string = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
-    const cleanPath: string = absolutePath.endsWith("/") && absolutePath.length > 1 ? absolutePath.slice(0, -1) : absolutePath;
-
-    // Check if cleanPath is a parent of any registered provider's prefix
-    const prefixParent: string = cleanPath === "/" ? "/" : cleanPath + "/";
-    const children: VFSProvider[] = this.providers.filter(
-      (p) => p.prefix.startsWith(prefixParent)
-    );
-
-    if (children.length > 0) {
-      const segmentIndex: number = cleanPath === "/" ? 1 : cleanPath.split("/").length;
-      const virtualSubdirs: Set<string> = new Set<string>();
-
-      for (const p of children) {
-        const segments: string[] = p.prefix.split("/");
-        const nextSegment: string = segments[segmentIndex];
-        if (nextSegment) {
-          virtualSubdirs.add(nextSegment);
-        }
-      }
-
-      if (virtualSubdirs.size > 0) {
-        const vfsItems: VFSItem[] = Array.from(virtualSubdirs).map((name) => ({
-          name,
-          type: "vfs",
-          size: 0,
-          owner: "root",
-          date: new Date().toISOString(),
-        }));
-
-        // Query the default provider to see if there are any native items in this folder
-        let resolvedPathStr: string = pathStr;
-        if (this.pathResolver) {
-          try {
-            resolvedPathStr = await this.pathResolver(pathStr);
-          } catch (e: unknown) {
-            // Deliberate absorption: for a read-only listing, the logical
-            // path is a valid fallback (the provider lists what it can);
-            // contrast cp(), where a guessed path could write wrongly.
-          }
-        }
-        const nativeResult: Result<VFSItem[]> = await this.defaultProvider.list(resolvedPathStr, options);
-        if (nativeResult.ok && nativeResult.value) {
-          const nativeItems: VFSItem[] = nativeResult.value;
-          for (const item of nativeItems) {
-            if (!virtualSubdirs.has(item.name)) {
-              vfsItems.push(item);
-            }
-          }
-        }
-
-        return Ok(vfsItems);
-      }
-    }
-
-    const provider: VFSProvider = this.provider_get(pathStr);
-    if (provider === this.defaultProvider && this.pathResolver) {
-      try {
-        const resolvedPath: string = await this.pathResolver(pathStr);
-        return provider.list(resolvedPath, options);
-      } catch (e: unknown) {
-        // Deliberate absorption: same read-only-listing rationale as above.
-      }
-    }
-    return provider.list(pathStr, options);
-  }
-
-  /**
-   * Dispatches copy operation to matched provider.
-   *
-   * @param src - Source path.
-   * @param dest - Destination path.
-   * @param options - Copy options.
-   * @returns Promise resolving to success boolean.
-   */
-  async cp(src: string, dest: string, options: CpOptions): Promise<boolean> {
-    const provider: VFSProvider = this.provider_get(src);
-    if (provider === this.defaultProvider && this.pathResolver) {
-      // A copy must never proceed on a guessed path: an unresolved source
-      // copies the wrong thing, an unresolved destination writes to the wrong
-      // place. Resolution failure fails the copy.
-      let resolvedSrc: string;
-      let resolvedDest: string;
-      try {
-        resolvedSrc = await this.pathResolver(src);
-      } catch (e: unknown) {
-        const msg: string = e instanceof Error ? e.message : String(e);
-        errorStack.stack_push("error", `cp: cannot resolve source path ${src}: ${msg}`);
-        return false;
-      }
-      try {
-        resolvedDest = await this.pathResolver(dest);
-      } catch (e: unknown) {
-        const msg: string = e instanceof Error ? e.message : String(e);
-        errorStack.stack_push("error", `cp: cannot resolve destination path ${dest}: ${msg}`);
-        return false;
-      }
-      return provider.cp(resolvedSrc, resolvedDest, options);
-    }
-    return provider.cp(src, dest, options);
-  }
-
-  /**
-   * Dispatches file read operation to the matched provider.
-   *
-   * @param pathStr - The absolute virtual path of the file to read.
-   * @returns A Promise resolving to a Result containing the file contents as a string.
-   */
-  async read(pathStr: string): Promise<Result<string>> {
-    const provider: VFSProvider = this.provider_get(pathStr);
-    if (provider !== this.defaultProvider && provider.read) {
-      return provider.read(pathStr);
-    }
-    errorStack.stack_push("error", `File read not supported for path: ${pathStr}`);
-    return Err();
-  }
-
-  /**
-   * Dispatches a whole-file write to the matched provider: a projection
-   * that holds writable files (a feed's note) takes the content; any other
-   * path is refused by name rather than written somewhere it does not live.
-   *
-   * @param pathStr - The absolute virtual path of the file.
-   * @param content - The file's new content, whole.
-   * @returns True when the provider took it.
-   */
-  /**
-   * Dispatches a folder's making to the matched provider; a projection that
-   * makes no folders refuses by name.
-   *
-   * @param pathStr - The absolute virtual path of the new folder.
-   * @returns True when the provider made it.
-   */
-  async mkdir(pathStr: string): Promise<boolean> {
-    const provider: VFSProvider = this.provider_get(pathStr);
-    if (provider !== this.defaultProvider && provider.mkdir) return provider.mkdir(pathStr);
-    errorStack.stack_push("error", `mkdir: cannot create directory '${pathStr}': Read-only file system`);
-    return false;
-  }
-
-  /**
-   * Dispatches an empty folder's removal to the matched provider; a
-   * projection that removes no folders refuses by name.
-   *
-   * @param pathStr - The absolute virtual path of the folder.
-   * @returns True when the provider removed it.
-   */
-  async rmdir(pathStr: string): Promise<boolean> {
-    const provider: VFSProvider = this.provider_get(pathStr);
-    if (provider !== this.defaultProvider && provider.rmdir) return provider.rmdir(pathStr);
-    errorStack.stack_push("error", `rmdir: failed to remove '${pathStr}': Read-only file system`);
-    return false;
-  }
-
-  /**
-   * Dispatches a rename within one projection; a rename across providers, or
-   * in a projection that renames nothing, is refused by name.
-   *
-   * @param src - The absolute virtual path now.
-   * @param dest - The absolute virtual path it takes.
-   * @returns True when the provider renamed it.
-   */
-  async rename(src: string, dest: string): Promise<boolean> {
-    const provider: VFSProvider = this.provider_get(src);
-    if (provider !== this.provider_get(dest)) {
-      errorStack.stack_push("error", `mv: cannot move '${src}' to '${dest}': Invalid cross-device link`);
-      return false;
-    }
-    if (provider !== this.defaultProvider && provider.rename) return provider.rename(src, dest);
-    errorStack.stack_push("error", `mv: cannot move '${src}': Read-only file system`);
-    return false;
-  }
-
-  async write(pathStr: string, content: string): Promise<boolean> {
-    const provider: VFSProvider = this.provider_get(pathStr);
-    if (provider !== this.defaultProvider && provider.write) {
-      return provider.write(pathStr, content);
-    }
-    errorStack.stack_push("error", `File write not supported for path: ${pathStr}`);
-    return false;
-  }
-
-  /**
-   * Dispatches binary file read operation to the matched provider.
-   *
-   * @param pathStr - The absolute virtual path of the file to read.
-   * @returns A Promise resolving to a Result containing the file contents as a Buffer.
-   */
-  async readBinary(pathStr: string): Promise<Result<Buffer>> {
-    const provider: VFSProvider = this.provider_get(pathStr);
-    if (provider !== this.defaultProvider && provider.readBinary) {
-      return provider.readBinary(pathStr);
-    }
-    errorStack.stack_push("error", `Binary file read not supported for path: ${pathStr}`);
-    return Err();
-  }
-
-  /**
-   * Resolves a lazy link through the provider that owns it.
-   *
-   * This is deliberately distinct from {@link list}: a structural traversal
-   * can display an unresolved link without causing its provider to fetch the
-   * target from a remote service.
-   *
-   * @param pathStr - Absolute path of the provider-defined link.
-   * @returns The resolved target path, or an error if unsupported or absent.
-   */
-  async linkTarget_resolve(pathStr: string): Promise<Result<string>> {
-    const provider: VFSProvider = this.provider_get(pathStr);
-    if (provider.linkTarget_resolve) {
-      return provider.linkTarget_resolve(pathStr);
-    }
-    errorStack.stack_push('error', `Link resolution not supported for path: ${pathStr}`);
-    return Err();
-  }
 }
 
-/** Global instance of VFSDispatcher singleton. */
-export const vfsDispatcher: VFSDispatcher = new VFSDispatcher();
+/** The session's one filesystem dispatcher. */
+export const vfsDispatcher: CubeVfsDispatcher = new CubeVfsDispatcher();

@@ -1,16 +1,16 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
-import { VFSDispatcher } from "../src/vfs/dispatcher.js";
+import { CubeVfsDispatcher } from "../src/vfs/dispatcher.js";
 import { NativeVfsProvider } from "../src/vfs/providers/native.js";
 import { Result, Ok } from "@fnndsc/cumin";
 import { VFSItem } from "../src/vfs/provider.js";
 
 describe("VFSDispatcher Path Resolution Hook", () => {
-  let dispatcher: VFSDispatcher;
+  let dispatcher: CubeVfsDispatcher;
   let listSpy: any;
   let cpSpy: any;
 
   beforeEach(() => {
-    dispatcher = new VFSDispatcher();
+    dispatcher = new CubeVfsDispatcher();
     listSpy = jest.spyOn(NativeVfsProvider.prototype, "list").mockResolvedValue(
       Ok<VFSItem[]>([
         {

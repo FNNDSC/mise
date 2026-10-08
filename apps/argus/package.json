@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/argus",
-  "version": "0.26.7",
+  "version": "0.27.0",
   "description": "ARGUS: the LCARS web surface for mise — a browser console over a calypso session",
   "type": "module",
   "scripts": {

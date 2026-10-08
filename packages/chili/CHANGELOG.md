@@ -1,5 +1,13 @@
 # @fnndsc/chili
 
+## 3.7.2
+
+### Patch Changes
+
+- d3618fb: chell installed from npm no longer prints "Could not load color config" before listings. chili's package now carries `config/colors.yml`, and a missing color file is reported once per process instead of on every call.
+- Updated dependencies [df34da0]
+  - @fnndsc/cumin@3.27.7
+
 ## 3.7.1
 
 ### Patch Changes

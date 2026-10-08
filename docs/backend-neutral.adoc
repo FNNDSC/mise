@@ -59,36 +59,36 @@ Dependency direction today (runtime package dependencies; an arrow means "depend
 
 [literal]
 ....
-  +---------+        +---------+
-  |  chell  |        | porter  |
-  +----+----+        +--+---+--+
-       |                |   |
-       v                |   |
-  +---------+           |   |
-  | calypso |<----------+   |
-  +--+---+--+               |
-     |   |                  |
-     |   +---------> argus (the app: its built bundle)
-     v                      |
-  +---------+               |
-  |  brasa  |---> orrery    |
-  +----+----+               |
-       v                    |
-  +---------+               |
-  |  chili  |               |
-  +----+----+               |
-       v                    |
-  +---------+               |
-  |  salsa  |               |
-  +----+----+               |
-       v                    |
-  +---------+               |
-  |  cumin  |<--------------+
-  +----+----+
-       v
-  +---------+
-  |  menu   |   (zod only)
-  +---------+
+  ┌─────────┐        ┌─────────┐
+  │  chell  │        │ porter  │
+  └────┬────┘        └──┬───┬──┘
+       │                │   │
+       ▼                │   │
+  ┌─────────┐           │   │
+  │ calypso │◄──────────┘   │
+  └──┬───┬──┘               │
+     │   │                  │
+     │   └────────► argus (the app: its built bundle)
+     ▼                      │
+  ┌─────────┐               │
+  │  brasa  ├───► orrery    │
+  └────┬────┘               │
+       ▼                    │
+  ┌─────────┐               │
+  │  chili  │               │
+  └────┬────┘               │
+       ▼                    │
+  ┌─────────┐               │
+  │  salsa  │               │
+  └────┬────┘               │
+       ▼                    │
+  ┌─────────┐               │
+  │  cumin  │◄──────────────┘
+  └────┬────┘
+       ▼
+  ┌─────────┐
+  │  menu   │   (zod only)
+  └─────────┘
 ....
 
 Edges left out for readability: brasa also depends on cumin, salsa and menu directly; chell on brasa, chili, salsa, cumin and menu; calypso on cumin and menu; porter also declares chell and menu; argus on menu.
@@ -212,51 +212,49 @@ An arrow means "depends on" (a package dependency). Every layer may also use `fo
 
 [literal]
 ....
-  +---------+    +---------+    +------------------+
-  |  chell  |    | porter  |    | calypso launcher |     each composes the engine
-  +----+----+    +----+----+    +--------+---------+     with exactly one backend
-       |              |                  |
-       +--------------+---------+--------+
-                      |         |
-                      v         v
-          +---------------+   +--------------------------+
-          |    calypso    |   |        a backend         |
-          | session host  |   |  ChRIS: cumin, salsa,    |
-          +-------+-------+   |  chili (until #214),     |
-                  |           |  the ChRIS builtins      |
-                  |           |  (an infra backend later)|
-                  |           +------------+-------------+
-                  |                        |
-                  +-----------+------------+
-                              |
-                              v
-                   +---------------------+
-                   |     brasa core      |
-                   |  parser, line loop, |
-                   |  command registry,  |
-                   |  core commands,     |
-                   |  tasks              |
-                   +-----+---------+-----+
-                         |         |
-                         v         v
-                   +--------+   +--------+
-                   |  fond  |   |  menu  |
-                   +--------+   +--------+
+  ┌─────────┐    ┌─────────┐    ┌──────────────────┐
+  │  chell  │    │ porter  │    │ calypso launcher │     each composes the engine
+  └────┬────┘    └────┬────┘    └────────┬─────────┘     with exactly one backend
+       │              │                  │
+       └──────────────┼─────────┬────────┘
+                      │         │
+                      ▼         ▼
+          ┌───────────────┐   ┌──────────────────────────┐
+          │    calypso    │   │        a backend         │
+          │ session host  │   │  ChRIS: cumin, salsa,    │
+          └───────┬───────┘   │  chili (until #214),     │
+                  │           │  the ChRIS builtins      │
+                  │           │  (an infra backend later)│
+                  │           └────────────┬─────────────┘
+                  │                        │
+                  └───────────┬────────────┘
+                              ▼
+                   ┌─────────────────────┐
+                   │     brasa core      │
+                   │  parser, line loop, │
+                   │  command registry,  │
+                   │  core commands,     │
+                   │  tasks              │
+                   └─────┬─────────┬─────┘
+                         ▼         ▼
+                   ┌────────┐   ┌────────┐
+                   │  fond  │   │  menu  │
+                   └────────┘   └────────┘
                    Result,      the wire:
                    errors,      envelope,
                    VFS, sink,   protocol,
                    surface      models
 
 
-  +---------+                      at run time: the wire (WebSocket)
-  |  argus  | - - - - - - - - - - - - - - - - - - - - - - - - -> calypso
-  +----+----+                      and the daemon's /vfs route
-       |
-       |  at build time: menu only
-       v
-  +--------+
-  |  menu  |
-  +--------+
+  ┌─────────┐                      at run time: the wire (WebSocket)
+  │  argus  │ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄► calypso
+  └────┬────┘                      and the daemon's /vfs route
+       │
+       │  at build time: menu only
+       ▼
+  ┌────────┐
+  │  menu  │
+  └────────┘
 ....
 
 No neutral layer depends on a backend. A backend depends on the core, never the other way round.

@@ -15,6 +15,7 @@ import { ProcessHost } from './host/processHost.js';
 import { porterApp_build, type PorterApp } from './app.js';
 import type { SessionSighting } from './host/sessionHost.js';
 import { berthKey_compute } from '@fnndsc/calypso/berth';
+import { entry_isMain } from './entry.js';
 
 /**
  * Lists the sessions the state directory holds, without starting anything.
@@ -263,4 +264,5 @@ async function porter_start(): Promise<void> {
   process.once('SIGTERM', (): void => { void stop(); });
 }
 
-if (process.argv[1] !== undefined && /\/porter\.js$/.test(process.argv[1])) void porter_start();
+// Started as the program, through npm's bin link or by its own path; imported, it stays quiet.
+if (entry_isMain(process.argv[1], import.meta.url)) void porter_start();

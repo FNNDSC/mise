@@ -1,9 +1,9 @@
 /**
- * @file The error stack, now fond's (backend-neutral step 1, #987).
+ * @file The error stack, re-exported from `@fnndsc/fond`.
  *
- * The process-wide, async-context-aware stack moved to `@fnndsc/fond`. It is
- * re-exported, never copied: a second copy would be a second singleton, and
- * errors pushed through one would be invisible to a drain of the other.
+ * The process-wide, async-context-aware stack belongs to fond. cumin
+ * re-exports it, never copies it: a second copy would be a second singleton,
+ * and errors pushed through one would be invisible to a drain of the other.
  *
  * @module
  */

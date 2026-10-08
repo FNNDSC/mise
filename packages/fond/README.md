@@ -1,6 +1,6 @@
 # @fnndsc/fond
 
-The neutral base of the mise stack: the small, generic pieces that the engine (`@fnndsc/brasa`), the session host (`@fnndsc/calypso`) and the ChRIS packages all stand on, and that have nothing to do with ChRIS.
+The pieces every layer of mise needs, whatever the backend: the small, generic base that the engine (`@fnndsc/brasa`), the session host (`@fnndsc/calypso`) and a backend's own packages all stand on.
 
 The name is from the kitchen, like the rest of the stack: *fonds de cuisine* are the base stocks a kitchen cooks everything else from.
 
@@ -10,9 +10,9 @@ npm install @fnndsc/fond
 
 ## Why it exists
 
-mise is being made backend-neutral: one engine, one session host, one wire and one surface frame, with ChRIS (CUBE) as the first backend among possibly several (see [docs/backend-neutral.adoc](https://github.com/FNNDSC/mise/blob/main/docs/backend-neutral.adoc)). For that to be true, the generic pieces cannot live inside a ChRIS package. Before fond, `Result` and the error stack lived in `@fnndsc/cumin`, whose root also loads CUBE's API client, so any layer that wanted an `Ok()` loaded CUBE with it.
+A backend such as ChRIS (CUBE) brings its own client and its own world. The pieces every layer needs, whatever the backend, live here rather than in a backend's package, so a layer that is not about CUBE can use them without loading CUBE (see [docs/backend-neutral.adoc](https://github.com/FNNDSC/mise/blob/main/docs/backend-neutral.adoc)).
 
-fond is where those pieces go instead. Its one rule: **it depends on nothing in `@fnndsc`**. CI holds it to that (`npm run lint:fond`), so a layer that is not about CUBE can use fond without loading CUBE.
+fond's one rule: **it depends on nothing in `@fnndsc`**. CI holds it to that (`npm run lint:fond`).
 
 ## What's in it
 
@@ -21,8 +21,6 @@ fond is where those pieces go instead. Its one rule: **it depends on nothing in 
 | `Result<T>`, `Ok`, `Err`, `result_isOk`, `result_isErr` | An explicit success-or-failure value. A function returns `Result<T>` rather than `T \| null`, and TypeScript will not let a caller read `.value` until it has checked `.ok`. |
 | `errorStack` | The process-wide message stack that failures are reported on, with context-isolated scopes and checkpoints. |
 | `errorStack_configure`, `errorStack_getAllOfType`, `StackMessage` | Configuration, a convenience reader, and the message type. |
-
-The steps after this one add the VFS framework (mount interface and dispatcher) and the output sink and surface interfaces the engine and the session host share.
 
 ## Using `Result`
 
@@ -83,7 +81,7 @@ const reasons: StackMessage[] = errorStack.checkpoint_drain(mark);
 
 ## One instance, whoever loads it
 
-The error stack only works if the whole process shares one. fond is built as CommonJS, so packages that `require` it (cumin) and packages that `import` it (salsa, brasa, calypso) load the same module and so the same stack. `@fnndsc/cumin` re-exports fond's `Result` and `errorStack` rather than keeping copies, so code that still imports them from cumin shares that stack too. If you bundle code that uses fond, keep it to one copy.
+The error stack only works if the whole process shares one. fond is built as CommonJS, so packages that `require` it (cumin) and packages that `import` it (salsa, brasa, calypso) load the same module and so the same stack. `@fnndsc/cumin` re-exports fond's `Result` and `errorStack` rather than keeping copies, so code that imports them from cumin shares that stack too. If you bundle code that uses fond, keep it to one copy.
 
 ## Where it sits
 

@@ -73,6 +73,8 @@ documentation; for using the shell and the packages, see the per-package READMEs
   identity-keyed local daemon model and the deferred network-facing `porter`
   tier: one isolated CALYPSO process per CUBE identity, resolved through berths.
 
+- **[backend-neutral.adoc](backend-neutral.adoc)** — the design (in review, issue #977) for making menu, calypso, brasa's core and ARGUS's frame backend-neutral: the neutral package `fond`, one backend per session, a command registry, tasks for long-running steps, ARGUS compositions; behaviour for chell and ARGUS unchanged throughout.
+
 - **[feed-dag-viewer.adoc](feed-dag-viewer.adoc)** — the shipped cache-first
   feed and pipeline diagram model, including shallow trees, topological joins,
   SignalFlow YAML emission, dynamic `/bin` pipeline aliases, and the forward

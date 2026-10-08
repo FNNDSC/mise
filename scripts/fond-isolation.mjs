@@ -1,11 +1,11 @@
 /**
  * @file fond isolation — fond depends on nothing in @fnndsc.
  *
- * fond is the neutral base under the engine and the session host
- * (docs/backend-neutral.adoc): what is generic and once lived in a ChRIS
- * package. Its whole point is that a layer which is not about CUBE can use it
- * without loading CUBE's client, so an import of any @fnndsc package from its
- * sources, or a dependency in its package.json, undoes it.
+ * fond holds the pieces every layer needs, whatever the backend
+ * (docs/backend-neutral.adoc). Its whole point is that a layer which is not
+ * about CUBE can use it without loading CUBE's client, so an import of any
+ * @fnndsc package from its sources, or a dependency in its package.json,
+ * undoes it.
  *
  * A hard check with no baseline: the count is zero and stays zero. Run via
  * `npm run lint:fond`.

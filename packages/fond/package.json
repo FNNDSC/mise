@@ -1,7 +1,7 @@
 {
   "name": "@fnndsc/fond",
   "version": "0.1.1",
-  "description": "The neutral base under mise's engine and session host: Result, the error stack, and (in later steps) the VFS framework and the sink and surface interfaces. Depends on nothing in @fnndsc.",
+  "description": "The pieces every layer of mise needs, whatever the backend. Depends on nothing in @fnndsc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/FNNDSC/mise.git",

@@ -1,9 +1,9 @@
 /**
  * @file fond: the neutral base under mise's engine and session host.
  *
- * What is generic and once lived in a ChRIS package moves here, so a layer
- * that is not about CUBE can use it without loading CUBE's client. fond
- * depends on nothing in `@fnndsc` (law of docs/backend-neutral.adoc, held by
+ * The pieces every layer needs, whatever the backend, so a layer that is not
+ * about CUBE can use them without loading CUBE's client. fond depends on
+ * nothing in `@fnndsc` (docs/backend-neutral.adoc, held by
  * `npm run lint:fond`).
  *
  * @module

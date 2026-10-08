@@ -1,9 +1,9 @@
 /**
- * @file Result, now fond's (backend-neutral step 1, #987).
+ * @file Result, re-exported from `@fnndsc/fond`.
  *
- * The Result type moved to `@fnndsc/fond`, the neutral base under the
- * engine, so a layer that is not about CUBE can use it without loading
- * CUBE's client. Re-exported here so every existing import keeps working.
+ * Result belongs to fond, which holds the pieces every layer needs whatever
+ * the backend. cumin re-exports it so imports from cumin and from fond are
+ * the one implementation.
  *
  * @module
  */

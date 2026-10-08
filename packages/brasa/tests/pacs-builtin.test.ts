@@ -3,11 +3,13 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 const mockGet = jest.fn(async () => null as string | null);
 const mockSet = jest.fn(async () => true);
 const mockServersList = jest.fn();
+const mockStackPop = jest.fn((): { message: string } | undefined => undefined);
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   chrisContext: { PACSserver_get: mockGet, PACSserver_set: mockSet },
   pacsServers_list: mockServersList,
+  errorStack: { stack_pop: mockStackPop },
 }));
 
 const mockQuery = jest.fn(async () => ({ status: 'ok', rendered: '' }));
@@ -15,6 +17,7 @@ const mockPull = jest.fn(async () => ({ status: 'ok', rendered: '' }));
 const mockStatus = jest.fn(async () => ({ status: 'ok', rendered: '' }));
 jest.unstable_mockModule('../src/builtins/net/query.js', () => ({ builtin_query: mockQuery }));
 jest.unstable_mockModule('../src/builtins/fs/pull.js', () => ({ builtin_pull: mockPull }));
+jest.unstable_mockModule('../src/builtins/utils.js', () => ({ error_stripDebugPrefix: (m: string) => m.replace(/^\[[^\]]+\]\s*\|\s*/, '') }));
 jest.unstable_mockModule('../src/builtins/net/status.js', () => ({ builtin_pacsStatus: mockStatus }));
 
 // pacs streams its output through the sink line writers.
@@ -66,6 +69,29 @@ describe('builtin_pacs', () => {
     mockServersList.mockResolvedValue(ok([]));
     await builtin_pacs(['connect']);
     expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining('No PACS servers registered'));
+  });
+
+  it('a listing CUBE refused is not an empty one: it says why, says pacs_users, and fails', async () => {
+    mockServersList.mockResolvedValue({ ok: false });
+    mockStackPop.mockReturnValueOnce({ message: '[pacsServers_list] | Failed to list PACS servers: You do not have permission to perform this action.' });
+    const env = await builtin_pacs(['list']);
+    expect(env.status).toBe('error');
+    expect(process.exitCode).toBe(1);
+    expect(mockDataLine).not.toHaveBeenCalledWith(expect.stringContaining('No PACS servers registered'));
+    const said: string = mockErrLine.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(said).toContain('You do not have permission');
+    expect(said).not.toContain('[pacsServers_list]');
+    expect(said).toContain('pacs_users');
+  });
+
+  it('a listing that failed for another reason says why, without the pacs_users hint', async () => {
+    mockServersList.mockResolvedValue({ ok: false });
+    mockStackPop.mockReturnValueOnce({ message: 'Not connected to ChRIS. Please log in.' });
+    const env = await builtin_pacs(['connect']);
+    expect(env.status).toBe('error');
+    const said: string = mockErrLine.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(said).toContain('Not connected');
+    expect(said).not.toContain('pacs_users');
   });
 
   it('sets the active server', async () => {

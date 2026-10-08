@@ -108,6 +108,7 @@ describe('elevation hints', () => {
   it('recognizes authorization failures but not ordinary validation errors', (): void => {
     expect(authorizationFailure_is('Request failed with status code 403')).toBe(true);
     expect(authorizationFailure_is('permission denied')).toBe(true);
+    expect(authorizationFailure_is('You do not have permission to perform this action.')).toBe(true);
     expect(authorizationFailure_is('Username does not exist')).toBe(false);
   });
 

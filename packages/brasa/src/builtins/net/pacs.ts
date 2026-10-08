@@ -9,9 +9,10 @@
  */
 
 import chalk from 'chalk';
-import { chrisContext, pacsServers_list, PACSServer, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { chrisContext, errorStack, pacsServers_list, PACSServer, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { PACS_SERVERS_MODEL_KIND, type PacsServer, type PacsServersModel } from '@fnndsc/menu';
 import { builtin_query } from './query.js';
+import { pacsRefusal_hint, pacsRefusal_is } from './pacsAccess.js';
 import { builtin_pacsStatus } from './status.js';
 import { builtin_pull } from '../fs/pull.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
@@ -20,14 +21,27 @@ import { sink_dataLine, sink_errLine } from '../../core/sink.js';
 /**
  * Streams the list of registered PACS servers, marking the active one.
  *
+ * A listing CUBE refused is not an empty one: it says why, and a
+ * permission refusal says what to do about it.
+ *
  * @param active - Current active PACS server identifier or null.
+ * @returns False when the servers could not be listed.
  */
-async function servers_print(active: string | null): Promise<void> {
+async function servers_print(active: string | null): Promise<boolean> {
   const result = await pacsServers_list();
 
-  if (!result.ok || result.value.length === 0) {
+  if (!result.ok) {
+    const problem: string = errorStack.stack_pop()?.message ?? 'Failed to list PACS servers.';
+    // Imported here rather than at the top, as query.ts does, so this
+    // module keeps its narrow graph.
+    const { error_stripDebugPrefix } = await import('../utils.js');
+    sink_errLine(chalk.red(`pacs: ${error_stripDebugPrefix(problem)}`));
+    if (pacsRefusal_is([problem])) sink_errLine(pacsRefusal_hint().trimEnd());
+    return false;
+  }
+  if (result.value.length === 0) {
     sink_dataLine(chalk.yellow('No PACS servers registered in CUBE.'));
-    return;
+    return true;
   }
 
   sink_dataLine('');
@@ -43,6 +57,7 @@ async function servers_print(active: string | null): Promise<void> {
   sink_dataLine('');
   sink_dataLine(chalk.gray('  Use: pacs connect <name|id>'));
   sink_dataLine('');
+  return true;
 }
 
 
@@ -116,7 +131,10 @@ export async function builtin_pacs(args: string[]): Promise<CommandEnvelope> {
       const target: string | undefined = args[1];
       if (!target) {
         const active: string | null = await chrisContext.PACSserver_get();
-        await servers_print(active);
+        if (!(await servers_print(active))) {
+          process.exitCode = 1;
+          return envelope_error('');
+        }
         return envelope_ok('');
       }
       const ok: boolean = await chrisContext.PACSserver_set(target);
@@ -142,7 +160,10 @@ export async function builtin_pacs(args: string[]): Promise<CommandEnvelope> {
 
     case 'list': {
       const active: string | null = await chrisContext.PACSserver_get();
-      await servers_print(active);
+      if (!(await servers_print(active))) {
+        process.exitCode = 1;
+        return envelope_error('');
+      }
       // The same question, answered twice in one breath: a terminal reads
       // the printed list, a graphical surface reads the model. A surface
       // offering a choice of servers must know what there is to choose

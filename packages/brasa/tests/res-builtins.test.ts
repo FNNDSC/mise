@@ -218,6 +218,15 @@ describe('builtin_group membership', () => {
     expect(envelope.rendered).toContain('already a member');
     expect(envelope.rendered).toContain('Added joe.schmo');
     expect(envelope.rendered).toContain('peter.hong');
+    // An add carries the caveat once: a directory-synced CUBE undoes it at the next login.
+    expect(envelope.rendered.match(/undone at the user's next login/g)?.length).toBe(1);
+  });
+
+  it('an add that changed nothing carries no caveat', async () => {
+    mockGroupMembers.mockResolvedValue({ ok: true, value: [{ id: 12, username: 'peter.hong' }] });
+    const envelope = await builtin_group(['adduser', 'pacs_users', 'peter.hong']);
+    expect(envelope.rendered).toContain('already a member');
+    expect(envelope.rendered).not.toContain('next login');
   });
 
   it('reports every batch result and fails overall when one mutation fails', async () => {

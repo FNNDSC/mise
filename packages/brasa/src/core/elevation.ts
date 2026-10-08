@@ -24,7 +24,7 @@ export type ElevatedCommandRunner = (command: string, args: string[]) => Promise
  * @returns True when the failure denotes missing authorization.
  */
 export function authorizationFailure_is(message: string): boolean {
-  return /\b(?:401|403)\b|unauthorized|forbidden|permission denied|admin credentials required|administrator privileges/i.test(message);
+  return /\b(?:401|403)\b|unauthorized|forbidden|permission denied|do not have permission|admin credentials required|administrator privileges/i.test(message);
 }
 
 /**

@@ -290,6 +290,20 @@ describe('builtin_query', () => {
     mockGetAll.mockReturnValue([{ message: 'PACS server refused the query' }]);
     const envelope = await builtin_query(['PatientID:X']);
     expect(envelope.renderedErr).toContain('PACS server refused the query');
+    expect(envelope.renderedErr).not.toContain('pacs_users');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('a query CUBE refused for want of permission says the account needs pacs_users', async () => {
+    mockCurrentGet.mockResolvedValue('PACSDCM');
+    mockCreate.mockResolvedValue(err());
+    mockGetAll.mockReturnValue([
+      { message: '[pacsServers_list] | Failed to list PACS servers: You do not have permission to perform this action.' },
+      { message: '[pacsServer_resolve] | Failed to resolve PACS server "PACSDCM": You do not have permission to perform this action.' },
+    ]);
+    const envelope = await builtin_query(['PatientID:X']);
+    expect(envelope.renderedErr).toContain('You do not have permission');
+    expect(envelope.renderedErr).toContain('pacs_users');
     expect(process.exitCode).toBe(1);
   });
 });

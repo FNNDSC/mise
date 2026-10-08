@@ -10,6 +10,7 @@
  * @module
  */
 
+import { createRequire } from "module";
 import { Command, CommanderError } from "commander";
 import figlet from "figlet";
 
@@ -148,6 +149,22 @@ function context_parse(args: string[]): [string | undefined, string[]] {
 }
 
 /**
+ * chili's own version, from its package.json (one level above dist/), so
+ * `chili --version` says what is installed rather than a number written by
+ * hand once (it said 1.0.1 from 3.x on).
+ *
+ * @returns The version, or `unknown` when the manifest cannot be read.
+ */
+export function chiliVersion_read(): string {
+  try {
+    const manifest = createRequire(import.meta.url)("../package.json") as { version?: unknown };
+    return typeof manifest.version === "string" ? manifest.version : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
  * Executes a single chili command in the current process.
  *
  * Builds a fresh Commander program (so repeated calls do not share parser
@@ -179,7 +196,7 @@ export async function run(argv: string[]): Promise<void> {
   program
     .name("chili")
     .description("ChILI handles Intelligent Line Interactions")
-    .version("1.0.1")
+    .version(chiliVersion_read())
     .option("-v, --verbose", "enable verbose output")
     .option("-c, --config <path>", "path to config file")
     .option("-s, --nosplash", "disable splash screen")
@@ -188,14 +205,16 @@ export async function run(argv: string[]): Promise<void> {
   connectCommand_setup(program);
   await handlers_initialize(program);
 
-  program.parseOptions(fullArgv);
-  const options = program.opts();
-  if (!options.nosplash) {
-    chiliLog(figlet.textSync("ChILI"));
-    chiliLog("ChILI handles Intelligent Line Interactions");
-  }
-
   try {
+    // --version is answered while the options are read, before any command:
+    // its exit must be caught here too, or `chili --version` printed the
+    // version and then a CommanderError's stack.
+    program.parseOptions(fullArgv);
+    const options = program.opts();
+    if (!options.nosplash) {
+      chiliLog(figlet.textSync("ChILI"));
+      chiliLog("ChILI handles Intelligent Line Interactions");
+    }
     await program.parseAsync(fullArgv);
   } catch (err: unknown) {
     // Under exitOverride, --help/--version/usage errors throw a CommanderError

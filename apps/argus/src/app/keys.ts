@@ -35,6 +35,8 @@ export interface KeyHooks {
   modeFrames_close: () => boolean;
   /** Whether the console, not the stage, has the operator's hands. */
   consoleFocused: () => boolean;
+  /** The console gives the keys back to the stage: its line lets go, the prefix answers for panes again. */
+  console_release: () => void;
   /** The pane verbs the chords press. */
   verbs: Pick<PaneVerbs, 'bar_note' | 'flip' | 'resize'>;
   /** The host the language's focus move reads. */
@@ -46,6 +48,37 @@ export interface KeyHooks {
 
 /** What a step of the Esc ladder decided. */
 type Retreat = 'claimed' | 'yielded' | 'passed';
+
+/** The buttons of a pane's mode frame the keys can reach: shown and enabled, top to bottom. */
+export function frameButtons_of(pane: HTMLElement): HTMLButtonElement[] {
+  return [...pane.querySelectorAll<HTMLButtonElement>('.mode-frame button')]
+    .filter((button: HTMLButtonElement): boolean => !button.disabled && !button.hidden && button.offsetParent !== null);
+}
+
+/** The rows a pane's listing shows, top to bottom. */
+export function listingRows_of(pane: HTMLElement): HTMLElement[] {
+  return [...pane.querySelectorAll<HTMLElement>('.listing-row')].filter((row: HTMLElement): boolean => row.offsetParent !== null);
+}
+
+/**
+ * Where the row cursor goes on a key: down and up a row, Home and End to
+ * the ends; from nowhere, down starts at the top and up at the bottom.
+ *
+ * @param at - The cursor's row, or -1 for none.
+ * @param count - How many rows there are.
+ * @param key - The key.
+ * @returns The new row, or null for a key that does not move the cursor.
+ */
+export function rowCursor_next(at: number, count: number, key: string): number | null {
+  if (count === 0) return null;
+  switch (key) {
+    case 'ArrowDown': return at < 0 ? 0 : Math.min(count - 1, at + 1);
+    case 'ArrowUp': return at < 0 ? count - 1 : Math.max(0, at - 1);
+    case 'Home': return 0;
+    case 'End': return count - 1;
+    default: return null;
+  }
+}
 
 /**
  * Wires the keys to a host: one capturing keydown listener on the window.
@@ -72,6 +105,15 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
     (): Retreat => (context.terminal.ask_abandon() ? 'claimed' : 'passed'),
     (): Retreat => (paneAsk_abandon() ? 'claimed' : 'passed'),
     (): Retreat => (hooks.errand_abandon() ? 'claimed' : 'passed'),
+    // A pane's own line (the PACS form's MRN, a filter) gives the keys back
+    // to the stage, so the arrows can walk the listing it filled.
+    (): Retreat => {
+      const active: Element | null = document.activeElement;
+      if (!(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)) return 'passed';
+      if (active.closest('.workspace-pane') === null || active.closest('#terminal') !== null) return 'passed';
+      active.blur();
+      return 'claimed';
+    },
     // An image field holding the keyboard gives it back first (focus-stays-in-the-field).
     (): Retreat => (panels.values('image').some((panel): boolean => panel.field_release()) ? 'claimed' : 'passed'),
     // So does an editor's field: Esc takes the keyboard back, the text stands.
@@ -152,16 +194,17 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
     }
     if (event.ctrlKey || event.metaKey || event.altKey) return false;
     const close_and = (act: () => void): boolean => { hooks.drawers_close(); act(); claim(); return true; };
-    if (arrowSide !== null) return close_and((): void => { if (focus_move(hooks.host(), SIDES[arrowSide].focusWord) !== null) context.sound('audio3'); });
+    // A focus move is the keys going to a pane: the console lets go of them.
+    if (arrowSide !== null) return close_and((): void => { console_let_go(); if (focus_move(hooks.host(), SIDES[arrowSide].focusWord) !== null) context.sound('audio3'); });
     switch (event.key) {
       case 'o': case 'O': {
         const shown: string[] = layout.panes_shown();
         const at: number = shown.indexOf(layout.focused_get() ?? '');
         const next: string | undefined = shown[(at + (event.key === 'o' ? 1 : shown.length - 1)) % shown.length];
-        return close_and((): void => { if (next !== undefined) { layout.focus_set(next); context.sound('audio3'); } });
+        return close_and((): void => { console_let_go(); if (next !== undefined) { layout.focus_set(next); context.sound('audio3'); } });
       }
       case '?': return close_and((): void => context.terminal.line_run('argus keys'));
-      case ';': return close_and((): void => { if (layout.focus_last() !== null) context.sound('audio3'); });
+      case ';': return close_and((): void => { console_let_go(); if (layout.focus_last() !== null) context.sound('audio3'); });
       case 'q':
         // Every pane names itself on its bar for a moment, so a target (@id) can be read off the stage.
         return close_and((): void => { for (const shown of layout.panes_shown()) hooks.verbs.bar_note(shown, `@${shown}`); });
@@ -180,6 +223,8 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
         });
       }
       case 'w': return close_and((): void => hooks.element_require('gutter-panes').click());
+      case 'r': return close_and((): void => { console_let_go(); const pane: HTMLElement | null = focusedPane_get(); if (pane !== null) frame_enter(pane); });
+      case '&': return close_and((): void => context.terminal.line_run('pane close all'));
       case '[':
         // The scrollback takes the keys: PageUp/PageDown page it, Esc gives them back.
         return close_and((): void => {
@@ -201,6 +246,110 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
     }
     claim();
     return true;
+  };
+
+  /** The focused pane's element (a zoomed one when the stage is zoomed), or null. */
+  /** The keys leave the console for the stage: its line lets go, and the prefix answers for panes. */
+  const console_let_go = (): void => {
+    const active: Element | null = document.activeElement;
+    if (active instanceof HTMLElement && active.closest('#drawer') !== null) active.blur();
+    hooks.console_release();
+  };
+
+  const focusedPane_get = (): HTMLElement | null => {
+    const zoomed: string | undefined = document.body.dataset['zoom'];
+    if (zoomed === 'console' || zoomed === 'launcher') return null;
+    const id: string | null = zoomed !== undefined ? zoomed : layout.focused_get();
+    if (id === null) return null;
+    const mount: HTMLElement | null = paneInstance_get(id)?.mount ?? null;
+    return mount?.closest<HTMLElement>('.workspace-pane') ?? mount;
+  };
+
+  /**
+   * The keys into a pane's mode frame (a-frame-is-reachable-by-keys): the
+   * frame opens as its strip's press opens it, and the first verb takes the
+   * focus; Tab or the arrows walk the rest, Enter presses, ← or Esc leaves.
+   *
+   * @param pane - The pane.
+   * @returns Whether the frame had a verb to take the keys.
+   */
+  const frame_enter = (pane: HTMLElement): boolean => {
+    if (pane.classList.contains('workspace-pane')) pane.dataset['modes'] = 'open';
+    // A frame that stood as a strip unfolds over a moment and redraws its
+    // verbs as it opens, which drops a focus given too early: its first verb
+    // takes the focus once it shows, and takes it again for a short while
+    // whenever the redraw left the keys with the page (never from a verb the
+    // operator has moved to).
+    let frames: number = 0;
+    const focus_first = (): void => {
+      frames += 1;
+      const active: Element | null = document.activeElement;
+      const held: boolean = active instanceof HTMLButtonElement && active.closest('.mode-frame') !== null && pane.contains(active);
+      if (!held && (active === null || active === document.body)) frameButtons_of(pane)[0]?.focus();
+      if (frames < 30) window.requestAnimationFrame(focus_first);
+    };
+    focus_first();
+    context.sound('audio3');
+    return true;
+  };
+
+  /**
+   * The keys a pane answers with no prefix: inside its frame the arrows walk
+   * the verbs and ← leaves; over its listing the arrows move a row cursor,
+   * Enter indicates the row (its verbs ride the frame) and Enter again goes,
+   * and → takes the keys into the frame. A key aimed at anything that takes
+   * keys of its own (a line, a button, a field) is left to it.
+   *
+   * @returns Whether the press was the pane's.
+   */
+  const pane_handle = (event: KeyboardEvent): boolean => {
+    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false;
+    const pane: HTMLElement | null = focusedPane_get();
+    if (pane === null) return false;
+    const claim = (): boolean => { event.preventDefault(); event.stopImmediatePropagation(); return true; };
+    const active: Element | null = document.activeElement;
+    // Inside the frame: the arrows walk its verbs, ← gives the keys back.
+    if (active instanceof HTMLButtonElement && active.closest('.mode-frame') !== null && pane.contains(active)) {
+      const buttons: HTMLButtonElement[] = frameButtons_of(pane);
+      const at: number = buttons.indexOf(active);
+      if (event.key === 'ArrowLeft') { active.blur(); return claim(); }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        const next: HTMLButtonElement | undefined = buttons[event.key === 'ArrowDown' ? Math.min(buttons.length - 1, at + 1) : Math.max(0, at - 1)];
+        next?.focus();
+        return claim();
+      }
+      return false;
+    }
+    // Over the listing only when nothing else holds the keys.
+    if (active !== null && active !== document.body && !active.classList.contains('listing-row')) return false;
+    const rows: HTMLElement[] = listingRows_of(pane);
+    if (rows.length === 0) return false;
+    const cursorAt: number = rows.findIndex((row: HTMLElement): boolean => row.classList.contains('listing-cursor'));
+    const at: number = cursorAt >= 0 ? cursorAt : rows.findIndex((row: HTMLElement): boolean => row.classList.contains('listing-indicated'));
+    if (event.key === 'ArrowRight') return frame_enter(pane) && claim();
+    if (event.key === 'Enter') {
+      const row: HTMLElement | undefined = rows[at];
+      if (row === undefined) return false;
+      // A click says "this one", a double-click "go": Enter on a row already
+      // indicated goes, as the second press of the mouse does — through the
+      // row's control cell where it declares one (a study folding open its
+      // series), since that cell is the row's only way to go.
+      if (row.classList.contains('listing-indicated')) {
+        const control: HTMLElement | null = row.querySelector<HTMLElement>('.listing-control');
+        if (control !== null) control.click();
+        else row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+      } else {
+        row.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      }
+      return claim();
+    }
+    const next: number | null = rowCursor_next(at, rows.length, event.key);
+    if (next === null) return false;
+    for (const row of rows) row.classList.remove('listing-cursor');
+    const row: HTMLElement | undefined = rows[next];
+    row?.classList.add('listing-cursor');
+    row?.scrollIntoView({ block: 'nearest' });
+    return claim();
   };
 
   /** The prefix: Ctrl-B opens the focused pane's drawer (or the console's); pressed again, or ':', the command line. */
@@ -247,6 +396,7 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
     const typing: boolean = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement
       || (event.target instanceof HTMLElement && event.target.isContentEditable);
     if (openDrawer !== null && !typing && chord_handle(event, openDrawer)) return;
+    if (openDrawer === null && !typing && !hooks.palette_isOpen() && pane_handle(event)) return;
     prefix_handle(event);
   };
   window.addEventListener('keydown', handle, { capture: true });

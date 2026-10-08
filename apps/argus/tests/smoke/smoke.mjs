@@ -907,6 +907,67 @@ try {
     chord.focusedUp && chord.table, JSON.stringify(chord));
   }
 
+  if (await stage('keys-reach-the-frame')) {
+  // a-frame-is-reachable-by-keys: over a listing the arrows move a row
+  // cursor and Enter indicates the row, its verbs riding the frame; → (or
+  // Ctrl-B r) takes the keys into the frame, the arrows walk its verbs, ←
+  // gives them back; Ctrl-B & closes every pane on the stage.
+  const keyed = await evalIn(`
+    await console_idle();
+    const press = (key, extra = {}) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...extra }));
+    const prefix = () => press('b', { ctrlKey: true });
+    const leaves = () => [...document.querySelectorAll('.layout-leaf')].map((l) => l.dataset.leaf);
+    document.getElementById('gutter-files').click(); await sleep(800);
+    document.querySelector('.pane-files .files-panel')?.click(); await sleep(150);
+    document.activeElement?.blur?.();
+    const pane = document.querySelector('.layout-leaf[data-leaf="files"]')?.closest('.workspace-pane') ?? document.querySelector('.layout-leaf[data-leaf="files"]');
+    const rows = () => [...pane.querySelectorAll('.listing-row')].filter((r) => r.offsetParent !== null);
+    const cursorAt = () => rows().findIndex((r) => r.classList.contains('listing-cursor'));
+    const rowCount = rows().length;
+    press('ArrowDown'); await sleep(100);
+    const first = cursorAt();
+    press('ArrowDown'); await sleep(100);
+    const second = cursorAt();
+    press('End'); await sleep(100);
+    const last = cursorAt();
+    press('Home'); await sleep(100);
+    const home = cursorAt();
+    // The first row can be the way up (..), which a single press takes; a
+    // row below it is indicated by Enter and acted on only by a second.
+    press('ArrowDown'); await sleep(100);
+    const picked = cursorAt();
+    press('Enter'); await sleep(500);
+    const indicated = rows()[picked]?.classList.contains('listing-indicated') === true;
+    press('ArrowRight'); await sleep(400);
+    const inFrame = document.activeElement instanceof HTMLButtonElement && document.activeElement.closest('.mode-frame') !== null;
+    const firstVerb = document.activeElement?.textContent?.trim() ?? '';
+    press('ArrowDown'); await sleep(100);
+    const walked = document.activeElement instanceof HTMLButtonElement && (document.activeElement.textContent?.trim() ?? '') !== firstVerb;
+    press('ArrowLeft'); await sleep(100);
+    const backOut = document.activeElement === document.body || document.activeElement === null;
+    press('Escape'); await sleep(300);
+    // Ctrl-B r: the same way in, from the drawer.
+    prefix(); await sleep(150); press('r'); await sleep(400);
+    const chordIn = document.activeElement instanceof HTMLButtonElement && document.activeElement.closest('.mode-frame') !== null;
+    document.activeElement?.blur?.(); press('Escape'); await sleep(300);
+    // Ctrl-B &: two splits, then every pane closes.
+    const before = new Set(leaves());
+    prefix(); await sleep(150); press('l'); await sleep(400);
+    prefix(); await sleep(150); press('j'); await sleep(400);
+    const born = leaves().filter((id) => !before.has(id));
+    prefix(); await sleep(150); press('&'); await sleep(900);
+    const said = /closed \\d+ panes?/.test(document.getElementById('terminal').innerText);
+    const gone = born.length === 2 && born.every((id) => !leaves().includes(id));
+    document.getElementById('gutter-files').click(); await sleep(500);
+    return { rowCount, first, second, last, home, picked, indicated, inFrame, firstVerb, walked, backOut, chordIn, born, said, gone };`);
+  check('over a listing the arrows move a row cursor (Home/End the ends) and Enter indicates the row',
+    keyed.rowCount >= 2 && keyed.first === 0 && keyed.second === 1 && keyed.last === keyed.rowCount - 1 && keyed.home === 0 && keyed.indicated, JSON.stringify(keyed));
+  check('→ and Ctrl-B r take the keys into the frame, the arrows walk its verbs, ← gives them back',
+    keyed.inFrame && keyed.walked && keyed.backOut && keyed.chordIn, JSON.stringify(keyed));
+  check('Ctrl-B & closes every pane on the stage and says how many',
+    keyed.said && keyed.gone, JSON.stringify(keyed));
+  }
+
   if (await stage('prefix-chords-2')) {
   // The rest of tmux's table: last pane, pane ids, flip, resize, PANES, scrollback, break out.
   const more = await evalIn(`

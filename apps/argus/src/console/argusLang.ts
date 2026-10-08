@@ -289,6 +289,8 @@ export const DRAWER_CHORDS: ReadonlyArray<DrawerChord> = [
   { key: '!', topic: 'pane', selector: null, does: 'break this pane out: alone on stage, the rest a PANES card (tmux)' },
   { key: 'Ctrl-←↑↓→', topic: 'pane', selector: null, does: 'move the boundary beside this pane a step (tmux)' },
   { key: 'w', topic: 'stage', selector: null, does: 'PANES, the desktops (tmux window chooser)' },
+  { key: 'r', topic: 'focus', selector: null, does: 'the keys into this pane\'s frame: Tab or ↑↓ walk its verbs, Enter presses, ← or Esc leaves' },
+  { key: '&', topic: 'pane', selector: null, does: 'close every pane on the stage (tmux kill-window)' },
   { key: '[', topic: 'console', selector: null, does: 'the console\'s scrollback takes the keys (tmux)' },
   { key: 'O', topic: 'focus', selector: null, does: 'focus the previous pane' },
   { key: '←↑↓→', topic: 'focus', selector: null, does: 'focus the pane in that direction (tmux)' },
@@ -296,16 +298,33 @@ export const DRAWER_CHORDS: ReadonlyArray<DrawerChord> = [
   { key: '?', topic: 'console', selector: null, does: 'this table' },
 ];
 
+/**
+ * `pane close all`: tmux's kill-window — every pane on the stage closes,
+ * the last one home.
+ *
+ * @param host - The surface.
+ * @returns What closed.
+ */
+function paneCloseAll_run(host: ArgusHost): string {
+  let closed: number = 0;
+  for (const id of host.panes_shown()) if (control_click(host, id, '.drawer-close')) closed += 1;
+  return `closed ${closed} pane${closed === 1 ? '' : 's'}`;
+}
+
 /** The chord table, as the console prints it. */
 export const KEYS_HELP: string = [
   'prefix chords — Ctrl-B opens the focused pane\'s drawer; one key then presses one capsule',
   ...DRAWER_CHORDS.map((chord: DrawerChord): string => `  ${chord.key.padEnd(6)} ${chord.does}`),
   '  Tab    walks the verbs; Enter fires; Esc closes the drawer',
+  'in a pane holding a listing, no prefix needed:',
+  '  ↑↓     move the row cursor (Home/End: first/last)',
+  '  Enter  indicates the row (its verbs ride the frame); Enter again goes (opens, enters, folds open)',
+  '  →      the keys into the frame, as Ctrl-B r',
 ].join('\n');
 
 /** The verb table, one line per subject; `argus verbs` prints it, the HELP pane lists it. */
 export const VERB_LINES: ReadonlyArray<string> = [
-  'pane [@id|%n] split left|right|above|below · zoom · close · bind unlinked|fs|viewer',
+  'pane [@id|%n] split left|right|above|below · zoom · close · close all · bind unlinked|fs|viewer',
   'pane [@id|%n] claim files|runs|pacs · focus left|right|up|down|@id|last · flip · resize left|right|up|down [percent]',
   'view files|runs|pacs        (the gutter givens, workspace scope)',
   'runs enter <feedId> · sort <col> [asc|desc] · filter <text>|off',
@@ -527,6 +546,7 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
       return host.pane_move(paneId, arg);
     }
     if (verb === 'zoom') return control_click(host, paneId, '.drawer-zoom') ? `zoomed ${paneId}` : 'pane zoom: no drawer';
+    if (verb === 'close' && arg === 'all') return paneCloseAll_run(host);
     if (verb === 'close') return control_click(host, paneId, '.drawer-close') ? `closed ${paneId}` : 'pane close: no drawer';
     if (verb === 'bind') {
       if (!['unlinked', 'fs', 'viewer'].includes(arg)) return 'pane bind unlinked|fs|viewer';

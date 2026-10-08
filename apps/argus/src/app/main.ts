@@ -2141,9 +2141,7 @@ async function surface_start(token: string): Promise<void> {
   // purposes. The operator's last touch decides — console area in,
   // workspace tree out.
   let consoleFocused: boolean = false;
-  const consoleFocused_set = (value: boolean): void => {
-    consoleFocused = value;
-  };
+  const consoleFocused_set = (value: boolean): void => { consoleFocused = value; };
   for (const eventName of ['click', 'focusin'] as const) {
     document.addEventListener(eventName, (event: Event): void => {
       if (!(event.target instanceof Element)) return;
@@ -2223,6 +2221,7 @@ async function surface_start(token: string): Promise<void> {
     drawers_close,
     modeFrames_close,
     consoleFocused: (): boolean => consoleFocused,
+    console_release: (): void => consoleFocused_set(false),
     verbs: { bar_note: paneBar_note, flip: pane_flip, resize: pane_resize },
     host: (): ArgusHost => argusHost,
     stage_alone: (paneId: string): void => {

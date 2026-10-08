@@ -1,5 +1,15 @@
 # @fnndsc/salsa
 
+## 3.21.2
+
+### Patch Changes
+
+- e1deb53: Nothing changes for chell, ARGUS or porter users: the virtual filesystem's contracts and dispatcher now live in fond. fond's dispatcher knows no backend; salsa's CubeVfsDispatcher registers CUBE's mounts on it in the same order, so every path routes as before.
+- Updated dependencies [e1deb53]
+- Updated dependencies [5bb17f6]
+  - @fnndsc/fond@0.2.0
+  - @fnndsc/cumin@3.27.9
+
 ## 3.21.1
 
 ### Patch Changes

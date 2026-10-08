@@ -1,5 +1,17 @@
 # @fnndsc/brasa
 
+## 0.33.4
+
+### Patch Changes
+
+- 5bb17f6: Nothing changes for chell, ARGUS or porter users: a listing entry's shape now belongs to menu, with an open type. `ListingItem` and `listingItemSchema` are menu's, so a backend can list its own kinds beside `dir`, `file`, `link` and `vfs`; fond's `VFSItem.type` opens the same way, and chili re-exports the type.
+- Updated dependencies [e1deb53]
+- Updated dependencies [5bb17f6]
+  - @fnndsc/salsa@3.21.2
+  - @fnndsc/menu@0.20.0
+  - @fnndsc/chili@3.7.4
+  - @fnndsc/cumin@3.27.9
+
 ## 0.33.3
 
 ### Patch Changes

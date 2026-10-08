@@ -9,8 +9,12 @@
  */
 import * as THREE from 'three';
 import {
+  PULSE_TRIP_MS,
+  REPLAY_REST_MS,
+  WAVE_STEP_MS,
   haloRadius_of,
   paint_resolve,
+  tubeMode_of,
   type HandoffField,
   type LabelField,
   type Palette,
@@ -115,12 +119,34 @@ export function edges_draw(placed: ReadonlyArray<PlacedNode>, byId: ReadonlyMap<
   const threadColors: number[] = [];
   const solid = (item: PlacedNode): boolean => !ports.starring || item.node.solid === true;
   const threadEnds: string[] = [];
+  // Every thread carries the wave a tube would: streaming into a live
+  // stage, replaying a finished run stage by stage. Faint scenery rests.
+  const threadModes: number[] = [];
+  const threadStarts: number[] = [];
+  let deepest: number = 0;
+  const depth: Map<string, number> = new Map();
+  const depth_of = (id: string, seen: Set<string> = new Set()): number => {
+    const known: number | undefined = depth.get(id);
+    if (known !== undefined) return known;
+    if (seen.has(id)) return 0;
+    seen.add(id);
+    const node: SpaceNode | undefined = byId.get(id)?.node;
+    const parents: string[] = node === undefined ? [] : [...node.parentIds, ...node.joinParentIds].filter((p: string): boolean => byId.get(p)?.node.ghost !== true && byId.has(p));
+    const d: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((p: string): number => depth_of(p, seen)));
+    depth.set(id, d);
+    return d;
+  };
   const thread_add = (from: THREE.Vector3, to: THREE.Vector3, color: THREE.Color, dim: boolean, owner: SpaceNode, fromId: string): void => {
     const k: number = dim ? 0.35 : 1;
     const segment: number = threads.length / 6;
     threads.push(from.x, from.y, from.z, to.x, to.y, to.z);
     threadEnds.push(fromId, owner.id);
     threadColors.push(color.r * k, color.g * k, color.b * k, color.r * k, color.g * k, color.b * k);
+    const mode: number = dim ? 0 : tubeMode_of(owner.look.state);
+    const d: number = mode === 0 ? 0 : depth_of(fromId);
+    deepest = Math.max(deepest, d);
+    threadModes.push(mode);
+    threadStarts.push(d * WAVE_STEP_MS);
     const key: string | null = dim || ports.handoffKey === undefined ? null : ports.handoffKey(owner);
     if (key !== null) ports.handoff.thread_note(key, segment);
   };
@@ -146,5 +172,9 @@ export function edges_draw(placed: ReadonlyArray<PlacedNode>, byId: ReadonlyMap<
       else thread_add(parent.position, position, palette.join, dim, node, joinId);
     }
   }
-  ports.stars.threads_draw(threads, threadColors, threadEnds);
+  ports.stars.threads_draw(threads, threadColors, threadEnds, {
+    modes: threadModes,
+    starts: threadStarts,
+    cycle: (deepest + 1) * WAVE_STEP_MS + PULSE_TRIP_MS / 2 + REPLAY_REST_MS,
+  });
 }

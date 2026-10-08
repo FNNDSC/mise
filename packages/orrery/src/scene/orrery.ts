@@ -26,7 +26,7 @@
  *
  * @module
  */
-import { rootsTop_of } from './tree.js';
+import { edgeSpan_of, rootsTop_of } from './tree.js';
 import * as THREE from 'three';
 import { PHYSICS_DEFAULT, type HierarchyArrangement, type PhysicsTerms } from '../layout/index.js';
 import {
@@ -427,7 +427,9 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     this.starField.scale_update(this.renderer.domElement.height, this.camera.fov);
     this.handoff_step();
     this.replay.step();
-    this.tubes.frame(performance.now());
+    const now: number = performance.now();
+    this.tubes.frame(now);
+    this.starField.frame(now);
     this.labels.declutter(this.camera);
     this.renderer.render(this.scene, this.camera);
     this.frameHandle = window.requestAnimationFrame((): void => this.tick());
@@ -667,6 +669,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
       handoffSolid: this.handoffField.solidCount(),
       camera: this.rig.eyeDistance().toFixed(1),
       settling: this.slicing,
+      ...edgeSpan_of(this.graph.nodes, this.lastPositions),
     };
   }
 

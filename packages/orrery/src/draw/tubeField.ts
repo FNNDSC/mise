@@ -17,7 +17,7 @@ import { LAMP_BLOOM_MS, LAMP_BLOOM_REACH, LAMP_DIM, LAMP_FADE_MS, LAMP_WHITE } f
 import { nebulaTexture_get } from './nebula.js';
 import type { Palette } from './palette.js';
 import { PULSE_TRIP_MS, REPLAY_REST_MS, WAVE_STEP_MS } from './timing.js';
-import { TUBE_FRAGMENT, TUBE_VERTEX, tubeGeometry_get, tubeMesh_make, lineMesh_make, type TubeSpec } from './tubes.js';
+import { TUBE_FRAGMENT, TUBE_VERTEX, tubeGeometry_get, tubeMesh_make, lineMesh_make, type LineRest, type TubeSpec } from './tubes.js';
 
 /**
  * One node as the tubes read it.
@@ -255,7 +255,7 @@ export class TubeField {
    * @param deepest - The deepest stage the wave reaches, for the replay's cycle.
    * @param rest - The resting thread: hue scale, opacity, additive under stars.
    */
-  public censusLines_build(specs: ReadonlyArray<TubeSpec>, deepest: number, rest: { tint: number; opacity: number; additive: boolean }): void {
+  public censusLines_build(specs: ReadonlyArray<TubeSpec>, deepest: number, rest: LineRest): void {
     if (specs.length === 0) return;
     const lines: THREE.LineSegments = lineMesh_make(specs, (deepest + 1) * WAVE_STEP_MS + PULSE_TRIP_MS / 2 + REPLAY_REST_MS, rest);
     this.host.parent.add(lines);

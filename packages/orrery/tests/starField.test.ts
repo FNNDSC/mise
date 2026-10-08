@@ -100,6 +100,45 @@ describe('StarField', () => {
     expect([...colors.slice(6, 12)]).toEqual([0, 0, 0, 0, 0, 0]);
   });
 
+  it('threads given a wave carry it as a tube does: on the clock, faded with the thread, gated when hidden', () => {
+    const parent = new THREE.Group();
+    const field = new StarField(parent);
+    field.draw([star('a', false), star('b', false), star('c', false)], 1, 800, 50);
+    field.threads_draw(
+      [0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2],
+      [1, 1, 1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+      ['a', 'b', 'b', 'c'],
+      { modes: [2, 1], starts: [0, 450], cycle: 4000 },
+    );
+    expect(field.threadsCarryWave()).toBe(true);
+    const lines = parent.children.find((child) => child instanceof THREE.LineSegments) as THREE.LineSegments;
+    const material = lines.material as THREE.ShaderMaterial;
+    expect(material).toBeInstanceOf(THREE.ShaderMaterial);
+    expect(material.blending).toBe(THREE.AdditiveBlending);
+    expect(material.fragmentShader).toContain('pulse_at');
+    // The wave is gated by the thread's own light: a faded thread carries none.
+    expect(material.fragmentShader).toContain('lit');
+    expect([...(lines.geometry.getAttribute('aMode').array as Float32Array)]).toEqual([2, 2, 1, 1]);
+    expect([...(lines.geometry.getAttribute('aStart').array as Float32Array)]).toEqual([0, 0, 450, 450]);
+    expect([...(lines.geometry.getAttribute('aAlong').array as Float32Array)]).toEqual([0, 1, 0, 1]);
+    // The fades write the same colours the wave shader reads.
+    field.threads_present((id: string): boolean => id !== 'c');
+    expect([...(lines.geometry.getAttribute('aColor').array as Float32Array).slice(6, 12)]).toEqual([0, 0, 0, 0, 0, 0]);
+    field.frame(9_876);
+    expect(material.uniforms['time']?.value).toBe(9_876);
+    field.clear();
+    expect(field.threadsCarryWave()).toBe(false);
+  });
+
+  it('threads without a wave rest as plain lines', () => {
+    const parent = new THREE.Group();
+    const field = new StarField(parent);
+    field.threads_draw([0, 0, 0, 1, 1, 1], [1, 1, 1, 1, 1, 1]);
+    expect(field.threadsCarryWave()).toBe(false);
+    expect((parent.children[0] as THREE.LineSegments).material).toBeInstanceOf(THREE.LineBasicMaterial);
+    expect(() => field.frame(1)).not.toThrow();
+  });
+
   it('draws a ringed star in a layer of its own, over the glow and the embers', () => {
     const parent = new THREE.Group();
     const field = new StarField(parent);

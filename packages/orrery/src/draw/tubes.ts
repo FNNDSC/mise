@@ -97,8 +97,10 @@ void main() {
 }`;
 
 /**
- * A census line at rest is a faint thread; where the wave passes it burns
- * bright, and opaque enough to read over the cloud.
+ * A line at rest is a faint thread; where the wave passes it burns bright,
+ * and opaque enough to read over the cloud. A line faded to nothing (a
+ * replay's thread before its ends arrive, a molecule handing off) carries
+ * no wave either: the pulse is gated by the line's own light.
  */
 export const LINE_FRAGMENT: string = `
 uniform float opacity;
@@ -108,9 +110,62 @@ varying float vMode;
 varying float vStart;
 varying float vAlong;
 void main() {
-  float pulse = pulse_at(vAlong, vMode, vStart);
+  float lit = smoothstep(0.0, 0.04, max(vColor.r, max(vColor.g, vColor.b)));
+  float pulse = pulse_at(vAlong, vMode, vStart) * lit;
   gl_FragColor = vec4(vColor + vec3(1.0, 0.95, 0.8) * pulse * 1.3, min(1.0, opacity + pulse));
 }`;
+
+/** How a batch of wave-carrying lines rests: its opacity, and whether it adds light (stars). */
+export interface LineRest {
+  tint: number;
+  opacity: number;
+  additive: boolean;
+}
+
+/**
+ * The material every wave-carrying line batch draws with: the census's
+ * lines and the stars' threads alike, on the tubes' clock.
+ *
+ * @param cycle - The replay's period, in ms.
+ * @param rest - How the lines rest.
+ * @returns The material.
+ */
+export function lineMaterial_make(cycle: number, rest: LineRest): THREE.ShaderMaterial {
+  const now: number = performance.now();
+  return new THREE.ShaderMaterial({
+    uniforms: { time: { value: now }, opacity: { value: rest.opacity }, born: { value: now }, cycle: { value: cycle } },
+    vertexShader: LINE_VERTEX,
+    fragmentShader: LINE_FRAGMENT,
+    transparent: true,
+    depthWrite: !rest.additive,
+    ...(rest.additive ? { blending: THREE.AdditiveBlending } : {}),
+  });
+}
+
+/**
+ * The wave attributes a line batch carries, two vertices a line: its mode,
+ * when the wave sets off along it, and how far along it each end stands.
+ *
+ * @param geometry - The batch's geometry; the attributes are set on it.
+ * @param modes - One mode a line (0 rests, 1 streams, 2 replays).
+ * @param starts - One start a line, into the replay's cycle.
+ */
+export function lineWave_set(geometry: THREE.BufferGeometry, modes: ReadonlyArray<number>, starts: ReadonlyArray<number>): void {
+  const count: number = modes.length;
+  const perVertexMode: Float32Array = new Float32Array(count * 2);
+  const perVertexStart: Float32Array = new Float32Array(count * 2);
+  const along: Float32Array = new Float32Array(count * 2);
+  for (let i = 0; i < count; i++) {
+    perVertexMode[i * 2] = modes[i] ?? 0;
+    perVertexMode[i * 2 + 1] = modes[i] ?? 0;
+    perVertexStart[i * 2] = starts[i] ?? 0;
+    perVertexStart[i * 2 + 1] = starts[i] ?? 0;
+    along[i * 2 + 1] = 1;
+  }
+  geometry.setAttribute('aMode', new THREE.Float32BufferAttribute(perVertexMode, 1));
+  geometry.setAttribute('aStart', new THREE.Float32BufferAttribute(perVertexStart, 1));
+  geometry.setAttribute('aAlong', new THREE.Float32BufferAttribute(along, 1));
+}
 
 /** The tube every solid edge wears, stretched and turned per edge. */
 let tubeGeometry: THREE.CylinderGeometry | null = null;
@@ -187,41 +242,21 @@ export function tubeMesh_make(specs: ReadonlyArray<TubeSpec>, cycle: number): TH
  * @param rest - The resting thread: its hue scale and opacity, and whether it adds light (stars).
  * @returns The lines, not yet added to anything.
  */
-export function lineMesh_make(specs: ReadonlyArray<TubeSpec>, cycle: number, rest: { tint: number; opacity: number; additive: boolean }): THREE.LineSegments {
-  const now: number = performance.now();
+export function lineMesh_make(specs: ReadonlyArray<TubeSpec>, cycle: number, rest: LineRest): THREE.LineSegments {
   const positions: Float32Array = new Float32Array(specs.length * 6);
   const colors: Float32Array = new Float32Array(specs.length * 6);
-  const modes: Float32Array = new Float32Array(specs.length * 2);
-  const starts: Float32Array = new Float32Array(specs.length * 2);
-  const along: Float32Array = new Float32Array(specs.length * 2);
   specs.forEach((spec: TubeSpec, i: number): void => {
     positions.set([spec.from.x, spec.from.y, spec.from.z, spec.to.x, spec.to.y, spec.to.z], i * 6);
     const r: number = spec.color.r * rest.tint;
     const g: number = spec.color.g * rest.tint;
     const b: number = spec.color.b * rest.tint;
     colors.set([r, g, b, r, g, b], i * 6);
-    modes[i * 2] = spec.mode;
-    modes[i * 2 + 1] = spec.mode;
-    starts[i * 2] = spec.start;
-    starts[i * 2 + 1] = spec.start;
-    along[i * 2] = 0;
-    along[i * 2 + 1] = 1;
   });
   const geometry: THREE.BufferGeometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('aColor', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setAttribute('aMode', new THREE.Float32BufferAttribute(modes, 1));
-  geometry.setAttribute('aStart', new THREE.Float32BufferAttribute(starts, 1));
-  geometry.setAttribute('aAlong', new THREE.Float32BufferAttribute(along, 1));
-  const material: THREE.ShaderMaterial = new THREE.ShaderMaterial({
-    uniforms: { time: { value: now }, opacity: { value: rest.opacity }, born: { value: now }, cycle: { value: cycle } },
-    vertexShader: LINE_VERTEX,
-    fragmentShader: LINE_FRAGMENT,
-    transparent: true,
-    depthWrite: !rest.additive,
-    ...(rest.additive ? { blending: THREE.AdditiveBlending } : {}),
-  });
-  const lines: THREE.LineSegments = new THREE.LineSegments(geometry, material);
+  lineWave_set(geometry, specs.map((spec: TubeSpec): number => spec.mode), specs.map((spec: TubeSpec): number => spec.start));
+  const lines: THREE.LineSegments = new THREE.LineSegments(geometry, lineMaterial_make(cycle, rest));
   lines.frustumCulled = false;
   return lines;
 }

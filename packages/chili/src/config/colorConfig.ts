@@ -6,108 +6,24 @@
  *
  * @module
  */
-import yaml from 'js-yaml';
-import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import chalk from 'chalk';
 import { chiliErrLog } from "../screen/output.js";
 import { chalkColor_get, type ChalkColorFunction } from "../screen/screen.js";
+import { colorConfigLoader_make, type ColorConfig, type ColorStyle } from './colorConfigLoad.js';
+
+export type { ColorStyle, IconConfig, ColorConfig } from './colorConfigLoad.js';
 
 /**
- * Interface for color style configuration.
+ * Loads the color configuration from colors.yml, once per process: the
+ * file's, or the fallback after a single warning.
  */
-export interface ColorStyle {
-  color: string;
-  bold?: boolean;
-  dim?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  inverse?: boolean;
-  strikethrough?: boolean;
-}
-
-/**
- * Interface for icon configuration.
- */
-export interface IconConfig {
-  enabled: boolean;
-  dir: string;
-  file: string;
-  link: string;
-  plugin: string;
-  pipeline: string;
-  vfs: string;
-}
-
-/**
- * Interface for the complete color configuration.
- */
-export interface ColorConfig {
-  icons?: IconConfig;
-  fileTypes: {
-    dir: ColorStyle;
-    file: ColorStyle;
-    link: ColorStyle;
-    plugin: ColorStyle;
-    pipeline: ColorStyle;
-    vfs: ColorStyle;
-  };
-  specialPaths: {
-    [path: string]: ColorStyle;
-  };
-}
-
-let cachedConfig: ColorConfig | null = null;
-
-/**
- * Loads the color configuration from colors.yml.
- *
- * @returns The parsed color configuration.
- */
-function colorConfig_load(): ColorConfig {
-  if (cachedConfig) {
-    return cachedConfig;
-  }
-
-  // Use import.meta.url for ESM (chili is built as ESM)
-  const __filename: string = fileURLToPath(import.meta.url);
-  const __dirname: string = path.dirname(__filename);
-  const configPath: string = path.resolve(__dirname, '../../config/colors.yml');
-
-  try {
-    const fileContents: string = fs.readFileSync(configPath, 'utf8');
-    cachedConfig = yaml.load(fileContents) as ColorConfig;
-    return cachedConfig;
-  } catch (e: unknown) {
-    const msg: string = e instanceof Error ? e.message : String(e);
-    chiliErrLog(`Warning: Could not load color config: ${msg}`);
-
-    return {
-      icons: {
-        enabled: true,
-        dir: '\uF07C',
-        file: '\uF15B',
-        link: '\uF0C1',
-        plugin: '\uF013',
-        pipeline: '\uF013',
-        vfs: '\uF0C8'
-      },
-      fileTypes: {
-        dir: { color: 'cyan', bold: true },
-        file: { color: 'white', bold: false },
-        link: { color: 'magenta', bold: false },
-        plugin: { color: 'green', bold: true },
-        pipeline: { color: 'magenta', bold: true },
-        vfs: { color: 'cyanBright', bold: true }
-      },
-      specialPaths: {
-        '/bin': { color: 'cyan', bold: true },
-        '~': { color: 'blue', bold: false }
-      }
-    };
-  }
-}
+const colorConfig_load: () => ColorConfig = colorConfigLoader_make(
+  // Use import.meta.url for ESM (chili is built as ESM): the package root's config/.
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../config/colors.yml'),
+  (message: string): void => chiliErrLog(message),
+);
 
 /**
  * Applies color style to text using chalk.

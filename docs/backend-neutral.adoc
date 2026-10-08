@@ -55,7 +55,43 @@ Verified against `main` at `1e1e1999`. Where the issue's text was wrong or incom
 | The ChRIS backend. `Result`/`Ok`/`Err` (`cumin/src/utils/result.ts`) and `errorStack` (`cumin/src/error/errorStack.ts`) import nothing CUBE-specific — but reach callers only through cumin's root barrel, which loads chrisapi. salsa's `VFSProvider` is a good generic shape (required `prefix`, `list`, `cp`; optional `read`, `readBinary`, `write`, `mkdir`, `rmdir`, `rename`, `linkTarget_resolve`) and its dispatcher routes by longest segment-bounded prefix — but its constructor hard-registers seven CUBE providers with CUBE files as the fallback, and `VFSItem.type` is a closed union (`dir\|file\|link\|plugin\|pipeline\|vfs\|job`). chili's `ListingItem` copies that union by hand (and differs: `tags` where `VFSItem` has `id`).
 |===
 
-Dependency direction today (runtime): menu ← cumin ← salsa ← chili ← brasa ← calypso ← chell; brasa also on menu and orrery; calypso on argus; porter on calypso and cumin. No cycles.
+Dependency direction today (runtime package dependencies; an arrow means "depends on"). No cycles; note calypso's edge to the argus *app*, there only to find the bundle it serves.
+
+[literal]
+....
+  +---------+        +---------+
+  |  chell  |        | porter  |
+  +----+----+        +--+---+--+
+       |                |   |
+       v                |   |
+  +---------+           |   |
+  | calypso |<----------+   |
+  +--+---+--+               |
+     |   |                  |
+     |   +---------> argus (the app: its built bundle)
+     v                      |
+  +---------+               |
+  |  brasa  |---> orrery    |
+  +----+----+               |
+       v                    |
+  +---------+               |
+  |  chili  |               |
+  +----+----+               |
+       v                    |
+  +---------+               |
+  |  salsa  |               |
+  +----+----+               |
+       v                    |
+  +---------+               |
+  |  cumin  |<--------------+
+  +----+----+
+       v
+  +---------+
+  |  menu   |   (zod only)
+  +---------+
+....
+
+Edges left out for readability: brasa also depends on cumin, salsa and menu directly; chell on brasa, chili, salsa, cumin and menu; calypso on cumin and menu; porter also declares chell and menu; argus on menu.
 
 [[decisions]]
 == Decisions
@@ -172,17 +208,56 @@ The ChRIS backend implements it with cumin, salsa and its builtins. A test backe
 [[direction]]
 == Dependency direction after the work
 
-----
-menu          (wire: envelope, protocol, models incl. ListingItem)
-fond          (Result, errors, envelope helpers, VFS framework, sink/surface interfaces)
-  ^
-brasa core    (parser, line loop, registry, core commands, tasks)   — depends on fond, menu
-calypso       (session host)                                         — depends on fond, menu, brasa core
-  ^
-ChRIS backend (cumin, salsa, chili until #214, ChRIS builtins)       — depends on fond, menu, brasa core
-chell, porter, the calypso launcher                                  — compose brasa + a backend
-argus         (frame + compositions; one build)                      — depends on menu
-----
+An arrow means "depends on" (a package dependency). Every layer may also use `fond` and `menu` directly; those lines are left out to keep the picture readable.
+
+[literal]
+....
+  +---------+    +---------+    +------------------+
+  |  chell  |    | porter  |    | calypso launcher |     each composes the engine
+  +----+----+    +----+----+    +--------+---------+     with exactly one backend
+       |              |                  |
+       +--------------+---------+--------+
+                      |         |
+                      v         v
+          +---------------+   +--------------------------+
+          |    calypso    |   |        a backend         |
+          | session host  |   |  ChRIS: cumin, salsa,    |
+          +-------+-------+   |  chili (until #214),     |
+                  |           |  the ChRIS builtins      |
+                  |           |  (an infra backend later)|
+                  |           +------------+-------------+
+                  |                        |
+                  +-----------+------------+
+                              |
+                              v
+                   +---------------------+
+                   |     brasa core      |
+                   |  parser, line loop, |
+                   |  command registry,  |
+                   |  core commands,     |
+                   |  tasks              |
+                   +-----+---------+-----+
+                         |         |
+                         v         v
+                   +--------+   +--------+
+                   |  fond  |   |  menu  |
+                   +--------+   +--------+
+                   Result,      the wire:
+                   errors,      envelope,
+                   VFS, sink,   protocol,
+                   surface      models
+
+
+  +---------+                      at run time: the wire (WebSocket)
+  |  argus  | - - - - - - - - - - - - - - - - - - - - - - - - -> calypso
+  +----+----+                      and the daemon's /vfs route
+       |
+       |  at build time: menu only
+       v
+  +--------+
+  |  menu  |
+  +--------+
+....
 
 No neutral layer depends on a backend. A backend depends on the core, never the other way round.
 

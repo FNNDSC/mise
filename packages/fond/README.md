@@ -10,7 +10,7 @@ npm install @fnndsc/fond
 
 ## Why it exists
 
-mise is being made backend-neutral: one engine, one session host, one wire and one surface frame, with ChRIS (CUBE) as the first backend among possibly several (see [docs/backend-neutral.adoc](../../docs/backend-neutral.adoc)). For that to be true, the generic pieces cannot live inside a ChRIS package. Before fond, `Result` and the error stack lived in `@fnndsc/cumin`, whose root also loads CUBE's API client, so any layer that wanted an `Ok()` loaded CUBE with it.
+mise is being made backend-neutral: one engine, one session host, one wire and one surface frame, with ChRIS (CUBE) as the first backend among possibly several (see [docs/backend-neutral.adoc](https://github.com/FNNDSC/mise/blob/main/docs/backend-neutral.adoc)). For that to be true, the generic pieces cannot live inside a ChRIS package. Before fond, `Result` and the error stack lived in `@fnndsc/cumin`, whose root also loads CUBE's API client, so any layer that wanted an `Ok()` loaded CUBE with it.
 
 fond is where those pieces go instead. Its one rule: **it depends on nothing in `@fnndsc`**. CI holds it to that (`npm run lint:fond`), so a layer that is not about CUBE can use fond without loading CUBE.
 

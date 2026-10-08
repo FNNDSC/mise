@@ -1,5 +1,13 @@
 # @fnndsc/cumin
 
+## 3.27.8
+
+### Patch Changes
+
+- 1a5c7ca: Nothing changes for chell, ARGUS or porter users: cumin takes Result and errorStack from the new @fnndsc/fond. It re-exports both, so every import still works, and the error stack stays one shared instance. The login probe export is renamed `url_probe` (was `urlProbe`) to follow the naming convention.
+- Updated dependencies [803a423]
+  - @fnndsc/fond@0.1.1
+
 ## 3.27.7
 
 ### Patch Changes

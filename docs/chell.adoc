@@ -57,6 +57,7 @@ $ chell --remote you@http://cube.example.org/api/v1/   # same machine, by identi
 $ chell --attach 'ws://host:35739/?token=4c9d98c3…'    # elsewhere; the URL carries the token
 $ chell --attach ws://host:35739/ --token 4c9d98c3…    # when the URL does not
 $ calypso --berths                                     # what is running on this machine
+$ calypso --version                                    # the stack this calypso would run (-V)
 ----
 
 A *berth* is the record of a running session, keyed by identity, so `--remote you@url` finds the right daemon without being told a port. Berths are per-identity: several daemons for several CUBE logins coexist on one machine without colliding.

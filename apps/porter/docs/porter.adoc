@@ -111,7 +111,7 @@ A door token is how a script comes through without a password: minted once by a 
 
 == Running it
 
-`porter --tokens`, `porter --revoke <user> [<name>]` and `porter --mint <user> --name <name>` manage door tokens (above). `porter` starts the door; `porter --end <who>` ends one session by berth key, identity or user (its state kept; the next login boots on this porter's kernel); `porter --status` lists the sessions the state directory holds — key, identity, address, and whether each answers — without starting anything, and asks for nothing but `PORTER_STATE_DIR` (the CUBE, the port and the secret belong to a door, not a listing).
+`porter --tokens`, `porter --revoke <user> [<name>]` and `porter --mint <user> --name <name>` manage door tokens (above). `porter --version` (`-V`) prints the door's version and the session code it serves (brasa, calypso, chell): what a login would put a daemon on, so whether an older session restarts. `porter` starts the door; `porter --end <who>` ends one session by berth key, identity or user (its state kept; the next login boots on this porter's kernel); `porter --status` lists the sessions the state directory holds — key, identity, address, and whether each answers — without starting anything, and asks for nothing but `PORTER_STATE_DIR` (the CUBE, the port and the secret belong to a door, not a listing).
 
 == Deploying on titan
 

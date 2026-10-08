@@ -12,6 +12,9 @@ describe('porterArgs_parse', () => {
     expect(porterArgs_parse(['--sessions'])).toEqual({ mode: 'status' });
     expect(porterArgs_parse(['--end', 'chris'])).toEqual({ mode: 'end', who: 'chris' });
     expect(porterArgs_parse(['--help'])).toEqual({ mode: 'help' });
+    expect(porterArgs_parse(['--version'])).toEqual({ mode: 'version' });
+    expect(porterArgs_parse(['-V'])).toEqual({ mode: 'version' });
+    expect(porterArgs_parse(['--version', 'extra'])).toEqual({ refusal: "--version takes no argument ('extra')" });
     expect(porterArgs_parse(['-h'])).toEqual({ mode: 'help' });
     expect(porterArgs_parse(['--tokens'])).toEqual({ mode: 'tokens' });
     expect(porterArgs_parse(['--revoke', 'chris'])).toEqual({ mode: 'revoke', user: 'chris' });

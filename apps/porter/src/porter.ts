@@ -16,6 +16,7 @@ import { porterApp_build, type PorterApp } from './app.js';
 import type { SessionSighting } from './host/sessionHost.js';
 import { berthKey_compute } from '@fnndsc/calypso/berth';
 import { entry_isMain } from './entry.js';
+import { versionReport_build } from './versions.js';
 
 /**
  * Lists the sessions the state directory holds, without starting anything.
@@ -162,7 +163,8 @@ export type PorterAsk =
   | { mode: 'tokens' }
   | { mode: 'revoke'; user: string; name?: string }
   | { mode: 'mint'; user: string; name: string }
-  | { mode: 'help' };
+  | { mode: 'help' }
+  | { mode: 'version' };
 
 /** The usage, one line per word the entry takes. */
 export const PORTER_USAGE: string = [
@@ -172,6 +174,7 @@ export const PORTER_USAGE: string = [
   'porter --tokens             the door tokens the store holds: user, name, minted, dies, last used',
   'porter --revoke <user> [<name>]   revoke one door token by name, or every one of the user\'s',
   'porter --mint <user> --name <name>   mint a door token by hand (PORTER_CUBE_URL names the CUBE); shown once',
+  'porter --version            the door\'s version and the session code it serves (-V)',
   'porter --help               this',
 ].join('\n');
 
@@ -187,6 +190,9 @@ export function porterArgs_parse(argv: ReadonlyArray<string>): PorterAsk | { ref
   if (argv.length === 0) return { mode: 'serve' };
   const [word, ...rest] = argv;
   if (word === '--help' || word === '-h') return { mode: 'help' };
+  if (word === '--version' || word === '-V') {
+    return rest.length === 0 ? { mode: 'version' } : { refusal: `${word} takes no argument ('${rest[0] ?? ''}')` };
+  }
   if (word === '--status' || word === '--sessions') {
     return rest.length === 0 ? { mode: 'status' } : { refusal: `${word} takes no argument ('${rest[0] ?? ''}')` };
   }
@@ -223,6 +229,7 @@ async function porter_start(): Promise<void> {
     process.exit(1);
   }
   if (ask.mode === 'help') { console.log(PORTER_USAGE); return; }
+  if (ask.mode === 'version') { console.log(versionReport_build()); return; }
   if (ask.mode === 'status') { await status_print(porterStateDir_resolve(process.env)); return; }
   if (ask.mode === 'end') { await session_end(porterStateDir_resolve(process.env), ask.who); return; }
   if (ask.mode === 'tokens') { tokens_print(porterTokensFile_resolve(process.env)); return; }

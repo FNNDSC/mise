@@ -1,5 +1,17 @@
 # @fnndsc/porter
 
+## 0.6.3
+
+### Patch Changes
+
+- df34da0: A failed login now says what failed, instead of always blaming the credentials. An untrusted TLS certificate names the host, the code and `NODE_EXTRA_CA_CERTS`; an unreachable CUBE says so with the code; only CUBE refusing the login mentions the password. The same holds for token logins, `sudo`, and porter's login page.
+- 563d788: porter installed from npm now starts instead of exiting silently. That covers its `porter` bin link, `npx porter` and `node_modules/.bin/porter`. It used to decide whether it was the program by checking that `argv[1]` ended in `porter.js`; it now compares real paths, as chell and calypso do.
+- Updated dependencies [d3618fb]
+- Updated dependencies [df34da0]
+  - @fnndsc/chell@5.11.2
+  - @fnndsc/cumin@3.27.7
+  - @fnndsc/calypso@0.19.7
+
 ## 0.6.2
 
 ### Patch Changes

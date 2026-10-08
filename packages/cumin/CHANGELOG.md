@@ -1,5 +1,11 @@
 # @fnndsc/cumin
 
+## 3.27.7
+
+### Patch Changes
+
+- df34da0: A failed login now says what failed, instead of always blaming the credentials. An untrusted TLS certificate names the host, the code and `NODE_EXTRA_CA_CERTS`; an unreachable CUBE says so with the code; only CUBE refusing the login mentions the password. The same holds for token logins, `sudo`, and porter's login page.
+
 ## 3.27.6
 
 ### Patch Changes

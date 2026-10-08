@@ -1,5 +1,14 @@
 # @fnndsc/calypso
 
+## 0.19.7
+
+### Patch Changes
+
+- Updated dependencies [77e3eba]
+- Updated dependencies [df34da0]
+  - @fnndsc/argus@0.27.0
+  - @fnndsc/cumin@3.27.7
+
 ## 0.19.6
 
 ### Patch Changes

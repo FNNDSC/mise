@@ -1,5 +1,17 @@
 # @fnndsc/chell
 
+## 5.11.2
+
+### Patch Changes
+
+- d3618fb: chell installed from npm no longer prints "Could not load color config" before listings. chili's package now carries `config/colors.yml`, and a missing color file is reported once per process instead of on every call.
+- df34da0: A failed login now says what failed, instead of always blaming the credentials. An untrusted TLS certificate names the host, the code and `NODE_EXTRA_CA_CERTS`; an unreachable CUBE says so with the code; only CUBE refusing the login mentions the password. The same holds for token logins, `sudo`, and porter's login page.
+- Updated dependencies [d3618fb]
+- Updated dependencies [df34da0]
+  - @fnndsc/chili@3.7.2
+  - @fnndsc/cumin@3.27.7
+  - @fnndsc/calypso@0.19.7
+
 ## 5.11.1
 
 ### Patch Changes

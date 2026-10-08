@@ -115,7 +115,7 @@ export function loginFailure_classify(error: unknown): LoginFailure {
  * @param timeoutMs - How long to wait.
  * @returns The code, or null.
  */
-export function urlProbe(url: string, timeoutMs: number = 8000): Promise<string | null> {
+export function url_probe(url: string, timeoutMs: number = 8000): Promise<string | null> {
   return new Promise((resolve: (code: string | null) => void): void => {
     let settled: boolean = false;
     const settle = (code: string | null): void => { if (!settled) { settled = true; resolve(code); } };
@@ -137,10 +137,10 @@ export function urlProbe(url: string, timeoutMs: number = 8000): Promise<string 
  *
  * @param error - What the login threw.
  * @param url - The URL the login went to.
- * @param probe - How the network is asked; {@link urlProbe} by default.
+ * @param probe - How the network is asked; {@link url_probe} by default.
  * @returns The failure.
  */
-export async function loginFailure_diagnose(error: unknown, url: string, probe: (url: string) => Promise<string | null> = urlProbe): Promise<LoginFailure> {
+export async function loginFailure_diagnose(error: unknown, url: string, probe: (url: string) => Promise<string | null> = url_probe): Promise<LoginFailure> {
   const failure: LoginFailure = loginFailure_classify(error);
   if (failure.kind !== 'other' || failure.status !== undefined) return failure;
   const code: string | null = await probe(url);

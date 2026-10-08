@@ -98,6 +98,7 @@ jobs:
       # Principle checks (docs/principles.adoc). Two are hard checks; two are
       # ratchets that cannot repair what exists but stop it growing.
       - run: npm run lint:kernel
+      - run: npm run lint:fond
       - run: npm run lint:commands
       - run: npm run lint:prompt
       - run: npm run lint:wire

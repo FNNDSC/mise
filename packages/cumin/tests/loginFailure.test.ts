@@ -64,15 +64,15 @@ describe('loginFailure_lines', () => {
   });
 });
 
-describe('urlProbe', () => {
+describe('url_probe', () => {
   it('is null when something answers, and the code when nothing does', async () => {
     const http = await import('node:http');
     const server = http.createServer((_req, res) => { res.writeHead(404); res.end(); });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
     const port: number = (server.address() as { port: number }).port;
-    const { urlProbe } = await import('../src/connect/loginFailure');
-    expect(await urlProbe(`http://127.0.0.1:${port}/api/v1/auth-token/`)).toBeNull();
+    const { url_probe } = await import('../src/connect/loginFailure');
+    expect(await url_probe(`http://127.0.0.1:${port}/api/v1/auth-token/`)).toBeNull();
     await new Promise<void>((resolve) => server.close(() => resolve()));
-    expect(await urlProbe(`http://127.0.0.1:${port}/api/v1/auth-token/`)).toBe('ECONNREFUSED');
+    expect(await url_probe(`http://127.0.0.1:${port}/api/v1/auth-token/`)).toBe('ECONNREFUSED');
   });
 });

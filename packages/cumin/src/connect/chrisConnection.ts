@@ -12,7 +12,7 @@
 import { folderLookup_memoize } from '../filebrowser/folderMemo';
 import { requestLedger_start } from '../net/requestLedger';
 import { Client, authToken_get as adapterAuthToken_get, client_create } from "../chrisapi/adapter.js";
-import { loginFailure_diagnose, loginFailure_lines, urlProbe, type LoginFailure } from "./loginFailure.js";
+import { loginFailure_diagnose, loginFailure_lines, url_probe, type LoginFailure } from "./loginFailure.js";
 import { ConnectionConfig, config_init, connectionConfig } from "../config/config.js";
 import {
   chrisContextURL_parse,
@@ -119,7 +119,7 @@ export class ChRISConnection {
    * @param storageProvider - The storage provider for persistence.
    */
   /** How a failed login asks the network what happened; a test stands one in. */
-  public loginProbe: (url: string) => Promise<string | null> = urlProbe;
+  public loginProbe: (url: string) => Promise<string | null> = url_probe;
 
   init(config: ConnectionConfig, storageProvider: IStorageProvider) {
     this._config = config;

@@ -195,16 +195,16 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
     if (event.ctrlKey || event.metaKey || event.altKey) return false;
     const close_and = (act: () => void): boolean => { hooks.drawers_close(); act(); claim(); return true; };
     // A focus move is the keys going to a pane: the console lets go of them.
-    if (arrowSide !== null) return close_and((): void => { console_let_go(); if (focus_move(hooks.host(), SIDES[arrowSide].focusWord) !== null) context.sound('audio3'); });
+    if (arrowSide !== null) return close_and((): void => { console_letGo(); if (focus_move(hooks.host(), SIDES[arrowSide].focusWord) !== null) context.sound('audio3'); });
     switch (event.key) {
       case 'o': case 'O': {
         const shown: string[] = layout.panes_shown();
         const at: number = shown.indexOf(layout.focused_get() ?? '');
         const next: string | undefined = shown[(at + (event.key === 'o' ? 1 : shown.length - 1)) % shown.length];
-        return close_and((): void => { console_let_go(); if (next !== undefined) { layout.focus_set(next); context.sound('audio3'); } });
+        return close_and((): void => { console_letGo(); if (next !== undefined) { layout.focus_set(next); context.sound('audio3'); } });
       }
       case '?': return close_and((): void => context.terminal.line_run('argus keys'));
-      case ';': return close_and((): void => { console_let_go(); if (layout.focus_last() !== null) context.sound('audio3'); });
+      case ';': return close_and((): void => { console_letGo(); if (layout.focus_last() !== null) context.sound('audio3'); });
       case 'q':
         // Every pane names itself on its bar for a moment, so a target (@id) can be read off the stage.
         return close_and((): void => { for (const shown of layout.panes_shown()) hooks.verbs.bar_note(shown, `@${shown}`); });
@@ -223,7 +223,7 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
         });
       }
       case 'w': return close_and((): void => hooks.element_require('gutter-panes').click());
-      case 'r': return close_and((): void => { console_let_go(); const pane: HTMLElement | null = focusedPane_get(); if (pane !== null) frame_enter(pane); });
+      case 'r': return close_and((): void => { console_letGo(); const pane: HTMLElement | null = focusedPane_get(); if (pane !== null) frame_enter(pane); });
       case '&': return close_and((): void => context.terminal.line_run('pane close all'));
       case '[':
         // The scrollback takes the keys: PageUp/PageDown page it, Esc gives them back.
@@ -250,7 +250,7 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
 
   /** The focused pane's element (a zoomed one when the stage is zoomed), or null. */
   /** The keys leave the console for the stage: its line lets go, and the prefix answers for panes. */
-  const console_let_go = (): void => {
+  const console_letGo = (): void => {
     const active: Element | null = document.activeElement;
     if (active instanceof HTMLElement && active.closest('#drawer') !== null) active.blur();
     hooks.console_release();

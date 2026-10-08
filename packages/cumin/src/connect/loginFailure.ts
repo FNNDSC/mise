@@ -12,6 +12,8 @@
  * response!" and keeps none of the network's error code, so when nothing
  * on the error says what happened, one plain request to the same URL asks
  * the network again — on the failure path only, never on a login that works.
+ * Asked upstream to keep the cause (FNNDSC/fnndsc#108); once a release
+ * does, the probe has nothing left to find and can go.
  *
  * Dependency-free (Node's own http/https), so the door can use it too
  * (`@fnndsc/cumin/login-failure`).

@@ -54,7 +54,8 @@ config_apply(config.value);
 
 ```typescript
 errorStack.stack_push('error', 'CUBE refused the login');
-errorStack.stack_pop();   // { type: 'error', message: '[login_run          ] | CUBE refused the login' }
+errorStack.stack_pop();
+// { type: 'error', message: '[login_run                               ] | CUBE refused the login' }
 ```
 
 Reading and clearing:

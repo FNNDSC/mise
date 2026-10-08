@@ -18,7 +18,7 @@
  */
 
 import { execFileSync } from 'child_process';
-import { existsSync, mkdtempSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
@@ -42,6 +42,7 @@ if (!built) {
       await run(['--help', '-s']); console.log('MARK1');
       await run(['--help', '-s']); console.log('MARK2');
       await run(['__definitely_not_a_command__', '-s']); console.log('MARK3');
+      await run(['--version']); console.log('MARK4');
       console.log('ALL_OK');
       realExit(0);
     `;
@@ -75,8 +76,27 @@ if (!built) {
     expect(out).toContain('MARK1');
     expect(out).toContain('MARK2');
     expect(out).toContain('MARK3');
+    // --version answers inside run() too, without an error or an exit.
+    expect(out).toContain('MARK4');
+    expect(out).not.toContain('CommanderError');
     expect(out).toContain('ALL_OK');
     expect(out).not.toContain('UNEXPECTED_EXIT');
     expect(code).toBe(0);
+  });
+});
+
+(existsSync(path.resolve(__dirname, '../dist/index.js')) ? describe : describe.skip)('chili --version [built dist]', () => {
+  it('prints the installed version alone and exits 0, as the bin does', () => {
+    const manifest = JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf8')) as { version: string };
+    const dir: string = mkdtempSync(path.join(os.tmpdir(), 'chili-version-'));
+    for (const flag of ['--version', '-V']) {
+      const out: string = execFileSync('node', [path.resolve(__dirname, '../dist/index.js'), flag], {
+        encoding: 'utf-8',
+        timeout: 60000,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, XDG_CONFIG_HOME: path.join(dir, 'config') },
+      });
+      expect(out.trim()).toBe(manifest.version);
+    }
   });
 });

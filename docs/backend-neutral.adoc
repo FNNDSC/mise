@@ -1,0 +1,233 @@
+= One engine, many backends: making mise's upper layers backend-neutral
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+
+[abstract]
+== Abstract
+
+mise's upper layers — the wire (`menu`), the session host (`calypso`), the engine (`brasa`) and the surface's frame (`argus`) — were built for one backend, CUBE, and in places assume it. This document designs the change that lets a second backend plug in its own commands, filesystem mounts, session, prompt, long-running steps and panes while sharing the engine, the session host, the wire and the LCARS frame. The second backend in view is a console for creating the infrastructure a CUBE is deployed onto (OpenShift on a cloud tenancy; today the Python `harbor-oci` harness), whose world has no CUBE at all.
+
+The design keeps one rule above every other: *the experience of chell, ARGUS and porter does not change*, during the work or after it. Each step is an extraction that is invisible to their users, proved by the tests that already gate every release plus two new guards.
+
+It is the outcome of issue #977 (findings verified against `main` on 2026-10-08, corrections in <<findings>>) and of a design discussion with the operator the same day. *Status: awaiting operator review. No code moves before that review.*
+
+[[promise]]
+== The promise: nothing changes for chell and ARGUS
+
+Every extraction lands as its own change, behaviour-preserving, with tests. While the work is in flight and after it is done, a chell user, an ARGUS user and a porter operator see exactly what they see today: the same commands with the same output and help, the same prompt, the same panes, the same `/proc`, the same login. A visible difference is a defect and blocks the merge.
+
+Two rules follow that are easy to miss:
+
+* *Mixed versions mean ChRIS.* During rollout a new ARGUS will attach to an older calypso (and the reverse). The attach handshake gains a backend id (<<argus>>); an absent id means the ChRIS backend, never "frame alone", or every pane would empty for anyone on mixed versions.
+* *Help and `/bin` are compared, not trusted.* Moving the command tables into a registry (<<commands>>) must not change one line of `help`, `/bin` or completion. The step that moves them carries a snapshot of today's outputs and proves them identical.
+
+[[findings]]
+== What exists today
+
+Verified against `main` at `1e1e1999`. Where the issue's text was wrong or incomplete, the correction is stated.
+
+[cols="1,1,3",options="header"]
+|===
+| Layer | Already neutral? | What the code shows
+
+| `menu` (wire)
+| yes
+| "The mise wire contract: envelope, session protocol, and result-model schemas". Depends on `zod` only. A model is `{ kind: z.string(), data: z.unknown() }`: an open kind, so a new model needs no protocol change (a surface still needs a renderer for it). One closed list worth knowing: surface kinds, `'chell' \| 'browser'`.
+
+| `calypso` (session host)
+| nearly
+| `HostedEngine` (`daemon/engine.ts`) is "deliberately engine-agnostic": `line_execute`, `line_complete` required; `line_cancel`, `file_read`/`file_write`, `regard_note`/`regard_get`, `numbering_get`, `watch_set`/`watch_release`, `ambient_listen` optional. `server.ts` (1,207 lines) uses only `HostedEngine` and menu's envelope type. *But* `daemon_launch` takes the concrete `BrasaEngine`; identity comes from cumin (`chrisContext.ChRISURL_get()`/`ChRISuser_get()`), so a non-CUBE session would always get the disconnected identity and two of them would collide on one berth; and — *the correction that matters most* — output and interaction do not go through `HostedEngine` at all: streamed output, prompts, pipes and the `!` shell travel through brasa's process-global `sink_set`/`surface_set` (`launch.ts:243-244`), and the host-control tiers live behind that surface. calypso also depends on the `argus` app only to find the bundle it serves.
+
+| `argus` (surface)
+| the frame is
+| Imports only `menu` and `orrery` (orrery is declared a devDependency though used at runtime; Vite bundles it). No direct CUBE calls — but data arrives over *two* channels: the session wire, and the daemon's same-origin HTTP route `/vfs?path=` (file reads, uploads, deliveries, image pixels); porter's door routes add logout and restart. `layout.ts` is generic. Not generic: `PaneKind` is a closed union and `PRIMARIES` is hard-coded (`app/panes.ts`); `paneChrome.ts` imports the files panel and wires the feed views; the terminal prompt strips `/api/v1`, assumes `/home/<user>`, shows PACS and proc segments; the console language (`argusLang.ts`) is ChRIS-heavy; models reach panes through an if/else chain in `main.ts` (2,908 lines). Pane *construction* already has a registry, and the empty pane's `CLAIM_BY_MODEL` table is the natural seed for model-to-pane routing. Boot blocks only on the attach handshake; a silent engine leaves the panes empty rather than hanging.
+
+| `brasa` (engine)
+| the core is, mostly
+| Parser, `;` batches, cancellation, the recorder, surface capabilities and the line loop exist and are generic; pipe and redirect parsing live in `core/preprocess.ts`, which imports cumin's `Result`/`errorStack` and a builtin. 29,986 lines in 158 files; 118 files import cumin, salsa or chili, 21 of them outside `builtins/` (dispatch, engine, preprocess, promptContext, sink, jobsState, connect, elevation, the completer, prefetch, the VFS bridge and its static providers, session, universe layout, api models). Two static tables (`ENVELOPE_HANDLERS`, `COMMAND_HANDLERS`, the second mostly a duplicate) plus a third list (`command-keys.ts`) that has drifted; no registration API. Unknown words fall through *plugin `name-vX`, the tables, a `/bin` plugin, a `/bin` pipeline, then chili* (the capture path uses another order). `engine.ts` says its cumin imports are type-only; they are not. The session is a CUBE connection and the working directory lives in cumin's per-identity context. Reference numbering is not fully generic: answer kinds are a closed DICOM list (`PAT\|STD\|SER\|FIL\|DIR`). `/proc` jobs derive from cumin's `ProcFeed`. Existing seams to build on: salsa's `provider_register`, `answerAdapter_register`, the host-installed sink and surface, cumin's `runtimeOutput_set`.
+
+| `cumin`, `salsa`, `chili`
+| no, by design
+| The ChRIS backend. `Result`/`Ok`/`Err` (`cumin/src/utils/result.ts`) and `errorStack` (`cumin/src/error/errorStack.ts`) import nothing CUBE-specific — but reach callers only through cumin's root barrel, which loads chrisapi. salsa's `VFSProvider` is a good generic shape (required `prefix`, `list`, `cp`; optional `read`, `readBinary`, `write`, `mkdir`, `rmdir`, `rename`, `linkTarget_resolve`) and its dispatcher routes by longest segment-bounded prefix — but its constructor hard-registers seven CUBE providers with CUBE files as the fallback, and `VFSItem.type` is a closed union (`dir\|file\|link\|plugin\|pipeline\|vfs\|job`). chili's `ListingItem` copies that union by hand (and differs: `tags` where `VFSItem` has `id`).
+|===
+
+Dependency direction today (runtime): menu ← cumin ← salsa ← chili ← brasa ← calypso ← chell; brasa also on menu and orrery; calypso on argus; porter on calypso and cumin. No cycles.
+
+[[decisions]]
+== Decisions
+
+Each decision was put to the operator and agreed on 2026-10-08.
+
+[[fond]]
+=== A neutral package, `fond`, below brasa and calypso
+
+`@fnndsc/fond` — *fonds de cuisine*, the base stocks a kitchen cooks everything from — holds what is generic and today lives in a ChRIS package:
+
+* `Result`, `Ok`, `Err` and `errorStack`;
+* the envelope helpers (`envelope_ok`, `envelope_error`; the envelope *type* stays menu's);
+* the VFS framework: the provider interface, a dispatcher with *no* providers built in, and an item model whose type is an open string;
+* the output sink and surface interfaces that calypso and brasa share (<<calypso>>).
+
+fond depends on nothing in `@fnndsc`. cumin, salsa and brasa depend on it; cumin keeps re-exporting what moved, so no caller breaks. menu stays the wire contract, `zod` and nothing else: runtime code does not go into it.
+
+[[chili]]
+=== Route around chili
+
+chili is debt with a deletion plan (#214): its data orchestration moves down into salsa, its rendering moves up into surface-owned renderers. This work never routes through chili and puts nothing new in it:
+
+* the neutral layers — fond, brasa's core, calypso — never depend on chili;
+* `ListingItem` moves into menu as the listing's wire model, as `docs/menu.adoc` already says, with an open item type so a backend can list its own kinds;
+* chili's other seams in brasa's core — `ls` rendering, CUBE path mapping (`pathMapper_get`, `logical_toPhysical`), `sudo`'s `elevation_run`, the `chiliCommand_run` fallback — are ChRIS-backend code and land in their #214 homes as they are extracted, never in a temporary one.
+
+#977 does not wait for #214. The two converge: both remove brasa's dependency on chili.
+
+[[one-backend]]
+=== One backend per session
+
+The engine is created with exactly one backend, a single descriptor (<<descriptor>>). A CUBE session and an infrastructure session are separate calypso daemons, each with its own berth, identity, credentials, process and host-control tiers; ARGUS can show both as two attached sessions.
+
+Mounting several backends into one session (`/cube` and `/infra` in one tree) was considered and not chosen: one process would hold a CUBE token and cloud credentials together, every command would need routing rules, and the separation of the two security postures would become a matter of discipline instead of a process boundary. Nothing in this design prevents it later if a real need appears.
+
+[[commands]]
+=== Commands: core, backend, and one registry
+
+* *Core commands* are written once against fond's VFS and work in any session: `cd`, `pwd`, `ls`, `cat`, `echo`, `cp`, `mv`, `rm`, `mkdir`, `history`, `help`, `exit`, `alias`, and the toys and games shelf (`rev`, `seq`, `cowsay`, `timer`, `figlet`, …). `ls` renders any item type; a backend contributes a type mark and colour for its own kinds.
+* *Backend commands* are everything that speaks the backend: for ChRIS, feeds, plugins and plugin instances, jobs, workflows, PACS, gather, upload and download, `dcm`.
+* *One registry.* Every command, core or backend, registers its handler, help text, argument completion and the model kinds it returns. `help`, `/bin`, completion and the pipe's "is this a builtin" test all read it. It replaces `builtins/help.ts` (2,098 lines), both dispatch tables and `command-keys.ts`.
+* *A backend never overrides a core command.* It extends through its mounts: a provider's `cp`, `write` and `read` do the backend-specific work, so `cp` means the same thing in every session. Upload and download stay explicit ChRIS commands because they cross between the host disk and CUBE.
+* The backend supplies the *fallback chain* for unknown words. For ChRIS it is today's order (plugin `name-vX`, `/bin` plugin, `/bin` pipeline, then chili until #214 removes it); the core itself answers "command not found".
+
+[[tasks]]
+=== Long-running steps: tasks
+
+"A step in progress, attach and watch" becomes a core idea instead of a ChRIS one.
+
+* A *task* has an id, a label, a state (`queued`, `running`, `done`, `failed`, `cancelled`), structured progress (menu's progress schema), start and end times, and a log tail.
+* Each backend contributes a *task source* that lists its tasks and reports when they change. The core mounts them under `/proc/<source>/`; `watch` works on any task; telemetry counts tasks; ARGUS's instruments draw them. ChRIS plugin instances are one task source; the infrastructure backend's install steps are another.
+* calypso already outlives its surfaces, so a thirty-minute step survives a closed browser and a reattach shows it where it is.
+* *Who runs a task.* CUBE runs ChRIS jobs; that backend only observes. An infrastructure step (`terraform apply`) runs on the daemon's host, so the core offers a *supervised runner*: it starts a host process, captures its log, keeps it across disconnects and cancels it. Because it executes on the host it sits behind a *new* calypso host-control tier, `tasks`, separate from `shell`, so a session can run supervised steps without also allowing arbitrary `!` commands. A CUBE session never enables it.
+
+[[calypso]]
+=== calypso hosts brasa; its CUBE and ARGUS coupling move out
+
+The second backend is a brasa backend, not a separate engine. calypso keeps hosting brasa, and:
+
+* takes identity, prompt and telemetry from the backend descriptor instead of cumin's context and CUBE-aware brasa code, so two non-CUBE daemons no longer collide on one berth;
+* types against fond's sink and surface interfaces instead of brasa's internals; `HostedEngine` stays calypso's view of the engine, completed with that output and surface seam;
+* stops depending on the `argus` app: whoever launches the daemon passes the web root (today's `CALYPSO_WEB_ROOT` made the only way); the `calypso` command may still default to ARGUS.
+
+A from-scratch second engine under calypso was considered and not chosen: it would discard the parser, pipes, redirection, the recorder, the registry and the task model, and only makes sense for a product that wants no shell.
+
+[[argus]]
+=== ARGUS: one build, the frame and its compositions
+
+* *The frame*: the layout tree, pane chrome, the terminal, the calypso client, the `/vfs` route, the listing façade, and the generic panes (view, edit, image, notes, help, games, panes, launcher, wait).
+* *A composition* is a module registered at boot. It contributes pane kinds, a model-kind-to-pane registry (seeded from `CLAIM_BY_MODEL`), primaries, console verbs, prompt segments and what the instruments show. The ChRIS composition is today's files extras, RUNS and feed views, the DAG, PACS, universe, gather and tags.
+* *Selection.* The attach handshake gains the backend's id; ARGUS mounts the matching composition. An absent id means ChRIS (<<promise>>). An id with no composition runs the frame alone — a terminal and the generic panes — rather than panes waiting for models that never come.
+* One build serves every backend, so calypso, porter and the deploy keep serving a single bundle. Per-backend bundles were considered and not chosen: they would need per-backend build and serving plumbing in three places and fork the frame's release cadence.
+
+[[descriptor]]
+== The backend descriptor
+
+A sketch, to be firmed up by the steps that build it (<<order>>); names follow the house style.
+
+[source,typescript]
+----
+/** One backend: everything a session needs that the core does not know. */
+interface Backend {
+  /** Stable id: the attach handshake carries it, ARGUS picks a composition by it. */
+  id: string;
+  /** Connects, says who the session is, and where its working directory lives. */
+  session: {
+    connect(saved: boolean): Promise<Result<SessionIdentity>>;
+    identity_get(): SessionIdentity | null;        // berth name: user@where
+    home_get(): string;                            // the default cwd
+    cwd_load(): Promise<string | null>;            // persisted per identity
+    cwd_save(path: string): Promise<void>;
+  };
+  /** Commands it registers into the core registry, and its unknown-word fallback. */
+  commands: ReadonlyArray<CommandRegistration>;
+  fallback?: (name: string, args: string[]) => Promise<CommandEnvelope | null>;
+  /** Its mounts, and the provider for paths nothing else claims. */
+  mounts: ReadonlyArray<VFSProvider>;
+  mountFallback?: VFSProvider;
+  /** Item kinds it lists: a type mark and colour for ls. */
+  itemKinds?: ReadonlyArray<ItemKindLook>;
+  /** What the prompt shows beyond cwd and exit status, and the telemetry it reports. */
+  prompt?: () => Promise<PromptSegments>;
+  telemetry?: () => TelemetrySnapshot;
+  /** What `${name}` references resolve to (ChRIS: feed, query, run, gather). */
+  references?: ReadonlyArray<ReferenceSource>;
+  /** Long-running work it can list and watch. */
+  tasks?: ReadonlyArray<TaskSource>;
+}
+----
+
+The ChRIS backend implements it with cumin, salsa and its builtins. A test backend implements it with nothing (<<tests>>).
+
+[[direction]]
+== Dependency direction after the work
+
+----
+menu          (wire: envelope, protocol, models incl. ListingItem)
+fond          (Result, errors, envelope helpers, VFS framework, sink/surface interfaces)
+  ^
+brasa core    (parser, line loop, registry, core commands, tasks)   — depends on fond, menu
+calypso       (session host)                                         — depends on fond, menu, brasa core
+  ^
+ChRIS backend (cumin, salsa, chili until #214, ChRIS builtins)       — depends on fond, menu, brasa core
+chell, porter, the calypso launcher                                  — compose brasa + a backend
+argus         (frame + compositions; one build)                      — depends on menu
+----
+
+No neutral layer depends on a backend. A backend depends on the core, never the other way round.
+
+[[order]]
+== Order of work
+
+Each step is one change or a short series, behaviour-preserving, released on its own.
+
+. *fond.* Create the package; move `Result`/`Ok`/`Err` and `errorStack` into it; cumin re-exports them.
+. *The VFS framework.* Provider interface and a provider-less dispatcher into fond; salsa registers the CUBE mounts at startup; the item type opens; `ListingItem` moves into menu.
+. *Sink and surface interfaces* into fond; calypso types against them.
+. *The command registry.* Replaces the tables, `help.ts` and `command-keys.ts`; the core registers its commands, the ChRIS backend the rest. Carries the help, `/bin` and completion snapshots (<<promise>>). The largest step.
+. *The backend descriptor.* Session, identity and working directory first; then prompt and telemetry; then reference sources. calypso takes identity from the backend.
+. *Tasks.* The task model; `/proc` mounts task sources; ChRIS plugin instances become one.
+. *calypso's web root* is injected; its dependency on the `argus` app goes.
+. *ARGUS split.* The model-to-pane registry, the ChRIS composition, the backend id in the handshake, the frame-alone fallback.
+. *The supervised runner and the `tasks` tier* — deferred until the second backend actually starts, so it is shaped by a real host-side step rather than drawn from ChRIS alone.
+
+After approval each step becomes a sub-issue of #977.
+
+[[tests]]
+== Test strategy
+
+* *Behaviour preserved.* The unit suites, the ARGUS smoke suite and the live end-to-end exemplars stay green on every change; the registry step adds the help, `/bin` and completion snapshots.
+* *A null backend in CI*, from the registry step on: brasa boots with a backend that has no commands and an in-memory filesystem, and runs the core shell — `ls`, `cd`, `cat`, pipes, redirection, `help` — without loading cumin, salsa or chili. It is the standing proof that the core is neutral, and the first place a second backend's shape is exercised.
+* *A dependency ratchet*, as the cast ratchet works today: fond imports nothing from `@fnndsc`, and the count of brasa core files (outside the ChRIS builtins) that import cumin, salsa or chili — 21 at `1e1e1999` — may only go down. A step can never quietly undo an earlier one.
+
+[[security]]
+== Two security postures, kept apart
+
+A research session holds a CUBE token. A creator session holds cloud credentials and runs `terraform` and `oc` on its host. The design keeps them apart by structure rather than by care:
+
+* *One backend per session* means one process never holds both kinds of credentials (<<one-backend>>).
+* *Host control stays per daemon.* calypso's tiers (`shell`, `files`, `pipes`, and the new `tasks`) are off by default and chosen at launch; the guard that refuses a non-loopback bind with any tier on, unless `--expose-host-control` is given, applies unchanged.
+* *The supervised runner is its own tier*, so allowing install steps does not allow arbitrary commands.
+
+[[cautions]]
+== Cautions
+
+* *An abstraction drawn from one example takes its shape.* Every interface here is drawn while only ChRIS exists ("a job" is a plugin instance, "home" is the CUBE user's home). The null backend is the first check and the second backend is the real one; expect the descriptor to change while it is written, which favours keeping the core and the second backend in one repository during that phase. Where the second backend's code finally lives is decided after this document, not in it.
+* *Refactoring a codebase that releases several times a day.* Each step is small, lands on its own and is released on its own; nothing waits on a long-lived branch.
+* *The largest step is the registry.* It touches every command. It goes first among the engine steps because every later step registers through it, and it is the one most likely to leak a visible difference — hence the snapshots.
+
+[[open]]
+== Open, decided later
+
+* Where the second backend's code lives (this repository or another) and anything about its product direction — after this document is approved, as #977 says.
+* The firm shape of the descriptor's prompt, telemetry and reference interfaces — by the steps that build them.

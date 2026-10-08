@@ -1,5 +1,11 @@
 # @fnndsc/chili
 
+## 3.7.3
+
+### Patch Changes
+
+- f6853fb: Asking chili for its version now prints the installed version and exits cleanly, through `chili --version`. It said 1.0.1 whatever was installed, then printed a CommanderError stack.
+
 ## 3.7.2
 
 ### Patch Changes

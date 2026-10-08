@@ -1,5 +1,6 @@
 /**
- * @file Bridge between salsa VFS items and chili listing view models.
+ * @file Bridge between the filesystem's items (fond's `VFSItem`) and the
+ * listing's wire model (menu's `ListingItem`).
  *
  * Kept as a leaf module (type-only imports) so consumers like wildcard
  * expansion and tab completion can use the conversion without pulling the
@@ -7,15 +8,15 @@
  *
  * @module
  */
-import type { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 import type { VFSItem } from '@fnndsc/salsa';
 
 /**
- * Converts salsa VFS items into chili listing view models.
+ * Converts filesystem items into listing items.
  *
- * The two shapes are field-identical, but ListingItem carries an index
- * signature (SimpleRecord) that VFSItem does not declare, so the bridge is a
- * real per-item copy rather than a cast.
+ * Every VFSItem field is a ListingItem field; ListingItem also carries an
+ * index signature (a backend may add fields) that VFSItem does not declare,
+ * so the bridge is a real per-item copy rather than a cast.
  *
  * @param items - Items from a vfsDispatcher listing.
  * @returns The same items as ListingItem view models.

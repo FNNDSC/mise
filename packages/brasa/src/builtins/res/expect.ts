@@ -26,7 +26,7 @@ import { duration_parse } from '../../lib/duration.js';
 
 export { duration_parse };
 import { vfs } from '../../lib/vfs/vfs.js';
-import type { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 import { cohort_read, GatherMember, GatherState } from './gather.store.js';
 import { path_physical, tagsModel_read } from './dicom.js';
 import { feedStatus_derive } from '../proc.helpers.js';

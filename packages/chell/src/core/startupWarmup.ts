@@ -48,7 +48,7 @@ import {
   type Result,
   type StackMessage,
 } from '@fnndsc/cumin';
-import type { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 import {
   procCache_refresh,
   procRoster_bootSync,

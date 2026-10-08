@@ -12,7 +12,7 @@ import { commandCancellation_enable, commandCancellation_signalGet } from '../..
 import { scan_do, type CLIscan, type ScanRecord } from '@fnndsc/chili/path/pathCommand.js';
 import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
 import type { Result, CommandEnvelope } from '@fnndsc/cumin';
-import type { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 
 /**
  * Parsed flags controlling `du` output.

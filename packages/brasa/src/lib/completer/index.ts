@@ -16,7 +16,7 @@ import {
   type PipelineManifestNode,
 } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
-import { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 import { listingItemsFromVfs_make } from '../vfs/listing.js';
 import { partialPath_split, completions_build } from './pathComplete.helpers.js';
 import { listCache_get } from '@fnndsc/cumin';

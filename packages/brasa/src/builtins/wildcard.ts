@@ -8,7 +8,7 @@
 import { minimatch } from 'minimatch';
 import { listingItemsFromVfs_make } from '../lib/vfs/listing.js';
 import { session } from '../session/index.js';
-import type { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 import { path_resolveChrisFs } from '@fnndsc/chili/utils/cli.js';
 import { vfsDispatcher } from '@fnndsc/salsa';
 import { listCache_get, Result, Ok, Err, errorStack } from '@fnndsc/cumin';

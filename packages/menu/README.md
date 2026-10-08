@@ -19,6 +19,7 @@ that line.
 | `version.ts` | `CONTRACT_VERSION` and its exact-major compatibility rule |
 | `progress.ts` | The structured-progress vocabulary |
 | `proc.ts` | Prompt-facing process-index state |
+| `listing.ts` | `ListingItem` and its schema — one listing entry, with an open `type` so a backend can list its own kinds |
 
 ## Why it is its own package
 

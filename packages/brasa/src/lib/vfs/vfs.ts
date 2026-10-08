@@ -11,7 +11,7 @@ import { session } from '../../session/index.js';
 import chalk from 'chalk';
 import * as path from 'path';
 import { ambient_publish, ambient_hasListeners } from '../../core/ambient.js';
-import { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { list_applySort } from '@fnndsc/chili/utils/sort.js';
 import { listCache_get, Result, Ok, Err, errorStack, feedTags_byFeed, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';

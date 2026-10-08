@@ -8,7 +8,7 @@
  * @module
  */
 import path from 'path';
-import type { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 
 /**
  * Splits an (already tilde-expanded) partial path into the directory to list

@@ -6,7 +6,7 @@ import * as path from 'path';
 import { context_getSingle } from '@fnndsc/salsa';
 import { SingleContext } from '@fnndsc/cumin';
 import { session } from '../session/index.js';
-import { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 
 /**

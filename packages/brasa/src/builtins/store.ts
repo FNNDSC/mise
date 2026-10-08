@@ -9,7 +9,7 @@ import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { spinner } from '../lib/spinner.js';
 import { plugin_addInteractive } from './res/plugin.js';
 import { type CommandEnvelope, envelope_ok, envelope_error, errorStack, type Result } from '@fnndsc/cumin';
-import type { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 import {
   DEFAULT_STORE_URL,
   storeUrl_get,

@@ -2,7 +2,7 @@
  * @file Unit tests for Result type utilities
  */
 
-import { Result, Ok, Err, result_isOk, result_isErr } from '../src/utils/result';
+import { Result, Ok, Err, result_isOk, result_isErr } from '../src/result';
 
 describe('Result Type', () => {
   describe('Ok()', () => {

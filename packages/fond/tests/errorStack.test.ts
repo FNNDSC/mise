@@ -1,4 +1,4 @@
-import { errorStack, errorStack_configure } from '../src/error/errorStack';
+import { errorStack, errorStack_configure } from '../src/errorStack';
 
 // Remove the mock for getCurrentFunctionName and allow the actual function to run.
 // We will adjust expectations to match the dynamic output.

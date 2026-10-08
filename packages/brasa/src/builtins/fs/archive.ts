@@ -34,7 +34,7 @@ import {
 import type { WorkflowResult } from '@fnndsc/cumin';
 import { sink_get } from '../../core/sink.js';
 import { vfs } from '../../lib/vfs/vfs.js';
-import type { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 
 /**
  * The registered pipeline that produces the archive.

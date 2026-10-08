@@ -56,13 +56,13 @@ function colorStyle_apply(text: string, style: ColorStyle): string {
  * Gets the colorized text for a file system item based on its type.
  *
  * @param name - The name of the item.
- * @param type - The type of the item ('dir', 'file', 'link', 'plugin', 'vfs').
+ * @param type - The item's type: a known kind ('dir', 'file', 'link', 'plugin', 'pipeline', 'vfs', 'job'), or any other, drawn as a plain file.
  * @param fullPath - Optional full path for special path handling.
  * @returns The colorized name with optional icon prefix.
  */
 export function fileSystemItem_colorize(
   name: string,
-  type: 'dir' | 'file' | 'link' | 'plugin' | 'pipeline' | 'vfs' | 'job',
+  type: string,
   fullPath?: string
 ): string {
   const config: ColorConfig = colorConfig_load();

@@ -1,46 +1,10 @@
 /**
- * @file Models for file system listings.
+ * @file The listing item, re-exported from `@fnndsc/menu`.
  *
- * Defines the standardized "View Model" for items appearing in `ls` lists,
- * regardless of whether they are native files, directories, or virtual plugins.
+ * A listing entry is part of the wire contract, so its shape belongs to menu
+ * (docs/menu.adoc). chili re-exports the type for the code that imports it
+ * from here.
  *
  * @module
  */
-
-import { SimpleRecord } from '@fnndsc/cumin';
-
-/**
- * Interface representing a rich file system item.
- * Contains all metadata required for various views (Grid, Long, JSON).
- */
-export interface ListingItem extends SimpleRecord {
-  /** The display name of the item. */
-  name: string;
-  
-  /** The type of the item. */
-  type: 'dir' | 'file' | 'link' | 'plugin' | 'pipeline' | 'vfs' | 'job';
-  
-  /** Size in bytes. */
-  size: number;
-  
-  /** Username of the owner. */
-  owner: string;
-  
-  /** Creation date (ISO string). */
-  date: string;
-  
-  /** Target path (for links). */
-  target?: string;
-
-  /** Version string (for plugins). */
-  version?: string;
-
-  /** A feed's tags, when the listing shows them (`ls -l` over feeds). */
-  tags?: string[];
-
-  /** Title or description (for feeds, plugin instances). */
-  title?: string;
-
-  /** Execution status (for job type items). */
-  status?: string;
-}
+export type { ListingItem } from '@fnndsc/menu';

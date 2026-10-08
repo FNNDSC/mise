@@ -18,7 +18,7 @@ import {
   type CommandEnvelope,
   type StackMessage,
 } from '@fnndsc/cumin';
-import { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 import chalk from 'chalk';
 import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';

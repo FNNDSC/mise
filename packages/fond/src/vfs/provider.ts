@@ -18,8 +18,12 @@ export interface VFSItem {
   /** The display name of the item. */
   name: string;
   
-  /** The type of the item. */
-  type: "dir" | "file" | "link" | "plugin" | "pipeline" | "vfs" | "job";
+  /**
+   * What the item is: `dir`, `file`, `link` or `vfs` (a mount), or a kind a
+   * backend lists beside them. An open string: a consumer handles the kinds it
+   * knows and treats any other as a plain entry.
+   */
+  type: string;
   
   /** Size in bytes. */
   size: number;

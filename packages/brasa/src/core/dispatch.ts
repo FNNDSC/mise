@@ -127,7 +127,7 @@ import {
   pathnameExpansion_isEligible,
   type RedirectInfo,
 } from './preprocess.js';
-import { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 import { chiliCommand_run, chiliCommand_exists, chiliDelegationNotice_build } from './chiliDelegate.js';
 
 export { chiliCommand_run };

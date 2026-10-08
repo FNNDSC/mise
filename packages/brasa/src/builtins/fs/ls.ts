@@ -7,7 +7,7 @@ import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
 import { listCache_get, type CommandEnvelope } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
 import { vfs } from '../../lib/vfs/vfs.js';
-import type { ListingItem } from '@fnndsc/chili/models/listing.js';
+import type { ListingItem } from '@fnndsc/menu';
 
 /** Valid sort fields for ls. */
 type LsSortField = 'name' | 'size' | 'date' | 'owner';

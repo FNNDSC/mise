@@ -84,9 +84,9 @@ This is link:principles.adoc#degradation[Principle 0] expressed in the wire form
 
 Not thirty bespoke listing kinds. One, whose items carry a type discriminator.
 
-The discriminator already exists: `ListingItem` in `packages/chili/src/models/listing.ts` has `type: 'dir' | 'file' | 'link' | 'plugin' | 'pipeline' | 'vfs' | 'job'`, with `version?` for plugins and `target?` for links. A second `res.listing` vocabulary would have duplicated it — two model shapes for one fact, which is the second-API failure arriving with a schema.
+The discriminator is `ListingItem.type` (`packages/menu/src/listing.ts`): an open string, where `dir`, `file`, `link` and `vfs` are the kinds every filesystem lists (`LISTING_ITEM_KINDS`) and a backend lists its own beside them — ChRIS lists `plugin`, `pipeline` and `job` — with `version?` for a versioned entry and `target?` for a link. A second `res.listing` vocabulary would have duplicated it — two model shapes for one fact, which is the second-API failure arriving with a schema.
 
-`ListingItem` lives in `chili`, which issue #214 dissolves into `salsa`. Moving it into `menu` is convergent with that work rather than in conflict with it.
+`ListingItem` is menu's, with its schema `listingItemSchema`, because a listing entry is part of the wire contract; chili re-exports the type.
 
 Composition, not subtyping: `baseSchema.extend({ … })` for authoring, but parsing must remain open, because an unknown variant has to render generically rather than fail.
 

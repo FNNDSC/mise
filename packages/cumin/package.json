@@ -38,7 +38,12 @@
       "types": "./dist/output/runtimeOutput.d.ts",
       "require": "./dist/output/runtimeOutput.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./login-failure": {
+      "import": "./dist/connect/loginFailure.js",
+      "types": "./dist/connect/loginFailure.d.ts",
+      "require": "./dist/connect/loginFailure.js"
+    }
   },
   "scripts": {
     "build": "rm -fr dist types && tsc && chmod +x ./dist/cli.js",

@@ -12,6 +12,7 @@
 import { folderLookup_memoize } from '../filebrowser/folderMemo';
 import { requestLedger_start } from '../net/requestLedger';
 import { Client, authToken_get as adapterAuthToken_get, client_create } from "../chrisapi/adapter.js";
+import { loginFailure_diagnose, loginFailure_lines, urlProbe, type LoginFailure } from "./loginFailure.js";
 import { ConnectionConfig, config_init, connectionConfig } from "../config/config.js";
 import {
   chrisContextURL_parse,
@@ -117,6 +118,9 @@ export class ChRISConnection {
    * @param config - The connection configuration object.
    * @param storageProvider - The storage provider for persistence.
    */
+  /** How a failed login asks the network what happened; a test stands one in. */
+  public loginProbe: (url: string) => Promise<string | null> = urlProbe;
+
   init(config: ConnectionConfig, storageProvider: IStorageProvider) {
     this._config = config;
     this.storageProvider = storageProvider;
@@ -156,19 +160,11 @@ export class ChRISConnection {
         return null;
       }
     } catch (error: unknown) {
-      console.error(
-        "\nSome error seems to have been thrown while attempting to log in."
-      );
-      console.error(
-        "If the ChRIS CUBE is reachable, then it's quite possible this means"
-      );
-      console.error(
-        "an incorrect login. Please check your login credentials carefully."
-      );
-      console.error(
-        "Also, if your password has 'special' character, make sure how you"
-      );
-      console.error("are specifying it is compatible with your shell!");
+      // The real cause, said as what it is: only CUBE's refusal blames the
+      // credentials; an untrusted certificate or an unreachable host says so (#965).
+      const failure: LoginFailure = await loginFailure_diagnose(error, authUrl, this.loginProbe);
+      console.error('');
+      for (const line of loginFailure_lines(failure, url)) console.error(line);
       console.error("\nExiting to system with code 1...");
       if (debug) {
         throw error;
@@ -202,6 +198,10 @@ export class ChRISConnection {
     try {
       await client.getUser();
     } catch (error: unknown) {
+      const failure: LoginFailure = await loginFailure_diagnose(error, url, this.loginProbe);
+      if (failure.kind === 'tls' || failure.kind === 'network') {
+        return { connected: false, reason: loginFailure_lines(failure, url).join(' ') };
+      }
       const reason: string = error instanceof Error ? error.message : String(error);
       return { connected: false, reason: `${url} refused the token for ${user}: ${reason}` };
     }
@@ -378,7 +378,16 @@ export class ChRISConnection {
     const url: string | null = await this.chrisURL_get();
     if (!url) throw new Error('Not connected to ChRIS. Run connect first.');
 
-    const token: string = await adapterAuthToken_get(`${url}auth-token/`, credentials.username, credentials.password);
+    let token: string;
+    try {
+      token = await adapterAuthToken_get(`${url}auth-token/`, credentials.username, credentials.password);
+    } catch (error: unknown) {
+      // A refusal is the credentials' to answer for; a certificate or a
+      // network failure says what it is instead (#965).
+      const failure: LoginFailure = await loginFailure_diagnose(error, `${url}auth-token/`, this.loginProbe);
+      if (failure.kind === 'tls' || failure.kind === 'network') throw new Error(loginFailure_lines(failure, url).join(' '));
+      throw error;
+    }
     const elevatedClient: Client = client_create(url, token);
     return await this.elevatedClientContext.run(elevatedClient, operation);
   }

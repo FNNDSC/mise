@@ -61,8 +61,18 @@ const config_make = (): ConnectionConfig => ({
   chrisURL_load: jest.fn(async () => 'https://cube/api/v1/'),
 } as unknown as ConnectionConfig);
 
-const connection_make = (store: FakeStore): ChRISConnection =>
-  new ChRISConnection(config_make(), storage_make(store));
+const connection_make = (store: FakeStore, probed: string | null = null): ChRISConnection => {
+  const conn: ChRISConnection = new ChRISConnection(config_make(), storage_make(store));
+  // A failed login asks the network once; here the network says what the test says.
+  conn.loginProbe = async (): Promise<string | null> => probed;
+  return conn;
+};
+
+/** chrisapi's error for a request with no response: the network's code is gone. */
+const noResponse = (): Error => Object.assign(new Error('No server response!'), { request: {} });
+
+/** What the operator read on stderr. */
+const said = (): string => errSpy.mock.calls.map((call: unknown[]) => String(call[0])).join('\n');
 
 let logSpy: jest.SpyInstance;
 let errSpy: jest.SpyInstance;
@@ -117,6 +127,51 @@ describe('connection_connect', () => {
     })).rejects.toThrow('EXIT');
     expect(exitSpy).toHaveBeenCalledWith(1);
     exitSpy.mockRestore();
+  });
+});
+
+describe('a failed login says what failed (#965)', () => {
+  const login = async (conn: ChRISConnection): Promise<void> => {
+    const exitSpy: jest.SpyInstance = jest.spyOn(process, 'exit').mockImplementation((() => { throw new Error('EXIT'); }) as never);
+    await expect(conn.connection_connect({ user: 'chris', password: 'pw', debug: false, url: 'https://cube.example.org/api/v1/' })).rejects.toThrow('EXIT');
+    exitSpy.mockRestore();
+  };
+
+  it('an untrusted certificate names the certificate and NODE_EXTRA_CA_CERTS, never the credentials', async () => {
+    mockAuthToken.mockRejectedValue(noResponse());
+    await login(connection_make({ files: {} }, 'SELF_SIGNED_CERT_IN_CHAIN'));
+    expect(said()).toMatch(/TLS certificate of cube\.example\.org is not trusted \(SELF_SIGNED_CERT_IN_CHAIN\)/);
+    expect(said()).toContain('NODE_EXTRA_CA_CERTS');
+    expect(said()).not.toMatch(/password|credentials|NODE_TLS_REJECT_UNAUTHORIZED/);
+  });
+
+  it('an unreachable CUBE says it could not be reached', async () => {
+    mockAuthToken.mockRejectedValue(noResponse());
+    await login(connection_make({ files: {} }, 'ENOTFOUND'));
+    expect(said()).toMatch(/Could not reach https:\/\/cube\.example\.org\/api\/v1\/ \(ENOTFOUND\)/);
+  });
+
+  it('CUBE refusing the credentials still blames the credentials, without asking the network', async () => {
+    mockAuthToken.mockRejectedValue(Object.assign(new Error('Unable to log in with provided credentials.'), { response: { status: 400 } }));
+    const conn: ChRISConnection = connection_make({ files: {} });
+    const probe: jest.Mock = jest.fn(async () => null);
+    conn.loginProbe = probe;
+    await login(conn);
+    expect(said()).toMatch(/refused the login \(HTTP 400\): the username or password is not right/);
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+  it('anything else prints the error itself', async () => {
+    mockAuthToken.mockRejectedValue(new Error('CUBE is in maintenance'));
+    await login(connection_make({ files: {} }, null));
+    expect(said()).toContain('Could not log in to https://cube.example.org/api/v1/: CUBE is in maintenance');
+  });
+
+  it('a token login that meets a certificate problem says so instead of "refused the token"', async () => {
+    mockClientCreate.mockReturnValue({ getUser: jest.fn(async () => { throw noResponse(); }) });
+    const outcome = await connection_make({ files: {} }, 'CERT_HAS_EXPIRED').connection_connectWithToken({ user: 'chris', url: 'https://cube.example.org/api/v1/', token: 'T' });
+    expect(outcome.connected).toBe(false);
+    expect((outcome as { reason: string }).reason).toMatch(/not trusted \(CERT_HAS_EXPIRED\)/);
   });
 });
 

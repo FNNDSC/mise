@@ -8,6 +8,7 @@
  *
  * @module
  */
+import { loginFailure_classify, loginFailure_lines, type LoginFailure } from '@fnndsc/cumin/login-failure';
 
 /** What CUBE said to a login. */
 export interface TokenMint {
@@ -43,6 +44,10 @@ export async function cubeToken_mint(
       body: JSON.stringify({ username, password }),
     });
   } catch (error: unknown) {
+    // fetch nests the network's word under `cause`: an untrusted certificate
+    // or an unreachable host says so, as chell's login does (#965).
+    const failure: LoginFailure = loginFailure_classify(error);
+    if (failure.kind === 'tls' || failure.kind === 'network') return { token: null, reason: loginFailure_lines(failure, cubeUrl).join(' ') };
     return { token: null, reason: `CUBE unreachable: ${error instanceof Error ? error.message : String(error)}` };
   }
   if (!response.ok) {

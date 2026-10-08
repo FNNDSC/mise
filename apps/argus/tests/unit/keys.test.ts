@@ -55,6 +55,7 @@ function host_make(overrides: Partial<KeyHooks> = {}, flags: { paletteOpen?: boo
     drawers_close: (): boolean => { const was: boolean = !drawer.hidden; drawer.hidden = true; if (was) r.closed += 1; return was; },
     modeFrames_close: (): boolean => false,
     consoleFocused: (): boolean => false,
+    console_release: (): void => {},
     verbs: { bar_note: (): void => {}, flip: (): string => 'flipped', resize: (): string => 'resized' },
     host: (): ArgusHost => ({ focused_get: (): string | null => focus, focus_set: (id: string): boolean => { focus = id; r.focused.push(id); return true; }, panes_shown: (): string[] => shown } as unknown as ArgusHost),
     stage_alone: (id: string): void => { r.alone.push(id); },
@@ -145,5 +146,97 @@ describe('keys_wire', () => {
     press('b', { ctrlKey: true });
     expect(host.drawer.hidden).toBe(true);
     expect(host.r.paletteOpened).toBe(1);
+  });
+
+  describe('the keys reach the frame and the rows (a-frame-is-reachable-by-keys)', () => {
+    // jsdom lays nothing out: every element counts as shown for these.
+    const shown = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetParent');
+    beforeEach((): void => {
+      Object.defineProperty(HTMLElement.prototype, 'offsetParent', { configurable: true, get(): Element | null { return document.body; } });
+      // Nor does it scroll.
+      HTMLElement.prototype.scrollIntoView ??= function scrollIntoView(): void {};
+    });
+    afterEach((): void => { if (shown !== undefined) Object.defineProperty(HTMLElement.prototype, 'offsetParent', shown); });
+
+    const pane_fill = (): { rows: HTMLElement[]; verbs: HTMLButtonElement[] } => {
+      const mount: HTMLElement = document.getElementById('pane-files') as HTMLElement;
+      mount.classList.add('workspace-pane');
+      mount.insertAdjacentHTML('beforeend', '<div class="listing"><div class="listing-row" data-k="a"><span class="listing-control">▶</span>a</div><div class="listing-row" data-k="b">b</div><div class="listing-row" data-k="c">c</div></div><div class="mode-frame"><button>LIST</button><button>HOME</button></div>');
+      return { rows: [...mount.querySelectorAll<HTMLElement>('.listing-row')], verbs: [...mount.querySelectorAll<HTMLButtonElement>('.mode-frame button')] };
+    };
+
+    it('the arrows move a row cursor over the focused pane\'s listing, Home and End to the ends', () => {
+      const host = host_make();
+      detach = host.detach;
+      const { rows } = pane_fill();
+      expect(press('ArrowDown').defaultPrevented).toBe(true);
+      expect(rows[0]?.classList.contains('listing-cursor')).toBe(true);
+      press('ArrowDown');
+      expect(rows.map((row) => row.classList.contains('listing-cursor'))).toEqual([false, true, false]);
+      press('End');
+      expect(rows[2]?.classList.contains('listing-cursor')).toBe(true);
+      press('Home');
+      expect(rows[0]?.classList.contains('listing-cursor')).toBe(true);
+    });
+
+    it('Enter presses the row; on an indicated row it goes, through the control cell where there is one', () => {
+      const host = host_make();
+      detach = host.detach;
+      const { rows } = pane_fill();
+      const seen: string[] = [];
+      rows[0]?.addEventListener('click', (event: Event): void => { seen.push((event.target as HTMLElement).classList.contains('listing-control') ? 'control' : 'row'); });
+      rows[1]?.addEventListener('dblclick', (): void => { seen.push('go b'); });
+      press('ArrowDown');
+      press('Enter');
+      expect(seen).toEqual(['row']);
+      rows[0]?.classList.add('listing-indicated');
+      press('Enter');
+      expect(seen).toEqual(['row', 'control']);
+      press('ArrowDown');
+      rows[1]?.classList.add('listing-indicated');
+      press('Enter');
+      expect(seen).toEqual(['row', 'control', 'go b']);
+    });
+
+    it('→ takes the keys into the frame, the arrows walk its verbs, ← gives them back', () => {
+      const host = host_make();
+      detach = host.detach;
+      const { verbs } = pane_fill();
+      press('ArrowRight');
+      expect(document.activeElement).toBe(verbs[0]);
+      expect((document.getElementById('pane-files') as HTMLElement).dataset['modes']).toBe('open');
+      press('ArrowDown');
+      expect(document.activeElement).toBe(verbs[1]);
+      press('ArrowLeft');
+      expect(document.activeElement).toBe(document.body);
+    });
+
+    it('Ctrl-B r enters the frame; Ctrl-B & closes every pane', () => {
+      const host = host_make();
+      detach = host.detach;
+      const { verbs } = pane_fill();
+      host.drawer.hidden = false;
+      press('r');
+      expect(document.activeElement).toBe(verbs[0]);
+      (document.activeElement as HTMLElement).blur();
+      host.drawer.hidden = false;
+      press('&');
+      expect(host.r.lines).toEqual(['pane close all']);
+    });
+
+    it('a key aimed at a line or a button is left to it; Esc gives a pane\'s line back to the stage', () => {
+      const host = host_make();
+      detach = host.detach;
+      const { rows } = pane_fill();
+      const input: HTMLInputElement = document.createElement('input');
+      (document.getElementById('pane-files') as HTMLElement).append(input);
+      input.focus();
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+      expect(rows.some((row) => row.classList.contains('listing-cursor'))).toBe(false);
+      press('Escape');
+      expect(document.activeElement).toBe(document.body);
+      press('ArrowDown');
+      expect(rows[0]?.classList.contains('listing-cursor')).toBe(true);
+    });
   });
 });

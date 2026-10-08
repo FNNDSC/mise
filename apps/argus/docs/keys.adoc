@@ -26,6 +26,7 @@ Ctrl-B is the prefix: it opens the focused pane's drawer with keyboard focus on 
 | `Space` | flip this pane's split: beside becomes above (tmux next layout)
 | `!` | break this pane out: alone on stage, the rest a PANES card (tmux)
 | `Ctrl-←↑↓→` | move the boundary beside this pane a step (tmux)
+| `&` | close every pane on the stage (tmux kill-window)
 |===
 
 == The next split
@@ -56,6 +57,7 @@ Ctrl-B is the prefix: it opens the focused pane's drawer with keyboard focus on 
 | `o` | focus the next pane (tmux)
 | `;` | focus the last pane (tmux)
 | `q` | show every pane's @id on its bar (tmux)
+| `r` | the keys into this pane's frame: Tab or ↑↓ walk its verbs, Enter presses, ← or Esc leaves
 | `O` | focus the previous pane
 | `←↑↓→` | focus the pane in that direction (tmux)
 |===

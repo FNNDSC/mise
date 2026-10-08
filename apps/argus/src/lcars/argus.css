@@ -7154,3 +7154,10 @@ body[data-zoom] #header-strip {
   outline: 2px solid var(--butter);
   outline-offset: 2px;
 }
+
+/* The row cursor the keys move (app/keys.ts): a ring, so it reads over an
+   indicated row and a plain one alike. */
+.listing-row.listing-cursor {
+  outline: 2px solid var(--butter);
+  outline-offset: -2px;
+}

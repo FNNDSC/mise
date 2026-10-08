@@ -1,13 +1,15 @@
 /**
- * @file VFS Provider contracts and item interfaces.
+ * @file The virtual filesystem's contracts: a mount (provider), the items it
+ * lists, and the options a copy takes.
  *
- * Defines the standard VFSItem, CpOptions, and VFSProvider interfaces
- * to support extensible virtual file systems.
+ * A session's filesystem is a tree of mounts. Each provider claims a path
+ * prefix and answers for everything at or under it; whatever no provider
+ * claims goes to the dispatcher's fallback (see `dispatcher.ts`).
  *
  * @module
  */
 
-import { Result } from "@fnndsc/cumin";
+import { Result } from "../result.js";
 
 /**
  * Standard interface representing a virtual file system item.
@@ -34,7 +36,7 @@ export interface VFSItem {
   /** Version string (for plugins). */
   version?: string;
   
-  /** Title or description (for feeds, queries). */
+  /** Title or description, when the item has one. */
   title?: string;
 
   /** Backing resource ID, when the virtual entry represents one. */
@@ -56,7 +58,7 @@ export interface CpOptions {
  * Base contract that every Virtual File System Provider must implement.
  */
 export interface VFSProvider {
-  /** The path prefix this provider matches (e.g. '/pacs', '/bin', '/'). */
+  /** The path prefix this provider matches (e.g. '/net/pacs', '/bin'); empty for a fallback. */
   prefix: string;
 
   /**
@@ -98,8 +100,8 @@ export interface VFSProvider {
   readBinary?(path: string): Promise<Result<Buffer>>;
 
   /**
-   * Writes a file whole, when the provider holds writable files (a feed's
-   * note under /proc). Absent or false, the path is read-only.
+   * Writes a file whole, when the provider holds writable files (a note).
+   * Absent or false, the path is read-only.
    *
    * @param path - The absolute path of the file.
    * @param content - The new content, whole.
@@ -109,7 +111,7 @@ export interface VFSProvider {
 
   /**
    * Makes a folder, when the provider's folders are things a user makes (a
-   * tag under /proc/tags). Absent, the provider is read-only for mkdir.
+   * tag). Absent, the provider is read-only for mkdir.
    * @param path - The absolute path of the new folder.
    * @returns True when made; false with the reason stacked.
    */

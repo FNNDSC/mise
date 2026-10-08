@@ -15,6 +15,6 @@ export default {
   coverageProvider: 'babel',
   coverageThreshold: {
     // Measured when the files moved from cumin (2026-10-08); a ratchet, raise as coverage improves.
-    global: { statements: 89, branches: 64, functions: 87, lines: 89 },
+    global: { statements: 92, branches: 79, functions: 92, lines: 91 },
   },
 };

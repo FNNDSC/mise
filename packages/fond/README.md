@@ -21,6 +21,9 @@ fond's one rule: **it depends on nothing in `@fnndsc`**. CI holds it to that (`n
 | `Result<T>`, `Ok`, `Err`, `result_isOk`, `result_isErr` | An explicit success-or-failure value. A function returns `Result<T>` rather than `T \| null`, and TypeScript will not let a caller read `.value` until it has checked `.ok`. |
 | `errorStack` | The process-wide message stack that failures are reported on, with context-isolated scopes and checkpoints. |
 | `errorStack_configure`, `errorStack_getAllOfType`, `StackMessage` | Configuration, a convenience reader, and the message type. |
+| `VFSProvider`, `VFSItem`, `CpOptions` | The virtual filesystem's contracts: a mount that claims a path prefix and lists, copies and (optionally) reads, writes, makes, removes and renames under it; the items it lists. |
+| `VFSDispatcher` | Routes each filesystem request to the mount that owns the path, or to a fallback. It knows no backend: a backend registers its mounts and names its fallback. |
+| `vfsItems_sort` | Sorts a listing's items by name, size, date or owner without changing the array given. |
 
 ## Using `Result`
 
@@ -78,6 +81,23 @@ const reasons: StackMessage[] = errorStack.checkpoint_drain(mark);
 ```
 
 `errorStack_configure({ functionNamePadWidth })` sets how wide the function-name stamp is padded.
+
+## The virtual filesystem
+
+A session's filesystem is a tree of mounts. Each mount (a `VFSProvider`) claims a path prefix and answers for everything at or under it; the longest prefix that matches at a segment boundary wins, so `/proc/jobs` takes precedence over `/proc`, and `/procs` is not under `/proc`. A path no mount claims goes to the fallback.
+
+```typescript
+import { VFSDispatcher, type VFSProvider } from '@fnndsc/fond';
+
+const dispatcher: VFSDispatcher = new VFSDispatcher(filesFallback);   // what no mount claims
+dispatcher.provider_register(notesMount);                             // prefix '/notes'
+dispatcher.provider_register(jobsMount);                              // prefix '/proc/jobs'
+
+await dispatcher.list('/proc');        // the mounts beneath it ('jobs'), beside what the fallback holds there
+await dispatcher.read('/notes/today'); // notesMount.read('/notes/today')
+```
+
+Every operation a mount does not offer is refused by name (`mkdir: cannot create directory '/x': Read-only file system`), never silently ignored. A dispatcher built without a fallback refuses any path no mount claims, rather than answering with an empty folder. `pathResolver_register` adds a hook that maps a path to the fallback's own form before the fallback sees it; a copy whose path cannot be resolved fails rather than guessing.
 
 ## One instance, whoever loads it
 

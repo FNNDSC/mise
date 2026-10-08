@@ -1,5 +1,5 @@
 /**
- * @file Non-destructive sorting helper for VFS items.
+ * @file Sorting a listing's items by a field, without changing the array given.
  *
  * @module
  */

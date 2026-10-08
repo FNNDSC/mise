@@ -13,6 +13,18 @@ import * as THREE from 'three';
 import { NEBULA_OPACITY, THREAD_OPACITY } from './constants.js';
 import { nebulaTexture_get } from './nebula.js';
 import { starLayer_make, starScale_of, type StarEntry, type StarLayer } from './stars.js';
+import { lineMaterial_make, lineWave_set } from './tubes.js';
+
+/**
+ * The wave the threads carry, one entry a thread: its mode (0 rests, 1
+ * streams into a live stage, 2 replays a finished run), when it sets off
+ * into the replay's cycle, and that cycle.
+ */
+export interface ThreadWave {
+  modes: ReadonlyArray<number>;
+  starts: ReadonlyArray<number>;
+  cycle: number;
+}
 
 /** A cluster's nebula: whose it is, where, how far it reaches. */
 export interface Nebula {
@@ -30,6 +42,8 @@ export class StarField {
   private materials: THREE.ShaderMaterial[] = [];
   private layers: Array<{ alpha: THREE.BufferAttribute; base: Float32Array; flash: THREE.BufferAttribute }> = [];
   private threads: { attribute: THREE.BufferAttribute; base: Float32Array; ends: ReadonlyArray<string> } | null = null;
+  /** The threads' wave material, on the scene's clock; null when they carry none. */
+  private threadMaterial: THREE.ShaderMaterial | null = null;
   /** Each nebula's sprite and resting opacity, by its cluster's id. */
   private nebulaSprites: Map<string, { material: THREE.SpriteMaterial; base: number }> = new Map();
   /** Every star of a node, by id; built when first asked. */
@@ -118,17 +132,44 @@ export class StarField {
    * @param colors - Their colours, six numbers a segment.
    * @param ends - The nodes each segment joins, two ids a segment: a thread
    *   shows in a replay only once both have arrived. Optional.
+   * @param wave - The wave each thread carries, as a tube would; without
+   *   one the threads rest. The fades above dim the wave with the thread.
    */
-  public threads_draw(positions: ReadonlyArray<number>, colors: ReadonlyArray<number>, ends: ReadonlyArray<string> = []): void {
+  public threads_draw(positions: ReadonlyArray<number>, colors: ReadonlyArray<number>, ends: ReadonlyArray<string> = [], wave?: ThreadWave): void {
     if (positions.length === 0) return;
     const geometry: THREE.BufferGeometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions as number[], 3));
     const attribute: THREE.Float32BufferAttribute = new THREE.Float32BufferAttribute(colors as number[], 3);
-    geometry.setAttribute('color', attribute);
     this.threads = { attribute, base: Float32Array.from(colors), ends };
-    this.parent.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({
-      vertexColors: true, transparent: true, opacity: THREAD_OPACITY, blending: THREE.AdditiveBlending, depthWrite: false,
-    })));
+    if (wave === undefined) {
+      geometry.setAttribute('color', attribute);
+      this.parent.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({
+        vertexColors: true, transparent: true, opacity: THREAD_OPACITY, blending: THREE.AdditiveBlending, depthWrite: false,
+      })));
+      return;
+    }
+    // The same attribute the fades write, read by the wave shader.
+    geometry.setAttribute('aColor', attribute);
+    lineWave_set(geometry, wave.modes, wave.starts);
+    this.threadMaterial = lineMaterial_make(wave.cycle, { tint: 1, opacity: THREAD_OPACITY, additive: true });
+    const lines: THREE.LineSegments = new THREE.LineSegments(geometry, this.threadMaterial);
+    lines.frustumCulled = false;
+    this.parent.add(lines);
+  }
+
+  /**
+   * Moves the threads' wave on to this frame's time.
+   *
+   * @param now - This frame's time.
+   */
+  public frame(now: number): void {
+    const time = this.threadMaterial?.uniforms['time'];
+    if (time !== undefined) time.value = now;
+  }
+
+  /** Whether the threads carry the wave (a readout and a test ask). */
+  public threadsCarryWave(): boolean {
+    return this.threadMaterial !== null;
   }
 
   /**
@@ -205,6 +246,7 @@ export class StarField {
     this.materials = [];
     this.layers = [];
     this.threads = null;
+    this.threadMaterial = null;
     this.nebulaSprites = new Map();
     this.starsById = null;
     this.starsTouched = false;

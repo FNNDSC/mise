@@ -1,5 +1,13 @@
 # @fnndsc/porter
 
+## 0.6.4
+
+### Patch Changes
+
+- eb43996: The door and the daemon now say their version, through `porter --version` and `calypso --version` (or `-V`). porter prints its own version and the brasa, calypso and chell it would start sessions on; calypso prints its stack, as `chell --version` does.
+- Updated dependencies [eb43996]
+  - @fnndsc/calypso@0.19.8
+
 ## 0.6.3
 
 ### Patch Changes

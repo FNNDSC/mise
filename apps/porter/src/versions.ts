@@ -57,3 +57,29 @@ export function berth_behind(berth: Berth, installed: Record<string, string>): s
   }
   return behind;
 }
+
+/**
+ * What `porter --version` says: the door's own version, then the session
+ * code it serves (brasa, calypso, chell) — the code a login would put a
+ * daemon on, and so whether a session older than it restarts. One aligned
+ * `name  version` line each, as `chell --version` prints its stack.
+ *
+ * @param installed - What the door ships, from {@link installed_read}.
+ * @param own - The door's version; read from its package by default.
+ * @returns The report.
+ */
+export function versionReport_build(installed: Record<string, string> = installed_read(), own: string = porterVersion_read()): string {
+  const rows: Array<[string, string]> = [['porter', own], ...Object.entries(installed)];
+  const width: number = Math.max(...rows.map(([name]: [string, string]): number => name.length));
+  return rows.map(([name, version]: [string, string]): string => `${name.padEnd(width)}  ${version}`).join('\n');
+}
+
+/** The door's own version, from its package.json (one level above dist/ and src/). */
+export function porterVersion_read(): string {
+  try {
+    const manifest = createRequire(import.meta.url)('../package.json') as { version?: unknown };
+    return typeof manifest.version === 'string' ? manifest.version : 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}

@@ -13,7 +13,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
-import { engine_create, sessionConnect_fromSaved, type BrasaEngine, type SavedSessionResult } from '@fnndsc/brasa';
+import { engine_create, sessionConnect_fromSaved, versionReport_build, type BrasaEngine, type SavedSessionResult } from '@fnndsc/brasa';
 import chalk from 'chalk';
 import { daemon_launch, type DaemonLaunchInfo } from './daemon/launch.js';
 import { daemonConsole_run } from './daemon/consoleSession.js';
@@ -88,7 +88,9 @@ try {
 }
 
 if (isMain) {
-  // One flag, not a subcommand grammar: this binary hosts a daemon, and the
-  // only other thing anyone needs from it is where the running ones are.
-  void (process.argv.includes('--berths') ? berths_print() : calypso_start());
+  // Two flags, not a subcommand grammar: this binary hosts a daemon, and the
+  // only other things anyone needs from it are where the running ones are
+  // and what code it would run (the stack, as `chell --version` prints it).
+  if (process.argv.includes('--version') || process.argv.includes('-V')) console.log(versionReport_build());
+  else void (process.argv.includes('--berths') ? berths_print() : calypso_start());
 }

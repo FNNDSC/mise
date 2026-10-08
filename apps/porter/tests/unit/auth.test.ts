@@ -35,4 +35,16 @@ describe('cubeToken_mint', () => {
     const down: FetchLike = jest.fn(async () => { throw new Error('ECONNREFUSED'); }) as unknown as FetchLike;
     expect((await cubeToken_mint('https://cube/api/v1/', 'chris', 'pw', down)).reason).toBe('CUBE unreachable: ECONNREFUSED');
   });
+
+  it('names an untrusted certificate and NODE_EXTRA_CA_CERTS, as fetch reports it (the code under cause) (#965)', async () => {
+    const tls: FetchLike = jest.fn(async () => { throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('self-signed certificate in certificate chain'), { code: 'SELF_SIGNED_CERT_IN_CHAIN' }) }); }) as unknown as FetchLike;
+    const reason: string = (await cubeToken_mint('https://cube.example.org/api/v1/', 'chris', 'pw', tls)).reason ?? '';
+    expect(reason).toMatch(/TLS certificate of cube\.example\.org is not trusted \(SELF_SIGNED_CERT_IN_CHAIN\)/);
+    expect(reason).toContain('NODE_EXTRA_CA_CERTS');
+  });
+
+  it('says a host that does not resolve cannot be reached, with the code', async () => {
+    const dns: FetchLike = jest.fn(async () => { throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('getaddrinfo ENOTFOUND cube.example.org'), { code: 'ENOTFOUND' }) }); }) as unknown as FetchLike;
+    expect((await cubeToken_mint('https://cube.example.org/api/v1/', 'chris', 'pw', dns)).reason).toMatch(/Could not reach https:\/\/cube\.example\.org\/api\/v1\/ \(ENOTFOUND\)/);
+  });
 });

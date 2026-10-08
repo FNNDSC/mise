@@ -4,7 +4,7 @@
 #
 #   make deploy                 publish via the Version Packages PR, then install
 #   make deploy HOSTS=pangea    one host only (pangea | titan | "pangea titan")
-#   make deploy SKIP_PUBLISH=1  the release is already on npm: install only
+#   make deploy SKIP_PUBLISH=1  published already: waits out main's release run, then installs
 #
 # Rules (2026-10-05, after a reinstall left both hosts empty for minutes):
 #   1. every bumped package is verified on npm — the exact version — before any
@@ -34,6 +34,18 @@ if [ -z "$SKIP_PUBLISH" ]; then
   run=$(gh run list --workflow release.yml --limit 1 --json databaseId --jq '.[0].databaseId')
   gh run watch "$run" --exit-status >/dev/null 2>&1 || die "release run $run did not succeed"
   say "release run $run: success"
+else
+  # Published elsewhere (make publish a moment ago), its release run may still
+  # be pushing to npm: wait it out rather than give up on the registry first
+  # (2026-10-07: the npm wait timed out under a release run still in flight).
+  git fetch -q origin
+  head=$(git rev-parse origin/main)
+  run=$(gh run list --workflow release.yml --limit 10 --json databaseId,headSha --jq "[.[] | select(.headSha == \"$head\")][0].databaseId // empty" 2>/dev/null || true)
+  if [ -n "$run" ]; then
+    say "release run $run for main's head: waiting for it to finish"
+    gh run watch "$run" --exit-status >/dev/null 2>&1 || die "release run $run did not succeed"
+    say "release run $run: success"
+  fi
 fi
 
 git fetch -q origin && make --no-print-directory sync >/dev/null 2>&1 || true

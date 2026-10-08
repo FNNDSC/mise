@@ -55,6 +55,7 @@ import { series_cubePathGet } from './pacsUtils.js';
 import { screen } from '@fnndsc/chili/screen/screen.js';
 import { spinner } from '../../lib/spinner.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
+import { pacsRefusal_hint, pacsRefusal_is } from './pacsAccess.js';
 
 const QUERY_POLL_INTERVAL_MS: number = 2_000;
 const QUERY_TIMEOUT_MS: number = 60_000;
@@ -1126,8 +1127,10 @@ async function cohort_answer(
     process.exitCode = 1;
     // The model still crosses. A surface showing which MRNs went unasked,
     // and why, is more use than an empty pane beside a red line.
+    const reasons: string[] = answers.flatMap((answer: QueryAnswer): string[] => (answer.error !== undefined ? [answer.error] : []));
+    const hint: string = pacsRefusal_is(reasons) ? pacsRefusal_hint() : '';
     return {
-      ...envelope_error(rendered, undefined, `${chalk.red(`query: none of the ${unasked} questions could be asked.`)}\n`),
+      ...envelope_error(rendered, undefined, `${chalk.red(`query: none of the ${unasked} questions could be asked.`)}\n${hint}`),
       model: { kind: PACS_QUERY_MODEL_KIND, data: model },
     };
   }
@@ -1382,6 +1385,9 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     } else {
       errOut += `${chalk.red('query: Failed — check connection and PACS server context.')}\n`;
     }
+    // A refusal says what to do about it: PACS is a group CUBE grants.
+    const said: string[] = errs.map((err: unknown): string => typeof err === 'string' ? err : ((err as { message?: string }).message ?? String(err)));
+    if (pacsRefusal_is(said)) errOut += pacsRefusal_hint();
     process.exitCode = 1;
     return envelope_error('', undefined, errOut);
   }

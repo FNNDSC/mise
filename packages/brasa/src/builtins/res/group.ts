@@ -75,6 +75,7 @@ async function groupMembership_batch(
   let renderedErr: string = '';
   let failures: number = 0;
   let elevationHintShown: boolean = false;
+  let added: number = 0;
 
   for (const username of usernames) {
     const present: boolean = members.has(username);
@@ -105,6 +106,7 @@ async function groupMembership_batch(
 
     if (operation === 'add') {
       members.add(username);
+      added += 1;
       rendered += `${chalk.green(`Added ${username} to ${group_label(group)}.`)}\n`;
     } else {
       members.delete(username);
@@ -112,11 +114,27 @@ async function groupMembership_batch(
     }
   }
 
+  // CUBE cannot say whether its groups are its own: one that takes them
+  // from a directory rewrites a user's groups at each login, and the add
+  // above reads "Added" either way (the operator lost two afternoons'
+  // pacs_users grants to Authentik that way).
+  if (added > 0) rendered += groupSync_note();
+
   if (failures > 0) {
     process.exitCode = 1;
     return envelope_error(rendered, undefined, renderedErr);
   }
   return envelope_ok(rendered);
+}
+
+/**
+ * The caveat a successful add carries: where CUBE takes its groups from a
+ * directory, the grant belongs there.
+ *
+ * @returns The note, ending in a newline.
+ */
+export function groupSync_note(): string {
+  return `${chalk.gray('Note: where CUBE takes its groups from a directory (Authentik, LDAP), a membership added here is undone at the user\'s next login; grant it in the directory to make it stick.')}\n`;
 }
 
 /**

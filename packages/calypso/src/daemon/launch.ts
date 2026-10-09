@@ -22,10 +22,9 @@ import type { BrasaEngine } from '@fnndsc/brasa';
 import type { ProgressEvent } from '@fnndsc/menu';
 import type { OutputSink, Surface, SurfaceCapabilities, SurfacePeer, PromptRequest, LocalEditRequest, LocalEditResult } from '@fnndsc/menu/surface';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
-import { procIndex_snapshot, sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
+import { procIndex_snapshot, sessionPromptContext_build, backend_get, type SessionPromptContext, type SessionIdentity } from '@fnndsc/brasa';
 import { stackBanner_rows, stackBannerRow_paint, versions_get, buildHash_get } from '@fnndsc/brasa';
-import { chrisContext } from '@fnndsc/cumin';
-import { identity_forSession, berth_write, berth_read, berth_path, berthUrl_isAlive, closing_take, DISCONNECTED_IDENTITY, type Berth } from './berth.js';
+import { identity_normalise, berth_write, berth_read, berth_path, berthUrl_isAlive, closing_take, type Berth } from './berth.js';
 import type { ClosingCause } from '@fnndsc/menu';
 import { attachFile_write, attachFile_remove } from './attachFile.js';
 import { HOST_CONTROL_OFF, hostControl_describe, hostControl_guard, hostControl_tiers, hostPipe_run, hostShell_run, type HostControlPolicy } from './hostControl.js';
@@ -159,13 +158,12 @@ export async function daemon_launch(
     chalk.level = 3;
   }
 
-  // Key the berth by the CUBE identity this daemon hosts, so several daemons —
+  // Key the berth by the identity this daemon hosts, so several daemons —
   // one per identity — can advertise on one machine. A daemon with no restored
-  // session (disconnected standalone start) falls back to a sentinel identity,
-  // matching the disconnected prompt context, so it stays discoverable.
-  const cubeUrl: string | null = await chrisContext.ChRISURL_get();
-  const cubeUser: string | null = await chrisContext.ChRISuser_get();
-  const identity: string = identity_forSession(cubeUser, cubeUrl);
+  // session (disconnected standalone start) has the backend's disconnected
+  // identity, so it stays discoverable.
+  const sessionIdentity: SessionIdentity = await backend_get().session.identity_get();
+  const identity: string = identity_normalise(sessionIdentity.user, sessionIdentity.where);
 
   // Guard against a split-brain second daemon for this identity: if one is
   // already live, point the operator at it and refuse rather than host a rival
@@ -173,7 +171,7 @@ export async function daemon_launch(
   // --daemon and the standalone calypso binary), since both land here.
   const existing: Berth | null = berth_read(identity);
   if (existing && (await berthUrl_isAlive(existing.url))) {
-    const attachHint: string = identity === DISCONNECTED_IDENTITY ? '' : ` ${identity}`;
+    const attachHint: string = sessionIdentity.connected ? ` ${identity}` : '';
     console.error(chalk.red(`[!] Calypso is already running for ${identity} at ${existing.url}`));
     console.error(chalk.gray(`    attach with:  chell --remote${attachHint}`));
     process.exit(1);
@@ -262,7 +260,7 @@ export async function daemon_launch(
   const berth: Berth = { identity, url, token, pid: process.pid, versions: { ...versions_get() } as Record<string, string>, booted: new Date().toISOString() };
   berth_write(berth);
 
-  const attachHint: string = identity === DISCONNECTED_IDENTITY ? '' : ` ${identity}`;
+  const attachHint: string = sessionIdentity.connected ? ` ${identity}` : '';
   // The boot animation keeps repainting this terminal, and scrollback dies with
   // the next clear. The same addresses go to a file so they can be read back
   // without fighting either.

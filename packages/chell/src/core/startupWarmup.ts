@@ -21,14 +21,15 @@ import {
   type PrefetchResult,
   procUniverseModel_build,
   universeLayouts_warm,
+  backend_get,
+  type SessionIdentity,
 } from '@fnndsc/brasa';
-import { daemon_launch, identity_forSession, type DaemonLaunchInfo, hostControl_fromInputs, type HostControlInputs } from '@fnndsc/calypso';
+import { daemon_launch, identity_normalise, type DaemonLaunchInfo, hostControl_fromInputs, type HostControlInputs } from '@fnndsc/calypso';
 import { daemonConsole_run, type DaemonConsoleTarget } from './daemonConsole.js';
 import { logo_animateHalt } from '../lib/logo.js';
 import { sink_set, StdoutSink, count_noun } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
 import {
-  chrisContext,
   errorStack,
   procCache_get,
   procCheckpoint_restore,
@@ -286,6 +287,17 @@ let flushIdentity: string | null = null;
 
 
 /**
+ * The connected session's identity, the name its checkpoints are kept under:
+ * the same name the daemon's berth carries.
+ *
+ * @returns The normalised identity, or null when the session is not connected.
+ */
+async function sessionIdentity_name(): Promise<string | null> {
+  const identity: SessionIdentity = await backend_get().session.identity_get();
+  return identity.connected ? identity_normalise(identity.user, identity.where) : null;
+}
+
+/**
  * Restores the PACS replay index for a run that has no warm-up.
  *
  * `chell -c` and `chell -f` skip the boot warm-up entirely — the right call
@@ -301,9 +313,8 @@ let flushIdentity: string | null = null;
  */
 export async function queryCheckpoint_prime(user: string | undefined): Promise<void> {
   if (session.offline || user === undefined) return;
-  const cubeUrl: string | null = await chrisContext.ChRISURL_get();
-  if (cubeUrl === null) return;
-  const identity: string = identity_forSession(user, cubeUrl);
+  const identity: string | null = await sessionIdentity_name();
+  if (identity === null) return;
   flushIdentity = identity;
   await queryIndexCheckpoint_restore(identity).catch((): QueryIndexRestoreResult => (
     { restored: false, count: 0 }
@@ -369,9 +380,8 @@ export async function startupWarmup_run(
   // behind itself. The row reports age as well as count, because a count
   // alone says nothing about whether the restore is worth having.
   if (!session.offline && user) {
-    const cubeUrl: string | null = await chrisContext.ChRISURL_get();
-    if (cubeUrl) {
-      const identity: string = identity_forSession(user, cubeUrl);
+    const identity: string | null = await sessionIdentity_name();
+    if (identity !== null) {
       checkpointIdentity = identity;
       flushIdentity = identity;
       const listings: ListCheckpointRestoreResult = await listCheckpoint_restore(identity);
@@ -550,9 +560,8 @@ export async function startupWarmup_run(
     let checkpoint: ProcCheckpointRestoreResult | null = null;
     let rosterAdded: number[] = [];
     if (reportSettlement && user) {
-      const cubeUrl: string | null = await chrisContext.ChRISURL_get();
-      if (cubeUrl) {
-        const identity: string = identity_forSession(user, cubeUrl);
+      const identity: string | null = await sessionIdentity_name();
+      if (identity !== null) {
         checkpoint = await procCheckpoint_restore(identity);
         procCheckpoint_watch(identity);
       }

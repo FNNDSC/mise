@@ -55,7 +55,15 @@ jest.unstable_mockModule('../src/core/daemonConsole.js', () => ({
   daemonConsole_run: mockConsole,
 }));
 const mockUniverseLayoutsWarm = jest.fn(async (): Promise<number> => 0);
+// Who the backend says the session is; each block names its own user.
+let identityUser: string = 'chris';
+let identityConnected: boolean = true;
 jest.unstable_mockModule('@fnndsc/brasa', () => ({
+  backend_get: () => ({
+    session: {
+      identity_get: async () => ({ user: identityUser, where: 'https://cube.example.org/api/v1/', connected: identityConnected }),
+    },
+  }),
   warmupFailure_note: mockWarmupFailureNote,
   procUniverseModel_build: jest.fn(() => ({ feeds: [], whole: true })),
   universeLayouts_warm: mockUniverseLayoutsWarm,
@@ -145,7 +153,7 @@ jest.unstable_mockModule('@fnndsc/calypso', () => ({
   daemon_launch: mockDaemonLaunch,
   consoleCage_start: jest.fn(),
   consoleCage_stop: jest.fn((): string[] => []),
-  identity_forSession: (user: string, url: string): string => `${user}@${url}`,
+  identity_normalise: (user: string, url: string): string => `${user}@${url}`,
   hostControl_fromInputs: (): { policy: { tiers: Set<string>; exposed: boolean } } => ({ policy: { tiers: new Set<string>(), exposed: false } }),
   hostControl_describe: (): string => '',
 }));
@@ -159,6 +167,7 @@ const {
 
 describe('daemonSession_run', () => {
   beforeEach(() => {
+    identityUser = 'rudolph';
     jest.clearAllMocks();
     mockSession.offline = false;
     process.exitCode = undefined;
@@ -762,6 +771,8 @@ describe('the replay index in a run with no warm-up', () => {
   // index with it meant a scripted cohort re-asked the PACS every time,
   // which is the one workflow the fan-out exists for.
   beforeEach((): void => {
+    identityUser = 'chris';
+    identityConnected = true;
     jest.clearAllMocks();
     mockSession.offline = false;
   });
@@ -779,6 +790,12 @@ describe('the replay index in a run with no warm-up', () => {
 
   it('does nothing without an identity to key the index by', async () => {
     await queryCheckpoint_prime(undefined);
+    expect(mockQueryIndexRestore).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the backend says the session is not connected', async () => {
+    identityConnected = false;
+    await queryCheckpoint_prime('chris');
     expect(mockQueryIndexRestore).not.toHaveBeenCalled();
   });
 

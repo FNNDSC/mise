@@ -180,7 +180,7 @@ interface Backend {
   session: {
     init(): Promise<void>;                         // its own state: configuration, stored credentials
     connect(saved: boolean): Promise<Result<SessionIdentity>>;
-    identity_get(): SessionIdentity | null;        // berth name: user@where
+    identity_get(): Promise<SessionIdentity>;      // user, where, connected; berth name: user@where
     home_get(): Promise<string>;                   // the default cwd
     cwd_load(): Promise<string | null>;            // persisted per identity
     cwd_save(path: string): Promise<void>;

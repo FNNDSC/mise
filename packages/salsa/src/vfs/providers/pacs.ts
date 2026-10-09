@@ -6,6 +6,7 @@
  * @module
  */
 
+import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
 import { Result, Ok, Err, errorStack, chrisConnection, chrisContext, Context, PACSQueryDecodedResult, PACSServer, seriesStorage_resolve, runtimeOutput_data, runtimeOutput_err, queryIndex_get, queryIndex_sweep, type QueryIndex, type QueryIndexEntry, type SeriesStorageState, type Client } from "@fnndsc/cumin";
 import { retrieveTask_make, retrieve_fireAndWatch, retrieveTasks_skipComplete, type RetrieveTask, type RetrieveWatchEvents } from "../../retrieve/watch.js";
 import { VFSProvider, VFSItem, CpOptions } from "../provider.js";
@@ -382,6 +383,11 @@ export class PacsVfsProvider implements VFSProvider {
     }
   }
 
+  /** @inheritdoc */
+  async cp(src: string, dest: string, _options: CpOptions): Promise<VfsOutcome> {
+    return vfsOutcome_ofBoolean(await this.copy_run(src, dest, _options), 'EIO');
+  }
+
   /**
    * Triggers sequential synthetic PACS pulls and link-copies results to feed destination.
    *
@@ -389,7 +395,7 @@ export class PacsVfsProvider implements VFSProvider {
    * @param dest - Destination native feed folder.
    * @param options - Copy options like recursive.
    */
-  async cp(src: string, dest: string, _options: CpOptions): Promise<boolean> {
+  private async copy_run(src: string, dest: string, _options: CpOptions): Promise<boolean> {
     try {
       const parsedResult: Result<{ studyUID: string; seriesUID?: string; queryId: number }> = cpSrc_parse(src);
       if (!parsedResult.ok) return false;
@@ -424,14 +430,24 @@ export class PacsVfsProvider implements VFSProvider {
     }
   }
 
+  /** @inheritdoc */
+  async read(pathStr: string): Promise<VfsOutcome<string>> {
+    return vfsOutcome_ofResult(await this.text_read(pathStr), 'ENOENT');
+  }
+
   /**
    * Reads virtual file content under '/net/pacs'.
    *
    * @param pathStr - The absolute virtual path of the file to read.
    * @returns Promise resolving to a Result containing the file contents as a string.
    */
-  async read(pathStr: string): Promise<Result<string>> {
+  private async text_read(pathStr: string): Promise<Result<string>> {
     return pacsVfs_read(pathStr, (queryId: number) => this.queryResult_fetch(queryId));
+  }
+
+  /** @inheritdoc */
+  async readBinary(pathStr: string): Promise<VfsOutcome<Buffer>> {
+    return vfsOutcome_ofResult(await this.bytes_read(pathStr), 'ENOENT');
   }
 
   /**
@@ -440,7 +456,7 @@ export class PacsVfsProvider implements VFSProvider {
    * @param pathStr - The absolute virtual path of the file to read.
    * @returns Promise resolving to a Result containing the file contents as a Buffer.
    */
-  async readBinary(pathStr: string): Promise<Result<Buffer>> {
+  private async bytes_read(pathStr: string): Promise<Result<Buffer>> {
     return pacsVfs_readBinary(pathStr, (queryId: number) => this.queryResult_fetch(queryId));
   }
 }

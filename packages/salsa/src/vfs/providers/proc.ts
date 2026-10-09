@@ -23,6 +23,7 @@
  * @module
  */
 
+import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
 import { type ProcRosterSyncKind,
   chrisConnection,
   errorStack,
@@ -712,6 +713,11 @@ export class ProcVfsProvider implements VFSProvider {
     return Ok([]);
   }
 
+  /** @inheritdoc */
+  async readBinary(pathStr: string): Promise<VfsOutcome<Buffer>> {
+    return vfsOutcome_ofResult(await this.bytes_read(pathStr), 'ENOENT');
+  }
+
   /**
    * Raw bytes exist only under the `data` link (an image in a job's output
    * space); everything else in `/proc` is synthesized text, served as its
@@ -721,7 +727,7 @@ export class ProcVfsProvider implements VFSProvider {
    * @param pathStr - Absolute `/proc/...` path.
    * @returns The file's bytes.
    */
-  async readBinary(pathStr: string): Promise<Result<Buffer>> {
+  private async bytes_read(pathStr: string): Promise<Result<Buffer>> {
     await cache_ensure();
     const clean: string = pathStr.replace(/\/$/, '');
     const { instanceID, virtualFile, dataRemainder } = procPath_parse(clean);
@@ -739,7 +745,12 @@ export class ProcVfsProvider implements VFSProvider {
     return text.ok ? Ok(Buffer.from(text.value, 'utf8')) : text;
   }
 
-  async read(pathStr: string): Promise<Result<string>> {
+  /** @inheritdoc */
+  async read(pathStr: string): Promise<VfsOutcome<string>> {
+    return vfsOutcome_ofResult(await this.text_read(pathStr), 'ENOENT');
+  }
+
+  private async text_read(pathStr: string): Promise<Result<string>> {
     await cache_ensure();
     const cache: ProcCache = procCache_get();
     const clean: string = pathStr.replace(/\/$/, '');
@@ -808,7 +819,7 @@ export class ProcVfsProvider implements VFSProvider {
     return Ok('');
   }
 
-  async rm(pathStr: string, _options?: { recursive?: boolean; force?: boolean }): Promise<boolean> {
+  async feedJobs_cancel(pathStr: string, _options?: { recursive?: boolean; force?: boolean }): Promise<boolean> {
     await cache_ensure();
     const cache: ProcCache = procCache_get();
     const clean: string = pathStr.replace(/\/$/, '');
@@ -856,10 +867,20 @@ export class ProcVfsProvider implements VFSProvider {
     return false;
   }
 
-  async cp(_src: string, _dst: string, _options?: CpOptions): Promise<boolean> { return false; }
+  /** @inheritdoc */
+  async cp(_src: string, _dst: string, _options?: CpOptions): Promise<VfsOutcome> {
+    return vfsOutcome_ofBoolean(await this.copy_run(_src, _dst, _options), 'EROFS');
+  }
+
+  private async copy_run(_src: string, _dst: string, _options?: CpOptions): Promise<boolean> { return false; }
   async mv(_src: string, _dst: string): Promise<boolean> { return false; }
   async touch(_pathStr: string): Promise<boolean> { return false; }
   async upload(_localPath: string, _remotePath: string): Promise<boolean> { return false; }
+  /** @inheritdoc */
+  async write(pathStr: string, content: string): Promise<VfsOutcome> {
+    return vfsOutcome_ofBoolean(await this.file_write(pathStr, content), 'EROFS');
+  }
+
   /**
    * Writes a projected file. One file under /proc takes writes: a feed's
    * note (`/proc/jobs/feed_N/note`), whose content is replaced whole; its
@@ -869,7 +890,7 @@ export class ProcVfsProvider implements VFSProvider {
    * @param content - The new content, whole.
    * @returns True when it was written.
    */
-  async write(pathStr: string, content: string): Promise<boolean> {
+  private async file_write(pathStr: string, content: string): Promise<boolean> {
     const { feedID, instanceID, virtualFile } = procPath_parse(pathStr.replace(/\/$/, ''));
     if (feedID !== null && instanceID === null && virtualFile === 'note') {
       const done: Result<boolean> = await feedNote_update(feedID, { content });

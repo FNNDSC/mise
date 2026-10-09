@@ -10,6 +10,7 @@
  * @module
  */
 
+import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
 import { Result, Ok, Err, errorStack,
   listCache_get,
 } from '@fnndsc/cumin';
@@ -75,12 +76,22 @@ export class EtcVfsProvider implements VFSProvider {
     return Ok(items);
   }
 
+  /** @inheritdoc */
+  async cp(_src: string, _dest: string, _options: CpOptions): Promise<VfsOutcome> {
+    return vfsOutcome_ofBoolean(await this.copy_run(_src, _dest, _options), 'EROFS');
+  }
+
   /**
    * Read is not supported for /etc as a directory — individual files via read().
    */
-  async cp(_src: string, _dest: string, _options: CpOptions): Promise<boolean> {
+  private async copy_run(_src: string, _dest: string, _options: CpOptions): Promise<boolean> {
     errorStack.stack_push('error', 'cp: /etc is a read-only virtual directory');
     return false;
+  }
+
+  /** @inheritdoc */
+  async read(path: string): Promise<VfsOutcome<string>> {
+    return vfsOutcome_ofResult(await this.text_read(path), 'ENOENT');
   }
 
   /**
@@ -89,7 +100,7 @@ export class EtcVfsProvider implements VFSProvider {
    * @param path - Absolute path like /etc/compute.yaml.
    * @returns File content string or Err.
    */
-  async read(path: string): Promise<Result<string>> {
+  private async text_read(path: string): Promise<Result<string>> {
     const filename: string = path.split('/').pop() ?? '';
 
     switch (filename) {

@@ -92,7 +92,7 @@ describe('WorkflowsVfsProvider', () => {
 
   it('refuses to copy a run', async () => {
     // Copying would assert that a computation happened twice.
-    expect(await new WorkflowsVfsProvider().cp('/proc/workflows/7', '/tmp', {})).toBe(false);
+    expect(await new WorkflowsVfsProvider().cp('/proc/workflows/7', '/tmp', {})).toEqual({ ok: false, errno: 'EROFS', reason: 'A workflow records a run; it cannot be copied.' });
   });
 
   it('reports an unknown run rather than an empty directory', async () => {
@@ -233,6 +233,6 @@ describe('ShareVfsProvider', () => {
   });
 
   it('refuses to copy plugin metadata', async () => {
-    expect(await new ShareVfsProvider().cp('/usr/share/pl-dcm2niix', '/tmp', {})).toBe(false);
+    expect(await new ShareVfsProvider().cp('/usr/share/pl-dcm2niix', '/tmp', {})).toEqual({ ok: false, errno: 'EROFS', reason: "Plugin metadata is CUBE's record of a plugin; it cannot be copied." });
   });
 });

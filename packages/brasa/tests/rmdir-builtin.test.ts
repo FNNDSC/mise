@@ -7,7 +7,7 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import { cuminMock_install } from './support/cuminMock.js';
 
 const mockVirtual = jest.fn((p: string): boolean => p.startsWith('/proc/'));
-const mockVfsRmdir = jest.fn(async (_p: string): Promise<boolean> => true);
+const mockVfsRmdir = jest.fn(async (_p: string) => ({ ok: true as const, value: true as const }));
 const mockVfsList = jest.fn(async (_p: string): Promise<{ ok: boolean; value?: unknown[] }> => ({ ok: true, value: [] }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   PROC_TAGS_PREFIX: '/proc/tags',
@@ -56,10 +56,10 @@ describe('rmdir', () => {
   it("deletes a tag through the projection, and says the projection's refusal in rmdir's words", async () => {
     expect((await builtin_rmdir(['/proc/tags/old'])).status).toBe('ok');
     expect(mockVfsRmdir).toHaveBeenCalledWith('/proc/tags/old');
-    mockVfsRmdir.mockResolvedValueOnce(false);
+    mockVfsRmdir.mockResolvedValueOnce({ ok: false as const, errno: 'EIO' as const });
     mockStackPop.mockReturnValueOnce({ message: '[tag_delete ] | urgent: Directory not empty (2 feeds wear it)' });
     expect((await builtin_rmdir(['/proc/tags/urgent'])).renderedErr).toContain("rmdir: failed to remove '/proc/tags/urgent': Directory not empty (2 feeds wear it)");
-    mockVfsRmdir.mockResolvedValueOnce(false);
+    mockVfsRmdir.mockResolvedValueOnce({ ok: false as const, errno: 'EIO' as const });
     mockStackPop.mockReturnValueOnce({ message: "[dispatcher] | rmdir: failed to remove '/proc/jobs/feed_1': Read-only file system" });
     expect((await builtin_rmdir(['/proc/jobs/feed_1'])).renderedErr).toContain("rmdir: failed to remove '/proc/jobs/feed_1': Read-only file system");
   });

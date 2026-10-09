@@ -15,6 +15,7 @@
 import { Result, Ok, Err } from "../result.js";
 import { errorStack } from "../errorStack.js";
 import { VFSProvider, VFSItem, CpOptions } from "./provider.js";
+import { vfs_ok, vfs_fail, type VfsOutcome } from "./outcome.js";
 
 /**
  * The fallback when none is given: it holds nothing, and says so by name
@@ -26,9 +27,8 @@ const VFS_FALLBACK_NONE: VFSProvider = {
     errorStack.stack_push("error", `No mount serves ${path}.`);
     return Err();
   },
-  async cp(src: string): Promise<boolean> {
-    errorStack.stack_push("error", `cp: no mount serves ${src}`);
-    return false;
+  async cp(src: string): Promise<VfsOutcome> {
+    return vfs_fail("ENOENT", `cp: no mount serves ${src}`);
   },
 };
 
@@ -198,133 +198,163 @@ export class VFSDispatcher {
   }
 
   /**
-   * Dispatches copy operation to matched provider.
+   * The path a provider is asked with: as given for a mount, and through
+   * the path resolver for the fallback, when one is registered. An
+   * operation never proceeds on a guessed path: a path that does not
+   * resolve fails the operation.
+   *
+   * @param provider - The provider the path belongs to.
+   * @param pathStr - The path as asked.
+   * @param what - How a resolution failure names the path (`source path`, `path`).
+   * @param operation - The verb, for the failure's words.
+   * @returns The path to ask with, or why the operation cannot proceed.
+   */
+  private async pathFor_provider(provider: VFSProvider, pathStr: string, what: string, operation: string): Promise<VfsOutcome<string>> {
+    if (provider !== this.defaultProvider || !this.pathResolver) return vfs_ok(pathStr);
+    try {
+      return vfs_ok(await this.pathResolver(pathStr));
+    } catch (e: unknown) {
+      const msg: string = e instanceof Error ? e.message : String(e);
+      return vfs_fail('EIO', `${operation}: cannot resolve ${what} ${pathStr}: ${msg}`);
+    }
+  }
+
+  /**
+   * Copies within or between paths, through the provider that owns the source.
    *
    * @param src - Source path.
    * @param dest - Destination path.
    * @param options - Copy options.
-   * @returns Promise resolving to success boolean.
+   * @returns Done, or why not.
    */
-  async cp(src: string, dest: string, options: CpOptions): Promise<boolean> {
+  async cp(src: string, dest: string, options: CpOptions): Promise<VfsOutcome> {
     const provider: VFSProvider = this.provider_get(src);
-    if (provider === this.defaultProvider && this.pathResolver) {
-      // A copy must never proceed on a guessed path: an unresolved source
-      // copies the wrong thing, an unresolved destination writes to the wrong
-      // place. Resolution failure fails the copy.
-      let resolvedSrc: string;
-      let resolvedDest: string;
-      try {
-        resolvedSrc = await this.pathResolver(src);
-      } catch (e: unknown) {
-        const msg: string = e instanceof Error ? e.message : String(e);
-        errorStack.stack_push("error", `cp: cannot resolve source path ${src}: ${msg}`);
-        return false;
-      }
-      try {
-        resolvedDest = await this.pathResolver(dest);
-      } catch (e: unknown) {
-        const msg: string = e instanceof Error ? e.message : String(e);
-        errorStack.stack_push("error", `cp: cannot resolve destination path ${dest}: ${msg}`);
-        return false;
-      }
-      return provider.cp(resolvedSrc, resolvedDest, options);
-    }
-    return provider.cp(src, dest, options);
+    const from: VfsOutcome<string> = await this.pathFor_provider(provider, src, 'source path', 'cp');
+    if (!from.ok) return from;
+    const to: VfsOutcome<string> = await this.pathFor_provider(provider, dest, 'destination path', 'cp');
+    if (!to.ok) return to;
+    return provider.cp(from.value, to.value, options);
   }
 
   /**
-   * Dispatches file read operation to the matched provider.
+   * Reads a file whole, as text, through the provider that owns it.
    *
-   * @param pathStr - The absolute virtual path of the file to read.
-   * @returns A Promise resolving to a Result containing the file contents as a string.
+   * @param pathStr - The absolute path of the file.
+   * @returns Its content, or why not (`EROFS` where no read is offered).
    */
-  async read(pathStr: string): Promise<Result<string>> {
+  async read(pathStr: string): Promise<VfsOutcome<string>> {
     const provider: VFSProvider = this.provider_get(pathStr);
-    if (provider !== this.defaultProvider && provider.read) {
-      return provider.read(pathStr);
-    }
-    errorStack.stack_push("error", `File read not supported for path: ${pathStr}`);
-    return Err();
+    if (!provider.read) return vfs_fail('EROFS');
+    const at: VfsOutcome<string> = await this.pathFor_provider(provider, pathStr, 'path', 'read');
+    return at.ok ? provider.read(at.value) : at;
   }
 
   /**
-   * Dispatches a whole-file write to the matched provider: a mount
-   * that holds writable files (a feed's note) takes the content; any other
-   * path is refused by name rather than written somewhere it does not live.
+   * Reads a file whole, as bytes, through the provider that owns it.
    *
-   * @param pathStr - The absolute virtual path of the file.
-   * @param content - The file's new content, whole.
-   * @returns True when the provider took it.
+   * @param pathStr - The absolute path of the file.
+   * @returns Its bytes, or why not.
    */
-  /**
-   * Dispatches a folder's making to the matched provider; a mount that
-   * makes no folders refuses by name.
-   *
-   * @param pathStr - The absolute virtual path of the new folder.
-   * @returns True when the provider made it.
-   */
-  async mkdir(pathStr: string): Promise<boolean> {
+  async readBinary(pathStr: string): Promise<VfsOutcome<Buffer>> {
     const provider: VFSProvider = this.provider_get(pathStr);
-    if (provider !== this.defaultProvider && provider.mkdir) return provider.mkdir(pathStr);
-    errorStack.stack_push("error", `mkdir: cannot create directory '${pathStr}': Read-only file system`);
-    return false;
+    if (!provider.readBinary) return vfs_fail('EROFS');
+    const at: VfsOutcome<string> = await this.pathFor_provider(provider, pathStr, 'path', 'read');
+    return at.ok ? provider.readBinary(at.value) : at;
   }
 
   /**
-   * Dispatches an empty folder's removal to the matched provider; a
-   * mount that removes no folders refuses by name.
+   * Writes a file whole, through the provider that owns it; a mount that
+   * holds no writable files answers `EROFS`.
    *
-   * @param pathStr - The absolute virtual path of the folder.
-   * @returns True when the provider removed it.
+   * @param pathStr - The absolute path of the file.
+   * @param content - The new content, whole.
+   * @returns Done, or why not.
    */
-  async rmdir(pathStr: string): Promise<boolean> {
+  async write(pathStr: string, content: string | Buffer): Promise<VfsOutcome> {
     const provider: VFSProvider = this.provider_get(pathStr);
-    if (provider !== this.defaultProvider && provider.rmdir) return provider.rmdir(pathStr);
-    errorStack.stack_push("error", `rmdir: failed to remove '${pathStr}': Read-only file system`);
-    return false;
+    if (!provider.write) return vfs_fail('EROFS');
+    const at: VfsOutcome<string> = await this.pathFor_provider(provider, pathStr, 'path', 'write');
+    return at.ok ? provider.write(at.value, content) : at;
   }
 
   /**
-   * Dispatches a rename within one mount; a rename across mounts, or in a
-   * mount that renames nothing, is refused by name.
+   * Makes a folder, through the provider that owns its path.
    *
-   * @param src - The absolute virtual path now.
-   * @param dest - The absolute virtual path it takes.
-   * @returns True when the provider renamed it.
+   * @param pathStr - The absolute path of the new folder.
+   * @returns Done, or why not.
    */
-  async rename(src: string, dest: string): Promise<boolean> {
+  async mkdir(pathStr: string): Promise<VfsOutcome> {
+    const provider: VFSProvider = this.provider_get(pathStr);
+    if (!provider.mkdir) return vfs_fail('EROFS');
+    const at: VfsOutcome<string> = await this.pathFor_provider(provider, pathStr, 'path', 'mkdir');
+    return at.ok ? provider.mkdir(at.value) : at;
+  }
+
+  /**
+   * Removes an empty folder, through the provider that owns it.
+   *
+   * @param pathStr - The absolute path of the folder.
+   * @returns Done, or why not.
+   */
+  async rmdir(pathStr: string): Promise<VfsOutcome> {
+    const provider: VFSProvider = this.provider_get(pathStr);
+    if (!provider.rmdir) return vfs_fail('EROFS');
+    const at: VfsOutcome<string> = await this.pathFor_provider(provider, pathStr, 'path', 'rmdir');
+    return at.ok ? provider.rmdir(at.value) : at;
+  }
+
+  /**
+   * Renames within one mount; a rename across mounts answers `EXDEV`.
+   *
+   * @param src - The absolute path now.
+   * @param dest - The absolute path it takes.
+   * @returns Done, or why not.
+   */
+  async rename(src: string, dest: string): Promise<VfsOutcome> {
     const provider: VFSProvider = this.provider_get(src);
-    if (provider !== this.provider_get(dest)) {
-      errorStack.stack_push("error", `mv: cannot move '${src}' to '${dest}': Invalid cross-device link`);
-      return false;
-    }
-    if (provider !== this.defaultProvider && provider.rename) return provider.rename(src, dest);
-    errorStack.stack_push("error", `mv: cannot move '${src}': Read-only file system`);
-    return false;
-  }
-
-  async write(pathStr: string, content: string): Promise<boolean> {
-    const provider: VFSProvider = this.provider_get(pathStr);
-    if (provider !== this.defaultProvider && provider.write) {
-      return provider.write(pathStr, content);
-    }
-    errorStack.stack_push("error", `File write not supported for path: ${pathStr}`);
-    return false;
+    if (provider !== this.provider_get(dest)) return vfs_fail('EXDEV');
+    if (!provider.rename) return vfs_fail('EROFS');
+    const from: VfsOutcome<string> = await this.pathFor_provider(provider, src, 'source path', 'mv');
+    if (!from.ok) return from;
+    const to: VfsOutcome<string> = await this.pathFor_provider(provider, dest, 'destination path', 'mv');
+    return to.ok ? provider.rename(from.value, to.value) : to;
   }
 
   /**
-   * Dispatches binary file read operation to the matched provider.
+   * Removes a file or a link, through the provider that owns it.
    *
-   * @param pathStr - The absolute virtual path of the file to read.
-   * @returns A Promise resolving to a Result containing the file contents as a Buffer.
+   * @param pathStr - The absolute path of the entry.
+   * @returns Done, or why not.
    */
-  async readBinary(pathStr: string): Promise<Result<Buffer>> {
+  async rm(pathStr: string): Promise<VfsOutcome> {
     const provider: VFSProvider = this.provider_get(pathStr);
-    if (provider !== this.defaultProvider && provider.readBinary) {
-      return provider.readBinary(pathStr);
-    }
-    errorStack.stack_push("error", `Binary file read not supported for path: ${pathStr}`);
-    return Err();
+    if (!provider.rm) return vfs_fail('EROFS');
+    const at: VfsOutcome<string> = await this.pathFor_provider(provider, pathStr, 'path', 'rm');
+    return at.ok ? provider.rm(at.value) : at;
+  }
+
+  /**
+   * Whether the provider that owns a folder removes it whole in one step.
+   *
+   * @param pathStr - The absolute path of the folder.
+   * @returns True when `rmTree` is offered there.
+   */
+  rmTree_offered(pathStr: string): boolean {
+    return this.provider_get(pathStr).rmTree !== undefined;
+  }
+
+  /**
+   * Removes a folder and everything under it in one step, where the
+   * owning provider can; elsewhere `EROFS`, and `rm -r` walks instead.
+   *
+   * @param pathStr - The absolute path of the folder.
+   * @returns Done, or why not.
+   */
+  async rmTree(pathStr: string): Promise<VfsOutcome> {
+    const provider: VFSProvider = this.provider_get(pathStr);
+    if (!provider.rmTree) return vfs_fail('EROFS');
+    const at: VfsOutcome<string> = await this.pathFor_provider(provider, pathStr, 'path', 'rm');
+    return at.ok ? provider.rmTree(at.value) : at;
   }
 
   /**

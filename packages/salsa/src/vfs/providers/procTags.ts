@@ -11,6 +11,7 @@
  * @module
  */
 
+import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
 import {
   Err,
   Ok,
@@ -97,27 +98,47 @@ export class ProcTagsVfsProvider implements VFSProvider {
   }
 
   /** @inheritdoc */
-  public async cp(_src: string, _dest: string, _options: CpOptions): Promise<boolean> {
+  public async cp(_src: string, _dest: string, _options: CpOptions): Promise<VfsOutcome> {
+    return vfsOutcome_ofBoolean(await this.copy_run(_src, _dest, _options), 'EROFS');
+  }
+
+  /** @inheritdoc */
+  private async copy_run(_src: string, _dest: string, _options: CpOptions): Promise<boolean> {
     errorStack.stack_push('error', 'cp: a tag is not copied: mkdir makes one, setfattr hangs it on a feed');
     return false;
   }
 
   /** @inheritdoc */
-  public async mkdir(pathStr: string): Promise<boolean> {
+  public async mkdir(pathStr: string): Promise<VfsOutcome> {
+    return vfsOutcome_ofBoolean(await this.folder_make(pathStr), 'EIO');
+  }
+
+  /** @inheritdoc */
+  private async folder_make(pathStr: string): Promise<boolean> {
     const name: string | null = tagName_of(pathStr, 'mkdir');
     if (name === null) return false;
     return (await tag_create(name)).ok;
   }
 
   /** @inheritdoc */
-  public async rmdir(pathStr: string): Promise<boolean> {
+  public async rmdir(pathStr: string): Promise<VfsOutcome> {
+    return vfsOutcome_ofBoolean(await this.folder_remove(pathStr), 'EIO');
+  }
+
+  /** @inheritdoc */
+  private async folder_remove(pathStr: string): Promise<boolean> {
     const name: string | null = tagName_of(pathStr, 'rmdir');
     if (name === null) return false;
     return (await tag_delete(name)).ok;
   }
 
   /** @inheritdoc */
-  public async rename(src: string, dest: string): Promise<boolean> {
+  public async rename(src: string, dest: string): Promise<VfsOutcome> {
+    return vfsOutcome_ofBoolean(await this.entry_rename(src, dest), 'EIO');
+  }
+
+  /** @inheritdoc */
+  private async entry_rename(src: string, dest: string): Promise<boolean> {
     const from: string | null = tagName_of(src, 'mv');
     if (from === null) return false;
     const to: string | null = tagName_of(dest, 'mv');

@@ -2,6 +2,7 @@
  * @file Builtin mv command.
  * Moves or renames files/directories, reported as a command envelope.
  */
+import { vfsOutcome_toResult } from '@fnndsc/fond';
 import chalk from 'chalk';
 import path from 'path';
 import { listCache_get } from '@fnndsc/cumin';
@@ -129,7 +130,7 @@ export async function mv_run(options: MvOptions): Promise<CommandEnvelope> {
       // A rename inside a projection (a tag under /proc/tags) is the
       // projection's; across one, or in one that renames nothing, it refuses.
       const success: boolean = vfsDispatcher.path_isVirtual(srcPath) || vfsDispatcher.path_isVirtual(destPath)
-        ? await vfsDispatcher.rename(srcPath, destPath)
+        ? vfsOutcome_toResult(await vfsDispatcher.rename(srcPath, destPath), 'rename', srcPath, destPath).ok
         : await chefs_mv_cmd(srcPath, destPath);
 
       if (sources.length === 1) {

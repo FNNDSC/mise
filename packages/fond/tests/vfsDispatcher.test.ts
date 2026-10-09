@@ -5,6 +5,7 @@ import { VFSDispatcher } from '../src/vfs/dispatcher';
 import type { VFSProvider, VFSItem } from '../src/vfs/provider';
 import { vfsItems_sort } from '../src/vfs/sort';
 import { errorStack } from '../src/errorStack';
+import { vfs_ok, vfs_fail, type VfsOutcome } from '../src/vfs/outcome';
 import { Ok, type Result } from '../src/result';
 
 const item = (name: string, size: number = 1): VFSItem => ({ name, type: 'file', size, owner: 'o', date: '2026-10-08' });
@@ -13,7 +14,7 @@ const item = (name: string, size: number = 1): VFSItem => ({ name, type: 'file',
 const mount = (prefix: string, seen: string[], extra: Partial<VFSProvider> = {}): VFSProvider => ({
   prefix,
   async list(path: string): Promise<Result<VFSItem[]>> { seen.push(`${prefix || 'fallback'}:list:${path}`); return Ok([item(prefix || 'fallback')]); },
-  async cp(src: string, dest: string): Promise<boolean> { seen.push(`${prefix || 'fallback'}:cp:${src}>${dest}`); return true; },
+  async cp(src: string, dest: string): Promise<VfsOutcome> { seen.push(`${prefix || 'fallback'}:cp:${src}>${dest}`); return vfs_ok(true); },
   ...extra,
 });
 
@@ -52,7 +53,7 @@ describe('VFSDispatcher', () => {
     const d = new VFSDispatcher();
     expect((await d.list('/anywhere')).ok).toBe(false);
     expect(errorStack.stack_pop()?.message).toContain('No mount serves /anywhere');
-    expect(await d.cp('/a', '/b', {})).toBe(false);
+    expect(await d.cp('/a', '/b', {})).toEqual(vfs_fail('ENOENT', 'cp: no mount serves /a'));
   });
 
   it('a fallback path goes through the path resolver; a copy whose path cannot resolve fails rather than guessing', async () => {
@@ -61,40 +62,54 @@ describe('VFSDispatcher', () => {
     d.pathResolver_register(async (p: string): Promise<string> => { if (p === '/bad') throw new Error('unknown'); return `/real${p}`; });
     await d.list('/home');
     expect(seen).toContain('fallback:list:/real/home');
-    expect(await d.cp('/a', '/b', {})).toBe(true);
+    expect(await d.cp('/a', '/b', {})).toEqual(vfs_ok(true));
     expect(seen).toContain('fallback:cp:/real/a>/real/b');
-    expect(await d.cp('/bad', '/b', {})).toBe(false);
-    expect(errorStack.stack_pop()?.message).toContain('cannot resolve source path /bad');
+    expect(await d.cp('/bad', '/b', {})).toEqual(vfs_fail('EIO', 'cp: cannot resolve source path /bad: unknown'));
   });
 
-  it('read, write, mkdir, rmdir and rename go to a mount that offers them, and are refused by name elsewhere', async () => {
+  it('each operation goes to the mount that offers it, and answers EROFS or EXDEV where it cannot', async () => {
     const seen: string[] = [];
     const notes = mount('/notes', seen, {
-      async read(): Promise<Result<string>> { return Ok('text'); },
-      async write(): Promise<boolean> { return true; },
-      async mkdir(): Promise<boolean> { return true; },
-      async rmdir(): Promise<boolean> { return true; },
-      async rename(): Promise<boolean> { return true; },
-      async readBinary(): Promise<Result<Buffer>> { return Ok(Buffer.from('b')); },
+      async read(): Promise<VfsOutcome<string>> { return vfs_ok('text'); },
+      async write(): Promise<VfsOutcome> { return vfs_ok(true); },
+      async mkdir(): Promise<VfsOutcome> { return vfs_ok(true); },
+      async rmdir(): Promise<VfsOutcome> { return vfs_ok(true); },
+      async rename(): Promise<VfsOutcome> { return vfs_ok(true); },
+      async rm(): Promise<VfsOutcome> { return vfs_ok(true); },
+      async rmTree(): Promise<VfsOutcome> { return vfs_ok(true); },
+      async readBinary(): Promise<VfsOutcome<Buffer>> { return vfs_ok(Buffer.from('b')); },
       async linkTarget_resolve(): Promise<Result<string>> { return Ok('/there'); },
     });
     const d = new VFSDispatcher(mount('', seen));
     d.provider_register(notes);
-    expect(await d.read('/notes/a')).toEqual(Ok('text'));
-    expect(await d.write('/notes/a', 'x')).toBe(true);
-    expect(await d.mkdir('/notes/d')).toBe(true);
-    expect(await d.rmdir('/notes/d')).toBe(true);
-    expect(await d.rename('/notes/a', '/notes/b')).toBe(true);
+    expect(await d.read('/notes/a')).toEqual(vfs_ok('text'));
+    expect(await d.write('/notes/a', 'x')).toEqual(vfs_ok(true));
+    expect(await d.mkdir('/notes/d')).toEqual(vfs_ok(true));
+    expect(await d.rmdir('/notes/d')).toEqual(vfs_ok(true));
+    expect(await d.rename('/notes/a', '/notes/b')).toEqual(vfs_ok(true));
+    expect(await d.rm('/notes/a')).toEqual(vfs_ok(true));
+    expect(d.rmTree_offered('/notes/d')).toBe(true);
+    expect(await d.rmTree('/notes/d')).toEqual(vfs_ok(true));
     expect((await d.readBinary('/notes/a')).ok).toBe(true);
     expect(await d.linkTarget_resolve('/notes/l')).toEqual(Ok('/there'));
-    expect(await d.rename('/notes/a', '/home/b')).toBe(false);
-    expect(errorStack.stack_pop()?.message).toContain('Invalid cross-device link');
-    expect((await d.read('/home/a')).ok).toBe(false);
-    expect(await d.write('/home/a', 'x')).toBe(false);
-    expect(await d.mkdir('/home/d')).toBe(false);
-    expect(await d.rmdir('/home/d')).toBe(false);
-    expect((await d.readBinary('/home/a')).ok).toBe(false);
+    expect(await d.rename('/notes/a', '/home/b')).toEqual(vfs_fail('EXDEV'));
+    for (const refused of [d.read('/home/a'), d.write('/home/a', 'x'), d.mkdir('/home/d'), d.rmdir('/home/d'), d.rename('/home/a', '/home/b'), d.rm('/home/a'), d.rmTree('/home/d'), d.readBinary('/home/a')]) {
+      expect(await refused).toEqual(vfs_fail('EROFS'));
+    }
+    expect(d.rmTree_offered('/home/d')).toBe(false);
     expect((await d.linkTarget_resolve('/home/l')).ok).toBe(false);
+  });
+
+  it('asks the fallback through the path resolver for every operation it offers', async () => {
+    const seen: string[] = [];
+    const fallback = mount('', seen, {
+      async mkdir(p: string): Promise<VfsOutcome> { seen.push(`mkdir:${p}`); return vfs_ok(true); },
+    });
+    const d = new VFSDispatcher(fallback);
+    d.pathResolver_register(async (p: string): Promise<string> => { if (p === '/bad') throw new Error('unknown'); return `/real${p}`; });
+    expect(await d.mkdir('/home/x')).toEqual(vfs_ok(true));
+    expect(seen).toContain('mkdir:/real/home/x');
+    expect(await d.mkdir('/bad')).toEqual(vfs_fail('EIO', 'mkdir: cannot resolve path /bad: unknown'));
   });
 });
 

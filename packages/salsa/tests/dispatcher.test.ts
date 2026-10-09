@@ -22,7 +22,7 @@ describe("VFSDispatcher Path Resolution Hook", () => {
         },
       ])
     );
-    cpSpy = jest.spyOn(NativeVfsProvider.prototype, "cp").mockResolvedValue(true);
+    cpSpy = jest.spyOn(NativeVfsProvider.prototype, "cp").mockResolvedValue({ ok: true, value: true });
   });
 
   afterEach(() => {
@@ -74,7 +74,7 @@ describe("VFSDispatcher Path Resolution Hook", () => {
       "/home/rudolph/shared/file.txt",
       {}
     );
-    expect(success).toBe(true);
+    expect(success.ok).toBe(true);
     expect(cpSpy).toHaveBeenCalledWith(
       "/PUBLIC/file.txt",
       "/SHARED/file.txt",

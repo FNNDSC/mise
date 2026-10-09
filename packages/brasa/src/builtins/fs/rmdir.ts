@@ -9,6 +9,7 @@
  *
  * @module
  */
+import { vfsOutcome_toResult } from '@fnndsc/fond';
 import chalk from 'chalk';
 import { listCache_get } from '@fnndsc/cumin';
 import { vfsDispatcher, type VFSItem } from '@fnndsc/salsa';
@@ -87,7 +88,7 @@ export async function builtin_rmdir(args: string[]): Promise<CommandEnvelope> {
     const targetPath: string = await path_resolve(pathArg);
     let refusal: string | null;
     if (vfsDispatcher.path_isVirtual(targetPath)) {
-      refusal = (await vfsDispatcher.rmdir(targetPath)) ? null : reason_said(pathArg);
+      refusal = vfsOutcome_toResult(await vfsDispatcher.rmdir(targetPath), 'rmdir', targetPath).ok ? null : reason_said(pathArg);
     } else {
       refusal = await storeFolder_remove(targetPath, pathArg);
     }

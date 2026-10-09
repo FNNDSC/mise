@@ -66,6 +66,6 @@ describe('/bin', () => {
     pluginsListAll.mockRejectedValueOnce(new Error('CUBE down') as never);
     pipelinesGetAll.mockResolvedValueOnce({ ok: false } as never);
     await expect(new BinVfsProvider().list('/bin')).resolves.toEqual({ ok: false });
-    await expect(new BinVfsProvider().cp('/bin/x', '/home/y', {})).resolves.toBe(false);
+    await expect(new BinVfsProvider().cp('/bin/x', '/home/y', {})).resolves.toMatchObject({ ok: false, errno: 'EROFS' });
   });
 });

@@ -6,6 +6,7 @@
  * @module
  */
 
+import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
 import { Result, Ok, Err, errorStack } from "@fnndsc/cumin";
 import { VFSProvider, VFSItem, CpOptions } from "../provider.js";
 import { vfsItems_sort } from "../sort.js";
@@ -190,6 +191,11 @@ export class NativeVfsProvider implements VFSProvider {
     }
   }
 
+  /** @inheritdoc */
+  async cp(src: string, dest: string, options: CpOptions): Promise<VfsOutcome> {
+    return vfsOutcome_ofBoolean(await this.copy_run(src, dest, options), 'EIO');
+  }
+
   /**
    * Copies native files or folders using Salsa's files_copy algorithms.
    *
@@ -197,7 +203,7 @@ export class NativeVfsProvider implements VFSProvider {
    * @param dest - Destination absolute path.
    * @param options - Copy options.
    */
-  async cp(src: string, dest: string, options: CpOptions): Promise<boolean> {
+  private async copy_run(src: string, dest: string, options: CpOptions): Promise<boolean> {
     try {
       const srcIsDir: Result<boolean> = await path_checkIsDir(src);
       if (!srcIsDir.ok) {

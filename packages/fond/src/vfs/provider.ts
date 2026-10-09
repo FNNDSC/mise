@@ -10,6 +10,7 @@
  */
 
 import { Result } from "../result.js";
+import type { VfsOutcome } from "./outcome.js";
 
 /**
  * Standard interface representing a virtual file system item.
@@ -86,58 +87,79 @@ export interface VFSProvider {
    * @param src - The absolute source path.
    * @param dest - The absolute destination path.
    * @param options - Copy flags like recursive.
-   * @returns A Promise resolving to true on successful copy execution.
+   * @returns Done, or why not.
    */
-  cp(src: string, dest: string, options: CpOptions): Promise<boolean>;
+  cp(src: string, dest: string, options: CpOptions): Promise<VfsOutcome>;
 
   /**
-   * Reads the content of a virtual file under this provider as a string.
+   * Reads a file whole, as text.
    *
-   * @param path - The absolute virtual path of the file to read.
-   * @returns A Promise resolving to a Result containing the file contents as a string.
+   * @param path - The absolute path of the file.
+   * @returns Its content, or why not (`ENOENT`, `EISDIR`, ...).
    */
-  read?(path: string): Promise<Result<string>>;
+  read?(path: string): Promise<VfsOutcome<string>>;
 
   /**
-   * Reads the content of a virtual file under this provider as a binary Buffer.
+   * Reads a file whole, as bytes.
    *
-   * @param path - The absolute virtual path of the file to read.
-   * @returns A Promise resolving to a Result containing the file contents as a Buffer.
+   * @param path - The absolute path of the file.
+   * @returns Its bytes, or why not.
    */
-  readBinary?(path: string): Promise<Result<Buffer>>;
+  readBinary?(path: string): Promise<VfsOutcome<Buffer>>;
 
   /**
-   * Writes a file whole, when the provider holds writable files (a note).
-   * Absent or false, the path is read-only.
+   * Writes a file whole: its content after the write is exactly what was
+   * given, whether or not it existed before. Absent, the mount holds no
+   * writable files.
    *
    * @param path - The absolute path of the file.
    * @param content - The new content, whole.
-   * @returns True when it was written.
+   * @returns Done, or why not (`ENOENT` for a missing folder, `EISDIR`, ...).
    */
-  write?(path: string, content: string): Promise<boolean>;
+  write?(path: string, content: string | Buffer): Promise<VfsOutcome>;
 
   /**
-   * Makes a folder, when the provider's folders are things a user makes (a
-   * tag). Absent, the provider is read-only for mkdir.
+   * Makes one folder; its parent must exist. Absent, the mount makes none.
+   *
    * @param path - The absolute path of the new folder.
-   * @returns True when made; false with the reason stacked.
+   * @returns Done, or why not (`EEXIST`, `ENOENT` for a missing parent, ...).
    */
-  mkdir?(path: string): Promise<boolean>;
+  mkdir?(path: string): Promise<VfsOutcome>;
 
   /**
    * Removes an empty folder (`rmdir`).
+   *
    * @param path - The absolute path of the folder.
-   * @returns True when removed; false with the reason stacked.
+   * @returns Done, or why not (`ENOENT`, `ENOTDIR`, `ENOTEMPTY`, ...).
    */
-  rmdir?(path: string): Promise<boolean>;
+  rmdir?(path: string): Promise<VfsOutcome>;
 
   /**
-   * Renames an entry within this provider (`mv`).
+   * Renames an entry within this mount (`mv`).
+   *
    * @param src - The absolute path now.
    * @param dest - The absolute path it takes.
-   * @returns True when renamed; false with the reason stacked.
+   * @returns Done, or why not (`ENOENT`, `EEXIST` where the mount cannot replace, ...).
    */
-  rename?(src: string, dest: string): Promise<boolean>;
+  rename?(src: string, dest: string): Promise<VfsOutcome>;
+
+  /**
+   * Removes a file or a link (`rm`); a folder is refused with `EISDIR`.
+   *
+   * @param path - The absolute path of the entry.
+   * @returns Done, or why not.
+   */
+  rm?(path: string): Promise<VfsOutcome>;
+
+  /**
+   * Removes a folder and everything under it in one step, for a mount
+   * whose store can (`rm -r`). Absent, `rm -r` removes what it holds one
+   * entry at a time.
+   *
+   * @param path - The absolute path of the folder.
+   * @returns Done, or why not.
+   */
+  rmTree?(path: string): Promise<VfsOutcome>;
 
   /**
    * Resolves the target of a provider-defined lazy link when an operation

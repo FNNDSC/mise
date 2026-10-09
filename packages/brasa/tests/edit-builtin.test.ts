@@ -1,8 +1,8 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import { cuminMock_install } from './support/cuminMock.js';
 
-const mockVfsRead = jest.fn(async (_p: string): Promise<{ ok: boolean; value?: string }> => ({ ok: true, value: 'the note' }));
-const mockVfsWrite = jest.fn(async (_p: string, _c: string): Promise<boolean> => true);
+const mockVfsRead = jest.fn(async (_p: string): Promise<{ ok: boolean; value?: string; errno?: string }> => ({ ok: true, value: 'the note' }));
+const mockVfsWrite = jest.fn(async (_p: string, _c: string) => ({ ok: true as const, value: true as const }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(async () => ({ user: 'chris', folder: '/home/chris' })),
   vfsDispatcher: {
@@ -149,7 +149,7 @@ describe('builtin_edit on a projected file', () => {
     surface_install({ localEdit: true } as SurfaceCapabilities);
     mockStackPop.mockReset().mockReturnValue(undefined);
     mockVfsRead.mockResolvedValue({ ok: true, value: 'the note' });
-    mockVfsWrite.mockResolvedValue(true);
+    mockVfsWrite.mockResolvedValue({ ok: true as const, value: true as const });
   });
 
   it("reads a feed's note through the projection, edits it, writes it back there", async () => {
@@ -178,7 +178,7 @@ describe('builtin_edit on a projected file', () => {
 
   it("says the projection's refusal, in its words, when it will not take the write or the read", async () => {
     mockLocalEdit.mockResolvedValueOnce({ content: 'x', changed: true });
-    mockVfsWrite.mockResolvedValueOnce(false);
+    mockVfsWrite.mockResolvedValueOnce({ ok: false as const, errno: 'EIO' as const });
     mockStackPop.mockReturnValueOnce({ message: '/proc/jobs/feed_12/title: Read-only file system' });
     const refused = await builtin_edit(['/proc/jobs/feed_12/title']);
     expect(refused.renderedErr).toContain('Read-only file system');

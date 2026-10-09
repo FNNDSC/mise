@@ -7,6 +7,7 @@
  *
  * @module
  */
+import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
 import type { VFSProvider, VFSItem, CpOptions } from '@fnndsc/fond';
 import { builtinCommands_list, commandSummary_get } from '../../../builtins/help.js';
 import { gamesShelf_names } from '../../../builtins/games/shelf.js';
@@ -104,6 +105,11 @@ export class StaticVfsProvider implements VFSProvider {
     }
   }
 
+  /** @inheritdoc */
+  async cp(src: string, dest: string, options: CpOptions): Promise<VfsOutcome> {
+    return vfsOutcome_ofBoolean(await this.copy_run(src, dest, options), 'EROFS');
+  }
+
   /**
    * Block copy operations for static paths.
    *
@@ -112,7 +118,7 @@ export class StaticVfsProvider implements VFSProvider {
    * @param options - Copy options.
    * @returns Promise resolving to false always to block copying.
    */
-  async cp(src: string, dest: string, options: CpOptions): Promise<boolean> {
+  private async copy_run(src: string, dest: string, options: CpOptions): Promise<boolean> {
     errorStack.stack_push("error", `cp: Copying from static VFS path '${src}' is not supported.`);
     return false;
   }
@@ -148,14 +154,24 @@ export class StaticVfsProvider implements VFSProvider {
     return sorted;
   }
 
+  /** @inheritdoc */
+  async read(pathStr: string): Promise<VfsOutcome<string>> {
+    return vfsOutcome_ofResult(await this.text_read(pathStr), 'ENOENT');
+  }
+
   /**
    * Reads virtual file content under command and builtin static paths.
    *
    * @param pathStr - The absolute virtual path of the file to read.
    * @returns Promise resolving to a Result containing the file contents.
    */
-  async read(pathStr: string): Promise<Result<string>> {
+  private async text_read(pathStr: string): Promise<Result<string>> {
     return staticVfs_read(pathStr, this.prefix);
+  }
+
+  /** @inheritdoc */
+  async readBinary(pathStr: string): Promise<VfsOutcome<Buffer>> {
+    return vfsOutcome_ofResult(await this.bytes_read(pathStr), 'ENOENT');
   }
 
   /**
@@ -164,7 +180,7 @@ export class StaticVfsProvider implements VFSProvider {
    * @param pathStr - The absolute virtual path of the file to read.
    * @returns Promise resolving to a Result containing the file contents as a Buffer.
    */
-  async readBinary(pathStr: string): Promise<Result<Buffer>> {
+  private async bytes_read(pathStr: string): Promise<Result<Buffer>> {
     return staticVfs_readBinary(pathStr, this.prefix);
   }
 }

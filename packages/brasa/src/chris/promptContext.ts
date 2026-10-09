@@ -16,16 +16,7 @@ import type { ProcFeedPromptProgress } from '@fnndsc/menu';
 import { session } from '../session/index.js';
 import { warmupFailures_list, type WarmupFailure } from '../core/warmupFailures.js';
 import { context_getSingle } from '@fnndsc/salsa';
-import { type ProcFeed, pace_get, type CubePace, type ProcRosterSyncKind,
-  SingleContext,
-  procCache_get,
-  type ProcCacheLifecycle,
-  type ProcFeedLoadProgress,
-  type ProcPromptProgress,
-  type ProcPromptState,
-  type ProcWarmupProgress,
-  type ProcLandedFeed,
-} from '@fnndsc/cumin';
+import { type ProcFeed, pace_get, type CubePace, type ProcRosterSyncKind, SingleContext, procCache_get, type ProcCacheLifecycle, type ProcFeedLoadProgress, type ProcPromptProgress, type ProcPromptState, type ProcWarmupProgress, type ProcLandedFeed } from '@fnndsc/cumin';
 
 /**
  * The engine-known facts a prompt reflects, independent of any theme.

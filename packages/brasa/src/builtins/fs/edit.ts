@@ -13,8 +13,9 @@ import { path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { surface_get, capability_require, CapabilityError, type LocalEditResult } from '../../core/surface.js';
 import { files_cat } from '@fnndsc/chili/commands/fs/cat.js';
 import { file_replaceContent, EditResult } from '@fnndsc/chili/commands/fs/edit.js';
-import { errorStack, Result, StackMessage, listCache_get, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
-import { path_isEditable } from '@fnndsc/menu';
+import { listCache_get } from '@fnndsc/cumin';
+import { path_isEditable, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { errorStack, Result, StackMessage } from '@fnndsc/fond';
 
 
 /** What `edit` says when the surface opened an editor that stays open. */

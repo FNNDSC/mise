@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
 // builtins/utils deps (for real commandArgs_process).
@@ -10,7 +11,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 const mockFeedResolve: jest.Mock = jest.fn();
 const mockFeedDelete: jest.Mock = jest.fn();
 const mockStackPop: jest.Mock = jest.fn();
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   Ok: <T>(value: T) => ({ ok: true, value }),
   Err: () => ({ ok: false }),
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),

@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { SessionMotd } from '@fnndsc/menu';
 
@@ -10,7 +11,7 @@ const mockCache = {
   lifecycle_get: jest.fn(() => ({ state: 'empty' })),
 };
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ context_getSingle: mockContext }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   procCache_get: () => mockCache,
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },

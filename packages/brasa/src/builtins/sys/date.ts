@@ -1,3 +1,4 @@
+import { CommandEnvelope, envelope_ok } from '@fnndsc/menu';
 /**
  * @file Builtin date.
  *
@@ -9,7 +10,6 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok } from '@fnndsc/cumin';
 
 const DAYS_LONG: readonly string[] = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAYS_SHORT: readonly string[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

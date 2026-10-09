@@ -7,10 +7,11 @@
  * @module
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/rm.js', () => ({ files_rm: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({ rm_render: jest.fn() }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   // A real cache: the removal path invalidates the parent listing and the
   // tree beneath the target, and a bare jest.fn() returning undefined turns
   // a successful removal into a caught TypeError.

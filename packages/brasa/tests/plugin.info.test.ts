@@ -9,13 +9,14 @@
  * graphical surface draws.
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const clientGet = jest.fn();
 const stackPush = jest.fn();
 const pluginFind = jest.fn();
 const parametersDrain = jest.fn();
 
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   Ok: (value: unknown) => ({ ok: true, value }),
   Err: () => ({ ok: false }),
   plugin_find: pluginFind,

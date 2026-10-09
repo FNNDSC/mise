@@ -7,9 +7,9 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import chalk from 'chalk';
 import { text_input } from './stdin.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** Lines `yes` prints when not told how many. */
 export const YES_DEFAULT: number = 10;

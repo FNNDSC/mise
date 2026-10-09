@@ -6,9 +6,10 @@ import chalk from 'chalk';
 import { ParsedArgs, commandArgs_process, path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { session } from '../../session/index.js';
 import { spinner } from '../../lib/spinner.js';
-import { errorStack, CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { scan_do, archyTree_create, type CLIscan, type ScanRecord } from '@fnndsc/chili/path/pathCommand.js';
 import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
+import { errorStack } from '@fnndsc/fond';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Displays a directory tree of the ChRIS filesystem.

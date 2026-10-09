@@ -6,6 +6,7 @@
  * TTY prints, and refusal by name.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
 const mockSeries = jest.fn();
@@ -34,7 +35,7 @@ function grayGrid(width = 8, height = 8): { ok: true; value: { kind: 'gray'; wid
   for (let i = 0; i < gray.length; i++) gray[i] = ((i % width) / (width - 1)) * 255;
   return { ok: true, value: { kind: 'gray', width, height, gray } };
 }
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown): CommandEnvelope => (model === undefined ? { status: 'ok', rendered } : ({ status: 'ok', rendered, model } as CommandEnvelope)),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string): CommandEnvelope => {
     const envelope: CommandEnvelope = { status: 'error', rendered };

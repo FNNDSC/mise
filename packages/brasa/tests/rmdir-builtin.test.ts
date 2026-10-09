@@ -4,6 +4,7 @@
  * refuses under /proc/tags and names the verb that does the job.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const mockVirtual = jest.fn((p: string): boolean => p.startsWith('/proc/'));
 const mockVfsRmdir = jest.fn(async (_p: string): Promise<boolean> => true);
@@ -13,7 +14,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   vfsDispatcher: { path_isVirtual: mockVirtual, rmdir: mockVfsRmdir, list: mockVfsList },
 }));
 const mockStackPop = jest.fn((): { message: string } | undefined => undefined);
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _e?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
   errorStack: { stack_pop: mockStackPop },

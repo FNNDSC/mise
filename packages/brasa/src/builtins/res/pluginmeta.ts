@@ -5,12 +5,12 @@
  * Aliases: pluginmeta / pluginmetas / meta / metas
  */
 import chalk from 'chalk';
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
 import { pluginMetas_fetchList, PluginMetaListResult } from '@fnndsc/chili/commands/pluginmetas/list.js';
 import { pluginMetaFields_fetch } from '@fnndsc/chili/commands/pluginmetas/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Builtin handler for the `pluginmeta` command.

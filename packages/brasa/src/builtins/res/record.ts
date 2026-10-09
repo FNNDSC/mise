@@ -11,7 +11,6 @@
  * @module
  */
 import chalk from 'chalk';
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { files_touch as chefs_touch_cmd } from '@fnndsc/chili/commands/fs/touch.js';
 import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
 import path from 'path';
@@ -22,6 +21,7 @@ import {
   recorder_state,
   recorder_stop,
 } from '../../session/recorder.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** The model kind under which a finished recording travels. */
 export const RECORD_MODEL_KIND: string = 'manifest.recorded';

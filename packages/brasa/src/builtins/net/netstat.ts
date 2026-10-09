@@ -9,12 +9,11 @@
  * slow day asks it before guessing where the time went.
  */
 import chalk from 'chalk';
-import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 // The ledger by its own door: a jest ESM test importing a name from the
 // cumin ROOT overflows cjs-module-lexer on that index and sees none of
 // the names added after the overflow — the subpath is small and seen whole.
 import { requestLedger_snapshot, requestLedger_reset, type LedgerSnapshot, type LedgerFamily, type LedgerEntry } from '@fnndsc/cumin/request-ledger';
-import { NET_STATS_MODEL_KIND } from '@fnndsc/menu';
+import { NET_STATS_MODEL_KIND, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** How many recent requests the table shows unless asked otherwise. */
 const LAST_SHOWN: number = 10;

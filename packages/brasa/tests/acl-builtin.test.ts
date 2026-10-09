@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 type R = { ok: boolean; value?: unknown };
 const mockFeedShare = jest.fn<(feedID: number, username: string) => Promise<R>>();
@@ -14,7 +15,7 @@ const mockPublic = jest.fn<(feedID: number) => Promise<R>>();
 const mockPrivate = jest.fn<(feedID: number) => Promise<R>>();
 const mockStackPop = jest.fn<() => { type: string; message: string } | undefined>();
 
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   feed_share: mockFeedShare,
   feedShare_group: mockShareGroup,
   feedShare_revoke: mockRevoke,

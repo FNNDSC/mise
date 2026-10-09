@@ -4,8 +4,8 @@
  * chili/salsa/cumin layers, and the calypso sibling surface) as a command
  * envelope — the in-shell counterpart of `chell --version`.
  */
-import { CommandEnvelope, envelope_ok } from '@fnndsc/cumin';
 import { versionReport_build, versions_get, type StackVersions } from '../../core/version.js';
+import { CommandEnvelope, envelope_ok } from '@fnndsc/menu';
 
 /**
  * Reports the version of chell and the brasa engine, its layers, and the

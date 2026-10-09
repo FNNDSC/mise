@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const mockPush = jest.fn();
 const mockPop = jest.fn();
@@ -12,7 +13,7 @@ const mockServersList = jest.fn();
 const mockIndexFind = jest.fn(() => null as unknown);
 const mockIndexNote = jest.fn();
 const mockIndexDrop = jest.fn();
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   seriesStorage_resolve: jest.fn(async () => ({ ok: false })),
   seriesStorage_resolveMany: jest.fn(async () => ({ ok: true, value: new Map() })),
   tag_extractValue: (v) => (v && typeof v === 'object' && 'value' in v ? String(v.value ?? '') : String(v ?? '')),

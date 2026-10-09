@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const mockDispatcherList = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
@@ -16,7 +17,7 @@ const mockCacheInvalidate = jest.fn((key: string) => { cacheStore.delete(key); }
 const mockStackPush = jest.fn();
 const mockStackSearch = jest.fn<(needle: string) => string[]>(() => []);
 const mockFeedTagsByFeed = jest.fn(async (): Promise<{ ok: boolean; value?: Map<number, string[]> }> => ({ ok: true, value: new Map() }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   feedTags_byFeed: mockFeedTagsByFeed,
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),

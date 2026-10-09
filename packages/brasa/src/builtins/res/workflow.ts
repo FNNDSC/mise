@@ -5,12 +5,12 @@
  * Aliases: workflow / workflows
  */
 import chalk from 'chalk';
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
 import { workflows_fetchList, WorkflowListResult } from '@fnndsc/chili/commands/workflows/list.js';
 import { workflowFields_fetch } from '@fnndsc/chili/commands/workflows/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Builtin handler for the `workflow` command.

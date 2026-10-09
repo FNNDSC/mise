@@ -27,8 +27,7 @@
 import { FileReadRefusal, fileRefusal_name } from './fileRefusal.js';
 export { FileReadRefusal, fileRefusal_name } from './fileRefusal.js';
 import chalk from 'chalk';
-import type { CommandEnvelope, Result } from '@fnndsc/cumin';
-import type { Regard, WatchState, AmbientEvent } from '@fnndsc/menu';
+import type { Regard, WatchState, AmbientEvent, CommandEnvelope } from '@fnndsc/menu';
 import { ambient_listen } from './ambient.js';
 import { procWatch_add, procWatch_remove, procWatch_release, procWatch_state, watchSubject_parse } from '../builtins/procWatch.js';
 import { session } from '../session/index.js';
@@ -52,6 +51,7 @@ import { answerAdapters_register } from '../session/answerAdapters.js';
 import { numbering_get, type Numbering } from '../session/answer.js';
 import { sink_get, sink_set, type OutputSink } from './sink.js';
 import { backend_install, type Backend } from './backend.js';
+import type { Result } from '@fnndsc/fond';
 
 /**
  * Result of a completion request: the candidates and the prefix they
@@ -528,7 +528,7 @@ async function projectedPath_physical(projected: string): Promise<string> {
  */
 export async function file_read(filePath: string): Promise<Buffer> {
   const { path_resolve } = await import('../builtins/utils.js');
-  const { errorStack } = await import('@fnndsc/cumin');
+  const { errorStack } = await import('@fnndsc/fond');
   const since: number = errorStack.checkpoint_mark();
   const refusal = (): FileReadRefusal => fileRefusal_name(filePath, errorStack.checkpoint_drain(since).map((note: { message: string }): string => note.message));
   const resolved: string = await path_resolve(filePath);

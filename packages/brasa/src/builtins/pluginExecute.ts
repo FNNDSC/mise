@@ -8,17 +8,8 @@
  */
 
 import { plugin_executeInPlace, PluginExecutionResult } from '@fnndsc/salsa';
-import {
-  Dictionary,
-  errorStack,
-  Result,
-  procCache_get,
-  envelope_error,
-  envelope_ok,
-  type CommandEnvelope,
-  type StackMessage,
-} from '@fnndsc/cumin';
-import type { ListingItem } from '@fnndsc/menu';
+import { Dictionary, procCache_get } from '@fnndsc/cumin';
+import { type ListingItem, envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/menu';
 import chalk from 'chalk';
 import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
@@ -28,6 +19,7 @@ import { recentFeed_note, recentRunPlace_note, recentRuns_note } from '../sessio
 import { executableArguments_parse } from './argumentTokens.js';
 import { pluginSelector_normalize } from './pluginSelector.js';
 import { sink_dataLine, sink_errLine } from '../core/sink.js';
+import { errorStack, Result, type StackMessage } from '@fnndsc/fond';
 
 /**
  * Executes a plugin in the current directory context.

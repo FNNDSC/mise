@@ -3,9 +3,10 @@
  * Discordian date, the sun at a place, and the chimes.
  */
 import { jest, describe, it, expect, afterEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const published: unknown[] = [];
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
 }));

@@ -24,11 +24,11 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { runtimeOutput_set } from '@fnndsc/cumin/runtime-output';
-import type { CommandEnvelope } from '@fnndsc/cumin';
 import { type ProgressEvent, type ProgressRenderer, NullProgressRenderer } from './progress.js';
 // The sink interface is menu's (`@fnndsc/menu/surface`); the sinks themselves
 // and the installed instance stay here.
 import type { OutputSink } from '@fnndsc/menu/surface';
+import type { CommandEnvelope } from '@fnndsc/menu';
 export type { OutputSink } from '@fnndsc/menu/surface';
 
 

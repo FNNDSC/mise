@@ -20,8 +20,6 @@
  * @module
  */
 import chalk from 'chalk';
-import { CommandEnvelope, envelope_ok, envelope_error, errorStack } from '@fnndsc/cumin';
-import type { Result } from '@fnndsc/cumin';
 import { fileContent_get } from '@fnndsc/salsa';
 import { path_resolve } from '../utils.js';
 import { duration_parse } from '../../lib/duration.js';
@@ -30,6 +28,8 @@ import { sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
 import { paramScope_run, reference_isReserved, reference_resolve, unresolvedStands_run } from '../../core/expansion.js';
 import { shellWords_referencesExpand, shellWords_tokenize, type ReferenceExpansion, type ShellWord } from '../../lib/parser.js';
+import { errorStack, type Result } from '@fnndsc/fond';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** The model kind under which a played manifest's outcome travels. */
 export const PLAY_MODEL_KIND: string = 'manifest.played';

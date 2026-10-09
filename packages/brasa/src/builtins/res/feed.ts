@@ -15,22 +15,13 @@ import { feedList_render, feedCreate_render, feedNote_render, feedComments_rende
 import { Feed } from '@fnndsc/chili/models/feed.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
-import {
-  Err,
-  Ok,
-  Result,
-  errorStack,
-  feed_resolve,
-  path_extractFeedID,
-  type CommandEnvelope,
-  type FeedRecord,
-  envelope_ok,
-  envelope_error,
-} from '@fnndsc/cumin';
+import { feed_resolve, path_extractFeedID, type FeedRecord } from '@fnndsc/cumin';
 import { builtin_edit } from '../fs/edit.js';
 import { feedTree_handle } from './feed.tree.js';
 import { feedDag_handle, feedDiagram_handle } from './feed.diagram.js';
 import { session } from '../../session/index.js';
+import { Err, Ok, Result, errorStack } from '@fnndsc/fond';
+import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Resolves an explicit feed specifier or, when omitted, the `feed_N` segment of

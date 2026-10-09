@@ -23,11 +23,12 @@
  */
 import path from 'path';
 import { listCache_get } from '@fnndsc/cumin';
-import type { ListCache, Result } from '@fnndsc/cumin';
+import type { ListCache } from '@fnndsc/cumin';
 import { fileContent_get, files_path_isDirectory } from '@fnndsc/salsa';
 import { files_touch as chefs_touch_cmd } from '@fnndsc/chili/commands/fs/touch.js';
 import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
 import { path_resolve } from '../utils.js';
+import type { Result } from '@fnndsc/fond';
 
 /** Where the session keeps the cohort it is working on. */
 export const COHORT_FILE: string = '~/gather/current.json';

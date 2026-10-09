@@ -19,19 +19,10 @@
  * @module
  */
 import chalk from 'chalk';
-import {
-  Client,
-  errorStack,
-  plugin_find,
-  pluginParameters_drain,
-  type PluginFound,
-  type PluginParameterData,
-  type Result,
-  Ok,
-  Err,
-} from '@fnndsc/cumin';
+import { Client, plugin_find, pluginParameters_drain, type PluginFound, type PluginParameterData } from '@fnndsc/cumin';
 import { type PluginInfoModel, type PluginParameter } from '@fnndsc/menu';
 import { session } from '../../session/index.js';
+import { errorStack, type Result, Ok, Err } from '@fnndsc/fond';
 
 /** How a `/bin` entry names a plugin: `<name>-v<version>`. */
 const BIN_VERSION_SEPARATOR: string = '-v';

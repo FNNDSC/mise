@@ -6,6 +6,7 @@
  * models it carries.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
 const mockSeries = jest.fn();
@@ -20,7 +21,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   dicomTags_summarize: mockSummarize,
   dicomFiles_sample: <T>(files: T[], cap: number): T[] => (files.length <= cap ? files : [files[0], files[files.length - 1]]),
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown): CommandEnvelope => (model === undefined ? { status: 'ok', rendered } : ({ status: 'ok', rendered, model } as CommandEnvelope)),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string): CommandEnvelope => {
     const envelope: CommandEnvelope = { status: 'error', rendered };

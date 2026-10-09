@@ -6,9 +6,10 @@ import chalk from 'chalk';
 import path from 'path';
 import { session } from '../../session/index.js';
 import { path_resolve, path_resolveLinks, error_stripDebugPrefix } from '../utils.js';
-import { envelope_ok, envelope_error, Ok, Err } from '@fnndsc/cumin';
-import type { CommandEnvelope, Result, StackMessage, Client, CacheResult } from '@fnndsc/cumin';
+import type { Client, CacheResult } from '@fnndsc/cumin';
 import type { VFSItem } from '@fnndsc/salsa';
+import { Ok, Err, type Result, type StackMessage } from '@fnndsc/fond';
+import { envelope_ok, envelope_error, type CommandEnvelope } from '@fnndsc/menu';
 
 /**
  * Interface representing a FileBrowserFolder from ChRIS API.
@@ -169,7 +170,7 @@ async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<Com
   const { vfs } = await import('../../lib/vfs/vfs.js');
   const listResult: Result<{ items: unknown[] }> = await vfs.listing_get(cleanPath);
   if (!listResult.ok) {
-    const { errorStack } = await import('@fnndsc/cumin');
+    const { errorStack } = await import('@fnndsc/fond');
     const lastError: StackMessage | undefined = errorStack.stack_pop();
     const detail: string = lastError ? error_stripDebugPrefix(lastError.message) : 'No such file or directory';
     return envelope_error('', undefined, `${chalk.red(`cd: ${pathArg}: ${detail}`)}\n`);

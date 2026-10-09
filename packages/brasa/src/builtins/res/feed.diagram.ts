@@ -17,16 +17,10 @@
 import chalk from 'chalk';
 import { dump as yamlDump } from 'js-yaml';
 import { feedGraphData_ensure, feedGraph_build, FeedGraph } from '@fnndsc/salsa';
-import { type CommandEnvelope, envelope_ok, envelope_error, procCache_get, type ProcFeedLoadProgress } from '@fnndsc/cumin';
+import { procCache_get, type ProcFeedLoadProgress } from '@fnndsc/cumin';
 import { feedDiagramNodes_build, feedTree_render, type FeedTreeRender } from './feed.tree.render.js';
 import { signalflowDoc_build } from './feed.tree.signalflow.js';
-import {
-  DAG_MODEL_KINDS,
-  dagNodeStatusSchema,
-  type FeedDagModel,
-  type FeedIndexingModel,
-  type DagNodeStatus,
-} from '@fnndsc/menu';
+import { DAG_MODEL_KINDS, dagNodeStatusSchema, type FeedDagModel, type FeedIndexingModel, type DagNodeStatus, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import type { FeedNode } from '@fnndsc/salsa';
 import { collapse_build, type CollapsedNode } from './feed.tree.collapse.js';
 

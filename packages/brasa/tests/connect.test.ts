@@ -3,9 +3,10 @@
  * restore, and the token hand-over from a door that already logged in.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const mockContextSet = jest.fn(async () => true);
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   chrisContext: { current_set: mockContextSet },
   Context: { ChRISuser: 'user', ChRISURL: 'url', ChRISfeed: 'feed', ChRISplugin: 'plugin' },
 }));

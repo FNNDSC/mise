@@ -17,10 +17,9 @@
  */
 import chalk from 'chalk';
 import path from 'path';
-import { CommandEnvelope, envelope_ok, envelope_error, procCache_get } from '@fnndsc/cumin';
+import { procCache_get } from '@fnndsc/cumin';
 import { jobs_statusBatch } from '@fnndsc/salsa';
-import type { DicomTag, DicomTagsModel, DicomVaryingTag } from '@fnndsc/menu';
-import type { Result } from '@fnndsc/cumin';
+import { type DicomTag, type DicomTagsModel, type DicomVaryingTag, CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import { commandArgs_process, ParsedArgs, path_resolve } from '../utils.js';
 import { duration_parse } from '../../lib/duration.js';
 
@@ -31,6 +30,7 @@ import { cohort_read, GatherMember, GatherState } from './gather.store.js';
 import { path_physical, tagsModel_read } from './dicom.js';
 import { feedStatus_derive } from '../proc.helpers.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
+import type { Result } from '@fnndsc/fond';
 
 /** The model kind under which a checked claim travels to a surface. */
 export const EXPECT_MODEL_KIND: string = 'expect.result';

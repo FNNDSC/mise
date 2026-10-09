@@ -8,10 +8,10 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import chalk from 'chalk';
 import { repl_question } from '../../core/question.js';
 import { sink_dataLine } from '../../core/sink.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /* ---------------------------------------------------------------- quiz */
 

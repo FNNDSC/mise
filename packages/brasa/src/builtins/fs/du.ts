@@ -11,8 +11,8 @@ import { spinner } from '../../lib/spinner.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
 import { scan_do, type CLIscan, type ScanRecord } from '@fnndsc/chili/path/pathCommand.js';
 import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
-import type { Result, CommandEnvelope } from '@fnndsc/cumin';
-import type { ListingItem } from '@fnndsc/menu';
+import type { ListingItem, CommandEnvelope } from '@fnndsc/menu';
+import type { Result } from '@fnndsc/fond';
 
 /**
  * Parsed flags controlling `du` output.

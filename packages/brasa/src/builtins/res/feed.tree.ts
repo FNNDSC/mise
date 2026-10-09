@@ -9,9 +9,9 @@
  */
 import chalk from 'chalk';
 import { feedGraphData_ensure, feedGraph_build, FeedGraph } from '@fnndsc/salsa';
-import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { feedTree_render, FeedTreeRender } from './feed.tree.render.js';
 import { feedIndexing_envelope } from './feed.diagram.js';
+import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Handles `feed tree <feedId> [--focus <id>] [--max-nodes <n>] [--flat]`. Prepares the

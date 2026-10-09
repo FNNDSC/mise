@@ -7,13 +7,14 @@
  * retrieveWatch suite.
  */
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import type { OutputSink } from '../src/core/sink.js';
 import type { ProgressEvent } from '../src/core/progress.js';
 
 const mockProcFeedAdd = jest.fn();
 const mockProcInstanceAdd = jest.fn();
 const mockStorageResolve = jest.fn();
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_push: jest.fn(), stack_getAll: jest.fn(() => []) },

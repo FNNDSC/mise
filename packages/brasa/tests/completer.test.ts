@@ -3,6 +3,7 @@
  */
 
 import { jest } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 // Mock salsa plugins_listAll and vfsDispatcher
 const mockPlugins_listAll = jest.fn();
@@ -39,7 +40,7 @@ const mockListCache = {
   cache_invalidate: jest.fn(),
 };
 
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   listCache_get: () => mockListCache,

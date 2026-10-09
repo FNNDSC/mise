@@ -13,7 +13,6 @@
  */
 import chalk from 'chalk';
 import path from 'path';
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { commandArgs_process, ParsedArgs, path_resolve } from '../utils.js';
 import {
@@ -28,6 +27,7 @@ import {
   pathKind_determine,
   seriesUID_ofPath,
 } from './gather.store.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** The model kind under which a cohort travels to a surface. */
 export const GATHER_MODEL_KIND: string = 'gather.cohort';

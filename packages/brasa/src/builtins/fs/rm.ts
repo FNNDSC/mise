@@ -4,7 +4,7 @@
  */
 import chalk from 'chalk';
 import path from 'path';
-import { CommandEnvelope, listCache_get, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { listCache_get } from '@fnndsc/cumin';
 import type { ListCache } from '@fnndsc/cumin';
 import { path_resolve } from '../utils.js';
 import { repl_confirm } from '../../core/question.js';
@@ -12,6 +12,7 @@ import { files_rm as chefs_rm_cmd, RmResult, RmOptions } from '@fnndsc/chili/com
 import { rm_render } from '@fnndsc/chili/views/fs.js';
 import { sink_get } from '../../core/sink.js';
 import { PROC_TAGS_PREFIX } from '@fnndsc/salsa';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Prompts the user for confirmation.

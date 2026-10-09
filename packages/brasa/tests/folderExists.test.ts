@@ -3,10 +3,11 @@
  * misses leave nothing on the error stack.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const stack: string[] = [];
 const lookup = jest.fn<(path: string) => Promise<unknown>>();
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   errorStack: {
     checkpoint_mark: (): number => stack.length,
     checkpoint_drain: (checkpoint: number): string[] => stack.splice(checkpoint),

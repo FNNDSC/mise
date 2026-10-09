@@ -11,9 +11,9 @@
  */
 import { session } from '../../session/index.js';
 import { path_resolveLinks } from '../utils.js';
-import { errorStack } from '@fnndsc/cumin';
-import type { Client, Result } from '@fnndsc/cumin';
+import type { Client } from '@fnndsc/cumin';
 import { folder_verifyPathMatch, vfsPath_isStructural, vfsPath_normalize } from './cd.js';
+import { errorStack, type Result } from '@fnndsc/fond';
 
 /**
  * Reports whether a folder exists at a logical path.

@@ -5,12 +5,13 @@
  * DATA laid out last, after the facts sweep settles.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const kept: Map<string, Record<string, [number, number, number]>> = new Map();
 let factsSettled: () => void = () => undefined;
 const order: string[] = [];
 
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   procLayout_get: async (name: string) => (kept.has(name) ? { name, positions: kept.get(name), writtenAt: 'then' } : null),
   procLayout_set: async (name: string, positions: Record<string, [number, number, number]>) => { kept.set(name, positions); order.push(name); return { name, positions, writtenAt: 'now' }; },
 }));

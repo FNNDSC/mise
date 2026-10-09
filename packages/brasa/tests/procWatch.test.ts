@@ -6,6 +6,7 @@
  * ProcCache runs so change events drive the sampler as they would live.
  */
 import { jest } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import type { ProcFeed, ProcInstance, ProcCacheChange } from '@fnndsc/cumin';
 
 const feedVisit_sync = jest.fn<(feedID: number) => Promise<boolean>>();
@@ -37,7 +38,7 @@ class FakeCache {
 }
 const cache: FakeCache = new FakeCache();
 
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   procCache_get: (): FakeCache => cache,
   feed_isActive: (feed: ProcFeed): boolean => feed.startedJobs > 0 || feed.scheduledJobs > 0 || feed.createdJobs > 0,
 }));

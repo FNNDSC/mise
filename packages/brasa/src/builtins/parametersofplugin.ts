@@ -8,7 +8,7 @@ import chalk from 'chalk';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { commandArgs_process } from './utils.js';
 import { PluginContextGroupHandler } from '@fnndsc/chili/plugins/pluginGroupHandler.js';
-import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Handles the 'parametersofplugin' builtin command.

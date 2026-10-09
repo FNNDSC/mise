@@ -9,10 +9,10 @@
  */
 
 import chalk from 'chalk';
-import { envelope_error, type CommandEnvelope } from '@fnndsc/cumin';
 import { elevation_run } from '@fnndsc/chili/commands/connect/elevation.js';
 import { shellArguments_slice } from '../lib/parser.js';
 import { surface_get } from './surface.js';
+import { envelope_error, type CommandEnvelope } from '@fnndsc/menu';
 
 /** Execution seam used by `sudo` to run its nested command. */
 export type ElevatedCommandRunner = (command: string, args: string[]) => Promise<CommandEnvelope>;

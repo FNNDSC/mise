@@ -8,8 +8,7 @@ import { store_listPlugins, store_searchPlugins } from '@fnndsc/chili/commands/s
 import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
 import { spinner } from '../lib/spinner.js';
 import { plugin_addInteractive } from './res/plugin.js';
-import { type CommandEnvelope, envelope_ok, envelope_error, errorStack, type Result } from '@fnndsc/cumin';
-import type { ListingItem } from '@fnndsc/menu';
+import { type ListingItem, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import {
   DEFAULT_STORE_URL,
   storeUrl_get,
@@ -18,6 +17,7 @@ import {
   storeUrl_clear,
   storeConfig_persist,
 } from '../config/storeConfig.js';
+import { errorStack, type Result } from '@fnndsc/fond';
 
 /**
  * Renders a store fetch failure as an error envelope, draining the reason the

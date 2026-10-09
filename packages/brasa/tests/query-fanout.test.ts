@@ -9,10 +9,11 @@
  * typo and hundreds of queries against a shared clinical system.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const stackPush = jest.fn();
 const stackPop = jest.fn();
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   Ok: (value: unknown) => ({ ok: true, value }),
   Err: () => ({ ok: false }),
   errorStack: { stack_push: stackPush, stack_pop: stackPop },

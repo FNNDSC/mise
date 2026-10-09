@@ -276,7 +276,7 @@ async function csvFile_put(
   destination: string,
   force: boolean,
 ): Promise<CsvWrite> {
-  const { errorStack } = await import('@fnndsc/cumin');
+  const { errorStack } = await import('@fnndsc/fond');
   const { path_resolve, error_stripDebugPrefix } = await import('../utils.js');
   const { files_create, files_delete, files_listAll, files_mkdir, files_path_isDirectory } =
     await import('@fnndsc/salsa');

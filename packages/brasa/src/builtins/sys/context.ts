@@ -5,8 +5,9 @@
 import chalk from 'chalk';
 import { context_getSingle } from '@fnndsc/salsa';
 import { session } from '../../session/index.js';
-import { SingleContext, CommandEnvelope, envelope_ok } from '@fnndsc/cumin';
+import { SingleContext } from '@fnndsc/cumin';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
+import { CommandEnvelope, envelope_ok } from '@fnndsc/menu';
 
 /** A single context key/value row for tabular display. */
 interface ContextRow {

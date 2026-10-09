@@ -1,3 +1,4 @@
+import { CommandEnvelope, envelope_error, envelope_ok } from '@fnndsc/menu';
 /**
  * @file Builtin weather.
  *
@@ -15,7 +16,6 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_error, envelope_ok } from '@fnndsc/cumin';
 
 /** Where `weather` looks when given no place. */
 export const WEATHER_DEFAULT_PLACE: string = 'Boston';

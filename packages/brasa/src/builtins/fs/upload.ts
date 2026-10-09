@@ -5,12 +5,14 @@
 import chalk from 'chalk';
 import { path_resolve } from '../utils.js';
 import { files_uploadWithProgress as chefs_upload_cmd, UploadSummary, bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
-import { listCache_get, type CommandEnvelope, envelope_ok, envelope_error, errorStack, type StackMessage } from '@fnndsc/cumin';
+import { listCache_get } from '@fnndsc/cumin';
 import path from 'path';
 import { sink_get } from '../../core/sink.js';
 import { shellArguments_pathnameExpansion } from '../../lib/parser.js';
 import { surface_get } from '../../core/surface.js';
 import { repl_confirm } from '../../core/question.js';
+import { errorStack, type StackMessage } from '@fnndsc/fond';
+import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Asks the issuing surface to confirm replacement of an existing CFS target.

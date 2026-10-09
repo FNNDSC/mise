@@ -16,20 +16,14 @@ import {
   type PipelineDiagramNode,
 } from '@fnndsc/salsa';
 import {
-  errorStack,
-  type CommandEnvelope,
-  type Result,
-  envelope_error,
-  envelope_ok,
-} from '@fnndsc/cumin';
-import {
   diagramTopology_nest,
   diagramTree_walk,
   type DiagramNode,
   type DiagramTreeWalk,
 } from './diagram.tree.js';
 import { signalflowDoc_build, type SfDoc } from './feed.tree.signalflow.js';
-import { DAG_MODEL_KINDS, type PipelineDiagramModel } from '@fnndsc/menu';
+import { DAG_MODEL_KINDS, type PipelineDiagramModel, type CommandEnvelope, envelope_error, envelope_ok } from '@fnndsc/menu';
+import { errorStack, type Result } from '@fnndsc/fond';
 
 /**
  * Projects the salsa diagram onto the wire's `pipeline.diagram` model: the

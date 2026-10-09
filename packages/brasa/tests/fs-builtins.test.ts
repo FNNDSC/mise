@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
 // Deps of builtins/utils + the builtins themselves, so real commandArgs_process
@@ -19,7 +20,7 @@ jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 
 const mockInvalidate = jest.fn();
 const mockStackPop = jest.fn(() => null);
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   listCache_get: () => ({ cache_invalidate: mockInvalidate, cache_invalidateTree: mockInvalidate }),
   errorStack: { stack_pop: mockStackPop, stack_search: () => [] },
   envelope_ok: (rendered: string, model?: unknown) =>

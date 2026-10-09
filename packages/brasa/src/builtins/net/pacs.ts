@@ -9,14 +9,15 @@
  */
 
 import chalk from 'chalk';
-import { chrisContext, errorStack, pacsServers_list, PACSServer, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
-import { PACS_SERVERS_MODEL_KIND, type PacsServer, type PacsServersModel } from '@fnndsc/menu';
+import { chrisContext, pacsServers_list, PACSServer } from '@fnndsc/cumin';
+import { PACS_SERVERS_MODEL_KIND, type PacsServer, type PacsServersModel, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import { builtin_query } from './query.js';
 import { pacsRefusal_hint, pacsRefusal_is } from './pacsAccess.js';
 import { builtin_pacsStatus } from './status.js';
 import { builtin_pull } from '../fs/pull.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { sink_dataLine, sink_errLine } from '../../core/sink.js';
+import { errorStack } from '@fnndsc/fond';
 
 /**
  * Streams the list of registered PACS servers, marking the active one.

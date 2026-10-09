@@ -7,7 +7,6 @@
  * @module
  */
 import chalk from 'chalk';
-import { errorStack, envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/cumin';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import {
   localAccount_action,
@@ -19,6 +18,8 @@ import {
 } from '@fnndsc/chili/commands/users/local.js';
 import { surface_get } from '../../core/surface.js';
 import { authorizationFailure_is, sudoHint_build } from '../../core/elevation.js';
+import { errorStack } from '@fnndsc/fond';
+import { envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/menu';
 
 /**
  * Renders a local-account command error and records a failing process status.

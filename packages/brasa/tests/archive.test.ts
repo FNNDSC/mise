@@ -7,6 +7,7 @@
  * leaves an operator with an unexplained feed and no file.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const dataGet = jest.fn();
 const feedCreate = jest.fn();
@@ -28,7 +29,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   job_statusFetch: statusFetch,
   files_listRecursive: listRecursive,
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   errorStack: { stack_push: stackPush, stack_search: () => [] },
 }));
 

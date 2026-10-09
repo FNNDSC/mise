@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import { load as yamlLoad } from 'js-yaml';
 
 const feedGraphData_ensure = jest.fn(async (_id: number): Promise<'ready' | 'pending'> => 'ready');
@@ -6,7 +7,7 @@ const feedLoad_of = jest.fn((_id: number): { feedID: number; loaded: number; tot
 const feedGraph_build = jest.fn();
 
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ feedGraphData_ensure, feedGraph_build }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _e?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
   procCache_get: () => ({ feedLoad_of }),

@@ -9,8 +9,8 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok } from '@fnndsc/cumin';
 import chalk from 'chalk';
+import { CommandEnvelope, envelope_ok } from '@fnndsc/menu';
 
 /** The programs a GAMES pane can run. */
 export type ShowProgram = 'sl' | 'cmatrix' | 'rain' | 'aquarium' | 'tetris' | 'snake';

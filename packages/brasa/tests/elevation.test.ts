@@ -1,5 +1,6 @@
 /** Tests for explicit, surface-mediated CUBE elevation. */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { Surface } from '../src/core/surface.js';
 
@@ -7,7 +8,7 @@ const mockElevationRun = jest.fn();
 jest.unstable_mockModule('@fnndsc/chili/commands/connect/elevation.js', () => ({
   elevation_run: mockElevationRun,
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => ({
     status: 'error', rendered, renderedErr,
   }),

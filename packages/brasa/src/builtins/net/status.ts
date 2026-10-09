@@ -17,21 +17,13 @@
  * @module
  */
 import chalk from 'chalk';
-import {
-  pacsQueries_list,
-  pacsRetrieve_statusForQuery,
-  type PACSQueryStatusReport,
-  type SeriesRetrieveStatus,
-  type FilteredResourceData,
-  type CommandEnvelope,
-  envelope_ok,
-  envelope_error,
-} from '@fnndsc/cumin';
+import { pacsQueries_list, pacsRetrieve_statusForQuery, type PACSQueryStatusReport, type SeriesRetrieveStatus, type FilteredResourceData } from '@fnndsc/cumin';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { spinner } from '../../lib/spinner.js';
 import { pacsQuery_createAndWait, queryExpr_parse } from './query.js';
 import { queryId_extractFromFolder } from '@fnndsc/salsa';
 import { pacsServer_resolve } from './pacsUtils.js';
+import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** Width of the per-series fill bar, in characters. */
 const BAR_WIDTH: number = 20;

@@ -22,11 +22,9 @@ import { pluginList_render, pluginRun_render } from '@fnndsc/chili/views/plugin.
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { PluginInstance } from '@fnndsc/chili/models/plugin.js';
 import { spinner } from '../../lib/spinner.js';
-import { errorStack, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { chili_capture, type ChiliCaptured } from '@fnndsc/chili/screen/output.js';
-import { PLUGIN_INFO_MODEL_KIND, type PluginInfoModel } from '@fnndsc/menu';
-import type { Result } from '@fnndsc/cumin';
+import { PLUGIN_INFO_MODEL_KIND, type PluginInfoModel, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import {
   pluginInfo_build,
   pluginInfoText_render,
@@ -34,6 +32,7 @@ import {
   type PluginSpecifier,
 } from './plugin.info.js';
 import { authorizationFailure_is, sudoHint_build } from '../../core/elevation.js';
+import { errorStack, type Result } from '@fnndsc/fond';
 
 /**
  * Mutable result populated while Chili output is captured.

@@ -14,7 +14,6 @@ import {
   type DownloadSummary,
   bytes_format
 } from '@fnndsc/chili/commands/fs/download.js';
-import { type CommandEnvelope, envelope_ok, envelope_error, errorStack } from '@fnndsc/cumin';
 import { sink_get } from '../../core/sink.js';
 import { shellArguments_pathnameExpanded } from '../../lib/parser.js';
 import { path_resolve } from '../utils.js';
@@ -22,7 +21,8 @@ import { surface_get, type Surface } from '../../core/surface.js';
 import { repl_confirm } from '../../core/question.js';
 import { files_path_isDirectory, files_listRecursive, type FsItem } from '@fnndsc/salsa';
 import { directory_archive, type ArchiveResult } from './archive.js';
-import type { FileDeliverResult } from '@fnndsc/menu';
+import { type FileDeliverResult, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { errorStack } from '@fnndsc/fond';
 
 /**
  * Asks the issuing surface to confirm a local download overwrite or merge.

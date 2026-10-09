@@ -3,8 +3,8 @@
  * Toggles execution timing, reported as a command envelope.
  */
 import chalk from 'chalk';
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Toggles or displays command timing mode.

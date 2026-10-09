@@ -3,8 +3,9 @@
  * Reports the current working directory as a command envelope.
  */
 import { session } from '../../session/index.js';
-import { FilteredResourceData, CommandEnvelope, envelope_ok } from '@fnndsc/cumin';
+import { FilteredResourceData } from '@fnndsc/cumin';
 import { feeds_list, pluginInstances_list } from '@fnndsc/salsa';
+import { CommandEnvelope, envelope_ok } from '@fnndsc/menu';
 
 /**
  * Reports the current working directory in the ChRIS filesystem context.

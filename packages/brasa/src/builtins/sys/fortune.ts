@@ -8,8 +8,8 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok } from '@fnndsc/cumin';
 import { FORTUNES } from './fortunes.data.js';
+import { CommandEnvelope, envelope_ok } from '@fnndsc/menu';
 
 /**
  * Picks a random fortune from the bundled collection.

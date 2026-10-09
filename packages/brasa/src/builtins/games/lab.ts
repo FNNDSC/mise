@@ -8,12 +8,13 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok, envelope_error, chrisContext, requestLedger_snapshot, type LedgerSnapshot } from '@fnndsc/cumin';
+import { chrisContext, requestLedger_snapshot, type LedgerSnapshot } from '@fnndsc/cumin';
 import chalk from 'chalk';
 import { surface_get, type SurfacePeer } from '../../core/surface.js';
 import { motd_gather } from '../sys/motd.js';
 import { BRAIN } from './cowsay.js';
 import { text_input } from './stdin.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** Round trips `ping` makes when not told. */
 export const PING_COUNT: number = 3;

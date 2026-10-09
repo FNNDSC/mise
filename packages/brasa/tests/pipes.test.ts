@@ -6,6 +6,7 @@
 // Since they're not exported, we'll test the integration through command_handle
 
 import { jest } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 // Mock dependencies before importing
 const mockSetCWD = jest.fn();
@@ -56,7 +57,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 }));
 
 // Mock cumin
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   chrisContext: {}

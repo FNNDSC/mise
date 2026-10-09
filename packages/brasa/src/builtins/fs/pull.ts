@@ -12,15 +12,7 @@
  */
 
 import chalk from 'chalk';
-import {
-  Client,
-  type CommandEnvelope,
-  envelope_ok,
-  envelope_error,
-  procCache_get,
-  seriesStorage_resolve,
-  type Dictionary,
-} from '@fnndsc/cumin';
+import { Client, procCache_get, seriesStorage_resolve, type Dictionary } from '@fnndsc/cumin';
 import {
   feed_create,
   plugin_run,
@@ -54,6 +46,7 @@ import { newFeed_cacheAdd, run_follow } from '../feedCreation.js';
 import { builtin_pipeline } from '../res/pipeline.js';
 import { executableArguments_parse } from '../argumentTokens.js';
 import { pluginSelector_normalize } from '../pluginSelector.js';
+import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 interface PullPathResolution {
   paths: string[];

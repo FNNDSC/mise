@@ -11,9 +11,10 @@ import { session } from '../session/index.js';
 import type { ListingItem } from '@fnndsc/menu';
 import { path_resolveChrisFs } from '@fnndsc/chili/utils/cli.js';
 import { vfsDispatcher } from '@fnndsc/salsa';
-import { listCache_get, Result, Ok, Err, errorStack } from '@fnndsc/cumin';
+import { listCache_get } from '@fnndsc/cumin';
 import { ShellWord, shellWord_literal, shellWord_unquoted } from '../lib/parser.js';
 import { path_resolve } from './utils.js';
+import { Result, Ok, Err, errorStack } from '@fnndsc/fond';
 
 /**
  * Checks if a string contains wildcard characters.

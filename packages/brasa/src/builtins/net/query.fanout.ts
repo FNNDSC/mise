@@ -1,3 +1,4 @@
+import { Err, Ok, errorStack, type Result } from '@fnndsc/fond';
 /**
  * @file A PACS question that names several patients is several questions.
  *
@@ -14,7 +15,6 @@
  *
  * @module
  */
-import { Err, Ok, errorStack, type Result } from '@fnndsc/cumin';
 
 /** The DICOM key a cohort is expressed in. */
 export const PATIENT_KEY: string = 'PatientID';

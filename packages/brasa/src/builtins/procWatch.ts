@@ -15,8 +15,8 @@
  *
  * @module
  */
-import type { CommandEnvelope, ProcCache, ProcCacheChange, ProcFeed } from '@fnndsc/cumin';
-import type { WatchState } from '@fnndsc/menu';
+import type { ProcCache, ProcCacheChange, ProcFeed } from '@fnndsc/cumin';
+import type { WatchState, CommandEnvelope } from '@fnndsc/menu';
 import { ambient_publish } from '../core/ambient.js';
 
 // The cache, the visit, and the model builder are reached lazily: a host

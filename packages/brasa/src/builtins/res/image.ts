@@ -17,15 +17,15 @@
  *
  * @module
  */
-import { type CommandEnvelope, envelope_ok, envelope_error, type Result } from '@fnndsc/cumin';
 import { context_getSingle, dicomSeries_summarize, dicomSlice_gray, type DicomSeriesSummary, type DicomGrayOutcome } from '@fnndsc/salsa';
-import { IMAGE_MODEL_KINDS, type DicomSeriesModel, type ImageViewModel } from '@fnndsc/menu';
+import { IMAGE_MODEL_KINDS, type DicomSeriesModel, type ImageViewModel, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import chalk from 'chalk';
 import { commandArgs_process, path_resolve, type ParsedArgs } from '../utils.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { surface_get } from '../../core/surface.js';
 import { series_render } from './dicom.js';
 import { thumbnail_render } from './thumbnail.js';
+import type { Result } from '@fnndsc/fond';
 
 /** Path endings a volume renderer answers to. */
 const VOLUME_PATTERN: RegExp = /\.(nii|nii\.gz|mgz|mgh)$/i;

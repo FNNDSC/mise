@@ -6,11 +6,11 @@
  *
  * @module
  */
-import { errorStack } from '@fnndsc/cumin';
 import { vfs } from './vfs/vfs.js';
 import { spinner } from './spinner.js';
-import { error_stripDebugPrefix } from '../builtins/index.js';
+import { error_stripDebugPrefix } from '../builtins/utils.js';
 import { announceIndent_get } from './announceIndent.js';
+import { errorStack } from '@fnndsc/fond';
 
 /**
  * Status-tag column assumed when a host does not declare its own.

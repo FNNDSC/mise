@@ -42,7 +42,7 @@ const mockTableRender = jest.fn(() => 'FIELDS_TABLE');
 jest.unstable_mockModule('@fnndsc/chili/screen/screen.js', () => ({ table_display: mockTableDisplay, table_render: mockTableRender }));
 
 const mockChiliRun = jest.fn();
-jest.unstable_mockModule('../src/core/chiliDelegate.js', () => ({ chiliCommand_run: mockChiliRun }));
+jest.unstable_mockModule('../src/chris/chiliDelegate.js', () => ({ chiliCommand_run: mockChiliRun }));
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({ spinner: { start: jest.fn(), stop: jest.fn() } }));
 jest.unstable_mockModule('../src/core/elevation.js', () => ({
   authorizationFailure_is: (message: string): boolean => message.includes('403'),

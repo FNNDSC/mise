@@ -21,7 +21,12 @@ jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
   chrisConnection_init: jest.fn(async () => undefined),
 }));
 
-// The prompt and the heartbeat read the /proc index; not what this file is about.
+// The prompt, the heartbeat, the fallback, the files and the watch reach
+// into the /proc index and CUBE; not what this file is about.
+jest.unstable_mockModule('../src/chris/commandFallback.js', () => ({ chrisFallback: {} }));
+jest.unstable_mockModule('../src/chris/files.js', () => ({ chrisFiles: {} }));
+jest.unstable_mockModule('../src/chris/watch.js', () => ({ chrisWatch: {} }));
+jest.unstable_mockModule('@fnndsc/chili/commands/connect/elevation.js', () => ({ elevation_run: jest.fn() }));
 jest.unstable_mockModule('../src/chris/promptContext.js', () => ({
   sessionPromptContext_build: jest.fn(),
   procIndex_snapshot: jest.fn(),

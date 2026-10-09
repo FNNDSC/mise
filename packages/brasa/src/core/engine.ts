@@ -24,12 +24,11 @@
  * @see docs/calypso.adoc for the governing design.
  * @module
  */
-import { FileReadRefusal, fileRefusal_name } from './fileRefusal.js';
-export { FileReadRefusal, fileRefusal_name } from './fileRefusal.js';
+import { FileReadRefusal } from './fileRefusal.js';
+export { FileReadRefusal } from './fileRefusal.js';
 import chalk from 'chalk';
 import type { Regard, WatchState, AmbientEvent, CommandEnvelope } from '@fnndsc/menu';
 import { ambient_listen } from './ambient.js';
-import { procWatch_add, procWatch_remove, procWatch_release, procWatch_state, watchSubject_parse } from '../builtins/procWatch.js';
 import { session } from '../session/index.js';
 import { semicolons_parse } from '../lib/semicolonParser.js';
 import {
@@ -50,7 +49,7 @@ import { recorder_note } from '../session/recorder.js';
 import { answerAdapters_register } from '../session/answerAdapters.js';
 import { numbering_get, type Numbering } from '../session/answer.js';
 import { sink_get, sink_set, type OutputSink } from './sink.js';
-import { backend_install, type Backend } from './backend.js';
+import { backend_install, backendInstalled_get, type Backend } from './backend.js';
 import type { Result } from '@fnndsc/fond';
 
 /**
@@ -447,14 +446,9 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
     regard_note: (regard: Regard): void => session.regard_set(regard),
     regard_get: (): Regard | null => session.regard_get(),
     numbering_get: (): Numbering | null => numbering_get(),
-    watch_set: (subject: string, owner: string, on: boolean): WatchState | null => {
-      const feedID: number | null = watchSubject_parse(subject);
-      if (feedID === null) return null;
-      if (on) return procWatch_add(feedID, owner);
-      procWatch_remove(feedID, owner);
-      return procWatch_state(feedID);
-    },
-    watch_release: (owner: string): void => procWatch_release(owner),
+    watch_set: (subject: string, owner: string, on: boolean): WatchState | null =>
+      backendInstalled_get()?.watch?.set(subject, owner, on) ?? null,
+    watch_release: (owner: string): void => backendInstalled_get()?.watch?.release(owner),
     ambient_listen,
     sink_install: (sink: OutputSink): void => { sink_set(sink); },
     surface_install: (surface: Surface): void => { surface_set(surface); },
@@ -462,103 +456,30 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
 }
 
 /**
- * Writes bytes to one ChRIS path through the kernel's own create.
- *
- * A browser surface holds bytes the daemon's machine has never seen; this
- * is how they reach the store without any surface talking to CUBE.
+ * Writes bytes to one file at a path the session resolves: how a surface
+ * with no reach into a filesystem (a browser) delivers a file. The backend
+ * does the writing.
  *
  * @param filePath - The destination path (absolute or cwd-relative).
  * @param bytes - The content to write.
- * @throws {Error} When the store refused the write.
+ * @throws {Error} When the backend refused the write, or has no files.
  */
 export async function file_write(filePath: string, bytes: Buffer): Promise<void> {
-  const { path_resolve } = await import('../builtins/utils.js');
-  const { files_create } = await import('@fnndsc/salsa');
-  const { listCache_get } = await import('@fnndsc/cumin');
-  const resolved: string = await path_resolve(filePath);
-  const written: boolean = await files_create(bytes, resolved);
-  if (!written) {
-    throw new Error(`cannot write ${filePath}`);
-  }
-  // A write invalidates the listing it changed, as every writing builtin
-  // does. Without this the browser that delivered the file asks for the
-  // folder again and is served the folder as it was before the delivery —
-  // which reads as an upload that silently did nothing.
-  const parent: string = resolved.replace(/\/[^/]*$/, '') || '/';
-  listCache_get().cache_invalidate(parent);
+  const files: Backend['files'] = backendInstalled_get()?.files;
+  if (files === undefined) throw new Error(`cannot write ${filePath}: this session has no files`);
+  await files.write(filePath, bytes);
 }
 
 /**
- * A `/proc` job data path as the physical file behind it, when the node's
- * output folder is a link. Returns the input unchanged when it is not a
- * data path or resolves no further.
- *
- * @param projected - A path under a projection.
- * @returns The physical path, or the input.
- */
-async function projectedPath_physical(projected: string): Promise<string> {
-  try {
-    const link: RegExpExecArray | null = /^(\/proc\/jobs\/feed_\d+\/[^/]+\/data)(\/.*)?$/.exec(projected);
-    if (link === null) return projected;
-    const { vfsDispatcher } = await import('@fnndsc/salsa');
-    const target: Result<string> = await vfsDispatcher.linkTarget_resolve(link[1] as string);
-    if (!target.ok) return projected;
-    const { logical_toPhysical } = await import('@fnndsc/chili/utils');
-    const physical: Result<string> = await logical_toPhysical(`${target.value}${link[2] ?? ''}`);
-    return physical.ok ? physical.value : projected;
-  } catch {
-    return projected;
-  }
-}
-
-/**
- * Reads one ChRIS file's raw bytes through ChILI, resolved against the
- * session's working directory.
- *
- * Resolved, as its twin {@link file_write} is: a surface addresses a file
- * the way the session does, and the session's paths include the relative
- * ones and the `/proc` projections. Handing the raw path to ChILI meant a
- * volume produced by a run could not be read at the address the graph
- * itself gives for it — the node's own `data` — while the same bytes read
- * fine under `/home`. One file, two names, one of them refused.
+ * Reads one file's raw bytes at a path the session resolves, for a surface
+ * that renders it natively. The backend does the reading.
  *
  * @param filePath - The file's path (absolute, cwd-relative, or projected).
  * @returns The file's bytes.
  * @throws {Error} When the path does not resolve to a readable file.
  */
 export async function file_read(filePath: string): Promise<Buffer> {
-  const { path_resolve } = await import('../builtins/utils.js');
-  const { errorStack } = await import('@fnndsc/fond');
-  const since: number = errorStack.checkpoint_mark();
-  const refusal = (): FileReadRefusal => fileRefusal_name(filePath, errorStack.checkpoint_drain(since).map((note: { message: string }): string => note.message));
-  const resolved: string = await path_resolve(filePath);
-  const { vfsDispatcher } = await import('@fnndsc/salsa');
-  // A projection is read by the provider that owns it — `/proc/jobs/…/data`
-  // follows the node's own data link and delegates to the file behind it.
-  // ChILI's cat knows only CFS, so a path under a projection reached this
-  // route and 404'd: the volume a run had just produced could not be read
-  // at the address its own graph gives for it.
-  if (vfsDispatcher.path_isVirtual(resolved)) {
-    const projected: Result<Buffer> = await vfsDispatcher.readBinary(resolved);
-    if (projected.ok) return projected.value;
-    // A node's data link can point at a folder that is ITSELF a link — a
-    // `pl-dircopy` of a PACS pull stores its DICOM under `/SERVICES/PACS`
-    // — and the provider hands back the logical name, which no file id
-    // answers to. Follow it the rest of the way rather than refusing a
-    // file the same graph just listed.
-    const physical: string = await projectedPath_physical(resolved);
-    if (physical !== resolved) {
-      const { files_catBinary: catLinked } = await import('@fnndsc/chili/commands/fs/cat.js');
-      const followed: Result<Buffer> = await catLinked(physical);
-      if (followed.ok) return followed.value;
-    }
-    throw refusal();
-  }
-  const { files_catBinary } = await import('@fnndsc/chili/commands/fs/cat.js');
-  const result: Result<Buffer> = await files_catBinary(resolved);
-  if (!result.ok) {
-    throw refusal();
-  }
-  errorStack.checkpoint_drain(since);
-  return result.value;
+  const files: Backend['files'] = backendInstalled_get()?.files;
+  if (files === undefined) throw new FileReadRefusal(filePath, 404, 'this session has no files');
+  return await files.read(filePath);
 }

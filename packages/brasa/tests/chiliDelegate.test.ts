@@ -9,7 +9,7 @@ cuminMock_install(() => ({
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
 }));
 
-const { chiliCommand_run, chiliCommand_exists } = await import('../src/core/chiliDelegate.js');
+const { chiliCommand_run, chiliCommand_exists } = await import('../src/chris/chiliDelegate.js');
 
 describe('chiliCommand_run', () => {
   beforeEach(() => {

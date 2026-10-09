@@ -24,7 +24,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 /** The committed count. Lower it whenever the real count drops. */
-const BASELINE = 9;
+const BASELINE = 6;
 
 /** An import, re-export or dynamic import naming a ChRIS package. */
 const PATTERN = /(?:from|import)\s*\(?\s*['"]@fnndsc\/(?:cumin|salsa|chili)(?:\/[^'"]*)?['"]/;

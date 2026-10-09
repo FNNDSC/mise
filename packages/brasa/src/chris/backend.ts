@@ -12,10 +12,16 @@
  */
 import { chrisConnection, chrisConnection_init, NodeStorageProvider, chrisContext, Context } from '@fnndsc/cumin';
 import type { Backend, SessionIdentity } from '../core/backend.js';
-import { Session } from '../session/index.js';
+import { Session, session } from '../session/index.js';
 import { homePath_of } from '../builtins/utils.js';
+import { runtimeOutput_set } from '@fnndsc/cumin/runtime-output';
+import { sink_get } from '../core/sink.js';
 import { procIndex_snapshot, sessionPromptContext_build } from './promptContext.js';
 import { chrisAnswerKinds, chrisReferences, chrisVerbTakes } from './references.js';
+import { chrisFallback } from './commandFallback.js';
+import { chrisFiles } from './files.js';
+import { elevation_run } from '@fnndsc/chili/commands/connect/elevation.js';
+import { chrisWatch } from './watch.js';
 
 declare module '../session/index.js' {
   interface Session {
@@ -25,6 +31,14 @@ declare module '../session/index.js' {
 }
 
 let connection: typeof chrisConnection | undefined;
+
+// cumin reports operational notices through a narrow port. The callback
+// resolves the sink at write time, preserving each invocation's
+// AsyncLocalStorage scope rather than pinning output to one terminal.
+runtimeOutput_set({
+  data_write: (chunk: string | Buffer): void => { sink_get().data_write(chunk); },
+  err_write: (chunk: string | Buffer): void => { sink_get().err_write(chunk); },
+});
 
 Object.defineProperty(Session.prototype, 'connection', {
   get(): typeof chrisConnection {
@@ -77,4 +91,9 @@ export const chrisBackend: Backend = {
   references: chrisReferences,
   answerKinds: chrisAnswerKinds,
   verbTakes: chrisVerbTakes,
+  fallback: chrisFallback,
+  elevate: elevation_run,
+  watch: chrisWatch,
+  files: chrisFiles,
+  debug_get: (): boolean => Boolean(session.connection?.config?.debug),
 };

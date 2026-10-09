@@ -15,6 +15,12 @@ cuminMock_install(() => ({
 }));
 
 const { sudoCommand_run, authorizationFailure_is, sudoHint_build } = await import('../src/core/elevation.js');
+// The ChRIS backend's elevation, its chili half mocked above.
+(await import('../src/core/backend.js')).backend_install({
+  id: 'chris',
+  session: {} as never,
+  elevate: (await import('@fnndsc/chili/commands/connect/elevation.js')).elevation_run,
+});
 const { surface_set, HeadlessSurface } = await import('../src/core/surface.js');
 
 function surface_create(answers: string[], tty: boolean = true): Surface {
@@ -41,6 +47,20 @@ beforeEach(() => {
     _credentials: unknown,
     operation: () => Promise<CommandEnvelope>,
   ): Promise<CommandEnvelope> => await operation());
+});
+
+describe('sudo on a backend with no administrator', () => {
+  it('is refused by name, before any credential is asked for', async () => {
+    const { backend_install, backend_get } = await import('../src/core/backend.js');
+    const chris = backend_get();
+    backend_install({ id: 'plain', session: {} as never });
+    const run = jest.fn<(command: string, args: string[]) => Promise<CommandEnvelope>>();
+    const envelope: CommandEnvelope = await sudoCommand_run(['ls'], run);
+    backend_install(chris);
+    expect(envelope.renderedErr).toContain('sudo: this session has no administrator to become.');
+    expect(run).not.toHaveBeenCalled();
+    process.exitCode = undefined;
+  });
 });
 
 describe('sudoCommand_run', () => {

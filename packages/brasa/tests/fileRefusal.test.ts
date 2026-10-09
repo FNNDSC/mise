@@ -3,7 +3,8 @@
  * notes, so the byte route and the surface can say why.
  */
 import { describe, it, expect } from '@jest/globals';
-import { fileRefusal_name, FileReadRefusal } from '../src/core/fileRefusal.js';
+import { FileReadRefusal } from '../src/core/fileRefusal.js';
+import { fileRefusal_name } from '../src/chris/files.js';
 
 const note = (fn: string, message: string): string => `[${fn.padEnd(40)}] | ${message}`;
 

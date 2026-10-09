@@ -23,22 +23,19 @@ import { stdin_set } from '../builtins/games/stdin.js';
 
 import { writeFileSync, appendFileSync } from 'fs';
 import chalk from 'chalk';
-import { builtin_pipeline } from '../builtins/res/pipeline.js';
-import { error_stripDebugPrefix } from '../builtins/utils.js';
-import { builtin_executePlugin } from '../builtins/pluginExecute.js';
+import { error_stripDebugPrefix } from './errorText.js';
+import { exitCode_read, handler_runDirect } from './handlerRun.js';
+import { backendInstalled_get } from './backend.js';
 
 import { shellWords_expand } from '../builtins/wildcard.js';
 import {
   help_render,
   commandHelp_get,
-  pipelineExecutableHelp_render,
   args_checkHasHelpFlag,
 } from '../builtins/help.js';
-import { pluginExecutable_handle } from '../builtins/executable.js';
 import { envelopeHandler_wrap, envelope_deliver, sink_get, PipeCaptureSink, sinkScope_run } from './sink.js';
 import { reference_refusal, reference_resolve, unresolvedStands_get, verbInHand_set } from './expansion.js';
 import { answer_note, answerConsulted_take, type SessionAnswer } from '../session/answer.js';
-import { vfs } from '../lib/vfs/vfs.js';
 import {
   shellWords_referencesExpand,
   shellWords_tokenize,
@@ -54,38 +51,10 @@ import {
   pathnameExpansion_isEligible,
   type RedirectInfo,
 } from './preprocess.js';
-import { type ListingItem, envelope_error, type CommandEnvelope } from '@fnndsc/menu';
-import { chiliCommand_run, chiliCommand_exists, chiliDelegationNotice_build } from './chiliDelegate.js';
+import { envelope_error, type CommandEnvelope } from '@fnndsc/menu';
 import { Result, errorStack, Ok, Err, StackMessage } from '@fnndsc/fond';
 
-export { chiliCommand_run };
 
-/**
- * Handles a command chell does not recognize. If chili has no such command
- * either, reports `command not found` on the error channel and does not
- * delegate — no chili run, no context init. Otherwise emits the hand-off notice
- * on the live sink *before* running chili, so the notice appears ahead of
- * chili's (possibly slow) output rather than being glued on after it returns.
- *
- * @param command - The unrecognized command name.
- * @param args - The command's arguments.
- * @returns The delivered envelope (chili's result, or a not-found error).
- */
-async function unknownCommand_delegate(command: string, args: string[]): Promise<CommandEnvelope> {
-  if (!(await chiliCommand_exists(command))) {
-    const envelope: CommandEnvelope = envelope_error(
-      '',
-      undefined,
-      `${chalk.red(`chell: command not found: ${command}`)}\n`,
-    );
-    envelope_deliver(envelope);
-    return envelope;
-  }
-  sink_get().data_write(chiliDelegationNotice_build(command));
-  const chiliEnvelope: CommandEnvelope = await chiliCommand_run(command, ['-s', ...args]);
-  envelope_deliver(chiliEnvelope);
-  return chiliEnvelope;
-}
 
 /**
  * Shape of a converted builtin: returns its outcome as an envelope instead
@@ -115,105 +84,9 @@ export function command_timingMaybePrint(startTime: number, enabled: boolean): v
   sink_get().data_write(`${chalk.gray(`[${elapsed.toFixed(2)}ms]`)}\n`);
 }
 
-/**
- * Handles a pipeline name invoked directly as an executable from /bin.
- * Routes flag combinations to the appropriate pipeline subcommand:
- *   --diagram             → pipeline diagram (preserving renderer flags)
- *   --signalflow          → pipeline diagram --signalflow
- *   --help / -h           → contextual pipeline-executable help
- *   --nodes / --parameters → pipeline info
- *   --manifest             → pipeline manifest
- *   --source / --readme    → pipeline source
- *   (bare or --compute)    → pipeline run
- *
- * @param name - The pipeline name as typed.
- * @param args - Arguments following the pipeline name.
- * @returns The pipeline builtin's envelope, preserving diagram models and text.
- */
-async function pipelineExecutable_handle(name: string, args: string[]): Promise<CommandEnvelope> {
-  const exitCodeBefore: number = exitCode_read();
-  let envelope: CommandEnvelope | undefined;
-  if (args.includes('--help') || args.includes('-h')) {
-    envelope = { status: 'ok', rendered: pipelineExecutableHelp_render(name) };
-  } else if (args.includes('--diagram')) {
-    const diagramArgs: string[] = args.filter((argument: string): boolean => argument !== '--diagram');
-    envelope = await builtin_pipeline(['diagram', name, ...diagramArgs]);
-  } else if (args.includes('--signalflow')) {
-    envelope = await builtin_pipeline(['diagram', name, '--signalflow']);
-  } else if (args.includes('--manifest')) {
-    envelope = await builtin_pipeline(['manifest', name]);
-  } else if (args.includes('--nodes') || args.includes('--parameters')) {
-    envelope = await builtin_pipeline(['info', name]);
-  } else if (args.includes('--source') || args.includes('--readme')) {
-    envelope = await builtin_pipeline(['source', name]);
-  } else {
-    envelope = await builtin_pipeline(['run', name, ...args]);
-  }
-  const result: CommandEnvelope = envelope ?? { status: 'ok', rendered: '' };
-  const exitCodeAfter: number = exitCode_read();
-  if (exitCodeAfter !== 0 && exitCodeAfter !== exitCodeBefore) result.status = 'error';
-  return result;
-}
 
-interface BinExecutableMatches {
-  plugin: ListingItem | undefined;
-  pipeline: ListingItem | undefined;
-}
 
-/**
- * Finds exact plugin and pipeline executable matches in the virtual `/bin`.
- *
- * @param command - Executable name as typed.
- * @returns Matching dynamic executable entries, if the listing is available.
- */
-async function binExecutableMatches_get(command: string): Promise<BinExecutableMatches> {
-  const binResult: Result<ListingItem[]> = await vfs.data_get('/bin');
-  if (!binResult.ok) {
-    return { plugin: undefined, pipeline: undefined };
-  }
-  return {
-    plugin: binResult.value.find(
-      (item: ListingItem): boolean => item.name === command && item.type === 'plugin',
-    ),
-    pipeline: binResult.value.find(
-      (item: ListingItem): boolean => item.name === command && item.type === 'pipeline',
-    ),
-  };
-}
 
-/**
- * Reads the current process exit code as a number.
- *
- * @returns The exit code, treating an unset code as zero.
- */
-function exitCode_read(): number {
-  return typeof process.exitCode === 'number' ? process.exitCode : 0;
-}
-
-/**
- * Runs a printing handler uncaptured, preserving an explicit envelope or
- * deriving one from the exit-code delta for legacy handlers.
- *
- * This is the passthrough for commands that cannot be captured yet: the
- * interactive holdouts (their prompts must reach the terminal) and the
- * progress writers (their live updates must stay live). The handler prints
- * exactly as it always has; the placeholder envelope records only the
- * outcome, with no rendered text, so envelope consumers never re-print what
- * the terminal already showed. Migrated handlers may return that envelope
- * directly while retaining the same live-output behavior.
- *
- * @param handler - A legacy printing command handler.
- * @param args - Parsed arguments.
- * @returns A placeholder envelope carrying the command's outcome.
- */
-async function handler_runDirect(handler: CommandHandler, args: string[]): Promise<CommandEnvelope> {
-  const exitCodeBefore: number = exitCode_read();
-  const explicitEnvelope: void | CommandEnvelope = await handler(args);
-  if (explicitEnvelope !== undefined) return explicitEnvelope;
-  const exitCodeAfter: number = exitCode_read();
-  const failed: boolean = exitCodeAfter !== 0 && exitCodeAfter !== exitCodeBefore;
-  return { status: failed ? 'error' : 'ok', rendered: '' };
-}
 
 /**
  * Drains the errorStack from a checkpoint into an envelope's structured
@@ -296,23 +169,40 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
     return handler_runDirect(handler, args);
   }
 
-  const binMatches: BinExecutableMatches = await binExecutableMatches_get(command);
-  if (binMatches.plugin) {
-    return handler_runDirect(
-      (pluginArgs: string[]): Promise<CommandEnvelope> => builtin_executePlugin(command, pluginArgs),
-      args,
-    );
-  }
+  return unknownCommand_handle(command, args, false);
+}
 
-  if (binMatches.pipeline) {
-    const envelope: CommandEnvelope = await pipelineExecutable_handle(command, args);
-    envelope_deliver(envelope);
-    return envelope;
-  }
+/**
+ * Hands a word nothing registered answers to the backend, and says
+ * `command not found` when the backend does not know it either.
+ *
+ * @param command - The word.
+ * @param args - Its arguments.
+ * @param captured - Whether the line's output is being captured.
+ * @returns The delivered envelope.
+ */
+async function unknownCommand_handle(command: string, args: string[], captured: boolean): Promise<CommandEnvelope> {
+  const answered: CommandEnvelope | null = (await backendInstalled_get()?.fallback?.unknown?.(command, args, captured)) ?? null;
+  if (answered !== null) return answered;
+  const envelope: CommandEnvelope = envelope_error(
+    '',
+    undefined,
+    `${chalk.red(`chell: command not found: ${command}`)}\n`,
+  );
+  envelope_deliver(envelope);
+  return envelope;
+}
 
-  // Unknown commands are guarded, then delegated to chili — its output is
-  // captured through its own seam, with no console capture here.
-  return unknownCommand_delegate(command, args);
+/**
+ * A word the backend claims ahead of the registry (ChRIS: a plugin named
+ * with its version).
+ *
+ * @param command - The word.
+ * @param args - Its arguments.
+ * @returns The backend's envelope, or null when it does not claim the word.
+ */
+async function commandClaim_try(command: string, args: string[]): Promise<CommandEnvelope | null> {
+  return (await backendInstalled_get()?.fallback?.claim?.(command, args)) ?? null;
 }
 
 /**
@@ -371,10 +261,8 @@ async function helpEnvelope_maybe(command: string, args: string[]): Promise<Comm
   if (commandHelp_get(command) !== undefined) {
     rendered = help_render(command);
   } else {
-    const binMatches: BinExecutableMatches = await binExecutableMatches_get(command);
-    rendered = binMatches.pipeline
-      ? pipelineExecutableHelp_render(command)
-      : help_render(command);
+    const backendHelp: string | null = (await backendInstalled_get()?.fallback?.help?.(command)) ?? null;
+    rendered = backendHelp ?? help_render(command);
   }
   const envelope: CommandEnvelope = { status: 'ok', rendered };
   envelope_deliver(envelope);
@@ -505,9 +393,9 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       return;
     }
 
-    const pluginEnvelope: CommandEnvelope | null = await pluginExecutable_handle(command, args);
-    if (pluginEnvelope) {
-      envelope_deliver(pluginEnvelope);
+    const claimed: CommandEnvelope | null = await commandClaim_try(command, args);
+    if (claimed) {
+      envelope_deliver(claimed);
       return;
     }
 
@@ -517,14 +405,7 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       return;
     }
 
-    const binMatches: BinExecutableMatches = await binExecutableMatches_get(command);
-    if (binMatches.pipeline) {
-      const envelope: CommandEnvelope = await pipelineExecutable_handle(command, args);
-      envelope_deliver(envelope);
-      return;
-    }
-
-    await unknownCommand_delegate(command, args);
+    await unknownCommand_handle(command, args, true);
   });
 
   const buffer: Buffer = pipeSink.buffer_get();
@@ -633,7 +514,7 @@ export async function command_executeToEnvelope(
   // command_dispatchEnvelope, so it drains the errorStack itself.
   const checkpoint: number = errorStack.checkpoint_mark();
   const exitCodeBefore: number = exitCode_read();
-  const pluginEnvelope: CommandEnvelope | null = await pluginExecutable_handle(command, args);
+  const pluginEnvelope: CommandEnvelope | null = await commandClaim_try(command, args);
   if (pluginEnvelope) {
     envelope_deliver(pluginEnvelope);
     command_timingMaybePrint(startTime, timingEnabled);

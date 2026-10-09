@@ -24,6 +24,8 @@ chrisCommands_registerInto(chrisCommands);
 chrisBackend_installInto(chrisBackend);
 export * from './core/backend.js';
 export { chrisBackend } from './chris/backend.js';
+export { chiliCommand_run } from './chris/chiliDelegate.js';
+export { fileRefusal_name } from './chris/files.js';
 export * from './core/preprocess.js';
 export * from './core/sink.js';
 export * from './core/progress.js';

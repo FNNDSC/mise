@@ -28,7 +28,7 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
   },
 }));
 
-const { sessionConnect_fromSaved, sessionConnect_withToken } = await import('../src/core/connect.js');
+const { sessionConnect_fromSaved, sessionConnect_withToken } = await import('../src/chris/connect.js');
 
 beforeEach(() => {
   jest.clearAllMocks();

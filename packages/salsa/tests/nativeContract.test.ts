@@ -126,6 +126,13 @@ jest.mock('../src/files/index', () => ({
     return true;
   },
   files_mkdir: async (where: string) => { mockState.cube.folder_make(where); return true; },
+  folderPath_holder: async (where: string) => {
+    for (let at: string = where; at !== '/'; at = path.posix.dirname(at)) {
+      const entry: CubeEntry | undefined = mockState.cube.get(at) ?? mockState.cube.twin_get(at);
+      if (entry !== undefined) return Ok({ path: at, holder: entry.type, atTarget: at === where });
+    }
+    return Ok(null);
+  },
   files_delete: async (id: number) => mockState.cube.delete_byId(id),
   files_move: async (src: string, dest: string) => mockState.cube.move(src, dest),
   files_copy: jest.fn(),

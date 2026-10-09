@@ -160,6 +160,20 @@ export class MemoryVfsProvider implements VFSProvider {
     return vfs_ok(true);
   }
 
+  async mkdirTree(where: string): Promise<VfsOutcome> {
+    const key: string = this.key_of(where);
+    if (this.nodes.has(key)) return vfs_fail('EEXIST');
+    const parts: string[] = key.split('/').filter((part: string): boolean => part.length > 0);
+    let walked: string = '';
+    for (const part of parts) {
+      walked += `/${part}`;
+      const node: MemoryNode | undefined = this.nodes.get(walked);
+      if (node === undefined) this.nodes.set(walked, { type: 'dir', content: Buffer.alloc(0), date: new Date().toISOString() });
+      else if (node.type !== 'dir') return vfs_fail('ENOTDIR');
+    }
+    return vfs_ok(true);
+  }
+
   async rmdir(where: string): Promise<VfsOutcome> {
     const key: string = this.key_of(where);
     const node: MemoryNode | undefined = this.nodes.get(key);

@@ -126,7 +126,7 @@ export const VFS_CONTRACT: ReadonlyArray<VfsContractCase> = [
     },
   },
   {
-    name: 'makes a folder; EEXIST for one already there, ENOENT for a missing parent',
+    name: 'makes a folder; EEXIST for anything already there, ENOENT for a missing parent, ENOTDIR beneath a file',
     run: async (driver: VfsContractDriver): Promise<void> => {
       const mount: VFSProvider = await driver.mount_make(SEED);
       if (!mount.mkdir) return;
@@ -134,6 +134,21 @@ export const VFS_CONTRACT: ReadonlyArray<VfsContractCase> = [
       if (!(await names_of(mount, '/home')).includes('made:dir')) breach('mkdir did not make the folder');
       refused(await mount.mkdir('/home/docs'), ['EEXIST'], 'mkdir of an existing folder');
       refused(await mount.mkdir('/home/nowhere/deeper'), ['ENOENT'], 'mkdir under a missing parent');
+      refused(await mount.mkdir('/home/a.txt'), ['EEXIST'], 'mkdir where a file is');
+      refused(await mount.mkdir('/home/a.txt/under'), ['ENOTDIR'], 'mkdir beneath a file');
+    },
+  },
+  {
+    name: 'makes a folder and its missing parents in one step where it offers to; EEXIST for anything already there, ENOTDIR beneath a file',
+    run: async (driver: VfsContractDriver): Promise<void> => {
+      const mount: VFSProvider = await driver.mount_make(SEED);
+      if (!mount.mkdirTree) return;
+      done(await mount.mkdirTree('/home/new/deeper/still'), 'mkdirTree under missing parents');
+      if (!(await names_of(mount, '/home/new/deeper')).includes('still:dir')) breach('mkdirTree did not make the folder');
+      refused(await mount.mkdirTree('/home/docs'), ['EEXIST'], 'mkdirTree of an existing folder');
+      refused(await mount.mkdirTree('/home/a.txt'), ['EEXIST'], 'mkdirTree where a file is');
+      refused(await mount.mkdirTree('/home/a.txt/under/deeper'), ['ENOTDIR'], 'mkdirTree beneath a file');
+      if ((await names_of(mount, '/home')).includes('a.txt:dir')) breach('mkdirTree made a folder over a file');
     },
   },
   {

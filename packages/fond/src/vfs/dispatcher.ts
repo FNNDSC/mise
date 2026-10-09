@@ -291,6 +291,30 @@ export class VFSDispatcher {
   }
 
   /**
+   * Whether the provider that owns a folder makes it and its parents in one step.
+   *
+   * @param pathStr - The absolute path of the folder.
+   * @returns True when `mkdirTree` is offered there.
+   */
+  mkdirTree_offered(pathStr: string): boolean {
+    return this.provider_get(pathStr).mkdirTree !== undefined;
+  }
+
+  /**
+   * Makes a folder and any missing parents in one step, where the owning
+   * provider can; elsewhere `EROFS`, and `mkdir -p` walks instead.
+   *
+   * @param pathStr - The absolute path of the folder.
+   * @returns Done, or why not.
+   */
+  async mkdirTree(pathStr: string): Promise<VfsOutcome> {
+    const provider: VFSProvider = this.provider_get(pathStr);
+    if (!provider.mkdirTree) return vfs_fail('EROFS');
+    const at: VfsOutcome<string> = await this.pathFor_provider(provider, pathStr, 'path', 'mkdir');
+    return at.ok ? provider.mkdirTree(at.value) : at;
+  }
+
+  /**
    * Removes an empty folder, through the provider that owns it.
    *
    * @param pathStr - The absolute path of the folder.

@@ -72,6 +72,7 @@ function mount_answering(succeeds: boolean): VfsContractDriver {
       rename: async () => (succeeds ? vfs_ok(true) : vfs_fail('EIO')),
       rm: async () => (succeeds ? vfs_ok(true) : vfs_fail('EIO')),
       rmTree: async () => (succeeds ? vfs_ok(true) : vfs_fail('EIO')),
+      mkdirTree: async () => (succeeds ? vfs_ok(true) : vfs_fail('EIO')),
     }) as unknown as VFSProvider,
   };
 }

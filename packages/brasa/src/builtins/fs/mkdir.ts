@@ -2,16 +2,10 @@
  * @file Builtin mkdir command.
  * Creates directories, reported as a command envelope.
  */
-import { vfsOutcome_toResult } from '@fnndsc/fond';
+import { vfsOutcome_toResult, mkdir_render, vfs_ok, type VFSDispatcher, type VFSItem, type VfsOutcome } from '@fnndsc/fond';
 import chalk from 'chalk';
-import { listCache_get } from '@fnndsc/cumin';
-import type { ListCache } from '@fnndsc/cumin';
 import { path_resolve, error_stripDebugPrefix } from '../utils.js';
-import { vfsDispatcher } from '@fnndsc/salsa';
-import type { VFSItem } from '@fnndsc/salsa';
-import { folder_checkExists } from './folderExists.js';
-import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
-import { mkdir_render } from '@fnndsc/chili/views/fs.js';
+import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
 import { errorStack, type Result, type StackMessage } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
@@ -46,12 +40,51 @@ export interface MkdirOptions {
 async function virtualFolder_make(targetPath: string, parents: boolean): Promise<MkdirOutcome> {
   if (parents) {
     const slash: number = targetPath.lastIndexOf('/');
-    const siblings: Result<VFSItem[]> = await vfsDispatcher.list(targetPath.slice(0, slash) || '/');
+    const siblings: Result<VFSItem[]> = await vfsDispatcher_get().list(targetPath.slice(0, slash) || '/');
     if (siblings.ok && siblings.value.some((item: VFSItem): boolean => item.name === targetPath.slice(slash + 1))) {
       return { path: targetPath, created: false, existed: true };
     }
   }
-  return { path: targetPath, created: vfsOutcome_toResult(await vfsDispatcher.mkdir(targetPath), 'mkdir', targetPath).ok };
+  return { path: targetPath, created: vfsOutcome_toResult(await vfsDispatcher_get().mkdir(targetPath), 'mkdir', targetPath).ok };
+}
+
+/**
+ * Makes a folder and its missing parents (`-p`): in one step where the
+ * mount offers it (CUBE makes parents with the folder), else each missing
+ * parent in turn, a parent already there being fine.
+ *
+ * @param dispatcher - The session's filesystem.
+ * @param targetPath - The folder.
+ * @returns Done, or why not (`EEXIST` when the folder is already there).
+ */
+async function folderTree_make(dispatcher: VFSDispatcher, targetPath: string): Promise<VfsOutcome> {
+  if (dispatcher.mkdirTree_offered(targetPath)) return dispatcher.mkdirTree(targetPath);
+  const parts: string[] = targetPath.split('/').filter((part: string): boolean => part.length > 0);
+  let walked: string = '';
+  for (let i: number = 0; i < parts.length - 1; i++) {
+    walked += `/${parts[i]}`;
+    const made: VfsOutcome = await dispatcher.mkdir(walked);
+    if (!made.ok && made.errno !== 'EEXIST') return made;
+  }
+  return parts.length === 0 ? vfs_ok(true) : dispatcher.mkdir(targetPath);
+}
+
+/**
+ * Whether a folder is what holds a path, as `mkdir -p` asks once the store
+ * says something is there: a folder is done, a file is `File exists`.
+ *
+ * @param dispatcher - The session's filesystem.
+ * @param targetPath - The path.
+ * @returns True when its parent lists a folder by that name.
+ */
+async function folder_isAt(dispatcher: VFSDispatcher, targetPath: string): Promise<boolean> {
+  const slash: number = targetPath.lastIndexOf('/');
+  const siblings: Result<VFSItem[]> = await dispatcher.list(targetPath.slice(0, slash) || '/');
+  if (!siblings.ok) {
+    errorStack.stack_pop();
+    return false;
+  }
+  return siblings.value.some((item: VFSItem): boolean => item.name === targetPath.slice(slash + 1) && item.type === 'dir');
 }
 
 /**
@@ -66,24 +99,6 @@ function refusal_said(doing: string): string {
   const said: string = error_stripDebugPrefix(reason.message);
   // The dispatcher's refusal already names the verb; a provider's names the operand first.
   return said.startsWith('mkdir:') ? said : `${doing}: ${said.replace(/^[^:]*: /, '')}`;
-}
-
-/**
- * The refusal for a path a file holds, when the store said so: the target
- * itself (`File exists`) or a folder above it (`Not a directory`).
- *
- * @param pathArg - The path as typed.
- * @returns The line, or null when the store's refusal was something else
- *   (left on the stack).
- */
-function heldBy_said(pathArg: string): string | null {
-  const reason: StackMessage | undefined = errorStack.stack_pop();
-  if (reason === undefined) return null;
-  const said: string = error_stripDebugPrefix(reason.message);
-  if (said.startsWith('File exists')) return `mkdir: cannot create directory '${pathArg}': File exists`;
-  if (said.startsWith('Not a directory')) return `mkdir: cannot create directory '${pathArg}': Not a directory`;
-  errorStack.stack_push(reason.type, said);
-  return null;
 }
 
 /** Parsed `mkdir` arguments, or the option it refuses. */
@@ -148,16 +163,24 @@ export async function mkdir_run(options: MkdirOptions): Promise<CommandEnvelope>
       const parentDir: string = targetPath.substring(0, targetPath.lastIndexOf('/')) || '/';
       // A projection that makes folders (a tag under /proc/tags) makes them
       // itself; one that makes none refuses by name.
-      if (vfsDispatcher.path_isVirtual(targetPath)) {
+      const dispatcher: VFSDispatcher = vfsDispatcher_get();
+      if (dispatcher.path_isVirtual(targetPath)) {
         const made: MkdirOutcome = await virtualFolder_make(targetPath, parents);
         if (made.created) rendered += `${mkdir_render(targetPath, true)}\n`;
         else if (made.existed !== true) renderedErr += `${chalk.red(refusal_said(`mkdir: cannot create directory '${pathArg}'`))}\n`;
         outcomes.push(made);
-        if (made.created) listCache_get().cache_invalidate(parentDir);
+        if (made.created) listingCache_get().cache_invalidate?.(parentDir);
         continue;
       }
-      if (await folder_checkExists(targetPath)) {
-        if (parents) {
+      const made: VfsOutcome = parents ? await folderTree_make(dispatcher, targetPath) : await dispatcher.mkdir(targetPath);
+      if (made.ok) {
+        rendered += `${mkdir_render(targetPath, true)}\n`;
+        outcomes.push({ path: targetPath, created: true });
+        listingCache_get().cache_invalidate?.(parentDir);
+        continue;
+      }
+      if (made.errno === 'EEXIST') {
+        if (parents && (await folder_isAt(dispatcher, targetPath))) {
           outcomes.push({ path: targetPath, created: false, existed: true });
         } else {
           renderedErr += `${chalk.red(`mkdir: cannot create directory '${pathArg}': File exists`)}\n`;
@@ -165,28 +188,20 @@ export async function mkdir_run(options: MkdirOptions): Promise<CommandEnvelope>
         }
         continue;
       }
-      if (!parents && !(await folder_checkExists(parentDir))) {
+      if (made.errno === 'ENOENT') {
         renderedErr += `${chalk.red(`mkdir: cannot create directory '${pathArg}': No such file or directory`)}\n`;
         outcomes.push({ path: targetPath, created: false });
         continue;
       }
-      const success: boolean = await chefs_mkdir_cmd(targetPath);
-      // A file holding the path (or a folder above it) is said as the shell
-      // says it; CUBE would otherwise have made a folder beside the file.
-      const held: string | null = success ? null : heldBy_said(pathArg);
-      if (held !== null) {
-        renderedErr += `${chalk.red(held)}\n`;
+      if (made.errno === 'ENOTDIR') {
+        // A file above the target: CUBE would otherwise have made a folder over it.
+        renderedErr += `${chalk.red(`mkdir: cannot create directory '${pathArg}': Not a directory`)}\n`;
         outcomes.push({ path: targetPath, created: false });
         continue;
       }
-      rendered += `${mkdir_render(targetPath, success)}\n`;
-      outcomes.push({ path: targetPath, created: success });
-
-      // Invalidate cache for parent directory
-      if (success) {
-        const listCache: ListCache = listCache_get();
-        listCache.cache_invalidate(parentDir);
-      }
+      rendered += `${mkdir_render(targetPath, false)}\n`;
+      if (made.reason !== undefined) renderedErr += `${chalk.red(made.reason)}\n`;
+      outcomes.push({ path: targetPath, created: false });
     } catch (e: unknown) {
       const msg: string = e instanceof Error ? e.message : String(e);
       renderedErr += `${chalk.red(`mkdir: ${pathArg}: ${msg}`)}\n`;

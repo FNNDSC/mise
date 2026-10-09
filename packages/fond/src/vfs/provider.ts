@@ -127,6 +127,16 @@ export interface VFSProvider {
   mkdir?(path: string): Promise<VfsOutcome>;
 
   /**
+   * Makes a folder and any missing parents in one step, for a mount whose
+   * store can (`mkdir -p`). Absent, `mkdir -p` makes each missing parent in
+   * turn.
+   *
+   * @param path - The absolute path of the folder.
+   * @returns Done, or why not (`EEXIST` when something is already there).
+   */
+  mkdirTree?(path: string): Promise<VfsOutcome>;
+
+  /**
    * Removes an empty folder (`rmdir`).
    *
    * @param path - The absolute path of the folder.

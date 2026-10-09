@@ -270,6 +270,9 @@ try {
   // no gutter, no console. The scenarios want the full surface, so the
   // suite steps out with Esc (the landing's own way out) once it has looked.
   const landing = await evalIn(`
+    // The tiles are painted from the session's answers (the roster, the
+    // home listing), a moment after READY: settle on them, never a guess.
+    for (let i = 0; i < 60 && document.querySelectorAll('.launcher-tile').length === 0; i++) await sleep(250);
     const shown = (id) => { const e = document.getElementById(id); if (e === null || e.offsetParent === null) return false; const r = e.getBoundingClientRect(); return r.height > 0 && r.width > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight; };
     const seen = { zoom: document.body.dataset.zoom ?? null, tiles: document.querySelectorAll('.launcher-tile').length, drawer: shown('drawer'), gutter: shown('gutter-files') };
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));

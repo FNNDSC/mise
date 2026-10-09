@@ -753,6 +753,30 @@ describe('Builtins - Core Functions', () => {
       expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'size', reverse: true, directory: false, oneColumn: false });
     });
 
+    it('takes the path after a switch as a path, never as the switch\'s value', async () => {
+      await builtin_ls(['--refresh', '/tmp']);
+      expect(mockVfsList).toHaveBeenCalledWith('/tmp', { long: false, human: false, sort: 'name', reverse: false, directory: false, oneColumn: false });
+      mockVfsList.mockClear();
+      await builtin_ls(['-l', '--reverse', '/tmp']);
+      expect(mockVfsList).toHaveBeenCalledWith('/tmp', { long: true, human: false, sort: 'name', reverse: true, directory: false, oneColumn: false });
+    });
+
+    it('refuses an option it does not have by name, listing nothing', async () => {
+      const recursive = await builtin_ls(['-R', '/tmp']);
+      expect(recursive.status).toBe('error');
+      expect(recursive.renderedErr).toContain("ls: invalid option -- 'R'");
+      const long = await builtin_ls(['--color', '/tmp']);
+      expect(long.renderedErr).toContain("ls: unrecognized option '--color'");
+      const sort = await builtin_ls(['--sort', 'colour']);
+      expect(sort.renderedErr).toContain("ls: invalid argument 'colour' for '--sort'");
+      expect(mockVfsList).not.toHaveBeenCalled();
+    });
+
+    it('takes -a, since nothing in a listing is hidden', async () => {
+      await builtin_ls(['-la', '/tmp']);
+      expect(mockVfsList).toHaveBeenCalledWith('/tmp', { long: true, human: false, sort: 'name', reverse: false, directory: false, oneColumn: false });
+    });
+
     it('should handle combined -l, --sort, and --reverse flags', async () => {
       await builtin_ls(['-l', '--sort', 'date', '--reverse']);
 

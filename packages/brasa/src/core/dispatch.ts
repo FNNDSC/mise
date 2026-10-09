@@ -149,7 +149,15 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
   }
 
   if (command === 'sudo') {
-    return await sudoCommand_run(args, commandDispatchEnvelope_run);
+    // The nested command delivers its own envelope; sudo's own refusals
+    // (usage, nesting, no administrator, credentials) are delivered here.
+    let nestedRan: boolean = false;
+    const envelope: CommandEnvelope = await sudoCommand_run(args, async (nested: string, nestedArgs: string[]): Promise<CommandEnvelope> => {
+      nestedRan = true;
+      return commandDispatchEnvelope_run(nested, nestedArgs);
+    });
+    if (!nestedRan) envelope_deliver(envelope);
+    return envelope;
   }
 
   const envelopeHandler: EnvelopeHandler | undefined = envelopeHandler_get(command);

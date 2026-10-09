@@ -272,7 +272,8 @@ export class NativeVfsProvider implements VFSProvider {
   /**
    * Why an operation on a path failed, once it has: ENOENT when the path
    * is not there, the given errno for what is, EIO when its parent could
-   * not be read. The store's own words, when it gave any, are the reason.
+   * not be read. The store's own words, when it gave any, are the reason
+   * for ENOENT and EIO; for anything else the errno's own words stand.
    *
    * @param target - The path.
    * @param whenThere - The errno when the path is there (`EISDIR` for a read of a folder).
@@ -283,7 +284,10 @@ export class NativeVfsProvider implements VFSProvider {
     const entry: Result<{ type: 'dir' | 'file' | 'link'; id: number } | null> = await this.entry_find(target);
     const errno: VfsErrno = !entry.ok ? 'EIO' : entry.value === null ? 'ENOENT' : whenThere(entry.value.type);
     if (!entry.ok) errorStack.stack_pop();
-    return !said.ok && said.reason !== undefined ? vfs_fail(errno, said.reason) : vfs_fail(errno);
+    // CUBE's words describe a file it could not find; for a path that is
+    // there (a folder read as a file) they would be untrue, so the errno speaks.
+    const storeSpeaks: boolean = errno === 'ENOENT' || errno === 'EIO';
+    return storeSpeaks && !said.ok && said.reason !== undefined ? vfs_fail(errno, said.reason) : vfs_fail(errno);
   }
 
   /** @inheritdoc */

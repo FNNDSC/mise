@@ -190,4 +190,10 @@ describe('what the native mount says beyond an errno', () => {
     expect(mockState.cube.get('/home/a.txt')?.type).toBe('file');
     expect(mockState.cube.get('/home/d')?.type).toBe('dir');
   });
+
+  it('says a folder read as a file is a directory, not CUBE\'s words for a missing file', async () => {
+    const mount = await cubeDriver.mount_make({ '/home/docs': null });
+    expect(await mount.read!('/home/docs')).toEqual({ ok: false, errno: 'EISDIR' });
+    expect(await mount.readBinary!('/home/docs')).toEqual({ ok: false, errno: 'EISDIR' });
+  });
 });

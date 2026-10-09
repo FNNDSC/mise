@@ -231,6 +231,9 @@ describe('read and readBinary', () => {
   });
 
   it('errors for native paths and providers without read support', async () => {
+    // The parents list nothing by those names: a file not offered for reading, not a folder.
+    providerFns.nativeList.mockResolvedValue({ ok: true, value: [] });
+    providerFns.etcList.mockResolvedValue({ ok: true, value: [] });
     const d: CubeVfsDispatcher = new CubeVfsDispatcher();
     expect(await d.read('/home/chris/f.txt')).toEqual({ ok: false, errno: 'EROFS' });
     expect(await d.readBinary('/etc/motd')).toEqual({ ok: false, errno: 'EROFS' });

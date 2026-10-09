@@ -774,7 +774,7 @@ export class ProcVfsProvider implements VFSProvider {
         const note: Result<FeedNote> = await feedNote_get(feedID);
         return note.ok ? Ok(note.value.content) : Err();
       }
-      return Ok('');
+      return Err();
     }
 
     // Instance-level virtual files — all live or cached-on-first-read
@@ -816,7 +816,9 @@ export class ProcVfsProvider implements VFSProvider {
       }
     }
 
-    return Ok('');
+    // Anything else is no file /proc reads: a folder (the dispatcher then
+    // says it is a directory) or nothing there.
+    return Err();
   }
 
   async feedJobs_cancel(pathStr: string, _options?: { recursive?: boolean; force?: boolean }): Promise<boolean> {

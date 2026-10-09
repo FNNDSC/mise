@@ -3,15 +3,37 @@
  * Lists directory contents.
  */
 import chalk from 'chalk';
-import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
+import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
 import { listingCache_get } from '../../core/filesystem.js';
 import type { ListingCache } from '../../core/backend.js';
 import { session } from '../../session/index.js';
 import { vfs } from '../../lib/vfs/vfs.js';
-import type { ListingItem, CommandEnvelope } from '@fnndsc/menu';
+import { envelope_error, type ListingItem, type CommandEnvelope } from '@fnndsc/menu';
 
 /** Valid sort fields for ls. */
 type LsSortField = 'name' | 'size' | 'date' | 'owner';
+
+/** The sort fields `--sort` takes. */
+const LS_SORT_FIELDS: ReadonlyArray<LsSortField> = ['name', 'size', 'date', 'owner'];
+
+/**
+ * The options ls reads. `-a` and `-A` are taken and already hold: nothing
+ * in the listing is hidden.
+ */
+const LS_OPTIONS: ReadonlyArray<string> = ['l', 'h', '1', 'r', 'reverse', 'd', 'f', 'refresh', 'sort', 'a', 'A', 'all', 'almost-all'];
+
+/** ls's long options that are switches, so the word after one is a path, never its value. */
+const LS_SWITCHES: ReadonlyArray<string> = ['refresh', 'reverse', 'all', 'almost-all'];
+
+/**
+ * An ls refusal, said before anything is listed.
+ *
+ * @param line - The refusal.
+ * @returns The error envelope.
+ */
+function ls_refusal(line: string): CommandEnvelope {
+  return envelope_error('', undefined, `${chalk.red(line)}\n`);
+}
 
 /**
  * Lists the contents of the current or specified directory/files in the ChRIS filesystem context.
@@ -21,14 +43,17 @@ type LsSortField = 'name' | 'size' | 'date' | 'owner';
  * @returns A Promise that resolves when the directory contents are listed.
  */
 export async function builtin_ls(args: string[]): Promise<CommandEnvelope> {
-  const parsed: ParsedArgs = commandArgs_process(args);
+  const parsed: ParsedArgs = commandArgs_process(args, { booleanLongOptions: LS_SWITCHES });
+  const unknown: string | null = optionsUnknown_refusal('ls', parsed, LS_OPTIONS);
+  if (unknown !== null) return ls_refusal(unknown);
 
   let sortBy: LsSortField = 'name';
-  if (parsed['sort']) {
+  if (parsed['sort'] !== undefined) {
     const sortValue: string = String(parsed['sort']);
-    if (['name', 'size', 'date', 'owner'].includes(sortValue)) {
-      sortBy = sortValue as LsSortField;
+    if (!LS_SORT_FIELDS.includes(sortValue as LsSortField)) {
+      return ls_refusal(`ls: invalid argument '${sortValue}' for '--sort' (valid: ${LS_SORT_FIELDS.join(', ')})`);
     }
+    sortBy = sortValue as LsSortField;
   }
 
   return ls_run({

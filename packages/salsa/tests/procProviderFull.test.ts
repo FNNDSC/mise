@@ -390,6 +390,12 @@ describe('ProcVfsProvider.read', () => {
     expect(t.ok && t.value).toBe('brain');
   });
 
+  it('reads no folder and no unknown file as text: they fail, so a folder can be said to be one', async () => {
+    for (const where of ['/proc', '/proc/jobs', '/proc/jobs/feed_5', '/proc/jobs/feed_5/pl-x_10', '/proc/jobs/feed_5/bogus', '/proc/jobs/feed_5/pl-x_10/bogus']) {
+      expect((await provider.read(where)).ok).toBe(false);
+    }
+  });
+
   it('reads active instance status live and caches it', async () => {
     mockJobs.job_statusFetch.mockResolvedValue(Ok('running'));
     const r = await provider.read('/proc/jobs/feed_5/pl-x_10/status');

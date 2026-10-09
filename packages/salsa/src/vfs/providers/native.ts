@@ -6,7 +6,7 @@
  * @module
  */
 
-import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
+import { vfsOutcome_ofBoolean, vfs_ok, vfs_fail, vfs_failFromStack, type VfsOutcome, type VfsErrno } from '@fnndsc/fond';
 import { Result, Ok, Err, errorStack } from "@fnndsc/cumin";
 import { VFSProvider, VFSItem, CpOptions } from "../provider.js";
 import { vfsItems_sort } from "../sort.js";
@@ -15,6 +15,12 @@ import {
   files_copyRecursively,
   files_listAll,
   files_listOutcome,
+  fileContent_get,
+  fileContent_getBinary,
+  files_touch,
+  files_mkdir,
+  files_delete,
+  files_move,
   type ListingOutcome,
 } from "../../files/index.js";
 import path from "path";
@@ -23,6 +29,7 @@ import path from "path";
  * Shape of raw file browser items returned by the ChRIS API.
  */
 interface ChrisFileOrDirRaw {
+  id?: number | string;
   path?: string;
   fname?: string;
   fsize?: number;
@@ -194,6 +201,177 @@ export class NativeVfsProvider implements VFSProvider {
   /** @inheritdoc */
   async cp(src: string, dest: string, options: CpOptions): Promise<VfsOutcome> {
     return vfsOutcome_ofBoolean(await this.copy_run(src, dest, options), 'EIO');
+  }
+
+  /**
+   * What a path is in its parent folder: a folder, a file or a link, and its
+   * id, found the way CUBE can be asked (its parent's three listings).
+   *
+   * @param target - The absolute path.
+   * @returns The entry, null when the parent does not hold it, or Err when
+   *   the parent could not be read (its reason stacked).
+   */
+  private async entry_find(target: string): Promise<Result<{ type: 'dir' | 'file' | 'link'; id: number } | null>> {
+    const all: Result<Array<{ type: 'dir' | 'file' | 'link'; id: number }>> = await this.entries_find(target);
+    if (!all.ok) return Err();
+    return Ok(all.value[0] ?? null);
+  }
+
+  /**
+   * Everything holding a path in its parent folder. CUBE lets a folder and a
+   * file share one path, so there can be more than one; a disk never has.
+   *
+   * @param target - The absolute path.
+   * @returns Each holder (folders first), or Err when the parent could not
+   *   be read (its reason stacked).
+   */
+  private async entries_find(target: string): Promise<Result<Array<{ type: 'dir' | 'file' | 'link'; id: number }>>> {
+    const clean: string = target.length > 1 && target.endsWith('/') ? target.slice(0, -1) : target;
+    if (clean === '/') return Ok([{ type: 'dir', id: 0 }]);
+    const parent: string = path.posix.dirname(clean);
+    const name: string = path.posix.basename(clean);
+    const fetchOpts = { limit: 1000, offset: 0 };
+    const kinds: Array<['dirs' | 'files' | 'links', 'dir' | 'file' | 'link']> = [['dirs', 'dir'], ['files', 'file'], ['links', 'link']];
+    const found: Array<{ type: 'dir' | 'file' | 'link'; id: number }> = [];
+    for (const [asset, type] of kinds) {
+      const outcome: ListingOutcome = await files_listOutcome(fetchOpts, asset, parent);
+      if (outcome.kind === 'refused') {
+        const msg: string = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+        errorStack.stack_push('error', `Cannot read ${parent}: ${msg}`);
+        return Err();
+      }
+      if (outcome.kind !== 'listing') continue;
+      const row: ChrisFileOrDirRaw | undefined = ((outcome.data.tableData ?? []) as ChrisFileOrDirRaw[])
+        .find((r: ChrisFileOrDirRaw): boolean => chrisRow_toItem(r, type).name === name && r.id !== undefined);
+      if (row !== undefined) found.push({ type, id: Number(row.id) });
+    }
+    return Ok(found);
+  }
+
+  /**
+   * The one thing a removal may act on, or why it may not: ENOENT when
+   * nothing holds the path, and a refusal when a folder and a file share
+   * it, since CUBE's delete of either damages the other's record and every
+   * listing of the parent fails after (CUBE #732).
+   *
+   * @param target - The path to remove.
+   * @returns The single holder, or the failure.
+   */
+  private async removable_find(target: string): Promise<VfsOutcome<{ type: 'dir' | 'file' | 'link'; id: number }>> {
+    const all: Result<Array<{ type: 'dir' | 'file' | 'link'; id: number }>> = await this.entries_find(target);
+    if (!all.ok) return vfs_failFromStack('EIO');
+    if (all.value.length === 0) return vfs_fail('ENOENT');
+    if (all.value.length > 1) {
+      return vfs_fail('EPERM', `a folder and a file share ${target}, and removing either would damage the other in CUBE`);
+    }
+    return vfs_ok(all.value[0]);
+  }
+
+  /**
+   * Why an operation on a path failed, once it has: ENOENT when the path
+   * is not there, the given errno for what is, EIO when its parent could
+   * not be read. The store's own words, when it gave any, are the reason.
+   *
+   * @param target - The path.
+   * @param whenThere - The errno when the path is there (`EISDIR` for a read of a folder).
+   * @returns The failure.
+   */
+  private async failure_classify(target: string, whenThere: (type: 'dir' | 'file' | 'link') => VfsErrno): Promise<VfsOutcome<never>> {
+    const said: VfsOutcome<never> = vfs_failFromStack('EIO');
+    const entry: Result<{ type: 'dir' | 'file' | 'link'; id: number } | null> = await this.entry_find(target);
+    const errno: VfsErrno = !entry.ok ? 'EIO' : entry.value === null ? 'ENOENT' : whenThere(entry.value.type);
+    if (!entry.ok) errorStack.stack_pop();
+    return !said.ok && said.reason !== undefined ? vfs_fail(errno, said.reason) : vfs_fail(errno);
+  }
+
+  /** @inheritdoc */
+  async read(target: string): Promise<VfsOutcome<string>> {
+    // Read first: a file that is there costs no more than it always has.
+    const content: Result<string> = await fileContent_get(target);
+    if (content.ok) return vfs_ok(content.value);
+    return this.failure_classify(target, (type) => (type === 'dir' ? 'EISDIR' : 'EIO'));
+  }
+
+  /** @inheritdoc */
+  async readBinary(target: string): Promise<VfsOutcome<Buffer>> {
+    const bytes: Result<Buffer> = await fileContent_getBinary(target);
+    if (bytes.ok) return vfs_ok(bytes.value);
+    return this.failure_classify(target, (type) => (type === 'dir' ? 'EISDIR' : 'EIO'));
+  }
+
+  /** @inheritdoc */
+  async write(target: string, content: string | Buffer): Promise<VfsOutcome> {
+    const there: Result<{ type: 'dir' | 'file' | 'link'; id: number } | null> = await this.entry_find(target);
+    if (!there.ok) return vfs_failFromStack('EIO');
+    if (there.value?.type === 'dir') return vfs_fail('EISDIR');
+    const parent: Result<{ type: 'dir' | 'file' | 'link'; id: number } | null> = await this.entry_find(path.posix.dirname(target));
+    if (!parent.ok) return vfs_failFromStack('EIO');
+    if (parent.value === null) return vfs_fail('ENOENT');
+    if (parent.value.type !== 'dir') return vfs_fail('ENOTDIR');
+    // files_touch replaces: CUBE's upload does not, so a file already there is removed first.
+    return vfsOutcome_ofBoolean(await files_touch(target, content), 'EIO');
+  }
+
+  /** @inheritdoc */
+  async mkdir(target: string): Promise<VfsOutcome> {
+    // CUBE answers success for a folder already there; a disk says EEXIST.
+    const there: Result<{ type: 'dir' | 'file' | 'link'; id: number } | null> = await this.entry_find(target);
+    if (!there.ok) return vfs_failFromStack('EIO');
+    if (there.value !== null) return vfs_fail('EEXIST');
+    const parent: Result<{ type: 'dir' | 'file' | 'link'; id: number } | null> = await this.entry_find(path.posix.dirname(target));
+    if (!parent.ok) return vfs_failFromStack('EIO');
+    if (parent.value === null) return vfs_fail('ENOENT');
+    if (parent.value.type !== 'dir') return vfs_fail('ENOTDIR');
+    return vfsOutcome_ofBoolean(await files_mkdir(target), 'EIO');
+  }
+
+  /** @inheritdoc */
+  async rmdir(target: string): Promise<VfsOutcome> {
+    const there: VfsOutcome<{ type: 'dir' | 'file' | 'link'; id: number }> = await this.removable_find(target);
+    if (!there.ok) return there;
+    if (there.value.type !== 'dir') return vfs_fail('ENOTDIR');
+    const held: Result<VFSItem[]> = await this.list(target);
+    if (!held.ok) return vfs_failFromStack('EIO');
+    if (held.value.length > 0) return vfs_fail('ENOTEMPTY');
+    return vfsOutcome_ofBoolean(await files_delete(there.value.id, 'dirs', path.posix.dirname(target)), 'EIO');
+  }
+
+  /** @inheritdoc */
+  async rename(src: string, dest: string): Promise<VfsOutcome> {
+    const from: Result<{ type: 'dir' | 'file' | 'link'; id: number } | null> = await this.entry_find(src);
+    if (!from.ok) return vfs_failFromStack('EIO');
+    if (from.value === null) return vfs_fail('ENOENT');
+    const onto: Result<{ type: 'dir' | 'file' | 'link'; id: number } | null> = await this.entry_find(dest);
+    if (!onto.ok) return vfs_failFromStack('EIO');
+    // CUBE has no overwrite (docs/CUBE-gaps.adoc), and the request it would
+    // take leaves a row its own API cannot serve, which poisons every
+    // listing of that folder: refused here, by name.
+    if (onto.value !== null) {
+      return vfs_fail('EEXIST', `Destination exists: ${dest} — mise cannot overwrite a file; remove it first`);
+    }
+    const parent: Result<{ type: 'dir' | 'file' | 'link'; id: number } | null> = await this.entry_find(path.posix.dirname(dest));
+    if (!parent.ok) return vfs_failFromStack('EIO');
+    if (parent.value === null) return vfs_fail('ENOENT');
+    if (parent.value.type !== 'dir') return vfs_fail('ENOTDIR');
+    return vfsOutcome_ofBoolean(await files_move(src, dest), 'EIO');
+  }
+
+  /** @inheritdoc */
+  async rm(target: string): Promise<VfsOutcome> {
+    const there: VfsOutcome<{ type: 'dir' | 'file' | 'link'; id: number }> = await this.removable_find(target);
+    if (!there.ok) return there;
+    if (there.value.type === 'dir') return vfs_fail('EISDIR');
+    const asset: string = there.value.type === 'link' ? 'links' : 'files';
+    return vfsOutcome_ofBoolean(await files_delete(there.value.id, asset, path.posix.dirname(target)), 'EIO');
+  }
+
+  /** @inheritdoc */
+  async rmTree(target: string): Promise<VfsOutcome> {
+    // CUBE removes a folder with everything in it in one request.
+    const there: VfsOutcome<{ type: 'dir' | 'file' | 'link'; id: number }> = await this.removable_find(target);
+    if (!there.ok) return there;
+    if (there.value.type !== 'dir') return vfs_fail('ENOTDIR');
+    return vfsOutcome_ofBoolean(await files_delete(there.value.id, 'dirs', path.posix.dirname(target)), 'EIO');
   }
 
   /**

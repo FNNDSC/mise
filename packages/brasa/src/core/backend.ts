@@ -126,6 +126,20 @@ export interface ListingCache {
   cache_get<T = unknown>(path: string): { data: T; fresh: boolean } | null;
   /** Keeps a listing. */
   cache_set<T = unknown>(path: string, data: T): void;
+  /** Forgets one folder's listing: something in it changed. */
+  cache_invalidate?(path: string): void;
+  /** Forgets a folder's listing and every one beneath it: the folder went. */
+  cache_invalidateTree?(path: string): void;
+}
+
+/** What entering a folder outside the mounts came to, for `cd`. */
+export interface FolderEntry {
+  /** The working directory to stand in, or null when the path is not a folder one can. */
+  readonly cwd: string | null;
+  /** What `cd` shows on its way (a debugging trace). */
+  readonly rendered: string;
+  /** What `cd` says when it cannot, in full; empty to let the core say `No such file or directory`. */
+  readonly renderedErr: string;
 }
 
 /** The backend's filesystem, as the core's listings, globbing and completion read it. */
@@ -145,6 +159,15 @@ export interface BackendFilesystem {
   readonly unreadLinks_take?: () => Promise<string[]>;
   /** A folder as the filesystem holds it, links followed, for globbing beneath it; absent, the path as given. */
   readonly path_physical?: (path: string) => Promise<string>;
+  /** Paths that are always folders, entered without asking (beside the mounts and the folders above them). */
+  readonly structural?: ReadonlyArray<string>;
+  /**
+   * Enters a folder outside the mounts (`cd`): whether it is one, and where
+   * the session then stands. Absent, a path that lists is a folder.
+   */
+  readonly folder_enter?: (logicalPath: string, pathArg: string) => Promise<FolderEntry>;
+  /** The title a path segment shows under `pwd --title` (ChRIS: a feed's name), or null for none. */
+  readonly segment_title?: (segment: string) => Promise<string | null>;
 }
 
 /** What a backend adds to completion. */

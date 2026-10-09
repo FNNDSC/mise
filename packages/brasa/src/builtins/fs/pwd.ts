@@ -3,8 +3,7 @@
  * Reports the current working directory as a command envelope.
  */
 import { session } from '../../session/index.js';
-import { FilteredResourceData } from '@fnndsc/cumin';
-import { feeds_list, pluginInstances_list } from '@fnndsc/salsa';
+import { backendInstalled_get } from '../../core/backend.js';
 import { CommandEnvelope, envelope_ok } from '@fnndsc/menu';
 
 /**
@@ -40,56 +39,18 @@ export async function pwd_run(options: PwdOptions = {}): Promise<CommandEnvelope
 }
 
 /**
- * Replaces feed_XXXX and pl-<name>_XXXX patterns in a path with their titles.
+ * Replaces each path segment the backend titles (ChRIS: a feed, a plugin
+ * instance) with its title.
  *
  * @param path - The path to process.
- * @returns The path with titles replacing directory names.
+ * @returns The path with titles in place of the segments that have them.
  */
 async function path_withTitles(path: string): Promise<string> {
+  const title: ((segment: string) => Promise<string | null>) | undefined = backendInstalled_get()?.vfs?.segment_title;
+  if (title === undefined) return path;
   const parts: string[] = path.split('/');
   const replacedParts: string[] = await Promise.all(
-    parts.map(async (part: string): Promise<string> => {
-      // Pattern 1: feed_XXXX
-      const feedMatch: RegExpMatchArray | null = part.match(/^feed_(\d+)$/);
-      if (feedMatch) {
-        const feedId: number = parseInt(feedMatch[1], 10);
-        try {
-          const feedData: FilteredResourceData | null = await feeds_list({ id: feedId, limit: 1 });
-          if (feedData && feedData.tableData && feedData.tableData.length > 0) {
-            const feed: Record<string, unknown> = feedData.tableData[0];
-            if (feed && typeof feed.name === 'string') {
-              return feed.name;
-            }
-          }
-        } catch (e: unknown) {
-          // Silently ignore errors
-        }
-        return part;
-      }
-
-      // Pattern 2: pl-<name>_XXXX
-      const pluginMatch: RegExpMatchArray | null = part.match(/^(pl-.+)_(\d+)$/);
-      if (pluginMatch) {
-        const pluginInstanceId: number = parseInt(pluginMatch[2], 10);
-        try {
-          const instanceData: FilteredResourceData | null = await pluginInstances_list({ id: pluginInstanceId, limit: 1 });
-          if (instanceData && instanceData.tableData && instanceData.tableData.length > 0) {
-            const instance: Record<string, unknown> = instanceData.tableData[0];
-            if (instance) {
-              const pluginName: string = typeof instance.plugin_name === 'string' ? instance.plugin_name : '';
-              const pluginVersion: string = typeof instance.plugin_version === 'string' ? instance.plugin_version : '';
-              return pluginVersion ? `${pluginName} v${pluginVersion}` : pluginName;
-            }
-          }
-        } catch (e: unknown) {
-          // Silently ignore errors
-        }
-        return part;
-      }
-
-      return part; // Return unchanged if no match
-    })
+    parts.map(async (part: string): Promise<string> => (await title(part)) ?? part),
   );
-
   return replacedParts.join('/');
 }

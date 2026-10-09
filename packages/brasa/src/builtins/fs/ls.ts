@@ -4,7 +4,8 @@
  */
 import chalk from 'chalk';
 import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
-import { listCache_get } from '@fnndsc/cumin';
+import { listingCache_get } from '../../core/filesystem.js';
+import type { ListingCache } from '../../core/backend.js';
 import { session } from '../../session/index.js';
 import { vfs } from '../../lib/vfs/vfs.js';
 import type { ListingItem, CommandEnvelope } from '@fnndsc/menu';
@@ -107,19 +108,19 @@ export async function ls_run(runOptions: LsOptions): Promise<CommandEnvelope> {
   let renderedErr: string = '';
 
   if (shouldRefresh) {
-    const listCache = listCache_get();
+    const listCache: ListingCache = listingCache_get();
     if (pathArgs.length === 0) {
       const cwd: string = await session.getCWD();
       rendered += `${chalk.gray(`[Cache] Invalidating: ${cwd}`)}\n`;
       // The named listing only. A refresh used to clear EVERY listing too,
       // so one REFRESH press made the next navigation anywhere fetch again
       // — /bin included, seconds — for a staleness nobody had claimed.
-      listCache.cache_invalidate(cwd);
+      listCache.cache_invalidate?.(cwd);
     } else {
       for (const pathArg of pathArgs) {
         const resolvedPath: string = await path_resolve(pathArg);
         rendered += `${chalk.gray(`[Cache] Invalidating: ${resolvedPath}`)}\n`;
-        listCache.cache_invalidate(resolvedPath);
+        listCache.cache_invalidate?.(resolvedPath);
       }
     }
   }

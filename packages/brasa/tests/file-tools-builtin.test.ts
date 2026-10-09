@@ -1,5 +1,5 @@
 /**
- * @file The `touch` and `mv` builtins over a real filesystem held in memory.
+ * @file The `touch`, `mv` and `cp` builtins over a real filesystem held in memory.
  *
  * The session's filesystem is fond's dispatcher with the memory mount as
  * its store (parents made in one step, as CUBE makes them) and a second
@@ -37,6 +37,7 @@ jest.unstable_mockModule('../src/core/filesystem.js', () => ({
 
 const { builtin_touch } = await import('../src/builtins/fs/touch.js');
 const { builtin_mv } = await import('../src/builtins/fs/mv.js');
+const { builtin_cp } = await import('../src/builtins/fs/cp.js');
 
 /** A fresh session filesystem, with a /proc/tags projection that renames inside itself. */
 function filesystem_reset(): MemoryVfsProvider {
@@ -185,5 +186,57 @@ describe('mv', () => {
     const across: CommandEnvelope = await builtin_mv(['/proc/tags/b', '/home/x']);
     expect(across.renderedErr).toContain("mv: cannot move '/proc/tags/b' to '/home/x': Invalid cross-device link");
     expect(across.renderedErr).not.toContain('mv: mv:');
+  });
+});
+
+describe('cp', () => {
+  it('reports usage with nothing given, and refuses an option it does not have', async () => {
+    expect((await builtin_cp([])).rendered).toContain('Usage: cp');
+    expect((await builtin_cp(['-x', 'a', 'b'])).renderedErr).toContain("cp: invalid option -- 'x'");
+  });
+
+  it('asks where a lone source should go, and copies it there; copies nothing when that is abandoned', async () => {
+    mockDestination.mockResolvedValueOnce('/home/chris/copy.txt');
+    expect((await builtin_cp(['a.txt'])).status).toBe('ok');
+    expect(await text_of('/home/chris/copy.txt')).toBe('alpha');
+    mockDestination.mockResolvedValueOnce('   ');
+    const abandoned: CommandEnvelope = await builtin_cp(['b.txt']);
+    expect(abandoned.renderedErr).toContain('nothing copied');
+  });
+
+  it('copies a file, the source kept, and invalidates the destination', async () => {
+    const envelope: CommandEnvelope = await builtin_cp(['a.txt', 'c.txt']);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.model?.kind).toBe('fs.cp');
+    expect(await text_of('/home/chris/c.txt')).toBe('alpha');
+    expect(await text_of('/home/chris/a.txt')).toBe('alpha');
+    expect(mockInvalidateTree).toHaveBeenCalledWith('/home/chris/c.txt');
+  });
+
+  it('copies into a folder the destination names, keeping the name; several sources summarised', async () => {
+    const envelope: CommandEnvelope = await builtin_cp(['a.txt', 'b.txt', 'docs']);
+    expect(envelope.rendered).toContain('Copied 2 file(s)');
+    expect(await names_of('/home/chris/docs')).toEqual(['a.txt:file', 'b.txt:file']);
+  });
+
+  it('copies a folder only with -r (--recursive keeps the operand after it)', async () => {
+    const plain: CommandEnvelope = await builtin_cp(['docs', 'docs2']);
+    expect(plain.status).toBe('error');
+    expect(plain.renderedErr).toContain("cp: cannot copy '/home/chris/docs' to '/home/chris/docs2': Is a directory");
+    await builtin_touch(['docs/inner.txt']);
+    expect((await builtin_cp(['--recursive', 'docs', 'docs2'])).status).toBe('ok');
+    expect(await names_of('/home/chris/docs2')).toEqual(['inner.txt:file']);
+  });
+
+  it('says the mount\'s refusal once, never "cp: cp:", and a missing source', async () => {
+    const store: MemoryVfsProvider = filesystem_reset();
+    (store as Partial<VFSProvider>).cp = async () => vfs_fail('EROFS', "cp: Copying from static VFS path '/bin/x' is not supported.");
+    const refused: CommandEnvelope = await builtin_cp(['a.txt', 'z.txt']);
+    expect(refused.renderedErr).toContain("cp: Copying from static VFS path '/bin/x' is not supported.");
+    expect(refused.renderedErr).not.toContain('cp: cp:');
+    filesystem_reset();
+    const missing: CommandEnvelope = await builtin_cp(['none.txt', 'z.txt']);
+    expect(missing.status).toBe('error');
+    expect(missing.renderedErr).toContain('No such file or directory');
   });
 });

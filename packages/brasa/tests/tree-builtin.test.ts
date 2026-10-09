@@ -26,6 +26,10 @@ jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
 }));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/upload.js', () => ({ bytes_format: jest.fn(() => '2 KB') }));
 
+// Whether a named path is there: the listing's -d entry.
+const mockDataGet = jest.fn(async (): Promise<{ ok: boolean; value?: unknown[] }> => ({ ok: true, value: [{ name: 'x', type: 'dir' }] }));
+jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({ vfs: { data_get: mockDataGet } }));
+
 const { builtin_tree } = await import('../src/builtins/fs/tree.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
@@ -75,6 +79,30 @@ describe('builtin_tree', () => {
     expect(envelope.rendered).toContain('/data/a');
     expect(envelope.rendered).toContain('/data/a/b');
     expect(mockSetCWD).toHaveBeenCalledWith('/data');
+  });
+
+  it('refuses an option it does not have, by name, and scans nothing', async () => {
+    const short = await builtin_tree(['-L', '1', '/data']);
+    expect(short.renderedErr).toContain("tree: invalid option -- 'L'");
+    const long = await builtin_tree(['--bogus', '/data']);
+    expect(long.renderedErr).toContain("tree: unrecognized option '--bogus'");
+    expect(mockScanDo).not.toHaveBeenCalled();
+    process.exitCode = undefined;
+  });
+
+  it('says a path that is not there is not there, rather than drawing an empty tree', async () => {
+    mockDataGet.mockResolvedValueOnce({ ok: false });
+    const missing = await builtin_tree(['~/nowhere']);
+    expect(missing.renderedErr).toContain('tree: ~/nowhere: No such file or directory');
+    expect(mockScanDo).not.toHaveBeenCalled();
+    process.exitCode = undefined;
+  });
+
+  it('draws an empty folder as itself', async () => {
+    mockScanDo.mockResolvedValue({ fileInfo: [], totalSize: 0 });
+    const empty = await builtin_tree(['/data/empty']);
+    expect(empty.rendered).toContain('/data/empty\n');
+    expect(mockArchy).not.toHaveBeenCalled();
   });
 
   it('temporarily changes directory for an explicit path and restores it', async () => {

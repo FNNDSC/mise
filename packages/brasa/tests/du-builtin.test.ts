@@ -36,6 +36,12 @@ beforeEach(() => {
 });
 
 describe('builtin_du', () => {
+  it('refuses an option it does not have, by name', async () => {
+    const refused = await builtin_du(['--bogus', '/data']);
+    expect(refused.renderedErr).toContain("du: unrecognized option '--bogus'");
+    process.exitCode = undefined;
+  });
+
   it('reports the size of a single file target', async () => {
     mockDataGet.mockResolvedValue(ok([{ type: 'file', size: 2048 }]));
     const envelope = await builtin_du(['report.txt']);

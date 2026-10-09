@@ -4,14 +4,14 @@
  */
 import chalk from 'chalk';
 import path from 'path';
-import { ParsedArgs, commandArgs_process, path_resolve } from '../utils.js';
+import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
 import { session } from '../../session/index.js';
 import { vfs } from '../../lib/vfs/vfs.js';
 import { spinner } from '../../lib/spinner.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
 import { scan_do, type CLIscan, type ScanRecord } from '@fnndsc/chili/path/pathCommand.js';
 import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
-import type { ListingItem, CommandEnvelope } from '@fnndsc/menu';
+import { envelope_error, type ListingItem, type CommandEnvelope } from '@fnndsc/menu';
 import type { Result } from '@fnndsc/fond';
 
 /**
@@ -30,6 +30,29 @@ export interface DuOptions {
 const DU_BOOLEAN_LONG_OPTIONS: readonly string[] = [
   'human-readable', 'summarize', 'all', 'total', 'separate-dirs',
 ];
+
+/**
+ * Spells `-d N` and `-dN` as `--max-depth=N`, the one form the parser
+ * takes a value for: a short flag is otherwise a switch, and the depth
+ * read as a path to measure.
+ *
+ * @param args - du's words.
+ * @returns The words, the depth spelled long.
+ */
+export function depthOption_normalize(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i: number = 0; i < args.length; i++) {
+    const arg: string = args[i];
+    if (arg === '--') { out.push(...args.slice(i)); break; }
+    if (arg === '-d' && args[i + 1] !== undefined) { out.push(`--max-depth=${args[i + 1]}`); i++; continue; }
+    const glued: RegExpMatchArray | null = arg.match(/^-d(\d+)$/);
+    out.push(glued !== null ? `--max-depth=${glued[1]}` : arg);
+  }
+  return out;
+}
+
+/** Every option du reads; any other is refused by name. */
+const DU_OPTIONS: readonly string[] = [...DU_BOOLEAN_LONG_OPTIONS, 'max-depth', 'h', 's', 'a', 'c', 'S', 'd'];
 
 /**
  * Stat summary for a single `du` target.
@@ -202,7 +225,12 @@ function dirUsage_render(
  * ```
  */
 export async function builtin_du(args: string[]): Promise<CommandEnvelope> {
-  const parsed: ParsedArgs = commandArgs_process(args, { booleanLongOptions: DU_BOOLEAN_LONG_OPTIONS });
+  const parsed: ParsedArgs = commandArgs_process(depthOption_normalize(args), { booleanLongOptions: DU_BOOLEAN_LONG_OPTIONS });
+  const unknown: string | null = optionsUnknown_refusal('du', parsed, DU_OPTIONS);
+  if (unknown !== null) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(unknown)}\n`);
+  }
   const opts: DuOptions = duOptions_parse(parsed);
   const pathArgs: string[] = parsed._ as string[];
   commandCancellation_enable();

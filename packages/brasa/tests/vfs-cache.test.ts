@@ -15,6 +15,7 @@ const cacheStore: Map<string, CacheEntry> = new Map();
 const mockCacheSet = jest.fn((key: string, data: unknown) => { cacheStore.set(key, { data, fresh: true }); });
 const mockCacheInvalidate = jest.fn((key: string) => { cacheStore.delete(key); });
 const mockStackPush = jest.fn();
+const mockCheckpointDrain = jest.fn((_mark: number): unknown[] => []);
 const mockStackSearch = jest.fn<(needle: string) => string[]>(() => []);
 const mockFeedTagsByFeed = jest.fn(async (): Promise<{ ok: boolean; value?: Map<number, string[]> }> => ({ ok: true, value: new Map() }));
 const mockGridRender = jest.fn(() => 'GRID');
@@ -36,7 +37,7 @@ cuminMock_install(() => ({
     stack_push: mockStackPush,
     stack_pop: jest.fn(() => ({ message: 'listing failed' })),
     checkpoint_mark: jest.fn(() => 0),
-    checkpoint_drain: jest.fn(() => []),
+    checkpoint_drain: (mark: number) => mockCheckpointDrain(mark),
     scope_run: (fn: () => unknown) => fn(),
   },
 }), { fond: { grid_render: mockGridRender, long_render: mockLongRender, listingItems_sort: mockApplySort } });
@@ -171,11 +172,25 @@ describe('VFS.data_get -d (directory entry)', () => {
     expect(mockCacheSet).toHaveBeenCalledWith('/home/chris', [item('data')]);
   });
 
-  it('synthesizes an entry when the parent has no match', async () => {
+  it('leaves nothing on the error stack from a parent it read only to find one name', async () => {
+    mockDispatcherList.mockResolvedValue(ok([item('jobs', 'vfs')]));
+    const jobs = await new VFS().data_get('/proc/jobs', { directory: true });
+    expect(jobs.ok).toBe(true);
+    expect(mockCheckpointDrain).toHaveBeenCalled();
+  });
+
+  it('answers a folder the parent does not name when it lists, as a mount does', async () => {
     mockDispatcherList.mockResolvedValue(ok([item('unrelated')]));
-    const synthesized = await new VFS().data_get('/home/chris/ghost', { directory: true });
-    expect(synthesized.ok).toBe(true);
-    if (synthesized.ok) expect(synthesized.value[0]).toMatchObject({ name: 'ghost', owner: 'system' });
+    const mount = await new VFS().data_get('/home/chris/mounted', { directory: true });
+    expect(mount.ok).toBe(true);
+    if (mount.ok) expect(mount.value[0]).toMatchObject({ name: 'mounted', type: 'dir', owner: 'system' });
+  });
+
+  it('says a path neither its parent names nor lists is not there, rather than making a folder up', async () => {
+    mockDispatcherList.mockImplementation(async (target: string) => (target === '/home/chris' ? ok([item('unrelated')]) : err()));
+    const ghost = await new VFS().data_get('/home/chris/ghost', { directory: true });
+    expect(ghost.ok).toBe(false);
+    expect(mockStackPush).toHaveBeenCalledWith('error', 'Cannot list /home/chris/ghost: No such file or directory');
   });
 });
 

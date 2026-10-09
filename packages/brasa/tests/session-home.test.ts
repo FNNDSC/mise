@@ -19,6 +19,8 @@ jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
 }));
 
 const { session, Session } = await import('../src/session/index.js');
+const { chrisBackend } = await import('../src/chris/backend.js');
+(await import('../src/core/backend.js')).backend_install(chrisBackend);
 
 describe('where a session begins', () => {
   beforeEach(() => { current_get.mockReset(); });
@@ -80,5 +82,26 @@ describe('the session around it', () => {
     expect(session.regard_get()).toBeNull();
     session.regard_set({ address: '/home/chris/x', modelKind: 'fs.file' } as never);
     expect(session.regard_get()).toEqual({ address: '/home/chris/x', modelKind: 'fs.file' });
+  });
+});
+
+describe('the backend under it', () => {
+  it('is what the session asks for its home and its directory', async () => {
+    const { backend_install, backend_get } = await import('../src/core/backend.js');
+    const saved: string[] = [];
+    backend_install({
+      id: 'test',
+      session: {
+        init: async (): Promise<void> => undefined,
+        home_get: async (): Promise<string> => '/home/test',
+        cwd_load: async (): Promise<string | null> => null,
+        cwd_save: async (path: string): Promise<void> => { saved.push(path); },
+      },
+    });
+    expect(backend_get().id).toBe('test');
+    expect(await session.getCWD()).toBe('/home/test');
+    await session.setCWD('/work');
+    expect(saved).toEqual(['/work']);
+    backend_install(chrisBackend);
   });
 });

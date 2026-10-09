@@ -13,18 +13,24 @@ export * from './core/engine.js';
 // The typed chell API: the shell's vocabulary as function calls.
 export * from './api/index.js';
 export * from './core/dispatch.js';
-// The ChRIS backend's commands, registered beside the core's for every
-// consumer of this package; the engine's core imports none of them.
+// The ChRIS backend, installed for every consumer of this package: its
+// commands registered beside the core's, and its session. The engine's core
+// imports none of it.
 import { commands_register as chrisCommands_registerInto } from './core/commandRegistry.js';
 import { chrisCommands } from './chris/chrisCommands.js';
+import { backend_install as chrisBackend_installInto } from './core/backend.js';
+import { chrisBackend } from './chris/backend.js';
 chrisCommands_registerInto(chrisCommands);
+chrisBackend_installInto(chrisBackend);
+export * from './core/backend.js';
+export { chrisBackend } from './chris/backend.js';
 export * from './core/preprocess.js';
 export * from './core/sink.js';
 export * from './core/progress.js';
 export * from './core/surface.js';
 export * from './core/promptContext.js';
 export * from './core/warmupFailures.js';
-export * from './core/connect.js';
+export * from './chris/connect.js';
 export * from './core/question.js';
 export * from './core/elevation.js';
 export * from './core/version.js';

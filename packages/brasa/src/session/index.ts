@@ -1,20 +1,19 @@
 /**
  * @file Session Management.
  *
- * Maintains the global state of the shell, including connection and context.
+ * Maintains the global state of the shell. What the session stores beyond
+ * this process (its working directory, its home) the installed backend keeps.
  *
  * @module
  */
-import { chrisConnection, chrisConnection_init, NodeStorageProvider, chrisContext, Context } from '@fnndsc/cumin';
 import type { Regard } from '@fnndsc/menu';
-import { homePath_of } from '../builtins/utils.js';
+import { backend_get } from '../core/backend.js';
 
 /**
  * Manages the shell session state (Connection, Context).
  */
 export class Session {
   private static instance: Session;
-  private _connection: typeof chrisConnection | undefined;
   private _offline: boolean = false;
   private _physicalMode: boolean = false;
   private _timingEnabled: boolean = false;
@@ -37,28 +36,15 @@ export class Session {
   }
 
   /**
-   * Initialize the session (load config/token).
+   * Initialize the session: the backend prepares its own state.
    */
   async init(): Promise<void> {
-    const nodeStorageProvider: NodeStorageProvider = new NodeStorageProvider();
-    // Initialize the connection singleton which also initializes config
-    this._connection = await chrisConnection_init(nodeStorageProvider);
-
-    try {
-      // Also initialize chili's duplicate copy of the connection singleton to align monorepo package boundaries
-      const { chrisConnection_init: chiliConnection_init } = await import('@fnndsc/chili/utils');
-      await chiliConnection_init(nodeStorageProvider);
-    } catch (e: unknown) {
-      // Deliberate absorption, adjudicated 2026-08: chili's connection init
-      // is an optional secondary wiring (cumin's own init is the required
-      // one); when it is absent or fails, chili paths fall back to cumin's
-      // connection at call time.
-    }
+    await backend_get().session.init();
   }
 
   /**
-   * The current working directory: what the identity's context stores,
-   * or, before it has stored anything, the identity's home.
+   * The current working directory: what the backend stores for the
+   * identity, or, before it has stored anything, the identity's home.
    *
    * A first session used to begin at `/`, which is a place nobody works
    * in — the operator's own words: "she should be in the user's homedir".
@@ -66,17 +52,16 @@ export class Session {
    * always honoured, `/` included, since the operator put it there.
    */
   async getCWD(): Promise<string> {
-    const stored: string | null = await chrisContext.current_get(Context.ChRISfolder);
+    const stored: string | null = await backend_get().session.cwd_load();
     if (stored) return stored;
-    return homePath_of(await chrisContext.current_get(Context.ChRISuser));
+    return backend_get().session.home_get();
   }
 
   /**
-   * Set Current Working Directory.
-   * Cache invalidation is handled automatically by cumin's chrisContext.
+   * Set Current Working Directory: the backend stores it for the identity.
    */
   async setCWD(path: string): Promise<void> {
-    await chrisContext.current_set(Context.ChRISfolder, path);
+    await backend_get().session.cwd_save(path);
   }
 
   /**
@@ -104,13 +89,6 @@ export class Session {
     return this._previousCWD;
   }
   
-  /**
-   * Access the underlying ChRIS Connection singleton.
-   */
-  get connection() {
-    return this._connection || chrisConnection;
-  }
-
   /**
    * Get offline status.
    */

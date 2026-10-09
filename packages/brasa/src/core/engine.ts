@@ -51,6 +51,7 @@ import { recorder_note } from '../session/recorder.js';
 import { answerAdapters_register } from '../session/answerAdapters.js';
 import { numbering_get, type Numbering } from '../session/answer.js';
 import { sink_get, sink_set, type OutputSink } from './sink.js';
+import { backend_install, type Backend } from './backend.js';
 
 /**
  * Result of a completion request: the candidates and the prefix they
@@ -427,9 +428,12 @@ async function vfsProviders_register(): Promise<void> {
  * boot reporting) and the engine executes correctly both offline and
  * connected.
  *
+ * @param backend - The backend the session runs over; omitted, the one
+ *   already installed (the package entry installs ChRIS).
  * @returns The engine facade.
  */
-export async function engine_create(): Promise<BrasaEngine> {
+export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
+  if (backend !== undefined) backend_install(backend);
   // What each listing's rows are, so `@3` can name one.
   answerAdapters_register();
   await session.init();

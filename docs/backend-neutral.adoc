@@ -178,9 +178,10 @@ interface Backend {
   id: string;
   /** Connects, says who the session is, and where its working directory lives. */
   session: {
+    init(): Promise<void>;                         // its own state: configuration, stored credentials
     connect(saved: boolean): Promise<Result<SessionIdentity>>;
     identity_get(): SessionIdentity | null;        // berth name: user@where
-    home_get(): string;                            // the default cwd
+    home_get(): Promise<string>;                   // the default cwd
     cwd_load(): Promise<string | null>;            // persisted per identity
     cwd_save(path: string): Promise<void>;
   };
@@ -268,7 +269,7 @@ Each step is one change or a short series, behaviour-preserving, released on its
 . *The VFS framework.* Provider interface and a provider-less dispatcher into fond; salsa registers the CUBE mounts at startup; the item type opens; `ListingItem` moves into menu.
 . *Sink and surface interfaces* into menu (`@fnndsc/menu/surface`); the engine gains `sink_install` and `surface_install`; calypso types against menu and installs through the engine.
 . *The command registry.* The largest step, landed as a short series (amended with the operator, 2026-10-08): first a record of the command surface (every in-process name, the `/bin` builtins, every help page) generated from the build and required to match exactly; then a registry filled mechanically from the existing tables; then help read through it; then the core's and the ChRIS backend's commands registering as separate groups, the ChRIS group from brasa's package entry so the core imports none of it. The listing order (what tab completion offers) is kept explicitly, apart from which group registered a name. The dependency ratchet lands here.
-. *The backend descriptor.* Session, identity and working directory first; then prompt and telemetry; then reference sources. calypso takes identity from the backend.
+. *The backend descriptor.* In four slices, agreed with the operator 2026-10-09. (a) The descriptor and its session: `core/backend.ts`, the ChRIS backend in `chris/backend.ts` (home, working directory, its own init; the CUBE connection stays reachable as `session.connection`), `engine_create(backend?)` with ChRIS installed by the package entry, `connect.ts` into `chris/`. (b) Identity: calypso takes it from the backend, chell's own copies of the computation go through it, and the disconnected identity is per backend (ChRIS keeps `disconnected@no-cube`). (c) Prompt and telemetry from the descriptor; the wire's prompt context keeps its ChRIS shape until the ARGUS split. (d) Reference sources (the core keeps `${cwd}`) and an open answer-kind list (the core keeps `DIR` and `FIL`).
 . *The null backend* (moved here from the registry step, agreed with the operator 2026-10-08). The core shell cannot run without the ChRIS packages until four things hold: the filesystem bridge reads a dispatcher it is given (fond's), not salsa's; `ls` renders outside chili; the working directory comes from the session (the descriptor, the step before); and the envelope helpers (`envelope_ok`, `envelope_error`) live in brasa's core — they return menu's `CommandEnvelope`, so they cannot go into fond, which depends on nothing in `@fnndsc`.
 . *Tasks.* The task model; `/proc` mounts task sources; ChRIS plugin instances become one.
 . *calypso's web root* is injected; its dependency on the `argus` app goes.
@@ -282,7 +283,7 @@ After approval each step becomes a sub-issue of #977.
 
 * *Behaviour preserved.* The unit suites, the ARGUS smoke suite and the live end-to-end exemplars stay green on every change; the registry step adds the help, `/bin` and completion snapshots.
 * *A null backend in CI*, from its own step after the descriptor (<<order>>): brasa boots with a backend that has no commands and an in-memory filesystem, and runs the core shell — `ls`, `cd`, `cat`, pipes, redirection, `help` — without loading cumin, salsa or chili. It is the standing proof that the core is neutral, and the first place a second backend's shape is exercised.
-* *A dependency ratchet*, as the cast ratchet works today: fond imports nothing from `@fnndsc`, and the count of brasa core files (outside the ChRIS builtins) that import cumin, salsa or chili — 21 at `1e1e1999`, 18 once the registry step split the groups — may only go down (`npm run lint:core-deps`). A step can never quietly undo an earlier one.
+* *A dependency ratchet*, as the cast ratchet works today: fond imports nothing from `@fnndsc`, and the count of brasa core files (outside the ChRIS builtins) that import cumin, salsa or chili — 21 at `1e1e1999`, 18 once the registry step split the groups, 16 once the session went behind the descriptor — may only go down. An import of the ChRIS backend's own `chris/` folder counts too, so moving a file there lowers the count only when the core stops reaching for it; the package entry, which installs the backend, is not core (`npm run lint:core-deps`). A step can never quietly undo an earlier one.
 
 [[security]]
 == Two security postures, kept apart

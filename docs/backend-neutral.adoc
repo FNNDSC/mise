@@ -193,9 +193,9 @@ interface Backend {
   mountFallback?: VFSProvider;
   /** Item kinds it lists: a type mark and colour for ls. */
   itemKinds?: ReadonlyArray<ItemKindLook>;
-  /** What the prompt shows beyond cwd and exit status, and the telemetry it reports. */
-  prompt?: () => Promise<PromptSegments>;
-  telemetry?: () => TelemetrySnapshot;
+  /** What the prompt shows (the wire's prompt context), and the telemetry it reports. */
+  prompt?: (last?: PromptLastCommand) => Promise<PromptContext>;
+  telemetry?: () => BackendTelemetry;
   /** What `${name}` references resolve to (ChRIS: feed, query, run, gather). */
   references?: ReadonlyArray<ReferenceSource>;
   /** Long-running work it can list and watch. */
@@ -283,7 +283,7 @@ After approval each step becomes a sub-issue of #977.
 
 * *Behaviour preserved.* The unit suites, the ARGUS smoke suite and the live end-to-end exemplars stay green on every change; the registry step adds the help, `/bin` and completion snapshots.
 * *A null backend in CI*, from its own step after the descriptor (<<order>>): brasa boots with a backend that has no commands and an in-memory filesystem, and runs the core shell — `ls`, `cd`, `cat`, pipes, redirection, `help` — without loading cumin, salsa or chili. It is the standing proof that the core is neutral, and the first place a second backend's shape is exercised.
-* *A dependency ratchet*, as the cast ratchet works today: fond imports nothing from `@fnndsc`, and the count of brasa core files (outside the ChRIS builtins) that import cumin, salsa or chili — 21 at `1e1e1999`, 18 once the registry step split the groups, 16 once the session went behind the descriptor — may only go down. An import of the ChRIS backend's own `chris/` folder counts too, so moving a file there lowers the count only when the core stops reaching for it; the package entry, which installs the backend, is not core (`npm run lint:core-deps`). A step can never quietly undo an earlier one.
+* *A dependency ratchet*, as the cast ratchet works today: fond imports nothing from `@fnndsc`, and the count of brasa core files (outside the ChRIS builtins) that import cumin, salsa or chili — 21 at `1e1e1999`, 18 once the registry step split the groups, 16 once the session went behind the descriptor, 14 once the prompt and telemetry did — may only go down. An import of the ChRIS backend's own `chris/` folder counts too, so moving a file there lowers the count only when the core stops reaching for it; the package entry, which installs the backend, is not core (`npm run lint:core-deps`). A step can never quietly undo an earlier one.
 
 [[security]]
 == Two security postures, kept apart

@@ -4,12 +4,14 @@
  *
  * The engine runs over exactly one backend (docs/backend-neutral.adoc). The
  * core asks it to prepare its own state, where the session's home is, and
- * where the working directory was left. ChRIS is one backend
+ * where the working directory was left, what the prompt shows and what the
+ * daemon heartbeats. ChRIS is one backend
  * (`chris/backend.ts`), installed by the package entry; a host may install
  * another before the engine boots.
  *
  * @module
  */
+import type { PromptContext, CubeTelemetry, JobsStateTelemetry } from '@fnndsc/menu';
 
 /**
  * Who a session is and where: the input a host keys the session by (calypso's
@@ -42,12 +44,33 @@ export interface BackendSession {
   cwd_save(path: string): Promise<void>;
 }
 
+/** What the core knows about the previous command, for the prompt. */
+export interface PromptLastCommand {
+  lastExitCode?: number;
+  lastCommandDurationMs?: number;
+}
+
+/**
+ * What a daemon heartbeats about the backend's own state, in the wire's
+ * telemetry shape: the index counts, the server's pace, the work in flight.
+ */
+export interface BackendTelemetry {
+  jobs: number;
+  feeds: number;
+  cube?: CubeTelemetry;
+  state?: JobsStateTelemetry;
+}
+
 /** One backend, as the core sees it. */
 export interface Backend {
   /** Stable id naming the backend. */
   readonly id: string;
   /** The session it serves. */
   readonly session: BackendSession;
+  /** The session facts a prompt shows, in the wire's prompt context. */
+  readonly prompt?: (last?: PromptLastCommand) => Promise<PromptContext>;
+  /** The daemon's heartbeat about the backend's state; read often, so it is cheap. */
+  readonly telemetry?: () => BackendTelemetry;
 }
 
 let installed: Backend | null = null;

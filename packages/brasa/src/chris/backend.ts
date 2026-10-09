@@ -5,6 +5,8 @@
  * the session (the CUBE user and URL) and holds the working directory; the
  * home is the CUBE user's home. The CUBE connection the ChRIS commands use is
  * reached as `session.connection`, which this module adds to the session.
+ * The prompt and the daemon's heartbeat read the user, the CUBE, PACS and
+ * the /proc index (`promptContext.ts`).
  *
  * @module
  */
@@ -12,6 +14,7 @@ import { chrisConnection, chrisConnection_init, NodeStorageProvider, chrisContex
 import type { Backend, SessionIdentity } from '../core/backend.js';
 import { Session } from '../session/index.js';
 import { homePath_of } from '../builtins/utils.js';
+import { procIndex_snapshot, sessionPromptContext_build } from './promptContext.js';
 
 declare module '../session/index.js' {
   interface Session {
@@ -68,4 +71,6 @@ export const chrisBackend: Backend = {
       await chrisContext.current_set(Context.ChRISfolder, path);
     },
   },
+  prompt: sessionPromptContext_build,
+  telemetry: procIndex_snapshot,
 };

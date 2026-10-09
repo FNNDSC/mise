@@ -1,5 +1,5 @@
 /**
- * @file The session's prompt context: the engine-known facts a prompt reflects.
+ * @file The ChRIS session's prompt context: the engine-known facts a prompt reflects.
  *
  * A prompt shows live session state — user, CUBE, working directory, PACS,
  * physical-mode, warm-up progress — plus the last command's outcome. Only the
@@ -14,7 +14,7 @@
 import { jobsState_derive, type JobsState } from './jobsState.js';
 import type { ProcFeedPromptProgress } from '@fnndsc/menu';
 import { session } from '../session/index.js';
-import { warmupFailures_list, type WarmupFailure } from './warmupFailures.js';
+import { warmupFailures_list, type WarmupFailure } from '../core/warmupFailures.js';
 import { context_getSingle } from '@fnndsc/salsa';
 import { type ProcFeed, pace_get, type CubePace, type ProcRosterSyncKind,
   SingleContext,

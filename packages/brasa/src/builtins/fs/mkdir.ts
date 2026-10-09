@@ -67,6 +67,24 @@ function refusal_said(doing: string): string {
   return said.startsWith('mkdir:') ? said : `${doing}: ${said.replace(/^[^:]*: /, '')}`;
 }
 
+/**
+ * The refusal for a path a file holds, when the store said so: the target
+ * itself (`File exists`) or a folder above it (`Not a directory`).
+ *
+ * @param pathArg - The path as typed.
+ * @returns The line, or null when the store's refusal was something else
+ *   (left on the stack).
+ */
+function heldBy_said(pathArg: string): string | null {
+  const reason: StackMessage | undefined = errorStack.stack_pop();
+  if (reason === undefined) return null;
+  const said: string = error_stripDebugPrefix(reason.message);
+  if (said.startsWith('File exists')) return `mkdir: cannot create directory '${pathArg}': File exists`;
+  if (said.startsWith('Not a directory')) return `mkdir: cannot create directory '${pathArg}': Not a directory`;
+  errorStack.stack_push(reason.type, said);
+  return null;
+}
+
 /** Parsed `mkdir` arguments, or the option it refuses. */
 export type MkdirArgs = MkdirOptions | { refused: string };
 
@@ -152,6 +170,14 @@ export async function mkdir_run(options: MkdirOptions): Promise<CommandEnvelope>
         continue;
       }
       const success: boolean = await chefs_mkdir_cmd(targetPath);
+      // A file holding the path (or a folder above it) is said as the shell
+      // says it; CUBE would otherwise have made a folder beside the file.
+      const held: string | null = success ? null : heldBy_said(pathArg);
+      if (held !== null) {
+        renderedErr += `${chalk.red(held)}\n`;
+        outcomes.push({ path: targetPath, created: false });
+        continue;
+      }
       rendered += `${mkdir_render(targetPath, success)}\n`;
       outcomes.push({ path: targetPath, created: success });
 

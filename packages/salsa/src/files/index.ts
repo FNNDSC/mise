@@ -95,6 +95,20 @@ export async function files_copyRecursively(srcPath: string, destPath: string): 
     const items: FsItem[] = await files_listRecursive(srcPath);
     let successCount: number = 0;
     let failCount: number = 0;
+    // The folders each target folder holds, listed once: a file is never
+    // copied onto a folder's name, and a large copy pays one listing per
+    // folder rather than one per file.
+    const foldersIn: Map<string, Set<string>> = new Map();
+    const folders_of = async (folder: string): Promise<Set<string>> => {
+      const known: Set<string> | undefined = foldersIn.get(folder);
+      if (known !== undefined) return known;
+      const outcome: ListingOutcome = await files_listOutcome({ limit: 1000, offset: 0 }, 'dirs', folder);
+      const names: Set<string> = new Set(outcome.kind === 'listing'
+        ? (outcome.data.tableData ?? []).map((row: Record<string, unknown>): string => path.posix.basename(String(row.path ?? row.fname ?? '')))
+        : []);
+      foldersIn.set(folder, names);
+      return names;
+    };
 
     for (const item of items) {
       // Normalize item.path to ensure it has a leading slash
@@ -110,11 +124,17 @@ export async function files_copyRecursively(srcPath: string, destPath: string): 
           runtimeOutput_err(`  Warning: Failed to create directory ${targetPath}\n`);
           failCount++;
         } else {
+          (await folders_of(path.posix.dirname(targetPath))).add(path.posix.basename(targetPath));
           successCount++;
         }
       } else if (item.type === 'file') {
         runtimeOutput_data(`  Copying file: ${path.posix.basename(normalizedItemPath)}\n`);
-        const copied: boolean = await files_copy(normalizedItemPath, targetPath);
+        if ((await folders_of(path.posix.dirname(targetPath))).has(path.posix.basename(targetPath))) {
+          runtimeOutput_err(`  Warning: a folder already holds ${targetPath}; the file is not copied over it\n`);
+          failCount++;
+          continue;
+        }
+        const copied: boolean = await files_copy(normalizedItemPath, targetPath, { folderClear: true });
         if (!copied) {
           runtimeOutput_err(`  Warning: Failed to copy file ${normalizedItemPath}\n`);
           failCount++;
@@ -199,7 +219,22 @@ export async function files_path_isDirectory(targetPath: string): Promise<boolea
  * @param pathStr - The ChRIS path for the new file.
  * @returns A Promise resolving to true on success, false on failure.
  */
-export async function files_create(content: string | Buffer | Blob, pathStr: string): Promise<boolean> {
+export async function files_create(
+  content: string | Buffer | Blob,
+  pathStr: string,
+  options: { folderClear?: boolean } = {},
+): Promise<boolean> {
+  // A file is never written over a folder: CUBE would keep both, and
+  // removing either later damages the other (CUBE #732). A caller that has
+  // already checked the folder's names says so, and is not asked again.
+  if (options.folderClear !== true) {
+    const holders: Result<PathHolder[]> = await pathHolders_find(pathStr);
+    if (!holders.ok) return false;
+    if (holders.value.includes('dir')) {
+      errorStack.stack_push('error', `Is a directory: a folder already holds ${pathStr}`);
+      return false;
+    }
+  }
   try {
     let uploadContent: Blob;
     if (typeof content === 'string') {
@@ -284,7 +319,11 @@ export async function files_touch(
  * @param destPath - The full path to the destination file (including filename).
  * @returns A Promise resolving to true on success, false on failure.
  */
-export async function files_copy(srcPath: string, destPath: string): Promise<boolean> {
+export async function files_copy(
+  srcPath: string,
+  destPath: string,
+  options: { folderClear?: boolean } = {},
+): Promise<boolean> {
   try {
     // 1. Resolve source file to get ID (needed for download)
     const fileIdResult: Result<number> = await fileId_resolve(srcPath);
@@ -302,7 +341,7 @@ export async function files_copy(srcPath: string, destPath: string): Promise<boo
 
     // 3. Upload to destination
     // files_create handles Blob/Buffer conversion and path splitting
-    const uploadSuccess: boolean = await files_create(content, destPath);
+    const uploadSuccess: boolean = await files_create(content, destPath, options);
     if (!uploadSuccess) {
         const lastError = errorStack.stack_pop();
         if (lastError) {
@@ -338,6 +377,16 @@ export async function files_move(srcPath: string, destPath: string): Promise<boo
       ? path.posix.join(destPath, path.posix.basename(srcPath))
       : destPath;
 
+    // Nothing is moved onto a path something already holds: CUBE has no
+    // overwrite, and a folder and a file sharing one path damage each other
+    // when either is removed (CUBE #732).
+    const holders: Result<PathHolder[]> = await pathHolders_find(finalDest);
+    if (!holders.ok) return false;
+    if (holders.value.length > 0) {
+      errorStack.stack_push('error', `Destination exists: ${finalDest} — mise cannot overwrite a ${holders.value[0]}; remove it first`);
+      return false;
+    }
+
     if (srcIsDir) {
       const moveResult: Result<boolean> = await chrisIO.folder_moveByPath(srcPath, finalDest);
       return moveResult.ok && moveResult.value;
@@ -368,6 +417,73 @@ export async function files_uploadPath(localPath: string, remotePath: string): P
   return await chrisIO.uploadLocalPath(localPath, remotePath);
 }
 
+/** What holds a CUBE path: folders, files and links may each hold the same one. */
+export type PathHolder = 'dir' | 'file' | 'link';
+
+/**
+ * Every kind of entry that holds a path, from its parent's three listings.
+ *
+ * CUBE lets a folder and a file share one path, and that is a hazard: a
+ * folder made over a file, then deleted, takes the file's record with it
+ * and every listing of the parent fails (CUBE #732, mise #462). Writers ask
+ * this first and refuse a path something else holds.
+ *
+ * @param target - The absolute CUBE path.
+ * @returns The kinds holding it (none, one, or more than one), or Err when
+ *   the parent could not be read (the reason stacked): a probe that cannot
+ *   answer counts the path as taken.
+ */
+export async function pathHolders_find(target: string): Promise<Result<PathHolder[]>> {
+  const clean: string = target.length > 1 && target.endsWith('/') ? target.slice(0, -1) : target;
+  if (clean === '/' || clean === '') return Ok(['dir']);
+  const parent: string = path.posix.dirname(clean);
+  const name: string = path.posix.basename(clean);
+  const holders: PathHolder[] = [];
+  const kinds: Array<['dirs' | 'files' | 'links', PathHolder]> = [['dirs', 'dir'], ['files', 'file'], ['links', 'link']];
+  for (const [asset, kind] of kinds) {
+    const outcome: ListingOutcome = await files_listOutcome({ limit: 1000, offset: 0 }, asset, parent);
+    if (outcome.kind === 'refused') {
+      errorStack.stack_push('error', `Cannot check ${clean}: ${outcome.error.message}`);
+      return Err();
+    }
+    if (outcome.kind !== 'listing') continue;
+    // A folder row names itself by `path`; a file or link row by `fname`
+    // (a link's ends in `.chrislink`, and its `path` is where it points).
+    const held: boolean = (outcome.data.tableData ?? []).some((row: Record<string, unknown>): boolean => {
+      const raw: string = String((kind === 'dir' ? row.path : row.fname) ?? '');
+      const entry: string = path.posix.basename(raw).replace(/\.chrislink$/, '');
+      return entry === name;
+    });
+    if (held) holders.push(kind);
+  }
+  return Ok(holders);
+}
+
+/**
+ * Refuses a folder over a path a file or link holds: the target, or any
+ * folder above it CUBE would make on the way (it makes missing parents with
+ * the folder).
+ *
+ * @param folderPath - The folder to make.
+ * @returns True when the path is clear; false with the reason stacked.
+ */
+async function folderPath_clear(folderPath: string): Promise<boolean> {
+  let at: string = folderPath.length > 1 && folderPath.endsWith('/') ? folderPath.slice(0, -1) : folderPath;
+  while (at !== '/' && at !== '') {
+    const holders: Result<PathHolder[]> = await pathHolders_find(at);
+    if (!holders.ok) return false;
+    if (holders.value.includes('dir')) return true;
+    if (holders.value.length > 0) {
+      errorStack.stack_push('error', at === folderPath
+        ? `File exists: a ${holders.value[0]} already holds ${at}`
+        : `Not a directory: a ${holders.value[0]} holds ${at}`);
+      return false;
+    }
+    at = path.posix.dirname(at);
+  }
+  return true;
+}
+
 /**
  * Creates a new folder (directory) at the specified ChRIS path.
  *
@@ -375,6 +491,9 @@ export async function files_uploadPath(localPath: string, remotePath: string): P
  * @returns A Promise resolving to true on success, false on failure.
  */
 export async function files_mkdir(folderPath: string): Promise<boolean> {
+  // A folder is never made over a file: deleting it later would take the
+  // file's record with it (CUBE #732).
+  if (!(await folderPath_clear(folderPath))) return false;
   const result: Result<boolean> = await chrisIO.folder_create(folderPath);
 
   if (!result.ok) {

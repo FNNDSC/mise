@@ -228,7 +228,12 @@ export async function command_dispatch(command: string, args: string[]): Promise
  *   because the output went to the file, not the terminal.
  */
 export async function redirect_execute(redirectInfo: RedirectInfo): Promise<CommandEnvelope> {
-  const { buffer } = await chellCommand_executeAndCapture(redirectInfo.command);
+  const { buffer, model } = await chellCommand_executeAndCapture(redirectInfo.command);
+  // The rows went to a file, but the command still answered with them: an
+  // index after `ls > listing.txt` counts them as it would after `ls`.
+  if (model !== undefined) {
+    answer_note(model.kind, model.data, redirectInfo.command.trim());
+  }
   const targetResult: Result<string> = redirectTarget_resolve(redirectInfo.filePath, redirectInfo.command);
   if (!targetResult.ok) {
     const lastError: StackMessage | undefined = errorStack.stack_pop();
@@ -335,6 +340,16 @@ async function commandWords_expand(
 }
 
 /**
+ * What a captured command produced: its output, and the model it answered
+ * with, when it answered with one.
+ */
+interface CapturedOutput {
+  text: string;
+  buffer: Buffer;
+  model?: CommandEnvelope['model'];
+}
+
+/**
  * Executes a chell command and captures its output.
  * Consults the command registry — the single source of truth — so the pipe path
  * is always consistent with the direct-execution path.
@@ -342,7 +357,7 @@ async function commandWords_expand(
  * @param commandLine - The command line to execute.
  * @returns The captured output as text and raw buffer.
  */
-async function chellCommand_executeAndCapture(commandLine: string): Promise<{ text: string; buffer: Buffer }> {
+async function chellCommand_executeAndCapture(commandLine: string): Promise<CapturedOutput> {
   const trimmedLine: string = commandLine.trim();
   if (!trimmedLine) return { text: '', buffer: Buffer.alloc(0) };
 
@@ -380,6 +395,7 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
   // streaming commands and binary cat write to the same sink directly (raw
   // bytes kept byte-for-byte). The err channel passes through to stderr live.
   const pipeSink: PipeCaptureSink = new PipeCaptureSink(sink_get());
+  let model: CommandEnvelope['model'];
   await sinkScope_run(pipeSink, async (): Promise<void> => {
     const helpEnvelope: CommandEnvelope | null = await helpEnvelope_maybe(command, args);
     if (helpEnvelope) return;
@@ -389,6 +405,7 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       const envelope: CommandEnvelope | undefined = await envelopeHandler(args);
       if (envelope) {
         envelope_deliver(envelope);
+        model = envelope.model;
       }
       return;
     }
@@ -396,6 +413,7 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
     const claimed: CommandEnvelope | null = await commandClaim_try(command, args);
     if (claimed) {
       envelope_deliver(claimed);
+      model = claimed.model;
       return;
     }
 
@@ -405,11 +423,12 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       return;
     }
 
-    await unknownCommand_handle(command, args, true);
+    const answered: CommandEnvelope = await unknownCommand_handle(command, args, true);
+    model = answered.model;
   });
 
   const buffer: Buffer = pipeSink.buffer_get();
-  return { text: buffer.toString('utf-8'), buffer };
+  return { text: buffer.toString('utf-8'), buffer, ...(model !== undefined ? { model } : {}) };
 }
 
 /**

@@ -4,6 +4,7 @@
  * @module
  */
 
+import { vfsOutcome_toResult } from '@fnndsc/fond';
 import * as path from 'path';
 import {
   ChRISEmbeddedResourceGroup,
@@ -284,7 +285,7 @@ export async function files_touch(
       errorStack.stack_push("error", `touch: ${target}: a projected file takes text (--withContents)`);
       return false;
     }
-    return vfsDispatcher.write(target, content);
+    return vfsOutcome_toResult(await vfsDispatcher.write(target, content), 'write', target).ok;
   }
 
   // CUBE's upload does not replace: uploading over a path that already holds
@@ -785,7 +786,7 @@ export async function files_share(fileId: number, options: FileShareOptions): Pr
 export async function fileContent_get(filePath: string): Promise<Result<string>> {
   const provider = vfsDispatcher.provider_get(filePath);
   if (provider && provider.prefix !== '') {
-    return vfsDispatcher.read(filePath);
+    return vfsOutcome_toResult(await vfsDispatcher.read(filePath), 'read', filePath);
   }
   if (filePath.startsWith('/PIPELINES/')) {
     return fileContent_getPipeline(filePath);
@@ -808,7 +809,7 @@ export async function fileContent_get(filePath: string): Promise<Result<string>>
 export async function fileContent_getBinary(filePath: string): Promise<Result<Buffer>> {
   const provider = vfsDispatcher.provider_get(filePath);
   if (provider && provider.prefix !== '') {
-    return vfsDispatcher.readBinary(filePath);
+    return vfsOutcome_toResult(await vfsDispatcher.readBinary(filePath), 'readBinary', filePath);
   }
   if (filePath.startsWith('/PIPELINES/')) {
     return fileContent_getPipelineBinary(filePath);
@@ -832,12 +833,8 @@ export async function fileContent_getBinaryStream(
 ): Promise<Result<{ stream: unknown; size?: number; filename?: string }>> {
   const provider = vfsDispatcher.provider_get(filePath);
   if (provider && provider.prefix !== '') {
-    return vfsDispatcher.readBinary(filePath).then((res: Result<Buffer>) => {
-      if (res.ok) {
-        return Ok({ stream: res.value, size: res.value.length });
-      }
-      return Err();
-    });
+    const res: Result<Buffer> = vfsOutcome_toResult(await vfsDispatcher.readBinary(filePath), 'readBinary', filePath);
+    return res.ok ? Ok({ stream: res.value, size: res.value.length }) : Err();
   }
   if (filePath.startsWith('/PIPELINES/')) {
     return fileContent_getPipelineBinary(filePath).then((res: Result<Buffer>) => {

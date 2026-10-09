@@ -48,6 +48,7 @@ jest.mock('../src/vfs/providers/proc', () => ({
 }));
 
 // The dispatcher reports through fond's one error stack: watch the real instance.
+import { vfsRefusal_text } from '@fnndsc/fond';
 import { errorStack } from '@fnndsc/fond';
 let mockStackPush: jest.SpiedFunction<typeof errorStack.stack_push>;
 
@@ -170,53 +171,53 @@ describe('list', () => {
 
 describe('cp', () => {
   it('resolves both endpoints for native copies', async () => {
-    providerFns.nativeCp.mockResolvedValue(true);
+    providerFns.nativeCp.mockResolvedValue({ ok: true, value: true });
     const d: CubeVfsDispatcher = new CubeVfsDispatcher();
     d.pathResolver_register(async (p: string) => `/r${p}`);
-    expect(await d.cp('/a', '/b', {} as never)).toBe(true);
+    expect((await d.cp('/a', '/b', {} as never)).ok).toBe(true);
     expect(providerFns.nativeCp).toHaveBeenCalledWith('/r/a', '/r/b', {});
   });
 
   it('dispatches provider-prefixed sources to the provider', async () => {
-    providerFns.pacsCp.mockResolvedValue(true);
+    providerFns.pacsCp.mockResolvedValue({ ok: true, value: true });
     const d: CubeVfsDispatcher = new CubeVfsDispatcher();
-    expect(await d.cp('/net/pacs/queries/q1', '/home/chris', {} as never)).toBe(true);
+    expect((await d.cp('/net/pacs/queries/q1', '/home/chris', {} as never)).ok).toBe(true);
     expect(providerFns.pacsCp).toHaveBeenCalledWith('/net/pacs/queries/q1', '/home/chris', {});
   });
 
   it('fails the copy when path resolution throws, never guessing a path', async () => {
-    providerFns.nativeCp.mockResolvedValue(true);
+    providerFns.nativeCp.mockResolvedValue({ ok: true, value: true });
     const d: CubeVfsDispatcher = new CubeVfsDispatcher();
     d.pathResolver_register(async () => { throw new Error('no map'); });
-    expect(await d.cp('/a', '/b', {} as never)).toBe(false);
+    expect((await d.cp('/a', '/b', {} as never)).ok).toBe(false);
     expect(providerFns.nativeCp).not.toHaveBeenCalled();
   });
 
   it('fails the copy when only the destination fails to resolve', async () => {
-    providerFns.nativeCp.mockResolvedValue(true);
+    providerFns.nativeCp.mockResolvedValue({ ok: true, value: true });
     const d: CubeVfsDispatcher = new CubeVfsDispatcher();
     d.pathResolver_register(async (p: string) => {
       if (p === '/b') throw new Error('no map');
       return `/r${p}`;
     });
-    expect(await d.cp('/a', '/b', {} as never)).toBe(false);
+    expect((await d.cp('/a', '/b', {} as never)).ok).toBe(false);
     expect(providerFns.nativeCp).not.toHaveBeenCalled();
   });
 });
 
 describe('write', () => {
   it('dispatches a whole-file write to the provider that holds writable files', async () => {
-    providerFns.procWrite.mockResolvedValue(true);
+    providerFns.procWrite.mockResolvedValue({ ok: true, value: true });
     const d: CubeVfsDispatcher = new CubeVfsDispatcher();
-    expect(await d.write('/proc/jobs/feed_5/note', 'words')).toBe(true);
+    expect((await d.write('/proc/jobs/feed_5/note', 'words')).ok).toBe(true);
     expect(providerFns.procWrite).toHaveBeenCalledWith('/proc/jobs/feed_5/note', 'words');
   });
 
   it('refuses a write where no provider takes one, by name', async () => {
     const d: CubeVfsDispatcher = new CubeVfsDispatcher();
-    expect(await d.write('/etc/motd', 'x')).toBe(false);
-    expect(mockStackPush).toHaveBeenCalledWith('error', expect.stringContaining('File write not supported'));
-    expect(await d.write('/home/chris/f.txt', 'x')).toBe(false);
+    expect(await d.write('/etc/motd', 'x')).toEqual({ ok: false, errno: 'EROFS' });
+    expect(vfsRefusal_text('write', { errno: 'EROFS' }, '/etc/motd')).toContain('File write not supported');
+    expect((await d.write('/home/chris/f.txt', 'x')).ok).toBe(false);
   });
 });
 
@@ -231,11 +232,8 @@ describe('read and readBinary', () => {
 
   it('errors for native paths and providers without read support', async () => {
     const d: CubeVfsDispatcher = new CubeVfsDispatcher();
-    expect((await d.read('/home/chris/f.txt')).ok).toBe(false);
-    expect(mockStackPush).toHaveBeenCalledWith('error', expect.stringContaining('File read not supported'));
-
-    expect((await d.readBinary('/etc/motd')).ok).toBe(false);
-    expect(mockStackPush).toHaveBeenCalledWith('error', expect.stringContaining('Binary file read not supported'));
+    expect(await d.read('/home/chris/f.txt')).toEqual({ ok: false, errno: 'EROFS' });
+    expect(await d.readBinary('/etc/motd')).toEqual({ ok: false, errno: 'EROFS' });
   });
 });
 

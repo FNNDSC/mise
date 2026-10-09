@@ -5,8 +5,8 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 // Deps of builtins/utils + the builtins themselves, so real commandArgs_process
 // and path_resolve run.
 const mockVirtual = jest.fn((_p: string): boolean => false);
-const mockVfsMkdir = jest.fn(async (_p: string): Promise<boolean> => true);
-const mockVfsRename = jest.fn(async (_a: string, _b: string): Promise<boolean> => true);
+const mockVfsMkdir = jest.fn(async (_p: string) => ({ ok: true as const, value: true as const }));
+const mockVfsRename = jest.fn(async (_a: string, _b: string) => ({ ok: true as const, value: true as const }));
 const mockVfsList = jest.fn(async (_p: string): Promise<{ ok: boolean; value?: Array<{ name: string }> }> => ({ ok: true, value: [] }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(async () => ({ user: 'chris', URL: 'x', folder: '/home/chris' })),
@@ -161,6 +161,16 @@ describe('unknown options', () => {
     expect(mockTouchCmd).not.toHaveBeenCalled();
   });
 
+  it('cp says why a copy failed without the stack\'s stamp, and with one cp:', async () => {
+    mockCpCmd.mockResolvedValue(false);
+    mockStackPop.mockReturnValueOnce({ type: 'error', message: "[vfsOutcome_toResult        ] | cp: Copying from static VFS path '/bin/x' is not supported." });
+    const envelope = await builtin_cp(['/bin/x', 'y']);
+    expect(envelope.renderedErr).toContain("cp: Copying from static VFS path '/bin/x' is not supported.");
+    expect(envelope.renderedErr).not.toContain('[vfsOutcome_toResult');
+    expect(envelope.renderedErr).not.toContain('cp: cp:');
+    process.exitCode = undefined;
+  });
+
   it('cp --recursive keeps the operand that follows it', async () => {
     mockCpCmd.mockResolvedValue(true);
     await builtin_cp(['--recursive', 'src', 'dest']);
@@ -303,7 +313,7 @@ describe('mkdir and mv inside a projection (/proc/tags)', () => {
 
   it('mkdir makes a tag through the projection, never the store', async () => {
     mockVirtual.mockImplementation(inTags);
-    mockVfsMkdir.mockResolvedValueOnce(true);
+    mockVfsMkdir.mockResolvedValueOnce({ ok: true as const, value: true as const });
     const envelope: CommandEnvelope = await builtin_mkdir(['/proc/tags/qc']);
     expect(mockVfsMkdir).toHaveBeenCalledWith('/proc/tags/qc');
     expect(mockMkdirCmd).not.toHaveBeenCalled();
@@ -313,7 +323,7 @@ describe('mkdir and mv inside a projection (/proc/tags)', () => {
 
   it("says the projection's refusal in mkdir's words, and takes an existing tag as done under -p", async () => {
     mockVirtual.mockImplementation(inTags);
-    mockVfsMkdir.mockResolvedValueOnce(false);
+    mockVfsMkdir.mockResolvedValueOnce({ ok: false as const, errno: 'EIO' as const });
     mockStackPop.mockReturnValueOnce({ message: '[tag_create   ] | qc: File exists' } as never);
     const refused: CommandEnvelope = await builtin_mkdir(['/proc/tags/qc']);
     expect(refused.renderedErr).toContain("mkdir: cannot create directory '/proc/tags/qc': File exists");
@@ -325,11 +335,11 @@ describe('mkdir and mv inside a projection (/proc/tags)', () => {
 
   it('mv renames inside the projection and passes its refusal on once, never "mv: mv:"', async () => {
     mockVirtual.mockImplementation(inTags);
-    mockVfsRename.mockResolvedValueOnce(true);
+    mockVfsRename.mockResolvedValueOnce({ ok: true as const, value: true as const });
     expect((await builtin_mv(['/proc/tags/a', '/proc/tags/b'])).status).toBe('ok');
     expect(mockVfsRename).toHaveBeenCalledWith('/proc/tags/a', '/proc/tags/b');
     expect(mockMvCmd).not.toHaveBeenCalled();
-    mockVfsRename.mockResolvedValueOnce(false);
+    mockVfsRename.mockResolvedValueOnce({ ok: false as const, errno: 'EIO' as const });
     mockStackPop.mockReturnValueOnce({ message: "[dispatcher] | mv: cannot move '/proc/tags/a' to '/home/x': Invalid cross-device link" } as never);
     const refused: CommandEnvelope = await builtin_mv(['/proc/tags/a', '/home/x']);
     expect(refused.renderedErr).toContain("mv: cannot move '/proc/tags/a' to '/home/x': Invalid cross-device link");

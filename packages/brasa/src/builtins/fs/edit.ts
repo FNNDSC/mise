@@ -5,6 +5,7 @@
  * builtin knows nothing of processes or terminals — it fetches, hands the
  * content to the surface, and uploads the result.
  */
+import { vfsOutcome_toResult } from '@fnndsc/fond';
 import { writeFileSync, unlinkSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, extname, posix } from 'path';
@@ -56,7 +57,12 @@ export async function builtin_edit(args: string[]): Promise<CommandEnvelope> {
   // A projection's file (a feed's note under /proc) is read and written
   // through the projection that owns it, never through CUBE's store.
   const { vfsDispatcher } = await import('@fnndsc/salsa');
-  if (vfsDispatcher.path_isVirtual(target)) return projectedFile_edit(args[0], target, ext, vfsDispatcher);
+  if (vfsDispatcher.path_isVirtual(target)) {
+    return projectedFile_edit(args[0], target, ext, {
+      read: async (at: string): Promise<Result<string>> => vfsOutcome_toResult(await vfsDispatcher.read(at), 'read', at),
+      write: async (at: string, content: string): Promise<boolean> => vfsOutcome_toResult(await vfsDispatcher.write(at, content), 'write', at).ok,
+    });
+  }
 
   const catResult: Result<string> = await files_cat(target);
   if (!catResult.ok) {

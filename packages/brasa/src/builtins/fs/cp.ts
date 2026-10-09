@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import path from 'path';
 import { listCache_get } from '@fnndsc/cumin';
 import type { ListCache } from '@fnndsc/cumin';
-import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
+import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { destination_ask, destination_missing } from './destination.js';
 import { files_cp as chefs_cp_cmd } from '@fnndsc/chili/commands/fs/cp.js';
 import { cp_render } from '@fnndsc/chili/views/fs.js';
@@ -140,7 +140,12 @@ export async function cp_run(options: CpOptions): Promise<CommandEnvelope> {
         // The kernel said WHY on the stack; a bare "Failed to copy" makes an
         // operator guess at a reason that was already known.
         const reason: StackMessage | undefined = errorStack.stack_pop();
-        if (reason !== undefined) renderedErr += `${chalk.red(`cp: ${reason.message}`)}\n`;
+        if (reason !== undefined) {
+          // The operator reads the reason, never the stack's function stamp,
+          // and one `cp:` (as mv says its own).
+          const said: string = error_stripDebugPrefix(reason.message);
+          renderedErr += `${chalk.red(said.startsWith('cp:') ? said : `cp: ${said}`)}\n`;
+        }
       }
       outcomes.push({ source: srcPath, copied: success });
       if (success) {

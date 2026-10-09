@@ -18,6 +18,7 @@
  * @module
  */
 
+import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
 import {
   Err,
   Ok,
@@ -88,7 +89,12 @@ export class WorkflowsVfsProvider implements VFSProvider {
   }
 
   /** @inheritdoc */
-  public async cp(_src: string, _dest: string, _options: CpOptions): Promise<boolean> {
+  public async cp(_src: string, _dest: string, _options: CpOptions): Promise<VfsOutcome> {
+    return vfsOutcome_ofBoolean(await this.copy_run(_src, _dest, _options), 'EROFS');
+  }
+
+  /** @inheritdoc */
+  private async copy_run(_src: string, _dest: string, _options: CpOptions): Promise<boolean> {
     // A workflow is a record of a run. Copying one would assert that a
     // computation happened twice.
     errorStack.stack_push('error', 'A workflow records a run; it cannot be copied.');
@@ -96,7 +102,12 @@ export class WorkflowsVfsProvider implements VFSProvider {
   }
 
   /** @inheritdoc */
-  public async read(path: string): Promise<Result<string>> {
+  public async read(path: string): Promise<VfsOutcome<string>> {
+    return vfsOutcome_ofResult(await this.text_read(path), 'ENOENT');
+  }
+
+  /** @inheritdoc */
+  private async text_read(path: string): Promise<Result<string>> {
     const parts: string[] = segments_below(path);
     if (parts.length !== 2 || parts[1] !== 'title') {
       errorStack.stack_push('error', `${path} is not a readable workflow file.`);

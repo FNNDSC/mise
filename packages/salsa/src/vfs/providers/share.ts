@@ -16,6 +16,7 @@
  * @module
  */
 
+import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
 import {
   Err,
   Ok,
@@ -122,7 +123,12 @@ export class ShareVfsProvider implements VFSProvider {
   }
 
   /** @inheritdoc */
-  public async cp(_src: string, _dest: string, _options: CpOptions): Promise<boolean> {
+  public async cp(_src: string, _dest: string, _options: CpOptions): Promise<VfsOutcome> {
+    return vfsOutcome_ofBoolean(await this.copy_run(_src, _dest, _options), 'EROFS');
+  }
+
+  /** @inheritdoc */
+  private async copy_run(_src: string, _dest: string, _options: CpOptions): Promise<boolean> {
     errorStack.stack_push('error', 'Plugin metadata is CUBE\'s record of a plugin; it cannot be copied.');
     return false;
   }
@@ -197,7 +203,12 @@ export class ShareVfsProvider implements VFSProvider {
   }
 
   /** @inheritdoc */
-  public async read(path: string): Promise<Result<string>> {
+  public async read(path: string): Promise<VfsOutcome<string>> {
+    return vfsOutcome_ofResult(await this.text_read(path), 'ENOENT');
+  }
+
+  /** @inheritdoc */
+  private async text_read(path: string): Promise<Result<string>> {
     const parts: string[] = path.slice(PREFIX.length).split('/').filter(Boolean);
     if (parts[0] === PACKAGES_DIR) {
       if (parts.length === 3) {

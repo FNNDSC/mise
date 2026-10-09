@@ -43,18 +43,17 @@ describe('files_cp', () => {
       const srcIsDir = await path_checkIsDir_test(src);
       if (srcIsDir && !options.recursive) {
         (cumin.errorStack.stack_push as jest.Mock)('error', `Source is a directory. Re-run with --recursive to copy: ${src}`);
-        return false;
+        return { ok: false, errno: 'EISDIR' };
       }
       const destIsDir = await path_checkIsDir_test(dest);
       const destLooksDir = dest.endsWith('/');
       const finalDest = (destIsDir || destLooksDir)
         ? dest + '/' + src.split('/').pop()
         : dest;
-      if (options.recursive) {
-        return await files_copyRecursively(src, finalDest);
-      } else {
-        return await files_copy(src, finalDest);
-      }
+      const copied: boolean = options.recursive
+        ? await files_copyRecursively(src, finalDest)
+        : await files_copy(src, finalDest);
+      return copied ? { ok: true, value: true } : { ok: false, errno: 'EIO' };
     });
   });
 

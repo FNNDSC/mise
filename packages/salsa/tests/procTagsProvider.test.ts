@@ -17,6 +17,7 @@ jest.mock('@fnndsc/cumin', () => ({
   tag_rename: (...a: unknown[]) => tagRename(...a),
 }));
 
+import { vfsRefusal_text } from '@fnndsc/fond';
 import { errorStack, Ok } from '@fnndsc/cumin';
 import { ProcTagsVfsProvider } from '../src/vfs/providers/procTags';
 import { vfsDispatcher } from '../src/vfs/dispatcher';
@@ -55,34 +56,36 @@ describe('ProcTagsVfsProvider', () => {
   });
 
   it('makes, deletes and renames a tag through the folders', async () => {
-    expect(await provider.mkdir('/proc/tags/qc')).toBe(true);
+    expect((await provider.mkdir('/proc/tags/qc')).ok).toBe(true);
     expect(tagCreate).toHaveBeenCalledWith('qc');
-    expect(await provider.rmdir('/proc/tags/spare')).toBe(true);
+    expect((await provider.rmdir('/proc/tags/spare')).ok).toBe(true);
     expect(tagDelete).toHaveBeenCalledWith('spare');
-    expect(await provider.rename('/proc/tags/urgent', '/proc/tags/URGENT')).toBe(true);
+    expect((await provider.rename('/proc/tags/urgent', '/proc/tags/URGENT')).ok).toBe(true);
     expect(tagRename).toHaveBeenCalledWith('urgent', 'URGENT');
   });
 
   it('refuses a verb on the tags folder itself or on a feed inside a tag, by name', async () => {
-    expect(await provider.rmdir('/proc/tags')).toBe(false);
-    expect(errorStack.stack_pop()?.message).toContain('rmdir: /proc/tags: Operation not permitted (the tags folder itself)');
-    expect(await provider.mkdir('/proc/tags/urgent/feed_14')).toBe(false);
-    expect(errorStack.stack_pop()?.message).toContain('setfattr tags and untags a feed');
-    expect(await provider.cp('/proc/tags/a', '/proc/tags/b', {})).toBe(false);
+    const rootRefused = await provider.rmdir('/proc/tags');
+    expect(rootRefused.ok === false && rootRefused.reason).toContain('rmdir: /proc/tags: Operation not permitted (the tags folder itself)');
+    const feedRefused = await provider.mkdir('/proc/tags/urgent/feed_14');
+    expect(feedRefused.ok === false && feedRefused.reason).toContain('setfattr tags and untags a feed');
+    expect((await provider.cp('/proc/tags/a', '/proc/tags/b', {})).ok).toBe(false);
     expect(tagCreate).not.toHaveBeenCalled();
   });
 });
 
 describe('the dispatcher routes mkdir, rmdir and mv', () => {
   it('to /proc/tags, and refuses them by name in a projection that makes no folders', async () => {
-    expect(await vfsDispatcher.mkdir('/proc/tags/qc')).toBe(true);
+    expect((await vfsDispatcher.mkdir('/proc/tags/qc')).ok).toBe(true);
     expect(tagCreate).toHaveBeenCalledWith('qc');
-    expect(await vfsDispatcher.rmdir('/proc/tags/spare')).toBe(true);
-    expect(await vfsDispatcher.rename('/proc/tags/a', '/proc/tags/b')).toBe(true);
-    expect(await vfsDispatcher.mkdir('/proc/jobs/feed_12/x')).toBe(false);
-    expect(errorStack.stack_pop()?.message).toContain("mkdir: cannot create directory '/proc/jobs/feed_12/x': Read-only file system");
-    expect(await vfsDispatcher.rename('/proc/tags/a', '/proc/jobs/b')).toBe(false);
-    expect(errorStack.stack_pop()?.message).toContain('Invalid cross-device link');
+    expect((await vfsDispatcher.rmdir('/proc/tags/spare')).ok).toBe(true);
+    expect((await vfsDispatcher.rename('/proc/tags/a', '/proc/tags/b')).ok).toBe(true);
+    const made = await vfsDispatcher.mkdir('/proc/jobs/feed_12/x');
+    expect(made.ok).toBe(false);
+    if (!made.ok) expect(vfsRefusal_text('mkdir', made, '/proc/jobs/feed_12/x')).toBe("mkdir: cannot create directory '/proc/jobs/feed_12/x': Read-only file system");
+    const moved = await vfsDispatcher.rename('/proc/tags/a', '/proc/jobs/b');
+    expect(moved.ok).toBe(false);
+    if (!moved.ok) expect(vfsRefusal_text('rename', moved, '/proc/tags/a', '/proc/jobs/b')).toContain('Invalid cross-device link');
   });
 
   it('lists /proc as jobs and tags, and no longer answers /tags', () => {

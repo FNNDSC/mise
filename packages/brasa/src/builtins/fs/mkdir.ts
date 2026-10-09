@@ -2,6 +2,7 @@
  * @file Builtin mkdir command.
  * Creates directories, reported as a command envelope.
  */
+import { vfsOutcome_toResult } from '@fnndsc/fond';
 import chalk from 'chalk';
 import { listCache_get } from '@fnndsc/cumin';
 import type { ListCache } from '@fnndsc/cumin';
@@ -50,7 +51,7 @@ async function virtualFolder_make(targetPath: string, parents: boolean): Promise
       return { path: targetPath, created: false, existed: true };
     }
   }
-  return { path: targetPath, created: await vfsDispatcher.mkdir(targetPath) };
+  return { path: targetPath, created: vfsOutcome_toResult(await vfsDispatcher.mkdir(targetPath), 'mkdir', targetPath).ok };
 }
 
 /**

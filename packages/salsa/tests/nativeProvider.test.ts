@@ -183,7 +183,7 @@ describe('NativeVfsProvider.cp', () => {
   it('refuses to copy a directory without --recursive', async () => {
     // path_checkIsDir(src): dirs listing of parent contains src
     mockListAll.mockResolvedValue({ tableData: [{ path: '/a/dir' }] });
-    expect(await provider.cp('/a/dir', '/b', opts(false))).toBe(false);
+    expect((await provider.cp('/a/dir', '/b', opts(false))).ok).toBe(false);
   });
 
   it('copies a directory recursively into a dir destination', async () => {
@@ -195,27 +195,27 @@ describe('NativeVfsProvider.cp', () => {
     });
     mockCopyRecursively.mockResolvedValue(true);
     // dest '/b/dir' exists as dir? make dest a dir via trailing slash to force join
-    expect(await provider.cp('/a/dir', '/b/', opts(true))).toBe(true);
+    expect((await provider.cp('/a/dir', '/b/', opts(true))).ok).toBe(true);
     expect(mockCopyRecursively).toHaveBeenCalledWith('/a/dir', '/b/dir');
   });
 
   it('copies a single file to an explicit destination', async () => {
     mockListAll.mockResolvedValue({ tableData: [] }); // nothing is a dir
     mockCopy.mockResolvedValue(true);
-    expect(await provider.cp('/a/f.txt', '/b/g.txt', opts(false))).toBe(true);
+    expect((await provider.cp('/a/f.txt', '/b/g.txt', opts(false))).ok).toBe(true);
     expect(mockCopy).toHaveBeenCalledWith('/a/f.txt', '/b/g.txt');
   });
 
   it('returns false when the copy throws', async () => {
     mockListAll.mockResolvedValue({ tableData: [] });
     mockCopy.mockRejectedValue(new Error('io'));
-    expect(await provider.cp('/a/f.txt', '/b/g.txt', opts(false))).toBe(false);
+    expect((await provider.cp('/a/f.txt', '/b/g.txt', opts(false))).ok).toBe(false);
   });
 
   it('treats null dir-listing as "not a directory" (file copy)', async () => {
     mockListAll.mockResolvedValue(null); // path_checkIsDir -> false
     mockCopy.mockResolvedValue(true);
-    expect(await provider.cp('/a/f.txt', '/b/g.txt', opts(false))).toBe(true);
+    expect((await provider.cp('/a/f.txt', '/b/g.txt', opts(false))).ok).toBe(true);
     expect(mockCopy).toHaveBeenCalled();
   });
 
@@ -224,7 +224,7 @@ describe('NativeVfsProvider.cp', () => {
     // on a guess risks the wrong operation, so cp refuses.
     mockListAll.mockRejectedValue(new Error('list down'));
     mockCopy.mockResolvedValue(true);
-    expect(await provider.cp('/a/f.txt', '/b/g.txt', opts(false))).toBe(false);
+    expect((await provider.cp('/a/f.txt', '/b/g.txt', opts(false))).ok).toBe(false);
     expect(mockCopy).not.toHaveBeenCalled();
   });
 });

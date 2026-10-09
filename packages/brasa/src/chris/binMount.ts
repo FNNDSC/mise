@@ -7,6 +7,7 @@
  *
  * @module
  */
+import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
 import { plugins_listAll, pipelines_getAll, type PipelineRecord } from '@fnndsc/salsa';
 import { Result, Ok, Err, errorStack, vfsItems_sort, type VFSProvider, type VFSItem, type CpOptions } from '@fnndsc/fond';
 import type { PluginInfoModel } from '@fnndsc/menu';
@@ -86,6 +87,11 @@ export class BinVfsProvider implements VFSProvider {
     }
   }
 
+  /** @inheritdoc */
+  async cp(src: string, dest: string, options: CpOptions): Promise<VfsOutcome> {
+    return vfsOutcome_ofBoolean(await this.copy_run(src, dest, options), 'EROFS');
+  }
+
   /**
    * Refuses to copy from `/bin`.
    *
@@ -94,9 +100,14 @@ export class BinVfsProvider implements VFSProvider {
    * @param options - Copy options.
    * @returns False, always.
    */
-  async cp(src: string, dest: string, options: CpOptions): Promise<boolean> {
+  private async copy_run(src: string, dest: string, options: CpOptions): Promise<boolean> {
     errorStack.stack_push("error", `cp: Copying from static VFS path '${src}' is not supported.`);
     return false;
+  }
+
+  /** @inheritdoc */
+  async read(pathStr: string): Promise<VfsOutcome<string>> {
+    return vfsOutcome_ofResult(await this.text_read(pathStr), 'ENOENT');
   }
 
   /**
@@ -105,7 +116,7 @@ export class BinVfsProvider implements VFSProvider {
    * @param pathStr - The absolute path of the entry.
    * @returns The text.
    */
-  async read(pathStr: string): Promise<Result<string>> {
+  private async text_read(pathStr: string): Promise<Result<string>> {
     try {
       let effectivePath: string = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
       if (effectivePath.length > 1 && effectivePath.endsWith("/")) {
@@ -134,13 +145,18 @@ export class BinVfsProvider implements VFSProvider {
     }
   }
 
+  /** @inheritdoc */
+  async readBinary(pathStr: string): Promise<VfsOutcome<Buffer>> {
+    return vfsOutcome_ofResult(await this.bytes_read(pathStr), 'ENOENT');
+  }
+
   /**
    * Reads an entry as bytes.
    *
    * @param pathStr - The absolute path of the entry.
    * @returns The text's bytes.
    */
-  async readBinary(pathStr: string): Promise<Result<Buffer>> {
+  private async bytes_read(pathStr: string): Promise<Result<Buffer>> {
     const res: Result<string> = await this.read(pathStr);
     return res.ok ? Ok(Buffer.from(res.value, "utf-8")) : Err();
   }

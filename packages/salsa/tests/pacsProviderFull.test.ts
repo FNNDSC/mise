@@ -190,24 +190,24 @@ describe('read / readBinary delegate to pacs_content', () => {
 
 describe('cp early exits', () => {
   it('fails on an unparseable source path', async () => {
-    expect(await provider.cp('/net/pacs', '/dest', {} as never)).toBe(false);
+    expect((await provider.cp('/net/pacs', '/dest', {} as never)).ok).toBe(false);
   });
 
   it('fails when the query cannot be decoded', async () => {
     mockPacs.pacsQuery_resultDecode.mockResolvedValue(Ok({ json: null }));
-    expect(await provider.cp('/net/pacs/query_qid:5/Study_S1_Head', '/dest', {} as never)).toBe(false);
+    expect((await provider.cp('/net/pacs/query_qid:5/Study_S1_Head', '/dest', {} as never)).ok).toBe(false);
   });
 
   it('fails when the study is not in the decoded results', async () => {
     mockPacs.pacsQuery_resultDecode.mockResolvedValue(Ok(DECODED));
-    expect(await provider.cp('/net/pacs/query_qid:5/Study_NOPE_x', '/dest', {} as never)).toBe(false);
+    expect((await provider.cp('/net/pacs/query_qid:5/Study_NOPE_x', '/dest', {} as never)).ok).toBe(false);
   });
 
   it('fails when no PACS server can be resolved', async () => {
     mockPacs.pacsQuery_resultDecode.mockResolvedValue(Ok(DECODED));
     mockCtxGet.mockResolvedValue(null);
     mockPacs.pacsServers_list.mockResolvedValue(Ok([]));
-    expect(await provider.cp('/net/pacs/query_qid:5/Study_S1_Head', '/dest', {} as never)).toBe(false);
+    expect((await provider.cp('/net/pacs/query_qid:5/Study_S1_Head', '/dest', {} as never)).ok).toBe(false);
   });
 });
 
@@ -225,7 +225,7 @@ describe('cp success (through the shared retrieve engine)', () => {
     });
     mockCopyRecursively.mockResolvedValue(true);
 
-    expect(await provider.cp('/net/pacs/query_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never)).toBe(true);
+    expect((await provider.cp('/net/pacs/query_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never)).ok).toBe(true);
     expect(mockEngine.retrieve_fireAndWatch).toHaveBeenCalled();
     expect(mockCopyRecursively).toHaveBeenCalledWith('/PACS/SE1', '/dest/Series_SE1_Axial');
   });
@@ -244,7 +244,7 @@ describe('cp success (through the shared retrieve engine)', () => {
     });
     mockCopyRecursively.mockResolvedValue(true);
 
-    expect(await provider.cp('/net/pacs/queries/q_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never)).toBe(true);
+    expect((await provider.cp('/net/pacs/queries/q_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never)).ok).toBe(true);
     expect(mockCopyRecursively).toHaveBeenCalledWith('/PACS/SE1', '/dest/Series_SE1_Axial');
   });
 
@@ -259,7 +259,7 @@ describe('cp success (through the shared retrieve engine)', () => {
     });
     mockCopyRecursively.mockResolvedValue(true);
 
-    expect(await provider.cp('/net/pacs/query_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never)).toBe(true);
+    expect((await provider.cp('/net/pacs/query_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never)).ok).toBe(true);
     expect(mockEngine.retrieve_fireAndWatch).not.toHaveBeenCalled();
   });
 });
@@ -274,7 +274,7 @@ describe('pacsServer_resolve fallback', () => {
     mockEngine.retrieve_fireAndWatch.mockResolvedValue(1); // firing failed
 
     // firing fails -> series copy fails -> overall false, but server WAS resolved
-    expect(await provider.cp('/net/pacs/query_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never)).toBe(false);
+    expect((await provider.cp('/net/pacs/query_qid:5/Study_S1_Head/Series_SE1_Axial', '/dest', {} as never)).ok).toBe(false);
     expect(mockPacs.pacsServers_list).toHaveBeenCalled();
   });
 });

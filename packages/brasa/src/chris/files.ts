@@ -4,6 +4,7 @@
  *
  * @module
  */
+import { vfsOutcome_toResult } from '@fnndsc/fond';
 import type { Result } from '@fnndsc/fond';
 import type { Backend } from '../core/backend.js';
 import { FileReadRefusal } from '../core/fileRefusal.js';
@@ -108,7 +109,7 @@ async function file_read(filePath: string): Promise<Buffer> {
   // route and 404'd: the volume a run had just produced could not be read
   // at the address its own graph gives for it.
   if (vfsDispatcher.path_isVirtual(resolved)) {
-    const projected: Result<Buffer> = await vfsDispatcher.readBinary(resolved);
+    const projected: Result<Buffer> = vfsOutcome_toResult(await vfsDispatcher.readBinary(resolved), 'readBinary', resolved);
     if (projected.ok) return projected.value;
     // A node's data link can point at a folder that is ITSELF a link — a
     // `pl-dircopy` of a PACS pull stores its DICOM under `/SERVICES/PACS`

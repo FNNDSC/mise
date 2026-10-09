@@ -3,6 +3,7 @@
  *
  * @module
  */
+import { vfsOutcome_toResult } from '@fnndsc/fond';
 import { vfsDispatcher } from "@fnndsc/salsa";
 import { errorStack } from "@fnndsc/cumin";
 
@@ -25,7 +26,7 @@ export interface CpOptions {
  */
 export async function files_cp(src: string, dest: string, options: CpOptions): Promise<boolean> {
   try {
-    return await vfsDispatcher.cp(src, dest, options);
+    return vfsOutcome_toResult(await vfsDispatcher.cp(src, dest, options), 'cp', src, dest).ok;
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push("error", `cp command failed: ${msg}`);

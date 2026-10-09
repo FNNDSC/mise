@@ -45,8 +45,7 @@ describe('list / cp', () => {
   });
 
   it('cp is refused (read-only)', async () => {
-    expect(await etc.cp('/etc/passwd', '/x', { recursive: false } as never)).toBe(false);
-    expect(errorStack.stack_search('read-only').length).toBeGreaterThan(0);
+    expect(await etc.cp('/etc/passwd', '/x', { recursive: false } as never)).toEqual({ ok: false, errno: 'EROFS', reason: 'cp: /etc is a read-only virtual directory' });
   });
 
   it('read errors on an unknown /etc file', async () => {

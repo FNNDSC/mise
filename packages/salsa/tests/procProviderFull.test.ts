@@ -350,22 +350,23 @@ describe("a feed's note under /proc", () => {
   });
 
   it('writes the note whole, leaving its title', async () => {
-    expect(await provider.write('/proc/jobs/feed_5/note', 'new words')).toBe(true);
+    expect((await provider.write('/proc/jobs/feed_5/note', 'new words')).ok).toBe(true);
     expect(puts).toEqual([{ content: 'new words' }]);
   });
 
   it('renames the feed by its title, first line trimmed, and the cache says so at once', async () => {
     mockFeedRename.mockResolvedValueOnce(Ok(true));
-    expect(await provider.write('/proc/jobs/feed_5/title', '  Brain run v2  \nignored')).toBe(true);
+    expect((await provider.write('/proc/jobs/feed_5/title', '  Brain run v2  \nignored')).ok).toBe(true);
     expect(mockFeedRename).toHaveBeenCalledWith(5, 'Brain run v2');
     expect((await provider.read('/proc/jobs/feed_5/title')).ok && (await provider.read('/proc/jobs/feed_5/title'))).toEqual({ ok: true, value: 'Brain run v2' });
     mockFeedRename.mockResolvedValueOnce(Err());
-    expect(await provider.write('/proc/jobs/feed_5/title', 'x')).toBe(false);
+    expect((await provider.write('/proc/jobs/feed_5/title', 'x')).ok).toBe(false);
   });
 
   it('refuses any other write by name', async () => {
-    expect(await provider.write('/proc/jobs/feed_5/status', 'x')).toBe(false);
-    expect(errorStack.stack_pop()?.message).toMatch(/Read-only file system/);
+    const refused = await provider.write('/proc/jobs/feed_5/status', 'x');
+    expect(refused.ok === false && refused.errno).toBe('EROFS');
+    expect(refused.ok === false && refused.reason).toMatch(/Read-only file system/);
   });
 
   it('fails the read when the note cannot be fetched', async () => {
@@ -460,7 +461,7 @@ describe('ProcVfsProvider.rm', () => {
   it('cancels non-terminal jobs then removes a feed', async () => {
     mockJobs.jobs_statusBatch.mockResolvedValue(new Map([[10, 'running']]));
     mockJobs.job_cancel.mockResolvedValue(Ok(true));
-    expect(await provider.rm('/proc/jobs/feed_5')).toBe(true);
+    expect(await provider.feedJobs_cancel('/proc/jobs/feed_5')).toBe(true);
     expect(mockJobs.job_cancel).toHaveBeenCalledWith(10);
     expect(cache.feed_get(5)).toBeUndefined();
   });
@@ -468,34 +469,34 @@ describe('ProcVfsProvider.rm', () => {
   it('fails the feed removal when a job cancel fails, keeping the feed', async () => {
     mockJobs.jobs_statusBatch.mockResolvedValue(new Map([[10, 'running']]));
     mockJobs.job_cancel.mockResolvedValue(Err());
-    expect(await provider.rm('/proc/jobs/feed_5')).toBe(false);
+    expect(await provider.feedJobs_cancel('/proc/jobs/feed_5')).toBe(false);
     expect(cache.feed_get(5)).toBeDefined();
   });
 
   it('cancels a non-terminal instance', async () => {
     mockJobs.job_statusFetch.mockResolvedValue(Ok('running'));
     mockJobs.job_cancel.mockResolvedValue(Ok(true));
-    expect(await provider.rm('/proc/jobs/feed_5/pl-x_10')).toBe(true);
+    expect(await provider.feedJobs_cancel('/proc/jobs/feed_5/pl-x_10')).toBe(true);
     expect(mockJobs.job_cancel).toHaveBeenCalledWith(10);
   });
 
   it('deletes a terminal instance and drops it from the cache', async () => {
     mockJobs.job_statusFetch.mockResolvedValue(Ok('finishedSuccessfully'));
     mockJobs.job_delete.mockResolvedValue(Ok(true));
-    expect(await provider.rm('/proc/jobs/feed_5/pl-x_10')).toBe(true);
+    expect(await provider.feedJobs_cancel('/proc/jobs/feed_5/pl-x_10')).toBe(true);
     expect(cache.instance_get(10)).toBeUndefined();
   });
 
   it('returns false for an unparseable path', async () => {
-    expect(await provider.rm('/proc/jobs/garbage')).toBe(false);
+    expect(await provider.feedJobs_cancel('/proc/jobs/garbage')).toBe(false);
   });
 
   it('cp/mv/touch/upload/write are unsupported; mkdir is refused by the dispatcher', async () => {
-    expect(await provider.cp('a', 'b')).toBe(false);
+    expect((await provider.cp('a', 'b')).ok).toBe(false);
     expect(await provider.mv('a', 'b')).toBe(false);
     expect(await provider.touch('a')).toBe(false);
     expect(await provider.upload('a', 'b')).toBe(false);
-    expect(await provider.write('a', 'b')).toBe(false);
+    expect((await provider.write('a', 'b')).ok).toBe(false);
   });
 });
 

@@ -79,7 +79,7 @@ const mockCache = {
 
 let mockUnderWay: { nodes: number; fraction: number } | null = null;
 const universeLayoutsWarm_mock = jest.fn(async (): Promise<number> => 0);
-jest.unstable_mockModule('../src/universe/universeLayout.js', () => ({
+jest.unstable_mockModule('../src/chris/universeLayout.js', () => ({
   universeLayout_underWay: (): { nodes: number; fraction: number } | null => mockUnderWay,
   universeLayouts_warm: universeLayoutsWarm_mock,
 }));

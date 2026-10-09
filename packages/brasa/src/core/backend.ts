@@ -14,7 +14,8 @@
  */
 import type { PromptContext, CubeTelemetry, JobsStateTelemetry, CommandEnvelope, WatchState } from '@fnndsc/menu';
 import type { ReferenceValue } from '../lib/parser.js';
-import type { ListingLook } from '@fnndsc/fond';
+import type { ListingLook, VFSDispatcher } from '@fnndsc/fond';
+import type { ListingItem } from '@fnndsc/menu';
 
 /**
  * Who a session is and where: the input a host keys the session by (calypso's
@@ -117,6 +118,43 @@ export interface BackendFallback {
   readonly help?: (command: string) => Promise<string | null>;
 }
 
+/** A listing cache: listings kept for a while, each saying whether it is still current. */
+export interface ListingCache {
+  /** A kept listing and whether it is current, or null when none is kept. */
+  cache_get<T = unknown>(path: string): { data: T; fresh: boolean } | null;
+  /** Keeps a listing. */
+  cache_set<T = unknown>(path: string, data: T): void;
+}
+
+/** The backend's filesystem, as the core's listings, globbing and completion read it. */
+export interface BackendFilesystem {
+  /** Every path goes through it: the backend's mounts and its fallback. The core adds its own mounts. */
+  readonly dispatcher: VFSDispatcher;
+  /** Where listings are kept between reads; absent, every listing is read afresh. */
+  readonly cache?: ListingCache;
+  /** Whether a path's listing may be kept (ChRIS: not under `/proc`, which keeps its own); absent, every path may. */
+  readonly cache_holds?: (path: string) => boolean;
+  /** What a long listing's rows carry beyond the listing (ChRIS: a feed's tags). */
+  readonly longRows_annotate?: (items: ListingItem[]) => Promise<ListingItem[]>;
+  /**
+   * The folders whose links the last walk could not read, taken (and so
+   * cleared): a listing that fails says the path was walked as written.
+   */
+  readonly unreadLinks_take?: () => Promise<string[]>;
+  /** A folder as the filesystem holds it, links followed, for globbing beneath it; absent, the path as given. */
+  readonly path_physical?: (path: string) => Promise<string>;
+}
+
+/** What a backend adds to completion. */
+export interface BackendCompletion {
+  /** Command words beyond the registry's (ChRIS: its plugins). */
+  readonly commandWords?: () => Promise<string[]>;
+  /** The `--option` words for a line, or null when the line is not one the backend completes. */
+  readonly options?: (args: string[], word: string) => Promise<string[] | null>;
+  /** Names completed at `/` even when the root's listing lacks them; absent, the core's `usr`. */
+  readonly rootWords?: ReadonlyArray<string>;
+}
+
 /** Administrator credentials, collected by the core from the surface. */
 export interface ElevationCredentials {
   username: string;
@@ -153,6 +191,10 @@ export interface Backend {
     readonly read: (path: string) => Promise<Buffer>;
     readonly write: (path: string, bytes: Buffer) => Promise<void>;
   };
+  /** Its filesystem; absent, the session has only the core's own mounts. */
+  readonly vfs?: BackendFilesystem;
+  /** What it adds to completion. */
+  readonly completion?: BackendCompletion;
   /** How its listings show: the kinds it lists beside the core's, and how a name is coloured. */
   readonly listingLook?: ListingLook;
   /** Whether the backend is debugging: error messages keep their function stamp. */

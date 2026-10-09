@@ -2,33 +2,21 @@
  * @file Static VFS Content Handler.
  *
  * Implements specialized virtual file reading and content generation
- * for static command directories (/bin, /usr/bin).
+ * for the core's static directories (/usr/bin, /usr/games, /usr/share/doc).
  *
  * @module
  */
 
 import { commandHelp_get } from '../../../builtins/help.js';
-import type { PluginInfoModel } from '@fnndsc/menu';
-import {
-  pluginInfo_build,
-  pluginInfoText_render,
-  pluginSpecifier_parse,
-  type PluginSpecifier,
-} from '../../../builtins/res/plugin.info.js';
-import {
-  binPipelineSummary_render,
-  binPipelineSummary_try,
-  type BinPipelineSummary,
-} from './binEntry.js';
 import { Result, Ok, Err, errorStack } from '@fnndsc/fond';
 
 /**
  * Reads virtual file content under command and builtin static paths.
  *
- * Handles help text formatting for /usr/bin and fetches parameter specifications for /bin plugins.
+ * A builtin's help for /usr/bin and /usr/games, and the release notes for /usr/share/doc.
  *
  * @param pathStr - The absolute virtual path of the file to read.
- * @param prefix - The prefix of the calling provider (e.g. '/usr/bin', '/bin').
+ * @param prefix - The prefix of the calling provider (e.g. '/usr/bin').
  * @returns Promise resolving to a Result containing the file contents as a string.
  */
 export async function staticVfs_read(pathStr: string, prefix: string): Promise<Result<string>> {
@@ -55,25 +43,6 @@ export async function staticVfs_read(pathStr: string, prefix: string): Promise<R
       }
       errorStack.stack_push("error", `No such document: ${effectivePath}`);
       return Err();
-    }
-
-    if (prefix === "/bin") {
-      const commandName: string = effectivePath.substring("/bin/".length);
-      const pipelineSummary: BinPipelineSummary | null = binPipelineSummary_try(commandName);
-      if (pipelineSummary !== null) return Ok(binPipelineSummary_render(pipelineSummary));
-
-      const specifier: PluginSpecifier | null = pluginSpecifier_parse(commandName);
-      if (specifier === null) {
-        errorStack.stack_push("error", `Unknown /bin entry: ${commandName}`);
-        return Err();
-      }
-
-      // The manual is a projection of the plugin model — the same facts
-      // `plugin info` puts on the wire, so a terminal and a graphical
-      // surface cannot end up describing different plugins.
-      const built: Result<PluginInfoModel> = await pluginInfo_build(specifier);
-      if (!built.ok) return Err();
-      return Ok(pluginInfoText_render(built.value));
     }
 
     errorStack.stack_push("error", `File not found: ${pathStr}`);

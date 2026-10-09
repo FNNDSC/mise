@@ -23,6 +23,9 @@ import { chrisFiles } from './files.js';
 import { elevation_run } from '@fnndsc/chili/commands/connect/elevation.js';
 import { chrisWatch } from './watch.js';
 import { chrisListingLook } from '@fnndsc/chili/views/ls.js';
+import { chrisFilesystem } from './filesystem.js';
+import { chrisMounts_register } from './mounts.js';
+import { chrisCompletion } from './completion.js';
 
 declare module '../session/index.js' {
   interface Session {
@@ -56,6 +59,7 @@ export const chrisBackend: Backend = {
   id: 'chris',
   session: {
     async init(): Promise<void> {
+      chrisMounts_register();
       const nodeStorageProvider: NodeStorageProvider = new NodeStorageProvider();
       // Initialize the connection singleton which also initializes config
       connection = await chrisConnection_init(nodeStorageProvider);
@@ -96,6 +100,8 @@ export const chrisBackend: Backend = {
   elevate: elevation_run,
   watch: chrisWatch,
   files: chrisFiles,
+  vfs: chrisFilesystem,
+  completion: chrisCompletion,
   listingLook: chrisListingLook,
   debug_get: (): boolean => Boolean(session.connection?.config?.debug),
 };

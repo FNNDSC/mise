@@ -1,20 +1,20 @@
 /**
  * @file Virtual File System Router.
  *
- * Handles path resolution and dispatching to appropriate file system providers
- * (native ChRIS or virtual overlays like /bin).
+ * Handles path resolution and dispatching to the session's filesystem: the
+ * backend's mounts and fallback, and the core's own (`/usr`).
  *
  * @module
  */
-import { plugins_listAll, vfsDispatcher } from '@fnndsc/salsa';
 import { session } from '../../session/index.js';
 import chalk from 'chalk';
 import * as path from 'path';
 import { ambient_publish, ambient_hasListeners } from '../../core/ambient.js';
 import { type ListingItem, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
-import { listCache_get, feedTags_byFeed } from '@fnndsc/cumin';
+import { listingCache_get, listingCache_holds, vfsDispatcher_get } from '../../core/filesystem.js';
+import type { ListingCache } from '../../core/backend.js';
 import { spinner } from '../spinner.js';
-import { error_stripDebugPrefix } from '../../builtins/utils.js';
+import { error_stripDebugPrefix } from '../../core/errorText.js';
 import { listingItemsFromVfs_make } from './listing.js';
 import { Result, Ok, Err, errorStack, grid_render, long_render, listingItems_sort, LISTING_LOOK_PLAIN, type ListingLook } from '@fnndsc/fond';
 import { backendInstalled_get } from '../../core/backend.js';
@@ -65,10 +65,10 @@ export class VFS {
     const inflight: Promise<void> | undefined = this.revalidating.get(effectivePath);
     if (inflight) return inflight;
     const run: Promise<void> = (async (): Promise<void> => {
-      const fetched = await vfsDispatcher.list(effectivePath, {});
+      const fetched = await vfsDispatcher_get().list(effectivePath, {});
       if (!fetched.ok) return;
       const items: ListingItem[] = listingItemsFromVfs_make(fetched.value);
-      listCache_get().cache_set(effectivePath, items);
+      listingCache_get().cache_set(effectivePath, items);
       ambient_publish({
         kind: 'envelope',
         envelope: { status: 'ok', rendered: '', model: { kind: 'fs.listing', data: [{ path: effectivePath, items, fresh: true }] } },
@@ -105,13 +105,13 @@ export class VFS {
         return entry.ok ? Ok({ path: effectivePath, items: entry.value, fresh: true }) : Err();
       }
 
-      // /proc paths are backed by ProcCache which manages its own freshness —
-      // skip listCache entirely so proc refresh and live status reads are visible.
-      const isProcPath: boolean = effectivePath.startsWith('/proc');
+      // A path the backend keeps its own freshness for (ChRIS: /proc) skips
+      // the listing cache entirely, so its refreshes and live reads show.
+      const cacheable: boolean = listingCache_holds(effectivePath);
 
-      // Check cache first (not for /proc paths)
-      const listCache = listCache_get();
-      if (!isProcPath) {
+      // Check cache first
+      const listCache: ListingCache = listingCache_get();
+      if (cacheable) {
         const cached = listCache.cache_get<ListingItem[]>(effectivePath);
         if (cached && (cached.fresh || ambient_hasListeners())) {
           if (!cached.fresh) void this.listing_revalidate(effectivePath);
@@ -130,12 +130,12 @@ export class VFS {
       }
 
       // Delegate path queries to the unified vfsDispatcher (which handles both virtual and native paths)
-      const vfsResult = await vfsDispatcher.list(effectivePath, options);
+      const vfsResult = await vfsDispatcher_get().list(effectivePath, options);
       if (vfsResult.ok) {
         const items: ListingItem[] = listingItemsFromVfs_make(vfsResult.value);
 
-        // Cache the results (not for /proc paths)
-        if (!isProcPath) {
+        // Cache the results, where the backend lets them be kept
+        if (cacheable) {
           listCache.cache_set(effectivePath, items);
         }
 
@@ -169,14 +169,14 @@ export class VFS {
     }
 
     // Fetch parent listing (use cache when available)
-    const listCache = listCache_get();
+    const listCache: ListingCache = listingCache_get();
     let parentItems: ListingItem[] | null = null;
 
     const cached = listCache.cache_get<ListingItem[]>(parentPath);
     if (cached) {
       parentItems = cached.data;
     } else {
-      const parentResult = await vfsDispatcher.list(parentPath, options);
+      const parentResult = await vfsDispatcher_get().list(parentPath, options);
       if (parentResult.ok) {
         parentItems = listingItemsFromVfs_make(parentResult.value);
         listCache.cache_set(parentPath, parentItems);
@@ -201,7 +201,7 @@ export class VFS {
   private leafFromParentCache_get(absolutePath: string): ListingItem | null {
     const baseName: string = path.posix.basename(absolutePath);
     const parentPath: string = path.posix.dirname(absolutePath);
-    const cached = listCache_get().cache_get<ListingItem[]>(parentPath);
+    const cached = listingCache_get().cache_get<ListingItem[]>(parentPath);
     if (!cached) return null;
 
     const item: ListingItem | undefined = cached.data.find(
@@ -237,7 +237,7 @@ export class VFS {
     // A cache miss will wait on the wire; a stale entry may be served at
     // once (listing_get decides, and revalidates behind it where a host can
     // carry the refresh).
-    const isCacheMiss: boolean = !listCache_get().cache_get(effectivePath);
+    const isCacheMiss: boolean = !listingCache_get().cache_get(effectivePath);
 
     // For cache miss, show loading indicator after 500ms timeout
     let spinnerStarted: boolean = false; // Flag to track if spinner was actually started
@@ -251,12 +251,12 @@ export class VFS {
     }
 
     // Only this listing's walk may name a parent whose links went unchecked.
-    const { pathMapper_get } = await import('@fnndsc/chili/utils');
-    pathMapper_get().blindParents_take();
+    const unreadLinks_take = async (): Promise<string[]> => (await backendInstalled_get()?.vfs?.unreadLinks_take?.()) ?? [];
+    await unreadLinks_take();
 
     // Fetch data (may be from cache)
     const listing: Result<VfsListing> = await this.listing_get(targetPath, options);
-    const blindParents: string[] = pathMapper_get().blindParents_take();
+    const blindParents: string[] = await unreadLinks_take();
     const result: Result<ListingItem[]> = listing.ok ? Ok(listing.value.items) : Err();
 
     // Clear loading timeout and indicator
@@ -296,7 +296,7 @@ export class VFS {
     // one map for the whole listing, never a read per feed.
     const look: ListingLook = backendInstalled_get()?.listingLook ?? LISTING_LOOK_PLAIN;
     let rendered: string = options.long
-      ? `${long_render(await feedTags_annotate(result.value), { human: !!options.human }, look)}\n`
+      ? `${long_render(await longRows_annotate(result.value), { human: !!options.human }, look)}\n`
       : `${grid_render(result.value, { oneColumn: !!options.oneColumn }, look)}\n`;
 
     // Served stale: say so. The refresh is already running behind this
@@ -321,27 +321,13 @@ export class VFS {
 export const vfs: VFS = new VFS();
 
 /**
- * Hangs each feed's tags on its row, for a long listing that holds feeds
- * (`feed_N` rows). A listing with no feed in it reads nothing; a map that
- * cannot be read leaves the rows as they were.
+ * What a long listing's rows carry beyond the listing, from the backend
+ * (ChRIS: a feed's tags).
  *
  * @param items - The rows.
- * @returns The rows, feeds carrying their tags.
+ * @returns The rows, annotated.
  */
-async function feedTags_annotate(items: ListingItem[]): Promise<ListingItem[]> {
-  const feedOf = (name: string): number | null => {
-    const match: RegExpMatchArray | null = name.match(/^feed_(\d+)$/);
-    return match === null ? null : Number(match[1]);
-  };
-  if (!items.some((item: ListingItem): boolean => feedOf(item.name) !== null)) return items;
-  const map: Result<Map<number, string[]>> = await feedTags_byFeed();
-  if (!map.ok) {
-    errorStack.stack_pop();
-    return items;
-  }
-  return items.map((item: ListingItem): ListingItem => {
-    const feedId: number | null = feedOf(item.name);
-    const tags: string[] | undefined = feedId === null ? undefined : map.value.get(feedId);
-    return tags === undefined ? item : { ...item, tags };
-  });
+async function longRows_annotate(items: ListingItem[]): Promise<ListingItem[]> {
+  const annotate: ((rows: ListingItem[]) => Promise<ListingItem[]>) | undefined = backendInstalled_get()?.vfs?.longRows_annotate;
+  return annotate === undefined ? items : await annotate(items);
 }

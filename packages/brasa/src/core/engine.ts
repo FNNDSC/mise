@@ -50,7 +50,8 @@ import { answerAdapters_register } from '../session/answerAdapters.js';
 import { numbering_get, type Numbering } from '../session/answer.js';
 import { sink_get, sink_set, type OutputSink } from './sink.js';
 import { backend_install, backendInstalled_get, type Backend } from './backend.js';
-import type { Result } from '@fnndsc/fond';
+import { vfsDispatcher_get } from './filesystem.js';
+import type { VFSDispatcher } from '@fnndsc/fond';
 
 /**
  * Result of a completion request: the candidates and the prefix they
@@ -392,30 +393,17 @@ export async function command_handle(line: string): Promise<void> {
 }
 
 /**
- * Registers the static VFS providers and the logical→physical path resolver
- * hook on the shared salsa vfsDispatcher.
+ * Adds the core's own mounts (`/usr` and beneath it) to the session's
+ * filesystem, after the backend's.
  */
 async function vfsProviders_register(): Promise<void> {
-  const { vfsDispatcher } = await import('@fnndsc/salsa');
   const { StaticVfsProvider } = await import('../lib/vfs/providers/static.js');
-  vfsDispatcher.provider_register(new StaticVfsProvider('/bin'));
+  const vfsDispatcher: VFSDispatcher = vfsDispatcher_get();
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr'));
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr/bin'));
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr/games'));
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr/share'));
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr/share/doc'));
-
-  vfsDispatcher.pathResolver_register(async (logicalPath: string): Promise<string> => {
-    if (session.physicalMode_get()) {
-      return logicalPath;
-    }
-    const { logical_toPhysical } = await import('@fnndsc/chili/utils');
-    const res: Result<string> = await logical_toPhysical(logicalPath);
-    if (res.ok) {
-      return res.value;
-    }
-    throw new Error(`Logical-to-physical resolution failed for path: ${logicalPath}`);
-  });
 }
 
 /**

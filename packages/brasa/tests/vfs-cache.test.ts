@@ -57,6 +57,7 @@ const ok = <T>(value: T) => ({ ok: true as const, value });
 const err = () => ({ ok: false as const });
 
 const { VFS } = await import('../src/lib/vfs/vfs.js');
+await (await import('./support/chrisPieces.js')).chrisPieces_install({ vfs: true });
 // No backend is installed here, so a listing shows with the core's plain look.
 const { LISTING_LOOK_PLAIN } = await import('@fnndsc/fond');
 

@@ -3,9 +3,8 @@
  * Pure functions for argument parsing and path resolution logic.
  */
 import * as path from 'path';
-import { context_getSingle } from '@fnndsc/salsa';
-import { SingleContext } from '@fnndsc/cumin';
 import { session } from '../session/index.js';
+import { path_resolveFrom } from '../core/paths.js';
 import type { ListingItem } from '@fnndsc/menu';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 
@@ -145,41 +144,11 @@ export function homePath_of(user: string | null | undefined): string {
 }
 
 export function path_resolvePure(inputPath: string, context: PathContext): string {
-  let resolved: string = inputPath;
-  const { user, cwd } = context;
-  
-  if (inputPath.startsWith('~')) {
-    const home: string = homePath_of(user);
-    if (inputPath === '~' || inputPath === '~/') {
-      resolved = home;
-    } else if (inputPath.startsWith('~/')) {
-      resolved = path.posix.join(home, inputPath.substring(2));
-    }
-  }
-  
-  if (!resolved.startsWith('/')) {
-    resolved = path.posix.resolve(cwd, resolved);
-  }
-  
-  // Normalize
-  if (resolved.length > 1 && resolved.endsWith('/')) {
-    resolved = resolved.slice(0, -1);
-  }
-  
-  return resolved;
+  return path_resolveFrom(inputPath, homePath_of(context.user), context.cwd);
 }
 
-/**
- * Resolves a path argument, handling `~` expansion and relative paths.
- * @param inputPath - The path to resolve.
- * @returns The absolute path.
- */
-export async function path_resolve(inputPath: string): Promise<string> {
-  const context: SingleContext = await context_getSingle();
-  const user: string | null = context.user;
-  const cwd: string = await session.getCWD();
-  return path_resolvePure(inputPath, { user, cwd });
-}
+// A path argument as the session means it: `~` and relative paths resolved.
+export { path_resolve } from '../core/paths.js';
 
 /**
  * Resolves links in a path without using PathMapper (for physical mode).

@@ -27,7 +27,7 @@ import { error_stripDebugPrefix } from './errorText.js';
 import { exitCode_read, handler_runDirect } from './handlerRun.js';
 import { backendInstalled_get } from './backend.js';
 
-import { shellWords_expand } from '../builtins/wildcard.js';
+import { shellWords_expand } from '../lib/wildcard.js';
 import {
   help_render,
   commandHelp_get,

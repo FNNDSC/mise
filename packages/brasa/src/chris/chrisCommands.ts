@@ -10,13 +10,21 @@
  * @module
  */
 import { type CommandGroup, type CommandHandler, type EnvelopeHandler } from '../core/commandRegistry.js';
-import { builtin_chrisfetch, builtin_ping } from '../builtins/games/lab.js';
+import { builtin_chrisfetch, builtin_ping } from '../builtins/games/chrislab.js';
 import { builtin_chmod, builtin_compute, builtin_config, builtin_connect, builtin_context, builtin_cubepath, builtin_dcm, builtin_dirs, builtin_download, builtin_feed, builtin_files, builtin_gather, builtin_getfacl, builtin_getfattr, builtin_group, builtin_id, builtin_image, builtin_links, builtin_logout, builtin_pacs, builtin_parametersofplugin, builtin_physicalmode, builtin_pipeline, builtin_plugin, builtin_plugininstance, builtin_pluginmeta, builtin_pull, builtin_query, builtin_setfacl, builtin_setfattr, builtin_store, builtin_tag, builtin_upload, builtin_user, builtin_whereami, builtin_whoami, builtin_workflow } from '../builtins/index.js';
 import { builtin_netstat } from '../builtins/net/netstat.js';
 import { builtin_proc } from '../builtins/proc.js';
 import { chiliCommand_run } from './chiliDelegate.js';
 import { envelopeHandler_wrap } from '../core/sink.js';
 import type { CommandEnvelope } from '@fnndsc/menu';
+import { builtin_file, builtin_md5sum, builtin_sha256sum, builtin_strings, builtin_xxd } from '../builtins/games/bytes.js';
+import { builtin_du } from '../builtins/fs/du.js';
+import { builtin_edit } from '../builtins/fs/edit.js';
+import { builtin_tree } from '../builtins/fs/tree.js';
+import { builtin_expect } from '../builtins/res/expect.js';
+import { builtin_play } from '../builtins/res/play.js';
+import { builtin_record } from '../builtins/res/record.js';
+import { builtin_motd } from '../builtins/sys/motd.js';
 
 const envelope: Record<string, EnvelopeHandler> = {
   setfacl: builtin_setfacl,
@@ -79,6 +87,18 @@ const envelope: Record<string, EnvelopeHandler> = {
   pull: builtin_pull,
   pipeline: builtin_pipeline,
   pipelines: builtin_pipeline,
+  file: builtin_file,
+  xxd: builtin_xxd,
+  strings: builtin_strings,
+  sha256sum: builtin_sha256sum,
+  md5sum: builtin_md5sum,
+  motd: builtin_motd,
+  tree: builtin_tree,
+  du: builtin_du,
+  expect: builtin_expect,
+  play: builtin_play,
+  record: builtin_record,
+  edit: builtin_edit,
 };
 
 const plain: Record<string, CommandHandler> = {
@@ -140,6 +160,18 @@ const plain: Record<string, CommandHandler> = {
   pacsservers: envelopeHandler_wrap((args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsservers', ['-s', ...args])),
   pacsqueries: envelopeHandler_wrap((args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsqueries', ['-s', ...args])),
   pacsretrieve: envelopeHandler_wrap((args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsretrieve', ['-s', ...args])),
+  edit: envelopeHandler_wrap(builtin_edit),
+  file: envelopeHandler_wrap(builtin_file),
+  xxd: envelopeHandler_wrap(builtin_xxd),
+  strings: envelopeHandler_wrap(builtin_strings),
+  sha256sum: envelopeHandler_wrap(builtin_sha256sum),
+  md5sum: envelopeHandler_wrap(builtin_md5sum),
+  motd: envelopeHandler_wrap(builtin_motd),
+  tree: envelopeHandler_wrap(builtin_tree),
+  du: envelopeHandler_wrap(builtin_du),
+  expect: envelopeHandler_wrap(builtin_expect),
+  play: envelopeHandler_wrap(builtin_play),
+  record: envelopeHandler_wrap(builtin_record),
 };
 
 

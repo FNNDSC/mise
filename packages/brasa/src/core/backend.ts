@@ -40,6 +40,8 @@ export interface BackendSession {
   init(): Promise<void>;
   /** Who the session is, connected or not. */
   identity_get(): Promise<SessionIdentity>;
+  /** The session's user as the backend last knew them, or null when it knows none. */
+  user_get(): Promise<string | null>;
   /** The session's home: where it begins before it has a working directory of its own. */
   home_get(): Promise<string>;
   /** The working directory the identity left, or null when it has none stored. */
@@ -197,8 +199,10 @@ export interface Backend {
   readonly completion?: BackendCompletion;
   /** How its listings show: the kinds it lists beside the core's, and how a name is coloured. */
   readonly listingLook?: ListingLook;
-  /** Whether the backend is debugging: error messages keep their function stamp. */
-  readonly debug_get?: () => boolean;
+  /** Whether the backend is debugging (error messages keep their function stamp), or null before it can say. */
+  readonly debug_get?: () => boolean | null;
+  /** Turns the backend's debugging on or off. */
+  readonly debug_set?: (on: boolean) => void;
 }
 
 let installed: Backend | null = null;

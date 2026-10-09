@@ -1,7 +1,9 @@
 /**
  * @file The core commands: the ones that mean the same in every session,
  * whatever the backend — the filesystem verbs, the shell's own settings and
- * meta commands (help, notes, record and play), and the toys and games shelf.
+ * meta commands (help, notes, debug, timing), and the toys and games shelf.
+ * A command that reads CUBE itself registers with the ChRIS backend
+ * (`chris/chrisCommands.ts`).
  *
  * The engine registers them itself (`core/dispatch.ts`). A backend registers
  * its own commands beside them and never replaces one of these
@@ -10,7 +12,6 @@
  * @module
  */
 import { type CommandGroup, type CommandHandler, type EnvelopeHandler } from './commandRegistry.js';
-import { builtin_file, builtin_md5sum, builtin_sha256sum, builtin_strings, builtin_xxd } from '../builtins/games/bytes.js';
 import { builtin_leave, builtin_stopwatch, builtin_timer } from '../builtins/games/chimes.js';
 import { builtin_cowsay, builtin_cowthink } from '../builtins/games/cowsay.js';
 import { builtin_banner, builtin_figlet } from '../builtins/games/figlet.js';
@@ -28,8 +29,6 @@ import { builtin_debug } from '../builtins/debug.js';
 import { builtin_cat } from '../builtins/fs/cat.js';
 import { builtin_cd } from '../builtins/fs/cd.js';
 import { builtin_cp } from '../builtins/fs/cp.js';
-import { builtin_du } from '../builtins/fs/du.js';
-import { builtin_edit } from '../builtins/fs/edit.js';
 import { builtin_ls } from '../builtins/fs/ls.js';
 import { builtin_mkdir } from '../builtins/fs/mkdir.js';
 import { builtin_mv } from '../builtins/fs/mv.js';
@@ -37,15 +36,10 @@ import { builtin_pwd } from '../builtins/fs/pwd.js';
 import { builtin_rm } from '../builtins/fs/rm.js';
 import { builtin_rmdir } from '../builtins/fs/rmdir.js';
 import { builtin_touch } from '../builtins/fs/touch.js';
-import { builtin_tree } from '../builtins/fs/tree.js';
 import { builtin_help } from '../builtins/help.js';
-import { builtin_expect } from '../builtins/res/expect.js';
-import { builtin_play } from '../builtins/res/play.js';
-import { builtin_record } from '../builtins/res/record.js';
 import { builtin_cal } from '../builtins/sys/cal.js';
 import { builtin_date } from '../builtins/sys/date.js';
 import { builtin_fortune } from '../builtins/sys/fortune.js';
-import { builtin_motd } from '../builtins/sys/motd.js';
 import { builtin_timing } from '../builtins/sys/timing.js';
 import { builtin_version } from '../builtins/sys/version.js';
 import { builtin_weather } from '../builtins/sys/weather.js';
@@ -87,11 +81,6 @@ const envelope: Record<string, EnvelopeHandler> = {
   uptime: builtin_uptime,
   say: builtin_say,
   wtf: builtin_wtf,
-  file: builtin_file,
-  xxd: builtin_xxd,
-  strings: builtin_strings,
-  sha256sum: builtin_sha256sum,
-  md5sum: builtin_md5sum,
   qr: builtin_qr,
   pom: builtin_pom,
   stardate: builtin_stardate,
@@ -110,18 +99,11 @@ const envelope: Record<string, EnvelopeHandler> = {
   hangman: builtin_hangman,
   '2048': builtin_2048,
   weather: builtin_weather,
-  motd: builtin_motd,
   notes: builtin_notes,
   date: builtin_date,
   cal: builtin_cal,
   ls: builtin_ls,
-  tree: builtin_tree,
-  du: builtin_du,
   help: builtin_help,
-  expect: builtin_expect,
-  play: builtin_play,
-  record: builtin_record,
-  edit: builtin_edit,
 };
 
 const plain: Record<string, CommandHandler> = {
@@ -135,7 +117,6 @@ const plain: Record<string, CommandHandler> = {
   touch: envelopeHandler_wrap(builtin_touch),
   mkdir: envelopeHandler_wrap(builtin_mkdir),
   rmdir: envelopeHandler_wrap(builtin_rmdir),
-  edit: envelopeHandler_wrap(builtin_edit),
   timing: envelopeHandler_wrap(builtin_timing),
   debug: envelopeHandler_wrap(builtin_debug),
   fortune: envelopeHandler_wrap(builtin_fortune),
@@ -160,11 +141,6 @@ const plain: Record<string, CommandHandler> = {
   uptime: envelopeHandler_wrap(builtin_uptime),
   say: envelopeHandler_wrap(builtin_say),
   wtf: envelopeHandler_wrap(builtin_wtf),
-  file: envelopeHandler_wrap(builtin_file),
-  xxd: envelopeHandler_wrap(builtin_xxd),
-  strings: envelopeHandler_wrap(builtin_strings),
-  sha256sum: envelopeHandler_wrap(builtin_sha256sum),
-  md5sum: envelopeHandler_wrap(builtin_md5sum),
   qr: envelopeHandler_wrap(builtin_qr),
   pom: envelopeHandler_wrap(builtin_pom),
   stardate: envelopeHandler_wrap(builtin_stardate),
@@ -183,16 +159,10 @@ const plain: Record<string, CommandHandler> = {
   hangman: envelopeHandler_wrap(builtin_hangman),
   '2048': envelopeHandler_wrap(builtin_2048),
   weather: envelopeHandler_wrap(builtin_weather),
-  motd: envelopeHandler_wrap(builtin_motd),
   notes: envelopeHandler_wrap(builtin_notes),
   date: envelopeHandler_wrap(builtin_date),
   cal: envelopeHandler_wrap(builtin_cal),
   help: envelopeHandler_wrap(builtin_help),
-  tree: envelopeHandler_wrap(builtin_tree),
-  du: envelopeHandler_wrap(builtin_du),
-  expect: envelopeHandler_wrap(builtin_expect),
-  play: envelopeHandler_wrap(builtin_play),
-  record: envelopeHandler_wrap(builtin_record),
 };
 
 

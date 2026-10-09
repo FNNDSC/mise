@@ -27,7 +27,10 @@ jest.unstable_mockModule('../src/core/surface.js', () => ({ surface_get: () => (
 jest.unstable_mockModule('../src/chris/jobsState.js', () => ({ jobsState_derive: () => ({ running: 0, scheduled: 0 }) }));
 jest.unstable_mockModule('../src/builtins/sys/fortune.js', () => ({ fortune_random: () => 'a fortune' }));
 
-const { uptime_words, ping_run, ping_summary, builtin_ping, builtin_who, builtin_chrisfetch, builtin_say } = await import('../src/builtins/games/lab.js');
+const { uptime_words, builtin_who, builtin_say } = await import('../src/builtins/games/lab.js');
+const { ping_run, ping_summary, builtin_ping, builtin_chrisfetch } = await import('../src/builtins/games/chrislab.js');
+// `who` asks the backend for the session's user: here, the context this file mocks.
+(await import('../src/core/backend.js')).backend_install({ id: 'chris', session: { user_get: (): Promise<string | null> => mockUser() } as never });
 const { wtf_lookup, builtin_wtf } = await import('../src/builtins/games/wtf.js');
 const { magic_of, hexdump_render, strings_find, builtin_file, builtin_xxd, builtin_sha256sum } = await import('../src/builtins/games/bytes.js');
 const { rs_remainder, qr_encode, qr_render, penalty_of } = await import('../src/builtins/games/qr.js');

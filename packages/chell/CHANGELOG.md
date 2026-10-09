@@ -1,5 +1,17 @@
 # @fnndsc/chell
 
+## 5.11.4
+
+### Patch Changes
+
+- 8d15909: Nothing changes for chell, ARGUS or porter users: the engine's output and surface contract now lives in menu. `OutputSink`, `Surface` and their companions are served as `@fnndsc/menu/surface`; brasa re-exports them, and the engine installs its own sink and surface. `BrasaEngine` gains required `sink_install` and `surface_install`, so code that implements it must add both.
+- Updated dependencies [8d15909]
+  - @fnndsc/menu@0.21.0
+  - @fnndsc/brasa@0.34.0
+  - @fnndsc/calypso@0.19.10
+  - @fnndsc/chili@3.7.5
+  - @fnndsc/cumin@3.27.10
+
 ## 5.11.3
 
 ### Patch Changes

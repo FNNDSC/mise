@@ -481,3 +481,50 @@ describe('files_copyRecursively', () => {
     expect(await files_copyRecursively('/src', '/dest')).toBe(false);
   });
 });
+
+describe('a folder and a file never share a path', () => {
+  /**
+   * CUBE as three collections per folder: each listing answers only its own
+   * kind, a folder row naming itself by `path`, a file row by `fname`.
+   */
+  function store_set(entries: { dirs?: string[]; files?: string[] }): void {
+    mockObjCreate.mockImplementation(async (context: string, folder: string) => {
+      const at: string = folder.replace(/^folder:/, '').replace(/^\//, '');
+      const under = (paths: string[] = []): string[] => paths.filter((p: string): boolean => p.slice(0, p.lastIndexOf('/')) === at);
+      const rows = context === 'ChRISDirsContext'
+        ? under(entries.dirs).map((p: string, i: number) => ({ id: 100 + i, path: p }))
+        : context === 'ChRISFilesContext'
+          ? under(entries.files).map((p: string, i: number) => ({ id: 200 + i, fname: p }))
+          : [];
+      return group({ resources_getAll: jest.fn().mockResolvedValue({ tableData: rows }) });
+    });
+  }
+
+  it('makes no folder where a file is: the shell\'s File exists', async () => {
+    store_set({ dirs: ['a'], files: ['a/report.csv'] });
+    expect(await files_mkdir('/a/report.csv')).toBe(false);
+    expect(errorStack.stack_pop()?.message).toContain('File exists: a file already holds /a/report.csv');
+    expect(mockIO.folder_create).not.toHaveBeenCalled();
+  });
+
+  it('makes no folder beneath a file either, since CUBE would make the file\'s path a folder on the way', async () => {
+    store_set({ dirs: ['a'], files: ['a/report.csv'] });
+    expect(await files_mkdir('/a/report.csv/sub')).toBe(false);
+    expect(errorStack.stack_pop()?.message).toContain('Not a directory: a file holds /a/report.csv');
+    expect(mockIO.folder_create).not.toHaveBeenCalled();
+  });
+
+  it('writes no file where a folder is', async () => {
+    store_set({ dirs: ['a', 'a/x'] });
+    expect(await files_create('content', '/a/x')).toBe(false);
+    expect(errorStack.stack_pop()?.message).toContain('Is a directory: a folder already holds /a/x');
+    expect(mockIO.file_upload).not.toHaveBeenCalled();
+  });
+
+  it('moves nothing onto a path something holds', async () => {
+    store_set({ dirs: ['a', 'a/sub'], files: ['a/f.txt', 'a/taken'] });
+    expect(await files_move('/a/f.txt', '/a/taken')).toBe(false);
+    expect(errorStack.stack_pop()?.message).toContain('Destination exists: /a/taken');
+    expect(mockIO.file_moveById).not.toHaveBeenCalled();
+  });
+});

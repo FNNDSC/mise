@@ -8,7 +8,8 @@
  * @module
  */
 import { files_listAll } from "@fnndsc/salsa";
-import { files_delete as salsaFiles_delete } from "@fnndsc/salsa";
+import { files_delete as salsaFiles_delete, pathHolders_find, type PathHolder } from "@fnndsc/salsa";
+import type { Result } from "@fnndsc/cumin";
 import { path_resolveChrisFs } from "../../utils/cli.js";
 import { ChrisFileOrDirRaw } from "../../models/resource.js";
 import { FilteredResourceData } from "@fnndsc/cumin";
@@ -97,6 +98,20 @@ async function pathInfo_find(targetPath: string): Promise<{ type: 'file' | 'dir'
 export async function files_rm(targetPath: string, options: RmOptions = {}): Promise<RmResult> {
   try {
     const resolvedPath: string = await path_resolveChrisFs(targetPath, {});
+
+    // A folder and a file sharing one path damage each other when either is
+    // removed: CUBE's folder delete takes the file's record with it, and
+    // every listing of the parent then fails (CUBE #732). Neither is
+    // removed; a CUBE administrator has to part them.
+    const holders: Result<PathHolder[]> = await pathHolders_find(resolvedPath);
+    if (holders.ok && holders.value.length > 1) {
+      return {
+        success: false,
+        path: resolvedPath,
+        type: null,
+        error: `Cannot remove '${resolvedPath}': a ${holders.value.map((kind: PathHolder): string => (kind === 'dir' ? 'folder' : kind)).join(' and a ')} share this path, and removing either would damage the other in CUBE`,
+      };
+    }
 
     const info = await pathInfo_find(resolvedPath);
 

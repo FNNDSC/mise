@@ -19,6 +19,16 @@ function listing_set(rows: { dirs?: object[]; files?: object[]; links?: object[]
   mockListAll.mockImplementation(async (_opts: unknown, asset: string) => ({
     tableData: (rows as Record<string, object[] | undefined>)[asset] ?? [],
   }));
+  // Which kinds hold a path, from the same rows: a folder and a file of one name is the shared path rm refuses.
+  (salsa.pathHolders_find as unknown as jest.Mock).mockImplementation(async (target: string) => {
+    const name: string = target.split('/').pop() ?? '';
+    const held = (list?: object[]): boolean => (list ?? []).some((row: object) => String((row as { fname?: string }).fname ?? '').split('/').pop() === name);
+    const kinds: string[] = [];
+    if (held(rows.dirs)) kinds.push('dir');
+    if (held(rows.files)) kinds.push('file');
+    if (held(rows.links)) kinds.push('link');
+    return { ok: true, value: kinds };
+  });
 }
 
 describe('files_rm', () => {
@@ -36,6 +46,14 @@ describe('files_rm', () => {
   it('treats a missing operand as success with force (POSIX rm -f)', async () => {
     const result = await files_rm('/home/alice/absent.txt', { force: true });
     expect(result.success).toBe(true);
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it('refuses a path a folder and a file share, removing neither', async () => {
+    listing_set({ dirs: [{ fname: 'report.csv', id: 7 }], files: [{ fname: 'report.csv', id: 8 }] });
+    const result = await files_rm('/home/alice/report.csv', { recursive: true });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('a folder and a file share this path');
     expect(mockDelete).not.toHaveBeenCalled();
   });
 

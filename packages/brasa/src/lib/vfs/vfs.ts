@@ -130,6 +130,7 @@ export class VFS {
       }
 
       // Delegate path queries to the unified vfsDispatcher (which handles both virtual and native paths)
+      const beforeList: number = errorStack.checkpoint_mark();
       const vfsResult = await vfsDispatcher_get().list(effectivePath, options);
       if (vfsResult.ok) {
         const items: ListingItem[] = listingItemsFromVfs_make(vfsResult.value);
@@ -142,6 +143,15 @@ export class VFS {
         return Ok({ path: effectivePath, items, fresh: true });
       }
 
+      // `ls FILE` names the file, as POSIX ls does: a path that will not
+      // list as a folder is looked for in its parent, and an entry that is
+      // not a folder is the answer. The failed listing's complaint goes with
+      // it; a path the parent does not hold still fails as it did.
+      const entry: ListingItem | null = await this.entryFromParent_fetch(effectivePath);
+      if (entry !== null) {
+        errorStack.checkpoint_drain(beforeList);
+        return Ok({ path: effectivePath, items: [entry], fresh: true });
+      }
       return Err();
     } catch (error: unknown) {
       const errorMsg: string = error instanceof Error ? error.message : String(error);
@@ -190,6 +200,33 @@ export class VFS {
 
     // Fallback: synthesize an entry from the path name
     return Ok([{ name: baseName, type: 'dir', size: 0, owner: 'system', date: '' }]);
+  }
+
+  /**
+   * Finds a path's own entry in its parent's listing, read afresh when it is
+   * not kept: the answer to `ls FILE` when the path does not list as a
+   * folder.
+   *
+   * @param absolutePath - The path that did not list.
+   * @returns Its entry when the parent holds it and it is not a folder, else null.
+   */
+  private async entryFromParent_fetch(absolutePath: string): Promise<ListingItem | null> {
+    if (absolutePath === '/') return null;
+    const baseName: string = path.posix.basename(absolutePath);
+    const parentPath: string = path.posix.dirname(absolutePath);
+    let parentItems: ListingItem[] | null = listingCache_get().cache_get<ListingItem[]>(parentPath)?.data ?? null;
+    if (parentItems === null) {
+      const parentMark: number = errorStack.checkpoint_mark();
+      const parent = await vfsDispatcher_get().list(parentPath, {});
+      // The parent was only asked to find one name; what it could not read is not this listing's.
+      errorStack.checkpoint_drain(parentMark);
+      if (!parent.ok) return null;
+      parentItems = listingItemsFromVfs_make(parent.value);
+      if (listingCache_holds(parentPath)) listingCache_get().cache_set(parentPath, parentItems);
+    }
+    const item: ListingItem | undefined = parentItems.find((candidate: ListingItem): boolean => candidate.name === baseName);
+    if (!item || item.type === 'dir' || item.type === 'vfs' || item.type === 'job') return null;
+    return item;
   }
 
   /**

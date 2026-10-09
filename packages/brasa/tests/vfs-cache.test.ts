@@ -125,6 +125,20 @@ describe('VFS.data_get caching', () => {
     expect(mockDispatcherList).toHaveBeenCalledWith('/home/chris/data', {});
   });
 
+  it('names a file operand from its parent when the file will not list as a folder (ls FILE, cold)', async () => {
+    const file = { name: 'hello.txt', type: 'file', size: 5, owner: 'chris', date: '' };
+    mockDispatcherList.mockImplementation(async (target: string) => (target === '/home/chris' ? ok([file]) : err()));
+    const listing = await new VFS().data_get('/home/chris/hello.txt');
+    expect(listing).toEqual({ ok: true, value: [file] });
+    expect(mockCacheSet).toHaveBeenCalledWith('/home/chris', [file]);
+  });
+
+  it('still fails a path its parent does not hold, and never answers a folder that will not list', async () => {
+    mockDispatcherList.mockImplementation(async (target: string) => (target === '/home/chris' ? ok([{ name: 'gone', type: 'dir', size: 0, owner: 'chris', date: '' }]) : err()));
+    expect((await new VFS().data_get('/home/chris/missing.txt')).ok).toBe(false);
+    expect((await new VFS().data_get('/home/chris/gone')).ok).toBe(false);
+  });
+
   it('propagates dispatcher failures and wraps thrown errors', async () => {
     mockDispatcherList.mockResolvedValue(err());
     expect((await new VFS().data_get('/data')).ok).toBe(false);

@@ -24,7 +24,9 @@ cuminMock_install(() => ({
   errorStack: {
     stack_search: () => [],
     stack_push: jest.fn(), 
-    stack_pop: jest.fn().mockReturnValue({ message: 'Mocked Error Message', type: 'error' }) 
+    stack_pop: jest.fn().mockReturnValue({ message: 'Mocked Error Message', type: 'error' }),
+    checkpoint_mark: jest.fn(() => 0),
+    checkpoint_drain: jest.fn(() => []),
   },
   Ok: (val) => ({ ok: true, value: val }),
   Err: (err) => ({ ok: false, error: err })

@@ -187,6 +187,8 @@ describe('daemonSession_run', () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+      sink_install: jest.fn(),
+      surface_install: jest.fn(),
     };
     const flags = { plugins: false, feeds: false, publicFeeds: false, jobs: false };
     const report = jest.fn<StartupWarmupReporter['log']>();
@@ -215,6 +217,8 @@ describe('daemonSession_run', () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+      sink_install: jest.fn(),
+      surface_install: jest.fn(),
     };
 
     await daemonSession_run(engine, 'rudolph', {
@@ -257,6 +261,8 @@ describe('daemonSession_run', () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+      sink_install: jest.fn(),
+      surface_install: jest.fn(),
     };
 
     await daemonSession_run(engine, 'rudolph', { plugins: false, feeds: false, publicFeeds: false, jobs: true }, false, { log: report });
@@ -276,6 +282,8 @@ describe('daemonSession_run', () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+      sink_install: jest.fn(),
+      surface_install: jest.fn(),
     };
 
     await daemonSession_run(engine, 'rudolph', { plugins: false, feeds: false, publicFeeds: false, jobs: true }, false, { log: report });
@@ -291,6 +299,8 @@ describe('daemonSession_run', () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+      sink_install: jest.fn(),
+      surface_install: jest.fn(),
     };
 
     await daemonSession_run(engine, 'rudolph', { plugins: false, feeds: false, publicFeeds: false, jobs: true }, false, { log: report });
@@ -314,6 +324,8 @@ describe('daemonSession_run', () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+      sink_install: jest.fn(),
+      surface_install: jest.fn(),
     };
 
     await daemonSession_run(engine, 'rudolph', {
@@ -338,6 +350,8 @@ describe('daemonSession_run', () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+      sink_install: jest.fn(),
+      surface_install: jest.fn(),
     };
 
     await daemonSession_run(engine, 'rudolph', {
@@ -369,6 +383,8 @@ describe('daemonSession_run', () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+      sink_install: jest.fn(),
+      surface_install: jest.fn(),
     };
 
     await daemonSession_run(
@@ -397,6 +413,8 @@ describe('daemonSession_run', () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+      sink_install: jest.fn(),
+      surface_install: jest.fn(),
     };
 
     await daemonSession_run(
@@ -421,6 +439,8 @@ describe('daemonSession_run', () => {
     const engine: BrasaEngine = {
       line_execute: jest.fn(async () => []),
       line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+      sink_install: jest.fn(),
+      surface_install: jest.fn(),
     };
 
     await daemonSession_run(engine, 'rudolph', { plugins: false, feeds: false, publicFeeds: false, jobs: true }, false, { log: jest.fn() });

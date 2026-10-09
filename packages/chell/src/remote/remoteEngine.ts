@@ -16,7 +16,7 @@ import { serverMessage_parse, CONTRACT_VERSION, RequestBroker, type ServerMessag
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
 import { SERVER_MESSAGE_TYPES, type ClosingCause, type FileDeliverRequest, type FileDeliverResult } from '@fnndsc/menu';
-import { envelope_deliver, sink_get, type OutputSink } from '@fnndsc/brasa';
+import { envelope_deliver, sink_get, sink_set, surface_set, type OutputSink, type Surface } from '@fnndsc/brasa';
 import { promptFromContext_render } from '../core/prompt/session.js';
 
 /** Options for connecting a remote engine. */
@@ -200,6 +200,26 @@ export class RemoteEngine implements BrasaEngine {
     if (this.activeExecuteId === undefined) return false;
     this.ws.send(JSON.stringify({ type: 'cancel', id: this.activeExecuteId }));
     return true;
+  }
+
+  /**
+   * Installs this process's sink: a remote engine's output is delivered here,
+   * through the local sink, as the in-process engine's is.
+   *
+   * @param sink - The sink.
+   */
+  public sink_install(sink: OutputSink): void {
+    sink_set(sink);
+  }
+
+  /**
+   * Installs this process's surface, which answers what the daemon delegates
+   * back to this terminal (prompts, pipes, the shell, edits, deliveries).
+   *
+   * @param surface - The surface.
+   */
+  public surface_install(surface: Surface): void {
+    surface_set(surface);
   }
 
   /** @inheritdoc */

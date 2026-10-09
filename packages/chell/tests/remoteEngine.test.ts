@@ -81,9 +81,11 @@ jest.unstable_mockModule('@fnndsc/calypso', () => ({
 // Isolate this surface unit from the engine barrel: provide just the sink
 // boundary remoteEngine and this test share (installed sink, delivery).
 let activeSink: OutputSink;
+let installedSurface: unknown = null;
 jest.unstable_mockModule('@fnndsc/brasa', () => ({
   sink_set: (sink: OutputSink): OutputSink => { const prev: OutputSink = activeSink; activeSink = sink; return prev; },
   sink_get: (): OutputSink => activeSink,
+  surface_set: (surface: unknown): unknown => { installedSurface = surface; return surface; },
   // Imported transitively via prompt/session (promptFromContext_render); the
   // remote client renders a pushed context, it never builds one.
   sessionPromptContext_build: jest.fn(),
@@ -146,6 +148,16 @@ describe('RemoteEngine live output', () => {
     expect(remote.daemonStale).toBe(false);
     FakeWebSocket.instances[0].emit('message', Buffer.from(JSON.stringify({ type: 'stale', stale: true })));
     expect(flips).toEqual([false, true]);
+  });
+
+  it('installs a sink and a surface into this process through the engine\'s seam', async () => {
+    remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token' });
+    const sink: OutputSink = { data_write: jest.fn(), err_write: jest.fn(), status_write: jest.fn(), progress_write: jest.fn() } as unknown as OutputSink;
+    remote.sink_install(sink);
+    expect(activeSink).toBe(sink);
+    const surface: unknown = { capabilities: {} };
+    remote.surface_install(surface as never);
+    expect(installedSurface).toBe(surface);
   });
 
   it('renders streamed stdout once and suppresses duplicate final data envelope text', async () => {

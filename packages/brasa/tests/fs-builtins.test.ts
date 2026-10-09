@@ -5,13 +5,12 @@ import type { CommandEnvelope } from '@fnndsc/cumin';
 // Deps of builtins/utils + the builtins themselves, so real commandArgs_process
 // and path_resolve run.
 const mockVirtual = jest.fn((_p: string): boolean => false);
-const mockVfsMkdir = jest.fn(async (_p: string) => ({ ok: true as const, value: true as const }));
 const mockVfsRename = jest.fn(async (_a: string, _b: string) => ({ ok: true as const, value: true as const }));
 const mockVfsList = jest.fn(async (_p: string): Promise<{ ok: boolean; value?: Array<{ name: string }> }> => ({ ok: true, value: [] }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(async () => ({ user: 'chris', URL: 'x', folder: '/home/chris' })),
   PROC_TAGS_PREFIX: '/proc/tags',
-  vfsDispatcher: { path_isVirtual: mockVirtual, mkdir: mockVfsMkdir, rename: mockVfsRename, list: mockVfsList },
+  vfsDispatcher: { path_isVirtual: mockVirtual, rename: mockVfsRename, list: mockVfsList },
 }));
 jest.unstable_mockModule('../src/session/index.js', () => ({
   session: { getCWD: jest.fn(async () => '/home/chris') },
@@ -33,16 +32,6 @@ cuminMock_install(() => ({
   },
 }));
 
-// Which folders stand: mkdir asks before it makes one.
-const standing: Set<string> = new Set(['/home/chris']);
-jest.unstable_mockModule('../src/builtins/fs/folderExists.js', () => ({
-  folder_checkExists: jest.fn(async (p: string): Promise<boolean> => standing.has(p)),
-}));
-
-const mockMkdirCmd = jest.fn();
-const mockMkdirRender = jest.fn((p: string, ok: boolean) => `mkdir:${p}:${ok}`);
-jest.unstable_mockModule('@fnndsc/chili/commands/fs/mkdir.js', () => ({ files_mkdir: mockMkdirCmd }));
-
 const mockTouchCmd = jest.fn();
 const mockTouchRender = jest.fn((p: string, ok: boolean) => `touch:${p}:${ok}`);
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/touch.js', () => ({ files_touch: mockTouchCmd }));
@@ -61,13 +50,11 @@ jest.unstable_mockModule('../src/core/question.js', () => ({
 }));
 
 jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({
-  mkdir_render: mockMkdirRender,
   touch_render: mockTouchRender,
   cp_render: jest.fn((s: string, d: string, ok: boolean) => `cp:${s}->${d}:${ok}`),
   mv_render: jest.fn((s: string, d: string, ok: boolean) => `mv:${s}->${d}:${ok}`),
 }));
 
-const { builtin_mkdir, mkdirArgs_parse } = await import('../src/builtins/fs/mkdir.js');
 const { builtin_touch } = await import('../src/builtins/fs/touch.js');
 const { builtin_cp } = await import('../src/builtins/fs/cp.js');
 const { builtin_mv } = await import('../src/builtins/fs/mv.js');
@@ -78,74 +65,6 @@ beforeEach(() => {
   jest.clearAllMocks();
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-});
-
-describe('builtin_mkdir', () => {
-  it('reports usage with no arguments', async () => {
-    const envelope: CommandEnvelope = await builtin_mkdir([]);
-    expect(envelope.status).toBe('error');
-    expect(envelope.renderedErr).toContain('Usage: mkdir');
-  });
-
-  it('creates a directory and invalidates the parent cache', async () => {
-    mockMkdirCmd.mockResolvedValue(true);
-    const envelope: CommandEnvelope = await builtin_mkdir(['newdir']);
-    expect(mockMkdirCmd).toHaveBeenCalledWith('/home/chris/newdir');
-    expect(envelope.rendered).toContain('mkdir:/home/chris/newdir:true');
-    expect(envelope.model?.kind).toBe('fs.mkdir');
-    expect(mockInvalidate).toHaveBeenCalledWith('/home/chris');
-  });
-
-  it('refuses an option it does not have by name, creating nothing', async () => {
-    const envelope: CommandEnvelope = await builtin_mkdir(['-v', 'x']);
-    expect(envelope.status).toBe('error');
-    expect(envelope.renderedErr).toContain("mkdir: invalid option -- 'v'");
-    expect(mockMkdirCmd).not.toHaveBeenCalled();
-    const long: CommandEnvelope = await builtin_mkdir(['--mode=700', 'x']);
-    expect(long.renderedErr).toContain("mkdir: unrecognized option '--mode=700'");
-  });
-
-  it('never takes -p for a folder name', () => {
-    expect(mkdirArgs_parse(['-p', 'a/b'])).toEqual({ paths: ['a/b'], parents: true });
-    expect(mkdirArgs_parse(['--parents', 'a'])).toEqual({ paths: ['a'], parents: true });
-    expect(mkdirArgs_parse(['--', '-p'])).toEqual({ paths: ['-p'], parents: false });
-  });
-
-  it('without -p, a missing parent is No such file or directory', async () => {
-    const envelope: CommandEnvelope = await builtin_mkdir(['a/b']);
-    expect(envelope.status).toBe('error');
-    expect(envelope.renderedErr).toContain("mkdir: cannot create directory 'a/b': No such file or directory");
-    expect(mockMkdirCmd).not.toHaveBeenCalled();
-  });
-
-  it('with -p, a missing parent is made along the way', async () => {
-    mockMkdirCmd.mockResolvedValue(true);
-    const envelope: CommandEnvelope = await builtin_mkdir(['-p', 'a/b']);
-    expect(envelope.status).toBe('ok');
-    expect(mockMkdirCmd).toHaveBeenCalledWith('/home/chris/a/b');
-  });
-
-  it('without -p, an existing folder is File exists; with -p it is done', async () => {
-    standing.add('/home/chris/here');
-    try {
-      const plain: CommandEnvelope = await builtin_mkdir(['here']);
-      expect(plain.status).toBe('error');
-      expect(plain.renderedErr).toContain("mkdir: cannot create directory 'here': File exists");
-      const parents: CommandEnvelope = await builtin_mkdir(['-p', 'here']);
-      expect(parents.status).toBe('ok');
-      expect(mockMkdirCmd).not.toHaveBeenCalled();
-    } finally {
-      standing.delete('/home/chris/here');
-    }
-  });
-
-  it('reports a per-path error without aborting the loop', async () => {
-    mockMkdirCmd.mockRejectedValueOnce(new Error('exists')).mockResolvedValueOnce(true);
-    const envelope: CommandEnvelope = await builtin_mkdir(['a', 'b']);
-    expect(envelope.status).toBe('error');
-    expect(envelope.renderedErr).toContain('exists');
-    expect(mockMkdirCmd).toHaveBeenCalledTimes(2);
-  });
 });
 
 describe('unknown options', () => {
@@ -307,31 +226,9 @@ describe('builtin_mv', () => {
   });
 });
 
-describe('mkdir and mv inside a projection (/proc/tags)', () => {
+describe('mv inside a projection (/proc/tags)', () => {
   const inTags = (p: string): boolean => p.startsWith('/proc/');
   afterEach(() => { mockVirtual.mockImplementation((): boolean => false); });
-
-  it('mkdir makes a tag through the projection, never the store', async () => {
-    mockVirtual.mockImplementation(inTags);
-    mockVfsMkdir.mockResolvedValueOnce({ ok: true as const, value: true as const });
-    const envelope: CommandEnvelope = await builtin_mkdir(['/proc/tags/qc']);
-    expect(mockVfsMkdir).toHaveBeenCalledWith('/proc/tags/qc');
-    expect(mockMkdirCmd).not.toHaveBeenCalled();
-    expect(envelope.status).toBe('ok');
-    expect(envelope.rendered).toContain('mkdir:/proc/tags/qc:true');
-  });
-
-  it("says the projection's refusal in mkdir's words, and takes an existing tag as done under -p", async () => {
-    mockVirtual.mockImplementation(inTags);
-    mockVfsMkdir.mockResolvedValueOnce({ ok: false as const, errno: 'EIO' as const });
-    mockStackPop.mockReturnValueOnce({ message: '[tag_create   ] | qc: File exists' } as never);
-    const refused: CommandEnvelope = await builtin_mkdir(['/proc/tags/qc']);
-    expect(refused.renderedErr).toContain("mkdir: cannot create directory '/proc/tags/qc': File exists");
-    mockVfsList.mockResolvedValueOnce({ ok: true, value: [{ name: 'qc' }] });
-    const existing: CommandEnvelope = await builtin_mkdir(['-p', '/proc/tags/qc']);
-    expect(existing.status).toBe('ok');
-    expect(mockVfsMkdir).toHaveBeenCalledTimes(1);
-  });
 
   it('mv renames inside the projection and passes its refusal on once, never "mv: mv:"', async () => {
     mockVirtual.mockImplementation(inTags);

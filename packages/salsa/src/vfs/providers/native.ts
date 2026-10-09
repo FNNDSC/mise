@@ -19,6 +19,8 @@ import {
   fileContent_getBinary,
   files_touch,
   files_mkdir,
+  folderPath_holder,
+  type FolderPathHolder,
   files_delete,
   files_move,
   type ListingOutcome,
@@ -322,7 +324,19 @@ export class NativeVfsProvider implements VFSProvider {
     if (!parent.ok) return vfs_failFromStack('EIO');
     if (parent.value === null) return vfs_fail('ENOENT');
     if (parent.value.type !== 'dir') return vfs_fail('ENOTDIR');
-    return vfsOutcome_ofBoolean(await files_mkdir(target), 'EIO');
+    return vfsOutcome_ofBoolean(await files_mkdir(target, { cleared: true }), 'EIO');
+  }
+
+  /** @inheritdoc */
+  async mkdirTree(target: string): Promise<VfsOutcome> {
+    // CUBE makes a folder's missing parents with it, in one request, and
+    // would make them over a file too: the nearest thing holding the path
+    // or a parent decides first.
+    const first: Result<FolderPathHolder | null> = await folderPath_holder(target);
+    if (!first.ok) return vfs_failFromStack('EIO');
+    if (first.value?.atTarget === true) return vfs_fail('EEXIST');
+    if (first.value !== null && first.value.holder !== 'dir') return vfs_fail('ENOTDIR');
+    return vfsOutcome_ofBoolean(await files_mkdir(target, { cleared: true }), 'EIO');
   }
 
   /** @inheritdoc */

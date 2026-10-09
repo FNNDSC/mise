@@ -490,6 +490,11 @@ describe('a folder and a file never share a path', () => {
   function store_set(entries: { dirs?: string[]; files?: string[] }): void {
     mockObjCreate.mockImplementation(async (context: string, folder: string) => {
       const at: string = folder.replace(/^folder:/, '').replace(/^\//, '');
+      // A folder CUBE does not have: the lookup says so on the stack and gives nothing.
+      if (at !== '' && !(entries.dirs ?? []).includes(at)) {
+        errorStack.stack_push('error', `Folder not found: /${at}`);
+        return null;
+      }
       const under = (paths: string[] = []): string[] => paths.filter((p: string): boolean => p.slice(0, p.lastIndexOf('/')) === at);
       const rows = context === 'ChRISDirsContext'
         ? under(entries.dirs).map((p: string, i: number) => ({ id: 100 + i, path: p }))
@@ -526,5 +531,13 @@ describe('a folder and a file never share a path', () => {
     expect(await files_move('/a/f.txt', '/a/taken')).toBe(false);
     expect(errorStack.stack_pop()?.message).toContain('Destination exists: /a/taken');
     expect(mockIO.file_moveById).not.toHaveBeenCalled();
+  });
+
+  it('makes missing parents with the folder, a parent not there being an answer, not a failure', async () => {
+    store_set({ dirs: ['a'] });
+    mockIO.folder_create.mockResolvedValue(Ok(true));
+    expect(await files_mkdir('/a/new/deeper')).toBe(true);
+    expect(mockIO.folder_create).toHaveBeenCalledWith('/a/new/deeper');
+    expect(errorStack.stack_getAll()).toEqual([]);
   });
 });

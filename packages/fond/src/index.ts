@@ -14,6 +14,7 @@ export * from './vfs/provider.js';
 export * from './vfs/sort.js';
 export * from './vfs/dispatcher.js';
 export * from './vfs/render.js';
+export * from './vfs/fsViews.js';
 export * from './vfs/outcome.js';
 export * from './vfs/memory.js';
 export * from './vfs/contract.js';

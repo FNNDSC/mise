@@ -442,11 +442,15 @@ export async function pathHolders_find(target: string): Promise<Result<PathHolde
   const holders: PathHolder[] = [];
   const kinds: Array<['dirs' | 'files' | 'links', PathHolder]> = [['dirs', 'dir'], ['files', 'file'], ['links', 'link']];
   for (const [asset, kind] of kinds) {
+    const mark: number = errorStack.checkpoint_mark();
     const outcome: ListingOutcome = await files_listOutcome({ limit: 1000, offset: 0 }, asset, parent);
     if (outcome.kind === 'refused') {
       errorStack.stack_push('error', `Cannot check ${clean}: ${outcome.error.message}`);
       return Err();
     }
+    // A parent that is not there holds nothing: an answer, so what the
+    // lookup said on the way is not left to fail the command.
+    if (outcome.kind === 'missing') errorStack.checkpoint_drain(mark);
     if (outcome.kind !== 'listing') continue;
     // A folder row names itself by `path`; a file or link row by `fname`
     // (a link's ends in `.chrislink`, and its `path` is where it points).
@@ -460,41 +464,69 @@ export async function pathHolders_find(target: string): Promise<Result<PathHolde
   return Ok(holders);
 }
 
+/** The first thing holding a folder path or one of its parents, walking up. */
+export interface FolderPathHolder {
+  /** The path held. */
+  path: string;
+  /** What holds it. */
+  holder: PathHolder;
+  /** Whether that path is the folder asked about, not a parent of it. */
+  atTarget: boolean;
+}
+
 /**
- * Refuses a folder over a path a file or link holds: the target, or any
- * folder above it CUBE would make on the way (it makes missing parents with
- * the folder).
+ * What already holds a folder path, or the nearest parent of it that is
+ * held: a folder there ends the walk, as does a file or a link, which no
+ * folder may be made over or under (CUBE would make one anyway, and
+ * deleting it later takes the file's record with it, CUBE #732).
  *
- * @param folderPath - The folder to make.
- * @returns True when the path is clear; false with the reason stacked.
+ * @param folderPath - The folder's absolute path.
+ * @returns The first holder walking up, null when nothing up to the root
+ *   holds any of it, or Err when a parent could not be read (stacked).
  */
-async function folderPath_clear(folderPath: string): Promise<boolean> {
-  let at: string = folderPath.length > 1 && folderPath.endsWith('/') ? folderPath.slice(0, -1) : folderPath;
+export async function folderPath_holder(folderPath: string): Promise<Result<FolderPathHolder | null>> {
+  const target: string = folderPath.length > 1 && folderPath.endsWith('/') ? folderPath.slice(0, -1) : folderPath;
+  let at: string = target;
   while (at !== '/' && at !== '') {
     const holders: Result<PathHolder[]> = await pathHolders_find(at);
-    if (!holders.ok) return false;
-    if (holders.value.includes('dir')) return true;
+    if (!holders.ok) return Err();
     if (holders.value.length > 0) {
-      errorStack.stack_push('error', at === folderPath
-        ? `File exists: a ${holders.value[0]} already holds ${at}`
-        : `Not a directory: a ${holders.value[0]} holds ${at}`);
-      return false;
+      const holder: PathHolder = holders.value.includes('dir') ? 'dir' : holders.value[0];
+      return Ok({ path: at, holder, atTarget: at === target });
     }
     at = path.posix.dirname(at);
   }
-  return true;
+  return Ok(null);
+}
+
+/**
+ * Whether a folder may be made at a path: no file or link holds it or any
+ * parent of it. Says why not on the error stack.
+ *
+ * @param folderPath - The folder's absolute path.
+ * @returns True when it may.
+ */
+async function folderPath_clear(folderPath: string): Promise<boolean> {
+  const first: Result<FolderPathHolder | null> = await folderPath_holder(folderPath);
+  if (!first.ok) return false;
+  if (first.value === null || first.value.holder === 'dir') return true;
+  errorStack.stack_push('error', first.value.atTarget
+    ? `File exists: a ${first.value.holder} already holds ${first.value.path}`
+    : `Not a directory: a ${first.value.holder} holds ${first.value.path}`);
+  return false;
 }
 
 /**
  * Creates a new folder (directory) at the specified ChRIS path.
  *
  * @param folderPath - The full ChRIS path for the new folder.
+ * @param options - `cleared` when the caller has already found no file or link holding the path or a parent of it.
  * @returns A Promise resolving to true on success, false on failure.
  */
-export async function files_mkdir(folderPath: string): Promise<boolean> {
+export async function files_mkdir(folderPath: string, options: { cleared?: boolean } = {}): Promise<boolean> {
   // A folder is never made over a file: deleting it later would take the
-  // file's record with it (CUBE #732).
-  if (!(await folderPath_clear(folderPath))) return false;
+  // file's record with it (CUBE #732). A caller that has looked already says so.
+  if (options.cleared !== true && !(await folderPath_clear(folderPath))) return false;
   const result: Result<boolean> = await chrisIO.folder_create(folderPath);
 
   if (!result.ok) {

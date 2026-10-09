@@ -385,6 +385,21 @@ describe('output redirection', () => {
     expect(mockAppendFile).toHaveBeenCalledWith('out.txt', expect.any(Buffer));
   });
 
+  it('numbers the rows a redirected listing answered with, as the listing itself would', async () => {
+    const { answerAdapters_register } = await import('../src/session/answerAdapters.js');
+    const { answer_get } = await import('../src/session/answer.js');
+    answerAdapters_register();
+    mockPluginExecutable.mockResolvedValueOnce({
+      status: 'ok',
+      rendered: 'a/  b\n',
+      model: { kind: 'fs.listing', data: [{ path: '/home/chris', items: [{ name: 'a', type: 'dir' }, { name: 'b', type: 'file' }] }] },
+    } as never);
+    await line_execute('listme > out.txt');
+    expect(mockWriteFile).toHaveBeenCalledWith('out.txt', expect.any(Buffer));
+    expect(answer_get()?.source).toBe('listme');
+    expect(answer_get()?.rows.map((row) => row.values[0])).toEqual(['/home/chris/a', '/home/chris/b']);
+  });
+
   it('errors and skips the write when the target is a directory', async () => {
     mockStatSync.mockReturnValue({ isDirectory: () => true } as unknown as ReturnType<typeof mockStatSync>);
     const envelopes = await line_execute('whoami > somedir');

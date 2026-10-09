@@ -12,6 +12,7 @@
  *
  * @module
  */
+import { commands_register, envelopeHandler_get, plainHandler_get, builtinCommand_has, type CommandHandler, type EnvelopeHandler } from './commandRegistry.js';
 import { builtin_rev, builtin_tac, builtin_yes, builtin_seq, builtin_shuf, builtin_rot13 } from '../builtins/games/text.js';
 import { builtin_factor, builtin_primes, builtin_roll, builtin_calc, builtin_units } from '../builtins/games/numbers.js';
 import { builtin_cowsay, builtin_cowthink } from '../builtins/games/cowsay.js';
@@ -159,14 +160,12 @@ async function unknownCommand_delegate(command: string, args: string[]): Promise
   return chiliEnvelope;
 }
 
-type CommandHandler = (args: string[]) => Promise<void | CommandEnvelope>;
 
 /**
  * Shape of a converted builtin: returns its outcome as an envelope instead
  * of printing. The engine layer will consume these directly; the dispatch
  * table below consumes them through {@link envelopeHandler_wrap}.
  */
-type EnvelopeHandler = (args: string[]) => Promise<CommandEnvelope>;
 
 /**
  * Builtins that have been converted to return envelopes, keyed by command
@@ -436,6 +435,10 @@ export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
   pacsretrieve: envelopeHandler_wrap((args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsretrieve', ['-s', ...args])),
 };
 
+// The tables are registered as the engine's commands; every lookup below goes
+// through the registry, never these records.
+commands_register({ envelope: ENVELOPE_HANDLERS, plain: COMMAND_HANDLERS });
+
 export { COMMAND_HANDLERS_KEYS } from '../command-keys.js';
 
 /**
@@ -594,8 +597,8 @@ export async function command_dispatchEnvelope(command: string, args: string[]):
 
 /**
  * Runs the dispatch itself (without the error drain). Expands environment
- * references in the arguments, then checks ENVELOPE_HANDLERS, then
- * unconverted COMMAND_HANDLERS, then /bin plugin/pipeline names, then falls
+ * references in the arguments, then checks the registry's envelope handlers,
+ * then its plain handlers, then /bin plugin/pipeline names, then falls
  * back to chili through the capture bridge.
  *
  * Envelope-speaking handlers are delivered through the active sink here, so
@@ -615,7 +618,7 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
     return await sudoCommand_run(args, commandDispatchEnvelope_run);
   }
 
-  const envelopeHandler: EnvelopeHandler | undefined = ENVELOPE_HANDLERS[command];
+  const envelopeHandler: EnvelopeHandler | undefined = envelopeHandler_get(command);
   if (envelopeHandler) {
     // A handler that resolves without an envelope (as stubbed handlers in
     // tests do) is treated as having produced no output.
@@ -627,7 +630,7 @@ async function commandDispatchEnvelope_run(command: string, args: string[]): Pro
     return envelope;
   }
 
-  const handler: CommandHandler | undefined = COMMAND_HANDLERS[command];
+  const handler: CommandHandler | undefined = plainHandler_get(command);
   if (handler) {
     return handler_runDirect(handler, args);
   }
@@ -784,7 +787,7 @@ async function commandWords_expand(
 
 /**
  * Executes a chell command and captures its output.
- * Consults COMMAND_HANDLERS — the single source of truth — so the pipe path
+ * Consults the command registry — the single source of truth — so the pipe path
  * is always consistent with the direct-execution path.
  *
  * @param commandLine - The command line to execute.
@@ -832,7 +835,7 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
     const helpEnvelope: CommandEnvelope | null = await helpEnvelope_maybe(command, args);
     if (helpEnvelope) return;
 
-    const envelopeHandler: EnvelopeHandler | undefined = ENVELOPE_HANDLERS[command];
+    const envelopeHandler: EnvelopeHandler | undefined = envelopeHandler_get(command);
     if (envelopeHandler) {
       const envelope: CommandEnvelope | undefined = await envelopeHandler(args);
       if (envelope) {
@@ -847,7 +850,7 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<{ te
       return;
     }
 
-    const handler: CommandHandler | undefined = COMMAND_HANDLERS[command];
+    const handler: CommandHandler | undefined = plainHandler_get(command);
     if (handler) {
       await handler(args);
       return;
@@ -892,7 +895,7 @@ export async function pipe_execute(segments: string[]): Promise<CommandEnvelope>
   for (let i: number = 1; i < segments.length; i++) {
     const segment: string = segments[i];
     const word: string = segment.trim().split(/\s+/)[0] ?? '';
-    if (word !== '' && (word in ENVELOPE_HANDLERS || word in COMMAND_HANDLERS)) {
+    if (word !== '' && builtinCommand_has(word)) {
       stdin_set(currentInput.toString('utf-8'));
       try {
         currentInput = (await chellCommand_executeAndCapture(segment)).buffer;

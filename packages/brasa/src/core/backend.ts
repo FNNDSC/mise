@@ -14,6 +14,7 @@
  */
 import type { PromptContext, CubeTelemetry, JobsStateTelemetry, CommandEnvelope, WatchState } from '@fnndsc/menu';
 import type { ReferenceValue } from '../lib/parser.js';
+import type { ListingLook } from '@fnndsc/fond';
 
 /**
  * Who a session is and where: the input a host keys the session by (calypso's
@@ -152,6 +153,8 @@ export interface Backend {
     readonly read: (path: string) => Promise<Buffer>;
     readonly write: (path: string, bytes: Buffer) => Promise<void>;
   };
+  /** How its listings show: the kinds it lists beside the core's, and how a name is coloured. */
+  readonly listingLook?: ListingLook;
   /** Whether the backend is debugging: error messages keep their function stamp. */
   readonly debug_get?: () => boolean;
 }

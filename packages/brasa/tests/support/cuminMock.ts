@@ -31,21 +31,27 @@ function entries_pick(made: Record<string, unknown>, names: ReadonlyArray<string
   return Object.fromEntries(Object.entries(made).filter(([name]): boolean => names.includes(name)));
 }
 
+/** Further fond and menu exports a test fakes. */
+export interface SeamFakes {
+  fond?: Record<string, unknown>;
+  menu?: Record<string, unknown>;
+}
+
 /**
  * Mocks `@fnndsc/cumin` with a factory, and fond and menu with the generic
  * pieces that factory gives (built once, so a fake is one object wherever it
  * is reached).
  *
  * @param factory - The cumin mock's factory.
- * @param menuExtra - Further menu exports the test fakes.
+ * @param fakes - Further fond and menu exports the test fakes.
  */
 export function cuminMock_install(
   factory: () => unknown,
-  menuExtra: Record<string, unknown> = {},
+  fakes: SeamFakes = {},
 ): void {
   let made: Promise<Record<string, unknown>> | null = null;
   const once = (): Promise<Record<string, unknown>> => (made ??= Promise.resolve(factory() as Record<string, unknown>));
   jest.unstable_mockModule('@fnndsc/cumin', once);
-  jest.unstable_mockModule('@fnndsc/fond', async () => ({ ...actualFond, ...entries_pick(await once(), FOND_NAMES) }));
-  jest.unstable_mockModule('@fnndsc/menu', async () => ({ ...actualMenu, ...entries_pick(await once(), MENU_NAMES), ...menuExtra }));
+  jest.unstable_mockModule('@fnndsc/fond', async () => ({ ...actualFond, ...entries_pick(await once(), FOND_NAMES), ...fakes.fond }));
+  jest.unstable_mockModule('@fnndsc/menu', async () => ({ ...actualMenu, ...entries_pick(await once(), MENU_NAMES), ...fakes.menu }));
 }

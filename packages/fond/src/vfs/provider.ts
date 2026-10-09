@@ -48,6 +48,9 @@ export interface VFSItem {
 
   /** Execution status (for job type items). */
   status?: string;
+
+  /** Tags a backend hangs on the item, shown in a long listing as `#tag`. */
+  tags?: string[];
 }
 
 /**

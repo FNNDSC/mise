@@ -12,7 +12,7 @@ npm install @fnndsc/fond
 
 A backend such as ChRIS (CUBE) brings its own client and its own world. The pieces every layer needs, whatever the backend, live here rather than in a backend's package, so a layer that is not about CUBE can use them without loading CUBE (see [docs/backend-neutral.adoc](https://github.com/FNNDSC/mise/blob/main/docs/backend-neutral.adoc)).
 
-fond's one rule: **it depends on nothing in `@fnndsc`**. CI holds it to that (`npm run lint:fond`).
+fond's one rule: **it depends on nothing in `@fnndsc`**. CI holds it to that (`npm run lint:fond`). Its one dependency is `chalk`, for the listing views.
 
 ## What's in it
 
@@ -24,6 +24,9 @@ fond's one rule: **it depends on nothing in `@fnndsc`**. CI holds it to that (`n
 | `VFSProvider`, `VFSItem`, `CpOptions` | The virtual filesystem's contracts: a mount that claims a path prefix and lists, copies and (optionally) reads, writes, makes, removes and renames under it; the items it lists. |
 | `VFSDispatcher` | Routes each filesystem request to the mount that owns the path, or to a fallback. It knows no backend: a backend registers its mounts and names its fallback. |
 | `vfsItems_sort` | Sorts a listing's items by name, size, date or owner without changing the array given. |
+| `grid_render`, `long_render`, `size_format` | A listing as a terminal shows it: `ls`'s grid and `ls -l`'s long view, and sizes for people. |
+| `ListingLook`, `ItemKindLook`, `LISTING_CORE_KINDS`, `LISTING_LOOK_PLAIN` | How a listing shows: the core's kinds (file, folder, link, mount) and a backend's beside them, each with its long-view mark, and how a name is coloured. |
+| `listingItems_sort` | Sorts a listing by one field; a reversed sort keeps equal items in their order. |
 
 ## Using `Result`
 

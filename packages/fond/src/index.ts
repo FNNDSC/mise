@@ -13,3 +13,4 @@ export * from './errorStack.js';
 export * from './vfs/provider.js';
 export * from './vfs/sort.js';
 export * from './vfs/dispatcher.js';
+export * from './vfs/render.js';

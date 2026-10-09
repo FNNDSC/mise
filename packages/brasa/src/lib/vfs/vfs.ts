@@ -12,13 +12,12 @@ import chalk from 'chalk';
 import * as path from 'path';
 import { ambient_publish, ambient_hasListeners } from '../../core/ambient.js';
 import { type ListingItem, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
-import { grid_render, long_render } from '@fnndsc/chili/views/ls.js';
-import { list_applySort } from '@fnndsc/chili/utils/sort.js';
 import { listCache_get, feedTags_byFeed } from '@fnndsc/cumin';
 import { spinner } from '../spinner.js';
 import { error_stripDebugPrefix } from '../../builtins/utils.js';
 import { listingItemsFromVfs_make } from './listing.js';
-import { Result, Ok, Err, errorStack } from '@fnndsc/fond';
+import { Result, Ok, Err, errorStack, grid_render, long_render, listingItems_sort, LISTING_LOOK_PLAIN, type ListingLook } from '@fnndsc/fond';
+import { backendInstalled_get } from '../../core/backend.js';
 
 /**
  * Virtual File System Router.
@@ -117,7 +116,7 @@ export class VFS {
         if (cached && (cached.fresh || ambient_hasListeners())) {
           if (!cached.fresh) void this.listing_revalidate(effectivePath);
           const sortField: 'name' | 'size' | 'date' | 'owner' = options.sort || 'name';
-          const sortedItems: ListingItem[] = list_applySort(cached.data, sortField, options.reverse);
+          const sortedItems: ListingItem[] = listingItems_sort(cached.data, sortField, options.reverse);
           return Ok({ path: effectivePath, items: sortedItems, fresh: cached.fresh });
         }
 
@@ -295,9 +294,10 @@ export class VFS {
 
     // Render based on options. A long listing over feeds shows their tags:
     // one map for the whole listing, never a read per feed.
+    const look: ListingLook = backendInstalled_get()?.listingLook ?? LISTING_LOOK_PLAIN;
     let rendered: string = options.long
-      ? `${long_render(await feedTags_annotate(result.value), { human: !!options.human })}\n`
-      : `${grid_render(result.value, { oneColumn: !!options.oneColumn })}\n`;
+      ? `${long_render(await feedTags_annotate(result.value), { human: !!options.human }, look)}\n`
+      : `${grid_render(result.value, { oneColumn: !!options.oneColumn }, look)}\n`;
 
     // Served stale: say so. The refresh is already running behind this
     // answer and reaches every surface as an ambient listing.

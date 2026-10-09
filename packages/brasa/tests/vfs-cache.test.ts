@@ -17,6 +17,9 @@ const mockCacheInvalidate = jest.fn((key: string) => { cacheStore.delete(key); }
 const mockStackPush = jest.fn();
 const mockStackSearch = jest.fn<(needle: string) => string[]>(() => []);
 const mockFeedTagsByFeed = jest.fn(async (): Promise<{ ok: boolean; value?: Map<number, string[]> }> => ({ ok: true, value: new Map() }));
+const mockGridRender = jest.fn(() => 'GRID');
+const mockLongRender = jest.fn(() => 'LONG');
+const mockApplySort = jest.fn((items: unknown) => items);
 cuminMock_install(() => ({
   feedTags_byFeed: mockFeedTagsByFeed,
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
@@ -36,22 +39,14 @@ cuminMock_install(() => ({
     checkpoint_drain: jest.fn(() => []),
     scope_run: (fn: () => unknown) => fn(),
   },
-}));
+}), { fond: { grid_render: mockGridRender, long_render: mockLongRender, listingItems_sort: mockApplySort } });
 
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
-const mockGridRender = jest.fn(() => 'GRID');
-const mockLongRender = jest.fn(() => 'LONG');
 const mockBlindParentsTake = jest.fn((): string[] => []);
 jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
   pathMapper_get: () => ({ blindParents_take: mockBlindParentsTake }),
 }));
 
-jest.unstable_mockModule('@fnndsc/chili/views/ls.js', () => ({
-  grid_render: mockGridRender,
-  long_render: mockLongRender,
-}));
-const mockApplySort = jest.fn((items: unknown) => items);
-jest.unstable_mockModule('@fnndsc/chili/utils/sort.js', () => ({ list_applySort: mockApplySort }));
 const mockSpinner = { start: jest.fn(), stop: jest.fn(), updateMessage: jest.fn() };
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({ spinner: mockSpinner }));
 jest.unstable_mockModule('../src/builtins/utils.js', () => ({
@@ -62,6 +57,8 @@ const ok = <T>(value: T) => ({ ok: true as const, value });
 const err = () => ({ ok: false as const });
 
 const { VFS } = await import('../src/lib/vfs/vfs.js');
+// No backend is installed here, so a listing shows with the core's plain look.
+const { LISTING_LOOK_PLAIN } = await import('@fnndsc/fond');
 
 const item = (name: string) => ({ name, type: 'dir', size: 0, owner: 'chris', date: '' });
 
@@ -175,7 +172,7 @@ describe('VFS.list rendering and refresh', () => {
 
     const long = await new VFS().list(undefined, { long: true, human: true });
     expect(long.rendered).toContain('LONG');
-    expect(mockLongRender).toHaveBeenCalledWith([item('a')], { human: true });
+    expect(mockLongRender).toHaveBeenCalledWith([item('a')], { human: true }, LISTING_LOOK_PLAIN);
   });
 
   it('renders nothing for an empty listing', async () => {

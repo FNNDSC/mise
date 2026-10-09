@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 // Real commandArgs_process runs; stub its load-time boundary.
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
@@ -12,7 +13,7 @@ jest.unstable_mockModule('../src/session/index.js', () => ({ session: {} }));
 
 const mockStackClear = jest.fn();
 const mockAllOfType = jest.fn(() => [] as string[]);
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_clear: mockStackClear, allOfType_get: mockAllOfType, stack_push: jest.fn(), stack_pop: jest.fn() },

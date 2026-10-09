@@ -10,12 +10,13 @@
  * @module
  */
 import chalk from 'chalk';
-import { CommandEnvelope, envelope_ok, envelope_error, errorStack, type Result } from '@fnndsc/cumin';
 import { commandArgs_process, ParsedArgs } from '../utils.js';
 import { computeResources_fetchList, ComputeListResult } from '@fnndsc/chili/commands/compute/list.js';
 import { computeFields_fetch } from '@fnndsc/chili/commands/compute/fields.js';
 import { computeList_render } from '@fnndsc/chili/views/compute.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
+import { errorStack, type Result } from '@fnndsc/fond';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Handles compute commands.

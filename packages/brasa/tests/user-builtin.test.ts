@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const mockCreate = jest.fn();
 const mockFind = jest.fn();
@@ -11,7 +12,7 @@ jest.unstable_mockModule('@fnndsc/chili/commands/users/local.js', () => ({
   localAccount_find: mockFind,
   localAccount_action: mockAction,
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   errorStack: { stack_pop: mockErrorPop },
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),

@@ -8,6 +8,7 @@
  * hold exits non-zero, because that is the whole point of the verb.
  */
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 /** The cohort the fake session holds. */
 let cohort: { version: number; name: string | null; feed: null; series: Array<Record<string, unknown>> } =
@@ -20,7 +21,7 @@ let statusAsks: number = 0;
 /** What a listing answers for a path. */
 let listings: Map<string, Array<{ name: string; type?: string }>> = new Map();
 
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
   procCache_get: () => ({

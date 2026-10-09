@@ -14,9 +14,9 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok, procCache_get, type ProcFeed, type ProcWarmupProgress, type SingleContext } from '@fnndsc/cumin';
+import { procCache_get, type ProcFeed, type ProcWarmupProgress, type SingleContext } from '@fnndsc/cumin';
 import { context_getSingle } from '@fnndsc/salsa';
-import { SESSION_MOTD_MODEL_KIND, type SessionMotd, type MotdIndex } from '@fnndsc/menu';
+import { SESSION_MOTD_MODEL_KIND, type SessionMotd, type MotdIndex, CommandEnvelope, envelope_ok } from '@fnndsc/menu';
 import { jobsState_derive, type JobsState } from '../../chris/jobsState.js';
 import { fortune_random } from './fortune.js';
 

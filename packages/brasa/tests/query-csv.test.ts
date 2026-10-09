@@ -8,6 +8,7 @@
  * studies alone drops exactly the rows an audit is asking about.
  */
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import { pacsAnswer_toCsv, pacsAnswer_toTable } from '../src/builtins/net/query.csv.js';
 
 /** One study, with the fields the table reads. */
@@ -184,7 +185,7 @@ describe('csvFile_write', () => {
     // The write invalidates the folder's cached listing, so the cache is
     // part of the seam now: a table CUBE holds that `ls` cannot see is the
     // defect this covers.
-    jest.unstable_mockModule('@fnndsc/cumin', () => ({
+    cuminMock_install(() => ({
       errorStack: { stack_pop: jest.fn() },
       listCache_get: (): { cache_invalidate: (path: string) => void } => ({ cache_invalidate: invalidate }),
     }));

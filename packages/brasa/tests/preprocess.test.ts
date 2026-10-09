@@ -8,11 +8,12 @@
  */
 
 import { jest, describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import { mkdtempSync, writeFileSync, rmSync } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   Ok: <T>(value: T) => ({ ok: true, value }),

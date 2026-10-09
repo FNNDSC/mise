@@ -9,10 +9,11 @@
  * @module
  */
 import { createHash } from 'node:crypto';
-import { CommandEnvelope, envelope_ok, envelope_error, errorStack, type Result, type StackMessage } from '@fnndsc/cumin';
 import { files_cat, files_catBinary } from '@fnndsc/chili/commands/fs/cat.js';
 import chalk from 'chalk';
 import { path_resolve, error_stripDebugPrefix } from '../utils.js';
+import { errorStack, type Result, type StackMessage } from '@fnndsc/fond';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** Bytes `xxd` shows when not told. */
 export const XXD_DEFAULT: number = 256;

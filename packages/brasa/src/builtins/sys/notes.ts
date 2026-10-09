@@ -16,8 +16,7 @@
 import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import path from 'node:path';
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
-import { SESSION_NOTES_MODEL_KIND, type NotesChange, type NotesEntry, type NotesRelease, type SessionNotes } from '@fnndsc/menu';
+import { SESSION_NOTES_MODEL_KIND, type NotesChange, type NotesEntry, type NotesRelease, type SessionNotes, CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import chalk from 'chalk';
 
 /** The packages whose notes an operator reads, in the order a release lists them. */

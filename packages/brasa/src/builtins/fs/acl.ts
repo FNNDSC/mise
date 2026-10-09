@@ -13,15 +13,13 @@
  *
  * @module
  */
-import {
-  CommandEnvelope, envelope_ok, envelope_error, errorStack,
-  feed_share, feedShare_group, feedShare_revoke, feedAccess_read, feed_makePublic, feed_makePrivate,
-  type FeedAccess, type Result, type StackMessage,
-} from '@fnndsc/cumin';
+import { feed_share, feedShare_group, feedShare_revoke, feedAccess_read, feed_makePublic, feed_makePrivate, type FeedAccess } from '@fnndsc/cumin';
 import {
   aclTarget_resolve, acl_render, chmodArgs_parse, setfaclArgs_parse,
   GETFACL_USAGE, type AclEntry, type AclRemoval, type SetfaclArgs,
 } from './acl.args.js';
+import { errorStack, type Result, type StackMessage } from '@fnndsc/fond';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Adds or modifies an access control entry on a feed.

@@ -6,9 +6,10 @@ import chalk from 'chalk';
 import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
 import { files_fetchList } from '@fnndsc/chili/commands/files/list.js';
 import { fileFields_fetch } from '@fnndsc/chili/commands/files/fields.js';
-import { FilteredResourceData, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { FilteredResourceData } from '@fnndsc/cumin';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
+import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Generic handler for file group commands (files, links, dirs).

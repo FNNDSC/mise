@@ -5,10 +5,11 @@
  * listing and status report are stubbed at the module seam.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const mockQueriesList = jest.fn();
 const mockStatusForQuery = jest.fn();
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) =>

@@ -5,11 +5,11 @@
  *
  * @module
  */
-import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 import { VFSProvider, VFSItem, CpOptions, plugins_listAll, pipelines_getAll, PipelineRecord } from '@fnndsc/salsa';
 import { builtinCommands_list, commandSummary_get } from '../../../builtins/help.js';
 import { gamesShelf_names } from '../../../builtins/games/shelf.js';
 import { staticVfs_read, staticVfs_readBinary } from './static_content.js';
+import { Result, Ok, Err, errorStack } from '@fnndsc/fond';
 
 /**
  * Static virtual filesystem provider for command and builtin paths.

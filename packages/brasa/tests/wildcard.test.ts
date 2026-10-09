@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const mockCacheGet = jest.fn();
 const mockCacheSet = jest.fn();
@@ -16,7 +17,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 jest.unstable_mockModule('@fnndsc/chili/utils/cli.js', () => ({
   path_resolveChrisFs: mockResolveChrisFs,
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   Err: (): { ok: false } => ({ ok: false }),
   Ok: <T>(value: T): { ok: true; value: T } => ({ ok: true, value }),
   errorStack: { stack_push: jest.fn() },

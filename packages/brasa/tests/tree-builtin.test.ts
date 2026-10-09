@@ -1,10 +1,11 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 // Real commandArgs_process / path_resolve run; stub the load-time boundary.
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(async () => ({ user: 'chris', folder: '/home/chris' })),
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }), errorStack: { stack_pop: jest.fn(() => undefined) } }));
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));

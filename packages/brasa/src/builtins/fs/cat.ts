@@ -13,8 +13,6 @@ import chalk from 'chalk';
 import { highlight, supportsLanguage, type Theme } from 'cli-highlight';
 import { files_cat as chefs_cat_cmd, files_catBinary as chefs_catBinary_cmd } from '@fnndsc/chili/commands/fs/cat.js';
 import { cat_render } from '@fnndsc/chili/views/fs.js';
-import { errorStack, Result, StackMessage, envelope_ok, envelope_error } from '@fnndsc/cumin';
-import type { CommandEnvelope } from '@fnndsc/cumin';
 import { path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { sink_get } from '../../core/sink.js';
 import {
@@ -23,6 +21,8 @@ import {
   type CatArguments,
   type CatHighlightMode,
 } from './cat.args.js';
+import { errorStack, Result, StackMessage } from '@fnndsc/fond';
+import { envelope_ok, envelope_error, type CommandEnvelope } from '@fnndsc/menu';
 
 /** Delay before a slow group projection becomes visible as progress. */
 const GROUP_PROGRESS_DELAY_MS: number = 300;

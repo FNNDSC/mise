@@ -3,9 +3,10 @@
  * door; the builtin's rendering and options are what is exercised.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown): CommandEnvelope => ({ status: 'ok', rendered, model } as CommandEnvelope),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string): CommandEnvelope => {
     const envelope: CommandEnvelope = { status: 'error', rendered };
@@ -34,7 +35,6 @@ jest.unstable_mockModule('@fnndsc/cumin/request-ledger', () => ({
   requestLedger_snapshot: mockSnapshot,
   requestLedger_reset: mockReset,
 }));
-jest.unstable_mockModule('@fnndsc/menu', () => ({ NET_STATS_MODEL_KIND: 'net.stats' }));
 
 const { builtin_netstat, netstat_render } = await import('../src/builtins/net/netstat.js');
 

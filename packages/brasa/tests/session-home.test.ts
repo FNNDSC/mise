@@ -2,6 +2,7 @@
  * @file A first session begins at the identity's home, not at `/`.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const current_get = jest.fn<(context: string) => Promise<string | null>>();
 const current_set = jest.fn<(context: string, value: string) => Promise<boolean>>(async () => true);
@@ -9,7 +10,7 @@ const connection_init = jest.fn(async () => ({ name: 'connection' }));
 const ChRISURL_get = jest.fn<() => Promise<string | null>>(async () => null);
 const ChRISuser_get = jest.fn<() => Promise<string | null>>(async () => null);
 
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   chrisConnection: { name: 'singleton' },
   chrisConnection_init: connection_init,
   NodeStorageProvider: class {},

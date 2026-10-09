@@ -3,11 +3,12 @@
  * QR encoder's arithmetic.
  */
 import { jest, describe, it, expect } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const mockUrl = jest.fn(async (): Promise<string | null> => 'http://cube.example:8000/api/v1/');
 const mockUser = jest.fn(async (): Promise<string | null> => 'ada');
 const mockCatBinary = jest.fn(async (_path: string): Promise<{ ok: boolean; value?: Buffer }> => ({ ok: true, value: Buffer.from('hello') }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   chrisContext: { ChRISURL_get: mockUrl, ChRISuser_get: mockUser },

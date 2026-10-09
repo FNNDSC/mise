@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const mockVfsRead = jest.fn(async (_p: string): Promise<{ ok: boolean; value?: string }> => ({ ok: true, value: 'the note' }));
 const mockVfsWrite = jest.fn(async (_p: string, _c: string): Promise<boolean> => true);
@@ -12,7 +13,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 }));
 const mockStackPop = jest.fn(() => undefined as { message: string } | undefined);
 const mockInvalidate = jest.fn();
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_pop: mockStackPop, stack_search: () => [] },

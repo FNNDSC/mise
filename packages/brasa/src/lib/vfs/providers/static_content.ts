@@ -7,7 +7,6 @@
  * @module
  */
 
-import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 import { commandHelp_get } from '../../../builtins/help.js';
 import type { PluginInfoModel } from '@fnndsc/menu';
 import {
@@ -21,6 +20,7 @@ import {
   binPipelineSummary_try,
   type BinPipelineSummary,
 } from './binEntry.js';
+import { Result, Ok, Err, errorStack } from '@fnndsc/fond';
 
 /**
  * Reads virtual file content under command and builtin static paths.

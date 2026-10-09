@@ -4,6 +4,7 @@
  * @module
  */
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const cacheGet = jest.fn();
 const clientGet = jest.fn();
@@ -14,7 +15,7 @@ const stackPush = jest.fn();
  * parameter list past a page — is pinned in cumin's contract tests, where
  * it belongs. What this file tests is the /bin path around them.
  */
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   Ok: (value: unknown) => ({ ok: true, value }),
   Err: () => ({ ok: false }),
   items_get: (list: { getItems?: () => unknown[] } | null | undefined) => {

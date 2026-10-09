@@ -8,8 +8,8 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { text_input } from './stdin.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** The brain, as ASCII has long drawn it. */
 export const BRAIN: ReadonlyArray<string> = [

@@ -5,13 +5,13 @@
  * Aliases: plugininstance / plugininstances / instance / instances / job / jobs
  */
 import chalk from 'chalk';
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
 import { pluginInstances_fetchList, PluginInstanceListResult } from '@fnndsc/chili/commands/plugininstances/list.js';
 import { pluginInstanceFields_fetch } from '@fnndsc/chili/commands/plugininstances/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import type { PluginInstanceRow } from '../../api/models.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Projects a listed row onto the wire's instance model: the fields the

@@ -1,4 +1,5 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import type { ChrisIdentity, CommandEnvelope, Result } from '@fnndsc/cumin';
 import type { DownloadSummary } from '@fnndsc/chili/commands/fs/download.js';
 import type { ShellArguments } from '../src/lib/parser.js';
@@ -89,7 +90,7 @@ jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
 // Mock cumin
 const dicomPayload = await import('@fnndsc/cumin/dicom-payload');
 const pacsGrammar = await import('@fnndsc/salsa/pacs-grammar');
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   feedStatus_ofCounts: (): string => 'finishedSuccessfully',
   feed_share: jest.fn(async () => ({ ok: true, value: true })),
   plugin_find: jest.fn(async () => null),

@@ -1,4 +1,5 @@
 import { describe, it, expect, jest } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 // The salsa/cumin dist barrels defeat jest's CJS export scanner
 // (RangeError); the projection under test needs none of their runtime.
@@ -6,7 +7,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   feedGraphData_ensure: jest.fn(),
   feedGraph_build: jest.fn(),
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string) => ({ status: 'error', rendered }),
   procCache_get: () => ({ feedLoad_of: () => null }),

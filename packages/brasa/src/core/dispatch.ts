@@ -23,10 +23,8 @@ import { stdin_set } from '../builtins/games/stdin.js';
 
 import { writeFileSync, appendFileSync } from 'fs';
 import chalk from 'chalk';
-import {
-  builtin_pipeline,
-  error_stripDebugPrefix,
-} from '../builtins/index.js';
+import { builtin_pipeline } from '../builtins/res/pipeline.js';
+import { error_stripDebugPrefix } from '../builtins/utils.js';
 import { builtin_executePlugin } from '../builtins/pluginExecute.js';
 
 import { shellWords_expand } from '../builtins/wildcard.js';
@@ -37,8 +35,6 @@ import {
   args_checkHasHelpFlag,
 } from '../builtins/help.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
-import { Result, errorStack, Ok, Err, StackMessage, envelope_error } from '@fnndsc/cumin';
-import type { CommandEnvelope } from '@fnndsc/cumin';
 import { envelopeHandler_wrap, envelope_deliver, sink_get, PipeCaptureSink, sinkScope_run } from './sink.js';
 import { reference_refusal, reference_resolve, unresolvedStands_get, verbInHand_set } from './expansion.js';
 import { answer_note, answerConsulted_take, type SessionAnswer } from '../session/answer.js';
@@ -58,8 +54,9 @@ import {
   pathnameExpansion_isEligible,
   type RedirectInfo,
 } from './preprocess.js';
-import type { ListingItem } from '@fnndsc/menu';
+import { type ListingItem, envelope_error, type CommandEnvelope } from '@fnndsc/menu';
 import { chiliCommand_run, chiliCommand_exists, chiliDelegationNotice_build } from './chiliDelegate.js';
+import { Result, errorStack, Ok, Err, StackMessage } from '@fnndsc/fond';
 
 export { chiliCommand_run };
 

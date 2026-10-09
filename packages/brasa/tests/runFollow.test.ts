@@ -15,10 +15,11 @@
  * @module
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const feedAdd = jest.fn();
 const instanceAdd = jest.fn();
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   procCache_get: (): unknown => ({ feed_add: feedAdd, instance_add: instanceAdd }),
 }));
 const watchAdd = jest.fn(() => 'live');

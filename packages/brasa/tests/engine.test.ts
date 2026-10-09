@@ -4,11 +4,13 @@
  * and engine creation.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { coreBuiltins_mock } from './support/coreBuiltins.js';
+import { cuminMock_install } from './support/cuminMock.js';
 
 // Minimal cumin surface used by the dispatch layer (Result helpers + error stack).
 const Ok = <T>(value: T): { ok: true; value: T } => ({ ok: true, value });
 const Err = (): { ok: false } => ({ ok: false });
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   feedStatus_ofCounts: (): string => 'finishedSuccessfully',
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
@@ -91,7 +93,7 @@ const BUILTIN_NAMES = [
   'builtin_timing', 'builtin_id', 'builtin_whoami', 'builtin_whereami', 'builtin_version', 'builtin_fortune', 'builtin_weather', 'builtin_motd', 'builtin_date', 'builtin_cal',
   'builtin_debug', 'builtin_help', 'builtin_tree', 'builtin_du', 'builtin_store', 'builtin_setfacl', 'builtin_getfacl', 'builtin_setfattr', 'builtin_getfattr',
 ];
-jest.unstable_mockModule('../src/builtins/index.js', () => {
+function builtinStubs_make(): Record<string, unknown> {
   const exports: Record<string, unknown> = {};
   for (const name of BUILTIN_NAMES) exports[name] = jest.fn();
   exports.builtin_ls = mockLs;
@@ -99,7 +101,10 @@ jest.unstable_mockModule('../src/builtins/index.js', () => {
   exports.builtin_pipeline = mockPipeline;
   exports.error_stripDebugPrefix = (s: string): string => s;
   return exports;
-});
+}
+jest.unstable_mockModule('../src/builtins/index.js', builtinStubs_make);
+coreBuiltins_mock(builtinStubs_make());
+jest.unstable_mockModule('../src/builtins/res/pipeline.js', () => ({ builtin_pipeline: mockPipeline }));
 
 const mockExecutePlugin = jest.fn();
 jest.unstable_mockModule('../src/builtins/pluginExecute.js', () => ({ builtin_executePlugin: mockExecutePlugin }));
@@ -109,6 +114,7 @@ jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({ shellWords_expa
 const mockHelpRender = jest.fn((cmd: string) => `HELP:${cmd}\n`);
 const mockHasHelpFlag = jest.fn(() => false);
 jest.unstable_mockModule('../src/builtins/help.js', () => ({
+  builtin_help: jest.fn(),
   help_render: mockHelpRender,
   commandHelp_get: jest.fn(() => 'known help'),
   pipelineExecutableHelp_render: jest.fn((name: string): string => `PIPELINE HELP:${name}\n`),

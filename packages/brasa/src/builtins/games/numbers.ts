@@ -7,8 +7,8 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { text_input } from './stdin.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** The most primes `primes` lists in one call. */
 export const PRIMES_MAX: number = 10_000;

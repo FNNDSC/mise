@@ -5,12 +5,12 @@
  * Singular/plural aliases: tag / tags
  */
 import chalk from 'chalk';
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
 import { tags_fetchList, TagListResult } from '@fnndsc/chili/commands/tags/list.js';
 import { tagFields_fetch } from '@fnndsc/chili/commands/tags/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Builtin handler for the `tag` command.

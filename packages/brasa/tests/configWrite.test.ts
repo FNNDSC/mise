@@ -7,6 +7,7 @@
  * a fresh upload is refused, and refusals are honest.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const uploadPath = jest.fn<(local: string, remote: string) => Promise<boolean>>();
 const replaceContent = jest.fn<(remote: string, local: string) => Promise<{ success: boolean }>>();
@@ -14,7 +15,7 @@ const replaceContent = jest.fn<(remote: string, local: string) => Promise<{ succ
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   files_uploadPath: uploadPath,
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _model?: unknown, renderedErr?: string) =>
     ({ status: 'error', rendered, renderedErr }),

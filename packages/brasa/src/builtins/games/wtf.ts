@@ -6,10 +6,10 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import chalk from 'chalk';
 import { ACRONYMS } from './wtf.data.js';
 import { text_input } from './stdin.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** The meanings of a term, or none. */
 export function wtf_lookup(term: string): ReadonlyArray<string> {

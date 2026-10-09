@@ -16,7 +16,7 @@ import { builtin_netstat } from '../builtins/net/netstat.js';
 import { builtin_proc } from '../builtins/proc.js';
 import { chiliCommand_run } from '../core/chiliDelegate.js';
 import { envelopeHandler_wrap } from '../core/sink.js';
-import type { CommandEnvelope } from '@fnndsc/cumin';
+import type { CommandEnvelope } from '@fnndsc/menu';
 
 const envelope: Record<string, EnvelopeHandler> = {
   setfacl: builtin_setfacl,

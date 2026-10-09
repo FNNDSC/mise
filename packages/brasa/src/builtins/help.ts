@@ -7,9 +7,9 @@
  */
 import { gamesShelf_render, gamesShelf_names } from './games/shelf.js';
 import chalk from 'chalk';
-import type { CommandEnvelope } from '@fnndsc/cumin';
 import { CAT_USAGE } from './fs/cat.args.js';
 import { commands_register, commandHelpEntry_get, helpTopic_names, type CommandHelp } from '../core/commandRegistry.js';
+import type { CommandEnvelope } from '@fnndsc/menu';
 
 
 /**

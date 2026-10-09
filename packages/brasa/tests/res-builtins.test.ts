@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 // Satisfy builtins/utils' heavy imports so the real commandArgs_process loads.
 const mockErrorPop = jest.fn();
@@ -7,7 +8,7 @@ jest.unstable_mockModule('../src/core/elevation.js', () => ({
   authorizationFailure_is: (message: string): boolean => message.includes('403'),
   sudoHint_build: (command: string, args: string[]): string => `Try: sudo ${[command, ...args].join(' ')}\n`,
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   errorStack: { stack_pop: mockErrorPop },
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),}));

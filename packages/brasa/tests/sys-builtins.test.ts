@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import type { ChrisIdentity, ChrisUser, CommandEnvelope, Result } from '@fnndsc/cumin';
 
 const mockContext = jest.fn();
@@ -10,7 +11,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   feeds_list: mockFeedsList,
   pluginInstances_list: mockInstancesList,
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   currentIdentity_get: mockCurrentIdentity,
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },

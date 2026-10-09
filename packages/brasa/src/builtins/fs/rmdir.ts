@@ -10,11 +10,13 @@
  * @module
  */
 import chalk from 'chalk';
-import { CommandEnvelope, envelope_ok, envelope_error, errorStack, listCache_get, type Result, type StackMessage } from '@fnndsc/cumin';
+import { listCache_get } from '@fnndsc/cumin';
 import { vfsDispatcher, type VFSItem } from '@fnndsc/salsa';
 import { path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { folder_checkExists } from './folderExists.js';
 import { rm_run } from './rm.js';
+import { errorStack, type Result, type StackMessage } from '@fnndsc/fond';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** Outcome of one rmdir target, for the envelope model. */
 export interface RmdirOutcome {

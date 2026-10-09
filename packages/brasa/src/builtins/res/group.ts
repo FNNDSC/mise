@@ -6,11 +6,6 @@
  * Singular/plural aliases: group / groups
  */
 import chalk from 'chalk';
-import {
-  CommandEnvelope,
-  envelope_ok,
-  envelope_error,
-} from '@fnndsc/cumin';
 import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
 import { groups_fetchList, GroupListResult } from '@fnndsc/chili/commands/groups/list.js';
 import { groupFields_fetch } from '@fnndsc/chili/commands/groups/fields.js';
@@ -26,6 +21,7 @@ import {
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { authorizationFailure_is, sudoHint_build } from '../../core/elevation.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Renders an error for a failed group membership operation.

@@ -9,7 +9,7 @@
  */
 
 import chalk from 'chalk';
-import { Client, CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { Client } from '@fnndsc/cumin';
 import { session } from '../../session/index.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { path_resolve } from '../utils.js';
@@ -20,6 +20,7 @@ import {
   pacsServer_resolve,
   series_cubePathGet,
 } from './pacsUtils.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Resolves CUBE FS paths and file counts for all series under one or more PACS VFS paths.

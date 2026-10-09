@@ -4,16 +4,9 @@
  */
 import chalk from 'chalk';
 import { context_getSingle } from '@fnndsc/salsa';
-import {
-  currentIdentity_get,
-  envelope_error,
-  envelope_ok,
-  type ChrisGroup,
-  type ChrisIdentity,
-  type CommandEnvelope,
-  type Result,
-  type SingleContext,
-} from '@fnndsc/cumin';
+import { currentIdentity_get, type ChrisGroup, type ChrisIdentity, type SingleContext } from '@fnndsc/cumin';
+import type { Result } from '@fnndsc/fond';
+import { envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/menu';
 
 /** A Unix-style group entry projected from CUBE identity data. */
 interface PosixGroupIdentity {

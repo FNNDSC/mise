@@ -9,8 +9,8 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import chalk from 'chalk';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 const MONTHS_LONG: readonly string[] = [
   'January', 'February', 'March', 'April', 'May', 'June',

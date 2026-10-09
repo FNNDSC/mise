@@ -2,6 +2,7 @@
  * @file Unit tests for the `setfattr` / `getfattr` builtins. The kernel is mocked.
  */
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 type Tags = { ok: boolean; value?: Array<{ id: number; name: string; color: string }> };
 const mockList = jest.fn<(feedId: number) => Promise<Tags>>();
@@ -9,7 +10,7 @@ const mockAdd = jest.fn<(feedId: number, name: string) => Promise<{ ok: boolean;
 const mockRemove = jest.fn<(feedId: number, name: string) => Promise<{ ok: boolean; value?: boolean }>>();
 const mockStackPop = jest.fn<() => { type: string; message: string } | undefined>();
 
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   feedTags_list: mockList,
   feedTag_add: mockAdd,
   feedTag_remove: mockRemove,

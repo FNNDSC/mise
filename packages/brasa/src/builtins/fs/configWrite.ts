@@ -17,7 +17,7 @@ import chalk from 'chalk';
 import { files_uploadPath } from '@fnndsc/salsa';
 import { file_replaceContent, type EditResult } from '@fnndsc/chili/commands/fs/edit.js';
 import { path_resolve } from '../utils.js';
-import { envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/cumin';
+import { envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/menu';
 
 /** A config document is a note, not a dataset. */
 const CONFIG_WRITE_LIMIT: number = 256 * 1024;

@@ -3,7 +3,8 @@
  * where the original ran forever, and reads what was piped in.
  */
 import { jest, describe, it, expect } from '@jest/globals';
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+import { cuminMock_install } from './support/cuminMock.js';
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
 }));

@@ -8,9 +8,9 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import chalk from 'chalk';
 import { WEATHER_DEFAULT_PLACE, place_find, type WeatherFetch, type WeatherPlace } from '../sys/weather.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /* --------------------------------------------------------------- moon */
 

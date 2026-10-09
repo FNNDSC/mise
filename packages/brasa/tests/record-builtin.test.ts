@@ -8,11 +8,12 @@
  * operator did not write.
  */
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 /** What was written, by path. */
 const written: Map<string, string> = new Map();
 
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
 }));

@@ -7,6 +7,7 @@
  * @module
  */
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 interface TestEnvelope {
   status: 'ok' | 'error';
@@ -87,7 +88,7 @@ const mockLayouts: Map<string, { name: string; positions: Record<string, [number
 
 // The roster's tags come from the kernel's tags index; one feed wears one here.
 const mockFeedTagsByFeed = jest.fn(async (): Promise<{ ok: boolean; value?: Map<number, string[]> }> => ({ ok: true, value: new Map<number, string[]>([[5, ['urgent']]]) }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   feedTags_byFeed: mockFeedTagsByFeed,
   errorStack: { checkpoint_mark: (): number => 0, checkpoint_drain: (): void => undefined, stack_pop: (): undefined => undefined, stack_search: (): unknown[] => [] },
   feedStatus_ofCounts: (feed: { erroredJobs: number }): string => (feed.erroredJobs > 0 ? 'finishedWithError' : 'finishedSuccessfully'),

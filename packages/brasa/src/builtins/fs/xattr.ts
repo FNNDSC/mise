@@ -7,15 +7,14 @@
  *
  * @module
  */
-import {
-  CommandEnvelope, envelope_ok, envelope_error, errorStack,
-  feedTags_list, feedTag_add, feedTag_remove, type FeedTag, type Result, type StackMessage,
-} from '@fnndsc/cumin';
+import { feedTags_list, feedTag_add, feedTag_remove, type FeedTag } from '@fnndsc/cumin';
 import {
   getfattrArgs_parse, setfattrArgs_parse, xattrTarget_resolve, xattr_render,
   type GetfattrArgs, type SetfattrArgs,
 } from './xattr.args.js';
 import { error_stripDebugPrefix } from '../utils.js';
+import { errorStack, type Result, type StackMessage } from '@fnndsc/fond';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * A refusal, on a line of its own.

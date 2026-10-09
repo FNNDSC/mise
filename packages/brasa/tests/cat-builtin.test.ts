@@ -8,12 +8,13 @@
  */
 
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(async () => ({ user: 'chris', folder: '/home/chris' })),
 }));
 const mockStackPop = jest.fn(() => undefined as { message: string } | undefined);
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   errorStack: { stack_pop: mockStackPop, stack_search: () => [] },
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },

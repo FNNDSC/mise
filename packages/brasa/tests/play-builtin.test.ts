@@ -7,6 +7,7 @@
  * and a dry run touches nothing.
  */
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 /** Lines the fake session was asked to run. */
 const ran: string[] = [];
@@ -21,7 +22,7 @@ let missing: boolean = false;
 /** The cohort the fake session holds. */
 let members: Array<{ vfsPath: string; kind: string; folderPath?: string }> = [];
 
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
   listCache_get: () => ({ cache_invalidate: (): void => undefined }),

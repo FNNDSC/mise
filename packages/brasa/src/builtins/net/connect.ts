@@ -7,7 +7,8 @@ import { commandArgs_process, ParsedArgs } from '../utils.js';
 import { connect_login } from '@fnndsc/chili/commands/connect/login.js';
 import { login_render } from '@fnndsc/chili/views/connect.js';
 import { session } from '../../session/index.js';
-import { chrisContext, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { chrisContext } from '@fnndsc/cumin';
+import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
  * Connects to a ChRIS CUBE instance using provided credentials.

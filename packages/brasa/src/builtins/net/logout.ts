@@ -3,9 +3,9 @@
  * Disconnects from ChRIS.
  */
 import chalk from 'chalk';
-import { CommandEnvelope, envelope_ok } from '@fnndsc/cumin';
 import { connect_logout } from '@fnndsc/chili/commands/connect/logout.js';
 import { logout_render } from '@fnndsc/chili/views/connect.js';
+import { CommandEnvelope, envelope_ok } from '@fnndsc/menu';
 
 /**
  * Logs out from the current ChRIS CUBE session.

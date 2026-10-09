@@ -1,10 +1,11 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const mockGet = jest.fn(async () => null as string | null);
 const mockSet = jest.fn(async () => true);
 const mockServersList = jest.fn();
 const mockStackPop = jest.fn((): { message: string } | undefined => undefined);
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   chrisContext: { PACSserver_get: mockGet, PACSserver_set: mockSet },

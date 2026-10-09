@@ -9,8 +9,9 @@ import { spinner } from '../lib/spinner.js';
 import { builtin_parametersofplugin } from './parametersofplugin.js';
 import { plugins_list, plugins_listAll, type PluginReadmeDocument } from '@fnndsc/salsa';
 import { pluginReadme_fetch, pluginReadme_render } from '@fnndsc/chili/commands/plugin/readme.js';
-import { errorStack, type CommandEnvelope, envelope_ok } from '@fnndsc/cumin';
 import { pluginExecutableHelp_render } from './help.js';
+import { errorStack } from '@fnndsc/fond';
+import { type CommandEnvelope, envelope_ok } from '@fnndsc/menu';
 
 /** A plugin resolved to its exact id, name, and version. */
 interface ResolvedPlugin {

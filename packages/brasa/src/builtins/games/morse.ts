@@ -7,8 +7,8 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { text_input } from './stdin.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** The International code. */
 export const MORSE: Readonly<Record<string, string>> = {

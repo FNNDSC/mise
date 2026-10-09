@@ -17,18 +17,7 @@
  */
 
 import chalk from 'chalk';
-import {
-  chrisContext,
-  errorStack,
-  pipeline_resolve,
-  procCache_get,
-  type CommandEnvelope,
-  type PipelineRecord,
-  type Result,
-  type StackMessage,
-  envelope_ok,
-  envelope_error,
-} from '@fnndsc/cumin';
+import { chrisContext, pipeline_resolve, procCache_get, type PipelineRecord } from '@fnndsc/cumin';
 import {
   pipelines_list,
   pipeline_run,
@@ -52,6 +41,8 @@ import { recentFeed_note, recentRuns_note } from '../../session/recent.js';
 import { pipelineDiagram_handle, type PipelineDiagramMode } from './pipeline.diagram.js';
 import { pipelineManifest_render, pipelineParameters_render } from './pipeline.manifest.js';
 import { path_resolve } from '../utils.js';
+import { errorStack, type Result, type StackMessage } from '@fnndsc/fond';
+import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 const PIPELINE_PROGRESS_DELAY_MS: number = 300;
 const PIPELINE_PROGRESS_LABEL: string = 'Reading registered pipeline…';

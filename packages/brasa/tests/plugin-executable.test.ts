@@ -5,6 +5,7 @@
  * executable interceptor, including raw-output byte preservation.
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const mockPluginsList: jest.Mock = jest.fn();
 const mockPluginsListAll: jest.Mock = jest.fn();
@@ -28,7 +29,7 @@ jest.unstable_mockModule('../src/lib/spinner.js', () => ({
 jest.unstable_mockModule('../src/builtins/parametersofplugin.js', () => ({
   builtin_parametersofplugin: mockParameters,
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   errorStack: { stack_push: jest.fn() },
   envelope_ok: (rendered: string): { status: 'ok'; rendered: string } => ({ status: 'ok', rendered }),
 }));

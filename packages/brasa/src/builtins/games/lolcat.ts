@@ -8,9 +8,9 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import chalk from 'chalk';
 import { text_input } from './stdin.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** 24-bit colour whatever the host thinks of its terminal: every surface here renders it. */
 const paint: chalk.Chalk = new chalk.Instance({ level: 3 });

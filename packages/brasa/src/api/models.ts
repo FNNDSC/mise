@@ -14,8 +14,7 @@
  *
  * @module
  */
-import type { NetStatsModel } from '@fnndsc/menu';
-import type { CommandEnvelope } from '@fnndsc/cumin';
+import type { NetStatsModel, CommandEnvelope } from '@fnndsc/menu';
 import type { MkdirOutcome } from '../builtins/fs/mkdir.js';
 import type { TouchOutcome } from '../builtins/fs/touch.js';
 import type { RmOutcome } from '../builtins/fs/rm.js';

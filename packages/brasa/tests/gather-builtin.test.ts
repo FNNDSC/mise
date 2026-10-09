@@ -8,6 +8,7 @@
  * has no name for survive a kernel rewrite.
  */
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 /** The cohort file's content, as the fake filesystem holds it. */
 let stored: string | null = null;
@@ -18,7 +19,7 @@ const invalidated: string[] = [];
 /** Paths the fake filesystem calls directories. */
 const directories: Set<string> = new Set(['/home/chris/uploads/brain']);
 
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
   listCache_get: () => ({ cache_invalidate: (p: string): void => { invalidated.push(p); } }),

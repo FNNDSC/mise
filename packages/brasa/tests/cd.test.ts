@@ -7,6 +7,7 @@
  * @module
  */
 import { jest, describe, it, expect } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 
 const folderByPath = jest.fn<(path: string) => Promise<unknown>>();
 const directoryChange = jest.fn<(path: string) => Promise<void>>();
@@ -19,7 +20,7 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
     connection: { config: { debug: false }, client_get: async (): Promise<unknown> => ({ getFileBrowserFolderByPath: folderByPath }) },
   },
 }));
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   Ok: (value: unknown) => ({ ok: true, value }),
   Err: () => ({ ok: false }),
   // A listing cache that never holds anything: every parent read misses.

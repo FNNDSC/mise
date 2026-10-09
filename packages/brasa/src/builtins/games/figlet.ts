@@ -8,8 +8,8 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { text_input } from './stdin.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** The face: each glyph five rows, `#` for ink. */
 const FACE: Readonly<Record<string, ReadonlyArray<string>>> = {

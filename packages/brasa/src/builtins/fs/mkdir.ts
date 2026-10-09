@@ -3,15 +3,16 @@
  * Creates directories, reported as a command envelope.
  */
 import chalk from 'chalk';
-import { CommandEnvelope, listCache_get, envelope_ok, envelope_error } from '@fnndsc/cumin';
+import { listCache_get } from '@fnndsc/cumin';
 import type { ListCache } from '@fnndsc/cumin';
 import { path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { vfsDispatcher } from '@fnndsc/salsa';
-import { errorStack, type Result, type StackMessage } from '@fnndsc/cumin';
 import type { VFSItem } from '@fnndsc/salsa';
 import { folder_checkExists } from './folderExists.js';
 import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
 import { mkdir_render } from '@fnndsc/chili/views/fs.js';
+import { errorStack, type Result, type StackMessage } from '@fnndsc/fond';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** Outcome of one mkdir target, for the envelope model. */
 export interface MkdirOutcome {

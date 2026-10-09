@@ -1,11 +1,12 @@
 import { jest, describe, it, expect } from '@jest/globals';
+import { cuminMock_install } from './support/cuminMock.js';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { WeatherFetch, WeatherReport } from '../src/builtins/sys/weather.js';
 
 // The real cumin graph overflows jest's CommonJS export lexer under ESM;
 // the builtin needs only its two envelope makers, so those are stubbed
 // the way the other sys builtin suites stub them.
-jest.unstable_mockModule('@fnndsc/cumin', () => ({
+cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string) => ({ status: 'error', rendered }),

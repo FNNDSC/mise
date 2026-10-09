@@ -19,7 +19,6 @@
  * @module
  */
 import chalk from 'chalk';
-import { type CommandEnvelope, envelope_ok, envelope_error, type Result } from '@fnndsc/cumin';
 import {
   context_getSingle,
   dicomSeries_summarize,
@@ -35,9 +34,10 @@ import {
   type DicomVaryingTag,
   type DicomTagGroup,
 } from '@fnndsc/salsa';
-import { DICOM_MODEL_KINDS, DICOM_TAG_GROUPS, type DicomSeriesModel, type DicomTagsModel } from '@fnndsc/menu';
+import { DICOM_MODEL_KINDS, DICOM_TAG_GROUPS, type DicomSeriesModel, type DicomTagsModel, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import { commandArgs_process, path_resolve, type ParsedArgs } from '../utils.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
+import type { Result } from '@fnndsc/fond';
 
 /** The most files a folder's tags are read from before sampling evenly. */
 export const DCM_TAGS_FILE_CAP: number = 512;

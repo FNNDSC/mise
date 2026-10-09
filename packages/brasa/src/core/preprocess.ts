@@ -6,9 +6,9 @@
  */
 import * as path from 'path';
 import { statSync } from 'fs';
-import { Result, Ok, Err, errorStack } from '@fnndsc/cumin';
 import { catArgument_isOption } from '../builtins/fs/cat.args.js';
 import { args_tokenize } from '../lib/parser.js';
+import { Result, Ok, Err, errorStack } from '@fnndsc/fond';
 
 /**
  * Determines whether an argument belongs to the CFS/VFS shell namespace.

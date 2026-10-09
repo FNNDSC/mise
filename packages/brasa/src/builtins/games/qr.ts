@@ -9,8 +9,8 @@
  *
  * @module
  */
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/cumin';
 import { text_input } from './stdin.js';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** Data codewords per version at level L (1..10). */
 const DATA_CODEWORDS: ReadonlyArray<number> = [0, 19, 34, 55, 80, 108, 136, 156, 194, 232, 274];

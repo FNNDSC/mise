@@ -138,6 +138,7 @@ const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {}
 
 // Now import VFS after mocks are set up - must use dynamic import for unstable_mockModule
 const { VFS } = await import('../src/lib/vfs/vfs.js');
+await (await import('./support/chrisPieces.js')).chrisPieces_install({ vfs: true });
 // No backend is installed here, so a listing shows with the core's plain look.
 const { LISTING_LOOK_PLAIN } = await import('@fnndsc/fond');
 

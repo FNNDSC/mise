@@ -41,6 +41,7 @@ const mockListCache = {
 };
 
 cuminMock_install(() => ({
+  feedTags_byFeed: jest.fn(),
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   listCache_get: () => mockListCache,
@@ -51,6 +52,7 @@ cuminMock_install(() => ({
 
 
 const { input_complete } = await import('../src/lib/completer/index.js');
+await (await import('./support/chrisPieces.js')).chrisPieces_install({ vfs: true, completion: true });
 
 describe('Tab Completion', () => {
   beforeEach(() => {

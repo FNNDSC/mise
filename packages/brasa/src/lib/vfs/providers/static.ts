@@ -1,11 +1,13 @@
 /**
  * @file Static Virtual File System Provider.
  *
- * Implements virtual directories for `/bin`, `/usr`, and `/usr/bin` under the VFSDispatcher.
+ * Implements the core's virtual directories under the VFSDispatcher: `/usr`,
+ * `/usr/bin` (the builtins), `/usr/games` (the shelf) and `/usr/share/doc`
+ * (the release notes).
  *
  * @module
  */
-import { VFSProvider, VFSItem, CpOptions, plugins_listAll, pipelines_getAll, PipelineRecord } from '@fnndsc/salsa';
+import type { VFSProvider, VFSItem, CpOptions } from '@fnndsc/fond';
 import { builtinCommands_list, commandSummary_get } from '../../../builtins/help.js';
 import { gamesShelf_names } from '../../../builtins/games/shelf.js';
 import { staticVfs_read, staticVfs_readBinary } from './static_content.js';
@@ -42,47 +44,6 @@ export class StaticVfsProvider implements VFSProvider {
       let effectivePath: string = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
       if (effectivePath.length > 1 && effectivePath.endsWith("/")) {
         effectivePath = effectivePath.slice(0, -1);
-      }
-
-      if (effectivePath === "/bin") {
-        const [plugins, pipelinesResult] = await Promise.all([
-          plugins_listAll({}),
-          pipelines_getAll(),
-        ]);
-        const items: VFSItem[] = [];
-
-        if (plugins && plugins.tableData) {
-          plugins.tableData.forEach((plugin: Record<string, unknown>) => {
-            const pluginName: string = typeof plugin.name === 'string' ? plugin.name : String(plugin.name);
-            const pluginVersion: string = typeof plugin.version === 'string' ? plugin.version : String(plugin.version || '');
-            const displayName: string = pluginVersion ? `${pluginName}-v${pluginVersion}` : pluginName;
-            items.push({
-              name: displayName,
-              type: "plugin",
-              size: 0,
-              owner: "system",
-              date: typeof plugin.creation_date === 'string' ? plugin.creation_date : '',
-            });
-          });
-        }
-
-        if (pipelinesResult.ok) {
-          pipelinesResult.value.forEach((pipeline: PipelineRecord) => {
-            const slug: string = typeof pipeline.slug === 'string' ? pipeline.slug : pipeline.name.replace(/\s+/g, '_');
-            items.push({
-              name: slug,
-              type: "pipeline",
-              size: 0,
-              owner: typeof pipeline.authors === 'string' ? pipeline.authors : 'system',
-              date: '',
-              title: pipeline.name,
-              id: pipeline.id,
-            });
-          });
-        }
-
-        const sorted: VFSItem[] = this.staticVfsItems_sort(items, options?.sort, options?.reverse);
-        return Ok(sorted);
       }
 
       if (effectivePath === "/usr") {

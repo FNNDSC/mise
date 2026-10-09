@@ -462,6 +462,8 @@ const {
   builtin_plugininstance,
   builtin_workflow,
 } = await import('../src/builtins/index.js');
+// `~` is the session's home, read from the context this file mocks.
+await (await import('./support/chrisPieces.js')).chrisPieces_install({ home_get: async (): Promise<string> => { const { context_getSingle } = await import('@fnndsc/salsa'); const user: string | null = (await context_getSingle()).user; return user ? `/home/${user}` : '/'; } });
 
 afterEach(() => {
   process.exitCode = 0;

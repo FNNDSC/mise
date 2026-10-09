@@ -7,7 +7,7 @@ import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procFeed_r
 import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, feedStatus_ofCounts, procLayout_get, procLayout_set, procLayoutName_check, procLayoutPositions_check, type ProcLayoutRecord, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type SingleContext, feedTags_byFeed } from '@fnndsc/cumin';
 import { FEED_LIST_MODEL_KIND, PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, type FeedListModel, type ProcLayoutModel, type ProcUniverseModel, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import { spinner } from '../lib/spinner.js';
-import { universeLayout_underWay, universeLayouts_warm } from '../universe/universeLayout.js';
+import { universeLayout_underWay, universeLayouts_warm } from '../chris/universeLayout.js';
 import { commandArgs_process, type ParsedArgs } from './utils.js';
 import { builtin_cd } from './fs/cd.js';
 import { procWatch_add, procWatch_remove, procWatch_list, watchSubject_parse, type ProcWatchEntry } from './procWatch.js';

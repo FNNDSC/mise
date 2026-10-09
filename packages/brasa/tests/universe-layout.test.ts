@@ -19,7 +19,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   procDataFacts_settled: () => new Promise<number>((resolve) => { factsSettled = () => resolve(1); }),
 }));
 
-const { universeLayoutInput_of, universeLayout_lay, universeLayout_underWay, universeLayouts_warm, SESSION_GALAXY_NODES_MIN } = await import('../src/universe/universeLayout.js');
+const { universeLayoutInput_of, universeLayout_lay, universeLayout_underWay, universeLayouts_warm, SESSION_GALAXY_NODES_MIN } = await import('../src/chris/universeLayout.js');
 
 /** A feed: a chain of groups. */
 const feed = (id: number, plugins: string[], created: string = '2026-01-01T00:00:00Z') => ({

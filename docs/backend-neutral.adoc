@@ -192,11 +192,12 @@ interface Backend {
   watch?: { set(subject, owner, on): WatchState | null; release(owner): void };
   files?: { read(path): Promise<Buffer>; write(path, bytes): Promise<void> };  // a surface's file bytes
   debug_get?: () => boolean;
-  /** Its mounts, and the provider for paths nothing else claims. */
-  mounts: ReadonlyArray<VFSProvider>;
-  mountFallback?: VFSProvider;
-  /** Item kinds it lists: a type mark and colour for ls. */
-  itemKinds?: ReadonlyArray<ItemKindLook>;
+  /** Its filesystem: fond's dispatcher with its mounts and fallback (the core adds /usr), a listing cache, link-aware paths. */
+  vfs?: BackendFilesystem;
+  /** What it adds to completion: command words, --options, names at /. */
+  completion?: BackendCompletion;
+  /** How its listings show: its item kinds (long-view mark, container, size column) beside the core's, and name colour. */
+  listingLook?: ListingLook;
   /** What the prompt shows (the wire's prompt context), and the telemetry it reports. */
   prompt?: (last?: PromptLastCommand) => Promise<PromptContext>;
   telemetry?: () => BackendTelemetry;
@@ -290,7 +291,7 @@ After approval each step becomes a sub-issue of #977.
 
 * *Behaviour preserved.* The unit suites, the ARGUS smoke suite and the live end-to-end exemplars stay green on every change; the registry step adds the help, `/bin` and completion snapshots.
 * *A null backend in CI*, from its own step after the descriptor (<<order>>): brasa boots with a backend that has no commands and an in-memory filesystem, and runs the core shell — `ls`, `cd`, `cat`, pipes, redirection, `help` — without loading cumin, salsa or chili. It is the standing proof that the core is neutral, and the first place a second backend's shape is exercised.
-* *A dependency ratchet*, as the cast ratchet works today: fond imports nothing from `@fnndsc`, and the count of brasa core files (outside the ChRIS builtins) that import cumin, salsa or chili — 21 at `1e1e1999`, 18 once the registry step split the groups, 16 once the session went behind the descriptor, 14 once the prompt and telemetry did, 9 once the generic pieces left cumin, 6 once the unknown-word fallback, `sudo`, the watch, a surface's file bytes and cumin's output port went behind the descriptor — may only go down. An import of the ChRIS backend's own `chris/` folder counts too, so moving a file there lowers the count only when the core stops reaching for it; the package entry, which installs the backend, is not core (`npm run lint:core-deps`). A step can never quietly undo an earlier one.
+* *A dependency ratchet*, as the cast ratchet works today: fond imports nothing from `@fnndsc`, and the count of brasa core files (outside the ChRIS builtins) that import cumin, salsa or chili — 21 at `1e1e1999`, 18 once the registry step split the groups, 16 once the session went behind the descriptor, 14 once the prompt and telemetry did, 9 once the generic pieces left cumin, 6 once the unknown-word fallback, `sudo`, the watch, a surface's file bytes and cumin's output port went behind the descriptor, 0 once the filesystem, completion and globbing did (what the core still reaches of ChRIS, it reaches through its command group's file commands, which the next slice ports) — may only go down. An import of the ChRIS backend's own `chris/` folder counts too, so moving a file there lowers the count only when the core stops reaching for it; the package entry, which installs the backend, is not core (`npm run lint:core-deps`). A step can never quietly undo an earlier one.
 
 [[security]]
 == Two security postures, kept apart

@@ -11,6 +11,8 @@ import { cuminMock_install } from './support/cuminMock.js';
 const Ok = <T>(value: T): { ok: true; value: T } => ({ ok: true, value });
 const Err = (): { ok: false } => ({ ok: false });
 cuminMock_install(() => ({
+  feedTags_byFeed: jest.fn(),
+  listCache_get: jest.fn(() => ({ cache_get: (): null => null, cache_set: jest.fn() })),
   feedStatus_ofCounts: (): string => 'finishedSuccessfully',
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
@@ -109,7 +111,7 @@ jest.unstable_mockModule('../src/builtins/res/pipeline.js', () => ({ builtin_pip
 const mockExecutePlugin = jest.fn();
 jest.unstable_mockModule('../src/builtins/pluginExecute.js', () => ({ builtin_executePlugin: mockExecutePlugin }));
 jest.unstable_mockModule('../src/builtins/proc.js', () => ({ builtin_proc: jest.fn() }));
-jest.unstable_mockModule('../src/builtins/wildcard.js', () => ({ shellWords_expand: jest.fn(async (words) => Ok(words)) }));
+jest.unstable_mockModule('../src/lib/wildcard.js', () => ({ shellWords_expand: jest.fn(async (words) => Ok(words)) }));
 
 const mockHelpRender = jest.fn((cmd: string) => `HELP:${cmd}\n`);
 const mockHasHelpFlag = jest.fn(() => false);
@@ -198,6 +200,7 @@ const { chrisCommands } = await import('../src/chris/chrisCommands.js');
   fallback: (await import('../src/chris/commandFallback.js')).chrisFallback,
   watch: (await import('../src/chris/watch.js')).chrisWatch,
   files: (await import('../src/chris/files.js')).chrisFiles,
+  vfs: (await import('../src/chris/filesystem.js')).chrisFilesystem,
 });
 
 const { surface_set } = await import('../src/core/surface.js');
@@ -445,15 +448,15 @@ describe('line_complete', () => {
 });
 
 describe('engine_create', () => {
-  it('initializes the session, registers VFS providers, and returns the facade', async () => {
+  it('initializes the session, adds the core\'s mounts to the backend\'s filesystem, and returns the facade', async () => {
     const engine = await engine_create();
     expect(mockSessionInit).toHaveBeenCalledTimes(1);
-    expect(mockProviderRegister).toHaveBeenCalledTimes(6);
-    expect(mockPathResolverRegister).toHaveBeenCalledTimes(1);
+    // /bin and the path resolver are the ChRIS backend's, added as it starts (chris-mounts.test).
+    expect(mockPathResolverRegister).not.toHaveBeenCalled();
     const roots: string[] = mockProviderRegister.mock.calls.map(
       (call: unknown[]) => (call[0] as FakeStaticProvider).root,
     );
-    expect(roots).toEqual(['/bin', '/usr', '/usr/bin', '/usr/games', '/usr/share', '/usr/share/doc']);
+    expect(roots).toEqual(['/usr', '/usr/bin', '/usr/games', '/usr/share', '/usr/share/doc']);
 
     const envelopes = await engine.line_execute('whoami');
     expect(envelopes).toHaveLength(1);

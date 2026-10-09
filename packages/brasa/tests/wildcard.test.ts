@@ -18,6 +18,7 @@ jest.unstable_mockModule('@fnndsc/chili/utils/cli.js', () => ({
   path_resolveChrisFs: mockResolveChrisFs,
 }));
 cuminMock_install(() => ({
+  feedTags_byFeed: jest.fn(),
   Err: (): { ok: false } => ({ ok: false }),
   Ok: <T>(value: T): { ok: true; value: T } => ({ ok: true, value }),
   errorStack: { stack_push: jest.fn() },
@@ -29,6 +30,7 @@ cuminMock_install(() => ({
 
 const { shellWords_expand, wildcard_expandMatches, wildcard_expand, wildcards_expandAll } = await import('../src/builtins/wildcard.js');
 const { shellWords_tokenize } = await import('../src/lib/parser.js');
+await (await import('./support/chrisPieces.js')).chrisPieces_install({ vfs: true });
 
 describe('wildcard_expandMatches()', () => {
   beforeEach(() => {

@@ -71,6 +71,8 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
 }));
 
 const { builtin_pipeline } = await import('../src/builtins/res/pipeline.js');
+// `~` is the session's home, read from the context this file mocks.
+await (await import('./support/chrisPieces.js')).chrisPieces_install({ home_get: async (): Promise<string> => { const { context_getSingle } = await import('@fnndsc/salsa'); const user: string | null = (await context_getSingle()).user; return user ? `/home/${user}` : '/'; } });
 
 const ok = <T>(value: T) => ({ ok: true as const, value });
 const err = () => ({ ok: false as const });

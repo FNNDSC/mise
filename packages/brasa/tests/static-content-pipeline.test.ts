@@ -1,5 +1,5 @@
 /**
- * @file Contract tests for shallow cached Pipeline executable content in `/bin`.
+ * @file Contract tests for `/bin` entries (the ChRIS mount) and the core's static content.
  *
  * @module
  */
@@ -53,6 +53,10 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
 const { staticVfs_read, staticVfs_readBinary } = await import(
   '../src/lib/vfs/providers/static_content.js'
 );
+// /bin is the ChRIS backend's mount; its listing reads salsa, never reached here.
+jest.unstable_mockModule('@fnndsc/salsa', () => ({ plugins_listAll: jest.fn(), pipelines_getAll: jest.fn() }));
+const { BinVfsProvider } = await import('../src/chris/binMount.js');
+const binRead = (path: string) => new BinVfsProvider().read(path);
 
 beforeEach((): void => {
   jest.clearAllMocks();
@@ -73,7 +77,7 @@ describe('staticVfs_read Pipeline executable', () => {
         title: 'Example Pipeline',
       }],
     });
-    await expect(staticVfs_read('/bin/example_pipeline_id42', '/bin')).resolves.toEqual({
+    await expect(binRead('/bin/example_pipeline_id42')).resolves.toEqual({
       ok: true,
       value:
         'kind: pipeline\n' +
@@ -87,7 +91,7 @@ describe('staticVfs_read Pipeline executable', () => {
 
   it('falls back to the stable Pipeline ID without fetching when /bin is not warm', async () => {
     cacheGet.mockReturnValue(null);
-    await expect(staticVfs_read('/bin/example_pipeline_id42', '/bin')).resolves.toEqual({
+    await expect(binRead('/bin/example_pipeline_id42')).resolves.toEqual({
       ok: true,
       value:
         'kind: pipeline\n' +
@@ -101,7 +105,7 @@ describe('staticVfs_read Pipeline executable', () => {
   it('does not mistake a cached plugin-shaped ID suffix for a Pipeline', async () => {
     cacheGet.mockReturnValue({ data: [] });
 
-    await expect(staticVfs_read('/bin/example_id42', '/bin')).resolves.toEqual({ ok: false });
+    await expect(binRead('/bin/example_id42')).resolves.toEqual({ ok: false });
     expect(stackPush).toHaveBeenCalledWith('error', 'Unknown /bin entry: example_id42');
   });
 });
@@ -126,7 +130,7 @@ describe('staticVfs_read other entries', () => {
   });
 
   it('requires a connection before inspecting a plugin entry', async () => {
-    await expect(staticVfs_read('/bin/example-v1.0.0', '/bin')).resolves.toEqual({ ok: false });
+    await expect(binRead('/bin/example-v1.0.0')).resolves.toEqual({ ok: false });
     expect(stackPush).toHaveBeenCalledWith(
       'error',
       'No active ChRIS connection to read a plugin.',
@@ -137,7 +141,7 @@ describe('staticVfs_read other entries', () => {
     const getPlugins = jest.fn(async () => ({ getItems: () => [] }));
     clientGet.mockResolvedValue({ getPlugins });
 
-    await expect(staticVfs_read('/bin/example-v1.0.0', '/bin')).resolves.toEqual({ ok: false });
+    await expect(binRead('/bin/example-v1.0.0')).resolves.toEqual({ ok: false });
     expect(getPlugins).toHaveBeenCalledWith({ name_exact: 'example', version: '1.0.0', limit: 1 });
     expect(stackPush).toHaveBeenCalledWith('error', 'Plugin not found on server: example v1.0.0');
   });
@@ -165,7 +169,7 @@ describe('staticVfs_read other entries', () => {
       getPlugins: jest.fn(async () => ({ getItems: () => [plugin] })),
     });
 
-    const result = await staticVfs_read('bin/example-v1.0.0/', '/bin');
+    const result = await binRead('bin/example-v1.0.0/');
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected plugin details');
@@ -181,7 +185,7 @@ describe('staticVfs_read other entries', () => {
     expect(stackPush).toHaveBeenCalledWith('error', 'File not found: /elsewhere/file');
 
     clientGet.mockRejectedValue(new Error('synthetic connection failure'));
-    await expect(staticVfs_read('/bin/example-v1.0.0', '/bin')).resolves.toEqual({ ok: false });
+    await expect(binRead('/bin/example-v1.0.0')).resolves.toEqual({ ok: false });
     expect(stackPush).toHaveBeenCalledWith(
       'error',
       'Static VFS read failed for prefix /bin: synthetic connection failure',

@@ -7,19 +7,11 @@
  * @module
  */
 import { session } from '../../session/index.js';
-import {
-  plugins_listAll,
-  vfsDispatcher,
-  context_getSingle,
-  pipelineManifest_get,
-  type PipelineManifest,
-  type PipelineManifestNode,
-} from '@fnndsc/salsa';
-import { SingleContext } from '@fnndsc/cumin';
 import type { ListingItem } from '@fnndsc/menu';
 import { listingItemsFromVfs_make } from '../vfs/listing.js';
 import { partialPath_split, completions_build } from './pathComplete.helpers.js';
-import { listCache_get } from '@fnndsc/cumin';
+import { backendInstalled_get, type ListingCache } from '../../core/backend.js';
+import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
 import * as path from 'path';
 import { builtinCommands_list } from '../../builtins/help.js';
 import { args_tokenize } from '../parser.js';
@@ -79,54 +71,6 @@ function completion_format(completion: string, word: CompletionWord): string {
   return completion.replace(/([\\\s'"`])/g, '\\$1');
 }
 
-/**
- * Fetches available plugin names from /bin in the format: name-vVersion.
- * This matches the display format used in /bin listings.
- * Uses cache first for fast completion.
- * @returns Array of plugin names with version suffixes.
- */
-async function plugins_getNames(): Promise<string[]> {
-  try {
-    // Check cache first for /bin
-    const listCache = listCache_get();
-    const cached = listCache.cache_get<ListingItem[]>('/bin');
-
-    if (cached && cached.data) {
-      // Return cached plugin names immediately
-      return cached.data.map((item: ListingItem) => item.name);
-    }
-
-    // Cache miss - fetch from API (only on first tab completion)
-    const plugins = await plugins_listAll({});
-    if (plugins && plugins.tableData) {
-      const pluginNames: string[] = plugins.tableData.map((p: Record<string, unknown>) => {
-        const name: string = typeof p.name === 'string' ? p.name : String(p.name ?? '');
-        const version: string = typeof p.version === 'string' ? p.version : String(p.version ?? '');
-        // Format as name-vVersion to match /bin display format
-        return version ? `${name}-v${version}` : name;
-      });
-
-      // Cache it for next time
-      const lsItems: ListingItem[] = plugins.tableData.map((p: Record<string, unknown>) => {
-        const name: string = typeof p.name === 'string' ? p.name : String(p.name ?? '');
-        const version: string = typeof p.version === 'string' ? p.version : String(p.version ?? '');
-        return {
-          name: version ? `${name}-v${version}` : name,
-          type: 'plugin' as const,
-          size: 0,
-          owner: 'system',
-          date: p.creation_date ? String(p.creation_date) : '',
-        };
-      });
-      listCache.cache_set('/bin', lsItems);
-
-      return pluginNames;
-    }
-  } catch (e: unknown) {
-    // Silently fail if plugins cannot be fetched
-  }
-  return [];
-}
 
 /**
  * Computes autocomplete suggestions for a given input line.
@@ -149,7 +93,7 @@ export function input_complete(line: string, callback: CompleterCallback): void 
     const builtinHits: string[] = builtinCommands_list().filter((c: string) => c.startsWith(trimmed));
 
     // Always check plugins and combine results
-    plugins_getNames().then((pluginNames) => {
+    commandWords_get().then((pluginNames) => {
       const pluginHits: string[] = pluginNames.filter((c) => c.startsWith(trimmed));
       
       // Combine both builtins and plugins
@@ -163,46 +107,29 @@ export function input_complete(line: string, callback: CompleterCallback): void 
   }
 
   const compoundWord: CompletionWord = completionWord_get(line);
-  if (compoundWord.value.startsWith('--')) {
-    const pipelineSpecifier: string | undefined = args[0] === 'pipeline' && args[1] === 'run'
-      ? args[2]
-      : args[0];
-    if (pipelineSpecifier !== undefined) {
-      pipelineManifest_get(pipelineSpecifier).then((result) => {
-        if (!result.ok) {
-          callback(null, [[], compoundWord.raw]);
-          return;
-        }
-        const executionFields: string[] = [
-          'compute_resource_name', 'cpu_limit', 'memory_limit', 'gpu_limit', 'number_of_workers',
-        ];
-        const options: string[] = [];
-        const manifest: PipelineManifest = result.value as PipelineManifest;
-        for (const node of manifest.nodes) {
-          const titleUsable: boolean = /^[A-Za-z0-9_-]+$/.test(node.title) &&
-            manifest.nodes.filter(
-              (candidate: PipelineManifestNode): boolean => candidate.title === node.title,
-            ).length === 1;
-          const selectors: string[] = titleUsable ? [node.title, `@${node.pipingID}`] : [`@${node.pipingID}`];
-          const fields: string[] = [
-            ...executionFields,
-            ...(node.parameterDefinitions ?? [])
-              .filter((parameter) => parameter.name !== 'plugininstances')
-              .map((parameter) => parameter.name),
-          ];
-          for (const field of fields) {
-            options.push(...selectors.map((selector: string): string => `--${selector}.${field}`));
-          }
-        }
-        callback(null, [
-          options.filter((option: string): boolean => option.startsWith(compoundWord.value)),
-          compoundWord.raw,
-        ]);
-      }).catch(() => callback(null, [[], compoundWord.raw]));
-      return;
-    }
+  const options: ((args: string[], word: string) => Promise<string[] | null>) | undefined = backendInstalled_get()?.completion?.options;
+  if (compoundWord.value.startsWith('--') && options !== undefined) {
+    options(args, compoundWord.value).then((found: string[] | null): void => {
+      if (found === null) {
+        argumentCompletion_run(line, args, callback);
+        return;
+      }
+      callback(null, [found, compoundWord.raw]);
+    }).catch(() => callback(null, [[], compoundWord.raw]));
+    return;
   }
-  
+
+  argumentCompletion_run(line, args, callback);
+}
+
+/**
+ * Completes an argument: a path, for the commands that take one.
+ *
+ * @param line - The input line.
+ * @param args - Its words.
+ * @param callback - Where the completions go.
+ */
+function argumentCompletion_run(line: string, args: string[], callback: CompleterCallback): void {
   // Case 2: Path Completion (Argument to specific commands)
   const cmd: string = args[0];
   if (['cd', 'ls', 'mkdir', 'rmdir', 'chmod', 'touch', 'cat', 'edit', 'cp', 'mv', 'rm', 'upload', 'download', 'du', 'tree', 'pull', 'cubepath', 'query', 'image', 'dcm'].includes(cmd)) {
@@ -230,9 +157,7 @@ async function path_complete(partial: string): Promise<string[]> {
   let effectivePartial: string = partial;
 
   if (partial.startsWith('~')) {
-    const context: SingleContext = await context_getSingle();
-    const user: string | null = context.user;
-    const home: string = user ? `/home/${user}` : '/';
+    const home: string = (await backendInstalled_get()?.session.home_get()) ?? '/';
     if (partial === '~' || partial === '~/') {
       effectivePartial = home + (partial.endsWith('/') ? '/' : '');
     } else if (partial.startsWith('~/')) {
@@ -254,7 +179,7 @@ async function path_complete(partial: string): Promise<string[]> {
 
   // 3. Fetch contents (check cache first)
   let items: ListingItem[] = [];
-  const listCache = listCache_get();
+  const listCache: ListingCache = listingCache_get();
 
   // Check cache first
   const cached = listCache.cache_get<ListingItem[]>(absDirToList);
@@ -262,23 +187,19 @@ async function path_complete(partial: string): Promise<string[]> {
     items = cached.data;
   } else {
     try {
-      // Use vfsDispatcher for all path types — handles /pacs, /bin, native, etc.
-      const vfsResult = await vfsDispatcher.list(absDirToList);
+      // The session's filesystem answers every path: the backend's mounts and fallback, and the core's.
+      const vfsResult = await vfsDispatcher_get().list(absDirToList);
       if (vfsResult.ok) {
         items = listingItemsFromVfs_make(vfsResult.value);
       }
 
-      // Inject virtual directories at root if missing
+      // Names completed at the root even when its listing lacks them.
       if (absDirToList === '/' || absDirToList === '') {
         const hasItem = (name: string) => items.some((i: ListingItem) => i.name === name);
-        if (!hasItem('bin')) {
-          items.push({ name: 'bin', type: 'vfs', size: 0, owner: 'root', date: new Date().toISOString() });
-        }
-        if (!hasItem('usr')) {
-          items.push({ name: 'usr', type: 'vfs', size: 0, owner: 'root', date: new Date().toISOString() });
-        }
-        if (!hasItem('pacs')) {
-          items.push({ name: 'pacs', type: 'vfs', size: 0, owner: 'root', date: new Date().toISOString() });
+        for (const name of backendInstalled_get()?.completion?.rootWords ?? ['usr']) {
+          if (!hasItem(name)) {
+            items.push({ name, type: 'vfs', size: 0, owner: 'root', date: new Date().toISOString() });
+          }
         }
       }
 
@@ -294,4 +215,14 @@ async function path_complete(partial: string): Promise<string[]> {
   // 4. Filter and format matches, preserving the original partial's style
   // (tilde/relative) and appending "/" to directory-like entries.
   return completions_build(items, prefix, partial);
+}
+
+/**
+ * Command words beyond the registry's, from the backend (ChRIS: its plugins).
+ *
+ * @returns The words, or none.
+ */
+async function commandWords_get(): Promise<string[]> {
+  const words: (() => Promise<string[]>) | undefined = backendInstalled_get()?.completion?.commandWords;
+  return words === undefined ? [] : await words();
 }

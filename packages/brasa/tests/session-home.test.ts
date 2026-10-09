@@ -26,6 +26,9 @@ jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
 jest.unstable_mockModule('../src/chris/commandFallback.js', () => ({ chrisFallback: {} }));
 jest.unstable_mockModule('../src/chris/files.js', () => ({ chrisFiles: {} }));
 jest.unstable_mockModule('../src/chris/watch.js', () => ({ chrisWatch: {} }));
+jest.unstable_mockModule('../src/chris/filesystem.js', () => ({ chrisFilesystem: {} }));
+jest.unstable_mockModule('../src/chris/mounts.js', () => ({ chrisMounts_register: jest.fn() }));
+jest.unstable_mockModule('../src/chris/completion.js', () => ({ chrisCompletion: {} }));
 jest.unstable_mockModule('@fnndsc/chili/commands/connect/elevation.js', () => ({ elevation_run: jest.fn() }));
 jest.unstable_mockModule('../src/chris/promptContext.js', () => ({
   sessionPromptContext_build: jest.fn(),

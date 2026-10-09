@@ -75,6 +75,8 @@ documentation; for using the shell and the packages, see the per-package READMEs
 
 - **[backend-neutral.adoc](backend-neutral.adoc)** — the design (in review, issue #977) for making menu, calypso, brasa's core and ARGUS's frame backend-neutral: the neutral package `fond`, one backend per session, a command registry, tasks for long-running steps, ARGUS compositions; behaviour for chell and ARGUS unchanged throughout.
 
+- **[linux-metaphor.adoc](linux-metaphor.adoc)** — mise read as an ordinary Linux machine: `fond` the syscalls and mount table, `brasa` core bash and coreutils, a backend a filesystem driver with its own programs (ChRIS: `salsa` and `cumin`), `calypso` sshd, chell and ARGUS terminals, `porter` the login manager; followed down to CUBE's jobs as processes and the OpenShift and Kubernetes cluster under them, and out to the original ChRIS UI (a vendor's console) and ARGUS (a desktop session). Explains; does not bind.
+
 - **[feed-dag-viewer.adoc](feed-dag-viewer.adoc)** — the shipped cache-first
   feed and pipeline diagram model, including shallow trees, topological joins,
   SignalFlow YAML emission, dynamic `/bin` pipeline aliases, and the forward

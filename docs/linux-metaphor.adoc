@@ -1,0 +1,152 @@
+= mise as a Linux machine
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 2
+:icons: font
+
+[abstract]
+== Abstract
+
+mise is a shell, so the plainest way to hold its layers in mind is the machine a shell runs on. This note maps every mise package onto an ordinary Linux machine, then follows the picture down (CUBE, the jobs it runs, and the OpenShift and Kubernetes cluster under them) and out to the people looking at it (the original ChRIS UI and ARGUS). It explains; it does not bind. The design itself is in link:backend-neutral.adoc[backend-neutral.adoc] and the rules in link:principles.adoc[principles.adoc].
+
+[[machine]]
+== The machine
+
+[cols="1,2,3",options="header"]
+|===
+| mise | Linux | What the comparison says
+
+| `fond`
+| The kernel's filesystem interface: the syscalls (`open`, `read`, `write`, `mkdir`, `rename`, `unlink`) and the mount table
+| What any filesystem must answer, never where the bytes live. A tree of mounts; the longest mount prefix owns a path; a path nothing claims goes to the root filesystem. Also the house rules every program follows: how a failure is reported (`Result` and the error stack, like `errno`), and how `ls` draws a listing.
+
+| `menu`
+| The ABI and the terminal protocol
+| The shapes that cross from the session to whatever displays it: an envelope (a command's output, its exit status, its typed result), a prompt, a progress line. A terminal that speaks the protocol needs nothing else from the machine.
+
+| `brasa` core
+| `bash` and coreutils
+| The shell (parsing, pipes, `>`, `${vars}`, `cd -`, history) and the standard tools (`ls`, `cd`, `pwd`, `cat`, `cp`, `mv`, `rm`, `mkdir`, `rmdir`, `touch`, `help`, the games). They work on any filesystem because they use only the syscalls. The shell's own state lives in the shell: the working directory and the one before it, the last answer and what `@3` refers to, the command registry.
+
+| A backend
+| A filesystem driver, with the programs that come with it
+| It makes its world look like files, and installs programs that only make sense there. It keeps its own state: credentials, where the user left off, its caches.
+
+| `salsa` (ChRIS)
+| The driver: an NFS or FUSE client for CUBE
+| CUBE's feeds, files, plugins, jobs and PACS, presented as a tree. It answers the syscalls for every path under it.
+
+| `cumin` (ChRIS)
+| The driver's network client and login
+| The connection to CUBE, the identity's credentials and saved context, and the caches that keep a slow server from being asked twice.
+
+| The ChRIS commands (`feed`, `plugin`, `pacs`, `gather`, `upload`, ...)
+| Programs the driver's package installs in `/bin`
+| They make sense only on CUBE, and only a ChRIS session has them. `/bin` itself lists CUBE's plugins and pipelines, as executables.
+
+| `calypso`
+| `sshd`, or a `tmux` server
+| It hosts the running session and lets terminals attach and detach; the session outlives any one of them. It runs no command itself.
+
+| `chell`, `argus`
+| Terminals: an `xterm` and a full graphical desktop
+| Two ways to look at, and type into, the same session.
+
+| `porter`
+| The login manager (`gdm`, `getty`)
+| It authenticates the user and starts, or reattaches, their session.
+|===
+
+One backend per session reads as one driver mounted per machine: a ChRIS session is a machine whose filesystem is CUBE; an infrastructure session is another machine, with another driver.
+
+[[bypass]]
+== Tools that bypass the syscalls
+
+The comparison makes one piece of debt easy to see. `chili` is an older set of tools that talk straight to the file server instead of going through the syscalls. Most of the file tools (`cat`, `mv`, `rm`, `mkdir`, `touch`) reach CUBE through it, so the driver only ever learned the two calls something used: `list` and `cp`. A coreutils that bypasses the kernel cannot run on another filesystem, and a driver nobody calls never learns the rest of the interface.
+
+The repair is the ordinary one: coreutils use the syscalls, and the driver implements them (`read`, `write`, `mkdir`, `rmdir`, `rename`, `unlink`), calling the same CUBE operations the old tools did. What `chili` held that only CUBE needs goes to the driver (`salsa`) or to the ChRIS programs (`brasa`'s `chris/`); what any machine needs, like the way a listing is drawn, goes to the kernel's house rules (`fond`).
+
+[[down]]
+== Down the stack: CUBE, its jobs, and the cluster under them
+
+The driver talks to a server, and the server has a machine of its own.
+
+* *CUBE is the file server and the batch system together.* It holds the files, and it runs programs on them: a plugin instance is a process, a feed is a process tree, a pipeline is a script that starts several. mise shows those processes where Linux shows processes: under `/proc` (`/proc/jobs`), with their states, their children and their output.
+* *pman and pfcon are the scheduler and the staging area.* pman hands a job to whatever compute is attached and watches it; pfcon moves the job's inputs to where it runs and its outputs back. Together they play the part of a batch scheduler with network storage.
+* *The compute is a Kubernetes cluster, usually OpenShift.* There, each job really is a process: a container in a pod, on some node.
+
+Kubernetes reads naturally as an operating system for a whole cluster:
+
+[cols="1,2",options="header"]
+|===
+| Kubernetes | Linux
+
+| The control plane (API server, scheduler, `etcd`)
+| The kernel: it decides what runs where, and keeps the machine's state
+
+| A pod
+| A process (a container: a process with its own root filesystem and limits)
+
+| A node
+| A CPU, with its share of memory
+
+| A namespace
+| A user and a control group: a boundary for names, quotas and permissions
+
+| A persistent volume (claim)
+| A disk, mounted where a process asks for it
+
+| A Service
+| A port that stays put while the processes behind it come and go
+
+| A controller or an Operator
+| A daemon that keeps something running the way it was declared (`systemd`)
+
+| `kubectl`
+| The administrator's shell to that kernel
+|===
+
+OpenShift is to Kubernetes what a distribution is to the Linux kernel: the same kernel, packaged with what an organisation needs around it. A *project* is a namespace with an owner; a *Route* is the firewall and NAT that let the outside reach a Service; *security context constraints* are its SELinux; the image registry and builds are its package manager and build farm; the web console is its desktop; `oc` is `kubectl` with the distribution's own subcommands.
+
+So one ChRIS job, from the top: a user types a plugin's name in chell; the ChRIS driver asks CUBE to run it; pman asks OpenShift for a pod; the pod is a process on a node; and mise shows that process under `/proc/jobs`, as Linux shows a process under `/proc`.
+
+[[second-backend]]
+=== The cluster as a machine of its own
+
+The second backend mise is shaped for turns this around. Its driver presents the cluster itself as the tree (projects as folders; deployments, pods and routes as entries in them) and installs `oc`, `helm` and `terraform` as its programs. It needs no CUBE at all: it is the console for building the machine a CUBE is deployed onto. The same shell and the same coreutils run on it, because they ask only for the syscalls; `ls` lists a project the way it lists a feed.
+
+[[surfaces]]
+== Out to the screen: the original ChRIS UI and ARGUS
+
+*The original ChRIS UI is a vendor's web console for one appliance.* It is a browser application that speaks CUBE's REST API directly, through the `chrisapi` client: it shows CUBE's feeds, files and plugins in views written for them, and it is the right tool for what it covers. It has no shell under it, so nothing it does can be typed, piped, scripted or seen from a terminal, and a terminal's work is invisible to it. Each new view is new code against the server's API, much as a NAS's web panel knows only that NAS.
+
+*ARGUS is a desktop session on the machine.* It attaches to the same session a terminal does (through `calypso`, like a desktop reconnecting to a running login), so its terminal pane and its graphical panes are two views of one session. A pane is a graphical program over the same files and the same processes: the feed graph is a system monitor drawn from `/proc`, the file pane is a file manager over the same tree `ls` lists, and a click and a typed command are the same operation, with the same result and the same numbering. The frame is backend-neutral, like a desktop environment; the panes that know CUBE are the ChRIS backend's applications, installed beside it.
+
+[cols="1,2,2",options="header"]
+|===
+| | Original ChRIS UI | ARGUS
+
+| Talks to
+| CUBE's REST API, directly
+| The session, through `calypso`
+
+| A view is
+| Code written against one server's API
+| A program over the session's files and processes
+
+| A terminal's work
+| Invisible to it
+| The same session: what one does, the other sees
+
+| On another backend
+| Rewritten
+| The frame stays; that backend brings its own applications
+|===
+
+[[limits]]
+== Where the comparison stops
+
+* A real kernel mounts many filesystems at once; a mise session has one backend, by design, so one process never holds two kinds of credentials (link:backend-neutral.adoc#security[backend-neutral.adoc]).
+* A Linux program writes bytes; a mise command returns an envelope that carries a typed model as well as text, which is how a graphical pane draws the same answer a terminal prints.
+* CUBE is a server across a network, not a disk. A listing can be minutes old or minutes away, which is why the driver keeps caches and why mise says when it serves one.

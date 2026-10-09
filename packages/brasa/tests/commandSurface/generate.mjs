@@ -18,13 +18,15 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const dist = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'dist');
+// Loading dispatch registers the engine's commands; the registry then answers.
 const dispatch = await import(join(dist, 'core', 'dispatch.js'));
+const registry = await import(join(dist, 'core', 'commandRegistry.js'));
 const help = await import(join(dist, 'builtins', 'help.js'));
 
-/** Names the engine answers through an envelope handler, in table order. */
-const envelopeCommands = Object.keys(dispatch.ENVELOPE_HANDLERS);
-/** Names the engine answers through a plain command handler, in table order. */
-const plainCommands = Object.keys(dispatch.COMMAND_HANDLERS);
+/** Names the engine answers through an envelope handler, in registration order. */
+const envelopeCommands = registry.envelopeCommand_names();
+/** Names the engine answers through a plain command handler, in registration order. */
+const plainCommands = registry.plainCommand_names();
 
 // Every help page a builtin name, a help topic, or the shelf can show. `help
 // notes` is left out: it renders the installed release notes, which change

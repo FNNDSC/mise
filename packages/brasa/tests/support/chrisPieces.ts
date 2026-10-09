@@ -31,6 +31,7 @@ export async function chrisPieces_install(pieces: ChrisPieces, user: string | nu
     session: {
       init: async (): Promise<void> => undefined,
       identity_get: async () => ({ user: user ?? 'disconnected', where: 'no-cube', connected: user !== null }),
+      user_get: async (): Promise<string | null> => user,
       home_get: pieces.home_get ?? (async (): Promise<string> => (user ? `/home/${user}` : '/')),
       cwd_load: async (): Promise<string | null> => null,
       cwd_save: async (): Promise<void> => undefined,

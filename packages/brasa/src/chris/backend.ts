@@ -12,7 +12,7 @@
  */
 import { chrisConnection, chrisConnection_init, NodeStorageProvider, chrisContext, Context } from '@fnndsc/cumin';
 import type { Backend, SessionIdentity } from '../core/backend.js';
-import { Session, session } from '../session/index.js';
+import { Session } from '../session/index.js';
 import { homePath_of } from '../builtins/utils.js';
 import { runtimeOutput_set } from '@fnndsc/cumin/runtime-output';
 import { sink_get } from '../core/sink.js';
@@ -26,6 +26,7 @@ import { chrisListingLook } from '@fnndsc/chili/views/ls.js';
 import { chrisFilesystem } from './filesystem.js';
 import { chrisMounts_register } from './mounts.js';
 import { chrisCompletion } from './completion.js';
+import { chrisDebug_get, chrisDebug_set } from './debug.js';
 
 declare module '../session/index.js' {
   interface Session {
@@ -80,6 +81,9 @@ export const chrisBackend: Backend = {
       const user: string | null = await chrisContext.ChRISuser_get();
       return user && where ? { user, where, connected: true } : CHRIS_DISCONNECTED;
     },
+    async user_get(): Promise<string | null> {
+      return chrisContext.ChRISuser_get();
+    },
     async home_get(): Promise<string> {
       return homePath_of(await chrisContext.current_get(Context.ChRISuser));
     },
@@ -103,5 +107,6 @@ export const chrisBackend: Backend = {
   vfs: chrisFilesystem,
   completion: chrisCompletion,
   listingLook: chrisListingLook,
-  debug_get: (): boolean => Boolean(session.connection?.config?.debug),
+  debug_get: chrisDebug_get,
+  debug_set: chrisDebug_set,
 };

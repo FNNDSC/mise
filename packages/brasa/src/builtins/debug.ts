@@ -1,11 +1,10 @@
 /**
  * @file Debug Command
  *
- * Toggles debug mode for the application, reported as a command envelope.
+ * Toggles the backend's debug mode, reported as a command envelope.
  */
 import chalk from 'chalk';
-import type { ConnectionConfig } from '@fnndsc/cumin';
-import { session } from '../session/index.js';
+import { backendInstalled_get, type Backend } from '../core/backend.js';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
@@ -16,9 +15,13 @@ import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
  */
 export async function builtin_debug(args: string[]): Promise<CommandEnvelope> {
   const subcommand: string | undefined = args[0];
-  const config: ConnectionConfig | undefined = session.connection.config;
+  const backend: Backend | null = backendInstalled_get();
+  if (backend?.debug_get === undefined || backend.debug_set === undefined) {
+    return envelope_error('', undefined, `${chalk.red('debug: this session has no debug mode.')}\n`);
+  }
+  const enabledNow: boolean | null = backend.debug_get();
 
-  if (!config) {
+  if (enabledNow === null) {
     return envelope_error(
       '',
       [{ type: 'error', message: 'Error: Connection configuration not initialized.' }],
@@ -27,7 +30,7 @@ export async function builtin_debug(args: string[]): Promise<CommandEnvelope> {
   }
 
   if (!subcommand) {
-    const enabled: boolean = config.debug;
+    const enabled: boolean = enabledNow;
     const status: string = enabled ? 'enabled' : 'disabled';
     const detail: string = enabled
       ? chalk.gray('  Verbose error logging is enabled.')
@@ -39,7 +42,7 @@ export async function builtin_debug(args: string[]): Promise<CommandEnvelope> {
   }
 
   if (subcommand === 'on') {
-    config.debug = true;
+    backend.debug_set(true);
     return envelope_ok(
       `${chalk.yellow('[!] Debug mode enabled')}\n${chalk.gray('    Verbose error logging activated.')}\n`,
       { kind: 'sys.debug', data: { enabled: true } },
@@ -47,7 +50,7 @@ export async function builtin_debug(args: string[]): Promise<CommandEnvelope> {
   }
 
   if (subcommand === 'off') {
-    config.debug = false;
+    backend.debug_set(false);
     return envelope_ok(
       `${chalk.green('[+] Debug mode disabled')}\n${chalk.gray('    Verbose error logging deactivated.')}\n`,
       { kind: 'sys.debug', data: { enabled: false } },

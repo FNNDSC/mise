@@ -37,6 +37,9 @@ const { builtin_id, builtin_whoami, builtin_whereami } = await import('../src/bu
 const { builtin_timing } = await import('../src/builtins/sys/timing.js');
 const { builtin_physicalmode } = await import('../src/builtins/sys/physicalmode.js');
 const { builtin_debug } = await import('../src/builtins/debug.js');
+// debug toggles the backend's debugging: ChRIS's, over the connection this file mocks.
+const { chrisDebug_get, chrisDebug_set } = await import('../src/chris/debug.js');
+(await import('../src/core/backend.js')).backend_install({ id: 'chris', session: {} as never, debug_get: chrisDebug_get, debug_set: chrisDebug_set });
 const { builtin_pwd } = await import('../src/builtins/fs/pwd.js');
 const { builtin_version } = await import('../src/builtins/sys/version.js');
 const { builtin_fortune, fortune_random } = await import('../src/builtins/sys/fortune.js');
@@ -189,6 +192,15 @@ describe('builtin_physicalmode', () => {
 describe('builtin_debug', () => {
   beforeEach(() => {
     mockSession.connection.config = { debug: false };
+  });
+
+  it('is refused by name on a backend with no debug mode', async () => {
+    const { backend_install, backend_get } = await import('../src/core/backend.js');
+    const chris = backend_get();
+    backend_install({ id: 'plain', session: {} as never });
+    const envelope: CommandEnvelope = await builtin_debug(['on']);
+    backend_install(chris);
+    expect(envelope.renderedErr).toContain('debug: this session has no debug mode.');
   });
 
   it('errors when the connection config is missing', async () => {

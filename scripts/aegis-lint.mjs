@@ -201,10 +201,16 @@ LINT_CHECKS['surface-never-shadows-the-session'] = () => {
   const names = [...subjects[1].matchAll(/'([a-z]+)'/g)].map((m) => m[1]);
   const shared = lang.text.match(/const SHARED_SUBJECTS[\s\S]*?\n\};/);
   const sharedNames = shared === null ? [] : [...shared[0].matchAll(/^  ([a-z]+):/gm)].map((m) => m[1]);
-  // The session's own vocabulary, from the one place it is declared.
-  const dispatch = readFileSync('packages/brasa/src/core/dispatch.ts', 'utf8');
-  const block = dispatch.slice(dispatch.indexOf('ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {'));
-  const commands = new Set([...block.slice(0, block.indexOf('\n};')).matchAll(/^\s{2}'?([a-z][\w-]*)'?:/gm)].map((m) => m[1]));
+  // The session's own vocabulary, from the command groups that declare it.
+  const commands = new Set();
+  for (const group of ['packages/brasa/src/core/coreCommands.ts', 'packages/brasa/src/chris/chrisCommands.ts']) {
+    const text = readFileSync(group, 'utf8');
+    const start = text.indexOf('const envelope: Record<string, EnvelopeHandler> = {');
+    if (start < 0) { fail('surface-never-shadows-the-session', `${group}: envelope table not found`); return; }
+    const block = text.slice(start);
+    for (const m of block.slice(0, block.indexOf('\n};')).matchAll(/^\s{2}'?([a-z][\w-]*)'?:/gm)) commands.add(m[1]);
+  }
+  if (commands.size < 100) { fail('surface-never-shadows-the-session', `session vocabulary read only ${commands.size} names`); return; }
   for (const name of names) {
     if (!commands.has(name)) continue;
     if (!sharedNames.includes(name)) {

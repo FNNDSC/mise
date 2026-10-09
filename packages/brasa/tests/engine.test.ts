@@ -181,6 +181,11 @@ const {
   stopOnError_set,
   file_read,
 } = await import('../src/core/engine.js');
+// The ChRIS backend's commands, registered as brasa's entry registers them for
+// every consumer (the engine's core imports none of them).
+const { chrisCommands } = await import('../src/chris/chrisCommands.js');
+(await import('../src/core/commandRegistry.js')).commands_register(chrisCommands);
+
 const { surface_set } = await import('../src/core/surface.js');
 const { BufferSink, CaptureSink, sink_set } = await import('../src/core/sink.js');
 

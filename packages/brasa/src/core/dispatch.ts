@@ -12,93 +12,23 @@
  *
  * @module
  */
-import { commands_register, envelopeHandler_get, plainHandler_get, builtinCommand_has, type CommandHandler, type EnvelopeHandler } from './commandRegistry.js';
-import { builtin_rev, builtin_tac, builtin_yes, builtin_seq, builtin_shuf, builtin_rot13 } from '../builtins/games/text.js';
-import { builtin_factor, builtin_primes, builtin_roll, builtin_calc, builtin_units } from '../builtins/games/numbers.js';
-import { builtin_cowsay, builtin_cowthink } from '../builtins/games/cowsay.js';
-import { builtin_figlet, builtin_banner } from '../builtins/games/figlet.js';
-import { builtin_lolcat } from '../builtins/games/lolcat.js';
-import { builtin_morse } from '../builtins/games/morse.js';
-import { builtin_who, builtin_uptime, builtin_ping, builtin_chrisfetch, builtin_say } from '../builtins/games/lab.js';
-import { builtin_wtf } from '../builtins/games/wtf.js';
-import { builtin_file, builtin_xxd, builtin_strings, builtin_sha256sum, builtin_md5sum } from '../builtins/games/bytes.js';
-import { builtin_qr } from '../builtins/games/qr.js';
-import { builtin_pom, builtin_stardate, builtin_ddate, builtin_sunrise } from '../builtins/games/sky.js';
-import { builtin_timer, builtin_leave, builtin_stopwatch } from '../builtins/games/chimes.js';
-import { builtin_sl, builtin_cmatrix, builtin_rain, builtin_asciiquarium, builtin_tetris, builtin_snake } from '../builtins/games/show.js';
-import { builtin_quiz, builtin_hangman, builtin_2048 } from '../builtins/games/play.js';
-import { builtin_notes } from '../builtins/sys/notes.js';
+import { commands_register, commandOrder_set, envelopeHandler_get, plainHandler_get, builtinCommand_has, type CommandHandler, type EnvelopeHandler } from './commandRegistry.js';
+import { coreCommands } from './coreCommands.js';
+import { ENVELOPE_ORDER, PLAIN_ORDER, HELP_ORDER } from './commandOrder.js';
+
+
+
+
 import { stdin_set } from '../builtins/games/stdin.js';
-import { builtin_netstat } from '../builtins/net/netstat.js';
+
 import { writeFileSync, appendFileSync } from 'fs';
 import chalk from 'chalk';
 import {
-  builtin_cd,
-  builtin_ls,
-  builtin_pwd,
-  builtin_connect,
-  builtin_logout,
-  builtin_cat,
-  builtin_cp,
-  builtin_mv,
-  builtin_upload,
-  builtin_pacs,
   builtin_pipeline,
-  builtin_pull,
-  builtin_query,
-  builtin_cubepath,
-  builtin_dcm,
-  builtin_image,
-  builtin_rm,
-  builtin_setfacl,
-  builtin_getfacl,
-  builtin_chmod,
-  builtin_setfattr,
-  builtin_getfattr,
-  builtin_touch,
-  builtin_mkdir,
-  builtin_rmdir,
-  builtin_plugin,
-  builtin_feed,
-  builtin_compute,
-  builtin_tag,
-  builtin_expect,
-  builtin_play,
-  builtin_record,
-  builtin_gather,
-  builtin_group,
-  builtin_user,
-  builtin_pluginmeta,
-  builtin_plugininstance,
-  builtin_workflow,
-  builtin_download,
-  builtin_edit,
-  builtin_config,
-  builtin_files,
-  builtin_links,
-  builtin_dirs,
-  builtin_context,
-  builtin_parametersofplugin,
-  builtin_physicalmode,
-  builtin_timing,
-  builtin_id,
-  builtin_whoami,
-  builtin_whereami,
-  builtin_version,
-  builtin_fortune,
-  builtin_weather,
-  builtin_motd,
-  builtin_date,
-  builtin_cal,
-  builtin_debug,
-  builtin_help,
-  builtin_tree,
-  builtin_du,
-  builtin_store,
-  error_stripDebugPrefix
+  error_stripDebugPrefix,
 } from '../builtins/index.js';
 import { builtin_executePlugin } from '../builtins/pluginExecute.js';
-import { builtin_proc } from '../builtins/proc.js';
+
 import { shellWords_expand } from '../builtins/wildcard.js';
 import {
   help_render,
@@ -160,284 +90,19 @@ async function unknownCommand_delegate(command: string, args: string[]): Promise
   return chiliEnvelope;
 }
 
-
 /**
  * Shape of a converted builtin: returns its outcome as an envelope instead
  * of printing. The engine layer will consume these directly; the dispatch
  * table below consumes them through {@link envelopeHandler_wrap}.
  */
 
-/**
- * Builtins that have been converted to return envelopes, keyed by command
- * name. Entries here are also present in COMMAND_HANDLERS in wrapped form;
- * this registry exists so envelope-aware hosts can bypass the wrapper and
- * receive the structured result.
- */
+// The engine registers its core commands and the order commands list in; a
+// backend registers its own beside them (the ChRIS backend's from brasa's
+// entry). Every lookup below goes through the registry.
+commands_register(coreCommands);
+commandOrder_set({ envelope: ENVELOPE_ORDER, plain: PLAIN_ORDER, help: HELP_ORDER });
 
-export const ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = {
-  cat: builtin_cat,
-  cd: builtin_cd,
-  cp: builtin_cp,
-  mv: builtin_mv,
-  rm: builtin_rm,
-  setfacl: builtin_setfacl,
-  getfacl: builtin_getfacl,
-  chmod: builtin_chmod,
-  setfattr: builtin_setfattr,
-  getfattr: builtin_getfattr,
-  mkdir: builtin_mkdir,
-  rmdir: builtin_rmdir,
-  touch: builtin_touch,
-  pwd: builtin_pwd,
-  netstat: builtin_netstat,
-  id: builtin_id,
-  whoami: builtin_whoami,
-  whereami: builtin_whereami,
-  timing: builtin_timing,
-  physicalmode: builtin_physicalmode,
-  debug: builtin_debug,
-  version: builtin_version,
-  fortune: builtin_fortune,
-  cowsay: builtin_cowsay,
-  cowthink: builtin_cowthink,
-  figlet: builtin_figlet,
-  banner: builtin_banner,
-  lolcat: builtin_lolcat,
-  rev: builtin_rev,
-  tac: builtin_tac,
-  yes: builtin_yes,
-  seq: builtin_seq,
-  factor: builtin_factor,
-  primes: builtin_primes,
-  shuf: builtin_shuf,
-  roll: builtin_roll,
-  rot13: builtin_rot13,
-  morse: builtin_morse,
-  calc: builtin_calc,
-  units: builtin_units,
-  who: builtin_who,
-  uptime: builtin_uptime,
-  ping: builtin_ping,
-  chrisfetch: builtin_chrisfetch,
-  say: builtin_say,
-  wtf: builtin_wtf,
-  file: builtin_file,
-  xxd: builtin_xxd,
-  strings: builtin_strings,
-  sha256sum: builtin_sha256sum,
-  md5sum: builtin_md5sum,
-  qr: builtin_qr,
-  pom: builtin_pom,
-  stardate: builtin_stardate,
-  ddate: builtin_ddate,
-  sunrise: builtin_sunrise,
-  timer: builtin_timer,
-  leave: builtin_leave,
-  stopwatch: builtin_stopwatch,
-  sl: builtin_sl,
-  cmatrix: builtin_cmatrix,
-  rain: builtin_rain,
-  asciiquarium: builtin_asciiquarium,
-  tetris: builtin_tetris,
-  snake: builtin_snake,
-  quiz: builtin_quiz,
-  hangman: builtin_hangman,
-  '2048': builtin_2048,
-  weather: builtin_weather,
-  motd: builtin_motd,
-  notes: builtin_notes,
-  date: builtin_date,
-  cal: builtin_cal,
-  ls: builtin_ls,
-  tree: builtin_tree,
-  du: builtin_du,
-  help: builtin_help,
-  proc: builtin_proc,
-  logout: builtin_logout,
-  cubepath: builtin_cubepath,
-  dcm: builtin_dcm,
-  image: builtin_image,
-  query: builtin_query,
-  feed: builtin_feed,
-  feeds: builtin_feed,
-  compute: builtin_compute,
-  computes: builtin_compute,
-  tag: builtin_tag,
-  tags: builtin_tag,
-  expect: builtin_expect,
-  play: builtin_play,
-  record: builtin_record,
-  gather: builtin_gather,
-  group: builtin_group,
-  groups: builtin_group,
-  user: builtin_user,
-  users: builtin_user,
-  pluginmeta: builtin_pluginmeta,
-  pluginmetas: builtin_pluginmeta,
-  meta: builtin_pluginmeta,
-  metas: builtin_pluginmeta,
-  plugininstance: builtin_plugininstance,
-  plugininstances: builtin_plugininstance,
-  instance: builtin_plugininstance,
-  instances: builtin_plugininstance,
-  job: builtin_plugininstance,
-  jobs: builtin_plugininstance,
-  workflow: builtin_workflow,
-  workflows: builtin_workflow,
-  files: builtin_files,
-  links: builtin_links,
-  dirs: builtin_dirs,
-  context: builtin_context,
-  parametersofplugin: builtin_parametersofplugin,
-  plugin: builtin_plugin,
-  plugins: builtin_plugin,
-  pacsservers: (args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsservers', ['-s', ...args]),
-  pacsqueries: (args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsqueries', ['-s', ...args]),
-  pacsretrieve: (args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsretrieve', ['-s', ...args]),
-  connect: builtin_connect,
-  upload: builtin_upload,
-  download: builtin_download,
-  store: builtin_store,
-  edit: builtin_edit,
-  config: builtin_config,
-  pacs: builtin_pacs,
-  pull: builtin_pull,
-  pipeline: builtin_pipeline,
-  pipelines: builtin_pipeline,
-};
-
-export const COMMAND_HANDLERS: Record<string, CommandHandler> = {
-  connect: envelopeHandler_wrap(builtin_connect),
-  logout: envelopeHandler_wrap(builtin_logout),
-  cd: envelopeHandler_wrap(builtin_cd),
-  ls: envelopeHandler_wrap(builtin_ls),
-  pwd: envelopeHandler_wrap(builtin_pwd),
-  netstat: envelopeHandler_wrap(builtin_netstat),
-  cat: envelopeHandler_wrap(builtin_cat),
-  rm: envelopeHandler_wrap(builtin_rm),
-  setfacl: envelopeHandler_wrap(builtin_setfacl),
-  getfacl: envelopeHandler_wrap(builtin_getfacl),
-  chmod: envelopeHandler_wrap(builtin_chmod),
-  setfattr: envelopeHandler_wrap(builtin_setfattr),
-  getfattr: envelopeHandler_wrap(builtin_getfattr),
-  cp: envelopeHandler_wrap(builtin_cp),
-  mv: envelopeHandler_wrap(builtin_mv),
-  touch: envelopeHandler_wrap(builtin_touch),
-  mkdir: envelopeHandler_wrap(builtin_mkdir),
-  rmdir: envelopeHandler_wrap(builtin_rmdir),
-  upload: envelopeHandler_wrap(builtin_upload),
-  pacs: envelopeHandler_wrap(builtin_pacs),
-  pipeline: envelopeHandler_wrap(builtin_pipeline),
-  pipelines: envelopeHandler_wrap(builtin_pipeline),
-  pull: envelopeHandler_wrap(builtin_pull),
-  query: envelopeHandler_wrap(builtin_query),
-  cubepath: envelopeHandler_wrap(builtin_cubepath),
-  dcm: envelopeHandler_wrap(builtin_dcm),
-  image: envelopeHandler_wrap(builtin_image),
-  download: envelopeHandler_wrap(builtin_download),
-  edit: envelopeHandler_wrap(builtin_edit),
-  config: envelopeHandler_wrap(builtin_config),
-  context: envelopeHandler_wrap(builtin_context),
-  parametersofplugin: envelopeHandler_wrap(builtin_parametersofplugin),
-  physicalmode: envelopeHandler_wrap(builtin_physicalmode),
-  timing: envelopeHandler_wrap(builtin_timing),
-  id: envelopeHandler_wrap(builtin_id),
-  whoami: envelopeHandler_wrap(builtin_whoami),
-  whereami: envelopeHandler_wrap(builtin_whereami),
-  debug: envelopeHandler_wrap(builtin_debug),
-  fortune: envelopeHandler_wrap(builtin_fortune),
-  cowsay: envelopeHandler_wrap(builtin_cowsay),
-  cowthink: envelopeHandler_wrap(builtin_cowthink),
-  figlet: envelopeHandler_wrap(builtin_figlet),
-  banner: envelopeHandler_wrap(builtin_banner),
-  lolcat: envelopeHandler_wrap(builtin_lolcat),
-  rev: envelopeHandler_wrap(builtin_rev),
-  tac: envelopeHandler_wrap(builtin_tac),
-  yes: envelopeHandler_wrap(builtin_yes),
-  seq: envelopeHandler_wrap(builtin_seq),
-  factor: envelopeHandler_wrap(builtin_factor),
-  primes: envelopeHandler_wrap(builtin_primes),
-  shuf: envelopeHandler_wrap(builtin_shuf),
-  roll: envelopeHandler_wrap(builtin_roll),
-  rot13: envelopeHandler_wrap(builtin_rot13),
-  morse: envelopeHandler_wrap(builtin_morse),
-  calc: envelopeHandler_wrap(builtin_calc),
-  units: envelopeHandler_wrap(builtin_units),
-  who: envelopeHandler_wrap(builtin_who),
-  uptime: envelopeHandler_wrap(builtin_uptime),
-  ping: envelopeHandler_wrap(builtin_ping),
-  chrisfetch: envelopeHandler_wrap(builtin_chrisfetch),
-  say: envelopeHandler_wrap(builtin_say),
-  wtf: envelopeHandler_wrap(builtin_wtf),
-  file: envelopeHandler_wrap(builtin_file),
-  xxd: envelopeHandler_wrap(builtin_xxd),
-  strings: envelopeHandler_wrap(builtin_strings),
-  sha256sum: envelopeHandler_wrap(builtin_sha256sum),
-  md5sum: envelopeHandler_wrap(builtin_md5sum),
-  qr: envelopeHandler_wrap(builtin_qr),
-  pom: envelopeHandler_wrap(builtin_pom),
-  stardate: envelopeHandler_wrap(builtin_stardate),
-  ddate: envelopeHandler_wrap(builtin_ddate),
-  sunrise: envelopeHandler_wrap(builtin_sunrise),
-  timer: envelopeHandler_wrap(builtin_timer),
-  leave: envelopeHandler_wrap(builtin_leave),
-  stopwatch: envelopeHandler_wrap(builtin_stopwatch),
-  sl: envelopeHandler_wrap(builtin_sl),
-  cmatrix: envelopeHandler_wrap(builtin_cmatrix),
-  rain: envelopeHandler_wrap(builtin_rain),
-  asciiquarium: envelopeHandler_wrap(builtin_asciiquarium),
-  tetris: envelopeHandler_wrap(builtin_tetris),
-  snake: envelopeHandler_wrap(builtin_snake),
-  quiz: envelopeHandler_wrap(builtin_quiz),
-  hangman: envelopeHandler_wrap(builtin_hangman),
-  '2048': envelopeHandler_wrap(builtin_2048),
-  weather: envelopeHandler_wrap(builtin_weather),
-  motd: envelopeHandler_wrap(builtin_motd),
-  notes: envelopeHandler_wrap(builtin_notes),
-  date: envelopeHandler_wrap(builtin_date),
-  cal: envelopeHandler_wrap(builtin_cal),
-  help: envelopeHandler_wrap(builtin_help),
-  proc: envelopeHandler_wrap(builtin_proc),
-  tree: envelopeHandler_wrap(builtin_tree),
-  du: envelopeHandler_wrap(builtin_du),
-  store: envelopeHandler_wrap(builtin_store),
-  plugin: envelopeHandler_wrap(builtin_plugin),
-  plugins: envelopeHandler_wrap(builtin_plugin),
-  feed: envelopeHandler_wrap(builtin_feed),
-  feeds: envelopeHandler_wrap(builtin_feed),
-  compute: envelopeHandler_wrap(builtin_compute),
-  computes: envelopeHandler_wrap(builtin_compute),
-  tag: envelopeHandler_wrap(builtin_tag),
-  tags: envelopeHandler_wrap(builtin_tag),
-  expect: envelopeHandler_wrap(builtin_expect),
-  play: envelopeHandler_wrap(builtin_play),
-  record: envelopeHandler_wrap(builtin_record),
-  gather: envelopeHandler_wrap(builtin_gather),
-  group: envelopeHandler_wrap(builtin_group),
-  groups: envelopeHandler_wrap(builtin_group),
-  pluginmeta: envelopeHandler_wrap(builtin_pluginmeta),
-  pluginmetas: envelopeHandler_wrap(builtin_pluginmeta),
-  meta: envelopeHandler_wrap(builtin_pluginmeta),
-  metas: envelopeHandler_wrap(builtin_pluginmeta),
-  plugininstance: envelopeHandler_wrap(builtin_plugininstance),
-  plugininstances: envelopeHandler_wrap(builtin_plugininstance),
-  instance: envelopeHandler_wrap(builtin_plugininstance),
-  instances: envelopeHandler_wrap(builtin_plugininstance),
-  job: envelopeHandler_wrap(builtin_plugininstance),
-  jobs: envelopeHandler_wrap(builtin_plugininstance),
-  workflow: envelopeHandler_wrap(builtin_workflow),
-  workflows: envelopeHandler_wrap(builtin_workflow),
-  files: envelopeHandler_wrap(builtin_files),
-  links: envelopeHandler_wrap(builtin_links),
-  dirs: envelopeHandler_wrap(builtin_dirs),
-  pacsservers: envelopeHandler_wrap((args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsservers', ['-s', ...args])),
-  pacsqueries: envelopeHandler_wrap((args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsqueries', ['-s', ...args])),
-  pacsretrieve: envelopeHandler_wrap((args: string[]): Promise<CommandEnvelope> => chiliCommand_run('pacsretrieve', ['-s', ...args])),
-};
-
-// The tables are registered as the engine's commands; every lookup below goes
-// through the registry, never these records.
-commands_register({ envelope: ENVELOPE_HANDLERS, plain: COMMAND_HANDLERS });
+export { ENVELOPE_HANDLERS, COMMAND_HANDLERS } from './commandRegistry.js';
 
 export { COMMAND_HANDLERS_KEYS } from '../command-keys.js';
 
@@ -518,7 +183,6 @@ async function binExecutableMatches_get(command: string): Promise<BinExecutableM
     ),
   };
 }
-
 
 /**
  * Reads the current process exit code as a number.

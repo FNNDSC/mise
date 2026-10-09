@@ -18,7 +18,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const dist = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'dist');
-// Loading dispatch registers the engine's commands; the registry then answers.
+// Loading the package entry registers the engine's core commands and the ChRIS
+// backend's, as every consumer of brasa meets them; the registry then answers.
+await import(join(dist, 'index.js'));
 const dispatch = await import(join(dist, 'core', 'dispatch.js'));
 const registry = await import(join(dist, 'core', 'commandRegistry.js'));
 const help = await import(join(dist, 'builtins', 'help.js'));

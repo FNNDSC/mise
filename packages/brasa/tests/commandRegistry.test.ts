@@ -12,6 +12,7 @@ import {
   plainCommand_names,
   commandHelpEntry_get,
   helpTopic_names,
+  commandOrder_set,
 } from '../src/core/commandRegistry.js';
 
 const envelope = (tag: string) => async () => ({ status: 'ok' as const, rendered: tag });
@@ -49,5 +50,13 @@ describe('the command registry', () => {
     const names: string[] = helpTopic_names().filter((n: string) => n.startsWith('zz-help'));
     expect(names).toEqual(['zz-help', 'zz-help2']);
     expect(commandHelpEntry_get('zz-none')).toBeUndefined();
+  });
+
+  it('lists in the order set, apart from which group registered a name; an unlisted name lists after, in registration order', () => {
+    commands_register({ help: { 'zz-o-late': { usage: 'u', description: 'd' } } });
+    commands_register({ help: { 'zz-o-early': { usage: 'u', description: 'd' }, 'zz-o-new': { usage: 'u', description: 'd' } } });
+    commandOrder_set({ help: ['zz-o-early', 'zz-o-late'] });
+    const names: string[] = helpTopic_names().filter((n: string) => n.startsWith('zz-o-'));
+    expect(names).toEqual(['zz-o-early', 'zz-o-late', 'zz-o-new']);
   });
 });

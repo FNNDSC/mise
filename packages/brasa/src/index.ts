@@ -13,6 +13,11 @@ export * from './core/engine.js';
 // The typed chell API: the shell's vocabulary as function calls.
 export * from './api/index.js';
 export * from './core/dispatch.js';
+// The ChRIS backend's commands, registered beside the core's for every
+// consumer of this package; the engine's core imports none of them.
+import { commands_register as chrisCommands_registerInto } from './core/commandRegistry.js';
+import { chrisCommands } from './chris/chrisCommands.js';
+chrisCommands_registerInto(chrisCommands);
 export * from './core/preprocess.js';
 export * from './core/sink.js';
 export * from './core/progress.js';

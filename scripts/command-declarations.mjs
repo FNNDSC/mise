@@ -1,9 +1,9 @@
 /**
  * @file Declaration ratchet — every builtin must declare itself.
  *
- * A builtin is currently declared in two unlinked places: `ENVELOPE_HANDLERS`
- * in brasa's dispatch table, which maps a name to a function and carries no
- * metadata, and `helpText` in the help builtin, which carries usage and
+ * A builtin is currently declared in two unlinked places: its group's envelope
+ * table (`core/coreCommands.ts`, `chris/chrisCommands.ts`), which maps a name
+ * to a function and carries no metadata, and `helpText` in the help builtin, which carries usage and
  * description. Nothing keeps them in step, and they have drifted.
  *
  * Aliases are resolved before counting. Several commands are registered under
@@ -31,7 +31,11 @@ import { readFileSync } from 'node:fs';
 /** Commands with a handler but no declaration, aliases resolved. Lower whenever it drops. */
 const BASELINE = 0;
 
-const dispatchPath = new URL('../packages/brasa/src/core/dispatch.ts', import.meta.url).pathname;
+// The engine's commands register in groups: the core's and the ChRIS backend's.
+const groupPaths = [
+  new URL('../packages/brasa/src/core/coreCommands.ts', import.meta.url).pathname,
+  new URL('../packages/brasa/src/chris/chrisCommands.ts', import.meta.url).pathname,
+];
 const helpPath = new URL('../packages/brasa/src/builtins/help.ts', import.meta.url).pathname;
 
 /**
@@ -79,10 +83,10 @@ function handlerBindings_extract(text, opener) {
   );
 }
 
-const bindings = handlerBindings_extract(
-  readFileSync(dispatchPath, 'utf8'),
-  /ENVELOPE_HANDLERS: Record<string, EnvelopeHandler> = \{/,
-);
+const bindings = new Map(groupPaths.flatMap((path) => [...handlerBindings_extract(
+  readFileSync(path, 'utf8'),
+  /const envelope: Record<string, EnvelopeHandler> = \{/,
+)]));
 const declared = literalKeys_extract(
   readFileSync(helpPath, 'utf8'),
   /helpText: Record<string, CommandHelp> = \{/,

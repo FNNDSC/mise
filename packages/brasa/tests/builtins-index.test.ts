@@ -430,7 +430,7 @@ jest.unstable_mockModule('../src/builtins/parametersofplugin.js', () => ({
 }));
 
 // Mock chell
-jest.unstable_mockModule('../src/core/chiliDelegate.js', () => ({
+jest.unstable_mockModule('../src/chris/chiliDelegate.js', () => ({
   chiliCommand_run: mockChiliCommandRun
 }));
 

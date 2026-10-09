@@ -191,6 +191,14 @@ const {
 // every consumer (the engine's core imports none of them).
 const { chrisCommands } = await import('../src/chris/chrisCommands.js');
 (await import('../src/core/commandRegistry.js')).commands_register(chrisCommands);
+// The ChRIS backend's fallback, watch and files: the session itself is mocked.
+(await import('../src/core/backend.js')).backend_install({
+  id: 'chris',
+  session: {} as never,
+  fallback: (await import('../src/chris/commandFallback.js')).chrisFallback,
+  watch: (await import('../src/chris/watch.js')).chrisWatch,
+  files: (await import('../src/chris/files.js')).chrisFiles,
+});
 
 const { surface_set } = await import('../src/core/surface.js');
 const { BufferSink, CaptureSink, sink_set } = await import('../src/core/sink.js');

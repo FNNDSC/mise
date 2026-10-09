@@ -12,7 +12,7 @@
  *
  * @module
  */
-import type { PromptContext, CubeTelemetry, JobsStateTelemetry } from '@fnndsc/menu';
+import type { PromptContext, CubeTelemetry, JobsStateTelemetry, CommandEnvelope, WatchState } from '@fnndsc/menu';
 import type { ReferenceValue } from '../lib/parser.js';
 
 /**
@@ -91,6 +91,37 @@ export interface VerbTakes {
   readonly kinds: ReadonlyArray<string>;
 }
 
+/**
+ * What a backend does with a command word the registry does not answer.
+ *
+ * The core runs a line in one of two ways: directly, its output going to
+ * the surface, or captured, its output feeding a pipe or a redirect. Each
+ * asks the backend at fixed points, so a backend's words are found where
+ * they always were.
+ */
+export interface BackendFallback {
+  /**
+   * A word the backend runs ahead of the registry on a direct line, and
+   * after the registry's envelope commands on a captured one (ChRIS: a
+   * plugin named with its version). Null when the word is not one.
+   */
+  readonly claim?: (command: string, args: string[]) => Promise<CommandEnvelope | null>;
+  /**
+   * A word nothing else answered. The envelope it returns has been
+   * delivered; null means the backend does not know the word either, and
+   * the core says `command not found`.
+   */
+  readonly unknown?: (command: string, args: string[], captured: boolean) => Promise<CommandEnvelope | null>;
+  /** Help for a word the registry has no page for, or null to let the core say it has none. */
+  readonly help?: (command: string) => Promise<string | null>;
+}
+
+/** Administrator credentials, collected by the core from the surface. */
+export interface ElevationCredentials {
+  username: string;
+  password: string;
+}
+
 /** One backend, as the core sees it. */
 export interface Backend {
   /** Stable id naming the backend. */
@@ -107,6 +138,22 @@ export interface Backend {
   readonly answerKinds?: ReadonlyArray<AnswerKindLook>;
   /** The kinds its verbs take by index, and those it adds to the core's verbs. */
   readonly verbTakes?: ReadonlyArray<VerbTakes>;
+  /** What it does with words the registry does not answer. */
+  readonly fallback?: BackendFallback;
+  /** Runs one command with administrator rights (`sudo`); absent, `sudo` is refused. */
+  readonly elevate?: (credentials: ElevationCredentials, run: () => Promise<CommandEnvelope>) => Promise<CommandEnvelope>;
+  /** Watches a subject a surface named (ChRIS: a feed's jobs), on behalf of an owner. */
+  readonly watch?: {
+    readonly set: (subject: string, owner: string, on: boolean) => WatchState | null;
+    readonly release: (owner: string) => void;
+  };
+  /** Reads and writes one file's bytes for a surface, at a path the session resolves. */
+  readonly files?: {
+    readonly read: (path: string) => Promise<Buffer>;
+    readonly write: (path: string, bytes: Buffer) => Promise<void>;
+  };
+  /** Whether the backend is debugging: error messages keep their function stamp. */
+  readonly debug_get?: () => boolean;
 }
 
 let installed: Backend | null = null;

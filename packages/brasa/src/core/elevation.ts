@@ -1,15 +1,15 @@
 /**
- * @file Explicit, scoped CUBE elevation for shell commands.
+ * @file Explicit, scoped elevation for shell commands: `sudo`.
  *
- * The host surface owns credential input; Chili/Salsa/Cumin own the temporary
- * CUBE client. No elevated token is saved or becomes ambient after the nested
- * command completes.
+ * The host surface owns credential input; the backend owns what elevation
+ * means (ChRIS: a temporary administrator CUBE client). No elevated
+ * credential is saved or becomes ambient after the nested command completes.
  *
  * @module
  */
 
 import chalk from 'chalk';
-import { elevation_run } from '@fnndsc/chili/commands/connect/elevation.js';
+import { backendInstalled_get, type Backend } from './backend.js';
 import { shellArguments_slice } from '../lib/parser.js';
 import { surface_get } from './surface.js';
 import { envelope_error, type CommandEnvelope } from '@fnndsc/menu';
@@ -60,6 +60,12 @@ export async function sudoCommand_run(
     return envelope_error('', undefined, `${chalk.red('sudo: nested elevation is not supported.')}\n`);
   }
 
+  const elevate: Backend['elevate'] = backendInstalled_get()?.elevate;
+  if (elevate === undefined) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red('sudo: this session has no administrator to become.')}\n`);
+  }
+
   const surface = surface_get();
   if (!surface.capabilities.hiddenInput) {
     process.exitCode = 1;
@@ -73,7 +79,7 @@ export async function sudoCommand_run(
       process.exitCode = 1;
       return envelope_error('', undefined, `${chalk.red('sudo: administrator credentials cannot be empty.')}\n`);
     }
-    return await elevation_run({ username, password }, async (): Promise<CommandEnvelope> => {
+    return await elevate({ username, password }, async (): Promise<CommandEnvelope> => {
       return await run(command, commandArgs);
     });
   } catch (error: unknown) {

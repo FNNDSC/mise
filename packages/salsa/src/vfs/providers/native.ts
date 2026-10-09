@@ -212,12 +212,27 @@ export class NativeVfsProvider implements VFSProvider {
    *   the parent could not be read (its reason stacked).
    */
   private async entry_find(target: string): Promise<Result<{ type: 'dir' | 'file' | 'link'; id: number } | null>> {
+    const all: Result<Array<{ type: 'dir' | 'file' | 'link'; id: number }>> = await this.entries_find(target);
+    if (!all.ok) return Err();
+    return Ok(all.value[0] ?? null);
+  }
+
+  /**
+   * Everything holding a path in its parent folder. CUBE lets a folder and a
+   * file share one path, so there can be more than one; a disk never has.
+   *
+   * @param target - The absolute path.
+   * @returns Each holder (folders first), or Err when the parent could not
+   *   be read (its reason stacked).
+   */
+  private async entries_find(target: string): Promise<Result<Array<{ type: 'dir' | 'file' | 'link'; id: number }>>> {
     const clean: string = target.length > 1 && target.endsWith('/') ? target.slice(0, -1) : target;
-    if (clean === '/') return Ok({ type: 'dir', id: 0 });
+    if (clean === '/') return Ok([{ type: 'dir', id: 0 }]);
     const parent: string = path.posix.dirname(clean);
     const name: string = path.posix.basename(clean);
     const fetchOpts = { limit: 1000, offset: 0 };
     const kinds: Array<['dirs' | 'files' | 'links', 'dir' | 'file' | 'link']> = [['dirs', 'dir'], ['files', 'file'], ['links', 'link']];
+    const found: Array<{ type: 'dir' | 'file' | 'link'; id: number }> = [];
     for (const [asset, type] of kinds) {
       const outcome: ListingOutcome = await files_listOutcome(fetchOpts, asset, parent);
       if (outcome.kind === 'refused') {
@@ -226,13 +241,30 @@ export class NativeVfsProvider implements VFSProvider {
         return Err();
       }
       if (outcome.kind !== 'listing') continue;
-      for (const row of (outcome.data.tableData ?? []) as ChrisFileOrDirRaw[]) {
-        if (chrisRow_toItem(row, type).name === name && row.id !== undefined) {
-          return Ok({ type, id: Number(row.id) });
-        }
-      }
+      const row: ChrisFileOrDirRaw | undefined = ((outcome.data.tableData ?? []) as ChrisFileOrDirRaw[])
+        .find((r: ChrisFileOrDirRaw): boolean => chrisRow_toItem(r, type).name === name && r.id !== undefined);
+      if (row !== undefined) found.push({ type, id: Number(row.id) });
     }
-    return Ok(null);
+    return Ok(found);
+  }
+
+  /**
+   * The one thing a removal may act on, or why it may not: ENOENT when
+   * nothing holds the path, and a refusal when a folder and a file share
+   * it, since CUBE's delete of either damages the other's record and every
+   * listing of the parent fails after (CUBE #732).
+   *
+   * @param target - The path to remove.
+   * @returns The single holder, or the failure.
+   */
+  private async removable_find(target: string): Promise<VfsOutcome<{ type: 'dir' | 'file' | 'link'; id: number }>> {
+    const all: Result<Array<{ type: 'dir' | 'file' | 'link'; id: number }>> = await this.entries_find(target);
+    if (!all.ok) return vfs_failFromStack('EIO');
+    if (all.value.length === 0) return vfs_fail('ENOENT');
+    if (all.value.length > 1) {
+      return vfs_fail('EPERM', `a folder and a file share ${target}, and removing either would damage the other in CUBE`);
+    }
+    return vfs_ok(all.value[0]);
   }
 
   /**
@@ -295,9 +327,8 @@ export class NativeVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async rmdir(target: string): Promise<VfsOutcome> {
-    const there: Result<{ type: 'dir' | 'file' | 'link'; id: number } | null> = await this.entry_find(target);
-    if (!there.ok) return vfs_failFromStack('EIO');
-    if (there.value === null) return vfs_fail('ENOENT');
+    const there: VfsOutcome<{ type: 'dir' | 'file' | 'link'; id: number }> = await this.removable_find(target);
+    if (!there.ok) return there;
     if (there.value.type !== 'dir') return vfs_fail('ENOTDIR');
     const held: Result<VFSItem[]> = await this.list(target);
     if (!held.ok) return vfs_failFromStack('EIO');
@@ -327,9 +358,8 @@ export class NativeVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async rm(target: string): Promise<VfsOutcome> {
-    const there: Result<{ type: 'dir' | 'file' | 'link'; id: number } | null> = await this.entry_find(target);
-    if (!there.ok) return vfs_failFromStack('EIO');
-    if (there.value === null) return vfs_fail('ENOENT');
+    const there: VfsOutcome<{ type: 'dir' | 'file' | 'link'; id: number }> = await this.removable_find(target);
+    if (!there.ok) return there;
     if (there.value.type === 'dir') return vfs_fail('EISDIR');
     const asset: string = there.value.type === 'link' ? 'links' : 'files';
     return vfsOutcome_ofBoolean(await files_delete(there.value.id, asset, path.posix.dirname(target)), 'EIO');
@@ -338,9 +368,8 @@ export class NativeVfsProvider implements VFSProvider {
   /** @inheritdoc */
   async rmTree(target: string): Promise<VfsOutcome> {
     // CUBE removes a folder with everything in it in one request.
-    const there: Result<{ type: 'dir' | 'file' | 'link'; id: number } | null> = await this.entry_find(target);
-    if (!there.ok) return vfs_failFromStack('EIO');
-    if (there.value === null) return vfs_fail('ENOENT');
+    const there: VfsOutcome<{ type: 'dir' | 'file' | 'link'; id: number }> = await this.removable_find(target);
+    if (!there.ok) return there;
     if (there.value.type !== 'dir') return vfs_fail('ENOTDIR');
     return vfsOutcome_ofBoolean(await files_delete(there.value.id, 'dirs', path.posix.dirname(target)), 'EIO');
   }

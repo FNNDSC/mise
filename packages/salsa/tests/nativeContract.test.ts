@@ -15,7 +15,11 @@ interface CubeEntry { type: 'dir' | 'file'; id: number; content: Buffer }
 /** A CUBE held in memory. */
 class MockCube {
   private entries: Map<string, CubeEntry> = new Map();
+  /** Files whose path a folder also holds: CUBE allows it; a disk cannot. */
+  private twins: Map<string, CubeEntry> = new Map();
   private nextId: number = 1;
+  /** Every delete CUBE was asked for. */
+  deletes: number = 0;
 
   constructor(seed: MemorySeed) {
     this.entries.set('/', { type: 'dir', id: 0, content: Buffer.alloc(0) });
@@ -39,17 +43,28 @@ class MockCube {
     this.entries.set(where, { type: 'file', id: this.nextId++, content });
   }
 
+  /** A file at a folder's own path, the way the old mkdir over a file left one. */
+  twin_put(where: string, content: Buffer): void {
+    this.twins.set(where, { type: 'file', id: this.nextId++, content });
+  }
+
+  twin_get(where: string): CubeEntry | undefined {
+    return this.twins.get(where);
+  }
+
   get(where: string): CubeEntry | undefined {
     return this.entries.get(where);
   }
 
   children(folder: string, type: 'dir' | 'file'): Array<[string, CubeEntry]> {
     const prefix: string = folder === '/' ? '/' : `${folder}/`;
-    return [...this.entries.entries()].filter(([key, entry]: [string, CubeEntry]): boolean =>
-      entry.type === type && key !== folder && key.startsWith(prefix) && !key.slice(prefix.length).includes('/'));
+    const held = ([key, entry]: [string, CubeEntry]): boolean =>
+      entry.type === type && key !== folder && key.startsWith(prefix) && !key.slice(prefix.length).includes('/');
+    return [...this.entries.entries(), ...this.twins.entries()].filter(held);
   }
 
   delete_byId(id: number): boolean {
+    this.deletes += 1;
     const found: [string, CubeEntry] | undefined = [...this.entries.entries()].find(([, entry]) => entry.id === id);
     if (found === undefined) return false;
     for (const key of [...this.entries.keys()]) {
@@ -146,5 +161,26 @@ describe('what the native mount says beyond an errno', () => {
   it('keeps CUBE\'s own words for a file that is not there', async () => {
     const mount = await cubeDriver.mount_make({ '/home/a.txt': 'alpha' });
     expect(await mount.read!('/home/nope.txt')).toEqual({ ok: false, errno: 'ENOENT', reason: 'File not found: nope.txt in /home' });
+  });
+
+  it('removes nothing where a folder and a file share a path, since CUBE\'s delete of either damages the other', async () => {
+    const mount = await cubeDriver.mount_make({ '/home/x': null });
+    mockState.cube.twin_put('/home/x', Buffer.from('rows', 'utf-8'));
+    const refusal = { ok: false, errno: 'EPERM', reason: 'a folder and a file share /home/x, and removing either would damage the other in CUBE' };
+    expect(await mount.rm!('/home/x')).toEqual(refusal);
+    expect(await mount.rmdir!('/home/x')).toEqual(refusal);
+    expect(await mount.rmTree!('/home/x')).toEqual(refusal);
+    expect(mockState.cube.deletes).toBe(0);
+    expect(mockState.cube.get('/home/x')?.type).toBe('dir');
+    expect(mockState.cube.twin_get('/home/x')?.content.toString()).toBe('rows');
+  });
+
+  it('makes no folder and writes no file where the other already is', async () => {
+    const mount = await cubeDriver.mount_make({ '/home/a.txt': 'alpha', '/home/d': null });
+    expect(await mount.mkdir!('/home/a.txt')).toEqual({ ok: false, errno: 'EEXIST' });
+    expect(await mount.mkdir!('/home/a.txt/sub')).toEqual({ ok: false, errno: 'ENOTDIR' });
+    expect(await mount.write!('/home/d', 'over')).toEqual({ ok: false, errno: 'EISDIR' });
+    expect(mockState.cube.get('/home/a.txt')?.type).toBe('file');
+    expect(mockState.cube.get('/home/d')?.type).toBe('dir');
   });
 });

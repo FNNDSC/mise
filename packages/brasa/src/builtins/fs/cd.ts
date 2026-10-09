@@ -5,27 +5,21 @@
 import chalk from 'chalk';
 import path from 'path';
 import { session } from '../../session/index.js';
-import { path_resolve, path_resolveLinks, error_stripDebugPrefix } from '../utils.js';
-import type { Client, CacheResult } from '@fnndsc/cumin';
-import type { VFSItem } from '@fnndsc/salsa';
-import { Ok, Err, type Result, type StackMessage } from '@fnndsc/fond';
+import { path_resolve, error_stripDebugPrefix } from '../utils.js';
+import { Ok, Err, type Result, type StackMessage, type VFSItem } from '@fnndsc/fond';
+import { backendInstalled_get, type FolderEntry } from '../../core/backend.js';
+import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
 import { envelope_ok, envelope_error, type CommandEnvelope } from '@fnndsc/menu';
 
 /**
- * Interface representing a FileBrowserFolder from ChRIS API.
+ * The paths that are always folders, entered without asking: the backend's
+ * (ChRIS: the root and its projections' own places), or the root alone.
+ *
+ * @returns The paths.
  */
-interface FileBrowserFolder {
-  path?: string;
-  data?: {
-    path?: string;
-  };
+function structuralPaths_get(): ReadonlyArray<string> {
+  return backendInstalled_get()?.vfs?.structural ?? ['/'];
 }
-
-/**
- * Structural VFS container paths that exist by definition and need no API
- * validation when `cd`-ing into them.
- */
-const STRUCTURAL_VFS_PATHS: string[] = ['/', '/net', '/net/pacs', '/net/pacs/queries', '/proc', '/proc/jobs'];
 
 /**
  * Normalizes a logical path for VFS comparison by stripping a single trailing
@@ -45,27 +39,7 @@ export function vfsPath_normalize(logicalPath: string): string {
  * @returns True if the path is a known structural VFS container.
  */
 export function vfsPath_isStructural(cleanPath: string): boolean {
-  return STRUCTURAL_VFS_PATHS.includes(cleanPath);
-}
-
-/**
- * Verifies if a given FileBrowserFolder object exactly matches the validation path.
- *
- * @param folder - The FileBrowserFolder object to verify.
- * @param validationPath - The path to match against.
- * @returns True if the folder path exactly matches validationPath, false otherwise.
- */
-export function folder_verifyPathMatch(folder: FileBrowserFolder | null | undefined, validationPath: string): boolean {
-  if (!folder) {
-    return false;
-  }
-  const folderPath: string = folder.data?.path || folder.path || '';
-
-  // Normalize both by removing all leading and trailing slashes to be robust against API inconsistencies
-  const cleanFolder: string = folderPath.replace(/^\/+|\/+$/g, '');
-  const cleanValidation: string = validationPath.replace(/^\/+|\/+$/g, '');
-
-  return cleanFolder === cleanValidation;
+  return structuralPaths_get().includes(cleanPath);
 }
 
 /**
@@ -79,8 +53,7 @@ export function folder_verifyPathMatch(folder: FileBrowserFolder | null | undefi
  * @returns Its entries, or Err when it cannot be listed.
  */
 async function parentListing_get(parentPath: string): Promise<Result<VFSItem[]>> {
-  const { listCache_get: cache_of } = await import('@fnndsc/cumin');
-  const kept: CacheResult<VFSItem[]> | null = cache_of().cache_get<VFSItem[]>(parentPath);
+  const kept: { data: VFSItem[]; fresh: boolean } | null = listingCache_get().cache_get<VFSItem[]>(parentPath);
   if (kept) return Ok(kept.data);
   // Through the listing façade, so what CUBE answers is cached for the
   // next cd (and the ls that follows): listed live and uncached, the root
@@ -135,7 +108,7 @@ async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<Com
   // to list its children. Some providers deliberately return a containing-node
   // listing for virtual files such as /proc/.../status; a successful list alone
   // therefore does not establish that `cleanPath` is navigable.
-  const { vfsDispatcher } = await import('@fnndsc/salsa');
+  const vfsDispatcher = vfsDispatcher_get();
   const parentPath: string = path.posix.dirname(cleanPath);
   const entryName: string = path.posix.basename(cleanPath);
   const parentResult: Result<VFSItem[]> = await parentListing_get(parentPath);
@@ -181,78 +154,37 @@ async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<Com
 }
 
 /**
- * Handles `cd` into a real (API-backed) ChRIS folder: resolves the validation
- * path, then confirms the folder exists with an exact path match before setting
- * the working directory.
+ * Enters a folder outside the mounts. The backend says whether it is one
+ * and where the session then stands (ChRIS asks CUBE for the folder); a
+ * backend that does not say has a folder that lists.
  *
- * @param logicalPath - The resolved logical path.
- * @param pathArg - The original user-supplied path (for error messages).
- * @returns The command envelope for the attempt.
+ * @param logicalPath - The folder, as the session names it.
+ * @param pathArg - The path as typed, for what cd says.
+ * @returns The cd envelope.
  */
 async function cdReal_handle(logicalPath: string, pathArg: string): Promise<CommandEnvelope> {
-  const client: Client | null = await session.connection.client_get();
-  if (!client) {
-    return envelope_error('', undefined, `${chalk.red('Not connected to ChRIS.')}\n`);
+  const enter: ((at: string, typed: string) => Promise<FolderEntry>) | undefined = backendInstalled_get()?.vfs?.folder_enter;
+  const entry: FolderEntry = enter !== undefined ? await enter(logicalPath, pathArg) : await folderEntry_byListing(logicalPath);
+  if (entry.cwd === null) {
+    return envelope_error(entry.rendered, undefined, entry.renderedErr || `${chalk.red(`cd: ${pathArg}: No such file or directory`)}\n`);
   }
+  await session.directory_change(entry.cwd);
+  return cdSuccess_envelope(entry.cwd, entry.rendered);
+}
 
-  const debugEnabled: boolean = session.connection.config?.debug === true;
-  let rendered: string = '';
-
-  let validationPath: string;
-  if (session.physicalMode_get()) {
-    validationPath = await path_resolveLinks(logicalPath);
-  } else {
-    const { logical_toPhysical } = await import('@fnndsc/chili/utils');
-    const physicalResult: Result<string> = await logical_toPhysical(logicalPath);
-    if (!physicalResult.ok) {
-      let renderedErr: string = `${chalk.red(`cd: ${pathArg}: No such file or directory`)}\n`;
-      if (debugEnabled) {
-        renderedErr += `${chalk.gray(`  Logical path: ${logicalPath}`)}\n`;
-      }
-      return envelope_error('', undefined, renderedErr);
-    }
-    validationPath = physicalResult.value;
-  }
-
-  if (debugEnabled) {
-    rendered += `${chalk.gray(`cd: ${pathArg} → logical: ${logicalPath} → validation: ${validationPath}`)}\n`;
-  }
-
-  const cwdPath: string = session.physicalMode_get() ? validationPath : logicalPath;
-  const currentCwd: string = await session.getCWD();
-
-  if (currentCwd === cwdPath) {
-    if (debugEnabled) {
-      rendered += `${chalk.gray(`  Already in target directory, skipping validation`)}\n`;
-    }
-    return cdSuccess_envelope(cwdPath, rendered);
-  }
-
-  try {
-    const folder: FileBrowserFolder | null | undefined = (await client.getFileBrowserFolderByPath(validationPath)) as FileBrowserFolder | null | undefined;
-    if (folder_verifyPathMatch(folder, validationPath)) {
-      await session.directory_change(cwdPath);
-      return cdSuccess_envelope(cwdPath, rendered);
-    }
-    let renderedErr: string = `${chalk.red(`cd: ${pathArg}: No such file or directory`)}\n`;
-    if (debugEnabled) {
-      if (!folder) {
-        renderedErr += `${chalk.gray(`  API returned null for path: ${validationPath}`)}\n`;
-      } else {
-        const folderPath: string | undefined = folder.data?.path || folder.path;
-        renderedErr += `${chalk.gray(`  API returned mismatched folder path: ${folderPath} (expected: ${validationPath})`)}\n`;
-      }
-    }
-    const envelope: CommandEnvelope = envelope_error(rendered, undefined, renderedErr);
-    return envelope;
-  } catch (apiError: unknown) {
-    let renderedErr: string = `${chalk.red(`cd: ${pathArg}: No such file or directory`)}\n`;
-    if (debugEnabled) {
-      const msg: string = apiError instanceof Error ? apiError.message : String(apiError);
-      renderedErr += `${chalk.gray(`  API error: ${msg}`)}\n`;
-    }
-    return envelope_error(rendered, undefined, renderedErr);
-  }
+/**
+ * A folder is one that lists: how a backend with no way of its own enters one.
+ *
+ * @param logicalPath - The folder.
+ * @returns Where to stand, or not a folder.
+ */
+async function folderEntry_byListing(logicalPath: string): Promise<FolderEntry> {
+  const { vfs } = await import('../../lib/vfs/vfs.js');
+  const listed: Result<{ items: unknown[] }> = await vfs.listing_get(logicalPath);
+  if (listed.ok) return { cwd: logicalPath, rendered: '', renderedErr: '' };
+  const { errorStack } = await import('@fnndsc/fond');
+  errorStack.stack_pop();
+  return { cwd: null, rendered: '', renderedErr: '' };
 }
 
 /**
@@ -301,7 +233,7 @@ export async function cd_run(options: CdOptions): Promise<CommandEnvelope> {
   try {
     const logicalPath: string = await path_resolve(pathArg);
 
-    const { vfsDispatcher } = await import('@fnndsc/salsa');
+    const vfsDispatcher = vfsDispatcher_get();
     const cleanPath: string = vfsPath_normalize(logicalPath);
     // Treat the path as virtual if it is, or is a parent of, any registered
     // provider prefix (e.g. /proc is parent of /proc/jobs).
@@ -310,7 +242,7 @@ export async function cd_run(options: CdOptions): Promise<CommandEnvelope> {
     );
     const isVirtual: boolean =
       cleanPath === '/' ||
-      cleanPath === '/net' ||
+      vfsPath_isStructural(cleanPath) ||
       isParentOfVfs ||
       vfsDispatcher.provider_get(cleanPath).prefix !== '';
 

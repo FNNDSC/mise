@@ -25,6 +25,7 @@ cuminMock_install(() => ({
   Err: () => ({ ok: false }),
   // A listing cache that never holds anything: every parent read misses.
   listCache_get: () => ({ cache_get: () => null }),
+  feedTags_byFeed: jest.fn(),
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
@@ -58,7 +59,10 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   },
 }));
 
-const { vfsPath_normalize, vfsPath_isStructural, folder_verifyPathMatch, cfsLink_target, cd_run } = await import('../src/builtins/fs/cd.js');
+const { vfsPath_normalize, vfsPath_isStructural, cfsLink_target, cd_run } = await import('../src/builtins/fs/cd.js');
+const { folder_verifyPathMatch } = await import('../src/chris/navigation.js');
+// cd enters a CUBE folder through the ChRIS backend's filesystem, over the mocks above.
+await (await import('./support/chrisPieces.js')).chrisPieces_install({ vfs: true });
 
 describe('cd through a CFS link', () => {
   const link: string = '/home/u/feeds/feed_1/pl-dircopy_2/data/home_u_uploads_x';

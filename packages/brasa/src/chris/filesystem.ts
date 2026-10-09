@@ -10,6 +10,7 @@ import { listCache_get, feedTags_byFeed } from '@fnndsc/cumin';
 import { Result, errorStack } from '@fnndsc/fond';
 import type { ListingItem } from '@fnndsc/menu';
 import type { BackendFilesystem, ListingCache } from '../core/backend.js';
+import { CHRIS_STRUCTURAL_PATHS, chrisFolder_enter, chrisSegment_title } from './navigation.js';
 
 /**
  * Hangs each feed's tags on its row, for a long listing that holds feeds
@@ -48,6 +49,9 @@ export const chrisFilesystem: BackendFilesystem = {
   longRows_annotate: feedTags_annotate,
   // chili's path walk is loaded when a listing first asks, not with the backend.
   unreadLinks_take: async (): Promise<string[]> => (await import('@fnndsc/chili/utils')).pathMapper_get().blindParents_take(),
+  structural: CHRIS_STRUCTURAL_PATHS,
+  folder_enter: chrisFolder_enter,
+  segment_title: chrisSegment_title,
   path_physical: async (path: string): Promise<string> => {
     const { path_resolveChrisFs } = await import('@fnndsc/chili/utils/cli.js');
     return path_resolveChrisFs(path, {});

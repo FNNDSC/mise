@@ -39,7 +39,15 @@ const { builtin_physicalmode } = await import('../src/builtins/sys/physicalmode.
 const { builtin_debug } = await import('../src/builtins/debug.js');
 // debug toggles the backend's debugging: ChRIS's, over the connection this file mocks.
 const { chrisDebug_get, chrisDebug_set } = await import('../src/chris/debug.js');
-(await import('../src/core/backend.js')).backend_install({ id: 'chris', session: {} as never, debug_get: chrisDebug_get, debug_set: chrisDebug_set });
+const { chrisSegment_title } = await import('../src/chris/navigation.js');
+(await import('../src/core/backend.js')).backend_install({
+  id: 'chris',
+  session: {} as never,
+  debug_get: chrisDebug_get,
+  debug_set: chrisDebug_set,
+  // pwd --title asks ChRIS for a segment's title, over the salsa this file mocks.
+  vfs: { segment_title: chrisSegment_title } as never,
+});
 const { builtin_pwd } = await import('../src/builtins/fs/pwd.js');
 const { builtin_version } = await import('../src/builtins/sys/version.js');
 const { builtin_fortune, fortune_random } = await import('../src/builtins/sys/fortune.js');

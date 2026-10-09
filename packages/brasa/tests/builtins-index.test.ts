@@ -91,6 +91,7 @@ jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
 const dicomPayload = await import('@fnndsc/cumin/dicom-payload');
 const pacsGrammar = await import('@fnndsc/salsa/pacs-grammar');
 cuminMock_install(() => ({
+  feedTags_byFeed: jest.fn(),
   feedStatus_ofCounts: (): string => 'finishedSuccessfully',
   feed_share: jest.fn(async () => ({ ok: true, value: true })),
   plugin_find: jest.fn(async () => null),
@@ -463,7 +464,7 @@ const {
   builtin_workflow,
 } = await import('../src/builtins/index.js');
 // `~` is the session's home, read from the context this file mocks.
-await (await import('./support/chrisPieces.js')).chrisPieces_install({ home_get: async (): Promise<string> => { const { context_getSingle } = await import('@fnndsc/salsa'); const user: string | null = (await context_getSingle()).user; return user ? `/home/${user}` : '/'; } });
+await (await import('./support/chrisPieces.js')).chrisPieces_install({ vfs: true, home_get: async (): Promise<string> => { const { context_getSingle } = await import('@fnndsc/salsa'); const user: string | null = (await context_getSingle()).user; return user ? `/home/${user}` : '/'; } });
 
 afterEach(() => {
   process.exitCode = 0;

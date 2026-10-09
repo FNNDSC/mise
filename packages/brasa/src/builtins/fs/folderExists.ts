@@ -12,7 +12,8 @@
 import { session } from '../../session/index.js';
 import { path_resolveLinks } from '../utils.js';
 import type { Client } from '@fnndsc/cumin';
-import { folder_verifyPathMatch, vfsPath_isStructural, vfsPath_normalize } from './cd.js';
+import { vfsPath_isStructural, vfsPath_normalize } from './cd.js';
+import { folder_verifyPathMatch } from '../../chris/navigation.js';
 import { errorStack, type Result } from '@fnndsc/fond';
 
 /**

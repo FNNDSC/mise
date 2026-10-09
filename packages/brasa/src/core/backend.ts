@@ -5,13 +5,15 @@
  * The engine runs over exactly one backend (docs/backend-neutral.adoc). The
  * core asks it to prepare its own state, where the session's home is, and
  * where the working directory was left, what the prompt shows and what the
- * daemon heartbeats. ChRIS is one backend
+ * daemon heartbeats, which `${name}` references it answers and what kinds of
+ * row its listings number. ChRIS is one backend
  * (`chris/backend.ts`), installed by the package entry; a host may install
  * another before the engine boots.
  *
  * @module
  */
 import type { PromptContext, CubeTelemetry, JobsStateTelemetry } from '@fnndsc/menu';
+import type { ReferenceValue } from '../lib/parser.js';
 
 /**
  * Who a session is and where: the input a host keys the session by (calypso's
@@ -61,6 +63,34 @@ export interface BackendTelemetry {
   state?: JobsStateTelemetry;
 }
 
+/** A name the session answers for in `${name}`, and the dotted names under it. */
+export interface ReferenceSource {
+  /** The name (`feed`); a dotted name under it (`feed.x`) is asked of it too. */
+  readonly name: string;
+  /**
+   * What a name refers to now: its value, null when the session has none
+   * yet, or undefined when it is a dotted name this source does not answer
+   * (the manifest's parameters and the environment are asked next).
+   */
+  readonly resolve: (name: string) => Promise<ReferenceValue | undefined>;
+}
+
+/** A kind of row a listing numbers, as an index writes it: `@SER3` is the third series. */
+export interface AnswerKindLook {
+  /** Three capital letters. */
+  readonly code: string;
+  /** The kind in words, for a refusal: `a series`. */
+  readonly word: string;
+  /** An index of it, for the refusal that teaches the syntax (`@SER3`); a kind without one is not shown there. */
+  readonly example?: string;
+}
+
+/** The kinds a verb can be handed by index, beyond those the core declares for it. */
+export interface VerbTakes {
+  readonly verb: string;
+  readonly kinds: ReadonlyArray<string>;
+}
+
 /** One backend, as the core sees it. */
 export interface Backend {
   /** Stable id naming the backend. */
@@ -71,6 +101,12 @@ export interface Backend {
   readonly prompt?: (last?: PromptLastCommand) => Promise<PromptContext>;
   /** The daemon's heartbeat about the backend's state; read often, so it is cheap. */
   readonly telemetry?: () => BackendTelemetry;
+  /** The `${name}` references it answers, beside the core's `cwd`. */
+  readonly references?: ReadonlyArray<ReferenceSource>;
+  /** The kinds of row its listings number; they lead the core's (`FIL`, `DIR`) wherever kinds are listed. */
+  readonly answerKinds?: ReadonlyArray<AnswerKindLook>;
+  /** The kinds its verbs take by index, and those it adds to the core's verbs. */
+  readonly verbTakes?: ReadonlyArray<VerbTakes>;
 }
 
 let installed: Backend | null = null;
@@ -83,6 +119,16 @@ let installed: Backend | null = null;
  */
 export function backend_install(backend: Backend): void {
   installed = backend;
+}
+
+/**
+ * The installed backend, or null before one is installed: for a reader that
+ * has an answer without one (the core's own references and kinds).
+ *
+ * @returns The backend, or null.
+ */
+export function backendInstalled_get(): Backend | null {
+  return installed;
 }
 
 /**

@@ -19,6 +19,15 @@ jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({
 const { answer_note, answer_get, answerRow_get, answerHandles_get, answerConsulted_take, answer_forget } =
   await import('../src/session/answer.js');
 const { answerAdapters_register } = await import('../src/session/answerAdapters.js');
+// The ChRIS backend's references and kinds: the session itself is mocked above.
+const { chrisReferences, chrisAnswerKinds, chrisVerbTakes } = await import('../src/chris/references.js');
+(await import('../src/core/backend.js')).backend_install({
+  id: 'chris',
+  session: {} as never,
+  references: chrisReferences,
+  answerKinds: chrisAnswerKinds,
+  verbTakes: chrisVerbTakes,
+});
 const { indices_parse, reference_resolve, reference_refusal, verbInHand_set } = await import('../src/core/expansion.js');
 const { shellWords_tokenize, shellWords_referencesExpand } = await import('../src/lib/parser.js');
 
@@ -177,6 +186,18 @@ describe('an index on a line', () => {
     verbInHand_set(null);
     expect(refused).toEqual({ missing: '@STD1' });
     expect(reference_refusal('@STD1')).toContain('image takes a series or a folder or a file; STD001 is a study');
+  });
+
+  it('lists a core verb\'s own kinds before those the backend adds', async () => {
+    verbInHand_set('cd');
+    await line_words('cd @FIL1');
+    verbInHand_set(null);
+    expect(reference_refusal('@FIL1')).toContain('cd takes a folder or a series or a study; FIL001 is a file');
+  });
+
+  it('teaches the syntax with the backend\'s kinds first', async () => {
+    await line_words('ls @XYZ1');
+    expect(reference_refusal('@XYZ1')).toMatch(/an index says what it counts — @SER3, @STD1, @FIL2, @DIR4 — and may list or range them \(@SER2,3 or @SER2-5\)\.$/);
   });
 
   it('is not an index inside a word, so an address is left alone', async () => {

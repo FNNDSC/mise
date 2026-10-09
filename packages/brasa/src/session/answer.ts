@@ -28,12 +28,11 @@ import { ambient_publish } from '../core/ambient.js';
  * study read "1", being the only study under its patient — so an index says
  * its kind: `@SER003`, `@STD001`, `@FIL012`, `@DIR004`. One sequence per
  * kind across the whole answer, so the code is a handle rather than a
- * position, and a sorted listing does not renumber it.
+ * position, and a sorted listing does not renumber it. The core numbers
+ * files and folders (`FIL`, `DIR`); a backend adds its own kinds
+ * (`core/answerKinds.ts`).
  */
-export type AnswerKind = 'PAT' | 'STD' | 'SER' | 'FIL' | 'DIR';
-
-/** Every kind an answer may carry, for a refusal that lists them. */
-export const ANSWER_KINDS: ReadonlyArray<AnswerKind> = ['PAT', 'STD', 'SER', 'FIL', 'DIR'];
+export type AnswerKind = string;
 
 /** One row of an answer, as something a verb can be given. */
 export interface AnswerRow {

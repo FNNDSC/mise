@@ -10,8 +10,8 @@
  *
  * One resolver now answers for all of them, in a fixed order:
  *
- * . *Session pronouns*, a closed RESERVED set — the cohort, the feed, the
- *   run, the query, the place the session stands.
+ * . *Session pronouns*: the place the session stands (`cwd`), and those
+ *   the backend answers (ChRIS: the cohort, the feed, the run, the query).
  * . *Parameters* of the manifest being played, if one is.
  * . *The environment*.
  *
@@ -25,13 +25,21 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ReferenceValue } from '../lib/parser.js';
 import { session } from '../session/index.js';
-import { recentFeed_get, recentQuery_get, recentRunPlace_get, recentRuns_get } from '../session/recent.js';
-import { ANSWER_KINDS, answer_get, answerKind_count, answerRow_get, type AnswerHandle, type AnswerKind, type AnswerRow } from '../session/answer.js';
+import { answer_get, answerKind_count, answerRow_get, type AnswerHandle, type AnswerKind, type AnswerRow } from '../session/answer.js';
+import { backendInstalled_get, type AnswerKindLook, type ReferenceSource } from './backend.js';
+import { answerKind_find, answerKinds_get, verbTakes_get } from './answerKinds.js';
 
-/** The names the session answers for; a manifest may not take them. */
-export const RESERVED_REFERENCES: ReadonlySet<string> = new Set([
-  'gather', 'feed', 'run', 'query', 'cwd',
-]);
+/** The name the core answers for itself: where the session stands. */
+const CORE_REFERENCE: string = 'cwd';
+
+/**
+ * The references the backend answers.
+ *
+ * @returns Its sources, or none before a backend is installed.
+ */
+function referenceSources_get(): ReadonlyArray<ReferenceSource> {
+  return backendInstalled_get()?.references ?? [];
+}
 
 /** Whether an unanswerable reference may stand as written: what a dry run does. */
 const standsScope: AsyncLocalStorage<boolean> = new AsyncLocalStorage<boolean>();
@@ -80,54 +88,8 @@ export function unresolvedStands_get(): boolean {
  * @returns True when the session owns it.
  */
 export function reference_isReserved(name: string): boolean {
-  return RESERVED_REFERENCES.has(name.split('.')[0]);
-}
-
-/**
- * What the cohort answers, for the pronoun that names part of it.
- *
- * @param name - The reference, such as `gather`, `gather.first.place`.
- * @returns The values, or null when the cohort cannot answer.
- */
-async function cohort_reference(name: string): Promise<ReferenceValue> {
-  // Loaded on demand: the resolver sits under dispatch, and the cohort sits
-  // above it in a builtin.
-  const { cohort_read } = await import('../builtins/res/gather.store.js');
-  const state = await cohort_read();
-  const members = state.series;
-
-  // A member has two addresses and the difference is load-bearing: where it
-  // was gathered FROM, which `pull` takes, and where it LANDED, which a
-  // viewer and a run take.
-  const wantsPlace: boolean = name.endsWith('.place');
-  const stem: string = wantsPlace ? name.slice(0, -'.place'.length) : name;
-  const addressOf = (member: { vfsPath: string; kind?: string; folderPath?: unknown }): string | null => {
-    if (!wantsPlace) return member.vfsPath;
-    const landed: unknown = member.folderPath;
-    if (typeof landed === 'string' && landed.length > 0) return landed;
-    return member.kind === 'series' ? null : member.vfsPath;
-  };
-
-  if (stem === 'gather') {
-    const addresses: Array<string | null> = members.map(addressOf);
-    if (addresses.some((address: string | null): boolean => address === null)) return null;
-    return { values: addresses as string[] };
-  }
-
-  const which: string = stem.slice('gather.'.length);
-  if (which === 'size') return { values: [`${members.length}`] };
-  if (which === 'name') return { values: [state.name ?? ''] };
-
-  const pick = (member: typeof members[number] | undefined): ReferenceValue => {
-    if (member === undefined) return null;
-    const address: string | null = addressOf(member);
-    return address === null ? null : { values: [address] };
-  };
-  if (which === 'first') return pick(members[0]);
-  if (which === 'last') return pick(members[members.length - 1]);
-  const nth: number = Number(which);
-  if (Number.isInteger(nth) && nth >= 1 && nth <= members.length) return pick(members[nth - 1]);
-  return null;
+  const stem: string = name.split('.')[0];
+  return stem === CORE_REFERENCE || referenceSources_get().some((source: ReferenceSource): boolean => source.name === stem);
 }
 
 /**
@@ -145,7 +107,7 @@ export function indices_parse(spec: string): AnswerHandle[] | null {
   const match: RegExpMatchArray | null = spec.match(/^([A-Z]{3})(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)$/);
   if (match === null) return null;
   const kind: string = match[1];
-  if (!(ANSWER_KINDS as ReadonlyArray<string>).includes(kind)) return null;
+  if (answerKind_find(kind) === undefined) return null;
   const handles: AnswerHandle[] = [];
   for (const part of match[2].split(',')) {
     const range: RegExpMatchArray | null = part.match(/^(\d+)-(\d+)$/);
@@ -161,26 +123,14 @@ export function indices_parse(spec: string): AnswerHandle[] | null {
 }
 
 /**
- * What each verb can be handed, by kind.
+ * The kind a refusal names, in words.
  *
- * A verb that is given the wrong kind refuses BY NAME at expansion —
- * "IMAGE takes a series or a folder; STD001 is a study" — rather than
- * resolving to a path and failing three steps later for a reason that
- * names nothing the operator typed. A verb not listed takes any kind.
+ * @param kind - A kind's code; only registered kinds are ever parsed.
+ * @returns The kind in words.
  */
-const VERB_TAKES: ReadonlyMap<string, ReadonlyArray<AnswerKind>> = new Map([
-  ['image', ['SER', 'DIR', 'FIL']],
-  ['dcm', ['SER', 'DIR', 'FIL']],
-  ['pull', ['SER', 'STD', 'PAT']],
-  ['cat', ['FIL']],
-  ['cd', ['DIR', 'SER', 'STD']],
-  ['download', ['FIL']],
-]);
-
-/** The kind a refusal names, in words. */
-const KIND_WORDS: Readonly<Record<AnswerKind, string>> = {
-  PAT: 'a patient', STD: 'a study', SER: 'a series', FIL: 'a file', DIR: 'a folder',
-};
+function kind_word(kind: AnswerKind): string {
+  return answerKind_find(kind)?.word ?? kind;
+}
 
 /** The verb the line began with, set by the dispatcher before expansion. */
 let verbInHand: string | null = null;
@@ -210,12 +160,16 @@ function index_resolve(name: string): ReferenceValue {
   const handles: AnswerHandle[] | null = indices_parse(name.slice(1));
   if (handles === null || handles.length === 0) return null;
 
-  const takes: ReadonlyArray<AnswerKind> | undefined = verbInHand === null ? undefined : VERB_TAKES.get(verbInHand);
+  // A verb that is given the wrong kind refuses BY NAME at expansion —
+  // "IMAGE takes a series or a folder; STD001 is a study" — rather than
+  // resolving to a path and failing three steps later for a reason that
+  // names nothing the operator typed. A verb not declared takes any kind.
+  const takes: ReadonlyArray<AnswerKind> | undefined = verbInHand === null ? undefined : verbTakes_get(verbInHand);
   const values: string[] = [];
   for (const handle of handles) {
     if (takes !== undefined && !takes.includes(handle.kind)) {
-      kindRefusal = `${verbInHand} takes ${takes.map((kind: AnswerKind): string => KIND_WORDS[kind]).join(' or ')}; `
-        + `${handle.kind}${`${handle.ordinal}`.padStart(3, '0')} is ${KIND_WORDS[handle.kind]}.`;
+      kindRefusal = `${verbInHand} takes ${takes.map(kind_word).join(' or ')}; `
+        + `${handle.kind}${`${handle.ordinal}`.padStart(3, '0')} is ${kind_word(handle.kind)}.`;
       return null;
     }
     const row: AnswerRow | null = answerRow_get(handle);
@@ -235,29 +189,14 @@ function index_resolve(name: string): ReferenceValue {
 export async function reference_resolve(name: string): Promise<ReferenceValue> {
   if (name.startsWith('@')) return index_resolve(name);
 
-  if (name === 'cwd') return { values: [await session.getCWD()] };
+  if (name === CORE_REFERENCE) return { values: [await session.getCWD()] };
 
-  if (name === 'feed') {
-    const feed: number | null = recentFeed_get();
-    return feed === null ? null : { values: [`${feed}`] };
+  const stem: string = name.split('.')[0];
+  for (const source of referenceSources_get()) {
+    if (source.name !== stem) continue;
+    const answered: ReferenceValue | undefined = await source.resolve(name);
+    if (answered !== undefined) return answered;
   }
-
-  if (name === 'run') {
-    const runs: number[] = recentRuns_get();
-    return runs.length === 0 ? null : { values: [`${runs[runs.length - 1]}`] };
-  }
-
-  if (name === 'run.place') {
-    const place: string | null = recentRunPlace_get();
-    return place === null ? null : { values: [place] };
-  }
-
-  if (name === 'query') {
-    const query: string | null = recentQuery_get();
-    return query === null ? null : { values: [query] };
-  }
-
-  if (name === 'gather' || name.startsWith('gather.')) return await cohort_reference(name);
 
   const params: Map<string, string> | undefined = paramScope.getStore();
   const given: string | undefined = params?.get(name);
@@ -282,12 +221,14 @@ export function reference_refusal(name: string): string {
     if (numbered === null) return `${name}: nothing is numbered yet — list something first.`;
     const handles: AnswerHandle[] | null = indices_parse(name.slice(1));
     if (handles === null) {
-      return `${name}: an index says what it counts — @SER3, @STD1, @FIL2, @DIR4 — and may list or range them (@SER2,3 or @SER2-5).`;
+      const shown: AnswerKindLook[] = answerKinds_get().filter((kind: AnswerKindLook): boolean => kind.example !== undefined);
+      const lead: string = shown[0]?.code ?? 'FIL';
+      return `${name}: an index says what it counts — ${shown.map((kind: AnswerKindLook): string => kind.example ?? '').join(', ')} — and may list or range them (@${lead}2,3 or @${lead}2-5).`;
     }
     const kind: AnswerKind = handles[0].kind;
     const count: number = answerKind_count(kind);
     return count === 0
-      ? `${name}: the last answer (${numbered.source}) holds no ${KIND_WORDS[kind]} rows.`
+      ? `${name}: the last answer (${numbered.source}) holds no ${kind_word(kind)} rows.`
       : `${name}: the last answer (${numbered.source}) holds ${count} ${kind} row${count === 1 ? '' : 's'}.`;
   }
   const hint: string = reference_isReserved(name)

@@ -5,7 +5,8 @@
  * A command registers as an envelope handler (it returns its outcome as an
  * envelope) or a plain handler (it may print, and returns an envelope or
  * nothing). Dispatch, the capture path and the pipe's "is this a builtin" test
- * read the registry, never a table of their own.
+ * read the registry, never a table of their own. So do `help`, the `/bin`
+ * builtin list and command completion, through the help a command registers.
  *
  * Handlers are kept in plain records and looked up by index, exactly as the
  * dispatch tables were: a name is a builtin when it is `in` a record. A record
@@ -26,16 +27,33 @@ export type EnvelopeHandler = (args: string[]) => Promise<CommandEnvelope>;
 /** A builtin that may print, and returns an envelope or nothing. */
 export type CommandHandler = (args: string[]) => Promise<void | CommandEnvelope>;
 
+/** A command's help: what `help <name>` shows, and what the listings summarise. */
+export interface CommandHelp {
+  usage: string;
+  /** One line for listings; the description stands in when there is none. */
+  summary?: string;
+  description: string;
+  subcommands?: string[];
+  options?: string[];
+  examples?: string[];
+}
+
 /** A group of commands registered together. */
 export interface CommandGroup {
   /** Commands answered by an envelope handler. */
   envelope?: Record<string, EnvelopeHandler>;
   /** Commands answered by a plain handler. */
   plain?: Record<string, CommandHandler>;
+  /**
+   * Help, by name. Its names are the builtins `/bin` lists and the shell
+   * completes, in registration order.
+   */
+  help?: Record<string, CommandHelp>;
 }
 
 const envelopeHandlers: Record<string, EnvelopeHandler> = {};
 const plainHandlers: Record<string, CommandHandler> = {};
+const helpEntries: Record<string, CommandHelp> = {};
 
 /**
  * Registers a group of commands.
@@ -45,6 +63,7 @@ const plainHandlers: Record<string, CommandHandler> = {};
 export function commands_register(group: CommandGroup): void {
   if (group.envelope !== undefined) Object.assign(envelopeHandlers, group.envelope);
   if (group.plain !== undefined) Object.assign(plainHandlers, group.plain);
+  if (group.help !== undefined) Object.assign(helpEntries, group.help);
 }
 
 /**
@@ -86,4 +105,19 @@ export function envelopeCommand_names(): string[] {
 /** @returns The names answered by a plain handler, in registration order. */
 export function plainCommand_names(): string[] {
   return Object.keys(plainHandlers);
+}
+
+/**
+ * A name's help, by index (as the help record was read).
+ *
+ * @param name - The command or topic name.
+ * @returns The help, or undefined.
+ */
+export function commandHelpEntry_get(name: string): CommandHelp | undefined {
+  return helpEntries[name];
+}
+
+/** @returns The names that have help, in registration order: `/bin`'s builtins and the shell's completions. */
+export function helpTopic_names(): string[] {
+  return Object.keys(helpEntries);
 }

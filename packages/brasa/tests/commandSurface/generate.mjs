@@ -31,7 +31,7 @@ const plainCommands = registry.plainCommand_names();
 // Every help page a builtin name, a help topic, or the shelf can show. `help
 // notes` is left out: it renders the installed release notes, which change
 // with every release by design.
-const topics = new Set([...Object.keys(help.helpText), ...envelopeCommands, ...plainCommands, 'games']);
+const topics = new Set([...registry.helpTopic_names(), ...envelopeCommands, ...plainCommands, 'games']);
 topics.delete('notes');
 const pages = {};
 pages[''] = (await help.builtin_help([])).rendered;

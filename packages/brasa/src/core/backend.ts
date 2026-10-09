@@ -11,10 +11,29 @@
  * @module
  */
 
+/**
+ * Who a session is and where: the input a host keys the session by (calypso's
+ * berth name is `user@where`, normalised).
+ *
+ * A disconnected session still has one, so it stays discoverable; each
+ * backend names its own (`where` naming the backend), so two backends'
+ * disconnected sessions never share a name.
+ */
+export interface SessionIdentity {
+  /** The user, exactly as the backend knows them. */
+  readonly user: string;
+  /** Where the session lives: a server URL, or a name for no server. */
+  readonly where: string;
+  /** Whether the session is connected to `where`. */
+  readonly connected: boolean;
+}
+
 /** What a backend tells the core about the session it serves. */
 export interface BackendSession {
   /** Prepares the backend's own state (configuration, stored credentials) before the session starts. */
   init(): Promise<void>;
+  /** Who the session is, connected or not. */
+  identity_get(): Promise<SessionIdentity>;
   /** The session's home: where it begins before it has a working directory of its own. */
   home_get(): Promise<string>;
   /** The working directory the identity left, or null when it has none stored. */

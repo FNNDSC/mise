@@ -6,13 +6,15 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 const current_get = jest.fn<(context: string) => Promise<string | null>>();
 const current_set = jest.fn<(context: string, value: string) => Promise<boolean>>(async () => true);
 const connection_init = jest.fn(async () => ({ name: 'connection' }));
+const ChRISURL_get = jest.fn<() => Promise<string | null>>(async () => null);
+const ChRISuser_get = jest.fn<() => Promise<string | null>>(async () => null);
 
 jest.unstable_mockModule('@fnndsc/cumin', () => ({
   chrisConnection: { name: 'singleton' },
   chrisConnection_init: connection_init,
   NodeStorageProvider: class {},
   Context: { ChRISuser: 'user', ChRISURL: 'url', ChRISfolder: 'folder', ChRISfeed: 'feed', ChRISplugin: 'plugin' },
-  chrisContext: { current_get, current_set },
+  chrisContext: { current_get, current_set, ChRISURL_get, ChRISuser_get },
 }));
 jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
   chrisConnection_init: jest.fn(async () => undefined),
@@ -85,6 +87,20 @@ describe('the session around it', () => {
   });
 });
 
+describe('who a ChRIS session is', () => {
+  it('is the CUBE user at the CUBE URL when the context names both', async () => {
+    ChRISURL_get.mockResolvedValueOnce('https://cube.example.org/api/v1/');
+    ChRISuser_get.mockResolvedValueOnce('chris');
+    expect(await chrisBackend.session.identity_get()).toEqual({ user: 'chris', where: 'https://cube.example.org/api/v1/', connected: true });
+  });
+
+  it('is disconnected@no-cube when it does not, the name a disconnected daemon has always had', async () => {
+    ChRISURL_get.mockResolvedValueOnce(null);
+    ChRISuser_get.mockResolvedValueOnce('chris');
+    expect(await chrisBackend.session.identity_get()).toEqual({ user: 'disconnected', where: 'no-cube', connected: false });
+  });
+});
+
 describe('the backend under it', () => {
   it('is what the session asks for its home and its directory', async () => {
     const { backend_install, backend_get } = await import('../src/core/backend.js');
@@ -93,6 +109,7 @@ describe('the backend under it', () => {
       id: 'test',
       session: {
         init: async (): Promise<void> => undefined,
+        identity_get: async () => ({ user: 'disconnected', where: 'no-test', connected: false }),
         home_get: async (): Promise<string> => '/home/test',
         cwd_load: async (): Promise<string | null> => null,
         cwd_save: async (path: string): Promise<void> => { saved.push(path); },

@@ -1,15 +1,15 @@
 /**
  * @file The ChRIS backend's descriptor: a session over a CUBE.
  *
- * The identity's context (cumin's per-user, per-CUBE configuration) holds the
- * working directory; the home is the CUBE user's home. The CUBE connection
- * the ChRIS commands use is reached as `session.connection`, which this
- * module adds to the session.
+ * The identity's context (cumin's per-user, per-CUBE configuration) names
+ * the session (the CUBE user and URL) and holds the working directory; the
+ * home is the CUBE user's home. The CUBE connection the ChRIS commands use is
+ * reached as `session.connection`, which this module adds to the session.
  *
  * @module
  */
 import { chrisConnection, chrisConnection_init, NodeStorageProvider, chrisContext, Context } from '@fnndsc/cumin';
-import type { Backend } from '../core/backend.js';
+import type { Backend, SessionIdentity } from '../core/backend.js';
 import { Session } from '../session/index.js';
 import { homePath_of } from '../builtins/utils.js';
 
@@ -28,6 +28,9 @@ Object.defineProperty(Session.prototype, 'connection', {
   },
   configurable: true,
 });
+
+/** A ChRIS session with no restored CUBE login: its berth name is `disconnected@no-cube`. */
+const CHRIS_DISCONNECTED: SessionIdentity = { user: 'disconnected', where: 'no-cube', connected: false };
 
 /** The ChRIS backend: a session over a CUBE. */
 export const chrisBackend: Backend = {
@@ -48,6 +51,11 @@ export const chrisBackend: Backend = {
         // one); when it is absent or fails, chili paths fall back to cumin's
         // connection at call time.
       }
+    },
+    async identity_get(): Promise<SessionIdentity> {
+      const where: string | null = await chrisContext.ChRISURL_get();
+      const user: string | null = await chrisContext.ChRISuser_get();
+      return user && where ? { user, where, connected: true } : CHRIS_DISCONNECTED;
     },
     async home_get(): Promise<string> {
       return homePath_of(await chrisContext.current_get(Context.ChRISuser));

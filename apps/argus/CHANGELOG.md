@@ -1,5 +1,12 @@
 # @fnndsc/argus
 
+## 0.27.2
+
+### Patch Changes
+
+- Updated dependencies [8d15909]
+  - @fnndsc/menu@0.21.0
+
 ## 0.27.1
 
 ### Patch Changes

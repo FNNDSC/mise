@@ -236,12 +236,15 @@ export class NativeVfsProvider implements VFSProvider {
     const kinds: Array<['dirs' | 'files' | 'links', 'dir' | 'file' | 'link']> = [['dirs', 'dir'], ['files', 'file'], ['links', 'link']];
     const found: Array<{ type: 'dir' | 'file' | 'link'; id: number }> = [];
     for (const [asset, type] of kinds) {
+      const mark: number = errorStack.checkpoint_mark();
       const outcome: ListingOutcome = await files_listOutcome(fetchOpts, asset, parent);
       if (outcome.kind === 'refused') {
         const msg: string = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
         errorStack.stack_push('error', `Cannot read ${parent}: ${msg}`);
         return Err();
       }
+      // A parent that is not there holds nothing: an answer, not a failure to leave on the stack.
+      if (outcome.kind === 'missing') errorStack.checkpoint_drain(mark);
       if (outcome.kind !== 'listing') continue;
       const row: ChrisFileOrDirRaw | undefined = ((outcome.data.tableData ?? []) as ChrisFileOrDirRaw[])
         .find((r: ChrisFileOrDirRaw): boolean => chrisRow_toItem(r, type).name === name && r.id !== undefined);

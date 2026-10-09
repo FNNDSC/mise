@@ -2,10 +2,11 @@
  * @file Builtin mkdir command.
  * Creates directories, reported as a command envelope.
  */
-import { vfsOutcome_toResult, mkdir_render, vfs_ok, type VFSDispatcher, type VFSItem, type VfsOutcome } from '@fnndsc/fond';
+import { vfsOutcome_toResult, mkdir_render, type VFSDispatcher, type VFSItem, type VfsOutcome } from '@fnndsc/fond';
 import chalk from 'chalk';
 import { path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
+import { entry_at, entry_isFolder, folderTree_make } from './entries.js';
 import { errorStack, type Result, type StackMessage } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
@@ -46,45 +47,6 @@ async function virtualFolder_make(targetPath: string, parents: boolean): Promise
     }
   }
   return { path: targetPath, created: vfsOutcome_toResult(await vfsDispatcher_get().mkdir(targetPath), 'mkdir', targetPath).ok };
-}
-
-/**
- * Makes a folder and its missing parents (`-p`): in one step where the
- * mount offers it (CUBE makes parents with the folder), else each missing
- * parent in turn, a parent already there being fine.
- *
- * @param dispatcher - The session's filesystem.
- * @param targetPath - The folder.
- * @returns Done, or why not (`EEXIST` when the folder is already there).
- */
-async function folderTree_make(dispatcher: VFSDispatcher, targetPath: string): Promise<VfsOutcome> {
-  if (dispatcher.mkdirTree_offered(targetPath)) return dispatcher.mkdirTree(targetPath);
-  const parts: string[] = targetPath.split('/').filter((part: string): boolean => part.length > 0);
-  let walked: string = '';
-  for (let i: number = 0; i < parts.length - 1; i++) {
-    walked += `/${parts[i]}`;
-    const made: VfsOutcome = await dispatcher.mkdir(walked);
-    if (!made.ok && made.errno !== 'EEXIST') return made;
-  }
-  return parts.length === 0 ? vfs_ok(true) : dispatcher.mkdir(targetPath);
-}
-
-/**
- * Whether a folder is what holds a path, as `mkdir -p` asks once the store
- * says something is there: a folder is done, a file is `File exists`.
- *
- * @param dispatcher - The session's filesystem.
- * @param targetPath - The path.
- * @returns True when its parent lists a folder by that name.
- */
-async function folder_isAt(dispatcher: VFSDispatcher, targetPath: string): Promise<boolean> {
-  const slash: number = targetPath.lastIndexOf('/');
-  const siblings: Result<VFSItem[]> = await dispatcher.list(targetPath.slice(0, slash) || '/');
-  if (!siblings.ok) {
-    errorStack.stack_pop();
-    return false;
-  }
-  return siblings.value.some((item: VFSItem): boolean => item.name === targetPath.slice(slash + 1) && item.type === 'dir');
 }
 
 /**
@@ -180,7 +142,7 @@ export async function mkdir_run(options: MkdirOptions): Promise<CommandEnvelope>
         continue;
       }
       if (made.errno === 'EEXIST') {
-        if (parents && (await folder_isAt(dispatcher, targetPath))) {
+        if (parents && entry_isFolder(await entry_at(dispatcher, targetPath))) {
           outcomes.push({ path: targetPath, created: false, existed: true });
         } else {
           renderedErr += `${chalk.red(`mkdir: cannot create directory '${pathArg}': File exists`)}\n`;

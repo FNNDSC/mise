@@ -11,8 +11,7 @@
 import * as path from 'path';
 import chalk from 'chalk';
 import { highlight, supportsLanguage, type Theme } from 'cli-highlight';
-import { files_cat as chefs_cat_cmd, files_catBinary as chefs_catBinary_cmd } from '@fnndsc/chili/commands/fs/cat.js';
-import { cat_render } from '@fnndsc/chili/views/fs.js';
+import { vfsDispatcher_get } from '../../core/filesystem.js';
 import { path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { sink_get } from '../../core/sink.js';
 import {
@@ -21,7 +20,28 @@ import {
   type CatArguments,
   type CatHighlightMode,
 } from './cat.args.js';
-import { errorStack, Result, StackMessage } from '@fnndsc/fond';
+import { errorStack, Result, StackMessage, vfsOutcome_toResult } from '@fnndsc/fond';
+
+/**
+ * Reads a file whole, as text, through the session's filesystem; a refusal
+ * is said on the error stack, in the words the mount gave.
+ *
+ * @param target - The absolute path.
+ * @returns The text, or Err with the reason stacked.
+ */
+async function text_read(target: string): Promise<Result<string>> {
+  return vfsOutcome_toResult(await vfsDispatcher_get().read(target), 'read', target);
+}
+
+/**
+ * Reads a file whole, as bytes, through the session's filesystem.
+ *
+ * @param target - The absolute path.
+ * @returns The bytes, or Err with the reason stacked.
+ */
+async function bytes_read(target: string): Promise<Result<Buffer>> {
+  return vfsOutcome_toResult(await vfsDispatcher_get().readBinary(target), 'readBinary', target);
+}
 import { envelope_ok, envelope_error, type CommandEnvelope } from '@fnndsc/menu';
 
 /** Delay before a slow group projection becomes visible as progress. */
@@ -239,7 +259,7 @@ interface CatTarget {
  * @returns Text content or the original read failure.
  */
 async function textFile_read(target: string): Promise<Result<string>> {
-  if (target !== '/etc/group') return chefs_cat_cmd(target);
+  if (target !== '/etc/group') return text_read(target);
 
   let progressStarted: boolean = false;
   let progressFailed: boolean = false;
@@ -254,7 +274,7 @@ async function textFile_read(target: string): Promise<Result<string>> {
     });
   }, GROUP_PROGRESS_DELAY_MS);
   try {
-    const result: Result<string> = await chefs_cat_cmd(target);
+    const result: Result<string> = await text_read(target);
     progressFailed = !result.ok;
     return result;
   } catch (error: unknown) {
@@ -359,7 +379,7 @@ export async function cat_run(parsed: CatArguments): Promise<CommandEnvelope> {
     if (parsed.binaryMode || isBinaryFile) {
       let result: Result<Buffer>;
       try {
-        result = await chefs_catBinary_cmd(target);
+        result = await bytes_read(target);
       } catch (error: unknown) {
         const message: string = error instanceof Error ? error.message : String(error);
         renderedErr += `${chalk.red(`cat: ${pathArg}: ${error_stripDebugPrefix(message)}`)}\n`;
@@ -410,7 +430,7 @@ export async function cat_run(parsed: CatArguments): Promise<CommandEnvelope> {
         parsed.highlightMode,
         parsed.highlightLanguage,
       );
-      rendered += `${cat_render(highlighted, pathArg)}\n`;
+      rendered += `${highlighted}\n`;
       outcomes.push({ path: pathArg, ok: true, binary: false });
     }
   }

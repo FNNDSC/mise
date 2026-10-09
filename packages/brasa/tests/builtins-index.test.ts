@@ -293,6 +293,11 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
     ]),
     list: mockVfsDispatcherList,
     linkTarget_resolve: mockVfsDispatcherLinkTargetResolve,
+    // cat reads through the session's filesystem: chili's cat stub answers it.
+    read: async (p: string) => {
+      const read = await mockChefsCat(p) as { ok: boolean; value?: string };
+      return read.ok ? { ok: true, value: read.value } : { ok: false, errno: 'ENOENT' };
+    },
     path_isVirtual: (path: string): boolean => /^\/(proc|net|bin|usr|etc)(\/|$)/.test(path),
   },
   pipelines_list: jest.fn().mockResolvedValue(null),
@@ -1175,12 +1180,11 @@ describe('Builtins - Core Functions', () => {
   describe('builtin_cat()', () => {
     it('should display file content', async () => {
       mockChefsCat.mockResolvedValue(Ok('file content here'));
-      mockCatRender.mockReturnValue('rendered content');
 
       const envelope: CommandEnvelope = await builtin_cat(['/home/user/test.txt']);
 
       expect(mockChefsCat).toHaveBeenCalledWith('/home/user/test.txt');
-      expect(envelope.rendered).toContain('rendered content');
+      expect(envelope.rendered).toContain('file content here');
       expect(envelope.model?.kind).toBe('fs.cat');
     });
 

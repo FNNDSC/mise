@@ -15,7 +15,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 }));
 const mockStackPop = jest.fn(() => undefined as { message: string } | undefined);
 cuminMock_install(() => ({
-  errorStack: { stack_pop: mockStackPop, stack_search: () => [] },
+  errorStack: { stack_pop: mockStackPop, stack_push: jest.fn(), stack_search: () => [] },
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
@@ -30,12 +30,14 @@ jest.unstable_mockModule('../src/session/index.js', () => ({ session: { getCWD: 
 
 const mockCat = jest.fn();
 const mockCatBinary = jest.fn();
-jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({
-  files_cat: mockCat,
-  files_catBinary: mockCatBinary,
+// cat reads through the session's filesystem; its reads answer from the mocks above.
+const outcome_of = <T>(result: { ok: boolean; value?: T }): unknown => (result.ok ? { ok: true, value: result.value } : { ok: false, errno: 'ENOENT' });
+jest.unstable_mockModule('../src/core/filesystem.js', () => ({
+  vfsDispatcher_get: () => ({
+    read: async (p: string) => outcome_of(await mockCat(p) as { ok: boolean; value?: string }),
+    readBinary: async (p: string) => outcome_of(await mockCatBinary(p) as { ok: boolean; value?: Buffer }),
+  }),
 }));
-const mockCatRender = jest.fn(() => 'RENDERED');
-jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({ cat_render: mockCatRender }));
 
 const ok = <T>(value: T) => ({ ok: true as const, value });
 const err = () => ({ ok: false as const });
@@ -63,7 +65,7 @@ describe('builtin_cat', (): void => {
     mockCat.mockResolvedValue(ok('hello world'));
     const envelope = await builtin_cat(['notes.txt']);
     expect(mockCat).toHaveBeenCalledWith('/home/chris/notes.txt');
-    expect(envelope.rendered).toContain('RENDERED');
+    expect(envelope.rendered).toContain('hello world');
   });
 
   it('emits delayed inspection progress while resolving /etc/group', async (): Promise<void> => {
@@ -163,8 +165,7 @@ describe('builtin_cat — syntax highlighting on a TTY', (): void => {
 
   it('highlights a valid JSON file', async (): Promise<void> => {
     mockCat.mockResolvedValue(ok('{"a": 1, "b": true, "c": null, "d": "x"}'));
-    await builtin_cat(['config.json']);
-    expect(mockCatRender).toHaveBeenCalled();
+    expect((await builtin_cat(['config.json'])).rendered.length).toBeGreaterThan(0);
   });
 
   it('renders malformed JSON without failing', async (): Promise<void> => {
@@ -175,21 +176,18 @@ describe('builtin_cat — syntax highlighting on a TTY', (): void => {
 
   it('highlights a YAML file with varied value types', async (): Promise<void> => {
     mockCat.mockResolvedValue(ok('# comment\nflag: true\nempty: null\nnum: 42\nquoted: "hi"\nplain: text\n  - listitem\n'));
-    await builtin_cat(['data.yaml']);
-    expect(mockCatRender).toHaveBeenCalled();
+    expect((await builtin_cat(['data.yaml'])).rendered.length).toBeGreaterThan(0);
   });
 
   it('automatically highlights Python source on a TTY', async (): Promise<void> => {
     mockCat.mockResolvedValue(ok('def greet(name):\n    return f"hello {name}"\n'));
-    await builtin_cat(['greet.py']);
-    const renderedContent: string = mockCatRender.mock.calls[0]?.[0] as string;
+    const renderedContent: string = (await builtin_cat(['greet.py'])).rendered;
     expect(renderedContent).toContain('\u001b[');
   });
 
   it('automatically highlights TypeScript source on a TTY', async (): Promise<void> => {
     mockCat.mockResolvedValue(ok('const answer: number = 42;\n'));
-    await builtin_cat(['answer.ts']);
-    const renderedContent: string = mockCatRender.mock.calls[0]?.[0] as string;
+    const renderedContent: string = (await builtin_cat(['answer.ts'])).rendered;
     expect(renderedContent).toContain('\u001b[');
   });
 
@@ -213,16 +211,14 @@ describe('builtin_cat — syntax highlighting on a TTY', (): void => {
     source: string,
   ): Promise<void> => {
     mockCat.mockResolvedValue(ok(source));
-    await builtin_cat([filename]);
-    const renderedContent: string = mockCatRender.mock.calls[0]?.[0] as string;
+    const renderedContent: string = (await builtin_cat([filename])).rendered;
     expect(renderedContent).toContain('\u001b[');
   });
 
   it('forces an explicit language when output is not a TTY', async (): Promise<void> => {
     (process.stdout as { isTTY: boolean }).isTTY = false;
     mockCat.mockResolvedValue(ok('def greet(name):\n    return name\n'));
-    await builtin_cat(['source', '--highlight=python']);
-    const renderedContent: string = mockCatRender.mock.calls[0]?.[0] as string;
+    const renderedContent: string = (await builtin_cat(['source', '--highlight=python'])).rendered;
     expect(renderedContent).toContain('\u001b[');
     expect(mockCat).toHaveBeenCalledTimes(1);
   });
@@ -230,8 +226,7 @@ describe('builtin_cat — syntax highlighting on a TTY', (): void => {
   it('forces extension-inferred highlighting with a bare flag', async (): Promise<void> => {
     (process.stdout as { isTTY: boolean }).isTTY = false;
     mockCat.mockResolvedValue(ok('def greet():\n    return 42\n'));
-    await builtin_cat(['greet.py', '--highlight']);
-    const renderedContent: string = mockCatRender.mock.calls[0]?.[0] as string;
+    const renderedContent: string = (await builtin_cat(['greet.py', '--highlight'])).rendered;
     expect(renderedContent).toContain('\u001b[');
     expect(mockCat).toHaveBeenCalledTimes(1);
   });
@@ -239,16 +234,14 @@ describe('builtin_cat — syntax highlighting on a TTY', (): void => {
   it('lets a later bare --highlight restore filename inference', async (): Promise<void> => {
     (process.stdout as { isTTY: boolean }).isTTY = false;
     mockCat.mockResolvedValue(ok('const answer = 42;\n'));
-    await builtin_cat(['answer.js', '--highlight=python', '--highlight']);
-    const renderedContent: string = mockCatRender.mock.calls[0]?.[0] as string;
+    const renderedContent: string = (await builtin_cat(['answer.js', '--highlight=python', '--highlight'])).rendered;
     expect(renderedContent).toContain('\u001b[');
   });
 
   it('suppresses automatic highlighting with --no-highlight', async (): Promise<void> => {
     const source: string = 'def greet():\n    return 42\n';
     mockCat.mockResolvedValue(ok(source));
-    await builtin_cat(['greet.py', '--no-highlight']);
-    expect(mockCatRender).toHaveBeenCalledWith(source, 'greet.py');
+    expect((await builtin_cat(['greet.py', '--no-highlight'])).rendered).toBe(`${source}\n`);
     expect(mockCat).toHaveBeenCalledTimes(1);
   });
 
@@ -256,15 +249,13 @@ describe('builtin_cat — syntax highlighting on a TTY', (): void => {
     (process.stdout as { isTTY: boolean }).isTTY = false;
     const source: string = 'def greet():\n    return 42\n';
     mockCat.mockResolvedValue(ok(source));
-    await builtin_cat(['greet.py']);
-    expect(mockCatRender).toHaveBeenCalledWith(source, 'greet.py');
+    expect((await builtin_cat(['greet.py'])).rendered).toBe(`${source}\n`);
   });
 
   it('auto-detects content when a forced file has no recognized name', async (): Promise<void> => {
     (process.stdout as { isTTY: boolean }).isTTY = false;
     mockCat.mockResolvedValue(ok('def greet():\n    return 42\n'));
-    await builtin_cat(['source', '--highlight']);
-    const renderedContent: string = mockCatRender.mock.calls[0]?.[0] as string;
+    const renderedContent: string = (await builtin_cat(['source', '--highlight'])).rendered;
     expect(renderedContent).toContain('\u001b[');
   });
 
@@ -288,7 +279,7 @@ describe('a read that throws is reported, not fatal', () => {
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('cat: bad.txt: Internal server error');
     // The second file still read: one unreadable path does not end the line.
-    expect(envelope.rendered).toContain('RENDERED');
+    expect(envelope.rendered).toContain('good contents');
   });
 
   it('reports a path that cannot even be resolved', async () => {

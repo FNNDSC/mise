@@ -36,6 +36,9 @@
   ],
   "author": "Rudolph Pienaar",
   "license": "MIT",
+  "dependencies": {
+    "chalk": "^4.1.2"
+  },
   "devDependencies": {
     "@jest/globals": "^30.2.0",
     "@types/jest": "^30.0.0",

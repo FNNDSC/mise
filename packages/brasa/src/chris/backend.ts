@@ -22,6 +22,7 @@ import { chrisFallback } from './commandFallback.js';
 import { chrisFiles } from './files.js';
 import { elevation_run } from '@fnndsc/chili/commands/connect/elevation.js';
 import { chrisWatch } from './watch.js';
+import { chrisListingLook } from '@fnndsc/chili/views/ls.js';
 
 declare module '../session/index.js' {
   interface Session {
@@ -95,5 +96,6 @@ export const chrisBackend: Backend = {
   elevate: elevation_run,
   watch: chrisWatch,
   files: chrisFiles,
+  listingLook: chrisListingLook,
   debug_get: (): boolean => Boolean(session.connection?.config?.debug),
 };

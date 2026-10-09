@@ -28,7 +28,7 @@ cuminMock_install(() => ({
   },
   Ok: (val) => ({ ok: true, value: val }),
   Err: (err) => ({ ok: false, error: err })
-}));
+}), { fond: { grid_render: mockGrid_render, long_render: mockLong_render } });
 
 // Mock the session module directly
 jest.unstable_mockModule('../src/session/index.js', () => ({
@@ -131,10 +131,6 @@ jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
   pathMapper_get: () => ({ blindParents_take: mockBlindParentsTake }),
 }));
 
-jest.unstable_mockModule('@fnndsc/chili/views/ls.js', () => ({
-  grid_render: mockGrid_render,
-  long_render: mockLong_render
-}));
 
 // Mock console methods
 const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -142,6 +138,8 @@ const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {}
 
 // Now import VFS after mocks are set up - must use dynamic import for unstable_mockModule
 const { VFS } = await import('../src/lib/vfs/vfs.js');
+// No backend is installed here, so a listing shows with the core's plain look.
+const { LISTING_LOOK_PLAIN } = await import('@fnndsc/fond');
 
 describe('VFS', () => {
   let vfs: VFS;
@@ -258,7 +256,8 @@ describe('VFS', () => {
 
       expect(mockLong_render).toHaveBeenCalledWith(
         expect.anything(),
-        { human: true }
+        { human: true },
+        LISTING_LOOK_PLAIN,
       );
     });
   });
@@ -422,7 +421,7 @@ describe('VFS', () => {
       await vfs.list('/home/user/scan.dcm');
 
       expect(mockFiles_list).toHaveBeenCalledWith({ path: '/home/user/scan.dcm' }, '/home/user/scan.dcm');
-      expect(mockGrid_render).toHaveBeenCalledWith([file], expect.objectContaining({ oneColumn: false }));
+      expect(mockGrid_render).toHaveBeenCalledWith([file], expect.objectContaining({ oneColumn: false }), LISTING_LOOK_PLAIN);
     });
 
     it('should inject virtual bin directory when listing root', async () => {
@@ -509,7 +508,8 @@ describe('VFS', () => {
 
       expect(mockLong_render).toHaveBeenCalledWith(
         expect.anything(),
-        { human: true }
+        { human: true },
+        LISTING_LOOK_PLAIN,
       );
     });
   });

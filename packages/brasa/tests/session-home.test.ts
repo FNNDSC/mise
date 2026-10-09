@@ -20,6 +20,12 @@ jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
   chrisConnection_init: jest.fn(async () => undefined),
 }));
 
+// The prompt and the heartbeat read the /proc index; not what this file is about.
+jest.unstable_mockModule('../src/chris/promptContext.js', () => ({
+  sessionPromptContext_build: jest.fn(),
+  procIndex_snapshot: jest.fn(),
+}));
+
 const { session, Session } = await import('../src/session/index.js');
 const { chrisBackend } = await import('../src/chris/backend.js');
 (await import('../src/core/backend.js')).backend_install(chrisBackend);
@@ -120,5 +126,13 @@ describe('the backend under it', () => {
     await session.setCWD('/work');
     expect(saved).toEqual(['/work']);
     backend_install(chrisBackend);
+  });
+});
+
+describe('what a ChRIS prompt and heartbeat read', () => {
+  it('is the session prompt context and the /proc index snapshot', async () => {
+    const promptContext = await import('../src/chris/promptContext.js');
+    expect(chrisBackend.prompt).toBe(promptContext.sessionPromptContext_build);
+    expect(chrisBackend.telemetry).toBe(promptContext.procIndex_snapshot);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { jobsState_derive } from '../src/core/jobsState.js';
+import { jobsState_derive } from '../src/chris/jobsState.js';
 
 const feed = (over: Record<string, number>) => ({
   id: 1, title: 'f', ownerUsername: 'u', public: false, creationDate: '',

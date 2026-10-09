@@ -17,7 +17,7 @@
 import { CommandEnvelope, envelope_ok, procCache_get, type ProcFeed, type ProcWarmupProgress, type SingleContext } from '@fnndsc/cumin';
 import { context_getSingle } from '@fnndsc/salsa';
 import { SESSION_MOTD_MODEL_KIND, type SessionMotd, type MotdIndex } from '@fnndsc/menu';
-import { jobsState_derive, type JobsState } from '../../core/jobsState.js';
+import { jobsState_derive, type JobsState } from '../../chris/jobsState.js';
 import { fortune_random } from './fortune.js';
 
 /** The most lines a greeting's fortune may run to. */

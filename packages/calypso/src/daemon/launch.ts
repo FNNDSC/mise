@@ -13,16 +13,16 @@
  */
 import * as path from 'node:path';
 import chalk from 'chalk';
-import { CalypsoDaemon } from './server.js';
+import { CalypsoDaemon, type PromptLastCommand } from './server.js';
 import { bundledWebRoot_find, installedWebRoot_find, webRoot_resolve, webRootBuild_read, webRootVersion_read, type WebRootBuild } from './static.js';
 import { hostFqdn_get } from './host.js';
 import { codeWatch_start, type CodeWatch } from './codeIdentity.js';
 import { token_generate } from './token.js';
 import type { BrasaEngine } from '@fnndsc/brasa';
-import type { ProgressEvent } from '@fnndsc/menu';
+import type { ProgressEvent, PromptContext } from '@fnndsc/menu';
 import type { OutputSink, Surface, SurfaceCapabilities, SurfacePeer, PromptRequest, LocalEditRequest, LocalEditResult } from '@fnndsc/menu/surface';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
-import { procIndex_snapshot, sessionPromptContext_build, backend_get, type SessionPromptContext, type SessionIdentity } from '@fnndsc/brasa';
+import { backend_get, type Backend, type SessionIdentity } from '@fnndsc/brasa';
 import { stackBanner_rows, stackBannerRow_paint, versions_get, buildHash_get } from '@fnndsc/brasa';
 import { identity_normalise, berth_write, berth_read, berth_path, berthUrl_isAlive, closing_take, type Berth } from './berth.js';
 import type { ClosingCause } from '@fnndsc/menu';
@@ -140,6 +140,28 @@ export function daemonSurface_create(daemon: CalypsoDaemon, policy: HostControlP
  *   the process then stays alive on the WebSocket server.
  */
 /**
+ * The daemon's prompt provider: the backend's prompt context for the last
+ * command, with the host-control tiers this daemon declares.
+ *
+ * @param prompt - The backend's prompt.
+ * @param hostControl - The declared host-control policy.
+ * @returns What the daemon calls for each promptline.
+ */
+function promptProvider_of(
+  prompt: NonNullable<Backend['prompt']>,
+  hostControl: HostControlPolicy,
+): (last?: PromptLastCommand) => Promise<PromptContext> {
+  return async (last?: PromptLastCommand): Promise<PromptContext> => ({
+    ...(await prompt(
+      last !== undefined
+        ? { lastCommandDurationMs: last.durationMs, lastExitCode: last.exitCode }
+        : {},
+    )),
+    ...(hostControl.tiers.size > 0 ? { hostControl: hostControl_tiers(hostControl) } : {}),
+  });
+}
+
+/**
  * What a launcher decided beyond the engine.
  *
  * @property hostControl - The declared host-control policy (off by default).
@@ -162,7 +184,8 @@ export async function daemon_launch(
   // one per identity — can advertise on one machine. A daemon with no restored
   // session (disconnected standalone start) has the backend's disconnected
   // identity, so it stays discoverable.
-  const sessionIdentity: SessionIdentity = await backend_get().session.identity_get();
+  const backend: Backend = backend_get();
+  const sessionIdentity: SessionIdentity = await backend.session.identity_get();
   const identity: string = identity_normalise(sessionIdentity.user, sessionIdentity.where);
 
   // Guard against a split-brain second daemon for this identity: if one is
@@ -220,16 +243,9 @@ export async function daemon_launch(
     port: 0,
     ...(webRoot !== null ? { webRoot } : {}),
     // Only the daemon holds the session context, so it renders the themed
-    // prompt and pushes it to surfaces.
-    telemetryProvider: procIndex_snapshot,
-    promptProvider: async (last): Promise<SessionPromptContext> => ({
-      ...(await sessionPromptContext_build(
-        last !== undefined
-          ? { lastCommandDurationMs: last.durationMs, lastExitCode: last.exitCode }
-          : {},
-      )),
-      ...(hostControl.tiers.size > 0 ? { hostControl: hostControl_tiers(hostControl) } : {}),
-    }),
+    // prompt and pushes it to surfaces. The backend says what both carry.
+    ...(backend.telemetry !== undefined ? { telemetryProvider: backend.telemetry } : {}),
+    ...(backend.prompt !== undefined ? { promptProvider: promptProvider_of(backend.prompt, hostControl) } : {}),
     // Report this process's own versions and build hash so attaching surfaces
     // greet with the daemon's truth rather than their local install's.
     stack: { ...versions_get(), build: buildHash_get(), ...(surfaceBuild !== null ? { surface: surfaceBuild } : {}) },

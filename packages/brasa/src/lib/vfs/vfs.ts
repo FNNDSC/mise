@@ -186,7 +186,10 @@ export class VFS {
     if (cached) {
       parentItems = cached.data;
     } else {
+      // The parent is read only to find one name; what it could not read is not this answer's.
+      const parentMark: number = errorStack.checkpoint_mark();
       const parentResult = await vfsDispatcher_get().list(parentPath, options);
+      errorStack.checkpoint_drain(parentMark);
       if (parentResult.ok) {
         parentItems = listingItemsFromVfs_make(parentResult.value);
         listCache.cache_set(parentPath, parentItems);
@@ -198,8 +201,18 @@ export class VFS {
       if (match) return Ok([match]);
     }
 
-    // Fallback: synthesize an entry from the path name
-    return Ok([{ name: baseName, type: 'dir', size: 0, owner: 'system', date: '' }]);
+    // The parent does not name it. A path that lists is a folder all the
+    // same (a mount the parent's listing does not show); one that does not
+    // is not there, and saying so is the answer: a folder made up from the
+    // path's name read as one that exists, to `ls -d` and to `du` alike.
+    const mark: number = errorStack.checkpoint_mark();
+    const itself = await vfsDispatcher_get().list(absolutePath, options);
+    errorStack.checkpoint_drain(mark);
+    if (itself.ok) {
+      return Ok([{ name: baseName, type: 'dir', size: 0, owner: 'system', date: '' }]);
+    }
+    errorStack.stack_push('error', `Cannot list ${absolutePath}: No such file or directory`);
+    return Err();
   }
 
   /**

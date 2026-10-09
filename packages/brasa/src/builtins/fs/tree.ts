@@ -3,13 +3,18 @@
  * Displays directory structure.
  */
 import chalk from 'chalk';
-import { ParsedArgs, commandArgs_process, path_resolve, error_stripDebugPrefix } from '../utils.js';
+import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve, error_stripDebugPrefix } from '../utils.js';
+import { vfs } from '../../lib/vfs/vfs.js';
 import { session } from '../../session/index.js';
 import { spinner } from '../../lib/spinner.js';
 import { scan_do, archyTree_create, type CLIscan, type ScanRecord } from '@fnndsc/chili/path/pathCommand.js';
 import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
 import { errorStack } from '@fnndsc/fond';
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { CommandEnvelope, envelope_ok, envelope_error, type ListingItem } from '@fnndsc/menu';
+import type { Result } from '@fnndsc/fond';
+
+/** The options tree reads; any other is refused by name. */
+const TREE_OPTIONS: readonly string[] = ['follow', 'path', 'dirs', 'dirpath'];
 
 /**
  * Displays a directory tree of the ChRIS filesystem.
@@ -27,8 +32,15 @@ import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
  */
 export async function builtin_tree(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args, {
-    booleanLongOptions: ['follow', 'path', 'dirs', 'dirpath'],
+    booleanLongOptions: TREE_OPTIONS,
   });
+  // An option tree does not have is refused, not skipped: `tree -L 1 x`
+  // once scanned a folder named `1`, and `tree --bogus x` the whole home.
+  const unknown: string | null = optionsUnknown_refusal('tree', parsed, TREE_OPTIONS);
+  if (unknown !== null) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(unknown)}\n`);
+  }
   const pathArgs: string[] = parsed._ as string[];
   const dirpathMode: boolean = !!parsed['dirpath'];
   const pathMode: boolean = !!parsed['path'] || dirpathMode;
@@ -38,6 +50,14 @@ export async function builtin_tree(args: string[]): Promise<CommandEnvelope> {
   let targetPath: string | undefined;
   if (pathArgs.length > 0) {
     targetPath = await path_resolve(pathArgs[0]);
+    // A path that is not there is said to be not there, as tree says it,
+    // rather than scanned into an empty tree.
+    const entry: Result<ListingItem[]> = await vfs.data_get(targetPath, { directory: true });
+    if (!entry.ok) {
+      errorStack.stack_pop();
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(`tree: ${pathArgs[0]}: No such file or directory`)}\n`);
+    }
   }
 
   // Build scan options
@@ -74,6 +94,9 @@ export async function builtin_tree(args: string[]): Promise<CommandEnvelope> {
       for (const item of scanResult.fileInfo) {
         rendered += `${item.chrisPath}\n`;
       }
+    } else if (scanResult.fileInfo.length === 0) {
+      // An empty folder is its own tree: its name, and nothing under it.
+      rendered += `${targetPath ?? originalFolder}\n`;
     } else {
       // Default: ASCII tree
       rendered += `${archyTree_create(scanResult.fileInfo)}\n`;

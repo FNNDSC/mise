@@ -23,7 +23,7 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
 jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({ vfs: { data_get: jest.fn() } }));
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({ spinner: { start: jest.fn(), stop: jest.fn() } }));
 
-const { duSize_format, duOptions_parse, dirSizes_compute } = await import('../src/builtins/fs/du.js');
+const { duSize_format, duOptions_parse, dirSizes_compute, depthOption_normalize } = await import('../src/builtins/fs/du.js');
 
 function parsed(flags: Record<string, unknown>): any {
   return { _: [], ...flags };
@@ -100,5 +100,13 @@ describe('dirSizes_compute', () => {
   });
   it('falls back to totalSize for the target when no files land in it', () => {
     expect(dirSizes_compute(scan([], 999), '/root', DEFAULTS).get('/root')).toBe(999);
+  });
+});
+
+describe('depthOption_normalize', () => {
+  it('spells -d N and -dN as --max-depth=N, and leaves the rest alone', () => {
+    expect(depthOption_normalize(['-d', '1', '~/csv'])).toEqual(['--max-depth=1', '~/csv']);
+    expect(depthOption_normalize(['-d0', '-h', 'x'])).toEqual(['--max-depth=0', '-h', 'x']);
+    expect(depthOption_normalize(['--', '-d', '1'])).toEqual(['--', '-d', '1']);
   });
 });

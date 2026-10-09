@@ -19,6 +19,15 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
   session: { getCWD: async (): Promise<string> => '/home/chris/uploads' },
 }));
 
+// The ChRIS backend's references and kinds: the session itself is mocked above.
+const { chrisReferences, chrisAnswerKinds, chrisVerbTakes } = await import('../src/chris/references.js');
+(await import('../src/core/backend.js')).backend_install({
+  id: 'chris',
+  session: {} as never,
+  references: chrisReferences,
+  answerKinds: chrisAnswerKinds,
+  verbTakes: chrisVerbTakes,
+});
 const { shellWords_tokenize, shellWords_referencesExpand } = await import('../src/lib/parser.js');
 const { reference_resolve, paramScope_run, unresolvedStands_run, reference_isReserved, reference_refusal } =
   await import('../src/core/expansion.js');

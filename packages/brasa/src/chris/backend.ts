@@ -15,6 +15,7 @@ import type { Backend, SessionIdentity } from '../core/backend.js';
 import { Session } from '../session/index.js';
 import { homePath_of } from '../builtins/utils.js';
 import { procIndex_snapshot, sessionPromptContext_build } from './promptContext.js';
+import { chrisAnswerKinds, chrisReferences, chrisVerbTakes } from './references.js';
 
 declare module '../session/index.js' {
   interface Session {
@@ -73,4 +74,7 @@ export const chrisBackend: Backend = {
   },
   prompt: sessionPromptContext_build,
   telemetry: procIndex_snapshot,
+  references: chrisReferences,
+  answerKinds: chrisAnswerKinds,
+  verbTakes: chrisVerbTakes,
 };

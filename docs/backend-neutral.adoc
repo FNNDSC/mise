@@ -198,6 +198,9 @@ interface Backend {
   telemetry?: () => BackendTelemetry;
   /** What `${name}` references resolve to (ChRIS: feed, query, run, gather). */
   references?: ReadonlyArray<ReferenceSource>;
+  /** The kinds of row its listings number (ChRIS: PAT, STD, SER; the core numbers FIL and DIR), and what its verbs take. */
+  answerKinds?: ReadonlyArray<AnswerKindLook>;
+  verbTakes?: ReadonlyArray<VerbTakes>;
   /** Long-running work it can list and watch. */
   tasks?: ReadonlyArray<TaskSource>;
 }

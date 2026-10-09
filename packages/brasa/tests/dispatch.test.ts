@@ -104,6 +104,11 @@ const mockSudoCommandRun = jest.fn();
 jest.unstable_mockModule('../src/core/elevation.js', () => ({ sudoCommand_run: mockSudoCommandRun }));
 
 const { command_dispatch, command_dispatchEnvelope, command_executeToEnvelope } = await import('../src/core/dispatch.js');
+// The ChRIS backend's commands, registered as brasa's entry registers them for
+// every consumer (the engine's core imports none of them).
+const { chrisCommands } = await import('../src/chris/chrisCommands.js');
+(await import('../src/core/commandRegistry.js')).commands_register(chrisCommands);
+
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 let errSpy: jest.SpiedFunction<typeof console.error>;

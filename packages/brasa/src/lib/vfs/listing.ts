@@ -9,7 +9,7 @@
  * @module
  */
 import type { ListingItem } from '@fnndsc/menu';
-import type { VFSItem } from '@fnndsc/salsa';
+import type { VFSItem } from '@fnndsc/fond';
 
 /**
  * Converts filesystem items into listing items.

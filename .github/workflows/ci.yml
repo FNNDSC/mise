@@ -99,6 +99,7 @@ jobs:
       # ratchets that cannot repair what exists but stop it growing.
       - run: npm run lint:kernel
       - run: npm run lint:fond
+      - run: npm run lint:core-deps
       - run: npm run lint:commands
       - run: npm run lint:prompt
       - run: npm run lint:wire

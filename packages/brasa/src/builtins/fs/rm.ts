@@ -4,14 +4,13 @@
  */
 import chalk from 'chalk';
 import path from 'path';
-import { listCache_get } from '@fnndsc/cumin';
-import type { ListCache } from '@fnndsc/cumin';
 import { path_resolve } from '../utils.js';
 import { repl_confirm } from '../../core/question.js';
-import { files_rm as chefs_rm_cmd, RmResult, RmOptions } from '@fnndsc/chili/commands/fs/rm.js';
-import { rm_render } from '@fnndsc/chili/views/fs.js';
+import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
+import type { ListingCache } from '../../core/backend.js';
+import { entry_at, entry_isFolder, folderTree_remove } from './entries.js';
+import { errno_words, rm_render, vfs_fail, vfs_ok, type VFSDispatcher, type VFSItem, type VfsOutcome } from '@fnndsc/fond';
 import { sink_get } from '../../core/sink.js';
-import { PROC_TAGS_PREFIX } from '@fnndsc/salsa';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /**
@@ -140,21 +139,6 @@ export function rmSummary_format(successCount: number, failCount: number): strin
   return chalk.red(`Failed to remove ${failCount} item${failCount !== 1 ? 's' : ''}`);
 }
 
-/**
- * Says why a removal failed in the words rm uses on Linux: a directory
- * without `-r` "Is a directory", a missing operand "No such file or
- * directory"; anything else as the store reported it.
- *
- * @param result - The failed removal.
- * @param recursive - Whether `-r` was given.
- * @returns The reason that finishes "rm: cannot remove 'x': ".
- */
-export function rmFailure_reason(result: RmResult, recursive: boolean): string {
-  if (result.type === 'dir' && !recursive) return 'Is a directory';
-  if (result.type === null && (result.error ?? '').startsWith('No such file or directory')) return 'No such file or directory';
-  return result.error || 'unknown error';
-}
-
 /** Outcome of one removal target, for the envelope model. */
 export interface RmOutcome {
   path: string;
@@ -162,22 +146,34 @@ export interface RmOutcome {
   skipped: boolean;
 }
 
+/** What one removal did: the kind of thing removed (null when nothing was there), and its outcome. */
+interface EntryRemoval {
+  type: 'file' | 'dir' | 'link' | null;
+  outcome: VfsOutcome;
+}
+
 /**
- * What rm says under /proc/tags, where nothing is removed by rm: a tag is a
- * folder (`rmdir` deletes it) and a feed inside one is a tagging (`setfattr
- * -x` takes it off).
+ * Removes one path. A projection's path is its mount's to remove or refuse
+ * (a tag names its own verbs). Elsewhere what holds the path decides: a file
+ * or link is removed, a folder only with `-r` (with all it holds), and
+ * nothing there is fine under `-f`.
  *
- * @param target - The resolved path.
- * @param pathArg - The operand as typed.
- * @returns The refusal, or null for a path outside /proc/tags.
+ * @param dispatcher - The session's filesystem.
+ * @param target - The absolute path.
+ * @param recursive - `-r`.
+ * @param force - `-f`.
+ * @returns What was removed, and the outcome.
  */
-export function tagPath_refusal(target: string, pathArg: string): string | null {
-  if (target !== PROC_TAGS_PREFIX && !target.startsWith(`${PROC_TAGS_PREFIX}/`)) return null;
-  const parts: string[] = target.slice(PROC_TAGS_PREFIX.length).split('/').filter(Boolean);
-  if (parts.length === 2) {
-    return `rm: cannot remove '${pathArg}': Operation not permitted (setfattr -x tag -v ${parts[0]} ${parts[1]} untags the feed)`;
+async function entry_remove(dispatcher: VFSDispatcher, target: string, recursive: boolean, force: boolean): Promise<EntryRemoval> {
+  if (dispatcher.path_isVirtual(target)) {
+    return { type: null, outcome: recursive ? await dispatcher.rmTree(target) : await dispatcher.rm(target) };
   }
-  return `rm: cannot remove '${pathArg}': Is a directory (rmdir deletes a tag no feed wears)`;
+  const entry: VFSItem | null = await entry_at(dispatcher, target);
+  if (entry === null) return { type: null, outcome: force ? vfs_ok(true) : vfs_fail('ENOENT') };
+  if (entry_isFolder(entry)) {
+    return { type: 'dir', outcome: recursive ? await folderTree_remove(dispatcher, target) : vfs_fail('EISDIR') };
+  }
+  return { type: entry.type === 'link' ? 'link' : 'file', outcome: await dispatcher.rm(target) };
 }
 
 /**
@@ -236,7 +232,7 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
     }
   }
 
-  const options: RmOptions = { recursive, force };
+  const dispatcher: VFSDispatcher = vfsDispatcher_get();
   let successCount: number = 0;
   let failCount: number = 0;
   let rendered: string = '';
@@ -281,23 +277,6 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
     try {
       const target: string = await path_resolve(pathArg);
 
-      // A tag's folder is a tag, and the feeds in it are its taggings: each
-      // has its own verb, and rm names it rather than guess.
-      const tagRefusal: string | null = tagPath_refusal(target, pathArg);
-      if (tagRefusal !== null) {
-        err_emit(chalk.red(tagRefusal));
-        outcomes.push({ path: pathArg, removed: false, skipped: false });
-        failCount++;
-        continue;
-      }
-
-      if (target.startsWith('/bin/')) {
-        err_emit(chalk.red(`rm: cannot remove '${pathArg}': virtual /bin directory`));
-        outcomes.push({ path: pathArg, removed: false, skipped: false });
-        failCount++;
-        continue;
-      }
-
       if (interactive) {
         let confirmed: boolean = false;
         try {
@@ -318,31 +297,31 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
         }
       }
 
-      const result: RmResult = await chefs_rm_cmd(target, options);
+      const removed: EntryRemoval = await entry_remove(dispatcher, target, recursive, force);
 
-      if (result.success && result.type === null) {
+      if (removed.outcome.ok && removed.type === null && !dispatcher.path_isVirtual(target)) {
         // `-f` on something not there: nothing removed, nothing to say.
         outcomes.push({ path: pathArg, removed: false, skipped: false });
         continue;
       }
-      if (result.success) {
+      if (removed.outcome.ok) {
         if (paths.length > 1) {
           out_emit(chalk.gray(`removed '${pathArg}'`));
         } else {
-          out_emit(rm_render(result));
+          out_emit(rm_render({ success: true, path: target, type: removed.type }));
         }
         outcomes.push({ path: pathArg, removed: true, skipped: false });
         successCount++;
 
-        const listCache: ListCache = listCache_get();
-        const parentDir: string = path.posix.dirname(target);
-        listCache.cache_invalidate(parentDir);
+        const listCache: ListingCache = listingCache_get();
+        listCache.cache_invalidate?.(path.posix.dirname(target));
         // Also drop the removed target and any listings cached beneath it:
         // a later re-upload to the same path must not inherit still-fresh
         // nested listings from the deleted tree.
-        listCache.cache_invalidateTree(target);
+        listCache.cache_invalidateTree?.(target);
       } else {
-        err_emit(chalk.red(`rm: cannot remove '${pathArg}': ${rmFailure_reason(result, recursive)}`));
+        const reason: string = removed.outcome.reason ?? errno_words(removed.outcome.errno);
+        err_emit(chalk.red(`rm: cannot remove '${pathArg}': ${reason}`));
         outcomes.push({ path: pathArg, removed: false, skipped: false });
         failCount++;
       }

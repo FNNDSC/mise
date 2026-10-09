@@ -4,7 +4,7 @@
  *
  * @module
  */
-import { vfs_ok, errorStack, type Result, type VFSDispatcher, type VFSItem, type VfsOutcome } from '@fnndsc/fond';
+import { vfs_ok, vfs_failFromStack, errorStack, type Result, type VFSDispatcher, type VFSItem, type VfsOutcome } from '@fnndsc/fond';
 
 /**
  * What holds a path, as its parent lists it.
@@ -54,4 +54,25 @@ export async function folderTree_make(dispatcher: VFSDispatcher, targetPath: str
     if (!made.ok && made.errno !== 'EEXIST') return made;
   }
   return parts.length === 0 ? vfs_ok(true) : dispatcher.mkdir(targetPath);
+}
+
+/**
+ * Removes a folder and everything in it (`rm -r`): in one step where the
+ * mount offers it (CUBE takes a folder with what it holds), else each entry
+ * in turn, deepest first, and the folder last.
+ *
+ * @param dispatcher - The session's filesystem.
+ * @param targetPath - The folder.
+ * @returns Done, or why not (the first refusal met).
+ */
+export async function folderTree_remove(dispatcher: VFSDispatcher, targetPath: string): Promise<VfsOutcome> {
+  if (dispatcher.rmTree_offered(targetPath)) return dispatcher.rmTree(targetPath);
+  const held: Result<VFSItem[]> = await dispatcher.list(targetPath);
+  if (!held.ok) return vfs_failFromStack('EIO');
+  for (const item of held.value) {
+    const child: string = targetPath === '/' ? `/${item.name}` : `${targetPath}/${item.name}`;
+    const removed: VfsOutcome = entry_isFolder(item) ? await folderTree_remove(dispatcher, child) : await dispatcher.rm(child);
+    if (!removed.ok) return removed;
+  }
+  return dispatcher.rmdir(targetPath);
 }

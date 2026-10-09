@@ -48,6 +48,11 @@ describe('the ChRIS mounts', () => {
 });
 
 describe('/bin', () => {
+  it('removes nothing: it is the plugins and pipelines CUBE holds', async () => {
+    expect(await new BinVfsProvider().rm()).toEqual({ ok: false, errno: 'EROFS', reason: 'virtual /bin directory' });
+    expect(await new BinVfsProvider().rmTree()).toEqual({ ok: false, errno: 'EROFS', reason: 'virtual /bin directory' });
+  });
+
   beforeEach(() => { jest.clearAllMocks(); });
 
   it('lists plugins as name-vVERSION and pipelines by slug, sorted', async () => {

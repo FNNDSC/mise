@@ -7,25 +7,14 @@
  * @module
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import { cuminMock_install } from './support/cuminMock.js';
+import { MemoryVfsProvider, VFSDispatcher, errorStack, vfs_fail, type VFSProvider } from '@fnndsc/fond';
 
-jest.unstable_mockModule('@fnndsc/chili/commands/fs/rm.js', () => ({ files_rm: jest.fn() }));
-jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({ rm_render: jest.fn() }));
-cuminMock_install(() => ({
-  // A real cache: the removal path invalidates the parent listing and the
-  // tree beneath the target, and a bare jest.fn() returning undefined turns
-  // a successful removal into a caught TypeError.
-  listCache_get: jest.fn(() => ({ cache_invalidate: jest.fn(), cache_invalidateTree: jest.fn() })),
-  envelope_ok: (rendered: string, model?: unknown) =>
-    model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
-  envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
-    const envelope: Record<string, unknown> = { status: 'error', rendered };
-    if (errors !== undefined) envelope.errors = errors;
-    if (renderedErr !== undefined) envelope.renderedErr = renderedErr;
-    return envelope;
-  },
+const state: { dispatcher: VFSDispatcher } = { dispatcher: new VFSDispatcher() };
+jest.unstable_mockModule('../src/core/filesystem.js', () => ({
+  vfsDispatcher_get: () => state.dispatcher,
+  listingCache_get: () => ({ cache_invalidate: jest.fn(), cache_invalidateTree: jest.fn() }),
 }));
-const mockResolve = jest.fn(async (p: string): Promise<string> => `/home/me/${p}`);
+const mockResolve = jest.fn(async (p: string): Promise<string> => (p.startsWith('/') ? p : `/home/me/${p}`));
 jest.unstable_mockModule('../src/builtins/utils.js', () => ({ path_resolve: mockResolve }));
 const mockConfirm = jest.fn(async (): Promise<boolean> => true);
 jest.unstable_mockModule('../src/core/question.js', () => ({ repl_confirm: mockConfirm }));
@@ -34,8 +23,32 @@ jest.unstable_mockModule('../src/core/sink.js', () => ({
   sink_get: (): unknown => ({ data_write: mockSinkWrite, err_write: mockSinkWrite }),
 }));
 
-const { rmArgs_parse, rmSummary_format, rm_run, builtin_rm, rmFailure_reason } = await import('../src/builtins/fs/rm.js');
-const { files_rm } = await import('@fnndsc/chili/commands/fs/rm.js');
+const { rmArgs_parse, rmSummary_format, rm_run, builtin_rm } = await import('../src/builtins/fs/rm.js');
+
+/** What /home/me lists, by name. */
+async function home_names(folder: string = '/home/me'): Promise<string[]> {
+  const listed = await state.dispatcher.list(folder);
+  return listed.ok ? listed.value.map((item) => item.name).sort() : [];
+}
+
+/** A fresh session filesystem; `mount` adjusts the store first. */
+function filesystem_reset(mount?: (store: MemoryVfsProvider) => void): void {
+  const store: MemoryVfsProvider = new MemoryVfsProvider('', {
+    '/home/me/a': 'a', '/home/me/b': 'b', '/home/me/c': 'c', '/home/me/d': 'd', '/home/me/only.txt': 'o',
+    '/home/me/docs/inner/deep.txt': 'x', '/home/me/empty': null,
+  });
+  if (mount) mount(store);
+  state.dispatcher = new VFSDispatcher(store);
+  const tags: MemoryVfsProvider = new MemoryVfsProvider('/proc/tags', { '/proc/tags/qc/feed_1': null });
+  (tags as Partial<VFSProvider>).rm = async () => vfs_fail('EPERM', 'Operation not permitted (setfattr -x tag -v qc feed_1 untags the feed)');
+  state.dispatcher.provider_register(tags);
+}
+
+beforeEach(() => {
+  errorStack.stack_clear();
+  mockSinkWrite.mockClear();
+  filesystem_reset();
+});
 
 describe('rmArgs_parse', () => {
   it('parses combined short flags and paths', () => {
@@ -57,11 +70,10 @@ describe('rmArgs_parse', () => {
     expect(rmArgs_parse(['--recursive', 'a']).recursive).toBe(true);
   });
   it('builtin_rm removes nothing when an option is refused', async () => {
-    (files_rm as jest.Mock).mockClear();
     const envelope = await builtin_rm(['-v', 'a']);
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain("rm: invalid option -- 'v'");
-    expect(files_rm).not.toHaveBeenCalled();
+    expect(await home_names()).toContain('a');
   });
 
   it('reads -I as one question for the whole list, distinct from -i', () => {
@@ -70,17 +82,40 @@ describe('rmArgs_parse', () => {
   });
 });
 
-describe('rmFailure_reason', () => {
-  it('speaks as rm does on Linux', () => {
-    expect(rmFailure_reason({ success: false, path: '/x', type: 'dir', error: "Cannot remove directory '/x': is a directory (use -r for recursive delete)" }, false)).toBe('Is a directory');
-    expect(rmFailure_reason({ success: false, path: '/x', type: null, error: 'No such file or directory: /x' }, false)).toBe('No such file or directory');
-    expect(rmFailure_reason({ success: false, path: '/x', type: 'file', error: 'Failed to delete file: /x' }, false)).toBe('Failed to delete file: /x');
+describe('rm removes as a disk does', () => {
+  it('removes a file, says so, and refuses a folder without -r', async () => {
+    const one = await rm_run({ recursive: false, force: false, interactive: false, once: false, paths: ['a'] });
+    expect(one.rendered).toContain('Removed file: /home/me/a');
+    const folder = await rm_run({ recursive: false, force: false, interactive: false, once: false, paths: ['docs'] });
+    expect(folder.renderedErr).toContain("rm: cannot remove 'docs': Is a directory");
+    expect(await home_names()).toContain('docs');
+  });
+
+  it('removes a folder with all it holds under -r, walked where the mount has no rmTree', async () => {
+    filesystem_reset((store) => { (store as Partial<VFSProvider>).rmTree = undefined; });
+    const envelope = await rm_run({ recursive: true, force: false, interactive: false, once: false, paths: ['docs'] });
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('Removed dir: /home/me/docs');
+    expect(await home_names()).not.toContain('docs');
+  });
+
+  it('says nothing there as Linux does, and passes a mount\'s refusal on with its words', async () => {
+    const missing = await rm_run({ recursive: false, force: false, interactive: false, once: false, paths: ['gone'] });
+    expect(missing.renderedErr).toContain("rm: cannot remove 'gone': No such file or directory");
+    const tagged = await rm_run({ recursive: false, force: false, interactive: false, once: false, paths: ['/proc/tags/qc/feed_1'] });
+    expect(tagged.renderedErr).toContain("rm: cannot remove '/proc/tags/qc/feed_1': Operation not permitted (setfattr -x tag -v qc feed_1 untags the feed)");
+  });
+
+  it('summarises several operands', async () => {
+    const envelope = await rm_run({ recursive: false, force: false, interactive: false, once: false, paths: ['a', 'b', 'gone'] });
+    expect(envelope.rendered).toContain("removed 'a'");
+    expect(envelope.rendered).toContain('Removed 2 items, failed 1');
+    expect(envelope.status).toBe('error');
   });
 });
 
 describe('rm -f on a missing operand', () => {
   it('says nothing and succeeds, as on Linux', async () => {
-    (files_rm as jest.Mock).mockResolvedValueOnce({ success: true, path: '/home/me/gone', type: null } as never);
     const envelope = await rm_run({ recursive: false, force: true, interactive: false, once: false, paths: ['gone'] });
     expect(envelope.status).toBe('ok');
     expect(envelope.rendered).toBe('');
@@ -105,30 +140,26 @@ describe('rmSummary_format', () => {
 
 describe('rm -I', () => {
   beforeEach(() => {
-    (files_rm as jest.Mock).mockClear();
     mockConfirm.mockClear();
   });
 
   it('asks once for the whole list, naming how many', async () => {
     mockConfirm.mockResolvedValue(true);
-    (files_rm as jest.Mock).mockResolvedValue({ success: true });
     await rm_run({ recursive: false, force: false, interactive: false, once: true, paths: ['a', 'b', 'c'] });
     expect(mockConfirm).toHaveBeenCalledTimes(1);
     expect(mockConfirm).toHaveBeenCalledWith('rm: remove 3 items? (y/n): ');
-    expect(files_rm).toHaveBeenCalledTimes(3);
+    expect(await home_names()).toEqual(['d', 'docs', 'empty', 'only.txt']);
   });
 
   it('removes nothing at all when the one question is answered no', async () => {
     mockConfirm.mockResolvedValue(false);
-    (files_rm as jest.Mock).mockResolvedValue({ success: true });
     const envelope = await rm_run({ recursive: false, force: false, interactive: false, once: true, paths: ['a', 'b'] });
-    expect(files_rm).not.toHaveBeenCalled();
+    expect(await home_names()).toContain('a');
     expect(envelope.rendered).toContain('nothing removed (2 kept)');
   });
 
   it('names the one thing when the list is one long', async () => {
     mockConfirm.mockResolvedValue(true);
-    (files_rm as jest.Mock).mockResolvedValue({ success: true });
     await rm_run({ recursive: false, force: false, interactive: false, once: true, paths: ['only.txt'] });
     expect(mockConfirm).toHaveBeenCalledWith("rm: remove 'only.txt'? (y/n): ");
   });
@@ -136,7 +167,6 @@ describe('rm -I', () => {
 
 describe('a question that is never answered', () => {
   beforeEach(() => {
-    (files_rm as jest.Mock).mockClear();
     mockConfirm.mockClear();
     mockSinkWrite.mockClear();
   });
@@ -149,7 +179,7 @@ describe('a question that is never answered', () => {
   it('keeps everything under -I, and says why, rather than reporting a failure', async () => {
     mockConfirm.mockRejectedValue(new Error('the operator abandoned the question'));
     const envelope = await rm_run({ recursive: false, force: false, interactive: false, once: true, paths: ['a', 'b'] });
-    expect(files_rm).not.toHaveBeenCalled();
+    expect(await home_names()).toContain('b');
     expect(envelope.status).toBe('ok');
     expect(envelope.rendered).toContain('nothing removed (2 kept)');
     // The reason travels: a surface that has lost its voice must not read
@@ -160,7 +190,7 @@ describe('a question that is never answered', () => {
   it('skips the file under -i, the way a no does, and does not report a failure', async () => {
     mockConfirm.mockRejectedValue(new Error('the operator abandoned the question'));
     const envelope = await rm_run({ recursive: false, force: false, interactive: true, once: false, paths: ['only.txt'] });
-    expect(files_rm).not.toHaveBeenCalled();
+    expect(await home_names()).toContain('only.txt');
     // Not `rm: cannot remove ...`, which is what an unguarded await made of
     // an abandoned question: an error, over a file nothing had touched.
     expect(said()).toContain("skipped 'only.txt': the operator abandoned the question");
@@ -173,13 +203,12 @@ describe('a question that is never answered', () => {
     mockConfirm
       .mockResolvedValueOnce(true)
       .mockRejectedValue(new Error('the operator abandoned the question'));
-    (files_rm as jest.Mock).mockResolvedValue({ success: true });
 
     const envelope = await rm_run({ recursive: false, force: false, interactive: true, once: false, paths: ['a', 'b', 'c', 'd'] });
 
     // One removed, one abandoned, and the two behind it never put to an
     // operator who had already walked away.
-    expect(files_rm).toHaveBeenCalledTimes(1);
+    expect(await home_names()).toEqual(['b', 'c', 'd', 'docs', 'empty', 'only.txt']);
     expect(mockConfirm).toHaveBeenCalledTimes(2);
     expect(said()).toContain('2 more not asked about, and kept');
     expect(envelope.model).toEqual({

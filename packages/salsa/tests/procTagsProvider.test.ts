@@ -74,6 +74,15 @@ describe('ProcTagsVfsProvider', () => {
   });
 });
 
+describe('removal under /proc/tags', () => {
+  const provider = new ProcTagsVfsProvider();
+  it('names the verb that does the job: setfattr untags a feed, rmdir deletes a tag', async () => {
+    expect(await provider.rm('/proc/tags/urgent/feed_12')).toEqual({ ok: false, errno: 'EPERM', reason: 'Operation not permitted (setfattr -x tag -v urgent feed_12 untags the feed)' });
+    expect(await provider.rmTree('/proc/tags/urgent')).toEqual({ ok: false, errno: 'EISDIR', reason: 'Is a directory (rmdir deletes a tag no feed wears)' });
+    expect(await provider.rm('/proc/tags')).toEqual({ ok: false, errno: 'EISDIR', reason: 'Is a directory (rmdir deletes a tag no feed wears)' });
+  });
+});
+
 describe('the dispatcher routes mkdir, rmdir and mv', () => {
   it('to /proc/tags, and refuses them by name in a projection that makes no folders', async () => {
     expect((await vfsDispatcher.mkdir('/proc/tags/qc')).ok).toBe(true);

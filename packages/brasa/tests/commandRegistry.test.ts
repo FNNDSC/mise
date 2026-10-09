@@ -10,6 +10,8 @@ import {
   builtinCommand_has,
   envelopeCommand_names,
   plainCommand_names,
+  commandHelpEntry_get,
+  helpTopic_names,
 } from '../src/core/commandRegistry.js';
 
 const envelope = (tag: string) => async () => ({ status: 'ok' as const, rendered: tag });
@@ -38,5 +40,14 @@ describe('the command registry', () => {
   it('looks names up as the tables did: a name inherited from Object.prototype counts as a builtin (kept deliberately; changing it is its own decision)', () => {
     expect(builtinCommand_has('toString')).toBe(true);
     expect(typeof plainHandler_get('constructor')).toBe('function');
+  });
+
+  it('keeps help by name: its names are the builtins /bin lists and the shell completes, in registration order', () => {
+    const help = { usage: 'zz-help [x]', description: 'a test command' };
+    commands_register({ help: { 'zz-help': help, 'zz-help2': { usage: 'u', description: 'd' } } });
+    expect(commandHelpEntry_get('zz-help')).toBe(help);
+    const names: string[] = helpTopic_names().filter((n: string) => n.startsWith('zz-help'));
+    expect(names).toEqual(['zz-help', 'zz-help2']);
+    expect(commandHelpEntry_get('zz-none')).toBeUndefined();
   });
 });

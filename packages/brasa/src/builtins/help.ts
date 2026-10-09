@@ -9,15 +9,8 @@ import { gamesShelf_render, gamesShelf_names } from './games/shelf.js';
 import chalk from 'chalk';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { CAT_USAGE } from './fs/cat.args.js';
+import { commands_register, commandHelpEntry_get, helpTopic_names, type CommandHelp } from '../core/commandRegistry.js';
 
-interface CommandHelp {
-  usage: string;
-  summary?: string;        // one-liner for universal help listing; falls back to description
-  description: string;
-  subcommands?: string[];
-  options?: string[];
-  examples?: string[];
-}
 
 /**
  * Standard subcommands and options injected into every resource help entry.
@@ -1745,6 +1738,10 @@ export const helpText: Record<string, CommandHelp> = {
   },
 };
 
+// The help is registered with the engine's commands; every reader below goes
+// through the registry, never this record.
+commands_register({ help: helpText });
+
 /**
  * Displays help text for a command.
  *
@@ -1870,7 +1867,7 @@ function commandHelp_render(command: string, help: CommandHelp): string {
  * @returns The formatted help text string, or undefined if no help exists.
  */
 export function commandHelp_get(command: string): string | undefined {
-  const help: CommandHelp | undefined = helpText[command];
+  const help: CommandHelp | undefined = commandHelpEntry_get(command);
   return help ? commandHelp_render(command, help) : undefined;
 }
 
@@ -2038,7 +2035,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   for (const [category, commands] of Object.entries(categories)) {
     rendered += `${chalk.bold.yellow(category)}\n`;
     commands.forEach((cmd: string) => {
-      const help: CommandHelp | undefined = helpText[cmd];
+      const help: CommandHelp | undefined = commandHelpEntry_get(cmd);
       if (help) {
         rendered += `  ${chalk.cyan(cmd.padEnd(20))} ${chalk.gray(help.summary ?? help.description)}\n`;
       }
@@ -2072,7 +2069,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
  * @returns Array of builtin command names.
  */
 export function builtinCommands_list(): string[] {
-  return Object.keys(helpText);
+  return helpTopic_names();
 }
 
 /**
@@ -2083,7 +2080,7 @@ export function builtinCommands_list(): string[] {
  * @returns The line, or undefined for a command with no help entry.
  */
 export function commandSummary_get(command: string): string | undefined {
-  const help: CommandHelp | undefined = helpText[command];
+  const help: CommandHelp | undefined = commandHelpEntry_get(command);
   return help === undefined ? undefined : (help.summary ?? help.description);
 }
 
@@ -2094,5 +2091,5 @@ export function commandSummary_get(command: string): string | undefined {
  * @returns The command description, or undefined if not found.
  */
 export function builtinCommand_descriptionGet(command: string): string | undefined {
-  return helpText[command]?.description;
+  return commandHelpEntry_get(command)?.description;
 }

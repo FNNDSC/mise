@@ -64,7 +64,7 @@ const mockStringCheckHasWildcard = jest.fn();
 // Define local Ok, Err, and errorStack for consistent use across mocks and tests
 const Ok = (val: any) => ({ ok: true, value: val });
 const Err = (err: any) => ({ ok: false, error: err });
-const errorStack = { stack_push: jest.fn(), stack_pop: jest.fn() };
+const errorStack = { stack_push: jest.fn(), stack_pop: jest.fn(), checkpoint_mark: jest.fn(() => 0), checkpoint_drain: jest.fn(() => []) };
 
 // Mock chili utils
 jest.unstable_mockModule('@fnndsc/chili/utils', () => ({

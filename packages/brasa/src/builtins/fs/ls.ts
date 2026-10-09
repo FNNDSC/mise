@@ -4,7 +4,8 @@
  */
 import chalk from 'chalk';
 import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
-import { listingCache_get } from '../../core/filesystem.js';
+import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
+import { errorStack, type Result, type VFSItem } from '@fnndsc/fond';
 import type { ListingCache } from '../../core/backend.js';
 import { session } from '../../session/index.js';
 import { vfs } from '../../lib/vfs/vfs.js';
@@ -66,6 +67,22 @@ export async function builtin_ls(args: string[]): Promise<CommandEnvelope> {
     directory: !!parsed['d'],
     refresh: !!parsed['refresh'] || !!parsed['f'],
   });
+}
+
+/**
+ * Whether a path is a folder, as its parent lists it (a mount point counts).
+ *
+ * @param target - The absolute path.
+ * @returns True for a folder; false for a file or for nothing there.
+ */
+async function folder_is(target: string): Promise<boolean> {
+  const clean: string = target.length > 1 && target.endsWith('/') ? target.slice(0, -1) : target;
+  if (clean === '/') return true;
+  const slash: number = clean.lastIndexOf('/');
+  const mark: number = errorStack.checkpoint_mark();
+  const siblings: Result<VFSItem[]> = await vfsDispatcher_get().list(clean.slice(0, slash) || '/');
+  errorStack.checkpoint_drain(mark);
+  return siblings.ok && siblings.value.some((item: VFSItem): boolean => item.name === clean.slice(slash + 1) && (item.type === 'dir' || item.type === 'vfs'));
 }
 
 /** Typed invocation options for ls. */
@@ -160,10 +177,29 @@ export async function ls_run(runOptions: LsOptions): Promise<CommandEnvelope> {
     }
   }
 
+  // Several operands read as a shell gives them: files first, together, then
+  // each folder under its own `name:` header, a blank line between blocks.
+  const order: number[] = targets.map((_target: string | undefined, index: number): number => index);
+  const folders: Set<number> = new Set<number>();
+  if (targets.length > 1 && !options.directory) {
+    for (const index of order) {
+      if (await folder_is(targets[index] as string)) folders.add(index);
+    }
+    order.sort((a: number, b: number): number => Number(folders.has(a)) - Number(folders.has(b)));
+  }
+
   let anyFailed: boolean = false;
+  let blocks: number = 0;
   const listings: LsListing[] = [];
-  for (const target of targets) {
+  for (const index of order) {
+    const target: string | undefined = targets[index];
     const envelope: CommandEnvelope = await vfs.list(target, options);
+    if (folders.has(index) && envelope.status !== 'error') {
+      rendered += `${blocks > 0 ? '\n' : ''}${pathArgs[index]}:\n`;
+      blocks++;
+    } else if (envelope.status !== 'error' && blocks === 0 && targets.length > 1) {
+      blocks++;
+    }
     rendered += envelope.rendered;
     if (envelope.renderedErr !== undefined) {
       renderedErr += envelope.renderedErr;

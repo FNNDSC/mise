@@ -26,34 +26,11 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { runtimeOutput_set } from '@fnndsc/cumin/runtime-output';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { type ProgressEvent, type ProgressRenderer, NullProgressRenderer } from './progress.js';
+// The sink interface is menu's (`@fnndsc/menu/surface`); the sinks themselves
+// and the installed instance stay here.
+import type { OutputSink } from '@fnndsc/menu/surface';
+export type { OutputSink } from '@fnndsc/menu/surface';
 
-/**
- * Destination for command output, installed by the host.
- */
-export interface OutputSink {
-  /**
-   * Writes command output (the data channel).
-   *
-   * @param chunk - Printable text (ANSI permitted) or raw bytes.
-   */
-  data_write(chunk: string | Buffer): void;
-
-  /**
-   * Writes error-stream output (the err channel).
-   *
-   * @param chunk - Printable text (ANSI permitted) or raw bytes.
-   */
-  err_write(chunk: string | Buffer): void;
-
-  /**
-   * Writes an ephemeral status line (the status channel).
-   *
-   * @param text - Transient text; consumers may overwrite or drop it.
-   */
-  status_write(text: string): void;
-
-  progress_write(event: ProgressEvent): void;
-}
 
 /**
  * Sink that writes both channels to the process's standard output.

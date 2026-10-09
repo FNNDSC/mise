@@ -20,6 +20,7 @@ that line.
 | `progress.ts` | The structured-progress vocabulary |
 | `proc.ts` | Prompt-facing process-index state |
 | `listing.ts` | `ListingItem` and its schema — one listing entry, with an open `type` so a backend can list its own kinds |
+| `surface.ts` (subpath `@fnndsc/menu/surface`) | The engine's contract with where it runs: `OutputSink` (where output goes) and `Surface` with its capabilities, prompts, edits and deliveries. A subpath, so a browser bundle never meets Node's `Buffer` |
 
 ## Why it is its own package
 

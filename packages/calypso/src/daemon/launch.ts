@@ -19,9 +19,8 @@ import { hostFqdn_get } from './host.js';
 import { codeWatch_start, type CodeWatch } from './codeIdentity.js';
 import { token_generate } from './token.js';
 import type { BrasaEngine } from '@fnndsc/brasa';
-import { sink_set, type OutputSink } from '@fnndsc/brasa';
-import type { ProgressEvent } from '@fnndsc/brasa';
-import { surface_set, type Surface, type SurfaceCapabilities, type SurfacePeer, type PromptRequest, type LocalEditRequest, type LocalEditResult } from '@fnndsc/brasa';
+import type { ProgressEvent } from '@fnndsc/menu';
+import type { OutputSink, Surface, SurfaceCapabilities, SurfacePeer, PromptRequest, LocalEditRequest, LocalEditResult } from '@fnndsc/menu/surface';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { procIndex_snapshot, sessionPromptContext_build, type SessionPromptContext } from '@fnndsc/brasa';
 import { stackBanner_rows, stackBannerRow_paint, versions_get, buildHash_get } from '@fnndsc/brasa';
@@ -79,7 +78,7 @@ export class DaemonSink implements OutputSink {
  * ever spawns on the daemon host, and nothing is ever written to its disk.
  *
  * @param daemon - The daemon whose brokers deliver the capability requests.
- * @returns The surface to install with `surface_set` on the daemon host.
+ * @returns The surface to install through the engine's `surface_install`.
  */
 export function daemonSurface_create(daemon: CalypsoDaemon, policy: HostControlPolicy = HOST_CONTROL_OFF): Surface {
   return {
@@ -240,8 +239,11 @@ export async function daemon_launch(
     codeCheck: (): void => { void codeWatch?.check().catch((): void => undefined); },
   });
   codeWatch = await codeWatch_start((stale: boolean): void => daemon.stale_set(stale)).catch((): null => null);
-  sink_set(new DaemonSink(daemon));
-  surface_set(daemonSurface_create(daemon, hostControl));
+  // The engine takes its sink and its surface through its own seam: output
+  // relays to the attached surfaces, and prompts, pipes, the shell and edits
+  // reach them (or this host, where a host-control tier allows).
+  engine.sink_install(new DaemonSink(daemon));
+  engine.surface_install(daemonSurface_create(daemon, hostControl));
 
   const port: number = await daemon.start();
   // The berth records where this daemon can actually be reached. Loopback is

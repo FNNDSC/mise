@@ -106,9 +106,9 @@ Each decision was put to the operator and agreed on 2026-10-08.
 * `Result`, `Ok`, `Err` and `errorStack`;
 * the envelope helpers (`envelope_ok`, `envelope_error`; the envelope *type* stays menu's);
 * the VFS framework: the provider interface, a dispatcher with *no* providers built in, and an item model whose type is an open string;
-* the output sink and surface interfaces that calypso and brasa share (<<calypso>>).
+fond depends on nothing in `@fnndsc`. cumin, salsa and brasa depend on it; cumin keeps re-exporting what moved, so no caller breaks. menu stays the wire contract, `zod` and types and nothing else: runtime code does not go into it.
 
-fond depends on nothing in `@fnndsc`. cumin, salsa and brasa depend on it; cumin keeps re-exporting what moved, so no caller breaks. menu stays the wire contract, `zod` and nothing else: runtime code does not go into it.
+*Amended in step 3 (#980), agreed with the operator 2026-10-08:* the output sink and surface interfaces (`OutputSink`, `Surface`, `SurfaceCapabilities`, `SurfacePeer`, `PromptRequest`, `LocalEditRequest`, `LocalEditResult`) go into *menu*, not fond. They are written in wire types (`ProgressEvent`, `PromptKind`, `PromptPath`, `FileDeliverRequest`, `FileDeliverResult`) that are menu's, so fond could hold them only by depending on menu, and they are types only, which is what menu is. menu serves them as the subpath `@fnndsc/menu/surface`, so a browser bundle importing menu never meets Node's `Buffer`. Their implementations (`StdoutSink`, `HeadlessSurface`, …) stay in brasa.
 
 [[chili]]
 === Route around chili
@@ -153,7 +153,7 @@ Mounting several backends into one session (`/cube` and `/infra` in one tree) wa
 The second backend is a brasa backend, not a separate engine. calypso keeps hosting brasa, and:
 
 * takes identity, prompt and telemetry from the backend descriptor instead of cumin's context and CUBE-aware brasa code, so two non-CUBE daemons no longer collide on one berth;
-* types against fond's sink and surface interfaces instead of brasa's internals; `HostedEngine` stays calypso's view of the engine, completed with that output and surface seam;
+* types against menu's sink and surface interfaces (`@fnndsc/menu/surface`) instead of brasa's internals; `HostedEngine` stays calypso's view of the engine, completed with the output and surface seam: the engine installs its own sink and surface (`sink_install`, `surface_install`), so calypso no longer reaches for brasa's process-wide setters;
 * stops depending on the `argus` app: whoever launches the daemon passes the web root (today's `CALYPSO_WEB_ROOT` made the only way); the `calypso` command may still default to ARGUS.
 
 A from-scratch second engine under calypso was considered and not chosen: it would discard the parser, pipes, redirection, the recorder, the registry and the task model, and only makes sense for a product that wants no shell.
@@ -242,8 +242,9 @@ An arrow means "depends on" (a package dependency). Every layer may also use `fo
                    └────────┘   └────────┘
                    Result,      the wire:
                    errors,      envelope,
-                   VFS, sink,   protocol,
-                   surface      models
+                   VFS          protocol,
+                                models, sink
+                                and surface
 
 
   ┌─────────┐                      at run time: the wire (WebSocket)
@@ -266,7 +267,7 @@ Each step is one change or a short series, behaviour-preserving, released on its
 
 . *fond.* Create the package; move `Result`/`Ok`/`Err` and `errorStack` into it; cumin re-exports them.
 . *The VFS framework.* Provider interface and a provider-less dispatcher into fond; salsa registers the CUBE mounts at startup; the item type opens; `ListingItem` moves into menu.
-. *Sink and surface interfaces* into fond; calypso types against them.
+. *Sink and surface interfaces* into menu (`@fnndsc/menu/surface`); the engine gains `sink_install` and `surface_install`; calypso types against menu and installs through the engine.
 . *The command registry.* Replaces the tables, `help.ts` and `command-keys.ts`; the core registers its commands, the ChRIS backend the rest. Carries the help, `/bin` and completion snapshots (<<promise>>). The largest step.
 . *The backend descriptor.* Session, identity and working directory first; then prompt and telemetry; then reference sources. calypso takes identity from the backend.
 . *Tasks.* The task model; `/proc` mounts task sources; ChRIS plugin instances become one.

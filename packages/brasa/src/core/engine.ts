@@ -45,12 +45,12 @@ import {
   redirect_execute,
   pipe_execute,
 } from './dispatch.js';
-import { capability_require, surface_get } from './surface.js';
+import { capability_require, surface_get, surface_set, type Surface } from './surface.js';
 import { commandCancellation_request, commandCancellation_run } from './cancellation.js';
 import { recorder_note } from '../session/recorder.js';
 import { answerAdapters_register } from '../session/answerAdapters.js';
 import { numbering_get, type Numbering } from '../session/answer.js';
-import { sink_get } from './sink.js';
+import { sink_get, sink_set, type OutputSink } from './sink.js';
 
 /**
  * Result of a completion request: the candidates and the prefix they
@@ -173,6 +173,22 @@ export interface BrasaEngine {
    * @returns Function that unsubscribes.
    */
   ambient_listen?(listener: (event: AmbientEvent) => void): () => void;
+
+  /**
+   * Installs where the engine's output goes from now on: a daemon's sink
+   * relays it to every attached surface, a terminal's writes it to stdout.
+   *
+   * @param sink - The sink.
+   */
+  sink_install(sink: OutputSink): void;
+
+  /**
+   * Installs who the engine asks for what only a surface can give: a hidden
+   * prompt, a local editor, a host shell, a delivered file.
+   *
+   * @param surface - The surface.
+   */
+  surface_install(surface: Surface): void;
 }
 
 /**
@@ -436,6 +452,8 @@ export async function engine_create(): Promise<BrasaEngine> {
     },
     watch_release: (owner: string): void => procWatch_release(owner),
     ambient_listen,
+    sink_install: (sink: OutputSink): void => { sink_set(sink); },
+    surface_install: (surface: Surface): void => { surface_set(surface); },
   };
 }
 

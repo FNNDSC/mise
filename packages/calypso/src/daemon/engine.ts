@@ -12,6 +12,7 @@
  */
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import type { Regard, WatchState, AmbientEvent } from '@fnndsc/menu';
+import type { OutputSink, Surface } from '@fnndsc/menu/surface';
 
 /**
  * A completion answer: the candidates and the prefix they complete.
@@ -126,4 +127,20 @@ export interface HostedEngine {
    * @returns Function that unsubscribes.
    */
   ambient_listen?(listener: (event: AmbientEvent) => void): () => void;
+
+  /**
+   * Installs where the engine's output goes from now on: a daemon's sink
+   * relays it to every attached surface, a terminal's writes it to stdout.
+   *
+   * @param sink - The sink.
+   */
+  sink_install?(sink: OutputSink): void;
+
+  /**
+   * Installs who the engine asks for what only a surface can give: a hidden
+   * prompt, a local editor, a host shell, a delivered file.
+   *
+   * @param surface - The surface.
+   */
+  surface_install?(surface: Surface): void;
 }

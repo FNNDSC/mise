@@ -21,6 +21,8 @@ describe('surfaceLine_executeSafely', () => {
         throw new Error("ENOENT: no such file or directory, open '~/tmp/pipeline.txt'");
       },
       line_complete: async (prefix: string): Promise<CompletionResult> => ({ candidates: [], prefix }),
+      sink_install: (): void => undefined,
+      surface_install: (): void => undefined,
     };
     const errorSpy: jest.SpiedFunction<typeof console.error> = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 

@@ -24,93 +24,8 @@
  * @module
  */
 
-/**
- * What interaction an attached surface can provide.
- *
- * @property hiddenInput - The surface can read a line without echoing it
- *   (password entry).
- * @property localEdit - The surface can open content in a local editor and
- *   return the edited result.
- * @property tty - The surface is an interactive terminal (as opposed to a
- *   pipe, a script, or a headless host).
- * @property color - The surface renders ANSI colour. A colour terminal and a
- *   browser console both do; a bare pipe or a file does not. A command that
- *   can render richly with colour and plainly without it — an image thumbnail
- *   as ANSI half-blocks or an ASCII ramp — reads this to choose, and the
- *   plain rendering is always the floor.
- * @property pipeSegments - The surface can run a pipeline's non-first
- *   segments (`... | grep foo`) through its own tools. Nothing ever spawns on
- *   a daemon host: the local CLI runs segments in-process, a remote CLI runs
- *   them on the client machine, and a browser surface lacks the capability
- *   and fails such pipelines with a clear message.
- * @property shellCommands - The surface can run a `!`-prefixed host-shell
- *   command on its own machine. A daemon delegates this capability to the
- *   command's originating surface and never launches the process itself.
- * @property fileDelivery - The surface can put a file where its operator can
- *   reach it. What that means is the surface's business — a path on the local
- *   CLI's disk, a path on a remote CLI's client machine, a saved file in a
- *   browser — but never the daemon host's disk.
- * @property engineFilesystem - The surface's operator sits at the same
- *   filesystem the engine runs on, so a path the engine resolves is a path
- *   they can open. True only for an in-process local shell. When false, a
- *   builtin that would write to disk must deliver through the surface instead,
- *   because the engine's disk is somebody else's machine.
- * @property localFilesystem - The surface can put many files into a directory
- *   structure of its own. True for any shell, remote included; false for a
- *   browser, which has no directory to fill and can only accept files one at a
- *   time. It answers a different question from `engineFilesystem`: not *whose*
- *   disk, but whether there is one at all.
- */
-export interface SurfaceCapabilities {
-  hiddenInput: boolean;
-  localEdit: boolean;
-  tty: boolean;
-  color: boolean;
-  pipeSegments: boolean;
-  shellCommands: boolean;
-  fileDelivery: boolean;
-  engineFilesystem: boolean;
-  localFilesystem: boolean;
-}
 
-/**
- * A request to prompt the user for a line of input.
- *
- * `wants` is what the question is asking FOR, so a surface can choose the
- * instrument that answers it — a browser to walk for a location, a masked
- * field for a secret, two capsules for a yes/no — rather than reading the
- * wording and guessing. A terminal ignores all of it and reads a line,
- * which is why every field beyond `message` is optional.
- *
- * @property message - The prompt text to display.
- * @property hidden - When true, the entered text is not echoed; requires the
- *   `hiddenInput` capability. Kept beside `wants` because it is what an
- *   older surface reads.
- * @property wants - The kind of value that answers this.
- * @property path - Where browsing starts and what to compose, for a `path`.
- * @property commit - The word the committing control should read.
- */
-export interface PromptRequest {
-  message: string;
-  hidden?: boolean;
-  wants?: PromptKind;
-  path?: PromptPath;
-  commit?: string;
-}
 
-/**
- * Content handed to a surface's local editor.
- *
- * @property content - The text to open in the editor.
- * @property extension - Optional filename extension (e.g. `.txt`, `.json`) so
- *   the editor can apply the right syntax mode.
- */
-export interface LocalEditRequest {
-  content: string;
-  extension?: string;
-  /** The file being edited; an editor that stays open saves back to it. */
-  path?: string;
-}
 
 // The delivery request and result cross the wire, so they are declared once in
 // the contract package and named here rather than repeated. Where a surface
@@ -122,107 +37,13 @@ export type { FileDeliverRequest, FileDeliverResult, PromptKind, PromptPath } fr
 
 import type { FileDeliverRequest, FileDeliverResult, PromptKind, PromptPath } from '@fnndsc/menu';
 
-/**
- * The outcome of a local edit.
- *
- * @property content - The content after editing.
- * @property changed - Whether the content differs from what was opened.
- */
-export interface LocalEditResult {
-  content: string;
-  changed: boolean;
-  /**
-   * The surface opened an editor that stays open (a browser pane) instead of
-   * returning the edited text. The command has nothing to save: every save
-   * made in that editor runs as its own command line.
-   */
-  opened?: boolean;
-}
+// The interfaces themselves are menu's (`@fnndsc/menu/surface`): the contract
+// the engine, its hosts and its surfaces all meet. The implementations and the
+// installed instance stay here.
+import type { SurfaceCapabilities, PromptRequest, LocalEditRequest, LocalEditResult, SurfacePeer, Surface } from '@fnndsc/menu/surface';
+export type { SurfaceCapabilities, PromptRequest, LocalEditRequest, LocalEditResult, SurfacePeer, Surface } from '@fnndsc/menu/surface';
 
-/**
- * The interaction seam a host installs. Builtins reach it through
- * {@link surface_get}; hosts declare their capabilities and back the
- * prompt and local-edit operations with whatever their surface supports.
- */
-/** Another surface on the same session, as the host sees it. */
-export interface SurfacePeer {
-  /** The host's name for it. */
-  id: string;
-  /** A terminal or a browser. */
-  kind: 'chell' | 'browser';
-  /** Whether it is the surface running the current command. */
-  you: boolean;
-}
 
-export interface Surface {
-  /** What this surface can do; read by builtins before they interact. */
-  readonly capabilities: SurfaceCapabilities;
-
-  /**
-   * The surfaces attached to this session, when the host knows of more than
-   * itself (a daemon does; a local shell is alone). Absent means unknown.
-   */
-  peers?(): SurfacePeer[];
-
-  /**
-   * Prompts for a line of input.
-   *
-   * @param request - The prompt message and whether to hide the input.
-   * @returns The entered line, trimmed.
-   * @throws {CapabilityError} When hidden input is requested but the surface
-   *   lacks the `hiddenInput` capability, or the surface cannot prompt.
-   */
-  prompt(request: PromptRequest): Promise<string>;
-
-  /**
-   * Runs one pipeline segment against an input, returning its output. Where
-   * this runs is the surface's business — in-process for the local CLI, on
-   * the client machine for a remote CLI — but never on a daemon host.
-   *
-   * @param command - The segment command line (e.g. `grep foo`).
-   * @param input - The bytes to feed the segment on stdin.
-   * @returns The segment's stdout.
-   * @throws {CapabilityError} When the surface lacks the `pipeSegments`
-   *   capability.
-   */
-  pipeSegment(command: string, input: Buffer): Promise<Buffer>;
-
-  /**
-   * Runs one host-shell command on the surface machine.
-   *
-   * @param command - The shell command without the leading `!`.
-   * @returns The process exit code.
-   * @throws {CapabilityError} When the surface lacks `shellCommands`.
-   */
-  shellCommand(command: string): Promise<number>;
-
-  /**
-   * Opens content in the surface's local editor and returns the result. The
-   * editor mechanics are the surface's business — a temp file and `$EDITOR`
-   * for the local CLI, the client's editor for a remote CLI, an editor
-   * component in a browser.
-   *
-   * @param request - The content to edit and an optional extension.
-   * @returns The edited content and whether it changed.
-   * @throws {CapabilityError} When the surface lacks the `localEdit`
-   *   capability.
-   */
-  localEdit(request: LocalEditRequest): Promise<LocalEditResult>;
-
-  /**
-   * Places one file where this surface's operator can reach it.
-   *
-   * The mechanics are the surface's: a write to the resolved path for the
-   * local CLI, a write on the client machine for a remote CLI, a saved file
-   * for a browser. A daemon never writes to its own disk on a surface's
-   * behalf, for the same reason it never spawns a shell there.
-   *
-   * @param request - What to deliver and where the operator asked for it.
-   * @returns Where it landed and how large it was.
-   * @throws {CapabilityError} When the surface lacks `fileDelivery`.
-   */
-  fileDeliver(request: FileDeliverRequest): Promise<FileDeliverResult>;
-}
 
 /**
  * Raised when a builtin requests an interaction the attached surface cannot

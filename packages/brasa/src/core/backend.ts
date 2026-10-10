@@ -12,7 +12,7 @@
  *
  * @module
  */
-import type { PromptContext, CubeTelemetry, JobsStateTelemetry, CommandEnvelope, WatchState } from '@fnndsc/menu';
+import type { PromptContext, CubeTelemetry, JobsStateTelemetry, CommandEnvelope, WatchState, Task } from '@fnndsc/menu';
 import type { ReferenceValue } from '../lib/parser.js';
 import type { ListingLook, VFSDispatcher } from '@fnndsc/fond';
 import type { ListingItem } from '@fnndsc/menu';
@@ -180,6 +180,27 @@ export interface BackendCompletion {
   readonly rootWords?: ReadonlyArray<string>;
 }
 
+/**
+ * Where a backend's long-running steps come from: one kind of task (ChRIS:
+ * its plugin instances; an infrastructure backend: its install steps).
+ */
+export interface TaskSource {
+  /** Its name, and its folder: `/proc/<id>`. */
+  readonly id: string;
+  /** What an operator reads it as. */
+  readonly label: string;
+  /**
+   * The backend mounts `/proc/<id>` itself (ChRIS's `/proc/jobs`, a tree of
+   * feeds and instances); otherwise the core mounts each task as a folder of
+   * its fields.
+   */
+  readonly mounted?: boolean;
+  /** Its tasks, now. */
+  list(): Promise<Task[]>;
+  /** One task's log, whole; absent, its `logTail` is its log. */
+  log?(id: string): Promise<string | null>;
+}
+
 /** Administrator credentials, collected by the core from the surface. */
 export interface ElevationCredentials {
   username: string;
@@ -216,6 +237,8 @@ export interface Backend {
     readonly read: (path: string) => Promise<Buffer>;
     readonly write: (path: string, bytes: Buffer) => Promise<void>;
   };
+  /** Its long-running steps, by kind; the core mounts those that bring no mount of their own under `/proc`. */
+  readonly tasks?: ReadonlyArray<TaskSource>;
   /** Its filesystem; absent, the session has only the core's own mounts. */
   readonly vfs?: BackendFilesystem;
   /** What it adds to completion. */

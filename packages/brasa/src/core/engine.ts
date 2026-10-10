@@ -404,6 +404,11 @@ async function vfsProviders_register(): Promise<void> {
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr/games'));
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr/share'));
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr/share/doc'));
+  // A backend's task sources that bring no mount of their own are the core's to show.
+  const { TaskSourceVfsProvider } = await import('./tasks.js');
+  for (const source of backendInstalled_get()?.tasks ?? []) {
+    if (source.mounted !== true) vfsDispatcher.provider_register(new TaskSourceVfsProvider(source));
+  }
 }
 
 /**

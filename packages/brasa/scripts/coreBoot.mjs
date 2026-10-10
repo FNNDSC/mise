@@ -19,8 +19,17 @@ process.env.CORE_BOOT_LOADS = join(scratch, 'chris-loads.txt');
 register(new URL('./coreBoot.hook.mjs', import.meta.url));
 
 const { engine_create, nullBackend_make } = await import('../dist/core.js');
+// A backend's long-running steps, as an infrastructure backend would bring them.
+const steps = {
+  id: 'steps', label: 'install steps',
+  list: async () => [
+    { id: 'plan', label: 'Plan', state: 'done', logTail: 'planned\n' },
+    { id: 'apply', label: 'Apply', state: 'running', progress: { current: 3, total: 10, unit: 'nodes' } },
+  ],
+};
 const engine = await engine_create(nullBackend_make({
   seed: { '/home/user/hello.txt': 'hello\nworld\n', '/home/user/docs/a.txt': 'alpha' },
+  tasks: [steps],
 }));
 engine.sink_install({ data_write: () => undefined, err_write: () => undefined, progress_write: () => undefined });
 
@@ -48,6 +57,9 @@ const CHECKS = [
   { line: 'help', ok: true, has: ['ls', 'cat', 'help games'], hasNot: ['feed', 'plugin', 'pacs', 'connect'] },
   { line: 'help feed', ok: true, has: ["No help available for 'feed'"] },
   { line: 'ls /usr/bin', ok: true, has: ['ls', 'cat', 'help'], hasNot: ['feed', 'plugin', 'pacs', 'upload'] },
+  { line: 'ls /proc/steps', ok: true, has: ['plan', 'apply'] },
+  { line: 'cat /proc/steps/apply/progress', ok: true, has: ['3/10 nodes'] },
+  { line: 'cat /proc/steps/plan/log', ok: true, has: ['planned'] },
   { line: 'fortune', ok: true },
   { line: 'nosuch', ok: false, has: ['command not found: nosuch'] },
 ];

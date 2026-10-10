@@ -14,27 +14,21 @@
 import type { WireEnvelope } from '@fnndsc/menu';
 import { more_wire } from '../roster/more.js';
 import type { ExecuteOutcome } from '../../calypso/client.js';
+import type { PaneKind } from '../../app/panes.js';
 
 /** The pane kinds an envelope model can claim. */
-export type ClaimKind = 'files' | 'dag' | 'pacs' | 'image' | 'tags';
+
 
 /** What the empty pane asks of its host. */
 export interface EmptyPanelHandlers {
   /** Runs a command silently, results delivered to this pane alone. */
   execute: (line: string) => Promise<ExecuteOutcome>;
   /** A model claimed the pane: become `kind`, seeded with these envelopes. */
-  claim: (kind: ClaimKind, envelopes: WireEnvelope[]) => void;
+  claim: (kind: PaneKind, envelopes: WireEnvelope[]) => void;
+  /** The pane kind a model claims this pane as (the frame's router, filled by the session's composition). */
+  claimKind_of: (modelKind: string) => PaneKind | undefined;
 }
 
-/** Envelope model kinds mapped to the pane kind they claim. */
-const CLAIM_BY_MODEL: Readonly<Record<string, ClaimKind>> = {
-  'fs.listing': 'files',
-  'feed.dag': 'dag',
-  'feed.list': 'dag',
-  'pacs.query': 'pacs',
-  'dicom.series': 'image',
-  'dicom.tags': 'tags',
-};
 
 /**
  * The empty pane controller: shortcuts, the claiming prompt, and the
@@ -89,8 +83,8 @@ export class EmptyPanel {
       return;
     }
     for (const envelope of outcome.envelopes) {
-      const kind: ClaimKind | undefined =
-        envelope.model?.kind !== undefined ? CLAIM_BY_MODEL[envelope.model.kind] : undefined;
+      const kind: PaneKind | undefined =
+        envelope.model?.kind !== undefined ? this.handlers.claimKind_of(envelope.model.kind) : undefined;
       if (kind !== undefined) {
         this.handlers.claim(kind, outcome.envelopes);
         return;

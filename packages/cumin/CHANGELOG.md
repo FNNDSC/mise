@@ -1,5 +1,21 @@
 # @fnndsc/cumin
 
+## 3.27.11
+
+### Patch Changes
+
+- Updated dependencies [183aa7d]
+- Updated dependencies [11853c6]
+- Updated dependencies [ebd7b3e]
+- Updated dependencies [27f3021]
+- Updated dependencies [423971a]
+- Updated dependencies [a12c6fc]
+- Updated dependencies [6752575]
+- Updated dependencies [e1215ef]
+- Updated dependencies [1681476]
+  - @fnndsc/menu@0.22.0
+  - @fnndsc/fond@0.3.0
+
 ## 3.27.10
 
 ### Patch Changes

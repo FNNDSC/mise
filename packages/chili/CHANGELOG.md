@@ -1,5 +1,31 @@
 # @fnndsc/chili
 
+## 3.7.6
+
+### Patch Changes
+
+- 423971a: Making folders with parents never puts one over a file or beneath one, and missing parents no longer fail the command. `mkdir -p a/b/c` had made the folders and still exited 1, because looking up a parent that was not there left its complaint on the error stack. `mkdir` now goes through the backend's filesystem. fond's mounts gain `mkdirTree` (a folder and its parents in one step, as CUBE makes them), and the contract holds it: EEXIST for anything already there, ENOTDIR beneath a file. A mount without `mkdirTree` is walked one parent at a time. Under `-p`, something already there counts as done only when it is a folder; a file is `File exists`. salsa's `folderPath_holder` names the nearest thing holding a path or a parent of it. The fs views (`mkdir_render` and its kin) live in fond.
+- a12c6fc: Nothing changes at the prompt: `ls` renders through fond, not chili, in every listing exactly as before (#1001). fond gains `grid_render`, `long_render`, `size_format` and `listingItems_sort`, and a listing look: the core's kinds (file, folder, link, mount) plus a backend's, each with its long-view mark, and how a name is coloured. Its one dependency is `chalk`. chili's `ls` views wrap fond with the ChRIS look: plugins, pipelines, and jobs with their status column, coloured by the colour configuration. brasa's listings render with the installed backend's look, or plainly when it has none. `VFSItem` gains `tags`.
+- fb31bef: A folder and a file never share one path. CUBE lets them, and removing the folder then damages the file's record so every listing of the parent fails (CUBE #732). `mkdir` over a file answers `mkdir: cannot create directory 'X': File exists`, and beneath a file `Not a directory`. `touch` or a write over a folder answers `Is a directory`. `mv` onto anything that already holds the destination refuses (`Destination exists`). `cp -r` skips a file whose name a folder holds, with a warning. `rm` refuses a path that a folder and a file already share, removing neither. salsa's `pathHolders_find` names what holds a path.
+- 1681476: A failed copy says why without the stack's internal markers (no more `cp: [StaticVfsProvider.cp …] | cp: …`). Underneath, every filesystem operation answers with a reason (#1001). fond adds the filesystem contract: `VfsErrno`, `VfsOutcome` and `vfsRefusal_text`, which keeps the shell's existing wording for each refusal. Mount operations (read, readBinary, write, mkdir, rmdir, rename, cp, and the new rm and rmTree) return an outcome instead of a boolean or `Result`. The dispatcher asks the fallback too, through its path resolver. fond also adds `MemoryVfsProvider`, a complete in-memory mount, and `VFS_CONTRACT`, the cases any mount must pass. salsa's mounts and dispatcher return outcomes, so its callers change (a major bump). A mount's own message travels as the reason, so every refusal reads as before. proc's unreachable `rm` becomes `feedJobs_cancel`.
+- Updated dependencies [183aa7d]
+- Updated dependencies [11853c6]
+- Updated dependencies [ebd7b3e]
+- Updated dependencies [27f3021]
+- Updated dependencies [423971a]
+- Updated dependencies [77a914f]
+- Updated dependencies [3175b3d]
+- Updated dependencies [a12c6fc]
+- Updated dependencies [fb31bef]
+- Updated dependencies [f6171f7]
+- Updated dependencies [6752575]
+- Updated dependencies [e1215ef]
+- Updated dependencies [1681476]
+  - @fnndsc/menu@0.22.0
+  - @fnndsc/fond@0.3.0
+  - @fnndsc/salsa@4.0.0
+  - @fnndsc/cumin@3.27.11
+
 ## 3.7.5
 
 ### Patch Changes

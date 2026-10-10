@@ -1,5 +1,24 @@
 # @fnndsc/porter
 
+## 0.6.7
+
+### Patch Changes
+
+- 639b840: ARGUS over a backend other than ChRIS shows the frame alone: files, the console and its own tiles (#985). Before it builds, ARGUS asks the daemon `GET /backend` (token-gated; porter adds the token behind a door) and installs the ChRIS composition only for ChRIS; an older daemon is ChRIS. What ChRIS owns in the page's markup carries `data-composition`, and a saved ChRIS preset falls back to home. The FILES tile's description is the composition's (ChRIS keeps its own words). The smoke stage `frame-alone` checks both sides.
+- Updated dependencies [639b840]
+- Updated dependencies [183aa7d]
+- Updated dependencies [43000d3]
+- Updated dependencies [e1085af]
+- Updated dependencies [b9a83f1]
+- Updated dependencies [27f3021]
+- Updated dependencies [9116e97]
+- Updated dependencies [0ac1bee]
+- Updated dependencies [6752575]
+  - @fnndsc/calypso@0.20.0
+  - @fnndsc/menu@0.22.0
+  - @fnndsc/chell@5.12.0
+  - @fnndsc/cumin@3.27.11
+
 ## 0.6.6
 
 ### Patch Changes

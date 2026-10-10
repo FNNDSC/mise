@@ -1,5 +1,31 @@
 # @fnndsc/salsa
 
+## 4.0.0
+
+### Major Changes
+
+- 1681476: A failed copy says why without the stack's internal markers (no more `cp: [StaticVfsProvider.cp …] | cp: …`). Underneath, every filesystem operation answers with a reason (#1001). fond adds the filesystem contract: `VfsErrno`, `VfsOutcome` and `vfsRefusal_text`, which keeps the shell's existing wording for each refusal. Mount operations (read, readBinary, write, mkdir, rmdir, rename, cp, and the new rm and rmTree) return an outcome instead of a boolean or `Result`. The dispatcher asks the fallback too, through its path resolver. fond also adds `MemoryVfsProvider`, a complete in-memory mount, and `VFS_CONTRACT`, the cases any mount must pass. salsa's mounts and dispatcher return outcomes, so its callers change (a major bump). A mount's own message travels as the reason, so every refusal reads as before. proc's unreachable `rm` becomes `feedJobs_cancel`.
+
+### Minor Changes
+
+- f6171f7: Nothing changes at the prompt: salsa's CUBE mount answers every filesystem operation, held to fond's contract (#1001). It now offers read, readBinary, write (which replaces), mkdir, rmdir, rename, rm and rmTree, each failing with the errno a disk would give. CUBE's own words carry over as the reason: its "File not found", and its refusal to overwrite on rename. A test runs fond's `VFS_CONTRACT` against the mount with CUBE faked in memory. The core's file tools move onto these operations next.
+
+### Patch Changes
+
+- 11853c6: Reading a folder as a file says `Is a directory`, on every mount (#1026). A home folder had answered with CUBE's words for a missing file, `/proc` and `~` with "No files found in directory", `/bin` with "Unknown /bin entry", and `/proc/jobs` with nothing at all and exit 0. The dispatcher now answers EISDIR for any failed read of a path its parent lists as a folder. /proc reads no folder or unknown name as empty text. The native mount keeps CUBE's words only for a path that is missing. cat names the path once.
+- 423971a: Making folders with parents never puts one over a file or beneath one, and missing parents no longer fail the command. `mkdir -p a/b/c` had made the folders and still exited 1, because looking up a parent that was not there left its complaint on the error stack. `mkdir` now goes through the backend's filesystem. fond's mounts gain `mkdirTree` (a folder and its parents in one step, as CUBE makes them), and the contract holds it: EEXIST for anything already there, ENOTDIR beneath a file. A mount without `mkdirTree` is walked one parent at a time. Under `-p`, something already there counts as done only when it is a folder; a file is `File exists`. salsa's `folderPath_holder` names the nearest thing holding a path or a parent of it. The fs views (`mkdir_render` and its kin) live in fond.
+- 77a914f: A refused removal names what the path is, where it had said `No such file or directory`. `rmdir` of a file says `Not a directory`, `rm /proc/jobs` says `Read-only file system`, and `rm /bin` says `virtual /bin directory`. `rm` and `rmdir` go through the backend's filesystem (#1001). rm removes a file or link with the mount's `rm`, and a folder only with `-r`: with `rmTree` where the mount offers it, else entry by entry, deepest first. Nothing there is fine under `-f`. A projection's path is its mount's to remove or refuse. The /proc/tags hints (setfattr untags a feed, rmdir deletes a tag) and the /bin refusal move into those mounts, so the core names neither. rmdir asks the mount's `rmdir`. The ChRIS-only folder probe (`folderExists.ts`) goes.
+- 3175b3d: Writing into a missing folder says `No such file or directory`, as on a disk, rather than making the folders. `touch` and `mv` go through the backend's filesystem (#1001). touch writes with the mount's `write`. A file already there is kept as it is when no content is given, and a projected file takes text only. ARGUS makes `~/gather` before it writes the cohort there, and waits for it. mv moves into a folder the destination names, keeping the source's name. It says a missing source by name and passes the mount's refusal on once (CUBE cannot overwrite). The shared helpers (`entry_at`, `folderTree_make`) live in `builtins/fs/entries.ts`. The native mount drains what looking up a missing parent said, as `pathHolders_find` does.
+- fb31bef: A folder and a file never share one path. CUBE lets them, and removing the folder then damages the file's record so every listing of the parent fails (CUBE #732). `mkdir` over a file answers `mkdir: cannot create directory 'X': File exists`, and beneath a file `Not a directory`. `touch` or a write over a folder answers `Is a directory`. `mv` onto anything that already holds the destination refuses (`Destination exists`). `cp -r` skips a file whose name a folder holds, with a warning. `rm` refuses a path that a folder and a file already share, removing neither. salsa's `pathHolders_find` names what holds a path.
+- Updated dependencies [11853c6]
+- Updated dependencies [ebd7b3e]
+- Updated dependencies [423971a]
+- Updated dependencies [a12c6fc]
+- Updated dependencies [e1215ef]
+- Updated dependencies [1681476]
+  - @fnndsc/fond@0.3.0
+  - @fnndsc/cumin@3.27.11
+
 ## 3.21.2
 
 ### Patch Changes

@@ -1,5 +1,29 @@
 # @fnndsc/argus
 
+## 0.28.0
+
+### Minor Changes
+
+- 639b840: ARGUS over a backend other than ChRIS shows the frame alone: files, the console and its own tiles (#985). Before it builds, ARGUS asks the daemon `GET /backend` (token-gated; porter adds the token behind a door) and installs the ChRIS composition only for ChRIS; an older daemon is ChRIS. What ChRIS owns in the page's markup carries `data-composition`, and a saved ChRIS preset falls back to home. The FILES tile's description is the composition's (ChRIS keeps its own words). The smoke stage `frame-alone` checks both sides.
+
+### Patch Changes
+
+- be5f8b3: Nothing changes on screen: the DICOM image and tags panes are built by the ChRIS composition (#985). The panes and the verbs that open them move to `compositions/chris/dicom.ts`, bound to the surface by `chrisDicom_make`.
+- 3060fa1: Nothing changes in the console: the ARGUS language takes ChRIS's words from its composition (#985). `language_extend` adds a composition's subjects, the views, claims and listings it adds to frame verbs, its chords and its verb lines; `compositions/chris/lang.ts` holds runs, dag, node, universe, PACS's listing, image and tags.
+- 5afa298: Nothing changes on screen: RUNS and the universe are built by the ChRIS composition, not the frame (#985). Their builders move to `compositions/chris/panes.ts`, made from a context the frame hands in. The frame's DOM helpers move to `frame/dom.ts`.
+- cd68355: Nothing changes on screen: the ChRIS composition hears its own share of the session's signals (#985). They move to `compositions/chris/signals.ts`; the frame keeps the prompt, the status bar, the lane, the restart control and the cascade.
+- 322606e: Nothing changes on screen: what ChRIS puts on the stage is the composition's to declare (#985). `compositions/chris/stage.ts` names RUNS, the universe and PACS as primaries, their presets, and the panes ChRIS splits in; the frame adopts, mounts and registers what it names, and primaries are registered rather than fixed.
+- a0b567f: Nothing changes on screen: the dashboard's ANALYSES, PACS and UNIVERSE tiles are the ChRIS composition's (#985). They move to `compositions/chris/tiles.ts`; the frame keeps its own tiles and places a composition's among them, its lead taking the wide seat when it has more to say than home.
+- 6268376: Nothing changes on screen: every route from a result to its pane is one table the session's composition fills (#985). `frame/modelRouter.ts` holds the routes per channel, the claims an empty pane answers, and the watch listeners. The ChRIS composition installs RUNS, the universe, PACS, and DICOM images and tags (`compositions/chris/routes.ts`); the frame routes only listings and its own panes.
+- 183aa7d: Nothing changes on screen: the daemon's attach answer names the session's backend, and ARGUS reads it (#985). menu's `attached` message gains an optional `backend`; calypso fills it from the backend it hosts (`chris`, `null`). ARGUS's `attachBackend_get` reads it, and an older daemon without the field is ChRIS, so a new ARGUS against an old calypso draws what it always drew.
+- 3175b3d: Writing into a missing folder says `No such file or directory`, as on a disk, rather than making the folders. `touch` and `mv` go through the backend's filesystem (#1001). touch writes with the mount's `write`. A file already there is kept as it is when no content is given, and a projected file takes text only. ARGUS makes `~/gather` before it writes the cohort there, and waits for it. mv moves into a folder the destination names, keeping the source's name. It says a missing source by name and passes the mount's refusal on once (CUBE cannot overwrite). The shared helpers (`entry_at`, `folderTree_make`) live in `builtins/fs/entries.ts`. The native mount drains what looking up a missing parent said, as `pathHolders_find` does.
+- 012b966: Ctrl-B ; after a split returns to the pane you split from (#1049). The layout gave a split's new pane (and a moved pane) focus without recording the pane that had it, so tmux's last-pane key had nothing to go back to and Space then flipped the wrong pair.
+- 0d3cf0b: A session over a backend other than ChRIS no longer wears ChRIS's brand (#985). The header logo, the credit line's ChRIS clause, the brain splash, the favicon and the ChRIS packages in the version stack are the composition's; any other backend gets an empty splash, one console line naming the backend and a neutral favicon. A ChRIS session is unchanged.
+- Updated dependencies [183aa7d]
+- Updated dependencies [27f3021]
+- Updated dependencies [6752575]
+  - @fnndsc/menu@0.22.0
+
 ## 0.27.2
 
 ### Patch Changes

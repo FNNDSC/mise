@@ -1,5 +1,59 @@
 # @fnndsc/calypso
 
+## 0.20.0
+
+### Minor Changes
+
+- 639b840: ARGUS over a backend other than ChRIS shows the frame alone: files, the console and its own tiles (#985). Before it builds, ARGUS asks the daemon `GET /backend` (token-gated; porter adds the token behind a door) and installs the ChRIS composition only for ChRIS; an older daemon is ChRIS. What ChRIS owns in the page's markup carries `data-composition`, and a saved ChRIS preset falls back to home. The FILES tile's description is the composition's (ChRIS keeps its own words). The smoke stage `frame-alone` checks both sides.
+- 183aa7d: Nothing changes on screen: the daemon's attach answer names the session's backend, and ARGUS reads it (#985). menu's `attached` message gains an optional `backend`; calypso fills it from the backend it hosts (`chris`, `null`). ARGUS's `attachBackend_get` reads it, and an older daemon without the field is ChRIS, so a new ARGUS against an old calypso draws what it always drew.
+- b9a83f1: Nothing changes in the browser: calypso no longer depends on ARGUS, and the launcher passes the web root (#984). `daemon_launch` takes `webRoot`; `CALYPSO_WEB_ROOT`, a bundle under the working directory and the enclosing checkout still come first. chell depends on `@fnndsc/argus` and passes the bundle it ships (porter launches through chell). The `calypso` command still defaults to ARGUS when it is installed beside it. `packageWebRoot_find(name, from)` finds the bundle any installed package ships.
+- 9116e97: Internal: the calypso command can host the null backend for a test, with no ChRIS package loaded (#985). `CALYPSO_TEST_BACKENDS=1 calypso --backend null` hosts a session with no commands of its own and a filesystem in memory; without the variable the switch is refused. calypso's daemon code imports brasa's core entry, which now carries the version report and the logo. The calypso command loads brasa's ChRIS root only when it hosts ChRIS. A surface attached to the null daemon is told `backend: 'null'`.
+
+### Patch Changes
+
+- 43000d3: Nothing changes at the prompt: a daemon's berth name comes from its backend's account of who the session is (#982). The descriptor gains `session.identity_get()`, which returns a `SessionIdentity` (`user`, `where`, `connected`). For ChRIS that is the CUBE user at the CUBE URL, or `disconnected@no-cube` with no login, so every berth name, key and attach hint is the same as before. Each backend names its own disconnected session, so two backends never share one. calypso's launch reads the identity there and no longer imports cumin. chell keeps its folder, query and job checkpoints under the same name, through the backend. `identity_forSession` and `DISCONNECTED_IDENTITY` stay exported from calypso.
+- e1085af: Nothing changes at the prompt: what it shows and what the daemon heartbeats come from the backend (#982). The descriptor gains `prompt` and `telemetry`, both in the wire's existing shapes (`PromptContext`, and `BackendTelemetry` with jobs, feeds, CUBE pace and job state). The ChRIS backend supplies its session prompt context and /proc snapshot; those files (`promptContext.ts`, `jobsState.ts`) move to `chris/` and are exported as before. calypso's launch takes both from the backend and imports neither. A backend without them gets no promptline or heartbeat providers. `lint:core-deps` drops to 14.
+- Updated dependencies [183aa7d]
+- Updated dependencies [43000d3]
+- Updated dependencies [e1085af]
+- Updated dependencies [27ce9b8]
+- Updated dependencies [7e2fc05]
+- Updated dependencies [4431568]
+- Updated dependencies [d379168]
+- Updated dependencies [11853c6]
+- Updated dependencies [9b48f7c]
+- Updated dependencies [90ede03]
+- Updated dependencies [3bc7a27]
+- Updated dependencies [11853c6]
+- Updated dependencies [987f766]
+- Updated dependencies [ebd7b3e]
+- Updated dependencies [e32770c]
+- Updated dependencies [27f3021]
+- Updated dependencies [423971a]
+- Updated dependencies [d3f1b1d]
+- Updated dependencies [b5ae25d]
+- Updated dependencies [77a914f]
+- Updated dependencies [3175b3d]
+- Updated dependencies [e1215ef]
+- Updated dependencies [a12c6fc]
+- Updated dependencies [9173d2c]
+- Updated dependencies [11853c6]
+- Updated dependencies [149adbf]
+- Updated dependencies [fb31bef]
+- Updated dependencies [e1215ef]
+- Updated dependencies [9116e97]
+- Updated dependencies [ec26525]
+- Updated dependencies [0ac1bee]
+- Updated dependencies [11853c6]
+- Updated dependencies [6752575]
+- Updated dependencies [60cb7f8]
+- Updated dependencies [0fe1e18]
+- Updated dependencies [e1215ef]
+- Updated dependencies [1681476]
+  - @fnndsc/menu@0.22.0
+  - @fnndsc/brasa@0.35.0
+  - @fnndsc/cumin@3.27.11
+
 ## 0.19.10
 
 ### Patch Changes

@@ -196,11 +196,27 @@ LINT_CHECKS['surface-never-shadows-the-session'] = () => {
   // in SHARED_SUBJECTS; every other subject must collide with nothing.
   const lang = sources.find((s) => s.path.endsWith('argusLang.ts'));
   if (lang === undefined) { fail('surface-never-shadows-the-session', 'argusLang.ts not read'); return; }
-  const subjects = lang.text.match(/const SUBJECTS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\)/);
+  const subjects = lang.text.match(/const SUBJECTS: (?:Readonly)?Set<string> = new Set\(\[([\s\S]*?)\]\)/);
   if (subjects === null) { fail('surface-never-shadows-the-session', 'SUBJECTS set not found'); return; }
   const names = [...subjects[1].matchAll(/'([a-z]+)'/g)].map((m) => m[1]);
   const shared = lang.text.match(/const SHARED_SUBJECTS[\s\S]*?\n\};/);
   const sharedNames = shared === null ? [] : [...shared[0].matchAll(/^  ([a-z]+):/gm)].map((m) => m[1]);
+  // A composition's subjects (compositions/<backend>/lang.ts): `name: null`
+  // is its own; a set claims only those verbs of a subject the session owns.
+  const extensions = readdirSync('apps/argus/src/compositions', { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => `apps/argus/src/compositions/${entry.name}/lang.ts`)
+    .filter((path) => existsSync(path))
+    .map((path) => ({ path, text: readFileSync(path, 'utf8') }));
+  if (extensions.length === 0) { fail('surface-never-shadows-the-session', 'no composition language read'); return; }
+  for (const extension of extensions) {
+    const block = extension.text.match(/subjects: \{([\s\S]*?)\n    \},/);
+    if (block === null) { fail('surface-never-shadows-the-session', `${extension.path}: subjects not found`); return; }
+    for (const m of block[1].matchAll(/([a-z]+): (null|new Set|IMAGE_SURFACE_VERBS|[A-Z_]+)/g)) {
+      names.push(m[1]);
+      if (m[2] !== 'null') sharedNames.push(m[1]);
+    }
+  }
   // The session's own vocabulary, from the command groups that declare it.
   const commands = new Set();
   for (const group of ['packages/brasa/src/core/coreCommands.ts', 'packages/brasa/src/chris/chrisCommands.ts']) {

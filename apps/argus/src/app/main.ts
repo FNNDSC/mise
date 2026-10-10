@@ -65,7 +65,8 @@ import { IndexInstrument } from './indexInstrument.js';
 import { LaneInstrument } from './laneInstrument.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler, cyclerNames_seed } from './cycler.js';
-import { argusLine_run, DRAWER_CHORDS, VERB_LINES, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
+import { argusLine_run, language_extend, DRAWER_CHORDS, VERB_LINES, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
+import { chrisLanguage, type ChrisLangHost } from '../compositions/chris/lang.js';
 
 /** Console zoom, exposed for the language (the bar carries no control). */
 let consoleZoom_set: (pane: string | null) => void = () => undefined;
@@ -892,6 +893,9 @@ async function surface_start(token: string): Promise<void> {
   // Panel roster: every live controller by pane id, for routing —
   // targeted progress, and the claim rule for console-issued models.
   const panels: PanelRoster = new PanelRoster();
+  // The composition's words in the language (compositions/chris/lang.ts):
+  // installed before any pane's chrome reads the chords.
+  language_extend(chrisLanguage((): ChrisLangHost => argusHost));
 
   // The subject bus: pane linkage as hub-and-spoke subjects. Every regard
   // write also flows to the daemon as session truth (the two-layer model).
@@ -1992,7 +1996,7 @@ async function surface_start(token: string): Promise<void> {
    * The console language's host (app/consoleHost.ts): what a typed sentence
    * may do to the stage, built from the same controls the mouse uses.
    */
-  const argusHost: ArgusHost = argusHost_build(context, {
+  const argusHost: ChrisLangHost = argusHost_build(context, {
     verbs: { move: pane_move, flip: pane_flip, resize: pane_resize },
     help_open,
     notes_open: notesPane.open,

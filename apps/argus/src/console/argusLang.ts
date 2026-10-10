@@ -48,10 +48,6 @@ export interface ArgusHost {
   paneKind_get(id: string): string | null;
   /** Whether the pane's link group is inherited (a linked child). */
   paneLinked_get(id: string): boolean;
-  /** Enters a feed on the primary DAG pane (pin + fetch). */
-  feed_enter(id: number): void;
-  /** Dives into the node the pane currently regards; false when none. */
-  node_immerse(paneId: string): boolean;
   /** Downloads the file a browser regards; false when it regards none. */
   file_download(paneId: string): boolean;
   /** Removes the file a browser regards, visibly; false when none. */
@@ -60,11 +56,6 @@ export interface ArgusHost {
   session_run(line: string): Promise<string>;
   /** Opens a path as an image beside the pane (or the focused one); returns the console line. */
   image_open(paneId: string | null, path: string, options?: { force?: boolean }): Promise<string>;
-  /** Drives an image pane's verbs (layout, slice, series, wl, colormap, save, tags, ghost); returns the console line. */
-  image_control(paneId: string, verb: string, args: string[]): Promise<string>;
-  /** Drives a tags pane's verbs (redact, filter); returns the console line. */
-  tags_control(paneId: string, verb: string, args: string[]): string;
-  universe_control(paneId: string | null, verb: string, args: string[]): string;
   /** Toggles the console's full-screen zoom (the bar carries no control). */
   consoleZoom_toggle(): void;
   /** Opens the launcher, the place a session begins when nothing is open. */
@@ -83,9 +74,12 @@ interface Sentence {
 }
 
 /** Subjects this language owns; all other lines belong to the session. */
-const SUBJECTS: ReadonlySet<string> = new Set([
-  'pane', 'view', 'runs', 'node', 'dag', 'universe', 'file', 'pacs', 'image', 'tags', 'header', 'console', 'back', 'desktop', 'dashboard', 'help', 'notes', 'launcher', 'attach', 'argus',
+const SUBJECTS: Set<string> = new Set([
+  'pane', 'view', 'file', 'header', 'console', 'back', 'desktop', 'dashboard', 'help', 'notes', 'launcher', 'attach', 'argus',
 ]);
+
+/** The frame's own subjects, which no composition answers for. */
+const FRAME_SUBJECTS: ReadonlySet<string> = new Set(SUBJECTS);
 
 /**
  * Subjects the SESSION also owns, and the verbs argus claims from them.
@@ -95,15 +89,7 @@ const SUBJECTS: ReadonlySet<string> = new Set([
  * through to the session, which answers for its own vocabulary. Every other
  * subject is the surface's alone.
  */
-/**
- * The image subverbs the surface owns: they drive a pane already on the
- * field. Opening an image (`image <path>`, `image --help`, `image` alone) is
- * the kernel's `image` command, so those lines fall through to the session.
- */
-const IMAGE_SURFACE_VERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'series', 'wl', 'colormap', 'save', 'tags', 'load', 'guard', 'ghost', 'state']);
-
-const SHARED_SUBJECTS: Readonly<Record<string, ReadonlySet<string>>> = {
-  pacs: new Set(['sort', 'filter']),
+const SHARED_SUBJECTS: Record<string, ReadonlySet<string>> = {
   // `help` is the kernel's: bare `help` and `help <command>` are the session's
   // answer; the surface claims only its own three words.
   help: new Set(['pane', 'keys', 'verbs']),
@@ -113,13 +99,33 @@ const SHARED_SUBJECTS: Readonly<Record<string, ReadonlySet<string>>> = {
   // `file` is the kernel's too (what a file is, by its bytes — games shelf);
   // the surface claims only its files-pane verbs.
   file: new Set(['home', 'back', 'download', 'delete', 'follow', 'root', 'list', 'cards', 'preview', 'sort', 'filter']),
-  // `tags` is the kernel's tag resource; the surface claims only the two
-  // verbs its tags pane has and the session lacks.
-  tags: new Set(['redact', 'filter']),
-  // `image` is a kernel command; the surface claims only the subverbs that
-  // drive a pane on the field, and lets `image <path>` reach the wire.
-  image: IMAGE_SURFACE_VERBS,
 };
+
+/**
+ * What a composition adds to the language: subjects of its own (and the verbs
+ * it claims from subjects the session also owns), the words it adds to the
+ * frame's verbs (a view, a claim, a listing to sort and filter), its drawer
+ * chords and verb lines, and the handler for its subjects.
+ */
+export interface LanguageExtension {
+  /** Its subjects; for one the session owns too, the verbs it claims (anything else reaches the session). */
+  subjects: Readonly<Record<string, ReadonlySet<string> | null>>;
+  /** `view <word>`: the gutter button it presses, and the primary pane that is %1 in a desktop replay. */
+  views: Readonly<Record<string, { button: string; primary: string }>>;
+  /** `pane claim <word>`: the empty pane's capsule it presses. */
+  claims: Readonly<Record<string, string>>;
+  /** `<subject> sort|filter`: the listing it drives, and what the refusal names. */
+  listings: Readonly<Record<string, { selector: string; named: string }>>;
+  /** Its drawer chords, placed after the chord whose key is `after`. */
+  chords: ReadonlyArray<DrawerChord & { after: string }>;
+  /** Its verb lines, placed after the frame's line for subject `after`. */
+  lines: ReadonlyArray<{ after: string; line: string }>;
+  /** Runs one of its sentences; undefined when it does not handle the subject. */
+  run(host: ArgusHost, sentence: { subject: string; target: string | null; words: string[] }, pane: () => string | null): Promise<string | null> | string | null | undefined;
+}
+
+/** The composition's extension, once installed. */
+let extension: LanguageExtension | null = null;
 
 /** Desktop replay ordinals: %n → the n-th pane created during this load. */
 let replayPanes: string[] | null = null;
@@ -154,7 +160,7 @@ export function sentence_parse(line: string): Sentence | null {
  * Resolves a sentence's target to a pane id: explicit @id, replay %ordinal,
  * or the focused pane.
  */
-function target_resolve(host: ArgusHost, target: string | null): string | null {
+export function target_resolve(host: ArgusHost, target: string | null): string | null {
   if (target === null) return host.focused_get();
   if (target.startsWith('@')) return target.slice(1);
   const ordinal: number = parseInt(target.slice(1), 10);
@@ -177,7 +183,7 @@ function kindPane_resolve(host: ArgusHost, paneId: string | null, kinds: Readonl
 }
 
 /** Clicks the first matching control inside a pane's mount. */
-function control_click(host: ArgusHost, paneId: string, selector: string): boolean {
+export function control_click(host: ArgusHost, paneId: string, selector: string): boolean {
   const mount: HTMLElement | null = host.paneMount_get(paneId);
   const control: HTMLElement | null = mount?.querySelector<HTMLElement>(selector) ?? null;
   if (control === null) return false;
@@ -186,7 +192,7 @@ function control_click(host: ArgusHost, paneId: string, selector: string): boole
 }
 
 /** Clicks a drawer child verb by its label. */
-function drawerChild_click(host: ArgusHost, paneId: string, label: string): boolean {
+export function drawerChild_click(host: ArgusHost, paneId: string, label: string): boolean {
   const mount: HTMLElement | null = host.paneMount_get(paneId);
   if (mount === null) return false;
   for (const button of mount.querySelectorAll<HTMLButtonElement>('.drawer-child')) {
@@ -204,7 +210,7 @@ function cwdBind_click(host: ArgusHost, paneId: string, follow: boolean): boolea
 }
 
 /** Cycles a mode-frame pill until its label matches the wanted mode. */
-function modePill_setTo(host: ArgusHost, paneId: string, selector: string, wanted: string): boolean {
+export function modePill_setTo(host: ArgusHost, paneId: string, selector: string, wanted: string): boolean {
   const mount: HTMLElement | null = host.paneMount_get(paneId);
   const pill: HTMLElement | null = mount?.querySelector<HTMLElement>(selector) ?? null;
   if (pill === null) return false;
@@ -262,7 +268,8 @@ export interface DrawerChord {
   move?: boolean;
 }
 
-export const DRAWER_CHORDS: ReadonlyArray<DrawerChord> = [
+/** The drawer chords: the frame's, and those a composition installs. */
+export const DRAWER_CHORDS: DrawerChord[] = [
   { key: '%', topic: 'pane', selector: splitSelector_of('right'), does: 'split right (tmux)' },
   { key: '"', topic: 'pane', selector: splitSelector_of('below'), does: 'split below (tmux)' },
   { key: 'h', topic: 'pane', selector: splitSelector_of('left'), does: 'split left' },
@@ -280,8 +287,6 @@ export const DRAWER_CHORDS: ReadonlyArray<DrawerChord> = [
   { key: 'f', topic: 'binding', selector: '.drawer-bind[data-bind="fs"]', does: 'the next split is a linked filesystem' },
   { key: 'v', topic: 'binding', selector: '.drawer-bind[data-bind="viewer"]', does: 'the next split is a linked viewer' },
   { key: '1', topic: 'claim', selector: '.empty-go-files', does: 'claim an empty pane as FILES' },
-  { key: '2', topic: 'claim', selector: '.empty-go-dag', does: 'claim an empty pane as RUNS' },
-  { key: '3', topic: 'claim', selector: '.empty-go-pacs', does: 'claim an empty pane as PACS' },
   { key: 'o', topic: 'focus', selector: null, does: 'focus the next pane (tmux)' },
   { key: ';', topic: 'focus', selector: null, does: 'focus the last pane (tmux)' },
   { key: 'q', topic: 'focus', selector: null, does: 'show every pane\'s @id on its bar (tmux)' },
@@ -311,8 +316,13 @@ function paneCloseAll_run(host: ArgusHost): string {
   return `closed ${closed} pane${closed === 1 ? '' : 's'}`;
 }
 
-/** The chord table, as the console prints it. */
-export const KEYS_HELP: string = [
+/**
+ * The chord table, as the console prints it.
+ *
+ * @returns The table.
+ */
+function keysHelp_text(): string {
+  return [
   'prefix chords — Ctrl-B opens the focused pane\'s drawer; one key then presses one capsule',
   ...DRAWER_CHORDS.map((chord: DrawerChord): string => `  ${chord.key.padEnd(6)} ${chord.does}`),
   '  Tab    walks the verbs; Enter fires; Esc closes the drawer',
@@ -320,21 +330,23 @@ export const KEYS_HELP: string = [
   '  ↑↓     move the row cursor (Home/End: first/last)',
   '  Enter  indicates the row (its verbs ride the frame); Enter again goes (opens, enters, folds open)',
   '  →      the keys into the frame, as Ctrl-B r',
-].join('\n');
+  ].join('\n');
+}
 
 /** The verb table, one line per subject; `argus verbs` prints it, the HELP pane lists it. */
-export const VERB_LINES: ReadonlyArray<string> = [
-  'pane [@id|%n] split left|right|above|below · zoom · close · close all · bind unlinked|fs|viewer',
-  'pane [@id|%n] claim files|runs|pacs · focus left|right|up|down|@id|last · flip · resize left|right|up|down [percent]',
-  'view files|runs|pacs        (the gutter givens, workspace scope)',
-  'runs enter <feedId> · sort <col> [asc|desc] · filter <text>|off',
-  'node enter · immerse · back · clear (the indicated node)',
-  'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · hue status|compute · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh',
-  'file [@id] home|back|download|delete · follow · root · list|cards|preview · sort <col> [asc|desc] · filter <text>|off',
-  'pacs sort <col> [asc|desc] · filter <text>|off   (the results listing; every other pacs verb is the session\'s)',
-  'image [@id] [--force] <path> · layout single|mpr|3d|slab · slice <n> · series <n> · wl <lo> <hi> · wl preset <name> · colormap gray|hot|jet|cool · save · tags · load · guard <bytes>|off · ghost <0..1>|off · state',
-  'tags [@id] redact on|off · filter <text>|off   (the pane that follows an image pane\'s slice)',
-  'header stats|dag|away|restore',
+export const VERB_LINES: string[] = [];
+
+/** The frame's verb lines, by subject, in order; claim and view name what is installed. */
+const FRAME_LINES: ReadonlyArray<{ subject: string; line: () => string }> = [
+  { subject: 'pane', line: (): string => 'pane [@id|%n] split left|right|above|below · zoom · close · close all · bind unlinked|fs|viewer' },
+  { subject: 'pane claim', line: (): string => `pane [@id|%n] claim ${['files', ...Object.keys(extension?.claims ?? {})].join('|')} · focus left|right|up|down|@id|last · flip · resize left|right|up|down [percent]` },
+  { subject: 'view', line: (): string => `${`view ${['files', ...Object.keys(extension?.views ?? {})].join('|')}`.padEnd(28)}(the gutter givens, workspace scope)` },
+  { subject: 'file', line: (): string => 'file [@id] home|back|download|delete · follow · root · list|cards|preview · sort <col> [asc|desc] · filter <text>|off' },
+  { subject: 'header', line: (): string => 'header stats|dag|away|restore' },
+];
+
+/** The frame's verb lines after the subjects a composition can add beside. */
+const FRAME_TAIL_LINES: ReadonlyArray<string> = [
   'console open|close|toggle|zoom|height <px>',
   'back                        (contextual back — exactly Esc)',
   'desktop save|load|show|list|delete [name]',
@@ -345,7 +357,40 @@ export const VERB_LINES: ReadonlyArray<string> = [
   'notes pane                  (what the installed releases changed, as a pane; bare notes prints it here)',
 ];
 
-const VERBS_HELP: string = VERB_LINES.join('\n');
+/**
+ * Lays the verb lines out: the frame's, a composition's each after the line it names.
+ */
+function verbLines_build(): void {
+  const lines: string[] = [];
+  for (const frame of FRAME_LINES) {
+    lines.push(frame.line());
+    for (const added of extension?.lines ?? []) if (added.after === frame.subject) lines.push(added.line);
+  }
+  lines.push(...FRAME_TAIL_LINES);
+  VERB_LINES.splice(0, VERB_LINES.length, ...lines);
+}
+
+/**
+ * Installs a composition's words into the language: its subjects, its
+ * chords (each after the chord it names) and its verb lines.
+ *
+ * @param added - The composition's extension.
+ */
+export function language_extend(added: LanguageExtension): void {
+  extension = added;
+  for (const [subject, claimed] of Object.entries(added.subjects)) {
+    SUBJECTS.add(subject);
+    if (claimed !== null) SHARED_SUBJECTS[subject] = claimed;
+  }
+  for (const chord of added.chords) {
+    const at: number = DRAWER_CHORDS.findIndex((one: DrawerChord): boolean => one.key === chord.after);
+    const { after: _after, ...placed } = chord;
+    DRAWER_CHORDS.splice(at === -1 ? DRAWER_CHORDS.length : at + 1 + added.chords.filter((other) => other.after === chord.after && added.chords.indexOf(other) < added.chords.indexOf(chord)).length, 0, placed);
+  }
+  verbLines_build();
+}
+
+verbLines_build();
 
 /**
  * How to reach this session from somewhere else, as lines that can be run.
@@ -408,7 +453,7 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   const verb: string = (words[0] ?? '').toLowerCase();
   const arg: string = (words[1] ?? '').toLowerCase();
 
-  if (subject === 'argus') return verb === 'keys' ? KEYS_HELP : VERBS_HELP;
+  if (subject === 'argus') return verb === 'keys' ? keysHelp_text() : VERB_LINES.join('\n');
 
   if (subject === 'back') {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -432,14 +477,14 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   }
 
   if (subject === 'view') {
-    const gutter: Record<string, string> = { files: 'gutter-files', runs: 'gutter-runs', pacs: 'gutter-tools' };
-    const buttonId: string | undefined = gutter[verb];
-    if (buttonId === undefined) return `view: unknown given '${verb}' (files|runs|pacs)`;
-    document.getElementById(buttonId)?.click();
+    const views: Record<string, { button: string; primary: string }> = { files: { button: 'gutter-files', primary: 'files' }, ...(extension?.views ?? {}) };
+    const view: { button: string; primary: string } | undefined = views[verb];
+    if (view === undefined) return `view: unknown given '${verb}' (${Object.keys(views).join('|')})`;
+    document.getElementById(view.button)?.click();
     // During a desktop replay the preset's primary pane is ordinal %1.
     if (replayPanes !== null) {
       replayPanes.length = 0;
-      replayPanes.push(verb === 'runs' ? 'dag' : verb === 'pacs' ? 'pacs' : 'files');
+      replayPanes.push(view.primary);
     }
     return `view ${verb}`;
   }
@@ -483,17 +528,17 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     return `console: unknown verb '${verb}' (open|close|toggle|zoom|height)`;
   }
 
-  if (subject === 'runs' || subject === 'file' || subject === 'pacs') {
+  const listings: Record<string, { selector: string; named: string }> = { file: { selector: '.pane-files', named: 'files' }, ...(extension?.listings ?? {}) };
+  if (listings[subject] !== undefined) {
     if (verb === 'sort' || verb === 'filter') {
-      const kind: string =
-        subject === 'runs' ? '.pane-dag' : subject === 'file' ? '.pane-files' : '#pacs-workspace';
+      const kind: string = (listings[subject] as { selector: string }).selector;
       const targeted: string | null = target_resolve(host, sentence.target);
       const mount: HTMLElement | null = targeted === null ? null : host.paneMount_get(targeted);
       // The subject names the kind: fall back to any such pane on stage.
       const pane: HTMLElement | null =
         mount?.querySelector<HTMLElement>(kind) ?? document.querySelector<HTMLElement>(kind);
       if (pane === null) {
-        const named: string = subject === 'runs' ? 'DAG' : subject === 'file' ? 'files' : 'PACS';
+        const named: string = (listings[subject] as { named: string }).named;
         return `${subject} ${verb}: no ${named} pane`;
       }
       if (verb === 'sort') {
@@ -508,14 +553,10 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     }
   }
 
-  if (subject === 'runs') {
-    if (verb === 'enter') {
-      const feedId: number = parseInt(arg.replace(/^feed_/, ''), 10);
-      if (Number.isNaN(feedId)) return 'runs enter <feedId>';
-      host.feed_enter(feedId);
-      return `entering feed_${feedId}`;
-    }
-    return `runs: unknown verb '${verb}' (enter)`;
+  // A composition's subject: its handler, given the pane once it is asked for.
+  if (extension !== null && !FRAME_SUBJECTS.has(subject)) {
+    const handled: Promise<string | null> | string | null | undefined = extension.run(host, sentence, (): string | null => target_resolve(host, sentence.target));
+    if (handled !== undefined) return handled;
   }
 
   if (subject === 'help' || subject === 'notes') return pages_handle(host, subject, verb);
@@ -554,9 +595,9 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
         ? `bind ${arg}` : 'pane bind: no drawer';
     }
     if (verb === 'claim') {
-      const pill: Record<string, string> = { files: '.empty-go-files', runs: '.empty-go-dag', pacs: '.empty-go-pacs' };
+      const pill: Record<string, string> = { files: '.empty-go-files', ...(extension?.claims ?? {}) };
       const selector: string | undefined = pill[arg];
-      if (selector === undefined) return 'pane claim files|runs|pacs';
+      if (selector === undefined) return `pane claim ${Object.keys(pill).join('|')}`;
       return control_click(host, paneId, selector)
         ? `claiming ${paneId} as ${arg}` : `pane claim: '${paneId}' is not an unlinked pane`;
     }
@@ -577,31 +618,6 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
       return moved !== null ? `focused ${moved}` : `pane focus: nothing ${arg} of here`;
     }
     return `pane: unknown verb '${verb}'`;
-  }
-
-  if (subject === 'dag') {
-    if (verb === 'layout') return modePill_setTo(host, paneId, '.dag-strategy', arg.toUpperCase()) ? `layout ${arg}` : 'dag layout ranked|molecule';
-    if (verb === 'projection') return modePill_setTo(host, paneId, '.dag-projection', arg.toUpperCase()) ? `projection ${arg}` : 'dag projection 2d|3d';
-    if (verb === 'scale') return modePill_setTo(host, paneId, '.dag-scale', arg.toUpperCase()) ? `scale ${arg}` : 'dag scale time|size';
-    if (verb === 'hue') return modePill_setTo(host, paneId, '.dag-hue', arg.toUpperCase()) ? `hue ${arg}` : 'dag hue status|compute';
-    if (verb === 'pulse') return control_click(host, paneId, '.dag-pulse') ? 'pulse' : 'dag pulse: no mode frame';
-    if (verb === 'census') return control_click(host, paneId, '.dag-census') ? 'census toggled' : 'dag census: no mode frame';
-    if (verb === 'refresh') return drawerChild_click(host, paneId, 'REFRESH') ? 'refreshing' : 'dag refresh: no DAG pane';
-    if (verb === 'physics') {
-      const term: string = arg;
-      const mount: HTMLElement | null = host.paneMount_get(paneId);
-      const pane: HTMLElement | null = mount?.querySelector<HTMLElement>('.pane-dag') ?? mount;
-      if (pane === null) return 'dag physics: no DAG pane';
-      if (term === 'reset') {
-        pane.dispatchEvent(new CustomEvent('argus:dag-physics', { detail: 'reset' }));
-        return 'physics reset';
-      }
-      const on: boolean = (words[2] ?? 'on').toLowerCase() !== 'off';
-      if (!['charge', 'link', 'collide', 'gravity'].includes(term)) return `dag physics: unknown term '${term}' (charge|link|collide|gravity|reset)`;
-      pane.dispatchEvent(new CustomEvent('argus:dag-physics', { detail: { term, on } }));
-      return `physics ${term} ${on ? 'on' : 'off'}`;
-    }
-    return `dag: unknown verb '${verb}' (layout|projection|scale|hue|pulse|census|physics|refresh)`;
   }
 
   if (subject === 'file') {
@@ -633,36 +649,6 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     return 'file home|back|download|delete|sort|filter|follow|root|list|cards|preview';
   }
 
-  if (subject === 'image') {
-    // The pane's live controls are the surface's; opening an image is the
-    // kernel's. `image <path>` (and `image --help`, `image` alone) is a
-    // brasa command — it reaches the wire, resolves the path, and emits an
-    // `image.view` intent this surface renders (see envelope_observe). Only
-    // the subverbs that drive a pane already on the field are claimed here.
-    const plain: string[] = words.filter((word: string): boolean => word !== '--force');
-    const first: string = plain[0] ?? '';
-    if (!IMAGE_SURFACE_VERBS.has(first.toLowerCase())) return null;
-    return host.image_control(paneId, verb, words.slice(1));
-  }
-
-  if (subject === 'tags') {
-    if (paneId === null) return 'tags: no pane in focus';
-    return host.tags_control(paneId, verb, words.slice(1));
-  }
-
-  if (subject === 'universe') {
-    // The descent by word: enter a feed, climb back, open the feed in RUNS.
-    return host.universe_control(paneId, verb, words.slice(1));
-  }
-
-  if (subject === 'node') {
-    if (verb === 'enter') return drawerChild_click(host, paneId, 'ENTER NODE') ? 'entering node' : 'node enter: no DAG drawer';
-    if (verb === 'back') return drawerChild_click(host, paneId, 'BACK') ? 'node back' : 'node back: no DAG drawer';
-    if (verb === 'immerse') return host.node_immerse(paneId) ? 'immersing' : 'node immerse: nothing indicated';
-    if (verb === 'clear') return drawerChild_click(host, paneId, 'CLEAR DETAIL') ? 'detail cleared' : 'node clear: no DAG drawer';
-    return `node: unknown verb '${verb}' (enter|immerse|back|clear)`;
-  }
-
   return null;
 }
 
@@ -678,8 +664,8 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
  */
 function pages_handle(host: ArgusHost, subject: string, verb: string | undefined): string {
   if (subject === 'notes') return verb === 'pane' ? host.notes_open() : 'notes pane';
-  if (verb === 'keys') return KEYS_HELP;
-  if (verb === 'verbs') return VERBS_HELP;
+  if (verb === 'keys') return keysHelp_text();
+  if (verb === 'verbs') return VERB_LINES.join('\n');
   if (verb === 'pane') return host.help_open();
   return 'help pane|keys|verbs';
 }

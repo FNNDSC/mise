@@ -14,6 +14,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const SOURCE = 'apps/argus/src/console/argusLang.ts';
 const TARGET = 'apps/argus/docs/keys.adoc';
+/** The compositions' language extensions, whose chords join the table. */
+const EXTENSIONS = ['apps/argus/src/compositions/chris/lang.ts'];
 
 /** Reads the chord table out of the source, entry by entry. */
 export function chords_read(text) {
@@ -26,6 +28,19 @@ export function chords_read(text) {
     chords.push({ key: m[1].replace(/\\'/g, "'"), topic: m[2], does: m[3].replace(/\\'/g, "'") });
   }
   if (chords.length === 0) throw new Error(`${SOURCE}: no chord entries parsed`);
+  // A composition's chords, each after the chord it names, as language_extend places them.
+  for (const extensionPath of EXTENSIONS) {
+    let extension = '';
+    try { extension = readFileSync(extensionPath, 'utf8'); } catch { continue; }
+    const placed = new Map();
+    for (const m of extension.matchAll(/\{ after: '((?:[^'\\]|\\.)+)', key: '((?:[^'\\]|\\.)+)', topic: '([a-z]+)', selector: (?:'[^']*'|null), does: '((?:[^'\\]|\\.)+)'(?:, move: true)? \}/g)) {
+      const after = m[1].replace(/\\'/g, "'");
+      const at = chords.findIndex((c) => c.key === after);
+      const offset = placed.get(after) ?? 0;
+      chords.splice(at === -1 ? chords.length : at + 1 + offset, 0, { key: m[2].replace(/\\'/g, "'"), topic: m[3], does: m[4].replace(/\\'/g, "'") });
+      placed.set(after, offset + 1);
+    }
+  }
   return chords;
 }
 

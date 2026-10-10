@@ -59,14 +59,13 @@ export interface ChrisPanes {
 }
 
 /**
- * Makes the ChRIS panes' builders.
+ * Builds a UNIVERSE pane: the space of everything run here.
  *
- * @param ctx - What they reach.
- * @returns The builders.
+ * @param ctx - What it reaches.
+ * @param id - The pane's id.
+ * @returns The pane.
  */
-export function chrisPanes_make(ctx: ChrisPaneContext): ChrisPanes {
-  // The UNIVERSE pane: the space of everything run here, its own kind.
-  const universe_build = (id: string): PaneInstance => {
+function universe_build(ctx: ChrisPaneContext, id: string): PaneInstance {
     const mount: HTMLElement = template_stamp('tpl-pane-universe');
     const panel: UniversePanel = new UniversePanel(
       {
@@ -179,9 +178,17 @@ export function chrisPanes_make(ctx: ChrisPaneContext): ChrisPanes {
         panel.dispose();
       },
     };
-  };
+  }
 
-  const dag_build = (id: string, primary: boolean): PaneInstance => {
+/**
+ * Builds a RUNS pane; the primary one summons RUNS when it shows a feed.
+ *
+ * @param ctx - What it reaches.
+ * @param id - The pane's id.
+ * @param primary - Whether it is the primary RUNS pane.
+ * @returns The pane.
+ */
+function dag_build(ctx: ChrisPaneContext, id: string, primary: boolean): PaneInstance {
     const mount: HTMLElement = template_stamp('tpl-pane-dag');
     const panel: DagPanel = new DagPanel(
       pane_find(mount, '.dag-canvas'),
@@ -249,7 +256,17 @@ export function chrisPanes_make(ctx: ChrisPaneContext): ChrisPanes {
         panel.dispose();
       },
     };
-  };
+  }
 
-  return { universe_build, dag_build };
+/**
+ * Makes the ChRIS panes' builders.
+ *
+ * @param ctx - What they reach.
+ * @returns The builders.
+ */
+export function chrisPanes_make(ctx: ChrisPaneContext): ChrisPanes {
+  return {
+    universe_build: (id: string): PaneInstance => universe_build(ctx, id),
+    dag_build: (id: string, primary: boolean): PaneInstance => dag_build(ctx, id, primary),
+  };
 }

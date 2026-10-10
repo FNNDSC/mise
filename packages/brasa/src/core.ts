@@ -16,4 +16,5 @@ export * from './core/surface.js';
 export * from './core/question.js';
 export * from './core/progress.js';
 export * from './core/commandRegistry.js';
+export * from './core/tasks.js';
 export { nullBackend_make, type NullBackendOptions } from './null/backend.js';

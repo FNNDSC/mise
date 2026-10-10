@@ -30,6 +30,7 @@ export {
   type ProgressUnit,
   type ProgressStatus,
 } from './progress.js';
+export { TASK_STATES, taskState_isOver, type TaskState, type TaskProgress, type Task } from './task.js';
 export { CONTRACT_VERSION, version_isCompatible } from './version.js';
 export { LISTING_ITEM_KINDS, listingItemSchema, type ListingItemKind, type ListingItem } from './listing.js';
 export { EDIT_BINARY_EXTENSIONS, EDIT_CONFIRM_BYTES, editExtension_of, path_isEditable } from './edit.js';

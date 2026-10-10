@@ -9,7 +9,7 @@
  * @module
  */
 import { MemoryVfsProvider, VFSDispatcher, type MemorySeed } from '@fnndsc/fond';
-import type { Backend, SessionIdentity } from '../core/backend.js';
+import type { Backend, SessionIdentity, TaskSource } from '../core/backend.js';
 
 /** What a null session starts with. */
 export interface NullBackendOptions {
@@ -17,6 +17,8 @@ export interface NullBackendOptions {
   user?: string;
   /** What the filesystem holds at the start, by path (null for a folder). The home folder is always there. */
   seed?: MemorySeed;
+  /** Task sources the session shows under `/proc`, as a backend would bring them. */
+  tasks?: ReadonlyArray<TaskSource>;
 }
 
 /**
@@ -45,5 +47,6 @@ export function nullBackend_make(options: NullBackendOptions = {}): Backend {
       },
     },
     vfs: { dispatcher: new VFSDispatcher(store) },
+    ...(options.tasks !== undefined ? { tasks: options.tasks } : {}),
   };
 }

@@ -10,7 +10,7 @@
  */
 import type { DicomSeriesModel } from '@fnndsc/menu';
 import type { ExecuteOutcome } from '../calypso/client.js';
-import type { ArgusHost } from '../console/argusLang.js';
+import type { ChrisLangHost } from '../compositions/chris/lang.js';
 import { IMAGE_COLORMAPS, IMAGE_LAYOUTS, type ImageColormap, type ImageLayout } from '../features/image/engine.js';
 import type { ImagePanel, SeriesChoice } from '../features/image/panel.js';
 import type { TagsPanel } from '../features/tags/panel.js';
@@ -47,7 +47,7 @@ export interface ConsoleHostHooks {
  * @param hooks - The owner's verbs and opens.
  * @returns The host.
  */
-export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' | 'paneInstance_get' | 'subjects' | 'terminal' | 'client' | 'sound'>, hooks: ConsoleHostHooks): ArgusHost {
+export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' | 'paneInstance_get' | 'subjects' | 'terminal' | 'client' | 'sound'>, hooks: ConsoleHostHooks): ChrisLangHost {
   const { layout, panels, paneInstance_get, subjects } = context;
   const paneKind_get = (id: string): PaneKind | null => paneInstance_get(id)?.kind ?? null;
 

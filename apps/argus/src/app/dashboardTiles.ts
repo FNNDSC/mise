@@ -5,7 +5,7 @@
  * A module of the host: the host hands in its verbs (open the roster, open
  * home, ask the session) and the dashboard builds its blocks from them.
  */
-import { feedListModelSchema, FEED_LIST_MODEL_KIND, type SessionNotes } from '@fnndsc/menu';
+import type { SessionNotes } from '@fnndsc/menu';
 import type { ExecuteOutcome } from '../calypso/client.js';
 import { DRAWER_CHORDS, VERB_LINES, type DrawerChord } from '../console/argusLang.js';
 import type { FsListingEntry } from '../features/files/panel.js';
@@ -17,20 +17,10 @@ import type { GroupSnapshot } from './dormant.js';
 export interface DashboardHooks {
   /** Asks the session a line, quietly. */
   ask: (line: string) => Promise<ExecuteOutcome>;
-  universe_show: () => void;
-  /** Opens the roster, optionally filtered. */
-  runs_show: (filter?: string) => void;
-  /** Opens the roster at one feed. */
-  feed_enter: (feedId: number) => void;
   /** Opens home. */
   home_open: () => void;
   /** Opens home and moves the session into a folder. */
   home_cd: (path: string) => void;
-  /** Drops a line into the console, ready to finish. */
-  line_offer: (line: string) => void;
-  /** What the PACS pane last asked, or empty. */
-  pacs_query: () => string;
-  pacs_open: () => void;
   desktops: () => GroupSnapshot[];
   desktop_restore: (id: string) => void;
   panes_open: () => void;
@@ -41,6 +31,19 @@ export interface DashboardHooks {
   /** Whether the daemon's code on disk has moved since it started: its notes are the running one's. */
   daemon_stale: () => boolean;
   console_open: () => void;
+  /** The session's composition's tiles, asked each time the dashboard paints; absent, the frame's alone. */
+  contribution?: () => Promise<TileContribution>;
+}
+
+/**
+ * What a composition adds to the dashboard: a lead tile that takes the wide
+ * seat when it has more to say than home (its weight against home's
+ * entries), and tiles placed after FILES and after PANES.
+ */
+export interface TileContribution {
+  lead?: { tile: LauncherTile; weight: number };
+  afterFiles: LauncherTile[];
+  afterPanes: LauncherTile[];
 }
 
 /**
@@ -51,25 +54,11 @@ export interface DashboardHooks {
  */
 export function dashboardTiles_build(hooks: DashboardHooks): () => Promise<ReadonlyArray<LauncherTile>> {
   return async (): Promise<ReadonlyArray<LauncherTile>> => {
-    const [roster, home, notes]: [ExecuteOutcome, ExecuteOutcome, SessionNotes | null] = await Promise.all([
-      hooks.ask('proc feeds'),
+    const [home, notes, contribution]: [ExecuteOutcome, SessionNotes | null, TileContribution] = await Promise.all([
       hooks.ask('ls ~'),
       hooks.notes_latest(),
+      hooks.contribution?.() ?? Promise.resolve({ afterFiles: [], afterPanes: [] }),
     ]);
-    interface RosterFeed { id: number; title: string; status: string }
-    let feeds: RosterFeed[] = [];
-    for (const envelope of roster.envelopes) {
-      const model = envelope.model;
-      if (model === undefined || model.kind !== FEED_LIST_MODEL_KIND) continue;
-      const parsed = feedListModelSchema.safeParse(model.data);
-      if (parsed.success) feeds = parsed.data.feeds as RosterFeed[];
-    }
-    // A roster refused for warming is not an empty roster: the tiles say
-    // the index is warming rather than counting feeds that are not yet known.
-    const rosterWarming: boolean = feeds.length === 0 && roster.envelopes.some((envelope): boolean => envelope.status === 'error');
-    const feedsFigure: string = rosterWarming ? 'INDEX WARMING' : `${feeds.length} FEEDS`;
-    const errored: number = feeds.filter((feed: RosterFeed): boolean => /error/i.test(feed.status)).length;
-    const live: number = feeds.filter((feed: RosterFeed): boolean => /running|scheduled|created|started/i.test(feed.status)).length;
     let entries: FsListingEntry[] = [];
     let homePath: string = '~';
     for (const envelope of home.envelopes) {
@@ -84,30 +73,6 @@ export function dashboardTiles_build(hooks: DashboardHooks): () => Promise<Reado
     const folders: FsListingEntry[] = entries.filter((entry: FsListingEntry): boolean => entry.type === 'dir');
     const desktops: GroupSnapshot[] = hooks.desktops();
 
-    const universe: LauncherTile = {
-      key: 'universe', name: 'UNIVERSE', hue: '--honey', numeral: '',
-      figures: [{ text: feedsFigure }],
-      rows: [],
-      verb: 'SEE THE SPACE',
-      about: TILE_ABOUT['universe'],
-      enter: (): void => hooks.universe_show(),
-    };
-    const analyses: LauncherTile = {
-      key: 'analyses', name: 'ANALYSES', hue: '--october-sunset', numeral: '3',
-      figures: [
-        { text: feedsFigure },
-        ...(live > 0 ? [{ text: `${live} RUNNING` }] : []),
-        ...(errored > 0 ? [{ text: `${errored} ERRORED`, errored: true, open: (): void => hooks.runs_show('status:error') }] : []),
-      ],
-      rows: feeds.slice(0, 6).map((feed: RosterFeed): LauncherRow => ({
-        text: `${feed.id}  ${feed.title}`,
-        errored: /error/i.test(feed.status),
-        open: (): void => hooks.feed_enter(feed.id),
-      })),
-      verb: 'OPEN THE ROSTER',
-      about: TILE_ABOUT['analyses'],
-      enter: (): void => hooks.runs_show(),
-    };
     const files: LauncherTile = {
       key: 'files', name: 'FILES', hue: '--harvestgold', numeral: '2',
       figures: [{ text: `${entries.length} ENTRIES` }],
@@ -118,22 +83,6 @@ export function dashboardTiles_build(hooks: DashboardHooks): () => Promise<Reado
       verb: 'OPEN HOME',
       about: TILE_ABOUT['files'],
       enter: (): void => hooks.home_open(),
-    };
-    const pacsAnswer: string = hooks.pacs_query();
-    const pacs: LauncherTile = {
-      key: 'pacs', name: 'PACS', hue: '--daybreak', numeral: '4',
-      figures: [{ text: pacsAnswer === '' ? 'NO ANSWER' : 'ANSWERED' }],
-      // With nothing asked yet the block teaches instead of apologising:
-      // the line it would take, dropped into the console ready to finish.
-      rows: pacsAnswer === ''
-        ? [
-          { text: 'pacs query PatientID:…', open: (): void => hooks.line_offer('pacs query PatientID:') },
-          { text: 'pacs query AccessionNumber:…', open: (): void => hooks.line_offer('pacs query AccessionNumber:') },
-        ]
-        : [{ text: pacsAnswer.slice(0, 48) }],
-      verb: 'ASK A PACS',
-      about: TILE_ABOUT['pacs'],
-      enter: (): void => hooks.pacs_open(),
     };
     const panes: LauncherTile = {
       key: 'panes', name: 'PANES', hue: '--butter', numeral: '6',
@@ -179,7 +128,10 @@ export function dashboardTiles_build(hooks: DashboardHooks): () => Promise<Reado
       enter: (): void => hooks.console_open(),
     };
     // The block with the most to say takes the wide seat.
-    const rest: LauncherTile[] = [files, pacs, panes, universe, help, whatsNew, console_];
-    return feeds.length >= entries.length ? [analyses, ...rest] : [files, analyses, pacs, panes, universe, help, whatsNew, console_];
+    const lead: LauncherTile[] = contribution.lead === undefined ? [] : [contribution.lead.tile];
+    const tail: LauncherTile[] = [...contribution.afterFiles, panes, ...contribution.afterPanes, help, whatsNew, console_];
+    return contribution.lead !== undefined && contribution.lead.weight >= entries.length
+      ? [...lead, files, ...tail]
+      : [files, ...lead, ...tail];
   };
 }

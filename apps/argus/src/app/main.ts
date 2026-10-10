@@ -54,6 +54,7 @@ import { chrisRoutes_install } from '../compositions/chris/routes.js';
 import { chrisPanes_make, type ChrisPanes } from '../compositions/chris/panes.js';
 import { chrisDicom_make, type ChrisDicom } from '../compositions/chris/dicom.js';
 import { chrisStage_make, type ChrisStage } from '../compositions/chris/stage.js';
+import { chrisTiles_make } from '../compositions/chris/tiles.js';
 import { ViewerPanel } from '../features/view/panel.js';
 import { ImagePanel, type SeriesChoice } from '../features/image/panel.js';
 import { TagsPanel } from '../features/tags/panel.js';
@@ -1583,14 +1584,8 @@ async function surface_start(token: string): Promise<void> {
   let daemonStale: boolean = false;
   const launcherTiles_build = dashboardTiles_build({
     ask: (line: string): Promise<ExecuteOutcome> => client.line_execute(line, { silent: true, observe: false }),
-    universe_show: (): void => universe_show(),
-    runs_show: (filter?: string): void => runs_show(filter),
-    feed_enter: (feedId: number): void => { runs_show(); panels.get('dag', 'dag')?.feed_enter(feedId); },
     home_open: (): void => { dagShown = false; home_apply(); layout.focus_set('files'); },
     home_cd: (path: string): void => { dagShown = false; home_apply(); terminal.line_run(`cd "${path}"`); },
-    line_offer: (line: string): void => terminal.line_offer(line),
-    pacs_query: (): string => pacsPanel.query_get() ?? '',
-    pacs_open: (): void => { domain_enter('pacs'); layout.focus_set('pacs'); },
     desktops: (): GroupSnapshot[] => dormant.list(),
     desktop_restore: (id: string): void => { void group_restore(id); },
     panes_open: (): void => { domain_enter('panes'); panesPanel.render(); layout.focus_set('panes'); },
@@ -1599,6 +1594,16 @@ async function surface_start(token: string): Promise<void> {
     notes_latest: (): Promise<SessionNotes | null> => notesPane.latest(),
     daemon_stale: (): boolean => daemonStale,
     console_open: (): void => element_require('gutter-console').click(),
+    // ANALYSES, PACS and the UNIVERSE: the composition's tiles (compositions/chris/tiles.ts).
+    contribution: chrisTiles_make({
+      ask: (line: string): Promise<ExecuteOutcome> => client.line_execute(line, { silent: true, observe: false }),
+      universe_show: (): void => universe_show(),
+      runs_show: (filter?: string): void => runs_show(filter),
+      feed_enter: (feedId: number): void => { runs_show(); panels.get('dag', 'dag')?.feed_enter(feedId); },
+      line_offer: (line: string): void => terminal.line_offer(line),
+      pacs_query: (): string => pacsPanel.query_get() ?? '',
+      pacs_open: (): void => { domain_enter('pacs'); layout.focus_set('pacs'); },
+    }),
   });
 
   const launcherPanel: LauncherPanel = new LauncherPanel(launcherMount, {

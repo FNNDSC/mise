@@ -22,6 +22,7 @@ import { chrisFallback } from './commandFallback.js';
 import { chrisFiles } from './files.js';
 import { elevation_run } from '@fnndsc/chili/commands/connect/elevation.js';
 import { chrisWatch } from './watch.js';
+import { chrisJobsSource } from './tasks.js';
 import { chrisListingLook } from '@fnndsc/chili/views/ls.js';
 import { chrisFilesystem } from './filesystem.js';
 import { chrisMounts_register } from './mounts.js';
@@ -103,6 +104,7 @@ export const chrisBackend: Backend = {
   fallback: chrisFallback,
   elevate: elevation_run,
   watch: chrisWatch,
+  tasks: [chrisJobsSource],
   files: chrisFiles,
   vfs: chrisFilesystem,
   completion: chrisCompletion,

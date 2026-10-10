@@ -20,12 +20,10 @@ register(new URL('./coreBoot.hook.mjs', import.meta.url));
 
 const { engine_create, nullBackend_make } = await import('../dist/core.js');
 // A backend's long-running steps, as an infrastructure backend would bring them.
+const apply = { id: 'apply', label: 'Apply', state: 'running', progress: { current: 3, total: 10, unit: 'nodes' } };
 const steps = {
   id: 'steps', label: 'install steps',
-  list: async () => [
-    { id: 'plan', label: 'Plan', state: 'done', logTail: 'planned\n' },
-    { id: 'apply', label: 'Apply', state: 'running', progress: { current: 3, total: 10, unit: 'nodes' } },
-  ],
+  list: async () => [{ id: 'plan', label: 'Plan', state: 'done', logTail: 'planned\n' }, { ...apply }],
 };
 const engine = await engine_create(nullBackend_make({
   seed: { '/home/user/hello.txt': 'hello\nworld\n', '/home/user/docs/a.txt': 'alpha' },
@@ -77,6 +75,18 @@ for (const check of CHECKS) {
   console.log(`${wrong.length === 0 ? 'ok  ' : 'FAIL'}  ${check.line}${wrong.length ? ` — ${wrong.join('; ')}` : ''}`);
   if (wrong.length) failed++;
 }
+
+// A task any surface can watch: live while it runs, settled when it is over.
+const heard = [];
+engine.ambient_listen((event) => { if (event.kind === 'watched') heard.push(`${event.subject}:${event.state}`); });
+const watching = engine.watch_set('/proc/steps/apply', 'core-boot', true);
+apply.state = 'done';
+for (let waited = 0; waited < 10000 && !heard.includes('/proc/steps/apply:settled'); waited += 250) {
+  await new Promise((resolve) => setTimeout(resolve, 250));
+}
+const watched = watching === 'live' && heard.includes('/proc/steps/apply:settled');
+console.log(`${watched ? 'ok  ' : 'FAIL'}  watch /proc/steps/apply${watched ? '' : ` — answered ${watching}, heard ${JSON.stringify(heard)}`}`);
+if (!watched) failed++;
 
 if (!existsSync(redirected) || readFileSync(redirected, 'utf-8') !== 'hello\nworld\n') {
   console.log('FAIL  redirection wrote this host\'s file');

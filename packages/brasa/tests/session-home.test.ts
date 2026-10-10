@@ -26,6 +26,7 @@ jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
 jest.unstable_mockModule('../src/chris/commandFallback.js', () => ({ chrisFallback: {} }));
 jest.unstable_mockModule('../src/chris/files.js', () => ({ chrisFiles: {} }));
 jest.unstable_mockModule('../src/chris/watch.js', () => ({ chrisWatch: {} }));
+jest.unstable_mockModule('../src/chris/tasks.js', () => ({ chrisJobsSource: { id: 'jobs', label: 'jobs', mounted: true, list: async () => [] } }));
 jest.unstable_mockModule('../src/chris/filesystem.js', () => ({ chrisFilesystem: {} }));
 jest.unstable_mockModule('../src/chris/mounts.js', () => ({ chrisMounts_register: jest.fn() }));
 jest.unstable_mockModule('../src/chris/completion.js', () => ({ chrisCompletion: {} }));

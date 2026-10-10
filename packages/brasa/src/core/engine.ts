@@ -28,6 +28,7 @@ import { FileReadRefusal } from './fileRefusal.js';
 export { FileReadRefusal } from './fileRefusal.js';
 import chalk from 'chalk';
 import type { Regard, WatchState, AmbientEvent, CommandEnvelope } from '@fnndsc/menu';
+import { taskWatch_set, taskWatch_release } from './taskWatch.js';
 import { ambient_listen } from './ambient.js';
 import { session } from '../session/index.js';
 import { semicolons_parse } from '../lib/semicolonParser.js';
@@ -439,9 +440,15 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
     regard_note: (regard: Regard): void => session.regard_set(regard),
     regard_get: (): Regard | null => session.regard_get(),
     numbering_get: (): Numbering | null => numbering_get(),
+    // The backend answers for its own subjects (ChRIS: feeds); a task it
+    // leaves to the core is watched by the core.
     watch_set: (subject: string, owner: string, on: boolean): WatchState | null =>
-      backendInstalled_get()?.watch?.set(subject, owner, on) ?? null,
-    watch_release: (owner: string): void => backendInstalled_get()?.watch?.release(owner),
+      backendInstalled_get()?.watch?.set(subject, owner, on)
+        ?? taskWatch_set(subject, owner, on, backendInstalled_get()?.tasks ?? []),
+    watch_release: (owner: string): void => {
+      backendInstalled_get()?.watch?.release(owner);
+      taskWatch_release(owner);
+    },
     ambient_listen,
     sink_install: (sink: OutputSink): void => { sink_set(sink); },
     surface_install: (surface: Surface): void => { surface_set(surface); },

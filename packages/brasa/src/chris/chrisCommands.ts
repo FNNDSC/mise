@@ -25,6 +25,7 @@ import { builtin_expect } from '../builtins/res/expect.js';
 import { builtin_play } from '../builtins/res/play.js';
 import { builtin_record } from '../builtins/res/record.js';
 import { builtin_motd } from '../builtins/sys/motd.js';
+import { chrisHelp } from './help.js';
 
 const envelope: Record<string, EnvelopeHandler> = {
   setfacl: builtin_setfacl,
@@ -179,4 +180,5 @@ const plain: Record<string, CommandHandler> = {
 export const chrisCommands: CommandGroup = {
   envelope,
   plain,
+  help: chrisHelp,
 };

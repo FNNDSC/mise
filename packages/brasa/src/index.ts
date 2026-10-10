@@ -20,7 +20,7 @@ import { commands_register as chrisCommands_registerInto } from './core/commandR
 import { chrisCommands } from './chris/chrisCommands.js';
 import { backend_install as chrisBackend_installInto } from './core/backend.js';
 import { chrisBackend } from './chris/backend.js';
-chrisCommands_registerInto(chrisCommands);
+chrisCommands_registerInto(chrisCommands, 'backend');
 chrisBackend_installInto(chrisBackend);
 export * from './core/backend.js';
 export { chrisBackend } from './chris/backend.js';
@@ -36,7 +36,6 @@ export * from './chris/connect.js';
 export * from './core/question.js';
 export * from './core/elevation.js';
 export * from './core/version.js';
-export * from './command-keys.js';
 export * from './session/index.js';
 export * from './builtins/index.js';
 export * from './config/storeConfig.js';

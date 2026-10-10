@@ -2,6 +2,7 @@ import { jest, describe, it, expect, beforeEach, afterEach, beforeAll } from '@j
 import type { CommandEnvelope } from '@fnndsc/menu';
 import { commands_register } from '../src/core/commandRegistry.js';
 import { backend_install } from '../src/core/backend.js';
+import { chrisHelp_install, everyVerb_install } from './support/chrisHelp.js';
 import {
   text_boxFormat,
   commandHelp_get,
@@ -117,6 +118,7 @@ describe('builtin_help in a session that has the verbs', () => {
   beforeAll(() => {
     const ran = async (): Promise<CommandEnvelope> => ({ status: 'ok', rendered: '' });
     commands_register({ envelope: { ls: ran, image: ran, dcm: ran } });
+    chrisHelp_install();
     backend_install({
       id: 'test',
       session: {
@@ -155,6 +157,11 @@ describe('builtin_help in a session that has the verbs', () => {
 });
 
 describe('help metadata accessors', () => {
+  beforeAll(() => {
+    chrisHelp_install();
+    everyVerb_install();
+  });
+
   it('lists the known builtin commands', () => {
     const commands = builtinCommands_list();
     expect(commands.length).toBeGreaterThan(0);

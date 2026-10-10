@@ -3,7 +3,8 @@
  *
  * A builtin is currently declared in two unlinked places: its group's envelope
  * table (`core/coreCommands.ts`, `chris/chrisCommands.ts`), which maps a name
- * to a function and carries no metadata, and `helpText` in the help builtin, which carries usage and
+ * to a function and carries no metadata, and its group's help (`helpText` in the
+ * help builtin, `chrisHelp` in `chris/help.ts`), which carries usage and
  * description. Nothing keeps them in step, and they have drifted.
  *
  * Aliases are resolved before counting. Several commands are registered under
@@ -36,7 +37,11 @@ const groupPaths = [
   new URL('../packages/brasa/src/core/coreCommands.ts', import.meta.url).pathname,
   new URL('../packages/brasa/src/chris/chrisCommands.ts', import.meta.url).pathname,
 ];
-const helpPath = new URL('../packages/brasa/src/builtins/help.ts', import.meta.url).pathname;
+/** Each group's help: the core's, and the ChRIS backend's beside its commands. */
+const helpSources = [
+  [new URL('../packages/brasa/src/builtins/help.ts', import.meta.url).pathname, /helpText: Record<string, CommandHelp> = \{/],
+  [new URL('../packages/brasa/src/chris/help.ts', import.meta.url).pathname, /chrisHelp: Record<string, CommandHelp> = \{/],
+];
 
 /**
  * Extracts the keys of an object literal assigned to a named constant.
@@ -87,10 +92,7 @@ const bindings = new Map(groupPaths.flatMap((path) => [...handlerBindings_extrac
   readFileSync(path, 'utf8'),
   /const envelope: Record<string, EnvelopeHandler> = \{/,
 )]));
-const declared = literalKeys_extract(
-  readFileSync(helpPath, 'utf8'),
-  /helpText: Record<string, CommandHelp> = \{/,
-);
+const declared = new Set(helpSources.flatMap(([path, opener]) => [...literalKeys_extract(readFileSync(path, 'utf8'), opener)]));
 
 // Group names by the handler they bind, then judge each group once: a command
 // is declared if any of its names carries help.

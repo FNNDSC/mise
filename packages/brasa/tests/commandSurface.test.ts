@@ -31,7 +31,6 @@ if (!built && process.env['CI'] !== undefined) throw new Error('commandSurface: 
       const recorded: Record<string, unknown> = JSON.parse(readFileSync(join(here, 'commandSurface.json'), 'utf8')) as Record<string, unknown>;
       expect(now['envelopeCommands']).toEqual(recorded['envelopeCommands']);
       expect(now['plainCommands']).toEqual(recorded['plainCommands']);
-      expect(now['commandKeysList']).toEqual(recorded['commandKeysList']);
       expect(now['binBuiltins']).toEqual(recorded['binBuiltins']);
       expect(now['help']).toEqual(recorded['help']);
     } finally {

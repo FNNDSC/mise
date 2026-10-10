@@ -72,7 +72,6 @@ commandOrder_set({ envelope: ENVELOPE_ORDER, plain: PLAIN_ORDER, help: HELP_ORDE
 
 export { ENVELOPE_HANDLERS, COMMAND_HANDLERS } from './commandRegistry.js';
 
-export { COMMAND_HANDLERS_KEYS } from '../command-keys.js';
 
 /**
  * Prints elapsed time since startTime if timing is enabled.

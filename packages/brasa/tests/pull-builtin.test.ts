@@ -7,6 +7,9 @@
  * retrieveWatch suite.
  */
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { chrisHelp_install } from './support/chrisHelp.js';
+
+chrisHelp_install();
 import { cuminMock_install } from './support/cuminMock.js';
 import type { OutputSink } from '../src/core/sink.js';
 import type { ProgressEvent } from '../src/core/progress.js';

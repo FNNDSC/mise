@@ -107,6 +107,9 @@ export const chrisFallback: BackendFallback = {
   claim: pluginExecutable_handle,
   unknown: async (command: string, args: string[], captured: boolean): Promise<CommandEnvelope | null> => {
     const binMatches: BinExecutableMatches = await binExecutableMatches_get(command);
+    // A bare /bin plugin name runs the plugin, and a run is a CUBE job: typed
+    // at the prompt it starts one; inside a pipe or a redirect it does not, so
+    // a pipeline of words never starts a job as a side effect.
     if (!captured && binMatches.plugin) {
       return handler_runDirect(
         (pluginArgs: string[]): Promise<CommandEnvelope> => builtin_executePlugin(command, pluginArgs),

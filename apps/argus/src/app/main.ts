@@ -33,6 +33,7 @@ import {
   type ProgressMessage,
   type SurfaceAsk,
   type SurfaceEdit,
+  attachBackend_get,
 } from '../calypso/client.js';
 import { ArgusTerminal } from '../console/terminal.js';
 import { consolePalette_publish } from '../console/ansi.js';
@@ -126,6 +127,18 @@ import '../lcars/argus.css';
  * about projections: the brain says ChRIS, the pane's title says ARGUS.
  */
 const SPLASH_BRAIN: string[] = logo_linesRender(true);
+
+/** The frame's own tab mark: a rounded LCARS block in the frame's blue, no backend's logo. */
+const FRAME_FAVICON: string = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#000"/><rect x="6" y="14" width="52" height="36" rx="18" fill="#20bdef"/><rect x="34" y="14" width="24" height="36" fill="#20bdef"/></svg>')}`;
+
+/**
+ * Points the tab's mark somewhere else (the page's own is ChRIS's).
+ *
+ * @param href - The mark's URL.
+ */
+function favicon_set(href: string): void {
+  for (const link of document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]')) link.href = href;
+}
 
 /** What this surface calls itself in the greeting. */
 const SURFACE_NAME: string = 'ARGUS';
@@ -820,10 +833,11 @@ function aboutFace_fill(attach: AttachInfo): void {
     return;
   }
   face.replaceChildren();
+  // The packages the session runs: ChRIS's own (cumin, salsa, chili) only
+  // under the ChRIS composition, where they are what the session is made of.
+  const chrisStack: boolean = attachBackend_get(attach) === 'chris';
   const stack: Record<string, string | undefined> = {
-    cumin: attach.stack?.cumin,
-    salsa: attach.stack?.salsa,
-    chili: attach.stack?.chili,
+    ...(chrisStack ? { cumin: attach.stack?.cumin, salsa: attach.stack?.salsa, chili: attach.stack?.chili } : {}),
     brasa: attach.stack?.brasa,
     calypso: attach.stack?.calypso,
     chell: attach.stack?.chell,
@@ -2364,7 +2378,10 @@ async function surface_start(token: string): Promise<void> {
     void cohortModule.restore();
   }
   mode_show('READY');
-  terminal.splash_write(SPLASH_BRAIN);
+  // The splash is the composition's: ChRIS's brain, or the frame's own line.
+  terminal.splash_write(chris ? SPLASH_BRAIN : []);
+  if (!chris) terminal.line_note(`mise · a session over the ${backend} backend: its files, the console, the frame`);
+  if (!chris) favicon_set(FRAME_FAVICON);
   terminal.prompt_draw();
   terminal.focus_take();
   // The greeting is the session's to give, beneath the brain; the build notes follow it.

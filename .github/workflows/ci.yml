@@ -100,6 +100,8 @@ jobs:
       - run: npm run lint:kernel
       - run: npm run lint:fond
       - run: npm run lint:core-deps
+      # The core boots over the null backend with no ChRIS package loaded.
+      - run: npm run test:core-boot --workspace @fnndsc/brasa
       - run: npm run lint:commands
       - run: npm run lint:prompt
       - run: npm run lint:wire

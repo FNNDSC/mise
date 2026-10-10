@@ -121,6 +121,9 @@ jest.unstable_mockModule('../src/builtins/help.js', () => ({
   commandHelp_get: jest.fn(() => 'known help'),
   pipelineExecutableHelp_render: jest.fn((name: string): string => `PIPELINE HELP:${name}\n`),
   args_checkHasHelpFlag: mockHasHelpFlag,
+  helpMissing_render: (name: string): string => `No help available for '${name}'\n`,
+  verb_available: (): boolean => true,
+  pluginExecutableHelp_render: jest.fn((name: string): string => `PLUGIN HELP:${name}\n`),
 }));
 
 const mockPluginExecutable = jest.fn(async () => false);

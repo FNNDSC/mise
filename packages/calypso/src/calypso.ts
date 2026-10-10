@@ -13,13 +13,60 @@
 
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
-import { engine_create, sessionConnect_fromSaved, versionReport_build, type BrasaEngine, type SavedSessionResult } from '@fnndsc/brasa';
+import { versionReport_build, type BrasaEngine } from '@fnndsc/brasa/core';
+import type { SavedSessionResult } from '@fnndsc/brasa';
 import chalk from 'chalk';
 import { daemon_launch, type DaemonLaunchInfo } from './daemon/launch.js';
 import { packageWebRoot_find } from './daemon/static.js';
 import { daemonConsole_run } from './daemon/consoleSession.js';
 import { hostControl_parseArgv, type HostControlPolicy } from './daemon/hostControl.js';
 import { LocalBerthResolver, berthUrl_isAlive, type Berth } from './daemon/berth.js';
+
+/** The backends a test may ask the calypso command to host instead of ChRIS. */
+const TEST_BACKENDS: ReadonlyArray<string> = ['null'];
+
+/**
+ * The backend the command was asked to host: ChRIS, unless a test names
+ * another with `--backend <id>` (and says it is a test with
+ * `CALYPSO_TEST_BACKENDS=1`; the switch is no operator's).
+ *
+ * @param argv - The command line.
+ * @param env - The environment.
+ * @returns The backend id, or the refusal.
+ */
+export function backendRequest_parse(argv: ReadonlyArray<string>, env: NodeJS.ProcessEnv): { backend: string } | { error: string } {
+  const at: number = argv.indexOf('--backend');
+  if (at === -1) return { backend: 'chris' };
+  const id: string | undefined = argv[at + 1];
+  if (env['CALYPSO_TEST_BACKENDS'] !== '1') return { error: '--backend is for tests (set CALYPSO_TEST_BACKENDS=1)' };
+  if (id === undefined || !TEST_BACKENDS.includes(id)) return { error: `--backend takes ${TEST_BACKENDS.join(', ')}` };
+  return { backend: id };
+}
+
+/**
+ * The engine over the backend asked for. ChRIS restores the saved session;
+ * the null backend loads none of the ChRIS packages at all, so a surface
+ * attached to it meets a session with nothing of ChRIS's.
+ *
+ * @param backend - The backend id.
+ * @returns The engine.
+ */
+async function engine_forBackend(backend: string): Promise<BrasaEngine> {
+  if (backend === 'null') {
+    const { engine_create, nullBackend_make } = await import('@fnndsc/brasa/core');
+    console.error('[+] Hosting the null backend: no commands of its own, a filesystem in memory.');
+    return engine_create(nullBackend_make({ seed: { '/home/user/README': 'A session with no backend of its own.\n' } }));
+  }
+  const { engine_create, sessionConnect_fromSaved } = await import('@fnndsc/brasa');
+  const engine: BrasaEngine = await engine_create();
+  const result: SavedSessionResult = await sessionConnect_fromSaved();
+  if (result.status === 'restored') {
+    console.error(`[+] Session restored: ${result.context.user}@${result.context.URL}`);
+  } else {
+    console.error(`[!] No active session (${result.status}). Log in with 'chell' first; hosting offline.`);
+  }
+  return engine;
+}
 
 /**
  * Creates the engine, restores the saved session, and hosts the daemon.
@@ -28,14 +75,12 @@ import { LocalBerthResolver, berthUrl_isAlive, type Berth } from './daemon/berth
  *   then stays alive on the WebSocket server.
  */
 async function calypso_start(): Promise<void> {
-  const engine: BrasaEngine = await engine_create();
-
-  const result: SavedSessionResult = await sessionConnect_fromSaved();
-  if (result.status === 'restored') {
-    console.error(`[+] Session restored: ${result.context.user}@${result.context.URL}`);
-  } else {
-    console.error(`[!] No active session (${result.status}). Log in with 'chell' first; hosting offline.`);
+  const requested: { backend: string } | { error: string } = backendRequest_parse(process.argv, process.env);
+  if ('error' in requested) {
+    console.error(`[!] ${requested.error}`);
+    process.exit(1);
   }
+  const engine: BrasaEngine = await engine_forBackend(requested.backend);
 
   const parsedPolicy = hostControl_parseArgv(process.argv, process.env);
   if ('error' in parsedPolicy) {

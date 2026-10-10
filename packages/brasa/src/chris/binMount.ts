@@ -7,7 +7,7 @@
  *
  * @module
  */
-import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
+import { vfs_fail, vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
 import { plugins_listAll, pipelines_getAll, type PipelineRecord } from '@fnndsc/salsa';
 import { Result, Ok, Err, errorStack, vfsItems_sort, type VFSProvider, type VFSItem, type CpOptions } from '@fnndsc/fond';
 import type { PluginInfoModel } from '@fnndsc/menu';
@@ -103,6 +103,16 @@ export class BinVfsProvider implements VFSProvider {
   private async copy_run(src: string, dest: string, options: CpOptions): Promise<boolean> {
     errorStack.stack_push("error", `cp: Copying from static VFS path '${src}' is not supported.`);
     return false;
+  }
+
+  /** @inheritdoc */
+  async rm(): Promise<VfsOutcome> {
+    return vfs_fail('EROFS', 'virtual /bin directory');
+  }
+
+  /** @inheritdoc */
+  async rmTree(): Promise<VfsOutcome> {
+    return vfs_fail('EROFS', 'virtual /bin directory');
   }
 
   /** @inheritdoc */

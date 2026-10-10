@@ -11,7 +11,7 @@
  * @module
  */
 
-import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
+import { vfs_fail, vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
 import {
   Err,
   Ok,
@@ -130,6 +130,32 @@ export class ProcTagsVfsProvider implements VFSProvider {
     const name: string | null = tagName_of(pathStr, 'rmdir');
     if (name === null) return false;
     return (await tag_delete(name)).ok;
+  }
+
+  /** @inheritdoc */
+  public async rm(pathStr: string): Promise<VfsOutcome> {
+    return this.removal_refusal(pathStr);
+  }
+
+  /** @inheritdoc */
+  public async rmTree(pathStr: string): Promise<VfsOutcome> {
+    return this.removal_refusal(pathStr);
+  }
+
+  /**
+   * A tag's folder is a tag, and the feeds in it are its taggings: each has
+   * its own verb, and a removal names it rather than guess.
+   *
+   * @param pathStr - The path asked to be removed.
+   * @returns The refusal: a tagging is untagged with setfattr, a tag
+   *   deleted with rmdir.
+   */
+  private removal_refusal(pathStr: string): VfsOutcome {
+    const parts: string[] = pathStr.slice(PROC_TAGS_PREFIX.length).split('/').filter(Boolean);
+    if (parts.length === 2) {
+      return vfs_fail('EPERM', `Operation not permitted (setfattr -x tag -v ${parts[0]} ${parts[1]} untags the feed)`);
+    }
+    return vfs_fail('EISDIR', 'Is a directory (rmdir deletes a tag no feed wears)');
   }
 
   /** @inheritdoc */

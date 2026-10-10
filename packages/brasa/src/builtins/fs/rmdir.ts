@@ -9,14 +9,10 @@
  *
  * @module
  */
-import { vfsOutcome_toResult } from '@fnndsc/fond';
 import chalk from 'chalk';
-import { listCache_get } from '@fnndsc/cumin';
-import { vfsDispatcher, type VFSItem } from '@fnndsc/salsa';
-import { path_resolve, error_stripDebugPrefix } from '../utils.js';
-import { folder_checkExists } from './folderExists.js';
-import { rm_run } from './rm.js';
-import { errorStack, type Result, type StackMessage } from '@fnndsc/fond';
+import { path_resolve } from '../utils.js';
+import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
+import { vfsRefusal_text, type VfsErrno, type VfsOutcome } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** Outcome of one rmdir target, for the envelope model. */
@@ -43,33 +39,19 @@ export function rmdirArgs_parse(args: string[]): { paths: string[] } | { refused
 }
 
 /**
- * The reason on the stack, worded as rmdir words it.
+ * What rmdir says when a folder was not removed: the mount's reason after
+ * the operand (unless the mount already named the verb), else the errno's
+ * sentence.
  *
+ * @param refused - The failure.
  * @param pathArg - The operand as typed.
- * @returns `rmdir: failed to remove '<path>': <reason>`.
+ * @returns The line.
  */
-function reason_said(pathArg: string): string {
-  const reason: StackMessage | undefined = errorStack.stack_pop();
-  const said: string = reason === undefined ? 'failed' : error_stripDebugPrefix(reason.message);
-  if (said.startsWith('rmdir:')) return said;
-  return `rmdir: failed to remove '${pathArg}': ${said.replace(/^[^:]*: /, '')}`;
-}
-
-/**
- * Removes one empty folder on the CUBE store: one that holds anything is
- * refused, an empty one goes through rm's own removal.
- *
- * @param targetPath - The resolved path.
- * @param pathArg - The operand as typed.
- * @returns Null when removed, or the refusal's words.
- */
-async function storeFolder_remove(targetPath: string, pathArg: string): Promise<string | null> {
-  if (!(await folder_checkExists(targetPath))) return `rmdir: failed to remove '${pathArg}': No such file or directory`;
-  const held: Result<VFSItem[]> = await vfsDispatcher.list(targetPath);
-  if (!held.ok) return reason_said(pathArg);
-  if (held.value.length > 0) return `rmdir: failed to remove '${pathArg}': Directory not empty`;
-  const removed: CommandEnvelope = await rm_run({ recursive: true, force: false, interactive: false, once: false, paths: [targetPath] });
-  return removed.status === 'ok' ? null : `rmdir: failed to remove '${pathArg}'`;
+function rmdirRefusal_text(refused: { errno: VfsErrno; reason?: string }, pathArg: string): string {
+  if (refused.reason === undefined) return vfsRefusal_text('rmdir', refused, pathArg);
+  if (refused.reason.startsWith('rmdir:')) return refused.reason;
+  // A projection names the folder first (`urgent: Directory not empty`); rmdir has named it already.
+  return `rmdir: failed to remove '${pathArg}': ${refused.reason.replace(/^[^:]*: /, '')}`;
 }
 
 /**
@@ -86,14 +68,12 @@ export async function builtin_rmdir(args: string[]): Promise<CommandEnvelope> {
   const outcomes: RmdirOutcome[] = [];
   for (const pathArg of parsed.paths) {
     const targetPath: string = await path_resolve(pathArg);
-    let refusal: string | null;
-    if (vfsDispatcher.path_isVirtual(targetPath)) {
-      refusal = vfsOutcome_toResult(await vfsDispatcher.rmdir(targetPath), 'rmdir', targetPath).ok ? null : reason_said(pathArg);
-    } else {
-      refusal = await storeFolder_remove(targetPath, pathArg);
-    }
+    // Every mount says why it will not: a folder that is not there, that
+    // holds something, or a tag a feed still wears.
+    const removed: VfsOutcome = await vfsDispatcher_get().rmdir(targetPath);
+    const refusal: string | null = removed.ok ? null : rmdirRefusal_text(removed, pathArg);
     if (refusal !== null) renderedErr += `${chalk.red(refusal)}\n`;
-    else listCache_get().cache_invalidate(targetPath.slice(0, targetPath.lastIndexOf('/')) || '/');
+    else listingCache_get().cache_invalidate?.(targetPath.slice(0, targetPath.lastIndexOf('/')) || '/');
     outcomes.push({ path: targetPath, removed: refusal === null });
   }
   const model: { kind: string; data: RmdirOutcome[] } = { kind: 'fs.rmdir', data: outcomes };

@@ -4,13 +4,12 @@
  */
 import chalk from 'chalk';
 import path from 'path';
-import { listCache_get } from '@fnndsc/cumin';
-import type { ListCache } from '@fnndsc/cumin';
-import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve, error_stripDebugPrefix } from '../utils.js';
+import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
+import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
+import type { ListingCache } from '../../core/backend.js';
 import { destination_ask, destination_missing } from './destination.js';
-import { files_cp as chefs_cp_cmd } from '@fnndsc/chili/commands/fs/cp.js';
-import { cp_render } from '@fnndsc/chili/views/fs.js';
-import { errorStack, type StackMessage } from '@fnndsc/fond';
+import { cp_render, vfsRefusal_text, type VFSDispatcher, type VfsOutcome } from '@fnndsc/fond';
+import { entry_at, entry_isFolder } from './entries.js';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** Outcome of one copy source, for the envelope model. */
@@ -112,7 +111,7 @@ export async function cp_run(options: CpOptions): Promise<CommandEnvelope> {
   const recursive: boolean = options.recursive ?? false;
 
   const destPath: string = await path_resolve(dest);
-  const listCache: ListCache = listCache_get();
+  const listCache: ListingCache = listingCache_get();
   let successCount: number = 0;
   let failCount: number = 0;
   let rendered: string = '';
@@ -130,22 +129,23 @@ export async function cp_run(options: CpOptions): Promise<CommandEnvelope> {
         rendered += `Copying ${srcPath} to ${destPath}...\n`;
       }
 
-      const success: boolean = await chefs_cp_cmd(srcPath, destPath, { recursive });
+      // Into a folder the destination names, the copy keeps its name.
+      const dispatcher: VFSDispatcher = vfsDispatcher_get();
+      const finalDest: string = entry_isFolder(await entry_at(dispatcher, destPath)) && !dispatcher.path_isVirtual(destPath)
+        ? path.posix.join(destPath, path.posix.basename(srcPath))
+        : destPath;
+      const copied: VfsOutcome = await dispatcher.cp(srcPath, finalDest, { recursive });
+      const success: boolean = copied.ok;
 
       if (sources.length === 1) {
         rendered += `${cp_render(srcPath, destPath, success)}\n`;
       }
 
-      if (!success) {
-        // The kernel said WHY on the stack; a bare "Failed to copy" makes an
-        // operator guess at a reason that was already known.
-        const reason: StackMessage | undefined = errorStack.stack_pop();
-        if (reason !== undefined) {
-          // The operator reads the reason, never the stack's function stamp,
-          // and one `cp:` (as mv says its own).
-          const said: string = error_stripDebugPrefix(reason.message);
-          renderedErr += `${chalk.red(said.startsWith('cp:') ? said : `cp: ${said}`)}\n`;
-        }
+      if (!copied.ok) {
+        // The mount said WHY; a bare "Failed to copy" makes an operator
+        // guess at a reason that was already known. One `cp:`, as mv says its own.
+        const said: string = copied.reason ?? vfsRefusal_text('cp', copied, srcPath, destPath);
+        renderedErr += `${chalk.red(said.startsWith('cp:') ? said : `cp: ${said}`)}\n`;
       }
       outcomes.push({ source: srcPath, copied: success });
       if (success) {
@@ -163,9 +163,9 @@ export async function cp_run(options: CpOptions): Promise<CommandEnvelope> {
 
   // Invalidate the destination subtree (a recursive copy replaces whatever
   // listings were cached beneath it) and its parent.
-  listCache.cache_invalidateTree(destPath);
+  listCache.cache_invalidateTree?.(destPath);
   const destParent: string = path.posix.dirname(destPath);
-  listCache.cache_invalidate(destParent);
+  listCache.cache_invalidate?.(destParent);
 
   // Summary for multiple files
   if (sources.length > 1) {

@@ -238,6 +238,10 @@ export class MemoryVfsProvider implements VFSProvider {
     if (node.type === 'dir' && !options.recursive) return vfs_fail('EISDIR');
     const refused: VfsOutcome | null = this.parent_check(to);
     if (refused !== null) return refused;
+    const target: MemoryNode | undefined = this.nodes.get(to);
+    if (target !== undefined && (target.type === 'dir') !== (node.type === 'dir')) {
+      return vfs_fail(target.type === 'dir' ? 'EISDIR' : 'ENOTDIR');
+    }
     for (const key of [...this.nodes.keys()]) {
       if (key === from || key.startsWith(`${from}/`)) {
         const copied: MemoryNode = this.nodes.get(key) as MemoryNode;

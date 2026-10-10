@@ -51,4 +51,19 @@ describe('LayoutManager focus', () => {
     expect(layout.leaf_split(host, 'col', 'd', false)).toBe(true);
     expect(layout.panes_shown()).toEqual(['c', 'd']);
   });
+
+  it('returns ; to the pane a split was made from, and to where a moved pane came from', () => {
+    layout.mount_register('d', mount());
+    layout.preset_apply('ab');
+    layout.focus_set('b');
+    expect(layout.leaf_split('b', 'col', 'd', false)).toBe(true);
+    expect(layout.focused_get()).toBe('d');
+    expect(layout.focus_last()).toBe('b');
+    expect(layout.focused_get()).toBe('b');
+    layout.focus_set('a');
+    layout.leaf_move('d', 'left');
+    expect(layout.focused_get()).toBe('d');
+    expect(layout.focus_last()).toBe('a');
+  });
 });
+

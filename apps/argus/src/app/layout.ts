@@ -228,7 +228,8 @@ export class LayoutManager {
     });
     if (replaced === null) return false;
     this.tree = replaced;
-    this.focusedPane = newPane;
+    // The new pane takes focus; the pane it was split from is the one `;` returns to.
+    this.focus_move(newPane);
     this.render();
     return true;
   }
@@ -245,9 +246,20 @@ export class LayoutManager {
     const moved: LayoutNode | MoveRefusal = tree_moveLeaf(this.tree, target, dir);
     if (typeof moved === 'string') return moved;
     this.tree = moved;
-    this.focusedPane = target;
+    this.focus_move(target);
     this.render();
     return true;
+  }
+
+  /**
+   * Gives focus to a pane while the tree is being rebuilt (render repaints
+   * the rings), keeping the pane that had it as the one `;` returns to.
+   *
+   * @param pane - The pane taking focus.
+   */
+  private focus_move(pane: string): void {
+    if (this.focusedPane !== null && this.focusedPane !== pane) this.previousFocus = this.focusedPane;
+    this.focusedPane = pane;
   }
 
   /**

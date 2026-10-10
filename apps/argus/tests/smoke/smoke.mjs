@@ -436,7 +436,10 @@ try {
       // The descent, by word: enter a feed that landed, read the pane inside,
       // climb back out. The feed id comes from the remembered positions.
       await sleep(3500);
-      const storeKey = Object.keys(localStorage).find((k) => k.startsWith('argus.universe.'));
+      // The space's positions: of the universe's stores (one per arrangement,
+      // and its settings), the one that remembers feeds.
+      const feedsIn = (k) => { try { return Object.keys(JSON.parse(localStorage.getItem(k) ?? '{}')).filter((x) => x.startsWith('feed:')).length; } catch { return 0; } };
+      const storeKey = Object.keys(localStorage).filter((k) => k.startsWith('argus.universe.') && !k.includes('settings')).sort((a, b) => feedsIn(b) - feedsIn(a)).find((k) => feedsIn(k) > 0);
       const landedId = storeKey ? (Object.keys(JSON.parse(localStorage.getItem(storeKey) ?? '{}')).find((k) => k.startsWith('feed:')) ?? '').split(':')[1] : '';
       // A click does not resettle the space: wheel the camera in, click the
       // empty corner of the field, and neither the scene's own framing
@@ -2947,7 +2950,11 @@ try {
       return null;
     };
     await universeOpen();
-    const key = Object.keys(localStorage).find((k) => k.startsWith('argus.universe.') && !k.includes('settings'));
+    // Of the universe's stores (one per arrangement, and its settings), the
+    // one that remembers feeds: a .shapes store a scenario before left
+    // first in line holds none, and its first feed id was '' (#1043).
+    const feedsIn = (k) => { try { return Object.keys(JSON.parse(localStorage.getItem(k) ?? '{}')).filter((x) => x.startsWith('feed:')).length; } catch { return 0; } };
+    const key = Object.keys(localStorage).filter((k) => k.startsWith('argus.universe.') && !k.includes('settings')).sort((a, b) => feedsIn(b) - feedsIn(a)).find((k) => feedsIn(k) > 0);
     const ids = key ? Object.keys(JSON.parse(localStorage.getItem(key) ?? '{}')).filter((k) => k.startsWith('feed:')).map((k) => k.split(':')[1]) : [];
     const feedId = ids[Math.min(3, ids.length - 1)] ?? '';
     const enter = async () => { await say('universe enter ' + feedId, 500); await settle(() => /INSIDE FEED/.test(up()?.querySelector('.universe-title')?.textContent ?? ''), 120); await sleep(1500); };

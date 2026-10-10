@@ -53,6 +53,7 @@ import { ModelRouter, type PaneClaim } from '../frame/modelRouter.js';
 import { chrisRoutes_install } from '../compositions/chris/routes.js';
 import { chrisPanes_make, type ChrisPanes } from '../compositions/chris/panes.js';
 import { chrisDicom_make, type ChrisDicom } from '../compositions/chris/dicom.js';
+import { chrisStage_make, type ChrisStage } from '../compositions/chris/stage.js';
 import { ViewerPanel } from '../features/view/panel.js';
 import { ImagePanel, type SeriesChoice } from '../features/image/panel.js';
 import { TagsPanel } from '../features/tags/panel.js';
@@ -80,6 +81,7 @@ import {
   paneInstances_list,
   type PaneInstance,
   pane_isPrimary,
+  primary_register,
   type PaneKind,
 } from './panes.js';
 import { LayoutManager, type LayoutNode } from './layout.js';
@@ -1283,13 +1285,16 @@ async function surface_start(token: string): Promise<void> {
   // The primary instances carry the preset ids the gutter's trees name.
   const filesPrimary: PaneInstance = filesInstance_build('files', true);
   paneInstance_adopt(filesPrimary);
-  const dagPrimary: PaneInstance = chrisPanes.dag_build('dag', true);
-  paneInstance_adopt(dagPrimary);
-  // The UNIVERSE is a stage of its own, like RUNS or PACS: one primary pane
-  // the layout raises whole. Split beside a browser it read as a fragment
-  // of a workspace, and the browser had to be closed to see the space.
-  const universePrimary: PaneInstance = chrisPanes.universe_build('universe');
-  paneInstance_adopt(universePrimary);
+  // The composition's stage: RUNS, the UNIVERSE and PACS raised whole, their
+  // presets, and the panes it splits in (compositions/chris/stage.ts).
+  const stage: ChrisStage = chrisStage_make({
+    panes: chrisPanes,
+    dicom: { imageInstance_build, tagsInstance_build },
+    gather_build: gatherInstance_build,
+    pacsMount: element_require('pacs-workspace'),
+  });
+  for (const primary of stage.primaries) paneInstance_adopt(primary);
+  for (const domain of stage.domains) primary_register(domain);
   // PANES is a gutter domain like FILES/RUNS/PACS: its mount is a primary the
   // layout can raise, its card grid wired once the dormant set and restore
   // exist below.
@@ -1374,7 +1379,6 @@ async function surface_start(token: string): Promise<void> {
     gathered_is: (seriesUID: string): boolean => cohortModule.has(seriesUID),
     workspace_close: (): void => home_apply(),
   });
-  paneInstance_adopt({ id: 'pacs', kind: 'pacs', mount: element_require('pacs-workspace') });
 
   /**
    * Lights the PACS rows' verbs from the live stage: a folder gets a viewer
@@ -1409,10 +1413,8 @@ async function surface_start(token: string): Promise<void> {
   const layout: LayoutManager = new LayoutManager(
     element_require('layout-root'),
     new Map([
-      ['dag', dagPrimary.mount],
-      ['universe', universePrimary.mount],
+      ...stage.primaries.map((primary: PaneInstance): [string, HTMLElement] => [primary.id, primary.mount]),
       ['files', filesPrimary.mount],
-      ['pacs', element_require('pacs-workspace')],
       ['launcher', launcherMount],
       ['panes', panesMount],
     ]),
@@ -1428,11 +1430,7 @@ async function surface_start(token: string): Promise<void> {
         }
       : { pane: 'files' };
   layout.preset_register('files', homeTree);
-  layout.preset_register('pacs', (): LayoutNode => ({ pane: 'pacs' }));
-  // RUNS-02 is a full-workspace preset like PACS-03, not a split variation.
-  layout.preset_register('dag', (): LayoutNode => ({ pane: 'dag' }));
-  // The UNIVERSE owns the stage the same way.
-  layout.preset_register('universe', (): LayoutNode => ({ pane: 'universe' }));
+  for (const [name, tree] of stage.presets) layout.preset_register(name, tree);
   // PANES-06 is a full-workspace preset too: the grid of dormant groups.
   layout.preset_register('panes', (): LayoutNode => ({ pane: 'panes' }));
   // The launcher owns the stage as well: it is where a session begins, and
@@ -1695,9 +1693,7 @@ async function surface_start(token: string): Promise<void> {
     dag_dismiss: (): void => { dagShown = false; },
   });
   pane_chrome_wire('files', 'files', filesPrimary.mount);
-  pane_chrome_wire('dag', 'dag', dagPrimary.mount);
-  pane_chrome_wire('universe', 'universe', universePrimary.mount);
-  pane_chrome_wire('pacs', 'pacs', element_require('pacs-workspace'));
+  for (const primary of stage.primaries) pane_chrome_wire(primary.id, primary.kind, primary.mount);
   pane_chrome_wire('launcher', 'launcher', launcherMount);
   pane_chrome_wire('panes', 'panes', panesMount);
 
@@ -1857,16 +1853,12 @@ async function surface_start(token: string): Promise<void> {
   const editorModule: EditorModule = editor_wire(context, { ...paneHooks, replayPlace_get: desktop.replayPlace_get, errandHost_find, saved: (): void => { for (const dag of panels.values('dag')) dag.marks_refresh(); } });
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
   paneFactory_register('catalogue', (id: string): PaneInstance => filesInstance_build(id, false, true));
-  paneFactory_register('dag', (id: string): PaneInstance => chrisPanes.dag_build(id, false));
-  paneFactory_register('universe', chrisPanes.universe_build);
   paneFactory_register('view', viewInstance_build);
-  paneFactory_register('image', imageInstance_build);
-  paneFactory_register('tags', tagsInstance_build);
   paneFactory_register('help', helpPane.instance_build);
   paneFactory_register('games', gamesPane.instance_build);
   paneFactory_register('notes', notesPane.instance_build);
   paneFactory_register('edit', editorModule.instance_build);
-  paneFactory_register('gather', gatherInstance_build);
+  for (const [kind, build] of stage.factories) paneFactory_register(kind, build);
   paneFactory_register('empty', (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-empty');
     new EmptyPanel(mount, {

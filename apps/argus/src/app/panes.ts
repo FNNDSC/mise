@@ -21,19 +21,29 @@ export type PaneKind =
   | 'universe' | 'help' | 'panes' | 'launcher' | 'edit' | 'games' | 'notes';
 
 /**
- * The three primaries: the domain panes that never go dormant and are not
- * cards in PANES. Tested in five spellings before this set.
+ * The primaries: the domain panes that never go dormant and are not cards in
+ * PANES. The frame's own is files; a composition adds its domains (ChRIS:
+ * RUNS and PACS).
  */
-export const PRIMARIES: ReadonlySet<string> = new Set(['files', 'dag', 'pacs']);
+const primaries: Set<string> = new Set(['files']);
+
+/**
+ * Makes a pane id a primary.
+ *
+ * @param id - The pane id.
+ */
+export function primary_register(id: string): void {
+  primaries.add(id);
+}
 
 /**
  * Whether a pane id is a primary.
  *
  * @param id - A pane id.
- * @returns True for the files, dag and pacs primaries.
+ * @returns True for files and the composition's domain panes.
  */
 export function pane_isPrimary(id: string): boolean {
-  return PRIMARIES.has(id);
+  return primaries.has(id);
 }
 
 /** One live pane: its identity, kind, mount, and cleanup. */

@@ -8,7 +8,8 @@
 import { gamesShelf_render, gamesShelf_names } from './games/shelf.js';
 import chalk from 'chalk';
 import { CAT_USAGE } from './fs/cat.args.js';
-import { commands_register, commandHelpEntry_get, helpTopic_names, type CommandHelp } from '../core/commandRegistry.js';
+import { commands_register, commandHelpEntry_get, helpTopic_names, builtinCommand_has, type CommandHelp } from '../core/commandRegistry.js';
+import { backendInstalled_get } from '../core/backend.js';
 import type { CommandEnvelope } from '@fnndsc/menu';
 
 
@@ -1951,7 +1952,35 @@ export function help_render(command: string): string {
   if (helpStr !== undefined) {
     return `${helpStr}\n`;
   }
+  return helpMissing_render(command);
+}
+
+/**
+ * The page for a name with no help in this session.
+ *
+ * @param command - The name asked about.
+ * @returns The page.
+ */
+export function helpMissing_render(command: string): string {
   return `${chalk.yellow(`No help available for '${command}'`)}\n${chalk.gray('Type "help" to see all available commands.')}\n`;
+}
+
+/** Words the shell or its surface answers itself, with no handler in the registry. */
+const SHELL_WORDS: ReadonlyArray<string> = ['exit', '!', 'help', 'prompt'];
+
+/**
+ * Whether this session can run a verb (or a verb's subcommand, `pacs query`):
+ * its handler is registered (the core's, or its backend's), or the shell
+ * answers it. Help is shown only for what can be run.
+ *
+ * @param name - The command, perhaps with a subcommand.
+ * @returns True when the session has it.
+ */
+export function verb_available(name: string): boolean {
+  const verb: string = name.split(' ')[0] ?? '';
+  if (SHELL_WORDS.includes(verb)) return true;
+  if (verb === 'sudo') return backendInstalled_get()?.elevate !== undefined;
+  return builtinCommand_has(verb);
 }
 
 /**
@@ -2000,11 +2029,13 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
     return builtin_notes([]);
   }
   // If a specific command is requested, return its help
+  // A verb this session has; else whatever its backend answers for (ChRIS:
+  // a plugin or pipeline executable); else no help, never a page for a verb
+  // the session cannot run.
   if (commandName) {
-    if (/-v[^/]+$/.test(commandName)) {
-      return { status: 'ok', rendered: pluginExecutableHelp_render(commandName) };
-    }
-    return { status: 'ok', rendered: help_render(commandName) };
+    if (verb_available(commandName)) return { status: 'ok', rendered: help_render(commandName) };
+    const backendHelp: string | null = (await backendInstalled_get()?.fallback?.help?.(commandName)) ?? null;
+    return { status: 'ok', rendered: backendHelp ?? helpMissing_render(commandName) };
   }
 
   // Otherwise, list all available commands
@@ -2033,8 +2064,10 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
 
   // Display commands by category
   for (const [category, commands] of Object.entries(categories)) {
+    const runnable: string[] = commands.filter((cmd: string): boolean => verb_available(cmd) && commandHelpEntry_get(cmd) !== undefined);
+    if (runnable.length === 0 && category !== 'Games and utilities') continue;
     rendered += `${chalk.bold.yellow(category)}\n`;
-    commands.forEach((cmd: string) => {
+    runnable.forEach((cmd: string) => {
       const help: CommandHelp | undefined = commandHelpEntry_get(cmd);
       if (help) {
         rendered += `  ${chalk.cyan(cmd.padEnd(20))} ${chalk.gray(help.summary ?? help.description)}\n`;
@@ -2043,7 +2076,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
     // The four above are the shelf's best known; the rest of /usr/games is
     // its own page, and the count is read from the shelf so it never goes stale.
     if (category === 'Games and utilities') {
-      const more: number = gamesShelf_names(commandSummary_get).length - commands.length;
+      const more: number = gamesShelf_names(commandSummary_get).length - runnable.length;
       rendered += `  ${chalk.cyan('help games'.padEnd(20))} ${chalk.gray(`The /usr/games shelf by category: ${more} more small tools and games`)}\n`;
     }
     rendered += '\n';

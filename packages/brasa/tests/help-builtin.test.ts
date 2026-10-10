@@ -1,4 +1,7 @@
-import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { jest, describe, it, expect, beforeEach, afterEach, beforeAll } from '@jest/globals';
+import type { CommandEnvelope } from '@fnndsc/menu';
+import { commands_register } from '../src/core/commandRegistry.js';
+import { backend_install } from '../src/core/backend.js';
 import {
   text_boxFormat,
   commandHelp_get,
@@ -100,8 +103,32 @@ describe('args_checkHasHelpFlag', () => {
   });
 });
 
-describe('builtin_help', () => {
-  it('lists commands by category with no argument', async () => {
+describe('builtin_help in a session with nothing of its own', () => {
+  it('lists only what the shell answers, and has no page for a verb it cannot run', async () => {
+    const envelope = await builtin_help([]);
+    expect(envelope.rendered).toContain('Available Commands');
+    expect(envelope.rendered).not.toContain('sudo');
+    expect(envelope.rendered).not.toContain('Imaging');
+    expect((await builtin_help(['ls'])).rendered).toContain("No help available for 'ls'");
+  });
+});
+
+describe('builtin_help in a session that has the verbs', () => {
+  beforeAll(() => {
+    const ran = async (): Promise<CommandEnvelope> => ({ status: 'ok', rendered: '' });
+    commands_register({ envelope: { ls: ran, image: ran, dcm: ran } });
+    backend_install({
+      id: 'test',
+      session: {
+        init: async () => undefined, identity_get: async () => ({ user: 'u', where: 'w', connected: true }),
+        user_get: async () => 'u', home_get: async () => '/home/u', cwd_load: async () => null, cwd_save: async () => undefined,
+      },
+      elevate: async (_credentials, run) => run(),
+      fallback: { help: async (name: string) => (/-v[^/]+$/.test(name) ? pluginExecutableHelp_render(name) : null) },
+    });
+  });
+
+  it('lists commands by category, sudo with them when the backend can elevate', async () => {
     const envelope = await builtin_help([]);
     expect(envelope.rendered).toContain('Available Commands');
     expect(envelope.rendered).toContain('sudo');
@@ -119,10 +146,11 @@ describe('builtin_help', () => {
     expect(envelope.rendered).toContain('Show a DICOM series or a volume');
   });
 
-  it('shows plugin executable help when a versioned plugin is named', async () => {
+  it('asks the backend for a name that is not a verb (ChRIS: a plugin version)', async () => {
     const envelope = await builtin_help(['pl-dircopy-v2.1.3']);
     expect(envelope.rendered).toContain('pl-dircopy-v2.1.3');
     expect(envelope.rendered).toContain('--parameters');
+    expect((await builtin_help(['nosuch'])).rendered).toContain("No help available for 'nosuch'");
   });
 });
 

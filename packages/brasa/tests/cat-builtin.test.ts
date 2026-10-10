@@ -128,6 +128,13 @@ describe('builtin_cat', (): void => {
     mockStackPop.mockReset();
   });
 
+  it('ends a file with its own newline, adding one only to a file without', async (): Promise<void> => {
+    mockCat.mockResolvedValueOnce(ok('one\ntwo\n'));
+    expect((await builtin_cat(['ends.txt'])).rendered).toBe('one\ntwo\n');
+    mockCat.mockResolvedValueOnce(ok('no end'));
+    expect((await builtin_cat(['open.txt'])).rendered).toBe('no end\n');
+  });
+
   it('writes raw bytes for --binary', async (): Promise<void> => {
     const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
     mockCatBinary.mockResolvedValue(ok(Buffer.from('BIN')));
@@ -255,7 +262,7 @@ describe('builtin_cat — syntax highlighting on a TTY', (): void => {
   it('suppresses automatic highlighting with --no-highlight', async (): Promise<void> => {
     const source: string = 'def greet():\n    return 42\n';
     mockCat.mockResolvedValue(ok(source));
-    expect((await builtin_cat(['greet.py', '--no-highlight'])).rendered).toBe(`${source}\n`);
+    expect((await builtin_cat(['greet.py', '--no-highlight'])).rendered).toBe(source);
     expect(mockCat).toHaveBeenCalledTimes(1);
   });
 
@@ -263,7 +270,7 @@ describe('builtin_cat — syntax highlighting on a TTY', (): void => {
     (process.stdout as { isTTY: boolean }).isTTY = false;
     const source: string = 'def greet():\n    return 42\n';
     mockCat.mockResolvedValue(ok(source));
-    expect((await builtin_cat(['greet.py'])).rendered).toBe(`${source}\n`);
+    expect((await builtin_cat(['greet.py'])).rendered).toBe(source);
   });
 
   it('auto-detects content when a forced file has no recognized name', async (): Promise<void> => {

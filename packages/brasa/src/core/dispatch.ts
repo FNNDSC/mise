@@ -30,6 +30,8 @@ import { backendInstalled_get } from './backend.js';
 import { shellWords_expand } from '../lib/wildcard.js';
 import {
   help_render,
+  helpMissing_render,
+  verb_available,
   commandHelp_get,
   args_checkHasHelpFlag,
 } from '../builtins/help.js';
@@ -271,11 +273,11 @@ async function helpEnvelope_maybe(command: string, args: string[]): Promise<Comm
     return null;
   }
   let rendered: string;
-  if (commandHelp_get(command) !== undefined) {
+  if (commandHelp_get(command) !== undefined && verb_available(command)) {
     rendered = help_render(command);
   } else {
     const backendHelp: string | null = (await backendInstalled_get()?.fallback?.help?.(command)) ?? null;
-    rendered = backendHelp ?? help_render(command);
+    rendered = backendHelp ?? helpMissing_render(command);
   }
   const envelope: CommandEnvelope = { status: 'ok', rendered };
   envelope_deliver(envelope);

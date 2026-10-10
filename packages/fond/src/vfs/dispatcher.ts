@@ -171,7 +171,11 @@ export class VFSDispatcher {
             // contrast cp(), where a guessed path could write wrongly.
           }
         }
+        // The store holding nothing here is an answer: the mounts are the
+        // listing, and what the store said is not left to fail the command.
+        const mark: number = errorStack.checkpoint_mark();
         const fallbackResult: Result<VFSItem[]> = await this.defaultProvider.list(resolvedPathStr, options);
+        if (!fallbackResult.ok) errorStack.checkpoint_drain(mark);
         if (fallbackResult.ok && fallbackResult.value) {
           const fallbackItems: VFSItem[] = fallbackResult.value;
           for (const item of fallbackItems) {

@@ -17,7 +17,7 @@ import { vfs } from '../lib/vfs/vfs.js';
 import { builtin_pipeline } from '../builtins/res/pipeline.js';
 import { builtin_executePlugin } from '../builtins/pluginExecute.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
-import { pipelineExecutableHelp_render } from '../builtins/help.js';
+import { pipelineExecutableHelp_render, pluginExecutableHelp_render } from '../builtins/help.js';
 import { chiliCommand_run, chiliCommand_exists, chiliDelegationNotice_build } from './chiliDelegate.js';
 
 /**
@@ -121,6 +121,8 @@ export const chrisFallback: BackendFallback = {
     return chili_delegate(command, args);
   },
   help: async (command: string): Promise<string | null> => {
+    // A plugin version (`pl-dircopy-v2.1.2`) is its own executable.
+    if (/-v[^/]+$/.test(command)) return pluginExecutableHelp_render(command);
     const binMatches: BinExecutableMatches = await binExecutableMatches_get(command);
     return binMatches.pipeline ? pipelineExecutableHelp_render(command) : null;
   },

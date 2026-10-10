@@ -101,6 +101,8 @@ jest.unstable_mockModule('../src/builtins/help.js', () => ({
   commandHelp_get: mockCommandHelpGet,
   pluginExecutableHelp_render: mockPluginExecutableHelpRender,
   pipelineExecutableHelp_render: mockPipelineExecutableHelpRender,
+  helpMissing_render: (name: string): string => `No help available for '${name}'\n`,
+  verb_available: (): boolean => true,
 }));
 
 const mockPluginExecutable = jest.fn(async () => false);
@@ -322,8 +324,7 @@ describe('command_dispatch', () => {
 
     const envelope: CommandEnvelope | null = await command_executeToEnvelope('missing --help', 0, false);
 
-    expect(envelope?.rendered).toBe('HELP:missing\n');
-    expect(mockHelpRender).toHaveBeenCalledWith('missing');
+    expect(envelope?.rendered).toBe("No help available for 'missing'\n");
     expect(mockPipelineExecutableHelpRender).not.toHaveBeenCalled();
   });
 

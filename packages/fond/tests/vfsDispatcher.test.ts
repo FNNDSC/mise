@@ -147,3 +147,17 @@ describe('a failed read of a folder', () => {
     errorStack.stack_clear();
   });
 });
+
+describe('a folder that holds only mounts', () => {
+  it('lists the mounts, and the store holding nothing there fails nothing', async () => {
+    const { MemoryVfsProvider } = await import('../src/vfs/memory');
+    const { VFSDispatcher } = await import('../src/vfs/dispatcher');
+    const { errorStack } = await import('../src/errorStack');
+    const dispatcher = new VFSDispatcher(new MemoryVfsProvider('', { '/home/user/a.txt': 'a' }));
+    for (const prefix of ['/usr/bin', '/usr/share']) dispatcher.provider_register(new MemoryVfsProvider(prefix, {}));
+    errorStack.stack_clear();
+    const listed = await dispatcher.list('/usr');
+    expect(listed.ok && listed.value.map((item) => item.name).sort()).toEqual(['bin', 'share']);
+    expect(errorStack.stack_getAll()).toEqual([]);
+  });
+});

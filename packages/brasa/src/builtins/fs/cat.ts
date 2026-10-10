@@ -448,7 +448,10 @@ export async function cat_run(parsed: CatArguments): Promise<CommandEnvelope> {
         parsed.highlightMode,
         parsed.highlightLanguage,
       );
-      rendered += `${highlighted}\n`;
+      // The file's own last newline ends it; one is added only to a file
+      // without (so the next output starts on a line of its own), never a
+      // second: `cat f > out` reproduces a file that ends as files do.
+      rendered += highlighted.endsWith('\n') ? highlighted : `${highlighted}\n`;
       outcomes.push({ path: pathArg, ok: true, binary: false });
     }
   }

@@ -53,6 +53,10 @@ cuminMock_install(() => ({
 
 const { input_complete } = await import('../src/lib/completer/index.js');
 await (await import('./support/chrisPieces.js')).chrisPieces_install({ vfs: true, completion: true });
+// A ChRIS session: its help, and every verb it has.
+const { chrisHelp_install, everyVerb_install } = await import('./support/chrisHelp.js');
+chrisHelp_install();
+everyVerb_install();
 
 describe('Tab Completion', () => {
   beforeEach(() => {

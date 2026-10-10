@@ -56,6 +56,10 @@ const { staticVfs_read, staticVfs_readBinary } = await import(
 // /bin is the ChRIS backend's mount; its listing reads salsa, never reached here.
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ plugins_listAll: jest.fn(), pipelines_getAll: jest.fn() }));
 const { BinVfsProvider } = await import('../src/chris/binMount.js');
+// A ChRIS session: its help, and every verb it has.
+const { chrisHelp_install, everyVerb_install } = await import('./support/chrisHelp.js');
+chrisHelp_install();
+everyVerb_install();
 const binRead = (path: string) => new BinVfsProvider().read(path);
 
 beforeEach((): void => {

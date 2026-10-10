@@ -60,3 +60,14 @@ describe('the command registry', () => {
     expect(names).toEqual(['zz-o-early', 'zz-o-late', 'zz-o-new']);
   });
 });
+
+describe('a backend beside the core', () => {
+  it('adds its commands, and may not replace one of the core\'s', () => {
+    commands_register({ envelope: { corecmd: envelope('core') } });
+    commands_register({ envelope: { backendcmd: envelope('backend') } }, 'backend');
+    expect(builtinCommand_has('backendcmd')).toBe(true);
+    expect(() => commands_register({ envelope: { corecmd: envelope('theirs') }, plain: { corecmd: async () => undefined } }, 'backend'))
+      .toThrow("a backend cannot replace the core's commands: corecmd");
+  });
+});
+

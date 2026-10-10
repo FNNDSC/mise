@@ -1,4 +1,7 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { chrisHelp_install } from './support/chrisHelp.js';
+
+chrisHelp_install();
 import { cuminMock_install } from './support/cuminMock.js';
 
 const mockGet = jest.fn(async () => null as string | null);

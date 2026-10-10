@@ -11,7 +11,6 @@ export {
   chiliCommand_run,
   command_dispatch,
   COMMAND_HANDLERS,
-  COMMAND_HANDLERS_KEYS,
 } from '@fnndsc/brasa';
 export {
   engine_create,

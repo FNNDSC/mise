@@ -54,6 +54,12 @@ export interface CommandGroup {
   help?: Record<string, CommandHelp>;
 }
 
+/** Who registers a group: the core, or the session's backend. */
+export type CommandOwner = 'core' | 'backend';
+
+/** The names the core registered, which no backend may take. */
+const coreNames: Set<string> = new Set<string>();
+
 const envelopeHandlers: Record<string, EnvelopeHandler> = {};
 const plainHandlers: Record<string, CommandHandler> = {};
 const helpEntries: Record<string, CommandHelp> = {};
@@ -103,11 +109,22 @@ function names_ordered(record: Record<string, unknown>, order: string[]): string
 }
 
 /**
- * Registers a group of commands.
+ * Registers a group of commands. The core's come first; a backend's are
+ * added beside them and may not replace one (a backend never overrides a
+ * core command).
  *
  * @param group - The commands, by name, in the order they list.
+ * @param owner - Whose commands they are: the core's, or a backend's.
+ * @throws {Error} When a backend's group names a core command.
  */
-export function commands_register(group: CommandGroup): void {
+export function commands_register(group: CommandGroup, owner: CommandOwner = 'core'): void {
+  if (owner === 'backend') {
+    const taken: string[] = [...Object.keys(group.envelope ?? {}), ...Object.keys(group.plain ?? {})]
+      .filter((name: string): boolean => coreNames.has(name));
+    if (taken.length > 0) throw new Error(`a backend cannot replace the core's commands: ${[...new Set(taken)].join(', ')}`);
+  } else {
+    for (const name of [...Object.keys(group.envelope ?? {}), ...Object.keys(group.plain ?? {})]) coreNames.add(name);
+  }
   if (group.envelope !== undefined) Object.assign(envelopeHandlers, group.envelope);
   if (group.plain !== undefined) Object.assign(plainHandlers, group.plain);
   if (group.help !== undefined) Object.assign(helpEntries, group.help);

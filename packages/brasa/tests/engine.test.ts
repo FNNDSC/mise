@@ -196,6 +196,7 @@ const {
 // every consumer (the engine's core imports none of them).
 const { chrisCommands } = await import('../src/chris/chrisCommands.js');
 (await import('../src/core/commandRegistry.js')).commands_register(chrisCommands);
+const { builtinCommand_has } = await import('../src/core/commandRegistry.js');
 // The ChRIS backend's fallback, watch and files: the session itself is mocked.
 (await import('../src/core/backend.js')).backend_install({
   id: 'chris',
@@ -231,6 +232,54 @@ beforeEach(() => {
   });
   output = new CaptureSink(new BufferSink());
   sink_set(output);
+});
+
+/**
+ * Command names the core and the ChRIS backend must register between them.
+ */
+const EXPECTED_HANDLERS: string[] = [
+  // filesystem
+  'cd', 'pwd', 'ls', 'cat', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'tree', 'du',
+  'upload', 'download', 'pull',
+  // net
+  'connect', 'logout', 'pacs', 'query', 'cubepath',
+  // sys
+  'context', 'physicalmode', 'timing', 'id', 'whoami', 'whereami', 'debug', 'help',
+  // resources — canonical
+  'plugin', 'plugins', 'feed', 'feeds',
+  'pipeline', 'pipelines',
+  'compute', 'computes',
+  'files', 'links', 'dirs',
+  'store',
+  'tag', 'tags',
+  'group', 'groups',
+  'pluginmeta', 'pluginmetas', 'meta', 'metas',
+  'plugininstance', 'plugininstances', 'instance', 'instances', 'job', 'jobs',
+  'workflow', 'workflows',
+  'parametersofplugin',
+];
+
+describe('the registered commands', () => {
+  it('contains all expected handler keys', () => {
+    for (const key of EXPECTED_HANDLERS) {
+      expect(builtinCommand_has(key)).toBe(true);
+    }
+  });
+
+  it('job/jobs are registered', () => {
+    expect(builtinCommand_has('job')).toBe(true);
+    expect(builtinCommand_has('jobs')).toBe(true);
+  });
+
+  it('meta/metas aliases are registered', () => {
+    expect(builtinCommand_has('meta')).toBe(true);
+    expect(builtinCommand_has('metas')).toBe(true);
+  });
+
+  it('instance/instances aliases are registered', () => {
+    expect(builtinCommand_has('instance')).toBe(true);
+    expect(builtinCommand_has('instances')).toBe(true);
+  });
 });
 
 describe('line_execute', () => {

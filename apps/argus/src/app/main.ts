@@ -55,13 +55,13 @@ import { chrisPanes_make, type ChrisPanes } from '../compositions/chris/panes.js
 import { chrisDicom_make, type ChrisDicom } from '../compositions/chris/dicom.js';
 import { chrisStage_make, type ChrisStage } from '../compositions/chris/stage.js';
 import { chrisTiles_make } from '../compositions/chris/tiles.js';
+import { chrisSignals_make, type ChrisSignals } from '../compositions/chris/signals.js';
 import { ViewerPanel } from '../features/view/panel.js';
 import { ImagePanel, type SeriesChoice } from '../features/image/panel.js';
 import { TagsPanel } from '../features/tags/panel.js';
 import { DICOM_FILE_PATTERN, SERIES_FOLDER_PATTERN, VOLUME_FILE_PATTERN } from '../features/image/engine.js';
 import { SubjectBus, type RegardValue } from './subjects.js';
 import { StatusBar } from './status.js';
-import { IndexInstrument } from './indexInstrument.js';
 import { LaneInstrument } from './laneInstrument.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler, cyclerNames_seed } from './cycler.js';
@@ -881,10 +881,14 @@ let cascade: Cascade | null = null;
 
 async function surface_start(token: string): Promise<void> {
   const statusBar: StatusBar = new StatusBar(document);
-  const indexInstrument: IndexInstrument = new IndexInstrument(element_require('index-instrument'), (): number => Date.now(), {
-    // The ERRORED figure is a control: it opens the runs roster filtered to
-    // the feeds it counted. The pane it acts on is put on stage first.
-    errored_open: (): void => runs_show('status:error'),
+  // The composition's share of the session's signals: the index instrument,
+  // and RUNS, the universe and PACS (compositions/chris/signals.ts).
+  const signals: ChrisSignals = chrisSignals_make(element_require('index-instrument'), {
+    dag_primary: (): DagPanel => dagPanel,
+    dag_instances: (): DagPanel[] => panels.values('dag'),
+    universes: (): UniversePanel[] => panels.values('universe'),
+    pacs: (): PacsPanel => pacsPanel,
+    runs_show: (filter: string): void => runs_show(filter),
   });
   const laneInstrument: LaneInstrument = new LaneInstrument(element_require('lane-instrument'));
   // The beat's age moves on the surface's own clock, not only on beats.
@@ -2188,10 +2192,7 @@ async function surface_start(token: string): Promise<void> {
         progress.write(message);
         statusBar.progress_observe(message);
         cascade?.progress_observe(message);
-        for (const panel of panels.values('dag')) {
-          panel.progress_observe(message);
-        }
-        pacsPanel.progress_observe(message);
+        signals.progress_take(message);
       },
       /**
        * A question the session put to this surface.
@@ -2248,18 +2249,14 @@ async function surface_start(token: string): Promise<void> {
         });
         terminal.promptContext_set(context);
         statusBar.promptContext_show(context);
-        indexInstrument.promptContext_show(context);
         cascade?.promptContext_observe(context);
-        dagPanel.promptContext_observe(context);
-        for (const universe of panels.values('universe')) universe.promptContext_observe(context);
+        signals.promptContext_take(context);
         for (const panel of panels.values('files')) panel.home_set(context.user === '' ? null : `/home/${context.user}`);
       },
       telemetry_receive: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry; state?: JobsStateTelemetry; surfaces?: SurfaceSeen[] }): void => {
-        indexInstrument.counts_show(index);
-        if (extra?.state !== undefined) indexInstrument.state_show(extra.state);
+        signals.telemetry_take(index, extra);
         laneInstrument.telemetry_show(extra ?? {});
         restart.telemetry_take(extra);
-        if (extra?.cube !== undefined) indexInstrument.pace_show(extra.cube.msPerPage);
         cascade?.index_observe(index);
       },
       session_receive: (surface: string, envelope: WireEnvelope): void =>

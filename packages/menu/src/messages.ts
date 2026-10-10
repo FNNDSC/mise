@@ -350,6 +350,11 @@ export const attachedMessageSchema = z.object({
   session: z.string(),
   /** This surface's own id on the daemon; absent from older daemons. */
   surface: z.string().optional(),
+  /**
+   * The session's backend (`chris`, `null`): which composition a surface
+   * draws. Absent from older daemons, which are all ChRIS.
+   */
+  backend: z.string().optional(),
   protocolVersion: z.number().int(),
   stack: z
     .object({

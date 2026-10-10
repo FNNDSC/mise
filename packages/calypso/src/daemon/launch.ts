@@ -247,6 +247,8 @@ export async function daemon_launch(
     host: bindHost,
     port: 0,
     ...(webRoot !== null ? { webRoot } : {}),
+    // Which backend the session runs over: a surface draws that composition.
+    backend: backend.id,
     // Only the daemon holds the session context, so it renders the themed
     // prompt and pushes it to surfaces. The backend says what both carry.
     ...(backend.telemetry !== undefined ? { telemetryProvider: backend.telemetry } : {}),

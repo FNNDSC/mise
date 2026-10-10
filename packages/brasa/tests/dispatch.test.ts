@@ -182,6 +182,29 @@ describe('command_dispatch', () => {
     expect(envelope).toEqual({ status: 'ok', rendered: 'elevated\n' });
   });
 
+  it('says sudo\'s own refusal (bare sudo\'s usage), and the nested command\'s output only once', async () => {
+    const { sink_get } = await import('../src/core/sink.js');
+    const errWrite = jest.spyOn(sink_get(), 'err_write').mockImplementation(() => undefined);
+    const dataWrite = jest.spyOn(sink_get(), 'data_write').mockImplementation(() => undefined);
+    mockSudoCommandRun.mockResolvedValueOnce({ status: 'error', rendered: '', renderedErr: 'Usage: sudo <command> [arguments...]\n' });
+    await command_dispatchEnvelope('sudo', []);
+    expect(errWrite).toHaveBeenCalledWith('Usage: sudo <command> [arguments...]\n');
+    errWrite.mockClear();
+    mockSudoCommandRun.mockImplementationOnce(async (_args: unknown, run: unknown) =>
+      (run as (c: string, a: string[]) => Promise<CommandEnvelope>)('ls', []));
+    mockLs.mockResolvedValueOnce({ status: 'ok', rendered: 'listed\n' });
+    errWrite.mockClear();
+    dataWrite.mockClear();
+    try {
+      await command_dispatchEnvelope('sudo', ['ls']);
+      expect(dataWrite.mock.calls.map((call) => String(call[0]))).toEqual(['listed\n']);
+      expect(errWrite).not.toHaveBeenCalled();
+    } finally {
+      errWrite.mockRestore();
+      dataWrite.mockRestore();
+    }
+  });
+
   it('applies transfer pathname policy beneath sudo', async () => {
     mockShellWordsExpand.mockResolvedValueOnce(Ok([
       { value: '/remote/a.nii', pathnameExpansion: false, pathnameExpanded: true },

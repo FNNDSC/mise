@@ -244,9 +244,32 @@ export class VFSDispatcher {
    */
   async read(pathStr: string): Promise<VfsOutcome<string>> {
     const provider: VFSProvider = this.provider_get(pathStr);
-    if (!provider.read) return vfs_fail('EROFS');
+    if (!provider.read) return this.readFailure_classify(pathStr, vfs_fail('EROFS'));
     const at: VfsOutcome<string> = await this.pathFor_provider(provider, pathStr, 'path', 'read');
-    return at.ok ? provider.read(at.value) : at;
+    return this.readFailure_classify(pathStr, at.ok ? await provider.read(at.value) : at);
+  }
+
+  /**
+   * A failed read of a folder says so: whatever the owning mount answered
+   * (CUBE's "File not found", a projection's own words, a mount that reads
+   * nothing), a path its parent lists as a folder is a directory, as a
+   * disk says.
+   *
+   * @param pathStr - The path read.
+   * @param outcome - The read's answer.
+   * @returns The answer, or `EISDIR` when it failed on a folder.
+   */
+  private async readFailure_classify<T>(pathStr: string, outcome: VfsOutcome<T>): Promise<VfsOutcome<T>> {
+    if (outcome.ok || outcome.errno === 'EISDIR') return outcome;
+    const clean: string = pathStr.length > 1 && pathStr.endsWith('/') ? pathStr.slice(0, -1) : pathStr;
+    if (clean === '/') return vfs_fail('EISDIR');
+    const slash: number = clean.lastIndexOf('/');
+    const name: string = clean.slice(slash + 1);
+    const mark: number = errorStack.checkpoint_mark();
+    const siblings: Result<VFSItem[]> = await this.list(clean.slice(0, slash) || '/');
+    errorStack.checkpoint_drain(mark);
+    const folder: boolean = siblings.ok && siblings.value.some((item: VFSItem): boolean => item.name === name && (item.type === 'dir' || item.type === 'vfs'));
+    return folder ? vfs_fail('EISDIR') : outcome;
   }
 
   /**
@@ -257,9 +280,9 @@ export class VFSDispatcher {
    */
   async readBinary(pathStr: string): Promise<VfsOutcome<Buffer>> {
     const provider: VFSProvider = this.provider_get(pathStr);
-    if (!provider.readBinary) return vfs_fail('EROFS');
+    if (!provider.readBinary) return this.readFailure_classify(pathStr, vfs_fail('EROFS'));
     const at: VfsOutcome<string> = await this.pathFor_provider(provider, pathStr, 'path', 'read');
-    return at.ok ? provider.readBinary(at.value) : at;
+    return this.readFailure_classify(pathStr, at.ok ? await provider.readBinary(at.value) : at);
   }
 
   /**

@@ -105,5 +105,5 @@ async function pipelineOptions_get(args: string[], word: string): Promise<string
 export const chrisCompletion: BackendCompletion = {
   commandWords: plugins_getNames,
   options: pipelineOptions_get,
-  rootWords: ['bin', 'usr', 'pacs'],
+  rootWords: ['bin', 'usr'],
 };

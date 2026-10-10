@@ -20,7 +20,25 @@ import {
   type CatArguments,
   type CatHighlightMode,
 } from './cat.args.js';
-import { errorStack, Result, StackMessage, vfsOutcome_toResult } from '@fnndsc/fond';
+import { errorStack, Result, Ok, Err, StackMessage, errno_words, vfsRefusal_text, type VfsOutcome } from '@fnndsc/fond';
+
+/**
+ * A read's answer as a Result, a refusal said on the error stack in the
+ * words cat puts after its operand: the mount's own reason, else the
+ * errno's words (`Is a directory`), the path being said once, by cat.
+ *
+ * @param outcome - The read's answer.
+ * @param operation - Which read, for the words of an unoffered one.
+ * @param target - The absolute path.
+ * @returns The value, or Err with the reason stacked.
+ */
+function read_said<T>(outcome: VfsOutcome<T>, operation: 'read' | 'readBinary', target: string): Result<T> {
+  if (outcome.ok) return Ok(outcome.value);
+  const words: string = outcome.reason
+    ?? (outcome.errno === 'EROFS' ? vfsRefusal_text(operation, outcome, target) : errno_words(outcome.errno));
+  errorStack.stack_push('error', words);
+  return Err();
+}
 
 /**
  * Reads a file whole, as text, through the session's filesystem; a refusal
@@ -30,7 +48,7 @@ import { errorStack, Result, StackMessage, vfsOutcome_toResult } from '@fnndsc/f
  * @returns The text, or Err with the reason stacked.
  */
 async function text_read(target: string): Promise<Result<string>> {
-  return vfsOutcome_toResult(await vfsDispatcher_get().read(target), 'read', target);
+  return read_said(await vfsDispatcher_get().read(target), 'read', target);
 }
 
 /**
@@ -40,7 +58,7 @@ async function text_read(target: string): Promise<Result<string>> {
  * @returns The bytes, or Err with the reason stacked.
  */
 async function bytes_read(target: string): Promise<Result<Buffer>> {
-  return vfsOutcome_toResult(await vfsDispatcher_get().readBinary(target), 'readBinary', target);
+  return read_said(await vfsDispatcher_get().readBinary(target), 'readBinary', target);
 }
 import { envelope_ok, envelope_error, type CommandEnvelope } from '@fnndsc/menu';
 

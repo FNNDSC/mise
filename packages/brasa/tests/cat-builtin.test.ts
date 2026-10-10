@@ -14,8 +14,9 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: jest.fn(async () => ({ user: 'chris', folder: '/home/chris' })),
 }));
 const mockStackPop = jest.fn(() => undefined as { message: string } | undefined);
+const mockStackPush = jest.fn((_type: string, _message: string): void => undefined);
 cuminMock_install(() => ({
-  errorStack: { stack_pop: mockStackPop, stack_push: jest.fn(), stack_search: () => [] },
+  errorStack: { stack_pop: mockStackPop, stack_push: mockStackPush, stack_search: () => [] },
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {
@@ -31,7 +32,8 @@ jest.unstable_mockModule('../src/session/index.js', () => ({ session: { getCWD: 
 const mockCat = jest.fn();
 const mockCatBinary = jest.fn();
 // cat reads through the session's filesystem; its reads answer from the mocks above.
-const outcome_of = <T>(result: { ok: boolean; value?: T }): unknown => (result.ok ? { ok: true, value: result.value } : { ok: false, errno: 'ENOENT' });
+const outcome_of = <T>(result: { ok: boolean; value?: T; errno?: string }): unknown =>
+  (result.ok ? { ok: true, value: result.value } : { ok: false, errno: result.errno ?? 'ENOENT' });
 jest.unstable_mockModule('../src/core/filesystem.js', () => ({
   vfsDispatcher_get: () => ({
     read: async (p: string) => outcome_of(await mockCat(p) as { ok: boolean; value?: string }),
@@ -112,6 +114,18 @@ describe('builtin_cat', (): void => {
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('cat: ghost.txt');
     expect(process.exitCode).toBe(1);
+  });
+
+  it('says a folder is a directory, naming the path once', async (): Promise<void> => {
+    const said: string[] = [];
+    mockStackPush.mockImplementation((_type: string, message: string): void => { said.push(message); });
+    mockStackPop.mockImplementation(() => (said.length > 0 ? { message: said.pop() as string } : undefined));
+    mockCat.mockResolvedValue({ ok: false, errno: 'EISDIR' });
+    const envelope = await builtin_cat(['docs']);
+    expect(envelope.renderedErr).toContain('cat: docs: Is a directory');
+    expect(envelope.renderedErr).not.toContain('/home/chris/docs');
+    mockStackPush.mockReset();
+    mockStackPop.mockReset();
   });
 
   it('writes raw bytes for --binary', async (): Promise<void> => {

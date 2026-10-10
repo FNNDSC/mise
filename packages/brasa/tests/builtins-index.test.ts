@@ -64,7 +64,7 @@ const mockStringCheckHasWildcard = jest.fn();
 // Define local Ok, Err, and errorStack for consistent use across mocks and tests
 const Ok = (val: any) => ({ ok: true, value: val });
 const Err = (err: any) => ({ ok: false, error: err });
-const errorStack = { stack_push: jest.fn(), stack_pop: jest.fn() };
+const errorStack = { stack_push: jest.fn(), stack_pop: jest.fn(), checkpoint_mark: jest.fn(() => 0), checkpoint_drain: jest.fn(() => []) };
 
 // Mock chili utils
 jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
@@ -751,6 +751,30 @@ describe('Builtins - Core Functions', () => {
       await builtin_ls(['--sort', 'size', '--reverse']);
 
       expect(mockVfsList).toHaveBeenCalledWith(undefined, { long: false, human: false, sort: 'size', reverse: true, directory: false, oneColumn: false });
+    });
+
+    it('takes the path after a switch as a path, never as the switch\'s value', async () => {
+      await builtin_ls(['--refresh', '/tmp']);
+      expect(mockVfsList).toHaveBeenCalledWith('/tmp', { long: false, human: false, sort: 'name', reverse: false, directory: false, oneColumn: false });
+      mockVfsList.mockClear();
+      await builtin_ls(['-l', '--reverse', '/tmp']);
+      expect(mockVfsList).toHaveBeenCalledWith('/tmp', { long: true, human: false, sort: 'name', reverse: true, directory: false, oneColumn: false });
+    });
+
+    it('refuses an option it does not have by name, listing nothing', async () => {
+      const recursive = await builtin_ls(['-R', '/tmp']);
+      expect(recursive.status).toBe('error');
+      expect(recursive.renderedErr).toContain("ls: invalid option -- 'R'");
+      const long = await builtin_ls(['--color', '/tmp']);
+      expect(long.renderedErr).toContain("ls: unrecognized option '--color'");
+      const sort = await builtin_ls(['--sort', 'colour']);
+      expect(sort.renderedErr).toContain("ls: invalid argument 'colour' for '--sort'");
+      expect(mockVfsList).not.toHaveBeenCalled();
+    });
+
+    it('takes -a, since nothing in a listing is hidden', async () => {
+      await builtin_ls(['-la', '/tmp']);
+      expect(mockVfsList).toHaveBeenCalledWith('/tmp', { long: true, human: false, sort: 'name', reverse: false, directory: false, oneColumn: false });
     });
 
     it('should handle combined -l, --sort, and --reverse flags', async () => {

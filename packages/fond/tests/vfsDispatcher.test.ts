@@ -121,3 +121,29 @@ describe('vfsItems_sort', () => {
     expect(items.map((i: VFSItem) => i.name)).toEqual(['b', 'a', 'c']);
   });
 });
+
+describe('a failed read of a folder', () => {
+  it('is EISDIR whatever the owning mount said, its words drained; a missing path keeps its own answer', async () => {
+    const { MemoryVfsProvider } = await import('../src/vfs/memory');
+    const { VFSDispatcher } = await import('../src/vfs/dispatcher');
+    const { errorStack } = await import('../src/errorStack');
+    const { vfs_fail } = await import('../src/vfs/outcome');
+    const store = new MemoryVfsProvider('', { '/home/docs/b.txt': 'beta' });
+    // CUBE answers a folder read with words for a missing file.
+    store.read = async () => { errorStack.stack_push('error', 'File not found: docs'); return vfs_fail('EIO', 'File not found: docs'); };
+    const dispatcher = new VFSDispatcher(store);
+    // A projection that reads nothing at all.
+    const projection = new MemoryVfsProvider('/proc', { '/proc/jobs': null });
+    (projection as { read?: unknown }).read = undefined;
+    (projection as { readBinary?: unknown }).readBinary = undefined;
+    dispatcher.provider_register(projection);
+    errorStack.stack_clear();
+    expect(await dispatcher.read('/home/docs')).toEqual({ ok: false, errno: 'EISDIR' });
+    expect(await dispatcher.read('/proc/jobs')).toEqual({ ok: false, errno: 'EISDIR' });
+    expect(await dispatcher.readBinary('/proc')).toEqual({ ok: false, errno: 'EISDIR' });
+    expect(await dispatcher.read('/home/missing.txt')).toEqual({ ok: false, errno: 'EIO', reason: 'File not found: docs' });
+    errorStack.stack_pop();
+    expect(await dispatcher.read('/proc/jobs/none')).toEqual({ ok: false, errno: 'EROFS' });
+    errorStack.stack_clear();
+  });
+});

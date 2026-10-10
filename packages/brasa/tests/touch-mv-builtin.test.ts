@@ -102,9 +102,11 @@ describe('touch', () => {
     expect(missing.renderedErr).toContain('Local file not found');
   });
 
-  it('makes a missing parent folder first, as the store always has', async () => {
-    expect((await builtin_touch(['--withContents', 'x', 'new/deeper/f.txt'])).status).toBe('ok');
-    expect(await text_of('/home/chris/new/deeper/f.txt')).toBe('x');
+  it('makes no folders: a missing parent is No such file or directory, as on a disk', async () => {
+    const envelope: CommandEnvelope = await builtin_touch(['--withContents', 'x', 'new/deeper/f.txt']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('No such file or directory');
+    expect(await names_of('/home/chris')).not.toContain('new:dir');
   });
 
   it('writes no file where a folder is, nor beneath a file', async () => {

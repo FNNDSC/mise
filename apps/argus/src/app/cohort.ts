@@ -154,11 +154,12 @@ export function cohort_wire(context: Pick<HostContext, 'layout' | 'panels' | 'su
       });
       // Silent: this is the surface keeping its own state, not an act the
       // operator took, and the transcript is for what they did.
-      void context.client.line_execute('mkdir -p ~/gather', { silent: true, observe: false });
-      void context.client.line_execute(
-        `touch --withContents '${kept.replace(/'/g, "'\\''")}' ${COHORT_FILE}`,
-        { silent: true, observe: false },
-      );
+      // The folder first: touch makes no folders, as on a disk.
+      void context.client.line_execute('mkdir -p ~/gather', { silent: true, observe: false })
+        .then(() => context.client.line_execute(
+          `touch --withContents '${kept.replace(/'/g, "'\\''")}' ${COHORT_FILE}`,
+          { silent: true, observe: false },
+        ));
     }, COHORT_WRITE_MS);
   };
 

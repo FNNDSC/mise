@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
 import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
-import { entry_at, entry_isFolder, folderTree_make } from './entries.js';
+import { entry_at, entry_isFolder } from './entries.js';
 import { errno_words, touch_render, vfs_fail, type VFSDispatcher, type VFSItem, type VfsOutcome } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
@@ -47,8 +47,8 @@ function localFile_read(localFilePath: string): { text: string } | { reason: str
  * Touches one file. With content it is written whole, replacing what was
  * there. Without, a file already there is left as it is (its content kept)
  * and a missing one is made empty. A projected file takes text only. A
- * missing parent folder is made first, as the store has always made it
- * for a file written into it.
+ * missing parent folder is `No such file or directory`, as on a disk:
+ * touch makes no folders (mkdir -p does).
  *
  * @param dispatcher - The session's filesystem.
  * @param targetPath - The absolute path.
@@ -64,14 +64,8 @@ async function file_touch(dispatcher: VFSDispatcher, targetPath: string, content
     if (entry_isFolder(there)) return vfs_fail('EISDIR', `Is a directory: a folder already holds ${targetPath}`);
     if (there !== null) return { ok: true, value: true };
   }
-  const text: string = content ?? '';
-  const written: VfsOutcome = await dispatcher.write(targetPath, text);
-  if (written.ok || written.errno !== 'ENOENT' || dispatcher.path_isVirtual(targetPath)) {
-    return written.ok || written.errno !== 'EISDIR' ? written : vfs_fail('EISDIR', `Is a directory: a folder already holds ${targetPath}`);
-  }
-  const parent: VfsOutcome = await folderTree_make(dispatcher, path.posix.dirname(targetPath));
-  if (!parent.ok && parent.errno !== 'EEXIST') return parent;
-  return dispatcher.write(targetPath, text);
+  const written: VfsOutcome = await dispatcher.write(targetPath, content ?? '');
+  return written.ok || written.errno !== 'EISDIR' ? written : vfs_fail('EISDIR', `Is a directory: a folder already holds ${targetPath}`);
 }
 
 /**

@@ -90,6 +90,11 @@ export function chrisTiles_make(hooks: ChrisTileHooks): () => Promise<TileContri
       about: TILE_ABOUT['pacs'],
       enter: (): void => hooks.pacs_open(),
     };
-    return { lead: { tile: analyses, weight: feeds.length }, afterFiles: [pacs], afterPanes: [universe] };
+    return {
+      lead: { tile: analyses, weight: feeds.length },
+      afterFiles: [pacs],
+      afterPanes: [universe],
+      about: { files: { text: 'Your ChRIS home: uploads, results and what others shared with you.' } },
+    };
   };
 }

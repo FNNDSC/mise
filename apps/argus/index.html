@@ -56,7 +56,7 @@
                block, and a third one appended after it cut the corner off
                the shape. The cohort is its own thing, so it takes the
                light seat between the two dark ones. -->
-          <button class="panel-gather" id="header-gather-pill" title="the cohort: what this session has gathered">01<span class="hop">-GATHER</span></button>
+          <button class="panel-gather" id="header-gather-pill" data-composition="chris" title="the cohort: what this session has gathered">01<span class="hop">-GATHER</span></button>
           <button class="panel-2">02<span class="hop">-CALYPSO</span></button>
         </div>
         <div class="right-frame-top">
@@ -119,7 +119,7 @@
               </div>
               <span class="pane-state gather-state"></span>
             </div>
-            <div class="header-face" id="header-telemetry"><div id="index-instrument"></div><div id="lane-instrument"></div></div>
+            <div class="header-face" id="header-telemetry"><div id="index-instrument" data-composition="chris"></div><div id="lane-instrument"></div></div>
           </div>
           <div class="bar-panel first-bar-panel">
             <div class="bar-1"></div>
@@ -140,8 +140,8 @@
                  into rather than its colour with it. -->
             <button class="panel-3 domain-live" id="gutter-dashboard" title="where a session begins: what each domain holds, and the way into it"><span class="gutter-word">DASHBOARD</span><span class="hop"><span class="hop-dash">-</span>01</span></button>
             <button class="panel-4 domain-live" id="gutter-files" title="the console's browser: the workspace, following the session cwd"><span class="gutter-word">FILES</span><span class="hop"><span class="hop-dash">-</span>02</span></button>
-            <button class="panel-5 domain-live" id="gutter-runs"><span class="gutter-word">RUNS</span><span class="hop"><span class="hop-dash">-</span>03</span></button>
-            <button class="panel-6 domain-live" id="gutter-tools"><span class="gutter-word">PACS</span><span class="hop"><span class="hop-dash">-</span>04</span></button>
+            <button class="panel-5 domain-live" id="gutter-runs" data-composition="chris"><span class="gutter-word">RUNS</span><span class="hop"><span class="hop-dash">-</span>03</span></button>
+            <button class="panel-6 domain-live" id="gutter-tools" data-composition="chris"><span class="gutter-word">PACS</span><span class="hop"><span class="hop-dash">-</span>04</span></button>
             <button class="panel-console domain-live" id="gutter-console" title="summon the console"><span class="gutter-word">CONSOLE</span><span class="hop"><span class="hop-dash">-</span>05</span></button>
             <button class="panel-lang domain-live" id="lang-pill" title="the argus command line (Ctrl-B :)">LANG</button>
             <div class="panel-spacer"></div>
@@ -872,8 +872,8 @@
                 </div>
                 <div class="empty-shortcuts">
                   <button class="pacs-capsule empty-go-files">FILES</button>
-                  <button class="pacs-capsule empty-go-dag">RUNS</button>
-                  <button class="pacs-capsule empty-go-pacs">PACS</button>
+                  <button class="pacs-capsule empty-go-dag" data-composition="chris">RUNS</button>
+                  <button class="pacs-capsule empty-go-pacs" data-composition="chris">PACS</button>
                 </div>
                 <div class="empty-promptline">
                   <input class="empty-prompt" spellcheck="false" autocomplete="off"
@@ -953,7 +953,7 @@
                 </div>
               </div>
             </template>
-            <div class="workspace-pane" id="pacs-workspace">
+            <div class="workspace-pane" id="pacs-workspace" data-composition="chris">
               <div class="lcars-terminal-header-bar files-header-bar pane-handle" title="pane controls">
                 <div class="lcars-bar-horizontal">
                   <span class="lcars-title" id="pacs-title">PACS QUERY / RETRIEVE</span>

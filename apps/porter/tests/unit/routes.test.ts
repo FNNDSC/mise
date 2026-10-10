@@ -390,6 +390,7 @@ describe('address helpers', () => {
 
   it('puts the token on the byte route and the wire, and nowhere else', () => {
     expect(upstreamPath_build('/vfs?path=%2Fa', 'T')).toBe('/vfs?path=%2Fa&token=T');
+    expect(upstreamPath_build('/backend', 'T')).toBe('/backend?token=T');
     expect(upstreamPath_build('/?door', 'T')).toBe('/?door=&token=T');
     expect(upstreamPath_build('/assets/x.js', 'T')).toBe('/assets/x.js');
     expect(upstreamPath_build('sounds/press.mp3', 'T')).toBe('/sounds/press.mp3');

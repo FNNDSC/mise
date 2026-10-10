@@ -35,8 +35,9 @@ export const TILE_ABOUT: Readonly<Record<string, TileAbout>> = {
   analyses: {
     text: 'Your analyses, newest first. Open one to follow it, read its logs and browse its results.',
   },
+  // The frame's own home; a composition says what its home holds (ChRIS: compositions/chris/tiles.ts).
   files: {
-    text: 'Your ChRIS home: uploads, results and what others shared with you.',
+    text: 'Your home: the files this session holds.',
   },
   pacs: {
     text: 'Find studies in the hospital PACS and pull the series you need into ChRIS.',

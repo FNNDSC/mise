@@ -142,8 +142,8 @@ export function upstreamPath_build(rest: string, token: string): string {
   const cut: number = path.indexOf('?');
   const pathname: string = cut === -1 ? path : path.slice(0, cut);
   const query: URLSearchParams = new URLSearchParams(cut === -1 ? '' : path.slice(cut + 1));
-  if (pathname === '/vfs' || pathname === '/') {
-    // The byte route is token-gated; the wire's upgrade lands on `/`.
+  if (pathname === '/vfs' || pathname === '/backend' || pathname === '/') {
+    // The byte route and the backend's name are token-gated; the wire's upgrade lands on `/`.
     query.set('token', token);
   }
   const text: string = query.toString();

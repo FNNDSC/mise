@@ -274,12 +274,13 @@ try {
     // home listing), a moment after READY: settle on them, never a guess.
     for (let i = 0; i < 60 && document.querySelectorAll('.launcher-tile').length === 0; i++) await sleep(250);
     const shown = (id) => { const e = document.getElementById(id); if (e === null || e.offsetParent === null) return false; const r = e.getBoundingClientRect(); return r.height > 0 && r.width > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight; };
-    const seen = { zoom: document.body.dataset.zoom ?? null, tiles: document.querySelectorAll('.launcher-tile').length, drawer: shown('drawer'), gutter: shown('gutter-files') };
+    const seen = { zoom: document.body.dataset.zoom ?? null, tiles: document.querySelectorAll('.launcher-tile').length, drawer: shown('drawer'), gutter: shown('gutter-files'), composition: document.body.dataset.composition ?? null };
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await sleep(400);
     return { ...seen, after: document.body.dataset.zoom ?? null };`);
   check('a fresh browser lands on the dashboard alone: zoomed, no console, no gutter; Esc gives the full surface',
-    landing.zoom === 'launcher' && landing.tiles >= 7 && !landing.drawer && !landing.gutter && landing.after === null, JSON.stringify(landing));
+    // ChRIS's dashboard holds eight tiles; the frame alone its own five.
+    landing.zoom === 'launcher' && landing.tiles >= (landing.composition === 'chris' ? 7 : 5) && !landing.drawer && !landing.gutter && landing.after === null, JSON.stringify(landing));
   // The baseline is home, not whatever cwd the session kept from before
   // the suite: a session left in a since-removed directory made every
   // scenario read as a leak and every repair cd into nothing.
@@ -2914,6 +2915,39 @@ try {
   const detail = failing.map((theme) => `${theme}: ${contrast[theme].slice(0, 4).map((f) => `${f.cls} "${f.text}" ${f.ratio}<${f.need}`).join(' | ')}`).join('  ·  ');
   check('every pairing the frame paints clears WCAG AA, in all five schemes',
     failing.length === 0, detail === '' ? JSON.stringify(themes) : detail);
+  }
+
+  if (await stage('frame-alone')) {
+  // A session over a backend with no composition of its own has the frame
+  // alone (#985): its own tiles, no RUNS or PACS in the gutter, no GATHER,
+  // no index instrument, a files pane over the session's store, and the
+  // language with no ChRIS word. Under ChRIS the same page says ChRIS.
+  const alone = await evalIn(`
+    await console_idle();
+    const shown = (id) => { const e = document.getElementById(id); return e !== null && e.offsetParent !== null && getComputedStyle(e).display !== 'none'; };
+    document.getElementById('gutter-dashboard')?.click();
+    for (let i = 0; i < 40 && document.querySelectorAll('.launcher-tile').length === 0; i++) await sleep(250);
+    const tiles = [...document.querySelectorAll('.launcher-tile .launcher-name')].map((e) => e.textContent);
+    // The index instrument sits in a header face that may itself be away;
+    // what the composition decides is whether its own rule hides it.
+    const ruled = (id) => { const e = document.getElementById(id); return e !== null && getComputedStyle(e).display !== 'none'; };
+    const marks = { runs: shown('gutter-runs'), pacs: shown('gutter-tools'), gather: shown('header-gather-pill'), index: ruled('index-instrument') };
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400);
+    const input = document.querySelector('#terminal input');
+    input.value = 'view runs'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    const output = () => document.querySelector('#terminal .argus-output')?.textContent ?? document.querySelector('#terminal')?.textContent ?? '';
+    for (let i = 0; i < 20 && !/view: unknown given/.test(output()); i++) await sleep(250);
+    const said = (output().match(/view: unknown given[^\\n]*/) ?? [''])[0];
+    document.getElementById('gutter-files').click(); await sleep(400);
+    return { composition: document.body.dataset.composition ?? null, tiles, marks, viewRuns: said };`);
+  if (alone.composition === 'chris') {
+    check('under ChRIS the page draws ChRIS: RUNS and PACS in the gutter, its tiles, its index instrument',
+      alone.marks.runs && alone.marks.pacs && alone.marks.index && alone.tiles.includes('ANALYSES'), JSON.stringify(alone));
+  } else {
+    check('a session with no composition of its own has the frame alone: its five tiles, no RUNS, PACS, GATHER or index instrument',
+      JSON.stringify(alone.tiles) === JSON.stringify(['FILES', 'PANES', 'KEYS', "WHAT'S NEW", 'CONSOLE']) && !alone.marks.runs && !alone.marks.pacs && !alone.marks.gather && !alone.marks.index, JSON.stringify(alone));
+    check('the frame alone speaks no ChRIS word: view runs is refused by name', /view: unknown given 'runs' \(files\)/.test(alone.viewRuns), JSON.stringify(alone.viewRuns.slice(0, 200)));
+  }
   }
 
   if (await stage('feed-one-view')) {

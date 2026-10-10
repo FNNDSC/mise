@@ -24,7 +24,7 @@ import { element_require, template_stamp, pane_find } from '../frame/dom.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction, type DesktopShape } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { logo_linesRender } from '@fnndsc/menu/logo';
-import { wireUrl_resolve, vfsUrl_build as routeVfsUrl_build, downloadUrl_build as routeDownloadUrl_build, door_isPresent, doorUrl_build } from '../calypso/routes.js';
+import { backend_ask, wireUrl_resolve, vfsUrl_build as routeVfsUrl_build, downloadUrl_build as routeDownloadUrl_build, door_isPresent, doorUrl_build } from '../calypso/routes.js';
 import {
   ArgusClient,
   type AttachInfo,
@@ -880,10 +880,19 @@ function panelSounds_wire(): void {
 let cascade: Cascade | null = null;
 
 async function surface_start(token: string): Promise<void> {
+  // Which backend the session runs over decides the composition: ChRIS's
+  // panes, words, tiles and instruments, or the frame alone. Asked before
+  // anything is built; a daemon older than the question is ChRIS.
+  const backend: string = await backend_ask(token);
+  const chris: boolean = backend === 'chris';
+  // One declaration on the body: what a composition owns in the page's own
+  // markup (its gutter domains, its header band and instrument) stands only
+  // under that composition.
+  document.body.dataset['composition'] = backend;
   const statusBar: StatusBar = new StatusBar(document);
   // The composition's share of the session's signals: the index instrument,
   // and RUNS, the universe and PACS (compositions/chris/signals.ts).
-  const signals: ChrisSignals = chrisSignals_make(element_require('index-instrument'), {
+  const signals: ChrisSignals = !chris ? { promptContext_take: (): void => undefined, telemetry_take: (): void => undefined, progress_take: (): void => undefined } : chrisSignals_make(element_require('index-instrument'), {
     dag_primary: (): DagPanel => dagPanel,
     dag_instances: (): DagPanel[] => panels.values('dag'),
     universes: (): UniversePanel[] => panels.values('universe'),
@@ -899,7 +908,7 @@ async function surface_start(token: string): Promise<void> {
   const panels: PanelRoster = new PanelRoster();
   // The composition's words in the language (compositions/chris/lang.ts):
   // installed before any pane's chrome reads the chords.
-  language_extend(chrisLanguage((): ChrisLangHost => argusHost));
+  if (chris) language_extend(chrisLanguage((): ChrisLangHost => argusHost));
 
   // The subject bus: pane linkage as hub-and-spoke subjects. Every regard
   // write also flows to the daemon as session truth (the two-layer model).
@@ -1302,8 +1311,11 @@ async function surface_start(token: string): Promise<void> {
     gather_build: gatherInstance_build,
     pacsMount: element_require('pacs-workspace'),
   });
-  for (const primary of stage.primaries) paneInstance_adopt(primary);
-  for (const domain of stage.domains) primary_register(domain);
+  // Built either way (the frame's closures reach RUNS and PACS), put on the
+  // stage only under the ChRIS composition: the frame alone has none of them.
+  const staged: ChrisStage = chris ? stage : { primaries: [], domains: [], presets: [], factories: [] };
+  for (const primary of staged.primaries) paneInstance_adopt(primary);
+  for (const domain of staged.domains) primary_register(domain);
   // PANES is a gutter domain like FILES/RUNS/PACS: its mount is a primary the
   // layout can raise, its card grid wired once the dormant set and restore
   // exist below.
@@ -1422,7 +1434,7 @@ async function surface_start(token: string): Promise<void> {
   const layout: LayoutManager = new LayoutManager(
     element_require('layout-root'),
     new Map([
-      ...stage.primaries.map((primary: PaneInstance): [string, HTMLElement] => [primary.id, primary.mount]),
+      ...staged.primaries.map((primary: PaneInstance): [string, HTMLElement] => [primary.id, primary.mount]),
       ['files', filesPrimary.mount],
       ['launcher', launcherMount],
       ['panes', panesMount],
@@ -1439,7 +1451,7 @@ async function surface_start(token: string): Promise<void> {
         }
       : { pane: 'files' };
   layout.preset_register('files', homeTree);
-  for (const [name, tree] of stage.presets) layout.preset_register(name, tree);
+  for (const [name, tree] of staged.presets) layout.preset_register(name, tree);
   // PANES-06 is a full-workspace preset too: the grid of dormant groups.
   layout.preset_register('panes', (): LayoutNode => ({ pane: 'panes' }));
   // The launcher owns the stage as well: it is where a session begins, and
@@ -1603,7 +1615,7 @@ async function surface_start(token: string): Promise<void> {
     daemon_stale: (): boolean => daemonStale,
     console_open: (): void => element_require('gutter-console').click(),
     // ANALYSES, PACS and the UNIVERSE: the composition's tiles (compositions/chris/tiles.ts).
-    contribution: chrisTiles_make({
+    ...(!chris ? {} : { contribution: chrisTiles_make({
       ask: (line: string): Promise<ExecuteOutcome> => client.line_execute(line, { silent: true, observe: false }),
       universe_show: (): void => universe_show(),
       runs_show: (filter?: string): void => runs_show(filter),
@@ -1611,7 +1623,7 @@ async function surface_start(token: string): Promise<void> {
       line_offer: (line: string): void => terminal.line_offer(line),
       pacs_query: (): string => pacsPanel.query_get() ?? '',
       pacs_open: (): void => { domain_enter('pacs'); layout.focus_set('pacs'); },
-    }),
+    }) }),
   });
 
   const launcherPanel: LauncherPanel = new LauncherPanel(launcherMount, {
@@ -1706,7 +1718,7 @@ async function surface_start(token: string): Promise<void> {
     dag_dismiss: (): void => { dagShown = false; },
   });
   pane_chrome_wire('files', 'files', filesPrimary.mount);
-  for (const primary of stage.primaries) pane_chrome_wire(primary.id, primary.kind, primary.mount);
+  for (const primary of staged.primaries) pane_chrome_wire(primary.id, primary.kind, primary.mount);
   pane_chrome_wire('launcher', 'launcher', launcherMount);
   pane_chrome_wire('panes', 'panes', panesMount);
 
@@ -1822,7 +1834,7 @@ async function surface_start(token: string): Promise<void> {
   };
   // A listing claims an empty pane as files: the frame's own.
   router.claim_add('fs.listing', 'files');
-  chrisRoutes_install(router, {
+  if (chris) chrisRoutes_install(router, {
     dag_target: (): DagPanel => {
       const focused: string | null = layout.focused_get();
       return focused !== null && panels.has('dag', focused) ? (panels.get('dag', focused) as DagPanel) : dagPanel;
@@ -1871,7 +1883,7 @@ async function surface_start(token: string): Promise<void> {
   paneFactory_register('games', gamesPane.instance_build);
   paneFactory_register('notes', notesPane.instance_build);
   paneFactory_register('edit', editorModule.instance_build);
-  for (const [kind, build] of stage.factories) paneFactory_register(kind, build);
+  for (const [kind, build] of staged.factories) paneFactory_register(kind, build);
   paneFactory_register('empty', (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-empty');
     new EmptyPanel(mount, {
@@ -2116,7 +2128,9 @@ async function surface_start(token: string): Promise<void> {
     layout.preset_apply('launcher');
     launcherPanel.render();
   } else {
-    layout.preset_apply(layout.savedPreset_get() ?? 'files');
+    // A preset this composition has not got (RUNS, last seen under ChRIS) is home.
+    const saved: string | null = layout.savedPreset_get();
+    layout.preset_apply(saved !== null && layout.preset_has(saved) ? saved : 'files');
   }
 
   const drawerStatus: HTMLElement = element_require('drawer-status');
@@ -2329,7 +2343,7 @@ async function surface_start(token: string): Promise<void> {
   aboutFace_fill(attached.attach);
 
   // Seed the ambient cycler with the pipelines /bin lists (an unobserved read).
-  cyclerNames_seed(client, cycler);
+  if (chris) cyclerNames_seed(client, cycler);
   // The browser that follows the session shows the session's place from
   // the first moment: one silent, observed listing of the working
   // directory. (The seed above used to do this by accident, at /bin.)
@@ -2345,8 +2359,10 @@ async function surface_start(token: string): Promise<void> {
   // the same block dimmed, not a lit one promising something it does not
   // hold. The restore below may fill it a moment later.
   cohortStage_run = cohortModule.stage;
-  cohortModule.annunciate();
-  void cohortModule.restore();
+  if (chris) {
+    cohortModule.annunciate();
+    void cohortModule.restore();
+  }
   mode_show('READY');
   terminal.splash_write(SPLASH_BRAIN);
   terminal.prompt_draw();

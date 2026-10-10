@@ -1010,10 +1010,13 @@ try {
     const scrollback = document.activeElement?.classList.contains('argus-output') === true;
     document.querySelector('.pane-files .files-panel')?.click(); await sleep(150);
     // ! : files alone on stage, the arrangement a PANES card
-    const cardsBefore = (window.__argusDormant?.list?.() ?? []).length;
+    // The arrangement is carded: a card left the stage at the break-out. Not
+    // a count — at the cap a new card drops the oldest, and an arrangement an
+    // earlier scenario carded under the same anchor is the same card, re-touched.
+    const brokeAt = Date.now();
     prefix(); await sleep(150); press('!'); await sleep(600);
     const alone = leaves().length === 1 && leaves()[0] === 'files' && /ALONE/.test(bar('files'));
-    const carded = (window.__argusDormant?.list?.() ?? []).length >= cardsBefore + 1;
+    const carded = (window.__argusDormant?.list?.() ?? []).some((card) => card.lastTouched >= brokeAt);
     // w : PANES
     prefix(); await sleep(150); press('w'); await sleep(600);
     const panesShown = document.querySelector('.pane-panes')?.offsetParent !== null;

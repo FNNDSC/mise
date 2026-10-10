@@ -9,7 +9,7 @@ import type { SessionNotes } from '@fnndsc/menu';
 import type { ExecuteOutcome } from '../calypso/client.js';
 import { DRAWER_CHORDS, VERB_LINES, type DrawerChord } from '../console/argusLang.js';
 import type { FsListingEntry } from '../features/files/panel.js';
-import { TILE_ABOUT } from '../features/launcher/about.js';
+import { TILE_ABOUT, type TileAbout } from '../features/launcher/about.js';
 import type { LauncherRow, LauncherTile } from '../features/launcher/panel.js';
 import type { GroupSnapshot } from './dormant.js';
 
@@ -42,6 +42,8 @@ export interface DashboardHooks {
  */
 export interface TileContribution {
   lead?: { tile: LauncherTile; weight: number };
+  /** What the frame's own tiles say under this composition, by tile key (FILES: what its home holds). */
+  about?: Readonly<Record<string, TileAbout>>;
   afterFiles: LauncherTile[];
   afterPanes: LauncherTile[];
 }
@@ -81,7 +83,7 @@ export function dashboardTiles_build(hooks: DashboardHooks): () => Promise<Reado
         open: (): void => hooks.home_cd(homePath.endsWith('/') ? `${homePath}${entry.name}` : `${homePath}/${entry.name}`),
       })),
       verb: 'OPEN HOME',
-      about: TILE_ABOUT['files'],
+      about: contribution.about?.['files'] ?? TILE_ABOUT['files'],
       enter: (): void => hooks.home_open(),
     };
     const panes: LauncherTile = {

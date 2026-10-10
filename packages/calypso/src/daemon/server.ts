@@ -388,6 +388,10 @@ export class CalypsoDaemon {
             void this.vfs_serve(request, response);
             return;
           }
+          if (requestPath === '/backend') {
+            this.backend_serve(request, response);
+            return;
+          }
           if (this.webRoot !== undefined) {
             staticRequest_handle(this.webRoot, request, response);
             return;
@@ -438,6 +442,26 @@ export class CalypsoDaemon {
       this.wss = null;
       this.httpServer = null;
     });
+  }
+
+  /**
+   * Says which backend the session runs over, before a surface builds:
+   * `{"backend": "chris"}`. A surface chooses its composition from it, and
+   * the attach answer says the same once it attaches. The attach token gates
+   * it as it gates `/vfs` (a wrong one is not found).
+   *
+   * @param request - The incoming HTTP request.
+   * @param response - The response to write.
+   */
+  private backend_serve(request: IncomingMessage, response: ServerResponse): void {
+    const query: URLSearchParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
+    if (!token_matches(this.token, query.get('token') ?? '')) {
+      response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+      response.end('not found');
+      return;
+    }
+    response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+    response.end(JSON.stringify({ backend: this.backend ?? null }));
   }
 
   /**

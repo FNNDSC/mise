@@ -394,6 +394,17 @@ export class LayoutManager {
   }
 
   /**
+   * Whether a preset is registered (a composition's own presets are only
+   * under that composition).
+   *
+   * @param name - The preset.
+   * @returns True when it is registered.
+   */
+  public preset_has(name: string): boolean {
+    return this.presets.has(name);
+  }
+
+  /**
    * Applies a preset: builds its tree, restores its remembered ratios, and
    * renders with the arrival glide.
    *

@@ -7161,3 +7161,12 @@ body[data-zoom] #header-strip {
   outline: 2px solid var(--butter);
   outline-offset: -2px;
 }
+
+/* What a composition owns in the page's own markup (ChRIS: RUNS and PACS in
+ * the gutter and the empty pane, the PACS workspace, the GATHER pill, the
+ * index instrument) stands only under that composition; a session over
+ * another backend has the frame alone. One declaration on the body
+ * (`data-composition`) carries which. */
+body:not([data-composition="chris"]) [data-composition="chris"] {
+  display: none !important;
+}

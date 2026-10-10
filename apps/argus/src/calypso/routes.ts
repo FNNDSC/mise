@@ -93,6 +93,37 @@ export function vfsUrl_build(path: string, token: string): string {
 }
 
 /**
+ * Builds the URL that names the session's backend before the surface builds.
+ *
+ * @param token - The attach token, or the empty string when a door holds it.
+ * @returns A URL the browser resolves against the page's own location.
+ */
+export function backendUrl_build(token: string): string {
+  return token.length > 0 ? `backend?token=${encodeURIComponent(token)}` : 'backend';
+}
+
+/**
+ * Asks the daemon which backend the session runs over, so the surface draws
+ * that composition. A daemon older than the question, or one that cannot be
+ * asked, is ChRIS, as the attach answer's absent backend is.
+ *
+ * @param token - The attach token, or the empty string when a door holds it.
+ * @param fetcher - How to ask (the page's fetch).
+ * @returns The backend id.
+ */
+export async function backend_ask(token: string, fetcher: (url: string) => Promise<{ ok: boolean; json(): Promise<unknown> }> = (url: string) => fetch(url)): Promise<string> {
+  try {
+    const answer = await fetcher(backendUrl_build(token));
+    if (!answer.ok) return 'chris';
+    const body: unknown = await answer.json();
+    const id: unknown = typeof body === 'object' && body !== null ? (body as { backend?: unknown }).backend : null;
+    return typeof id === 'string' && id.length > 0 ? id : 'chris';
+  } catch {
+    return 'chris';
+  }
+}
+
+/**
  * Builds the URL that brings one path's bytes DOWN as a file: the same
  * route as `vfsUrl_build`, asked for an attachment, which the daemon
  * names after the file. Put behind an anchor's `download`, the browser

@@ -171,6 +171,30 @@ describe('packageWebRoot_find', () => {
   });
 });
 
+describe('the daemon names its backend before a surface builds', () => {
+  it('answers /backend with the backend for the attach token, and nothing for any other', async () => {
+    const daemon = new CalypsoDaemon({ engine: stubEngine_create(), token: TOKEN, backend: 'null' });
+    const port: number = await daemon.start();
+    try {
+      const named = await http_get(`http://127.0.0.1:${port}/backend?token=${TOKEN}`);
+      expect(named.status).toBe(200);
+      expect(named.type).toContain('application/json');
+      expect(JSON.parse(named.body)).toEqual({ backend: 'null' });
+      expect((await http_get(`http://127.0.0.1:${port}/backend?token=wrong`)).status).toBe(404);
+      expect((await http_get(`http://127.0.0.1:${port}/backend`)).status).toBe(404);
+    } finally {
+      await daemon.stop();
+    }
+    const unnamed = new CalypsoDaemon({ engine: stubEngine_create(), token: TOKEN });
+    const port2: number = await unnamed.start();
+    try {
+      expect(JSON.parse((await http_get(`http://127.0.0.1:${port2}/backend?token=${TOKEN}`)).body)).toEqual({ backend: null });
+    } finally {
+      await unnamed.stop();
+    }
+  });
+});
+
 describe('CalypsoDaemon static serving', () => {
   let daemon: CalypsoDaemon;
   let port: number;

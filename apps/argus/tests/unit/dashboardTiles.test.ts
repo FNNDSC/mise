@@ -36,4 +36,13 @@ describe('the dashboard tiles', () => {
     expect(keys(await dashboardTiles_build(hooks(3, contribution(10)))())).toEqual(['analyses', 'files', 'pacs', 'panes', 'universe', 'help', 'notes', 'console']);
     expect(keys(await dashboardTiles_build(hooks(30, contribution(10)))())).toEqual(['files', 'analyses', 'pacs', 'panes', 'universe', 'help', 'notes', 'console']);
   });
+
+  it('lets a composition say what FILES holds, and says something neutral without one', async () => {
+    const alone = await dashboardTiles_build(hooks(3))();
+    expect(alone.find((t) => t.key === 'files')?.about.text).toBe('Your home: the files this session holds.');
+    const chris = async (): Promise<TileContribution> => ({ afterFiles: [], afterPanes: [], about: { files: { text: 'Your ChRIS home.' } } });
+    const composed = await dashboardTiles_build(hooks(3, chris))();
+    expect(composed.find((t) => t.key === 'files')?.about.text).toBe('Your ChRIS home.');
+  });
 });
+

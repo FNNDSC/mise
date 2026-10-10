@@ -18,7 +18,7 @@
  * @module
  */
 import chalk from 'chalk';
-import { logo_frameRender, logoColumns_count, logoRows_count } from '@fnndsc/brasa';
+import { logo_frameRender, logoColumns_count, logoRows_count } from '@fnndsc/brasa/core';
 
 /** One labeled fact shown on the face's identity panel. */
 export interface FaceInfo {

@@ -17,4 +17,6 @@ export * from './core/question.js';
 export * from './core/progress.js';
 export * from './core/commandRegistry.js';
 export * from './core/tasks.js';
+export * from './core/version.js';
+export * from './logo/brain.js';
 export { nullBackend_make, type NullBackendOptions } from './null/backend.js';

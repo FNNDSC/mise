@@ -18,12 +18,12 @@ import { bundledWebRoot_find, webRoot_resolve, webRootBuild_read, webRootVersion
 import { hostFqdn_get } from './host.js';
 import { codeWatch_start, type CodeWatch } from './codeIdentity.js';
 import { token_generate } from './token.js';
-import type { BrasaEngine } from '@fnndsc/brasa';
+import type { BrasaEngine } from '@fnndsc/brasa/core';
 import type { ProgressEvent, PromptContext } from '@fnndsc/menu';
 import type { OutputSink, Surface, SurfaceCapabilities, SurfacePeer, PromptRequest, LocalEditRequest, LocalEditResult } from '@fnndsc/menu/surface';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
-import { backend_get, type Backend, type SessionIdentity } from '@fnndsc/brasa';
-import { stackBanner_rows, stackBannerRow_paint, versions_get, buildHash_get } from '@fnndsc/brasa';
+import { backend_get, type Backend, type SessionIdentity } from '@fnndsc/brasa/core';
+import { stackBanner_rows, stackBannerRow_paint, versions_get, buildHash_get } from '@fnndsc/brasa/core';
 import { identity_normalise, berth_write, berth_read, berth_path, berthUrl_isAlive, closing_take, type Berth } from './berth.js';
 import type { ClosingCause } from '@fnndsc/menu';
 import { attachFile_write, attachFile_remove } from './attachFile.js';

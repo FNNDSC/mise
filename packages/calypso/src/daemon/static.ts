@@ -186,29 +186,23 @@ export function webRootBuild_read(webRoot: string): WebRootBuild | null {
 const CHECKOUT_SEARCH_DEPTH: number = 6;
 
 /**
- * Finds the argus bundle belonging to the checkout that built this calypso.
+ * Finds the built bundle an installed package ships in its `dist`, when that
+ * package can be resolved from here. calypso depends on no surface: a
+ * launcher that does (chell, with ARGUS) resolves its own, and this answers
+ * only when such a package happens to be installed beside calypso.
  *
- * The daemon is launched from wherever the operator happens to stand, so the
- * working directory cannot locate the bundle; this walks up from this module's
- * own path instead, which ties the served surface to the same tree as the
- * engine serving it. A published install has no such enclosing checkout and
- * simply finds nothing.
- *
- * @returns The absolute bundle directory, or null when no checkout encloses
- *   this module.
+ * @param packageName - The package that ships the bundle (ARGUS: `@fnndsc/argus`).
+ * @param from - Where to resolve it from (a module URL); calypso's own when not given.
+ * @returns The absolute bundle directory, or null when the package is not
+ *   installed or ships no built bundle.
  */
-export function installedWebRoot_find(): string | null {
+export function packageWebRoot_find(packageName: string, from: string = import.meta.url): string | null {
   try {
-    // `@fnndsc/argus` ships its built bundle, so a PUBLISHED install can serve
-    // the surface too. Before this, the web root was only ever found by walking
-    // up to an enclosing checkout — which an npm install does not have — so a
-    // released daemon served the wire and nothing a browser could load.
-    const resolve: (specifier: string) => string = createRequire(import.meta.url).resolve;
-    const manifest: string = resolve('@fnndsc/argus/package.json');
+    const resolve: (specifier: string) => string = createRequire(from).resolve;
+    const manifest: string = resolve(`${packageName}/package.json`);
     const candidate: string = path.join(path.dirname(manifest), 'dist');
     return existsSync(path.join(candidate, 'index.html')) ? candidate : null;
   } catch {
-    // Not installed. The checkout walk below is the other way to find it.
     return null;
   }
 }

@@ -16,6 +16,7 @@ import { realpathSync } from 'node:fs';
 import { engine_create, sessionConnect_fromSaved, versionReport_build, type BrasaEngine, type SavedSessionResult } from '@fnndsc/brasa';
 import chalk from 'chalk';
 import { daemon_launch, type DaemonLaunchInfo } from './daemon/launch.js';
+import { packageWebRoot_find } from './daemon/static.js';
 import { daemonConsole_run } from './daemon/consoleSession.js';
 import { hostControl_parseArgv, type HostControlPolicy } from './daemon/hostControl.js';
 import { LocalBerthResolver, berthUrl_isAlive, type Berth } from './daemon/berth.js';
@@ -42,7 +43,11 @@ async function calypso_start(): Promise<void> {
     process.exit(1);
   }
   const policy: HostControlPolicy = parsedPolicy.policy;
-  const info: DaemonLaunchInfo = await daemon_launch(engine, undefined, { hostControl: policy });
+  // The calypso command still defaults to ARGUS, when it is installed beside it.
+  const info: DaemonLaunchInfo = await daemon_launch(engine, undefined, {
+    hostControl: policy,
+    webRoot: packageWebRoot_find('@fnndsc/argus'),
+  });
   // The boot ends at a login, the same as `chell --daemon`: on a TTY the
   // daemon's own terminal becomes its first surface, an ordinary
   // `chell --remote` spawned onto it. Off a TTY (systemd, nohup) there is

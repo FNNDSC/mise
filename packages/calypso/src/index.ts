@@ -74,6 +74,7 @@ export {
 } from './daemon/hostControl.js';
 export { RequestBroker } from './daemon/broker.js';
 export { daemon_launch, daemonSurface_create, DaemonSink, type DaemonLaunchInfo } from './daemon/launch.js';
+export { packageWebRoot_find } from './daemon/static.js';
 export {
   face_start,
   face_boot,

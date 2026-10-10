@@ -156,6 +156,7 @@ jest.unstable_mockModule('@fnndsc/calypso', () => ({
   identity_normalise: (user: string, url: string): string => `${user}@${url}`,
   hostControl_fromInputs: (): { policy: { tiers: Set<string>; exposed: boolean } } => ({ policy: { tiers: new Set<string>(), exposed: false } }),
   hostControl_describe: (): string => '',
+  packageWebRoot_find: (name: string): string => `/installed/${name}/dist`,
 }));
 
 const {
@@ -248,7 +249,11 @@ describe('daemonSession_run', () => {
     expect(report).toHaveBeenCalledWith('ok', 'Engine', 'Ready');
     expect(report).toHaveBeenCalledWith('ok', 'Topology', 'Ready — 12/12 jobs indexed');
     expect(mockTopologyWarmup).toHaveBeenCalledTimes(1);
-    expect(mockDaemonLaunch).toHaveBeenCalledWith(engine, expect.any(Function), { hostControl: { tiers: new Set<string>(), exposed: false } });
+    // chell passes ARGUS's installed bundle: calypso depends on no surface.
+    expect(mockDaemonLaunch).toHaveBeenCalledWith(engine, expect.any(Function), {
+      hostControl: { tiers: new Set<string>(), exposed: false },
+      webRoot: '/installed/@fnndsc/argus/dist',
+    });
 
     const readyOrder: number = report.mock.invocationCallOrder[report.mock.calls.findIndex((call: unknown[]) => call[1] === 'Engine')];
     expect(readyOrder).toBeLessThan(mockDaemonListen.mock.invocationCallOrder[0]);

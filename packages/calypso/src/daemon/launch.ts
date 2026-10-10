@@ -14,7 +14,7 @@
 import * as path from 'node:path';
 import chalk from 'chalk';
 import { CalypsoDaemon, type PromptLastCommand } from './server.js';
-import { bundledWebRoot_find, installedWebRoot_find, webRoot_resolve, webRootBuild_read, webRootVersion_read, type WebRootBuild } from './static.js';
+import { bundledWebRoot_find, webRoot_resolve, webRootBuild_read, webRootVersion_read, type WebRootBuild } from './static.js';
 import { hostFqdn_get } from './host.js';
 import { codeWatch_start, type CodeWatch } from './codeIdentity.js';
 import { token_generate } from './token.js';
@@ -168,6 +168,12 @@ function promptProvider_of(
  */
 export interface DaemonLaunchOptions {
   hostControl?: HostControlPolicy;
+  /**
+   * The web surface's built bundle, as the launcher found it (chell finds
+   * ARGUS); `CALYPSO_WEB_ROOT` and a bundle in the working directory or the
+   * enclosing checkout come first. calypso itself depends on no surface.
+   */
+  webRoot?: string | null;
 }
 
 export async function daemon_launch(
@@ -205,18 +211,17 @@ export async function daemon_launch(
   }
 
   const token: string = token_generate();
-  // The web surface (argus) is served from the same port as the wire when a
-  // built bundle is found: an explicit CALYPSO_WEB_ROOT wins, then the working
+  // The web surface is served from the same port as the wire when a built
+  // bundle is found: an explicit CALYPSO_WEB_ROOT wins, then the working
   // directory, then the checkout enclosing this module — so a dev-tree
   // `chell --daemon` serves the surface from any directory, with no
-  // configuration at all.
+  // configuration at all — and last the bundle the launcher found (an
+  // installed ARGUS, for somebody who installed rather than cloned).
   const webRoot: string | null = webRoot_resolve([
     process.env['CALYPSO_WEB_ROOT'],
     path.join(process.cwd(), 'apps', 'argus', 'dist'),
     bundledWebRoot_find() ?? undefined,
-    // Last, and the one that matters to somebody who installed rather than
-    // cloned: the bundle `@fnndsc/argus` ships.
-    installedWebRoot_find() ?? undefined,
+    options.webRoot ?? undefined,
   ]);
   // Loopback is the posture; CALYPSO_BIND is a deliberate, per-launch
   // opt-out for demos on a trusted network. The attach token still gates

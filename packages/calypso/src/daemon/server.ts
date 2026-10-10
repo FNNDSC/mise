@@ -164,6 +164,8 @@ export interface DaemonOptions {
   telemetryProvider?: () => TelemetrySnapshot;
   /** The hosting process's versions and build hash, reported on attach. */
   stack?: DaemonStackInfo;
+  /** The session's backend id, reported on attach so a surface draws its composition. */
+  backend?: string;
   webRoot?: string;
   /** The host-control tiers this daemon declares (empty or absent when off). */
   hostControl?: string[];
@@ -224,6 +226,7 @@ export class CalypsoDaemon {
   /** Whether the last pushed prompt context carried active warm-up. */
   private promptWarmupActive: boolean = false;
   private readonly stack: DaemonStackInfo | undefined;
+  private readonly backend: string | undefined;
   /** Whether the daemon's own code on disk has moved on since it started. */
   private stale: boolean = false;
   private readonly codeCheck: (() => void) | undefined;
@@ -288,6 +291,7 @@ export class CalypsoDaemon {
     this.promptProvider = options.promptProvider;
     this.telemetryProvider = options.telemetryProvider;
     this.stack = options.stack;
+    this.backend = options.backend;
     this.webRoot = options.webRoot;
     this.hostControl = options.hostControl ?? [];
     this.codeCheck = options.codeCheck;
@@ -725,6 +729,7 @@ export class CalypsoDaemon {
       surface: surface.id,
       protocolVersion: CONTRACT_VERSION,
       ...(this.stack !== undefined ? { stack: this.stack } : {}),
+      ...(this.backend !== undefined ? { backend: this.backend } : {}),
       // Declared state, present from the first frame: a surface's lamp and a
       // remote shell's banner read it, never infer it.
       hostControl: this.hostControl,

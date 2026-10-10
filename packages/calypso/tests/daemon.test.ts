@@ -108,6 +108,22 @@ describe('CalypsoDaemon', () => {
     expect(typeof msg.session).toBe('string');
   });
 
+  it('names the session\'s backend in the ack when told it, and nothing when not', async () => {
+    const plain = await client_open(port);
+    clients.push(plain);
+    const first = message_next(plain);
+    send(plain, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+    expect((await first).backend).toBeUndefined();
+    await daemon.stop();
+    daemon = new CalypsoDaemon({ engine, token: TOKEN, backend: 'null' });
+    port = await daemon.start();
+    const ws = await client_open(port);
+    clients.push(ws);
+    const acked = message_next(ws);
+    send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+    expect((await acked).backend).toBe('null');
+  });
+
   it('says in the ack whether its own code moved, checks again on each attach, and pushes the flip', async () => {
     await daemon.stop();
     let checks: number = 0;

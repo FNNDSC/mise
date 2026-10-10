@@ -98,6 +98,19 @@ export interface AttachInfo {
   stale?: boolean;
   /** This surface's own id on the daemon; absent from older daemons. */
   surface?: string;
+  /** The session's backend id; absent from older daemons, which are all ChRIS. */
+  backend?: string;
+}
+
+/**
+ * The backend a session runs over, as a surface reads it: the daemon's word,
+ * or ChRIS when the daemon is older than the word.
+ *
+ * @param attach - The attach answer.
+ * @returns The backend id.
+ */
+export function attachBackend_get(attach: AttachInfo): string {
+  return attach.backend ?? 'chris';
 }
 
 /**
@@ -303,6 +316,7 @@ export class ArgusClient {
             ...(message.hostControl !== undefined ? { hostControl: message.hostControl } : {}),
             ...(message.stale !== undefined ? { stale: message.stale } : {}),
             ...(message.surface !== undefined ? { surface: message.surface } : {}),
+            ...(message.backend !== undefined ? { backend: message.backend } : {}),
           },
         });
       };

@@ -47,7 +47,9 @@ import { DagPanel } from '../features/dag/panel.js';
 import { UniversePanel } from '../features/universe/panel.js';
 import { paneAsk_open, type PaneAskRequest } from '../features/ask/paneAsk.js';
 import { PacsPanel } from '../features/pacs/panel.js';
-import { EmptyPanel, type ClaimKind } from '../features/empty/panel.js';
+import { EmptyPanel } from '../features/empty/panel.js';
+import { ModelRouter, type PaneClaim } from '../frame/modelRouter.js';
+import { chrisRoutes_install } from '../compositions/chris/routes.js';
 import { ViewerPanel } from '../features/view/panel.js';
 import { ImagePanel, type SeriesChoice } from '../features/image/panel.js';
 import { TagsPanel } from '../features/tags/panel.js';
@@ -2233,40 +2235,49 @@ async function surface_start(token: string): Promise<void> {
   });
 
   // A claimed empty pane becomes what its command projected.
-  const pane_claim = (emptyId: string, kind: ClaimKind, envelopes: WireEnvelope[]): void => {
-    if (kind === 'pacs') {
-      // The PACS workspace claims the whole region by design.
-      layout.preset_apply('pacs');
-      orphans_dispose();
-      for (const envelope of envelopes) {
-        pacsPanel.envelope_observe(envelope);
-      }
-      return;
-    }
+  // Where a model goes: the frame's router, filled by the session's
+  // composition (ChRIS: RUNS, the universe, PACS, DICOM images and tags).
+  const router: ModelRouter = new ModelRouter();
+  /** Turns an empty pane into a new pane of a kind. */
+  const pane_replace = (emptyId: string, kind: PaneKind): PaneInstance => {
     const instance: PaneInstance = instance_spawn(kind);
     layout.leaf_replace(emptyId, instance.id);
     paneInstance_dispose(emptyId);
     layout.mount_remove(emptyId);
-    if (kind === 'tags') {
-      const tagsPanel: TagsPanel | undefined = panels.get('tags', instance.id);
-      for (const envelope of envelopes) {
-        if (envelope.model?.kind !== DICOM_MODEL_KINDS.tags) continue;
-        const parsed = dicomTagsModelSchema.safeParse(envelope.model.data);
-        if (parsed.success) tagsPanel?.model_show(parsed.data);
-      }
+    return instance;
+  };
+  // A listing claims an empty pane as files: the frame's own.
+  router.claim_add('fs.listing', 'files');
+  chrisRoutes_install(router, {
+    dag_target: (): DagPanel => {
+      const focused: string | null = layout.focused_get();
+      return focused !== null && panels.has('dag', focused) ? (panels.get('dag', focused) as DagPanel) : dagPanel;
+    },
+    dags: (): DagPanel[] => [dagPanel, ...panels.values('dag')],
+    universes: (): UniversePanel[] => panels.values('universe'),
+    pacs: (): PacsPanel => pacsPanel,
+    pacs_present: (): void => {
+      layout.preset_apply('pacs');
+      orphans_dispose();
+    },
+    image_open: (path: string, force: boolean): void => {
+      void image_open(layout.focused_get(), path, force ? { force: true } : {})
+        .then((line: string): void => terminal.line_note(line));
+    },
+    pane_replace: (emptyId: string, kind: 'dag' | 'image' | 'tags'): string => pane_replace(emptyId, kind).id,
+    dag_get: (id: string): DagPanel | undefined => panels.get('dag', id),
+    image_get: (id: string): ImagePanel | undefined => panels.get('image', id),
+    tags_get: (id: string): TagsPanel | undefined => panels.get('tags', id),
+  });
+
+  const pane_claim = (emptyId: string, kind: PaneKind, envelopes: WireEnvelope[]): void => {
+    const claimer: PaneClaim | undefined = router.claimer_get(kind);
+    if (claimer !== undefined) {
+      claimer(emptyId, envelopes);
       return;
     }
-    if (kind === 'image') {
-      const imagePanel: ImagePanel | undefined = panels.get('image', instance.id);
-      for (const envelope of envelopes) {
-        if (envelope.model?.kind !== DICOM_MODEL_KINDS.series) continue;
-        const parsed = dicomSeriesModelSchema.safeParse(envelope.model.data);
-        if (parsed.success) void imagePanel?.series_show(parsed.data);
-      }
-      return;
-    }
-    const panel: FilesPanel | DagPanel | undefined =
-      kind === 'files' ? panels.get('files', instance.id) : panels.get('dag', instance.id);
+    const instance: PaneInstance = pane_replace(emptyId, kind);
+    const panel: FilesPanel | undefined = panels.get('files', instance.id);
     for (const envelope of envelopes) {
       panel?.envelope_observe(envelope);
     }
@@ -2296,7 +2307,8 @@ async function surface_start(token: string): Promise<void> {
     new EmptyPanel(mount, {
       execute: (line: string): Promise<ExecuteOutcome> =>
         client.line_execute(line, { silent: true, observe: false }),
-      claim: (kind: ClaimKind, envelopes: WireEnvelope[]): void => pane_claim(id, kind, envelopes),
+      claim: (kind: PaneKind, envelopes: WireEnvelope[]): void => pane_claim(id, kind, envelopes),
+      claimKind_of: (modelKind: string): PaneKind | undefined => router.claimKind_of(modelKind),
     });
     return { id, kind: 'empty', mount };
   });
@@ -2702,21 +2714,11 @@ async function surface_start(token: string): Promise<void> {
           for (const panel of panels.values('files')) panel.ambient_observe(envelope);
           return;
         }
-        if (envelope.model?.kind !== 'feed.dag') return;
-        const parsed = feedDagModelSchema.safeParse(envelope.model.data);
-        if (!parsed.success) return;
-        dagPanel.model_refresh(parsed.data);
-        for (const panel of panels.values('dag')) panel.model_refresh(parsed.data);
-        // A universe inside the feed is live too (a-feed-has-one-view).
-        for (const panel of panels.values('universe')) panel.model_refresh(parsed.data);
+        router.route('ambient', envelope);
       },
       stale_receive: (stale: boolean): void => { daemonStale = stale; buildWatch.stale_take(stale); },
       closing_receive: (cause: ClosingCause): void => restart.closing_take(cause),
-      watched_receive: (subject: string, state: WatchState): void => {
-        dagPanel.watched_observe(subject, state);
-        for (const panel of panels.values('dag')) panel.watched_observe(subject, state);
-        for (const panel of panels.values('universe')) panel.watched_observe(subject, state);
-      },
+      watched_receive: (subject: string, state: WatchState): void => router.watched(subject, state),
       // Which listing the session's numbers count. Every listing's index
       // pills repaint from it, so the rows wearing a number are exactly the
       // rows `@N` reaches — on whichever pane happens to hold them.
@@ -2724,33 +2726,15 @@ async function surface_start(token: string): Promise<void> {
         listingNumbering_set({ source: numbering.source, handles: numbering.handles });
       },
       envelope_observe: (envelope: WireEnvelope): void => {
-        // The claim rule for console-issued models: a DAG-shaped model goes
-        // to the focused DAG instance when one is focused, else the primary.
+        // The composition's routes take their models first (ChRIS: a DAG to
+        // the focused DAG pane, an image intent to an image pane).
         const kind: string | undefined = envelope.model?.kind;
-        if (kind === IMAGE_MODEL_KINDS.view) {
-          // `image <path>` is a kernel command; the intent it emits opens the
-          // pane here, so the same command works from a TTY (which prints the
-          // reflection) and from this surface (which renders it).
-          const parsed = imageViewModelSchema.safeParse(envelope.model?.data);
-          if (parsed.success) {
-            void image_open(layout.focused_get(), parsed.data.path, parsed.data.force === true ? { force: true } : {})
-              .then((line: string): void => terminal.line_note(line));
-          }
-          return;
-        }
-        if (kind === 'feed.dag' || kind === 'feed.list' || kind === DAG_MODEL_KINDS.feedIndexing) {
-          const focused: string | null = layout.focused_get();
-          const target: DagPanel =
-            focused !== null && panels.has('dag', focused)
-              ? (panels.get('dag', focused) as DagPanel)
-              : dagPanel;
-          target.envelope_observe(envelope);
-        } else {
+        if (!router.route('console', envelope)) {
           // A console listing reaches every browser bound to the cwd.
           for (const [paneId, panel] of panels.entries('files')) {
             if (browser.follows(paneId)) panel.envelope_observe(envelope);
           }
-          pacsPanel.envelope_observe(envelope);
+          router.observe('console', envelope);
           // A verb that changed a folder does not re-list it: `rm` reports
           // what it removed, `mv` what it moved. A browser showing that
           // folder asks for it again, or it shows rows that are gone —

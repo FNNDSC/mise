@@ -17,14 +17,17 @@ cuminMock_install(() => ({
 }));
 jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: { getCWD: jest.fn(async () => '/home/chris') } }));
-const mockTouch = jest.fn(async (_path: string, _options: unknown): Promise<boolean> => true);
-jest.unstable_mockModule('@fnndsc/chili/commands/fs/touch.js', () => ({ files_touch: mockTouch }));
-jest.unstable_mockModule('@fnndsc/chili/views/fs.js', () => ({ touch_render: (p: string): string => `Wrote file: ${p}` }));
+// touch writes through the session's filesystem; its writes are recorded here.
+const mockWrite = jest.fn(async (_path: string, _content: string) => ({ ok: true as const, value: true as const }));
+jest.unstable_mockModule('../src/core/filesystem.js', () => ({
+  vfsDispatcher_get: () => ({ path_isVirtual: (p: string): boolean => p.startsWith('/proc'), write: mockWrite }),
+  listingCache_get: () => ({ cache_invalidate: jest.fn() }),
+}));
 
 const { builtin_touch } = await import('../src/builtins/fs/touch.js');
 const { commandArgs_process } = await import('../src/builtins/utils.js');
 
-beforeEach((): void => { mockTouch.mockClear(); });
+beforeEach((): void => { mockWrite.mockClear(); });
 
 describe('an empty value', () => {
   it('is carried by a long flag, never dropped into the positionals', () => {
@@ -34,13 +37,13 @@ describe('an empty value', () => {
 
   it("writes an empty file: touch --withContents '' f", async () => {
     const env = await builtin_touch(['--withContents', '', '/proc/jobs/feed_12/note']);
-    expect(mockTouch).toHaveBeenCalledTimes(1);
-    expect(mockTouch).toHaveBeenCalledWith('/proc/jobs/feed_12/note', { withContents: '' });
+    expect(mockWrite).toHaveBeenCalledTimes(1);
+    expect(mockWrite).toHaveBeenCalledWith('/proc/jobs/feed_12/note', '');
     expect(env.status).toBe('ok');
   });
 
   it('takes a text beginning with a dash in the = form', async () => {
     await builtin_touch(['--withContents=- item one\n- item two', '/home/chris/list.yaml']);
-    expect(mockTouch).toHaveBeenCalledWith('/home/chris/list.yaml', { withContents: '- item one\n- item two' });
+    expect(mockWrite).toHaveBeenCalledWith('/home/chris/list.yaml', '- item one\n- item two');
   });
 });

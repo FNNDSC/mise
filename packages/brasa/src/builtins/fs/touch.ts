@@ -3,13 +3,12 @@
  * Creates files, reported as a command envelope.
  */
 import chalk from 'chalk';
+import fs from 'fs';
 import path from 'path';
-import { listCache_get } from '@fnndsc/cumin';
-import type { ListCache } from '@fnndsc/cumin';
-import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve, error_stripDebugPrefix } from '../utils.js';
-import { files_touch as chefs_touch_cmd, TouchOptions } from '@fnndsc/chili/commands/fs/touch.js';
-import { touch_render } from '@fnndsc/chili/views/fs.js';
-import { errorStack, type StackMessage } from '@fnndsc/fond';
+import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
+import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
+import { entry_at, entry_isFolder } from './entries.js';
+import { errno_words, touch_render, vfs_fail, type VFSDispatcher, type VFSItem, type VfsOutcome } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** Outcome of one touch target, for the envelope model. */
@@ -26,6 +25,47 @@ export interface TouchRunOptions {
   contents?: string;
   /** Local file whose content is uploaded into the (single) target file. */
   contentsFromFile?: string;
+}
+
+/**
+ * Reads the local file whose text a touch writes.
+ *
+ * @param localFilePath - The path on this host.
+ * @returns Its text, or why it could not be read.
+ */
+function localFile_read(localFilePath: string): { text: string } | { reason: string } {
+  try {
+    if (!fs.existsSync(localFilePath)) return { reason: `Local file not found: ${localFilePath}` };
+    return { text: fs.readFileSync(localFilePath, 'utf-8') };
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    return { reason: `Failed to read local file ${localFilePath}: ${msg}` };
+  }
+}
+
+/**
+ * Touches one file. With content it is written whole, replacing what was
+ * there. Without, a file already there is left as it is (its content kept)
+ * and a missing one is made empty. A projected file takes text only. A
+ * missing parent folder is `No such file or directory`, as on a disk:
+ * touch makes no folders (mkdir -p does).
+ *
+ * @param dispatcher - The session's filesystem.
+ * @param targetPath - The absolute path.
+ * @param content - The text to write, or none.
+ * @returns Done, or why not.
+ */
+async function file_touch(dispatcher: VFSDispatcher, targetPath: string, content: string | undefined): Promise<VfsOutcome> {
+  if (content === undefined) {
+    if (dispatcher.path_isVirtual(targetPath)) {
+      return vfs_fail('EROFS', `touch: ${targetPath}: a projected file takes text (--withContents)`);
+    }
+    const there: VFSItem | null = await entry_at(dispatcher, targetPath);
+    if (entry_isFolder(there)) return vfs_fail('EISDIR', `Is a directory: a folder already holds ${targetPath}`);
+    if (there !== null) return { ok: true, value: true };
+  }
+  const written: VfsOutcome = await dispatcher.write(targetPath, content ?? '');
+  return written.ok || written.errno !== 'EISDIR' ? written : vfs_fail('EISDIR', `Is a directory: a folder already holds ${targetPath}`);
 }
 
 /**
@@ -47,44 +87,37 @@ export async function touch_run(runOptions: TouchRunOptions): Promise<CommandEnv
     );
   }
 
-  const options: TouchOptions = {};
   // Empty text is text: `--withContents ''` writes an empty file.
-  if (runOptions.contents !== undefined) {
-    options.withContents = runOptions.contents;
-  }
+  let content: string | undefined = runOptions.contents;
   if (runOptions.contentsFromFile) {
-    options.withContentsFromFile = runOptions.contentsFromFile;
+    const read: { text: string } | { reason: string } = localFile_read(runOptions.contentsFromFile);
+    if ('reason' in read) {
+      return envelope_error('', undefined, `${chalk.red(`Failed to write file: ${pathArgs[0]}`)}\n${chalk.gray(`  ${read.reason}`)}\n`);
+    }
+    content = read.text;
   }
+  const wrote: boolean = content !== undefined;
 
-  // Only process the first file argument when injecting content
-  const filesToTouch: string[] = (options.withContents !== undefined || options.withContentsFromFile)
-    ? [pathArgs[0]]
-    : pathArgs;
+  // Only the first path takes content.
+  const filesToTouch: string[] = wrote ? [pathArgs[0]] : pathArgs;
 
   let rendered: string = '';
   let renderedErr: string = '';
   const outcomes: TouchOutcome[] = [];
+  const dispatcher: VFSDispatcher = vfsDispatcher_get();
 
   for (const pathArg of filesToTouch) {
     try {
       const targetPath: string = await path_resolve(pathArg);
-      const success: boolean = await chefs_touch_cmd(targetPath, options);
+      const done: VfsOutcome = await file_touch(dispatcher, targetPath, content);
 
-      if (success) {
-        rendered += `${touch_render(targetPath, success, options.withContents !== undefined || options.withContentsFromFile !== undefined)}\n`;
+      if (done.ok) {
+        rendered += `${touch_render(targetPath, true, wrote)}\n`;
         outcomes.push({ path: targetPath, created: true });
-
-        // Invalidate cache for parent directory
-        const listCache: ListCache = listCache_get();
-        const parentDir: string = path.posix.dirname(targetPath);
-        listCache.cache_invalidate(parentDir);
+        listingCache_get().cache_invalidate?.(path.posix.dirname(targetPath));
       } else {
-        // Touch failed, report the error from errorStack
-        const lastError: StackMessage | undefined = errorStack.stack_pop();
         renderedErr += `${chalk.red(`Failed to create file: ${targetPath}`)}\n`;
-        if (lastError) {
-          renderedErr += `${chalk.gray(`  ${error_stripDebugPrefix(lastError.message)}`)}\n`;
-        }
+        renderedErr += `${chalk.gray(`  ${done.reason ?? errno_words(done.errno)}`)}\n`;
         outcomes.push({ path: targetPath, created: false });
       }
     } catch (e: unknown) {

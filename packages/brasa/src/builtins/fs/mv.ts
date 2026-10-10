@@ -2,17 +2,14 @@
  * @file Builtin mv command.
  * Moves or renames files/directories, reported as a command envelope.
  */
-import { vfsOutcome_toResult } from '@fnndsc/fond';
 import chalk from 'chalk';
 import path from 'path';
-import { listCache_get } from '@fnndsc/cumin';
-import type { ListCache } from '@fnndsc/cumin';
-import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve, error_stripDebugPrefix } from '../utils.js';
-import { vfsDispatcher } from '@fnndsc/salsa';
+import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
+import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
+import type { ListingCache } from '../../core/backend.js';
 import { destination_ask, destination_missing } from './destination.js';
-import { files_mv as chefs_mv_cmd } from '@fnndsc/chili/commands/fs/mv.js';
-import { mv_render } from '@fnndsc/chili/views/fs.js';
-import { errorStack, type StackMessage } from '@fnndsc/fond';
+import { entry_at, entry_isFolder } from './entries.js';
+import { mv_render, vfs_fail, vfsRefusal_text, type VFSDispatcher, type VfsOutcome } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** Outcome of one move source, for the envelope model. */
@@ -84,6 +81,27 @@ export async function builtin_mv(args: string[]): Promise<CommandEnvelope> {
   });
 }
 
+/**
+ * Moves one entry. Into a folder the destination names (or one named with a
+ * trailing slash) it keeps its name; otherwise it takes the destination's.
+ * A rename inside a projection (a tag under /proc/tags) is the projection's,
+ * and across one it refuses.
+ *
+ * @param dispatcher - The session's filesystem.
+ * @param srcPath - The absolute source.
+ * @param destPath - The absolute destination.
+ * @param intoFolder - Whether the destination was written with a trailing slash.
+ * @returns Done, or why not.
+ */
+async function entry_move(dispatcher: VFSDispatcher, srcPath: string, destPath: string, intoFolder: boolean): Promise<VfsOutcome> {
+  if (dispatcher.path_isVirtual(srcPath) || dispatcher.path_isVirtual(destPath)) return dispatcher.rename(srcPath, destPath);
+  if ((await entry_at(dispatcher, srcPath)) === null) return vfs_fail('ENOENT', `Source not found: ${srcPath}`);
+  const finalDest: string = intoFolder || entry_isFolder(await entry_at(dispatcher, destPath))
+    ? path.posix.join(destPath, path.posix.basename(srcPath))
+    : destPath;
+  return dispatcher.rename(srcPath, finalDest);
+}
+
 /** Typed invocation options for mv. */
 export interface MvOptions {
   /** Source paths, absolute or relative to the session cwd. */
@@ -109,7 +127,8 @@ export async function mv_run(options: MvOptions): Promise<CommandEnvelope> {
   }
 
   const destPath: string = await path_resolve(dest);
-  const listCache: ListCache = listCache_get();
+  const listCache: ListingCache = listingCache_get();
+  const dispatcher: VFSDispatcher = vfsDispatcher_get();
   let successCount: number = 0;
   let failCount: number = 0;
   let rendered: string = '';
@@ -127,23 +146,17 @@ export async function mv_run(options: MvOptions): Promise<CommandEnvelope> {
         rendered += `Moving ${srcPath} to ${destPath}...\n`;
       }
 
-      // A rename inside a projection (a tag under /proc/tags) is the
-      // projection's; across one, or in one that renames nothing, it refuses.
-      const success: boolean = vfsDispatcher.path_isVirtual(srcPath) || vfsDispatcher.path_isVirtual(destPath)
-        ? vfsOutcome_toResult(await vfsDispatcher.rename(srcPath, destPath), 'rename', srcPath, destPath).ok
-        : await chefs_mv_cmd(srcPath, destPath);
+      const moved: VfsOutcome = await entry_move(dispatcher, srcPath, destPath, dest.endsWith('/'));
+      const success: boolean = moved.ok;
 
       if (sources.length === 1) {
         rendered += `${mv_render(srcPath, destPath, success)}\n`;
       }
-      if (!success) {
-        // The kernel said WHY on the stack; a bare "Failed to move" makes
-        // an operator guess at a reason that was already known.
-        const reason: StackMessage | undefined = errorStack.stack_pop();
-        if (reason !== undefined) {
-          const said: string = error_stripDebugPrefix(reason.message);
-          renderedErr += `${chalk.red(said.startsWith('mv:') ? said : `mv: ${said}`)}\n`;
-        }
+      if (!moved.ok) {
+        // The mount said WHY; a bare "Failed to move" makes an operator
+        // guess at a reason that was already known.
+        const said: string = moved.reason ?? vfsRefusal_text('rename', moved, srcPath, destPath);
+        renderedErr += `${chalk.red(said.startsWith('mv:') ? said : `mv: ${said}`)}\n`;
       }
 
       outcomes.push({ source: srcPath, moved: success });
@@ -153,8 +166,8 @@ export async function mv_run(options: MvOptions): Promise<CommandEnvelope> {
         // cached beneath the old path would otherwise serve the vanished
         // tree until their TTL expires.
         const srcDir: string = path.posix.dirname(srcPath);
-        listCache.cache_invalidate(srcDir);
-        listCache.cache_invalidateTree(srcPath);
+        listCache.cache_invalidate?.(srcDir);
+        listCache.cache_invalidateTree?.(srcPath);
       } else {
         failCount++;
       }
@@ -168,9 +181,9 @@ export async function mv_run(options: MvOptions): Promise<CommandEnvelope> {
 
   // Invalidate the destination subtree (a moved directory replaces whatever
   // listings were cached beneath it) and its parent.
-  listCache.cache_invalidateTree(destPath);
+  listCache.cache_invalidateTree?.(destPath);
   const destParent: string = path.posix.dirname(destPath);
-  listCache.cache_invalidate(destParent);
+  listCache.cache_invalidate?.(destParent);
 
   // Summary for multiple files
   if (sources.length > 1) {

@@ -20,6 +20,7 @@
 import { more_wire } from '../features/roster/more.js';
 import { type SessionNotes, feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagModelSchema, dicomSeriesModelSchema, dicomTagsModelSchema, imageViewModelSchema, DICOM_MODEL_KINDS, IMAGE_MODEL_KINDS, type DicomSeriesModel, type DicomTagsModel, DAG_MODEL_KINDS, type PromptContext, type WireEnvelope, type WatchState, type FeedDagModel, type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry } from '@fnndsc/menu';
 import { type SceneNode } from '../scene/chrisSpace.js';
+import { element_require, template_stamp, pane_find } from '../frame/dom.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction, type DesktopShape } from './dormant.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { logo_linesRender } from '@fnndsc/menu/logo';
@@ -50,6 +51,7 @@ import { PacsPanel } from '../features/pacs/panel.js';
 import { EmptyPanel } from '../features/empty/panel.js';
 import { ModelRouter, type PaneClaim } from '../frame/modelRouter.js';
 import { chrisRoutes_install } from '../compositions/chris/routes.js';
+import { chrisPanes_make, type ChrisPanes } from '../compositions/chris/panes.js';
 import { ViewerPanel } from '../features/view/panel.js';
 import { ImagePanel, type SeriesChoice } from '../features/image/panel.js';
 import { TagsPanel } from '../features/tags/panel.js';
@@ -200,56 +202,6 @@ function audioPill_wire(): void {
     // Unmuting speaks; muting is, fittingly, silent.
     sound_play('audio2');
   });
-}
-
-/**
- * Fetches a required element by id.
- *
- * @param id - The element id.
- * @returns The element.
- * @throws {Error} When the element does not exist.
- */
-function element_require(id: string): HTMLElement {
-  const element: HTMLElement | null = document.getElementById(id);
-  if (element === null) {
-    throw new Error(`required element #${id} is missing`);
-  }
-  return element;
-}
-
-/**
- * Stamps one pane element from a template.
- *
- * @param templateId - The template's id.
- * @returns The cloned pane element, not yet in the document.
- * @throws {Error} When the template is missing or empty.
- */
-function template_stamp(templateId: string): HTMLElement {
-  const template: HTMLElement = element_require(templateId);
-  if (!(template instanceof HTMLTemplateElement)) {
-    throw new Error(`#${templateId} is not a template`);
-  }
-  const first: Element | null = template.content.firstElementChild;
-  if (!(first instanceof HTMLElement)) {
-    throw new Error(`template #${templateId} is empty`);
-  }
-  return first.cloneNode(true) as HTMLElement;
-}
-
-/**
- * Finds a required descendant of a stamped pane.
- *
- * @param mount - The pane element.
- * @param selector - The descendant's selector.
- * @returns The element.
- * @throws {Error} When absent.
- */
-function pane_find(mount: HTMLElement, selector: string): HTMLElement {
-  const found: HTMLElement | null = mount.querySelector<HTMLElement>(selector);
-  if (found === null) {
-    throw new Error(`pane template is missing ${selector}`);
-  }
-  return found;
 }
 
 /**
@@ -1019,122 +971,6 @@ async function surface_start(token: string): Promise<void> {
   // The image pane: a series or a volume on a guest engine's field, inside
   // mise's frame (docs/aegis.adoc: an-instruments-field-is-foreign,
   // focus-stays-in-the-field).
-  // The UNIVERSE pane: the space of everything run here, its own kind.
-  const universeInstance_build = (id: string): PaneInstance => {
-    const mount: HTMLElement = template_stamp('tpl-pane-universe');
-    const panel: UniversePanel = new UniversePanel(
-      {
-        canvas: pane_find(mount, '.universe-canvas'),
-        title: pane_find(mount, '.universe-title'),
-        state: mount.querySelector<HTMLElement>('.pane-state'),
-        empty: pane_find(mount, '.universe-empty'),
-        projectionPill: mount.querySelector<HTMLElement>('.universe-projection'),
-        refreshPill: mount.querySelector<HTMLElement>('.universe-refresh'),
-        replayPill: mount.querySelector<HTMLElement>('.universe-replay'),
-        scalePill: mount.querySelector<HTMLElement>('.universe-scale'),
-        viewPill: mount.querySelector<HTMLElement>('.universe-view'),
-        gravityPill: mount.querySelector<HTMLElement>('.universe-gravity'),
-        densityPill: mount.querySelector<HTMLElement>('.universe-density'),
-        drawPill: mount.querySelector<HTMLElement>('.universe-draw'),
-        captionsPill: mount.querySelector<HTMLElement>('.universe-captions'),
-        arrangementPill: mount.querySelector<HTMLElement>('.universe-arrangement'),
-        facts: mount.querySelector<HTMLElement>('.universe-facts'),
-        backPill: mount.querySelector<HTMLElement>('.universe-back'),
-        openPill: mount.querySelector<HTMLElement>('.universe-open'),
-        frame: mount.querySelector<HTMLElement>('.mode-frame'),
-      },
-      {
-        // The entered feed is watched, as a RUNS pane watches the feed it shows.
-        watch_set: (subject: string, on: boolean): void => {
-          if (on) client.watch_send(subject);
-          else client.unwatch_send(subject);
-        },
-        // The entered feed's note, tags and name, as a RUNS pane's (a-feed-has-one-view).
-        ...(({ feed_entered, feed_note, feed_tag, feed_rename, feed_untag }) => ({ feed_entered, feed_note, feed_tag, feed_rename, feed_untag }))(feedRowHandlers_make(context, id, feedVerbs)),
-        command_run: (line: string): void => {
-          void client
-            .line_execute(line, { silent: true, observe: false })
-            .then((outcome: ExecuteOutcome): void => {
-              for (const envelope of outcome.envelopes) panel.envelope_observe(envelope);
-            });
-        },
-        // The descent asks the kernel for the feed's graph: the same
-        // `feed diagram` the RUNS pane draws, taken silently here.
-        feed_dag: async (feedId: number): Promise<FeedDagModel | null> => {
-          const outcome: ExecuteOutcome = await client.line_execute(`feed diagram feed_${feedId}`, { silent: true, observe: false });
-          for (const envelope of outcome.envelopes) {
-            if (envelope.model?.kind !== DAG_MODEL_KINDS.feedDag) continue;
-            const parsed = feedDagModelSchema.safeParse(envelope.model.data);
-            if (parsed.success) return parsed.data;
-          }
-          return null;
-        },
-        node_enter: (vfsPath: string): void => {
-          terminal.line_run(`cd "${vfsPath}"`);
-        },
-        // ENTER NODE flies in: the camera into the sphere, a rooted browser
-        // of the node's data inside it, Esc back out — the DAG pane's dive.
-        node_dive: (vfsPath: string): void => {
-          nodeOverlay_open(id, vfsPath.replace(/\/data$/, ''));
-        },
-        node_process: (node: { vfsPath: string; instanceId: number; label: string }): void => {
-          const feed: number | null = feedOf_path(node.vfsPath)
-            ?? (/\/feed_(\d+)(?:\/|$)/.exec(node.vfsPath) === null
-              ? null
-              : Number((/\/feed_(\d+)(?:\/|$)/.exec(node.vfsPath) as RegExpExecArray)[1]));
-          const input: string = promptUser === null
-            ? node.vfsPath
-            : node.vfsPath.replace(/^\/proc\/jobs\//, `/home/${promptUser}/feeds/`);
-          process_open(id, { input, feed, node: node.instanceId });
-        },
-        feed_open: (feedId: number): void => {
-          runs_show();
-          dagPanel.feed_enter(feedId);
-        },
-        // OPEN IN /BIN: the plugin's newest entry, opened in the browser as
-        // every /bin entry opens — its one-node graph.
-        plugin_open: (plugin: string): void => {
-          void (async (): Promise<void> => {
-            const outcome: ExecuteOutcome = await client.line_execute('ls /bin', { silent: true, observe: false });
-            const names: string[] = [];
-            for (const envelope of outcome.envelopes) {
-              if (envelope.model?.kind !== 'fs.listing') continue;
-              // One listing per path asked for.
-              const data: unknown = envelope.model.data;
-              const listings = (Array.isArray(data) ? data : [data]) as Array<{ items?: Array<{ name: string }> }>;
-              for (const listing of listings) for (const item of listing.items ?? []) names.push(item.name);
-            }
-            const entry: string | undefined = names
-              .filter((name: string): boolean => name.startsWith(`${plugin}-v`))
-              .sort((a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true }))
-              .pop();
-            if (entry === undefined) {
-              terminal.line_note(`universe: ${plugin} is not in /bin`);
-              return;
-            }
-            element_require('gutter-files').click();
-            binEntry_show('files', panels.get('files', 'files') as FilesPanel, `/bin/${entry}`, 'plugin');
-          })().catch((error: unknown): void => {
-            terminal.line_note(`universe: could not open ${plugin} in /bin: ${error instanceof Error ? error.message : String(error)}`);
-          });
-        },
-        note: (line: string): void => terminal.line_note(line),
-      },
-      localKeyStore(),
-    );
-    panels.set('universe', id, panel);
-    return {
-      id,
-      kind: 'universe',
-      mount,
-      dispose: (): void => {
-        panels.delete(id);
-        subjects.pane_leave(id);
-        panel.dispose();
-      },
-    };
-  };
-
   const imageInstance_build = (id: string): PaneInstance => {
     const mount: HTMLElement = template_stamp('tpl-pane-image');
     const panel: ImagePanel = new ImagePanel(mount, {
@@ -1643,87 +1479,35 @@ async function surface_start(token: string): Promise<void> {
   const nodeOverlay_open = nodeOverlay.open;
   const nodeOverlay_close = nodeOverlay.close;
 
-  const dagInstance_build = (id: string, primary: boolean): PaneInstance => {
-    const mount: HTMLElement = template_stamp('tpl-pane-dag');
-    const panel: DagPanel = new DagPanel(
-      pane_find(mount, '.dag-canvas'),
-      pane_find(mount, '.dag-title'),
-      pane_find(mount, '.dag-facts'),
-      pane_find(mount, '.dag-empty'),
-      pane_find(mount, '.dag-strategy'),
-      pane_find(mount, '.dag-feedlist'),
-      {
-        command_run: (line: string): void => {
-          // The claim rule: a pane's own requests resolve to it alone.
-          void client
-            .line_execute(line, { silent: true, observe: false })
-            .then((outcome: ExecuteOutcome): void => {
-              for (const envelope of outcome.envelopes) {
-                panel.envelope_observe(envelope);
-              }
-            });
-        },
-        watch_set: (subject: string, on: boolean): void => {
-          if (on) client.watch_send(subject);
-          else client.unwatch_send(subject);
-        },
-        node_enter: (vfsPath: string): void => {
-          terminal.line_run(`cd "${vfsPath}"`);
-        },
-        node_dive: (vfsPath: string): void => {
-          // The immersive root is the node itself — status, params, log,
-          // data, children — not its data link; the label stays honest.
-          nodeOverlay_open(id, vfsPath.replace(/\/data$/, ''));
-        },
-        node_regard: (vfsPath: string): void => {
-          subjects.regard_write(id, { address: vfsPath, modelKind: 'feed.node' });
-        },
-        node_process: (node: { vfsPath: string; instanceId: number; label: string }): void => {
-          // The graph addresses a node by its projection; the catalogue is
-          // bound to the place a run will `cd` into, which is the node's own
-          // data under the session's home. Same place, two names — and the
-          // kernel appends to the instance it finds at the path.
-          const feed: number | null = feedOf_path(node.vfsPath)
-            ?? (/\/feed_(\d+)(?:\/|$)/.exec(node.vfsPath) === null
-              ? null
-              : Number((/\/feed_(\d+)(?:\/|$)/.exec(node.vfsPath) as RegExpExecArray)[1]));
-          const input: string = promptUser === null
-            ? node.vfsPath
-            : node.vfsPath.replace(/^\/proc\/jobs\//, `/home/${promptUser}/feeds/`);
-          process_open(id, { input, feed, node: node.instanceId });
-        },
-        feed_regard: (procPath: string): void => {
-          subjects.regard_write(id, { address: procPath, modelKind: 'feed' });
-        },
-        ...feedRowHandlers_make(context, id, feedVerbs),
-        ...(primary ? { feed_shown: (): void => dag_summon() } : {}),
-      },
-    );
-    panels.set('dag', id, panel);
-    return {
-      id,
-      kind: 'dag',
-      mount,
-      dispose: (): void => {
-        nodeOverlay.dispose(id);
-        panels.delete(id);
-        subjects.pane_leave(id);
-        panel.dispose();
-      },
-    };
-  };
 
   // A feed's tags, name and access: TAG, RENAME, SHARE and the marks' ×, each a visible line (app/tags.ts, app/access.ts).
   const feedVerbs: FeedVerbs = feedVerbs_wire(context, { ask_onPane: (paneId, request) => ask_onPane(paneId, request), promptUser: (): string | null => promptUser, changed: (): void => { for (const dag of panels.values('dag')) { dag.roster_ask(); dag.marks_refresh(); dag.indicated_refresh(); } } });
+  // The ChRIS composition's own panes: RUNS and the UNIVERSE (compositions/chris/panes.ts).
+  const chrisPanes: ChrisPanes = chrisPanes_make({
+    client: (): ArgusClient => client,
+    terminal: (): ArgusTerminal => terminal,
+    panels: (): PanelRoster => panels,
+    subjects: (): SubjectBus => subjects,
+    context: (): HostContext => context,
+    feedVerbs: (): FeedVerbs => feedVerbs,
+    nodeOverlay: (): NodeOverlay => nodeOverlay,
+    nodeOverlay_open: (paneId: string, root: string): void => nodeOverlay_open(paneId, root),
+    process_open: (fromId: string, binding: CatalogueBinding): void => process_open(fromId, binding),
+    promptUser: (): string | null => promptUser,
+    runs_show: (): void => runs_show(),
+    dag_primary: (): DagPanel => dagPanel,
+    binEntry_show: (paneId: string, panel: FilesPanel, path: string, kind: 'plugin' | 'pipeline'): void => binEntry_show(paneId, panel, path, kind),
+    dag_summon: (): void => dag_summon(),
+  });
   // The primary instances carry the preset ids the gutter's trees name.
   const filesPrimary: PaneInstance = filesInstance_build('files', true);
   paneInstance_adopt(filesPrimary);
-  const dagPrimary: PaneInstance = dagInstance_build('dag', true);
+  const dagPrimary: PaneInstance = chrisPanes.dag_build('dag', true);
   paneInstance_adopt(dagPrimary);
   // The UNIVERSE is a stage of its own, like RUNS or PACS: one primary pane
   // the layout raises whole. Split beside a browser it read as a fragment
   // of a workspace, and the browser had to be closed to see the space.
-  const universePrimary: PaneInstance = universeInstance_build('universe');
+  const universePrimary: PaneInstance = chrisPanes.universe_build('universe');
   paneInstance_adopt(universePrimary);
   // PANES is a gutter domain like FILES/RUNS/PACS: its mount is a primary the
   // layout can raise, its card grid wired once the dormant set and restore
@@ -2292,8 +2076,8 @@ async function surface_start(token: string): Promise<void> {
   const editorModule: EditorModule = editor_wire(context, { ...paneHooks, replayPlace_get: desktop.replayPlace_get, errandHost_find, saved: (): void => { for (const dag of panels.values('dag')) dag.marks_refresh(); } });
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
   paneFactory_register('catalogue', (id: string): PaneInstance => filesInstance_build(id, false, true));
-  paneFactory_register('dag', (id: string): PaneInstance => dagInstance_build(id, false));
-  paneFactory_register('universe', universeInstance_build);
+  paneFactory_register('dag', (id: string): PaneInstance => chrisPanes.dag_build(id, false));
+  paneFactory_register('universe', chrisPanes.universe_build);
   paneFactory_register('view', viewInstance_build);
   paneFactory_register('image', imageInstance_build);
   paneFactory_register('tags', tagsInstance_build);

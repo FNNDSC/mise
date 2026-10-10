@@ -2,9 +2,10 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { get, request as httpRequest, type IncomingMessage } from 'node:http';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { WebSocket } from 'ws';
 import { CalypsoDaemon } from '../src/daemon/server';
-import { bundledWebRoot_find, cacheControl_forPath, contentDisposition_forPath, webRoot_resolve, webRootBuild_read, webRootVersion_read } from '../src/daemon/static';
+import { bundledWebRoot_find, packageWebRoot_find, cacheControl_forPath, contentDisposition_forPath, webRoot_resolve, webRootBuild_read, webRootVersion_read } from '../src/daemon/static';
 import type { HostedEngine } from '../src/daemon/engine';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
 import type { CommandEnvelope } from '@fnndsc/cumin';
@@ -146,6 +147,27 @@ describe('bundledWebRoot_find', () => {
       found === null ||
       (path.isAbsolute(found) && found.endsWith(path.join('apps', 'argus', 'dist')));
     expect(wellFormed).toBe(true);
+  });
+});
+
+describe('packageWebRoot_find', () => {
+  it('finds the bundle an installed package ships, and nothing for one without or not installed', () => {
+    const root: string = mkdtempSync(path.join(tmpdir(), 'calypso-pkg-'));
+    try {
+      const shipped: string = path.join(root, 'node_modules', '@x', 'surface');
+      mkdirSync(path.join(shipped, 'dist'), { recursive: true });
+      writeFileSync(path.join(shipped, 'package.json'), JSON.stringify({ name: '@x/surface', version: '1.0.0' }));
+      writeFileSync(path.join(shipped, 'dist', 'index.html'), '<html></html>');
+      const bare: string = path.join(root, 'node_modules', '@x', 'bare');
+      mkdirSync(bare, { recursive: true });
+      writeFileSync(path.join(bare, 'package.json'), JSON.stringify({ name: '@x/bare', version: '1.0.0' }));
+      const from: string = pathToFileURL(path.join(root, 'launcher.js')).href;
+      expect(packageWebRoot_find('@x/surface', from)).toBe(path.join(shipped, 'dist'));
+      expect(packageWebRoot_find('@x/bare', from)).toBeNull();
+      expect(packageWebRoot_find('@x/absent', from)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

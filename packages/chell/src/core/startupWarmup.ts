@@ -24,7 +24,7 @@ import {
   backend_get,
   type SessionIdentity,
 } from '@fnndsc/brasa';
-import { daemon_launch, identity_normalise, type DaemonLaunchInfo, hostControl_fromInputs, type HostControlInputs } from '@fnndsc/calypso';
+import { daemon_launch, identity_normalise, packageWebRoot_find, type DaemonLaunchInfo, hostControl_fromInputs, type HostControlInputs } from '@fnndsc/calypso';
 import { daemonConsole_run, type DaemonConsoleTarget } from './daemonConsole.js';
 import { logo_animateHalt } from '../lib/logo.js';
 import { sink_set, StdoutSink, count_noun } from '@fnndsc/brasa';
@@ -716,7 +716,11 @@ export async function daemonSession_run(
         throw new DaemonWarmupAbortedError();
       }
       reporter.log('fail', 'Engine', `Starting with incomplete warm-up: ${cache.failures.join(', ')}`);
-    }, { hostControl: parsedPolicy.policy });
+    }, {
+      hostControl: parsedPolicy.policy,
+      // chell's surface is ARGUS: the bundle the installed @fnndsc/argus ships.
+      webRoot: packageWebRoot_find('@fnndsc/argus', import.meta.url),
+    });
 
     if (interactive) {
       // Boot is over. The pulse halts without a final repaint — its row

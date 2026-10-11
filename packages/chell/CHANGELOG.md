@@ -1,5 +1,72 @@
 # @fnndsc/chell
 
+## 5.12.0
+
+### Minor Changes
+
+- 0ac1bee: Nothing changes at the prompt: each command group brings its own help, and no backend can replace a core command (#981). The ChRIS commands' help (74 pages, and the resource contract they share) moves to `chris/help.ts` and registers with the ChRIS commands; the core's stays in `builtins/help.ts`. `/usr/bin` and command completion offer only verbs the session can run, as `help` does. `commands_register(group, 'backend')` refuses a group that names a core command; the package entry registers ChRIS that way. The hand-kept `command-keys.ts` goes, and with it the `COMMAND_HANDLERS_KEYS` export of brasa and chell; the registry answers instead.
+
+### Patch Changes
+
+- 43000d3: Nothing changes at the prompt: a daemon's berth name comes from its backend's account of who the session is (#982). The descriptor gains `session.identity_get()`, which returns a `SessionIdentity` (`user`, `where`, `connected`). For ChRIS that is the CUBE user at the CUBE URL, or `disconnected@no-cube` with no login, so every berth name, key and attach hint is the same as before. Each backend names its own disconnected session, so two backends never share one. calypso's launch reads the identity there and no longer imports cumin. chell keeps its folder, query and job checkpoints under the same name, through the backend. `identity_forSession` and `DISCONNECTED_IDENTITY` stay exported from calypso.
+- b9a83f1: Nothing changes in the browser: calypso no longer depends on ARGUS, and the launcher passes the web root (#984). `daemon_launch` takes `webRoot`; `CALYPSO_WEB_ROOT`, a bundle under the working directory and the enclosing checkout still come first. chell depends on `@fnndsc/argus` and passes the bundle it ships (porter launches through chell). The `calypso` command still defaults to ARGUS when it is installed beside it. `packageWebRoot_find(name, from)` finds the bundle any installed package ships.
+- Updated dependencies [be5f8b3]
+- Updated dependencies [3060fa1]
+- Updated dependencies [5afa298]
+- Updated dependencies [cd68355]
+- Updated dependencies [322606e]
+- Updated dependencies [a0b567f]
+- Updated dependencies [639b840]
+- Updated dependencies [6268376]
+- Updated dependencies [183aa7d]
+- Updated dependencies [43000d3]
+- Updated dependencies [e1085af]
+- Updated dependencies [27ce9b8]
+- Updated dependencies [7e2fc05]
+- Updated dependencies [4431568]
+- Updated dependencies [b9a83f1]
+- Updated dependencies [d379168]
+- Updated dependencies [11853c6]
+- Updated dependencies [9b48f7c]
+- Updated dependencies [90ede03]
+- Updated dependencies [3bc7a27]
+- Updated dependencies [11853c6]
+- Updated dependencies [987f766]
+- Updated dependencies [ebd7b3e]
+- Updated dependencies [e32770c]
+- Updated dependencies [27f3021]
+- Updated dependencies [423971a]
+- Updated dependencies [d3f1b1d]
+- Updated dependencies [b5ae25d]
+- Updated dependencies [77a914f]
+- Updated dependencies [3175b3d]
+- Updated dependencies [012b966]
+- Updated dependencies [0d3cf0b]
+- Updated dependencies [e1215ef]
+- Updated dependencies [a12c6fc]
+- Updated dependencies [9173d2c]
+- Updated dependencies [11853c6]
+- Updated dependencies [149adbf]
+- Updated dependencies [fb31bef]
+- Updated dependencies [e1215ef]
+- Updated dependencies [9116e97]
+- Updated dependencies [ec26525]
+- Updated dependencies [0ac1bee]
+- Updated dependencies [f6171f7]
+- Updated dependencies [11853c6]
+- Updated dependencies [6752575]
+- Updated dependencies [60cb7f8]
+- Updated dependencies [0fe1e18]
+- Updated dependencies [e1215ef]
+- Updated dependencies [1681476]
+  - @fnndsc/argus@0.28.0
+  - @fnndsc/calypso@0.20.0
+  - @fnndsc/menu@0.22.0
+  - @fnndsc/brasa@0.35.0
+  - @fnndsc/salsa@4.0.0
+  - @fnndsc/chili@3.7.6
+  - @fnndsc/cumin@3.27.11
+
 ## 5.11.4
 
 ### Patch Changes

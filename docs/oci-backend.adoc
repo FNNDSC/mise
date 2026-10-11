@@ -1,0 +1,246 @@
+= The OCI backend: a mise session over the substrate a Trusted Domain runs on
+Rudolph Pienaar <rudolph.pienaar@gmail.com>
+:doctype: article
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+
+[abstract]
+== Abstract
+
+A *Trusted Domain* (TD) is a ChRIS deployed on OpenShift inside a cloud tenancy that an institution controls; the first are on Oracle Cloud Infrastructure (an *OCI TD*). Building one today is the job of `harbor-oci`, a Python command-line harness that turns an empty OCI tenancy into a running ChRIS by driving Red Hat's Assisted Installer, Oracle's `oci-openshift` Terraform stack and the `fnndsc/chris` Helm chart.
+
+This document designs the *OCI backend*: the second backend that issue #977 made room for. A session over it is *outside* any ChRIS. It reads and changes the substrate — the tenancy's compartments, limits, networks, DNS, buckets, instances and clusters — and builds Trusted Domains on it, with the shell, the console, ARGUS's frame and the session host that ChRIS sessions already have. `harbor-oci`'s README names this as its direction: "building a cluster becomes one more mise backend, with a web interface and a console for `oc` and friends".
+
+It builds on `docs/backend-neutral.adoc` (#977), whose engine, descriptor, registry, tasks and ARGUS compositions it uses, and whose two rules it keeps: one backend per session, and nothing changes for a ChRIS user. *Status: proposal, awaiting operator review (2026-10-10). Nothing is built before that review.*
+
+[[two-sessions]]
+== Two sessions, two places
+
+A Trusted Domain has an outside and an inside, and mise gives each its own session:
+
+[cols="1,2,2",options="header"]
+|===
+| | The substrate session | The domain session
+| Backend | `oci` (this document) | `chris` (today's)
+| Connected to | an OCI tenancy, through an API key profile | the CUBE the build produced
+| What it acts on | compartments, limits, networks, DNS, buckets, instances, the OpenShift cluster | feeds, plugins, files, PACS
+| Who uses it | whoever builds and runs the domain | researchers and clinicians inside it
+| Credentials it holds | cloud API key, Red Hat service account, cluster admin | a CUBE token
+| Brand | the OCI TD mark (the North Star in the ring) | the TD mark (the North Star), and a domain segment in the prompt
+|===
+
+They are separate calypso daemons, as #977's <<backend-neutral.adoc#one-backend,one backend per session>> requires: one process never holds cloud credentials and a CUBE token together. ARGUS can show both as two attached sessions; the substrate session hands off to the domain session when a build finishes (<<handoff>>).
+
+[[findings]]
+== What exists: harbor-oci
+
+Surveyed in `~/src/harbor-oci` on 2026-10-10. A Typer CLI (`harboroci`, `cli.py`) wrapped by a `justfile`; `just install` runs the build in order: `preflight cluster iso infra-plan infra-apply dns manifests hosts run postinstall verify` (`justfile:22`).
+
+[cols="1,3",options="header"]
+|===
+| Step | What it does
+| preflight | Tools present (`terraform`, `oc`, `helm`, `dig`); no secrets inside the clone; API key, compartment, attribution tag namespace; the spec fits per-AD limits and three flexible load balancers are free; DNS delegation; the Red Hat account; the SSH key (`preflight.py`).
+| cluster | Creates the Assisted Installer cluster and infra-env (`steps.py`, `assisted.py`, `redhat.py`).
+| iso | Downloads the discovery ISO into an Object Storage bucket and makes a pre-authenticated request for it (`ocistorage.py`).
+| infra-plan | Fetches the `oci-openshift` stack (SHA256-pinned), writes tfvars from `spec.yaml`, `terraform init` and `plan` (`stack.py`).
+| infra-apply | Refuses a plan that updates or destroys existing resources, then `terraform apply`. *Billing starts here.*
+| dns | Upserts the `api`, `api-int` and `*.apps` records in OCI DNS (`ocidns.py`).
+| manifests | Pushes the stack's custom manifests (OCI cloud controller and CSI drivers) to the Assisted Installer.
+| hosts | Waits for the hosts to register (up to 45 minutes), assigns roles.
+| run | Installs OpenShift (up to 120 minutes, polled each minute); saves the kubeconfig and the kubeadmin password.
+| postinstall, teardown | Placeholders (exit 2, "not yet proven").
+| verify | Ten live checks through `oc` and `dig` (`verify.py`).
+| chris-deploy, chris-seed, smoke, chris-nuke | Helm install of ChRIS, a seed job, the smoke suite, removal (`chris.py`).
+|===
+
+Read-only verbs beside the build: `status`, `deployed`, `burn` (spend so far), `capacity`, `shapes`, `spec`, `suggest` (sizing).
+
+* *OCI access* is the Python SDK: Identity (tenancy, compartments, tag namespaces, availability domains), Limits, DNS, Object Storage, Compute, Block Storage, Load Balancer and Resource Search ("all resources where compartmentId = …"). Terraform builds the VCN, subnets, security groups, load balancers, image, instances, dynamic groups and policies. `oc`, `helm` and `dig` run as subprocesses; the Red Hat APIs over REST; prices from Oracle's public price list.
+* *Authentication* is an API-key profile in `~/.oci/config`; the region is forced from settings. Settings come from the environment over `config.local.env` over `config.env` (`OCI_REGION`, `OCI_PROFILE`, `OCI_COMPARTMENT_OCID`, `BASE_DOMAIN`, `CLUSTER_NAME`, the Red Hat credentials, pinned versions).
+* *State* is `state/harbor.json` (cluster and infra-env ids, the ISO object and its link; mode 600, written atomically), Terraform's state in the staged stack, and credentials in `state/auth/`.
+* *One region, one domain:* `us-ashburn-1`, base domain `oci.chrisproject.org`, cluster `harbor`. Nodes spread one per availability domain.
+* *Known open problem:* OCI's automatic `Oracle-Tags` make a re-plan want to alter 24 resources, so `infra-apply` refuses alterations; clean re-plans are undecided (`docs/status.adoc`).
+* Its own analysis: "Roughly 70 percent of the code is bound to OCI" and "The install path makes no attempt at a cloud abstraction. The tenancy tools do" (`docs/overview.adoc`).
+
+[[decisions]]
+== Proposed decisions
+
+Each is a proposal to put to the operator; none is agreed.
+
+[[package]]
+=== D1. A package of its own, `@fnndsc/hearth`
+
+The OCI backend lives in a new package, `@fnndsc/hearth` — the fire a kitchen cooks on, as the substrate is what a domain runs on. It holds the backend descriptor, its filesystem providers, its commands and its task source. It depends on brasa's core (`@fnndsc/brasa/core`), fond and menu, and on Oracle's TypeScript SDK as per-service packages (`oci-identity`, `oci-limits`, `oci-resourcesearch`, `oci-objectstorage`, `oci-dns`, `oci-core`, …) rather than the whole `oci-sdk`. It never loads cumin, salsa or chili; the core-boot proof gains a hearth boot that fails if one is loaded.
+
+It lives in this repository while the descriptor is still settling, as #977's cautions advise. The provider-neutral pieces `harbor-oci` keeps apart (tenancy pools, prices, sizing, the spec) stay apart inside hearth, so a second cloud is a sibling of the OCI providers, not a rewrite.
+
+[[port]]
+=== D2. Read in TypeScript first; wrap the build, port it step by step
+
+* *Everything that reads* — the tree (<<tree>>), limits, capacity, shapes, prices, spend — is written in hearth against the SDK from the start. It is where a session spends most of its time, and it is safe.
+* *The build steps* first run as `harboroci <step>` under the supervised runner (<<tasks>>): proven code keeps doing the work while the session gives it a console, a log, progress and a place in ARGUS. Each step is ported into hearth when it is next changed, and the harness retires when the last one goes.
+* *Terraform, `oc` and `helm` stay external tools*, always run by the supervised runner, never reimplemented.
+
+[[tree]]
+=== D3. The tree: compartments are folders, resources are folders of fields
+
+[literal]
+....
+/
+├── tenancy/                       the root compartment
+│   └── <compartment>/             a compartment is a folder; nested ones nest
+│       ├── <child compartment>/
+│       ├── instances/<name>/      state  shape  ad  ips  info.json
+│       ├── networks/<vcn>/        subnets/<subnet>/  nsgs/<nsg>/  info.json
+│       ├── loadbalancers/<name>/
+│       ├── volumes/<name>/
+│       ├── buckets/<bucket>/      its objects are files
+│       └── dns/<zone>/            its records are files
+├── regions/<region>/
+│   ├── ads/<availability domain>/
+│   ├── limits/<service>/<limit>   value  used  available
+│   ├── shapes/<shape>
+│   └── prices/<shape>
+├── domains/<td>/                  the Trusted Domains in this tenancy (home)
+│   ├── spec.yaml                  what the domain should be
+│   ├── state.json                 what the build recorded
+│   ├── steps/<n>-<step>/          state  log  started  ended
+│   ├── cluster/                   console  api  version  nodes/
+│   └── resources/                 links into /tenancy: what this domain owns
+└── proc/steps/                    the steps running now (a task source)
+....
+
+* *Resources read like `/proc`*: a folder per resource, a file per field the shell needs (`cat …/state`), and `info.json` holding the whole record. `ls -l` marks each kind and colours its lifecycle state (running, stopped, provisioning, failed).
+* *Names, not OCIDs, in paths.* The OCID is a field (`id`). OCI allows two resources in one compartment to share a display name, so a duplicate shows as `name~<last six of its OCID>` and the plain name refuses ("ambiguous: name~1a2b3c, name~9f8e7d"), never picks one.
+* *Home is `/domains`*, because building and running domains is the session's purpose; the tenancy is a `cd` away.
+* *Listings walk.* A compartment can hold thousands of objects; the tree follows the house rule that an unbounded ask walks and a bounded one says what it shows.
+
+[[writes]]
+=== D4. Read-only by default; a domain changes through plans
+
+The substrate bills by the hour and some of it cannot be recreated. The session therefore changes the cloud only in ways that say what they will do first:
+
+* *The core file verbs mutate only data:* objects in buckets (`cp`, `rm`, `mv`, `>`) and DNS records inside a domain's own zone. On any other resource they refuse by name ("rm: …/instances/node-1: Operation not permitted: a domain's resources change through `domain`").
+* *A domain changes through `domain` verbs that plan first:* they print what will be created, changed and destroyed, with the estimated hourly cost, and ask before acting. `harbor-oci`'s rule stays: a plan that alters or destroys existing resources is refused unless the operator asks for it by name.
+* *Destruction is scoped by attribution.* The build tags what it creates (the attribution tag namespace preflight already checks); teardown removes only resources carrying this domain's tag, and refuses anything else even inside the domain's compartment.
+* *Live tests mutate only in a scratch compartment* (`zz-mise-<epoch>`), never in a compartment holding a domain, as the CUBE lesson taught.
+
+[[commands]]
+=== D5. Commands
+
+Core commands (`ls`, `cd`, `cat`, `cp`, …) work over the tree unchanged. The backend registers, in shell metaphors:
+
+[cols="1,3",options="header"]
+|===
+| Command | What it does
+| `domain new <name> [--spec file]` | Creates `/domains/<name>` with a spec (from `suggest`, a file, or the defaults).
+| `domain plan [<name>]` | Preflight and the infrastructure plan; prints the changes and the hourly cost.
+| `domain build [<name>] [--through <step>]` | Runs the build's steps in order as tasks, from the first not done; stops after `--through`.
+| `domain status`, `domain verify` | Where each step stands; the live checks.
+| `domain teardown <name>` | Plans removal of everything carrying the domain's tag, shows it, asks.
+| `domain attach <name>` | Opens the domain session against the domain's CUBE (<<handoff>>).
+| `limits`, `capacity`, `shapes`, `prices` | What the region allows, has free, offers and charges.
+| `spend [<name>]` | What a domain has cost so far and costs per hour (`burn`).
+| `suggest` | Sizes a spec from workload figures (`--workers`, `--worker-ram`, …).
+| `region [<name>]` | Shows or changes the session's region; the prompt follows.
+| `oc`, `helm` | Run against the domain the working directory is in, with its kubeconfig, under the `tasks` tier.
+|===
+
+There is no `terraform` command: Terraform runs only inside `domain` steps, where its plan is checked. The `oci` command-line tool is reachable only through the `!` shell tier, like any host program.
+
+[[identity]]
+=== D6. Identity and credentials stay on the daemon's host
+
+* The daemon reads an API-key profile from `~/.oci/config` (`--profile`, default `DEFAULT`); instance principals come later, for a daemon running inside the tenancy.
+* The identity is the IAM user's name (looked up from the user OCID) at the tenancy's name: berth `rudolph@fnndsc`. The region belongs to the session, not the identity, so changing region keeps the berth.
+* The Red Hat service account and the SSH key are daemon settings, as in `harbor-oci`'s `config.local.env`.
+* *Secrets are never files the browser can read.* The kubeconfig and the kubeadmin password sit in the domain's state on the host; `/vfs` refuses them, and `cat` of them refuses with the path to the host file. How an operator gets the console password is <<open,open>>.
+
+[[prompt]]
+=== D7. The prompt says where in the substrate you are
+
+The wire's prompt context is ChRIS-shaped (`user`, `uri`, `cwd`, `pacsserver`, `physicalMode`, `procWarmup`, …). It gains an optional, backend-neutral list of *segments* — each a key, a label, a value and a tone — that a backend fills and the composition draws in order. ChRIS's fields and prompt do not change.
+
+The OCI prompt:
+
+[literal]
+....
+◆ OCI │ fnndsc │ us-ashburn-1 │ rudolph │ td-harbor │ /domains/td-harbor/steps │ 4s
+       tenancy   region         user      domain      working directory        last command
+....
+
+The domain segment appears when the working directory is inside a domain or one of its resources. A running step adds a segment with its name and progress.
+
+[[tasks]]
+=== D8. Build steps are tasks; the supervised runner stops being deferred
+
+#977 deferred the supervised runner and its `tasks` tier (#986) "until the second backend actually starts". This is that start:
+
+* Each build step is a task in hearth's task source, under `/proc/steps` and in the domain's `steps/` folder: state, structured progress, log tail, start and end.
+* The runner starts the host process (`harboroci <step>` first, hearth's own code later, `terraform`, `oc`, `helm`), keeps its full log on the host, survives a closed browser, and reattaches.
+* *Cancelling is gentle.* Terraform interrupted mid-apply can leave state locked or half-written: cancel sends one interrupt and waits for Terraform to finish its current operation; it never kills hard. A second cancel says so instead of escalating.
+* The `tasks` tier is off by default, separate from `shell`, so a session can run build steps without allowing arbitrary `!` commands. A ChRIS session never enables it.
+
+[[argus]]
+=== D9. The ARGUS composition `oci`
+
+* *Brand:* the OCI TD mark in the header, its ASCII in the splash, its favicon, the credit line "an OCI Trusted Domain console". (The red ring is Oracle's mark in all but name; public use needs Oracle's agreement.)
+* *Tiles:* DOMAINS (each domain, its last step and state, its hourly cost), CAPACITY (headroom per availability domain for the shapes a spec needs), TENANCY (compartments and resource counts by kind), STEPS (running and recent, with progress).
+* *Panes:* a domain pane listing its steps as rows with progress, as RUNS lists jobs; the frame's view pane following a step's log; later a topology view in orrery — networks, subnets, load balancers and nodes as a graph.
+* *Signals:* the prompt segments (<<prompt>>), and telemetry of resource counts, running steps and the domains' combined hourly cost.
+
+[[handoff]]
+=== D10. From building a domain to working in it
+
+When a domain's ChRIS is deployed, the domain records its CUBE address. `domain attach` (and a button on the domain pane) starts the domain session: a separate daemon on the ChRIS backend, logged in through the domain's own sign-in, which ARGUS shows as a second attached session wearing the TD brand with a domain segment in its prompt. The substrate session never holds the CUBE token, and the domain session never holds cloud credentials.
+
+[[order]]
+== Order of work
+
+Each step is one change or a short series, released on its own; nothing changes for a ChRIS session at any step.
+
+. *Read the tenancy.* hearth with the descriptor, identity, region and the read-only tree for `/tenancy` (compartments) and `/regions` (availability domains, limits, shapes, prices). The prompt segments on the wire. ARGUS's `oci` composition with its brand and prompt only.
+. *Resources.* Instances, networks, load balancers, volumes, buckets and DNS in the tree, through Resource Search and the service clients; `ls -l` kinds and states.
+. *Domains, read.* `/domains` over an existing `harbor-oci` state folder — the live compact cluster as the first domain — with `domain status`, `domain verify` and `spend`; the DOMAINS and CAPACITY tiles.
+. *The supervised runner and the `tasks` tier* (#986), shaped by the build's real steps; `domain plan` and `domain build` run `harboroci` steps as tasks; STEPS tile and domain pane.
+. *Data writes.* Bucket objects and a domain's DNS records through the core file verbs.
+. *Teardown,* designed on its own when it is reached: `harbor-oci`'s placeholder becomes an attribution-scoped plan.
+. *The handoff* to the domain session, and the TD brand on it.
+. *Porting,* step by step, until `harbor-oci` retires.
+
+[[tests]]
+== Test strategy
+
+* *Unit tests against recorded answers:* the SDK clients behind an interface, replayed from recorded responses with identifiers scrubbed.
+* *A hearth boot in CI* that loads no ChRIS package, beside brasa's core boot.
+* *Live, read-only,* against the tenancy on every change that touches the tree.
+* *Live mutation only in a scratch compartment,* torn down by the test; never against a compartment holding a domain, and never against the running cluster (it bills about $0.71 an hour).
+* *ChRIS unchanged:* the existing unit, smoke and end-to-end suites stay green on every step.
+
+[[security]]
+== Security
+
+* *The creator posture* (cloud API key, Red Hat account, cluster admin) lives only in a substrate daemon; the research posture only in a domain daemon (<<two-sessions>>).
+* *Host control stays per daemon and off by default:* the `tasks` tier for build steps, `shell` for `!`; the guard refusing a non-loopback bind with any tier on, unless `--expose-host-control` is given, applies unchanged.
+* *Secrets never cross `/vfs`* (<<identity>>).
+* *Spending asks first:* a step that starts billing shows the hourly cost and asks, and a plan that alters existing resources refuses unless asked for by name (<<writes>>).
+
+[[cautions]]
+== Cautions
+
+* *`Oracle-Tags` drift.* Until clean re-plans are solved, every re-plan of a built domain shows alterations; `domain plan` must say which are tag drift rather than hide them or cry wolf.
+* *Duplicate display names* are common in OCI; the tree's suffix rule (<<tree>>) has to hold everywhere a path is resolved, including completion and globbing.
+* *Rate limits and size.* Resource Search and the Limits API throttle; listings cache with a short life and refresh in the background, as ChRIS listings do.
+* *One region, one domain* is all `harbor-oci` has proved; the tree and prompt allow more, but the build is not claimed for more until it has been done.
+* *The descriptor will move again.* It was drawn from ChRIS and checked by the null backend; hearth is the first real second backend, and the descriptor should change where hearth shows it is wrong, rather than hearth bending around it.
+
+[[open]]
+== Open, decided later
+
+* The package name (`hearth` is a proposal).
+* Whether `harbor-oci`'s Python moves into this repository while it is wrapped, or is installed beside it.
+* How the console password reaches an operator (shown once on the terminal; copied; a host command).
+* Domains spanning regions, and a second cloud.
+* Whether the substrate session reads the cluster's own state (nodes, operators, storage) through `oc`, or through a Kubernetes provider in the tree.

@@ -505,6 +505,11 @@ export class CalypsoDaemon {
       refuse(404, 'not found');
       return;
     }
+    const open = this.engine.file_stream?.bind(this.engine);
+    if (open !== undefined && request.method === 'GET') {
+      await this.vfs_stream(open, filePath, query, response, refuse);
+      return;
+    }
     try {
       const bytes: Buffer = await read(filePath);
       const headers: Record<string, string | number> = {
@@ -526,6 +531,54 @@ export class CalypsoDaemon {
         return;
       }
       refuse(404, 'not found');
+    }
+  }
+
+  /**
+   * Serves one file's bytes as they arrive: the length in the header when
+   * the store gave one (so a browser draws its own progress), the body
+   * piped, nothing held whole. A 3.7 GB DICOM used to be read into one
+   * buffer behind a 30 s deadline and answered 404. A failure before the
+   * first byte answers with the kernel's status and reason; one after it
+   * ends the response early, which the browser reports as a failed
+   * download rather than a short file.
+   *
+   * @param open - The engine's stream seam.
+   * @param filePath - The file asked for.
+   * @param query - The request's query (`download=1` names an attachment).
+   * @param response - The response to write.
+   * @param refuse - Answers a refusal before any byte is sent.
+   */
+  private async vfs_stream(
+    open: (filePath: string) => Promise<{ stream: NodeJS.ReadableStream; size?: number }>,
+    filePath: string,
+    query: URLSearchParams,
+    response: ServerResponse,
+    refuse: (status: number, message: string) => void,
+  ): Promise<void> {
+    let opened: { stream: NodeJS.ReadableStream; size?: number };
+    try {
+      opened = await open(filePath);
+    } catch (error: unknown) {
+      const named: { status?: unknown; reason?: unknown } = error as { status?: unknown; reason?: unknown };
+      if (typeof named.status === 'number' && typeof named.reason === 'string') refuse(named.status, named.reason);
+      else refuse(404, 'not found');
+      return;
+    }
+    const headers: Record<string, string | number> = { 'content-type': contentType_forPath(filePath) };
+    if (opened.size !== undefined) headers['content-length'] = opened.size;
+    if (query.get('download') === '1') headers['content-disposition'] = contentDisposition_forPath(filePath);
+    response.writeHead(200, headers);
+    // The browser left (a cancelled download): stop pulling from CUBE.
+    response.on('close', (): void => {
+      if (!response.writableFinished) (opened.stream as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
+    });
+    try {
+      const { pipeline } = await import('node:stream/promises');
+      await pipeline(opened.stream, response);
+    } catch {
+      // Headers are gone; ending the socket early is the only honest answer.
+      response.destroy();
     }
   }
 

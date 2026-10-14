@@ -299,6 +299,8 @@ mise carries dialect fallbacks where drift is known (currently the `userfiles` r
 
 Upstream: not yet filed. The evidence below was captured 2026-09-04 against a production CUBE.
 
+*Resolved on the client, 2026-10-14 (#1061).* The refusal is one endpoint's, not CUBE's: for the same identity and the same shared file (ekanite, file 30916964 in a colleague's feed 4389), `GET /api/v1/userfiles/30916964/` answers 403 while `GET /api/v1/filebrowser/files/30916964/` answers 200 and its `file_resource` link serves the bytes. cumin now asks the file browser after `/userfiles/` and the PACS files refuse, so a shared feed's files download. What remains upstream is the inconsistency itself: two endpoints over one file disagree about who may read it.
+
 === Operator requirement
 
 A feed shared with an identity is shared so that identity can look at what it holds. An operator who can see a result file, its name and its size, expects to be able to read it. That is what sharing means to the person doing it.

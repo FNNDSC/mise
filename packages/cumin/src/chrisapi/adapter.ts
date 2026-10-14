@@ -326,3 +326,48 @@ export async function pacsRetrieve_deleteByUrl(
   const retrieve: PACSRetrieve = new PACSRetrieve(retrieveUrl, auth);
   await retrieve.delete();
 }
+
+/**
+ * One file's bytes, from whichever CUBE resource serves them: the shape
+ * cumin's downloads read (`data`, `getFileStream`, `getFileBlob`).
+ *
+ * @property data - The file's fields (`fname`, `fsize`, ...).
+ */
+export interface FileBytesSource {
+  data: Record<string, unknown>;
+  getFileStream(timeout?: number): Promise<unknown>;
+  getFileBlob(timeout?: number): Promise<unknown>;
+}
+
+/**
+ * A file through the file browser (`/filebrowser/files/<id>/`), the
+ * resource CUBE serves a feed's files under to everyone the feed is
+ * shared with. `/userfiles/<id>/` refuses the same file (403) to anyone
+ * but its owner, so a colleague's shared output could be listed and not
+ * downloaded (ekanite, 2026-10-14: file 30916964, 200 here, 403 there).
+ *
+ * @param client - The connected client.
+ * @param fileId - The file's id.
+ * @returns The file, or null when the file browser does not serve it.
+ * @throws {Error} When CUBE refuses; the caller reads the status from it.
+ */
+export async function filebrowserFile_get(client: Client, fileId: number): Promise<FileBytesSource | null> {
+  const base: string = String(client.url ?? '').replace(/\/?$/, '/');
+  const auth: ClientAuth = client_authGet(client);
+  const listing: Request = new Request(auth, 'application/vnd.collection+json');
+  const document = (await listing.get(`${base}filebrowser/files/${fileId}/`)).data as {
+    collection?: { items?: Array<{ data?: Array<{ name: string; value: unknown }>; links?: Array<{ rel: string; href: string }> }> };
+  };
+  const item = document.collection?.items?.[0];
+  const href: string | undefined = item?.links?.find((link: { rel: string }): boolean => link.rel === 'file_resource')?.href;
+  if (item === undefined || href === undefined) return null;
+  const data: Record<string, unknown> = Object.fromEntries((item.data ?? []).map((field: { name: string; value: unknown }): [string, unknown] => [field.name, field.value]));
+  return {
+    data,
+    getFileStream: (timeout: number = 30000): Promise<unknown> =>
+      new Request(auth, 'application/octet-stream', timeout).getStream(href),
+    getFileBlob: async (timeout: number = 30000): Promise<unknown> =>
+      (await new Request(auth, 'application/octet-stream', timeout).get(href)).data,
+  };
+}
+

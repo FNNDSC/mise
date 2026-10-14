@@ -327,6 +327,36 @@ describe('CalypsoDaemon /vfs route', () => {
     expect(saved.disposition).toBe(`attachment; filename="brain.png"; filename*=UTF-8''brain.png`);
   });
 
+  it('streams a file through file_stream when the engine has it, length in the header', async () => {
+    const { Readable } = await import('node:stream');
+    const reads: string[] = [];
+    const streaming = new CalypsoDaemon({
+      engine: {
+        ...vfsEngine_create(),
+        file_read: async (filePath: string): Promise<Buffer> => { reads.push(filePath); return Buffer.from('whole'); },
+        file_stream: async (filePath: string) => {
+          if (filePath !== '/home/demo/big.dcm') throw Object.assign(new Error('refused'), { status: 403, reason: 'not yours to read: CUBE refused the bytes (403)' });
+          return { stream: Readable.from([Buffer.from('part1-'), Buffer.from('part2')]), size: 11 };
+        },
+      },
+      token: TOKEN,
+    });
+    const streamPort: number = await streaming.start();
+    try {
+      const saved = await http_get(`http://127.0.0.1:${streamPort}/vfs?path=${encodeURIComponent('/home/demo/big.dcm')}&token=${TOKEN}&download=1`);
+      expect(saved.status).toBe(200);
+      expect(saved.body).toBe('part1-part2');
+      expect(saved.disposition).toContain('filename="big.dcm"');
+      // Nothing was read whole.
+      expect(reads).toEqual([]);
+      const refused = await http_get(`http://127.0.0.1:${streamPort}/vfs?path=${encodeURIComponent('/home/demo/other.dcm')}&token=${TOKEN}&download=1`);
+      expect(refused.status).toBe(403);
+      expect(refused.body).toContain('CUBE refused the bytes');
+    } finally {
+      await streaming.stop();
+    }
+  });
+
   it('404s a read failure', async () => {
     const reply = await http_get(
       `http://127.0.0.1:${port}/vfs?path=${encodeURIComponent('/nope')}&token=${TOKEN}`,

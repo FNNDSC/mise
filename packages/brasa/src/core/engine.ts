@@ -50,7 +50,7 @@ import { recorder_note } from '../session/recorder.js';
 import { answerAdapters_register } from '../session/answerAdapters.js';
 import { numbering_get, type Numbering } from '../session/answer.js';
 import { sink_get, sink_set, type OutputSink } from './sink.js';
-import { backend_install, backendInstalled_get, type Backend } from './backend.js';
+import { backend_install, backendInstalled_get, type Backend, type FileByteStream } from './backend.js';
 import { vfsDispatcher_get } from './filesystem.js';
 import type { VFSDispatcher } from '@fnndsc/fond';
 
@@ -108,6 +108,16 @@ export interface BrasaEngine {
    * @returns The file's bytes.
    */
   file_read?(filePath: string): Promise<Buffer>;
+
+  /**
+   * Opens one file's bytes as a stream, resolved as {@link Engine.file_read}
+   * resolves. A hosting daemon serves a download through it, so a large
+   * file reaches the surface as it arrives and is never held whole.
+   *
+   * @param filePath - The file's path (absolute, cwd-relative, or projected).
+   * @returns The stream and its size when known.
+   */
+  file_stream?(filePath: string): Promise<FileByteStream>;
 
   /**
    * Writes bytes to one ChRIS path, resolved against the session's working
@@ -436,6 +446,7 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
     line_cancel,
     line_complete,
     file_read,
+    file_stream,
     file_write,
     regard_note: (regard: Regard): void => session.regard_set(regard),
     regard_get: (): Regard | null => session.regard_get(),
@@ -482,4 +493,21 @@ export async function file_read(filePath: string): Promise<Buffer> {
   const files: Backend['files'] = backendInstalled_get()?.files;
   if (files === undefined) throw new FileReadRefusal(filePath, 404, 'this session has no files');
   return await files.read(filePath);
+}
+
+/**
+ * Opens one file's bytes as a stream through the installed backend; a
+ * backend that streams nothing is served its whole read, as a stream.
+ *
+ * @param filePath - The file's path (absolute, cwd-relative, or projected).
+ * @returns The stream and its size when known.
+ * @throws {FileReadRefusal} When the path does not resolve to a readable file.
+ */
+export async function file_stream(filePath: string): Promise<FileByteStream> {
+  const files: Backend['files'] = backendInstalled_get()?.files;
+  if (files === undefined) throw new FileReadRefusal(filePath, 404, 'this session has no files');
+  if (files.stream !== undefined) return await files.stream(filePath);
+  const bytes: Buffer = await files.read(filePath);
+  const { Readable } = await import('node:stream');
+  return { stream: Readable.from(bytes), size: bytes.length };
 }

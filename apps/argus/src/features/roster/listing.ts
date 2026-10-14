@@ -286,6 +286,19 @@ export interface ListingDeclaration<T> extends ListingLevel<T> {
    * yet, which is silence. Absent, the field is simply empty.
    */
   empty?: () => HTMLElement;
+  /**
+   * What the field says when rows were set but the filter keeps every one
+   * of them off stage: a pane that can do something about a miss (ask the
+   * session for what the filter names) says so here, given the filter's
+   * text. Absent, the field is simply empty under `FILTERED 0/n`.
+   */
+  filteredEmpty?: (text: string) => HTMLElement;
+  /**
+   * What a press on the frame's REFRESH block does: the pane asks its
+   * source again, bypassing whatever the session remembers. Absent, the
+   * block (when the markup has one) does nothing.
+   */
+  refresh?: () => void;
 }
 
 /**
@@ -1164,6 +1177,8 @@ export class Listing<T> {
     this.selectBlock = chrome?.root.querySelector<HTMLElement>(`.${chrome.prefix}-select`) ?? null;
     this.filterBlock?.classList.add('rail-off');
     this.filterBlock?.addEventListener('click', (): void => this.filter_toggle());
+    chrome?.root.querySelector<HTMLElement>(`.${chrome.prefix}-refresh`)
+      ?.addEventListener('click', (): void => this.declaration.refresh?.());
     this.columns_wire(chrome);
     this.level.order.stripChange_observe((): void => this.filterBlock_sync());
     this.selectBlock?.addEventListener('click', (): void => this.select_toggle());
@@ -1285,6 +1300,9 @@ export class Listing<T> {
         section.appendChild(rows);
       }
       field.appendChild(section);
+    }
+    if (!whole && governed > 0 && shown === 0 && this.declaration.filteredEmpty !== undefined) {
+      field.appendChild(this.declaration.filteredEmpty(this.level.order.filterText_get()));
     }
     this.level.order.counts_set(shown, total);
     // The numbers are painted after the rows are placed, so a fold, a sort

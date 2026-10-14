@@ -6,10 +6,15 @@
  * immutable and whose freshness is visit-driven.
  *
  * Freshness model (every visit is a cheap delta, never a re-crawl):
- * - ls /proc/jobs        → roster delta (feeds newer than the highest known
- *                          id), and a full index walk once the roster is older
- *                          than {@link ROSTER_FULL_WALK_MS} — so a feed shared
- *                          later still appears within that window;
+ * - ls /proc/jobs        → roster delta: each collection's newest page, read
+ *                          unfiltered, brings in the feeds newer than the
+ *                          highest known id, and its total is compared with
+ *                          the last walk's — a total that moved (a share, an
+ *                          unshare, a deletion) promotes the visit to the
+ *                          full index walk, which also runs once the roster
+ *                          is older than {@link ROSTER_FULL_WALK_MS};
+ * - a feed the roster lacks, asked for by name or id, is asked of CUBE live
+ *                          and adopted ({@link procFeed_probe});
  * - ls /proc/jobs/N      → first visit loads the topology once; every later
  *                          visit runs {@link feedVisit_sync}: one feed-row
  *                          fetch (job counters), then, only when something
@@ -76,6 +81,13 @@ export const FEED_RECHECK_MS: number = 10 * 60 * 1000;
 export const ROSTER_FULL_WALK_MS: number = 10 * 60 * 1000;
 /** Visits to one feed closer together than this share the first visit's result. */
 export const FEED_VISIT_COALESCE_MS: number = 1000;
+/**
+ * Rows of a collection's newest page a roster delta reads. CUBE orders feeds
+ * newest first, so the page holds every feed newer than the roster unless
+ * more than this many arrived between two visits; it is small because the
+ * surfaces re-ask the roster on a timer.
+ */
+export const ROSTER_DELTA_PAGE: number = 20;
 
 /**
  * Per-feed visit bookkeeping. Session memory only — never checkpointed; a
@@ -95,6 +107,38 @@ const feedVisits: Map<number, FeedVisit> = new Map();
 const feedVisitInflight: Map<number, Promise<boolean>> = new Map();
 let rosterWalkedAt: number = 0;
 let rosterSyncInflight: Promise<number[]> | null = null;
+
+/**
+ * Each feed collection's total as the last walk read it: the yardstick a
+ * roster delta holds its newest page against. A total that moved by more
+ * than the page's newer rows account for means a feed arrived or left
+ * without a new id — a share, an unshare, a deletion — which only a full
+ * walk can place. Null until a walk has read the collection (a restored
+ * roster has no yardstick yet; its first delta takes what it reads).
+ *
+ * @property owned - The owned-and-shared collection (`/api/v1/`).
+ * @property public - The public collection; null as well when its source failed.
+ */
+interface RosterTotals {
+  owned: number | null;
+  public: number | null;
+}
+
+let rosterTotals: RosterTotals = { owned: null, public: null };
+
+/**
+ * What a roster delta reads from one collection's newest page.
+ *
+ * @property newer - The page's feeds newer than the roster's highest id.
+ * @property total - The collection's total as the page reported it.
+ * @property overflow - Every row of the page was newer and more rows exist,
+ *   so feeds newer than the roster may lie beyond the page.
+ */
+interface RosterPeek {
+  newer: ProcFeed[];
+  total: number | null;
+  overflow: boolean;
+}
 let procTopologyPromise: Promise<void> | null = null;
 let procTopologyFailure: string | undefined;
 
@@ -141,17 +185,26 @@ function procFeed_create(feed: FeedData): ProcFeed {
   };
 }
 
-/** Indexes one complete paginated CUBE feed collection into the shared cache. */
-async function procFeeds_index(page_fetch: FeedPageFetch, indexed: Map<number, ProcFeed>): Promise<void> {
+/**
+ * Indexes one complete paginated CUBE feed collection into the shared cache.
+ *
+ * @param page_fetch - Fetches one page of the collection.
+ * @param indexed - The feeds indexed so far, keyed by id; this walk adds to it.
+ * @returns The collection's total as the walk latched it, or null when no page carried one.
+ */
+async function procFeeds_index(page_fetch: FeedPageFetch, indexed: Map<number, ProcFeed>): Promise<number | null> {
+  let total: number | null = null;
   for await (const step of listPages_walk(
     (offset: number, limit: number): Promise<ListPage<FeedData>> => page_fetch({ limit, offset }),
     { pageSize: PAGE },
   )) {
+    total = step.total ?? total;
     for (const feed of step.items) {
       const procFeed: ProcFeed = procFeed_create(feed);
       indexed.set(procFeed.id, procFeed);
     }
   }
+  return total;
 }
 
 // ── Cache build ────────────────────────────────────────────────────────────
@@ -170,14 +223,14 @@ async function procCache_build(): Promise<number[]> {
   }
 
   const indexed: Map<number, ProcFeed> = new Map();
-  await procFeeds_index(
+  const ownedTotal: number | null = await procFeeds_index(
     (params: Record<string, unknown>): Promise<ListPage<FeedData>> => feedsPage_get(client, params),
     indexed,
   );
   // Older CUBEs lack a public-feeds endpoint: the contract answers null
   // without a wire call, and an empty first page ends the index loop.
   const publicBefore: number = indexed.size;
-  await procFeeds_index(
+  let publicTotal: number | null = await procFeeds_index(
     async (params: Record<string, unknown>): Promise<ListPage<FeedData>> =>
       (await publicFeedsPage_get(client, params)) ?? { data: [], totalCount: 0 },
     indexed,
@@ -195,8 +248,11 @@ async function procCache_build(): Promise<number[]> {
         `proc roster: public-feeds source returned nothing while ${knownPublic.length} public feeds are known; keeping them`,
       );
       for (const feed of knownPublic) indexed.set(feed.id, feed);
+      // No yardstick from a failed source: the next delta takes what it reads.
+      publicTotal = null;
     }
   }
+  rosterTotals = { owned: ownedTotal, public: publicTotal };
 
   const knownBefore: Set<number> = new Set(cache.feedIDs_get());
   const reconciliationTargets: number[] = cache.feeds_reconcile(Array.from(indexed.values()));
@@ -369,10 +425,8 @@ async function procFeed_evict(feedID: number): Promise<void> {
   cache.feedTopology_evict(feedID);
   const client = await chrisConnection.client_get();
   if (!client) return;
-  const own: ListPage<FeedData> = await feedsPage_get(client, { id: feedID, limit: 1, offset: 0 });
-  const row: FeedData | undefined = own.data[0]
-    ?? ((await publicFeedsPage_get(client, { id: feedID, limit: 1, offset: 0 })) ?? { data: [], totalCount: 0 }).data[0];
-  if (row) cache.feed_add(procFeed_create(row));
+  const row: FeedRow | null = await feedRow_fetch(client, feedID);
+  if (row) cache.feed_add(procFeed_create(row.feed));
 }
 
 /**
@@ -641,6 +695,10 @@ export class ProcVfsProvider implements VFSProvider {
 
     // /proc/jobs/feed_N — list root instances + feed virtual files
     if (feedID !== null && instanceID === null) {
+      // A feed the roster lacks is asked of CUBE first: shared to this
+      // identity, or made public, since the walk, it is adopted here and
+      // listed as any other; a feed CUBE does not list is an empty listing.
+      if (cache.feed_get(feedID) === undefined && (await procFeedAbsent_probe(feedID)) === null) return Ok([]);
       const wasLoaded: boolean = cache.topologyLoaded_has(feedID);
       await feedInstances_ensureLoaded(feedID);
       const feed: ProcFeed | undefined = cache.feed_get(feedID);
@@ -954,15 +1012,93 @@ export async function feedMeta_ensure(feedID: number): Promise<void> {
   const cache: ProcCache = procCache_get();
   const existing: ProcFeed | undefined = cache.feed_get(feedID);
   if (existing && existing.creationDate !== '') return;
+  await procFeed_probe(feedID);
+}
 
+/**
+ * One feed's row and the collection it was found in.
+ *
+ * @property feed - The row as CUBE lists it.
+ * @property collection - The collection that listed it, the owned one first.
+ */
+interface FeedRow {
+  feed: FeedData;
+  collection: keyof RosterTotals;
+}
+
+/**
+ * Reads one feed's row, from the owned-and-shared collection first and the
+ * public one after.
+ *
+ * @param client - Connected chrisapi client.
+ * @param feedID - The feed to read.
+ * @returns The row and its collection, or null when neither lists the feed for this identity.
+ */
+async function feedRow_fetch(
+  client: NonNullable<Awaited<ReturnType<typeof chrisConnection.client_get>>>,
+  feedID: number,
+): Promise<FeedRow | null> {
+  const own: ListPage<FeedData> = await feedsPage_get(client, { id: feedID, limit: 1, offset: 0 });
+  const ownRow: FeedData | undefined = own.data[0];
+  if (ownRow) return { feed: ownRow, collection: 'owned' };
+  const pub: ListPage<FeedData> = (await publicFeedsPage_get(client, { id: feedID, limit: 1, offset: 0 })) ?? { data: [], totalCount: 0 };
+  const pubRow: FeedData | undefined = pub.data[0];
+  return pubRow ? { feed: pubRow, collection: 'public' } : null;
+}
+
+/**
+ * Asks CUBE for one feed, live, and adopts it into the roster: the way a
+ * feed shared to this identity, or made public, since the roster was
+ * walked is seen when it is asked for by name or id. A feed the roster
+ * already holds has its row refreshed. The yardsticks move with an
+ * adoption, so the next delta does not walk again for what this ask found.
+ *
+ * @param feedID - The feed to ask for.
+ * @returns The feed as the roster now holds it, or null when CUBE lists it
+ *   in neither collection for this identity — not shared, or shared to a
+ *   group the identity is not in.
+ * @throws {Error} When not connected.
+ */
+export async function procFeed_probe(feedID: number): Promise<ProcFeed | null> {
+  const cache: ProcCache = procCache_get();
   const client = await chrisConnection.client_get();
   if (!client) throw new Error('not connected');
+  const row: FeedRow | null = await feedRow_fetch(client, feedID);
+  if (row === null) return null;
+  const feed: ProcFeed = procFeed_create(row.feed);
+  const known: boolean = cache.feed_get(feedID) !== undefined;
+  cache.feed_add(feed);
+  if (!known) {
+    rosterTotal_bump(row.collection);
+    // A public feed is in the public collection whichever one listed it first.
+    if (feed.public && row.collection === 'owned') rosterTotal_bump('public');
+    cache.arrivals_note([feedID]);
+    procTopologyCatchup_enqueue([feedID]);
+  }
+  return feed;
+}
 
-  const page: ListPage<FeedData> = await feedsPage_get(client, { id: feedID, limit: 1, offset: 0 });
-  const f: FeedData | undefined = page.data[0];
-  if (!f) return;
+/**
+ * Asks CUBE for a feed the roster lacks, on a visit to its path, and says
+ * on the error stack when the ask itself failed; an absent feed is a null.
+ *
+ * @param feedID - The feed to ask for.
+ * @returns The adopted feed, or null.
+ */
+async function procFeedAbsent_probe(feedID: number): Promise<ProcFeed | null> {
+  try {
+    return await procFeed_probe(feedID);
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push('warning', `proc: asking CUBE for feed_${feedID} failed (${msg})`);
+    return null;
+  }
+}
 
-  cache.feed_add(procFeed_create(f));
+/** Moves one collection's yardstick by one adopted feed; an unknown yardstick stays unknown. */
+function rosterTotal_bump(collection: keyof RosterTotals): void {
+  const total: number | null = rosterTotals[collection];
+  if (total !== null) rosterTotals[collection] = total + 1;
 }
 
 export async function feedStatus_refresh(feedID: number): Promise<void> {
@@ -1189,30 +1325,85 @@ async function procRoster_run(force: boolean): Promise<number[]> {
 }
 
 /**
- * Walks the feeds newer than the highest known id, in both collections,
- * and adds them to the roster.
+ * One collection's newest page, read unfiltered. CUBE orders feeds newest
+ * first, so the page carries every feed newer than the roster's highest id
+ * unless more than a page arrived, and its total is the collection's whole
+ * count — the yardstick a share, an unshare or a deletion moves.
+ *
+ * @param page_fetch - Fetches one page of the collection.
+ * @param maxKnown - The roster's highest feed id (0 for an empty roster).
+ * @returns The newer feeds, the total, and whether the page overflowed.
+ */
+async function rosterCollection_peek(page_fetch: FeedPageFetch, maxKnown: number): Promise<RosterPeek> {
+  const page: ListPage<FeedData> = await page_fetch({ limit: ROSTER_DELTA_PAGE, offset: 0 });
+  const rows: ProcFeed[] = page.data.map(procFeed_create);
+  const newer: ProcFeed[] = rows.filter((feed: ProcFeed): boolean => feed.id > maxKnown);
+  const overflow: boolean = rows.length > 0 && newer.length === rows.length
+    && page.totalCount !== null && page.totalCount > rows.length;
+  return { newer, total: page.totalCount, overflow };
+}
+
+/**
+ * Whether a collection's total moved by more than its newer rows account
+ * for: a feed arrived or left under the newest page, which only the full
+ * walk can place. An overflowed page, or a collection without a yardstick,
+ * cannot say.
+ *
+ * @param collection - The collection peeked.
+ * @param peek - What its newest page read.
+ * @returns True when the total moved.
+ */
+function rosterTotal_moved(collection: keyof RosterTotals, peek: RosterPeek): boolean {
+  const expected: number | null = rosterTotals[collection];
+  if (expected === null || peek.total === null || peek.overflow) return false;
+  return peek.total !== expected + peek.newer.length;
+}
+
+/**
+ * Brings the roster up to date without walking the whole index: each
+ * collection's newest page is read, its feeds newer than the roster are
+ * adopted, and its total is held against the last walk's. A total that
+ * moved otherwise — a feed shared to this identity, one unshared, one
+ * deleted — promotes the visit to the full walk, which places it. A page
+ * that overflowed is followed by the walk of everything newer than the
+ * roster, by id.
  *
  * @param cache - The process cache.
  * @param client - Connected chrisapi client.
- * @returns The feed IDs added.
+ * @returns The feed IDs added; after a promotion, the full walk's reconciliation targets.
  */
 async function procRosterDelta_run(
   cache: ProcCache,
   client: NonNullable<Awaited<ReturnType<typeof chrisConnection.client_get>>>,
 ): Promise<number[]> {
   const knownIDs: number[] = cache.feedIDs_get();
-  const minID: number = (knownIDs.length > 0 ? Math.max(...knownIDs) : 0) + 1;
+  const maxKnown: number = knownIDs.length > 0 ? Math.max(...knownIDs) : 0;
+  const ownedFetch: FeedPageFetch = (params: Record<string, unknown>): Promise<ListPage<FeedData>> =>
+    feedsPage_get(client, params);
+  const publicFetch: FeedPageFetch = async (params: Record<string, unknown>): Promise<ListPage<FeedData>> =>
+    (await publicFeedsPage_get(client, params)) ?? { data: [], totalCount: 0 };
+
+  const owned: RosterPeek = await rosterCollection_peek(ownedFetch, maxKnown);
+  const pub: RosterPeek = await rosterCollection_peek(publicFetch, maxKnown);
+  if (rosterTotal_moved('owned', owned) || rosterTotal_moved('public', pub)) {
+    cache.rosterSync_progress('full');
+    return procCache_build();
+  }
+
   const fresh: Map<number, ProcFeed> = new Map();
-  await procFeeds_index(
-    (params: Record<string, unknown>): Promise<ListPage<FeedData>> =>
-      feedsPage_get(client, { ...params, min_id: minID }),
-    fresh,
-  );
-  await procFeeds_index(
-    async (params: Record<string, unknown>): Promise<ListPage<FeedData>> =>
-      (await publicFeedsPage_get(client, { ...params, min_id: minID })) ?? { data: [], totalCount: 0 },
-    fresh,
-  );
+  for (const feed of [...owned.newer, ...pub.newer]) fresh.set(feed.id, feed);
+  if (owned.overflow || pub.overflow) {
+    const minID: number = maxKnown + 1;
+    await procFeeds_index(
+      (params: Record<string, unknown>): Promise<ListPage<FeedData>> => ownedFetch({ ...params, min_id: minID }),
+      fresh,
+    );
+    await procFeeds_index(
+      (params: Record<string, unknown>): Promise<ListPage<FeedData>> => publicFetch({ ...params, min_id: minID }),
+      fresh,
+    );
+  }
+  rosterTotals = { owned: owned.total, public: pub.total };
   for (const feed of fresh.values()) cache.feed_add(feed);
   cache.arrivals_note(Array.from(fresh.keys()));
   procTopologyCatchup_roster(cache);
@@ -1342,6 +1533,7 @@ export function procVisitState_reset(): void {
   feedVisitInflight.clear();
   rosterWalkedAt = 0;
   rosterSyncInflight = null;
+  rosterTotals = { owned: null, public: null };
   procTopologyCatchup_reset();
 }
 

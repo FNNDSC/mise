@@ -16,7 +16,7 @@ Status as of 2026-10-03. A row marked *not covered* would be a gap in mise, not 
 | CUBE resource | Kernel verb or path | Surfaces | Status
 
 | The feed list (`/api/v1/` feeds collection)
-| `/proc/jobs` (a feed per `feed_N`), `proc feeds` (the roster model `feed.list`), `feeds list`
+| `/proc/jobs` (a feed per `feed_N`), `proc feeds [query] [--fresh]` (the roster model `feed.list`; a query matches title, `feed_N` name or id, an id the roster lacks is asked of CUBE live, `--fresh` walks the whole index now), `feeds list`
 | chell `ls /proc/jobs`; ARGUS RUNS roster, UNIVERSE
 | Covered
 

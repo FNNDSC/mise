@@ -4,9 +4,12 @@
  * @module
  */
 
-import { Result, Ok, Err, chrisIO } from "@fnndsc/cumin";
+import { Result, Ok, Err, chrisIO, errorStack } from "@fnndsc/cumin";
 import { Readable } from "stream";
 import { fileId_atPath_resolve } from './fileLookup.js';
+
+/** The largest file the whole-blob fallback may read into memory after a failed stream. */
+export const BLOB_FALLBACK_MAX_BYTES: number = 256 * 1024 * 1024;
 
 /**
  * Views content of a file in ChRIS by its ID.
@@ -47,7 +50,14 @@ export async function fileContent_getRegularStream(
   // Some CUBE deployments expose file bytes through the established blob
   // endpoint but cannot satisfy an axios streaming request. Preserve the
   // streaming fast path, then adapt that compatible binary response so
-  // download callers retain one stream-shaped contract.
+  // download callers retain one stream-shaped contract. A large file is
+  // never read whole into memory this way: the stream's own failure (on
+  // the error stack) is the answer.
+  const size: number | null = await chrisIO.file_size(idResult.value);
+  if (size !== null && size > BLOB_FALLBACK_MAX_BYTES) {
+    errorStack.stack_push("error", `${filePath} is ${size} bytes; too large to read whole after the stream failed`);
+    return Err();
+  }
   const binaryResult: Result<Buffer> = await files_view(idResult.value);
   if (!binaryResult.ok) return Err();
   return Ok({ stream: Readable.from(binaryResult.value), size: binaryResult.value.length });

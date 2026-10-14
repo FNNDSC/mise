@@ -67,6 +67,16 @@ export interface HostedEngine {
   file_read?(filePath: string): Promise<Buffer>;
 
   /**
+   * Opens one file's bytes as a stream. The seam behind `GET /vfs` when the
+   * engine has it: a download is served as it arrives, with its length when
+   * known, and never held whole in the daemon.
+   *
+   * @param filePath - The file's path (absolute or cwd-relative).
+   * @returns The stream and its size when known.
+   */
+  file_stream?(filePath: string): Promise<{ stream: NodeJS.ReadableStream; size?: number }>;
+
+  /**
    * Writes bytes to one ChRIS path. The seam behind `POST /vfs`, which is
    * how a surface with no reach into a filesystem (a browser) delivers a
    * file the operator picked.

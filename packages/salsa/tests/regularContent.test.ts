@@ -4,7 +4,7 @@
  * logic, so each is exercised for success + the key failure branches.
  */
 const mockGetGroup = jest.fn();
-const mockIO = { file_download: jest.fn(), file_downloadStream: jest.fn() };
+const mockIO = { file_download: jest.fn(), file_downloadStream: jest.fn(), file_size: jest.fn() };
 
 jest.mock('../src/files/index', () => ({ files_getGroup: mockGetGroup }));
 jest.mock('@fnndsc/cumin', () => ({
@@ -28,6 +28,7 @@ function groupWith(tableData: unknown): void {
 beforeEach(() => {
   jest.clearAllMocks();
   errorStack.stack_clear();
+  mockIO.file_size.mockResolvedValue(null);
 });
 
 describe('fileContent_getRegular', () => {
@@ -105,6 +106,15 @@ describe('fileContent_getRegularStream', () => {
     mockIO.file_downloadStream.mockResolvedValue(Err());
     mockIO.file_download.mockResolvedValue(null);
     expect((await fileContent_getRegularStream('/dir/f.txt')).ok).toBe(false);
+  });
+
+  it('never reads a large file whole after its stream failed, and says why', async () => {
+    groupWith([{ id: 1, fname: '/dir/big.dcm' }]);
+    mockIO.file_downloadStream.mockResolvedValue(Err());
+    mockIO.file_size.mockResolvedValue(3_777_606_216);
+    expect((await fileContent_getRegularStream('/dir/big.dcm')).ok).toBe(false);
+    expect(mockIO.file_download).not.toHaveBeenCalled();
+    expect(errorStack.stack_search('too large to read whole').length).toBeGreaterThan(0);
   });
 
   it('falls back to the binary endpoint when CUBE cannot stream a file', async () => {

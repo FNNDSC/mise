@@ -9,8 +9,10 @@
 
 import { chrisConnection } from "../connect/chrisConnection.js";
 import {
+  filebrowserFile_get,
   itemData_get,
   resource_call,
+  type FileBytesSource,
   type Client,
   type FileBrowserFolder,
   type UserFile,
@@ -18,6 +20,8 @@ import {
 import { errorStack } from "../error/errorStack.js";
 import { IStorageProvider } from "./io.js";
 import { Err, Ok, Result } from "../utils/result.js";
+import { STREAM_STALL_MS, stream_watchStalls } from "./streamWatch.js";
+import type { Readable } from "node:stream";
 
 /**
  * UserFile data with fname field.
@@ -38,7 +42,7 @@ interface UserFileWithData extends UserFile {
  * UserFile with getFileStream method.
  */
 interface UserFileWithStream extends UserFile {
-  getFileStream(): Promise<FileStreamResponse>;
+  getFileStream(timeout?: number): Promise<FileStreamResponse>;
 }
 
 /**
@@ -163,7 +167,7 @@ export class ChrisIO {
    * @param fileId - The file id from a folder listing.
    * @returns The file resource, or null when neither collection knows the id.
    */
-  private async downloadableFile_get(client: Client, fileId: number): Promise<UserFile | null> {
+  private async downloadableFile_get(client: Client, fileId: number): Promise<UserFile | FileBytesSource | null> {
     this.lastFileRefusal = null;
     try {
       const userFile: UserFile | null = await client.getUserFile(fileId);
@@ -178,6 +182,17 @@ export class ChrisIO {
     try {
       const pacsFile: UserFile | null = await resource_call<UserFile | null>(client, 'getPACSFile', fileId);
       if (pacsFile) return pacsFile;
+    } catch (error: unknown) {
+      this.lastFileRefusal ??= httpStatus_of(error);
+    }
+    // A file in a feed shared with this identity: CUBE serves it through
+    // the file browser while `/userfiles/` answers 403.
+    try {
+      const shared: FileBytesSource | null = await filebrowserFile_get(client, fileId);
+      if (shared) {
+        this.lastFileRefusal = null;
+        return shared;
+      }
     } catch (error: unknown) {
       this.lastFileRefusal ??= httpStatus_of(error);
     }
@@ -242,7 +257,7 @@ export class ChrisIO {
     }
 
     try {
-      const userFile: UserFile | null = await this.downloadableFile_get(client, fileId);
+      const userFile: UserFile | FileBytesSource | null = await this.downloadableFile_get(client, fileId);
 
       if (!userFile) {
         errorStack.stack_push(
@@ -252,7 +267,10 @@ export class ChrisIO {
         return Err();
       }
 
-      const response: FileStreamResponse = await (userFile as UserFileWithStream).getFileStream();
+      // No deadline on the transfer (chrisapi's default is 30 s, which a
+      // large file's wait for its first byte alone can exceed): a watchdog
+      // fails the stream when it falls silent instead, and says so.
+      const response: FileStreamResponse = await (userFile as UserFileWithStream).getFileStream(0);
       if (!response || response.data === undefined) {
         errorStack.stack_push("error", `File ID ${fileId} returned no data.`);
         return Err();
@@ -264,8 +282,13 @@ export class ChrisIO {
       const size: number | undefined =
         typeof lengthHeader === "string" ? parseInt(lengthHeader, 10) : undefined;
 
+      const body: unknown = response.data;
+      const watched: unknown =
+        body !== null && typeof body === "object" && typeof (body as Readable).pipe === "function"
+          ? stream_watchStalls(body as Readable, STREAM_STALL_MS, `file ${fileId}`)
+          : body;
       return Ok({
-        stream: response.data,
+        stream: watched,
         size: Number.isFinite(size) ? size : undefined,
         filename: (userFile as UserFileWithData).data?.fname,
       });
@@ -276,6 +299,24 @@ export class ChrisIO {
         `Download stream failed for file ${fileId}: ${msg}`
       );
       return Err();
+    }
+  }
+
+  /**
+   * A file's size as CUBE records it, without reading its bytes.
+   *
+   * @param fileId - The file's id.
+   * @returns The size in bytes, or null when the file cannot be read or CUBE gives none.
+   */
+  async file_size(fileId: number): Promise<number | null> {
+    const client: Client | null = await this.client_get();
+    if (!client) return null;
+    try {
+      const userFile: UserFile | FileBytesSource | null = await this.downloadableFile_get(client, fileId);
+      const fsize: unknown = (userFile as UserFileWithData | null)?.data?.fsize;
+      return typeof fsize === "number" ? fsize : null;
+    } catch {
+      return null;
     }
   }
 
@@ -292,7 +333,7 @@ export class ChrisIO {
     }
 
     try {
-      const userFile: UserFile | null = await this.downloadableFile_get(client, fileId);
+      const userFile: UserFile | FileBytesSource | null = await this.downloadableFile_get(client, fileId);
 
       if (!userFile) {
         // This is a common case: the file ID was scraped from a listing, but

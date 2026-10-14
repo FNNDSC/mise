@@ -142,6 +142,18 @@ export interface FolderEntry {
   readonly renderedErr: string;
 }
 
+/**
+ * One file's bytes as a stream, for a surface that must not wait for (or
+ * hold) the whole file: a 3.7 GB DICOM goes to the browser as it arrives.
+ *
+ * @property stream - The bytes.
+ * @property size - The length in bytes, when the store gave one.
+ */
+export interface FileByteStream {
+  readonly stream: NodeJS.ReadableStream;
+  readonly size?: number;
+}
+
 /** The backend's filesystem, as the core's listings, globbing and completion read it. */
 export interface BackendFilesystem {
   /** Every path goes through it: the backend's mounts and its fallback. The core adds its own mounts. */
@@ -236,6 +248,8 @@ export interface Backend {
   readonly files?: {
     readonly read: (path: string) => Promise<Buffer>;
     readonly write: (path: string, bytes: Buffer) => Promise<void>;
+    /** Opens one file's bytes as a stream, never read whole; absent, a surface is served `read`'s buffer. */
+    readonly stream?: (path: string) => Promise<FileByteStream>;
   };
   /** Its long-running steps, by kind; the core mounts those that bring no mount of their own under `/proc`. */
   readonly tasks?: ReadonlyArray<TaskSource>;

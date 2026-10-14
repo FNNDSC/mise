@@ -9,10 +9,34 @@ import { pipeline } from "stream/promises";
 import chalk from "chalk";
 
 import { fileContent_getBinaryStream, files_listRecursive, files_path_isDirectory, FsItem } from "@fnndsc/salsa";
+import { errorStack, type StackMessage } from "@fnndsc/fond";
 import { chiliLog } from "../../screen/output.js";
 import { prompt_confirmOrThrow } from "../../utils/input_format.js";
 import { path_resolveChrisFs } from "../../utils/cli.js";
 import { bytes_format } from "./upload.js";
+
+/**
+ * Opens one CUBE file as a stream, or throws with the kernel's own reason:
+ * the notes the read pushed (a stall, a refusal, a size too large to read
+ * whole) rather than a bare "Failed to download file".
+ *
+ * @param remotePath - The resolved ChRIS path.
+ * @returns The stream and its size when CUBE gave one.
+ * @throws {Error} Naming why the file could not be opened.
+ */
+async function downloadStream_open(remotePath: string): Promise<{ stream: NodeJS.ReadableStream; size?: number }> {
+  const since: number = errorStack.checkpoint_mark();
+  const result = await fileContent_getBinaryStream(remotePath);
+  const notes: StackMessage[] = errorStack.checkpoint_drain(since);
+  if (!result.ok) {
+    const reasons: string = notes
+      .map((note: StackMessage): string => note.message.replace(/^\[[^\]]*\]\s*\|\s*/, '').trim())
+      .filter((line: string): boolean => line.length > 0)
+      .join('; ');
+    throw new Error(reasons.length > 0 ? reasons : `could not open ${remotePath}`);
+  }
+  return result.value as { stream: NodeJS.ReadableStream; size?: number };
+}
 
 export { bytes_format };
 
@@ -159,16 +183,7 @@ export async function files_downloadWithProgress(
   if (!isDirectory) {
     // Download single file
     try {
-      const result = await fileContent_getBinaryStream(resolvedChris);
-      if (!result.ok) {
-        throw new Error("Failed to download file");
-      }
-
-      const { stream, size } = result.value as {
-        stream: NodeJS.ReadableStream;
-        size?: number;
-        filename?: string;
-      };
+      const { stream, size } = await downloadStream_open(resolvedChris);
 
       // If localPath is a directory, place the file inside using remote basename
       const stats: fs.Stats | null = fs.existsSync(localPath) ? await fs.promises.stat(localPath) : null;
@@ -245,7 +260,9 @@ export async function files_downloadWithProgress(
         operation: "download",
         kind: "transfer",
         phase: "failed",
-        label: "Download failed",
+        // The reason rides the bar: "Download failed" alone left the
+        // operator a 0/N bar and nothing to act on.
+        label: `Download failed: ${error instanceof Error ? error.message : String(error)}`,
         status: "error",
       });
       throw error;
@@ -519,15 +536,7 @@ export async function files_downloadManyWithProgress(
 
   for (const [index, plan] of plans.files.entries()) {
     try {
-      const result = await fileContent_getBinaryStream(plan.remotePath);
-      if (!result.ok) {
-        throw new Error('Failed to download file');
-      }
-
-      const { stream, size } = result.value as {
-        stream: NodeJS.ReadableStream;
-        size?: number;
-      };
+      const { stream, size } = await downloadStream_open(plan.remotePath);
       await directory_ensureExists(path.dirname(plan.localPath));
       let transferred: number = 0;
       stream.on('data', (chunk: Buffer): void => {

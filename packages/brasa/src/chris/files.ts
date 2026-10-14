@@ -6,7 +6,7 @@
  */
 import { vfsOutcome_toResult } from '@fnndsc/fond';
 import type { Result } from '@fnndsc/fond';
-import type { Backend } from '../core/backend.js';
+import type { Backend, FileByteStream } from '../core/backend.js';
 import { FileReadRefusal } from '../core/fileRefusal.js';
 
 /**
@@ -133,8 +133,45 @@ async function file_read(filePath: string): Promise<Buffer> {
   return result.value;
 }
 
+/**
+ * Opens one ChRIS file's bytes as a stream, resolved as {@link file_read}
+ * resolves, so a download is served as CUBE sends it and never held whole
+ * in the daemon. A projection (`/proc/…/data`) is read whole, as before:
+ * those are small virtual files or links the read already follows.
+ *
+ * @param filePath - The file's path (absolute, cwd-relative, or projected).
+ * @returns The stream and its size when CUBE gave one.
+ * @throws {FileReadRefusal} When the file cannot be opened, with the kernel's reason.
+ */
+async function file_stream(filePath: string): Promise<FileByteStream> {
+  const { path_resolve } = await import('../builtins/utils.js');
+  const { vfsDispatcher, fileContent_getBinaryStream } = await import('@fnndsc/salsa');
+  const resolved: string = await path_resolve(filePath);
+  // A node's `/proc/…/data` path streams the file behind its data link; any
+  // other projection is small and read whole.
+  let target: string = resolved;
+  if (vfsDispatcher.path_isVirtual(resolved)) {
+    target = await projectedPath_physical(resolved);
+    if (target === resolved) {
+      const bytes: Buffer = await file_read(filePath);
+      const { Readable } = await import('node:stream');
+      return { stream: Readable.from(bytes), size: bytes.length };
+    }
+  }
+  const { errorStack } = await import('@fnndsc/fond');
+  const since: number = errorStack.checkpoint_mark();
+  const { path_resolveChrisFs } = await import('@fnndsc/chili/utils/cli.js');
+  const physical: string = await path_resolveChrisFs(target, {});
+  const opened = await fileContent_getBinaryStream(physical);
+  const notes: string[] = errorStack.checkpoint_drain(since).map((note: { message: string }): string => note.message);
+  if (!opened.ok) throw fileRefusal_name(filePath, notes);
+  const value = opened.value as { stream: NodeJS.ReadableStream; size?: number };
+  return { stream: value.stream, ...(value.size !== undefined ? { size: value.size } : {}) };
+}
+
 /** The ChRIS backend's files. */
 export const chrisFiles: NonNullable<Backend['files']> = {
   read: file_read,
   write: file_write,
+  stream: file_stream,
 };

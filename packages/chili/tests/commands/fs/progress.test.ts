@@ -8,6 +8,7 @@ import * as cliUtils from '../../../src/utils/cli';
 import { chrisIO } from '@fnndsc/cumin';
 import { fileContent_getBinaryStream, files_listRecursive, files_path_isDirectory, files_uploadPath } from '@fnndsc/salsa';
 import { prompt_confirmOrThrow } from '../../../src/utils/input_format';
+import { errorStack } from '@fnndsc/fond';
 
 jest.mock('../../../src/utils/cli');
 jest.mock('../../../src/utils/input_format', () => ({
@@ -234,11 +235,27 @@ describe('fs structured progress producers', () => {
 
     await expect(files_downloadWithProgress('/remote/missing.dcm', destination, {
       onProgress: event => { events.push(event); },
-    })).rejects.toThrow('Failed to download file');
+    })).rejects.toThrow('could not open /remote/missing.dcm');
 
     expect(events).toEqual([
       expect.objectContaining({ operation: 'download', phase: 'failed', status: 'error' }),
     ]);
+  });
+
+  it("a download that cannot open says the kernel's reason, on the error and on the bar", async () => {
+    const destination = path.join(tmpDir, 'big.dcm');
+    const events: DownloadProgressEvent[] = [];
+    (files_listRecursive as jest.Mock).mockRejectedValue(new Error('not a directory'));
+    (fileContent_getBinaryStream as jest.Mock).mockImplementation(async () => {
+      errorStack.stack_push('error', 'CUBE sent no bytes of file 30916964 for 120 s');
+      return { ok: false };
+    });
+
+    await expect(files_downloadWithProgress('/remote/big.dcm', destination, {
+      onProgress: event => { events.push(event); },
+    })).rejects.toThrow('CUBE sent no bytes of file 30916964 for 120 s');
+
+    expect(events[0]).toEqual(expect.objectContaining({ phase: 'failed', label: 'Download failed: CUBE sent no bytes of file 30916964 for 120 s' }));
   });
 
   it('downloads multiple CFS files into one local directory with aggregate progress', async () => {
@@ -279,7 +296,7 @@ describe('fs structured progress producers', () => {
 
     expect(summary.failedCount).toBe(1);
     expect(notices).toEqual([
-      { message: 'Error downloading /remote/missing.txt: Failed to download file', channel: 'err' },
+      { message: 'Error downloading /remote/missing.txt: could not open /remote/missing.txt', channel: 'err' },
     ]);
   });
 

@@ -885,6 +885,34 @@ describe('a level beneath a level', () => {
     expect(root.querySelector('.pane-state')?.textContent).toBe('FILTERED 1/2');
   });
 
+  it('a filter that keeps every row off stage says so through filteredEmpty, given its text', async () => {
+    const { root, mount } = chrome_build('pacs');
+    const listing: Listing<Study> = new Listing<Study>({
+      mount,
+      traits: STUDY_TRAITS,
+      key: (study: Study): string => study.uid,
+      chrome: { root, prefix: 'pacs' },
+      empty: (): HTMLElement => { const note: HTMLElement = document.createElement('p'); note.className = 'note'; note.textContent = 'NO STUDIES FOUND'; return note; },
+      filteredEmpty: (text: string): HTMLElement => { const note: HTMLElement = document.createElement('p'); note.className = 'miss'; note.textContent = `NOTHING MATCHES ${text}`; return note; },
+    });
+    listing.rows_set([{ key: 'q', rows: STUDIES }], { field: 'q' });
+    expect(mount.querySelector('.miss')).toBeNull();
+    listing.filter_set('no-such-study');
+    await frame();
+    expect(mount.querySelector('.miss')?.textContent).toBe('NOTHING MATCHES no-such-study');
+    expect(mount.querySelector('.note')).toBeNull();
+    expect(root.querySelector('.pane-state')?.textContent).toBe('FILTERED 0/2');
+    listing.filter_set('');
+    await frame();
+    expect(mount.querySelector('.miss')).toBeNull();
+    // Rows set but empty is the other declaration's case, not this one's.
+    listing.filter_set('x');
+    await frame();
+    listing.rows_set([{ key: 'q', rows: [] }], { field: 'q' });
+    expect(mount.querySelector('.miss')).toBeNull();
+    expect(mount.querySelector('.note')?.textContent).toBe('NO STUDIES FOUND');
+  });
+
   it('wraps a row that heads a level in a group, opens rows programmatically, and gives the form the child template', async () => {
     const { root, mount } = chrome_build('pacs');
     const listing: Listing<Study> = new Listing<Study>({

@@ -359,6 +359,15 @@ describe('ProcCache', () => {
       expect(cache.feeds_find('xyz')).toEqual([]);
     });
 
+    it('feeds_find matches a feed by its id and by its feed_N name', () => {
+      cache.feed_add(feed(4389, 'Brain MRI'));
+      cache.feed_add(feed(389, 'spine study'));
+      expect(cache.feeds_find('4389').map((f) => f.id)).toEqual([4389]);
+      expect(cache.feeds_find('feed_4389').map((f) => f.id)).toEqual([4389]);
+      expect(cache.feeds_find('389').map((f) => f.id).sort()).toEqual([389, 4389]);
+      expect(cache.feeds_find('feed_9')).toEqual([]);
+    });
+
     it('instances_find resolves an exact numeric id', () => {
       cache.instance_add(inst(64306, 1, null, 'pl-dircopy'));
       expect(cache.instances_find('64306').map((i) => i.id)).toEqual([64306]);

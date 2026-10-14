@@ -106,6 +106,8 @@ const ROSTER_TICK_MS: number = 60_000;
  * terminal.
  */
 const ROSTER_LIVE_TICK_MS: number = 10_000;
+/** How long the bar keeps the landed roster line (`FEED LIST CURRENT · n NEW`). */
+const ROSTER_CHECK_DWELL_MS: number = 5_000;
 
 /** Statuses a feed wears while it still has work to do. */
 const FEED_LIVE_STATUSES: ReadonlySet<string> = new Set(['running', 'scheduled', 'created', 'started']);
@@ -147,6 +149,18 @@ const PROGRESS_STATUS_MAP: Readonly<Record<string, string>> = {
 
 
 
+/**
+ * The feed id a roster filter names, when it is one: a bare id, or a
+ * `feed_N` name.
+ *
+ * @param text - The filter's text.
+ * @returns The id, or null when the text names no feed.
+ */
+export function filterFeedID_parse(text: string): number | null {
+  const match: RegExpExecArray | null = /^(?:feed_)?(\d+)$/.exec(text.trim());
+  return match === null ? null : Number(match[1]);
+}
+
 export class DagPanel {
   private readonly scene: ChrisSpace;
   private readonly canvas: HTMLElement;
@@ -179,6 +193,25 @@ export class DagPanel {
   private lastRoster: FeedListEntry[] = [];
   /** Feeds the daemon currently annunciates as roster arrivals. */
   private arrivals: Set<number> = new Set();
+  /**
+   * Feeds a filter named by id that the roster lacked, each with the
+   * session's answer: null while the ask is out, `listed` when CUBE listed
+   * the feed and the roster took it, else CUBE's reason. Forgotten when the
+   * filter's text changes.
+   */
+  private readonly feedAsks: Map<number, string | null> = new Map();
+  /** The filter text the miss note last stood for. */
+  private filterMissText: string = '';
+  /** The miss note on stage, rewritten in place when the answer lands. */
+  private filterMissNote: HTMLElement | null = null;
+  /**
+   * The roster walk as the pane last saw it: `checking` while the session
+   * walks the feed index (asked by REFRESH, or on its own at login and when
+   * a total moved), then the landed line for a few seconds, then nothing.
+   */
+  private rosterCheck: 'checking' | { landed: string } | null = null;
+  /** Clears the landed line after its dwell. */
+  private rosterCheckTimer: ReturnType<typeof setTimeout> | null = null;
   /** The last arrival set seen, so one set asks for the roster once. */
   private arrivalsKey: string = '';
   /** The roster, declared into the listing façade. */
@@ -253,7 +286,13 @@ export class DagPanel {
       // The bar is the graph's while a graph is on stage (LIVE / SETTLED /
       // STALE); the listing's summary is written only while the roster is.
       state: (parts: ListingStateParts): string | null =>
-        this.canvas.style.display === 'block' ? null : parts.filter,
+        this.canvas.style.display === 'block' ? null : [parts.filter, this.rosterCheck_line()].filter(Boolean).join(' · '),
+      // REFRESH: ask CUBE for the feed list again, now. The walk runs off
+      // the lane and the bar says so (a-share-is-seen-on-the-next-look).
+      refresh: (): void => this.handlers.command_run('proc feeds --fresh'),
+      // A filter that matches nothing says so; one that names a feed by id
+      // asks the session for it (a-share-is-seen-on-the-next-look).
+      filteredEmpty: (text: string): HTMLElement => this.filterMiss_note(text),
       defaultSort: { key: 'createdAt', dir: 'desc' },
     });
     // A tag mark answers its own press before the row hears it.
@@ -361,6 +400,7 @@ export class DagPanel {
    * @param envelope - Any envelope crossing the session.
    */
   public envelope_observe(envelope: WireEnvelope): void {
+    if (this.feedAsk_take(envelope)) return;
     if (envelope.model?.kind === FEED_LIST_MODEL_KIND) {
       // Taken when asked for, or onto a roster: another command's listing never pulls a graph off stage.
       const asked: boolean = this.rosterPending || this.rosterShown;
@@ -824,6 +864,7 @@ export class DagPanel {
       }
     }
     this.arrivals_observe(context.procWarmup?.arrived ?? []);
+    this.rosterCheck_observe(context.procWarmup?.roster, context.procWarmup?.arrived ?? []);
     // A feed being indexed for this pane: the count moves with the prompt.
     const walks = context.procWarmup?.feeds ?? (context.procWarmup?.feed !== undefined ? [context.procWarmup.feed] : []);
     const walk = walks.find((w): boolean => w.id === this.pendingFeedId);
@@ -988,6 +1029,102 @@ export class DagPanel {
 
   /** An unanswered roster request, awaiting its envelope. */
   private rosterPending: boolean = false;
+
+  /**
+   * Follows the session's roster walk on the bar: `CHECKING CUBE FOR THE
+   * FEED LIST…` while one runs, `FEED LIST CURRENT · n NEW` (or `NOTHING
+   * NEW`) for {@link ROSTER_CHECK_DWELL_MS} when it lands. userB who logs
+   * in after a share, or presses REFRESH, is told what the session is
+   * doing rather than left to wonder whether the feed will appear.
+   *
+   * @param roster - The walk the prompt context names, or none.
+   * @param arrived - The feed ids the prompt context annunciates as arrivals.
+   */
+  private rosterCheck_observe(roster: 'delta' | 'full' | undefined, arrived: number[]): void {
+    if (roster === 'full') {
+      if (this.rosterCheck === 'checking') return;
+      if (this.rosterCheckTimer !== null) { clearTimeout(this.rosterCheckTimer); this.rosterCheckTimer = null; }
+      this.rosterCheck = 'checking';
+      this.listing.state_refresh();
+      return;
+    }
+    if (this.rosterCheck !== 'checking') return;
+    const fresh: number = arrived.filter((id: number): boolean => !this.lastRoster.some((feed: FeedListEntry): boolean => feed.id === id)).length;
+    this.rosterCheck = { landed: fresh > 0 ? `FEED LIST CURRENT · ${fresh} NEW` : 'FEED LIST CURRENT · NOTHING NEW' };
+    this.listing.state_refresh();
+    this.rosterCheckTimer = setTimeout((): void => {
+      this.rosterCheck = null;
+      this.rosterCheckTimer = null;
+      this.listing.state_refresh();
+    }, ROSTER_CHECK_DWELL_MS);
+  }
+
+  /** The bar's word on the roster walk, or empty. */
+  private rosterCheck_line(): string {
+    if (this.rosterCheck === null) return '';
+    return this.rosterCheck === 'checking' ? 'CHECKING CUBE FOR THE FEED LIST…' : this.rosterCheck.landed;
+  }
+
+  /**
+   * The field's word when the filter keeps every row off stage. A filter
+   * that is a feed's id or `feed_N` name, for a feed the roster lacks, is
+   * asked of the session (`proc feeds N`): a feed shared to this identity
+   * since the roster was walked arrives through that ask, and one CUBE
+   * does not list is answered with why — so a colleague's share is seen,
+   * or its absence explained, on the look that went for it.
+   *
+   * @param text - The filter's text.
+   * @returns The note the field shows.
+   */
+  private filterMiss_note(text: string): HTMLElement {
+    if (text !== this.filterMissText) {
+      this.filterMissText = text;
+      this.feedAsks.clear();
+    }
+    const note: HTMLDivElement = document.createElement('div');
+    note.className = 'feedlist-refusal feedlist-miss';
+    const feedID: number | null = filterFeedID_parse(text);
+    if (feedID === null) {
+      note.textContent = `no feed matches "${text}"`;
+    } else if (!this.feedAsks.has(feedID)) {
+      this.feedAsks.set(feedID, null);
+      note.textContent = `feed_${feedID} is not in the roster; asking CUBE…`;
+      this.handlers.command_run(`proc feeds ${feedID}`);
+    } else {
+      note.textContent = this.feedAsks.get(feedID) ?? `feed_${feedID} is not in the roster; asking CUBE…`;
+    }
+    this.filterMissNote = note;
+    return note;
+  }
+
+  /**
+   * Takes the answer to a filter's ask, if the envelope is one: a listing
+   * of exactly the asked feed joins the roster (the filter then shows it,
+   * marked as an arrival); a refusal naming the feed is written into the
+   * miss note where the ask was made.
+   *
+   * @param envelope - An envelope the pane observes.
+   * @returns Whether the envelope was an ask's answer.
+   */
+  private feedAsk_take(envelope: WireEnvelope): boolean {
+    if (this.feedAsks.size === 0) return false;
+    if (envelope.model?.kind === FEED_LIST_MODEL_KIND) {
+      const roster = feedListModelSchema.safeParse(envelope.model.data);
+      const only: FeedListEntry | undefined = roster.success && roster.data.feeds.length === 1 ? roster.data.feeds[0] : undefined;
+      if (only === undefined || this.feedAsks.get(only.id) !== null) return false;
+      this.feedAsks.set(only.id, 'listed');
+      this.arrivals.add(only.id);
+      this.chooser_show([...this.lastRoster.filter((feed: FeedListEntry): boolean => feed.id !== only.id), only]);
+      return true;
+    }
+    if (envelope.status !== 'error' || envelope.model !== undefined) return false;
+    const reason: string = refusalReason_strip(envelope.renderedErr || envelope.rendered || '');
+    const named: number | null = filterFeedID_parse(/feed_(\d+)/.exec(reason)?.[0] ?? '');
+    if (named === null || this.feedAsks.get(named) !== null) return false;
+    this.feedAsks.set(named, reason);
+    if (this.filterMissNote !== null && this.filterMissNote.isConnected) this.filterMissNote.textContent = reason;
+    return true;
+  }
 
   /**
    * Whether the roster is the thing on stage.

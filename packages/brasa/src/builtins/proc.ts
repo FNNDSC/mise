@@ -3,7 +3,7 @@
  * Manages the /proc VFS cache (job monitoring).
  */
 import chalk from 'chalk';
-import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procFeed_refreshStart, type FeedTopologyReadiness, procRoster_sync, procTopologyCatchup_status, procRoster_syncStart, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
+import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procFeed_probe, procFeed_refreshStart, type FeedTopologyReadiness, procRoster_sync, procTopologyCatchup_status, procRoster_syncStart, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
 import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, feedStatus_ofCounts, procLayout_get, procLayout_set, procLayoutName_check, procLayoutPositions_check, type ProcLayoutRecord, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type SingleContext, feedTags_byFeed } from '@fnndsc/cumin';
 import { FEED_LIST_MODEL_KIND, PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, type FeedListModel, type ProcLayoutModel, type ProcUniverseModel, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import { spinner } from '../lib/spinner.js';
@@ -422,7 +422,13 @@ async function feedTags_read(): Promise<Map<number, string[]> | null> {
 }
 
 /**
- * Handles `proc feeds <query>`: lists cached feeds whose title matches.
+ * Handles `proc feeds <query> [--fresh]`: lists the roster's feeds whose
+ * title, `feed_N` name or id matches. A bare id the roster lacks is asked
+ * of CUBE live — a feed shared to this identity since the roster was walked
+ * is adopted and listed, with a line saying so; one CUBE does not list is
+ * answered with why. `--fresh` walks the whole feed index off the lane
+ * now, so a share, an unshare or a deletion lands without waiting for the
+ * roster to age.
  *
  * @param args - Full command args (`args[1]` is the query).
  * @returns An envelope carrying the matched feeds.
@@ -438,21 +444,31 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
   if (blocked) return blocked;
   // The roster is index movement: answered from the cache now, walked off
   // the lane, named on the prompt while it runs; arrivals bring the pane
-  // back for the rest.
-  procRoster_syncStart();
+  // back for the rest. `--fresh` walks the whole index now, whatever the
+  // roster's age: the operator's way of asking CUBE again.
+  procRoster_syncStart(!!parsed['fresh']);
 
   const cache: ProcCache = procCache_get();
   const matches: ProcFeed[] = cache.feeds_find(query)
     .sort((a: ProcFeed, b: ProcFeed) => b.creationDate.localeCompare(a.creationDate));
 
+  // Asking is an answer: a bare id the roster lacks is asked of CUBE, and
+  // the answer either lists the feed or names why there is none.
+  let rendered: string = '';
+  if (matches.length === 0 && /^\d+$/.test(query)) {
+    const asked: CommandEnvelope | ProcFeed = await procFeedAbsent_ask(Number(query));
+    if (!('id' in asked)) return asked;
+    matches.push(asked);
+    rendered += chalk.dim(`feed_${asked.id} was not in the roster; CUBE lists it for you (owner ${asked.ownerUsername || 'unknown'}) — added.`) + '\n';
+  }
+
   if (matches.length === 0) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.yellow(
-      query ? `No feeds found with title containing "${query}".` : 'No feeds in the cache.',
+      query ? `No feed in the roster matches "${query}" (title, feed_N or id).` : 'No feeds in the cache.',
     )}\n`);
   }
 
-  let rendered: string = '';
   for (const feed of matches) {
     const status: string = feedStatus_derive(feed);
     rendered += `/proc/jobs/feed_${feed.id}  ${statusColor(status)}  ${chalk.dim(feed.title)}\n`;
@@ -471,6 +487,27 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
     })),
   };
   return envelope_ok(rendered, { kind: FEED_LIST_MODEL_KIND, data: model });
+}
+
+/**
+ * Asks CUBE live for a feed the roster lacks.
+ *
+ * @param feedID - The feed asked for.
+ * @returns The adopted feed, or the error envelope that says why there is none.
+ */
+async function procFeedAbsent_ask(feedID: number): Promise<CommandEnvelope | ProcFeed> {
+  try {
+    const feed: ProcFeed | null = await procFeed_probe(feedID);
+    if (feed !== null) return feed;
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.yellow(
+      `CUBE does not list feed_${feedID} for you: not shared with you, or shared to a group you are not in.`,
+    )}\n`);
+  } catch (error: unknown) {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`proc feeds: asking CUBE for feed_${feedID} failed (${msg})`)}\n`);
+  }
 }
 
 /**

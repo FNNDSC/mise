@@ -1771,6 +1771,51 @@ try {
   check('a refused roster repeats no frozen count', !/\(\s*[\d,]+\/[\d,]+/.test(refusalText), refusalText);
   }
 
+  if (await stage('runs-filter-asks')) {
+  // A filter naming a feed the roster lacks asks the session for it, and
+  // the field says what CUBE answered (a-share-is-seen-on-the-next-look).
+  const miss = await evalIn(`
+    document.getElementById('gutter-runs').click();
+    for (let i = 0; i < 60 && !document.querySelector('.feedlist-row'); i++) await sleep(500);
+    const pane = document.querySelector('.pane-dag');
+    const rows = document.querySelectorAll('.feedlist-row').length;
+    pane.dispatchEvent(new CustomEvent('argus:roster', { detail: { op: 'filter', text: '999999999' } }));
+    await sleep(100);
+    const asking = document.querySelector('.feedlist-miss')?.textContent ?? '';
+    let answer = asking;
+    for (let i = 0; i < 60 && answer.includes('asking'); i++) { await sleep(500); answer = document.querySelector('.feedlist-miss')?.textContent ?? ''; }
+    const state = pane.querySelector('.pane-state')?.textContent ?? '';
+    pane.dispatchEvent(new CustomEvent('argus:roster', { detail: { op: 'filter', text: '' } }));
+    await sleep(300);
+    const back = document.querySelectorAll('.feedlist-row').length;
+    return { rows, asking, answer, state, back };`);
+  check('a RUNS filter naming a feed the roster lacks asks CUBE and says so', miss.asking.includes('asking CUBE'), miss.asking);
+  check("CUBE's answer lands in the field: not shared, or shared to a group you are not in", miss.answer.includes('does not list feed_999999999'), miss.answer);
+  check('the roster stands as it was: FILTERED 0/n while asked, every row back after', miss.state.startsWith('FILTERED 0/') && miss.back === miss.rows && miss.rows > 0, JSON.stringify(miss));
+  await console_idle();
+  }
+
+  if (await stage('runs-refresh')) {
+  // REFRESH asks CUBE for the feed list again; the bar says so while the
+  // walk runs and when it lands (a-share-is-seen-on-the-next-look).
+  const refresh = await evalIn(`
+    document.getElementById('gutter-runs').click();
+    for (let i = 0; i < 60 && !document.querySelector('.feedlist-row'); i++) await sleep(500);
+    const pane = document.querySelector('.pane-dag');
+    const rows = document.querySelectorAll('.feedlist-row').length;
+    const state = () => pane.querySelector('.pane-state')?.textContent ?? '';
+    pane.querySelector('.runs-refresh').click();
+    let checking = '';
+    for (let i = 0; i < 100 && !checking.includes('CHECKING'); i++) { await sleep(100); checking = state(); }
+    let landed = checking;
+    for (let i = 0; i < 600 && !landed.includes('FEED LIST CURRENT'); i++) { await sleep(100); landed = state(); }
+    const back = document.querySelectorAll('.feedlist-row').length;
+    return { rows, checking, landed, back };`);
+  check('REFRESH on the roster says CHECKING CUBE FOR THE FEED LIST while the walk runs', refresh.checking.includes('CHECKING CUBE FOR THE FEED LIST'), refresh.checking);
+  check('and FEED LIST CURRENT when it lands, the roster still standing', refresh.landed.includes('FEED LIST CURRENT') && refresh.back >= refresh.rows && refresh.rows > 0, JSON.stringify(refresh));
+  await console_idle();
+  }
+
   if (await stage('console-grammar')) {
   const consoleGrammar = await evalIn(`
     const drawerEl = document.getElementById('drawer');

@@ -49,6 +49,8 @@ import {
   procVisitState_reset,
   FEED_RECHECK_MS,
   ROSTER_FULL_WALK_MS,
+  ROSTER_DELTA_PAGE,
+  procFeed_probe,
 } from '../src/vfs/providers/proc';
 
 const cache = procCache_get();
@@ -977,11 +979,10 @@ describe('visit-driven freshness', () => {
     cache.feed_add(feed({ id: 3, title: 'old' }));
     cache.built_set();
     cache.lifecycle_set('current');
+    // Each collection's newest page, unfiltered and newest first.
     const client = {
-      getFeeds: jest.fn().mockImplementation((params: Record<string, unknown>) =>
-        ({ data: params.min_id === 4 ? [{ id: 9, name: 'fresh', owner_username: 'chris' }] : [], totalCount: 1 })),
-      getPublicFeeds: jest.fn().mockImplementation((params: Record<string, unknown>) =>
-        ({ data: params.min_id === 4 ? [{ id: 8, name: 'pub', owner_username: 'other', public: true }] : [], totalCount: 1 })),
+      getFeeds: jest.fn().mockResolvedValue({ data: [{ id: 9, name: 'fresh', owner_username: 'chris' }, { id: 3, name: 'old', owner_username: 'chris' }], totalCount: 2 }),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [{ id: 8, name: 'pub', owner_username: 'other', public: true }], totalCount: 1 }),
       getPluginInstances: jest.fn(),
     };
     mockClientGet.mockResolvedValue(client);
@@ -990,7 +991,95 @@ describe('visit-driven freshness', () => {
     const r = await provider.list('/proc/jobs');
     const names: string[] = (r.ok ? r.value : []).map((i) => i.name).sort();
     expect(names).toEqual(['feed_3', 'feed_8', 'feed_9']);
-    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ min_id: 4 }));
+    expect(client.getFeeds).toHaveBeenCalledTimes(1);
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ limit: ROSTER_DELTA_PAGE, offset: 0 }));
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.not.objectContaining({ min_id: expect.anything() }));
+    jest.restoreAllMocks();
+  });
+
+  /** A roster walked whole once, so its yardsticks are known. */
+  async function rosterWalked(client: { getFeeds: jest.Mock; getPublicFeeds: jest.Mock }): Promise<void> {
+    cache.built_set();
+    cache.lifecycle_set('current');
+    mockClientGet.mockResolvedValue({ ...client, getPluginInstances: jest.fn() });
+    await procRoster_sync(true);
+    client.getFeeds.mockClear();
+    client.getPublicFeeds.mockClear();
+  }
+
+  it('a feed shared to this identity, with an old id, is seen on the next visit: the total moved, so the visit walks whole', async () => {
+    const own = [{ id: 7, name: 'mine', owner_username: 'chris' }, { id: 3, name: 'older', owner_username: 'chris' }];
+    const client = {
+      getFeeds: jest.fn().mockResolvedValue({ data: own, totalCount: own.length }),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+    };
+    await rosterWalked(client);
+    expect(cache.feedIDs_get().sort()).toEqual([3, 7]);
+
+    // A colleague shares feed 5: no new id, one more row in the collection.
+    const shared = [{ id: 7, name: 'mine', owner_username: 'chris' }, { id: 5, name: 'shared', owner_username: 'sandip' }, { id: 3, name: 'older', owner_username: 'chris' }];
+    client.getFeeds.mockResolvedValue({ data: shared, totalCount: shared.length });
+    jest.spyOn(Date, 'now').mockReturnValue(1);
+
+    const r = await provider.list('/proc/jobs');
+    expect((r.ok ? r.value : []).map((i) => i.name).sort()).toEqual(['feed_3', 'feed_5', 'feed_7']);
+    expect(cache.rosterSync_get()).toBeNull();
+    // The newest page first, then the whole walk the moved total asked for.
+    expect(client.getFeeds.mock.calls[0]?.[0]).toMatchObject({ limit: ROSTER_DELTA_PAGE, offset: 0 });
+    expect(client.getFeeds.mock.calls.length).toBeGreaterThan(1);
+    jest.restoreAllMocks();
+  });
+
+  it('a feed unshared or deleted leaves the roster on the next visit the same way', async () => {
+    const own = [{ id: 7, name: 'mine', owner_username: 'chris' }, { id: 5, name: 'shared', owner_username: 'sandip' }];
+    const client = {
+      getFeeds: jest.fn().mockResolvedValue({ data: own, totalCount: own.length }),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+    };
+    await rosterWalked(client);
+    client.getFeeds.mockResolvedValue({ data: [own[0]], totalCount: 1 });
+    jest.spyOn(Date, 'now').mockReturnValue(1);
+
+    await procRoster_sync();
+    expect(cache.feedIDs_get()).toEqual([7]);
+    jest.restoreAllMocks();
+  });
+
+  it('a steady total with new ids is a delta: the newer rows are adopted and nothing else is walked', async () => {
+    const own = [{ id: 7, name: 'mine', owner_username: 'chris' }];
+    const client = {
+      getFeeds: jest.fn().mockResolvedValue({ data: own, totalCount: 1 }),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+    };
+    await rosterWalked(client);
+    client.getFeeds.mockResolvedValue({ data: [{ id: 9, name: 'new', owner_username: 'chris' }, ...own], totalCount: 2 });
+    jest.spyOn(Date, 'now').mockReturnValue(1);
+
+    expect(await procRoster_sync()).toEqual([9]);
+    expect(cache.feedIDs_get().sort()).toEqual([7, 9]);
+    expect(client.getFeeds).toHaveBeenCalledTimes(1);
+    expect(cache.arrivals_recent(1)).toEqual([9]);
+    jest.restoreAllMocks();
+  });
+
+  it('a newest page that is all new, with more behind it, is followed by the walk of everything newer by id', async () => {
+    const own = [{ id: 7, name: 'mine', owner_username: 'chris' }];
+    const client = {
+      getFeeds: jest.fn().mockResolvedValue({ data: own, totalCount: 1 }),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+    };
+    await rosterWalked(client);
+    const burst = Array.from({ length: ROSTER_DELTA_PAGE + 5 }, (_: unknown, i: number) => ({ id: 100 + ROSTER_DELTA_PAGE + 5 - i, name: `b${i}`, owner_username: 'chris' }));
+    client.getFeeds.mockImplementation(async (params: Record<string, unknown>) => {
+      if (params.min_id !== undefined) return { data: burst.filter((f) => f.id >= Number(params.min_id)), totalCount: burst.length };
+      return { data: burst.slice(0, Number(params.limit)), totalCount: burst.length + own.length };
+    });
+    jest.spyOn(Date, 'now').mockReturnValue(1);
+
+    const added: number[] = await procRoster_sync();
+    expect(added.length).toBe(burst.length);
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ min_id: 8 }));
+    expect(cache.feedIDs_get().length).toBe(burst.length + 1);
     jest.restoreAllMocks();
   });
 
@@ -1030,8 +1119,7 @@ describe('roster boot sync', () => {
     cache.feed_add(feed({ id: 3, title: 'restored' }));
     cache.lifecycle_set('restored');
     const client = {
-      getFeeds: jest.fn().mockImplementation((params: Record<string, unknown>) =>
-        ({ data: params.min_id === 4 ? [{ id: 9, name: 'fresh', owner_username: 'chris' }] : [], totalCount: 1 })),
+      getFeeds: jest.fn().mockResolvedValue({ data: [{ id: 9, name: 'fresh', owner_username: 'chris' }, { id: 3, name: 'restored', owner_username: 'chris' }], totalCount: 2 }),
       getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
       getPluginInstances: jest.fn(),
     };
@@ -1040,8 +1128,9 @@ describe('roster boot sync', () => {
     expect(await procRoster_bootSync()).toEqual([9]);
     expect(cache.built).toBe(true);
     expect(cache.feedIDs_get().sort()).toEqual([3, 9]);
+    // One newest-page read per collection; a restored roster has no yardstick, so nothing is promoted.
     expect(client.getFeeds).toHaveBeenCalledTimes(1);
-    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ min_id: 4 }));
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ limit: ROSTER_DELTA_PAGE, offset: 0 }));
   });
 
   it('refuses when nothing was restored, so the host falls back to the full build', async () => {
@@ -1129,5 +1218,48 @@ describe('topology catch-up', () => {
     release?.();
     await procTopologyCatchup_await();
     expect(cache.topologyLoaded_has(4)).toBe(true);
+  });
+});
+
+describe('a feed the roster lacks', () => {
+  it('ls /proc/jobs/feed_N asks CUBE and adopts a feed shared since the walk', async () => {
+    cache.built_set();
+    cache.lifecycle_set('current');
+    const client = {
+      getFeeds: jest.fn().mockImplementation(async (params: Record<string, unknown>) =>
+        params.id === 4389 ? { data: [{ id: 4389, name: 'shared', owner_username: 'sandip', finished_jobs: 1 }], totalCount: 1 } : { data: [], totalCount: 0 }),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+      getPluginInstances: jest.fn().mockResolvedValue({ data: [{ id: 1, feed_id: 4389, plugin_name: 'pl-dircopy', status: 'finishedSuccessfully' }], totalCount: 1 }),
+    };
+    mockClientGet.mockResolvedValue(client);
+
+    const r = await provider.list('/proc/jobs/feed_4389');
+    expect(r.ok).toBe(true);
+    expect((r.ok ? r.value : []).map((i) => i.name)).toContain('pl-dircopy_1');
+    expect(cache.feed_get(4389)?.ownerUsername).toBe('sandip');
+    expect(cache.arrivals_recent()).toEqual([4389]);
+  });
+
+  it('procFeed_probe answers null when CUBE lists the feed in neither collection, and adopts nothing', async () => {
+    cache.built_set();
+    const client = {
+      getFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+    };
+    mockClientGet.mockResolvedValue(client);
+    expect(await procFeed_probe(4389)).toBeNull();
+    expect(cache.feed_get(4389)).toBeUndefined();
+    expect(client.getPublicFeeds).toHaveBeenCalledWith(expect.objectContaining({ id: 4389 }));
+  });
+
+  it('procFeed_probe finds a public feed through the public collection', async () => {
+    cache.built_set();
+    const client = {
+      getFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [{ id: 42, name: 'open', owner_username: 'other', public: true }], totalCount: 1 }),
+    };
+    mockClientGet.mockResolvedValue(client);
+    expect((await procFeed_probe(42))?.public).toBe(true);
+    expect(cache.feed_get(42)?.title).toBe('open');
   });
 });

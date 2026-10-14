@@ -1234,12 +1234,18 @@ export class ProcCache {
   }
 
   /**
-   * Searches cached feeds by title substring (case-insensitive).
+   * Searches cached feeds by title or by name: a term is matched
+   * case-insensitively against the title and against the feed's `feed_N`
+   * name, so a bare id (`4389`), a name (`feed_4389`) and a title word all
+   * find their feed.
+   *
+   * @param term - The search term; empty matches every feed.
+   * @returns The matching feeds, in cache order.
    */
   feeds_find(term: string): ProcFeed[] {
     const lower: string = term.toLowerCase();
     return Array.from(this.feeds.values())
-      .filter((f: ProcFeed) => f.title.toLowerCase().includes(lower));
+      .filter((f: ProcFeed): boolean => f.title.toLowerCase().includes(lower) || `feed_${f.id}`.includes(lower));
   }
 
   /**

@@ -36,6 +36,7 @@ const contextGetSingle_mock = jest.fn(async () => ({ user: 'me' }));
 const procCacheRefresh_mock = jest.fn(async (): Promise<void> => undefined);
 const procFeedRefreshStart_mock = jest.fn(async (): Promise<'ready' | 'pending'> => 'pending');
 const procRosterSyncStart_mock = jest.fn((): 'none' | 'delta' | 'full' => 'delta');
+const procFeedProbe_mock = jest.fn(async (): Promise<unknown> => null);
 const procFeedEnsureLoaded_mock = jest.fn(async (): Promise<void> => undefined);
 const procTopologyWarmup_mock = jest.fn(async (): Promise<void> => undefined);
 const procTopologyRetry_mock = jest.fn(async (): Promise<void> => undefined);
@@ -57,7 +58,7 @@ const mockCache = {
     mockWarmupComplete = false;
   }),
   feed_get: jest.fn((id: number) => mockFeeds.find((feed: TestFeed) => feed.id === id)),
-  feeds_find: jest.fn((term: string) => mockFeeds.filter((feed: TestFeed) => feed.title.includes(term))),
+  feeds_find: jest.fn((term: string) => mockFeeds.filter((feed: TestFeed) => feed.title.includes(term) || `feed_${feed.id}`.includes(term))),
   feedIDs_get: jest.fn((): number[] => mockFeeds.map((feed: TestFeed) => feed.id)),
   dataFacts_of: jest.fn((id: number) => mockDataFacts[id]),
   feedScopeCounts_get: jest.fn(() => ({ user: 40, shared: 14, public: 637, total: 691 })),
@@ -123,6 +124,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   feedGraph_build: jest.fn(),
   procRoster_sync: jest.fn(async (): Promise<void> => undefined),
   procRoster_syncStart: procRosterSyncStart_mock,
+  procFeed_probe: procFeedProbe_mock,
   feedVisit_sync: jest.fn(async (): Promise<boolean> => true),
   feedCached_isSettled: jest.fn((): boolean => true),
   procFeed_ensureLoaded: procFeedEnsureLoaded_mock,
@@ -525,6 +527,66 @@ describe('builtin_proc warm-up policy', () => {
 
     expect(envelope.status).toBe('ok');
     expect(envelope.rendered).toContain('/proc/jobs/feed_5');
+  });
+
+  it('proc feeds --fresh forces the whole roster walk, off the lane', async () => {
+    mockFeeds = [];
+    await builtin_proc(['feeds', '--fresh']);
+    expect(procRosterSyncStart_mock).toHaveBeenCalledWith(true);
+    await builtin_proc(['feeds']);
+    expect(procRosterSyncStart_mock).toHaveBeenLastCalledWith(false);
+  });
+
+  it('finds a feed by its id without asking CUBE', async () => {
+    mockFeeds = [{
+      id: 4389, title: 'brain', ownerUsername: 'sandip', public: false,
+      creationDate: '', finishedJobs: 2, erroredJobs: 0, startedJobs: 0,
+      scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
+    }];
+
+    const envelope: TestEnvelope = await builtin_proc(['feeds', '4389']);
+
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('/proc/jobs/feed_4389');
+    expect(procFeedProbe_mock).not.toHaveBeenCalled();
+  });
+
+  it('asks CUBE for a bare id the roster lacks and lists the feed it adopts', async () => {
+    mockFeeds = [];
+    procFeedProbe_mock.mockResolvedValueOnce({
+      id: 4389, title: 'shared this morning', ownerUsername: 'sandip', public: false,
+      creationDate: '2026-10-14T09:00:00Z', finishedJobs: 1, erroredJobs: 0, startedJobs: 0,
+      scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0,
+    });
+
+    const envelope: TestEnvelope = await builtin_proc(['feeds', '4389']);
+
+    expect(procFeedProbe_mock).toHaveBeenCalledWith(4389);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.rendered).toContain('feed_4389 was not in the roster; CUBE lists it for you (owner sandip)');
+    expect(envelope.rendered).toContain('/proc/jobs/feed_4389');
+    const model = (envelope as { model?: { data: { feeds: Array<Record<string, unknown>> } } }).model;
+    expect(model?.data.feeds[0]).toMatchObject({ id: 4389, owner: 'sandip' });
+  });
+
+  it('says why when CUBE lists no such feed for this identity', async () => {
+    mockFeeds = [];
+    procFeedProbe_mock.mockResolvedValueOnce(null);
+
+    const envelope: TestEnvelope = await builtin_proc(['feeds', '4389']);
+
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('CUBE does not list feed_4389 for you: not shared with you, or shared to a group you are not in.');
+  });
+
+  it('a title that matches nothing is not asked of CUBE', async () => {
+    mockFeeds = [];
+
+    const envelope: TestEnvelope = await builtin_proc(['feeds', 'nothing-here']);
+
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('No feed in the roster matches "nothing-here" (title, feed_N or id).');
+    expect(procFeedProbe_mock).not.toHaveBeenCalled();
   });
 
   it('reports targeted feed details', async () => {

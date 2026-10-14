@@ -167,6 +167,8 @@ export const FILE_ROW_ROSTER: VerbRoster<FileRowFacts> = {
     // (a feed's note) included; the kernel refuses a read-only one's save.
     { name: 'edit', label: (): string => 'EDIT', offered: (f: FileRowFacts): boolean => f.kind === 'file' && f.editable === true },
     { name: 'download', label: (): string => 'DOWNLOAD', offered: (f: FileRowFacts): boolean => f.kind === 'file' },
+    // LINK: a web address that opens ARGUS here, for a colleague the feed is shared with.
+    { name: 'link', label: (): string => 'LINK', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' },
     { name: 'move', label: (): string => 'MOVE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.projection !== true },
     { name: 'copy', label: (): string => 'COPY', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.projection !== true },
     { name: 'delete', label: (): string => 'DELETE', offered: (f: FileRowFacts): boolean => f.kind !== 'catalogue' && f.projection !== true },

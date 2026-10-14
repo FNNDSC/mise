@@ -128,7 +128,8 @@
     "pacs",
     "pull",
     "pipeline",
-    "pipelines"
+    "pipelines",
+    "url"
   ],
   "plainCommands": [
     "2048",
@@ -256,7 +257,8 @@
     "dirs",
     "pacsservers",
     "pacsqueries",
-    "pacsretrieve"
+    "pacsretrieve",
+    "url"
   ],
   "binBuiltins": [
     "2048",
@@ -393,7 +395,8 @@
     "image",
     "cubepath",
     "query",
-    "pull"
+    "pull",
+    "url"
   ],
   "help": {
     "2048": "\n\u001b[1m\u001b[35m2048\u001b[39m\u001b[22m\n\u001b[90m────────────────────────────────────────────────────────────\u001b[39m\n\n\u001b[1m\u001b[34mUSAGE\u001b[39m\u001b[22m\n  \u001b[32m2048\u001b[39m \n\n\u001b[1m\u001b[34mDESCRIPTION\u001b[39m\u001b[22m\n  The 4×4 board, a move per answer: w a s d (or h j k l) slide, q stops. Two\n  tiles alike join; reach 2048.\n\n\u001b[1m\u001b[34mEXAMPLES\u001b[39m\u001b[22m\n  \u001b[37m2048\u001b[39m\n\n",
@@ -523,6 +526,7 @@
     "units": "\n\u001b[1m\u001b[35mUNITS\u001b[39m\u001b[22m\n\u001b[90m────────────────────────────────────────────────────────────\u001b[39m\n\n\u001b[1m\u001b[34mUSAGE\u001b[39m\u001b[22m\n  \u001b[32munits\u001b[39m \u001b[36mVALUE FROM [to] TO | units list\u001b[39m\n\n\u001b[1m\u001b[34mDESCRIPTION\u001b[39m\u001b[22m\n  Converts a quantity between two units of one kind: length (mm cm m km in ft\n  yd mi), mass (g kg mg lb oz), time (ms s min h d wk yr), data (B kB MB GB TB\n  KiB MiB GiB TiB bit) and temperature (C F K). units list names them all.\n\n\u001b[1m\u001b[34mEXAMPLES\u001b[39m\u001b[22m\n  \u001b[37munits 10 mm in\u001b[39m\n  \u001b[37munits 72 F to C\u001b[39m\n  \u001b[37munits 1 GiB MB\u001b[39m\n  \u001b[37munits list\u001b[39m\n\n",
     "upload": "\n\u001b[1m\u001b[35mUPLOAD\u001b[39m\u001b[22m\n\u001b[90m────────────────────────────────────────────────────────────\u001b[39m\n\n\u001b[1m\u001b[34mUSAGE\u001b[39m\u001b[22m\n  \u001b[32mupload\u001b[39m \u001b[36m<local_path_or_glob> <chris_path>\u001b[39m\n\n\u001b[1m\u001b[34mDESCRIPTION\u001b[39m\u001b[22m\n  Upload local files, directories, or glob matches to ChRIS with progress\n  tracking\n\n\u001b[1m\u001b[34mOPTIONS\u001b[39m\u001b[22m\n  \u001b[1m\u001b[37mDisplays progress bar showing:\u001b[39m\u001b[22m\n    - File count and percentage complete\n    - Estimated time remaining (ETA)\n    - Data transfer progress\n  Shows summary statistics after upload\n\n\u001b[1m\u001b[34mEXAMPLES\u001b[39m\u001b[22m\n  \u001b[37mupload ~/data/file.csv /home/user/uploads/\u001b[39m\n  \u001b[37mupload ~/Pictures/earthandmoon* .\u001b[39m\n  \u001b[37mupload ./results/ ~/data/\u001b[39m\n  \u001b[37mupload ~/experiment/data /home/user/projects/\u001b[39m\n\n",
     "uptime": "\n\u001b[1m\u001b[35mUPTIME\u001b[39m\u001b[22m\n\u001b[90m────────────────────────────────────────────────────────────\u001b[39m\n\n\u001b[1m\u001b[34mUSAGE\u001b[39m\u001b[22m\n  \u001b[32muptime\u001b[39m \n\n\u001b[1m\u001b[34mDESCRIPTION\u001b[39m\u001b[22m\n  The time, how long the process serving this session has run, how many\n  surfaces are attached, since when, and its pid.\n\n\u001b[1m\u001b[34mEXAMPLES\u001b[39m\u001b[22m\n  \u001b[37muptime\u001b[39m\n\n",
+    "url": "\n\u001b[1m\u001b[35mURL\u001b[39m\u001b[22m\n\u001b[90m────────────────────────────────────────────────────────────\u001b[39m\n\n\u001b[1m\u001b[34mUSAGE\u001b[39m\u001b[22m\n  \u001b[32murl\u001b[39m \u001b[36m[path]\u001b[39m\n\n\u001b[1m\u001b[34mDESCRIPTION\u001b[39m\u001b[22m\n  Print a web address that opens ARGUS at a path (a feed or node lands in\n  RUNS, anything else in FILES)\n\n\u001b[1m\u001b[34mEXAMPLES\u001b[39m\u001b[22m\n  \u001b[37murl                                   \u001b[39m\u001b[90m# Where you stand\u001b[39m\n  \u001b[37murl /home/sandip.samal/feeds/feed_4389/pl-dicom_repack_639204\u001b[39m\n  \u001b[37murl .                                 \u001b[39m\u001b[90m# Paste it to a colleague the feed is shared with\u001b[39m\n  \n  \u001b[90m# The door comes from CHELL_DOOR; without it the fragment alone is printed.\u001b[39m\n\n",
     "user": "\n\u001b[1m\u001b[35mUSER\u001b[39m\u001b[22m\n\u001b[90m────────────────────────────────────────────────────────────\u001b[39m\n\n\u001b[1m\u001b[34mUSAGE\u001b[39m\u001b[22m\n  \u001b[32muser\u001b[39m \u001b[36m<add|inspect|disable|enable|remove> <username>\u001b[39m\n\n\u001b[1m\u001b[34mDESCRIPTION\u001b[39m\u001b[22m\n  Manage CUBE-local accounts; federated identities remain externally managed\n\n\u001b[1m\u001b[34mOPTIONS\u001b[39m\u001b[22m\n  Use `sudo user …` for lifecycle operations.\n  add prompts for email and a hidden password confirmation.\n\n\u001b[1m\u001b[34mEXAMPLES\u001b[39m\u001b[22m\n  \u001b[37msudo user add jack.bivowac\u001b[39m\n  \u001b[37msudo user disable jack.bivowac\u001b[39m\n  \u001b[37msudo user remove jack.bivowac\u001b[39m\n\n",
     "users": "\u001b[33mNo help available for 'users'\u001b[39m\n\u001b[90mType \"help\" to see all available commands.\u001b[39m\n",
     "version": "\n\u001b[1m\u001b[35mVERSION\u001b[39m\u001b[22m\n\u001b[90m────────────────────────────────────────────────────────────\u001b[39m\n\n\u001b[1m\u001b[34mUSAGE\u001b[39m\u001b[22m\n  \u001b[32mversion\u001b[39m \n\n\u001b[1m\u001b[34mDESCRIPTION\u001b[39m\u001b[22m\n  Report the versions of the mise stack layers running this session\n\n\u001b[1m\u001b[34mEXAMPLES\u001b[39m\u001b[22m\n  \u001b[37mversion\u001b[39m\n\n",

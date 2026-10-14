@@ -26,6 +26,7 @@ import type { CatalogueBinding } from './desktop.js';
 import type { HostContext } from './hostContext.js';
 import type { FileText } from './nodeOverlay.js';
 import type { PaneInstance } from './panes.js';
+import { link_compose } from './link.js';
 
 /** Files the surface shows as a table: every table on this surface is a listing. */
 export const TABLE_FILE_PATTERN: RegExp = /\.(csv|tsv)$/i;
@@ -415,6 +416,14 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
       image: (): void => { void hooks.image_open(id, path).then((line: string): void => context.terminal.line_note(line)); },
       // The browser's own save: an attachment named for the file lands on the operator's disk.
       download: (): void => file_save(path),
+      // LINK copies a web address that opens ARGUS at this path (`url` in chell).
+      link: (): void => {
+        const link: string = link_compose(window.location.origin, path);
+        void navigator.clipboard.writeText(link).then(
+          (): void => context.terminal.line_note(`link copied: ${link}`),
+          (): void => context.terminal.line_note(`link (copy it): ${link}`),
+        );
+      },
       // PROCESS acts on the place: a bound catalogue opens beside this pane.
       process: (): void => hooks.process_open(id, { input: path, feed, node: feed === null ? null : nodeOf_path(path) }),
       // GATHER takes the row into the session's cohort, keyed by its path,

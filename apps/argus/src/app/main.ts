@@ -22,6 +22,7 @@ import { type SessionNotes, feedListModelSchema, FEED_LIST_MODEL_KIND, feedDagMo
 import { type SceneNode } from '../scene/chrisSpace.js';
 import { element_require, template_stamp, pane_find } from '../frame/dom.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction, type DesktopShape } from './dormant.js';
+import { linkLanding_parse, type LinkLanding } from './link.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { logo_linesRender } from '@fnndsc/menu/logo';
 import { backend_ask, wireUrl_resolve, vfsUrl_build as routeVfsUrl_build, downloadUrl_build as routeDownloadUrl_build, door_isPresent, doorUrl_build } from '../calypso/routes.js';
@@ -2429,6 +2430,19 @@ async function surface_start(token: string): Promise<void> {
   if (layout.activePreset_get() === 'launcher') consoleZoom_set('launcher');
   panelSounds_wire();
   window.addEventListener('resize', (): void => terminal.size_fit());
+  // A link (`url` in chell, LINK on a graph) lands where it points, once:
+  // a feed or node in RUNS, anything else in FILES. The fragment is then
+  // dropped, so a reload does not land again.
+  const landing: LinkLanding | null = linkLanding_parse(window.location.hash);
+  if (landing !== null) {
+    history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    if (landing.kind === 'runs') {
+      runs_show();
+      dagPanel.jump_to(landing.target);
+    } else {
+      dir_open(landing.path);
+    }
+  }
 }
 
 /**

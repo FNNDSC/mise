@@ -33,6 +33,7 @@ import { builtin_ls } from '../builtins/fs/ls.js';
 import { builtin_mkdir } from '../builtins/fs/mkdir.js';
 import { builtin_mv } from '../builtins/fs/mv.js';
 import { builtin_pwd } from '../builtins/fs/pwd.js';
+import { builtin_url } from '../builtins/fs/url.js';
 import { builtin_rm } from '../builtins/fs/rm.js';
 import { builtin_rmdir } from '../builtins/fs/rmdir.js';
 import { builtin_touch } from '../builtins/fs/touch.js';
@@ -56,6 +57,7 @@ const envelope: Record<string, EnvelopeHandler> = {
   rmdir: builtin_rmdir,
   touch: builtin_touch,
   pwd: builtin_pwd,
+  url: builtin_url,
   timing: builtin_timing,
   debug: builtin_debug,
   version: builtin_version,
@@ -110,6 +112,7 @@ const plain: Record<string, CommandHandler> = {
   cd: envelopeHandler_wrap(builtin_cd),
   ls: envelopeHandler_wrap(builtin_ls),
   pwd: envelopeHandler_wrap(builtin_pwd),
+  url: envelopeHandler_wrap((args: string[]) => builtin_url(args)),
   cat: envelopeHandler_wrap(builtin_cat),
   rm: envelopeHandler_wrap(builtin_rm),
   cp: envelopeHandler_wrap(builtin_cp),

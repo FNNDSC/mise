@@ -44,6 +44,7 @@ import { FollowGuard } from './follow.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
 import { paneAsk_open, type PaneAskChoice } from '../ask/paneAsk.js';
+import { link_compose } from '../../app/link.js';
 import { feedGraph_build, feedMetric_of, type HueMode, type MetricMode } from '../../scene/feedGraph.js';
 
 /** What the pane asks of its host. */
@@ -269,6 +270,8 @@ export class DagPanel {
     this.paneRoot = paneRootEl;
     // JUMP TO: a feed or a node by its number or name (a-share-is-seen-on-the-next-look).
     paneRootEl?.querySelector<HTMLElement>('.runs-jump')?.addEventListener('click', (): void => { void this.jump_ask(); });
+    // LINK: a web address that opens ARGUS on the selected node, or the feed.
+    paneRootEl?.querySelector<HTMLElement>('.dag-link')?.addEventListener('click', (): void => { void this.link_copy(); });
     this.stateSpan = paneRootEl?.querySelector<HTMLElement>('.pane-state') ?? null;
     this.modeSpan = paneRootEl?.querySelector<HTMLElement>('.pane-mode') ?? null;
     const verbs: DagPanelHandlers['feed_verbs'] = handlers.feed_verbs;
@@ -1047,6 +1050,34 @@ export class DagPanel {
 
   /** An unanswered roster request, awaiting its envelope. */
   private rosterPending: boolean = false;
+
+  /**
+   * Lands the pane on a feed or node a link or a word names, as JUMP TO
+   * does once it has the answer.
+   *
+   * @param target - A feed or node id, or its `/proc` name.
+   */
+  public jump_to(target: string): void {
+    void this.jump_ask(target);
+  }
+
+  /**
+   * LINK: copies a web address that opens ARGUS on what this pane shows —
+   * the selected node, else the feed. Where the browser will not copy (an
+   * insecure page), the link stands on the pane as a question to copy from.
+   */
+  private async link_copy(): Promise<void> {
+    if (this.shownFeedId === null) return;
+    const selected: FeedDagNode | undefined = this.factsShown === null ? undefined : this.factsPayloads.get(this.factsShown.id);
+    const path: string = selected?.vfsPath.replace(/\/data$/, '') ?? `/proc/jobs/feed_${this.shownFeedId}`;
+    const link: string = link_compose(window.location.origin, path);
+    try {
+      await navigator.clipboard.writeText(link);
+      if (this.stateSpan !== null) barState_set(this.stateSpan, 'note', 'LINK COPIED');
+    } catch {
+      if (this.paneRoot !== null) await paneAsk_open(this.paneRoot, { kind: 'text', message: 'Link (copy it): ', suggest: link, commit: 'DONE' });
+    }
+  }
 
   /**
    * JUMP TO: asks for a feed or node, by number or name, on the pane, then

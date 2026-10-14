@@ -145,30 +145,32 @@ describe('what a listing renders', () => {
  */
 const CONTRACT: Readonly<Record<string, Readonly<Record<string, string[]>>>> = {
   'files.row': {
+    // LINK on every row but a catalogue entry: a web address that opens
+    // ARGUS at the row's path, for a colleague the feed is shared with.
     // A file can be gathered: CUBE's unextpath takes files as well as
     // directories, so three-and-only-three files is a cohort a run can
     // be given. Proved live before the verb was offered.
-    'a plain file outside a feed': ['GATHER', 'DOWNLOAD', 'MOVE', 'COPY', 'DELETE'],
-    'a file inside a feed': ['GATHER', 'DOWNLOAD', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
+    'a plain file outside a feed': ['GATHER', 'DOWNLOAD', 'LINK', 'MOVE', 'COPY', 'DELETE'],
+    'a file inside a feed': ['GATHER', 'DOWNLOAD', 'LINK', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
     // A place can be gathered: a cohort is what the session is working on,
     // and that is not only PACS.
-    'a directory': ['GATHER', 'PROCESS', 'MOVE', 'COPY', 'DELETE'],
+    'a directory': ['GATHER', 'PROCESS', 'LINK', 'MOVE', 'COPY', 'DELETE'],
     // Gatherable even though it cannot be PROCESSed: the kernel runs on a
     // whole node, so a directory beneath one is no input — but it is still
     // a place a cohort can hold.
-    'a directory inside a feed that is not a node': ['GATHER', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
-    "a node's data inside a feed": ['GATHER', 'PROCESS', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
-    'a DICOM series folder': ['IMAGE', 'GATHER', 'PROCESS', 'MOVE', 'COPY', 'DELETE'],
+    'a directory inside a feed that is not a node': ['GATHER', 'LINK', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
+    "a node's data inside a feed": ['GATHER', 'PROCESS', 'LINK', 'MOVE', 'COPY', 'DELETE', 'SHARE FEED 12'],
+    'a DICOM series folder': ['IMAGE', 'GATHER', 'PROCESS', 'LINK', 'MOVE', 'COPY', 'DELETE'],
     'a catalogue entry': [],
     'a catalogue entry in a bound catalogue': ['RUN'],
     // A projection is rendered by the kernel and written by nothing: there
     // is no folder behind /proc to move into, copy within or remove from,
     // and CUBE grants a feed on a feed's own path, not on a view of it.
     // What a projection IS for stays: reading, opening, processing.
-    "a node's data seen through /proc": ['PROCESS'],
-    'a file seen through /proc': ['DOWNLOAD'],
-    'a text file': ['GATHER', 'EDIT', 'DOWNLOAD', 'MOVE', 'COPY', 'DELETE'],
-    "a feed's note seen through /proc": ['EDIT', 'DOWNLOAD'],
+    "a node's data seen through /proc": ['PROCESS', 'LINK'],
+    'a file seen through /proc': ['DOWNLOAD', 'LINK'],
+    'a text file': ['GATHER', 'EDIT', 'DOWNLOAD', 'LINK', 'MOVE', 'COPY', 'DELETE'],
+    "a feed's note seen through /proc": ['EDIT', 'DOWNLOAD', 'LINK'],
   },
   'files.selection': {
     'a selection outside any feed': ['DELETE 3', 'MOVE 3', 'COPY 3'],

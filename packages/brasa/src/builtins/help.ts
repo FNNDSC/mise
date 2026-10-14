@@ -66,6 +66,18 @@ export const helpText: Record<string, CommandHelp> = {
       'cd                    # Show current directory',
     ],
   },
+  url: {
+    usage: 'url [path]',
+    description: 'Print a web address that opens ARGUS at a path (a feed or node lands in RUNS, anything else in FILES)',
+    options: [],
+    examples: [
+      'url                                   # Where you stand',
+      'url /home/sandip.samal/feeds/feed_4389/pl-dicom_repack_639204',
+      'url .                                 # Paste it to a colleague the feed is shared with',
+      '',
+      '# The door comes from CHELL_DOOR; without it the fragment alone is printed.',
+    ],
+  },
   pwd: {
     usage: 'pwd [options]',
     description: 'Print current working directory',

@@ -1,5 +1,17 @@
 # @fnndsc/chili
 
+## 3.7.7
+
+### Patch Changes
+
+- 1b93202: A large file downloads, and a file in a feed shared with you downloads (#1061). A file stream has no 30 s deadline any more: CUBE held a 3.7 GB DICOM's first byte for up to a minute, and the old deadline killed every attempt. A watchdog fails a transfer only after two silent minutes, and says so. A file in a colleague's shared feed is read through CUBE's file browser, which serves it where `/userfiles/` answers 403. `download` names the kernel's reason (a stall, a refusal, a file too large to read whole) instead of "Failed to download file", and a file over 256 MB is never read whole into memory after a failed stream. ARGUS's DOWNLOAD streams through the daemon with its length in the header, so the browser draws its own progress and the daemon holds nothing whole.
+- Updated dependencies [e29bf91]
+- Updated dependencies [a0f0160]
+- Updated dependencies [1b93202]
+  - @fnndsc/cumin@3.27.12
+  - @fnndsc/salsa@4.0.1
+  - @fnndsc/menu@0.22.1
+
 ## 3.7.6
 
 ### Patch Changes

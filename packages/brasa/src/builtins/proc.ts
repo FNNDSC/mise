@@ -3,9 +3,9 @@
  * Manages the /proc VFS cache (job monitoring).
  */
 import chalk from 'chalk';
-import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procFeed_probe, procFeed_refreshStart, type FeedTopologyReadiness, procRoster_sync, procTopologyCatchup_status, procRoster_syncStart, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
+import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procFeed_probe, procTarget_locate, type ProcLocation, procFeed_refreshStart, type FeedTopologyReadiness, procRoster_sync, procTopologyCatchup_status, procRoster_syncStart, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
 import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, feedStatus_ofCounts, procLayout_get, procLayout_set, procLayoutName_check, procLayoutPositions_check, type ProcLayoutRecord, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type SingleContext, feedTags_byFeed } from '@fnndsc/cumin';
-import { FEED_LIST_MODEL_KIND, PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, type FeedListModel, type ProcLayoutModel, type ProcUniverseModel, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { FEED_LIST_MODEL_KIND, PROC_JUMP_MODEL_KIND, type ProcJumpModel, PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, type FeedListModel, type ProcLayoutModel, type ProcUniverseModel, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import { spinner } from '../lib/spinner.js';
 import { universeLayout_underWay, universeLayouts_warm } from '../chris/universeLayout.js';
 import { commandArgs_process, type ParsedArgs } from './utils.js';
@@ -407,6 +407,55 @@ async function procHere_handle(args: string[]): Promise<CommandEnvelope> {
 }
 
 /**
+ * Handles `proc jump [--where] <target>`: goes to a feed or a node named by
+ * its id or its `/proc` name, asking CUBE for what the roster and the index
+ * lack (a feed shared since the walk, a node in one). A bare number that is
+ * both a feed and a node is not guessed: both are named, with the line that
+ * reaches each. `--where` only answers (a surface lands its own pane there
+ * and leaves the session's cwd alone).
+ *
+ * @param args - Full command args (`args[0]` is `jump`).
+ * @returns The cd envelope, or the answer with its `proc.jump` model.
+ */
+async function procJump_handle(args: string[]): Promise<CommandEnvelope> {
+  // `--where` is a switch, not an option taking the target as its value.
+  const words: string[] = args.slice(1);
+  const whereOnly: boolean = words.includes('--where');
+  const target: string = words.find((word: string): boolean => !word.startsWith('--')) ?? '';
+  if (target === '') {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red('Usage: proc jump [--where] <feed id | node id | feed_N | plugin_N>')}\n`);
+  }
+  let places: ProcLocation[];
+  try {
+    places = await procTarget_locate(target);
+  } catch (error: unknown) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`proc jump: ${error instanceof Error ? error.message : String(error)}`)}\n`);
+  }
+  const model: ProcJumpModel = { target, choices: places.map((place: ProcLocation): ProcJumpModel['choices'][number] => ({ ...place })) };
+  if (places.length === 0) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.yellow(`proc jump: no feed or node ${target} is visible to you: not shared with you, or shared to a group you are not in.`)}\n`);
+  }
+  if (places.length > 1) {
+    process.exitCode = 1;
+    const lines: string = places.map((place: ProcLocation): string =>
+      `  proc jump ${place.name}   ${chalk.dim(place.kind === 'feed' ? `the feed "${place.title}"` : `a node in feed_${place.feedId} "${place.title}"`)}`).join('\n');
+    // The choices ride the refusal as its model: a surface asks which.
+    return { ...envelope_error('', undefined, `${chalk.yellow(`proc jump: ${target} is both a feed and a node; say which:`)}\n${lines}\n`), model: { kind: PROC_JUMP_MODEL_KIND, data: model } };
+  }
+  const place: ProcLocation = places[0] as ProcLocation;
+  let where: string = `/proc/jobs/feed_${place.feedId}`;
+  if (place.kind === 'node' && place.nodeId !== undefined) {
+    await procFeed_ensureLoaded(place.feedId);
+    where = procCache_get().path_build(place.nodeId) ?? where;
+  }
+  if (whereOnly) return envelope_ok(`${where}\n`, { kind: PROC_JUMP_MODEL_KIND, data: model });
+  return builtin_cd([where]);
+}
+
+/**
  * Every feed's tags, for the roster: the kernel's tags index, read once per
  * tag and kept. A read that fails leaves the roster without marks and
  * leaves nothing on the error stack: the roster asked, it did not fail.
@@ -769,6 +818,9 @@ export async function builtin_proc(args: string[]): Promise<CommandEnvelope> {
   }
   if (subcommand === 'here') {
     return procHere_handle(args);
+  }
+  if (subcommand === 'jump') {
+    return procJump_handle(args);
   }
   if (subcommand === 'feeds') {
     return procFeeds_handle(args);

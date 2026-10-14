@@ -22,6 +22,9 @@ import {
   feedListModelSchema,
   DAG_MODEL_KINDS,
   FEED_LIST_MODEL_KIND,
+  PROC_JUMP_MODEL_KIND,
+  procJumpModelSchema,
+  type ProcJumpModel,
   type FeedDagModel,
   type FeedDagNode,
   type FeedListEntry,
@@ -40,6 +43,7 @@ import { FeedViewFrame, feedHueLegend_of, feedShape_same, feedStatuses_patch, ty
 import { FollowGuard } from './follow.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
+import { paneAsk_open, type PaneAskChoice } from '../ask/paneAsk.js';
 import { feedGraph_build, feedMetric_of, type HueMode, type MetricMode } from '../../scene/feedGraph.js';
 
 /** What the pane asks of its host. */
@@ -212,6 +216,12 @@ export class DagPanel {
   private rosterCheck: 'checking' | { landed: string } | null = null;
   /** Clears the landed line after its dwell. */
   private rosterCheckTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The pane's root, where its questions stand. */
+  private paneRoot: HTMLElement | null = null;
+  /** A JUMP TO asked of the session and not yet answered. */
+  private jumpPending: boolean = false;
+  /** The node a jump landed on, selected once its feed's graph is drawn. */
+  private jumpNode: number | null = null;
   /** The last arrival set seen, so one set asks for the roster once. */
   private arrivalsKey: string = '';
   /** The roster, declared into the listing façade. */
@@ -256,6 +266,9 @@ export class DagPanel {
     this.strategyPill = strategyPill;
     this.handlers = handlers;
     const paneRootEl: HTMLElement | null = strategyPill.closest<HTMLElement>('.pane-dag');
+    this.paneRoot = paneRootEl;
+    // JUMP TO: a feed or a node by its number or name (a-share-is-seen-on-the-next-look).
+    paneRootEl?.querySelector<HTMLElement>('.runs-jump')?.addEventListener('click', (): void => { void this.jump_ask(); });
     this.stateSpan = paneRootEl?.querySelector<HTMLElement>('.pane-state') ?? null;
     this.modeSpan = paneRootEl?.querySelector<HTMLElement>('.pane-mode') ?? null;
     const verbs: DagPanelHandlers['feed_verbs'] = handlers.feed_verbs;
@@ -400,6 +413,7 @@ export class DagPanel {
    * @param envelope - Any envelope crossing the session.
    */
   public envelope_observe(envelope: WireEnvelope): void {
+    if (this.jump_take(envelope)) return;
     if (this.feedAsk_take(envelope)) return;
     if (envelope.model?.kind === FEED_LIST_MODEL_KIND) {
       // Taken when asked for, or onto a roster: another command's listing never pulls a graph off stage.
@@ -503,6 +517,10 @@ export class DagPanel {
       this.graph_show(model);
     }
     this.watch_open(model.feedId);
+    // A jump to a node lands on its feed, then on the node.
+    if (this.jumpNode !== null) {
+      if (this.scene.selection_set(String(this.jumpNode))) this.jumpNode = null;
+    }
     // A feed entered (not a repaint of the one on stage) reads its note and tags.
     this.feedFrame.arrived(model.feedId);
     this.handlers.feed_shown?.();
@@ -1029,6 +1047,98 @@ export class DagPanel {
 
   /** An unanswered roster request, awaiting its envelope. */
   private rosterPending: boolean = false;
+
+  /**
+   * JUMP TO: asks for a feed or node, by number or name, on the pane, then
+   * asks the session where that is (`proc jump --where`, which moves
+   * nothing). The answer lands the pane; a number that is both a feed and
+   * a node is asked again as a choice.
+   *
+   * @param target - What to jump to, when already known (a choice made).
+   */
+  private async jump_ask(target?: string): Promise<void> {
+    if (this.paneRoot === null) return;
+    const asked: string = (target ?? (await paneAsk_open(this.paneRoot, {
+      kind: 'text',
+      message: 'Jump to a feed or node (4389, feed_4389, pl-dircopy_639204): ',
+      commit: 'JUMP',
+    })) ?? '').trim();
+    if (asked === '' || /\s/.test(asked)) return;
+    this.jumpPending = true;
+    this.handlers.command_run(`proc jump --where ${asked}`);
+  }
+
+  /**
+   * Takes the session's answer to a jump: one place lands the pane on it
+   * (the feed entered, the node selected when the graph is drawn); several
+   * are offered as a choice; none says why on the bar.
+   *
+   * @param envelope - An envelope the pane observes.
+   * @returns Whether it was a jump's answer.
+   */
+  private jump_take(envelope: WireEnvelope): boolean {
+    if (!this.jumpPending) return false;
+    if (envelope.model?.kind === PROC_JUMP_MODEL_KIND) {
+      this.jumpPending = false;
+      const parsed = procJumpModelSchema.safeParse(envelope.model.data);
+      if (!parsed.success) return true;
+      const model: ProcJumpModel = parsed.data;
+      if (model.choices.length === 1) {
+        const place: ProcJumpModel['choices'][number] = model.choices[0] as ProcJumpModel['choices'][number];
+        this.jumpNode = place.nodeId ?? null;
+        this.feed_enter(place.feedId);
+        return true;
+      }
+      void this.jump_choose(model);
+      return true;
+    }
+    if (envelope.status === 'error' && envelope.model === undefined) {
+      this.jumpPending = false;
+      this.jumpNote_show(refusalReason_strip(envelope.renderedErr || envelope.rendered || '').replace(/^proc jump:\s*/, ''));
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Asks which place a bare number meant, when it is both a feed and a node.
+   *
+   * @param model - The places the session found.
+   */
+  private async jump_choose(model: ProcJumpModel): Promise<void> {
+    if (this.paneRoot === null) return;
+    const choices: PaneAskChoice[] = model.choices.map((place: ProcJumpModel['choices'][number]): PaneAskChoice => ({
+      value: place.name,
+      label: place.kind === 'feed'
+        ? `FEED ${place.feedId} · ${place.title}`
+        : `NODE ${place.nodeId ?? ''} · ${place.name.replace(/_\d+$/, '')} IN FEED ${place.feedId}`,
+    }));
+    const picked: string | null = await paneAsk_open(this.paneRoot, {
+      kind: 'choose',
+      message: `${model.target} is both a feed and a node: `,
+      choices,
+      commit: 'JUMP',
+    });
+    if (picked !== null && picked.trim() !== '') await this.jump_ask(picked.trim());
+  }
+
+  /**
+   * Says on the bar why a jump went nowhere, for as long as the landed
+   * roster line stays.
+   *
+   * @param reason - The session's reason.
+   */
+  private jumpNote_show(reason: string): void {
+    if (this.rosterCheckTimer !== null) clearTimeout(this.rosterCheckTimer);
+    this.rosterCheck = { landed: reason.toUpperCase() };
+    if (this.canvas.style.display === 'block') { if (this.stateSpan !== null) this.stateSpan.textContent = reason.toUpperCase(); }
+    else this.listing.state_refresh();
+    this.rosterCheckTimer = setTimeout((): void => {
+      this.rosterCheck = null;
+      this.rosterCheckTimer = null;
+      this.listing.state_refresh();
+    }, ROSTER_CHECK_DWELL_MS * 2);
+  }
 
   /**
    * Follows the session's roster walk on the bar: `CHECKING CUBE FOR THE

@@ -22,7 +22,7 @@ export * from './workflows/index.js';
 export * from './compute/index.js';
 export * from './jobs/index.js';
 export * from './users/index.js';
-export { procCache_refresh, procTopology_warmup, procTopology_reconcileFeeds, procTopology_retry, procTopology_status, procTopology_await, procTopologyCatchup_enqueue, procTopologyCatchup_status, procTopologyCatchup_await, procFeed_ensureLoaded, feedInstances_ensureLoaded, feedInstances_ensureStarted, procFeed_refreshStart, type FeedTopologyReadiness, feedMeta_ensure, procFeed_probe, feedStatus_refresh, feedVisit_sync, feedCached_isSettled, procRoster_sync, procRoster_syncStart, procRoster_bootSync, procVisitState_reset, procDataFacts_start, FEED_RECHECK_MS, ROSTER_FULL_WALK_MS, ROSTER_DELTA_PAGE, FEED_VISIT_COALESCE_MS } from './vfs/providers/proc.js';
+export { procCache_refresh, procTopology_warmup, procTopology_reconcileFeeds, procTopology_retry, procTopology_status, procTopology_await, procTopologyCatchup_enqueue, procTopologyCatchup_status, procTopologyCatchup_await, procFeed_ensureLoaded, feedInstances_ensureLoaded, feedInstances_ensureStarted, procFeed_refreshStart, type FeedTopologyReadiness, feedMeta_ensure, procFeed_probe, procTarget_locate, procTarget_parse, type ProcLocation, feedStatus_refresh, feedVisit_sync, feedCached_isSettled, procRoster_sync, procRoster_syncStart, procRoster_bootSync, procVisitState_reset, procDataFacts_start, FEED_RECHECK_MS, ROSTER_FULL_WALK_MS, ROSTER_DELTA_PAGE, FEED_VISIT_COALESCE_MS } from './vfs/providers/proc.js';
 export type { ProcTopologyState, ProcTopologyStatus } from './vfs/providers/proc.js';
 export { PROC_TAGS_PREFIX } from './vfs/providers/procTags.js';
 export { feedGraph_build, signature_compute } from './dag/feedGraph.js';

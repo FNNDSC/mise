@@ -201,6 +201,27 @@ export type FeedListModel = z.infer<typeof feedListModelSchema>;
 export const FEED_LIST_MODEL_KIND = 'feed.list' as const;
 
 /**
+ * Where `proc jump` lands, or the places a bare number may mean: one
+ * choice is a landing, several are a question the surface puts.
+ */
+export const procJumpModelSchema = z.object({
+  target: z.string(),
+  choices: z.array(z.object({
+    kind: z.enum(['feed', 'node']),
+    feedId: z.number(),
+    nodeId: z.number().optional(),
+    name: z.string(),
+    title: z.string(),
+  })),
+});
+
+/** The parsed `proc jump` model. */
+export type ProcJumpModel = z.infer<typeof procJumpModelSchema>;
+
+/** Model kind tag for {@link ProcJumpModel}. */
+export const PROC_JUMP_MODEL_KIND = 'proc.jump' as const;
+
+/**
  * The space of everything run here: every feed the index holds, as it
  * landed — its size, its status, and the shape of its pipeline. A surface
  * draws it as a tree, branches by pipeline shape, feeds as leaves.

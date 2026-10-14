@@ -1526,6 +1526,94 @@ function procTopologyCatchup_roster(cache: ProcCache): number {
 }
 
 /**
+ * One place a jump can land: a feed, or a node within one.
+ *
+ * @property kind - A feed, or a node (plugin instance).
+ * @property feedId - The feed, or the node's feed.
+ * @property nodeId - The node, for a node.
+ * @property name - The `/proc` name: `feed_4389`, or `pl-dicom_repack_639204`.
+ * @property title - The feed's title.
+ */
+export interface ProcLocation {
+  kind: 'feed' | 'node';
+  feedId: number;
+  nodeId?: number;
+  name: string;
+  title: string;
+}
+
+/**
+ * What a jump target names: a feed only (`feed_4389`), a node only
+ * (`pl-dicom_repack_639204`, or `_639204`), or a bare number that may be
+ * either. Null for anything else.
+ *
+ * @param target - What the operator typed.
+ * @returns The id and which kinds it may name, or null.
+ */
+export function procTarget_parse(target: string): { id: number; feed: boolean; node: boolean } | null {
+  const text: string = target.trim();
+  const feed: RegExpExecArray | null = /^feed_(\d+)$/.exec(text);
+  if (feed !== null) return { id: Number(feed[1]), feed: true, node: false };
+  const node: RegExpExecArray | null = /^[\w.-]*_(\d+)$/.exec(text);
+  if (node !== null) return { id: Number(node[1]), feed: false, node: true };
+  if (/^\d+$/.test(text)) return { id: Number(text), feed: true, node: true };
+  return null;
+}
+
+/**
+ * Finds where a jump target lands, asking CUBE live for what the roster
+ * and the index lack: a feed shared since the roster was walked, or a node
+ * in one. A node's feed is adopted into the roster on the way, so the
+ * place the answer names can be entered at once. A bare number that is
+ * both a feed and a node answers both; the caller asks which.
+ *
+ * @param target - A feed id, a node id, or a `feed_N` / `<plugin>_N` name.
+ * @returns Every place it names that this identity can see; empty for none.
+ */
+export async function procTarget_locate(target: string): Promise<ProcLocation[]> {
+  const parsed: { id: number; feed: boolean; node: boolean } | null = procTarget_parse(target);
+  if (parsed === null) return [];
+  const cache: ProcCache = procCache_get();
+  const found: ProcLocation[] = [];
+  if (parsed.feed) {
+    const feed: ProcFeed | null = cache.feed_get(parsed.id) ?? (await procFeedAbsent_probe(parsed.id));
+    if (feed !== null) found.push({ kind: 'feed', feedId: feed.id, name: `feed_${feed.id}`, title: feed.title });
+  }
+  if (parsed.node) {
+    const node: { feedId: number; pluginName: string } | null = await procNode_find(parsed.id);
+    if (node !== null) {
+      const feed: ProcFeed | null = cache.feed_get(node.feedId) ?? (await procFeedAbsent_probe(node.feedId));
+      if (feed !== null) {
+        found.push({ kind: 'node', feedId: node.feedId, nodeId: parsed.id, name: `${node.pluginName}_${parsed.id}`, title: feed.title });
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * A node's feed and plugin, from the index or, when the index lacks it,
+ * from CUBE.
+ *
+ * @param nodeId - The plugin instance id.
+ * @returns Its feed and plugin name, or null when CUBE shows no such node to this identity.
+ */
+async function procNode_find(nodeId: number): Promise<{ feedId: number; pluginName: string } | null> {
+  const known: ProcInstance | undefined = procCache_get().instance_get(nodeId);
+  if (known !== undefined) return { feedId: known.feedID, pluginName: known.pluginName };
+  const client = await chrisConnection.client_get();
+  if (!client) return null;
+  try {
+    const handle: PluginInstanceHandle | null = await pluginInstance_get(client, nodeId);
+    const feedId: number = Number(handle?.data?.feed_id);
+    const pluginName: string = String(handle?.data?.plugin_name ?? '');
+    return Number.isFinite(feedId) && feedId > 0 && pluginName !== '' ? { feedId, pluginName } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Forgets all visit bookkeeping (tests, and a cache cleared underneath us).
  */
 export function procVisitState_reset(): void {

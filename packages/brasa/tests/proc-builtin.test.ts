@@ -37,6 +37,7 @@ const procCacheRefresh_mock = jest.fn(async (): Promise<void> => undefined);
 const procFeedRefreshStart_mock = jest.fn(async (): Promise<'ready' | 'pending'> => 'pending');
 const procRosterSyncStart_mock = jest.fn((): 'none' | 'delta' | 'full' => 'delta');
 const procFeedProbe_mock = jest.fn(async (): Promise<unknown> => null);
+const procTargetLocate_mock = jest.fn(async (): Promise<unknown[]> => []);
 const procFeedEnsureLoaded_mock = jest.fn(async (): Promise<void> => undefined);
 const procTopologyWarmup_mock = jest.fn(async (): Promise<void> => undefined);
 const procTopologyRetry_mock = jest.fn(async (): Promise<void> => undefined);
@@ -125,6 +126,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   procRoster_sync: jest.fn(async (): Promise<void> => undefined),
   procRoster_syncStart: procRosterSyncStart_mock,
   procFeed_probe: procFeedProbe_mock,
+  procTarget_locate: procTargetLocate_mock,
   feedVisit_sync: jest.fn(async (): Promise<boolean> => true),
   feedCached_isSettled: jest.fn((): boolean => true),
   procFeed_ensureLoaded: procFeedEnsureLoaded_mock,
@@ -535,6 +537,41 @@ describe('builtin_proc warm-up policy', () => {
     expect(procRosterSyncStart_mock).toHaveBeenCalledWith(true);
     await builtin_proc(['feeds']);
     expect(procRosterSyncStart_mock).toHaveBeenLastCalledWith(false);
+  });
+
+  it('proc jump goes to the one place a target names', async () => {
+    procTargetLocate_mock.mockResolvedValueOnce([{ kind: 'feed', feedId: 4389, name: 'feed_4389', title: '3d-anon' }]);
+    await builtin_proc(['jump', '4389']);
+    expect(builtinCd_mock).toHaveBeenCalledWith(['/proc/jobs/feed_4389']);
+  });
+
+  it('proc jump --where answers without moving the session', async () => {
+    procTargetLocate_mock.mockResolvedValueOnce([{ kind: 'feed', feedId: 4389, name: 'feed_4389', title: '3d-anon' }]);
+    const envelope = (await builtin_proc(['jump', '--where', 'feed_4389'])) as TestEnvelope & { model?: { kind: string; data: { choices: unknown[] } } };
+    expect(builtinCd_mock).not.toHaveBeenCalled();
+    expect(envelope.rendered).toContain('/proc/jobs/feed_4389');
+    expect(envelope.model?.kind).toBe('proc.jump');
+    expect(envelope.model?.data.choices).toHaveLength(1);
+  });
+
+  it('proc jump on a number that is both a feed and a node names both and goes nowhere', async () => {
+    procTargetLocate_mock.mockResolvedValueOnce([
+      { kind: 'feed', feedId: 4389, name: 'feed_4389', title: '3d-anon' },
+      { kind: 'node', feedId: 12, nodeId: 4389, name: 'pl-dircopy_4389', title: 'old run' },
+    ]);
+    const envelope = (await builtin_proc(['jump', '4389'])) as TestEnvelope & { model?: { data: { choices: unknown[] } } };
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('4389 is both a feed and a node; say which:');
+    expect(envelope.renderedErr).toContain('proc jump feed_4389');
+    expect(envelope.renderedErr).toContain('proc jump pl-dircopy_4389');
+    expect(envelope.model?.data.choices).toHaveLength(2);
+    expect(builtinCd_mock).not.toHaveBeenCalled();
+  });
+
+  it('proc jump says why when nothing is visible', async () => {
+    procTargetLocate_mock.mockResolvedValueOnce([]);
+    const envelope: TestEnvelope = await builtin_proc(['jump', '999999']);
+    expect(envelope.renderedErr).toContain('not shared with you, or shared to a group you are not in');
   });
 
   it('finds a feed by its id without asking CUBE', async () => {

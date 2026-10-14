@@ -732,6 +732,23 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
   }
 
   /**
+   * Selects a node by id, as a press on it would: lit, and named through
+   * the `select` handler. For a surface that lands on a node it was asked
+   * for (a jump), not one the operator pressed.
+   *
+   * @param id - The node's id.
+   * @returns Whether the graph holds that node.
+   */
+  public selection_set(id: string): boolean {
+    const node: N | undefined = this.graph.nodes.find((candidate: N): boolean => candidate.id === id);
+    if (node === undefined) return false;
+    this.selectedId = id;
+    this.selection_paint();
+    this.handlers.select?.(node);
+    return true;
+  }
+
+  /**
    * Lights the selected sphere and dims the rest, touching materials only.
    * Selection used to rebuild the scene: every click re-ran the settle of
    * every node (seconds, on three thousand) and refitted the camera to

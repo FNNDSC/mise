@@ -1,5 +1,15 @@
 # @fnndsc/argus
 
+## 0.28.1
+
+### Patch Changes
+
+- e29bf91: A feed shared to you is seen on your next look at the roster, not after the next ten-minute walk (#1058). The roster's delta reads each collection's newest page and walks whole when the total moved, so a share, an unshare or a deletion lands on the visit that follows it. `proc feeds <q>` matches a feed's title, its `feed_N` name and its id; a bare id the roster lacks is asked of CUBE live and adopted, or refused with why (not shared with you, or shared to a group you are not in). `ls /proc/jobs/feed_N` asks the same way. In ARGUS a RUNS filter that names a feed by id and matches nothing asks the session too: the row arrives marked, or the field says what CUBE answered. The roster frame gains REFRESH (`proc feeds --fresh`), and the bar says `CHECKING CUBE FOR THE FEED LIST…` while any walk runs and `FEED LIST CURRENT · n NEW` when it lands.
+- a0f0160: Jump to a feed or a node by its number (#1061). `proc jump 639204` goes to the node, `proc jump feed_4389` to the feed, asking CUBE for anything shared since the roster was walked. A bare number that is both a feed and a node is never guessed: chell names both, and RUNS asks which. RUNS gains JUMP TO on the roster frame: it asks for the number, enters the feed, and selects the node once the graph is drawn, without moving the console's working directory.
+- b95fedf: A link opens ARGUS where it points (#1061). `url [path]` in chell prints the door's address with the path as its fragment, LINK on a RUNS graph copies one for the selected node or the feed, and LINK on a FILES row for that folder or file. Opening the link lands there once: a feed or node in RUNS, anything else in FILES, without moving the session's working directory. The door comes from `CHELL_DOOR`; without it `url` prints the fragment and says so.
+- Updated dependencies [a0f0160]
+  - @fnndsc/menu@0.22.1
+
 ## 0.28.0
 
 ### Minor Changes

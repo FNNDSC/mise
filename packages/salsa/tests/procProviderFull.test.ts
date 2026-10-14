@@ -51,6 +51,8 @@ import {
   ROSTER_FULL_WALK_MS,
   ROSTER_DELTA_PAGE,
   procFeed_probe,
+  procTarget_parse,
+  procTarget_locate,
 } from '../src/vfs/providers/proc';
 
 const cache = procCache_get();
@@ -1263,3 +1265,48 @@ describe('a feed the roster lacks', () => {
     expect(cache.feed_get(42)?.title).toBe('open');
   });
 });
+
+describe('a jump target', () => {
+  it('parses a feed name, a node name, and a bare number', () => {
+    expect(procTarget_parse('feed_4389')).toEqual({ id: 4389, feed: true, node: false });
+    expect(procTarget_parse('pl-dicom_repack_639204')).toEqual({ id: 639204, feed: false, node: true });
+    expect(procTarget_parse('_639204')).toEqual({ id: 639204, feed: false, node: true });
+    expect(procTarget_parse(' 4389 ')).toEqual({ id: 4389, feed: true, node: true });
+    expect(procTarget_parse('brain')).toBeNull();
+  });
+
+  it('a bare number that is both a feed and a node answers both', async () => {
+    cache.feed_add(feed({ id: 4389, title: '3d-anon' }));
+    cache.feed_add(feed({ id: 12, title: 'old run' }));
+    cache.instance_add({ id: 4389, feedID: 12, pluginName: 'pl-dircopy', previousID: null, status: 'finishedSuccessfully' } as unknown as Parameters<typeof cache.instance_add>[0]);
+    const places = await procTarget_locate('4389');
+    expect(places.map((p) => p.name).sort()).toEqual(['feed_4389', 'pl-dircopy_4389']);
+    expect(places.find((p) => p.kind === 'node')).toMatchObject({ feedId: 12, nodeId: 4389, title: 'old run' });
+  });
+
+  it('a node the index lacks is asked of CUBE, and its feed adopted', async () => {
+    cache.built_set();
+    const client = {
+      getPluginInstance: jest.fn().mockResolvedValue({ data: { id: 639204, feed_id: 4389, plugin_name: 'pl-dicom_repack' } }),
+      getFeeds: jest.fn().mockImplementation(async (params: Record<string, unknown>) =>
+        params.id === 4389 ? { data: [{ id: 4389, name: '3d-anon', owner_username: 'sandip.samal' }], totalCount: 1 } : { data: [], totalCount: 0 }),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+      getPluginInstances: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+    };
+    mockClientGet.mockResolvedValue(client);
+    const places = await procTarget_locate('pl-dicom_repack_639204');
+    expect(places).toEqual([{ kind: 'node', feedId: 4389, nodeId: 639204, name: 'pl-dicom_repack_639204', title: '3d-anon' }]);
+    expect(cache.feed_get(4389)?.ownerUsername).toBe('sandip.samal');
+  });
+
+  it('nothing visible answers nothing', async () => {
+    cache.built_set();
+    mockClientGet.mockResolvedValue({
+      getPluginInstance: jest.fn().mockRejectedValue(new Error('404')),
+      getFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+    });
+    expect(await procTarget_locate('999999')).toEqual([]);
+  });
+});
+

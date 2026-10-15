@@ -1,5 +1,19 @@
 # @fnndsc/chell
 
+## 5.12.4
+
+### Patch Changes
+
+- 09c9a29: Logging out of a door no longer warns about a token that is already gone. When `chell auth logout` finds the door no longer knows the token (a newer login under the same name replaced it, or it was revoked), it says there is nothing to revoke. It no longer suggests revoking by name, which would have reached the newer login.
+- Updated dependencies [e6b6ed8]
+- Updated dependencies [a55f8db]
+- Updated dependencies [b0b458b]
+- Updated dependencies [739b2c5]
+- Updated dependencies [79ac4a4]
+- Updated dependencies [580af08]
+  - @fnndsc/brasa@0.36.0
+  - @fnndsc/calypso@0.21.2
+
 ## 5.12.3
 
 ### Patch Changes

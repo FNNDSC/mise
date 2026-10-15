@@ -1,5 +1,19 @@
 # @fnndsc/brasa
 
+## 0.36.0
+
+### Minor Changes
+
+- a55f8db: You can now see which number to type. A PACS answer, `query --table`, `gather list` and `ls -l` print each row's handle (`@PAT1`, `@STD3`, `@SER12`, `@DIR4`) beside it, short and aligned, and end with a footer saying what is numbered (`numbered: @PAT1, @STD1-20, @SER1-299`). What is printed is what `gather add @SER12` expands to. `help pronouns` explains the `${…}` pronouns, and a handle that names nothing in the current listing says what the listing holds.
+- 739b2c5: You can narrow a PACS answer to the series you want with grep. `query … | grep -i t1 | grep -vi gadavist` keeps the matching series with their study and patient, and every row keeps the handle it had, so `@SER241` still means the same series. What grep keeps becomes the listing `@SER` and `${listing}` refer to, so `| gather add` takes exactly that. It works on `ls` and `gather list` too, and with nothing piped it filters the last listing. grep takes its usual flags (-i -v -w -E -F -c -e); on plain text, or with any other flag, it is the system grep.
+- 79ac4a4: A numbered listing now travels through a pipe, so `query … | gather add` gathers what the query found. Between builtins the listing goes along with the text; a pipe's last listing becomes the one `@SER3` names; and `${listing}` stands for that listing's series, files or folders. `gather add` or `gather remove` with nothing to act on now says what it takes instead of failing quietly.
+
+### Patch Changes
+
+- e6b6ed8: Run the system's own program instead of chell's with `command`, as in any POSIX shell. `query … | command grep -i t1` is plain text grep with no listing handling, and `command -v grep` answers as the host shell does.
+- b0b458b: Help now lists every command you can run. It listed 70 of them from a hand-kept list, missing `play`, `query`, `gather`, `pull`, `record`, `expect`, `url`, `version`, the job and instance aliases and more. Each command now declares its own group, including a new Workflows & Cohorts group, and a check fails the build if a new command has none.
+- 580af08: A query now warns when the PACS ignores part of what you asked. PACSDCM answers `SeriesDescription` and `StudyDescription` as if they were not there, so `query PatientID:…,SeriesDescription:*T1*` returns every series; the query still runs as asked, and one line points at the grep that narrows it (`… | grep -i -e 'T1'`). Each server's ignored keys can be set in `~/.config/mise/pacs.json`.
+
 ## 0.35.2
 
 ### Patch Changes

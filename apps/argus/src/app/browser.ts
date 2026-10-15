@@ -417,12 +417,12 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
       // The browser's own save: an attachment named for the file lands on the operator's disk.
       download: (): void => file_save(path),
       // LINK copies a web address that opens ARGUS at this path (`url` in chell).
+      // The line under the trail shows what was copied, and the console notes it.
       link: (): void => {
         const link: string = link_compose(window.location.origin, path);
-        void navigator.clipboard.writeText(link).then(
-          (): void => context.terminal.line_note(`link copied: ${link}`),
-          (): void => context.terminal.line_note(`link (copy it): ${link}`),
-        );
+        const copied: Promise<boolean> = panels.get('files', id)?.link_copy(path)
+          ?? navigator.clipboard.writeText(link).then((): boolean => true, (): boolean => false);
+        void copied.then((took: boolean): void => context.terminal.line_note(took ? `link copied: ${link}` : `link (copy it): ${link}`));
       },
       // PROCESS acts on the place: a bound catalogue opens beside this pane.
       process: (): void => hooks.process_open(id, { input: path, feed, node: feed === null ? null : nodeOf_path(path) }),

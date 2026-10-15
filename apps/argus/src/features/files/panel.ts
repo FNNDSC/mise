@@ -33,6 +33,7 @@ import { listing_isAnswered, refusalWords_of } from './answer.js';
 import { more_wire } from '../roster/more.js';
 import type { ListingAction, ListingTrait } from '../roster/row.js';
 import { barState_toggle } from '../roster/bar.js';
+import { linkLine_build, linkLine_copy, linkLine_set } from '../../app/link.js';
 
 /**
  * One entry of a directory listing, as the `fs.listing` payload carries it.
@@ -1338,7 +1339,29 @@ export class FilesPanel {
       }
       header.appendChild(crumb);
     });
+    // The place's link stands under its name, in full, to copy again and again.
+    if (!this.catalogue) header.appendChild(linkLine_build(path));
     return header;
+  }
+
+  /**
+   * Points the link line of the listing that holds a path at that path,
+   * and copies it: a row's LINK says what it copied where the place's own
+   * link stands.
+   *
+   * @param path - The row's path.
+   * @returns Whether the browser took it; null when no line holds it.
+   */
+  public link_copy(path: string): Promise<boolean> | null {
+    const parent: string = parentPath_of(path);
+    const lines: HTMLElement[] = [...this.container.querySelectorAll<HTMLElement>('.files-crumbs')]
+      .filter((header: HTMLElement): boolean => header.querySelector<HTMLElement>('.files-crumb-here')?.dataset['path'] === parent || header.querySelector<HTMLElement>('.files-crumb-here')?.dataset['path'] === path)
+      .map((header: HTMLElement): HTMLElement | null => header.querySelector<HTMLElement>('.link-line'))
+      .filter((line: HTMLElement | null): line is HTMLElement => line !== null);
+    const line: HTMLElement | undefined = lines[0];
+    if (line === undefined) return null;
+    linkLine_set(line, path);
+    return linkLine_copy(line);
   }
 
   /**

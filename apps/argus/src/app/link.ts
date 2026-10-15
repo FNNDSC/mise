@@ -58,3 +58,90 @@ export function linkLanding_parse(hash: string): LinkLanding | null {
 export function link_compose(origin: string, absolutePath: string): string {
   return `${origin.replace(/\/+$/, '')}/#${encodeURI(absolutePath)}`;
 }
+
+/** How long a link line says COPIED before it reads LINK again. */
+export const LINK_ANNOUNCE_MS: number = 2500;
+
+/**
+ * A link line: the link itself, in full, behind a LINK pill. It stands
+ * under a place's name (the FILES trail, the RUNS graph's corner), so the
+ * address is always in sight; a press on the pill or the address copies it
+ * and the pill says what happened — COPIED, or SELECT + COPY with the
+ * address selected for the hand when the browser would not copy.
+ *
+ * @param path - The path the link opens.
+ * @returns The line.
+ */
+export function linkLine_build(path: string): HTMLElement {
+  const line: HTMLElement = document.createElement('div');
+  line.className = 'link-line';
+  const pill: HTMLButtonElement = document.createElement('button');
+  pill.type = 'button';
+  pill.className = 'link-pill';
+  pill.textContent = 'LINK';
+  const address: HTMLElement = document.createElement('span');
+  address.className = 'link-address';
+  line.append(pill, address);
+  linkLine_set(line, path);
+  const press = (event: Event): void => {
+    // The line stands inside a field and a trail: a press is the line's.
+    event.stopPropagation();
+    void linkLine_copy(line);
+  };
+  pill.addEventListener('click', press);
+  address.addEventListener('click', press);
+  return line;
+}
+
+/**
+ * Points a link line at a path.
+ *
+ * @param line - The line.
+ * @param path - The path the link opens.
+ */
+export function linkLine_set(line: HTMLElement, path: string): void {
+  const link: string = link_compose(window.location.origin, path);
+  const address: HTMLElement | null = line.querySelector('.link-address');
+  if (address !== null && address.textContent !== link) address.textContent = link;
+  line.dataset['link'] = link;
+  line.title = `a link that opens ARGUS at ${path} — press to copy`;
+}
+
+/**
+ * Copies a link line's address and says so on its pill.
+ *
+ * @param line - The line.
+ * @param clipboard - The clipboard; the browser's own by default.
+ * @returns Whether the browser took it.
+ */
+export async function linkLine_copy(line: HTMLElement, clipboard: Pick<Clipboard, 'writeText'> | undefined = navigator.clipboard): Promise<boolean> {
+  const link: string = line.dataset['link'] ?? '';
+  const pill: HTMLElement | null = line.querySelector('.link-pill');
+  let copied: boolean = false;
+  try {
+    if (clipboard === undefined) throw new Error('no clipboard');
+    await clipboard.writeText(link);
+    copied = true;
+  } catch {
+    // An insecure page has no clipboard: the address is selected instead,
+    // so the operator's own copy takes it.
+    const address: HTMLElement | null = line.querySelector('.link-address');
+    const selection: Selection | null = window.getSelection();
+    if (address !== null && selection !== null) {
+      const range: Range = document.createRange();
+      range.selectNodeContents(address);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  }
+  line.dataset['copied'] = copied ? 'yes' : 'no';
+  if (pill !== null) pill.textContent = copied ? 'COPIED' : 'SELECT + COPY';
+  const shown: number = Date.now();
+  line.dataset['shown'] = String(shown);
+  setTimeout((): void => {
+    if (line.dataset['shown'] !== String(shown)) return;
+    delete line.dataset['copied'];
+    if (pill !== null) pill.textContent = 'LINK';
+  }, LINK_ANNOUNCE_MS);
+  return copied;
+}

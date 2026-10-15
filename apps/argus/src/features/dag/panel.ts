@@ -44,7 +44,7 @@ import { FollowGuard } from './follow.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
 import { paneAsk_open, type PaneAskChoice } from '../ask/paneAsk.js';
-import { link_compose } from '../../app/link.js';
+import { linkLine_build, linkLine_set } from '../../app/link.js';
 import { feedGraph_build, feedMetric_of, type HueMode, type MetricMode } from '../../scene/feedGraph.js';
 
 /** What the pane asks of its host. */
@@ -171,6 +171,8 @@ export class DagPanel {
   private readonly canvas: HTMLElement;
   private readonly title: HTMLElement;
   private readonly facts: HTMLElement;
+  /** The address of what the graph shows, in its corner. */
+  private readonly linkLine: HTMLElement;
   private readonly empty: HTMLElement;
   private readonly strategyPill: HTMLElement;
   /** BACK on the frame: out of the graph, to the roster. */
@@ -275,8 +277,13 @@ export class DagPanel {
     // CLEAR NEW: every NEW mark off at once.
     this.clearNewPill = paneRootEl?.querySelector<HTMLElement>('.runs-clearnew') ?? null;
     this.clearNewPill?.addEventListener('click', (): void => this.unseen_clear('all'));
-    // LINK: a web address that opens ARGUS on the selected node, or the feed.
-    paneRootEl?.querySelector<HTMLElement>('.dag-link')?.addEventListener('click', (): void => { void this.link_copy(); });
+    // The link line: the address that opens ARGUS on the selected node, or
+    // the feed, standing in the graph's corner; it follows the facts.
+    this.linkLine = linkLine_build('/proc/jobs');
+    this.linkLine.classList.add('dag-linkline');
+    this.linkLine.hidden = true;
+    facts.parentElement?.appendChild(this.linkLine);
+    new MutationObserver((): void => this.linkLine_refresh()).observe(facts, { childList: true });
     this.stateSpan = paneRootEl?.querySelector<HTMLElement>('.pane-state') ?? null;
     this.modeSpan = paneRootEl?.querySelector<HTMLElement>('.pane-mode') ?? null;
     const verbs: DagPanelHandlers['feed_verbs'] = handlers.feed_verbs;
@@ -502,6 +509,7 @@ export class DagPanel {
     }
     this.shownFeedId = model.feedId;
     this.pendingFeedId = null;
+    this.linkLine_refresh();
     // The graph is the press's answer: the roster row it lit stands down.
     this.listing.activation_settle();
     barState_clear(this.stateSpan, 'wait');
@@ -1076,21 +1084,17 @@ export class DagPanel {
   }
 
   /**
-   * LINK: copies a web address that opens ARGUS on what this pane shows —
-   * the selected node, else the feed. Where the browser will not copy (an
-   * insecure page), the link stands on the pane as a question to copy from.
+   * Points the link line at what the pane shows: the selected node, else
+   * the feed; hidden while no graph is on stage.
    */
-  private async link_copy(): Promise<void> {
-    if (this.shownFeedId === null) return;
-    const selected: FeedDagNode | undefined = this.factsShown === null ? undefined : this.factsPayloads.get(this.factsShown.id);
-    const path: string = selected?.vfsPath.replace(/\/data$/, '') ?? `/proc/jobs/feed_${this.shownFeedId}`;
-    const link: string = link_compose(window.location.origin, path);
-    try {
-      await navigator.clipboard.writeText(link);
-      if (this.stateSpan !== null) barState_set(this.stateSpan, 'note', 'LINK COPIED');
-    } catch {
-      if (this.paneRoot !== null) await paneAsk_open(this.paneRoot, { kind: 'text', message: 'Link (copy it): ', suggest: link, commit: 'DONE' });
+  private linkLine_refresh(): void {
+    if (this.shownFeedId === null) {
+      this.linkLine.hidden = true;
+      return;
     }
+    const selected: FeedDagNode | undefined = this.factsShown === null || this.facts.childElementCount === 0 ? undefined : this.factsPayloads.get(this.factsShown.id);
+    linkLine_set(this.linkLine, selected?.vfsPath.replace(/\/data$/, '') ?? `/proc/jobs/feed_${this.shownFeedId}`);
+    this.linkLine.hidden = false;
   }
 
   /**

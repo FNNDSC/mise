@@ -3437,6 +3437,74 @@ button.files-crumb:focus-visible {
   outline: none;
 }
 
+/* A place's link (law a-link-is-in-sight): the address in full, behind a
+   LINK pill; a press copies it and the pill says so. Under the FILES trail,
+   and in the RUNS graph's top corner. */
+.link-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+  font-family: var(--face-label);
+  font-size: 0.7rem;
+  font-weight: normal;
+  letter-spacing: 0.04em;
+  min-width: 0;
+}
+
+.link-line[hidden] {
+  display: none;
+}
+
+.link-pill {
+  flex: none;
+  border: none;
+  border-radius: 0.6rem;
+  padding: 0.05rem 0.7rem;
+  background: var(--orange);
+  color: #000;
+  font: inherit;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.link-pill:hover,
+.link-pill:focus-visible {
+  filter: brightness(1.18);
+  outline: none;
+}
+
+.link-line[data-copied='yes'] .link-pill {
+  background: var(--harvestgold);
+}
+
+.link-line[data-copied='no'] .link-pill {
+  background: var(--mars);
+}
+
+.link-address {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--orange);
+  cursor: copy;
+  user-select: all;
+}
+
+.dag-linkline {
+  position: absolute;
+  top: 0.7rem;
+  left: 0.6rem;
+  z-index: 3;
+  max-width: 60%;
+  margin: 0;
+  padding: 0.15rem 0.6rem 0.15rem 0.2rem;
+  background: rgb(0 0 0 / 72%);
+  border-radius: 0.7rem;
+}
+
 .files-crumb-here {
   color: var(--honey, var(--orange));
 }

@@ -65,6 +65,8 @@ export interface ArgusHost {
   identity_get(): string | null;
   /** The serialized desktop of the current composition. */
   desktop_serialize(): string;
+  /** Keeps the stage as a PANES card (a bare domain or the dashboard keeps nothing). */
+  stage_keep(): void;
 }
 
 /** One parsed line: subject, optional explicit target, remaining words. */
@@ -691,13 +693,16 @@ async function desktop_handle(host: ArgusHost, verb: string, name: string | unde
   // The baseline a shared view starts from: every pane closed, the
   // dashboard on stage — where every session begins.
   if (verb === 'clear') {
+    // The receiver's own screen is kept first, as a PANES card, so a view
+    // opened from a colleague never costs them what they had up.
+    host.stage_keep();
     const closed: string = paneCloseAll_run(host);
     host.launcher_enter();
     // The lines after the baseline name panes as a replay does (%1 the
     // view's primary, %2 the next born), whether a load replays them or the
     // operator types or pastes them.
     replayPanes = [];
-    return `${closed}; at the dashboard`;
+    return `your screen is kept in PANES; ${closed}; at the dashboard`;
   }
   // The stage as a script anyone can replay from the baseline (SHARE VIEW).
   if (verb === 'share') return viewScript_compose(host.desktop_serialize());

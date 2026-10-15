@@ -2037,6 +2037,7 @@ async function surface_start(token: string): Promise<void> {
     consoleZoom_toggle,
     feed_enter: (feedId: number): void => dagPanel.feed_enter(feedId),
     file_save,
+    stage_keep: (): void => stageDesktop_capture(),
     image_open: (paneId: string | null, path: string, options: { force?: boolean }): Promise<string> => image_open(paneId, path, options),
     series_ask,
     tagsPane_open,

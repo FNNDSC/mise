@@ -22,6 +22,8 @@ import type { RegardValue } from './subjects.js';
 
 /** What the host asks of its owner. */
 export interface ConsoleHostHooks {
+  /** Keeps the stage as a PANES card (desktop.capture). */
+  stage_keep: () => void;
   verbs: Pick<PaneVerbs, 'move' | 'flip' | 'resize'>;
   help_open: () => string;
   notes_open: () => string;
@@ -245,6 +247,7 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
     feed_enter: hooks.feed_enter,
     consoleZoom_toggle: hooks.consoleZoom_toggle,
     launcher_enter: hooks.launcher_enter,
+    stage_keep: hooks.stage_keep,
     // The prompt already says who and where; `attach` repeats it rather
     // than asking the session a question it has just been told the answer to.
     identity_get: hooks.identity_get,

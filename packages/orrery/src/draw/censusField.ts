@@ -14,12 +14,33 @@ import * as THREE from 'three';
 import type { NodeState } from '../types/encoding.js';
 import { THREAD_OPACITY } from './constants.js';
 import { fibonacciPoint_make } from './geometry.js';
+import { LAMP_BLOOM_REACH, LAMP_WHITE } from './lamps.js';
+import { nebulaTexture_get } from './nebula.js';
 import type { Palette } from './palette.js';
 import type { StarField } from './starField.js';
 import type { StarEntry } from './stars.js';
 import { WAVE_STEP_MS } from './timing.js';
 import { tubeMode_of, type TubeField } from './tubeField.js';
 import { CENSUS_TUBE_CAP, type TubeSpec } from './tubes.js';
+
+/** Past this many stages the census blooms none: each glow is a draw of its own. */
+export const CENSUS_GLOW_CAP: number = 400;
+
+/**
+ * How finely a census member's sphere is cut, by how many the census draws:
+ * smooth on a 4K screen while there are few (980 faces, near a node
+ * sphere's own cut; detail 1's 80 faces read as a faceted stone), coarser
+ * as the crowd grows, so a census of tens of thousands of jobs still turns
+ * at frame rate.
+ *
+ * @param total - The members the census draws.
+ * @returns The icosahedron's detail.
+ */
+export function censusDetail_of(total: number): number {
+  if (total <= 2_000) return 6;
+  if (total <= 20_000) return 3;
+  return 1;
+}
 
 /**
  * One stage as the census draws it.
@@ -71,6 +92,8 @@ export class CensusField {
   private base: Float32Array | null = null;
   private memberIds: string[] = [];
   private memberPositions: THREE.Vector3[] = [];
+  /** Each stage's glow as the wave lands on it, and how far its shell reaches. */
+  private glows: Array<{ id: string; sprite: THREE.Sprite; reach: number }> = [];
 
   /**
    * @param host - What the census draws with.
@@ -105,7 +128,7 @@ export class CensusField {
   public build(nodes: ReadonlyArray<CensusNode>, starring: boolean, palette: Palette): CensusCloud {
     let total: number = 0;
     for (const node of nodes) if (node.ghost !== true) total += Math.max(1, node.count);
-    const geometry: THREE.IcosahedronGeometry = new THREE.IcosahedronGeometry(1, 1);
+    const geometry: THREE.IcosahedronGeometry = new THREE.IcosahedronGeometry(1, censusDetail_of(total));
     const material: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5, metalness: 0.1 });
     const starred: StarEntry[] = [];
     const instanced: THREE.InstancedMesh = new THREE.InstancedMesh(geometry, material, starring ? 1 : total);
@@ -146,6 +169,7 @@ export class CensusField {
       }
       shells.set(node.id, points);
       shellRadii.set(node.id, memberRadius);
+      if (!starring && nodes.length <= CENSUS_GLOW_CAP) this.glow_add(node, shellRadius + memberRadius);
     }
     if (starring) {
       const view = this.host.starsView();
@@ -198,7 +222,33 @@ export class CensusField {
       colors[o + 2] = base[o + 2]! + (pulse.b - base[o + 2]!) * flare;
     }
     this.mesh.instanceColor.needsUpdate = true;
+    // The stage blooms as its jobs flare, as a lone node's lamp does.
+    for (const { id, sprite, reach } of this.glows) {
+      const at: number | undefined = fireAt(id);
+      const dt: number = at === undefined ? -1 : elapsed - at;
+      const flare: number = dt >= 0 && dt <= flareMs ? Math.sin((dt / flareMs) * Math.PI) : 0;
+      sprite.visible = flare > 0;
+      sprite.scale.setScalar(reach * (2 + LAMP_BLOOM_REACH * flare));
+      sprite.material.opacity = 0.9 * flare;
+    }
     return peak;
+  }
+
+  /**
+   * Stands a stage's glow, hidden until the wave lands on it.
+   *
+   * @param node - The stage.
+   * @param reach - How far its shell reaches.
+   */
+  private glow_add(node: CensusNode, reach: number): void {
+    const sprite: THREE.Sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: nebulaTexture_get(), color: node.color.clone().lerp(LAMP_WHITE, 0.35),
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    sprite.position.copy(node.position);
+    sprite.visible = false;
+    this.host.parent.add(sprite);
+    this.glows.push({ id: node.id, sprite, reach });
   }
 
   /**
@@ -222,6 +272,11 @@ export class CensusField {
     this.base = null;
     this.memberIds = [];
     this.memberPositions = [];
+    for (const { sprite } of this.glows) {
+      sprite.removeFromParent();
+      sprite.material.dispose();
+    }
+    this.glows = [];
   }
 }
 

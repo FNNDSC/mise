@@ -62,6 +62,8 @@ interface RosterFile {
   identity: string;
   writtenAt: string;
   feeds: ProcFeed[];
+  /** Feeds marked NEW since the last visit; absent in a roster written before the mark existed. */
+  unseen?: number[];
 }
 
 interface ShardFile {
@@ -371,7 +373,8 @@ async function shards_assemble(
   if (!roster.feeds.every(procFeed_check)) throw new Error('incompatible checkpoint');
   const feedIDs: Set<number> = new Set(roster.feeds.map((feed: ProcFeed): number => feed.id));
 
-  const snapshot: ProcCacheSnapshot = { feeds: roster.feeds, instances: [], topologyLoaded: [], dataFacts: {} };
+  const unseen: number[] = Array.isArray(roster.unseen) ? roster.unseen.filter((id: unknown): id is number => Number.isInteger(id)) : [];
+  const snapshot: ProcCacheSnapshot = { feeds: roster.feeds, instances: [], topologyLoaded: [], dataFacts: {}, unseen };
   let skipped: number = 0;
   const torn: string[] = [];
   for (const name of await fs.readdir(dir)) {
@@ -487,6 +490,7 @@ export async function procCheckpointRoster_save(
     identity,
     writtenAt: new Date().toISOString(),
     feeds: cache.feedIDs_get().map((id: number): ProcFeed => ({ ...cache.feed_get(id)! })),
+    unseen: cache.unseen_get(),
   };
   await json_write(join(dir, ROSTER_FILE), file);
   cache.checkpoint_mark(file.writtenAt);

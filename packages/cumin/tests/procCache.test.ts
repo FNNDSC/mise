@@ -359,6 +359,25 @@ describe('ProcCache', () => {
       expect(cache.feeds_find('xyz')).toEqual([]);
     });
 
+    it('keeps NEW marks for feeds the roster holds, clears one or all, and survives cache_clear', () => {
+      cache.feed_add(feed(1, 'a'));
+      cache.feed_add(feed(2, 'b'));
+      cache.unseen_add([1, 2, 99]);
+      expect(cache.unseen_get().sort()).toEqual([1, 2]);
+      expect(cache.unseen_clear([1])).toBe(1);
+      expect(cache.unseen_get()).toEqual([2]);
+      cache.cache_clear();
+      cache.feed_add(feed(2, 'b'));
+      expect(cache.unseen_get()).toEqual([2]);
+      expect(cache.unseen_clear('all')).toBe(1);
+      expect(cache.unseen_get()).toEqual([]);
+    });
+
+    it('restores NEW marks from a snapshot, dropping feeds the snapshot lacks', () => {
+      cache.snapshot_restore({ feeds: [feed(3, 'c')], instances: [], topologyLoaded: [], unseen: [3, 4] }, new Date().toISOString());
+      expect(cache.unseen_get()).toEqual([3]);
+    });
+
     it('feeds_find matches a feed by its id and by its feed_N name', () => {
       cache.feed_add(feed(4389, 'Brain MRI'));
       cache.feed_add(feed(389, 'spine study'));

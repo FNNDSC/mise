@@ -86,7 +86,10 @@ export async function page_open(url) {
   }
   // Its own process group, so one signal ends the browser and everything
   // under it, and tethered so it never outlives the script.
-  const chrome = spawn('chromium', [
+  // SMOKE_CHROME_BIN picks the browser: chromium 153 cannot load a loopback
+  // page headless (its local-network-access gate holds the request), so a
+  // host on it runs the suite on an older build (2026-10-14, pangea).
+  const chrome = spawn(process.env.SMOKE_CHROME_BIN ?? 'chromium', [
     '--headless=new', '--no-proxy-server', '--disable-gpu',
     `--remote-debugging-port=${DEBUG_PORT}`, '--window-size=2560,1440',
     '--hide-scrollbars', ...EXTRA_FLAGS, 'about:blank',

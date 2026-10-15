@@ -330,6 +330,8 @@ export interface ProcCacheSnapshot {
   topologyLoaded: number[];
   /** Each feed's data facts, by feed id; absent from a checkpoint written before they existed. */
   dataFacts?: Record<number, ProcFeedDataFacts>;
+  /** Feeds that arrived and have not been looked at (NEW since the last visit); absent in older checkpoints. */
+  unseen?: number[];
 }
 
 /**
@@ -420,6 +422,14 @@ export class ProcCache {
 
   /** Feeds the roster gained (created or shared) with the moment they landed. */
   private arrivals: Map<number, number> = new Map();
+  /**
+   * Feeds another identity owns that arrived (a share, or a feed made
+   * public) and that the operator has not looked at since: NEW since the
+   * last visit. Saved with the roster, so a share found while nobody was
+   * looking is still news at the next login. Not touched by `cache_clear`:
+   * it is the operator's memory, not the index's.
+   */
+  private unseen: Set<number> = new Set();
 
   /**
    * Feeds the index read something of lately, by when it last did: a feed
@@ -1012,6 +1022,41 @@ export class ProcCache {
    * @param feedIDs - The arriving feed ids.
    * @param at - When they landed (default now).
    */
+  /**
+   * Marks feeds as NEW since the last visit.
+   *
+   * @param feedIDs - The feeds to mark.
+   */
+  unseen_add(feedIDs: number[]): void {
+    const before: number = this.unseen.size;
+    for (const feedID of feedIDs) if (this.feeds.has(feedID)) this.unseen.add(feedID);
+    if (this.unseen.size !== before) this.change_emit({ scope: 'roster' });
+  }
+
+  /**
+   * Takes the NEW mark off feeds the operator has looked at.
+   *
+   * @param feedIDs - The feeds seen, or `all`.
+   * @returns How many marks were taken off.
+   */
+  unseen_clear(feedIDs: number[] | 'all'): number {
+    const before: number = this.unseen.size;
+    if (feedIDs === 'all') this.unseen.clear();
+    else for (const feedID of feedIDs) this.unseen.delete(feedID);
+    const cleared: number = before - this.unseen.size;
+    if (cleared > 0) this.change_emit({ scope: 'roster' });
+    return cleared;
+  }
+
+  /**
+   * The feeds marked NEW that the roster still holds.
+   *
+   * @returns Their ids.
+   */
+  unseen_get(): number[] {
+    return Array.from(this.unseen).filter((feedID: number): boolean => this.feeds.has(feedID));
+  }
+
   arrivals_note(feedIDs: number[], at: number = Date.now()): void {
     for (const feedID of feedIDs) this.arrivals.set(feedID, at);
     // An arrival changes the folder the feed appears in, not anything
@@ -1335,6 +1380,7 @@ export class ProcCache {
     for (const [id, facts] of Object.entries(snapshot.dataFacts ?? {})) {
       if (this.feeds.has(Number(id))) this.dataFacts.set(Number(id), { ...facts });
     }
+    this.unseen = new Set((snapshot.unseen ?? []).filter((id: number): boolean => this.feeds.has(id)));
     this._warmupProgress = { loaded: this.instances.size, total: this.instances.size, active: false };
     this.lifecycle = { state: 'restored', checkpointAt };
     this.change_emit({ scope: 'lifecycle' });

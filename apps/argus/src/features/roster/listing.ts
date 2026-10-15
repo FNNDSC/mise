@@ -520,8 +520,12 @@ export function listingPills_paint(): void {
       pill.classList.remove('numbered');
       continue;
     }
-    const held: HTMLElement[] | undefined = groups.get(parent);
-    if (held === undefined) groups.set(parent, [row]); else held.push(row);
+    // The blocks of one field count as one: a roster led by a NEW block
+    // counts on through it, not 1 then 001 again.
+    const block: boolean = parent.classList.contains('listing-rows') && parent.parentElement?.classList.contains('listing-block') === true;
+    const key: HTMLElement = block ? (parent.closest<HTMLElement>('.listing-field') ?? parent) : parent;
+    const held: HTMLElement[] | undefined = groups.get(key);
+    if (held === undefined) groups.set(key, [row]); else held.push(row);
   }
 
   for (const rows of groups.values()) {

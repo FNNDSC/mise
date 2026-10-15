@@ -76,6 +76,8 @@ const mockCache = {
   feedInstanceIDs_get: jest.fn((): number[] => []),
   warmupProgress_get: jest.fn(() => ({ ...mockWarmup })),
   lifecycle_get: jest.fn(() => ({ ...mockLifecycle })),
+  unseen_get: jest.fn((): number[] => []),
+  unseen_clear: jest.fn((): number => 0),
   get warmupComplete(): boolean { return mockWarmupComplete; },
 };
 
@@ -537,6 +539,29 @@ describe('builtin_proc warm-up policy', () => {
     expect(procRosterSyncStart_mock).toHaveBeenCalledWith(true);
     await builtin_proc(['feeds']);
     expect(procRosterSyncStart_mock).toHaveBeenLastCalledWith(false);
+  });
+
+  it('proc feeds marks what is NEW, and --new lists only that', async () => {
+    mockFeeds = [
+      { id: 4389, title: '3d-anon', ownerUsername: 'sandip.samal', public: false, creationDate: '2026-08-18', finishedJobs: 1, erroredJobs: 0, startedJobs: 0, scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0 },
+      { id: 4822, title: 'mine', ownerUsername: 'me', public: false, creationDate: '2026-10-03', finishedJobs: 1, erroredJobs: 0, startedJobs: 0, scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0 },
+    ];
+    mockCache.unseen_get.mockReturnValue([4389]);
+    const all = (await builtin_proc(['feeds'])) as TestEnvelope & { model?: { data: { feeds: Array<Record<string, unknown>> } } };
+    expect(all.rendered).toContain('NEW · from sandip.samal');
+    expect(all.model?.data.feeds.find((f) => f['id'] === 4389)).toMatchObject({ new: true });
+    expect(all.model?.data.feeds.find((f) => f['id'] === 4822)).not.toHaveProperty('new');
+    const fresh = (await builtin_proc(['feeds', '--new'])) as TestEnvelope & { model?: { data: { feeds: unknown[] } } };
+    expect(fresh.model?.data.feeds).toHaveLength(1);
+  });
+
+  it('proc seen takes marks off one feed, several, or all', async () => {
+    const clear = mockCache.unseen_clear;
+    clear.mockImplementation(((ids: number[] | 'all'): number => (ids === 'all' ? 3 : ids.length)) as never);
+    expect((await builtin_proc(['seen', 'feed_4389', '12'])).rendered).toContain('2 NEW marks taken off.');
+    expect(clear).toHaveBeenLastCalledWith([4389, 12]);
+    expect((await builtin_proc(['seen', 'all'])).rendered).toContain('3 NEW marks taken off.');
+    expect((await builtin_proc(['seen', 'brain'])).status).toBe('error');
   });
 
   it('proc jump goes to the one place a target names', async () => {

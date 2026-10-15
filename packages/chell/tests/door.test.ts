@@ -274,8 +274,8 @@ describe('door token edges', () => {
     expect(await doorDevice_wait('https://titan/', 'C', { fetchLike: answer(200, { state: 'pending' }), deadlineMs: 0, intervalMs: 1, sleep: async (): Promise<void> => undefined })).toEqual({ state: 'expired' });
     expect(await doorTokens_list('https://titan/', 'pdt_x', answer(401, { error: 'the door does not know that token' }))).toEqual({ refused: 'the door does not know that token' });
     expect(await doorTokens_list('https://titan/', 'pdt_x', answer(200, { user: 'chris' }))).toEqual({ refused: 'the door answered without a list' });
-    expect(await doorToken_revoke('https://titan/', 'pdt_x', answer(401, { error: 'gone' }))).toEqual({ refused: 'gone' });
-    expect(await doorToken_revoke('https://titan/', 'pdt_x', answer(503, 'nope'))).toEqual({ refused: 'the door answered 503' });
+    expect(await doorToken_revoke('https://titan/', 'pdt_x', answer(401, { error: 'gone' }))).toEqual({ refused: 'gone', gone: true });
+    expect(await doorToken_revoke('https://titan/', 'pdt_x', answer(503, 'nope'))).toEqual({ refused: 'the door answered 503', gone: false });
   });
 
   it('on a token, a session that boots is followed to ready, and a boot that fails is said', async () => {

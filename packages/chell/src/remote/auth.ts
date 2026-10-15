@@ -364,7 +364,11 @@ async function logout_run(door: string, world: AuthWorld): Promise<number> {
   }
   try {
     const revoked = await doorToken_revoke(door, file.token, world.fetchLike);
-    if ('refused' in revoked) world.warn(chalk.yellow(`[!] The door did not revoke the token (${revoked.refused}); it dies ${file.expires.slice(0, 10)} on its own. An operator can revoke it: porter --revoke ${file.user} "${file.name}".`));
+    // A token the door no longer knows is already dead: replaced by a newer
+    // login under the same name, revoked, or expired. Nothing is left to do,
+    // and a revoke by name would now reach the newer login, so none is offered.
+    if ('refused' in revoked && revoked.gone) world.say(chalk.gray(`    the door no longer knows this token (a newer login under the name "${file.name}" replaced it, or it was revoked); nothing to revoke`));
+    else if ('refused' in revoked) world.warn(chalk.yellow(`[!] The door did not revoke the token (${revoked.refused}); it dies ${file.expires.slice(0, 10)} on its own. An operator can see and revoke tokens with porter --tokens and porter --revoke.`));
     else world.say(chalk.green(`[+] Revoked token "${file.name}" at ${door}.`));
   } catch (error: unknown) {
     world.warn(chalk.yellow(`[!] The door at ${door} could not be reached (${doorUnreached_reason(error)}); the token dies ${file.expires.slice(0, 10)} on its own.`));

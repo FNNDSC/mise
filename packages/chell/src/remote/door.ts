@@ -410,9 +410,11 @@ export async function doorTokens_list(door: string, token: string, fetchLike: Do
  * @param token - The token to end.
  * @param fetchLike - The HTTP client.
  */
-export async function doorToken_revoke(door: string, token: string, fetchLike: DoorFetch = fetch): Promise<{ revoked: true } | { refused: string }> {
+export async function doorToken_revoke(door: string, token: string, fetchLike: DoorFetch = fetch): Promise<{ revoked: true } | { refused: string; gone: boolean }> {
   const response = await fetchLike(`${door_normalise(door)}auth/token`, { method: 'DELETE', headers: { accept: 'application/json', authorization: `Bearer ${token}` } });
-  if (!response.ok) return { refused: await refusal_read(response) };
+  // 401: the door no longer knows the token — replaced by a newer login
+  // under the same name, revoked, or expired. Already dead, not a failure.
+  if (!response.ok) return { refused: await refusal_read(response), gone: response.status === 401 };
   return { revoked: true };
 }
 

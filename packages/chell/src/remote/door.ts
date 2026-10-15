@@ -14,7 +14,7 @@
 import * as readline from 'node:readline';
 import { Writable } from 'node:stream';
 import chalk from 'chalk';
-import { doorCredential_resolve, door_carriesTokens, days_until } from './doorFile.js';
+import { doorCredential_resolve, door_carriesTokens, days_until, doorDefault_read, doorsKept_read } from './doorFile.js';
 
 /** What the door said to a login. */
 export interface DoorEntry {
@@ -459,6 +459,26 @@ export interface DoorReach {
 }
 
 /**
+ * Why a plain-http door's token is not sent, and what would send it: which
+ * door this is (the default, when it is), and a door the user is already
+ * logged into with --insecure-door, when there is one, so the way out is a
+ * flag rather than another login.
+ *
+ * @param doorUrl - The door tried.
+ * @param env - The environment.
+ * @returns The words.
+ */
+export function doorRefusal_words(doorUrl: string, env: NodeJS.ProcessEnv = process.env): string {
+  const isDefault: boolean = doorDefault_read(env) === doorUrl;
+  const head: string = `${doorUrl}${isDefault ? ' (your default door)' : ''} is plain http to another host: the door token is not sent there.`;
+  const usable: { door: string } | undefined = doorsKept_read(env).find((kept): boolean => kept.insecure && kept.door !== doorUrl);
+  if (usable !== undefined) {
+    return `${head} You are logged in at ${usable.door} with --insecure-door: use it with chell --remote --door ${usable.door} -c '…', or make it the default with chell auth login --door ${usable.door} --insecure-door --default.`;
+  }
+  return `${head} Use the https door, or chell auth login --door ${doorUrl} --insecure-door${isDefault ? '' : ' --default'} knowingly.`;
+}
+
+/**
  * Takes a terminal through the door: asks what it must, logs in, follows
  * the boot if there is one, and hands back the session's wire.
  *
@@ -488,7 +508,7 @@ export async function door_enter(door: string, username: string | undefined, pas
     if (credential.kind === 'token') {
       if (!door_carriesTokens(doorUrl)) {
         if (credential.insecure !== true) {
-          console.error(chalk.red(`[!] ${doorUrl} is plain http to another host: the door token is not sent there. Use the https door, or chell auth login --door ${doorUrl} --insecure-door knowingly.`));
+          console.error(chalk.red(`[!] ${doorRefusal_words(doorUrl, env)}`));
           return null;
         }
         // Said at login, kept with the door, and said again on each use.

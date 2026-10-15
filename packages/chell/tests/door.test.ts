@@ -8,8 +8,8 @@ import { jest, describe, it, expect } from '@jest/globals';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { doorFile_write } from '../src/remote/doorFile.js';
-import { door_normalise, doorWire_build, door_login, doorBoot_follow, bootEvents_read, door_enter, doorCredential_missing, doorUnreached_reason, door_loginByToken, door_loginForToken, doorDevice_begin, doorDevice_wait, doorTokens_list, doorToken_revoke, type DoorFetch } from '../src/remote/door.js';
+import { doorFile_write, doorDefault_write } from '../src/remote/doorFile.js';
+import { door_normalise, doorWire_build, door_login, doorBoot_follow, bootEvents_read, door_enter, doorCredential_missing, doorUnreached_reason, door_loginByToken, door_loginForToken, doorDevice_begin, doorDevice_wait, doorTokens_list, doorToken_revoke, doorRefusal_words, type DoorFetch } from '../src/remote/door.js';
 
 /** A door that answers every request the same way, and remembers what it was asked. */
 function answer(status: number, body: unknown, setCookie?: string, text?: string): DoorFetch & { calls: Array<[string, RequestInit | undefined]> } {
@@ -236,9 +236,21 @@ describe('door_enter with a door token', () => {
     expect(errors.join('\n')).toContain('the token goes readable on the wire (--insecure-door, chosen at login)');
     doorFile_write({ door: PLAIN, user: 'chris', name: 'pangea', token: 'pdt_kept', minted: '2026-10-15T00:00:00.000Z', expires: '2099-01-01T00:00:00.000Z' }, env);
     expect(await door_enter(PLAIN, undefined, undefined, answer(200, {}), env)).toBeNull();
-    expect(errors.join('\n')).toContain('--insecure-door knowingly');
+    expect(errors.join('\n')).toContain('--insecure-door --default knowingly');
     await rm(home, { recursive: true, force: true });
     spy.mockRestore();
+  });
+
+  it('the refusal names the default door and points at a door already logged into with --insecure-door', async () => {
+    const home: string = await mkdtemp(join(tmpdir(), 'chell-door-'));
+    const env = { XDG_CONFIG_HOME: home };
+    const OLD: string = 'http://pangea:4180/';
+    const NEW: string = 'http://pangea.tch.harvard.edu:4180/';
+    doorFile_write({ door: OLD, user: 'chris', name: 'old', token: 'pdt_old', minted: 'a', expires: '2099-01-01T00:00:00.000Z' }, env);
+    doorFile_write({ door: NEW, user: 'chris', name: 'new', token: 'pdt_new', minted: 'a', expires: '2099-01-01T00:00:00.000Z', insecure: true }, env);
+    doorDefault_write(OLD, env);
+    expect(doorRefusal_words(OLD, env)).toBe(`${OLD} (your default door) is plain http to another host: the door token is not sent there. You are logged in at ${NEW} with --insecure-door: use it with chell --remote --door ${NEW} -c '…', or make it the default with chell auth login --door ${NEW} --insecure-door --default.`);
+    await rm(home, { recursive: true, force: true });
   });
 
   it('a password on the command line beats the token, as before', async () => {

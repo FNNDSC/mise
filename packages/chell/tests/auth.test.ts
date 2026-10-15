@@ -186,6 +186,16 @@ describe('chell auth status, logout, token, tokens', () => {
     doorFile_write(file, { XDG_CONFIG_HOME: home });
     expect(await auth_run({ verb: 'logout', door: DOOR }, world_make(door_script([{ status: 404, body: { error: 'no such route' } }])))).toBe(0);
     expect(warned.join('\n')).toContain('dies 2026-11-05 on its own');
+    expect(warned.join('\n')).not.toContain('porter --revoke chris');
+    expect(doorFile_read(DOOR, { XDG_CONFIG_HOME: home })).toBeNull();
+  });
+
+  it('logout of a token the door no longer knows says it is already gone, quietly, and offers no revoke by name', async () => {
+    doorFile_write(file, { XDG_CONFIG_HOME: home });
+    expect(await auth_run({ verb: 'logout', door: DOOR }, world_make(door_script([{ status: 401, body: { error: 'the door does not know that token' } }])))).toBe(0);
+    expect(warned).toEqual([]);
+    expect(said.join('\n')).toContain('the door no longer knows this token');
+    expect(said.join('\n')).toContain('nothing to revoke');
     expect(doorFile_read(DOOR, { XDG_CONFIG_HOME: home })).toBeNull();
   });
 

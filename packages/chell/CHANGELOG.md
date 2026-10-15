@@ -1,5 +1,15 @@
 # @fnndsc/chell
 
+## 5.12.2
+
+### Patch Changes
+
+- 4884a38: A door logged into with `--insecure-door` now works afterwards. The choice is kept with that door, so `chell -c '…'` uses it over plain http (saying so on each use) instead of refusing every command. Log in again with `--insecure-door` once to record it.
+- Updated dependencies [216760d]
+- Updated dependencies [6aa7bc6]
+- Updated dependencies [d5a3b1c]
+  - @fnndsc/argus@0.28.6
+
 ## 5.12.1
 
 ### Patch Changes

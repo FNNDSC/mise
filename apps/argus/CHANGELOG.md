@@ -1,5 +1,13 @@
 # @fnndsc/argus
 
+## 0.28.6
+
+### Patch Changes
+
+- 216760d: SHARE VIEW gives you the lines that put a colleague exactly where you are. The new header pill (and `desktop share` in the console) shows your current view as a short script starting from `desktop clear` (which keeps your own screen as a PANES card, then goes to the dashboard), and copies it. Pasted or typed into the ARGUS console, the script rebuilds the same panes, graph settings and selected job.
+- 6aa7bc6: A view can be sent as a link or a file, and opening one is safe. SHARE VIEW's COPY LINK gives a link that opens ARGUS on the same view, and `desktop load <file>` opens one kept in ChRIS. A received view shows its lines and asks before running, runs only view commands (never `rm` or anything else in your session), changes your graph settings for that visit only, and says where it stopped if it cannot finish. FILES panes now record their folder too (`file open <folder>`).
+- d5a3b1c: Everything the RUNS graph shows can now be set from the console, and a desktop records all of it. New: `dag pulse|census|gravity on|off`, `dag draw spheres|stars`, `dag select <feed or job>` (the JUMP TO fly-to) and `dag enter <job>` (then ENTER NODE). `desktop show` now writes every graph setting and the feed or job on stage, so the script replays the same view anywhere.
+
 ## 0.28.5
 
 ### Patch Changes

@@ -54,3 +54,14 @@ describe('a PACS answer with its handles', () => {
     expect(pacsAnswer_toTable(bare).split('\n')[0]).toMatch(/^  MRN/);
   });
 });
+
+describe('help pronouns', () => {
+  it('says what a pronoun is, the core\'s own, the backend\'s lines, and the index handles beside them', async () => {
+    const { pronounsPage_render } = await import('../src/builtins/pronouns.js');
+    const page: string = strip(pronounsPage_render(['  ${feed}          the feed']));
+    expect(page).toContain('PRONOUNS');
+    expect(page).toContain('${cwd}');
+    expect(page).toContain('${feed}          the feed');
+    expect(page).toContain('numbered: @PAT1, @STD1-9, @SER1-235');
+  });
+});

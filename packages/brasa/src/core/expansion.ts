@@ -26,11 +26,14 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ReferenceValue } from '../lib/parser.js';
 import { session } from '../session/index.js';
 import { answer_get, answerHandles_get, answerKind_count, answerRow_get, handle_word, numberedFooter_of, type AnswerHandle, type AnswerKind, type AnswerRow } from '../session/answer.js';
+import { heldListingOperands_get } from './listing.js';
 import { backendInstalled_get, type AnswerKindLook, type ReferenceSource } from './backend.js';
 import { answerKind_find, answerKinds_get, verbTakes_get } from './answerKinds.js';
 
 /** The name the core answers for itself: where the session stands. */
 const CORE_REFERENCE: string = 'cwd';
+/** The pronoun for the held listing's rows: `${listing}`. */
+const LISTING_REFERENCE: string = 'listing';
 
 /**
  * The references the backend answers.
@@ -89,7 +92,7 @@ export function unresolvedStands_get(): boolean {
  */
 export function reference_isReserved(name: string): boolean {
   const stem: string = name.split('.')[0];
-  return stem === CORE_REFERENCE || referenceSources_get().some((source: ReferenceSource): boolean => source.name === stem);
+  return stem === CORE_REFERENCE || stem === LISTING_REFERENCE || referenceSources_get().some((source: ReferenceSource): boolean => source.name === stem);
 }
 
 /**
@@ -190,6 +193,11 @@ export async function reference_resolve(name: string): Promise<ReferenceValue> {
   if (name.startsWith('@')) return index_resolve(name);
 
   if (name === CORE_REFERENCE) return { values: [await session.getCWD()] };
+  // The held listing as it stands, its leaf rows (#1103).
+  if (name === LISTING_REFERENCE) {
+    const operands: string[] | null = heldListingOperands_get();
+    return operands === null || operands.length === 0 ? null : { values: operands };
+  }
 
   const stem: string = name.split('.')[0];
   for (const source of referenceSources_get()) {

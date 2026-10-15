@@ -923,7 +923,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
 
   // Display Shell Features
   rendered += `${chalk.bold.yellow('Shell Features')}\n`;
-  rendered += `  ${chalk.cyan('Pipes'.padEnd(20))} ${chalk.gray('Chain commands: cat file.txt | wc -l')}\n`;
+  rendered += `  ${chalk.cyan('Pipes'.padEnd(20))} ${chalk.gray('Chain commands: cat file.txt | wc -l; a numbered listing travels to the next builtin: query … | gather add')}\n`;
   rendered += `  ${chalk.cyan('Redirection >'.padEnd(20))} ${chalk.gray('Write to file: cat file.txt > output.txt')}\n`;
   rendered += `  ${chalk.cyan('Redirection >>'.padEnd(20))} ${chalk.gray('Append to file: cat file.txt >> output.txt')}\n`;
   rendered += `  ${chalk.cyan('Index handles'.padEnd(20))} ${chalk.gray('Name rows of the last numbered listing: gather add @SER3  @SER1-4  @SER2,5,7')}\n`;

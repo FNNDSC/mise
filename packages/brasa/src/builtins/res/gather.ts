@@ -11,6 +11,7 @@
  *
  * @module
  */
+import { listingIn_take, listingOperands_of, type ListingModel } from '../../core/listing.js';
 import { answerNumbering_of, handleWords_of, numberedFooter_of, type NumberedHandle } from '../../session/answer.js';
 import chalk from 'chalk';
 import path from 'path';
@@ -236,8 +237,21 @@ export async function builtin_gather(args: string[]): Promise<CommandEnvelope> {
 
   try {
     if (subcommand === undefined || subcommand === 'list') return cohort_render(await cohort_read());
-    if (subcommand === 'add') return await gather_add(operands);
-    if (subcommand === 'remove' || subcommand === 'rm') return await gather_remove(operands);
+    if (subcommand === 'add' || subcommand === 'remove' || subcommand === 'rm') {
+      // With no operands, a listing piped in is the operand list (#1103):
+      // `query … | gather add`. With neither, the verb says what it needs
+      // rather than taking the held listing behind the operator's back.
+      let given: string[] = operands;
+      if (given.length === 0) {
+        const piped: ListingModel | null = listingIn_take();
+        if (piped === null) {
+          return gather_error(`gather ${subcommand}: what? give paths or handles (@SER3), \${listing}, or pipe a listing in (query … | gather ${subcommand === 'rm' ? 'remove' : subcommand})`);
+        }
+        given = listingOperands_of(piped) ?? [];
+        if (given.length === 0) return gather_error(`gather ${subcommand}: the listing piped in has nothing to ${subcommand === 'add' ? 'gather' : 'remove'}.`);
+      }
+      return subcommand === 'add' ? await gather_add(given) : await gather_remove(given);
+    }
     if (subcommand === 'clear') return await gather_clear();
     if (subcommand === 'name') return await gather_name(operands);
   } catch (e: unknown) {

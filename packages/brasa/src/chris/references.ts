@@ -105,8 +105,8 @@ export const chrisReferences: ReadonlyArray<ReferenceSource> = [
  */
 export const chrisAnswerKinds: ReadonlyArray<AnswerKindLook> = [
   { code: 'SER', word: 'a series', example: '@SER3' },
-  { code: 'STD', word: 'a study', example: '@STD1' },
-  { code: 'PAT', word: 'a patient' },
+  { code: 'STD', word: 'a study', example: '@STD1', group: true },
+  { code: 'PAT', word: 'a patient', group: true },
 ];
 
 /**

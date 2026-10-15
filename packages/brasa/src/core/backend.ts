@@ -87,6 +87,12 @@ export interface AnswerKindLook {
   readonly word: string;
   /** An index of it, for the refusal that teaches the syntax (`@SER3`); a kind without one is not shown there. */
   readonly example?: string;
+  /**
+   * The kind stands for other rows (a study for its series, a patient for
+   * theirs): a whole listing handed on (a pipe, `${listing}`) gives its
+   * other rows, never these, so nothing is taken twice.
+   */
+  readonly group?: boolean;
 }
 
 /** The kinds a verb can be handed by index, beyond those the core declares for it. */

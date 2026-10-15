@@ -1,5 +1,15 @@
 # @fnndsc/chell
 
+## 5.12.1
+
+### Patch Changes
+
+- Updated dependencies [3c8d56a]
+- Updated dependencies [5102036]
+- Updated dependencies [36cf130]
+  - @fnndsc/calypso@0.21.0
+  - @fnndsc/argus@0.28.4
+
 ## 5.12.0
 
 ### Minor Changes

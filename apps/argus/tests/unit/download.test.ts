@@ -38,6 +38,7 @@ describe('downloadAnswer_refusal', () => {
   it('refuses the daemon\'s not found, a refusal, and an answer that is not an attachment', () => {
     expect(downloadAnswer_refusal(new Response('not found', { status: 404 }))).toMatch(/could not read that file/);
     expect(downloadAnswer_refusal(new Response('', { status: 502 }))).toMatch(/HTTP 502/);
+    expect(downloadAnswer_refusal(new Response('cancelled', { status: 410 }))).toBe('cancelled — nothing was saved');
     expect(downloadAnswer_refusal(new Response('<html>', { status: 200 }))).toMatch(/something other than the file/);
   });
 

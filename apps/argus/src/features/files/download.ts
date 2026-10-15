@@ -64,6 +64,7 @@ export function attachmentName_read(disposition: string | null, path: string): s
  */
 export function downloadAnswer_refusal(response: Pick<Response, 'ok' | 'status' | 'redirected' | 'headers'>): string | null {
   if (response.redirected) return 'the session asked to log in again — nothing was saved';
+  if (response.status === 410) return 'cancelled — nothing was saved';
   if (!response.ok) return response.status === 404
     ? 'the session could not read that file — nothing was saved'
     : `the session refused the file (HTTP ${response.status}) — nothing was saved`;

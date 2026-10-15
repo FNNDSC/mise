@@ -577,6 +577,11 @@ export class CalypsoDaemon {
     const dl: string | null = downloadId_valid(query.get('dl')) ? query.get('dl') : null;
     const probe: boolean = dl !== null && query.get('probe') === '1';
     // The browser's save takes the file its probe opened, when one is held.
+    // A cancelled download stays cancelled: its save is refused, not begun again.
+    if (dl !== null && this.downloads.cancelled(dl)) {
+      refuse(410, 'cancelled');
+      return;
+    }
     let opened: OpenedFile | null = dl !== null && !probe ? this.downloads.claim(dl) : null;
     if (opened === null) {
       if (dl !== null) this.downloads.begin(dl, filePath);
@@ -596,7 +601,10 @@ export class CalypsoDaemon {
     if (query.get('download') === '1') headers['content-disposition'] = contentDisposition_forPath(filePath);
     if (probe && dl !== null) {
       // The probe's answer is the file's headers; the bytes wait for the save.
-      this.downloads.park(dl, opened);
+      if (!this.downloads.park(dl, opened)) {
+        refuse(410, 'cancelled');
+        return;
+      }
       response.writeHead(200, headers);
       response.end();
       return;

@@ -6,7 +6,7 @@
  * own count: waiting on CUBE, bytes of the whole with rate and time left,
  * done, or why not.
  */
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import { bytes_words, duration_words, transfer_words, transferUrl_build, transfer_watch, type TransferReport } from '../../src/features/files/transfer.js';
 
 describe('transfer words', () => {
@@ -40,5 +40,24 @@ describe('transfer_watch', () => {
     expect(row.element.dataset['phase']).toBe('done');
     expect(row.element.querySelector('.transfer-action')?.textContent).toBe('CLOSE');
     row.stop();
+  });
+});
+
+describe('a transfer row never freezes', () => {
+  it('says it has lost touch when the session stops answering, and a cancel that gets no answer says so', async () => {
+    jest.useFakeTimers();
+    // A session that never answers: every ask hangs until its deadline aborts it.
+    const fetcher = ((_url: string, init?: RequestInit): Promise<Response> => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+    })) as typeof fetch;
+    const row = transfer_watch('big.dcm', 'vfs?path=%2Fbig.dcm&token=t', 'dl-silent1', fetcher);
+    for (let i = 0; i < 4; i++) await jest.advanceTimersByTimeAsync(6000);
+    expect(row.element.querySelector('.transfer-words')?.textContent).toBe('LOST TOUCH WITH THE SESSION · STILL ASKING');
+    (row.element.querySelector('.transfer-action') as HTMLButtonElement).click();
+    expect(row.element.querySelector('.transfer-words')?.textContent).toBe('CANCELLING');
+    await jest.advanceTimersByTimeAsync(5100);
+    expect(row.element.querySelector('.transfer-words')?.textContent).toBe('THE CANCEL GOT NO ANSWER FROM THE SESSION · PRESS CANCEL AGAIN');
+    row.stop();
+    jest.useRealTimers();
   });
 });

@@ -72,6 +72,7 @@ export const helpText: Record<string, CommandHelp> = {
   url: {
     category: 'Sharing & Tags',
     usage: 'url [path]',
+    summary: 'Print a web address that opens ARGUS at a path, to send to a colleague',
     description: 'Print a web address that opens ARGUS at a path (a feed or node lands in RUNS, anything else in FILES)',
     options: [],
     examples: [

@@ -1,5 +1,11 @@
 # @fnndsc/menu
 
+## 0.22.2
+
+### Patch Changes
+
+- 9065319: A feed shared with you is marked NEW until you open it, across logins (#1065). RUNS leads with a NEW SINCE YOUR LAST VISIT block, each row marked with who shared it, and the bar counts them. Opening a feed takes its mark off, and CLEAR NEW takes them all. `proc feeds --new` lists them and `proc seen` clears them. Your own feeds and public feeds are never marked.
+
 ## 0.22.1
 
 ### Patch Changes

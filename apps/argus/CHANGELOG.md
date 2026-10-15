@@ -1,5 +1,14 @@
 # @fnndsc/argus
 
+## 0.28.2
+
+### Patch Changes
+
+- 91c93c0: A listing's columns give way when the pane is too narrow, instead of running under the frame's edge (#1067). The lowest-ranked columns stand aside until the rest fit, the bar says how many, and a wider pane brings them back. In RUNS, NODES goes first, then TIME, SIZE, OWNER and PROGRESS; ID, TITLE, STATUS and CREATED always stay. FILES and PACS do the same. The black square no longer covers the last column.
+- 9065319: A feed shared with you is marked NEW until you open it, across logins (#1065). RUNS leads with a NEW SINCE YOUR LAST VISIT block, each row marked with who shared it, and the bar counts them. Opening a feed takes its mark off, and CLEAR NEW takes them all. `proc feeds --new` lists them and `proc seen` clears them. Your own feeds and public feeds are never marked.
+- Updated dependencies [9065319]
+  - @fnndsc/menu@0.22.2
+
 ## 0.28.1
 
 ### Patch Changes

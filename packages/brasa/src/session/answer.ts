@@ -199,12 +199,22 @@ function rows_number(rows: ReadonlyArray<AnswerRow>): NumberedHandle[] {
 }
 
 /**
- * The handles a model's rows will wear once it is the held listing, for a
- * renderer to print beside them. Null when the model is not a listing.
+ * A model's rows, as its adapter reads them, without holding them.
  *
  * @param kind - The envelope model kind.
  * @param data - The model.
- * @returns The handles, in row order.
+ * @returns The rows, or null when the model is not a listing.
+ */
+export function answerRows_of(kind: string, data: unknown): AnswerRow[] | null {
+  return adapters.get(kind)?.(data) ?? null;
+}
+
+/**
+ * The handles a model's rows will wear once it is the held listing.
+ *
+ * @param kind - The envelope model kind.
+ * @param data - The model.
+ * @returns The handles, in row order, or null when the model is not a listing.
  */
 export function answerNumbering_of(kind: string, data: unknown): NumberedHandle[] | null {
   const rows: AnswerRow[] | null = adapters.get(kind)?.(data) ?? null;

@@ -218,3 +218,31 @@ describe('an index on a line', () => {
     expect(answerConsulted_take()).toBeNull();
   });
 });
+
+describe('a listing handed on whole (#1103)', () => {
+  const pacs = {
+    queryId: 1, vfsPath: '/q', pacsName: 'P', expression: 'x',
+    studies: [{ description: 'B', patientName: 'X', patientId: '1', date: '', modalities: '', accession: '', vfsPath: '/q/st1',
+      series: [{ seriesUID: 'a', description: 'T1', modality: 'MR', vfsPath: '/q/st1/se1' }, { seriesUID: 'b', description: 'T2', modality: 'MR', vfsPath: '/q/st1/se2' }] }],
+  };
+
+  it('gives its leaf rows (the series), never the study or the patient that stand for them', async () => {
+    const { listingOperands_of } = await import('../src/core/listing.js');
+    expect(listingOperands_of({ kind: 'pacs.query', data: pacs })).toEqual(['/q/st1/se1', '/q/st1/se2']);
+    expect(listingOperands_of({ kind: 'no.such.kind', data: {} })).toBeNull();
+  });
+
+  it('is taken once from the pipe', async () => {
+    const { listingIn_set, listingIn_take } = await import('../src/core/listing.js');
+    listingIn_set({ kind: 'pacs.query', data: pacs });
+    expect(listingIn_take()?.kind).toBe('pacs.query');
+    expect(listingIn_take()).toBeNull();
+  });
+
+  it('${listing} is the held listing\'s leaf rows, and nothing before anything listed', async () => {
+    answer_forget();
+    expect(await reference_resolve('listing')).toBeNull();
+    answer_note('pacs.query', pacs, 'query x');
+    expect(await reference_resolve('listing')).toEqual({ values: ['/q/st1/se1', '/q/st1/se2'] });
+  });
+});

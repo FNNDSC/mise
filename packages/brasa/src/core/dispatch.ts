@@ -20,6 +20,7 @@ import { ENVELOPE_ORDER, PLAIN_ORDER, HELP_ORDER } from './commandOrder.js';
 
 
 import { stdin_set } from '../builtins/games/stdin.js';
+import { listingIn_set, type ListingModel } from './listing.js';
 
 import { writeFileSync, appendFileSync } from 'fs';
 import chalk from 'chalk';
@@ -37,7 +38,7 @@ import {
 } from '../builtins/help.js';
 import { envelopeHandler_wrap, envelope_deliver, sink_get, PipeCaptureSink, sinkScope_run } from './sink.js';
 import { reference_refusal, reference_resolve, unresolvedStands_get, verbInHand_set } from './expansion.js';
-import { answer_note, answerConsulted_take, type SessionAnswer } from '../session/answer.js';
+import { answer_note, answerConsulted_take, answerRows_of, type SessionAnswer } from '../session/answer.js';
 import {
   shellWords_referencesExpand,
   shellWords_tokenize,
@@ -441,6 +442,16 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<Capt
 }
 
 /**
+ * Whether a model is a numbered listing (its kind has rows to number).
+ *
+ * @param model - An envelope's model.
+ * @returns True for a listing.
+ */
+function listing_is(model: CommandEnvelope['model']): model is NonNullable<CommandEnvelope['model']> {
+  return model !== undefined && answerRows_of(model.kind, model.data) !== null;
+}
+
+/**
  * Executes a pipe chain by running the first command in chell and piping
  * through local tools, delivering the final output on the data channel.
  *
@@ -459,28 +470,43 @@ export async function pipe_execute(segments: string[]): Promise<CommandEnvelope>
   // daemon host — a surface without the capability (a browser) fails that
   // segment with a clear message.
   const firstCommand: string = segments[0];
-  const { buffer } = await chellCommand_executeAndCapture(firstCommand);
+  const first: CapturedOutput = await chellCommand_executeAndCapture(firstCommand);
 
-  let currentInput: Buffer = buffer;
+  // Between builtins a numbered listing travels beside the text (#1103):
+  // `query … | gather add` hands over rows. An operating-system segment
+  // gets the text alone, and what comes after it has no listing.
+  let currentInput: Buffer = first.buffer;
+  let currentModel: CommandEnvelope['model'] = first.model;
+  // The last listing the chain produced becomes the held one, so its
+  // handles are what `@SER3` names after the line.
+  let lastListing: CommandEnvelope['model'] = listing_is(first.model) ? first.model : undefined;
   for (let i: number = 1; i < segments.length; i++) {
     const segment: string = segments[i];
     const word: string = segment.trim().split(/\s+/)[0] ?? '';
     if (word !== '' && builtinCommand_has(word)) {
       stdin_set(currentInput.toString('utf-8'));
+      listingIn_set(listing_is(currentModel) ? currentModel as ListingModel : null);
       try {
-        currentInput = (await chellCommand_executeAndCapture(segment)).buffer;
+        const captured: CapturedOutput = await chellCommand_executeAndCapture(segment);
+        currentInput = captured.buffer;
+        currentModel = captured.model;
+        if (listing_is(captured.model)) lastListing = captured.model;
       } finally {
         stdin_set(null);
+        listingIn_set(null);
       }
       continue;
     }
     capability_require('pipeSegments', 'this surface cannot run pipeline segments');
     currentInput = await surface_get().pipeSegment(segment, currentInput);
+    currentModel = undefined;
   }
 
+  if (lastListing !== undefined) answer_note(lastListing.kind, lastListing.data, segments.map((one: string): string => one.trim()).join(' | '));
   // Output final result
   sink_get().data_write(currentInput);
-  return { status: 'ok', rendered: currentInput.toString('utf-8') };
+  // The chain's final listing reaches the surface too, so its pills follow.
+  return { status: 'ok', rendered: currentInput.toString('utf-8'), ...(currentModel !== undefined ? { model: currentModel } : {}) };
 }
 
 /**

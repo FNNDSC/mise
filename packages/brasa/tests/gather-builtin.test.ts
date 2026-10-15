@@ -94,6 +94,21 @@ describe('gather', () => {
     expect(envelope.rendered).toMatch(/empty/);
   });
 
+  it('refuses a bare add or remove, saying what it takes, rather than guessing', async () => {
+    const envelope = await builtin_gather(['add']);
+    expect(envelope.status).toBe('error');
+    expect(`${envelope.rendered}${envelope.renderedErr ?? ''}`).toMatch(/gather add: what\? give paths or handles \(@SER3\), \$\{listing\}, or pipe a listing in/);
+  });
+
+  it('takes a listing piped in as its operands', async () => {
+    const { listingIn_set } = await import('../src/core/listing.js');
+    const { answerAdapters_register } = await import('../src/session/answerAdapters.js');
+    answerAdapters_register();
+    listingIn_set({ kind: 'fs.listing', data: [{ path: '/home/chris/uploads', items: [{ name: 'brain', type: 'dir' }, { name: 'notes.txt', type: 'file' }] }] });
+    await builtin_gather(['add']);
+    expect(cohort_held().series.map((m) => m.vfsPath)).toEqual(['/home/chris/uploads/brain', '/home/chris/uploads/notes.txt']);
+  });
+
   it('gathers a PACS projection as a series, keeping its UID', async () => {
     await builtin_gather(['add', '/net/pacs/queries/qid:1/1.2.840.113619.2']);
     const held = cohort_held();

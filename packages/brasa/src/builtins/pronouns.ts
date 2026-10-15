@@ -24,6 +24,7 @@ export function pronounsPage_render(backendLines: ReadonlyArray<string>): string
     'line rather than standing for nothing.',
     '',
     '  ${cwd}           where the session is standing',
+    '  ${listing}       the held listing\'s rows as it stands (its series, files or folders)',
     ...backendLines,
     '',
     chalk.bold('Index handles'),

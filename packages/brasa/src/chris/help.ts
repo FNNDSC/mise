@@ -44,7 +44,7 @@ export const CHRIS_PRONOUN_LINES: ReadonlyArray<string> = [
 
 export const chrisHelp: Record<string, CommandHelp> = {
   user: {
-    category: 'Administration',
+    category: 'Admin',
     usage: 'user <add|inspect|disable|enable|remove> <username>',
     description: 'Manage CUBE-local accounts; federated identities remain externally managed',
     options: ['Use `sudo user …` for lifecycle operations.', 'add prompts for email and a hidden password confirmation.'],
@@ -65,7 +65,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   edit: {
-    category: 'File Operations',
+    category: 'Files',
     usage: 'edit <file>',
     description: 'Edit a ChRIS file in $EDITOR — fetches, opens, saves back on write',
     options: [
@@ -81,7 +81,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   setfacl: {
-    category: 'Sharing & Tags',
+    category: 'Sharing',
     usage: 'setfacl -m u:<user>:r|g:<group>:r|o::r|o::- <path>... | setfacl -x u:<user>|g:<group> <path>...',
     summary: 'Share a feed with a user, a group or everyone, or stop sharing it',
     description:
@@ -106,7 +106,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   getfacl: {
-    category: 'Sharing & Tags',
+    category: 'Sharing',
     usage: 'getfacl <path>...',
     summary: 'Show who can read a feed: users, groups, and whether it is public',
     description:
@@ -118,7 +118,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   chmod: {
-    category: 'Sharing & Tags',
+    category: 'Sharing',
     usage: 'chmod o+r|o-r <feed>...',
     summary: 'Make a feed public, or private again',
     description: 'The other entry of a feed\'s access list spelled as a mode: o+r makes it public, o-r private, '
@@ -129,7 +129,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   setfattr: {
-    category: 'Sharing & Tags',
+    category: 'Sharing',
     usage: 'setfattr -n tag -v <value> <path>... | setfattr -x tag [-v <value>] <path>...',
     summary: 'Hang a tag on a feed, or take it off',
     description:
@@ -151,7 +151,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   getfattr: {
-    category: 'Sharing & Tags',
+    category: 'Sharing',
     usage: 'getfattr [-n tag] <path>...',
     summary: 'Show the tags a feed wears',
     description:
@@ -162,7 +162,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   config: {
-    category: 'File Operations',
+    category: 'Files',
     usage: 'config write <cfs-path> <base64-content>',
     description: 'Write a small configuration document into the user\'s CUBE home (the durable layer: argus desktops, surface preferences). Reads travel the ordinary cat. Documents are notes, not datasets: 256KB limit.',
     options: [],
@@ -172,7 +172,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   upload: {
-    category: 'File Operations',
+    category: 'Files',
     usage: 'upload <local_path_or_glob> <chris_path>',
     description: 'Upload local files, directories, or glob matches to ChRIS with progress tracking',
     options: [
@@ -190,7 +190,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   download: {
-    category: 'File Operations',
+    category: 'Files',
     usage: 'download <chris_path_or_glob> <local_path> [-f|--force]',
     description: 'Download a ChRIS file, directory, or CFS glob to the local filesystem with progress tracking',
     options: [
@@ -219,7 +219,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['logout'],
   },
   plugin: {
-    category: 'Single Resource',
+    category: 'Resources',
     usage: 'plugin <subcommand> [options]',
     description: 'Work with a single ChRIS plugin - run, search, view documentation',
     options: [
@@ -279,7 +279,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   plugins: {
-    category: 'Resource Collections',
+    category: 'Resources',
     usage: 'plugins <subcommand> [options]',
     description: 'Manage collections of ChRIS plugins - list, add, delete, query',
     options: [
@@ -343,7 +343,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   feed: {
-    category: 'Single Resource',
+    category: 'Resources',
     usage: 'feed <subcommand> [options]',
     description: 'Work with a single ChRIS feed - create, annotate, comment',
     options: [
@@ -382,7 +382,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   feeds: {
-    category: 'Resource Collections',
+    category: 'Resources',
     usage: 'feeds <subcommand> [options]',
     description: 'Manage collections of ChRIS feeds - list, delete, share, query',
     options: [
@@ -409,7 +409,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   files: {
-    category: 'Resource Collections',
+    category: 'Resources',
     usage: 'files <subcommand> [path] [options]',
     description: 'Manage ChRIS file resources',
     options: [...RESOURCE_LIST_OPTIONS],
@@ -421,21 +421,21 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   links: {
-    category: 'Resource Collections',
+    category: 'Resources',
     usage: 'links <subcommand> [path] [options]',
     description: 'Manage ChRIS link resources',
     options: [...RESOURCE_LIST_OPTIONS],
     examples: ['links list', 'links search', 'links inspect'],
   },
   dirs: {
-    category: 'Resource Collections',
+    category: 'Resources',
     usage: 'dirs <subcommand> [path] [options]',
     description: 'Manage ChRIS directory resources',
     options: [...RESOURCE_LIST_OPTIONS],
     examples: ['dirs list', 'dirs search', 'dirs inspect'],
   },
   pipeline: {
-    category: 'Single Resource',
+    category: 'Resources',
     usage: 'pipeline <subcommand> [args]',
     description: 'Manage and execute ChRIS pipelines (registered DAG workflows)',
     options: [
@@ -670,7 +670,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['chrisfetch', 'chrisfetch | lolcat'],
   },
   file: {
-    category: 'File Operations',
+    category: 'Files',
     usage: 'file <path>...',
     summary: 'What a file is, by its first bytes',
     description: 'Reads a CFS file\'s head and names it by its magic: DICOM, NIfTI, gzip, PNG, JPEG, PDF, ZIP, JSON, text and more, with its size.',
@@ -703,7 +703,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['md5sum image.nii.gz'],
   },
   motd: {
-    category: 'Games and utilities',
+    category: 'Games',
     usage: 'motd [surface]',
     summary: 'The greeting a session gives on arrival',
     description: 'Says who you are, how many feeds you hold, how many jobs have run and what share of them failed, and what is running now — from the session\'s own index, at no cost. While the index is still warming it says what it holds so far. A surface may name itself (motd ARGUS) and the greeting says where you arrived. Ends with a short fortune.',
@@ -774,7 +774,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   physicalmode: {
-    category: 'Shell Settings',
+    category: 'Settings',
     usage: 'physicalmode [on|off]',
     description: 'Toggle or display physical filesystem mode',
     options: [
@@ -788,7 +788,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   parametersofplugin: {
-    category: 'Resource Collections',
+    category: 'Resources',
     usage: 'parametersofplugin <plugin_name>',
     description: 'Display parameters for a specific plugin',
     examples: [
@@ -838,7 +838,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   store: {
-    category: 'Resource Collections',
+    category: 'Resources',
     usage: 'store <subcommand> [options]',
     description: 'Browse, search, and install plugins from ChRIS peer store',
     options: [
@@ -872,7 +872,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   compute: {
-    category: 'Resource Collections',
+    category: 'Resources',
     usage: 'compute <subcommand> [options]',
     description: 'Manage ChRIS compute resources',
     options: [
@@ -886,7 +886,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   tag: {
-    category: 'Single Resource',
+    category: 'Resources',
     usage: 'tags <subcommand> [options]',
     description: 'Manage ChRIS tags',
     options: [
@@ -900,7 +900,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['tags list', 'tags search brain', 'tags inspect', 'tag create neuro', 'tag delete 5'],
   },
   tags: {
-    category: 'Resource Collections',
+    category: 'Resources',
     usage: 'tags <subcommand> [options]',
     description: 'Manage ChRIS tags',
     options: [
@@ -914,7 +914,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['tags list', 'tags search brain', 'tags inspect', 'tag create neuro', 'tag delete 5'],
   },
   record: {
-    category: 'Workflows & Cohorts',
+    category: 'Workflows',
     usage: 'record <start <manifest>|stop|status>',
     description: 'Write what this session does down as a manifest',
     options: [
@@ -937,7 +937,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   play: {
-    category: 'Workflows & Cohorts',
+    category: 'Workflows',
     usage: 'play <manifest> [--param NAME=value]... [--pace <duration>] [--dry-run]',
     description: "Run a workflow manifest: the lines an operator could have typed",
     options: [
@@ -963,7 +963,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   expect: {
-    category: 'Workflows & Cohorts',
+    category: 'Workflows',
     usage: 'expect <gather|feed|run|path> [<target>] <property> [<predicate> <value>] [--within <duration>]',
     description: 'State a claim about the session, and refuse when it does not hold',
     options: [
@@ -991,7 +991,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   gather: {
-    category: 'Workflows & Cohorts',
+    category: 'Workflows',
     usage: 'gather <subcommand> [path...]',
     description: "Hold the set of things this session is working on",
     options: [
@@ -1017,7 +1017,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   group: {
-    category: 'Single Resource',
+    category: 'Resources',
     usage: 'groups <subcommand> [options]',
     description: 'Manage ChRIS user groups',
     options: [
@@ -1034,7 +1034,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['groups list', 'group members pacs_users', 'group adduser pacs_users peter.hong joe.schmo', 'group removeuser pacs_users joe.schmo'],
   },
   groups: {
-    category: 'Resource Collections',
+    category: 'Resources',
     usage: 'groups <subcommand> [options]',
     description: 'Manage ChRIS user groups',
     options: [
@@ -1051,7 +1051,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['groups list', 'group members pacs_users', 'group adduser pacs_users peter.hong joe.schmo', 'group removeuser pacs_users joe.schmo'],
   },
   pluginmeta: {
-    category: 'Single Resource',
+    category: 'Resources',
     usage: 'pluginmetas <subcommand> [options]',
     description: 'Browse ChRIS plugin metadata (abstract tool identities across versions)',
     options: [
@@ -1063,7 +1063,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['pluginmetas list', 'pluginmetas search dircopy', 'pluginmetas inspect', 'pluginmeta plugins 12'],
   },
   pluginmetas: {
-    category: 'Resource Collections',
+    category: 'Resources',
     usage: 'pluginmetas <subcommand> [options]',
     description: 'Browse ChRIS plugin metadata (abstract tool identities across versions)',
     options: [
@@ -1075,7 +1075,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['pluginmetas list', 'pluginmetas search dircopy', 'pluginmetas inspect', 'pluginmeta plugins 12'],
   },
   plugininstance: {
-    category: 'Single Resource',
+    category: 'Resources',
     usage: 'plugininstances <subcommand> [options]',
     description: 'Manage ChRIS plugin instances (jobs)',
     options: [
@@ -1090,7 +1090,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['jobs list', 'jobs list --all', 'jobs search status:started', 'jobs inspect', 'job cancel 42', 'job output 42'],
   },
   plugininstances: {
-    category: 'Resource Collections',
+    category: 'Resources',
     usage: 'plugininstances <subcommand> [options]',
     description: 'Manage ChRIS plugin instances (jobs)',
     options: [
@@ -1105,7 +1105,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['jobs list', 'jobs list --all', 'jobs search status:started', 'jobs inspect', 'job cancel 42', 'job output 42'],
   },
   workflow: {
-    category: 'Single Resource',
+    category: 'Resources',
     usage: 'workflows <subcommand> [options]',
     description: 'Manage ChRIS workflows (pipeline executions)',
     options: [
@@ -1120,7 +1120,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['workflows list', 'workflows list --all', 'workflows inspect', 'workflow jobs 7', 'workflow delete 7'],
   },
   workflows: {
-    category: 'Resource Collections',
+    category: 'Resources',
     usage: 'workflows <subcommand> [options]',
     description: 'Manage ChRIS workflows (pipeline executions)',
     options: [
@@ -1134,12 +1134,12 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
     examples: ['workflows list', 'workflows list --all', 'workflows inspect', 'workflow jobs 7', 'workflow delete 7'],
   },
-  meta: { category: 'Single Resource', usage: 'pluginmetas <subcommand> [options]', description: 'Alias for pluginmeta/pluginmetas', options: [...RESOURCE_LIST_OPTIONS], examples: ['metas list', 'meta inspect'] },
-  metas: { category: 'Resource Collections', usage: 'pluginmetas <subcommand> [options]', description: 'Alias for pluginmeta/pluginmetas', options: [...RESOURCE_LIST_OPTIONS], examples: ['metas list', 'meta inspect'] },
-  instance: { category: 'Single Resource', usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances/job/jobs', options: [...RESOURCE_LIST_OPTIONS], examples: ['instances list', 'instance cancel 42'] },
-  instances: { category: 'Resource Collections', usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances/job/jobs', options: [...RESOURCE_LIST_OPTIONS], examples: ['instances list', 'instance cancel 42'] },
-  job: { category: 'Single Resource', usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances', options: [...RESOURCE_LIST_OPTIONS], examples: ['jobs list', 'job cancel 42', 'job output 42'] },
-  jobs: { category: 'Resource Collections', usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances', options: [...RESOURCE_LIST_OPTIONS], examples: ['jobs list', 'job cancel 42', 'job output 42'] },
+  meta: { category: 'Resources', usage: 'pluginmetas <subcommand> [options]', description: 'Alias for pluginmeta/pluginmetas', options: [...RESOURCE_LIST_OPTIONS], examples: ['metas list', 'meta inspect'] },
+  metas: { category: 'Resources', usage: 'pluginmetas <subcommand> [options]', description: 'Alias for pluginmeta/pluginmetas', options: [...RESOURCE_LIST_OPTIONS], examples: ['metas list', 'meta inspect'] },
+  instance: { category: 'Resources', usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances/job/jobs', options: [...RESOURCE_LIST_OPTIONS], examples: ['instances list', 'instance cancel 42'] },
+  instances: { category: 'Resources', usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances/job/jobs', options: [...RESOURCE_LIST_OPTIONS], examples: ['instances list', 'instance cancel 42'] },
+  job: { category: 'Resources', usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances', options: [...RESOURCE_LIST_OPTIONS], examples: ['jobs list', 'job cancel 42', 'job output 42'] },
+  jobs: { category: 'Resources', usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances', options: [...RESOURCE_LIST_OPTIONS], examples: ['jobs list', 'job cancel 42', 'job output 42'] },
   dcm: {
     category: 'Imaging',
     usage: 'dcm <series|tags> <path> [options]',

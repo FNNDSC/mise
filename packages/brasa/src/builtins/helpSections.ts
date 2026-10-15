@@ -1,0 +1,261 @@
+/**
+ * @file help's sections: the table of contents `help` shows, a section's
+ * page (`help PACS`), the Shell topics (`help pipes`), and `apropos`.
+ *
+ * Borrowed from man rather than reinvented: sections by topic (man's are by
+ * number), a page per command, and `apropos` / `man -k` to search every
+ * summary by a word, which is how anyone finds a command they cannot name.
+ * A section is one capitalised word, so `help PACS` (the section) and
+ * `help pacs` (the command) never collide; a section word that names no
+ * command answers in lower case too.
+ *
+ * @module
+ */
+import chalk from 'chalk';
+
+/** One section of help. */
+export interface HelpSection {
+  /** One capitalised word: what `help <Section>` takes, and the category commands declare. */
+  name: string;
+  /** What the section is for, a sentence or two. */
+  blurb: string;
+  /** Commands that show what it holds, the first runnable ones of which `help` lists. */
+  examples: ReadonlyArray<string>;
+}
+
+/** The sections, in the order `help` lists them. */
+export const HELP_SECTIONS: ReadonlyArray<HelpSection> = [
+  { name: 'Navigation', blurb: "Move around ChRIS's filesystem, including the /proc and /net projections.", examples: ['cd', 'ls', 'tree', 'du', 'cubepath'] },
+  { name: 'Files', blurb: 'Read, write, copy and move files and folders; upload from and download to this machine.', examples: ['cat', 'cp', 'mv', 'upload', 'download', 'grep'] },
+  { name: 'Sharing', blurb: 'Who may see a folder or file, and links that open ARGUS where you are.', examples: ['chmod', 'setfacl', 'url'] },
+  { name: 'Connection', blurb: 'Who you are, which CUBE you are on, and where the session stands.', examples: ['connect', 'whoami', 'context'] },
+  { name: 'Monitoring', blurb: 'Live jobs as a filesystem, and jumping to one by number.', examples: ['proc'] },
+  { name: 'Imaging', blurb: 'DICOM tags and image viewing.', examples: ['dcm', 'image'] },
+  { name: 'Workflows', blurb: 'Gather a cohort, record what you do as a manifest, and replay it.', examples: ['gather', 'record', 'play', 'expect'] },
+  { name: 'Resources', blurb: 'ChRIS resources one at a time or as lists: feeds, plugins, pipelines, jobs, tags, groups, compute, store.', examples: ['feed', 'feeds', 'plugins', 'jobs'] },
+  { name: 'PACS', blurb: "Ask a PACS for a patient's studies and series, narrow the answer, and pull it into ChRIS.", examples: ['query', 'pull', 'pacs'] },
+  { name: 'Admin', blurb: 'Administrative acts that need elevated rights.', examples: ['sudo', 'user'] },
+  { name: 'Settings', blurb: 'How the shell behaves: prompt, timing, physical paths, debug output.', examples: ['prompt', 'timing', 'debug'] },
+  { name: 'Games', blurb: 'The /usr/games shelf: text toys, small utilities and games.', examples: ['fortune', 'cowsay', 'tetris'] },
+  { name: 'General', blurb: 'Help, finding a command by a word, release notes, versions, and leaving.', examples: ['help', 'apropos', 'notes', 'version', 'exit'] },
+];
+
+/** The section that is not a list of commands: what the shell does to a line. */
+export const SHELL_SECTION: HelpSection = {
+  name: 'Shell',
+  blurb: 'What the shell does to a line: pipes, redirection, index handles (@SER3), pronouns (${cwd}), listing-aware grep, command.',
+  examples: ['help pipes', 'help handles', 'help pronouns'],
+};
+
+/** A Shell topic: its one line, and its page (or the command whose page it is). */
+interface ShellTopic {
+  name: string;
+  summary: string;
+  page?: ReadonlyArray<string>;
+}
+
+/** The Shell section's topics, each `help <topic>`. */
+export const SHELL_TOPICS: ReadonlyArray<ShellTopic> = [
+  {
+    name: 'pipes',
+    summary: 'cmd | cmd: text between programs, a numbered listing between builtins',
+    page: [
+      'A pipe hands one command\'s output to the next: cat notes.txt | wc -l.',
+      '',
+      'Between two builtins a numbered listing travels beside the text, so the',
+      'next builtin receives rows, not words:',
+      '  query PatientID:1234567 | grep -i t1 | gather add',
+      'A program that is not a builtin (sort, awk, a system grep) receives the',
+      'text alone. The last listing a pipe produces becomes the held listing:',
+      '@SER3 and ${listing} name its rows afterwards.',
+    ],
+  },
+  {
+    name: 'redirection',
+    summary: '> and >>: write or append a command\'s output to a file on this machine',
+    page: [
+      'cmd > file writes the output to a file; cmd >> file appends to it.',
+      '',
+      'The file is on the machine chell runs on, not in ChRIS: to put text in',
+      'ChRIS use touch --withContents or upload.',
+      '  query PatientID:1234567 --table > answer.txt',
+    ],
+  },
+  {
+    name: 'handles',
+    summary: '@SER3 @STD1-4 @FIL2,5,7: name rows of the last numbered listing',
+    page: [
+      'A listing that numbers its rows (query, query --table, gather list,',
+      'ls -l) prints a handle beside each: @PAT1, @STD3, @SER12, @DIR4, @FIL2.',
+      'Typed in a later line, a handle stands for its row:',
+      '  gather add @SER3        one row',
+      '  gather add @SER1-4      a range',
+      '  gather add @SER2,5,7    a list',
+      '',
+      'The listing\'s footer says what is numbered now:',
+      '  numbered: @PAT1, @STD1-9, @SER1-235',
+      'The next listing replaces it, so @SER3 always means the last listing\'s',
+      'row. grep keeps the handles rows already wore (@SER41 stays @SER41).',
+    ],
+  },
+  { name: 'pronouns', summary: '${cwd} ${listing} …: what this session just made or asked' },
+  { name: 'grep', summary: 'filter text, or a numbered listing keeping its handles' },
+  { name: 'command', summary: 'run the system program, not the builtin' },
+];
+
+/** What the renderers read of the commands: a summary, whether it runs, its section. */
+export interface HelpLookup {
+  /** The commands this session can run, with help, in listing order. */
+  commands(): ReadonlyArray<string>;
+  /** A command's one line. */
+  summary(name: string): string | undefined;
+  /** A command's description and options, for apropos. */
+  text(name: string): string;
+  /** A command's section. */
+  section(name: string): string | undefined;
+  /** The games shelf's commands, for the Games section. */
+  games(): ReadonlyArray<string>;
+}
+
+/** Wraps a paragraph to a width, each line indented. */
+function paragraph_wrap(text: string, indent: string, width: number = 78): string[] {
+  const lines: string[] = [];
+  let line: string = '';
+  for (const word of text.split(/\s+/)) {
+    if (line !== '' && indent.length + line.length + 1 + word.length > width) {
+      lines.push(`${indent}${line}`);
+      line = word;
+    } else {
+      line = line === '' ? word : `${line} ${word}`;
+    }
+  }
+  if (line !== '') lines.push(`${indent}${line}`);
+  return lines;
+}
+
+/**
+ * A section's commands: those that declare it, and for Games the shelf.
+ *
+ * @param section - The section's name.
+ * @param lookup - The commands.
+ * @returns Its runnable commands.
+ */
+export function sectionCommands_of(section: string, lookup: HelpLookup): string[] {
+  const declared: string[] = lookup.commands().filter((name: string): boolean => lookup.section(name) === section);
+  if (section !== 'Games') return declared;
+  return [...new Set([...declared, ...lookup.games()])];
+}
+
+/**
+ * `help`: the table of contents. A section with nothing this session can
+ * run is left out, as are examples it cannot run.
+ *
+ * @param lookup - The commands.
+ * @returns The page.
+ */
+export function helpToc_render(lookup: HelpLookup): string {
+  const runnable: Set<string> = new Set(lookup.commands());
+  const out: string[] = [
+    '',
+    chalk.bold.yellow('chell — the ChRIS shell'),
+    chalk.gray('Type help <Section> for a section, help <command> for a command, apropos <word> to search.'),
+    '',
+  ];
+  const entry = (section: HelpSection, count: number | null): void => {
+    out.push(`${chalk.bold.cyan(section.name)}${count === null ? '' : chalk.gray(`  (${count})`)}`);
+    out.push(...paragraph_wrap(section.blurb, '    '));
+    const shown: string[] = section === SHELL_SECTION ? [...section.examples] : section.examples.filter((name: string): boolean => runnable.has(name) || lookup.games().includes(name));
+    if (shown.length > 0) out.push(`    ${chalk.gray('e.g.')}  ${shown.map((name: string): string => chalk.yellow(name)).join('  ')}`);
+    out.push('');
+  };
+  for (const section of HELP_SECTIONS) {
+    const count: number = sectionCommands_of(section.name, lookup).length;
+    if (count > 0) entry(section, count);
+  }
+  entry(SHELL_SECTION, null);
+  if (runnable.has('query') && runnable.has('gather')) {
+    out.push(`${chalk.gray('Start here:')}  ${chalk.yellow('query PatientID:1234567 | grep -i t1 | gather add')}`, '');
+  }
+  return `${out.join('\n')}\n`;
+}
+
+/**
+ * The section a word names: exactly (`PACS`), or in any case when no command
+ * has that name (`navigation`).
+ *
+ * @param word - What followed `help`.
+ * @param isCommand - Whether a command has that name.
+ * @returns The section, or undefined.
+ */
+export function section_find(word: string, isCommand: (name: string) => boolean): HelpSection | undefined {
+  const all: HelpSection[] = [...HELP_SECTIONS, SHELL_SECTION];
+  const exact: HelpSection | undefined = all.find((section: HelpSection): boolean => section.name === word);
+  if (exact !== undefined) return exact;
+  if (isCommand(word)) return undefined;
+  return all.find((section: HelpSection): boolean => section.name.toLowerCase() === word.toLowerCase());
+}
+
+/**
+ * A section's page: what it is for, then each command with its line.
+ *
+ * @param section - The section.
+ * @param lookup - The commands.
+ * @returns The page.
+ */
+export function helpSection_render(section: HelpSection, lookup: HelpLookup): string {
+  const out: string[] = ['', `${chalk.bold.cyan(section.name)} ${chalk.gray('—')} ${section.blurb}`, ''];
+  const rows: Array<{ name: string; line: string }> = section === SHELL_SECTION
+    ? SHELL_TOPICS.map((topic: ShellTopic): { name: string; line: string } => ({ name: topic.name, line: topic.summary }))
+    : sectionCommands_of(section.name, lookup).map((name: string): { name: string; line: string } => ({ name, line: lookup.summary(name) ?? '' }));
+  const width: number = Math.max(12, ...rows.map((row): number => row.name.length + 2));
+  for (const row of rows) out.push(`  ${chalk.cyan(row.name.padEnd(width))}${row.line}`);
+  out.push('', chalk.gray(`help <${section === SHELL_SECTION ? 'topic' : 'command'}> for each.`), '');
+  return `${out.join('\n')}\n`;
+}
+
+/**
+ * A Shell topic's own page, or undefined when it is not one (or is a
+ * command, whose own page answers).
+ *
+ * @param word - What followed `help`.
+ * @returns The page.
+ */
+export function shellTopic_render(word: string): string | undefined {
+  const topic: ShellTopic | undefined = SHELL_TOPICS.find((one: ShellTopic): boolean => one.name === word && one.page !== undefined);
+  if (topic === undefined || topic.page === undefined) return undefined;
+  return `\n${chalk.bold.yellow(topic.name.toUpperCase())}\n${chalk.gray('─'.repeat(60))}\n${topic.page.join('\n')}\n\n${chalk.gray('help Shell for the other topics.')}\n`;
+}
+
+/**
+ * `apropos <word>` (`man -k`): what holds the word, strongest first. A
+ * section, a command or a Shell topic whose name or one line holds it leads;
+ * one that only mentions it further in (its description, its options)
+ * follows, under "also mentioned in", so `apropos dicom` leads with dcm and
+ * image rather than a game that happens to name DICOM.
+ *
+ * @param word - What to look for.
+ * @param lookup - The commands.
+ * @returns The lines, empty when nothing holds the word.
+ */
+export function apropos_search(word: string, lookup: HelpLookup): string[] {
+  const needle: string = word.toLowerCase();
+  const holds = (text: string): boolean => text.toLowerCase().includes(needle);
+  const strong: string[] = [];
+  const mentioned: string[] = [];
+  for (const section of [...HELP_SECTIONS, SHELL_SECTION]) {
+    if (holds(`${section.name} ${section.blurb}`)) strong.push(`${chalk.cyan(section.name)} ${chalk.gray('(section)')} — ${section.blurb}`);
+  }
+  for (const name of lookup.commands()) {
+    const line: string = `${chalk.cyan(name)} ${chalk.gray(`(${lookup.section(name) ?? 'General'})`)} — ${lookup.summary(name) ?? ''}`;
+    if (holds(`${name} ${lookup.summary(name) ?? ''}`)) strong.push(line);
+    else if (holds(lookup.text(name))) mentioned.push(line);
+  }
+  for (const topic of SHELL_TOPICS) {
+    if (lookup.commands().includes(topic.name)) continue;
+    const line: string = `${chalk.cyan(topic.name)} ${chalk.gray('(Shell)')} — ${topic.summary}`;
+    if (holds(`${topic.name} ${topic.summary}`)) strong.push(line);
+    else if (holds((topic.page ?? []).join(' '))) mentioned.push(line);
+  }
+  if (mentioned.length === 0) return strong;
+  return [...strong, ...(strong.length > 0 ? [''] : []), chalk.gray('also mentioned in:'), ...mentioned];
+}

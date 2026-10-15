@@ -25,6 +25,7 @@ import { builtin_asciiquarium, builtin_cmatrix, builtin_rain, builtin_sl, builti
 import { builtin_ddate, builtin_pom, builtin_stardate, builtin_sunrise } from '../builtins/games/sky.js';
 import { builtin_grep } from '../builtins/sys/grep.js';
 import { builtin_command } from '../builtins/sys/command.js';
+import { builtin_apropos, builtin_man } from '../builtins/sys/apropos.js';
 import { builtin_rev, builtin_rot13, builtin_seq, builtin_shuf, builtin_tac, builtin_yes } from '../builtins/games/text.js';
 import { builtin_wtf } from '../builtins/games/wtf.js';
 import { builtin_debug } from '../builtins/debug.js';
@@ -73,6 +74,8 @@ const envelope: Record<string, EnvelopeHandler> = {
   tac: builtin_tac,
   grep: builtin_grep,
   command: builtin_command,
+  apropos: builtin_apropos,
+  man: builtin_man,
   yes: builtin_yes,
   seq: builtin_seq,
   factor: builtin_factor,
@@ -136,6 +139,8 @@ const plain: Record<string, CommandHandler> = {
   tac: envelopeHandler_wrap(builtin_tac),
   grep: envelopeHandler_wrap(builtin_grep),
   command: envelopeHandler_wrap(builtin_command),
+  apropos: envelopeHandler_wrap(builtin_apropos),
+  man: envelopeHandler_wrap(builtin_man),
   yes: envelopeHandler_wrap(builtin_yes),
   seq: envelopeHandler_wrap(builtin_seq),
   factor: envelopeHandler_wrap(builtin_factor),

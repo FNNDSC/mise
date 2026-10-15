@@ -44,6 +44,6 @@ describe('the games shelf', () => {
     expect(page).toContain('Time and sky');
     expect(page).toMatch(/weather\s+/);
     const bare: string = plain((await builtin_help([])).rendered);
-    expect(bare).toContain('help games');
+    expect(bare).toContain('Games');
   });
 });

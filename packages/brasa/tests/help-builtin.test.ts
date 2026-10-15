@@ -106,8 +106,9 @@ describe('args_checkHasHelpFlag', () => {
 
 describe('builtin_help in a session with nothing of its own', () => {
   it('lists only what the shell answers, and has no page for a verb it cannot run', async () => {
+    // Nothing of its own to run: no section of commands, only the Shell.
     const envelope = await builtin_help([]);
-    expect(envelope.rendered).toContain('Available Commands');
+    expect(envelope.rendered).toContain('chell — the ChRIS shell');
     expect(envelope.rendered).not.toContain('sudo');
     expect(envelope.rendered).not.toContain('Imaging');
     expect((await builtin_help(['ls'])).rendered).toContain("No help available for 'ls'");
@@ -130,10 +131,9 @@ describe('builtin_help in a session that has the verbs', () => {
     });
   });
 
-  it('lists commands by category, sudo with them when the backend can elevate', async () => {
-    const envelope = await builtin_help([]);
-    expect(envelope.rendered).toContain('Available Commands');
-    expect(envelope.rendered).toContain('sudo');
+  it('lists sections with their commands, sudo among them when the backend can elevate', async () => {
+    expect((await builtin_help([])).rendered).toContain('Navigation');
+    expect((await builtin_help(['Admin'])).rendered).toContain('sudo');
   });
 
   it('shows a specific command help when named', async () => {
@@ -141,9 +141,9 @@ describe('builtin_help in a session that has the verbs', () => {
     expect(envelope.rendered).toContain('USAGE');
   });
 
-  it('lists the imaging commands under their own category', async () => {
-    const envelope = await builtin_help([]);
-    expect(envelope.rendered).toContain('Imaging');
+  it('lists the imaging commands in their own section', async () => {
+    expect((await builtin_help([])).rendered).toContain('Imaging');
+    const envelope = await builtin_help(['Imaging']);
     // A summary, not the whole description, on the listing line.
     expect(envelope.rendered).toContain('Show a DICOM series or a volume');
   });
@@ -177,5 +177,20 @@ describe('help metadata accessors', () => {
 
   it('returns undefined for an unknown command description', () => {
     expect(builtinCommand_descriptionGet('nonexistentcmd')).toBeUndefined();
+  });
+});
+
+describe('apropos and man', () => {
+  it('apropos finds by a word, says nothing appropriate (exit 1), and man is help by its Unix name', async () => {
+    const { builtin_apropos, builtin_man } = await import('../src/builtins/sys/apropos.js');
+    expect((await builtin_apropos(['dicom'])).rendered).toContain('image');
+    expect((await builtin_apropos([])).status).toBe('error');
+    process.exitCode = 0;
+    expect((await builtin_apropos(['zzzq-nothing'])).rendered).toContain('nothing appropriate');
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
+    expect((await builtin_man(['-k', 'dicom'])).rendered).toContain('image');
+    expect((await builtin_man(['ls'])).rendered).toContain('USAGE');
+    expect((await builtin_man([])).status).toBe('error');
   });
 });

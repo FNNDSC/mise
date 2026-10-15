@@ -1,9 +1,26 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { cli_parse, ChellCLIConfig } from '../src/core/cli.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
 describe('CLI Parser', () => {
+  // A door logged into on this host (`chell auth login`) is a default the
+  // parser rightly follows; these cases are the host-independent ones.
+  const saved: { config?: string; door?: string } = { config: process.env['XDG_CONFIG_HOME'], door: process.env['CHELL_DOOR'] };
+  let config: string = '';
+  beforeAll(() => {
+    config = mkdtempSync(path.join(tmpdir(), 'chell-cli-'));
+    process.env['XDG_CONFIG_HOME'] = config;
+    delete process.env['CHELL_DOOR'];
+  });
+  afterAll(() => {
+    if (saved.config === undefined) delete process.env['XDG_CONFIG_HOME']; else process.env['XDG_CONFIG_HOME'] = saved.config;
+    if (saved.door !== undefined) process.env['CHELL_DOOR'] = saved.door;
+    rmSync(config, { recursive: true, force: true });
+  });
+
   const VERSION = '1.0.0';
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);

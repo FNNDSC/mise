@@ -66,6 +66,16 @@ describe('authArgs_parse', () => {
 });
 
 describe('chell auth login', () => {
+  it('with --insecure-door to a plain http host: the choice is kept with the door, and only then', async () => {
+    const PLAIN: string = 'http://pangea:4180/';
+    const answered = { status: 200, body: { ...ENTRY, user: 'chris', tokenName: 'pangea', expires: '2026-11-05T00:00:00.000Z' }, cookie: COOKIE };
+    expect(await auth_run({ verb: 'login', door: PLAIN, withToken: true, insecureDoor: true }, world_make(door_script([answered]), { stdin: 'pdt_plain' }))).toBe(0);
+    expect(doorFile_read(PLAIN, { XDG_CONFIG_HOME: home })).toMatchObject({ door: PLAIN, insecure: true });
+    // A door that carries tokens never records the choice, even when it was said.
+    expect(await auth_run({ verb: 'login', door: DOOR, withToken: true, insecureDoor: true }, world_make(door_script([answered]), { stdin: 'pdt_tls' }))).toBe(0);
+    expect((doorFile_read(DOOR, { XDG_CONFIG_HOME: home }) as { insecure?: boolean }).insecure).toBeUndefined();
+  });
+
   it('with a pasted token off a TTY: the door says whose it is, the file is written 0600, the door becomes the default', async () => {
     const door = door_script([{ status: 200, body: { ...ENTRY, user: 'chris', tokenName: 'laptop', expires: '2026-11-05T00:00:00.000Z' }, cookie: COOKIE }]);
     const code: number = await auth_run({ verb: 'login', door: DOOR, withToken: true }, world_make(door, { stdin: 'pdt_pasted' }));

@@ -175,7 +175,12 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
       const kind: string | null = paneKind_get(paneId);
       if (kind === 'dag' && paneId !== anchorId) lines.push(`pane %${ordinal} claim runs`);
       if (kind === 'files' && paneId !== anchorId && !(subjects.group_of(paneId) !== paneId)) lines.push(`pane %${ordinal} claim files`);
-      if (kind === 'dag') {
+      // A graph on stage says its whole view and where it stands, as the
+      // PANES cards do (DagPanel.view_lines).
+      const graph = kind === 'dag' ? panels.get('dag', paneId) : undefined;
+      if (graph !== undefined && graph.graph_isShown()) {
+        for (const line of graph.view_lines()) lines.push(line.replace(/^dag /, `dag %${ordinal} `));
+      } else if (kind === 'dag') {
         const mount: HTMLElement | undefined = paneInstance_get(paneId)?.mount;
         const strategy: string = mount?.querySelector('.dag-strategy')?.textContent?.toLowerCase() ?? 'ranked';
         const projection: string = mount?.querySelector('.dag-projection')?.textContent?.toLowerCase() ?? '3d';
@@ -243,6 +248,12 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
     // The prompt already says who and where; `attach` repeats it rather
     // than asking the session a question it has just been told the answer to.
     identity_get: hooks.identity_get,
+    dag_jump: (paneId: string, target: string, enter: boolean = false): boolean => {
+      const panel = panels.get('dag', paneId) ?? panels.values('dag')[0];
+      if (panel === undefined) return false;
+      panel.jump_to(target, enter);
+      return true;
+    },
     node_immerse: (paneId: string): boolean => {
       const regard: RegardValue | null = subjects.regard_get(paneId);
       const match: RegExpMatchArray | null = regard?.address.match(/_(\d+)(?:\/data)?\/?$/) ?? null;

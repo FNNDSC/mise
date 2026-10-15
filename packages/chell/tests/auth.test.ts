@@ -74,6 +74,8 @@ describe('chell auth login', () => {
     // A door that carries tokens never records the choice, even when it was said.
     expect(await auth_run({ verb: 'login', door: DOOR, withToken: true, insecureDoor: true }, world_make(door_script([answered]), { stdin: 'pdt_tls' }))).toBe(0);
     expect((doorFile_read(DOOR, { XDG_CONFIG_HOME: home }) as { insecure?: boolean }).insecure).toBeUndefined();
+    // The second login left the first door the default, and says so.
+    expect(said.join('\n')).toContain(`your default door stays ${PLAIN}: chell and chell -c still go there. Add --default to this login to switch`);
   });
 
   it('with a pasted token off a TTY: the door says whose it is, the file is written 0600, the door becomes the default', async () => {

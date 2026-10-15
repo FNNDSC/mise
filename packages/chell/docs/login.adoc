@@ -170,7 +170,7 @@ chell auth logout            # revoke the one in hand, remove the file
 * **Loose is refused.** A door file not owned by you, or readable by group or others, is refused by name (`readable by others (mode 0644); fix it with chmod 600`), the way ssh refuses a loose key. Chell never falls back to a prompt a script would hang on.
 * **Precedence.** `-u`/`-p` on the command line, then `CHELL_DOOR_TOKEN` (with `CHELL_DOOR_USER`) in the environment, then the door file, then a prompt on a terminal, else one line of refusal.
 * **It dies on its day.** The door sets the life (30 days by default); from seven days out every call says so on stderr; at expiry chell refuses with the words to run. `chell auth login` again replaces the token.
-* **Never over plain http to another host.** A token travels over TLS or to loopback; `--insecure-door` at login sends it anyway, knowingly. The choice is kept with that door (`"insecure": true` in its 0600 file), so `chell` and `chell -c` use it afterwards, saying on each use that the token goes readable on the wire. A door that carries tokens never records it.
+* **Never over plain http to another host.** A token travels over TLS or to loopback; `--insecure-door` at login sends it anyway, knowingly. The choice is kept with that door (`"insecure": true` in its 0600 file), so `chell` and `chell -c` use it afterwards, saying on each use that the token goes readable on the wire. A door that carries tokens never records it. A login to a second door leaves the first the default and says so (add `--default` to switch); a refused door names itself, says when it is the default, and points at a door already logged into with `--insecure-door`.
 
 === What not to do
 

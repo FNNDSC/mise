@@ -143,6 +143,28 @@ export function doorFiles_list(env: NodeJS.ProcessEnv = process.env): string[] {
   return readdirSync(dir).filter((name: string): boolean => name.endsWith('.json')).map((name: string): string => name.slice(0, -5)).sort();
 }
 
+/**
+ * The doors this user is logged in at, as their files name them, with
+ * whether each was logged into with `--insecure-door`. A file that does not
+ * read is left out (`chell auth status` is where it is refused by name).
+ *
+ * @param env - The environment (its XDG_CONFIG_HOME).
+ * @returns The doors, sorted.
+ */
+export function doorsKept_read(env: NodeJS.ProcessEnv = process.env): Array<{ door: string; insecure: boolean }> {
+  const dir: string = doorsDir_get(env);
+  const kept: Array<{ door: string; insecure: boolean }> = [];
+  for (const name of doorFiles_list(env)) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(join(dir, `${name}.json`), 'utf8'));
+      if (doorFile_check(parsed)) kept.push({ door: parsed.door, insecure: parsed.insecure === true });
+    } catch {
+      // Unreadable: not a door to point at.
+    }
+  }
+  return kept.sort((a, b): number => a.door.localeCompare(b.door));
+}
+
 /** The default door's marker file. */
 function defaultPath_get(env: NodeJS.ProcessEnv): string {
   return join(doorsDir_get(env), 'default');

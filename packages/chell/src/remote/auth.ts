@@ -238,6 +238,11 @@ async function login_run(ask: AuthAsk, door: string, world: AuthWorld): Promise<
   if (wasDefault === null || ask.makeDefault === true) doorDefault_write(door, world.env);
   world.say(chalk.green(`[+] Logged in at ${door} as ${grant.user}; token "${grant.name}" dies ${grant.expires.slice(0, 10)} (${days_until(grant.expires, world.now())} days).`));
   world.say(chalk.gray(`    kept in ${path} (0600)${(wasDefault === null || ask.makeDefault === true) ? '; this door is now the default: chell and chell -c go through it with no flags' : ''}`));
+  // A login that leaves another door the default says so: `chell -c` goes
+  // through the default, and a silent no here read as "this one is used".
+  if (wasDefault !== null && ask.makeDefault !== true && wasDefault !== door) {
+    world.say(chalk.yellow(`    your default door stays ${wasDefault}: chell and chell -c still go there. Add --default to this login to switch, or use this door directly: chell --remote --door ${door} -c '…'`));
+  }
   return 0;
 }
 

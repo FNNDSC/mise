@@ -32,12 +32,14 @@ export const RESOURCE_LIST_OPTIONS: string[] = [
 /** The help for each ChRIS command, by name. */
 export const chrisHelp: Record<string, CommandHelp> = {
   user: {
+    category: 'Administration',
     usage: 'user <add|inspect|disable|enable|remove> <username>',
     description: 'Manage CUBE-local accounts; federated identities remain externally managed',
     options: ['Use `sudo user …` for lifecycle operations.', 'add prompts for email and a hidden password confirmation.'],
     examples: ['sudo user add jack.bivowac', 'sudo user disable jack.bivowac', 'sudo user remove jack.bivowac'],
   },
   netstat: {
+    category: 'Connection',
     usage: 'netstat [-n <count>] [-r]',
     description: 'What the session has asked of CUBE: requests since the session (or the last reset), by endpoint family with the time spent, and the last few timed',
     options: [
@@ -51,6 +53,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   edit: {
+    category: 'File Operations',
     usage: 'edit <file>',
     description: 'Edit a ChRIS file in $EDITOR — fetches, opens, saves back on write',
     options: [
@@ -66,6 +69,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   setfacl: {
+    category: 'Sharing & Tags',
     usage: 'setfacl -m u:<user>:r|g:<group>:r|o::r|o::- <path>... | setfacl -x u:<user>|g:<group> <path>...',
     summary: 'Share a feed with a user, a group or everyone, or stop sharing it',
     description:
@@ -90,6 +94,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   getfacl: {
+    category: 'Sharing & Tags',
     usage: 'getfacl <path>...',
     summary: 'Show who can read a feed: users, groups, and whether it is public',
     description:
@@ -101,6 +106,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   chmod: {
+    category: 'Sharing & Tags',
     usage: 'chmod o+r|o-r <feed>...',
     summary: 'Make a feed public, or private again',
     description: 'The other entry of a feed\'s access list spelled as a mode: o+r makes it public, o-r private, '
@@ -111,6 +117,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   setfattr: {
+    category: 'Sharing & Tags',
     usage: 'setfattr -n tag -v <value> <path>... | setfattr -x tag [-v <value>] <path>...',
     summary: 'Hang a tag on a feed, or take it off',
     description:
@@ -132,6 +139,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   getfattr: {
+    category: 'Sharing & Tags',
     usage: 'getfattr [-n tag] <path>...',
     summary: 'Show the tags a feed wears',
     description:
@@ -142,6 +150,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   config: {
+    category: 'File Operations',
     usage: 'config write <cfs-path> <base64-content>',
     description: 'Write a small configuration document into the user\'s CUBE home (the durable layer: argus desktops, surface preferences). Reads travel the ordinary cat. Documents are notes, not datasets: 256KB limit.',
     options: [],
@@ -151,6 +160,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   upload: {
+    category: 'File Operations',
     usage: 'upload <local_path_or_glob> <chris_path>',
     description: 'Upload local files, directories, or glob matches to ChRIS with progress tracking',
     options: [
@@ -168,6 +178,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   download: {
+    category: 'File Operations',
     usage: 'download <chris_path_or_glob> <local_path> [-f|--force]',
     description: 'Download a ChRIS file, directory, or CFS glob to the local filesystem with progress tracking',
     options: [
@@ -181,6 +192,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   connect: {
+    category: 'Connection',
     usage: 'connect <username> <url> [password]',
     description: 'Connect to ChRIS server',
     examples: [
@@ -189,11 +201,13 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   logout: {
+    category: 'Connection',
     usage: 'logout',
     description: 'Disconnect from ChRIS server',
     examples: ['logout'],
   },
   plugin: {
+    category: 'Single Resource',
     usage: 'plugin <subcommand> [options]',
     description: 'Work with a single ChRIS plugin - run, search, view documentation',
     options: [
@@ -253,6 +267,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   plugins: {
+    category: 'Resource Collections',
     usage: 'plugins <subcommand> [options]',
     description: 'Manage collections of ChRIS plugins - list, add, delete, query',
     options: [
@@ -316,6 +331,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   feed: {
+    category: 'Single Resource',
     usage: 'feed <subcommand> [options]',
     description: 'Work with a single ChRIS feed - create, annotate, comment',
     options: [
@@ -354,6 +370,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   feeds: {
+    category: 'Resource Collections',
     usage: 'feeds <subcommand> [options]',
     description: 'Manage collections of ChRIS feeds - list, delete, share, query',
     options: [
@@ -380,6 +397,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   files: {
+    category: 'Resource Collections',
     usage: 'files <subcommand> [path] [options]',
     description: 'Manage ChRIS file resources',
     options: [...RESOURCE_LIST_OPTIONS],
@@ -391,18 +409,21 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   links: {
+    category: 'Resource Collections',
     usage: 'links <subcommand> [path] [options]',
     description: 'Manage ChRIS link resources',
     options: [...RESOURCE_LIST_OPTIONS],
     examples: ['links list', 'links search', 'links inspect'],
   },
   dirs: {
+    category: 'Resource Collections',
     usage: 'dirs <subcommand> [path] [options]',
     description: 'Manage ChRIS directory resources',
     options: [...RESOURCE_LIST_OPTIONS],
     examples: ['dirs list', 'dirs search', 'dirs inspect'],
   },
   pipeline: {
+    category: 'Single Resource',
     usage: 'pipeline <subcommand> [args]',
     description: 'Manage and execute ChRIS pipelines (registered DAG workflows)',
     options: [
@@ -463,6 +484,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   pacs: {
+    category: 'PACS',
     usage: 'pacs <subcommand> [args]',
     description: 'PACS subsystem — server context, query, and series retrieval',
     options: [
@@ -569,6 +591,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   pacsservers: {
+    category: 'PACS',
     usage: 'pacsservers <subcommand> [options]',
     description: 'List or inspect available PACS servers (context-aware)',
     examples: [
@@ -578,6 +601,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   pacsqueries: {
+    category: 'PACS',
     usage: 'pacsqueries <subcommand> [options]',
     description: 'Create or list PACS queries (uses current pacsserver context unless overridden)',
     options: [
@@ -593,6 +617,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   pacsretrieve: {
+    category: 'PACS',
     usage: 'pacsretrieve <subcommand> [options]',
     description: 'Pull or inspect DICOM retrieves for PACS queries',
     examples: [
@@ -602,16 +627,19 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   context: {
+    category: 'Connection',
     usage: 'context',
     description: 'Display current ChRIS context information',
     examples: ['context'],
   },
   whoami: {
+    category: 'Connection',
     usage: 'whoami',
     description: 'Print the currently authenticated ChRIS username',
     examples: ['whoami'],
   },
   id: {
+    category: 'Connection',
     usage: 'id',
     description: 'Print the current CUBE user as a Unix-style UID, projected primary GID, and complete list of CUBE group memberships.',
     examples: ['id'],
@@ -630,6 +658,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['chrisfetch', 'chrisfetch | lolcat'],
   },
   file: {
+    category: 'File Operations',
     usage: 'file <path>...',
     summary: 'What a file is, by its first bytes',
     description: 'Reads a CFS file\'s head and names it by its magic: DICOM, NIfTI, gzip, PNG, JPEG, PDF, ZIP, JSON, text and more, with its size.',
@@ -662,17 +691,20 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['md5sum image.nii.gz'],
   },
   motd: {
+    category: 'Games and utilities',
     usage: 'motd [surface]',
     summary: 'The greeting a session gives on arrival',
     description: 'Says who you are, how many feeds you hold, how many jobs have run and what share of them failed, and what is running now — from the session\'s own index, at no cost. While the index is still warming it says what it holds so far. A surface may name itself (motd ARGUS) and the greeting says where you arrived. Ends with a short fortune.',
     examples: ['motd', 'motd ARGUS'],
   },
   whereami: {
+    category: 'Connection',
     usage: 'whereami',
     description: 'Print the current CUBE URL',
     examples: ['whereami'],
   },
   proc: {
+    category: 'Monitoring',
     usage: 'proc <jobs|stat|feeds|refresh|retry|find|here|watch|unwatch> [args]',
     summary: 'Job history inspector — navigate, query and monitor ChRIS pipeline execution via /proc/jobs',
     description: '/proc/jobs is a job history inspector for every computation visible to the current ChRIS identity. Each plugin instance is a discrete job with a parent, zero or more children, a status, parameters, and a log. Jobs are grouped into feeds (pipeline runs), and the parent-child relationships form a DAG: the execution tree of a full computation. /proc/jobs exposes this as a navigable filesystem. The daemon restores an identity-scoped local topology checkpoint, validates feed visibility with CUBE, and reconciles all plugin instances in the background. Restored queries remain usable while syncing; a cold cache still guards global queries until complete. CUBE remains authoritative.',
@@ -730,6 +762,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   physicalmode: {
+    category: 'Shell Settings',
     usage: 'physicalmode [on|off]',
     description: 'Toggle or display physical filesystem mode',
     options: [
@@ -743,6 +776,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   parametersofplugin: {
+    category: 'Resource Collections',
     usage: 'parametersofplugin <plugin_name>',
     description: 'Display parameters for a specific plugin',
     examples: [
@@ -751,6 +785,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   tree: {
+    category: 'Navigation',
     usage: 'tree [options] [path]',
     description: 'Display directory tree structure',
     options: [
@@ -769,6 +804,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   du: {
+    category: 'Navigation',
     usage: 'du [options] [path]',
     description: 'Display disk usage statistics (mimics Linux du)',
     options: [
@@ -790,6 +826,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   store: {
+    category: 'Resource Collections',
     usage: 'store <subcommand> [options]',
     description: 'Browse, search, and install plugins from ChRIS peer store',
     options: [
@@ -823,6 +860,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   compute: {
+    category: 'Resource Collections',
     usage: 'compute <subcommand> [options]',
     description: 'Manage ChRIS compute resources',
     options: [
@@ -836,6 +874,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   tag: {
+    category: 'Single Resource',
     usage: 'tags <subcommand> [options]',
     description: 'Manage ChRIS tags',
     options: [
@@ -849,6 +888,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['tags list', 'tags search brain', 'tags inspect', 'tag create neuro', 'tag delete 5'],
   },
   tags: {
+    category: 'Resource Collections',
     usage: 'tags <subcommand> [options]',
     description: 'Manage ChRIS tags',
     options: [
@@ -862,6 +902,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['tags list', 'tags search brain', 'tags inspect', 'tag create neuro', 'tag delete 5'],
   },
   record: {
+    category: 'Workflows & Cohorts',
     usage: 'record <start <manifest>|stop|status>',
     description: 'Write what this session does down as a manifest',
     options: [
@@ -884,6 +925,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   play: {
+    category: 'Workflows & Cohorts',
     usage: 'play <manifest> [--param NAME=value]... [--pace <duration>] [--dry-run]',
     description: "Run a workflow manifest: the lines an operator could have typed",
     options: [
@@ -918,6 +960,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   expect: {
+    category: 'Workflows & Cohorts',
     usage: 'expect <gather|feed|run|path> [<target>] <property> [<predicate> <value>] [--within <duration>]',
     description: 'State a claim about the session, and refuse when it does not hold',
     options: [
@@ -945,6 +988,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   gather: {
+    category: 'Workflows & Cohorts',
     usage: 'gather <subcommand> [path...]',
     description: "Hold the set of things this session is working on",
     options: [
@@ -964,6 +1008,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   group: {
+    category: 'Single Resource',
     usage: 'groups <subcommand> [options]',
     description: 'Manage ChRIS user groups',
     options: [
@@ -980,6 +1025,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['groups list', 'group members pacs_users', 'group adduser pacs_users peter.hong joe.schmo', 'group removeuser pacs_users joe.schmo'],
   },
   groups: {
+    category: 'Resource Collections',
     usage: 'groups <subcommand> [options]',
     description: 'Manage ChRIS user groups',
     options: [
@@ -996,6 +1042,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['groups list', 'group members pacs_users', 'group adduser pacs_users peter.hong joe.schmo', 'group removeuser pacs_users joe.schmo'],
   },
   pluginmeta: {
+    category: 'Single Resource',
     usage: 'pluginmetas <subcommand> [options]',
     description: 'Browse ChRIS plugin metadata (abstract tool identities across versions)',
     options: [
@@ -1007,6 +1054,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['pluginmetas list', 'pluginmetas search dircopy', 'pluginmetas inspect', 'pluginmeta plugins 12'],
   },
   pluginmetas: {
+    category: 'Resource Collections',
     usage: 'pluginmetas <subcommand> [options]',
     description: 'Browse ChRIS plugin metadata (abstract tool identities across versions)',
     options: [
@@ -1018,6 +1066,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['pluginmetas list', 'pluginmetas search dircopy', 'pluginmetas inspect', 'pluginmeta plugins 12'],
   },
   plugininstance: {
+    category: 'Single Resource',
     usage: 'plugininstances <subcommand> [options]',
     description: 'Manage ChRIS plugin instances (jobs)',
     options: [
@@ -1032,6 +1081,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['jobs list', 'jobs list --all', 'jobs search status:started', 'jobs inspect', 'job cancel 42', 'job output 42'],
   },
   plugininstances: {
+    category: 'Resource Collections',
     usage: 'plugininstances <subcommand> [options]',
     description: 'Manage ChRIS plugin instances (jobs)',
     options: [
@@ -1046,6 +1096,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['jobs list', 'jobs list --all', 'jobs search status:started', 'jobs inspect', 'job cancel 42', 'job output 42'],
   },
   workflow: {
+    category: 'Single Resource',
     usage: 'workflows <subcommand> [options]',
     description: 'Manage ChRIS workflows (pipeline executions)',
     options: [
@@ -1060,6 +1111,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['workflows list', 'workflows list --all', 'workflows inspect', 'workflow jobs 7', 'workflow delete 7'],
   },
   workflows: {
+    category: 'Resource Collections',
     usage: 'workflows <subcommand> [options]',
     description: 'Manage ChRIS workflows (pipeline executions)',
     options: [
@@ -1073,13 +1125,14 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
     examples: ['workflows list', 'workflows list --all', 'workflows inspect', 'workflow jobs 7', 'workflow delete 7'],
   },
-  meta: { usage: 'pluginmetas <subcommand> [options]', description: 'Alias for pluginmeta/pluginmetas', options: [...RESOURCE_LIST_OPTIONS], examples: ['metas list', 'meta inspect'] },
-  metas: { usage: 'pluginmetas <subcommand> [options]', description: 'Alias for pluginmeta/pluginmetas', options: [...RESOURCE_LIST_OPTIONS], examples: ['metas list', 'meta inspect'] },
-  instance: { usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances/job/jobs', options: [...RESOURCE_LIST_OPTIONS], examples: ['instances list', 'instance cancel 42'] },
-  instances: { usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances/job/jobs', options: [...RESOURCE_LIST_OPTIONS], examples: ['instances list', 'instance cancel 42'] },
-  job: { usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances', options: [...RESOURCE_LIST_OPTIONS], examples: ['jobs list', 'job cancel 42', 'job output 42'] },
-  jobs: { usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances', options: [...RESOURCE_LIST_OPTIONS], examples: ['jobs list', 'job cancel 42', 'job output 42'] },
+  meta: { category: 'Single Resource', usage: 'pluginmetas <subcommand> [options]', description: 'Alias for pluginmeta/pluginmetas', options: [...RESOURCE_LIST_OPTIONS], examples: ['metas list', 'meta inspect'] },
+  metas: { category: 'Resource Collections', usage: 'pluginmetas <subcommand> [options]', description: 'Alias for pluginmeta/pluginmetas', options: [...RESOURCE_LIST_OPTIONS], examples: ['metas list', 'meta inspect'] },
+  instance: { category: 'Single Resource', usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances/job/jobs', options: [...RESOURCE_LIST_OPTIONS], examples: ['instances list', 'instance cancel 42'] },
+  instances: { category: 'Resource Collections', usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances/job/jobs', options: [...RESOURCE_LIST_OPTIONS], examples: ['instances list', 'instance cancel 42'] },
+  job: { category: 'Single Resource', usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances', options: [...RESOURCE_LIST_OPTIONS], examples: ['jobs list', 'job cancel 42', 'job output 42'] },
+  jobs: { category: 'Resource Collections', usage: 'plugininstances <subcommand> [options]', description: 'Alias for plugininstance/plugininstances', options: [...RESOURCE_LIST_OPTIONS], examples: ['jobs list', 'job cancel 42', 'job output 42'] },
   dcm: {
+    category: 'Imaging',
     usage: 'dcm <series|tags> <path> [options]',
     summary: 'DICOM as the kernel sees it: a folder as a series, a file or folder as tags',
     description: 'Read DICOM without leaving the session. `dcm series` answers what a folder is as a series: '
@@ -1108,6 +1161,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   image: {
+    category: 'Imaging',
     usage: 'image [--force] <path>',
     summary: 'Show a DICOM series or a volume — a browser draws it, a terminal reflects it',
     description: 'Open an image as the kernel sees it. `image <path>` resolves what the path is — a series '
@@ -1128,6 +1182,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   cubepath: {
+    category: 'Navigation',
     usage: 'cubepath <vfs-path> [--pacsserver <id>]',
     description: 'Show CUBE FS path and file count for each series under a PACS VFS path. Zero files = not pulled.',
     options: [
@@ -1146,6 +1201,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   query: {
+    category: 'PACS',
     usage: 'query <Key:Value[,Key:Value...]> [--patients <list|@cfs-file>] [--title <title>] [--pacsserver <id>] [--fresh]',
     description: 'Create a PACS query, wait for results, and print the VFS path',
     options: [
@@ -1176,6 +1232,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   pull: {
+    category: 'PACS',
     usage: 'pull [--detach] [--retry N] [--new-feed <title> [--plugin <selector>|--pipeline <selector>] [-- <args...>]] <vfs-path|query-expr> [...]',
     description: 'Pull PACS series into ChRIS storage; accepts VFS paths or query expressions (blocking)',
     options: [

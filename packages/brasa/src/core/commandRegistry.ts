@@ -35,6 +35,12 @@ export interface CommandHelp {
   usage: string;
   /** One line for listings; the description stands in when there is none. */
   summary?: string;
+  /**
+   * Where the command stands in `help`'s list (one of HELP_CATEGORIES). Every
+   * runnable command declares one, or is on the games shelf; a test holds it,
+   * so a new command cannot be missing from help.
+   */
+  category?: string;
   description: string;
   subcommands?: string[];
   options?: string[];

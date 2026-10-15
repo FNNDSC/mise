@@ -28,6 +28,17 @@ describe('DownloadLedger', () => {
     expect(ledger.report('new001')).toMatchObject({ phase: 'opening', elapsedMs: 0 });
   });
 
+  it('a download cancelled while CUBE answers stays cancelled: nothing is held', () => {
+    const ledger = new DownloadLedger();
+    const stream = Readable.from([Buffer.from('x')]);
+    ledger.begin('late01', '/f');
+    expect(ledger.cancel('late01')).toBe(true);
+    expect(ledger.park('late01', { stream, size: 1 })).toBe(false);
+    expect(stream.destroyed).toBe(true);
+    expect(ledger.cancelled('late01')).toBe(true);
+    expect(ledger.report('late01')).toMatchObject({ phase: 'cancelled' });
+  });
+
   it('takes only plain ids', () => {
     expect(downloadId_valid('dl-k3j4h5')).toBe(true);
     expect(downloadId_valid('../x')).toBe(false);

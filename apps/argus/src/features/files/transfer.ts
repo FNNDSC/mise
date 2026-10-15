@@ -31,6 +31,12 @@ export interface TransferReport {
 /** How often a row asks how far its download has got. */
 export const TRANSFER_POLL_MS: number = 1000;
 
+/** How long a row waits on one answer before it counts the session silent. */
+export const TRANSFER_ASK_MS: number = 5000;
+
+/** How many silent asks in a row before the row says it has lost touch. */
+export const TRANSFER_SILENT_LIMIT: number = 3;
+
 /** How long a finished row stands before it goes. */
 export const TRANSFER_LINGER_MS: number = 20_000;
 
@@ -185,33 +191,55 @@ export function transfer_watch(name: string, downloadUrl: string, id: string, fe
     if (first === undefined || now - first.at < 900) return null;
     return ((bytes - first.bytes) * 1000) / (now - first.at);
   };
+  let cancelling: boolean = false;
+  let silent: number = 0;
   const show = (report: TransferReport): void => {
     element.dataset['phase'] = report.phase;
-    words.textContent = transfer_words(report, report.phase === 'streaming' ? rate_of(report.bytes) : null);
+    const said: string = transfer_words(report, report.phase === 'streaming' ? rate_of(report.bytes) : null);
+    words.textContent = cancelling && !phase_ended(report.phase) ? `CANCELLING · ${said}` : said;
     const share: number = report.phase === 'done' ? 1 : report.size !== undefined && report.size > 0 ? report.bytes / report.size : 0;
     fill.style.width = `${(100 * share).toFixed(1)}%`;
     if (phase_ended(report.phase)) end();
   };
+  // One question to the daemon, never waited on past TRANSFER_ASK_MS: a
+  // report, 'unknown' when the session knows no download by this id, or
+  // null when it did not answer in time.
+  const ask = async (verb: 'progress' | 'cancel'): Promise<TransferReport | 'unknown' | null> => {
+    const controller: AbortController = new AbortController();
+    const deadline: ReturnType<typeof setTimeout> = setTimeout((): void => controller.abort(), TRANSFER_ASK_MS);
+    try {
+      const answer: Response = await fetcher(transferUrl_build(downloadUrl, verb, id), { credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
+      if (!answer.ok) return 'unknown';
+      return (await answer.json()) as TransferReport;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(deadline);
+    }
+  };
   const poll = async (): Promise<void> => {
     if (ended) return;
-    try {
-      const answer: Response = await fetcher(transferUrl_build(downloadUrl, 'progress', id), { credentials: 'same-origin', cache: 'no-store' });
-      if (answer.ok) {
-        unknownSince = null;
-        show((await answer.json()) as TransferReport);
-      } else {
-        // A session that does not count downloads (an older daemon), or one
-        // the save has not reached yet: say the browser has it.
-        unknownSince ??= Date.now();
-        if (Date.now() - unknownSince > 5000) {
-          element.dataset['phase'] = 'handed';
-          words.textContent = 'HANDED TO THE BROWSER · SEE ITS DOWNLOADS';
-          end();
-          return;
-        }
+    const answer: TransferReport | 'unknown' | null = await ask('progress');
+    if (ended) return;
+    if (answer === null) {
+      // A row that stops hearing says so, rather than standing still.
+      silent += 1;
+      if (silent >= TRANSFER_SILENT_LIMIT) words.textContent = 'LOST TOUCH WITH THE SESSION · STILL ASKING';
+    } else if (answer === 'unknown') {
+      silent = 0;
+      // A session that does not count downloads (an older daemon), or one
+      // the save has not reached yet: say the browser has it.
+      unknownSince ??= Date.now();
+      if (Date.now() - unknownSince > 5000) {
+        element.dataset['phase'] = 'handed';
+        words.textContent = 'HANDED TO THE BROWSER · SEE ITS DOWNLOADS';
+        end();
+        return;
       }
-    } catch {
-      // The session did not answer this time; ask again.
+    } else {
+      silent = 0;
+      unknownSince = null;
+      show(answer);
     }
     if (!ended) timer = setTimeout((): void => { void poll(); }, TRANSFER_POLL_MS);
   };
@@ -221,11 +249,23 @@ export function transfer_watch(name: string, downloadUrl: string, id: string, fe
       return;
     }
     action.disabled = true;
+    cancelling = true;
     words.textContent = 'CANCELLING';
-    void fetcher(transferUrl_build(downloadUrl, 'cancel', id), { credentials: 'same-origin', cache: 'no-store' })
-      .then(async (answer: Response): Promise<void> => { if (answer.ok) show((await answer.json()) as TransferReport); })
-      .catch((): void => undefined)
-      .finally((): void => { action.disabled = false; });
+    void ask('cancel').then((answer: TransferReport | 'unknown' | null): void => {
+      action.disabled = false;
+      if (ended) return;
+      if (answer === null) {
+        cancelling = false;
+        words.textContent = 'THE CANCEL GOT NO ANSWER FROM THE SESSION · PRESS CANCEL AGAIN';
+      } else if (answer === 'unknown') {
+        cancelling = false;
+        element.dataset['phase'] = 'handed';
+        words.textContent = "THE SESSION DOES NOT KNOW THIS DOWNLOAD · CANCEL IT IN THE BROWSER'S DOWNLOADS";
+        end();
+      } else {
+        show(answer);
+      }
+    });
   });
   void poll();
   return {

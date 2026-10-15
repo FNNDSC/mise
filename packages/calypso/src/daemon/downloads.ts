@@ -103,12 +103,14 @@ export class DownloadLedger {
    *
    * @param id - The download.
    * @param opened - The file CUBE answered with.
+   * @returns False when the download ended first (cancelled while CUBE was
+   *   answering): the file is let go and nothing is held.
    */
-  public park(id: string, opened: OpenedFile): void {
+  public park(id: string, opened: OpenedFile): boolean {
     const entry: DownloadEntry | undefined = this.entries.get(id);
-    if (entry === undefined) {
+    if (entry === undefined || this.ended(entry)) {
       (opened.stream as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
-      return;
+      return false;
     }
     entry.phase = 'ready';
     entry.parked = opened;
@@ -119,6 +121,17 @@ export class DownloadLedger {
       this.end(entry, 'failed', 'the browser never came for the file');
     }, this.parkMs);
     entry.parkTimer.unref?.();
+    return true;
+  }
+
+  /**
+   * Whether a download was cancelled: its save is refused, never begun again.
+   *
+   * @param id - The download.
+   * @returns True when cancelled.
+   */
+  public cancelled(id: string): boolean {
+    return this.entries.get(id)?.phase === 'cancelled';
   }
 
   /**

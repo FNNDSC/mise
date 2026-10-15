@@ -35,11 +35,11 @@ export interface FeedModes {
   draw: DrawMode;
 }
 
-/** A feed opens as its tree, root on top, lit as spheres, sized by time, coloured by status. */
+/** A feed opens as its tree, root on top, lit as spheres, sized by time, coloured by status, pulsing. */
 export const FEED_MODES_DEFAULT: Readonly<FeedModes> = {
   strategy: 'ranked',
   projection: '3d',
-  pulse: false,
+  pulse: true,
   metric: 'time',
   hue: 'status',
   census: false,
@@ -48,6 +48,13 @@ export const FEED_MODES_DEFAULT: Readonly<FeedModes> = {
 };
 
 const STORE_KEY: string = 'argus.feedview';
+
+/**
+ * The shape of what is kept. A record from before PULSE stood on by
+ * default holds `pulse: false` because every press writes every mode, not
+ * because anyone chose it; such a record's pulse is not read.
+ */
+const STORE_VERSION: number = 2;
 
 /** The storage the modes are kept in: the browser's, or a test's. */
 export interface FeedModeStore {
@@ -89,7 +96,7 @@ export function feedModes_read(store: FeedModeStore | null): FeedModes {
   return {
     strategy: pick<LayoutStrategy>('strategy', ['ranked', 'molecule']),
     projection: pick<'3d' | '2d'>('projection', ['3d', '2d']),
-    pulse: flag('pulse'),
+    pulse: kept['v'] === STORE_VERSION ? flag('pulse') : FEED_MODES_DEFAULT.pulse,
     metric: pick<MetricMode>('metric', ['time', 'size']),
     hue: pick<HueMode>('hue', ['status', 'compute']),
     census: flag('census'),
@@ -101,7 +108,7 @@ export function feedModes_read(store: FeedModeStore | null): FeedModes {
 /** Keeps the modes; a store that refuses forgets, and the modes still hold for this page. */
 export function feedModes_write(store: FeedModeStore | null, modes: FeedModes): void {
   try {
-    store?.setItem(STORE_KEY, JSON.stringify(modes));
+    store?.setItem(STORE_KEY, JSON.stringify({ ...modes, v: STORE_VERSION }));
   } catch {
     // Refused: forgotten on reload, held for now.
   }

@@ -4,12 +4,17 @@
  * threads under stars, the
  * wave's flare, and a job picked by a ray.
  */
-import { describe, it, expect } from '@jest/globals';
+import { beforeAll, describe, it, expect } from '@jest/globals';
 import * as THREE from 'three';
-import { CensusField, type CensusNode } from '../src/draw/censusField.js';
+import { CensusField, censusDetail_of, type CensusNode } from '../src/draw/censusField.js';
 import { StarField } from '../src/draw/starField.js';
 import { TubeField } from '../src/draw/tubeField.js';
 import type { Palette } from '../src/draw/palette.js';
+
+beforeAll(() => {
+  // A glow is drawn on a canvas; there is no page here.
+  (globalThis as { document?: unknown }).document ??= { createElement: () => ({ width: 0, height: 0, getContext: () => null }) };
+});
 
 const c = (r = 1, g = 1, b = 1): THREE.Color => new THREE.Color(r, g, b);
 const palette: Palette = { running: c(), done: c(), error: c(1, 0, 0), template: c(), unknown: c(), edge: c(0.5, 0.2, 0), join: c(), root: c(), pulse: c(0, 1, 1) };
@@ -89,5 +94,35 @@ describe('CensusField', () => {
     field.clear();
     expect(field.pick(ray)).toBeNull();
     expect(field.ids().length).toBe(0);
+  });
+});
+
+describe('censusDetail_of', () => {
+  it('cuts a small census smooth and a crowd coarse', () => {
+    expect(censusDetail_of(14)).toBe(6);
+    expect(censusDetail_of(2_000)).toBe(6);
+    expect(censusDetail_of(2_001)).toBe(3);
+    expect(censusDetail_of(20_001)).toBe(1);
+  });
+});
+
+describe('census glows', () => {
+  it('blooms a stage as the wave lands on it, and lets its glows go on clear', () => {
+    const { field, parent } = census();
+    field.build(nodes(12), false, palette);
+    const glows = (): THREE.Sprite[] => parent.children.filter((o): o is THREE.Sprite => o instanceof THREE.Sprite);
+    // The anchor draws no jobs and wears no glow.
+    expect(glows().length).toBe(2);
+    expect(glows().every((g) => !g.visible)).toBe(true);
+    field.flare((id) => (id === 'f' ? 100 : undefined), 200, c(0, 1, 1), 200);
+    expect(glows().filter((g) => g.visible).length).toBe(1);
+    field.clear();
+    expect(glows().length).toBe(0);
+  });
+
+  it('blooms none under stars', () => {
+    const { field, parent } = census();
+    field.build(nodes(12), true, palette);
+    expect(parent.children.some((o) => o instanceof THREE.Sprite)).toBe(false);
   });
 });

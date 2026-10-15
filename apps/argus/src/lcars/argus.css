@@ -7259,3 +7259,119 @@ body[data-zoom] #header-strip {
 body:not([data-composition="chris"]) [data-composition="chris"] {
   display: none !important;
 }
+
+/* Transfers (law a-download-says-how-far-it-has-got): a row per download at
+   the foot of the screen, from the press to the end. */
+.transfer-stack {
+  position: fixed;
+  /* Clear of a pane's right spine and the frame's foot. */
+  right: 3.5rem;
+  bottom: 1.5rem;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: min(40rem, calc(100vw - 4.5rem));
+  pointer-events: none;
+}
+
+.transfer-row {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'name action' 'bar action' 'words action';
+  column-gap: 0.7rem;
+  row-gap: 0.2rem;
+  padding: 0.45rem 0.6rem 0.45rem 0.9rem;
+  background: rgb(0 0 0 / 88%);
+  border-left: 6px solid var(--orange);
+  border-radius: 0 1rem 1rem 0;
+  font-family: var(--face-label);
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: var(--orange);
+}
+
+.transfer-name {
+  grid-area: name;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-bar {
+  grid-area: bar;
+  height: 0.45rem;
+  border-radius: 0.25rem;
+  background: rgb(255 255 255 / 12%);
+  overflow: hidden;
+}
+
+.transfer-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--orange);
+  transition: width 0.6s linear;
+}
+
+.transfer-row[data-phase='opening'] .transfer-fill,
+.transfer-row[data-phase='ready'] .transfer-fill {
+  width: 30% !important;
+  animation: transfer-wait 1.4s ease-in-out infinite alternate;
+}
+
+@keyframes transfer-wait {
+  from { margin-left: 0; }
+  to { margin-left: 70%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transfer-row[data-phase='opening'] .transfer-fill,
+  .transfer-row[data-phase='ready'] .transfer-fill {
+    animation: none;
+  }
+}
+
+.transfer-words {
+  grid-area: words;
+  font-size: 0.72rem;
+  color: var(--harvestgold);
+}
+
+.transfer-row[data-phase='done'] {
+  border-left-color: var(--harvestgold);
+}
+
+.transfer-row[data-phase='done'] .transfer-fill {
+  background: var(--harvestgold);
+}
+
+.transfer-row[data-phase='failed'],
+.transfer-row[data-phase='cancelled'] {
+  border-left-color: var(--mars);
+}
+
+.transfer-row[data-phase='failed'] .transfer-words,
+.transfer-row[data-phase='cancelled'] .transfer-words {
+  color: var(--mars);
+}
+
+.transfer-action {
+  grid-area: action;
+  align-self: center;
+  border: none;
+  border-radius: 0.7rem;
+  padding: 0.15rem 0.8rem;
+  background: var(--orange);
+  color: #000;
+  font: inherit;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.transfer-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

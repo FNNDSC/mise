@@ -32,7 +32,7 @@ import { JSON_FILE_PATTERN, jsonPretty_build } from './json.js';
 import { listing_isAnswered, refusalWords_of } from './answer.js';
 import { more_wire } from '../roster/more.js';
 import type { ListingAction, ListingTrait } from '../roster/row.js';
-import { barState_toggle } from '../roster/bar.js';
+import { barState_set, barState_toggle } from '../roster/bar.js';
 import { linkLine_build, linkLine_copy, linkLine_set } from '../../app/link.js';
 
 /**
@@ -618,6 +618,21 @@ export class FilesPanel {
    *
    * @param envelope - Any envelope the session showed this surface.
    */
+  /**
+   * Says a listing this pane asked for did not come: the bar reads COULD
+   * NOT LIST and why, so a pane opened on a place (a link's landing, a
+   * dive) never stands blank and silent.
+   *
+   * @param reason - Why, in the session's words.
+   */
+  public listing_fail(reason: string): void {
+    const words: string = reason.trim().split('\n')[0]?.slice(0, 120) ?? '';
+    barState_set(this.stateSpan, 'refused', `COULD NOT LIST${words === '' ? '' : ` · ${words.toUpperCase()}`}`);
+    // A pane with nothing on it says why in its field too, not "awaiting".
+    const hint: HTMLElement | null = this.lastListings.length === 0 ? this.container.querySelector<HTMLElement>('.files-empty') : null;
+    if (hint !== null) hint.textContent = `COULD NOT LIST — ${words}`;
+  }
+
   public envelope_observe(envelope: WireEnvelope): void {
     // A drawn listing answers the press even when marked an error (answer.ts).
     if (envelope.status === 'error' && !listing_isAnswered(envelope)) {

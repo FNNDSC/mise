@@ -36,6 +36,7 @@ import { CONTRACT_VERSION } from '@fnndsc/menu';
 import { clientMessage_parse, attach_parse } from '@fnndsc/menu';
 import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, PromptKind, PromptPath, FileDeliverRequest, Regard, WatchState, AmbientEvent, ClosingCause } from '@fnndsc/menu';
 import type { z } from 'zod';
+import { DownloadLedger, downloadId_valid, type DownloadReport, type OpenedFile } from './downloads.js';
 
 /**
  * The largest file `POST /vfs` will take, in bytes.
@@ -275,6 +276,8 @@ export class CalypsoDaemon {
   private readonly prompts: RequestBroker<string> = new RequestBroker<string>('p', 'surface disconnected before answering');
   private readonly pipes: RequestBroker<Buffer> = new RequestBroker<Buffer>('x', 'surface disconnected before returning pipe output');
   private readonly shells: RequestBroker<number> = new RequestBroker<number>('h', 'surface disconnected before returning the shell result');
+  /** The downloads this daemon is serving, for their progress (downloads.ts). */
+  private readonly downloads: DownloadLedger = new DownloadLedger();
   private readonly edits: RequestBroker<EditOutcome> = new RequestBroker<EditOutcome>('e', 'surface disconnected before returning the edit');
   private readonly deliveries: RequestBroker<DeliverOutcome> = new RequestBroker<DeliverOutcome>('d', 'surface disconnected before the file was delivered');
 
@@ -499,6 +502,16 @@ export class CalypsoDaemon {
       refuse(405, 'method not allowed');
       return;
     }
+    // A download's progress, and its stop: the surface asks by its own id.
+    const asked: string | null = query.get('progress') ?? query.get('cancel');
+    if (asked !== null) {
+      const id: string | null = downloadId_valid(asked) ? asked : null;
+      if (id !== null && query.has('cancel')) this.downloads.cancel(id);
+      const report: DownloadReport | null = id === null ? null : this.downloads.report(id);
+      response.writeHead(report === null ? 404 : 200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      response.end(JSON.stringify(report ?? { reason: 'no such download' }));
+      return;
+    }
     const filePath: string | null = query.get('path');
     const read = this.engine.file_read?.bind(this.engine);
     if (filePath === null || filePath.length === 0 || read === undefined) {
@@ -506,7 +519,8 @@ export class CalypsoDaemon {
       return;
     }
     const open = this.engine.file_stream?.bind(this.engine);
-    if (open !== undefined && request.method === 'GET') {
+    // A download's probe asks by HEAD: the file's headers, its bytes held.
+    if (open !== undefined && (request.method === 'GET' || (request.method === 'HEAD' && query.get('probe') === '1'))) {
       await this.vfs_stream(open, filePath, query, response, refuse);
       return;
     }
@@ -548,36 +562,58 @@ export class CalypsoDaemon {
    * @param query - The request's query (`download=1` names an attachment).
    * @param response - The response to write.
    * @param refuse - Answers a refusal before any byte is sent.
+   *
+   * A download with an id (`dl`) is counted for its progress; its probe
+   * (HEAD, `probe=1`) opens the file and answers the headers alone, holding the
+   * stream for the save that follows (downloads.ts).
    */
   private async vfs_stream(
-    open: (filePath: string) => Promise<{ stream: NodeJS.ReadableStream; size?: number }>,
+    open: (filePath: string) => Promise<OpenedFile>,
     filePath: string,
     query: URLSearchParams,
     response: ServerResponse,
     refuse: (status: number, message: string) => void,
   ): Promise<void> {
-    let opened: { stream: NodeJS.ReadableStream; size?: number };
-    try {
-      opened = await open(filePath);
-    } catch (error: unknown) {
-      const named: { status?: unknown; reason?: unknown } = error as { status?: unknown; reason?: unknown };
-      if (typeof named.status === 'number' && typeof named.reason === 'string') refuse(named.status, named.reason);
-      else refuse(404, 'not found');
-      return;
+    const dl: string | null = downloadId_valid(query.get('dl')) ? query.get('dl') : null;
+    const probe: boolean = dl !== null && query.get('probe') === '1';
+    // The browser's save takes the file its probe opened, when one is held.
+    let opened: OpenedFile | null = dl !== null && !probe ? this.downloads.claim(dl) : null;
+    if (opened === null) {
+      if (dl !== null) this.downloads.begin(dl, filePath);
+      try {
+        opened = await open(filePath);
+      } catch (error: unknown) {
+        const named: { status?: unknown; reason?: unknown } = error as { status?: unknown; reason?: unknown };
+        const known: boolean = typeof named.status === 'number' && typeof named.reason === 'string';
+        if (dl !== null) this.downloads.fail(dl, known ? String(named.reason) : 'not found');
+        if (known) refuse(named.status as number, named.reason as string);
+        else refuse(404, 'not found');
+        return;
+      }
     }
     const headers: Record<string, string | number> = { 'content-type': contentType_forPath(filePath) };
     if (opened.size !== undefined) headers['content-length'] = opened.size;
     if (query.get('download') === '1') headers['content-disposition'] = contentDisposition_forPath(filePath);
+    if (probe && dl !== null) {
+      // The probe's answer is the file's headers; the bytes wait for the save.
+      this.downloads.park(dl, opened);
+      response.writeHead(200, headers);
+      response.end();
+      return;
+    }
+    const stream: NodeJS.ReadableStream = opened.stream;
     response.writeHead(200, headers);
     // The browser left (a cancelled download): stop pulling from CUBE.
     response.on('close', (): void => {
-      if (!response.writableFinished) (opened.stream as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
+      if (!response.writableFinished) (stream as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
     });
     try {
       const { pipeline } = await import('node:stream/promises');
-      await pipeline(opened.stream, response);
+      if (dl !== null) await pipeline(stream, this.downloads.counter(dl, response), response);
+      else await pipeline(stream, response);
     } catch {
       // Headers are gone; ending the socket early is the only honest answer.
+      if (dl !== null) this.downloads.fail(dl, 'the stream from CUBE broke');
       response.destroy();
     }
   }

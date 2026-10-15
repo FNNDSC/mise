@@ -839,6 +839,7 @@ export class PacsPanel {
       },
       {
         key: 'studies',
+        shed: 3,
         label: 'STUDIES',
         className: 'pacs-patient-count',
         width: '6em',
@@ -849,6 +850,7 @@ export class PacsPanel {
       },
       {
         key: 'series',
+        shed: 2,
         label: 'SERIES',
         className: 'pacs-patient-count',
         width: '5em',
@@ -859,6 +861,7 @@ export class PacsPanel {
       },
       {
         key: 'server',
+        shed: 1,
         label: 'SERVER',
         className: 'pacs-patient-server',
         width: '9em',

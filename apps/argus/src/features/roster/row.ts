@@ -53,6 +53,13 @@ export interface ListingTrait<T> {
    * no label and no sort. Uncapped traits lead the list.
    */
   capped?: boolean;
+  /**
+   * Where the column stands when the pane is too narrow for every column:
+   * columns with a rank give way lowest first (1 before 2) until the rest
+   * fit, and the bar says how many stood aside. A column with no rank
+   * never gives way. Nothing runs under the frame's rail.
+   */
+  shed?: number;
 }
 
 /** The caps a set of traits declares, in order. */

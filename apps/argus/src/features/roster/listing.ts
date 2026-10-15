@@ -101,6 +101,8 @@ export interface ListingStateParts {
   selecting: boolean;
   selected: number;
   shown: number;
+  /** Columns standing aside because the pane is too narrow for them all. */
+  shed?: number;
 }
 
 /**
@@ -677,7 +679,39 @@ class Level<T> {
    */
   public actions_set(actions: ListingActions<T> | null): void {
     this.declaration = { ...this.declaration, ...(actions === null ? { actions: undefined } : { actions }) };
-    this.template = listingTemplate_of(this.declaration.traits, this.trackActions_get(), this.sized);
+    this.template = listingTemplate_of(this.traits_shown(), this.trackActions_get(), this.sized);
+  }
+
+  /** The columns standing aside because the pane is too narrow (their keys). */
+  public readonly shed: Set<string> = new Set();
+
+  /** The traits on stage: every declared one but those standing aside. */
+  public traits_shown(): ReadonlyArray<ListingTrait<T>> {
+    return this.shed.size === 0 ? this.declaration.traits : this.declaration.traits.filter((trait: ListingTrait<T>): boolean => !this.shed.has(trait.key));
+  }
+
+  /**
+   * Which columns stand aside, and the template without them.
+   *
+   * @param keys - The trait keys to set aside.
+   */
+  public shed_set(keys: ReadonlyArray<string>): void {
+    this.shed.clear();
+    for (const key of keys) this.shed.add(key);
+    this.template = listingTemplate_of(this.traits_shown(), this.trackActions_get(), this.sized);
+  }
+
+  /** The keys that may stand aside, in the order they give way (rank 1 first). */
+  public shedOrder(): string[] {
+    return this.declaration.traits
+      .filter((trait: ListingTrait<T>): boolean => trait.shed !== undefined)
+      .sort((a: ListingTrait<T>, b: ListingTrait<T>): number => (a.shed as number) - (b.shed as number))
+      .map((trait: ListingTrait<T>): string => trait.key);
+  }
+
+  /** A trait's cap label, for naming what stood aside. */
+  public label_of(key: string): string {
+    return this.declaration.traits.find((trait: ListingTrait<T>): boolean => trait.key === key)?.label ?? key;
   }
 
   /** The columns sized by hand, trait key → px; the template follows (columns.ts). */
@@ -686,7 +720,7 @@ class Level<T> {
   /** Sizes one column (null gives it back to its declaration) and rewrites the template. */
   public column_size(key: string, px: number | null): void {
     if (px === null) this.sized.delete(key); else this.sized.set(key, px);
-    this.template = listingTemplate_of(this.declaration.traits, this.trackActions_get(), this.sized);
+    this.template = listingTemplate_of(this.traits_shown(), this.trackActions_get(), this.sized);
   }
 
   /** The declared track of a trait, for its floor. */
@@ -851,7 +885,7 @@ class Level<T> {
     const declaration: ListingLevel<T> = this.declaration;
     const key: string = declaration.key(row);
     const framed: boolean = this.host.framed();
-    const element: HTMLElement = listingRow_build(row, declaration.traits, {
+    const element: HTMLElement = listingRow_build(row, this.traits_shown(), {
       className: (data: T): string => {
         const own: string | undefined = declaration.row?.className?.(data);
         return own === undefined || own === '' ? 'listing-row' : `listing-row ${own}`;
@@ -1320,6 +1354,58 @@ export class Listing<T> {
     }
     this.selection_render();
     this.state_render();
+    this.shed_fit();
+  }
+
+  /** Watches the pane's width, so columns give way and come back as it moves. */
+  private shedObserver: ResizeObserver | null = null;
+  /** The width the columns were last fitted to. */
+  private shedWidth: number = -1;
+
+  /**
+   * Fits the columns to the pane: from every column, the ones with a rank
+   * give way lowest first until the caps row no longer runs past the
+   * field. A row never runs under the frame's rail, where it was clipped
+   * without a word (the operator's black square, 2026-10-14); what stood
+   * aside is said on the bar and the COLUMNS block.
+   *
+   * @param force - Fit again even at the same width.
+   */
+  private shed_fit(force: boolean = false): void {
+    const order: string[] = this.level.shedOrder();
+    if (order.length === 0) return;
+    if (this.shedObserver === null && typeof ResizeObserver !== 'undefined') {
+      this.shedObserver = new ResizeObserver((): void => this.shed_fit());
+      this.shedObserver.observe(this.gridHost);
+    }
+    const caps: HTMLElement | null = this.declaration.mount.querySelector<HTMLElement>('.roster-order .roster-caps')
+      ?? this.declaration.mount.querySelector<HTMLElement>('.roster-caps');
+    if (caps === null || caps.clientWidth === 0) return;
+    const width: number = caps.clientWidth;
+    if (!force && width === this.shedWidth) {
+      // Same width: only the caps a repaint may have minted afresh are hidden again.
+      for (const cap of caps.querySelectorAll<HTMLElement>('.roster-cap')) cap.hidden = this.level.shed.has(cap.dataset['key'] ?? '');
+      return;
+    }
+    this.shedWidth = width;
+    const before: string = [...this.level.shed].join(',');
+    const apply = (keys: string[]): boolean => {
+      this.level.shed_set(keys);
+      this.gridHost.style.setProperty('--roster-cols', this.level.template);
+      for (const cap of caps.querySelectorAll<HTMLElement>('.roster-cap')) cap.hidden = this.level.shed.has(cap.dataset['key'] ?? '');
+      return caps.scrollWidth <= caps.clientWidth + 1;
+    };
+    let shed: string[] = [];
+    let fits: boolean = apply(shed);
+    for (const key of order) {
+      if (fits) break;
+      shed = [...shed, key];
+      fits = apply(shed);
+    }
+    if (shed.join(',') !== before) {
+      this.columnsBlock_paint();
+      if (this.field !== null) this.render();
+    }
   }
 
   /**
@@ -1505,9 +1591,10 @@ export class Listing<T> {
   private columnsBlock_paint(): void {
     if (this.columnsBlock === null) return;
     const sized: boolean = this.level.sized.size > 0;
-    this.columnsBlock.textContent = sized ? 'COLUMNS · SIZED' : 'COLUMNS';
-    this.columnsBlock.classList.toggle('rail-off', !sized);
-    this.columnsBlock.title = sized ? 'columns sized by hand; press to give them all back' : 'drag a cap\'s edge to size its column; a double-press gives one back';
+    const shed: string[] = [...this.level.shed].map((key: string): string => this.level.label_of(key));
+    this.columnsBlock.textContent = `COLUMNS${sized ? ' · SIZED' : ''}${shed.length > 0 ? ` · ${shed.length} HIDDEN` : ''}`;
+    this.columnsBlock.classList.toggle('rail-off', !sized && shed.length === 0);
+    this.columnsBlock.title = `${sized ? 'columns sized by hand; press to give them all back' : 'drag a cap\'s edge to size its column; a double-press gives one back'}${shed.length > 0 ? `. Hidden for want of room: ${shed.join(', ')} (a wider pane brings them back)` : ''}`;
   }
 
   /** Shows or hides the filter strip (the mode frame's FILTER, or the language). */
@@ -1708,6 +1795,7 @@ export class Listing<T> {
       selecting: this.selecting,
       selected: this.selection.size,
       shown: this.selectionShown_count(),
+      shed: this.level.shed.size,
     };
     const text: string | null =
       this.declaration.state !== undefined ? this.declaration.state(parts) : listingState_compose(parts);
@@ -1765,6 +1853,7 @@ export function listingState_compose(parts: ListingStateParts): string {
   const words: string[] = [];
   if (parts.selecting) words.push('SELECT');
   if (parts.filter !== '') words.push(parts.filter);
+  if ((parts.shed ?? 0) > 0) words.push(`${parts.shed} COLUMN${parts.shed === 1 ? '' : 'S'} HIDDEN`);
   if (parts.selected > 0) {
     words.push(
       parts.shown === parts.selected

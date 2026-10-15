@@ -777,13 +777,16 @@ describe('the state line', () => {
     const parts: ListingStateParts = { filter: 'FILTERED 1/3', selecting: false, selected: 0, shown: 0 };
     expect(listingState_compose(parts)).toBe('FILTERED 1/3');
     expect(listingState_compose({ ...parts, filter: '', selected: 2, shown: 2 })).toBe('2 SELECTED');
+    // Columns set aside for want of room are said, never clipped silently.
+    expect(listingState_compose({ ...parts, filter: '', shed: 1 })).toBe('1 COLUMN HIDDEN');
+    expect(listingState_compose({ ...parts, shed: 4 })).toBe('FILTERED 1/3 · 4 COLUMNS HIDDEN');
   });
 
   it('a composer may prepend its own words or decline to write', () => {
     const state = jest.fn((parts: ListingStateParts): string | null => (parts.selected > 0 ? null : `CWD · ${parts.filter}`));
     const { listing, root } = listing_build({ state });
     listing.rows_set([{ key: '/x', rows: ENTRIES }], { field: '/x' });
-    expect(state).toHaveBeenCalledWith({ filter: '', selecting: false, selected: 0, shown: 0 });
+    expect(state).toHaveBeenCalledWith({ filter: '', selecting: false, selected: 0, shown: 0, shed: 0 });
     expect(root.querySelector('.pane-state')?.textContent).toBe('CWD · ');
   });
 });

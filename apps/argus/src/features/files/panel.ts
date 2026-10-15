@@ -562,6 +562,7 @@ export class FilesPanel {
       },
       {
         key: 'type',
+        shed: 2,
         label: 'TYPE',
         className: 'files-type',
         width: '6em',
@@ -577,6 +578,7 @@ export class FilesPanel {
       },
       {
         key: 'date',
+        shed: 3,
         label: 'DATE',
         className: 'files-date',
         width: '7em',
@@ -585,6 +587,7 @@ export class FilesPanel {
       },
       {
         key: 'owner',
+        shed: 1,
         label: 'OWNER',
         className: 'files-owner',
         width: '10em',

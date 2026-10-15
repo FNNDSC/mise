@@ -16,7 +16,8 @@ import { DAG_MODEL_KINDS, EDIT_CONFIRM_BYTES, path_isEditable, pipelineDiagramMo
 import { editAsk_of, editLine_compose } from '../features/edit/line.js';
 import type { ExecuteOutcome } from '../calypso/client.js';
 import type { PaneAskRequest } from '../features/ask/paneAsk.js';
-import { browserDownload_save, type DownloadOutcome } from '../features/files/download.js';
+import { browserDownload_save, downloadId_make, type DownloadOutcome } from '../features/files/download.js';
+import { transfer_watch, type TransferRow } from '../features/files/transfer.js';
 import { FilesPanel, extension_isImage, type FileAction, type FsListingEntry, type GlimpseNode, type PreviewProvider } from '../features/files/panel.js';
 import type { GatherSeries } from '../features/gather/panel.js';
 import { DICOM_FILE_PATTERN, VOLUME_FILE_PATTERN, seriesFolder_is } from '../features/image/engine.js';
@@ -185,10 +186,19 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
   /** Each browser's binding pair, so a change made anywhere is read back by the control that states it. */
   const cwdBindSyncs: Map<string, () => void> = new Map();
 
+  // A download stands a transfer row at once and keeps it current from the
+  // daemon's own count (features/files/transfer.ts); the console notes its
+  // start and how the hand-off went.
   const file_save = (path: string): void => {
-    void browserDownload_save(hooks.downloadUrl_build(path), path).then((outcome: DownloadOutcome): void => {
+    const url: string = hooks.downloadUrl_build(path);
+    const id: string = downloadId_make();
+    const name: string = path.split('/').filter((part: string): boolean => part.length > 0).pop() ?? path;
+    const row: TransferRow = transfer_watch(name, url, id);
+    context.terminal.line_note(`download: asking the session for ${name}`);
+    void browserDownload_save(url, path, fetch, id).then((outcome: DownloadOutcome): void => {
+      if (!outcome.ok) row.fail(outcome.reason);
       context.terminal.line_note(outcome.ok
-        ? `download: ${outcome.name}${outcome.streamed ? ' — large; the browser fetches it itself' : ''}`
+        ? `download: ${outcome.name}${outcome.streamed ? ' — handed to the browser; its progress is on the transfer row' : ''}`
         : `download: ${path}: ${outcome.reason}`);
     });
   };

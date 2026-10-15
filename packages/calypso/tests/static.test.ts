@@ -41,6 +41,22 @@ function http_get(url: string): Promise<{ status: number; type: string; cache: s
   });
 }
 
+/** Asks for a URL's headers alone (HEAD), as a download's probe does. */
+function http_head(url: string): Promise<{ status: number; length: string; disposition: string }> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(url, { method: 'HEAD' }, (response: IncomingMessage) => {
+      response.resume();
+      response.on('end', () => resolve({
+        status: response.statusCode ?? 0,
+        length: String(response.headers['content-length'] ?? ''),
+        disposition: String(response.headers['content-disposition'] ?? ''),
+      }));
+    });
+    request.on('error', reject);
+    request.end();
+  });
+}
+
 /** POSTs a body and reads the reply, for the delivery route. */
 function http_post(url: string, body: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
@@ -352,6 +368,51 @@ describe('CalypsoDaemon /vfs route', () => {
       const refused = await http_get(`http://127.0.0.1:${streamPort}/vfs?path=${encodeURIComponent('/home/demo/other.dcm')}&token=${TOKEN}&download=1`);
       expect(refused.status).toBe(403);
       expect(refused.body).toContain('CUBE refused the bytes');
+    } finally {
+      await streaming.stop();
+    }
+  });
+
+  it('a download with an id: the probe opens once, the save takes that stream, progress counts it', async () => {
+    const { Readable } = await import('node:stream');
+    let opens: number = 0;
+    const streaming = new CalypsoDaemon({
+      engine: {
+        ...vfsEngine_create(),
+        file_stream: async (filePath: string) => {
+          if (filePath !== '/home/demo/big.dcm') throw Object.assign(new Error('refused'), { status: 403, reason: 'not yours to read: CUBE refused the bytes (403)' });
+          opens += 1;
+          return { stream: Readable.from([Buffer.from('part1-'), Buffer.from('part2')]), size: 11 };
+        },
+      },
+      token: TOKEN,
+    });
+    const streamPort: number = await streaming.start();
+    const base: string = `http://127.0.0.1:${streamPort}/vfs?path=${encodeURIComponent('/home/demo/big.dcm')}&token=${TOKEN}&download=1&dl=abc123`;
+    const progress = async (id: string, verb: string = 'progress') => {
+      const reply = await http_get(`http://127.0.0.1:${streamPort}/vfs?${verb}=${id}&token=${TOKEN}`);
+      return { status: reply.status, report: JSON.parse(reply.body) as { phase: string; bytes: number; size?: number; reason?: string } };
+    };
+    try {
+      const probed = await http_head(`${base}&probe=1`);
+      expect(probed.status).toBe(200);
+      expect(probed.length).toBe('11');
+      expect(probed.disposition).toContain('filename="big.dcm"');
+      expect((await progress('abc123')).report).toMatchObject({ phase: 'ready', bytes: 0, size: 11 });
+      const saved = await http_get(base);
+      expect(saved.body).toBe('part1-part2');
+      // One request to CUBE for the probe and the save together.
+      expect(opens).toBe(1);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect((await progress('abc123')).report).toMatchObject({ phase: 'done', bytes: 11, size: 11 });
+      // A refusal is the download's answer too.
+      await http_head(`http://127.0.0.1:${streamPort}/vfs?path=${encodeURIComponent('/home/demo/other.dcm')}&token=${TOKEN}&download=1&dl=xyz789&probe=1`);
+      expect((await progress('xyz789')).report).toMatchObject({ phase: 'failed', reason: 'not yours to read: CUBE refused the bytes (403)' });
+      // A held file can be stopped before the save comes for it.
+      await http_head(`${base.replace('abc123', 'stop42')}&probe=1`);
+      expect((await progress('stop42', 'cancel')).report).toMatchObject({ phase: 'cancelled' });
+      expect((await progress('nothere')).status).toBe(404);
+      expect((await progress('../etc')).status).toBe(404);
     } finally {
       await streaming.stop();
     }

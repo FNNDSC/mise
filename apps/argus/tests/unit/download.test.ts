@@ -7,7 +7,7 @@
  *
  * @module
  */
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import { attachmentName_read, downloadAnswer_refusal, browserDownload_save } from '../../src/features/files/download.js';
 
 /** A fetch that answers once with the response given. */
@@ -48,6 +48,46 @@ describe('downloadAnswer_refusal', () => {
 });
 
 describe('browserDownload_save', () => {
+  // The save presses an anchor; there is no page here.
+  const pressed: string[] = [];
+  (globalThis as { document?: unknown }).document ??= {
+    createElement: () => ({ click(this: { href: string }) { pressed.push(this.href); }, remove() {} }),
+    body: { append() {} },
+  };
+
+  it('probes by HEAD under its id, then fetches the file the probe opened', async () => {
+    const asked: Array<{ url: string; method: string }> = [];
+    const headers = { 'content-disposition': 'attachment; filename="a.csv"', 'content-length': '4' };
+    const fetcher = (async (url: string, init?: RequestInit): Promise<Response> => {
+      asked.push({ url, method: init?.method ?? 'GET' });
+      return init?.method === 'HEAD' ? new Response(null, { status: 200, headers }) : new Response('a,b\n', { status: 200, headers });
+    }) as typeof fetch;
+    const created: string[] = [];
+    (URL as unknown as { createObjectURL: (b: Blob) => string }).createObjectURL = (): string => { created.push('blob'); return 'blob:x'; };
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
+    const outcome = await browserDownload_save('vfs?path=%2Fa.csv&download=1', '/a.csv', fetcher, 'dl-test01');
+    jest.clearAllTimers();
+    jest.useRealTimers();
+    expect(outcome).toEqual({ ok: true, name: 'a.csv', bytes: 4, streamed: false });
+    expect(asked).toEqual([
+      { url: 'vfs?path=%2Fa.csv&download=1&dl=dl-test01&probe=1', method: 'HEAD' },
+      { url: 'vfs?path=%2Fa.csv&download=1&dl=dl-test01', method: 'GET' },
+    ]);
+    expect(created).toEqual(['blob']);
+  });
+
+  it('hands a large file to the browser after the probe alone', async () => {
+    const asked: string[] = [];
+    const fetcher = (async (url: string): Promise<Response> => {
+      asked.push(url);
+      return new Response(null, { status: 200, headers: { 'content-disposition': 'attachment; filename="big.dcm"', 'content-length': String(3_777_606_216) } });
+    }) as typeof fetch;
+    const outcome = await browserDownload_save('vfs?path=%2Fbig.dcm&download=1', '/big.dcm', fetcher, 'dl-test02');
+    expect(outcome).toEqual({ ok: true, name: 'big.dcm', bytes: 3_777_606_216, streamed: true });
+    expect(asked).toHaveLength(1);
+    expect(pressed[pressed.length - 1]).toBe('vfs?path=%2Fbig.dcm&download=1&dl=dl-test02');
+  });
+
   it('saves nothing and says why when the answer is not the file', async () => {
     const outcome = await browserDownload_save('vfs?path=%2Fa.csv&download=1', '/a.csv', fetch_answering(new Response('not found', { status: 404 })));
     expect(outcome).toEqual({ ok: false, reason: expect.stringMatching(/nothing was saved/) });

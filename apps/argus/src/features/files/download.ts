@@ -87,38 +87,52 @@ function anchor_press(href: string, name: string): void {
   anchor.remove();
 }
 
+/** A download's id: what the daemon counts it by. */
+export function downloadId_make(): string {
+  return `dl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /**
- * Brings one file down: asks the byte route, and saves only the file.
+ * Brings one file down: asks the session to open it, and saves only the file.
  *
- * A file too large to hold in the page is handed to the browser to fetch
- * itself once its first answer has proved it is the file — the name still
- * given, the bytes streamed to disk rather than through memory.
+ * The ask is a probe (HEAD, `probe=1`) under the download's id: the daemon
+ * waits on CUBE, answers the file's headers, and holds the stream for the
+ * save that follows, so CUBE is asked once. A file small enough is held in
+ * the page and saved from there; a larger one is handed to the browser to
+ * fetch itself — the name still given, the bytes streamed to disk. Either
+ * way the daemon counts the bytes under the id, for the progress a
+ * transfer row reads (transfer.ts).
  *
  * @param url - The byte route's download URL for the path.
  * @param path - The ChRIS path, for the fallback name.
  * @param fetcher - The fetch to use; the page's own by default.
+ * @param id - The download's id.
  * @returns How it ended.
  */
-export async function browserDownload_save(url: string, path: string, fetcher: typeof fetch = fetch): Promise<DownloadOutcome> {
-  const controller: AbortController = new AbortController();
-  let response: Response;
+export async function browserDownload_save(url: string, path: string, fetcher: typeof fetch = fetch, id: string = downloadId_make()): Promise<DownloadOutcome> {
+  const tagged: string = `${url}&dl=${encodeURIComponent(id)}`;
+  let probe: Response;
   try {
-    response = await fetcher(url, { credentials: 'same-origin', signal: controller.signal });
+    probe = await fetcher(`${tagged}&probe=1`, { method: 'HEAD', credentials: 'same-origin' });
   } catch (error: unknown) {
     return { ok: false, reason: `the session did not answer (${error instanceof Error ? error.message : String(error)}) — nothing was saved` };
   }
-  const refusal: string | null = downloadAnswer_refusal(response);
-  if (refusal !== null) {
-    controller.abort();
-    return { ok: false, reason: refusal };
+  const refusal: string | null = downloadAnswer_refusal(probe);
+  if (refusal !== null) return { ok: false, reason: refusal };
+  const name: string = attachmentName_read(probe.headers.get('content-disposition'), path);
+  const length: number = Number(probe.headers.get('content-length') ?? NaN);
+  if (!Number.isFinite(length) || length > DOWNLOAD_BLOB_MAX_BYTES) {
+    anchor_press(tagged, name);
+    return { ok: true, name, bytes: Number.isFinite(length) ? length : null, streamed: true };
   }
-  const name: string = attachmentName_read(response.headers.get('content-disposition'), path);
-  const length: number = Number(response.headers.get('content-length') ?? NaN);
-  if (Number.isFinite(length) && length > DOWNLOAD_BLOB_MAX_BYTES) {
-    controller.abort();
-    anchor_press(url, name);
-    return { ok: true, name, bytes: length, streamed: true };
+  let response: Response;
+  try {
+    response = await fetcher(tagged, { credentials: 'same-origin' });
+  } catch (error: unknown) {
+    return { ok: false, reason: `the session did not answer (${error instanceof Error ? error.message : String(error)}) — nothing was saved` };
   }
+  const refused: string | null = downloadAnswer_refusal(response);
+  if (refused !== null) return { ok: false, reason: refused };
   const blob: Blob = await response.blob();
   const objectUrl: string = URL.createObjectURL(blob);
   anchor_press(objectUrl, name);

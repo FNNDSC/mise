@@ -5,6 +5,7 @@
  *
  * @module
  */
+import { pronounsPage_render } from './pronouns.js';
 import { gamesShelf_render, gamesShelf_names } from './games/shelf.js';
 import chalk from 'chalk';
 import { CAT_USAGE } from './fs/cat.args.js';
@@ -860,6 +861,11 @@ export function args_checkHasHelpFlag(args: string[], command?: string): boolean
 export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   const commandName: string | undefined = args.length > 0 ? args.join(' ') : undefined;
 
+  // The pronouns: the core's page, with whatever the backend answers too.
+  if (commandName === 'pronouns') {
+    const backendPage: string | null = (await backendInstalled_get()?.fallback?.help?.('pronouns')) ?? null;
+    return { status: 'ok', rendered: backendPage ?? pronounsPage_render([]) };
+  }
   // The shelf: its own page, in the style of this one.
   if (commandName === 'games') {
     return { status: 'ok', rendered: gamesShelf_render(commandSummary_get) };
@@ -920,6 +926,8 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   rendered += `  ${chalk.cyan('Pipes'.padEnd(20))} ${chalk.gray('Chain commands: cat file.txt | wc -l')}\n`;
   rendered += `  ${chalk.cyan('Redirection >'.padEnd(20))} ${chalk.gray('Write to file: cat file.txt > output.txt')}\n`;
   rendered += `  ${chalk.cyan('Redirection >>'.padEnd(20))} ${chalk.gray('Append to file: cat file.txt >> output.txt')}\n`;
+  rendered += `  ${chalk.cyan('Index handles'.padEnd(20))} ${chalk.gray('Name rows of the last numbered listing: gather add @SER3  @SER1-4  @SER2,5,7')}\n`;
+  rendered += `  ${chalk.cyan('Pronouns ${…}'.padEnd(20))} ${chalk.gray('What this session just made or asked, as ${name}: ${cwd} … (help pronouns)')}\n`;
   rendered += '\n';
 
   rendered += `${chalk.gray('Type "help <command>" for detailed information about a command.')}\n`;

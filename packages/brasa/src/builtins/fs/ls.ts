@@ -2,6 +2,7 @@
  * @file Builtin ls command.
  * Lists directory contents.
  */
+import { answerNumbering_of, handle_word, numberedFooter_of, type NumberedHandle } from '../../session/answer.js';
 import chalk from 'chalk';
 import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
 import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
@@ -67,6 +68,33 @@ export async function builtin_ls(args: string[]): Promise<CommandEnvelope> {
     directory: !!parsed['d'],
     refresh: !!parsed['refresh'] || !!parsed['f'],
   });
+}
+
+/**
+ * Prefixes each entry line of a long listing with its handle, and adds the
+ * footer. The handles come from the listing's own numbering; when the lines
+ * and the entries do not pair one to one, the listing is left as it was
+ * rather than wearing numbers that could be wrong.
+ *
+ * @param rendered - The long listing as drawn.
+ * @param listings - The entries, per target, in drawn order.
+ * @returns The listing with handles, or as it was.
+ */
+function longHandles_add(rendered: string, listings: ReadonlyArray<LsListing>): string {
+  const handles: NumberedHandle[] = answerNumbering_of('fs.listing', listings) ?? [];
+  if (handles.length === 0) return rendered;
+  const lines: string[] = rendered.split('\n');
+  const entry = (line: string): boolean => /^[dl-] /.test(line.replace(/\x1b\[[0-9;]*m/g, ''));
+  if (lines.filter(entry).length !== handles.length) return rendered;
+  const width: number = Math.max(...handles.map((handle: NumberedHandle): number => handle_word(handle).length));
+  let at: number = 0;
+  const out: string[] = lines.map((line: string): string => {
+    if (!entry(line)) return line;
+    const handle: NumberedHandle | undefined = handles[at++];
+    return `${chalk.cyan((handle === undefined ? '' : handle_word(handle)).padEnd(width))}  ${line}`;
+  });
+  const text: string = out.join('\n');
+  return `${text}${text.endsWith('\n') ? '' : '\n'}${chalk.gray(numberedFooter_of(handles))}\n`;
 }
 
 /**
@@ -221,6 +249,10 @@ export async function ls_run(runOptions: LsOptions): Promise<CommandEnvelope> {
   if (anyFailed) {
     process.exitCode = 1;
   }
+  // The long form is a table: each entry wears the handle an index expands
+  // to (#1099), and a footer says what is numbered. The short grid stays the
+  // POSIX grid.
+  if (options.long) rendered = longHandles_add(rendered, listings);
   const result: CommandEnvelope = { status: anyFailed ? 'error' : 'ok', rendered };
   result.model = { kind: 'fs.listing', data: listings };
   if (renderedErr.length > 0) {

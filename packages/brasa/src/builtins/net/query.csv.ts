@@ -16,6 +16,7 @@
  *
  * @module
  */
+import { answerNumbering_of, handleWords_of, numberedFooter_of } from '../../session/answer.js';
 import type { PacsPatient, PacsQueryModel, PacsSeries, PacsStudy } from '@fnndsc/menu';
 
 /**
@@ -76,8 +77,11 @@ interface RowFacts {
  * @param level - One row per study, or per series.
  * @returns The columns and the rows, cells as text.
  */
-export function pacsAnswer_rows(model: PacsQueryModel, level: PacsAnswerLevel = 'study'): { columns: ReadonlyArray<string>; rows: string[][] } {
+export function pacsAnswer_rows(model: PacsQueryModel, level: PacsAnswerLevel = 'study'): { columns: ReadonlyArray<string>; rows: string[][]; keys: Array<string | null> } {
   const rows: string[][] = [];
+  // What each row is, for the handle a screen prints beside it (`STD:<path>`,
+  // `SER:<path>`); null for a row nothing numbers. Never in the CSV.
+  const keys: Array<string | null> = [];
   const patients: ReadonlyArray<PacsPatient> = model.patients ?? [];
   const studiesOf = (patient: PacsPatient): PacsStudy[] =>
     model.studies.filter((study: PacsStudy): boolean =>
@@ -86,13 +90,18 @@ export function pacsAnswer_rows(model: PacsQueryModel, level: PacsAnswerLevel = 
 
   const study_rows = (study: PacsStudy, facts: RowFacts): string[][] => {
     if (level === 'study') {
+      keys.push(study.vfsPath === undefined ? null : `STD:${study.vfsPath}`);
       return [[
         facts.mrn, study.patientName, facts.server, facts.status, study.description, study.date,
         study.accession, study.modalities, String(study.series.length), facts.answeredAt,
       ]];
     }
     const lead: string[] = [facts.mrn, study.patientName, facts.server, facts.status, study.description, study.date, study.accession];
-    if (study.series.length === 0) return [[...lead, '', '', '', '', '', facts.answeredAt]];
+    if (study.series.length === 0) {
+      keys.push(null);
+      return [[...lead, '', '', '', '', '', facts.answeredAt]];
+    }
+    for (const series of study.series) keys.push(series.vfsPath === undefined ? null : `SER:${series.vfsPath}`);
     return study.series.map((series: PacsSeries, index: number): string[] => [
       ...lead,
       String(index + 1),
@@ -119,6 +128,7 @@ export function pacsAnswer_rows(model: PacsQueryModel, level: PacsAnswerLevel = 
         // audit is usually about: a patient with no imaging, or one whose
         // question could not be asked at all.
         rows.push(patient_row(patient, server, answeredAt));
+        keys.push(null);
         continue;
       }
       for (const study of owned) {
@@ -135,7 +145,7 @@ export function pacsAnswer_rows(model: PacsQueryModel, level: PacsAnswerLevel = 
       }));
     }
   }
-  return { columns: level === 'study' ? STUDY_COLUMNS : SERIES_COLUMNS, rows };
+  return { columns: level === 'study' ? STUDY_COLUMNS : SERIES_COLUMNS, rows, keys };
 }
 
 /**
@@ -168,7 +178,16 @@ export function pacsAnswer_toCsv(model: PacsQueryModel, level: PacsAnswerLevel =
  * @returns The table, header and rule first, uncoloured.
  */
 export function pacsAnswer_toTable(model: PacsQueryModel, level: PacsAnswerLevel = 'study'): string {
-  const { columns, rows } = pacsAnswer_rows(model, level);
+  const table = pacsAnswer_rows(model, level);
+  // The handle each row answers to leads the screen's table (#1099); the
+  // CSV, a record of the answer, does not carry it.
+  const numbered = answerNumbering_of('pacs.query', model) ?? [];
+  const words: Map<string, string> = handleWords_of(numbered);
+  // A column is earned: an answer nothing numbers (no paths yet) keeps the
+  // table it always had.
+  const lead: boolean = table.keys.some((key: string | null): boolean => key !== null && words.has(key));
+  const columns: ReadonlyArray<string> = lead ? ['@', ...table.columns] : table.columns;
+  const rows: string[][] = lead ? table.rows.map((row: string[], at: number): string[] => [words.get(table.keys[at] ?? '') ?? '', ...row]) : table.rows;
   const shown: number[] = columns.map((_: string, index: number): number => index).filter((index: number): boolean => columns[index] !== 'ANSWERED');
   const widths: number[] = shown.map((index: number): number =>
     Math.max(columns[index]?.length ?? 0, ...rows.map((row: string[]): number => (row[index] ?? '').length)));
@@ -177,6 +196,8 @@ export function pacsAnswer_toTable(model: PacsQueryModel, level: PacsAnswerLevel
   const out: string[] = [line(columns), `  ${widths.map((width: number): string => '─'.repeat(width)).join('  ')}`];
   for (const row of rows) out.push(line(row));
   out.push('', `  ${rows.length} row${rows.length === 1 ? '' : 's'}, one per ${level}`);
+  const footer: string = numberedFooter_of(numbered);
+  if (footer !== '') out.push(`  ${footer}`);
   return `${out.join('\n')}\n`;
 }
 

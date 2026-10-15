@@ -1,5 +1,13 @@
 # @fnndsc/argus
 
+## 0.28.4
+
+### Patch Changes
+
+- 3c8d56a: A download shows how far it has got, from the press to the end. A transfer row stands at the foot of the screen at once: waiting for CUBE, then bytes of the whole with the rate and the time left, then done, failed with CUBE's reason, or cancelled, with CANCEL to stop it. The daemon counts the bytes it passes (`/vfs?progress=<id>`, `cancel=<id>`) and holds the probe's stream for the browser's save, so CUBE is asked once instead of twice.
+- 5102036: A place's link is always in sight, and copying it says so. FILES shows the link under every path trail and RUNS shows it in the graph's corner (the selected node, else the feed), in full behind a LINK pill. A press copies it and the pill reads COPIED, or SELECT + COPY with the address selected where the browser has no clipboard. A row's LINK points that line at the row. The LINK pill on the RUNS rail is gone.
+- 36cf130: A FILES pane that cannot list its place says so instead of standing blank. A pane opened on a folder (by a link, a walk or BACK) whose listing fails now reads COULD NOT LIST with the session's reason, on its bar and in its field, and the console notes it.
+
 ## 0.28.3
 
 ### Patch Changes

@@ -2,7 +2,7 @@
  * @file The feed view's modes, the device's memory of them, and the words its pills read.
  */
 import { describe, it, expect } from '@jest/globals';
-import { FEED_MODES_DEFAULT, feedModes_read, feedModes_write, feedModes_press, feedPill_words, feedShape_same, feedStatuses_patch, type FeedModeStore, type FeedModes, type FeedVerb } from '../../src/features/feed/view.js';
+import { FEED_MODES_DEFAULT, feedModes_read, feedModes_write, feedModes_hold, feedModes_press, feedPill_words, feedShape_same, feedStatuses_patch, type FeedModeStore, type FeedModes, type FeedVerb } from '../../src/features/feed/view.js';
 import type { FeedDagModel } from '@fnndsc/menu';
 
 function store_fake(seed: Record<string, string> = {}): FeedModeStore & { map: Map<string, string> } {
@@ -29,6 +29,19 @@ describe('the feed view\'s modes', () => {
   it('a record kept before PULSE stood on takes the new default for pulse alone', () => {
     const old = store_fake({ 'argus.feedview': JSON.stringify({ ...FEED_MODES_DEFAULT, pulse: false, census: true }) });
     expect(feedModes_read(old)).toEqual({ ...FEED_MODES_DEFAULT, census: true, pulse: true });
+  });
+
+  it('a received view\'s modes stand for the visit and never reach the device\'s store', () => {
+    const store = store_fake({ 'argus.feedview': JSON.stringify({ ...FEED_MODES_DEFAULT, census: false, v: 2 }) });
+    feedModes_hold(true);
+    feedModes_write(store, { ...FEED_MODES_DEFAULT, census: true, projection: '2d' });
+    feedModes_hold(false);
+    expect(feedModes_read(store)).toEqual({ ...FEED_MODES_DEFAULT, census: true, projection: '2d' });
+    expect(JSON.parse(store.map.get('argus.feedview') ?? '{}').census).toBe(false);
+    // The operator's own next press keeps what is on stage, as always.
+    feedModes_write(store, { ...FEED_MODES_DEFAULT, census: true, projection: '2d', gravity: true });
+    expect(JSON.parse(store.map.get('argus.feedview') ?? '{}').gravity).toBe(true);
+    expect(feedModes_read(store).gravity).toBe(true);
   });
 
   it('a store that refuses forgets without breaking the press', () => {

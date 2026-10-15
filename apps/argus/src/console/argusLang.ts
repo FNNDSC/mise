@@ -19,7 +19,7 @@
  * @module
  */
 import { side_is, side_ofFocusWord, splitSelector_of, type Side } from '../app/sides.js';
-import { viewScript_compose } from '../app/shareView.js';
+import { viewScript_compose, viewSheet_ask } from '../app/shareView.js';
 
 /** What the language needs from its host (assembled in main.ts). */
 export interface ArgusHost {
@@ -51,6 +51,8 @@ export interface ArgusHost {
   paneLinked_get(id: string): boolean;
   /** Downloads the file a browser regards; false when it regards none. */
   file_download(paneId: string): boolean;
+  /** Lists a folder in a files pane, rooted there (not following the cwd); false without that pane. */
+  files_open(paneId: string, path: string): boolean;
   /** Removes the file a browser regards, visibly; false when none. */
   file_delete(paneId: string): boolean;
   /** Runs a session command silently, returning rendered output. */
@@ -67,6 +69,8 @@ export interface ArgusHost {
   desktop_serialize(): string;
   /** Keeps the stage as a PANES card (a bare domain or the dashboard keeps nothing). */
   stage_keep(): void;
+  /** Holds the device's kept display modes while a received view sets its own (visit-only). */
+  viewModes_hold(on: boolean): void;
 }
 
 /** One parsed line: subject, optional explicit target, remaining words. */
@@ -101,7 +105,7 @@ const SHARED_SUBJECTS: Record<string, ReadonlySet<string>> = {
   notes: new Set(['pane']),
   // `file` is the kernel's too (what a file is, by its bytes — games shelf);
   // the surface claims only its files-pane verbs.
-  file: new Set(['home', 'back', 'download', 'delete', 'follow', 'root', 'list', 'cards', 'preview', 'sort', 'filter']),
+  file: new Set(['home', 'back', 'download', 'delete', 'follow', 'root', 'open', 'list', 'cards', 'preview', 'sort', 'filter']),
 };
 
 /**
@@ -352,7 +356,7 @@ const FRAME_LINES: ReadonlyArray<{ subject: string; line: () => string }> = [
 const FRAME_TAIL_LINES: ReadonlyArray<string> = [
   'console open|close|toggle|zoom|height <px>',
   'back                        (contextual back — exactly Esc)',
-  'desktop save|load|show|list|delete [name] · clear · share',
+  'desktop save|load|show|list|delete [name] · load <ChRIS file> · clear · share',
   'attach [--reveal]           (how to reach THIS session from a terminal or another browser)',
   'argus verbs                 (this table; the long form is docs/argus-lang.adoc)',
   'argus keys                  (the prefix chords: one key, one drawer verb)',
@@ -633,6 +637,12 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     // Each verb is reached where it now lives: binding on the drawer's
     // binding group, field navigation on the frame, and the row verbs
     // through the host, which is what the row's own track presses too.
+    // A folder by name: the pane lists it, rooted there, as a desktop records it.
+    if (verb === 'open') {
+      const path: string = words.slice(1).join(' ').trim();
+      if (path === '') return 'file open <folder>';
+      return host.files_open(filesId, path) ? `file open ${path}` : `file open: '${filesId}' is not a files pane`;
+    }
     if (verb === 'follow' || verb === 'root') {
       return cwdBind_click(host, filesId, verb === 'follow')
         ? `file ${verb}`
@@ -671,6 +681,91 @@ function pages_handle(host: ArgusHost, subject: string, verb: string | undefined
   if (verb === 'verbs') return VERB_LINES.join('\n');
   if (verb === 'pane') return host.help_open();
   return 'help pane|keys|verbs';
+}
+
+/**
+ * What a view received from someone else may run: the stage's own words,
+ * never the session's. A link or a colleague's file is a script in the
+ * receiver's name; the console also reaches `rm` and `pacs pull`, so a view
+ * that asks for anything but panes, folders shown and a graph's view is
+ * refused whole (law a-view-is-a-script). Null: every verb of the subject.
+ */
+export const VIEW_LINES_ALLOWED: Readonly<Record<string, ReadonlySet<string> | null>> = {
+  view: null,
+  pane: null,
+  dag: null,
+  node: new Set(['enter', 'immerse', 'back', 'clear']),
+  file: new Set(['open', 'list', 'cards', 'preview', 'sort', 'filter', 'follow', 'root']),
+  desktop: new Set(['clear']),
+  header: null,
+  console: new Set(['open', 'close', 'toggle', 'height']),
+};
+
+/**
+ * Why a received view may not run a line, or null when it may.
+ *
+ * @param line - One line of the view.
+ * @returns The refusal.
+ */
+export function viewLine_refusal(line: string): string | null {
+  const words: string[] = line.trim().split(/\s+/);
+  const subject: string = words[0] ?? '';
+  if (!(subject in VIEW_LINES_ALLOWED)) return 'not a view line: it would run in your session';
+  const verbs: ReadonlySet<string> | null | undefined = VIEW_LINES_ALLOWED[subject];
+  if (verbs === null || verbs === undefined) return null;
+  // A pane named first (`%1`, `@id`) is not the verb.
+  const verb: string = (/^[%@]/.test(words[1] ?? '') ? words[2] : words[1]) ?? '';
+  return verbs.has(verb) ? null : `${subject} ${verb} is not part of a view`;
+}
+
+/** Whether a line's answer says it could not be done (a usage line, or `x: no …`). */
+function viewAnswer_failed(answer: string): boolean {
+  return /^[\w-]+( [\w%@-]+)?: (no |unknown|not |nothing|cannot)/i.test(answer) || /^[\w-]+ [\w|<>%@ []+\|/.test(answer);
+}
+
+/**
+ * Runs a view's lines in order, stopping at the first that cannot be done
+ * and saying why. A received view first passes the allow-list and asks the
+ * operator, and its display modes hold for the visit only.
+ *
+ * @param host - The surface.
+ * @param script - The view.
+ * @param received - From a link or a colleague's file: where from; null for the operator's own.
+ * @returns What ran, or why it stopped.
+ */
+export async function viewScript_run(host: ArgusHost, script: string, received: string | null): Promise<string> {
+  const lines: string[] = script.split('\n').map((line: string): string => line.trim()).filter((line: string): boolean => line !== '' && !line.startsWith('#'));
+  if (lines.length === 0) return 'the view holds no lines';
+  if (received !== null) {
+    const refusals: Map<number, string> = new Map();
+    lines.forEach((line: string, index: number): void => {
+      const refused: string | null = viewLine_refusal(line);
+      if (refused !== null) refusals.set(index, refused);
+    });
+    const run: boolean = await viewSheet_ask(lines, refusals, received);
+    if (refusals.size > 0) return `a view from ${received} was refused: ${[...refusals.values()][0] ?? ''}`;
+    if (!run) return `a view from ${received} was not run`;
+    host.viewModes_hold(true);
+  }
+  replayPanes = [];
+  const ran: string[] = [];
+  try {
+    for (const line of lines) {
+      const answer: string | null = await argusLine_run(host, line);
+      if (answer === null || viewAnswer_failed(answer)) {
+        return [...ran, `${line}  →  ${answer ?? 'not a view line'}`, `stopped here: ${answer ?? 'not a view line'}`].join('\n');
+      }
+      ran.push(`${line}  →  ${answer}`);
+      // Let the layout settle between structural verbs.
+      await new Promise((resolve): void => { window.setTimeout(resolve, 60); });
+    }
+  } finally {
+    replayPanes = null;
+    // The held modes come back once the view's lines are done; the view's
+    // own stay on stage for this visit.
+    if (received !== null) window.setTimeout((): void => host.viewModes_hold(false), 1500);
+  }
+  return ran.join('\n');
 }
 
 /**
@@ -727,6 +822,15 @@ async function desktop_handle(host: ArgusHost, verb: string, name: string | unde
     return `deleted '${name}' (local; a CFS copy, if any, is yours to rm)`;
   }
   if (verb === 'load') {
+    // A path is a file in ChRIS: a colleague's view, or one of the
+    // operator's own kept outside the desktops folder.
+    if (name.includes('/')) {
+      const text: string = await host.session_run(`cat ${name}`);
+      if (text.trim() === '' || /No such|cannot|error/i.test(text.split('\n')[0] ?? '')) return `desktop load: cannot read ${name}`;
+      const me: string = (host.identity_get() ?? '').split('@')[0] ?? '';
+      const own: boolean = me !== '' && (name === `~` || name.startsWith('~/') || name.startsWith(`/home/${me}/`));
+      return `loaded ${name}\n${await viewScript_run(host, text, own ? null : name)}`;
+    }
     let script: string | null = window.localStorage.getItem(DESKTOP_PREFIX + name);
     if (script === null) {
       const remote: string = await host.session_run(`cat ${DESKTOP_CFS_DIR}/${name}.desk`);
@@ -735,21 +839,7 @@ async function desktop_handle(host: ArgusHost, verb: string, name: string | unde
       }
     }
     if (script === null) return `(no desktop '${name}')`;
-    replayPanes = [];
-    const results: string[] = [];
-    try {
-      for (const rawLine of script.split('\n')) {
-        const scriptLine: string = rawLine.trim();
-        if (scriptLine === '' || scriptLine.startsWith('#')) continue;
-        const result: string | null = await argusLine_run(host, scriptLine);
-        results.push(`${scriptLine}  →  ${result ?? '(session line?)'}`);
-        // Let the layout settle between structural verbs.
-        await new Promise((resolve): void => { window.setTimeout(resolve, 60); });
-      }
-    } finally {
-      replayPanes = null;
-    }
-    return `loaded '${name}'\n${results.join('\n')}`;
+    return `loaded '${name}'\n${await viewScript_run(host, script, null)}`;
   }
-  return 'desktop save|load|show|list|delete [name] · clear · share';
+  return 'desktop save|load|show|list|delete [name] · load <ChRIS file> · clear · share';
 }

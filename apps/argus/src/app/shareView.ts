@@ -47,21 +47,25 @@ export function shareSheet_open(script: string, clipboard: Pick<Clipboard, 'writ
   sheet.setAttribute('aria-label', 'share this view');
   const head: HTMLElement = document.createElement('div');
   head.className = 'share-head';
-  head.textContent = 'SHARE VIEW · THESE LINES PUT ANYONE WHERE YOU ARE';
+  head.textContent = 'SHARE VIEW · THESE LINES, OR THE LINK, PUT ANYONE WHERE YOU ARE';
   const text: HTMLPreElement = document.createElement('pre');
   text.className = 'share-script';
   text.textContent = script;
   const copy: HTMLButtonElement = document.createElement('button');
   copy.type = 'button';
-  copy.className = 'share-copy';
+  copy.className = 'share-copy share-lines';
   copy.textContent = 'COPY';
+  const linkCopy: HTMLButtonElement = document.createElement('button');
+  linkCopy.type = 'button';
+  linkCopy.className = 'share-copy share-link';
+  linkCopy.textContent = 'COPY LINK';
   const close: HTMLButtonElement = document.createElement('button');
   close.type = 'button';
   close.className = 'share-close';
   close.textContent = 'CLOSE';
   const pills: HTMLElement = document.createElement('div');
   pills.className = 'share-pills';
-  pills.append(copy, close);
+  pills.append(linkCopy, copy, close);
   sheet.append(head, text, pills);
   document.body.appendChild(sheet);
   // A long script scrolls in its box and says it holds more; the chip
@@ -94,6 +98,16 @@ export function shareSheet_open(script: string, clipboard: Pick<Clipboard, 'writ
     }, SHARE_ANNOUNCE_MS);
   };
   copy.addEventListener('click', (): void => { void copy_run(); });
+  // The same view as one link: opened, it shows these lines and asks.
+  linkCopy.addEventListener('click', (): void => {
+    const link: string = viewLink_compose(window.location.origin, script);
+    void (clipboard === undefined ? Promise.reject(new Error('no clipboard')) : clipboard.writeText(link)).then(
+      (): void => { linkCopy.textContent = 'LINK COPIED'; },
+      (): void => { text.textContent = link; linkCopy.textContent = 'LINK SHOWN: SELECT + COPY'; },
+    ).finally((): void => {
+      window.setTimeout((): void => { linkCopy.textContent = 'COPY LINK'; }, SHARE_ANNOUNCE_MS);
+    });
+  });
   close.addEventListener('click', (): void => sheet.remove());
   sheet.addEventListener('keydown', (event: KeyboardEvent): void => {
     if (event.key === 'Escape') sheet.remove();
@@ -101,4 +115,91 @@ export function shareSheet_open(script: string, clipboard: Pick<Clipboard, 'writ
   void copy_run();
   close.focus();
   return sheet;
+}
+
+/** The fragment a view link carries its script under. */
+export const VIEW_LINK_KEY: string = 'view=';
+
+/**
+ * A link that opens ARGUS and offers a view: the door's address with the
+ * script in its fragment, readable (each line in order, URI-escaped), so
+ * the receiver can see what they are opening.
+ *
+ * @param origin - The page's origin.
+ * @param script - The view's script.
+ * @returns The link.
+ */
+export function viewLink_compose(origin: string, script: string): string {
+  return `${origin.replace(/\/+$/, '')}/#${VIEW_LINK_KEY}${encodeURIComponent(script)}`;
+}
+
+/**
+ * The script a view link carries, or null when the fragment carries none.
+ *
+ * @param hash - The address's fragment, `#` included.
+ * @returns The script.
+ */
+export function viewLink_parse(hash: string): string | null {
+  if (!hash.startsWith(`#${VIEW_LINK_KEY}`)) return null;
+  try {
+    const script: string = decodeURIComponent(hash.slice(VIEW_LINK_KEY.length + 1));
+    return script.trim() === '' ? null : script;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Asks before a received view runs: its lines, each refused one marked
+ * with why, and RUN (withheld while any is refused) or NOT NOW.
+ *
+ * @param lines - The view's lines, comments and blanks dropped.
+ * @param refusals - Why each refused line is refused, by line index.
+ * @param from - Where it came from, for the heading.
+ * @returns True when the operator chose RUN.
+ */
+export function viewSheet_ask(lines: ReadonlyArray<string>, refusals: ReadonlyMap<number, string>, from: string): Promise<boolean> {
+  document.querySelector('.share-sheet')?.remove();
+  const sheet: HTMLElement = document.createElement('div');
+  sheet.className = 'share-sheet view-ask';
+  sheet.setAttribute('role', 'dialog');
+  const head: HTMLElement = document.createElement('div');
+  head.className = 'share-head';
+  head.textContent = refusals.size > 0
+    ? `A VIEW FROM ${from.toUpperCase()} · IT ASKS FOR MORE THAN A VIEW, SO IT WILL NOT RUN`
+    : `A VIEW FROM ${from.toUpperCase()} · RUN THESE LINES?`;
+  const text: HTMLPreElement = document.createElement('pre');
+  text.className = 'share-script';
+  lines.forEach((line: string, index: number): void => {
+    const row: HTMLElement = document.createElement('div');
+    row.textContent = line;
+    const refused: string | undefined = refusals.get(index);
+    if (refused !== undefined) {
+      row.className = 'view-refused';
+      row.textContent = `${line}    ← ${refused}`;
+    }
+    text.appendChild(row);
+  });
+  const run: HTMLButtonElement = document.createElement('button');
+  run.type = 'button';
+  run.className = 'share-copy view-run';
+  run.textContent = 'RUN';
+  run.disabled = refusals.size > 0;
+  const cancel: HTMLButtonElement = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'share-close';
+  cancel.textContent = 'NOT NOW';
+  const pills: HTMLElement = document.createElement('div');
+  pills.className = 'share-pills';
+  pills.append(run, cancel);
+  sheet.append(head, text, pills);
+  document.body.appendChild(sheet);
+  more_wire(text, { mount: sheet });
+  (refusals.size > 0 ? cancel : run).focus();
+  return new Promise((resolve: (run: boolean) => void): void => {
+    const settle = (answer: boolean): void => { sheet.remove(); resolve(answer); };
+    run.addEventListener('click', (): void => settle(true));
+    cancel.addEventListener('click', (): void => settle(false));
+    sheet.addEventListener('keydown', (event: KeyboardEvent): void => { if (event.key === 'Escape') settle(false); });
+  });
 }

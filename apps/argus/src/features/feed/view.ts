@@ -82,6 +82,7 @@ export function feedModeStore_default(): FeedModeStore | null {
  * @returns The modes.
  */
 export function feedModes_read(store: FeedModeStore | null): FeedModes {
+  if (visitModes !== null) return { ...visitModes };
   let kept: Record<string, unknown> = {};
   try {
     const text: string | null = store?.getItem(STORE_KEY) ?? null;
@@ -105,8 +106,31 @@ export function feedModes_read(store: FeedModeStore | null): FeedModes {
   };
 }
 
+/** True while a received view is replayed: its modes hold for the visit, the device's kept ones stay. */
+let feedModesHeld: boolean = false;
+/** A received view's modes, for the rest of this visit; null when none was received. */
+let visitModes: FeedModes | null = null;
+
+/**
+ * Holds the device's kept modes while a received view sets its own: the
+ * view's modes show for this visit, and what this device keeps is not
+ * rewritten by someone else's choices.
+ *
+ * @param on - Whether to hold.
+ */
+export function feedModes_hold(on: boolean): void {
+  feedModesHeld = on;
+}
+
 /** Keeps the modes; a store that refuses forgets, and the modes still hold for this page. */
 export function feedModes_write(store: FeedModeStore | null, modes: FeedModes): void {
+  // A received view's modes stand for the visit, never in the device's store.
+  if (feedModesHeld) {
+    visitModes = { ...modes };
+    return;
+  }
+  // The operator's own press keeps what is on stage, as always.
+  visitModes = null;
   try {
     store?.setItem(STORE_KEY, JSON.stringify({ ...modes, v: STORE_VERSION }));
   } catch {

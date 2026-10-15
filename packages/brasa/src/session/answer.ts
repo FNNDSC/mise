@@ -53,6 +53,10 @@ export interface AnswerRow {
   address?: string;
   /** What to call it in a readout. */
   label: string;
+  /** What a filter matches it on (its line as the listing shows it); the label when absent. */
+  text?: string;
+  /** Its parent row (`STD:<path>` for a series), for a filter that keeps a row with its context. */
+  parent?: string;
 }
 
 /** A row's handle: its kind and its place in that kind's sequence. */
@@ -82,6 +86,10 @@ export interface SessionAnswer {
   source: string;
   /** The rows, in the order the model holds them. */
   rows: AnswerRow[];
+  /** The model kind the rows came from, for a filter of the held listing. */
+  kind: string;
+  /** The model itself. */
+  data: unknown;
 }
 
 /** The answer rows a model carries, or null when it is not a listing. */
@@ -127,7 +135,7 @@ export function answer_note(kind: string, data: unknown, source: string): void {
   // empty folder should not silently un-number the listing just read.
   if (rows === null || rows.length === 0) return;
   sequence += 1;
-  held = { source, rows };
+  held = { source, rows, kind, data };
   // A surface cannot light the index pills on the right listing unless it is
   // told which one the numbers now count. Pills that lie are worse than none.
   ambient_publish({
@@ -151,8 +159,10 @@ export function answer_note(kind: string, data: unknown, source: string): void {
  */
 export function answerRow_get(handle: AnswerHandle): AnswerRow | null {
   if (held === null) return null;
-  const ofKind: AnswerRow[] = held.rows.filter((row: AnswerRow): boolean => row.kind === handle.kind);
-  const row: AnswerRow | undefined = ofKind[handle.ordinal - 1];
+  // By the number the row wears, which a filtered listing keeps (#1100).
+  const numbered: NumberedHandle[] = rows_number(held.rows, held.data);
+  const at: number = numbered.findIndex((one: NumberedHandle): boolean => one.kind === handle.kind && one.ordinal === handle.ordinal);
+  const row: AnswerRow | undefined = at < 0 ? undefined : held.rows[at];
   if (row === undefined) return null;
   consulted = true;
   return row;
@@ -178,7 +188,55 @@ export function answerKind_count(kind: AnswerKind): number {
  * @returns The handles.
  */
 export function answerHandles_get(): NumberedHandle[] {
-  return held === null ? [] : rows_number(held.rows);
+  return held === null ? [] : rows_number(held.rows, held.data);
+}
+
+/** Numbers a listing's rows already wore, kept with the listing's data (a filtered listing). */
+const givenOrdinals: WeakMap<object, Map<string, number>> = new WeakMap();
+
+/**
+ * Keeps the numbers a listing's rows already wore with its data, so a
+ * filtered listing's rows keep them: `@SER41` stays `@SER41` (#1100).
+ *
+ * @param data - The listing's model data.
+ * @param ordinals - `KIND:address` to the number it wore.
+ */
+export function answerOrdinals_attach(data: object, ordinals: ReadonlyMap<string, number>): void {
+  givenOrdinals.set(data, new Map(ordinals));
+}
+
+/** What filters a kind's model down to the rows kept. */
+export type AnswerFilter = (data: unknown, keep: ReadonlySet<string>) => unknown;
+
+/** Model kind to its filter. */
+const filters: Map<string, AnswerFilter> = new Map();
+
+/**
+ * Registers how a model kind is filtered to a set of its rows.
+ *
+ * @param kind - The envelope model kind.
+ * @param filter - Builds the model holding only the kept rows (`KIND:address`).
+ */
+export function answerFilter_register(kind: string, filter: AnswerFilter): void {
+  filters.set(kind, filter);
+}
+
+/**
+ * A model filtered to the rows kept, or null when its kind has no filter.
+ *
+ * @param kind - The envelope model kind.
+ * @param data - The model.
+ * @param keep - The rows kept, as `KIND:address`.
+ * @returns The filtered model.
+ */
+export function answerFilter_apply(kind: string, data: unknown, keep: ReadonlySet<string>): unknown {
+  const filter: AnswerFilter | undefined = filters.get(kind);
+  return filter === undefined ? null : filter(data, keep);
+}
+
+/** A row's key: its kind and address, as numbers and filters name it. */
+export function answerRow_key(row: AnswerRow): string {
+  return `${row.kind}:${row.address ?? row.values[0] ?? ''}`;
 }
 
 /**
@@ -189,12 +247,16 @@ export function answerHandles_get(): NumberedHandle[] {
  * @param rows - The rows.
  * @returns Each row's handle and address.
  */
-function rows_number(rows: ReadonlyArray<AnswerRow>): NumberedHandle[] {
+function rows_number(rows: ReadonlyArray<AnswerRow>, data?: unknown): NumberedHandle[] {
+  // A filtered listing's rows keep the numbers they wore; any other row is
+  // counted in its kind's sequence.
+  const given: Map<string, number> | undefined = data !== null && typeof data === 'object' ? givenOrdinals.get(data) : undefined;
   const seen: Map<AnswerKind, number> = new Map();
   return rows.map((row: AnswerRow): NumberedHandle => {
-    const ordinal: number = (seen.get(row.kind) ?? 0) + 1;
-    seen.set(row.kind, ordinal);
-    return { kind: row.kind, ordinal, address: row.address ?? row.values[0] ?? '' };
+    const counted: number = (seen.get(row.kind) ?? 0) + 1;
+    seen.set(row.kind, counted);
+    const address: string = row.address ?? row.values[0] ?? '';
+    return { kind: row.kind, ordinal: given?.get(`${row.kind}:${address}`) ?? counted, address };
   });
 }
 
@@ -218,7 +280,7 @@ export function answerRows_of(kind: string, data: unknown): AnswerRow[] | null {
  */
 export function answerNumbering_of(kind: string, data: unknown): NumberedHandle[] | null {
   const rows: AnswerRow[] | null = adapters.get(kind)?.(data) ?? null;
-  return rows === null ? null : rows_number(rows);
+  return rows === null ? null : rows_number(rows, data);
 }
 
 /**

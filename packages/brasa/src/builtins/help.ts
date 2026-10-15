@@ -70,6 +70,32 @@ export const helpText: Record<string, CommandHelp> = {
       'cd                    # Show current directory',
     ],
   },
+  grep: {
+    category: 'File Operations',
+    usage: 'grep [-ivwEFc] [-e PATTERN]... [PATTERN]',
+    summary: 'Keep the lines, or the rows of a numbered listing, that match',
+    description: 'Filter text, or a numbered listing keeping its handles',
+    options: [
+      '  -i  ignore case      -v  keep what does not match    -w  whole words',
+      '  -E  extended regex   -F  fixed strings               -c  count only',
+      '  -e PATTERN           a pattern (repeatable: any of them matches)',
+      '',
+      'Fed a numbered listing (piped in, or the held one when nothing is piped),',
+      'grep keeps rows: a matching row stays with the rows above it, a matched',
+      'group keeps all of its rows, and every kept row keeps its handle (@SER41',
+      'stays @SER41). What it kept becomes the listing @ and ${listing} name.',
+      '-c counts and changes nothing.',
+      '',
+      'Text in, or any other flag or a file operand, is the system grep. To skip',
+      'this builtin entirely: command grep …',
+    ],
+    examples: [
+      'query PatientID:1234567,Modality:MR | grep -i t1 | grep -vi gadavist',
+      'grep -i -e t1 -e mprage',
+      'gather list | grep -i sag | gather remove',
+      'cat notes.txt | grep -c todo',
+    ],
+  },
   url: {
     category: 'Sharing & Tags',
     usage: 'url [path]',
@@ -926,6 +952,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   rendered += `  ${chalk.cyan('Pipes'.padEnd(20))} ${chalk.gray('Chain commands: cat file.txt | wc -l; a numbered listing travels to the next builtin: query … | gather add')}\n`;
   rendered += `  ${chalk.cyan('Redirection >'.padEnd(20))} ${chalk.gray('Write to file: cat file.txt > output.txt')}\n`;
   rendered += `  ${chalk.cyan('Redirection >>'.padEnd(20))} ${chalk.gray('Append to file: cat file.txt >> output.txt')}\n`;
+  rendered += `  ${chalk.cyan('Listing-aware grep'.padEnd(20))} ${chalk.gray('Filter a numbered listing, keeping its handles: … | grep -i t1 (help grep)')}\n`;
   rendered += `  ${chalk.cyan('Index handles'.padEnd(20))} ${chalk.gray('Name rows of the last numbered listing: gather add @SER3  @SER1-4  @SER2,5,7')}\n`;
   rendered += `  ${chalk.cyan('Pronouns ${…}'.padEnd(20))} ${chalk.gray('What this session just made or asked, as ${name}: ${cwd} … (help pronouns)')}\n`;
   rendered += '\n';

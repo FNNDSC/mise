@@ -18,6 +18,7 @@ import type { CommandEnvelope } from '@fnndsc/menu';
  */
 export const helpText: Record<string, CommandHelp> = {
   sudo: {
+    category: 'Administration',
     usage: 'sudo <command> [arguments...]',
     description: 'Run one ChRIS command with a temporary administrator identity',
     options: [
@@ -30,6 +31,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   ls: {
+    category: 'Navigation',
     usage: 'ls [options] [path]',
     description: 'List directory contents',
     options: [
@@ -56,6 +58,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   cd: {
+    category: 'Navigation',
     usage: 'cd [path]',
     description: 'Change current working directory',
     examples: [
@@ -67,7 +70,9 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   url: {
+    category: 'Sharing & Tags',
     usage: 'url [path]',
+    summary: 'Print a web address that opens ARGUS at a path, to send to a colleague',
     description: 'Print a web address that opens ARGUS at a path (a feed or node lands in RUNS, anything else in FILES)',
     options: [],
     examples: [
@@ -79,6 +84,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   pwd: {
+    category: 'Navigation',
     usage: 'pwd [options]',
     description: 'Print current working directory',
     options: [
@@ -97,6 +103,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   cat: {
+    category: 'File Operations',
     usage: CAT_USAGE,
     description: 'Display file contents, with terminal syntax highlighting for recognized text formats',
     options: [
@@ -114,6 +121,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   rm: {
+    category: 'File Operations',
     usage: 'rm [options] <path> [path...]',
     description: 'Remove files or directories',
     options: [
@@ -137,6 +145,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   cp: {
+    category: 'File Operations',
     usage: 'cp [-t <dir>] [options] <source...> [dest]',
     description: 'Copy files or directories (supports wildcards and multiple sources)',
     options: [
@@ -162,6 +171,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   mv: {
+    category: 'File Operations',
     usage: 'mv [-t <dir>] <source...> [dest]',
     description: 'Move or rename files or directories (supports wildcards and multiple sources)',
     options: [
@@ -177,6 +187,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   touch: {
+    category: 'File Operations',
     usage: 'touch [options] <file>',
     description: 'Create empty files or files with content',
     options: [
@@ -190,6 +201,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   mkdir: {
+    category: 'File Operations',
     usage: 'mkdir [-p] <directory> [directory...]',
     description: 'Create directories',
     options: [
@@ -204,6 +216,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   rmdir: {
+    category: 'File Operations',
     usage: 'rmdir <directory> [directory...]',
     summary: 'Remove empty directories',
     description: 'Removes each folder only when it is empty, as on Linux: one that holds anything is '
@@ -214,16 +227,19 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   exit: {
+    category: 'General',
     usage: 'exit',
     description: 'Exit the shell',
     examples: ['exit'],
   },
   version: {
+    category: 'General',
     usage: 'version',
     description: 'Report the versions of the mise stack layers running this session',
     examples: ['version'],
   },
   fortune: {
+    category: 'Games and utilities',
     usage: 'fortune',
     summary: 'Print a random fortune cookie',
     description: 'Prints a random fortune — the classic UNIX fortune cookie, bundled and self-contained.',
@@ -463,12 +479,14 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['2048'],
   },
   notes: {
+    category: 'General',
     usage: 'notes [--since N|YYYY-MM-DD] [--all] [--long]',
     summary: 'What the installed releases changed, for the operator',
     description: 'Reads the release notes shipped with the packages installed where this session runs — argus, brasa, chell, calypso, porter — and lists the newest release: one row per change, the package tagged. --since N shows the last N releases, --since DATE everything from a day on; --long unfolds each change beneath its first sentence; --all includes the changes marked Internal. help notes is the same. In ARGUS the WHAT\'S NEW block opens them as a listing.',
     examples: ['notes', 'notes --since 3', 'notes --since 2026-10-01 --long', 'notes --all'],
   },
   weather: {
+    category: 'Games and utilities',
     usage: 'weather [place] [-u|--units metric|imperial] [-d|--days N]',
     summary: 'The weather at a place, now and the next few days',
     description: 'Reports the current conditions and a short forecast for a place, from Open-Meteo (no key, no account). The place is found by name; with none given it is Boston. Metric (°C, km/h) unless --units imperial asks for °F and mph. The call is made from the session host, so it needs that host to reach the internet.',
@@ -479,6 +497,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['weather', 'weather Cape Town', 'weather Boston --units imperial', 'weather Paris -d 7'],
   },
   date: {
+    category: 'General',
     usage: 'date [-u] [+FORMAT]',
     summary: 'Print the current date and time',
     description: 'Prints the current date and time, in the spirit of UNIX date. Use -u for UTC and +FORMAT for a strftime-style format string. Reports the time only; it never sets the clock.',
@@ -489,12 +508,14 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['date', 'date -u', 'date +%Y-%m-%d', 'date "+%A, %B %e %Y"'],
   },
   cal: {
+    category: 'Games and utilities',
     usage: 'cal [[month] year]',
     summary: 'Print a calendar',
     description: 'Prints a month or year calendar with today highlighted, in the spirit of UNIX cal.',
     examples: ['cal', 'cal 2026', 'cal 7 2026'],
   },
   prompt: {
+    category: 'Shell Settings',
     usage: 'prompt [list | <theme>]',
     description: 'List available prompt themes or switch the active theme',
     options: [
@@ -509,6 +530,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   timing: {
+    category: 'Shell Settings',
     usage: 'timing [on|off]',
     description: 'Toggle or display command timing mode',
     options: [
@@ -522,6 +544,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   debug: {
+    category: 'Shell Settings',
     usage: 'debug [on|off]',
     description: 'Toggle or display debug mode (verbose logging)',
     options: [
@@ -535,6 +558,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   help: {
+    category: 'General',
     usage: 'help [command]',
     description: 'Display help information',
     examples: [
@@ -545,6 +569,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   '!': {
+    category: 'General',
     usage: '! <shell_command>',
     description: 'Execute command on host shell (shell escape)',
     examples: [
@@ -863,22 +888,12 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   rendered += `${chalk.gray('─'.repeat(60))}\n`;
   rendered += '\n';
 
-  // Group commands by category
-  const categories: Record<string, string[]> = {
-    Navigation: ['cd', 'pwd', 'ls', 'tree', 'du'],
-    'File Operations': ['cat', 'edit', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'rmdir', 'upload', 'download'],
-    'Sharing & Tags': ['setfacl', 'getfacl', 'chmod', 'getfattr', 'setfattr'],
-    Connection: ['connect', 'logout', 'context', 'id', 'whoami', 'whereami', 'netstat'],
-    Monitoring: ['proc'],
-    Imaging: ['dcm', 'image'],
-    'Single Resource': ['plugin', 'pipeline', 'feed', 'tag', 'group', 'pluginmeta', 'plugininstance', 'workflow'],
-    'Resource Collections': ['plugins', 'feeds', 'files', 'links', 'dirs', 'store', 'compute', 'tags', 'groups', 'pluginmetas', 'plugininstances', 'workflows', 'parametersofplugin'],
-    PACS: ['pacs', 'pacsservers', 'pacsqueries', 'pacsretrieve'],
-    Administration: ['sudo', 'user'],
-    'Shell Settings': ['physicalmode', 'prompt', 'timing', 'debug'],
-    'Games and utilities': ['fortune', 'cal', 'weather', 'motd'],
-    General: ['help', 'notes', 'date', 'exit', '!'],
-  };
+  // Group commands by the category each declares (HELP_CATEGORIES order).
+  const categories: Record<string, string[]> = Object.fromEntries(HELP_CATEGORIES.map((category: string): [string, string[]] => [category, []]));
+  for (const name of helpTopic_names()) {
+    const category: string | undefined = commandHelpEntry_get(name)?.category;
+    if (category !== undefined && name.indexOf(' ') < 0) (categories[category] ??= []).push(name);
+  }
 
   // Display commands by category
   for (const [category, commands] of Object.entries(categories)) {
@@ -913,6 +928,16 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
 
   return { status: 'ok', rendered };
 }
+
+/**
+ * The groups `help` lists commands under, in order. A command declares its
+ * own (`category` on its help entry); the games shelf is its own page.
+ */
+export const HELP_CATEGORIES: ReadonlyArray<string> = [
+  'Navigation', 'File Operations', 'Sharing & Tags', 'Connection', 'Monitoring', 'Imaging',
+  'Workflows & Cohorts', 'Single Resource', 'Resource Collections', 'PACS', 'Administration',
+  'Shell Settings', 'Games and utilities', 'General',
+];
 
 /**
  * Gets the list of all builtin command names.

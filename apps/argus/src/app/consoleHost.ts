@@ -8,6 +8,7 @@
  * A module of the host: the host hands in its verbs and opens as hooks;
  * the module builds the `ArgusHost` the language reads.
  */
+import { feedModes_hold } from '../features/feed/view.js';
 import type { DicomSeriesModel } from '@fnndsc/menu';
 import type { ExecuteOutcome } from '../calypso/client.js';
 import type { ChrisLangHost } from '../compositions/chris/lang.js';
@@ -24,6 +25,8 @@ import type { RegardValue } from './subjects.js';
 export interface ConsoleHostHooks {
   /** Keeps the stage as a PANES card (desktop.capture). */
   stage_keep: () => void;
+  /** Lists a folder in a files pane, rooted there. */
+  files_open: (paneId: string, path: string) => boolean;
   verbs: Pick<PaneVerbs, 'move' | 'flip' | 'resize'>;
   help_open: () => string;
   notes_open: () => string;
@@ -177,6 +180,10 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
       const kind: string | null = paneKind_get(paneId);
       if (kind === 'dag' && paneId !== anchorId) lines.push(`pane %${ordinal} claim runs`);
       if (kind === 'files' && paneId !== anchorId && !(subjects.group_of(paneId) !== paneId)) lines.push(`pane %${ordinal} claim files`);
+      // A files pane says the folder it shows (a view never moves the
+      // receiver's working directory, so it is listed there, rooted).
+      const folder: string | null = kind === 'files' ? panels.get('files', paneId)?.path_current() ?? null : null;
+      if (folder !== null) lines.push(`file %${ordinal} open ${folder}`);
       // A graph on stage says its whole view and where it stands, as the
       // PANES cards do (DagPanel.view_lines).
       const graph = kind === 'dag' ? panels.get('dag', paneId) : undefined;
@@ -248,6 +255,7 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
     consoleZoom_toggle: hooks.consoleZoom_toggle,
     launcher_enter: hooks.launcher_enter,
     stage_keep: hooks.stage_keep,
+    viewModes_hold: feedModes_hold,
     // The prompt already says who and where; `attach` repeats it rather
     // than asking the session a question it has just been told the answer to.
     identity_get: hooks.identity_get,
@@ -265,6 +273,7 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
     },
     // The two row verbs, as the surface's own capability: the console
     // language presses them and the row's action track presses the same pair.
+    files_open: hooks.files_open,
     file_download: (paneId: string): boolean => {
       const regard: RegardValue | null = subjects.regard_get(paneId);
       if (regard === null || regard.modelKind !== 'fs.file') return false;

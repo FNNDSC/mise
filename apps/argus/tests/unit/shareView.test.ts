@@ -23,7 +23,7 @@ describe('shareSheet_open', () => {
     await Promise.resolve(); await Promise.resolve();
     expect(sheet.querySelector('.share-script')?.textContent).toBe('desktop clear\nview runs');
     expect(writeText).toHaveBeenCalledWith('desktop clear\nview runs');
-    expect(sheet.querySelector('.share-copy')?.textContent).toBe('COPIED');
+    expect(sheet.querySelector('.share-lines')?.textContent).toBe('COPIED');
     (sheet.querySelector('.share-close') as HTMLButtonElement).click();
     expect(document.querySelector('.share-sheet')).toBeNull();
   });
@@ -31,7 +31,7 @@ describe('shareSheet_open', () => {
   it('selects the script for the hand when the browser will not copy', async () => {
     const sheet: HTMLElement = shareSheet_open('view runs', { writeText: async (): Promise<void> => { throw new Error('insecure'); } });
     await Promise.resolve(); await Promise.resolve();
-    expect(sheet.querySelector('.share-copy')?.textContent).toBe('SELECT + COPY');
+    expect(sheet.querySelector('.share-lines')?.textContent).toBe('SELECT + COPY');
     expect(window.getSelection()?.toString()).toBe('view runs');
   });
 });

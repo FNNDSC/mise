@@ -23,7 +23,7 @@ import { type SceneNode } from '../scene/chrisSpace.js';
 import { element_require, template_stamp, pane_find } from '../frame/dom.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction, type DesktopShape } from './dormant.js';
 import { linkLanding_parse, type LinkLanding } from './link.js';
-import { shareSheet_open, viewScript_compose } from './shareView.js';
+import { shareSheet_open, viewLink_parse, viewScript_compose } from './shareView.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { logo_linesRender } from '@fnndsc/menu/logo';
 import { backend_ask, wireUrl_resolve, vfsUrl_build as routeVfsUrl_build, downloadUrl_build as routeDownloadUrl_build, door_isPresent, doorUrl_build } from '../calypso/routes.js';
@@ -68,7 +68,7 @@ import { StatusBar } from './status.js';
 import { LaneInstrument } from './laneInstrument.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler, cyclerNames_seed } from './cycler.js';
-import { argusLine_run, language_extend, DRAWER_CHORDS, VERB_LINES, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
+import { argusLine_run, language_extend, viewScript_run, DRAWER_CHORDS, VERB_LINES, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
 import { chrisLanguage, type ChrisLangHost } from '../compositions/chris/lang.js';
 
 /** Console zoom, exposed for the language (the bar carries no control). */
@@ -2038,6 +2038,13 @@ async function surface_start(token: string): Promise<void> {
     feed_enter: (feedId: number): void => dagPanel.feed_enter(feedId),
     file_save,
     stage_keep: (): void => stageDesktop_capture(),
+    files_open: (paneId: string, path: string): boolean => {
+      const panel: FilesPanel | undefined = panels.get('files', paneId);
+      if (panel === undefined) return false;
+      browser.follow_set(paneId, false);
+      rootedListing_show(paneId, panel, path);
+      return true;
+    },
     image_open: (paneId: string | null, path: string, options: { force?: boolean }): Promise<string> => image_open(paneId, path, options),
     series_ask,
     tagsPane_open,
@@ -2442,7 +2449,14 @@ async function surface_start(token: string): Promise<void> {
   // A link (`url` in chell, LINK on a graph) lands where it points, once:
   // a feed or node in RUNS, anything else in FILES. The fragment is then
   // dropped, so a reload does not land again.
-  const landing: LinkLanding | null = linkLanding_parse(window.location.hash);
+  // A view link offers a colleague's view: its lines are shown and asked
+  // about before anything runs (console/argusLang.ts viewScript_run).
+  const viewed: string | null = viewLink_parse(window.location.hash);
+  if (viewed !== null) {
+    history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    void viewScript_run(argusHost, viewed, 'a link').then((said: string): void => terminal.line_note(`view: ${said.split('\n').slice(-1)[0] ?? ''}`));
+  }
+  const landing: LinkLanding | null = viewed !== null ? null : linkLanding_parse(window.location.hash);
   if (landing !== null) {
     history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     if (landing.kind === 'runs') {

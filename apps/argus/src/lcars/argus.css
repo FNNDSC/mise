@@ -7445,10 +7445,19 @@ body:not([data-composition="chris"]) [data-composition="chris"] {
   cursor: pointer;
 }
 
-.share-sheet[data-copied='yes'] .share-copy {
+.share-sheet[data-copied='yes'] .share-lines {
   background: var(--harvestgold);
 }
 
-.share-sheet[data-copied='no'] .share-copy {
+.share-sheet[data-copied='no'] .share-lines {
   background: var(--mars);
+}
+
+.view-refused {
+  color: var(--mars);
+}
+
+.view-run:disabled {
+  opacity: 0.4;
+  cursor: default;
 }

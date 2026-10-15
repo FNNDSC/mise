@@ -1,0 +1,52 @@
+/**
+ * @jest-environment jsdom
+ */
+/**
+ * @file A view travels safely: a link carries its lines readable, a
+ * received view runs only view lines, and it asks before it runs.
+ */
+import { describe, it, expect } from '@jest/globals';
+import { viewLine_refusal } from '../../src/console/argusLang.js';
+import { viewLink_compose, viewLink_parse, viewSheet_ask } from '../../src/app/shareView.js';
+
+describe('viewLine_refusal', () => {
+  it('lets a view through: panes, folders shown, a graph\'s view, the baseline', () => {
+    for (const line of ['desktop clear', 'view runs', 'pane %1 split right', 'dag %1 census on', 'dag %2 select pl-x_7', 'file %2 open /home/a/b', 'node enter', 'header dag']) {
+      expect(viewLine_refusal(line)).toBeNull();
+    }
+  });
+
+  it('refuses anything that would reach the session or change files', () => {
+    expect(viewLine_refusal('rm -r ~/data')).toBe('not a view line: it would run in your session');
+    expect(viewLine_refusal('pacs pull 123')).toBe('not a view line: it would run in your session');
+    expect(viewLine_refusal('file %1 delete')).toBe('file delete is not part of a view');
+    expect(viewLine_refusal('desktop save mine')).toBe('desktop save is not part of a view');
+  });
+});
+
+describe('view links', () => {
+  it('carry the lines readable and give them back whole', () => {
+    const script: string = 'desktop clear\nview runs\ndag %1 select pl-dicom_repack_620500';
+    const link: string = viewLink_compose('https://titan.example', script);
+    expect(link.startsWith('https://titan.example/#view=desktop%20clear%0Aview%20runs')).toBe(true);
+    expect(viewLink_parse(new URL(link).hash)).toBe(script);
+    expect(viewLink_parse('#/proc/jobs/feed_1')).toBeNull();
+    expect(viewLink_parse('#view=%E0%A4%A')).toBeNull();
+  });
+});
+
+describe('viewSheet_ask', () => {
+  it('asks before a view runs, and withholds RUN while any line is refused', async () => {
+    const asked: Promise<boolean> = viewSheet_ask(['desktop clear', 'view runs'], new Map(), 'a link');
+    const sheet: HTMLElement = document.querySelector('.view-ask') as HTMLElement;
+    expect(sheet.querySelector('.share-head')?.textContent).toBe('A VIEW FROM A LINK · RUN THESE LINES?');
+    (sheet.querySelector('.view-run') as HTMLButtonElement).click();
+    expect(await asked).toBe(true);
+    const refused: Promise<boolean> = viewSheet_ask(['view runs', 'rm -r ~'], new Map([[1, 'not a view line: it would run in your session']]), '/home/b/v.desk');
+    const second: HTMLElement = document.querySelector('.view-ask') as HTMLElement;
+    expect((second.querySelector('.view-run') as HTMLButtonElement).disabled).toBe(true);
+    expect(second.querySelector('.view-refused')?.textContent).toContain('← not a view line');
+    (second.querySelector('.share-close') as HTMLButtonElement).click();
+    expect(await refused).toBe(false);
+  });
+});

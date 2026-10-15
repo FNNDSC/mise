@@ -185,14 +185,14 @@ describe('an index on a line', () => {
     const refused = await line_words('image @STD1');
     verbInHand_set(null);
     expect(refused).toEqual({ missing: '@STD1' });
-    expect(reference_refusal('@STD1')).toContain('image takes a series or a folder or a file; STD001 is a study');
+    expect(reference_refusal('@STD1')).toContain('image takes a series or a folder or a file; STD1 is a study');
   });
 
   it('lists a core verb\'s own kinds before those the backend adds', async () => {
     verbInHand_set('cd');
     await line_words('cd @FIL1');
     verbInHand_set(null);
-    expect(reference_refusal('@FIL1')).toContain('cd takes a folder or a series or a study; FIL001 is a file');
+    expect(reference_refusal('@FIL1')).toContain('cd takes a folder or a series or a study; FIL1 is a file');
   });
 
   it('teaches the syntax with the backend\'s kinds first', async () => {

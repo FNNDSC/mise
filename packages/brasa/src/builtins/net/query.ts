@@ -24,6 +24,7 @@ import {
   queryTerms_parse,
 } from './query.fanout.js';
 import { sink_get } from '../../core/sink.js';
+import { pacsAnswer_render } from './query.view.js';
 import { csvFile_write, pacsAnswer_toCsv, pacsAnswer_toTable, type CsvWrite, type PacsAnswerLevel } from './query.csv.js';
 import { series_cubePathGet } from './pacsUtils.js';
 import { screen } from '@fnndsc/chili/screen/screen.js';
@@ -208,76 +209,6 @@ function queryIndex_file(
     answeredAt: new Date().toISOString(),
     hasResult,
   });
-}
-
-/**
- * Renders decoded PACS query JSON into a human-readable study/series summary.
- *
- * @param decoded - Decoded query result from `pacsQuery_resultDecode`.
- * @returns Formatted multi-line string, or null if no displayable content.
- */
-function queryResult_render(decoded: PACSQueryDecodedResult): string | null {
-  const payload: unknown = decoded.json;
-  if (!payload || typeof payload !== 'object') return null;
-
-  const tagVal = (v: unknown): string => {
-    if (v && typeof v === 'object' && 'value' in (v as Record<string, unknown>)) {
-      return String((v as Record<string, unknown>).value ?? '');
-    }
-    return String(v ?? '');
-  };
-
-  const lines: string[] = [];
-  const payloadArr: unknown[] = Array.isArray(payload) ? payload : [payload];
-
-  let totalSeries: number = 0;
-
-  payloadArr.forEach((studyRaw: unknown, sIdx: number) => {
-    if (!studyRaw || typeof studyRaw !== 'object') return;
-    const study: Record<string, unknown> = studyRaw as Record<string, unknown>;
-
-    const studyDesc: string = tagVal(study.StudyDescription ?? '');
-    const patientName: string = tagVal(study.PatientName ?? study.patient_name ?? '');
-    const patientId: string = tagVal(study.PatientID ?? study.patient_id ?? '');
-    const studyDate: string = tagVal(study.StudyDate ?? '');
-    const modalities: string = tagVal(study.ModalitiesInStudy ?? '');
-    const accession: string = tagVal(study.AccessionNumber ?? '');
-
-    lines.push(chalk.bold.cyan(`  Study ${sIdx + 1}: ${studyDesc || '(no description)'}`));
-    if (patientName) lines.push(chalk.gray(`    Patient:   ${patientName}${patientId ? ` (ID: ${patientId})` : ''}`));
-    if (studyDate)   lines.push(chalk.gray(`    Date:      ${studyDate}`));
-    if (modalities)  lines.push(chalk.gray(`    Modality:  ${modalities}`));
-    if (accession)   lines.push(chalk.gray(`    Accession: ${accession}`));
-
-    const seriesArr: unknown[] =
-      Array.isArray(study.series)   ? study.series :
-      Array.isArray(study.Series)   ? study.Series :
-      Array.isArray(study.results)  ? study.results :
-      [];
-
-    if (seriesArr.length > 0) {
-      lines.push('');
-      seriesArr.forEach((seriesRaw: unknown, rIdx: number) => {
-        if (!seriesRaw || typeof seriesRaw !== 'object') return;
-        const series: Record<string, unknown> = seriesRaw as Record<string, unknown>;
-        const desc: string = tagVal(series.SeriesDescription ?? '');
-        const mod: string = tagVal(series.Modality ?? '');
-        const count: string = tagVal(series.NumberOfSeriesRelatedInstances ?? '');
-        const countStr: string = count ? chalk.gray(` (${count} files)`) : '';
-        const modStr: string = mod ? chalk.yellow(` [${mod}]`) : '';
-        lines.push(`    ${chalk.white(`Series ${rIdx + 1}:`)} ${desc || '(no description)'}${modStr}${countStr}`);
-        totalSeries++;
-      });
-    }
-    lines.push('');
-  });
-
-  if (lines.length === 0) return null;
-
-  lines.unshift(chalk.gray(`  ${payloadArr.length} study/studies, ${totalSeries} series`));
-  lines.unshift('');
-
-  return lines.join('\n');
 }
 
 /**
@@ -1377,7 +1308,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   // What the operator typed, said in the same tokens the rows carry.
   const shownExpr: string = anon ? criteria_toExpression(criteria_standIn(criteria)) : askExpr;
 
-  let renderedResult: string | null = tableMode ? null : queryResult_render(result.decoded);
+  let renderedResult: string | null = null;
 
 
   const model: PacsQueryModel = pacsQueryModel_build(result.decoded, {
@@ -1396,6 +1327,9 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   // The table reads the model, pulled state and all, so it is rendered
   // once the model knows what CUBE already holds.
   if (tableMode && model.studies.length > 0) renderedResult = `\n${pacsAnswer_toTable(model, level)}`;
+  // The default view reads the model too, so the handles it prints are the
+  // ones an index expands to (#1099).
+  if (!tableMode) renderedResult = pacsAnswer_render(model);
 
   if (csv || csvTo !== null || csvToAsk) {
     const delivered = await csv_deliver(model, csvTo, csvToAsk, force, level, tableMode);

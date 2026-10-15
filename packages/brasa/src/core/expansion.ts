@@ -25,7 +25,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ReferenceValue } from '../lib/parser.js';
 import { session } from '../session/index.js';
-import { answer_get, answerKind_count, answerRow_get, type AnswerHandle, type AnswerKind, type AnswerRow } from '../session/answer.js';
+import { answer_get, answerHandles_get, answerKind_count, answerRow_get, handle_word, numberedFooter_of, type AnswerHandle, type AnswerKind, type AnswerRow } from '../session/answer.js';
 import { backendInstalled_get, type AnswerKindLook, type ReferenceSource } from './backend.js';
 import { answerKind_find, answerKinds_get, verbTakes_get } from './answerKinds.js';
 
@@ -169,7 +169,7 @@ function index_resolve(name: string): ReferenceValue {
   for (const handle of handles) {
     if (takes !== undefined && !takes.includes(handle.kind)) {
       kindRefusal = `${verbInHand} takes ${takes.map(kind_word).join(' or ')}; `
-        + `${handle.kind}${`${handle.ordinal}`.padStart(3, '0')} is ${kind_word(handle.kind)}.`;
+        + `${handle_word(handle).slice(1)} is ${kind_word(handle.kind)}.`;
       return null;
     }
     const row: AnswerRow | null = answerRow_get(handle);
@@ -227,9 +227,12 @@ export function reference_refusal(name: string): string {
     }
     const kind: AnswerKind = handles[0].kind;
     const count: number = answerKind_count(kind);
+    // Says what IS numbered, in the form an index is typed, so the way to the
+    // row the operator meant is in the refusal (a later listing replaced it).
+    const held: string = numberedFooter_of(answerHandles_get());
     return count === 0
-      ? `${name}: the last answer (${numbered.source}) holds no ${kind_word(kind)} rows.`
-      : `${name}: the last answer (${numbered.source}) holds ${count} ${kind} row${count === 1 ? '' : 's'}.`;
+      ? `${name}: the held listing (${numbered.source}) has no ${kind_word(kind)} rows; ${held}.`
+      : `${name}: the held listing (${numbered.source}) holds ${count} ${kind} row${count === 1 ? '' : 's'}; ${held}.`;
   }
   const hint: string = reference_isReserved(name)
     ? ` — nothing in this session has one yet`

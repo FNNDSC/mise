@@ -11,6 +11,7 @@
  *
  * @module
  */
+import { answerNumbering_of, handleWords_of, numberedFooter_of, type NumberedHandle } from '../../session/answer.js';
 import chalk from 'chalk';
 import path from 'path';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
@@ -82,9 +83,14 @@ function cohort_render(state: GatherState): CommandEnvelope {
     return envelope_ok(`${chalk.gray('The cohort is empty. Gather something with `gather add <path>`.')}\n`, model);
   }
 
+  // Each member wears the handle an index expands to (#1099): one sequence
+  // per kind, as the cohort's numbering counts them.
+  const numbered: NumberedHandle[] = answerNumbering_of(GATHER_MODEL_KIND, state) ?? [];
+  const words: Map<string, string> = handleWords_of(numbered);
+  const kindCode = (member: GatherMember): string => (member.kind === 'dir' ? 'DIR' : member.kind === 'file' ? 'FIL' : 'SER');
   const rows: Record<string, unknown>[] = state.series.map(
-    (member: GatherMember, index: number): Record<string, unknown> => ({
-      '#': index + 1,
+    (member: GatherMember): Record<string, unknown> => ({
+      '@': words.get(`${kindCode(member)}:${member.vfsPath}`) ?? '',
       kind: member.kind,
       member: member_label(member),
       state: member_state(member),
@@ -101,9 +107,9 @@ function cohort_render(state: GatherState): CommandEnvelope {
   const title: string = state.name === null ? 'Cohort' : `Cohort · ${state.name}`;
 
   return envelope_ok(
-    `${table_render(rows, ['#', 'kind', 'member', 'state', 'path'], {
+    `${table_render(rows, ['@', 'kind', 'member', 'state', 'path'], {
       title: { title, justification: 'center' },
-    })}${chalk.gray(parts.join(' · '))}\n`,
+    })}${chalk.gray(parts.join(' · '))}\n${numbered.length > 0 ? `${chalk.gray(numberedFooter_of(numbered))}\n` : ''}`,
     model,
   );
 }

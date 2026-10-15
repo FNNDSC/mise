@@ -178,13 +178,83 @@ export function answerKind_count(kind: AnswerKind): number {
  * @returns The handles.
  */
 export function answerHandles_get(): NumberedHandle[] {
-  if (held === null) return [];
+  return held === null ? [] : rows_number(held.rows);
+}
+
+/**
+ * Numbers rows: one sequence per kind, in the order the rows stand. The one
+ * place a number is made, so what a listing prints is what an index expands
+ * to (#1099).
+ *
+ * @param rows - The rows.
+ * @returns Each row's handle and address.
+ */
+function rows_number(rows: ReadonlyArray<AnswerRow>): NumberedHandle[] {
   const seen: Map<AnswerKind, number> = new Map();
-  return held.rows.map((row: AnswerRow): NumberedHandle => {
+  return rows.map((row: AnswerRow): NumberedHandle => {
     const ordinal: number = (seen.get(row.kind) ?? 0) + 1;
     seen.set(row.kind, ordinal);
     return { kind: row.kind, ordinal, address: row.address ?? row.values[0] ?? '' };
   });
+}
+
+/**
+ * The handles a model's rows will wear once it is the held listing, for a
+ * renderer to print beside them. Null when the model is not a listing.
+ *
+ * @param kind - The envelope model kind.
+ * @param data - The model.
+ * @returns The handles, in row order.
+ */
+export function answerNumbering_of(kind: string, data: unknown): NumberedHandle[] | null {
+  const rows: AnswerRow[] | null = adapters.get(kind)?.(data) ?? null;
+  return rows === null ? null : rows_number(rows);
+}
+
+/**
+ * A handle as it is printed and typed: short, `@SER3`.
+ *
+ * @param handle - The handle.
+ * @returns The word.
+ */
+export function handle_word(handle: { kind: AnswerKind; ordinal: number }): string {
+  return `@${handle.kind}${handle.ordinal}`;
+}
+
+/**
+ * Each row's printed handle, by its kind and address, for a renderer that
+ * walks its own model: `handles.get('SER:' + path)`.
+ *
+ * @param handles - The numbered rows.
+ * @returns Kind-and-address to word.
+ */
+export function handleWords_of(handles: ReadonlyArray<NumberedHandle>): Map<string, string> {
+  return new Map(handles.map((handle: NumberedHandle): [string, string] => [`${handle.kind}:${handle.address}`, handle_word(handle)]));
+}
+
+/**
+ * The footer that says what is numbered, in the form an index is typed:
+ * `numbered: @PAT1, @STD1-9, @SER1-235` (runs of numbers as ranges, gaps
+ * with commas: `@SER1,3,41`). It is also the cue for what `@SER3` means now.
+ *
+ * @param handles - The numbered rows.
+ * @returns The footer, or '' when nothing is numbered.
+ */
+export function numberedFooter_of(handles: ReadonlyArray<{ kind: AnswerKind; ordinal: number }>): string {
+  const byKind: Map<AnswerKind, number[]> = new Map();
+  for (const handle of handles) byKind.set(handle.kind, [...(byKind.get(handle.kind) ?? []), handle.ordinal]);
+  const parts: string[] = [...byKind].map(([kind, ordinals]: [AnswerKind, number[]]): string => {
+    const sorted: number[] = [...new Set(ordinals)].sort((a: number, b: number): number => a - b);
+    const runs: string[] = [];
+    for (let at: number = 0; at < sorted.length;) {
+      let end: number = at;
+      while (end + 1 < sorted.length && (sorted[end + 1] ?? 0) === (sorted[end] ?? 0) + 1) end += 1;
+      runs.push(end > at ? `${sorted[at]}-${sorted[end]}` : `${sorted[at]}`);
+      at = end + 1;
+    }
+    return `@${kind}${runs.join(',')}`;
+  });
+  return parts.length === 0 ? '' : `numbered: ${parts.join(', ')}`;
 }
 
 /**

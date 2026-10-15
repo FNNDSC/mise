@@ -25,6 +25,7 @@ import {
 } from './query.fanout.js';
 import { sink_get } from '../../core/sink.js';
 import { pacsAnswer_render } from './query.view.js';
+import { ignoredKeys_hint } from './query.ignored.js';
 import { csvFile_write, pacsAnswer_toCsv, pacsAnswer_toTable, type CsvWrite, type PacsAnswerLevel } from './query.csv.js';
 import { series_cubePathGet } from './pacsUtils.js';
 import { screen } from '@fnndsc/chili/screen/screen.js';
@@ -1181,6 +1182,12 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   );
   const identifier: string = identifiers[0];
   const owner: string = await askingIdentity_get();
+  // A key the PACS ignores narrows nothing: said once, on the err channel,
+  // before the question goes out; the query runs as asked (#1105).
+  for (const server of [...new Set(identifiers)]) {
+    const hint: string | null = ignoredKeys_hint(terms, server);
+    if (hint !== null) sink_get().err_write(`${chalk.yellow(hint)}\n`);
+  }
 
   // What the operator asked for, as the questions it stands for. A PACS
   // will not match a list, so several patients is several C-FINDs.

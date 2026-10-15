@@ -1214,6 +1214,12 @@ export const chrisHelp: Record<string, CommandHelp> = {
     usage: 'query <Key:Value[,Key:Value...]> [--patients <list|@cfs-file>] [--title <title>] [--pacsserver <id>] [--fresh]',
     description: 'Create a PACS query, wait for results, and print the VFS path',
     options: [
+      'Some PACS ignore keys: PACSDCM answers SeriesDescription and StudyDescription',
+      'as if they were not asked (query says so). Narrow the answer with grep:',
+      '  query PatientID:1234567,Modality:MR | grep -i t1 | grep -vi gadavist',
+      'The keys each server ignores: ~/.config/mise/pacs.json',
+      '  {"ignoredKeys": {"PACSDCM": ["SeriesDescription", "StudyDescription"]}}',
+      '',
       '--title <title>      Title for the query record (default: Query <timestamp>)',
       '--pacsserver <id>    Override PACS server (default: context PACSserver)',
       '--table              Render results as a table instead of the default list',

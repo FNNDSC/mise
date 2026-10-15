@@ -203,6 +203,9 @@ async function door_resolve(ask: AuthAsk, world: AuthWorld): Promise<string | nu
 /** The TLS rule: a token never goes over plain HTTP to another host unless said knowingly. */
 function tokenTransport_check(door: string, ask: AuthAsk, world: AuthWorld): boolean {
   if (door_carriesTokens(door) || ask.insecureDoor === true) return true;
+  // A door logged into with --insecure-door keeps that choice for its other verbs.
+  const kept = doorFile_read(door, world.env);
+  if (kept !== null && !('refused' in kept) && kept.insecure === true) return true;
   world.warn(chalk.red(`[!] ${door} is plain http to another host: a token sent there is readable on the wire. Use the https door, or say --insecure-door knowingly.`));
   return false;
 }
@@ -226,7 +229,10 @@ async function login_run(ask: AuthAsk, door: string, world: AuthWorld): Promise<
     return 1;
   }
   if (grant === null) return 1;
-  const file: DoorFile = { door, user: grant.user, name: grant.name, token: grant.token, minted: new Date(world.now()).toISOString(), expires: grant.expires };
+  // `--insecure-door` is kept with the door, so the token it was said for
+  // is usable after the login, not only during it.
+  const insecure: boolean = ask.insecureDoor === true && !door_carriesTokens(door);
+  const file: DoorFile = { door, user: grant.user, name: grant.name, token: grant.token, minted: new Date(world.now()).toISOString(), expires: grant.expires, ...(insecure ? { insecure: true } : {}) };
   const path: string = doorFile_write(file, world.env);
   const wasDefault: string | null = doorDefaultOwn_read(world.env);
   if (wasDefault === null || ask.makeDefault === true) doorDefault_write(door, world.env);

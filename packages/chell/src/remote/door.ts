@@ -487,8 +487,12 @@ export async function door_enter(door: string, username: string | undefined, pas
     }
     if (credential.kind === 'token') {
       if (!door_carriesTokens(doorUrl)) {
-        console.error(chalk.red(`[!] ${doorUrl} is plain http to another host: the door token is not sent there. Use the https door.`));
-        return null;
+        if (credential.insecure !== true) {
+          console.error(chalk.red(`[!] ${doorUrl} is plain http to another host: the door token is not sent there. Use the https door, or chell auth login --door ${doorUrl} --insecure-door knowingly.`));
+          return null;
+        }
+        // Said at login, kept with the door, and said again on each use.
+        console.error(chalk.yellow(`[!] ${doorUrl} is plain http: the token goes readable on the wire (--insecure-door, chosen at login).`));
       }
       return doorByToken_enter(doorUrl, credential.token, credential.name, credential.expires, fetchLike);
     }

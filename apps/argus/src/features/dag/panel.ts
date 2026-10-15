@@ -123,21 +123,43 @@ const CWD_FEED_PATTERNS: readonly RegExp[] = [
   /\/feeds?\/feed_(\d+)(?:\/|$)/,
 ];
 
+/** What a graph's mode blocks read, lower-cased; empty when a block is absent. */
+export interface DagViewModes {
+  layout: string;
+  projection: string;
+  scale: string;
+  hue: string;
+  census: string;
+  draw?: string;
+  pulse?: string;
+  gravity?: string;
+  /** Where the graph stands: the selected job's name, else the feed's (`feed_N`). */
+  place?: string | null;
+}
+
 /**
  * The console lines that put a graph back into a view, from what its mode
- * blocks read. A block at its default says nothing: the defaults are what
- * a fresh graph is drawn in, so replaying them would be noise.
+ * blocks read. Every mode is said, in the form that SETS it: a view is
+ * replayed on another device, or for another operator, whose own kept
+ * modes are not this one's (a bare `dag census` toggled, so a receiver
+ * already in CENSUS was taken out of it). Where the graph stands comes
+ * last, by name, so a replay never meets a number that is both a feed and
+ * a job.
  *
- * @param modes - What the blocks read, lower-cased; empty when a block is absent.
+ * @param modes - What the blocks read.
  * @returns The lines, in the order the frame lists the blocks.
  */
-export function dagView_lines(modes: { layout: string; projection: string; scale: string; hue: string; census: string }): string[] {
+export function dagView_lines(modes: DagViewModes): string[] {
   const lines: string[] = [];
-  if (modes.layout === 'molecule') lines.push('dag layout molecule');
-  if (modes.projection === '2d') lines.push('dag projection 2d');
-  if (modes.scale === 'size') lines.push('dag scale size');
-  if (modes.hue === 'compute') lines.push('dag hue compute');
-  if (modes.census === 'census') lines.push('dag census');
+  if (modes.layout === 'ranked' || modes.layout === 'molecule') lines.push(`dag layout ${modes.layout}`);
+  if (modes.projection === '2d' || modes.projection === '3d') lines.push(`dag projection ${modes.projection}`);
+  if (modes.draw === 'spheres' || modes.draw === 'stars') lines.push(`dag draw ${modes.draw}`);
+  if (modes.pulse === 'pulse on' || modes.pulse === 'pulse off') lines.push(`dag ${modes.pulse}`);
+  if (modes.scale === 'time' || modes.scale === 'size') lines.push(`dag scale ${modes.scale}`);
+  if (modes.census === 'census' || modes.census === 'shape') lines.push(`dag census ${modes.census === 'census' ? 'on' : 'off'}`);
+  if (modes.gravity === 'gravity on' || modes.gravity === 'gravity off') lines.push(`dag ${modes.gravity}`);
+  if (modes.hue === 'status' || modes.hue === 'compute') lines.push(`dag hue ${modes.hue}`);
+  if (modes.place !== undefined && modes.place !== null) lines.push(`dag select ${modes.place}`);
   return lines;
 }
 
@@ -227,6 +249,8 @@ export class DagPanel {
   private jumpPending: boolean = false;
   /** The node a jump landed on, selected once its feed's graph is drawn. */
   private jumpNode: number | null = null;
+  /** Whether the node a jump lands on is then entered (`dag enter`). */
+  private jumpEnter: boolean = false;
   /** The last arrival set seen, so one set asks for the roster once. */
   private arrivalsKey: string = '';
   /** The roster, declared into the listing façade. */
@@ -544,7 +568,16 @@ export class DagPanel {
     if (this.lastRoster.some((feed: FeedListEntry): boolean => feed.id === model.feedId && feed.new === true)) this.unseen_clear([model.feedId]);
     // A jump to a node lands on its feed, then on the node.
     if (this.jumpNode !== null) {
-      if (this.scene.selection_set(String(this.jumpNode))) this.jumpNode = null;
+      if (this.scene.selection_set(String(this.jumpNode))) {
+        this.jumpNode = null;
+        // `dag enter`: once the node is selected, ENTER NODE is pressed as by hand.
+        if (this.jumpEnter) {
+          this.jumpEnter = false;
+          window.setTimeout((): void => {
+            [...this.facts.querySelectorAll<HTMLButtonElement>('button')].find((button: HTMLButtonElement): boolean => button.textContent?.trim() === 'ENTER NODE')?.click();
+          }, 0);
+        }
+      }
     }
     // A feed entered (not a repaint of the one on stage) reads its note and tags.
     this.feedFrame.arrived(model.feedId);
@@ -758,6 +791,14 @@ export class DagPanel {
    * it — only what differs from the defaults, so a desktop replays what
    * the operator chose and nothing else.
    */
+  /** The selected job's `/proc` name, else the feed's, else null. */
+  private place_name(): string | null {
+    const selected: FeedDagNode | undefined = this.factsShown === null || this.facts.childElementCount === 0 ? undefined : this.factsPayloads.get(this.factsShown.id);
+    const name: string | undefined = selected?.vfsPath.replace(/\/data$/, '').split('/').pop();
+    if (name !== undefined && name !== '') return name;
+    return this.shownFeedId === null ? null : `feed_${this.shownFeedId}`;
+  }
+
   public view_lines(): string[] {
     const frame: HTMLElement | null = this.strategyPill.parentElement;
     const read = (selector: string): string => frame?.querySelector<HTMLElement>(selector)?.textContent?.trim().toLowerCase() ?? '';
@@ -767,6 +808,10 @@ export class DagPanel {
       scale: read('.dag-scale'),
       hue: read('.dag-hue'),
       census: read('.dag-census'),
+      draw: read('.dag-draw'),
+      pulse: read('.dag-pulse'),
+      gravity: read('.dag-gravity'),
+      place: this.place_name(),
     });
   }
 
@@ -1078,8 +1123,10 @@ export class DagPanel {
    * does once it has the answer.
    *
    * @param target - A feed or node id, or its `/proc` name.
+   * @param enter - Enter the node once it is selected (ENTER NODE).
    */
-  public jump_to(target: string): void {
+  public jump_to(target: string, enter: boolean = false): void {
+    this.jumpEnter = enter;
     void this.jump_ask(target);
   }
 

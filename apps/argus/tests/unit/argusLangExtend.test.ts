@@ -31,7 +31,7 @@ const LINES: string[] = [
   "view files|runs|pacs        (the gutter givens, workspace scope)",
   "runs enter <feedId> · sort <col> [asc|desc] · filter <text>|off",
   "node enter · immerse · back · clear (the indicated node)",
-  "dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · hue status|compute · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh",
+  "dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · hue status|compute · draw spheres|stars · pulse [on|off] · census [on|off] · gravity [on|off] · select <feed or job> · enter <job> · physics charge|link|collide|gravity on|off · physics reset · refresh",
   "file [@id] home|back|download|delete · follow · root · list|cards|preview · sort <col> [asc|desc] · filter <text>|off",
   "pacs sort <col> [asc|desc] · filter <text>|off   (the results listing; every other pacs verb is the session's)",
   "image [@id] [--force] <path> · layout single|mpr|3d|slab · slice <n> · series <n> · wl <lo> <hi> · wl preset <name> · colormap gray|hot|jet|cool · save · tags · load · guard <bytes>|off · ghost <0..1>|off · state",

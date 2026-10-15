@@ -2080,7 +2080,11 @@ async function surface_start(token: string): Promise<void> {
     view: ['files', 'runs', 'pacs'],
     runs: ['enter', 'sort', 'filter'],
     node: ['enter', 'immerse', 'back', 'clear'],
-    dag: ['layout', 'projection', 'scale', 'hue', 'pulse', 'census', 'physics', 'refresh'],
+    dag: ['layout', 'projection', 'scale', 'hue', 'draw', 'pulse', 'census', 'gravity', 'select', 'enter', 'physics', 'refresh'],
+    draw: ['spheres', 'stars'],
+    pulse: ['on', 'off'],
+    census: ['on', 'off'],
+    gravity: ['on', 'off'],
     physics: ['charge', 'link', 'collide', 'gravity', 'reset'],
     file: ['home', 'back', 'download', 'delete', 'sort', 'filter', 'follow', 'root', 'list', 'cards', 'preview'],
     // The session owns most of `pacs`; the surface claims sort and filter.

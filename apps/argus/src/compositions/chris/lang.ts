@@ -19,6 +19,8 @@ export interface ChrisHostVerbs {
   feed_enter(id: number): void;
   /** Dives into the node the pane currently regards; false when none. */
   node_immerse(paneId: string): boolean;
+  /** Lands the RUNS pane on a feed or a job, as JUMP TO does; false without a RUNS pane. */
+  dag_jump(paneId: string, target: string, enter?: boolean): boolean;
   /** Drives an image pane's verbs (layout, slice, series, wl, colormap, save, tags, ghost); returns the console line. */
   image_control(paneId: string, verb: string, args: string[]): Promise<string>;
   /** Drives a tags pane's verbs (redact, filter); returns the console line. */
@@ -47,13 +49,35 @@ const IMAGE_SURFACE_VERBS: ReadonlySet<string> = new Set(['layout', 'slice', 'se
  * @param words - Every word after the subject.
  * @returns What happened.
  */
-function dag_run(host: ArgusHost, paneId: string, verb: string, arg: string, words: string[]): string {
+function dag_run(host: ChrisLangHost, paneId: string, verb: string, arg: string, words: string[]): string {
   if (verb === 'layout') return modePill_setTo(host, paneId, '.dag-strategy', arg.toUpperCase()) ? `layout ${arg}` : 'dag layout ranked|molecule';
   if (verb === 'projection') return modePill_setTo(host, paneId, '.dag-projection', arg.toUpperCase()) ? `projection ${arg}` : 'dag projection 2d|3d';
   if (verb === 'scale') return modePill_setTo(host, paneId, '.dag-scale', arg.toUpperCase()) ? `scale ${arg}` : 'dag scale time|size';
   if (verb === 'hue') return modePill_setTo(host, paneId, '.dag-hue', arg.toUpperCase()) ? `hue ${arg}` : 'dag hue status|compute';
-  if (verb === 'pulse') return control_click(host, paneId, '.dag-pulse') ? 'pulse' : 'dag pulse: no mode frame';
-  if (verb === 'census') return control_click(host, paneId, '.dag-census') ? 'census toggled' : 'dag census: no mode frame';
+  // A mode named both ways sets it (a script says what it wants); bare, it
+  // toggles, as the pill does.
+  const toggle = (selector: string, name: string, on: string, off: string): string => {
+    const asked: string = arg.toLowerCase();
+    if (asked === 'on' || asked === 'off') {
+      return modePill_setTo(host, paneId, selector, asked === 'on' ? on : off) ? `${name} ${asked}` : `dag ${name}: no mode frame`;
+    }
+    if (asked !== '') return `dag ${name} on|off`;
+    return control_click(host, paneId, selector) ? `${name} toggled` : `dag ${name}: no mode frame`;
+  };
+  if (verb === 'pulse') return toggle('.dag-pulse', 'pulse', 'PULSE ON', 'PULSE OFF');
+  if (verb === 'census') return toggle('.dag-census', 'census', 'CENSUS', 'SHAPE');
+  if (verb === 'gravity') return toggle('.dag-gravity', 'gravity', 'GRAVITY ON', 'GRAVITY OFF');
+  if (verb === 'draw') return modePill_setTo(host, paneId, '.dag-draw', arg.toUpperCase()) ? `draw ${arg}` : 'dag draw spheres|stars';
+  // The JUMP TO fly-to by name: a feed or a job, by number or `/proc` name.
+  if (verb === 'select') {
+    if (arg === '') return 'dag select <feed or job>';
+    return host.dag_jump(paneId, arg) ? `selecting ${arg}` : 'dag select: no RUNS pane (view runs)';
+  }
+  // The same, then ENTER NODE on it.
+  if (verb === 'enter') {
+    if (arg === '') return 'dag enter <job>';
+    return host.dag_jump(paneId, arg, true) ? `entering ${arg}` : 'dag enter: no RUNS pane (view runs)';
+  }
   if (verb === 'refresh') return drawerChild_click(host, paneId, 'REFRESH') ? 'refreshing' : 'dag refresh: no DAG pane';
   if (verb === 'physics') {
     const term: string = arg;
@@ -69,7 +93,7 @@ function dag_run(host: ArgusHost, paneId: string, verb: string, arg: string, wor
     pane.dispatchEvent(new CustomEvent('argus:dag-physics', { detail: { term, on } }));
     return `physics ${term} ${on ? 'on' : 'off'}`;
   }
-  return `dag: unknown verb '${verb}' (layout|projection|scale|hue|pulse|census|physics|refresh)`;
+  return `dag: unknown verb '${verb}' (layout|projection|scale|hue|draw|pulse|census|gravity|select|enter|physics|refresh)`;
 }
 
 /**
@@ -116,7 +140,7 @@ export function chrisLanguage(host: () => ChrisLangHost): LanguageExtension {
     lines: [
       { after: 'view', line: 'runs enter <feedId> · sort <col> [asc|desc] · filter <text>|off' },
       { after: 'view', line: 'node enter · immerse · back · clear (the indicated node)' },
-      { after: 'view', line: 'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · hue status|compute · pulse · census · physics charge|link|collide|gravity on|off · physics reset · refresh' },
+      { after: 'view', line: 'dag [@id] layout ranked|molecule · projection 2d|3d · scale time|size · hue status|compute · draw spheres|stars · pulse [on|off] · census [on|off] · gravity [on|off] · select <feed or job> · enter <job> · physics charge|link|collide|gravity on|off · physics reset · refresh' },
       { after: 'file', line: 'pacs sort <col> [asc|desc] · filter <text>|off   (the results listing; every other pacs verb is the session\'s)' },
       { after: 'file', line: 'image [@id] [--force] <path> · layout single|mpr|3d|slab · slice <n> · series <n> · wl <lo> <hi> · wl preset <name> · colormap gray|hot|jet|cool · save · tags · load · guard <bytes>|off · ghost <0..1>|off · state' },
       { after: 'file', line: 'tags [@id] redact on|off · filter <text>|off   (the pane that follows an image pane\'s slice)' },

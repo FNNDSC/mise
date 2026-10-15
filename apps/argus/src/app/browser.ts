@@ -17,6 +17,7 @@ import { editAsk_of, editLine_compose } from '../features/edit/line.js';
 import type { ExecuteOutcome } from '../calypso/client.js';
 import type { PaneAskRequest } from '../features/ask/paneAsk.js';
 import { browserDownload_save, downloadId_make, type DownloadOutcome } from '../features/files/download.js';
+import { refusalWords_of } from '../features/files/answer.js';
 import { transfer_watch, type TransferRow } from '../features/files/transfer.js';
 import { FilesPanel, extension_isImage, type FileAction, type FsListingEntry, type GlimpseNode, type PreviewProvider } from '../features/files/panel.js';
 import type { GatherSeries } from '../features/gather/panel.js';
@@ -277,6 +278,17 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
       .line_execute(line, { silent: true, observe: false })
       .then((outcome: ExecuteOutcome): void => {
         for (const envelope of outcome.envelopes) panel.envelope_observe(envelope);
+        // The place did not come: the pane says so rather than standing blank.
+        if (path !== '~' && panel.path_current() !== path.replace(/\/+$/, '')) {
+          const refused = outcome.envelopes.find((envelope): boolean => envelope.status === 'error');
+          const reason: string = refused !== undefined ? refusalWords_of(refused) : 'the session answered no listing';
+          panel.listing_fail(reason);
+          context.terminal.line_note(`files: ${path}: ${reason}`);
+        }
+      }, (error: unknown): void => {
+        const reason: string = error instanceof Error ? error.message : String(error);
+        panel.listing_fail(reason);
+        context.terminal.line_note(`files: ${path}: ${reason}`);
       });
   };
 

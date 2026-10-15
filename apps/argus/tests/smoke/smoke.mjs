@@ -1777,22 +1777,26 @@ try {
   const miss = await evalIn(`
     document.getElementById('gutter-runs').click();
     for (let i = 0; i < 60 && !document.querySelector('.feedlist-row'); i++) await sleep(500);
-    const pane = document.querySelector('.pane-dag');
-    const rows = document.querySelectorAll('.feedlist-row').length;
-    pane.dispatchEvent(new CustomEvent('argus:roster', { detail: { op: 'filter', text: '999999999' } }));
-    await sleep(100);
+    const pane = document.querySelector('.feedlist-row').closest('.pane-dag');
+    // A NEW block may land a beat before the roster beneath it: count once the rows hold still.
+    let rows = 0;
+    for (let i = 0, still = 0; i < 40 && still < 3; i++) { const n = pane.querySelectorAll('.feedlist-row').length; still = n === rows ? still + 1 : 0; rows = n; await sleep(150); }
+    // Typed into the strip, as the operator does.
+    const input = pane.querySelector('.roster-filter-input');
+    pane.querySelector('.runs-filter').click(); await sleep(200);
+    input.value = '999999999'; input.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(300);
     const asking = document.querySelector('.feedlist-miss')?.textContent ?? '';
     let answer = asking;
     for (let i = 0; i < 60 && answer.includes('asking'); i++) { await sleep(500); answer = document.querySelector('.feedlist-miss')?.textContent ?? ''; }
     const state = pane.querySelector('.pane-state')?.textContent ?? '';
-    pane.dispatchEvent(new CustomEvent('argus:roster', { detail: { op: 'filter', text: '' } }));
-    await sleep(300);
-    const back = document.querySelectorAll('.feedlist-row').length;
+    input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); await sleep(200);
+    pane.querySelector('.runs-filter').click(); await sleep(300);
+    const back = pane.querySelectorAll('.feedlist-row').length;
     return { rows, asking, answer, state, back };`);
   check('a RUNS filter naming a feed the roster lacks asks CUBE and says so', miss.asking.includes('asking CUBE'), miss.asking);
   check("CUBE's answer lands in the field: not shared, or shared to a group you are not in", miss.answer.includes('does not list feed_999999999'), miss.answer);
   check('the roster stands as it was: FILTERED 0/n while asked, every row back after', miss.state.startsWith('FILTERED 0/') && miss.back === miss.rows && miss.rows > 0, JSON.stringify(miss));
-  await console_idle();
   }
 
   if (await stage('runs-refresh')) {
@@ -1801,19 +1805,21 @@ try {
   const refresh = await evalIn(`
     document.getElementById('gutter-runs').click();
     for (let i = 0; i < 60 && !document.querySelector('.feedlist-row'); i++) await sleep(500);
-    const pane = document.querySelector('.pane-dag');
-    const rows = document.querySelectorAll('.feedlist-row').length;
+    const pane = document.querySelector('.feedlist-row').closest('.pane-dag');
+    // A NEW block may land a beat before the roster beneath it: count once the rows hold still.
+    let rows = 0;
+    for (let i = 0, still = 0; i < 40 && still < 3; i++) { const n = pane.querySelectorAll('.feedlist-row').length; still = n === rows ? still + 1 : 0; rows = n; await sleep(150); }
     const state = () => pane.querySelector('.pane-state')?.textContent ?? '';
     pane.querySelector('.runs-refresh').click();
     let checking = '';
-    for (let i = 0; i < 100 && !checking.includes('CHECKING'); i++) { await sleep(100); checking = state(); }
+    // The press waits its turn on the session's lane, and the walk is as slow as CUBE is (17 s measured).
+    for (let i = 0; i < 300 && !checking.includes('CHECKING'); i++) { await sleep(100); checking = state(); }
     let landed = checking;
-    for (let i = 0; i < 600 && !landed.includes('FEED LIST CURRENT'); i++) { await sleep(100); landed = state(); }
-    const back = document.querySelectorAll('.feedlist-row').length;
+    for (let i = 0; i < 1200 && !landed.includes('FEED LIST CURRENT'); i++) { await sleep(100); landed = state(); }
+    const back = pane.querySelectorAll('.feedlist-row').length;
     return { rows, checking, landed, back };`);
   check('REFRESH on the roster says CHECKING CUBE FOR THE FEED LIST while the walk runs', refresh.checking.includes('CHECKING CUBE FOR THE FEED LIST'), refresh.checking);
   check('and FEED LIST CURRENT when it lands, the roster still standing', refresh.landed.includes('FEED LIST CURRENT') && refresh.back >= refresh.rows && refresh.rows > 0, JSON.stringify(refresh));
-  await console_idle();
   }
 
   if (await stage('console-grammar')) {

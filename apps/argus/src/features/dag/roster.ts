@@ -109,6 +109,7 @@ export const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
   },
   {
     key: 'progress',
+    shed: 5,
     label: 'PROGRESS',
     className: 'feedlist-progress',
     width: 'minmax(8em, 1fr)',
@@ -131,6 +132,7 @@ export const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
   },
   {
     key: 'nodes',
+    shed: 1,
     label: 'NODES',
     className: 'feedlist-nodes',
     width: '4em',
@@ -139,6 +141,7 @@ export const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
   },
   {
     key: 'sizeBytes',
+    shed: 3,
     label: 'SIZE',
     className: 'feedlist-size',
     width: '5.5em',
@@ -147,6 +150,7 @@ export const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
   },
   {
     key: 'wallSeconds',
+    shed: 2,
     label: 'TIME',
     className: 'feedlist-time',
     width: '6em',
@@ -155,6 +159,7 @@ export const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
   },
   {
     key: 'owner',
+    shed: 4,
     label: 'OWNER',
     className: 'feedlist-owner',
     width: '7em',

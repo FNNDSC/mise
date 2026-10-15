@@ -314,7 +314,7 @@ export class DagPanel {
       // The bar is the graph's while a graph is on stage (LIVE / SETTLED /
       // STALE); the listing's summary is written only while the roster is.
       state: (parts: ListingStateParts): string | null =>
-        this.canvas.style.display === 'block' ? null : [parts.filter, this.rosterCheck_line() || this.newCount_line()].filter(Boolean).join(' · '),
+        this.canvas.style.display === 'block' ? null : [parts.filter, (parts.shed ?? 0) > 0 ? `${parts.shed} COLUMN${parts.shed === 1 ? '' : 'S'} HIDDEN` : '', this.rosterCheck_line() || this.newCount_line()].filter(Boolean).join(' · '),
       // REFRESH: ask CUBE for the feed list again, now. The walk runs off
       // the lane and the bar says so (a-share-is-seen-on-the-next-look).
       refresh: (): void => this.handlers.command_run('proc feeds --fresh'),

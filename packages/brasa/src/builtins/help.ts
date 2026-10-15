@@ -70,6 +70,18 @@ export const helpText: Record<string, CommandHelp> = {
       'cd                    # Show current directory',
     ],
   },
+  command: {
+    category: 'General',
+    usage: 'command <name> [args...]',
+    summary: 'Run the system program of a name, not the builtin',
+    description: 'Run the system program of a name, skipping the chell builtin of the same name',
+    options: [
+      'The whole line goes to the host shell as command <name> <args>, reading',
+      'whatever was piped in: query … | command grep -i t1 is plain text grep.',
+      'command -v <name> answers as the host shell does.',
+    ],
+    examples: ['query PatientID:1234567 | command grep -i t1', 'command -v grep'],
+  },
   grep: {
     category: 'File Operations',
     usage: 'grep [-ivwEFc] [-e PATTERN]... [PATTERN]',
@@ -953,6 +965,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   rendered += `  ${chalk.cyan('Redirection >'.padEnd(20))} ${chalk.gray('Write to file: cat file.txt > output.txt')}\n`;
   rendered += `  ${chalk.cyan('Redirection >>'.padEnd(20))} ${chalk.gray('Append to file: cat file.txt >> output.txt')}\n`;
   rendered += `  ${chalk.cyan('Listing-aware grep'.padEnd(20))} ${chalk.gray('Filter a numbered listing, keeping its handles: … | grep -i t1 (help grep)')}\n`;
+  rendered += `  ${chalk.cyan('command'.padEnd(20))} ${chalk.gray('Run the system program, not the builtin: … | command grep -i t1')}\n`;
   rendered += `  ${chalk.cyan('Index handles'.padEnd(20))} ${chalk.gray('Name rows of the last numbered listing: gather add @SER3  @SER1-4  @SER2,5,7')}\n`;
   rendered += `  ${chalk.cyan('Pronouns ${…}'.padEnd(20))} ${chalk.gray('What this session just made or asked, as ${name}: ${cwd} … (help pronouns)')}\n`;
   rendered += '\n';

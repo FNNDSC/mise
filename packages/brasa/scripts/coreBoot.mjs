@@ -52,7 +52,7 @@ const CHECKS = [
   { line: 'ls', ok: true, has: ['hello.txt'], hasNot: ['moved.txt', 'new'] },
   { line: 'cat docs', ok: false, has: ['Is a directory'] },
   { line: 'ls /usr', ok: true, has: ['bin', 'games', 'share'] },
-  { line: 'help', ok: true, has: ['ls', 'cat', 'help games'], hasNot: ['feed', 'plugin', 'pacs', 'connect'] },
+  { line: 'help', ok: true, has: ['ls', 'cat', 'Games', 'help <Section>'], hasNot: ['feed', 'plugin', 'pacs', 'connect'] },
   { line: 'help feed', ok: true, has: ["No help available for 'feed'"] },
   { line: 'ls /usr/bin', ok: true, has: ['ls', 'cat', 'help'], hasNot: ['feed', 'plugin', 'pacs', 'upload'] },
   { line: 'ls /proc/steps', ok: true, has: ['plan', 'apply'] },

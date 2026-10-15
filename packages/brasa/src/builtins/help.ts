@@ -6,6 +6,7 @@
  * @module
  */
 import { pronounsPage_render } from './pronouns.js';
+import { HELP_SECTIONS, helpSection_render, helpToc_render, section_find, shellTopic_render, type HelpLookup, type HelpSection } from './helpSections.js';
 import { gamesShelf_render, gamesShelf_names } from './games/shelf.js';
 import chalk from 'chalk';
 import { CAT_USAGE } from './fs/cat.args.js';
@@ -19,7 +20,7 @@ import type { CommandEnvelope } from '@fnndsc/menu';
  */
 export const helpText: Record<string, CommandHelp> = {
   sudo: {
-    category: 'Administration',
+    category: 'Admin',
     usage: 'sudo <command> [arguments...]',
     description: 'Run one ChRIS command with a temporary administrator identity',
     options: [
@@ -70,6 +71,22 @@ export const helpText: Record<string, CommandHelp> = {
       'cd                    # Show current directory',
     ],
   },
+  apropos: {
+    category: 'General',
+    usage: 'apropos <word>',
+    summary: 'Find commands by a word in their name, summary or description',
+    description: 'Search every command, section and Shell topic for a word, in any case',
+    options: ['Nothing found is exit 1, as apropos is. man -k <word> is the same.'],
+    examples: ['apropos dicom', 'apropos link', 'man -k pull'],
+  },
+  man: {
+    category: 'General',
+    usage: 'man <command|Section|topic>  |  man -k <word>',
+    summary: 'The page for a command, a section or a Shell topic (help, by its Unix name)',
+    description: 'man <name> is help <name>; man -k <word> is apropos <word>',
+    options: [],
+    examples: ['man grep', 'man PACS', 'man -k dicom'],
+  },
   command: {
     category: 'General',
     usage: 'command <name> [args...]',
@@ -83,7 +100,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['query PatientID:1234567 | command grep -i t1', 'command -v grep'],
   },
   grep: {
-    category: 'File Operations',
+    category: 'Files',
     usage: 'grep [-ivwEFc] [-e PATTERN]... [PATTERN]',
     summary: 'Keep the lines, or the rows of a numbered listing, that match',
     description: 'Filter text, or a numbered listing keeping its handles',
@@ -109,9 +126,9 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   url: {
-    category: 'Sharing & Tags',
+    category: 'Sharing',
     usage: 'url [path]',
-    summary: 'Print a web address that opens ARGUS at a path, to send to a colleague',
+    summary: 'Print a link (a web address) that opens ARGUS at a path, to send to a colleague',
     description: 'Print a web address that opens ARGUS at a path (a feed or node lands in RUNS, anything else in FILES)',
     options: [],
     examples: [
@@ -142,7 +159,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   cat: {
-    category: 'File Operations',
+    category: 'Files',
     usage: CAT_USAGE,
     description: 'Display file contents, with terminal syntax highlighting for recognized text formats',
     options: [
@@ -160,7 +177,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   rm: {
-    category: 'File Operations',
+    category: 'Files',
     usage: 'rm [options] <path> [path...]',
     description: 'Remove files or directories',
     options: [
@@ -184,7 +201,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   cp: {
-    category: 'File Operations',
+    category: 'Files',
     usage: 'cp [-t <dir>] [options] <source...> [dest]',
     description: 'Copy files or directories (supports wildcards and multiple sources)',
     options: [
@@ -210,7 +227,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   mv: {
-    category: 'File Operations',
+    category: 'Files',
     usage: 'mv [-t <dir>] <source...> [dest]',
     description: 'Move or rename files or directories (supports wildcards and multiple sources)',
     options: [
@@ -226,7 +243,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   touch: {
-    category: 'File Operations',
+    category: 'Files',
     usage: 'touch [options] <file>',
     description: 'Create empty files or files with content',
     options: [
@@ -240,7 +257,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   mkdir: {
-    category: 'File Operations',
+    category: 'Files',
     usage: 'mkdir [-p] <directory> [directory...]',
     description: 'Create directories',
     options: [
@@ -255,7 +272,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   rmdir: {
-    category: 'File Operations',
+    category: 'Files',
     usage: 'rmdir <directory> [directory...]',
     summary: 'Remove empty directories',
     description: 'Removes each folder only when it is empty, as on Linux: one that holds anything is '
@@ -278,7 +295,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['version'],
   },
   fortune: {
-    category: 'Games and utilities',
+    category: 'Games',
     usage: 'fortune',
     summary: 'Print a random fortune cookie',
     description: 'Prints a random fortune — the classic UNIX fortune cookie, bundled and self-contained.',
@@ -525,7 +542,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['notes', 'notes --since 3', 'notes --since 2026-10-01 --long', 'notes --all'],
   },
   weather: {
-    category: 'Games and utilities',
+    category: 'Games',
     usage: 'weather [place] [-u|--units metric|imperial] [-d|--days N]',
     summary: 'The weather at a place, now and the next few days',
     description: 'Reports the current conditions and a short forecast for a place, from Open-Meteo (no key, no account). The place is found by name; with none given it is Boston. Metric (°C, km/h) unless --units imperial asks for °F and mph. The call is made from the session host, so it needs that host to reach the internet.',
@@ -547,14 +564,14 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['date', 'date -u', 'date +%Y-%m-%d', 'date "+%A, %B %e %Y"'],
   },
   cal: {
-    category: 'Games and utilities',
+    category: 'Games',
     usage: 'cal [[month] year]',
     summary: 'Print a calendar',
     description: 'Prints a month or year calendar with today highlighted, in the spirit of UNIX cal.',
     examples: ['cal', 'cal 2026', 'cal 7 2026'],
   },
   prompt: {
-    category: 'Shell Settings',
+    category: 'Settings',
     usage: 'prompt [list | <theme>]',
     description: 'List available prompt themes or switch the active theme',
     options: [
@@ -569,7 +586,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   timing: {
-    category: 'Shell Settings',
+    category: 'Settings',
     usage: 'timing [on|off]',
     description: 'Toggle or display command timing mode',
     options: [
@@ -583,7 +600,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   debug: {
-    category: 'Shell Settings',
+    category: 'Settings',
     usage: 'debug [on|off]',
     description: 'Toggle or display debug mode (verbose logging)',
     options: [
@@ -915,77 +932,56 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
     const { builtin_notes } = await import('./sys/notes.js');
     return builtin_notes([]);
   }
-  // If a specific command is requested, return its help
-  // A verb this session has; else whatever its backend answers for (ChRIS:
-  // a plugin or pipeline executable); else no help, never a page for a verb
-  // the session cannot run.
+  // A section (`help PACS`), a Shell topic (`help pipes`), then a command.
   if (commandName) {
+    const lookup: HelpLookup = helpLookup_make();
+    const section = section_find(commandName, (name: string): boolean => verb_available(name));
+    // The Games section is the shelf's own page, by its categories.
+    if (section?.name === 'Games') return { status: 'ok', rendered: gamesShelf_render(commandSummary_get) };
+    if (section !== undefined) return { status: 'ok', rendered: helpSection_render(section, lookup) };
+    const topic: string | undefined = shellTopic_render(commandName);
+    if (topic !== undefined) return { status: 'ok', rendered: topic };
+    // A verb this session has; else whatever its backend answers for (ChRIS:
+    // a plugin or pipeline executable); else no help, never a page for a verb
+    // the session cannot run.
     if (verb_available(commandName)) return { status: 'ok', rendered: help_render(commandName) };
     const backendHelp: string | null = (await backendInstalled_get()?.fallback?.help?.(commandName)) ?? null;
     return { status: 'ok', rendered: backendHelp ?? helpMissing_render(commandName) };
   }
 
-  // Otherwise, list all available commands
-  let rendered: string = '';
-  rendered += '\n';
-  rendered += `${chalk.bold.cyan('ChELL - Available Commands')}\n`;
-  rendered += `${chalk.gray('─'.repeat(60))}\n`;
-  rendered += '\n';
+  // Otherwise the table of contents: the sections, what each is for, and
+  // a few of its commands (builtins/helpSections.ts).
+  return { status: 'ok', rendered: helpToc_render(helpLookup_make()) };
+}
 
-  // Group commands by the category each declares (HELP_CATEGORIES order).
-  const categories: Record<string, string[]> = Object.fromEntries(HELP_CATEGORIES.map((category: string): [string, string[]] => [category, []]));
-  for (const name of helpTopic_names()) {
-    const category: string | undefined = commandHelpEntry_get(name)?.category;
-    if (category !== undefined && name.indexOf(' ') < 0) (categories[category] ??= []).push(name);
-  }
-
-  // Display commands by category
-  for (const [category, commands] of Object.entries(categories)) {
-    const runnable: string[] = commands.filter((cmd: string): boolean => verb_available(cmd) && commandHelpEntry_get(cmd) !== undefined);
-    if (runnable.length === 0 && category !== 'Games and utilities') continue;
-    rendered += `${chalk.bold.yellow(category)}\n`;
-    runnable.forEach((cmd: string) => {
-      const help: CommandHelp | undefined = commandHelpEntry_get(cmd);
-      if (help) {
-        rendered += `  ${chalk.cyan(cmd.padEnd(20))} ${chalk.gray(help.summary ?? help.description)}\n`;
-      }
-    });
-    // The four above are the shelf's best known; the rest of /usr/games is
-    // its own page, and the count is read from the shelf so it never goes stale.
-    if (category === 'Games and utilities') {
-      const more: number = gamesShelf_names(commandSummary_get).length - runnable.length;
-      rendered += `  ${chalk.cyan('help games'.padEnd(20))} ${chalk.gray(`The /usr/games shelf by category: ${more} more small tools and games`)}\n`;
-    }
-    rendered += '\n';
-  }
-
-  // Display Shell Features
-  rendered += `${chalk.bold.yellow('Shell Features')}\n`;
-  rendered += `  ${chalk.cyan('Pipes'.padEnd(20))} ${chalk.gray('Chain commands: cat file.txt | wc -l; a numbered listing travels to the next builtin: query … | gather add')}\n`;
-  rendered += `  ${chalk.cyan('Redirection >'.padEnd(20))} ${chalk.gray('Write to file: cat file.txt > output.txt')}\n`;
-  rendered += `  ${chalk.cyan('Redirection >>'.padEnd(20))} ${chalk.gray('Append to file: cat file.txt >> output.txt')}\n`;
-  rendered += `  ${chalk.cyan('Listing-aware grep'.padEnd(20))} ${chalk.gray('Filter a numbered listing, keeping its handles: … | grep -i t1 (help grep)')}\n`;
-  rendered += `  ${chalk.cyan('command'.padEnd(20))} ${chalk.gray('Run the system program, not the builtin: … | command grep -i t1')}\n`;
-  rendered += `  ${chalk.cyan('Index handles'.padEnd(20))} ${chalk.gray('Name rows of the last numbered listing: gather add @SER3  @SER1-4  @SER2,5,7')}\n`;
-  rendered += `  ${chalk.cyan('Pronouns ${…}'.padEnd(20))} ${chalk.gray('What this session just made or asked, as ${name}: ${cwd} … (help pronouns)')}\n`;
-  rendered += '\n';
-
-  rendered += `${chalk.gray('Type "help <command>" for detailed information about a command.')}\n`;
-  rendered += `${chalk.gray('Type "<command> --help" for quick help on any command.')}\n`;
-  rendered += '\n';
-
-  return { status: 'ok', rendered };
+/**
+ * What the help sections read of the commands this session has.
+ *
+ * @returns The lookup.
+ */
+export function helpLookup_make(): HelpLookup {
+  const runnable: string[] = helpTopic_names().filter((name: string): boolean => name.indexOf(' ') < 0 && verb_available(name));
+  return {
+    commands: (): ReadonlyArray<string> => runnable,
+    summary: (name: string): string | undefined => {
+      const help: CommandHelp | undefined = commandHelpEntry_get(name);
+      return help === undefined ? undefined : help.summary ?? help.description;
+    },
+    text: (name: string): string => {
+      const help: CommandHelp | undefined = commandHelpEntry_get(name);
+      return help === undefined ? '' : `${help.description} ${(help.options ?? []).join(' ')}`;
+    },
+    // A command on the games shelf is the Games section's, whatever it declares.
+    section: (name: string): string | undefined => commandHelpEntry_get(name)?.category ?? (gamesShelf_names(commandSummary_get).includes(name) ? 'Games' : undefined),
+    games: (): ReadonlyArray<string> => gamesShelf_names(commandSummary_get),
+  };
 }
 
 /**
  * The groups `help` lists commands under, in order. A command declares its
  * own (`category` on its help entry); the games shelf is its own page.
  */
-export const HELP_CATEGORIES: ReadonlyArray<string> = [
-  'Navigation', 'File Operations', 'Sharing & Tags', 'Connection', 'Monitoring', 'Imaging',
-  'Workflows & Cohorts', 'Single Resource', 'Resource Collections', 'PACS', 'Administration',
-  'Shell Settings', 'Games and utilities', 'General',
-];
+export const HELP_CATEGORIES: ReadonlyArray<string> = HELP_SECTIONS.map((section: HelpSection): string => section.name);
 
 /**
  * Gets the list of all builtin command names.

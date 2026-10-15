@@ -456,6 +456,37 @@ async function procJump_handle(args: string[]): Promise<CommandEnvelope> {
 }
 
 /**
+ * Handles `proc seen <feed ...> | all`: takes the NEW mark off feeds the
+ * operator has looked at (a surface does it when one is opened; CLEAR NEW
+ * does it for all). The marks are kept with the roster, so what is NEW
+ * survives a login until it is seen.
+ *
+ * @param args - Full command args (`args[0]` is `seen`).
+ * @returns An envelope saying how many marks were taken off.
+ */
+function procSeen_handle(args: string[]): Promise<CommandEnvelope> {
+  const words: string[] = args.slice(1);
+  if (words.length === 0) {
+    process.exitCode = 1;
+    return Promise.resolve(envelope_error('', undefined, `${chalk.red('Usage: proc seen <feed_N | N ...> | all')}\n`));
+  }
+  const cache: ProcCache = procCache_get();
+  const ids: number[] = [];
+  if (!words.includes('all')) {
+    for (const word of words) {
+      const match: RegExpExecArray | null = /^(?:feed_)?(\d+)$/.exec(word);
+      if (match === null) {
+        process.exitCode = 1;
+        return Promise.resolve(envelope_error('', undefined, `${chalk.red(`proc seen: not a feed: ${word}`)}\n`));
+      }
+      ids.push(Number(match[1]));
+    }
+  }
+  const cleared: number = cache.unseen_clear(words.includes('all') ? 'all' : ids);
+  return Promise.resolve(envelope_ok(`${chalk.dim(`${cleared} NEW mark${cleared === 1 ? '' : 's'} taken off.`)}\n`));
+}
+
+/**
  * Every feed's tags, for the roster: the kernel's tags index, read once per
  * tag and kept. A read that fails leaves the roster without marks and
  * leaves nothing on the error stack: the roster asked, it did not fail.
@@ -498,7 +529,9 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
   procRoster_syncStart(!!parsed['fresh']);
 
   const cache: ProcCache = procCache_get();
+  const unseen: Set<number> = new Set(cache.unseen_get());
   const matches: ProcFeed[] = cache.feeds_find(query)
+    .filter((feed: ProcFeed): boolean => !parsed['new'] || unseen.has(feed.id))
     .sort((a: ProcFeed, b: ProcFeed) => b.creationDate.localeCompare(a.creationDate));
 
   // Asking is an answer: a bare id the roster lacks is asked of CUBE, and
@@ -511,6 +544,9 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
     rendered += chalk.dim(`feed_${asked.id} was not in the roster; CUBE lists it for you (owner ${asked.ownerUsername || 'unknown'}) — added.`) + '\n';
   }
 
+  if (matches.length === 0 && parsed['new']) {
+    return envelope_ok(`${chalk.dim('Nothing new since your last visit.')}\n`, { kind: FEED_LIST_MODEL_KIND, data: { feeds: [] } });
+  }
   if (matches.length === 0) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.yellow(
@@ -520,7 +556,7 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
 
   for (const feed of matches) {
     const status: string = feedStatus_derive(feed);
-    rendered += `/proc/jobs/feed_${feed.id}  ${statusColor(status)}  ${chalk.dim(feed.title)}\n`;
+    rendered += `/proc/jobs/feed_${feed.id}  ${statusColor(status)}  ${chalk.dim(feed.title)}${unseen.has(feed.id) ? `  ${chalk.yellow(`NEW · from ${feed.ownerUsername}`)}` : ''}\n`;
   }
   const tagsOf: Map<number, string[]> | null = await feedTags_read();
   const model: FeedListModel = {
@@ -530,6 +566,7 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
       owner: feed.ownerUsername,
       status: feedStatus_derive(feed),
       createdAt: feed.creationDate,
+      ...(unseen.has(feed.id) ? { new: true } : {}),
       ...feedJobs_count(feed),
       ...feedTotals_derive(cache, feed.id),
       ...(tagsOf === null ? {} : { tags: tagsOf.get(feed.id) ?? [] }),
@@ -821,6 +858,9 @@ export async function builtin_proc(args: string[]): Promise<CommandEnvelope> {
   }
   if (subcommand === 'jump') {
     return procJump_handle(args);
+  }
+  if (subcommand === 'seen') {
+    return procSeen_handle(args);
   }
   if (subcommand === 'feeds') {
     return procFeeds_handle(args);

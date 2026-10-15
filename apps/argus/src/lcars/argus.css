@@ -2227,6 +2227,27 @@ body[data-zoom]:not([data-zoom='console'])
   animation: roster-breathe 1.6s ease-in-out infinite;
 }
 
+/* NEW since the last visit: a feed shared with the operator while they
+   were away leads the roster under its own head, and says who shared it.
+   It holds until opened or cleared (a-share-is-seen-on-the-next-look). */
+.feedlist-newhead {
+  padding: 0.4rem 0.6rem 0.2rem;
+  color: var(--harvestgold);
+  font-family: var(--face-label);
+  letter-spacing: 0.12em;
+}
+
+.feedlist-newmark {
+  margin-left: 0.6em;
+  padding: 0 0.5em;
+  border-radius: 0.6em;
+  background: var(--harvestgold);
+  color: #000;
+  font-size: 0.8em;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
 .feedlist-id {
   color: var(--daybreak);
   text-align: right;

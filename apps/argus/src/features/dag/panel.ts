@@ -219,6 +219,8 @@ export class DagPanel {
   private rosterCheckTimer: ReturnType<typeof setTimeout> | null = null;
   /** The pane's root, where its questions stand. */
   private paneRoot: HTMLElement | null = null;
+  /** CLEAR NEW on the roster frame, shown only while something is NEW. */
+  private clearNewPill: HTMLElement | null = null;
   /** A JUMP TO asked of the session and not yet answered. */
   private jumpPending: boolean = false;
   /** The node a jump landed on, selected once its feed's graph is drawn. */
@@ -270,6 +272,9 @@ export class DagPanel {
     this.paneRoot = paneRootEl;
     // JUMP TO: a feed or a node by its number or name (a-share-is-seen-on-the-next-look).
     paneRootEl?.querySelector<HTMLElement>('.runs-jump')?.addEventListener('click', (): void => { void this.jump_ask(); });
+    // CLEAR NEW: every NEW mark off at once.
+    this.clearNewPill = paneRootEl?.querySelector<HTMLElement>('.runs-clearnew') ?? null;
+    this.clearNewPill?.addEventListener('click', (): void => this.unseen_clear('all'));
     // LINK: a web address that opens ARGUS on the selected node, or the feed.
     paneRootEl?.querySelector<HTMLElement>('.dag-link')?.addEventListener('click', (): void => { void this.link_copy(); });
     this.stateSpan = paneRootEl?.querySelector<HTMLElement>('.pane-state') ?? null;
@@ -291,9 +296,16 @@ export class DagPanel {
         // Row state is not a column: a feed's status and its arrival mark
         // the row, they do not sit under a cap.
         className: (feed: FeedListEntry): string =>
-          `feedlist-row feedlist-${feed.status}${this.arrivals.has(feed.id) ? ' feedlist-arrived' : ''}`,
+          `feedlist-row feedlist-${feed.status}${this.arrivals.has(feed.id) ? ' feedlist-arrived' : ''}${feed.new === true ? ' feedlist-new' : ''}`,
         decorate: (element: HTMLElement, feed: FeedListEntry): void => {
           element.dataset['feed'] = String(feed.id);
+          // NEW since the last visit: who shared it rides beside the title.
+          if (feed.new === true) {
+            const mark: HTMLSpanElement = document.createElement('span');
+            mark.className = 'feedlist-newmark';
+            mark.textContent = `NEW · FROM ${feed.owner.toUpperCase()}`;
+            element.querySelector('.feedlist-title')?.append(mark);
+          }
           element.title = verbs === undefined
             ? 'enter the feed (Esc returns to this list)'
             : 'click to indicate, double-click to enter (Esc returns to this list)';
@@ -302,7 +314,7 @@ export class DagPanel {
       // The bar is the graph's while a graph is on stage (LIVE / SETTLED /
       // STALE); the listing's summary is written only while the roster is.
       state: (parts: ListingStateParts): string | null =>
-        this.canvas.style.display === 'block' ? null : [parts.filter, this.rosterCheck_line()].filter(Boolean).join(' · '),
+        this.canvas.style.display === 'block' ? null : [parts.filter, this.rosterCheck_line() || this.newCount_line()].filter(Boolean).join(' · '),
       // REFRESH: ask CUBE for the feed list again, now. The walk runs off
       // the lane and the bar says so (a-share-is-seen-on-the-next-look).
       refresh: (): void => this.handlers.command_run('proc feeds --fresh'),
@@ -520,6 +532,8 @@ export class DagPanel {
       this.graph_show(model);
     }
     this.watch_open(model.feedId);
+    // A feed opened is a feed seen: its NEW mark comes off.
+    if (this.lastRoster.some((feed: FeedListEntry): boolean => feed.id === model.feedId && feed.new === true)) this.unseen_clear([model.feedId]);
     // A jump to a node lands on its feed, then on the node.
     if (this.jumpNode !== null) {
       if (this.scene.selection_set(String(this.jumpNode))) this.jumpNode = null;
@@ -1200,6 +1214,30 @@ export class DagPanel {
     }, ROSTER_CHECK_DWELL_MS);
   }
 
+  /** The bar's count of what is NEW since the last visit, or empty. */
+  private newCount_line(): string {
+    const count: number = this.lastRoster.filter((feed: FeedListEntry): boolean => feed.new === true).length;
+    return count === 0 ? '' : `${count} NEW SINCE YOUR LAST VISIT`;
+  }
+
+  /**
+   * Takes NEW marks off, in the session (kept with the roster) and on the
+   * rows at once.
+   *
+   * @param feedIds - The feeds seen, or `all`.
+   */
+  private unseen_clear(feedIds: number[] | 'all'): void {
+    this.handlers.command_run(feedIds === 'all' ? 'proc seen all' : `proc seen ${feedIds.map((id: number): string => `feed_${id}`).join(' ')}`);
+    const cleared: FeedListEntry[] = this.lastRoster.map((feed: FeedListEntry): FeedListEntry => {
+      if (feed.new !== true || (feedIds !== 'all' && !feedIds.includes(feed.id))) return feed;
+      const { new: _new, ...rest } = feed;
+      return rest;
+    });
+    if (this.rosterShown) this.chooser_show(cleared);
+    else this.lastRoster = cleared;
+    this.listing.state_refresh();
+  }
+
   /** The bar's word on the roster walk, or empty. */
   private rosterCheck_line(): string {
     if (this.rosterCheck === null) return '';
@@ -1410,9 +1448,21 @@ export class DagPanel {
     // The roster is shown before the rows are set: the listing writes the
     // bar only while the roster, not a graph, is on stage.
     this.roster_show(true);
-    // One block, one field: the roster is a constant place, so a selection
-    // (should the roster ever gain one) would survive every re-listing.
-    this.listing.rows_set([{ key: 'roster', rows: feeds }], { field: 'roster' });
+    // What is NEW since the last visit leads, in a block of its own, before
+    // the roster in date order: a share from August is news today.
+    const fresh: FeedListEntry[] = feeds.filter((feed: FeedListEntry): boolean => feed.new === true);
+    if (this.clearNewPill !== null) this.clearNewPill.hidden = fresh.length === 0;
+    if (fresh.length === 0) {
+      // One block, one field: the roster is a constant place, so a selection
+      // (should the roster ever gain one) would survive every re-listing.
+      this.listing.rows_set([{ key: 'roster', rows: feeds }], { field: 'roster' });
+    } else {
+      const header: HTMLDivElement = document.createElement('div');
+      header.className = 'feedlist-newhead';
+      header.textContent = `NEW SINCE YOUR LAST VISIT · ${fresh.length}`;
+      const rest: FeedListEntry[] = feeds.filter((feed: FeedListEntry): boolean => feed.new !== true);
+      this.listing.rows_set([{ key: 'new', rows: fresh, header }, { key: 'roster', rows: rest }], { field: 'roster' });
+    }
     this.rosterFrame_track();
   }
 

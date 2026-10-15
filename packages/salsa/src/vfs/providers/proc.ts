@@ -260,7 +260,9 @@ async function procCache_build(): Promise<number[]> {
   // Feeds the walk brought in — created since, or shared to this identity —
   // are annunciated; a first build has no "before", so nothing arrives.
   if (knownBefore.size > 0) {
-    cache.arrivals_note(Array.from(indexed.keys()).filter((feedID: number): boolean => !knownBefore.has(feedID)));
+    const arrived: number[] = Array.from(indexed.keys()).filter((feedID: number): boolean => !knownBefore.has(feedID));
+    cache.arrivals_note(arrived);
+    await arrivalsUnseen_mark(cache, arrived);
   }
   cache.built_set();
   rosterWalkedAt = Date.now();
@@ -1073,9 +1075,35 @@ export async function procFeed_probe(feedID: number): Promise<ProcFeed | null> {
     // A public feed is in the public collection whichever one listed it first.
     if (feed.public && row.collection === 'owned') rosterTotal_bump('public');
     cache.arrivals_note([feedID]);
+    await arrivalsUnseen_mark(cache, [feedID]);
     procTopologyCatchup_enqueue([feedID]);
   }
   return feed;
+}
+
+/**
+ * Marks arrivals shared with this identity as NEW since the last visit: a
+ * feed another identity owns and has not made public. A feed this
+ * identity made is not news to it, and a public feed anyone on CUBE made
+ * is not addressed to it; neither is marked.
+ *
+ * @param cache - The process cache.
+ * @param feedIDs - The feeds that just arrived.
+ */
+async function arrivalsUnseen_mark(cache: ProcCache, feedIDs: number[]): Promise<void> {
+  if (feedIDs.length === 0) return;
+  // Who this identity is decides what is news; not knowing, nothing is marked.
+  let me: string | null = null;
+  try {
+    me = await chrisConnection.user_get();
+  } catch {
+    return;
+  }
+  if (me === null) return;
+  cache.unseen_add(feedIDs.filter((feedID: number): boolean => {
+    const feed: ProcFeed | undefined = cache.feed_get(feedID);
+    return feed !== undefined && !feed.public && feed.ownerUsername !== '' && feed.ownerUsername !== me;
+  }));
 }
 
 /**
@@ -1406,6 +1434,7 @@ async function procRosterDelta_run(
   rosterTotals = { owned: owned.total, public: pub.total };
   for (const feed of fresh.values()) cache.feed_add(feed);
   cache.arrivals_note(Array.from(fresh.keys()));
+  await arrivalsUnseen_mark(cache, Array.from(fresh.keys()));
   procTopologyCatchup_roster(cache);
   return Array.from(fresh.keys());
 }

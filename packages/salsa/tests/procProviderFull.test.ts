@@ -4,6 +4,7 @@
  * Real procCache / Result run.
  */
 const mockClientGet = jest.fn();
+const mockUserGet = jest.fn(async (): Promise<string | null> => null);
 const mockJobs = {
   job_cancel: jest.fn(),
   job_delete: jest.fn(),
@@ -17,7 +18,7 @@ const mockFeedNoteUpdate = jest.fn();
 const mockFeedRename = jest.fn();
 jest.mock('@fnndsc/cumin', () => ({
   ...jest.requireActual('@fnndsc/cumin'),
-  chrisConnection: { client_get: mockClientGet },
+  chrisConnection: { client_get: mockClientGet, user_get: () => mockUserGet() },
   feedNote_get: (...args: unknown[]) => mockFeedNoteGet(...args),
   feedNote_update: (...args: unknown[]) => mockFeedNoteUpdate(...args),
   feed_rename: (...args: unknown[]) => mockFeedRename(...args),
@@ -1307,6 +1308,31 @@ describe('a jump target', () => {
       getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
     });
     expect(await procTarget_locate('999999')).toEqual([]);
+  });
+});
+
+describe('NEW since the last visit', () => {
+  it('a full walk marks a shared feed NEW, never one of mine or a public one', async () => {
+    const own = [{ id: 7, name: 'mine', owner_username: 'chris' }];
+    const client = {
+      getFeeds: jest.fn().mockResolvedValue({ data: own, totalCount: own.length }),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+      getPluginInstances: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+    };
+    cache.built_set();
+    cache.lifecycle_set('current');
+    mockClientGet.mockResolvedValue(client);
+    await procRoster_sync(true);
+    const after = [
+      { id: 7, name: 'mine', owner_username: 'chris' },
+      { id: 8, name: 'my new run', owner_username: 'chris' },
+      { id: 5, name: 'shared', owner_username: 'sandip' },
+    ];
+    client.getFeeds.mockResolvedValue({ data: after, totalCount: after.length });
+    client.getPublicFeeds.mockResolvedValue({ data: [{ id: 6, name: 'open', owner_username: 'other', public: true }], totalCount: 1 });
+    mockUserGet.mockResolvedValueOnce('chris');
+    await procRoster_sync(true);
+    expect(cache.unseen_get()).toEqual([5]);
   });
 });
 

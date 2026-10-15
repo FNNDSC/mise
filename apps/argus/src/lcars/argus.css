@@ -4322,7 +4322,8 @@ body[data-zoom] #header-restore {
  * frame's own hue, because leaving is chrome and not a state. */
 .audio-pill,
 .theme-pill,
-.door-pill {
+.door-pill,
+.share-pill {
   padding: 0.1rem 0.9rem;
   border: none;
   border-radius: 0.8rem;
@@ -4346,6 +4347,11 @@ body[data-zoom] #header-restore {
   background-color: var(--orange);
 }
 
+/* SHARE VIEW hands the stage to a colleague: the link's own hue. */
+.share-pill {
+  background-color: var(--orange);
+}
+
 /* RESTART stands beside LOG OUT, a door's other act; its own hue says it acts
    on the daemon rather than on this browser. */
 .restart-pill {
@@ -4354,7 +4360,8 @@ body[data-zoom] #header-restore {
 
 .audio-pill:hover,
 .theme-pill:hover,
-.door-pill:hover {
+.door-pill:hover,
+.share-pill:hover {
   filter: brightness(1.3);
   box-shadow: 0 0 8px currentcolor;
 }
@@ -7374,4 +7381,74 @@ body:not([data-composition="chris"]) [data-composition="chris"] {
 .transfer-action:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* The share sheet (law a-view-is-a-script): the view's lines over the
+   stage, COPY and CLOSE. */
+.share-sheet {
+  position: fixed;
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  /* Over the frame's bars and every pane. */
+  z-index: 10000;
+  width: min(44rem, calc(100vw - 2rem));
+  max-height: 64vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem 1rem;
+  background: #000;
+  border-left: 8px solid var(--orange);
+  border-radius: 0 1.2rem 1.2rem 0;
+  box-shadow: 0 0 24px rgb(0 0 0 / 80%);
+  font-family: var(--face-label);
+  color: var(--orange);
+}
+
+.share-head {
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  font-size: 0.85rem;
+}
+
+.share-script {
+  margin: 0;
+  overflow: auto;
+  min-height: 0;
+  padding: 0.5rem 0.7rem;
+  background: rgb(255 255 255 / 6%);
+  border-radius: 0.4rem;
+  color: var(--harvestgold);
+  font-family: var(--face-mono, monospace);
+  font-size: 0.8rem;
+  white-space: pre;
+  user-select: all;
+}
+
+.share-pills {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.share-copy,
+.share-close {
+  border: none;
+  border-radius: 0.7rem;
+  padding: 0.15rem 1rem;
+  background: var(--orange);
+  color: #000;
+  font: inherit;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.share-sheet[data-copied='yes'] .share-copy {
+  background: var(--harvestgold);
+}
+
+.share-sheet[data-copied='no'] .share-copy {
+  background: var(--mars);
 }

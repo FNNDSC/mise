@@ -23,6 +23,7 @@ import { type SceneNode } from '../scene/chrisSpace.js';
 import { element_require, template_stamp, pane_find } from '../frame/dom.js';
 import { DormantRegistry, DORMANT_CAP, localKeyStore, type GroupSnapshot, type DesktopAction, type DesktopShape } from './dormant.js';
 import { linkLanding_parse, type LinkLanding } from './link.js';
+import { shareSheet_open, viewScript_compose } from './shareView.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { logo_linesRender } from '@fnndsc/menu/logo';
 import { backend_ask, wireUrl_resolve, vfsUrl_build as routeVfsUrl_build, downloadUrl_build as routeDownloadUrl_build, door_isPresent, doorUrl_build } from '../calypso/routes.js';
@@ -2091,7 +2092,7 @@ async function surface_start(token: string): Promise<void> {
     pacs: ['sort', 'filter', 'connect', 'disconnect', 'list', 'query', 'pull', 'status'],
     header: ['stats', 'dag', 'away', 'restore'],
     console: ['open', 'close', 'toggle', 'zoom', 'height'],
-    desktop: ['save', 'load', 'show', 'list', 'delete'],
+    desktop: ['save', 'load', 'show', 'list', 'delete', 'clear', 'share'],
     split: ['left', 'right', 'above', 'below'],
     bind: ['unlinked', 'fs', 'viewer'],
     claim: ['files', 'runs', 'pacs'],
@@ -2434,6 +2435,9 @@ async function surface_start(token: string): Promise<void> {
   if (layout.activePreset_get() === 'launcher') consoleZoom_set('launcher');
   panelSounds_wire();
   window.addEventListener('resize', (): void => terminal.size_fit());
+  // SHARE VIEW: the stage as lines a colleague can replay (app/shareView.ts).
+  // Assigned, not added: a second attach must not stand two sheets.
+  element_require('share-pill').onclick = (): void => { shareSheet_open(viewScript_compose(argusHost.desktop_serialize())); };
   // A link (`url` in chell, LINK on a graph) lands where it points, once:
   // a feed or node in RUNS, anything else in FILES. The fragment is then
   // dropped, so a reload does not land again.

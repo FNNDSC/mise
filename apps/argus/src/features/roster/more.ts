@@ -66,6 +66,7 @@ export const MORE_FIELDS: ReadonlyArray<string> = [
   'panes-body',      // the PANES desktop cards (app/main.ts)
   'view-body',       // the slaved viewer's text or picture (app/main.ts)
   'dag-facts',       // a node's readout, immersed (app/main.ts)
+  'share-script',    // a shared view's lines (app/shareView.ts)
   'dag-facts-immersed', // the same readout's immersed rule
   'mode-frame',      // every mode frame's blocks (app/main.ts)
   'pacs-workspace',  // the PACS pane whole, by id (app/main.ts)

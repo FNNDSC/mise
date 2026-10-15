@@ -5,6 +5,10 @@
  * @module
  */
 import { jest, describe, it, expect } from '@jest/globals';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { doorFile_write } from '../src/remote/doorFile.js';
 import { door_normalise, doorWire_build, door_login, doorBoot_follow, bootEvents_read, door_enter, doorCredential_missing, doorUnreached_reason, door_loginByToken, door_loginForToken, doorDevice_begin, doorDevice_wait, doorTokens_list, doorToken_revoke, type DoorFetch } from '../src/remote/door.js';
 
 /** A door that answers every request the same way, and remembers what it was asked. */
@@ -216,6 +220,24 @@ describe('door_enter with a door token', () => {
     const dead = await door_enter('https://titan/', undefined, undefined, answer(401, { error: 'the door token "laptop" expired on 2026-10-07; run chell auth login' }), { CHELL_DOOR_TOKEN: 'pdt_env', XDG_CONFIG_HOME: '/nonexistent-doors' });
     expect(dead).toBeNull();
     expect(errors.join('\n')).toContain('The door refused the token: the door token "laptop" expired');
+    spy.mockRestore();
+  });
+
+  it('a door kept with --insecure-door takes its token over plain http, warning each time; one without is refused', async () => {
+    const errors: string[] = [];
+    const spy = jest.spyOn(console, 'error').mockImplementation((line?: unknown): void => { errors.push(String(line)); });
+    const home: string = await mkdtemp(join(tmpdir(), 'chell-door-'));
+    const env = { XDG_CONFIG_HOME: home };
+    const PLAIN: string = 'http://pangea:4180/';
+    doorFile_write({ door: PLAIN, user: 'chris', name: 'pangea', token: 'pdt_kept', minted: '2026-10-15T00:00:00.000Z', expires: '2099-01-01T00:00:00.000Z', insecure: true }, env);
+    const fetchLike = answer(200, { key: '0123456789abcdef', mount: '/s/0123456789abcdef/', state: 'attached', user: 'chris', tokenName: 'pangea', expires: '2099-01-01T00:00:00.000Z' }, 'porter_session=c.s; Path=/');
+    const reach = await door_enter(PLAIN, undefined, undefined, fetchLike, env);
+    expect(reach).toMatchObject({ identity: 'chris through the door at http://pangea:4180/' });
+    expect(errors.join('\n')).toContain('the token goes readable on the wire (--insecure-door, chosen at login)');
+    doorFile_write({ door: PLAIN, user: 'chris', name: 'pangea', token: 'pdt_kept', minted: '2026-10-15T00:00:00.000Z', expires: '2099-01-01T00:00:00.000Z' }, env);
+    expect(await door_enter(PLAIN, undefined, undefined, answer(200, {}), env)).toBeNull();
+    expect(errors.join('\n')).toContain('--insecure-door knowingly');
+    await rm(home, { recursive: true, force: true });
     spy.mockRestore();
   });
 

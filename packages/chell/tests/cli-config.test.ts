@@ -9,63 +9,66 @@ import { cliConfig_fromArgs } from '../src/core/cli.js';
 const noFile = () => false;
 const anyFile = () => true;
 
+/** No default door: these cases are the machine-independent ones (a login on this host must not change them). */
+const noDoor = (): null => null;
+
 describe('cliConfig_fromArgs', () => {
   it('defaults to interactive with no args', () => {
-    expect(cliConfig_fromArgs(undefined, {}, noFile)).toEqual({ mode: 'interactive', physicalFS: undefined });
+    expect(cliConfig_fromArgs(undefined, {}, noFile, noDoor)).toEqual({ mode: 'interactive', physicalFS: undefined });
   });
 
   it('--file => script mode with stopOnError from -e', () => {
-    const c = cliConfig_fromArgs(undefined, { file: 's.chell', e: true }, noFile);
+    const c = cliConfig_fromArgs(undefined, { file: 's.chell', e: true }, noFile, noDoor);
     expect(c.mode).toBe('script');
     expect(c.scriptFile).toBe('s.chell');
     expect(c.stopOnError).toBe(true);
   });
 
   it('--command => execute mode', () => {
-    const c = cliConfig_fromArgs(undefined, { command: 'ls' }, noFile);
+    const c = cliConfig_fromArgs(undefined, { command: 'ls' }, noFile, noDoor);
     expect(c.mode).toBe('execute');
     expect(c.commandToExecute).toBe('ls');
   });
 
   it('auto-detects an existing target file as a script', () => {
-    const c = cliConfig_fromArgs('run.chell', {}, anyFile);
+    const c = cliConfig_fromArgs('run.chell', {}, anyFile, noDoor);
     expect(c.mode).toBe('script');
     expect(c.scriptFile).toBe('run.chell');
   });
 
   it('connect mode from a url, prepending http and parsing user@url', () => {
-    const c = cliConfig_fromArgs('chris@cube.example.org', { password: 'pw' }, noFile);
+    const c = cliConfig_fromArgs('chris@cube.example.org', { password: 'pw' }, noFile, noDoor);
     expect(c.mode).toBe('connect');
     expect(c.connectConfig).toEqual({ user: 'chris', password: 'pw', url: 'http://cube.example.org' });
   });
 
   it('keeps an explicit https url', () => {
-    const c = cliConfig_fromArgs('https://secure.org', { user: 'u' }, noFile);
+    const c = cliConfig_fromArgs('https://secure.org', { user: 'u' }, noFile, noDoor);
     expect(c.connectConfig?.url).toBe('https://secure.org');
   });
 
   it('takes a door with -u and -p, needing no user@url target', () => {
-    const c = cliConfig_fromArgs(undefined, { remote: true, door: 'https://titan/', user: 'chris', password: 'pw' }, noFile);
+    const c = cliConfig_fromArgs(undefined, { remote: true, door: 'https://titan/', user: 'chris', password: 'pw' }, noFile, noDoor);
     expect(c.mode).toBe('remote');
     expect(c.door).toBe('https://titan/');
     expect(c.connectConfig).toEqual({ user: 'chris', password: 'pw' });
-    const bare = cliConfig_fromArgs(undefined, { remote: true, door: 'https://titan/' }, noFile);
+    const bare = cliConfig_fromArgs(undefined, { remote: true, door: 'https://titan/' }, noFile, noDoor);
     expect(bare.connectConfig).toEqual({});
   });
 
   it('carries --auth-token-stdin beside the identity, and without one', () => {
-    const withIdentity = cliConfig_fromArgs('chris@https://cube.example.org/api/v1/', { daemon: true, authTokenStdin: true }, noFile);
+    const withIdentity = cliConfig_fromArgs('chris@https://cube.example.org/api/v1/', { daemon: true, authTokenStdin: true }, noFile, noDoor);
     expect(withIdentity.mode).toBe('daemon');
     expect(withIdentity.authTokenStdin).toBe(true);
     expect(withIdentity.connectConfig).toEqual({ user: 'chris', password: undefined, url: 'https://cube.example.org/api/v1/' });
     // The flag survives a target-less invocation so the boot can refuse it by name.
-    const alone = cliConfig_fromArgs(undefined, { daemon: true, authTokenStdin: true }, noFile);
+    const alone = cliConfig_fromArgs(undefined, { daemon: true, authTokenStdin: true }, noFile, noDoor);
     expect(alone.authTokenStdin).toBe(true);
     expect(alone.connectConfig).toBeUndefined();
   });
 
   it('carries --saved-token beside the identity, so a porter can restart a session without the password', () => {
-    const c = cliConfig_fromArgs('chris@https://cube.example.org/api/v1/', { daemon: true, savedToken: true }, noFile);
+    const c = cliConfig_fromArgs('chris@https://cube.example.org/api/v1/', { daemon: true, savedToken: true }, noFile, noDoor);
     expect(c.mode).toBe('daemon');
     expect(c.savedToken).toBe(true);
     expect(c.authTokenStdin).toBeUndefined();
@@ -73,14 +76,14 @@ describe('cliConfig_fromArgs', () => {
   });
 
   it('applies startup preference toggles', () => {
-    const c = cliConfig_fromArgs(undefined, { prefetchFeeds: false, logo: false, asciiBoot: true }, noFile);
+    const c = cliConfig_fromArgs(undefined, { prefetchFeeds: false, logo: false, asciiBoot: true }, noFile, noDoor);
     expect(c.prefetchFeeds).toBe(false);
     expect(c.showLogo).toBe(false);
     expect(c.asciiBoot).toBe(true);
   });
 
   it('carries the identity into remote mode when a user@url target is given', () => {
-    const c = cliConfig_fromArgs('chris@https://cube.example.org/api/v1/', { remote: true }, noFile);
+    const c = cliConfig_fromArgs('chris@https://cube.example.org/api/v1/', { remote: true }, noFile, noDoor);
     expect(c.mode).toBe('remote');
     expect(c.connectConfig).toEqual({ user: 'chris', password: undefined, url: 'https://cube.example.org/api/v1/' });
   });
@@ -96,7 +99,7 @@ describe('cliConfig_fromArgs', () => {
   });
 
   it('leaves remote mode without a connectConfig for a bare --remote', () => {
-    const c = cliConfig_fromArgs(undefined, { remote: true }, noFile);
+    const c = cliConfig_fromArgs(undefined, { remote: true }, noFile, noDoor);
     expect(c).toEqual({ mode: 'remote', connectConfig: undefined });
   });
 });

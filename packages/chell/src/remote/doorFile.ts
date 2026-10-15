@@ -35,6 +35,8 @@ export interface DoorFile {
   minted: string;
   /** ISO time it dies. */
   expires: string;
+  /** The operator said `--insecure-door` at login: the token may go over plain http to this host. */
+  insecure?: boolean;
 }
 
 /** Why a door file was not used. */
@@ -204,7 +206,7 @@ export function door_carriesTokens(door: string): boolean {
 
 /** A credential for a door, and where it came from. */
 export type DoorCredential =
-  | { kind: 'token'; token: string; user: string | null; source: 'env' | 'file'; name: string | null; expires: string | null }
+  | { kind: 'token'; token: string; user: string | null; source: 'env' | 'file'; name: string | null; expires: string | null; insecure?: boolean }
   | { kind: 'none' };
 
 /**
@@ -226,5 +228,5 @@ export function doorCredential_resolve(door: string, env: NodeJS.ProcessEnv = pr
   const file: DoorFile | DoorFileRefusal | null = doorFile_read(door, env);
   if (file === null) return { kind: 'none' };
   if ('refused' in file) return file;
-  return { kind: 'token', token: file.token, user: file.user, source: 'file', name: file.name, expires: file.expires };
+  return { kind: 'token', token: file.token, user: file.user, source: 'file', name: file.name, expires: file.expires, ...(file.insecure === true ? { insecure: true } : {}) };
 }

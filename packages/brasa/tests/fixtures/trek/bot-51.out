@@ -1,0 +1,42 @@
+
+   * * *   S T A R   T R E K   * * *
+
+Press return to continue.
+What length game: What skill game: Enter a password: 20 Klingons
+3 starbases at 4,4, 1,5, 2,0
+It takes 700 units to kill a Klingon
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . * . . . 0   stardate      2700.00
+1 . . . . . . * . . . 1   condition     GREEN
+2 . . . . . . . . . * 2   position      4,4/6,4
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . * . .   . 4   total energy  5000
+5 . . . @ . . . . . . 5   torpedoes     10
+6 . . . . E # . . . . 6   shields       up, 100%
+7 . . * . . . . * . . 7   Klingons left 20
+8 . * . . . . . . . . 8   time left     8.00
+9 . . * . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Deneb VII
+
+Command: Spock: That would take 108% of our remaining time.
+Are you sure that is wise: 
+Command: Spock: That would take 166% of our remaining time.
+Are you sure that is wise: (He's finally gone mad)
+Condition RED
+
+Uhura: Captain, Starfleet Command reports a supernova
+  in quadrant 5,5.  Caution is advised
+
+Uhura: Captain, Starfleet Command reports a supernova
+  in quadrant 3,6.  Caution is advised
+
+You ran out of time
+
+*** Your score:
+Penalty for 20 klingons remaining             -8000
+
+***  TOTAL                                    -8000
+Another game: 

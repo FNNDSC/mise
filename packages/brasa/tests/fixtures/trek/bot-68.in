@@ -1,0 +1,57 @@
+
+long
+impossible
+foo
+phasers automatic 600
+srscan
+ram 333 0.22
+yes
+medium
+novice
+foo
+move 95 2.51
+computer time 3 8
+score
+move 90 2.70
+move 88 2.40
+move 92 2.90
+move 83 2.32
+move 97 2.42
+move 92 2.60
+computer distresslist
+move 92 2.60
+impulse 83 2.62
+yes
+computer kill
+score
+srscan
+capture
+phasers manual
+computer time 3 8
+kill
+chart
+shield up
+phasers automatic 1500
+impulse 219 0.05
+move 257 1.33
+capture
+move 68 1.08
+move 54 0.86
+move 59 0.58
+move 90 0.40
+srscan
+computer warpcost 3 6
+phasers manual
+ram 194 0.41
+move 82 1.51
+move 80 1.12
+move 71 1.80
+impulse 72 1.58
+no
+move 67 1.52
+move 72 1.58
+move 67 1.30
+move 70 1.49
+impulse 76 1.24
+yes
+no

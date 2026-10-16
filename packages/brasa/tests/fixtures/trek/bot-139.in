@@ -1,0 +1,97 @@
+
+short
+fair
+foo
+move 69 2.25
+move 67 1.30
+phasers automatic 1500
+torpedo 297 no
+move 207 1.12
+shield up
+capture
+srscan
+phasers manual
+torpedo 225 yes 10
+move 241 1.03
+computer chart
+phasers automatic 600
+torpedo 297 yes 5
+srscan
+phasers manual
+torpedo 315 no
+move 345 1.14
+srscan
+torpedo 63 yes 5
+srscan
+phasers manual
+torpedo 63 yes 10
+phasers manual
+torpedo 63 no
+impulse 63 0.05
+torpedo 63 yes 5
+torpedo 63 no
+phasers automatic 600
+torpedo 63 yes 10
+computer course 3,4/1,1
+phasers automatic 1000
+torpedo 63 no
+phasers manual
+srscan
+phasers manual
+phasers manual
+phasers manual
+torpedo 63 no
+phasers manual
+torpedo 63 no
+torpedo 63 yes 10
+torpedo 63 yes 10
+phasers automatic 1500
+phasers manual
+torpedo 63 no
+torpedo 63 yes 5
+torpedo 63 yes 10
+phasers manual
+phasers manual
+impulse 63 0.05
+impulse 167 0.92
+no
+move 156 1.21
+move 180 1.00
+phasers manual
+srscan
+capture
+torpedo 63 yes 10
+capture
+torpedo 63 yes 5
+phasers manual
+phasers automatic 600
+torpedo 63 no
+phasers manual
+torpedo 63 yes 10
+phasers automatic 1500
+capture
+impulse 49 2.13
+no
+move 49 1.84
+move 67 1.52
+move 65 1.43
+move 32 1.53
+move 48 1.35
+move 48 1.35
+move 34 1.44
+move 45 1.70
+move 267 1.90
+impulse 45 0.32
+move 81 2.02
+move 96 2.01
+move 94 2.61
+move 99 2.02
+move 92 2.60
+move 83 2.42
+move 93 2.10
+move 97 2.42
+impulse 83 2.32
+no
+impulse 97 2.32
+yes
+no

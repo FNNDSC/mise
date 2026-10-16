@@ -1,0 +1,696 @@
+
+   * * *   S T A R   T R E K   * * *
+
+Press return to continue.
+What length game: What skill game: Enter a password: 120 Klingons
+1 starbase at 6,4
+It takes 1150 units to kill a Klingon
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2800.00
+1 . . . . . . . . . . 1   condition     GREEN
+2 . . . . . . E . . . 2   position      6,4/2,6
+3 . . . . . . . * . . 3   warp factor   5.0
+4 . . . . . * . . # * 4   total energy  5000
+5 . * . . . . . . . . 5   torpedoes     10
+6 . . . . . . . . . . 6   shields       up, 100%
+7 . . . . . . * . . . 7   Klingons left 120
+8 . . . . . . . . . . 8   time left     26.00
+9 . . . @ . . . . * . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Kronos III
+
+Command: invalid input; ? for valid inputs
+
+Request: invalid input; ? for valid inputs
+
+Request: 
+*** Your score:
+Penalty for 120 klingons remaining           -48000
+
+***  TOTAL                                   -48000
+
+Command: Condition RED
+
+Enterprise caught in long range tractor beam
+*** Pulled to quadrant 7,0
+Condition RED
+
+Stardate 2800.12: Klingon attack:
+HIT: 438 units from 2,6, shields absorb 100%, effective hit 0
+HIT: 420 units from 1,5, shields absorb 70%, effective hit 123
+HIT: 381 units from 5,0, shields absorb 50%, effective hit 187
+CRITICAL HIT!!!
+	photon tubes damaged
+HIT: 338 units from 9,2, shields absorb 37%, effective hit 210
+CRITICAL HIT!!!
+	shield control damaged
+Sulu: Shields knocked down, captain.
+McCoy: we suffered 3 casualties in that attack.
+Klingon at 2,6 escapes to quadrant 6,1
+Klingon at 1,5 moves to 9,6
+
+Command: Sulu reports photon tubes are damaged
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2800.12
+1 . . .   . . . . . . 1   condition     RED
+2 . . . . . . . . . . 2   position      7,0/4,4
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . * . E . . . . . 4   total energy  4403
+5 K . . . .   . * . . 5   torpedoes     10
+6 . . . . . . . . . . 6   shields       damaged, 29%
+7 . . . . . . . . . . 7   Klingons left 120
+8 . . . . . . . . . . 8   time left     25.88
+9 . . K . . * K . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2800.12
+1 . . .   . . . . . . 1   condition     RED
+2 . . . . . . . . . . 2   position      7,0/4,4
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . * . E . . . . . 4   total energy  4403
+5 K . . . .   . * . . 5   torpedoes     10
+6 . . . . . . . . . . 6   shields       damaged, 29%
+7 . . . . . . . . . . 7   Klingons left 120
+8 . . . . . . . . . . 8   time left     25.88
+9 . . K . . * K . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Fat chance, captain
+Klingon at 9,2 escapes to quadrant 6,0
+
+Stardate 2800.17: Klingon attack:
+HIT: 281 units from 5,0
+CRITICAL HIT!!!
+	photon tubes damaged
+HIT: 259 units from 9,6
+CRITICAL HIT!!!
+	photon tubes damaged
+McCoy: we suffered 5 casualties in that attack.
+Klingon at 5,0 moves to 6,5
+
+Command: Computer record of galaxy for all long range sensor scans
+
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+0 ... ... ... ... ... ... ... ... 0
+1 ... ... ... ... ... ... ... ... 1
+2 ... ... ... ... ... ... ... ... 2
+3 ... ... ... ... ... ... ... ... 3
+4 ... ... ... ... ... ... ... ... 4
+5 ... ... ... ... ... ... ... ... 5
+6 ... ... ... ...  17 ... ... ... 6
+7 $$$ ... ... ... ... ... ... ... 7
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+
+Command: 3863 units available
+
+Bank 0:
+units: course: spread: 
+Bank 1:
+units: course: spread: 
+Bank 2:
+units: course: spread: 
+Bank 3:
+units: course: spread: 
+Command: Phasers locked on target.  3863 units available
+
+Phaser bank 0 fires:
+168 unit hit on Klingon at 6,5
+58 unit hit on Klingon at 9,6
+
+Phaser bank 1 fires:
+24 unit hit on Klingon at 6,5
+5 unit hit on Klingon at 9,6
+
+45 units expended on empty space
+Klingon at 6,5 moves to 7,6
+Klingon at 9,6 moves to 3,0
+
+Stardate 2800.17: Klingon attack:
+HIT: 181 units from 7,6
+CRITICAL HIT!!!
+	photon tubes damaged
+HIT: 215 units from 3,0
+CRITICAL HIT!!!
+	shield control damaged
+McCoy: we suffered 3 casualties in that attack.
+Klingon at 7,6 moves to 2,0
+Klingon at 3,0 moves to 3,5
+
+Command: Sulu reports photon tubes are damaged
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2800.17
+1 . . .   . . . . . . 1   condition     RED
+2 K . . . . . . . . . 2   position      7,0/4,4
+3 . . . . . K . . . . 3   warp factor   5.0
+4 . . * . E . . . . . 4   total energy  3167
+5 . . . . .   . * . . 5   torpedoes     10
+6 . . . . . . . . . . 6   shields       damaged, 29%
+7 . . . . . . . . . . 7   Klingons left 120
+8 . . . . . . . . . . 8   time left     25.83
+9 . . . . . * . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: 3167 units available
+
+Bank 0:
+units: course: spread: 
+Command: Sulu reports photon tubes are damaged
+
+Command: 
+Uhura: Captain, starsystem Eden in quadrant 5,7 is under attack
+Klingon at 3,5 moves to 0,5
+
+Stardate 2800.69: Klingon attack:
+HIT: 202 units from 0,5
+CRITICAL HIT!!!
+	S.R. scanners damaged
+HIT: 136 units
+CRITICAL HIT!!!
+	photon tubes damaged
+McCoy: we suffered 4 casualties in that attack.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports shield control is damaged
+
+Command: 2804 units available
+
+Bank 0:
+units: course: spread: 
+Bank 1:
+units: course: spread: 
+Command: Sulu reports photon tubes are damaged
+
+Command: Fat chance, captain
+
+Stardate 2800.74: Klingon attack:
+HIT: 123 units
+HIT: 150 units
+CRITICAL HIT!!!
+	impulse engines damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Scotty reports S.R. scanners are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: 2531 units available
+
+Bank 0:
+units: course: spread: 
+Bank 1:
+units: course: spread: 
+Command: Sulu reports photon tubes are damaged
+
+Command: Klingon at 2,0 surrenders
+166 klingons commit suicide rather than be taken captive
+34 captives taken
+   *** Klingon at 2,0 destroyed ***
+
+Stardate 2800.79: Klingon attack:
+HIT: 126 units
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Scotty reports S.R. scanners are damaged
+
+Command: Scotty reports S.R. scanners are damaged
+
+Command: Scotty reports S.R. scanners are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Phasers locked on target.  2405 units available
+
+Phaser bank 0 fires:
+1000 unit hit on Klingon
+   *** Klingon at 4,7 destroyed ***
+
+500 units expended on empty space
+
+Command: 
+Uhura:  We've lost contact with starsystem Eden
+  in quadrant 5,7.
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Warp 6.00 distance 3.00 cost 0.83 stardates 658 (1316 w/ shlds up) units
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Damage control report:
+			  repair times
+device			in flight  docked
+photon tubes              23.68    11.84
+shield control             6.73     3.37
+S.R. scanners              3.17     1.59
+impulse engines            2.00     1.00
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Sector: s-y: Scotty: That would consume 148% of our remaining energy.
+Are you sure that is wise: Condition RED
+
+Stardate 2804.25: Klingon attack:
+HIT: 498 units
+CRITICAL HIT!!!
+	transporter damaged
+
+You have been destroyed
+
+*** Your score:
+2 Klingons killed                               574
+Kill rate 0.47 Klingons/stardate                188
+Penalty for 119 klingons remaining           -15866
+Penalty for getting killed                     -500
+15 casualties                                   -15
+
+***  TOTAL                                   -15619
+Another game: What length game: What skill game: Enter a password: 66 Klingons
+1 starbase at 3,0
+It takes 1150 units to kill a Klingon
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0   . . . . . . . . . 0   stardate      2200.00
+1 # . . . . . . . . . 1   condition     GREEN
+2 . . . . . . . . . . 2   position      3,0/3,7
+3 . . . . . . . E . . 3   warp factor   5.0
+4 . . * . . . . .   . 4   total energy  5000
+5 . . * . . . . . . . 5   torpedoes     10
+6 . . . . . . . . . . 6   shields       up, 100%
+7 . . . . . . . . . . 7   Klingons left 66
+8 . . . . . . . . . . 8   time left     14.00
+9 . . . * . . . . * . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Condition RED
+
+Uhura: Captain, starsystem Gamma Tranguli VI in quadrant 7,5 is under attack
+Klingon at 5,1 moves to 2,2
+
+Stardate 2200.47: Klingon attack:
+HIT: 486 units from 2,2, shields absorb 100%, effective hit 0
+HIT: 273 units from 0,8, shields absorb 67%, effective hit 89
+HIT: 268 units from 4,9, shields absorb 55%, effective hit 120
+Klingon at 2,2 escapes to quadrant 1,0
+
+Command: invalid input; ? for valid inputs
+
+Request: invalid input; ? for valid inputs
+
+Request: Computer record of galaxy for all long range sensor scans
+
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+0 ... ... ... ... ... ... ... ... 0
+1 ... ... ... ... ... ... ... ... 1
+2 $$$ ... ... ... ... ... ... ... 2
+3  14 ... ... ... ... ... ... ... 3
+4 ... ... ... ... ... ... ... ... 4
+5 ... ... ... ... ... ... ... ... 5
+6 ... ... ... ... ... ... ... ... 6
+7 ... ... ... ... ... ... ... ... 7
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+
+Command: Torpedo track, torpedo number 1:
+   3.5	 1.5
+   2.9	 2.5
+   2.2	 3.5
+   1.6	 4.5
+   0.9	 5.5
+   0.3	 6.5
+Torpedo missed
+Torpedo track, torpedo number 2:
+   3.5	 1.5
+   3.2	 2.5
+   2.9	 3.5
+   2.6	 4.5
+   2.4	 5.5
+   2.1	 6.5
+   1.8	 7.5
+   1.5	 8.5
+   1.2	 9.5
+Spock: Star at 1,9 gone nova
+   *** Klingon at 0,8 destroyed ***
+Photon tubes misfire on torpedo 3
+Torpedo track, torpedo number 3:
+   3.5	 1.5
+   2.5	 1.7
+   1.5	 1.8
+   0.5	 2.0
+Torpedo missed
+
+Stardate 2200.47: Klingon attack:
+HIT: 210 units from 4,9, shields absorb 45%, effective hit 115
+
+Command: Torpedo track:
+   3.5	 1.5
+   3.6	 2.5
+   3.7	 3.5
+   3.9	 4.5
+   4.0	 5.5
+   4.1	 6.5
+   4.2	 7.5
+   4.4	 8.5
+   4.5	 9.5
+   *** Klingon at 4,9 destroyed ***
+
+Command: Condition RED
+
+Stardate 2200.84: Klingon attack:
+HIT: 314 units from 6,9, shields absorb 38%, effective hit 192
+CRITICAL HIT!!!
+	photon tubes damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2200.84
+1 . . . * . . . . . . 1   condition     RED
+2 . . . . . . . . . . 2   position      1,0/4,3
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . E . . . .   . 4   total energy  3961
+5 . . . . . . . . . * 5   torpedoes     6
+6 . . . . . . . . . K 6   shields       up, 31%
+7 . . . . . . . . . . 7   Klingons left 64
+8 . . . . . . . * . . 8   time left     13.59
+9 . . . * . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Shields already up
+
+Command: Klingon at 6,9: course 108  dist 0.632
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Klingon at 6,9 escapes to quadrant 1,1
+
+Command: Computer reports navigation error; Enterprise stopped at 4,7
+
+Uhura:  We've lost contact with starsystem Gamma Tranguli VI
+  in quadrant 7,5.
+
+Command: Computer reports navigation error; Enterprise stopped at 4,7
+
+Command: Computer reports navigation error; Enterprise stopped at 4,7
+
+Command: Computer reports navigation error; Enterprise stopped at 4,7
+
+Command: Computer reports navigation error; Enterprise stopped at 5,8
+
+Command: Computer reports navigation error; Enterprise stopped at 5,8
+
+Command: Condition RED
+Sulu reports repair work on the photon tubes finished.
+
+Uhura: Captain, Starfleet Command reports a supernova
+  in quadrant 3,7.  Caution is advised
+
+Uhura: Captain, starsystem Arrikis in quadrant 6,5 is under attack
+
+Enterprise caught in long range tractor beam
+*** Pulled to quadrant 4,0
+Condition RED
+
+Stardate 2208.74: Klingon attack:
+HIT: 461 units from 9,9, shields absorb 30%, effective hit 319
+CRITICAL HIT!!!
+	S.R. scanners damaged
+HIT: 261 units, shields absorb 21%, effective hit 205
+McCoy: we suffered 3 casualties in that attack.
+
+Command: Scotty reports S.R. scanners are damaged
+
+Command: Torpedo track, torpedo number 1:
+   8.5	 7.5
+   8.8	 6.5
+   9.1	 5.5
+Inhabited starsystem Deneb VII at 9,5 destroyed
+Torpedo track, torpedo number 2:
+   8.5	 7.5
+   8.7	 6.5
+   8.9	 5.5
+   9.1	 4.5
+   9.4	 3.5
+   9.6	 2.5
+   9.8	 1.5
+  10.0	 0.5
+*** Hit on Klingon at 9,0: extensive damages
+Torpedo track, torpedo number 3:
+   8.5	 7.5
+   8.6	 6.5
+   8.7	 5.5
+   8.8	 4.5
+   8.9	 3.5
+   9.0	 2.5
+   9.1	 1.5
+   9.2	 0.5
+   *** Klingon at 9,0 destroyed ***
+
+Command: Condition RED
+
+Stardate 2209.14: Klingon attack:
+HIT: 455 units, shields absorb 17%, effective hit 375
+CRITICAL HIT!!!
+	photon tubes damaged
+McCoy: we suffered 5 casualties in that attack.
+
+Command: invalid input; ? for valid inputs
+
+Request: invalid input; ? for valid inputs
+
+Request: 
+*** Your score:
+3 Klingons killed                               861
+Kill rate 0.33 Klingons/stardate                131
+Penalty for 62 klingons remaining             -6200
+1 stars destroyed                                -5
+1 inhabited starsystems destroyed              -150
+8 casualties                                     -8
+
+***  TOTAL                                    -5371
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: invalid input; ? for valid inputs
+
+Request: 
+*** Your score:
+3 Klingons killed                               861
+Kill rate 0.33 Klingons/stardate                131
+Penalty for 62 klingons remaining             -6200
+1 stars destroyed                                -5
+1 inhabited starsystems destroyed              -150
+8 casualties                                     -8
+
+***  TOTAL                                    -5371
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Shields already up
+
+Command: Fat chance, captain
+
+Stardate 2209.19: Klingon attack:
+HIT: 350 units, shields absorb 12%, effective hit 307
+CRITICAL HIT!!!
+	shield control damaged
+Sulu: Shields knocked down, captain.
+
+Command: Phasers locked on target.  1640 units available
+
+Phaser bank 0 fires:
+1115 unit hit on Klingon
+   *** Klingon at 7,7 destroyed ***
+
+385 units expended on empty space
+
+Command: Spock: That would take 97% of our remaining time.
+Are you sure that is wise: (He's finally gone mad)
+
+Uhura: Captain, Starfleet Command reports a supernova
+  in quadrant 0,7.  Caution is advised
+
+Uhura:  We've lost contact with starsystem Arrikis
+  in quadrant 6,5.
+
+Enterprise caught in long range tractor beam
+*** Pulled to quadrant 4,6
+Condition RED
+
+Stardate 2213.13: Klingon attack:
+HIT: 406 units
+CRITICAL HIT!!!
+	transporter damaged
+
+You have been destroyed
+
+*** Your score:
+4 Klingons killed                              1148
+Kill rate 0.30 Klingons/stardate                121
+Penalty for 58 klingons remaining             -4640
+Penalty for getting killed                     -500
+1 stars destroyed                                -5
+1 inhabited starsystems destroyed              -150
+8 casualties                                     -8
+
+***  TOTAL                                    -4034
+Another game: 

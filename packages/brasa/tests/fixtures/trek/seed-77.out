@@ -1,0 +1,669 @@
+
+   * * *   S T A R   T R E K   * * *
+
+Press return to continue.
+What length game: What skill game: Enter a password: 120 Klingons
+1 starbase at 3,0
+It takes 1150 units to kill a Klingon
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . * . . . . E 0   stardate      3400.00
+1 . . . . . . . .   * 1   condition     GREEN
+2 . . . . . . . . . . 2   position      3,0/0,9
+3 . . . . . . . . . . 3   warp factor   5.0
+4 # . . . . . . . . . 4   total energy  5000
+5 * . . . . . . . . . 5   torpedoes     10
+6 . . * . . . . . . . 6   shields       up, 100%
+7 . . . . . . . . . . 7   Klingons left 120
+8 . . . . . . . . . . 8   time left     26.00
+9 . . . . . * . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: 
+Command: invalid input; ? for valid inputs
+
+Command: Shields already up
+
+Command: Uhura: Getting no response, sir
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      3400.35
+1 . . . . . . . . . . 1   condition     GREEN
+2 . . . . . . @ . . . 2   position      2,1/5,6
+3 . . . . . . . . * . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  4780
+5 . . . . . . E . . . 5   torpedoes     10
+6 . . . . * . . . . . 6   shields       up, 100%
+7 . . . . . . . . . . 7   Klingons left 120
+8 . . . . . . . * . . 8   time left     25.65
+9 . . * . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Gamma Tranguli VI
+
+Command: invalid input; ? for valid inputs
+
+Command: invalid input; ? for valid inputs
+
+Request: 
+Command: Chekov: But captain, we are not adjacent to a starbase.
+
+Command: Condition RED
+Klingon at 3,7 moves to 8,8
+
+Stardate 3400.75: Klingon attack:
+HIT: 405 units from 8,8, shields absorb 100%, effective hit 0
+HIT: 500 units from 8,7, shields absorb 73%, effective hit 135
+Klingon at 8,8 moves to 9,9
+Klingon at 8,7 moves to 6,0
+
+Command: Long range scan for quadrant 1,0
+
+           0     1
+  -------------------
+0 !  *  !   1 !   3 !
+  -------------------
+1 !  *  ! 204 ! 406 !
+  -------------------
+2 !  *  !   2 !   5 !
+  -------------------
+
+Command: invalid input; ? for valid inputs
+
+Request: invalid input; ? for valid inputs
+
+Request: invalid input; ? for valid inputs
+
+Request: invalid input; ? for valid inputs
+
+Request: invalid input; ? for valid inputs
+
+Request: invalid input; ? for valid inputs
+
+Request: warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: invalid input; please enter a double
+warp factor: Warp 6.41 distance 10.00 cost 2.43 stardates 2646 (5292 w/ shlds up) units
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: 
+Stardate 3400.75: Klingon attack:
+HIT: 381 units from 9,9, shields absorb 48%, effective hit 196
+CRITICAL HIT!!!
+	subspace radio damaged
+HIT: 159 units from 6,0, shields absorb 35%, effective hit 102
+Klingon at 9,9 escapes to quadrant 2,0
+Condition RED
+Klingon at 6,9 escapes to quadrant 2,2
+
+Stardate 3401.31: Klingon attack:
+HIT: 353 units from 1,4, shields absorb 32%, effective hit 239
+CRITICAL HIT!!!
+	L.R. scanners damaged
+HIT: 293 units from 0,2, shields absorb 24%, effective hit 220
+CRITICAL HIT!!!
+	L.R. scanners damaged
+HIT: 218 units from 9,5, shields absorb 19%, effective hit 175
+Klingon at 1,4 escapes to quadrant 1,2
+Klingon at 0,2 escapes to quadrant 1,0
+
+Command: 
+Stardate 3401.31: Klingon attack:
+HIT: 183 units from 9,5, shields absorb 16%, effective hit 152
+Klingon at 9,5 escapes to quadrant 1,2
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      3402.51
+1 . . . . .   . . . . 1   condition     GREEN
+2 . . . . . . . . * . 2   position      3,3/3,8
+3 . . . . . . . . E . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  2211
+5 . . . . . . . . . . 5   torpedoes     10
+6 . . . . . . . . * . 6   shields       up, 15%
+7 . . . . . . . . . . 7   Klingons left 120
+8 . . . . . . . . . . 8   time left     23.49
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: 
+Enterprise caught in long range tractor beam
+*** Pulled to quadrant 2,2
+Condition RED
+Klingon at 9,4 moves to 9,2
+Klingon at 0,2 escapes to quadrant 2,3
+
+Stardate 3402.54: Klingon attack:
+HIT: 455 units from 9,2, shields absorb 14%, effective hit 387
+CRITICAL HIT!!!
+	computer damaged
+HIT: 293 units from 3,9, shields absorb 10%, effective hit 262
+CRITICAL HIT!!!
+	photon tubes damaged
+McCoy: we suffered 7 casualties in that attack.
+Klingon at 9,2 escapes to quadrant 2,1
+
+Command: 9,260 ? ? ? 263,260
+
+Stardate 3402.59: Klingon attack:
+HIT: 255 units from 3,9, shields absorb 8%, effective hit 234
+CRITICAL HIT!!!
+	phasers damaged
+Klingon at 3,9 escapes to quadrant 1,2
+
+Command: Condition RED
+
+Enterprise caught in long range tractor beam
+*** Pulled to quadrant 1,5
+Condition RED
+Klingon at 6,4 moves to 1,9
+Klingon at 5,0 escapes to quadrant 1,6
+
+Stardate 3403.10: Klingon attack:
+HIT: 496 units from 4,7, shields absorb 7%, effective hit 461
+CRITICAL HIT!!!
+	cloaking device damaged
+HIT: 396 units from 1,9, shields absorb 4%, effective hit 377
+CRITICAL HIT!!!
+	shield control damaged
+Sulu: Shields knocked down, captain.
+McCoy: we suffered 8 casualties in that attack.
+Klingon at 4,7 moves to 8,7
+Klingon at 1,9 escapes to quadrant 2,5
+
+Command: Scotty reports L.R. scanners are damaged
+
+Command: Sulu reports shield control is damaged
+
+Command: Scotty: That would consume 372% of our remaining energy.
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: 
+Command: Scotty: That would consume 157% of our remaining energy.
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: 
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      3403.10
+1 . . . . . . . . . . 1   condition     RED
+2 . * * . . . . * . . 2   position      1,5/5,6
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . . @ 4   total energy  163
+5 . . . . . . E . . . 5   torpedoes     10
+6 . . * . . . . . . . 6   shields       damaged, 3%
+7 . . . . . * . . . . 7   Klingons left 120
+8 . . . . . * . K . . 8   time left     22.90
+9 * . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Kronos III
+
+Command: invalid input; ? for valid inputs
+
+Command: invalid input; ? for valid inputs
+
+Command: Scotty reports L.R. scanners are damaged
+
+Command: stardate      3403.10
+condition     RED
+position      1,5/5,6
+warp factor   5.0
+total energy  163
+torpedoes     10
+shields       damaged, 3%
+Klingons left 120
+time left     22.90
+life support  active
+current crew  372
+brig space    400
+Klingon power 1150
+Length, Skill long, impossible
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Another game: invalid input; ? for valid inputs
+Another game: invalid input; ? for valid inputs
+Another game: What length game: invalid input; ? for valid inputs
+What length game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: invalid input; ? for valid inputs
+What skill game: Enter a password: 10 Klingons
+3 starbases at 5,4, 6,4, 1,2
+It takes 250 units to kill a Klingon
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . # . . . . * 0   stardate      3300.00
+1 . . . . . * . . . . 1   condition     GREEN
+2 . . . . . . . . . . 2   position      5,4/3,3
+3 . * . E . . . . . . 3   warp factor   5.0
+4 . * . . . . . . . . 4   total energy  5000
+5 . . . . . . . . . . 5   torpedoes     10
+6 . . . . . . . . . . 6   shields       up, 100%
+7 . . . . . . . . . . 7   Klingons left 10
+8 * . . . . . . . . . 8   time left     14.00
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: 
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: 
+Command: 
+Command: Spock: That would take 170% of our remaining time.
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: 
+Command: 
+Command: Torpedo track:
+   0.5	 3.5
+   1.1	 4.5
+   1.7	 5.5
+   2.3	 6.5
+Spock: Star at 2,6 gone nova
+
+RED ALERT: supernova occurring at 3,7
+RED ALERT:  The Enterprise is in a supernova quadrant
+***  Emergency override attempts to hurl Enterprise to safety
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: 	warp drive damaged
+Condition RED
+
+Stardate 3311.97: Klingon attack:
+HIT: 108 units from 6,1, shields absorb 100%, effective hit 0
+HIT: 98 units from 5,3, shields absorb 91%, effective hit 8
+HIT: 71 units from 4,7, shields absorb 85%, effective hit 10
+Klingon at 5,3 moves to 6,3
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Damage to warp engines may occur above warp 6.0
+
+Command: Do you want a burst: invalid input; ? for valid inputs
+Do you want a burst: invalid input; ? for valid inputs
+Do you want a burst: invalid input; ? for valid inputs
+Do you want a burst: invalid input; ? for valid inputs
+Do you want a burst: invalid input; ? for valid inputs
+Do you want a burst: burst angle: invalid input; please enter an integer
+burst angle: invalid input; please enter an integer
+burst angle: invalid input; please enter an integer
+burst angle: invalid input; please enter an integer
+burst angle: invalid input; please enter an integer
+burst angle: invalid input; please enter an integer
+burst angle: invalid input; please enter an integer
+burst angle: invalid input; please enter an integer
+burst angle: invalid input; please enter an integer
+burst angle: invalid input; please enter an integer
+burst angle: invalid input; please enter an integer
+burst angle: invalid input; please enter an integer
+burst angle: Torpedo track, torpedo number 1:
+   7.5	 2.5
+   8.5	 2.1
+   9.5	 1.6
+Torpedo missed
+Torpedo track, torpedo number 2:
+   7.5	 2.5
+   8.5	 1.5
+   9.5	 0.5
+Torpedo missed
+Torpedo track, torpedo number 3:
+   7.5	 2.5
+   8.5	 2.0
+   9.5	 1.5
+Torpedo missed
+Klingon at 6,1 moves to 4,0
+Klingon at 6,3 moves to 6,5
+Klingon at 4,7 escapes to quadrant 1,5
+
+Stardate 3311.97: Klingon attack:
+HIT: 72 units from 6,5, shields absorb 81%, effective hit 13
+HIT: 84 units from 4,0, shields absorb 78%, effective hit 18
+Klingon at 4,0 escapes to quadrant 1,5
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      3311.97
+1 . . . . . . . . . * 1   condition     RED
+2 . . . . . . . . . . 2   position      1,6/7,2
+3 . . . . . . . . . . 3   warp factor   7.7
+4 . . . . . . . . . . 4   total energy  2703
+5 . . . . . . . . . . 5   torpedoes     6
+6 . . . . . K . . . . 6   shields       up, 74%
+7 . . E . . . . . . . 7   Klingons left 10
+8 . . . @ . . * . . . 8   time left     2.03
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Talos IV
+
+Command: Klingon at 6,5: course 72  dist 0.316
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Long range scan for quadrant 1,6
+
+     5     6     7
+  -------------------
+0 !   8 !   2 !   5 !
+  -------------------
+1 ! 205 ! 103 !   8 !
+  -------------------
+2 !   1 !   2 !   5 !
+  -------------------
+
+Command: Torpedo track:
+   7.5	 2.5
+   7.7	 3.5
+   7.9	 4.5
+   8.1	 5.5
+   8.3	 6.5
+Spock: Star at 8,6 failed to nova.
+Klingon at 6,5 escapes to quadrant 1,7
+
+Command: invalid input; ? for valid inputs
+
+Command: Damage to warp engines may occur above warp 6.0
+
+Command: Spock: That would take 518% of our remaining time.
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise:            yes            no
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: 
+Command: Torpedo track:
+   7.5	 2.5
+   7.9	 3.5
+   8.4	 4.5
+   8.8	 5.5
+   9.3	 6.5
+   9.7	 7.5
+Torpedo missed
+
+Command: Long range scan for quadrant 1,6
+
+     5     6     7
+  -------------------
+0 !   8 !   2 !   5 !
+  -------------------
+1 ! 205 !   3 ! 108 !
+  -------------------
+2 !   1 !   2 !   5 !
+  -------------------
+
+Command: stardate      3311.97
+condition     GREEN
+position      1,6/7,2
+warp factor   9.7
+total energy  2703
+torpedoes     4
+shields       up, 74%
+Klingons left 10
+time left     2.03
+life support  active
+current crew  387
+brig space    400
+Klingon power 250
+Length, Skill medium, novice
+
+Command: 
+Command: Scotty reports warp drive is damaged
+
+Command: 
+Command: Torpedo track:
+   7.5	 3.5
+   8.2	 4.5
+   8.9	 5.5
+   9.6	 6.5
+Torpedo missed
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      3313.02
+1 . . . . . . . . . * 1   condition     GREEN
+2 . . . . . . . . . . 2   position      1,6/7,3
+3 . . . . . . . . . . 3   warp factor   2.6
+4 . . . . . . . . . . 4   total energy  3114
+5 . . . . . . . . . . 5   torpedoes     3
+6 . . . . . . . . . . 6   shields       up, 79%
+7 . . . E . . . . . . 7   Klingons left 10
+8 . . . @ . . * . . . 8   time left     0.98
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Talos IV
+
+Command: Chekov: But captain, we are not adjacent to a starbase.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Computer record of galaxy for all long range sensor scans
+
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+0 ... ... ... ... ...   8   2   5 0
+1 ... ... .1. ... ... 205 $$$ 108 1
+2 ... ... ... ... ...   1   2   5 2
+3 ... ... ... ... ... ... ... ... 3
+4 ... ... ... ... ... ... ... ... 4
+5 ... ... ... ...  15 /// ... ... 5
+6 ... ... ... ... .1. ... ... ... 6
+7 ... ... ... ... ... ... ... ... 7
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+
+Command: 262,4 ? . . 8,4
+
+Command: invalid input; ? for valid inputs
+
+Command: invalid input; ? for valid inputs
+
+Command: Scotty reports warp drive is damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: invalid input; ? for valid inputs
+
+Request: invalid input; ? for valid inputs
+
+Request: invalid input; ? for valid inputs
+
+Request: No Klingons in this quadrant
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Chekov: But captain, we are not adjacent to a starbase.
+
+Command: 8,258 ? ? ? 262,258
+
+Command: Torpedo track:
+   7.5	 3.5
+   7.4	 4.5
+   7.2	 5.5
+   7.1	 6.5
+   6.9	 7.5
+   6.8	 8.5
+   6.7	 9.5
+Torpedo missed
+
+Command: Spock: That would take 1076% of our remaining time.
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: invalid input; ? for valid inputs
+Are you sure that is wise: 

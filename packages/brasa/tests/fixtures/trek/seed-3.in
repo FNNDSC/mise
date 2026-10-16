@@ -1,0 +1,304 @@
+
+m
+g
+bar
+dump
+phasers auto 1189
+lrscan
+srscan
+damages
+move 119 0.58
+phasers auto 1125
+p manual 327 440
+status
+shield down
+rest 2
+status
+y
+m 15 7.4
+phasers auto 1472
+terminate
+impulse 218 0.39
+phasers auto 274
+visual 49
+srscan
+p manual 132 494
+dock
+computer kill
+dock
+st
+capture
+y
+undock
+move 293 1
+srscan
+capture
+1
+impulse 77 0.0
+computer warpcost 2 1.35
+3
+lrscan
+torpedo 101 n
+m 134 1
+3.1
+no
+impulse 266 0.39
+dock
+lrscan
+1.5.
+move 324 2
+no
+1.5.
+m 173 0.1
+2.8
+shield up
+srscan
+shield down
+warp 9.26
+undock
+rest 0
+y
+yes
+shield down
+t 163
+s
+s
+computer warpcost 5 3.4
+m 347 3.92
+lrscan
+t 170
+dock
+move 86 0.24
+cloak down
+move 61 0
+m 294 1.7
+warp 8
+computer kill
+impulse 211 0
+p manual 426 450
+shield down
+torpedo 113 y
+rest 2.51
+rest 2.89
+warp 3
+capture
+?
+computer trajectory
+p manual 122 339
+srscan
+torpedo 27 no
+lrscan
+lrscan
+1.5.
+p manual 400 31
+warp 2.78
+help
+lrscan
+move 140 3
+damages
+srscan
+shield down
+srscan
+move 137 1.85
+phasers auto 968
+m 0 8
+srscan
+srscan
+p manual 16 437
+undock
+phasers
+p manual 80 161
+lrscan
+impulse 199 0.6
+move 168 1
+torpedo 194 y
+torpedo 21 n
+phasers auto 1331
+computer lrscan
+phasers auto 36
+move 274 0.81
+lrscan
+phasers auto 872
+status
+srscan
+m 286 7.1
+lrscan
+dock
+no
+shield
+rest 2
+computer chart
+warp 9
+capture
+dock
+damages
+yes
+computer pheff 1
+m 288 2
+move 92 1.9
+shield down
+move 306 1.2
+torpedo 42 n
+p manual 498 475
+phasers auto 328
+phasers auto 1164
+rest 2.02
+dock
+status
+impulse 76 0.2
+rest 2.75
+n
+status
+rest 0.44
+m 118 7.66
+yes
+dock
+capture
+t 299
+t 136
+help
+m 137 4.3
+move 291 1.1
+p manual 442 73
+phasers auto 1428
+p manual 306 105
+phasers auto 1336
+torpedo 246 no
+lrscan
+y
+phasers auto 470
+help
+cloak up
+yes
+move 97 2
+s
+undock
+capture
+ram 130 0
+m 216 1
+lrscan
+move 149 0.1
+torpedo 345 n
+srscan
+m 223 3
+move 299 2.2
+impulse 278 0.3
+lrscan
+phasers auto 897
+help
+abandon
+lrscan
+yes
+dock
+impulse 230 0.30
+shield
+yes
+lrscan
+yes
+dock
+torpedo 58 no
+p manual 180 30
+undock
+dock
+torpedo 93 no
+cloak up
+s
+help
+cloak up
+lrscan
+torpedo 169 no
+undock
+t 284
+m 95 4.1
+computer trajectory
+srscan
+p manual 126 356
+computer impcost 8
+t 348
+lrscan
+computer pheff 9
+st
+s
+visual 189
+computer pheff 8
+dock
+m 341 4.36
+s
+shield up
+computer score
+torpedo 336 y
+status
+computer distresslist
+visual 355
+dock
+lrscan
+damages
+computer distresslist
+lrscan
+srscan
+lrscan
+move 82 1.2
+dock
+torpedo 216 y
+cloak down
+srscan
+phasers auto 1415
+impulse 92 0
+undock
+warp 4.34
+warp 5
+computer pheff 7
+st
+srscan
+lrscan
+st
+p manual 30 430
+srscan
+phasers auto 835
+srscan
+undock
+move 20 1
+abandon
+visual 123
+lrscan
+phasers auto 337
+m 59 3
+t 148
+move 238 2.4
+p manual 287 136
+srscan
+warp 9.9
+lrscan
+dock
+1.5.
+shield up
+srscan
+lrscan
+st
+srscan
+srscan
+cloak down
+move 244 1.0
+dump
+y
+impulse 310 0.6
+lrscan
+m 211 1.0
+torpedo 274 no
+computer time 6 7.4
+computer time 1 2.23
+lrscan
+dock
+shield
+m 307 7.59
+srscan
+shield up
+phasers auto 1500
+cloak down
+srscan
+move 53 1.0
+lrscan
+lrscan
+cloak up
+dock
+-3

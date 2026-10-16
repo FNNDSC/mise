@@ -1,0 +1,311 @@
+
+   * * *   S T A R   T R E K   * * *
+
+Press return to continue.
+What length game: What skill game: Enter a password: 15 Klingons
+2 starbases at 4,1, 3,3
+It takes 550 units to kill a Klingon
+Condition RED
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . * . . . E 0   stardate      3700.00
+1 . . . . . *   . . . 1   condition     RED
+2 . . . . . . . . . . 2   position      4,1/0,9
+3 . * . . . . . . . . 3   warp factor   5.0
+4 # . . . . . . . . . 4   total energy  5000
+5 . . . . . . . . . K 5   torpedoes     10
+6 . . . K . . . . . . 6   shields       up, 100%
+7 . . . . . . .   . . 7   Klingons left 15
+8 . . . . . . . . . . 8   time left     8.00
+9 . . . * . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Klingon at 6,3 escapes to quadrant 4,2
+
+Stardate 3700.00: Klingon attack:
+HIT: 168 units from 5,9, shields absorb 100%, effective hit 0
+Klingon at 5,9 escapes to quadrant 5,1
+
+Command: Condition RED
+
+Stardate 3700.27: Klingon attack:
+HIT: 209 units from 8,0, shields absorb 88%, effective hit 23
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      3700.27
+1 . .   . . * . . . . 1   condition     RED
+2 . . . . . . . *   . 2   position      4,2/6,2
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . * . . . . . . 4   total energy  4813
+5 . . . . . . . . . . 5   torpedoes     10
+6 . . E . . . . . . . 6   shields       up, 76%
+7 . . . . . . . . . . 7   Klingons left 15
+8 K . . . . . . . . . 8   time left     7.73
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Torpedo track:
+   6.5	 2.5
+   7.5	 1.5
+   8.5	 0.5
+   *** Klingon at 8,0 destroyed ***
+
+Command: Spock: That would take 152% of our remaining time.
+Are you sure that is wise: (He's finally gone mad)
+Computer reports navigation error; Enterprise stopped at 2,2
+
+Uhura: Captain, starsystem Nimrod III in quadrant 3,4 is under attack
+
+Command: Condition RED
+Klingon at 5,4 moves to 4,2
+
+Stardate 3704.85: Klingon attack:
+HIT: 168 units from 4,2, shields absorb 85%, effective hit 25
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: 
+Uhura: Captain, starsystem Arachnid I in quadrant 5,1 is under attack
+Klingon at 4,2 escapes to quadrant 3,1
+
+Command: Spock: That would take 507% of our remaining time.
+Are you sure that is wise: 
+Command: Condition RED
+
+Uhura:  We've lost contact with starsystem Nimrod III
+  in quadrant 3,4.
+Klingon at 8,8 escapes to quadrant 3,0
+
+Command: Computer reports navigation error; Enterprise stopped at 6,1
+
+Uhura: Captain, starsystem Deneb VII in quadrant 7,7 is under attack
+
+Command: Computer reports navigation error; Enterprise stopped at 6,1
+
+Command: Condition RED
+
+Stardate 3706.35: Klingon attack:
+HIT: 164 units from 9,8, shields absorb 78%, effective hit 35
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      3706.35
+1 . . . * . . . . . . 1   condition     RED
+2 . . . * * . . . . . 2   position      3,0/6,4
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  3782
+5 . . . . . . . . . . 5   torpedoes     9
+6 . . . . E . . . . . 6   shields       up, 70%
+7 . . . . . . . . . . 7   Klingons left 14
+8 . . . . . . . . . * 8   time left     2.21
+9 . . . . . . . . K . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Torpedo track, torpedo number 1:
+   6.5	 4.5
+   7.5	 5.4
+   8.5	 6.2
+   9.5	 7.1
+Torpedo missed
+Torpedo track, torpedo number 2:
+   6.5	 4.5
+   7.1	 5.5
+   7.6	 6.5
+   8.2	 7.5
+   8.7	 8.5
+   9.3	 9.5
+Torpedo missed
+Torpedo track, torpedo number 3:
+   6.5	 4.5
+   7.5	 5.3
+   8.5	 6.1
+   9.5	 6.8
+Torpedo missed
+
+Stardate 3706.35: Klingon attack:
+HIT: 125 units from 9,8, shields absorb 69%, effective hit 38
+Klingon at 9,8 moves to 1,0
+
+Command: Photon tubes misfire on torpedo 1
+	photon tubes damaged
+Torpedo track, torpedo number 1:
+   6.5	 4.5
+   5.5	 4.6
+   4.5	 4.7
+   3.5	 4.8
+   2.5	 4.9
+Spock: Star at 2,4 gone nova
+Spock: Star at 1,3 gone nova
+Spock: Star at 2,3 gone nova
+
+Stardate 3706.35: Klingon attack:
+HIT: 84 units from 1,0, shields absorb 64%, effective hit 30
+Klingon at 1,0 moves to 3,2
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      3706.35
+1 . . . . . . . . . . 1   condition     RED
+2 . . .   . . . . . . 2   position      3,0/6,4
+3 . . K . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  3714
+5 . . . . . . . . . . 5   torpedoes     5
+6 . . . . E . . . . . 6   shields       up, 60%
+7 . . . . . . . . . . 7   Klingons left 14
+8 . . . . . . . . . * 8   time left     2.21
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Shields already up
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Fat chance, captain
+Klingon at 3,2 moves to 0,0
+
+Stardate 3706.40: Klingon attack:
+HIT: 67 units from 0,0, shields absorb 59%, effective hit 27
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 K . . . . . . . . . 0   stardate      3706.40
+1 . . . . . . . . . . 1   condition     RED
+2 . . .   . . . . . . 2   position      3,0/6,4
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  3693
+5 . . . . . . . . . . 5   torpedoes     5
+6 . . . . E . . . . . 6   shields       up, 58%
+7 . . . . . . . . . . 7   Klingons left 14
+8 . . . . . . . . . * 8   time left     2.16
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Shields already up
+
+Command: Sulu reports photon tubes are damaged
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 K . . . . . . . . . 0   stardate      3706.40
+1 . . . . . . . . . . 1   condition     RED
+2 . . .   . . . . . . 2   position      3,0/6,4
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  3693
+5 . . . . . . . . . . 5   torpedoes     5
+6 . . . . E . . . . . 6   shields       up, 58%
+7 . . . . . . . . . . 7   Klingons left 14
+8 . . . . . . . . . * 8   time left     2.16
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Klingon at 0,0 surrenders
+14 klingons commit suicide rather than be taken captive
+186 captives taken
+   *** Klingon at 0,0 destroyed ***
+
+Command: Condition RED
+
+Stardate 3707.13: Klingon attack:
+HIT: 238 units from 0,3, shields absorb 60%, effective hit 93
+
+Command: Sulu reports photon tubes are damaged
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 * . . K . . . . . . 0   stardate      3707.13
+1 . . E . . . . . . . 1   condition     RED
+2 . . . . . . * . . . 2   position      5,1/1,2
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . * . . . . * . . . 4   total energy  3294
+5 . . . @ . . . . . . 5   torpedoes     5
+6 . . . . . . . . . . 6   shields       up, 51%
+7 . . . . * . . . . . 7   Klingons left 13
+8 . . . . . . . . . . 8   time left     1.59
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Distressed Starsystem Arachnid I
+
+Command: Klingon at 0,3 surrenders
+183 klingons commit suicide rather than be taken captive
+17 captives taken
+   *** Klingon at 0,3 destroyed ***
+Distress call for Arachnid I in quadrant 5,1 nullified
+
+Command: Condition RED
+
+Uhura: Captain, Starfleet Command reports a supernova
+  in quadrant 0,3.  Caution is advised
+
+Uhura: Captain, Starfleet Command reports a supernova
+  in quadrant 7,6.  Caution is advised
+
+Stardate 3708.30: Klingon attack:
+HIT: 175 units from 8,5, shields absorb 56%, effective hit 76
+
+Command: Fat chance, captain
+
+Stardate 3708.35: Klingon attack:
+HIT: 144 units from 8,5, shields absorb 50%, effective hit 72
+Klingon at 8,5 escapes to quadrant 7,3
+
+Command: Spock: That would take 89% of our remaining time.
+Are you sure that is wise: Computer reports navigation error; Enterprise stopped at 4,7
+
+Command: Spock: That would take 128% of our remaining time.
+Are you sure that is wise: Condition RED
+
+You ran out of time
+
+*** Your score:
+3 Klingons killed                               411
+Kill rate 0.34 Klingons/stardate                136
+Penalty for 13 klingons remaining             -1300
+3 stars destroyed                               -15
+
+***  TOTAL                                     -768
+Another game: 

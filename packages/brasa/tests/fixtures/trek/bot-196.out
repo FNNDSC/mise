@@ -1,0 +1,95 @@
+
+   * * *   S T A R   T R E K   * * *
+
+Press return to continue.
+What length game: What skill game: Enter a password: 60 Klingons
+1 starbase at 5,1
+It takes 1150 units to kill a Klingon
+Condition RED
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      3800.00
+1 . . . . * . . . * . 1   condition     RED
+2 . . K . . . .   * * 2   position      5,1/6,9
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  5000
+5 . . . . . . . . . . 5   torpedoes     10
+6 . # . . . . . . . E 6   shields       up, 100%
+7 * . . . . . . . . @ 7   Klingons left 60
+8 . . . . . . . . . . 8   time left     14.00
+9 . . . . * . . . * . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Triad III
+Klingon at 2,2 escapes to quadrant 5,0
+
+Command: Computer reports navigation error; Enterprise stopped at 6,2
+
+Command: 
+*** Your score:
+Penalty for 60 klingons remaining            -24000
+
+***  TOTAL                                   -24000
+
+Command: Condition RED
+
+Stardate 3800.46: Klingon attack:
+HIT: 313 units from 7,3, shields absorb 100%, effective hit 0
+Klingon at 7,3 moves to 5,0
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . .   . . . . . . 0   stardate      3800.46
+1 . . . . . . . . . . 1   condition     RED
+2 . . . . . . . . . . 2   position      5,0/4,8
+3 . . . . . . . . . . 3   warp factor   5.0
+4 .   . . . . . * E . 4   total energy  4587
+5 K . . . . . . . . . 5   torpedoes     10
+6 * . . . . * . . . . 6   shields       up, 79%
+7 . . . . . . . . . . 7   Klingons left 60
+8 . . . . . . @ . . . 8   time left     13.54
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Nemisis IV
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . .   . . . . . . 0   stardate      3800.46
+1 . . . . . . . . . . 1   condition     RED
+2 . . . . . . . . . . 2   position      5,0/4,8
+3 . . . . . . . . . . 3   warp factor   5.0
+4 .   . . . . . * E . 4   total energy  4587
+5 K . . . . . . . . . 5   torpedoes     10
+6 * . . . . * . . . . 6   shields       up, 79%
+7 . . . . . . . . . . 7   Klingons left 60
+8 . . . . . . @ . . . 8   time left     13.54
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Nemisis IV
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Fat chance, captain
+Klingon at 5,0 escapes to quadrant 5,1
+
+Command: Condition RED
+
+Stardate 3800.69: Klingon attack:
+HIT: 254 units from 6,9, shields absorb 78%, effective hit 54
+
+Command: RED ALERT: collision imminent
+Yeoman Rand: Captain, isn't it getting hot in here?
+Spock: Hull temperature approaching 550 Degrees Kelvin.
+
+You have burned up in a star
+
+*** Your score:
+Penalty for 60 klingons remaining            -24000
+Penalty for getting killed                     -500
+
+***  TOTAL                                   -24500
+Another game: 

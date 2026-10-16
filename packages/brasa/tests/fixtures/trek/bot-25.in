@@ -1,0 +1,186 @@
+
+long
+impossible
+foo
+computer kill
+kill
+score
+move 10 1.12
+torpedo 256 no
+srscan
+torpedo 256 no
+torpedo 256 yes 10
+torpedo 256 yes 5
+torpedo 256 yes 10
+srscan
+torpedo 256 yes 5
+capture
+computer chart
+phasers manual
+100
+120
+0
+100
+275
+0
+300
+272
+0
+300
+60
+5
+phasers automatic 300
+torpedo 45 no
+srscan
+phasers manual
+700
+246
+5
+torpedo 45 no
+impulse 45 0.05
+torpedo 14 yes 5
+torpedo 14 no
+shield up
+phasers manual
+700
+129
+0
+700
+302
+15
+torpedo 14 no
+capture
+torpedo 18 yes 5
+srscan
+torpedo 18 yes 5
+phasers manual
+300
+225
+0
+300
+117
+15
+torpedo 18 no
+capture
+torpedo 90 yes 10
+torpedo 90 yes 10
+torpedo 90 no
+srscan
+srscan
+srscan
+torpedo 90 no
+phasers automatic 1500
+move 78 4.20
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+computer warpcost 3 6
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+damages
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+impulse 225 0.18
+computer move 2,5
+2
+6
+yes
+yes
+medium
+impossible
+foo
+move 329 1.17
+computer srscan
+kill
+chart
+torpedo 67 yes 10
+torpedo 97 no
+move 13 0.92
+torpedo 108 no
+torpedo 108 yes 10
+torpedo 108 no
+torpedo 108 no
+phasers manual
+srscan
+phasers automatic 1500
+phasers automatic 1000
+phasers automatic 300
+torpedo 108 no
+phasers automatic 1000
+shield up
+computer trajectory
+torpedo 108 yes 5
+phasers manual
+torpedo 108 no
+torpedo 108 yes 10
+impulse 108 0.05
+move 94 1.30
+move 68 0.54
+move 108 0.95
+move 106 0.73
+impulse 121 0.58
+move 90 0.60
+impulse 59 0.58
+srscan
+torpedo 262 yes 10
+move 0 1.00
+computer time 3 8
+kill
+score
+phasers automatic 1500
+torpedo 117 yes 5
+torpedo 117 yes 10
+torpedo 117 no
+phasers manual
+torpedo 117 yes 10
+computer srscan
+score
+phasers manual
+phasers automatic 600
+phasers manual
+torpedo 117 yes 10
+phasers automatic 600
+torpedo 117 yes 5
+torpedo 117 yes 5
+phasers automatic 1000
+shield up
+capture
+phasers automatic 1500
+impulse 279 0.51
+yes
+no

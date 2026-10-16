@@ -1,0 +1,102 @@
+/*
+ * ram.ts: a TypeScript port of BSD trek(6), from ram.c.
+ * Ported from NetBSD src/games/trek (trunk 7a9ca154a8f6144307865f23390a3c63b400b801): ram.c 1.8 2009/05/24.
+ *
+ * Copyright (c) 1980, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ */
+/**
+ * @file Ramming an object: a Klingon, a star or a starbase.
+ *
+ * @module
+ */
+import { BASE, INHABIT, KLINGON, L_STAR, NDEV, SINS, STAR } from './consts.js';
+import type { Trek } from './context.js';
+import { damage } from './damage.js';
+import { damaged } from './damaged.js';
+import { killb, killk } from './kill.js';
+import { lose } from './lose.js';
+import { franf, ranf } from './rand.js';
+
+/*
+**  RAM SOME OBJECT
+**
+**	You have run into some sort of object.  It may be a Klingon,
+**	a star, or a starbase.  If you run into a star, you are really
+**	stupid, because there is no hope for you.
+**
+**	If you run into something else, you destroy that object.  You
+**	also rack up incredible damages.
+*/
+
+/** Rams whatever is at ix,iy. */
+export async function ram(t: Trek, ix: number, iy: number): Promise<void> {
+  const { Ship, Game, Param } = t.s;
+  let i: number;
+
+  t.io.printf('\x07RED ALERT\x07: collision imminent\n');
+  const c: string = t.s.Sect[ix][iy];
+  switch (c) {
+    case KLINGON:
+      t.io.printf('%s rams Klingon at %d,%d\n', Ship.shipname, ix, iy);
+      await killk(t, ix, iy);
+      break;
+
+    case STAR:
+    case INHABIT:
+      t.io.printf("Yeoman Rand: Captain, isn't it getting hot in here?\n");
+      await t.io.sleep(2);
+      t.io.printf('Spock: Hull temperature approaching 550 Degrees ' +
+        'Kelvin.\n');
+      await lose(t, L_STAR);
+      // falls through (lose() never returns)
+    case BASE:
+      t.io.printf('You ran into the starbase at %d,%d\n', ix, iy);
+      await killb(t, Ship.quadx, Ship.quady);
+      /* don't penalize the captain if it wasn't his fault */
+      if (!damaged(t, SINS)) Game.killb += 1;
+      break;
+  }
+  await t.io.sleep(2);
+  t.io.printf('%s heavily damaged\n', Ship.shipname);
+
+  /* select the number of deaths to occur */
+  i = 10 + ranf(t.rnd, 20 * Game.skill);
+  Game.deaths += i;
+  Ship.crew -= i;
+  t.io.printf('McCoy: Take it easy Jim; we had %d casualties.\n', i);
+
+  /* damage devices with an 80% probability */
+  for (i = 0; i < NDEV; i++) {
+    if (ranf(t.rnd, 100) < 20) continue;
+    await damage(t, i, (2.5 * (franf(t.rnd) + franf(t.rnd)) + 1.0) * Param.damfac[i]);
+  }
+
+  /* no chance that your shields remained up in all that */
+  Ship.shldup = 0;
+}

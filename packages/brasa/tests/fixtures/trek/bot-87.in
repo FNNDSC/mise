@@ -1,0 +1,87 @@
+
+short
+novice
+foo
+move 205 1.43
+move 194 1.24
+move 212 1.30
+move 22 1.08
+srscan
+torpedo 288 no
+move 73 2.82
+capture
+phasers manual
+torpedo 180 no
+torpedo 63 no
+shield up
+torpedo 180 yes 10
+phasers automatic 600
+torpedo 180 no
+phasers automatic 300
+phasers automatic 600
+torpedo 180 yes 10
+shield up
+phasers manual
+srscan
+phasers automatic 1500
+phasers manual
+computer impcost 2
+capture
+move 162 0.95
+srscan
+phasers automatic 300
+lrscan
+torpedo 135 no
+torpedo 135 no
+phasers automatic 1500
+phasers automatic 300
+torpedo 135 yes 10
+phasers manual
+torpedo 135 no
+torpedo 135 no
+phasers automatic 1000
+torpedo 135 yes 10
+capture
+move 337 2.51
+move 135 0.85
+phasers manual
+torpedo 63 no
+torpedo 63 yes 10
+phasers manual
+phasers manual
+shield up
+torpedo 63 yes 5
+phasers manual
+phasers automatic 300
+torpedo 63 yes 5
+torpedo 63 no
+capture
+move 90 0.70
+impulse 65 1.43
+move 70 1.49
+move 62 1.48
+move 58 0.94
+move 45 0.42
+impulse 104 0.41
+phasers manual
+srscan
+computer lrscan
+kill
+score
+capture
+move 23 1.30
+srscan
+phasers automatic 600
+torpedo 338 no
+computer trajectory
+move 0 0.90
+move 344 0.73
+move 343 1.36
+impulse 337 1.52
+move 333 1.12
+move 344 0.73
+phasers automatic 600
+torpedo 326 yes 5
+shield up
+torpedo 326 no
+no

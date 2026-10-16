@@ -1,0 +1,217 @@
+
+short
+fair
+foo
+move 154 3.22
+phasers manual
+phasers automatic 600
+capture
+srscan
+torpedo 117 yes 5
+impulse 250 4.37
+yes
+yes
+long
+novice
+tournament
+zz9
+move 186 2.82
+computer move 2,5
+5
+7
+computer course 3,4
+5
+5
+move 339 1.39
+move 331 1.03
+torpedo 153 yes 10
+srscan
+torpedo 180 no
+torpedo 180 yes 5
+move 157 2.28
+move 153 1.12
+move 85 1.10
+torpedo 281 no
+torpedo 180 no
+move 301 6.05
+move 300 5.92
+dock
+move 167 1.33
+move 159 0.85
+move 171 1.22
+move 197 1.36
+impulse 186 1.00
+move 191 1.02
+move 191 1.02
+impulse 174 1.00
+impulse 185 1.10
+move 164 0.73
+move 194 0.82
+impulse 185 1.20
+move 180 1.30
+move 198 1.26
+move 189 1.22
+move 180 1.30
+impulse 169 1.02
+move 175 1.10
+move 214 0.72
+move 214 0.72
+impulse 190 1.12
+move 201 0.85
+move 201 0.85
+move 159 0.85
+move 164 0.73
+move 180 0.90
+impulse 167 1.33
+move 185 1.10
+move 166 1.24
+computer pheff 3
+impulse 204 0.98
+move 186 1.00
+move 165 1.14
+move 172 0.71
+move 189 1.32
+move 195 1.14
+move 180 0.70
+move 167 1.33
+move 194 1.24
+impulse 191 1.02
+move 198 0.95
+move 207 0.89
+move 193 1.33
+impulse 163 1.04
+move 198 0.63
+impulse 207 0.67
+move 190 1.12
+move 180 0.70
+move 194 1.24
+move 171 1.22
+move 193 0.92
+move 207 0.89
+dump
+move 210 0.81
+move 207 0.89
+impulse 197 1.36
+computer kill
+chart
+move 185 1.10
+move 157 0.76
+move 185 1.10
+move 171 1.32
+move 200 1.17
+move 189 0.61
+move 157 0.76
+computer distresslist
+move 193 1.33
+move 189 1.32
+move 189 1.32
+move 167 1.33
+move 180 0.60
+move 180 0.70
+move 198 1.26
+move 198 1.26
+move 174 1.00
+move 189 1.22
+move 196 0.73
+move 189 1.22
+move 185 1.20
+move 165 1.14
+move 191 1.02
+move 174 0.91
+move 190 1.12
+move 200 1.17
+move 169 1.02
+impulse 171 0.61
+move 157 0.76
+move 174 1.00
+move 166 0.82
+shield up
+move 201 0.85
+move 193 0.92
+impulse 175 1.20
+move 203 0.76
+move 197 1.04
+move 174 0.91
+impulse 210 0.81
+move 166 1.24
+move 172 0.71
+impulse 194 0.82
+impulse 214 0.72
+impulse 180 0.80
+move 170 1.12
+impulse 180 0.90
+move 185 1.10
+impulse 193 0.92
+move 184 1.30
+move 204 0.98
+move 190 1.12
+impulse 167 0.92
+impulse 186 1.00
+move 193 0.92
+move 175 1.10
+move 167 1.33
+impulse 196 0.73
+move 164 0.73
+visual 135
+move 171 1.22
+impulse 189 1.22
+move 167 0.92
+move 159 0.85
+move 200 1.17
+move 198 0.63
+move 180 1.20
+move 194 0.82
+move 173 0.81
+move 185 1.20
+move 198 1.26
+lrscan
+move 193 1.33
+move 171 1.32
+move 164 0.73
+impulse 169 1.02
+computer chart
+move 197 1.04
+move 180 1.30
+move 170 1.12
+move 185 1.20
+impulse 163 1.04
+move 193 0.92
+move 163 1.04
+move 171 1.22
+move 185 1.10
+move 188 0.71
+impulse 207 0.89
+impulse 191 1.02
+move 167 0.92
+move 169 1.02
+move 193 1.33
+move 196 0.73
+move 188 0.71
+move 195 1.14
+move 162 0.63
+move 175 1.20
+move 198 1.26
+move 171 1.32
+move 167 0.92
+move 180 0.80
+move 197 1.04
+status
+move 203 0.76
+move 189 1.22
+move 193 0.92
+impulse 189 1.22
+computer chart
+move 171 1.22
+move 171 1.32
+move 174 0.91
+move 162 0.63
+move 188 0.71
+move 185 1.10
+move 180 1.00
+impulse 171 1.32
+move 167 1.33
+move 188 0.71
+move 207 0.89
+move 203 0.76
+terminate
+no

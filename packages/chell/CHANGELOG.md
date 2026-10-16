@@ -1,5 +1,27 @@
 # @fnndsc/chell
 
+## 5.14.0
+
+### Minor Changes
+
+- 90b7688: The ARGUS console is now a terminal by default wherever the daemon offers one; TRANSCRIPT on its drawer goes back. A browser's terminal can no longer run anything on the daemon's host. Its chell used to declare that it could, so `!cmd`, host pipe segments, `edit` and `download` would have run on the daemon host. These requests now go to the browser that owns the terminal, which refuses `!` and host pipes by name, opens its own editor pane and saves downloads in the browser. Questions stay in the terminal. A terminal's chell marks for the page whether it is at its prompt, running a command or asking, and the page shows it as `data-terminal-state`. Ctrl-C at an open question now abandons it, so the command that asked is told and ends. Commands typed in the page's own terminal move the page as its console's commands always did: a game opens the GAMES pane, `say` speaks and a `cd` re-lists the files pane. An answered pane question is recorded in the terminal's scrollback. A line the terminal wrapped reads back as one line. The smoke suite drives either console (`SMOKE_CONSOLE=terminal|transcript`), and the nightly gains a transcript lane (#1125).
+- 6bde343: ARGUS's own words now work from any chell on the session, including `desktop show`, `view runs` and `dag census on`. A browser declares the subjects its language claims (whole subjects such as `dag`, `desktop` and `pane`, and only listed verbs of shared ones such as `file open` and `help keys`). The daemon then routes a single command in a claimed subject to that browser instead of the engine, and the chell prints the browser's answer. The browser that owns a chell's terminal answers first, then the most recently active one. With no browser attached, a subject claimed whole is refused by name, and a shared subject stays the session's. Tab completion offers the claimed words. A browser can also send a note to its own consoles, printed above the line being typed. A terminal's chell now tells the daemon which terminal it draws. This is the groundwork for ARGUS's console becoming a terminal (#1125).
+
+### Patch Changes
+
+- Updated dependencies [90b7688]
+- Updated dependencies [554fd24]
+- Updated dependencies [90b7688]
+- Updated dependencies [6bde343]
+- Updated dependencies [7645d3c]
+  - @fnndsc/argus@0.30.0
+  - @fnndsc/calypso@0.23.0
+  - @fnndsc/menu@0.24.0
+  - @fnndsc/salsa@4.0.3
+  - @fnndsc/brasa@0.38.1
+  - @fnndsc/chili@3.7.9
+  - @fnndsc/cumin@3.27.15
+
 ## 5.13.0
 
 ### Minor Changes

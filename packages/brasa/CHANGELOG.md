@@ -1,5 +1,18 @@
 # @fnndsc/brasa
 
+## 0.38.1
+
+### Patch Changes
+
+- Updated dependencies [90b7688]
+- Updated dependencies [554fd24]
+- Updated dependencies [90b7688]
+- Updated dependencies [6bde343]
+  - @fnndsc/menu@0.24.0
+  - @fnndsc/salsa@4.0.3
+  - @fnndsc/chili@3.7.9
+  - @fnndsc/cumin@3.27.15
+
 ## 0.38.0
 
 ### Minor Changes

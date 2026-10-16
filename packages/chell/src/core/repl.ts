@@ -19,6 +19,7 @@ import { sink_set, StdoutSink } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
 import { surfaceLine_executeSafely } from './surfaceDispatch.js';
 import { promptGuard_create, type PromptGuard } from './promptGuard.js';
+import { lineRedraw_set, question_isOpen, typeahead_clear, typeahead_push, typeahead_take } from './lineDiscipline.js';
 import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
 
 /**
@@ -51,6 +52,10 @@ export class REPL {
   private rl: readline.Interface;
   private engine: BrasaEngine;
   private isOpen: boolean = true;
+  /** Whether a command is in flight: lines typed meanwhile wait (lineDiscipline.ts). */
+  private busy: boolean = false;
+  /** Draws progress for the command in flight; cleared when it ends. */
+  private readonly progressRenderer: TerminalProgressRenderer = new TerminalProgressRenderer();
   private lastCommandDurationMs: number = 0;
   private lastExitCode: number = 0;
   private promptText: string | (() => string) | undefined;
@@ -105,47 +110,33 @@ export class REPL {
     // reaches the terminal through the sink it installs, and interactive
     // prompts run through the surface it installs — both backed by the REPL's
     // single readline interface, so builtins never assume a terminal exists.
-    const progressRenderer: TerminalProgressRenderer = new TerminalProgressRenderer();
-    sink_set(new StdoutSink(progressRenderer));
+    sink_set(new StdoutSink(this.progressRenderer));
     surface_set(cliSurface_create(this.rl, this.bytesFetch));
 
     await this.history_load();
     await this.prompt_update();
-
-    this.rl.on('line', async (line: string) => {
-      // The line is the command's now; its output flows raw.
-      this.guard.release();
-      await this.history_append(line);
-
-      // `exit` quits this shell, never the engine. Closing readline runs the
-      // 'close' handler (goodbye, then process exit). Crucially, for a remote
-      // surface this detaches the client and leaves the daemon — and its other
-      // surfaces — running; forwarding `exit` to the engine would instead reach
-      // dispatch's process.exit on the daemon and tear every surface down.
-      if (line.trim().split(/\s+/)[0] === 'exit') {
-        this.rl.close();
-        return;
+    // Output arriving on its own (another surface's command) redraws what the
+    // operator is typing into: the prompt at rest, or an open question. While
+    // a command prints and asks nothing, there is nothing to redraw.
+    lineRedraw_set((): void => {
+      if (this.busy && !question_isOpen()) return;
+      try {
+        this.rl.prompt(true);
+      } catch {
+        // The interface has closed.
       }
+    });
 
-      const startMs: number = Date.now();
-      process.exitCode = 0;
-      await surfaceLine_executeSafely(this.engine, line);
-      // Progress is telemetry about a running command, so nothing may outlive
-      // the command. A builtin that throws between announcing work and closing
-      // it would otherwise leave an indicator running against nothing.
-      progressRenderer.clear();
-      this.lastCommandDurationMs = Date.now() - startMs;
-      this.lastExitCode = (process.exitCode as number | undefined) ?? 0;
-
-      if (this.isOpen) {
-        await this.prompt_update();
-      }
+    this.rl.on('line', (line: string): void => {
+      void this.line_receive(line);
     });
 
     this.rl.on('SIGINT', () => {
       // A cancellable foreground command (currently recursive scans) gets the
       // interrupt first. Otherwise Ctrl+C retains readline's usual behavior:
-      // clear an unfinished input line and redraw the prompt.
+      // clear an unfinished input line and redraw the prompt. Either way,
+      // what was typed ahead is forgotten, as a terminal's interrupt does.
+      typeahead_clear();
       this.guard.write('\n');
       if (this.engine.line_cancel?.()) {
         return;
@@ -160,6 +151,67 @@ export class REPL {
       console.log(chalk.cyan('Exiting ChELL. Goodbye!'));
       process.exit(0);
     });
+  }
+
+  /**
+   * Takes a typed line. While a command is in flight the line waits, in
+   * order (lineDiscipline.ts): a question takes it as an answer, or it runs
+   * once the command finishes, as a terminal hands typed-ahead input to
+   * whatever reads next.
+   *
+   * @param line - The line typed.
+   */
+  private async line_receive(line: string): Promise<void> {
+    if (this.busy) {
+      typeahead_push(line);
+      return;
+    }
+    this.busy = true;
+    try {
+      let next: string | undefined = line;
+      while (next !== undefined) {
+        if (!(await this.line_run(next))) return;
+        next = typeahead_take();
+      }
+    } finally {
+      this.busy = false;
+    }
+    if (this.isOpen) {
+      await this.prompt_update();
+    }
+  }
+
+  /**
+   * Runs one line as a command.
+   *
+   * @param line - The line.
+   * @returns False when the line ended the shell (`exit`).
+   */
+  private async line_run(line: string): Promise<boolean> {
+    // The line is the command's now; its output flows raw.
+    this.guard.release();
+    await this.history_append(line);
+
+    // `exit` quits this shell, never the engine. Closing readline runs the
+    // 'close' handler (goodbye, then process exit). Crucially, for a remote
+    // surface this detaches the client and leaves the daemon — and its other
+    // surfaces — running; forwarding `exit` to the engine would instead reach
+    // dispatch's process.exit on the daemon and tear every surface down.
+    if (line.trim().split(/\s+/)[0] === 'exit') {
+      this.rl.close();
+      return false;
+    }
+
+    const startMs: number = Date.now();
+    process.exitCode = 0;
+    await surfaceLine_executeSafely(this.engine, line);
+    // Progress is telemetry about a running command, so nothing may outlive
+    // the command. A builtin that throws between announcing work and closing
+    // it would otherwise leave an indicator running against nothing.
+    this.progressRenderer.clear();
+    this.lastCommandDurationMs = Date.now() - startMs;
+    this.lastExitCode = (process.exitCode as number | undefined) ?? 0;
+    return true;
   }
 
   /**

@@ -47,6 +47,7 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
 
 const { cliSurface_create, promptLine_render, promptAnswer_take } =
   await import('../src/core/cliSurface.js');
+const { typeahead_push, typeahead_clear, typeahead_count, question_isOpen } = await import('../src/core/lineDiscipline.js');
 
 let writeSpy: jest.SpiedFunction<typeof process.stdout.write>;
 beforeEach(() => {
@@ -103,6 +104,36 @@ describe('persistent prompting (REPL interface)', () => {
     const answer = await cliSurface_create(rl).prompt({ message: 'Q? ' });
     expect(mockCreateInterface).not.toHaveBeenCalled();
     expect(answer).toBe('hi');
+  });
+
+  it('answers a visible question with a line typed ahead, without waiting at the terminal', async () => {
+    typeahead_clear();
+    typeahead_push('n');
+    const rl = { question: jest.fn() } as unknown as import('readline').Interface;
+    const answer = await cliSurface_create(rl).prompt({ message: 'Another game: ' });
+    expect(answer).toBe('n');
+    expect((rl.question as jest.Mock)).not.toHaveBeenCalled();
+    expect(writeSpy).toHaveBeenCalledWith('Another game: n\n');
+    expect(typeahead_count()).toBe(0);
+  });
+
+  it('marks the question open while it waits, and never answers a secret from what was typed ahead', async () => {
+    typeahead_clear();
+    let openWhileAsked: boolean = false;
+    const rl = {
+      question: jest.fn((_p: string, cb: (a: string) => void) => { openWhileAsked = question_isOpen(); cb('typed'); }),
+    } as unknown as import('readline').Interface;
+    await cliSurface_create(rl).prompt({ message: 'Q? ' });
+    expect(openWhileAsked).toBe(true);
+    expect(question_isOpen()).toBe(false);
+    typeahead_push('not-a-password');
+    const hidden = {
+      question: jest.fn((_p: string, cb: (a: string) => void) => cb('secret')),
+    } as unknown as import('readline').Interface;
+    Reflect.set(hidden, '_writeToOutput', (): void => undefined);
+    expect(await cliSurface_create(hidden).prompt({ message: 'Password: ', hidden: true })).toBe('secret');
+    expect(typeahead_count()).toBe(1);
+    typeahead_clear();
   });
 
   it('suppresses echo for hidden input and restores it afterward', async () => {

@@ -531,6 +531,23 @@ label {
   font-display: swap;
 }
 
+/* The console's face: JetBrains Mono with the Nerd Font glyphs, every icon
+ * one cell wide, so a terminal grid holds the prompt's powerline segments and
+ * icons without cropping (provenance in fonts/LICENSE.txt). */
+@font-face {
+  font-family: 'JetBrainsMono NF Mono';
+  src: url('./fonts/JetBrainsMonoNerdFontMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrainsMono NF Mono';
+  src: url('./fonts/JetBrainsMonoNerdFontMono-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+
 /* The faces of PHAROS, vendored under the OFL (fonts/pharos/): Chakra Petch
  * for labels, whose letterforms are chamfered like the frame, JetBrains Mono
  * for data. Nothing is fetched at runtime. */
@@ -4756,8 +4773,8 @@ body[data-zoom] #header-restore {
   display: flex;
 }
 
-/* The screen itself, per the prototype: black behind a harvest-gold rail,
- * Share Tech Mono in daybreak orange with a soft CRT glow. */
+/* The screen itself: black behind a harvest-gold rail, the console's
+ * Nerd Font in daybreak orange, MesloLGS NF for any glyph it lacks. */
 .argus-screen {
   flex: 1;
   min-width: 0;
@@ -4765,7 +4782,7 @@ body[data-zoom] #header-restore {
   padding: 0.8rem 1rem;
   display: flex;
   flex-direction: column;
-  font-family: 'Share Tech Mono', 'MesloLGS NF', monospace;
+  font-family: 'JetBrainsMono NF Mono', 'MesloLGS NF', monospace;
   color: var(--daybreak);
 }
 

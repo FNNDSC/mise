@@ -68,7 +68,7 @@ import { StatusBar } from './status.js';
 import { LaneInstrument } from './laneInstrument.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler, cyclerNames_seed } from './cycler.js';
-import { argusLine_run, language_extend, viewScript_run, DRAWER_CHORDS, VERB_LINES, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
+import { argusLine_run, claims_list, language_extend, viewScript_run, DRAWER_CHORDS, VERB_LINES, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
 import { chrisLanguage, type ChrisLangHost } from '../compositions/chris/lang.js';
 
 /** Console zoom, exposed for the language (the bar carries no control). */
@@ -2302,6 +2302,13 @@ async function surface_start(token: string): Promise<void> {
         restart.telemetry_take(extra);
         cascade?.index_observe(index);
       },
+      // A line typed in a chell (a terminal console, or a shell elsewhere on
+      // the session) whose subject this language claims: run here, answered there.
+      surfaceLine_receive: async (line: string): Promise<{ rendered: string; status: 'ok' | 'error' }> => {
+        const answer: string | null = await argusLine_run(argusHost, line);
+        if (answer === null) throw new Error('not a line of this surface');
+        return { rendered: answer, status: 'ok' };
+      },
       session_receive: (surface: string, envelope: WireEnvelope): void =>
         terminal.session_write(surface, envelope),
       // The sampler's refreshed models: every DAG pane showing that feed
@@ -2362,6 +2369,9 @@ async function surface_start(token: string): Promise<void> {
     },
   );
   const client: ArgusClient = attached.client;
+  // The language's subjects, the composition's included: a line in one typed
+  // in any chell on the session is routed here (claims.ts on the daemon).
+  client.claims_send(claims_list());
 
   statusBar.attach_show(attached.attach);
   daemonStale = attached.attach.stale === true;

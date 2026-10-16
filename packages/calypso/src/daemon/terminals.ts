@@ -52,6 +52,8 @@ export interface TerminalViewer {
   data: (terminalId: string, data: string) => void;
   /** Hears that the terminal has ended. */
   exit: (terminalId: string, code: number) => void;
+  /** The surface watching, as its host knows it (who a terminal's chell belongs to). */
+  owner?: () => unknown;
 }
 
 /** How terminals are kept. */
@@ -208,6 +210,26 @@ export class Terminals {
     for (const terminal of [...this.terminals.values()]) this.terminal_end(terminal);
   }
 
+  /**
+   * The viewer of a terminal, when it is running.
+   *
+   * @param terminalId - The terminal.
+   * @returns Its viewer, or null when nobody watches it or it is gone.
+   */
+  public viewer_get(terminalId: string): TerminalViewer | null {
+    return this.terminals.get(terminalId)?.viewer ?? null;
+  }
+
+  /**
+   * The terminals a viewer holds.
+   *
+   * @param viewer - The viewer.
+   * @returns Their ids.
+   */
+  public ids_of(viewer: TerminalViewer): string[] {
+    return [...this.terminals.values()].filter((terminal: Terminal): boolean => terminal.viewer === viewer).map((terminal: Terminal): string => terminal.id);
+  }
+
   /** How many terminals are running. */
   public get count(): number {
     return this.terminals.size;
@@ -244,8 +266,9 @@ export class Terminals {
         rows,
         cwd: process.env['HOME'] ?? process.cwd(),
         // A terminal draws colour, whatever the daemon's own environment said;
-        // CHELL_TERMINAL tells the chell it is a browser's console.
-        env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', FORCE_COLOR: '3', CHELL_TERMINAL: '1' },
+        // CHELL_TERMINAL names the terminal, so the chell can say on attach
+        // whose console it is.
+        env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', FORCE_COLOR: '3', CHELL_TERMINAL: id },
       },
     );
     const terminal: Terminal = { id, pty, buffer: [], bufferSize: 0, viewer: null, idle: null, exited: false };

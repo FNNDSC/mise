@@ -78,7 +78,7 @@ describe('Terminals', () => {
     expect(pty.args).toEqual(['/opt/chell/index.js', '--remote', 'rudolph@cube', '--attach', 'ws://127.0.0.1:4242', '--token', 'tok']);
     expect([pty.options.cols, pty.options.rows]).toEqual([120, 40]);
     expect(pty.options.env['TERM']).toBe('xterm-256color');
-    expect(pty.options.env['CHELL_TERMINAL']).toBe('1');
+    expect(pty.options.env['CHELL_TERMINAL']).toBe(opened.terminalId);
     expect(terminals.count).toBe(1);
   });
 

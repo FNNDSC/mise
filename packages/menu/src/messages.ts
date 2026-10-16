@@ -47,6 +47,15 @@ export const surfaceCapabilitiesMessageSchema = z.object({
    * before it can be handed over.
    */
   localFilesystem: z.boolean().optional(),
+  /**
+   * The subjects this surface's own language answers for (a browser's `dag`,
+   * `desktop`, `pane`). A subject the session also owns lists the verbs the
+   * surface claims from it; any other verb stays the session's. A line any
+   * surface types whose subject is claimed here is run by this surface.
+   */
+  claims: z.array(z.object({ subject: z.string(), verbs: z.array(z.string()).optional() })).optional(),
+  /** Set by a terminal's chell: the terminal it draws, so the daemon knows which browser it belongs to. */
+  terminal: z.string().optional(),
 });
 
 /** Attach to a session: declares the contract version, token, and surface capabilities. */
@@ -255,6 +264,33 @@ export const terminalCloseMessageSchema = z.object({
   terminalId: z.string(),
 });
 
+/** The answer to a `surfaceLine`: what the surface's own language said, as text to print. */
+export const surfaceLineResultMessageSchema = z.object({
+  type: z.literal('surfaceLineResult'),
+  lineId: z.string(),
+  rendered: z.string(),
+  status: z.enum(['ok', 'error']),
+});
+
+/** A `surfaceLine` the surface could not run (it no longer answers for the subject, or it failed). */
+export const surfaceLineErrorMessageSchema = z.object({
+  type: z.literal('surfaceLineError'),
+  lineId: z.string(),
+  reason: z.string(),
+});
+
+/** A surface's claims, declared or changed after attach (a composition extends the language once the backend is known). */
+export const surfaceClaimsMessageSchema = z.object({
+  type: z.literal('surfaceClaims'),
+  claims: z.array(z.object({ subject: z.string(), verbs: z.array(z.string()).optional() })),
+});
+
+/** A note from a surface for its console: printed above the line being typed there. */
+export const noteMessageSchema = z.object({
+  type: z.literal('note'),
+  text: z.string(),
+});
+
 /** What a watched subject is doing: sampled live, settled for good, or last sample failed. */
 export const WATCH_STATES = ['live', 'settled', 'stale'] as const;
 export const watchStateSchema = z.enum(WATCH_STATES);
@@ -370,6 +406,10 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   terminalInputMessageSchema,
   terminalResizeMessageSchema,
   terminalCloseMessageSchema,
+  surfaceLineResultMessageSchema,
+  surfaceLineErrorMessageSchema,
+  noteMessageSchema,
+  surfaceClaimsMessageSchema,
 ]);
 
 /** A message a surface sends to the daemon. */
@@ -825,6 +865,24 @@ export const terminalExitMessageSchema = z.object({
   code: z.number().int(),
 });
 
+/**
+ * A line typed in a chell whose subject this surface claims: run it in the
+ * surface's own language and answer with `surfaceLineResult`. `terminal` names
+ * the terminal it was typed in, when it was one of this surface's.
+ */
+export const surfaceLineMessageSchema = z.object({
+  type: z.literal('surfaceLine'),
+  lineId: z.string(),
+  line: z.string(),
+  terminal: z.string().optional(),
+});
+
+/** A note for this console, from the browser it belongs to: printed above the line being typed. */
+export const consoleNoteMessageSchema = z.object({
+  type: z.literal('consoleNote'),
+  text: z.string(),
+});
+
 /** Any message the daemon may send to a surface. */
 export const serverMessageSchema = z.discriminatedUnion('type', [
   attachedMessageSchema,
@@ -849,6 +907,8 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   terminalOpenedMessageSchema,
   terminalDataMessageSchema,
   terminalExitMessageSchema,
+  surfaceLineMessageSchema,
+  consoleNoteMessageSchema,
 ]);
 
 /** A message the daemon sends to a surface. */

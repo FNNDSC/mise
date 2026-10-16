@@ -143,6 +143,19 @@ const DESKTOP_PREFIX: string = 'argus.desktop.';
 const DESKTOP_CFS_DIR: string = '~/.config/argus/desktops';
 
 /**
+ * The subjects this language answers for, as the daemon is told them: whole
+ * subjects bare, a subject the session also owns with the verbs claimed from it.
+ *
+ * @returns The claims.
+ */
+export function claims_list(): Array<{ subject: string; verbs?: string[] }> {
+  return [...SUBJECTS].sort().map((subject: string): { subject: string; verbs?: string[] } => {
+    const claimed: ReadonlySet<string> | undefined = SHARED_SUBJECTS[subject];
+    return claimed === undefined ? { subject } : { subject, verbs: [...claimed].sort() };
+  });
+}
+
+/**
  * Parses a line into a sentence when its subject is reserved.
  *
  * @param line - The raw console line.

@@ -1,5 +1,14 @@
 # @fnndsc/chell
 
+## 5.12.6
+
+### Patch Changes
+
+- 6bee05a: A `chell -c` command's output is now only its answer, even when the session had to be started first. The session's start-up progress, and the notices that the daemon changed or disconnected, go to stderr, so a script or agent reading stdout no longer gets a boot log before the result.
+- dac084d: Attaching with chell --remote now finds the session porter started for you. A script on the same machine can attach to it directly, with no door or token; before, `chell --remote` said "No live calypso" while your session was running. A daemon you start by hand is still allowed beside porter's.
+- Updated dependencies [dac084d]
+  - @fnndsc/calypso@0.21.4
+
 ## 5.12.5
 
 ### Patch Changes

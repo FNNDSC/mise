@@ -63,6 +63,12 @@ export interface AskHooks {
   rootedListing_show: (id: string, panel: FilesPanel, path: string) => void;
   /** Opens the console drawer: a closed console is a question nobody can see. */
   console_expose: () => void;
+  /**
+   * A question with no pane to stand on, when the console is a terminal: a
+   * sheet over the stage (the terminal's chell did not ask it). Null when the
+   * transcript is the console, which asks it as before.
+   */
+  questionSheet_ask?: (request: PaneAskRequest) => Promise<string | null> | null;
 }
 
 /** The ask verbs a wired host has. */
@@ -227,6 +233,8 @@ export function asks_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
     // A pane that is not on stage cannot carry a question; the console can,
     // and it exposes itself to do it.
     if (mount === undefined) {
+      const sheeted: Promise<string | null> | null = hooks.questionSheet_ask?.(request) ?? null;
+      if (sheeted !== null) return sheeted;
       hooks.console_expose();
       return terminal.ask_open({
         message: request.message,

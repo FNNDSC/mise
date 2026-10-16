@@ -80,6 +80,11 @@ export const executeMessageSchema = z.object({
   id: z.string(),
   line: z.string(),
   instrument: z.boolean().optional(),
+  /**
+   * The surface shows this command in its own consoles itself (a browser
+   * mirroring a pressed verb into its terminal): its session echo skips them.
+   */
+  mirrored: z.boolean().optional(),
 });
 
 /** Requests cancellation of the caller's currently executing command. */

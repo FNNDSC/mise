@@ -303,6 +303,8 @@ export class CalypsoDaemon {
   private readonly edits: RequestBroker<EditOutcome> = new RequestBroker<EditOutcome>('e', 'surface disconnected before returning the edit');
   /** Lines run by a surface's own language, by the surface that claims them. */
   private readonly surfaceLines: RequestBroker<{ rendered: string; status: 'ok' | 'error' }> = new RequestBroker<{ rendered: string; status: 'ok' | 'error' }>('l', 'the surface that answers for this line went away before answering');
+  /** Each surface's terminal viewer: which terminals it draws. */
+  private readonly viewerOf: Map<Surface, TerminalViewer> = new Map();
   /** The browser that last did something: the one a claimed line goes to when no terminal of its own typed it. */
   private browserActive: Surface | null = null;
   /** Subjects a surface claimed whole this session, so a line in one is refused by name when none is attached. */
@@ -759,6 +761,7 @@ export class CalypsoDaemon {
 
       if (!surface) {
         surface = this.attach_handle(socket, parsed, urlToken);
+        if (surface !== null) this.viewerOf.set(surface, viewer);
         return;
       }
 
@@ -847,6 +850,7 @@ export class CalypsoDaemon {
       this.terminals?.detach(viewer);
       if (surface) {
         this.surfaces.delete(surface);
+        this.viewerOf.delete(surface);
         if (this.browserActive === surface) this.browserActive = null;
         // A detached surface holds no watches: whatever it kept live is
         // released, and a subject nobody else watches stops being sampled.
@@ -904,6 +908,17 @@ export class CalypsoDaemon {
       const reason: string = err instanceof Error ? err.message : String(err);
       this.send(origin.socket, { type: 'result', id: message.id, envelopes: [{ status: 'error', rendered: '', renderedErr: `${subject}: ${reason}\n` }] });
     }
+  }
+
+  /**
+   * The terminals a surface draws.
+   *
+   * @param surface - The surface.
+   * @returns Their ids; none for a surface that draws no terminal.
+   */
+  private terminalsOf(surface: Surface): string[] {
+    const viewer: TerminalViewer | undefined = this.viewerOf.get(surface);
+    return viewer === undefined ? [] : this.terminals?.ids_of(viewer) ?? [];
   }
 
   /**
@@ -1119,12 +1134,16 @@ export class CalypsoDaemon {
    * @param origin - The surface that produced the envelope.
    * @param envelope - The envelope to publish.
    */
-  private bus_publish(origin: Surface, envelope: CommandEnvelope): void {
+  private bus_publish(origin: Surface, envelope: CommandEnvelope, mirrored: boolean = false): void {
     this.scrollback.push({ surface: origin.id, envelope });
     if (this.scrollback.length > this.scrollbackSize) {
       this.scrollback.splice(0, this.scrollback.length - this.scrollbackSize);
     }
+    // A browser that mirrors a command into its own consoles has shown it
+    // there already: their chells are skipped, every other surface hears it.
+    const shown: string[] = mirrored ? this.terminalsOf(origin) : [];
     for (const surface of this.surfaces) {
+      if (surface.capabilities.terminal !== undefined && shown.includes(surface.capabilities.terminal)) continue;
       if (surface !== origin) {
         this.send(surface.socket, { type: 'session', surface: origin.id, envelope });
       }
@@ -1177,7 +1196,7 @@ export class CalypsoDaemon {
         // operator actually did.
         if (message.instrument !== true) {
           for (const envelope of envelopes) {
-            this.bus_publish(origin, envelope);
+            this.bus_publish(origin, envelope, message.mirrored === true);
           }
         }
       } else {

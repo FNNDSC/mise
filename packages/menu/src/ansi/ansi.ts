@@ -25,6 +25,13 @@ const BASE_COLORS: string[] = [
   '#77bbff', '#dd99ff', '#66dddd', '#ffffff',
 ];
 
+/**
+ * The sixteen ANSI colours the console draws (black, red, green, yellow,
+ * blue, magenta, cyan, white, then their bright forms): one table for the
+ * transcript and the terminal alike.
+ */
+export const ANSI_PALETTE: ReadonlyArray<string> = BASE_COLORS;
+
 /** The named colours the console's listing speaks in, as chalk names them. */
 export type ConsoleColour = 'yellow' | 'white' | 'cyan' | 'green' | 'magenta';
 

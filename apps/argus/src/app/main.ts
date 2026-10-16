@@ -120,6 +120,8 @@ import { greeting_ask } from './greeting.js';
 // has put their own LCARS-26.zip where the build can find it; where they have
 // not, the type falls back and the frame is unchanged.
 import '../lcars/argus.css';
+import { consoleMode_wire, type ConsoleModeControl } from './consoleMode.js';
+import type { TerminalScreen } from '../console/terminalScreen.js';
 
 /**
  * What the console shows above the first prompt: the ChRIS brain at rest,
@@ -896,6 +898,9 @@ function panelSounds_wire(): void {
 let cascade: Cascade | null = null;
 
 async function surface_start(token: string): Promise<void> {
+  // Which console the page shows (consoleMode.ts): wired once attached, read
+  // by the questions that have no pane to stand on.
+  let consoleMode: ConsoleModeControl | null = null;
   // Which backend the session runs over decides the composition: ChRIS's
   // panes, words, tiles and instruments, or the frame alone. Asked before
   // anything is built; a daemon older than the question is ChRIS.
@@ -1373,6 +1378,8 @@ async function surface_start(token: string): Promise<void> {
     replayPlace_get: (): ReplayPlace | null => desktop.replayPlace_get(),
     rootedListing_show,
     console_expose: (): void => consoleClosed_set?.(false),
+    questionSheet_ask: (request: PaneAskRequest): Promise<string | null> | null =>
+      consoleMode !== null && consoleMode.terminal_is() ? consoleMode.question_sheet(request) : null,
   });
   const { errandHost_find, errand_open, verbLine_run, ask_onPane } = asks;
 
@@ -2225,11 +2232,17 @@ async function surface_start(token: string): Promise<void> {
   );
   const restart: RestartControl = restart_wire({ unsaved: (): string[] => [...panels.values('edit')].filter((pane) => pane.dirty_is()).map((pane) => pane.path_get() ?? '?') });
   const buildWatch: BuildWatch = buildMatch_wire(statusBar, (line: string): void => terminal.line_note(line), restart.ask);
+  // The console as a terminal (#1125): built once the daemon says it offers
+  // one and this device chose it (consoleMode.ts).
+  let consoleScreen: TerminalScreen | null = null;
   const attached: { client: ArgusClient; attach: AttachInfo } = await ArgusClient.session_attach(
     wsUrl_resolve(),
     token,
     {
       output_receive: (channel: OutputChannel, chunk: string): void => terminal.output_write(channel, chunk),
+      terminalOpened_receive: (terminalId: string, replay: string, refused: string | undefined): void => consoleScreen?.opened(terminalId, replay, refused),
+      terminalData_receive: (terminalId: string, data: string): void => consoleScreen?.data(terminalId, data),
+      terminalExit_receive: (terminalId: string, code: number): void => consoleScreen?.exited(terminalId, code),
       progress_receive: (message: ProgressMessage): void => {
         progress.write(message);
         statusBar.progress_observe(message);
@@ -2254,6 +2267,14 @@ async function surface_start(token: string): Promise<void> {
           const provoker: string | null = asks.askingPane_take();
           if (provoker !== null && paneInstance_get(provoker) !== undefined) {
             return ask_onPane(provoker, {
+              message: request.message,
+              kind: request.kind === 'secret' ? 'secret' : request.kind === 'confirm' ? 'confirm' : 'text',
+              ...(request.suggest === undefined ? {} : { suggest: request.suggest }),
+            });
+          }
+          // A terminal console's chell did not ask it: it stands on a sheet.
+          if (consoleMode !== null && consoleMode.terminal_is()) {
+            return consoleMode.question_sheet({
               message: request.message,
               kind: request.kind === 'secret' ? 'secret' : request.kind === 'confirm' ? 'confirm' : 'text',
               ...(request.suggest === undefined ? {} : { suggest: request.suggest }),
@@ -2372,6 +2393,12 @@ async function surface_start(token: string): Promise<void> {
   // The language's subjects, the composition's included: a line in one typed
   // in any chell on the session is routed here (claims.ts on the daemon).
   client.claims_send(claims_list());
+  consoleMode = consoleMode_wire({
+    client,
+    terminal,
+    offered: attached.attach.terminals === true,
+    screen_set: (screen: TerminalScreen | null): void => { consoleScreen = screen; },
+  });
 
   statusBar.attach_show(attached.attach);
   daemonStale = attached.attach.stale === true;

@@ -292,12 +292,12 @@ export async function remote_run(
       // The daemon's code moved on disk mid-session: say so where the operator is looking.
       onStale: (stale: boolean): void => {
         if (!stale) return;
-        process.stdout.write(`\n${staleLines_of(surfaceNews_read()).map((line: string): string => chalk.yellow(line)).join('\n')}\n`);
+        process.stderr.write(`\n${staleLines_of(surfaceNews_read()).map((line: string): string => chalk.yellow(line)).join('\n')}\n`);
       },
       onClose: (): void => {
         if (intentionalClose) return;
         // A daemon that said why it went is believed; an unannounced drop is a disconnect.
-        console.log(chalk.yellow(`\n${closing !== null ? closingLine_of(closing) : '[!] Daemon disconnected.'}`));
+        console.error(chalk.yellow(`\n${closing !== null ? closingLine_of(closing) : '[!] Daemon disconnected.'}`));
         process.exit(0);
       },
     });

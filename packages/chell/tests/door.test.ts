@@ -279,7 +279,8 @@ describe('door token edges', () => {
   });
 
   it('on a token, a session that boots is followed to ready, and a boot that fails is said', async () => {
-    const quiet = jest.spyOn(console, 'log').mockImplementation((): void => undefined);
+    const outs: string[] = [];
+    const quiet = jest.spyOn(console, 'log').mockImplementation((line?: unknown): void => { outs.push(String(line)); });
     const errors: string[] = [];
     const errs = jest.spyOn(console, 'error').mockImplementation((line?: unknown): void => { errors.push(String(line)); });
     const starting = { key: '0123456789abcdef', mount: '/s/0123456789abcdef/', state: 'starting', user: 'chris', tokenName: 'laptop', expires: '2026-11-05T00:00:00.000Z' };
@@ -287,6 +288,11 @@ describe('door token edges', () => {
       ? new Response(JSON.stringify(starting), { status: 200, headers: { 'content-type': 'application/json', 'set-cookie': 'porter_session=c.s; Path=/' } })
       : new Response('event: line\ndata: {"text":"[ OK ] Engine"}\n\nevent: ready\ndata: {}\n\n', { status: 200 });
     expect(await door_enter('https://titan/', undefined, undefined, okBoot, { CHELL_DOOR_TOKEN: 'pdt_env', XDG_CONFIG_HOME: '/nonexistent-doors' })).toMatchObject({ url: 'wss://titan/s/0123456789abcdef/' });
+    // The boot is progress, never the answer: nothing of it on stdout, so a
+    // script reading `chell -c` output gets the command's alone.
+    expect(outs).toEqual([]);
+    expect(errors.join('\n')).toContain('Starting your session at https://titan/');
+    expect(errors.join('\n')).toContain('[ OK ] Engine');
     const badBoot: DoorFetch = async (url: string): Promise<Response> => url.endsWith('/login')
       ? new Response(JSON.stringify(starting), { status: 200, headers: { 'content-type': 'application/json', 'set-cookie': 'porter_session=c.s; Path=/' } })
       : new Response('event: failed\ndata: {"reason":"no saved login"}\n\n', { status: 200 });

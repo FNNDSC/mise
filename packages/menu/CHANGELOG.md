@@ -1,5 +1,12 @@
 # @fnndsc/menu
 
+## 0.23.0
+
+### Minor Changes
+
+- c73c81b: The daemon offers terminals: a browser's console can be a real chell, run under a pseudo-terminal. A surface sends `terminalOpen` with its size and receives the terminal's bytes as `terminalData`; it sends keystrokes back as `terminalInput`, and size changes as `terminalResize`. Each terminal is the same `chell --remote` a shell would run, attached back to this daemon over loopback. A terminal outlives the socket that opened it: opening it again by its id replays up to about 1 MB of recent output and carries on, even mid-command or mid-question. A terminal nobody is attached to closes after 15 minutes, and `exit` closes it at once. The pseudo-terminal comes from `node-pty` 1.1.0, an optional dependency compiled at install. A daemon where it did not build says `terminals: false` on attach and refuses `terminalOpen` with the reason. ARGUS's console moves onto this in the next release (#1125).
+- 1a2a0d0: An open question shows across the session: `? N WAITING` on the ARGUS status strip, and `? N waiting` in chell's prompt. The daemon counts the questions open on every surface: they ride the heartbeat's lane (which surface asked what, and for how long) and every prompt context. ARGUS names each one in the strip's title and adds an ASKING row to the lane instrument; `who` says what each surface is waiting on. A question no longer freezes the session, so this is how a game paused in another tab, or a confirm left in a terminal, is not forgotten (#1128).
+
 ## 0.22.2
 
 ### Patch Changes

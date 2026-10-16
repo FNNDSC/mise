@@ -1,5 +1,18 @@
 # @fnndsc/argus
 
+## 0.29.0
+
+### Minor Changes
+
+- 1a2a0d0: An open question shows across the session: `? N WAITING` on the ARGUS status strip, and `? N waiting` in chell's prompt. The daemon counts the questions open on every surface: they ride the heartbeat's lane (which surface asked what, and for how long) and every prompt context. ARGUS names each one in the strip's title and adds an ASKING row to the lane instrument; `who` says what each surface is waiting on. A question no longer freezes the session, so this is how a game paused in another tab, or a confirm left in a terminal, is not forgotten (#1128).
+
+### Patch Changes
+
+- 7fefdbe: The console now uses JetBrainsMono Nerd Font Mono: the prompt's segments and icons sit on the same grid as the text. Share Tech Mono had none of those glyphs and borrowed them from MesloLGS NF at another width; the new face holds every glyph the prompt, the listings and the scans use at one cell (measured), with MesloLGS NF kept behind it for the rest. It is bundled as WOFF2 with its OFL licence. This readies the console for the terminal it becomes (#1125).
+- Updated dependencies [c73c81b]
+- Updated dependencies [1a2a0d0]
+  - @fnndsc/menu@0.23.0
+
 ## 0.28.6
 
 ### Patch Changes

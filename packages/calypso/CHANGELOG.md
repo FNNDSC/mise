@@ -1,5 +1,23 @@
 # @fnndsc/calypso
 
+## 0.22.0
+
+### Minor Changes
+
+- c73c81b: The daemon offers terminals: a browser's console can be a real chell, run under a pseudo-terminal. A surface sends `terminalOpen` with its size and receives the terminal's bytes as `terminalData`; it sends keystrokes back as `terminalInput`, and size changes as `terminalResize`. Each terminal is the same `chell --remote` a shell would run, attached back to this daemon over loopback. A terminal outlives the socket that opened it: opening it again by its id replays up to about 1 MB of recent output and carries on, even mid-command or mid-question. A terminal nobody is attached to closes after 15 minutes, and `exit` closes it at once. The pseudo-terminal comes from `node-pty` 1.1.0, an optional dependency compiled at install. A daemon where it did not build says `terminals: false` on attach and refuses `terminalOpen` with the reason. ARGUS's console moves onto this in the next release (#1125).
+- 1a2a0d0: An open question shows across the session: `? N WAITING` on the ARGUS status strip, and `? N waiting` in chell's prompt. The daemon counts the questions open on every surface: they ride the heartbeat's lane (which surface asked what, and for how long) and every prompt context. ARGUS names each one in the strip's title and adds an ASKING row to the lane instrument; `who` says what each surface is waiting on. A question no longer freezes the session, so this is how a game paused in another tab, or a confirm left in a terminal, is not forgotten (#1128).
+- 0746967: A command waiting on a question no longer freezes the session; other commands run until it is answered. While its question (or an editor) is open, other surfaces' commands run, and it takes its turn again when answered. Before, a trek waiting for a move, an `rm` waiting for "y" or a PACS confirm froze every pane verb and every other terminal until it was answered, or until an abandoned terminal was cleaned up. The daemon's queue is now a lane that a command gives up while it waits on a person and queues for again after the answer, resuming with its own routing. Brasa hands over each command's own state at the same two points: its exit code, a pipe's untaken input, a `play` manifest's depth, the recorder's mute and the Ctrl-C target. Each top-level line keeps its own error stack. Commands that ask now fix their targets before asking, so a `cd` from another surface cannot redirect the answer. `rm` resolves every operand first, `mv` and `cp` fix their sources, and a relative destination or PACS export path lands where the session stood when it asked (#1128).
+
+### Patch Changes
+
+- Updated dependencies [c73c81b]
+- Updated dependencies [1a2a0d0]
+- Updated dependencies [0746967]
+- Updated dependencies [2ddbd41]
+  - @fnndsc/menu@0.23.0
+  - @fnndsc/brasa@0.38.0
+  - @fnndsc/cumin@3.27.14
+
 ## 0.21.4
 
 ### Patch Changes

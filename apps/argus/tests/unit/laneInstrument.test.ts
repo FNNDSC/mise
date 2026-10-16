@@ -58,4 +58,15 @@ describe('LaneInstrument', () => {
     expect(rows_text(mount)[1]).toBe('BEAT3.0 S AGO');
     expect(mount.querySelectorAll('.lane-row')[1]?.classList.contains('status-degraded')).toBe(true);
   });
+
+  it('an open question adds an ASKING row: how many, the oldest, and for how long', () => {
+    const mount: HTMLElement = mount_make();
+    const instrument: LaneInstrument = new LaneInstrument(mount, (): number => 0);
+    instrument.telemetry_show({ lane: { running: null, waiting: 0, questions: [
+      { surface: 'aaaaaa1', message: 'Another game: ', sinceMs: 12_400 },
+      { surface: 'bbbbbb2', message: 'rm: remove 3 items? (y/n): ', sinceMs: 2_000 },
+    ] } });
+    expect(rows_text(mount)[0]).toBe('LANEIDLE');
+    expect(rows_text(mount)[1]).toBe('ASKING2 · Another game: · 12 S');
+  });
 });

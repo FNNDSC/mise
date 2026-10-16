@@ -53,6 +53,8 @@ export interface PromptContext {
   procWarmup?: ProcPromptProgress;
   /** Calypso's declared host-control tiers; a `HOST` segment says `!` lands on its host. */
   hostControl?: string[];
+  /** How many questions are open in the session, on any surface; a `?` segment says so. */
+  questions?: number;
   /**
    * Warm-up steps that failed behind the prompt and have not since
    * succeeded. A step moved off the boot gate has no readout left to be

@@ -190,6 +190,11 @@ export class ThemeP10k implements PromptTheme {
       trailing.push({ text: `⚠ HOST ${ctx.hostControl.join(',')}`, color: PROMPT_PALETTE.HOSTCTL });
     }
 
+    if (ctx.questions !== undefined && ctx.questions > 0) {
+      // A question open somewhere in the session; `who` says who asked what.
+      trailing.push({ text: `? ${ctx.questions} waiting`, color: PROMPT_PALETTE.HOSTCTL });
+    }
+
     if (ctx.p10kSegments.time) {
       trailing.push({ text: `${ICON_CLOCK} ${time_now()}`, color: PROMPT_PALETTE.TIME });
     }

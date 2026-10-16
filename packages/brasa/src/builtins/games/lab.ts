@@ -33,8 +33,10 @@ export async function builtin_who(_args: string[]): Promise<CommandEnvelope> {
   if (peers === null) {
     return envelope_ok(`${user}  this terminal\n`, { kind: 'games.who', data: { user, peers: [] } });
   }
+  // A surface with a question open says what it is waiting on: its
+  // command is paused until someone answers there.
   const lines: string[] = peers.map((p: SurfacePeer): string =>
-    `${user.padEnd(16)} ${p.kind.padEnd(8)} ${p.id}${p.you ? chalk.gray('  (you)') : ''}`);
+    `${user.padEnd(16)} ${p.kind.padEnd(8)} ${p.id}${p.you ? chalk.gray('  (you)') : ''}${p.asking !== undefined ? chalk.yellow(`  ? ${p.asking.trim()}`) : ''}`);
   return envelope_ok(`${lines.join('\n')}\n`, { kind: 'games.who', data: { user, peers } });
 }
 

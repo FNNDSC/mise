@@ -64,7 +64,7 @@ export class LaneInstrument {
   /**
    * The rows the current facts call for.
    *
-   * @returns LANE, BEAT, CUBE, in that order.
+   * @returns LANE, ASKING (when a question is open), BEAT, CUBE, in that order.
    */
   public rows_compose(): LaneRow[] {
     const rows: LaneRow[] = [];
@@ -86,6 +86,17 @@ export class LaneInstrument {
         value: `${lane.running.line} · ${seconds} S${lane.waiting > 0 ? ` · ${lane.waiting} WAITING` : ''}`,
         title: `The command holding the lane${lane.running.surface ? `, from surface ${lane.running.surface}` : ''}; every other command waits behind it.`,
         degraded: lane.running.sinceMs >= 10_000,
+      });
+    }
+
+    const questions = lane?.questions ?? [];
+    if (questions.length > 0) {
+      const oldest = questions.reduce((a, b) => (a.sinceMs >= b.sinceMs ? a : b));
+      rows.push({
+        label: 'ASKING',
+        value: `${questions.length} · ${oldest.message.trim()} · ${(oldest.sinceMs / 1000).toFixed(0)} S`,
+        title: 'Questions open in the session. A command waiting on one has stepped out of the lane; it resumes when answered on the surface that asked.',
+        degraded: false,
       });
     }
 

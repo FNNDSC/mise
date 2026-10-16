@@ -2298,6 +2298,7 @@ async function surface_start(token: string): Promise<void> {
       telemetry_receive: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry; state?: JobsStateTelemetry; surfaces?: SurfaceSeen[] }): void => {
         signals.telemetry_take(index, extra);
         laneInstrument.telemetry_show(extra ?? {});
+        statusBar.questions_show(extra?.lane?.questions ?? []);
         restart.telemetry_take(extra);
         cascade?.index_observe(index);
       },

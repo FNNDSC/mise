@@ -13,3 +13,7 @@ Provenance and licensing:
   (https://github.com/ryanoasis/nerd-fonts).
 
 Both licenses permit redistribution; this notice preserves attribution.
+
+JetBrainsMono Nerd Font Mono (Regular, Bold)
+
+The console's face: JetBrains Mono patched by Nerd Fonts (release v3.5.1, https://github.com/ryanoasis/nerd-fonts), the "Mono" build whose icons each take one cell, converted from TrueType to WOFF2 unmodified otherwise. JetBrains Mono is by JetBrains, under the SIL Open Font License 1.1 (JetBrainsMonoNerdFontMono-OFL.txt); the Nerd Fonts patching is MIT licensed.

@@ -25,7 +25,7 @@ export type { DaemonConsoleTarget };
 export const CHELL_ENTRY: string = fileURLToPath(new URL('../index.js', import.meta.url));
 
 /** Launch the surface as this very chell, not one resolved from the path. */
-const CHELL_LAUNCH: SurfaceLaunch = { exec: process.execPath, prefixArgs: [CHELL_ENTRY] };
+export const CHELL_LAUNCH: SurfaceLaunch = { exec: process.execPath, prefixArgs: [CHELL_ENTRY] };
 
 /**
  * Runs the daemon console on chell's own terminal, spawning this chell as

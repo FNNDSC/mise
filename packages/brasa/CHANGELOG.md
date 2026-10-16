@@ -1,5 +1,21 @@
 # @fnndsc/brasa
 
+## 0.38.0
+
+### Minor Changes
+
+- 0746967: A command waiting on a question no longer freezes the session; other commands run until it is answered. While its question (or an editor) is open, other surfaces' commands run, and it takes its turn again when answered. Before, a trek waiting for a move, an `rm` waiting for "y" or a PACS confirm froze every pane verb and every other terminal until it was answered, or until an abandoned terminal was cleaned up. The daemon's queue is now a lane that a command gives up while it waits on a person and queues for again after the answer, resuming with its own routing. Brasa hands over each command's own state at the same two points: its exit code, a pipe's untaken input, a `play` manifest's depth, the recorder's mute and the Ctrl-C target. Each top-level line keeps its own error stack. Commands that ask now fix their targets before asking, so a `cd` from another surface cannot redirect the answer. `rm` resolves every operand first, `mv` and `cp` fix their sources, and a relative destination or PACS export path lands where the session stood when it asked (#1128).
+- 2ddbd41: New `trek` command: the 1976 Berkeley space war game, played by question in the console or a terminal. It is a line-by-line port of NetBSD's trek(6). Fixed seeds give the same transcript as the original C built with glibc's random(); the tests replay 18 recorded games byte for byte. The short and long range scans show glyphs and colours, and `--classic` shows them as originally printed. `-f`, `-s` and `--seed N` are also accepted. `dump` keeps the game in the session and a `restart` length brings it back. One change from the original: when a starbase is caught in a nova, the C passed sector coordinates to killb() as a quadrant's and read past the galaxy array; the port destroys the base in the current quadrant instead. The UC Berkeley licence and the original credits are in brasa's NOTICE.
+
+### Patch Changes
+
+- 1a2a0d0: An open question shows across the session: `? N WAITING` on the ARGUS status strip, and `? N waiting` in chell's prompt. The daemon counts the questions open on every surface: they ride the heartbeat's lane (which surface asked what, and for how long) and every prompt context. ARGUS names each one in the strip's title and adds an ASKING row to the lane instrument; `who` says what each surface is waiting on. A question no longer freezes the session, so this is how a game paused in another tab, or a confirm left in a terminal, is not forgotten (#1128).
+- Updated dependencies [c73c81b]
+- Updated dependencies [1a2a0d0]
+  - @fnndsc/menu@0.23.0
+  - @fnndsc/chili@3.7.8
+  - @fnndsc/cumin@3.27.14
+
 ## 0.37.1
 
 ### Patch Changes

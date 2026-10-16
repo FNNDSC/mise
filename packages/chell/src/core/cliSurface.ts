@@ -25,7 +25,7 @@ import { join } from 'path';
 import type { Surface, SurfaceCapabilities, PromptRequest, LocalEditRequest, LocalEditResult } from '@fnndsc/brasa';
 import { segment_pipeThrough, file_read } from '@fnndsc/brasa';
 import { promptKind_of, type FileDeliverRequest, type FileDeliverResult, type PromptKind } from '@fnndsc/menu';
-import { question_openSet, typeahead_take } from './lineDiscipline.js';
+import { question_openSet, terminalState_mark, typeahead_take } from './lineDiscipline.js';
 
 /**
  * What a typed line means, given what an empty one stands for.
@@ -99,9 +99,24 @@ function persistentPrompt_ask(rl: readline.Interface, request: PromptRequest): P
       return Promise.resolve(promptAnswer_take(ahead, shown.fallback));
     }
     question_openSet(true);
-    return new Promise((resolve: (answer: string) => void) => {
-      rl.question(shown.message, (answer: string) => {
+    terminalState_mark('asking');
+    return new Promise((resolve: (answer: string) => void, reject: (error: Error) => void) => {
+      // Ctrl-C at a question abandons it, as Esc does in the transcript: the
+      // command that asked is told, and ends, rather than waiting on a line
+      // nobody will type.
+      const abandon: AbortController = new AbortController();
+      const onInterrupt = (): void => {
         question_openSet(false);
+        terminalState_mark('busy');
+        process.stdout.write('\n');
+        abandon.abort();
+        reject(new Error('the operator abandoned the question'));
+      };
+      rl.once('SIGINT', onInterrupt);
+      rl.question(shown.message, { signal: abandon.signal }, (answer: string) => {
+        rl.off('SIGINT', onInterrupt);
+        question_openSet(false);
+        terminalState_mark('busy');
         resolve(promptAnswer_take(answer, shown.fallback));
       });
     });
@@ -112,9 +127,11 @@ function persistentPrompt_ask(rl: readline.Interface, request: PromptRequest): P
   const originalWrite: unknown = Reflect.get(rl, '_writeToOutput');
   Reflect.set(rl, '_writeToOutput', (_str: string): void => { /* suppress echo */ });
 
+  terminalState_mark('asking');
   return new Promise((resolve: (answer: string) => void) => {
     rl.question('', (answer: string) => {
       Reflect.set(rl, '_writeToOutput', originalWrite);
+      terminalState_mark('busy');
       process.stdout.write('\n');
       resolve(answer.trim());
     });

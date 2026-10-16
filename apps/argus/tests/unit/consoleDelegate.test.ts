@@ -76,3 +76,20 @@ describe('a terminal standing in for the transcript', () => {
     expect(delegate.notes).toEqual([]);
   });
 });
+
+describe('an answered question in terminal mode', () => {
+  it('is recorded in the terminal, a secret masked', async () => {
+    const terminal: ArgusTerminal = console_make();
+    const delegate = delegate_make();
+    terminal.delegate_set(delegate);
+    const noted = terminal.ask_note("rm: remove 'report.txt'? (y/n): ");
+    noted('y');
+    const asked = terminal.ask_open({ message: 'Password: ', kind: 'secret' });
+    terminal.ask_settle('hunter2');
+    await asked;
+    expect(delegate.notes).toEqual([
+      "\u001b[33m?\u001b[0m rm: remove 'report.txt'? (y/n): \u001b[36my\u001b[0m\n",
+      '\u001b[33m?\u001b[0m Password: \u001b[36m••••••\u001b[0m\n',
+    ]);
+  });
+});

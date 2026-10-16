@@ -19,7 +19,7 @@ import { sink_set, StdoutSink } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
 import { surfaceLine_executeSafely } from './surfaceDispatch.js';
 import { promptGuard_create, type PromptGuard } from './promptGuard.js';
-import { lineRedraw_set, question_isOpen, typeahead_clear, typeahead_push, typeahead_take } from './lineDiscipline.js';
+import { lineRedraw_set, question_isOpen, terminalState_mark, typeahead_clear, typeahead_push, typeahead_take } from './lineDiscipline.js';
 import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
 
 /**
@@ -137,6 +137,8 @@ export class REPL {
       // clear an unfinished input line and redraw the prompt. Either way,
       // what was typed ahead is forgotten, as a terminal's interrupt does.
       typeahead_clear();
+      // A question open takes its own interrupt: it is abandoned (cliSurface.ts).
+      if (question_isOpen()) return;
       this.guard.write('\n');
       if (this.engine.line_cancel?.()) {
         return;
@@ -190,6 +192,9 @@ export class REPL {
   private async line_run(line: string): Promise<boolean> {
     // The line is the command's now; its output flows raw.
     this.guard.release();
+    // Marked once the guard is down: anything written while the prompt is
+    // painted is a stray line to the guard, which paints the prompt again.
+    terminalState_mark('busy');
     await this.history_append(line);
 
     // `exit` quits this shell, never the engine. Closing readline runs the
@@ -227,7 +232,9 @@ export class REPL {
       const text: string = typeof this.promptText === 'function' ? this.promptText() : this.promptText;
       this.rl.setPrompt(text);
       try {
-        this.rl.prompt();
+        // Marked before the prompt is painted, so the guard never sees it.
+      if (!this.busy) terminalState_mark('idle');
+      this.rl.prompt();
       } catch (e: unknown) {
         // Interface might be closed
       }
@@ -241,6 +248,8 @@ export class REPL {
     });
     this.rl.setPrompt(rendered);
     try {
+      // Marked before the prompt is painted, so the guard never sees it.
+      if (!this.busy) terminalState_mark('idle');
       this.rl.prompt();
     } catch (e: unknown) {
       // Interface might be closed

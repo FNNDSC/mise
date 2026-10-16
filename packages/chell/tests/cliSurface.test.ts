@@ -99,7 +99,8 @@ describe('one-shot prompting (no REPL interface)', () => {
 describe('persistent prompting (REPL interface)', () => {
   it('asks a visible question on the provided interface without creating one', async () => {
     const rl = {
-      question: jest.fn((_p: string, cb: (a: string) => void) => cb('  hi  ')),
+      question: jest.fn((_p: string, _o: unknown, cb: (a: string) => void) => cb('  hi  ')),
+      once: jest.fn(), off: jest.fn(),
     } as unknown as import('readline').Interface;
     const answer = await cliSurface_create(rl).prompt({ message: 'Q? ' });
     expect(mockCreateInterface).not.toHaveBeenCalled();
@@ -121,7 +122,8 @@ describe('persistent prompting (REPL interface)', () => {
     typeahead_clear();
     let openWhileAsked: boolean = false;
     const rl = {
-      question: jest.fn((_p: string, cb: (a: string) => void) => { openWhileAsked = question_isOpen(); cb('typed'); }),
+      question: jest.fn((_p: string, _o: unknown, cb: (a: string) => void) => { openWhileAsked = question_isOpen(); cb('typed'); }),
+      once: jest.fn(), off: jest.fn(),
     } as unknown as import('readline').Interface;
     await cliSurface_create(rl).prompt({ message: 'Q? ' });
     expect(openWhileAsked).toBe(true);
@@ -134,6 +136,21 @@ describe('persistent prompting (REPL interface)', () => {
     expect(await cliSurface_create(hidden).prompt({ message: 'Password: ', hidden: true })).toBe('secret');
     expect(typeahead_count()).toBe(1);
     typeahead_clear();
+  });
+
+  it('Ctrl-C at an open question abandons it: the asking command is told, and the question closes', async () => {
+    typeahead_clear();
+    const { EventEmitter } = await import('events');
+    const rl = Object.assign(new EventEmitter(), {
+      question: jest.fn((_p: string, options: { signal: AbortSignal }, _cb: (a: string) => void) => { expect(options.signal.aborted).toBe(false); }),
+    }) as unknown as import('readline').Interface;
+    const asked: Promise<string> = cliSurface_create(rl).prompt({ message: 'Another game: ' });
+    expect(question_isOpen()).toBe(true);
+    (rl as unknown as import('events').EventEmitter).emit('SIGINT');
+    await expect(asked).rejects.toThrow('the operator abandoned the question');
+    expect(question_isOpen()).toBe(false);
+    const signal: AbortSignal = ((rl.question as unknown as jest.Mock).mock.calls[0]?.[1] as { signal: AbortSignal }).signal;
+    expect(signal.aborted).toBe(true);
   });
 
   it('suppresses echo for hidden input and restores it afterward', async () => {

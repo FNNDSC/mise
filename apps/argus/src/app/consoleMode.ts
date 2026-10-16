@@ -2,11 +2,12 @@
  * @file Which console the page shows: the transcript, or the terminal (the
  * chell the daemon runs for this page, drawn by xterm.js; #1125).
  *
- * The CONSOLE capsule on the console's drawer switches between them and reads
- * as what it will do next; `console terminal` and `console transcript` press
- * it. The choice is the device's (localStorage). A daemon that offers no
- * terminal (node-pty not built on its host) shows no capsule, and the
- * transcript is the console.
+ * The terminal is the console wherever the daemon offers one. The CONSOLE
+ * capsule on the console's drawer switches between them and reads as what it
+ * will do next; `console terminal` and `console transcript` press it. The
+ * choice is the device's (localStorage). A daemon that offers no terminal
+ * (node-pty not built on its host) shows no capsule, and the transcript is the
+ * console.
  *
  * In terminal mode the transcript keeps its record behind the terminal and
  * hands the terminal what this surface itself runs or says (its echoes, notes,
@@ -19,7 +20,7 @@
  */
 import type { ArgusClient } from '../calypso/client.js';
 import type { ArgusTerminal } from '../console/terminal.js';
-import { TerminalScreen } from '../console/terminalScreen.js';
+import { TerminalScreen, type TerminalState } from '../console/terminalScreen.js';
 import { question_stand } from './asks.js';
 import type { PaneAskRequest } from '../features/ask/paneAsk.js';
 
@@ -97,7 +98,10 @@ export function consoleMode_wire(wiring: ConsoleModeWiring): ConsoleModeControl 
             apply('transcript');
             terminal.line_note(`console: ${why}`);
           },
+          // What the terminal's chell is doing, where a scenario (and CSS) can read it.
+          (state: TerminalState): void => { container.dataset['terminalState'] = state; },
         );
+        container.dataset['terminalState'] = 'busy';
         wiring.screen_set(screen);
       }
       const shown: TerminalScreen = screen;
@@ -135,15 +139,20 @@ export function consoleMode_wire(wiring: ConsoleModeWiring): ConsoleModeControl 
       terminal.focus_take();
     });
   }
-  apply(offered && mode_read() === 'terminal' ? 'terminal' : 'transcript');
+  // The terminal is the console wherever one is offered, unless this device
+  // chose the transcript.
+  apply(offered && mode_read() !== 'transcript' ? 'terminal' : 'transcript');
 
   // The smoke's hold on the console, whichever it is: which one shows, keys
   // typed into the terminal as the keyboard would, and its text as it reads.
   Object.assign(globalThis as Record<string, unknown>, {
     __argusConsole: {
       mode: (): ConsoleMode => mode,
+      state: (): string => container?.dataset['terminalState'] ?? 'busy',
       type: (data: string): void => screen?.type(data),
       lines: (): string[] => screen?.buffer_lines() ?? [],
+      mark: (): number => screen?.mark() ?? 0,
+      since: (mark: number): string[] => screen?.lines_since(mark) ?? [],
     },
   });
 

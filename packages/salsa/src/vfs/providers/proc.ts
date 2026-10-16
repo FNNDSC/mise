@@ -107,6 +107,8 @@ const feedVisits: Map<number, FeedVisit> = new Map();
 const feedVisitInflight: Map<number, Promise<boolean>> = new Map();
 let rosterWalkedAt: number = 0;
 let rosterSyncInflight: Promise<number[]> | null = null;
+/** Whether the sync in flight walks the whole index (a forced one waits out a delta, then walks). */
+let rosterSyncInflightFull: boolean = false;
 
 /**
  * Each feed collection's total as the last walk read it: the yardstick a
@@ -1299,7 +1301,13 @@ async function feedVisit_run(feedID: number, force: boolean): Promise<void> {
  *   was left alone.
  */
 export async function procRoster_sync(force: boolean = false): Promise<number[]> {
-  if (rosterSyncInflight) return rosterSyncInflight;
+  if (rosterSyncInflight) {
+    // A forced walk asked during a delta is not that delta: it waits for it,
+    // then walks (the operator's REFRESH would otherwise see nothing new).
+    if (!force || rosterSyncInflightFull) return rosterSyncInflight;
+    await rosterSyncInflight.catch((): number[] => []);
+    return procRoster_sync(true);
+  }
   const cache: ProcCache = procCache_get();
   const kind: ProcRosterSyncKind | null = procRosterSync_kind(cache, force);
   if (kind !== null) cache.rosterSync_progress(kind);
@@ -1309,8 +1317,9 @@ export async function procRoster_sync(force: boolean = false): Promise<number[]>
       errorStack.stack_push('warning', `proc roster: live sync failed (${msg}); showing cached roster`);
       return [];
     })
-    .finally((): void => { rosterSyncInflight = null; cache.rosterSync_clear(); });
+    .finally((): void => { rosterSyncInflight = null; rosterSyncInflightFull = false; cache.rosterSync_clear(); });
   rosterSyncInflight = run;
+  rosterSyncInflightFull = kind === 'full';
   return run;
 }
 
@@ -1332,6 +1341,11 @@ function procRosterSync_kind(cache: ProcCache, force: boolean): ProcRosterSyncKi
 export function procRoster_syncStart(force: boolean = false): ProcRosterSyncKind | 'none' {
   const cache: ProcCache = procCache_get();
   const inflight: ProcRosterSyncKind | null = cache.rosterSync_get();
+  if (inflight === 'delta' && force) {
+    // The operator's REFRESH during a delta: the whole walk follows it.
+    void procRoster_sync(true);
+    return 'full';
+  }
   if (inflight !== null) return inflight;
   const kind: ProcRosterSyncKind | null = procRosterSync_kind(cache, force);
   if (kind === null) return 'none';
@@ -1650,6 +1664,7 @@ export function procVisitState_reset(): void {
   feedVisitInflight.clear();
   rosterWalkedAt = 0;
   rosterSyncInflight = null;
+  rosterSyncInflightFull = false;
   rosterTotals = { owned: null, public: null };
   procTopologyCatchup_reset();
 }

@@ -91,12 +91,27 @@ function stage_close() {
  * @param {string} name - The scenario's name.
  * @returns {Promise<boolean>} True when this run includes it.
  */
+/** The console the suite drives, once it is known (terminal or transcript). */
+let suiteConsole = 'transcript';
+
+/**
+ * Scenarios of the transcript's own interface (its ask capsules, a pane
+ * question answered at the console): a terminal console has neither, so a
+ * suite driving a terminal skips them by name, and the nightly transcript
+ * lane runs them.
+ */
+const TRANSCRIPT_ONLY = ['console-asks', 'question-both-places'];
+
 async function stage(name) {
   if (stageName !== null) await stage_leaks(stageName);
   stage_close();
   const wanted = (only.length === 0 || only.some((s) => name.includes(s)))
     && !skip.some((s) => name.includes(s));
   if (!wanted) return false;
+  if (suiteConsole === 'terminal' && TRANSCRIPT_ONLY.includes(name)) {
+    console.log(`${name}: skipped, the transcript's own (the transcript lane runs it)`);
+    return false;
+  }
   console.log(name);
   stageName = name;
   stageAt = Date.now();
@@ -126,15 +141,14 @@ async function stage_leaks(name) {
     state = await evalIn(`
       await console_idle();
       for (let i = 0; i < 20 && document.querySelectorAll('.listing-activating').length > 0; i++) await sleep(250);
-      // A RUNS pane left on a graph rather than its roster: the next scenario's cwd then repaints it.
-      const graphs = [...document.querySelectorAll('.pane-dag')].filter((p) => p.offsetParent !== null && p.querySelector('.dag-feedlist') && p.querySelector('.roster-shown') === null && p.querySelector('.dag-canvas')?.style.display === 'block').length;
       // A console left busy (#919): a prompt that never came back queues every
       // line typed after it, and the next scenario's commands run never. The
       // console declares the state (data-busy); a command may still be
       // ending, so the probe waits a few seconds before calling it a leak.
-      const term = document.getElementById('terminal');
-      for (let i = 0; i < 20 && term?.dataset.busy === 'true'; i++) await sleep(250);
-      const busy = term?.dataset.busy === 'true';
+      for (let i = 0; i < 20 && !console_quiet(); i++) await sleep(250);
+      const busy = !console_quiet();
+      // A RUNS pane left on a graph rather than its roster: the next scenario's cwd then repaints it.
+      const graphs = [...document.querySelectorAll('.pane-dag')].filter((p) => p.offsetParent !== null && p.querySelector('.dag-feedlist') && p.querySelector('.roster-shown') === null && p.querySelector('.dag-canvas')?.style.display === 'block').length;
       // Lit rows on stage: a folded band's open cohort is indicated by design and is not a leak.
       return { cwd: window.__argusPromptContext?.cwd ?? null, lit: [...document.querySelectorAll('.listing-indicated, .listing-activating')].filter((e) => e.offsetParent !== null).length, asks: document.querySelectorAll('.ask-bar').length, graphs, busy };`);
   } catch {
@@ -150,7 +164,7 @@ async function stage_leaks(name) {
       document.getElementById('status-strip')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await runs_back();
       if (${JSON.stringify(state.cwd)} !== ${JSON.stringify(leakBaseline)}) {
-        const input = document.querySelector('#terminal input');
+        const input = console_input();
         input.value = 'cd ' + ${JSON.stringify(leakBaseline ?? '~')}; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
         for (let i = 0; i < 40 && window.__argusPromptContext?.cwd !== ${JSON.stringify(leakBaseline)}; i++) await sleep(250);
       }
@@ -179,15 +193,102 @@ const evalIn = (body) => page.eval(`(async () => {
   // owns Esc, so nothing else moves), and the session not BUSY with a command
   // an earlier scenario issued. A command typed into an open question is an
   // answer, and one queued behind a slow command times out looking idle.
+  // The console is the transcript or a terminal (#1125); a scenario types,
+  // waits and reads the same way in either. In a terminal the chell marks
+  // what it is doing (idle, busy, asking) and the page wears it as
+  // data-terminal-state; the transcript wears data-busy for what ARGUS
+  // itself runs, in both.
+  const terminal_mode = () => window.__argusConsole?.mode?.() === 'terminal';
+  const TERMINAL_KEYS = { Enter: '\\r', Tab: '\\t', Escape: '\\u0003', ArrowUp: '\\u001b[A', ArrowDown: '\\u001b[B' };
+  const console_input = () => {
+    if (!terminal_mode()) return document.querySelector('#terminal input');
+    // A stand-in for the transcript's input: a line set on it is typed into
+    // the terminal on Enter (Tab completes it there; Esc is Ctrl-C, which
+    // abandons an open question as Esc does in the transcript).
+    return {
+      value: '',
+      focus() { /* the terminal takes the keys it is sent */ },
+      dispatchEvent(event) {
+        const sent = TERMINAL_KEYS[event.key];
+        // A pane's question with the terminal at rest: the line answers the
+        // pane, as typing at the transcript did (the pressed verb's question
+        // stands on its pane; the terminal's chell did not ask it).
+        const bar = [...document.querySelectorAll('.ask-bar')].filter((b) => b.offsetParent !== null).pop();
+        if (event.type === 'keydown' && event.key === 'Escape' && bar !== undefined && !console_asking()) {
+          // Esc at the console abandons the pane's question, as it did at the transcript.
+          bar.querySelector('.ask-bar-abandon')?.click();
+          return true;
+        }
+        if (event.type === 'keydown' && event.key === 'Enter' && bar !== undefined && !console_asking()) {
+          const field = bar.querySelector('.ask-bar-field');
+          const said = this.value.trim().toLowerCase();
+          if (field !== null) { field.value = this.value; bar.querySelector('.ask-bar-commit')?.click(); }
+          else if (said === 'y' || said === 'yes') bar.querySelector('.ask-bar-yes')?.click();
+          else if (said === 'n' || said === 'no') bar.querySelector('.ask-bar-no')?.click();
+          this.value = '';
+          return true;
+        }
+        if (event.type === 'keydown' && sent !== undefined) {
+          window.__argusConsole.type((event.key === 'Enter' || event.key === 'Tab' ? this.value : '') + sent);
+          this.value = '';
+        }
+        return true;
+      },
+    };
+  };
+  const console_asking = () => terminal_mode()
+    ? document.getElementById('terminal')?.dataset.terminalState === 'asking'
+    : (document.querySelector('.argus-input-glyph')?.textContent ?? '❯') !== '❯';
+  const console_quiet = () => {
+    const term = document.getElementById('terminal');
+    return term?.dataset.busy !== 'true' && (!terminal_mode() || term?.dataset.terminalState === 'idle');
+  };
+  // A mark in the console's output, and what was written after it: the
+  // transcript counts its blocks, a terminal its buffer's lines (from the
+  // line the mark's prompt stood on, where the typed line lands).
+  const console_mark = () => terminal_mode()
+    ? window.__argusConsole.mark()
+    : (document.querySelector('#terminal .argus-output')?.children.length ?? 0);
+  const console_since = (mark, join = '\\n') => terminal_mode()
+    ? window.__argusConsole.since(mark).join('\\n')
+    : [...(document.querySelector('#terminal .argus-output')?.children ?? [])].slice(mark).map((e) => e.textContent).join(join);
+  const console_echoes = () => terminal_mode()
+    ? window.__argusConsole.lines().map((line) => line.startsWith('❯ ') ? line : (/\\$ (\\S.*)$/.exec(line)?.[1] !== undefined ? '❯ ' + /\\$ (\\S.*)$/.exec(line)[1] : null)).filter((line) => line !== null)
+    : [...document.querySelectorAll('#terminal .argus-echo')].map((e) => e.textContent);
+  // The question the console has open, as text: the transcript's newest ask
+  // block; a terminal's last line while its chell marks asking.
+  const console_lastAsk = () => {
+    if (!terminal_mode()) return [...document.querySelectorAll('#terminal .argus-ask')].pop()?.textContent.trim() ?? '';
+    if (!console_asking()) return '';
+    const lines = window.__argusConsole.lines();
+    return (lines[lines.length - 1] ?? '').trim();
+  };
+  // Answers the console's open question by typing, as an operator would.
+  const console_answer = (text) => {
+    const input = console_input();
+    input.value = text; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  };
+  // The console's text, as the transcript's whole #terminal reads: in a
+  // terminal its buffer, each prompt line written as the transcript echoes a
+  // line (❯ line), so a scenario finds what followed a command either way.
+  const console_text = () => terminal_mode()
+    ? window.__argusConsole.lines().map((line) => { const typed = /\\$ (\\S.*)$/.exec(line); return typed === null ? line : '❯ ' + typed[1]; }).join('\\n')
+    : (document.getElementById('terminal')?.innerText ?? '');
+  // After a line typed and its wait: the console must be at rest again
+  // before the scenario reads it. A busy session (a feed walked, a /proc
+  // refresh) outlasts any fixed wait, and a terminal's answer comes one round
+  // trip later than the transcript's.
+  const console_settled = async (limit = 15000) => {
+    for (let waited = 0; waited < limit && !console_quiet() && !console_asking(); waited += 100) await sleep(100);
+  };
   const console_idle = async ({ limit = 30000 } = {}) => {
-    const glyph = () => document.querySelector('.argus-input-glyph')?.textContent ?? '❯';
-    for (let i = 0; i < 3 && glyph() !== '❯'; i++) {
-      document.querySelector('#terminal input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    for (let i = 0; i < 3 && console_asking(); i++) {
+      console_input()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await sleep(400);
     }
     const status = () => document.getElementById('drawer-status')?.textContent ?? '';
     for (let waited = 0; waited < limit; waited += 250) {
-      if (/READY/.test(status()) && glyph() === '❯') return true;
+      if (/READY/.test(status()) && !console_asking() && (!terminal_mode() || console_quiet())) return true;
       await sleep(250);
     }
     return false;
@@ -226,34 +327,40 @@ const evalIn = (body) => page.eval(`(async () => {
   // while busy queues behind it (#919: fixed sleeps raced CUBE's pace, so a
   // scenario asked a pane in a directory its cd had not reached yet).
   const console_run = async (line, limit = 30000) => {
-    const term = document.getElementById('terminal');
-    const idle = () => term?.dataset.busy !== 'true';
-    for (let w = 0; w < limit && !idle(); w += 100) await sleep(100);
-    const input = term?.querySelector('input');
+    for (let w = 0; w < limit && !console_quiet(); w += 100) await sleep(100);
+    const input = console_input();
     if (!input) return false;
     input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    await sleep(50);
-    for (let w = 0; w < limit && !idle(); w += 100) await sleep(100);
-    return idle();
+    // A terminal's chell marks busy a moment after the keys arrive.
+    await sleep(terminal_mode() ? 300 : 50);
+    for (let w = 0; w < limit && !console_quiet(); w += 100) await sleep(100);
+    return console_quiet();
   };
   // A RUNS pane left on a graph goes back to its roster by its own BACK.
   const runs_back = async () => {
-    const onGraph = (p) => p.offsetParent !== null && p.querySelector('.dag-feedlist') && p.querySelector('.roster-shown') === null && p.querySelector('.dag-canvas')?.style.display === 'block';
+    // Hidden ones too: a RUNS pane behind another comes back on stage (or
+    // after a reload) on whatever it was left showing.
+    const onGraph = (p) => p.querySelector('.dag-feedlist') && p.querySelector('.roster-shown') === null && p.querySelector('.dag-canvas')?.style.display === 'block';
     for (const p of document.querySelectorAll('.pane-dag')) {
       for (let i = 0; i < 4 && onGraph(p); i++) { p.querySelector('.dag-back')?.click(); await sleep(500); }
     }
   };
   // A scenario leaves the session as it found it: RUNS panes on their
   // rosters, and the session's place at home, where the suite began.
+  // Home first, then the graphs: a cwd still inside a feed repaints a RUNS
+  // pane's graph after its BACK was pressed.
   const home_return = async () => {
+    await console_idle();
+    const home = () => (window.__argusPromptContext?.cwd ?? '').endsWith('/' + (window.__argusPromptContext?.user ?? '\u0000'));
+    if (!home()) {
+      const input = console_input();
+      input.value = 'cd ~'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      for (let i = 0; i < 40 && !home(); i++) await sleep(250);
+      await console_settled();
+    }
     await runs_back();
     // A row left indicated stands down (a press off every listing).
     if (document.querySelector('.listing-indicated')) { document.getElementById('status-strip')?.dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(200); }
-    await console_idle();
-    if ((window.__argusPromptContext?.cwd ?? '').endsWith('/' + (window.__argusPromptContext?.user ?? '\u0000'))) return;
-    const input = document.querySelector('#terminal input');
-    input.value = 'cd ~'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    for (let i = 0; i < 40 && !(window.__argusPromptContext?.cwd ?? '').endsWith('/' + (window.__argusPromptContext?.user ?? '\u0000')); i++) await sleep(250);
   };
   ${body}
 })()`);
@@ -284,6 +391,21 @@ try {
   // The baseline is home, not whatever cwd the session kept from before
   // the suite: a session left in a since-removed directory made every
   // scenario read as a leak and every repair cd into nothing.
+  // Which console the suite drives (#1125): SMOKE_CONSOLE=terminal|transcript
+  // presses the console's capsule into that mode; unset, the page's own
+  // default stands. A terminal console is ready once its chell marks idle.
+  const consoleWanted = process.env.SMOKE_CONSOLE ?? '';
+  if (consoleWanted === 'terminal' || consoleWanted === 'transcript') {
+    const chosen = await evalIn(`
+      const capsule = document.querySelector('.console-mode');
+      if (capsule === null || capsule.hidden) return { mode: window.__argusConsole?.mode?.() ?? 'transcript', offered: false };
+      if (window.__argusConsole.mode() !== ${JSON.stringify(consoleWanted)}) capsule.click();
+      for (let i = 0; i < 120 && terminal_mode() && !console_quiet(); i++) await sleep(250);
+      return { mode: window.__argusConsole.mode(), offered: true, state: document.getElementById('terminal')?.dataset.terminalState ?? null };`);
+    check(`the console is the ${consoleWanted} the suite asked for`, chosen.mode === consoleWanted, JSON.stringify(chosen));
+  }
+  suiteConsole = await evalIn('return window.__argusConsole?.mode?.() ?? "transcript";');
+  console.log(`console: ${suiteConsole}`);
   leakBaseline = await evalIn(`await home_return(); return window.__argusPromptContext?.cwd ?? null;`);
   // A fresh identity's first boot builds its whole job index, and the
   // universe and node scenarios read that index: wait for the sweep to
@@ -330,9 +452,9 @@ try {
     const nifti = nifti_write(join(local, 'sphere.nii.gz'));
     const home = await evalIn(`
       await console_idle();
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       input.value = 'cd ~; pwd'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      for (let i = 0; i < 40; i++) { await sleep(250); const m = document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).reverse().find((l) => /^\\/home\\/[^\\s]+$/.test(l)); if (m) return m; }
+      for (let i = 0; i < 40; i++) { await sleep(250); const m = console_text().split('\\n').map((l) => l.trim()).reverse().find((l) => /^\\/home\\/[^\\s]+$/.test(l)); if (m) return m; }
       return null;`);
     if (home === null) {
       console.log('  fixtures: could not learn the identity\'s home; image scenarios will skip');
@@ -364,14 +486,14 @@ try {
   if (!process.env.SMOKE_DAG_FEED && fixtureFolder !== null) {
     fixtureFeed = await evalIn(`
       await console_idle();
-      const outEl = document.querySelector('#terminal .argus-output');
-      const before = outEl.children.length;
-      const input = document.querySelector('#terminal input');
+      
+      const before = console_mark();
+      const input = console_input();
       input.value = ${JSON.stringify(`cd "${fixtureFolder}"; pl-simpledsapp-v2.1.5 -- feed_title="argus smoke fixture"`)}; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       let feed = null;
       for (let i = 0; i < 360; i++) {
         await sleep(250);
-        const text = [...outEl.children].slice(before).map((e) => e.textContent).join(' ');
+        const text = console_since(before, ' ');
         feed = feed ?? (text.match(/Feed created: (\\d+)/) ?? [])[1] ?? null;
         if (/finished successfully|finished with error|refused/i.test(text)) break;
       }
@@ -394,9 +516,9 @@ try {
     // over a settling sphere is not something a smoke can aim).
     const universe = await evalIn(`
       await console_idle();
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       const say = async (line, ms) => { input.value = line;
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
       const tiles = () => [...document.querySelectorAll('.launcher-tile')];
       document.getElementById('gutter-dashboard')?.click();
       for (let i = 0; i < 60; i++) { await sleep(500); if (tiles().length > 0) break; }
@@ -412,7 +534,7 @@ try {
         await sleep(100);
         const p = panes()[0];
         const w = p?.querySelector('.wait-progress');
-        const drawn = /[1-9]\d* FEEDS/.test(p?.querySelector('.universe-title')?.textContent ?? '') && !(w && !w.hidden);
+        const drawn = /[1-9]\\d* FEEDS/.test(p?.querySelector('.universe-title')?.textContent ?? '') && !(w && !w.hidden);
         waited.push([i * 100 + 100, drawn ? 'DRAWN' : (w && !w.hidden ? w.textContent : '')]);
       }
       // Wait for a space with something in it: the smoke's cache is warm, so
@@ -530,8 +652,10 @@ try {
       await say('universe enter ' + landedId, 500);
       for (let i = 0; i < 60; i++) { await sleep(500); if (/INSIDE FEED/.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
       await sleep(2000);
+      const stateMark = console_mark();
       await say('universe state', 1500);
-      const censusState = document.getElementById('terminal').innerText.split('\\n').filter((l) => /^scene:/.test(l)).slice(-1)[0] ?? '';
+      let censusState = '';
+      for (let i = 0; i < 40 && censusState === ''; i++) { censusState = console_since(stateMark, '\\n').split('\\n').filter((l) => /^scene:/.test(l)).slice(-1)[0] ?? ''; if (censusState === '') await sleep(250); }
       await say('universe back', 500);
       for (let i = 0; i < 60; i++) { await sleep(500); if (!/INSIDE FEED/.test(first?.querySelector('.universe-title')?.textContent ?? '')) break; }
       await sleep(1500);
@@ -621,16 +745,18 @@ try {
     const standing = bar?.textContent.trim() ?? '';
     // The boot's welcome can land after the console reads idle: measure
     // only once the console has stood still for a moment.
-    { let last = ''; let still = 0; for (let i = 0; i < 60 && still < 3; i++) { const now = document.getElementById('terminal').innerText; still = now === last ? still + 1 : 0; last = now; await sleep(500); } }
-    const consoleBefore = document.getElementById('terminal').innerText;
+    // What the console wrote, not its prompt bar: the bar's readouts move on their own.
+    const written = () => terminal_mode() ? String(window.__argusConsole.mark()) : (document.querySelector('#terminal .argus-output')?.innerText ?? '');
+    { let last = ''; let still = 0; for (let i = 0; i < 60 && still < 3; i++) { const now = written(); still = now === last ? still + 1 : 0; last = now; await sleep(500); } }
+    const consoleBefore = written();
     captions?.click(); await sleep(150);
     const noted = { text: bar?.textContent.trim() ?? '', cls: bar?.classList.contains('state-note') ?? false };
     captions?.click(); await sleep(150);
     const notedAgain = bar?.textContent.trim() ?? '';
     await sleep(4600);
     const restored = { text: bar?.textContent.trim() ?? '', cls: bar?.classList.contains('state-note') ?? false };
-    const consoleAfter = document.getElementById('terminal').innerText;
-    return { standing, noted, notedAgain, restored, consoleGrew: consoleAfter.length !== consoleBefore.length, grew: consoleAfter.startsWith(consoleBefore) ? consoleAfter.slice(consoleBefore.length).slice(-300) : consoleAfter.slice(-300), arrangementLabel: arrangement?.textContent.trim() ?? '' };`);
+    const consoleAfter = written();
+    return { standing, noted, notedAgain, restored, consoleGrew: consoleAfter !== consoleBefore, grew: terminal_mode() ? console_text().slice(-300) : consoleAfter.startsWith(consoleBefore) ? consoleAfter.slice(consoleBefore.length).slice(-300) : consoleAfter.slice(-300), arrangementLabel: arrangement?.textContent.trim() ?? '' };`);
   check('a frame pill answers on its own bar: the captions pill holds its answer on the pane state, then the standing state returns',
     pill.error === undefined && pill.noted.cls && /captions/i.test(pill.noted.text) && pill.notedAgain !== pill.noted.text && !pill.restored.cls && pill.restored.text === pill.standing,
     JSON.stringify(pill));
@@ -644,8 +770,8 @@ try {
   // the field and the bounce on its rows; the flare's end clears it.
   const edge = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
-    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_idle(); };
+    const input = console_input();
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_settled(); await console_idle(); };
     document.getElementById('gutter-files').click(); await sleep(700);
     await say('cd /bin');
     const fp = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
@@ -758,8 +884,8 @@ try {
     // rows are a wired field, so the gather PANE's mount is the one read)
     const mounts = ['.pane-gather .gather-rows', '.files-table-rows'].map((sel) => { const el = document.querySelector(sel); return el === null ? 'absent' : getComputedStyle(el).overflowY; });
     // the viewer's body: open a text file in a split with a viewer
-    const input = document.querySelector('#terminal input');
-    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_idle(); };
+    const input = console_input();
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_settled(); await console_idle(); };
     await say('cd /bin');
     const fp = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
     if (!fp()) { document.getElementById('gutter-files').click(); for (let i = 0; i < 40; i++) { await sleep(250); if (fp()) break; } }
@@ -791,9 +917,9 @@ try {
   // one press; the typed verb is the same move, refused by name.
   const move = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
-    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_idle(); };
-    const text = () => document.getElementById('terminal').innerText;
+    const input = console_input();
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_settled(); await console_idle(); };
+    const text = () => console_text();
     const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2).trim(); };
     const fp = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
     if (!fp()) { document.getElementById('gutter-files').click(); for (let i = 0; i < 40; i++) { await sleep(250); if (fp()) break; } }
@@ -834,8 +960,8 @@ try {
   // stage's tiling at dormancy and lays it over the replayed panes.
   const back = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
-    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_idle(); };
+    const input = console_input();
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_settled(); await console_idle(); };
     const settle = async (test, tries = 40) => { for (let i = 0; i < tries; i++) { if (test()) return true; await sleep(250); } return test(); };
     document.getElementById('gutter-files').click(); await sleep(800);
     const leaves = () => [...document.querySelectorAll('.layout-leaf')].map((l) => l.dataset.leaf);
@@ -899,7 +1025,7 @@ try {
     // ? prints the table
     prefix(); await sleep(150);
     press('?'); await sleep(600);
-    const table = /prefix chords/.test(document.getElementById('terminal').innerText);
+    const table = /prefix chords/.test(console_text());
     // down to the moved pane by arrow, then x closes it
     prefix(); await sleep(150);
     press('ArrowDown'); await sleep(200);
@@ -963,7 +1089,7 @@ try {
     prefix(); await sleep(150); press('j'); await sleep(400);
     const born = leaves().filter((id) => !before.has(id));
     prefix(); await sleep(150); press('&'); await sleep(900);
-    const said = /closed \\d+ panes?/.test(document.getElementById('terminal').innerText);
+    const said = /closed \\d+ panes?/.test(console_text());
     const gone = born.length === 2 && born.every((id) => !leaves().includes(id));
     document.getElementById('gutter-files').click(); await sleep(500);
     return { rowCount, first, second, last, home, picked, indicated, inFrame, firstVerb, walked, backOut, chordIn, born, said, gone };`);
@@ -1035,9 +1161,9 @@ try {
   // segment the browser cannot run is refused in words rather than hung.
   const games = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
-    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_idle(); };
-    const text = () => document.getElementById('terminal').innerText;
+    const input = console_input();
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_settled(); await console_idle(); };
+    const text = () => console_text();
     const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2).trim(); };
     await say('help games'); const page = after('help games');
     await say('fortune | cowsay'); const cow = after('fortune | cowsay');
@@ -1074,12 +1200,15 @@ try {
     // the answer goes down the same input. Not through say(): console_idle
     // presses Escape at an open question, which is an answer of its own.
     input.value = 'hangman'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    let asked = false; for (let i = 0; i < 40; i++) { await sleep(250); if (document.querySelector('.argus-ask') !== null && (document.querySelector('.argus-input-glyph')?.textContent ?? '') !== '❯') { asked = true; break; } }
+    let asked = false; for (let i = 0; i < 40; i++) { await sleep(250); if (console_asking()) { asked = true; break; } }
     const gallows = asked && text().includes('+---+');
-    input.value = 'q'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_idle();
+    input.value = 'q'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300);
+    // The answer resumes the command once it has its turn again: wait for its word, not a guess.
+    for (let i = 0; i < 80 && !/the word was/.test(after('hangman')); i++) await sleep(250);
+    await console_idle();
     const hanged = after('hangman');
     return { pom: pom.slice(0, 80), timerSet: timerSet.slice(0, 80), chimed, page: page.slice(0, 2000), cow: cow.slice(0, 2000), big: big.slice(0, 200), refused: refused.slice(0, 200), shelf: shelf.slice(0, 800), wtf: wtf.slice(0, 200), who: who.slice(0, 300), qr: qr.slice(0, 400), said: said.slice(0, 80),
-      slNote: slNote.slice(0, 900), slDrawn, panes, focused, tetrisState, released, paused, closed, gallows, hanged: hanged.slice(0, 120) };`);
+      slNote: slNote.slice(0, 900), slDrawn, panes, focused, tetrisState, released, paused, closed, gallows, hanged: hanged.match(/the word was [a-z]+/)?.[0] ?? hanged.slice(-120) };`);
   check('help games lists the shelf by category, and ls /usr/games walks it',
     /Text toys/.test(games.page) && /cowsay/.test(games.page) && /Time and sky/.test(games.page) && /cowsay/.test(games.shelf) && /fortune/.test(games.shelf), JSON.stringify({ page: games.page.slice(0, 120), shelf: games.shelf.slice(0, 120) }));
   check('fortune | cowsay runs in the kernel, brain and all; builtins chain',
@@ -1107,9 +1236,9 @@ try {
   // pane on the listing façade, a headline's rest unfolding on a press.
   const notes = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
-    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_idle(); };
-    const text = () => document.getElementById('terminal').innerText;
+    const input = console_input();
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_settled(); await console_idle(); };
+    const text = () => console_text();
     const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2).trim(); };
     await say('notes'); const typed = after('notes');
     await say('help notes'); const helped = after('help notes');
@@ -1256,9 +1385,9 @@ try {
   // the chords and the verbs, and the same tables typed into the console.
   const help = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
-    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_idle(); };
-    const text = () => document.getElementById('terminal').innerText;
+    const input = console_input();
+    const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_settled(); await console_idle(); };
+    const text = () => console_text();
     const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2).trim(); };
     // The order that found #816: a stage whose pane is not in home (UNIVERSE),
     // then the dashboard, then HELP — the spawn must have a host on stage.
@@ -1316,10 +1445,10 @@ try {
     const sky = await evalIn(`
       try {
       await console_idle();
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       const say = async (line, ms) => { await console_idle(); input.value = line;
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
-      const lastLine = (re) => document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
+      const lastLine = (re) => console_text().split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
       document.getElementById('gutter-dashboard')?.click();
       for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.launcher-tile')) break; }
       [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
@@ -1348,7 +1477,7 @@ try {
         for (let i = 0; i < 60; i++) { await sleep(500); if (fp()?.querySelector('.files-diagram')) break; }
         opened.path = fp()?.querySelector('.files-content-header span')?.textContent ?? '';
         opened.diagram = !!fp()?.querySelector('.files-diagram');
-        opened.console = document.getElementById('terminal').innerText.split('\\n').filter((l) => l.trim()).slice(-4);
+        opened.console = console_text().split('\\n').filter((l) => l.trim()).slice(-4);
         opened.header = fp()?.querySelector('.files-path')?.textContent.trim() ?? '';
         for (let i = 0; i < 4 && fp()?.querySelector('.files-close-pill'); i++) { fp().querySelector('.files-close-pill').click(); await sleep(400); }
       }
@@ -1381,10 +1510,10 @@ try {
     const data = await evalIn(`
       try {
       await console_idle();
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       const say = async (line, ms) => { await console_idle(); input.value = line;
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
-      const lastLine = (re) => document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
+      const lastLine = (re) => console_text().split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
       document.getElementById('gutter-dashboard')?.click();
       for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.launcher-tile')) break; }
       [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
@@ -1425,9 +1554,9 @@ try {
     const kept = await evalIn(`
       try {
       await console_idle();
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       const say = async (line, ms) => { await console_idle(); input.value = line;
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
       document.getElementById('gutter-dashboard')?.click();
       for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.launcher-tile')) break; }
       [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
@@ -1456,10 +1585,10 @@ try {
     const kept = await evalIn(`
       try {
       await console_idle();
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       const say = async (line, ms) => { await console_idle(); input.value = line;
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
-      const lastLine = (re) => document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
+      const lastLine = (re) => console_text().split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
       document.getElementById('gutter-dashboard')?.click();
       for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.launcher-tile')) break; }
       [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
@@ -1493,10 +1622,10 @@ try {
     const acc = await evalIn(`
       try {
       await console_idle();
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       const say = async (line, ms) => { await console_idle(); input.value = line;
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
-      const lastLine = (re) => document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
+      const lastLine = (re) => console_text().split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
       document.getElementById('gutter-dashboard')?.click();
       for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.launcher-tile')) break; }
       [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
@@ -1530,9 +1659,9 @@ try {
     // Esc ends it and the space is whole again.
     const replay = await evalIn(`
       await console_idle();
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       const say = async (line, ms) => { await console_idle(); input.value = line;
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
       document.getElementById('gutter-dashboard')?.click();
       for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.launcher-tile')) break; }
       [...document.querySelectorAll('.launcher-tile')].find((t) => t.querySelector('.launcher-name')?.textContent === 'UNIVERSE')?.querySelector('.launcher-verb')?.click();
@@ -1540,7 +1669,7 @@ try {
       for (let i = 0; i < 480; i++) { await sleep(500); const p = pane(); const w = p?.querySelector('.wait-progress'); if (/[1-9]\\d* FEEDS/.test(p?.querySelector('.universe-title')?.textContent ?? '') && !(w && !w.hidden)) break; }
       const readout = () => pane()?.querySelector('.pane-state')?.textContent.trim() ?? '';
       const block = () => pane()?.querySelector('.universe-replay')?.textContent.trim() ?? '';
-      const lastLine = (re) => document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
+      const lastLine = (re) => console_text().split('\\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(-1)[0] ?? '';
       const atRest = { readout: readout(), block: block() };
       await say('universe replay 6', 400);
       const started = lastLine(/^replaying|^universe replay/);
@@ -2123,7 +2252,7 @@ try {
     const pill = document.getElementById('lang-pill');
     if (document.getElementById('lang-palette').hidden) { pill.click(); await sleep(150); }
     const li = document.getElementById('lang-input'); li.value = 'ls /bin';
-    li.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300);
+    li.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_settled();
     pill.click(); await sleep(100);
     const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
     for (let i = 0; i < 60; i++) { await sleep(500); if (fp.querySelector('.files-row.files-type-plugin')) break; }
@@ -2166,10 +2295,10 @@ try {
     // asked for while the view is up lands under it, and CLOSE shows it.
     let survivesListing = false, listingUnderneath = false;
     if (pluginScene) {
-      const term = document.querySelector('#terminal input');
+      const term = console_input();
       term.value = 'ls /usr/bin';
       term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      await sleep(2500);
+      await sleep(2500); await console_settled();
       survivesListing = fp.querySelector('.files-diagram') !== null;
       fp.querySelector('.files-close-pill')?.click(); await sleep(600);
       // A plain includes, not a regex: a slash inside this template
@@ -2255,7 +2384,7 @@ try {
     const body = fp.querySelector('.files-body');
     const shown = (sel) => { const el = body.querySelector(sel);
       return el !== null && getComputedStyle(el).display !== 'none'; };
-    const input = document.querySelector('#terminal input');
+    const input = console_input();
     input.value = 'cd /bin'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     for (let i=0;i<60;i++){ await sleep(500); if (fp.querySelectorAll('.files-row').length > 5) break; }
     const listing = { view: shown('.files-view'), pulse: shown('.diagram-pulse') };
@@ -2398,9 +2527,9 @@ try {
   // own top frame above the fold.
   const zoom = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
+    const input = console_input();
     const say = async (line, ms) => { input.value = line;
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     const box = (sel) => { const el = document.querySelector(sel); if (el === null) return null;
       const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom) }; };
     await say('console zoom', 1800);
@@ -2445,9 +2574,9 @@ try {
   // yields the moment content opens.
   const launcher = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
+    const input = console_input();
     const say = async (line, ms) => { input.value = line;
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     const tiles = () => [...document.querySelectorAll('.launcher-tile')];
     const named = (name) => tiles().find((t) => t.querySelector('.launcher-name')?.textContent === name);
     // The gutter's own way in: DASHBOARD-04, where a dead SOURCES block was.
@@ -2507,11 +2636,11 @@ try {
   // expiry, so the masked form must never carry it.
   const attach = await evalIn(`
     await console_idle();
-    const outEl = document.querySelector('#terminal .argus-output');
-    const input = document.querySelector('#terminal input');
-    const say = async (line, ms) => { const before = outEl.children.length; input.value = line;
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms);
-      return [...outEl.children].slice(before).map((e) => e.textContent).join('\\n'); };
+    
+    const input = console_input();
+    const say = async (line, ms) => { const before = console_mark(); input.value = line;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled();
+      return console_since(before, '\\n'); };
     const token = new URLSearchParams(location.search).get('token') ?? '';
     const masked = await say('attach', 2200);
     const revealed = await say('attach --reveal', 2200);
@@ -2573,7 +2702,7 @@ try {
   // command while a question waits.
   const both = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
+    const input = console_input();
     const say = async (line, ms = 300) => { await console_run(line); await sleep(ms); };
     const settle = async (want, tries = 60) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
     document.getElementById('gutter-files').click(); await sleep(700);
@@ -2643,8 +2772,8 @@ try {
   // that the kernel reads back character for character.
   const edited = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
-    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const input = console_input();
+    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     const settle = async (want, tries = 60) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
     document.getElementById('gutter-files').click(); await sleep(700);
     await say("touch --withContents 'line one' ~/smoke-edit.txt", 2500);
@@ -2655,7 +2784,7 @@ try {
     const state = () => pane?.querySelector('.pane-state')?.textContent ?? '';
     const content = pane?.querySelector('.cm-content');
     const text = () => [...(pane?.querySelectorAll('.cm-line') ?? [])].map((l) => l.textContent).join('\\n');
-    const answered = /opened in the editor/.test(document.querySelector('#terminal')?.textContent ?? '');
+    const answered = /opened in the editor/.test(console_text());
     const openState = state();
     const saveDimmed = pane?.querySelector('.edit-save')?.disabled === true;
     const titled = pane?.querySelector('.pane-title')?.textContent ?? '';
@@ -2669,10 +2798,10 @@ try {
     const saveLit = pane?.querySelector('.edit-save')?.disabled === false;
     content?.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true }));
     const saved = await settle(() => state() === 'SAVED', 40);
-    const echoes = [...document.querySelectorAll('#terminal .argus-echo')].map((e) => e.textContent);
+    const echoes = console_echoes();
     const saveLine = echoes.reverse().find((e) => /touch --withContents/.test(e)) ?? '';
     await say('cat ~/smoke-edit.txt', 2500);
-    const results = [...document.querySelectorAll('#terminal .argus-result, #terminal .argus-output, #terminal pre')].map((e) => e.textContent).join('\\n');
+    const results = console_text();
     const readBack = results.includes("line two $HOME @1 it's a\\\\b; x | y > z");
     // REVERT throws away what was typed since the save
     content?.focus(); sel.selectAllChildren(content); sel.collapseToEnd();
@@ -2707,8 +2836,8 @@ try {
   const feed = process.env.SMOKE_DAG_FEED ?? fixtureFeed ?? '880';
   const tagged = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
-    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const input = console_input();
+    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     const settle = async (want, tries = 60) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
     const TAG = 'smoke-tag-${Date.now() % 100000}';
     document.getElementById('gutter-runs').click(); await sleep(1200);
@@ -2728,7 +2857,7 @@ try {
     bar().querySelector('.ask-bar-commit').click();
     // the question comes back with the new tag held
     const reasked = await settle(() => bar()?.querySelector('.ask-bar-held[data-value="' + TAG + '"]') != null, 80);
-    const echoes = () => [...document.querySelectorAll('#terminal .argus-echo')].map(e => e.textContent);
+    const echoes = () => console_echoes();
     const madeLine = echoes().some(e => e.includes("mkdir '/proc/tags/" + TAG + "'"));
     const setLine = echoes().some(e => e.includes("setfattr -n tag -v '" + TAG + "' feed_${feed}"));
     bar()?.querySelector('.ask-bar-abandon')?.click(); await sleep(400);
@@ -2764,8 +2893,8 @@ try {
   // opens the editor pane on the file; a binary file is offered no EDIT.
   const row = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
-    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const input = console_input();
+    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     const settle = async (want, tries = 60) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
     document.getElementById('gutter-files').click(); await sleep(700);
     await say('mkdir -p ~/smoke-edit-row', 2000);
@@ -2783,7 +2912,7 @@ try {
     const textVerbs = await verbsOf('notes.yaml');
     [...pane.querySelectorAll('.files-row-zone .listing-action')].find((b) => b.textContent.trim() === 'EDIT')?.click();
     const opened = await settle(() => [...document.querySelectorAll('.pane-edit')].some((p) => p.offsetParent !== null && /row text/.test(p.querySelector('.cm-content')?.textContent ?? '')), 80);
-    const echoed = [...document.querySelectorAll('#terminal .argus-echo')].some((e) => /edit '.*smoke-edit-row\\/notes\\.yaml'/.test(e.textContent));
+    const echoed = console_echoes().some((line) => /edit '.*smoke-edit-row\\/notes\\.yaml'/.test(line));
     [...document.querySelectorAll('.pane-edit')].find((p) => p.offsetParent !== null)?.querySelector('.drawer-close')?.click(); await sleep(400);
     await say('cd ~', 1500); await say('rm -r ~/smoke-edit-row', 2500);
     return { binaryVerbs, textVerbs, opened, echoed };`);
@@ -2800,8 +2929,8 @@ try {
   const feed = process.env.SMOKE_DAG_FEED ?? fixtureFeed ?? '880';
   const shared = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
-    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const input = console_input();
+    const say = async (line, ms = 1500) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     const settle = async (want, tries = 60) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
     const me = window.__argusPromptContext?.user ?? '';
     document.getElementById('gutter-runs').click(); await sleep(1200);
@@ -2817,7 +2946,7 @@ try {
     const readout = () => zone()?.querySelector('.listing-readout')?.textContent ?? '';
     await settle(() => readout() !== '');
     const before = readout();
-    const echoes = () => [...document.querySelectorAll('#terminal .argus-echo')].map(e => e.textContent);
+    const echoes = () => console_echoes();
     const bar = () => dp.querySelector('.ask-bar');
     verb('SHARE').click();
     await settle(() => bar() !== null);
@@ -2984,9 +3113,9 @@ try {
     const ruled = (id) => { const e = document.getElementById(id); return e !== null && getComputedStyle(e).display !== 'none'; };
     const marks = { runs: shown('gutter-runs'), pacs: shown('gutter-tools'), gather: shown('header-gather-pill'), index: ruled('index-instrument') };
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400);
-    const input = document.querySelector('#terminal input');
+    const input = console_input();
     input.value = 'view runs'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    const output = () => document.querySelector('#terminal .argus-output')?.textContent ?? document.querySelector('#terminal')?.textContent ?? '';
+    const output = () => console_text();
     for (let i = 0; i < 20 && !/view: unknown given/.test(output()); i++) await sleep(250);
     const said = (output().match(/view: unknown given[^\\n]*/) ?? [''])[0];
     document.getElementById('gutter-files').click(); await sleep(400);
@@ -3011,8 +3140,8 @@ try {
     await console_idle();
     const kept = localStorage.getItem('argus.feedview');
     localStorage.removeItem('argus.feedview');
-    const input = document.querySelector('#terminal input');
-    const say = async (line, ms) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const input = console_input();
+    const say = async (line, ms) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     const settle = async (want, tries = 80) => { for (let i = 0; i < tries; i++) { if (want()) return true; await sleep(250); } return want(); };
     const universeOpen = async () => {
       document.getElementById('gutter-dashboard')?.click();
@@ -3110,7 +3239,7 @@ try {
     const dive = await evalIn(`
       // A graph needs a pane to stand in: RUNS first, then the feed.
       document.getElementById('gutter-runs').click(); await sleep(1200);
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       input.value = 'feed diagram ${dagFeed}';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       for (let i = 0; i < 160; i++) { await sleep(500); if (document.querySelector('.dag-canvas canvas')) break; }
@@ -3131,6 +3260,8 @@ try {
       if (touched === '') { await home_return(); return { drew: true, touched: '' }; }
       for (let i = 0; i < 50; i++) { await sleep(400); if (document.querySelector('.node-overlay')) break; }
       await sleep(2500);
+      // A node's folder not yet in the session's cache is a walk of CUBE.
+      for (let i = 0; i < 60 && (document.querySelector('.node-overlay')?.querySelectorAll('.listing-row').length ?? 0) === 0; i++) await sleep(250);
       const ov = document.querySelector('.node-overlay');
       const inside = {
         opened: ov !== null,
@@ -3196,9 +3327,9 @@ try {
     const volume = await evalIn(`
       await console_idle();
       document.getElementById('gutter-files').click(); await sleep(800);
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       const say = async (line, ms) => { input.value = line;
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
       const pane = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
       const rows = () => [...(pane()?.querySelectorAll('.files-row') ?? [])];
       const name = (r) => r.querySelector('.files-name')?.textContent.trim() ?? '';
@@ -3210,10 +3341,10 @@ try {
       // it), so the node names come from the kernel's tree; each is
       // addressable flat under the feed. The path is the projection:
       // /proc, not /home.
-      const outEl = document.querySelector('#terminal .argus-output');
-      const before = outEl.children.length;
+      
+      const before = console_mark();
       await say('feed tree ${dagFeed}', 6000);
-      const tree = [...outEl.children].slice(before).map((e) => e.textContent).join(' ');
+      const tree = console_since(before, ' ');
       const nodes = [...new Set((tree.match(/pl-[A-Za-z0-9_.-]+_\\d+/g) ?? []))];
       let at = null;
       const seen = [];
@@ -3344,9 +3475,9 @@ try {
   // point of moving them through a host capability rather than a capsule.
   const spoken = await evalIn(`
     const fp = [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
-    const term = document.querySelector('#terminal input');
+    const term = console_input();
     const say = async (line) => { term.value = line;
-      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(600); };
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(600); await console_settled(); };
     const bound = () => fp.querySelector('.drawer-cwdbind.drawer-bind-selected')?.textContent.trim() ?? '';
     await say('file root'); const rooted = bound();
     await say('file follow'); const followed = bound();
@@ -3381,9 +3512,9 @@ try {
   const verbs = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(800);
     const fp = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
-    const term = document.querySelector('#terminal input');
+    const term = console_input();
     const say = async (line, ms) => { term.value = line;
-      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     const rows = () => [...fp().querySelectorAll('.files-row')];
     const named = (n) => rows().find(r => r.querySelector('.files-name')?.textContent.trim() === n);
     const heading = () => fp().querySelector('.files-path')?.textContent.trim() ?? '';
@@ -3398,6 +3529,7 @@ try {
     await say('rm -r ~/smoke-verbs', 2500);
     await say('mkdir -p ~/smoke-verbs', 2500);
     await say('cd ~/smoke-verbs', 2500);
+    await settle(() => (window.__argusPromptContext?.cwd ?? '').endsWith('/smoke-verbs'));
     const chooser = fp().querySelector('.files-upload-input');
     const dt = new DataTransfer();
     dt.items.add(new File([new TextEncoder().encode('verbs\\n')], 'smoke-verbs.txt', { type: 'text/plain' }));
@@ -3488,9 +3620,9 @@ try {
   const dl = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(800);
     const fp = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
-    const term = document.querySelector('#terminal input');
+    const term = console_input();
     const say = async (line, ms) => { term.value = line;
-      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     const named = (n) => [...fp().querySelectorAll('.files-row')].find(r => r.querySelector('.files-name')?.textContent.trim() === n);
     const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     const settle = async (want) => { for (let i = 0; i < 140; i++) { await sleep(500); if (want()) return true; } return false; };
@@ -3498,6 +3630,9 @@ try {
     await say('rm -r ~/smoke-download', 2500);
     await say('mkdir -p ~/smoke-download', 2500);
     await say('cd ~/smoke-download', 2500);
+    // A busy session (a /proc refresh) can take longer than the wait to move:
+    // a file delivered before it does lands at home.
+    await settle(() => (window.__argusPromptContext?.cwd ?? '').endsWith('/smoke-download'));
     const chooser = fp().querySelector('.files-upload-input');
     const dt = new DataTransfer();
     dt.items.add(new File([new TextEncoder().encode('a,b\\n1,2\\n')], 'smoke-download.csv', { type: 'text/csv' }));
@@ -3507,15 +3642,15 @@ try {
     click(named('smoke-download.csv')); await sleep(700);
     const verb = downloadVerb();
     if (verb !== null) verb.click();
-    await settle(() => /download: smoke-download\\.csv/.test(document.getElementById('terminal').innerText));
+    await settle(() => /download: smoke-download\\.csv/.test(console_text()));
     // The same verb pressed after the file is gone: the session cannot read
     // it, and the verb must say so rather than hand the browser an error.
     click(named('smoke-download.csv')); await sleep(700);
     const stale = downloadVerb();
     await say('rm ~/smoke-download/smoke-download.csv', 3000);
     if (stale !== null) stale.click();
-    await settle(() => /download: \\S*smoke-download\\.csv: .*nothing was saved/.test(document.getElementById('terminal').innerText));
-    const lines = document.getElementById('terminal').innerText.split('\\n').map(l => l.trim()).filter(l => /^download: /.test(l));
+    await settle(() => /download: \\S*smoke-download\\.csv: .*nothing was saved/.test(console_text()));
+    const lines = console_text().split('\\n').map(l => l.trim()).filter(l => /^download: /.test(l));
     await say('cd ~', 2500);
     await say('rm -r ~/smoke-download', 3000);
     return { uploaded, pressed: verb !== null, stalePressed: stale !== null, lines };`);
@@ -3537,9 +3672,9 @@ try {
   const place = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(800);
     const fp = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
-    const term = document.querySelector('#terminal input');
+    const term = console_input();
     const say = async (line, ms) => { term.value = line;
-      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     const names = () => [...fp().querySelectorAll('.files-row .files-name')].map(n => n.textContent.trim());
     // A cold daemon's first calls to CUBE are slower than a warm one's, and
     // this scenario waits on a real upload: the settle is generous because
@@ -3571,6 +3706,7 @@ try {
 
     // UPLOAD delivers the browser's own bytes into the folder on stage
     await say('cd ~/smoke-place', 2500);
+    await settle(() => (window.__argusPromptContext?.cwd ?? '').endsWith('/smoke-place'));
     const chooser = fp().querySelector('.files-upload-input');
     const dt = new DataTransfer();
     dt.items.add(new File([new TextEncoder().encode('smoke\\n')], 'smoke-place.txt', { type: 'text/plain' }));
@@ -3603,9 +3739,9 @@ try {
     document.getElementById('gutter-files').click(); await sleep(800);
     const panes = () => [...document.querySelectorAll('.pane-files')].filter(p => p.offsetParent !== null);
     const fp = () => panes()[0];
-    const term = document.querySelector('#terminal input');
+    const term = console_input();
     const say = async (line, ms) => { term.value = line;
-      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     const rows = (p) => [...p.querySelectorAll('.files-row')];
     const named = (p, n) => rows(p).find(r => r.querySelector('.files-name')?.textContent.trim() === n);
     const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -3614,6 +3750,7 @@ try {
     await say('rm -r ~/smoke-process', 2500);
     await say('mkdir -p ~/smoke-process', 2500);
     await say('cd ~/smoke-process', 2500);
+    await settle(() => (window.__argusPromptContext?.cwd ?? '').endsWith('/smoke-process'));
     const chooser = fp().querySelector('.files-upload-input');
     const dt = new DataTransfer();
     dt.items.add(new File([new TextEncoder().encode('process me\\n')], 'input.txt', { type: 'text/plain' }));
@@ -3639,15 +3776,15 @@ try {
     const plugin = rows(cat).filter(r => /^pl-simpledsapp-v/.test(r.querySelector('.files-name')?.textContent.trim() ?? '')).pop();
     click(plugin.querySelector('.files-name')); await sleep(600);
     const pluginVerbs = [...cat.querySelectorAll('.files-row-zone .listing-action')].map(b => b.textContent.trim());
-    const echoesBefore = document.querySelectorAll('#terminal .argus-echo').length;
+    const echoesBefore = console_echoes().length;
     const askBefore = [...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null;
     [...cat.querySelectorAll('.files-row-zone .listing-action')].find(b => b.textContent.trim() === 'RUN')?.click();
     const asked = await settle(() => ([...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null) !== askBefore, 20);
     const askText = [...document.querySelectorAll('#terminal .argus-ask')].pop()?.textContent.trim() ?? '';
     term.value = 'smoke process run';
     term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    await settle(() => document.querySelectorAll('#terminal .argus-echo').length > echoesBefore, 30);
-    const echoed = [...document.querySelectorAll('#terminal .argus-echo')].pop()?.textContent.trim() ?? '';
+    await settle(() => console_echoes().length > echoesBefore, 30);
+    const echoed = console_echoes().pop()?.trim() ?? '';
     const scheduled = await settle(() => cat.querySelector('.files-feed') !== null, 160);
     const capsule = cat.querySelector('.files-feed')?.textContent.trim() ?? '';
     const feedId = parseInt(capsule.replace(/\\D/g, ''), 10);
@@ -3681,9 +3818,9 @@ try {
     document.getElementById('gutter-files').click(); await sleep(800);
     const panes = () => [...document.querySelectorAll('.pane-files')].filter(p => p.offsetParent !== null);
     const fp = () => panes()[0];
-    const term = document.querySelector('#terminal input');
+    const term = console_input();
     const say = async (line, ms) => { term.value = line;
-      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     const rows = (p) => [...p.querySelectorAll('.files-row')];
     const named = (p, n) => rows(p).find(r => r.querySelector('.files-name')?.textContent.trim() === n);
     const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -3719,14 +3856,14 @@ try {
     const lineHand = line.value;
     const runPill = getComputedStyle(cat.querySelector('.diagram-run')).display;
 
-    const echoesBefore = document.querySelectorAll('#terminal .argus-echo').length;
+    const echoesBefore = console_echoes().length;
     const askBefore = [...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null;
     cat.querySelector('.diagram-run').click();
     const asked = await settle(() => ([...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null) !== askBefore, 20);
     term.value = 'smoke form run';
     term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    await settle(() => document.querySelectorAll('#terminal .argus-echo').length > echoesBefore, 30);
-    const echoed = [...document.querySelectorAll('#terminal .argus-echo')].pop()?.textContent.trim() ?? '';
+    await settle(() => console_echoes().length > echoesBefore, 30);
+    const echoed = console_echoes().pop()?.trim() ?? '';
     const scheduled = await settle(() => cat.querySelector('.files-feed') !== null, 160);
     const feedId = parseInt((cat.querySelector('.files-feed')?.textContent ?? '').replace(/\\D/g, ''), 10);
     if (Number.isFinite(feedId)) await say('feed rm -f ' + feedId, 5000);
@@ -3754,11 +3891,11 @@ try {
     document.getElementById('gutter-files').click(); await sleep(800);
     const panes = () => [...document.querySelectorAll('.pane-files')].filter(p => p.offsetParent !== null);
     const fp = () => panes()[0];
-    const term = document.querySelector('#terminal input');
+    const term = console_input();
     // Each line waits for the one before to finish: a remove still under
     // way when mkdir -p runs leaves nothing behind once it lands.
     const say = async (line, ms) => { await console_idle(); term.value = line;
-      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_idle(); };
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); await console_idle(); };
     const rows = (p) => [...p.querySelectorAll('.files-row')];
     const named = (p, n) => rows(p).find(r => r.querySelector('.files-name')?.textContent.trim() === n);
     const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -3772,7 +3909,7 @@ try {
     await say('mkdir -p ~/smoke-desk', 2500);
     await say('cd ~', 2500);
     const homed = await settle(() => fp() !== undefined && named(fp(), 'smoke-desk') !== undefined);
-    if (!homed) return { error: 'the browser never listed ~/smoke-desk', panes: panes().map(p => ({ path: p.querySelector('.files-path')?.textContent.trim() ?? '', binding: p.querySelector('.files-binding')?.textContent.trim() ?? '', view: p.querySelector('.files-diagram') ? 'diagram' : p.querySelector('.files-content') ? 'content' : 'listing', bar: p.querySelector('.lcars-title')?.textContent.trim() ?? '' })), all: document.querySelectorAll('.pane-files').length, rows: fp() ? rows(fp()).map(r => r.querySelector('.files-name')?.textContent.trim()).slice(0, 60) : [], console: document.getElementById('terminal').innerText.split('\\n').filter(l => l.trim()).slice(-8) };
+    if (!homed) return { error: 'the browser never listed ~/smoke-desk', panes: panes().map(p => ({ path: p.querySelector('.files-path')?.textContent.trim() ?? '', binding: p.querySelector('.files-binding')?.textContent.trim() ?? '', view: p.querySelector('.files-diagram') ? 'diagram' : p.querySelector('.files-content') ? 'content' : 'listing', bar: p.querySelector('.lcars-title')?.textContent.trim() ?? '' })), all: document.querySelectorAll('.pane-files').length, rows: fp() ? rows(fp()).map(r => r.querySelector('.files-name')?.textContent.trim()).slice(0, 60) : [], console: console_text().split('\\n').filter(l => l.trim()).slice(-8) };
     click(named(fp(), 'smoke-desk').querySelector('.files-name')); await sleep(600);
     [...fp().querySelectorAll('.files-row-zone .listing-action')].find(b => b.textContent.trim() === 'PROCESS')?.click();
     await settle(() => catalogue() !== undefined, 40);
@@ -3819,7 +3956,7 @@ try {
   // entering, the geometry holds, and both verbs ask before they act.
   const shares = await evalIn(`
     document.getElementById('gutter-runs').click(); await sleep(1000);
-    const term = document.querySelector('#terminal input');
+    const term = console_input();
     const key = (k) => term.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
     const rows = () => [...document.querySelectorAll('.feedlist-row')];
     const tops = () => rows().map(r => Math.round(r.querySelector('.feedlist-title')?.getBoundingClientRect().top ?? 0));
@@ -3908,7 +4045,7 @@ try {
   } else {
     const granted = await evalIn(`
       document.getElementById('gutter-runs').click(); await sleep(1200);
-      const term = document.querySelector('#terminal input');
+      const term = console_input();
       const rows = () => [...document.querySelectorAll('.feedlist-row')];
       for (let i = 0; i < 60; i++) { await sleep(400); if (rows().length > 1) break; }
       const target = rows()[1];
@@ -3919,7 +4056,7 @@ try {
       for (let i = 0; i < 50; i++) { await sleep(400); if (([...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null) !== askBefore) break; }
       term.value = ${JSON.stringify(shareUser)};
       term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      await sleep(3000);
+      await sleep(3000); await console_settled();
       target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       let readout = '';
       for (let i = 0; i < 50; i++) { await sleep(400); readout = target.querySelector('.listing-readout')?.textContent ?? ''; if (readout.includes(${JSON.stringify(shareUser)})) break; }
@@ -3935,9 +4072,9 @@ try {
   const select = await evalIn(`
     document.getElementById('gutter-files').click(); await sleep(800);
     const fp = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null && p.querySelector('.files-select'));
-    const term = document.querySelector('#terminal input');
+    const term = console_input();
     const say = async (line, ms) => { term.value = line;
-      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     const rows = () => [...fp().querySelectorAll('.files-row')];
     const named = (n) => rows().find(r => r.querySelector('.files-name')?.textContent.trim() === n);
     const bar = () => fp().querySelector('.pane-state')?.textContent.trim() ?? '';
@@ -3949,6 +4086,7 @@ try {
     await say('rm -r ~/smoke-select', 2500);
     await say('mkdir -p ~/smoke-select', 2500);
     await say('cd ~/smoke-select', 2500);
+    await settle(() => (window.__argusPromptContext?.cwd ?? '').endsWith('/smoke-select'));
     // Two files to gather, put there by the surface's own delivery.
     const chooser = fp().querySelector('.files-upload-input');
     const dt = new DataTransfer();
@@ -3976,7 +4114,7 @@ try {
       .find(b => b.textContent.startsWith('DELETE')).click();
     let asked = '';
     for (let i = 0; i < 60; i++) { await sleep(400); const a = [...document.querySelectorAll('#terminal .argus-ask')].pop(); if (a) { asked = a.textContent.trim(); break; } }
-    const echoed = [...document.querySelectorAll('#terminal .argus-echo')].pop()?.textContent.trim() ?? '';
+    const echoed = console_echoes().pop()?.trim() ?? '';
     // A confirm is answered with the capsule that reads as what it does.
     // The LAST question's capsule: the scrollback keeps every question ever
     // asked, and pressing the first YES presses one already answered.
@@ -4042,8 +4180,8 @@ try {
   // promptline. (The regression this guards replaced every pick with the
   // cwd's feed a few seconds later.) The session cwd is put back after.
   const pin = await evalIn(`
-    const input = document.querySelector('#terminal input');
-    const run = async (line, ms) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+    const input = console_input();
+    const run = async (line, ms) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
     await run('cd /proc/jobs/feed_21', 2000);
     document.getElementById('gutter-runs').click();
     for (let i = 0; i < 60; i++) { await sleep(500); if (document.querySelector('.feedlist-row')) break; }
@@ -4072,11 +4210,11 @@ try {
   // it had ever drawn was frozen.
   const settles = await evalIn(`
     await console_idle();
-    const outEl = document.querySelector('#terminal .argus-output');
-    const term = document.querySelector('#terminal input');
-    const say = async (line, ms) => { const b = outEl.children.length; term.value = line;
-      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms);
-      return [...outEl.children].slice(b).map(e => e.textContent).join('\\n'); };
+    
+    const term = console_input();
+    const say = async (line, ms) => { const b = console_mark(); term.value = line;
+      term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled();
+      return console_since(b, '\\n'); };
     await say('rm -r ~/smoke-roster', 2000);
     await say('mkdir -p ~/smoke-roster', 2000);
     await say('cd ~/smoke-roster', 2000);
@@ -4142,7 +4280,7 @@ try {
     const words = notices[0]?.textContent ?? '';
     const control = notices[0]?.querySelector('.stale-page-reload')?.textContent ?? '';
     // The console's own line, not any line that quotes the sentence (the release notes do).
-    const lines = document.getElementById('terminal').innerText.split('\\n').filter(l => l.startsWith('argus: ' + ${JSON.stringify(sentence)})).length;
+    const lines = console_text().split('\\n').filter(l => l.startsWith('argus: ' + ${JSON.stringify(sentence)})).length;
     notices.forEach(n => n.remove());
     return { before, count: notices.length, words, control, lines };`);
   check('a page older than its server\'s build says so once, in plain words whose "refresh" reloads, on the stage and the console',
@@ -4155,7 +4293,7 @@ try {
   // and the path line a trail whose every segment but the last goes there.
   const trail = await evalIn(`
     await console_idle();
-    const input = document.querySelector('#terminal input');
+    const input = console_input();
     const say = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); };
     document.getElementById('gutter-files').click();
     const fp = () => [...document.querySelectorAll('.pane-files')].find(p => p.offsetParent !== null);
@@ -4218,12 +4356,12 @@ try {
     // RUNS-02 owns the whole workspace, so the cwd-following browser is off
     // stage: the session's cwd is read from the console's prompt line.
     let path = null;
-    for (let i = 0; i < 40; i++) { await sleep(500); const lines = document.getElementById('terminal').innerText.split('\\n').filter(l => !l.trim().startsWith('❯') && l.includes('/proc/jobs/feed_')); const last = lines[lines.length - 1]; const m = last ? /\\/proc\\/jobs\\/feed_\\d+/.exec(last) : null; if (m) { path = m[0]; break; } }
+    for (let i = 0; i < 40; i++) { await sleep(500); const lines = console_text().split('\\n').filter(l => !l.trim().startsWith('❯') && l.includes('/proc/jobs/feed_')); const last = lines[lines.length - 1]; const m = last ? /\\/proc\\/jobs\\/feed_\\d+/.exec(last) : null; if (m) { path = m[0]; break; } }
     if (!dp.querySelector('.pane-drawer').hidden) { dp.querySelector('.pane-handle').click(); await sleep(100); }
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(300);
     // The session is shared with whoever else is attached: put its cwd back.
-    const input = document.querySelector('#terminal input'); input.value = 'cd ~';
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(1500);
+    const input = console_input(); input.value = 'cd ~';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(1500); await console_settled();
     return { skipped: null, offered: true, feedId, path };`);
   if (enterPlace.skipped) {
     console.log(`  skipped: ${enterPlace.skipped}`);
@@ -4280,7 +4418,7 @@ try {
     const pill = document.getElementById('lang-pill');
     if (document.getElementById('lang-palette').hidden) { pill.click(); await sleep(150); }
     const li = document.getElementById('lang-input'); li.value = 'ls /bin';
-    li.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300);
+    li.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_settled();
     pill.click(); await sleep(100);
     const fp = document.querySelector('.pane-files');
     for (let i = 0; i < 60; i++) { await sleep(500); if (fp.querySelectorAll('.files-row').length > 3) break; }
@@ -4884,8 +5022,8 @@ try {
       face.querySelector('.mode-strip').click(); await sleep(300);
       const stripCloses = face.querySelector('[data-frame-host]').dataset.modes !== 'open';
       // leave the cohort as it was found
-      const input = document.querySelector('#terminal input');
-      input.value = 'gather clear'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(1500);
+      const input = console_input();
+      input.value = 'gather clear'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(1500); await console_settled();
       return { uid, indicated, idleTrack, dimmed, plain, bandFrameOpen, stripOpens, stripCloses, frameInfo, other: other !== undefined };`);
     const same = (state) => state && JSON.stringify(state.pacs) === JSON.stringify(state.band);
     const lum = (css) => { const m = /rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)/.exec(css ?? ''); if (!m) return 0; const a = m[4] === undefined ? 1 : Number(m[4]);
@@ -4920,8 +5058,8 @@ try {
   // as written. The cohort manifest is the file every session has.
   const json = await evalIn(`
     const fp = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
-    const input = document.querySelector('#terminal input');
-    const say = async (line) => { await console_idle(); input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_idle(); };
+    const input = console_input();
+    const say = async (line) => { await console_idle(); input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_settled(); await console_idle(); };
     await say('cd ~/gather');
     // The gutter's FILES summons the browser from any stage; the dashboard's
     // OPEN HOME only while the dashboard is what is on stage.
@@ -5034,9 +5172,9 @@ try {
   // by family, timed — and a navigation's cost is read from it, which is
   // how the budgets below are held.
   const net = await evalIn(`
-    const input = document.querySelector('#terminal input');
-    const say = async (line) => { await console_idle(); input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_idle(); };
-    const text = () => document.getElementById('terminal').innerText;
+    const input = console_input();
+    const say = async (line) => { await console_idle(); input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_settled(); await console_idle(); };
+    const text = () => console_text();
     const after = (cmd) => { const t = text(); return t.slice(t.lastIndexOf('❯ ' + cmd) + cmd.length + 2); };
     // The boot's own cost, read before anything resets the ledger: the
     // group warm reads members off the membership pages and asks CUBE for
@@ -5135,8 +5273,8 @@ try {
   // rest dims, its capsule works, the bar reads OPENING <name>; the
   // listing that lands stands it down.
   const ack = await evalIn(`
-    const input = document.querySelector('#terminal input');
-    const say = async (line) => { await console_idle(); input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_idle(); };
+    const input = console_input();
+    const say = async (line) => { await console_idle(); input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); await console_settled(); await console_idle(); };
     const fp = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
     await say('cd ~');
     if (!fp()) { document.getElementById('gutter-files').click(); for (let i = 0; i < 40; i++) { await sleep(250); if (fp()) break; } }
@@ -5189,9 +5327,9 @@ try {
       await cohort_empty();
       document.getElementById('gutter-tools').click(); await sleep(500);
       const ws = document.getElementById('pacs-workspace');
-      const term = document.querySelector('#terminal input');
+      const term = console_input();
       const say = async (line, ms) => { term.value = line;
-        term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); };
+        term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(ms); await console_settled(); };
       const cmd = document.getElementById('pacs-command');
       const studies = () => document.querySelectorAll('#pacs-results .pacs-study').length;
       cmd.value = ${JSON.stringify(process.env.SMOKE_PACS_QUERY)};
@@ -5219,7 +5357,7 @@ try {
       if (!gp) { await home_return(); return { error: 'no gather pane' }; }
       gp.querySelector('.gather-cohort-row .gather-cohort-name').click(); await sleep(400);
       const cohortVerbs = zoneVerbs(gp, '.gather-row-zone');
-      const echoesBefore = document.querySelectorAll('#terminal .argus-echo').length;
+      const echoesBefore = console_echoes().length;
       const askBefore = [...document.querySelectorAll('#terminal .argus-ask')].pop() ?? null;
       [...gp.querySelectorAll('.gather-row-zone .listing-action')].find(b => b.textContent.trim() === 'PROCESS')?.click();
       let asked = false;
@@ -5227,8 +5365,8 @@ try {
       const askText = [...document.querySelectorAll('#terminal .argus-ask')].pop()?.textContent.trim() ?? '';
       term.value = 'smoke cohort';
       term.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      for (let i = 0; i < 30; i++) { await sleep(500); if (document.querySelectorAll('#terminal .argus-echo').length > echoesBefore) break; }
-      const echoed = [...document.querySelectorAll('#terminal .argus-echo')].pop()?.textContent.trim() ?? '';
+      for (let i = 0; i < 30; i++) { await sleep(500); if (console_echoes().length > echoesBefore) break; }
+      const echoed = console_echoes().pop()?.trim() ?? '';
       let capsule = null;
       for (let i = 0; i < 240; i++) { await sleep(500); const c = gp.querySelector('.gather-feed'); if (c) { capsule = c.textContent.trim(); break; } }
       const feedId = parseInt((capsule ?? '').replace(/\\D/g, ''), 10);
@@ -5311,7 +5449,7 @@ try {
     // the transcript, not even as a length. A `path` borrows an instrument
     // instead, which is the ask-errand scenario.
     const asks = await evalIn(`
-      const term = () => document.querySelector('#terminal input');
+      const term = () => console_input();
       const lines = () => [...document.querySelectorAll('#terminal .argus-ask')];
       const run = (line) => { const t = term(); t.value = line;
         t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); };
@@ -5339,7 +5477,7 @@ try {
       term().value = 'smoke-secret-value';
       key('Escape'); await sleep(1200);
       const abandoned = (lines()[askedBefore + 1]?.textContent ?? '').includes('abandoned');
-      const leaked = document.getElementById('terminal').textContent.includes('smoke-secret-value');
+      const leaked = (document.getElementById('terminal').textContent + console_text()).includes('smoke-secret-value');
       const glyph = document.querySelector('.argus-input-glyph').textContent;
 
       // A yes/no is two capsules, and pressing one answers it.
@@ -5385,7 +5523,7 @@ try {
     // PACS for a nonsense MRN sits in the session queue for minutes, where
     // every later scenario's command waits behind it. So it is not issued.
     const errand = !process.env.SMOKE_PACS_MRN ? { opened: false, unset: true } : await evalIn(`
-      const term = () => document.querySelector('#terminal input');
+      const term = () => console_input();
       const run = (line) => { const t = term(); t.value = line;
         t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); };
       const panes = () => document.querySelectorAll('#layout-root .layout-leaf').length;
@@ -5455,7 +5593,7 @@ try {
   const hostControl = await evalIn(`
     const lamp = document.getElementById('status-host');
     const lit = lamp.textContent.trim();
-    const input = document.querySelector('#terminal input');
+    const input = console_input();
     // Output lands above the prompt line, so read the whole transcript for
     // a token no other scenario prints.
     const token = 'argus-host-probe-' + Date.now();
@@ -5463,8 +5601,9 @@ try {
     input.value = '!echo ' + token; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     // The answer is a token no other scenario prints, or a refusal by name;
     // polled, since a fixed wait either samples before it or wastes the rest.
-    const streams = () => [...document.querySelectorAll('#terminal .argus-stream')].map(s => s.textContent).join(' ');
-    const errors = () => [...document.querySelectorAll('#terminal .argus-result.error')].map(s => s.textContent).join(' ');
+    // What the line printed, not the line itself (which carries the token too).
+    const streams = () => console_text().split('\\n').filter((line) => !line.includes('!echo')).join('\\n');
+    const errors = () => console_text();
     let ran = false, refusedByName = false;
     for (let i = 0; i < 60; i++) { await sleep(250);
       ran = streams().includes(token); refusedByName = errors().includes('--host-control');
@@ -5541,7 +5680,9 @@ try {
     if (!mark) return { present: false };
     const style = getComputedStyle(mark);
     const r = mark.getBoundingClientRect();
-    return { present: true, masked: style.maskImage.includes('url'), visible: r.width > 20 && r.height > 10 };`);
+    // Chromium 117 knows the mask only by its -webkit- name.
+    const mask = style.maskImage ?? style.webkitMaskImage ?? '';
+    return { present: true, masked: mask.includes('url'), visible: r.width > 20 && r.height > 10 };`);
   check('the nameplate seal is present, masked, and visible', seal.present && seal.masked && seal.visible);
   }
 
@@ -5577,7 +5718,7 @@ try {
     await console_idle(); await sleep(1500);
     const idle = rows();
     if ('${bigFeed}' === '') return { idle, skipped: true };
-    const input = document.querySelector('#terminal input');
+    const input = console_input();
     input.value = 'proc refresh ${bigFeed}'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     let during = null;
     for (let i = 0; i < 120; i++) { await sleep(250); if (/FEED ${bigFeed} /.test(document.getElementById('status-jobs').textContent)) { await sleep(1200); during = rows(); break; } }
@@ -5604,7 +5745,7 @@ try {
     const idle = box.textContent;
     const idleRows = box.querySelectorAll('.index-row').length;
     if ('${bigFeed}' === '') return { idle, idleRows, skipped: true };
-    const input = document.querySelector('#terminal input');
+    const input = console_input();
     input.value = 'proc refresh ${bigFeed}'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     let named = '', barred = false;
     for (let i = 0; i < 240; i++) {
@@ -5634,7 +5775,7 @@ try {
     console.log('  skipped: set SMOKE_BIG_FEED=<id> to a feed of about a thousand nodes');
   } else {
     const lane = await evalIn(`
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       const jobs = document.getElementById('status-jobs');
       const say = (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); };
       await console_idle();
@@ -5644,7 +5785,7 @@ try {
       await console_idle();
       const refreshMs = Math.round(performance.now() - t0);
       const walking = /FEED ${bigFeed} /.test(jobs.textContent);
-      const term = document.getElementById('terminal').textContent;
+      const term = (document.getElementById('terminal').textContent + console_text());
       const answeredIndexing = /Feed ${bigFeed}: indexing/.test(term);
       const t1 = performance.now();
       say('ls ~');
@@ -5671,7 +5812,7 @@ try {
     console.log('  skipped: set SMOKE_BIG_FEED=<id> to a feed of about a thousand nodes (one that outlasts a telemetry tick yet finishes within the wait)');
   } else {
     const indexing = await evalIn(`
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       const jobs = document.getElementById('status-jobs');
       await console_idle();
       input.value = 'proc refresh ${bigFeed}'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -5726,7 +5867,7 @@ try {
       const inField = image.querySelector('.image-field button, .image-field .strategy-pill') === null;
       const onFrame = image.querySelectorAll('.mode-frame .image-tool').length;
       const hue = image.dataset.modality;
-      const noted = document.getElementById('terminal').innerText.split('\\n').some((l) => /^image: \\d+ slices, first on screen in \\d+ ms/.test(l.trim()));
+      const noted = console_text().split('\\n').some((l) => /^image: \\d+ slices, first on screen in \\d+ ms/.test(l.trim()));
       const r = image.querySelector('.image-viewport').getBoundingClientRect();
       return { state, fits, dprOk, canvasPx: canvas ? canvas.width : null, cssPx: c ? Math.round(c.width) : null, dpr: devicePixelRatio, inField, onFrame, hue, noted, wheelAt: { x: r.x + r.width / 2, y: r.y + r.height / 2 } };`);
     // The wheel over the field turns the stack; the page stays put. A real
@@ -5759,8 +5900,8 @@ try {
     // A length drawn through the debugger, as the operator's would arrive.
     const at = await evalIn(`
       await console_idle();
-      const input = document.querySelector('#terminal input');
-      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      const input = console_input();
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_settled(); };
       await run('image layout single');
       const image = document.querySelector('.pane-image');
       for (let i = 0; i < 40 && !image.querySelector('.image-viewport-stack'); i++) await sleep(150);
@@ -5772,18 +5913,18 @@ try {
     await page.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x + 40, y: at.y + 40, button: 'left', clickCount: 1 });
     const saved = await evalIn(`
       await sleep(600);
-      const input = document.querySelector('#terminal input');
-      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      const input = console_input();
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_settled(); };
       await run('image save');
       let landed = null;
-      for (let i = 0; i < 60; i++) { await sleep(300); landed = document.getElementById('terminal').innerText.split('\\n').find((l) => /^✓ \\/home\\/.*\\/annotations\\/.*measurements\\.dcm$/.test(l.trim())); if (landed) break; }
-      if (!landed) return { error: 'nothing landed', tail: document.getElementById('terminal').innerText.split('\\n').slice(-4) };
+      for (let i = 0; i < 60; i++) { await sleep(300); landed = console_text().split('\\n').find((l) => /^✓ \\/home\\/.*\\/annotations\\/.*measurements\\.dcm$/.test(l.trim())); if (landed) break; }
+      if (!landed) return { error: 'nothing landed', tail: console_text().split('\\n').slice(-4) };
       const file = landed.trim().slice(2);
       // Reopen the series: the file the kernel now lists comes back onto the field.
       const before = document.querySelector('.pane-image').dataset.annotations ?? null;
       await run('image ${dicomSeries}');
       let reloaded = null;
-      for (let i = 0; i < 80; i++) { await sleep(300); reloaded = document.getElementById('terminal').innerText.split('\\n').find((l) => /^image: \\d+ measurements? from measurements\\.dcm/.test(l.trim())); if (reloaded) break; }
+      for (let i = 0; i < 80; i++) { await sleep(300); reloaded = console_text().split('\\n').find((l) => /^image: \\d+ measurements? from measurements\\.dcm/.test(l.trim())); if (reloaded) break; }
       const placed = document.querySelector('.pane-image').dataset.annotations ?? null;
       // Leave the identity's CFS as it was found.
       await run('rm -r ' + file.slice(0, file.lastIndexOf('/')));
@@ -5803,31 +5944,31 @@ try {
     const opened = await evalIn(`
       await console_idle();
       const term = document.getElementById('terminal');
-      const before = term.innerText.length;
+      const before = console_mark();
       const seen = { openingSeen: false };
       const observer = new MutationObserver(() => {
         const note = document.querySelector('.pane-image .image-working-label');
         if (note && /^OPENING /.test(note.textContent)) seen.openingSeen = true;
       });
       observer.observe(document.body, { subtree: true, childList: true, characterData: true });
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       input.value = 'image ${dicomSeries}';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       let pane = null;
       for (let i = 0; i < 200; i++) { await sleep(200); pane = [...document.querySelectorAll('.pane-image')].find((p) => /SLICE \\d+ OF \\d+/.test(p.querySelector('.pane-state').textContent)); if (pane) break; }
       observer.disconnect();
-      const reflection = term.innerText.slice(before);
+      const reflection = console_since(before);
       return { opened: pane !== null, openingSeen: seen.openingSeen, reflectsSeries: /MODALITY|SERIES\\b|slices/i.test(reflection) };`);
     check('image <path> is a kernel command whose intent opens the pane', opened.opened === true, JSON.stringify(opened));
     const refused = await evalIn(`
       await console_idle();
       const term = document.getElementById('terminal');
-      const before = term.innerText.length;
-      const input = document.querySelector('#terminal input');
+      const before = console_mark();
+      const input = console_input();
       input.value = 'image /home/does-not-exist/argus-smoke-nowhere-${Date.now()}';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       let said = false;
-      for (let i = 0; i < 60; i++) { await sleep(200); if (/not a readable DICOM series/.test(term.innerText.slice(before))) { said = true; break; } }
+      for (let i = 0; i < 60; i++) { await sleep(200); if (/not a readable DICOM series/.test(console_since(before))) { said = true; break; } }
       return { said };`);
     check('a bad image path is refused in the console by the kernel', refused.said === true, JSON.stringify(refused));
   }
@@ -5848,7 +5989,7 @@ try {
         const n = image.querySelector('.image-working'); if (n) { const t = n.querySelector('.image-working-label').textContent + ' ' + n.querySelector('.image-working-count').textContent; if (seen.notes[seen.notes.length - 1] !== t) seen.notes.push(t); }
       });
       observer.observe(image, { subtree: true, childList: true, characterData: true });
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       input.value = 'image ${dicomSeries}';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       for (let i = 0; i < 200; i++) { await sleep(100); if (/^LOADING \\d+ OF/.test(image.querySelector('.pane-state').textContent)) break; }
@@ -5868,8 +6009,8 @@ try {
     const held = await evalIn(`
       await console_idle();
       const image = document.querySelector('.pane-image');
-      const input = document.querySelector('#terminal input');
-      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      const input = console_input();
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_settled(); };
       await run('image guard 1000');
       await run('image ${dicomSeries}');
       let state = '';
@@ -5884,11 +6025,11 @@ try {
     const loaded = await evalIn(`
       const image = document.querySelector('.pane-image');
       const stillHeld = image.querySelector('.pane-state').textContent;
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       input.value = 'image load'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       let state = '';
       for (let i = 0; i < 200; i++) { await sleep(100); state = image.querySelector('.pane-state').textContent; if (/^SLICE 1 OF/.test(state) && !image.querySelector('.image-working')) break; }
-      input.value = 'image guard off'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300);
+      input.value = 'image guard off'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_settled();
       return { stillHeld, state, loadHidden: image.querySelector('.image-load').hidden };`);
     for (let i = 0; i < 3; i++) {
       await page.cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: held.wheelAt.x, y: held.wheelAt.y, deltaX: 0, deltaY: 120 });
@@ -5981,8 +6122,8 @@ try {
       await console_idle();
       const image = document.querySelector('.pane-image');
       image.click();
-      const input = document.querySelector('#terminal input');
-      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      const input = console_input();
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_settled(); };
       await run('image slice 4');
       let slice = image.querySelector('.pane-state').textContent;
       for (let i = 0; i < 40 && !/SLICE 4 OF/.test(slice); i++) { await sleep(100); slice = image.querySelector('.pane-state').textContent; }
@@ -6024,8 +6165,8 @@ try {
     const mpr = await evalIn(`
       await console_idle();
       const image = document.querySelector('.pane-image');
-      const input = document.querySelector('#terminal input');
-      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      const input = console_input();
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_settled(); };
       await run('image guard off');
       await run('image layout mpr');
       for (let i = 0; i < 80; i++) { await sleep(200); if (image.querySelector('.pane-mode').textContent === 'MPR' && image.querySelectorAll('.image-mpr .image-viewport').length === 3) break; }
@@ -6058,7 +6199,7 @@ try {
     check('the probe reads a voxel on an MPR plane', probed.text !== null && /^X \d+  Y \d+  Z \d+  ·  /.test(probed.text), JSON.stringify(probed));
     const nav3d = await evalIn(`
       const image = document.querySelector('.pane-image');
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       input.value = 'image layout 3d'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       for (let i = 0; i < 120; i++) { await sleep(250); if (image.querySelector('.pane-mode').textContent === '3D' && image.querySelector('.image-render .image-viewport')) break; }
       await sleep(1200);
@@ -6076,7 +6217,7 @@ try {
     const panned = await evalIn(`return { after: window.__bbox() };`);
     check('3D offers zoom and pan, and marks the slice tools unavailable', nav3d.pills.zoom !== 'na' && nav3d.pills.pan !== 'na' && nav3d.pills.length === 'na' && nav3d.pills.angle === 'na' && nav3d.pills.probe === 'na' && nav3d.pills.wl === 'na', JSON.stringify(nav3d.pills));
     check('PAN drags the 3D render across the field', nav3d.panLit === true && nav3d.before !== null && panned.after !== null && Math.abs(panned.after.cx - nav3d.before.cx) > 40, JSON.stringify({ before: nav3d.before, after: panned.after }));
-    await evalIn(`const input = document.querySelector('#terminal input'); input.value = 'image layout single'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(600); return 1;`);
+    await evalIn(`const input = console_input(); input.value = 'image layout single'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(600); await console_settled(); return 1;`);
   }
   }
   if (await stage('image-study')) {
@@ -6087,7 +6228,7 @@ try {
     // inside a folder that is not one itself.
     const study = await evalIn(`
       await console_idle();
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       input.value = ${JSON.stringify('image ')} + ${JSON.stringify(fixtureFolder)};
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       for (let i = 0; i < 120; i++) {
@@ -6097,7 +6238,7 @@ try {
         if (p && /NOT A READABLE/.test(p.innerText)) return { opened: false, state, text: p.innerText.slice(0, 160) };
         if (/SLICE \\d+ OF 16/.test(state)) return { opened: true, state };
       }
-      return { opened: false, console: document.getElementById('terminal').innerText.split('\\n').slice(-4) };`);
+      return { opened: false, console: console_text().split('\\n').slice(-4) };`);
     check('a study folder opens its first series', study.opened === true, JSON.stringify(study));
   }
   }
@@ -6113,16 +6254,16 @@ try {
     // read back through `image state`, not the block's own light.
     const say = async (line) => evalIn(`
       await console_idle();
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       input.value = ${JSON.stringify(line)};
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      await sleep(250);
+      await sleep(250); await console_settled();
       return 1;`);
     const read = async () => {
       await say('image state');
       const lines = await evalIn(`
-        for (let i = 0; i < 40; i++) { await sleep(100); const t = document.getElementById('terminal').innerText.split('\\n'); if (t.some((l) => /^viewports: /.test(l.trim()))) break; }
-        const t = document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim());
+        for (let i = 0; i < 40; i++) { await sleep(100); const t = console_text().split('\\n'); if (t.some((l) => /^viewports: /.test(l.trim()))) break; }
+        const t = console_text().split('\\n').map((l) => l.trim());
         return { head: t.filter((l) => /^image: layout=/.test(l)).slice(-1)[0] ?? '', views: t.filter((l) => /^viewports: /.test(l)).slice(-1)[0] ?? '' };`);
       const first = (lines.views.replace(/^viewports: /, '').split(' | ')[0] ?? '');
       const num = (re, text) => { const m = re.exec(text); return m ? Number(m[1]) : NaN; };
@@ -6249,8 +6390,8 @@ try {
     const slab = await evalIn(`
       await console_idle();
       const image = document.querySelector('.pane-image');
-      const input = document.querySelector('#terminal input');
-      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      const input = console_input();
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_settled(); };
       await run('image guard off');
       await run('image layout slab');
       for (let i = 0; i < 120; i++) { await sleep(250); if (/^SLAB/.test(image.querySelector('.pane-state').textContent) && !image.querySelector('.image-working')) break; }
@@ -6266,11 +6407,11 @@ try {
     for (let i = 0; i < 4; i++) { await page.cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: slabAt.x, y: slabAt.y, deltaX: 0, deltaY: 120 }); await new Promise((r) => setTimeout(r, 200)); }
     const swept = await evalIn(`
       const image = document.querySelector('.pane-image');
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       const after = image.querySelector('.pane-state').textContent;
-      input.value = 'image ghost 0.3'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(400);
-      const ghostLine = document.getElementById('terminal').innerText.split('\\n').map((l) => l.trim()).filter((l) => /^image ghost/.test(l)).slice(-1)[0] ?? '';
-      input.value = 'image layout single'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(600);
+      input.value = 'image ghost 0.3'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(400); await console_settled();
+      const ghostLine = console_text().split('\\n').map((l) => l.trim()).filter((l) => /^image ghost/.test(l)).slice(-1)[0] ?? '';
+      input.value = 'image layout single'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(600); await console_settled();
       const back = image.querySelector('.pane-mode').textContent;
       return { after, ghostLine, back };`);
     check('image layout slab renders a vtk scene and reads its slice on the bar', slab.mode === 'SLAB' && /^SLAB . z \d+ \/ \d+/.test(slab.state) && slab.hasCanvas && slab.canvasFits && slab.layoutLit, JSON.stringify(slab));
@@ -6285,8 +6426,8 @@ try {
   } else {
     const tags = await evalIn(`
       await console_idle();
-      const input = document.querySelector('#terminal input');
-      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      const input = console_input();
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_settled(); };
       await run('image layout single');
       await run('image slice 2');
       await run('image tags');
@@ -6337,8 +6478,8 @@ try {
     const guard = await evalIn(`
       await console_idle();
       const image = document.querySelector('.pane-image');
-      const input = document.querySelector('#terminal input');
-      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); };
+      const input = console_input();
+      const run = async (line) => { input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(300); await console_settled(); };
       // The series shown afresh: LOAD is consent for one showing of a series,
       // and an earlier scenario may already have given it for this one.
       await run('image ${dicomSeries}');
@@ -6372,11 +6513,11 @@ try {
   } else {
     const volume = await evalIn(`
       await console_idle();
-      const input = document.querySelector('#terminal input');
+      const input = console_input();
       input.value = 'image ${niftiPath}';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       let image = null; let drawn = false;
-      for (let i = 0; i < 120; i++) { await sleep(500); drawn = document.getElementById('terminal').innerText.includes('drawn in'); image = [...document.querySelectorAll('.pane-image')].find((p) => p.dataset.modality === 'NIFTI'); if (drawn && image) break; }
+      for (let i = 0; i < 120; i++) { await sleep(500); drawn = console_text().includes('drawn in'); image = [...document.querySelectorAll('.pane-image')].find((p) => p.dataset.modality === 'NIFTI'); if (drawn && image) break; }
       if (!image) return { error: 'no NIFTI pane' };
       const canvas = image.querySelector('.image-canvas');
       const field = image.querySelector('.image-field').getBoundingClientRect();
@@ -6394,7 +6535,7 @@ try {
     // the card grid came up empty after a domain switch (the pane was gone).
     const panes = await evalIn(`
       await console_idle();
-      const run = async (line) => { const i = document.querySelector('#terminal input'); i.value = line; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(400); };
+      const run = async (line) => { const i = console_input(); i.value = line; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(400); await console_settled(); };
       // The desktop is opened in the FILES domain (the restore check below
       // reads it back); a stage an earlier scenario left elsewhere would be
       // captured as that domain instead.
@@ -6441,18 +6582,18 @@ try {
     if (fixtureFeed !== null) {
       await evalIn(`
         await console_idle();
-        const input = document.querySelector('#terminal input');
+        const input = console_input();
         input.value = 'feed rm -f ${fixtureFeed}'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-        for (let i = 0; i < 40; i++) { await sleep(250); if (document.getElementById('terminal').innerText.includes('removed feed ${fixtureFeed}')) return; }`);
+        for (let i = 0; i < 40; i++) { await sleep(250); if (console_text().includes('removed feed ${fixtureFeed}')) return; }`);
       console.log(`  fixtures: removed feed ${fixtureFeed}`);
     }
     if (fixtureFolder !== null) {
       // The identity's CFS is left as it was found.
       await evalIn(`
         await console_idle();
-        const input = document.querySelector('#terminal input');
+        const input = console_input();
         input.value = 'rm -r ${fixtureFolder}'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-        for (let i = 0; i < 40; i++) { await sleep(250); if (document.getElementById('terminal').innerText.includes('Removed dir: ${fixtureFolder}')) return; }`);
+        for (let i = 0; i < 40; i++) { await sleep(250); if (console_text().includes('Removed dir: ${fixtureFolder}')) return; }`);
       console.log(`  fixtures: removed ${fixtureFolder}`);
     }
   } catch (error) {

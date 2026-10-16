@@ -19,7 +19,7 @@ import { SERVER_MESSAGE_TYPES, type ClosingCause, type FileDeliverRequest, type 
 import { envelope_deliver, sink_get, sink_set, surface_set, type OutputSink, type Surface } from '@fnndsc/brasa';
 import { promptFromContext_render } from '../core/prompt/session.js';
 import { output_above } from '../core/lineDiscipline.js';
-import { terminalId_of } from './terminalId.js';
+import { terminalId_of } from '../core/terminalId.js';
 
 /** Options for connecting a remote engine. */
 export interface RemoteEngineOptions {

@@ -179,5 +179,54 @@ describe('lines in a surface\'s own language', () => {
     browser.ws.send(JSON.stringify({ type: 'execute', id: 'm2', line: 'pwd' }));
     await mine.next((m) => m.type === 'session');
   });
+
+  it('a terminal\'s chell never runs a shell, an editor or a download on the daemon host: its browser does, or refuses', async () => {
+    const asked: string[] = [];
+    const hosted = new CalypsoDaemon({
+      engine: {
+        line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+          if (line === 'shellme') await hosted.shell_current('ls').catch((e: Error) => asked.push(`shell refused: ${e.message}`));
+          if (line === 'editme') await hosted.edit_current('text', '.txt').catch((e: Error) => asked.push(`edit failed: ${e.message}`));
+          if (line === 'askme') asked.push(`answer: ${await hosted.prompt_current({ message: 'q? ', hidden: false })}`);
+          return [{ status: 'ok', rendered: '' }];
+        },
+        line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+      },
+      token: TOKEN,
+    });
+    const hostedPort = await hosted.start();
+    try {
+      const browser = await client_attach(hostedPort, { claims: [] });
+      hosted.terminals_set(new Terminals({ spawn, launch: { exec: 'chell', prefixArgs: [] }, target: { identity: 'i', url: 'ws://x', token: 't' } }));
+      browser.ws.send(JSON.stringify({ type: 'terminalOpen', cols: 80, rows: 24 }));
+      const terminalId = (await browser.next((m) => m.type === 'terminalOpened')).terminalId as string;
+      const chell = await client_attach(hostedPort, { shellCommands: true, fileDelivery: true, terminal: terminalId });
+      sockets.push(browser.ws, chell.ws);
+      // The browser runs no shells: refused by name, never sent to the chell.
+      chell.ws.send(JSON.stringify({ type: 'execute', id: '1', line: 'shellme' }));
+      await chell.next((m) => m.type === 'result' && m.id === '1');
+      expect(asked[0]).toMatch(/shell refused/);
+      expect(chell.got.some((m) => m.type === 'shell')).toBe(false);
+      // The editor is the browser's.
+      browser.ws.on('message', (d) => {
+        const m = JSON.parse(d.toString()) as Record<string, unknown>;
+        if (m.type === 'edit') browser.ws.send(JSON.stringify({ type: 'editResult', editId: m.editId, content: 'text', changed: false, opened: true }));
+      });
+      chell.ws.send(JSON.stringify({ type: 'execute', id: '2', line: 'editme' }));
+      await chell.next((m) => m.type === 'result' && m.id === '2');
+      expect(browser.got.some((m) => m.type === 'edit')).toBe(true);
+      expect(chell.got.some((m) => m.type === 'edit')).toBe(false);
+      // Its questions stay with the chell, typed in the terminal.
+      chell.ws.on('message', (d) => {
+        const m = JSON.parse(d.toString()) as Record<string, unknown>;
+        if (m.type === 'prompt') chell.ws.send(JSON.stringify({ type: 'promptAnswer', promptId: m.promptId, answer: 'typed' }));
+      });
+      chell.ws.send(JSON.stringify({ type: 'execute', id: '3', line: 'askme' }));
+      await chell.next((m) => m.type === 'result' && m.id === '3');
+      expect(asked).toContain('answer: typed');
+    } finally {
+      await hosted.stop();
+    }
+  });
 });
 

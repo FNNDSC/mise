@@ -26,10 +26,14 @@ class FakeXterm {
   public dataListener: ((data: string) => void) | null = null;
   public focused: number = 0;
   public resets: number = 0;
+  public osc: Map<number, (payload: string) => boolean> = new Map();
+  public parser = { registerOscHandler: (code: number, handler: (payload: string) => boolean): void => { this.osc.set(code, handler); } };
   constructor(options: Record<string, unknown>) { this.options = options; FakeXterm.last = this; }
   public loadAddon(): void { /* the addons do nothing here */ }
   public open(): void { /* nothing to draw into */ }
   public onData(listener: (data: string) => void): void { this.dataListener = listener; }
+  public lineFeed: (() => void) | null = null;
+  public onLineFeed(listener: () => void): void { this.lineFeed = listener; }
   public onResize(): void { /* resizes are the fit's, untested here */ }
   public write(data: string): void { this.written.push(data); }
   public focus(): void { this.focused++; }
@@ -42,7 +46,7 @@ jest.unstable_mockModule('@xterm/addon-unicode11', () => ({ Unicode11Addon: clas
 jest.unstable_mockModule('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
 jest.unstable_mockModule('@xterm/xterm/css/xterm.css', () => ({}));
 
-const { TerminalScreen, ctrl_apply, terminalTheme_of } = await import('../../src/console/terminalScreen.js');
+const { TerminalScreen, ctrl_apply, terminalTheme_of, terminalState_parse } = await import('../../src/console/terminalScreen.js');
 const { consoleMode_wire } = await import('../../src/app/consoleMode.js');
 
 /** The wire, recording what the screen sends. */
@@ -115,6 +119,32 @@ describe('the terminal screen', () => {
     expect(sessionStorage.getItem('argus.terminalId')).toBeNull();
   });
 
+  it('reads the chell\'s state marks and hands them on; anything else is ignored', () => {
+    const states: string[] = [];
+    new TerminalScreen(document.body.appendChild(document.createElement('div')), wire_make(), (): void => undefined, (state: string): void => { states.push(state); });
+    const handler = FakeXterm.last?.osc.get(6677) as (payload: string) => boolean;
+    expect(handler('state=busy')).toBe(true);
+    handler('state=asking');
+    handler('state=nonsense');
+    handler('state=idle');
+    expect(states).toEqual(['busy', 'asking', 'idle']);
+    expect(terminalState_parse(' state=idle ')).toBe('idle');
+    expect(terminalState_parse('idle')).toBeNull();
+  });
+
+  it('a mark counts line feeds, so the lines since it hold while old lines scroll out', () => {
+    const screen = new TerminalScreen(document.body.appendChild(document.createElement('div')), wire_make(), (): void => undefined);
+    const term = FakeXterm.last as FakeXterm;
+    // A full buffer: it keeps three lines however many are written.
+    let rows: string[] = ['a', 'b', '$ ls'];
+    term.buffer.active = { length: 3, getLine: (row: number) => ({ translateToString: (): string => rows[row] ?? '', isWrapped: false }) } as unknown as typeof term.buffer.active;
+    const mark: number = screen.mark();
+    term.lineFeed?.(); term.lineFeed?.();
+    rows = ['$ ls', 'one', 'two'];
+    expect(screen.lines_since(mark)).toEqual(['$ ls', 'one', 'two']);
+    expect(screen.lines_since(screen.mark())).toEqual(['two']);
+  });
+
   it('control codes and the theme', () => {
     expect(ctrl_apply('c')).toBe('\u0003');
     expect(ctrl_apply('D')).toBe('\u0004');
@@ -144,6 +174,7 @@ describe('the console switch', () => {
   });
 
   it('switches, reads as its next action, mirrors, and keeps the device\'s choice', () => {
+    localStorage.setItem('argus.consoleMode', 'transcript');
     const { client, terminal, capsule, container } = page_make();
     let screen: unknown = null;
     const control = consoleMode_wire({ client: client as never, terminal: terminal as never, offered: true, screen_set: (built) => { screen = built; } });
@@ -159,6 +190,7 @@ describe('the console switch', () => {
     const delegate = terminal.delegate_set.mock.calls.at(-1)?.[0] as { note: (t: string) => void };
     delegate.note('a note');
     expect(client.note_send).toHaveBeenCalledWith('a note');
+    expect(document.getElementById('terminal')?.dataset['terminalState']).toBe('busy');
     expect((globalThis as unknown as { __argusConsole: { mode: () => string } }).__argusConsole.mode()).toBe('terminal');
     capsule.click();
     expect(control.terminal_is()).toBe(false);
@@ -166,8 +198,7 @@ describe('the console switch', () => {
     expect(client.mirror_set).toHaveBeenLastCalledWith(false);
   });
 
-  it('opens as the terminal where the device chose it', () => {
-    localStorage.setItem('argus.consoleMode', 'terminal');
+  it('opens as the terminal wherever one is offered, unless the device chose the transcript', () => {
     const { client, terminal } = page_make();
     const control = consoleMode_wire({ client: client as never, terminal: terminal as never, offered: true, screen_set: () => undefined });
     expect(control.terminal_is()).toBe(true);

@@ -860,6 +860,25 @@ export class CalypsoDaemon {
   }
 
   /**
+   * The surface that acts for the running command: the one that issued it,
+   * except a browser's terminal, whose chell runs on this daemon's host. A
+   * shell, a pipe segment, an editor or a delivered file asked of a
+   * terminal's chell would happen on the daemon host (a browser handed a
+   * host shell, a download written to the host's disk), so they go to the
+   * browser that owns the terminal, which does them its own way or refuses
+   * by name. Its questions stay with the chell, answered in the terminal.
+   *
+   * @returns The acting surface, or null when no command runs or the
+   *   terminal's browser has gone.
+   */
+  private surfaceActing(): Surface | null {
+    const origin: Surface | null = this.currentOrigin;
+    if (origin === null || origin.capabilities.terminal === undefined) return origin;
+    const owner: unknown = this.terminals?.viewer_get(origin.capabilities.terminal)?.owner?.();
+    return owner !== null && owner !== undefined && this.surfaces.has(owner as Surface) ? owner as Surface : null;
+  }
+
+  /**
    * The surface that runs a line in its own language: the browser whose
    * terminal typed it, else the browser that last did something, else any
    * that claims the subject. 'absent' when the subject is a surface's but no
@@ -1145,7 +1164,7 @@ export class CalypsoDaemon {
     for (const surface of this.surfaces) {
       if (surface.capabilities.terminal !== undefined && shown.includes(surface.capabilities.terminal)) continue;
       if (surface !== origin) {
-        this.send(surface.socket, { type: 'session', surface: origin.id, envelope });
+        this.send(surface.socket, { type: 'session', surface: origin.id, envelope, ...(origin.capabilities.terminal !== undefined ? { terminal: origin.capabilities.terminal } : {}) });
       }
     }
   }
@@ -1362,7 +1381,7 @@ export class CalypsoDaemon {
    * @throws {Error} When no command is executing or the surface disconnects.
    */
   public pipe_current(command: string, input: Buffer): Promise<Buffer> {
-    const origin: Surface | null = this.currentOrigin;
+    const origin: Surface | null = this.surfaceActing();
     if (!origin) {
       return Promise.reject(new Error('no active command to run a pipe segment for'));
     }
@@ -1380,7 +1399,7 @@ export class CalypsoDaemon {
    * @throws {Error} When no command is executing or the surface disconnects.
    */
   public shell_current(command: string): Promise<number> {
-    const origin: Surface | null = this.currentOrigin;
+    const origin: Surface | null = this.surfaceActing();
     if (!origin) {
       return Promise.reject(new Error('no active command to run a shell command for'));
     }
@@ -1407,7 +1426,7 @@ export class CalypsoDaemon {
    * @throws {Error} When no command is executing or the surface disconnects.
    */
   public edit_current(content: string, extension: string | undefined, path?: string): Promise<EditOutcome> {
-    const origin: Surface | null = this.currentOrigin;
+    const origin: Surface | null = this.surfaceActing();
     if (!origin) {
       return Promise.reject(new Error('no active command to edit for'));
     }
@@ -1441,11 +1460,11 @@ export class CalypsoDaemon {
   }
 
   public capabilities_current(): { fileDelivery: boolean; localFilesystem: boolean; color: boolean } | null {
-    const origin: Surface | null = this.currentOrigin;
+    const origin: Surface | null = this.surfaceActing();
     return origin ? {
       fileDelivery: origin.capabilities.fileDelivery,
       localFilesystem: origin.capabilities.localFilesystem,
-      color: origin.capabilities.color,
+      color: this.currentOrigin?.capabilities.color ?? origin.capabilities.color,
     } : null;
   }
 
@@ -1464,7 +1483,7 @@ export class CalypsoDaemon {
    * @throws {Error} When no command is executing or the surface disconnects.
    */
   public deliver_current(request: FileDeliverRequest): Promise<DeliverOutcome> {
-    const origin: Surface | null = this.currentOrigin;
+    const origin: Surface | null = this.surfaceActing();
     if (!origin) {
       return Promise.reject(new Error('no active command to deliver a file for'));
     }

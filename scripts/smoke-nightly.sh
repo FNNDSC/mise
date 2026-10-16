@@ -51,7 +51,10 @@ run() { # name, port, extra env…
 run desk 9701
 run tablet 9702 SMOKE_ONLY=listing-columns,mode-frame,cards,runs-honesty,roster-order,notes SMOKE_WIDTH=1024 SMOKE_HEIGHT=768
 run finger 9703 SMOKE_ONLY=listing-columns,mode-frame,cards,notes SMOKE_WIDTH=1024 SMOKE_HEIGHT=768 SMOKE_TOUCH=1
-cat "$log".desk "$log".tablet "$log".finger > "$log" 2>/dev/null; rm -f "$log".desk "$log".tablet "$log".finger
+# The console is a terminal by default (#1125); the transcript is the fallback
+# for a daemon without a pty, and its own scenarios keep it honest.
+run transcript 9704 SMOKE_CONSOLE=transcript SMOKE_ONLY=console-grammar,console-height,console-zoom,console-asks,question-both-places,pane-ask,ask-errand
+cat "$log".desk "$log".tablet "$log".finger "$log".transcript > "$log" 2>/dev/null; rm -f "$log".desk "$log".tablet "$log".finger "$log".transcript
 kill "$pid" 2>/dev/null || true
 
 # The door, scripted (#925): a token minted by the operator's hand lets a

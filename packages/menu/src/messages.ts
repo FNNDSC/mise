@@ -571,6 +571,8 @@ export const sessionMessageSchema = z.object({
   type: z.literal('session'),
   surface: z.string(),
   envelope: commandEnvelopeSchema,
+  /** The terminal the command was typed in, when its surface was a browser's terminal: that browser treats it as its own console's. */
+  terminal: z.string().optional(),
 });
 
 /** A boundary error: a refused attach, a malformed message, correlated when possible. */

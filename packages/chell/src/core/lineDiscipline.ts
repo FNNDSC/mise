@@ -16,6 +16,8 @@
  * @module
  */
 
+import { terminalId_of } from './terminalId.js';
+
 const typedAhead: string[] = [];
 let redraw: (() => void) | null = null;
 let questionOpen: boolean = false;
@@ -98,3 +100,23 @@ export function output_above(text: string, write: (chunk: string) => void = (chu
   write(text.endsWith('\n') ? text : `${text}\n`);
   redraw();
 }
+
+/** What a browser's terminal is doing, as it marks it for the page drawing it. */
+export type TerminalState = 'idle' | 'busy' | 'asking';
+
+/**
+ * Marks what this shell is doing, for the browser that draws it: at its
+ * prompt (idle), running a command (busy), or waiting on a question
+ * (asking). The mark is an operating-system command escape the terminal
+ * emulator hands to the page and never draws (OSC 6677), written only when
+ * this chell is a browser's terminal (CHELL_TERMINAL names one); a shell in
+ * an ordinary terminal writes nothing.
+ *
+ * @param state - The state.
+ * @param write - Where it goes; the terminal by default.
+ */
+export function terminalState_mark(state: TerminalState, write: (chunk: string) => void = (chunk: string): void => { process.stdout.write(chunk); }): void {
+  if (terminalId_of(process.env['CHELL_TERMINAL']) === null) return;
+  write(`\u001b]6677;state=${state}\u0007`);
+}
+

@@ -544,17 +544,8 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
       drawer.style.height = `${px}px`;
       return `console height ${px}`;
     }
-    if (verb === 'terminal' || verb === 'transcript') {
-      // The capsule is the one mechanism: the line presses it.
-      const capsule: HTMLElement | null = document.querySelector<HTMLElement>('.console-mode');
-      if (capsule === null || capsule.hidden) return `console ${verb}: this daemon offers no terminal (node-pty is not built on its host)`;
-      const isTerminal: boolean = document.getElementById('terminal')?.classList.contains('console-terminal') === true;
-      if (isTerminal === (verb === 'terminal')) return `console already a ${verb}`;
-      capsule.click();
-      return `console ${verb}`;
-    }
     if (verb === 'open' || verb === 'close') return `console already ${verb === 'open' ? 'open' : 'closed'}`;
-    return `console: unknown verb '${verb}' (open|close|toggle|zoom|height|terminal|transcript)`;
+    return `console: unknown verb '${verb}' (open|close|toggle|zoom|height)`;
   }
 
   const listings: Record<string, { selector: string; named: string }> = { file: { selector: '.pane-files', named: 'files' }, ...(extension?.listings ?? {}) };

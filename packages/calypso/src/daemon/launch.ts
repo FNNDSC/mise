@@ -292,9 +292,10 @@ export async function daemon_launch(
 
   // Terminals: a browser's console as a chell under a pty, attached back
   // over loopback (or the one address bound, when that is not a wildcard).
-  // A machine where node-pty did not build offers none; its surfaces keep
-  // their transcript console.
-  const ptySpawn: PtySpawn | null = await ptySpawn_load();
+  // A machine where node-pty did not build offers none; its surfaces fall
+  // back to the transcript console (deprecated). CALYPSO_NO_PTY=1 makes a
+  // daemon that machine, so the fallback can be exercised where a pty builds.
+  const ptySpawn: PtySpawn | null = process.env['CALYPSO_NO_PTY'] === '1' ? null : await ptySpawn_load();
   if (ptySpawn !== null) {
     const terminalHost: string = bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost;
     daemon.terminals_set(new Terminals({

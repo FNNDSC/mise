@@ -28,13 +28,16 @@ set -a; . "$HOME/.config/mise/e2e.env"; set +a
 SEED=${SMOKE_SEED:-/tmp/pde2e/config}
 [ -d "$SEED/@fnndsc" ] || { echo "$day  no e2e seed at $SEED/@fnndsc: log the e2e identity in once (restart-e2e) and run again" | tee -a "$ledger"; exit 1; }
 rm -rf "$P/config/@fnndsc" && cp -r "$SEED/@fnndsc" "$P/config/@fnndsc"
-rm -f "$P"/run/calypso/berth-*.json
-TMPDIR=$P/tmp XDG_RUNTIME_DIR=$P/run XDG_CONFIG_HOME=$P/config XDG_CACHE_HOME=$P/cache \
-  setsid nohup node "$ROOT/packages/chell/dist/index.js" --daemon --no-logo --saved-token "$E2E_USER@$E2E_CUBE" > "$P/daemon.log" 2>&1 < /dev/null &
-b=""; for _ in $(seq 1 180); do b=$(ls "$P/run/calypso/" 2>/dev/null | grep berth- | head -1); [ -n "$b" ] && break; sleep 1; done
-[ -n "$b" ] || { echo "$day  no berth: the daemon did not boot" | tee -a "$ledger"; exit 1; }
-url=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['url'].replace('ws://','http://')+'/?token='+d['token'])" "$P/run/calypso/$b")
-pid=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['pid'])" "$P/run/calypso/$b")
+daemon_start() { # extra env…: boots the private daemon, sets url and pid
+  rm -f "$P"/run/calypso/berth-*.json
+  env "$@" TMPDIR=$P/tmp XDG_RUNTIME_DIR=$P/run XDG_CONFIG_HOME=$P/config XDG_CACHE_HOME=$P/cache \
+    setsid nohup node "$ROOT/packages/chell/dist/index.js" --daemon --no-logo --saved-token "$E2E_USER@$E2E_CUBE" > "$P/daemon.log" 2>&1 < /dev/null &
+  b=""; for _ in $(seq 1 180); do b=$(ls "$P/run/calypso/" 2>/dev/null | grep berth- | head -1); [ -n "$b" ] && break; sleep 1; done
+  [ -n "$b" ] || { echo "$day  no berth: the daemon did not boot" | tee -a "$ledger"; exit 1; }
+  url=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['url'].replace('ws://','http://')+'/?token='+d['token'])" "$P/run/calypso/$b")
+  pid=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['pid'])" "$P/run/calypso/$b")
+}
+daemon_start
 
 run() { # name, port, extra env…
   local name=$1 port=$2; shift 2
@@ -51,11 +54,15 @@ run() { # name, port, extra env…
 run desk 9701
 run tablet 9702 SMOKE_ONLY=listing-columns,mode-frame,cards,runs-honesty,roster-order,notes SMOKE_WIDTH=1024 SMOKE_HEIGHT=768
 run finger 9703 SMOKE_ONLY=listing-columns,mode-frame,cards,notes SMOKE_WIDTH=1024 SMOKE_HEIGHT=768 SMOKE_TOUCH=1
-# The console is a terminal by default (#1125); the transcript is the fallback
-# for a daemon without a pty, and its own scenarios keep it honest.
-run transcript 9704 SMOKE_CONSOLE=transcript SMOKE_ONLY=console-grammar,console-height,console-zoom,console-asks,question-both-places,pane-ask,ask-errand
-cat "$log".desk "$log".tablet "$log".finger "$log".transcript > "$log" 2>/dev/null; rm -f "$log".desk "$log".tablet "$log".finger "$log".transcript
 kill "$pid" 2>/dev/null || true
+# The console is a terminal (#1125); the transcript is the deprecated fallback
+# for a daemon without a pty. A daemon made one (CALYPSO_NO_PTY=1) runs its
+# own scenarios, so the fallback stays honest while it lasts.
+sleep 2
+daemon_start CALYPSO_NO_PTY=1
+run transcript 9704 SMOKE_CONSOLE=transcript SMOKE_ONLY=console-grammar,console-height,console-zoom,console-asks,question-both-places,pane-ask,ask-errand
+kill "$pid" 2>/dev/null || true
+cat "$log".desk "$log".tablet "$log".finger "$log".transcript > "$log" 2>/dev/null; rm -f "$log".desk "$log".tablet "$log".finger "$log".transcript
 
 # The door, scripted (#925): a token minted by the operator's hand lets a
 # script in with no password anywhere, and `chell -c` goes through the

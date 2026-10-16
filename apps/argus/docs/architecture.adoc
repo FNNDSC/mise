@@ -37,6 +37,12 @@ lower to the same bounded command a terminal operator could issue. Neither path
 creates a second control vocabulary. ARGUS inherits this constraint from mise's
 existing CALYPSO architecture rather than establishing it independently.
 
+=== The console is a terminal
+
+The console is xterm.js drawing a `chell --remote` that the daemon runs for the page under a pseudo-terminal (node-pty), so it is the same shell as any terminal's: its prompt, line editing, history, completion, questions asked in line, and full-screen programs. The daemon keeps that chell after the page leaves; a reload reattaches by the tab's id and replays the recent output. ARGUS's own words (`dag`, `desktop`, `view`) typed in it are routed back to the page that owns it. What the page itself runs (a pressed verb, a note) still goes over the page's own connection: its question stands on the pane that was pressed, and the page mirrors the line, its output and the answer into the terminal as notes. A terminal's chell runs on the daemon's host, so its shell, pipe, editor and file delivery go to the browser that owns it, never to that host.
+
+The transcript (the console ARGUS drew itself from the session's envelopes, a log of blocks with no screen to address) is a deprecated fallback, frozen: it is the console only on a daemon that offers no terminal, because node-pty did not build on its host, and its first line says so. `CALYPSO_NO_PTY=1` makes a daemon that host, and the nightly smoke runs the transcript's own scenarios against one.
+
 == Operational domains
 
 ARGUS divides the scientific-computing experience into five sibling domains:
@@ -91,7 +97,7 @@ apps/argus/
 `-- src/
     |-- app/                  composition, layout, navigation
     |-- calypso/              session transport and public protocol
-    |-- console/              terminal, prompt, transcript, progress
+    |-- console/              the terminal (xterm.js), the transcript fallback, progress
     |-- features/
     |   |-- files/
     |   |-- runs/

@@ -1,13 +1,11 @@
 /**
- * @file Which console the page shows: the transcript, or the terminal (the
- * chell the daemon runs for this page, drawn by xterm.js; #1125).
+ * @file Which console the page shows: the terminal (the chell the daemon runs
+ * for this page, drawn by xterm.js; #1125), or the transcript.
  *
- * The terminal is the console wherever the daemon offers one. The CONSOLE
- * capsule on the console's drawer switches between them and reads as what it
- * will do next; `console terminal` and `console transcript` press it. The
- * choice is the device's (localStorage). A daemon that offers no terminal
- * (node-pty not built on its host) shows no capsule, and the transcript is the
- * console.
+ * The terminal is the console wherever the daemon offers one; nothing chooses
+ * otherwise. The transcript is a deprecated fallback, frozen: it is the
+ * console only on a daemon that offers no terminal (node-pty did not build on
+ * its host), and its first line says so and why.
  *
  * In terminal mode the transcript keeps its record behind the terminal and
  * hands the terminal what this surface itself runs or says (its echoes, notes,
@@ -27,8 +25,11 @@ import type { PaneAskRequest } from '../features/ask/paneAsk.js';
 /** The two consoles. */
 export type ConsoleMode = 'terminal' | 'transcript';
 
-/** Where the device keeps its choice. */
+/** Where a device once kept a choice of console (there is none now). */
 const MODE_KEY: string = 'argus.consoleMode';
+
+/** The transcript's first line, where it is the console. */
+const FALLBACK_NOTE: string = 'console: the transcript, deprecated: this host offers no pseudo-terminal (node-pty did not build). Install python, make and g++ and reinstall for the terminal console.';
 
 /** What the wiring needs. */
 export interface ConsoleModeWiring {
@@ -48,22 +49,12 @@ export interface ConsoleModeControl {
   question_sheet: (request: PaneAskRequest) => Promise<string | null>;
 }
 
-/** Reads the device's choice. */
-function mode_read(): ConsoleMode | null {
+/** Forgets a choice an earlier release kept. */
+function mode_forget(): void {
   try {
-    const saved: string | null = localStorage.getItem(MODE_KEY);
-    return saved === 'terminal' || saved === 'transcript' ? saved : null;
+    localStorage.removeItem(MODE_KEY);
   } catch {
-    return null;
-  }
-}
-
-/** Keeps the device's choice. */
-function mode_write(mode: ConsoleMode): void {
-  try {
-    localStorage.setItem(MODE_KEY, mode);
-  } catch {
-    // A device without storage chooses again next visit.
+    // A device without storage kept nothing.
   }
 }
 
@@ -76,7 +67,6 @@ function mode_write(mode: ConsoleMode): void {
 export function consoleMode_wire(wiring: ConsoleModeWiring): ConsoleModeControl {
   const { client, terminal, offered } = wiring;
   const container: HTMLElement | null = document.getElementById('terminal');
-  const capsule: HTMLButtonElement | null = document.querySelector<HTMLButtonElement>('.console-mode');
   let screen: TerminalScreen | null = null;
   let mode: ConsoleMode = 'transcript';
 
@@ -121,27 +111,11 @@ export function consoleMode_wire(wiring: ConsoleModeWiring): ConsoleModeControl 
       terminal.delegate_set(null);
       mode = 'transcript';
     }
-    if (capsule !== null) {
-      // The control reads as what it will do next.
-      capsule.textContent = mode === 'terminal' ? 'TRANSCRIPT' : 'TERMINAL';
-      capsule.title = mode === 'terminal'
-        ? 'show the transcript console (the terminal keeps running)'
-        : 'make the console a terminal: the same chell as a shell, drawn here';
-    }
   };
 
-  if (capsule !== null) {
-    capsule.hidden = !offered;
-    capsule.addEventListener('click', (): void => {
-      const next: ConsoleMode = mode === 'terminal' ? 'transcript' : 'terminal';
-      mode_write(next);
-      apply(next);
-      terminal.focus_take();
-    });
-  }
-  // The terminal is the console wherever one is offered, unless this device
-  // chose the transcript.
-  apply(offered && mode_read() !== 'transcript' ? 'terminal' : 'transcript');
+  mode_forget();
+  apply(offered ? 'terminal' : 'transcript');
+  if (!offered) terminal.line_note(FALLBACK_NOTE);
 
   // The smoke's hold on the console, whichever it is: which one shows, keys
   // typed into the terminal as the keyboard would, and its text as it reads.

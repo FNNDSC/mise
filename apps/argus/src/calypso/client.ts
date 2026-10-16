@@ -187,6 +187,12 @@ export interface ClientHandlers {
   /** The daemon's own code on disk changed (or changed back) since it started. */
   stale_receive?: (stale: boolean) => void;
   /**
+   * A line typed in a chell whose subject this surface claims: run it in the
+   * surface's own language. Resolves with the text to print, or rejects when
+   * the line is not the surface's after all.
+   */
+  surfaceLine_receive?: (line: string, terminal: string | undefined) => Promise<{ rendered: string; status: 'ok' | 'error' }>;
+  /**
    * Which listing the session's numbers currently count.
    *
    * A row can be named by the number beside it (`gather add @2,3`), and a
@@ -383,8 +389,47 @@ export class ArgusClient {
   }
 
   /**
-   * Reports a regard write to the daemon: the operator indicated an
-   * addressable thing on this surface. The daemon retains it as session
+   * Runs a line routed here in this surface's own language and answers the
+   * daemon with the text, or with why it could not.
+   *
+   * @param lineId - The request's correlation id.
+   * @param line - The line typed in a chell.
+   * @param terminal - The terminal it was typed in, when it was this surface's.
+   */
+  private surfaceLine_handle(lineId: string, line: string, terminal: string | undefined): void {
+    const run = this.handlers.surfaceLine_receive;
+    if (run === undefined) {
+      this.socket.send(JSON.stringify({ type: 'surfaceLineError', lineId, reason: 'this surface runs no lines of its own' }));
+      return;
+    }
+    run(line, terminal).then(
+      (answer: { rendered: string; status: 'ok' | 'error' }): void => { this.socket.send(JSON.stringify({ type: 'surfaceLineResult', lineId, rendered: answer.rendered, status: answer.status })); },
+      (error: unknown): void => { this.socket.send(JSON.stringify({ type: 'surfaceLineError', lineId, reason: error instanceof Error ? error.message : String(error) })); },
+    );
+  }
+
+  /**
+   * Declares the subjects this surface's own language answers for, so a line
+   * in one typed in any chell is routed here.
+   *
+   * @param claims - The subjects, with the verbs claimed from a shared one.
+   */
+  public claims_send(claims: ReadonlyArray<{ subject: string; verbs?: string[] }>): void {
+    this.socket.send(JSON.stringify({ type: 'surfaceClaims', claims }));
+  }
+
+  /**
+   * Sends a note for this surface's consoles: their chell prints it above the
+   * line being typed.
+   *
+   * @param text - The note.
+   */
+  public note_send(text: string): void {
+    this.socket.send(JSON.stringify({ type: 'note', text }));
+  }
+
+  /**
+   * Shares the operator's regard with the session: the daemon keeps the
    * truth and rebroadcasts to every surface.
    *
    * @param regard - The indicated address with its provenance.
@@ -481,6 +526,7 @@ export class ArgusClient {
         break;
       }
       case 'stale': this.handlers.stale_receive?.(message.stale); break;
+      case 'surfaceLine': this.surfaceLine_handle(message.lineId, message.line, message.terminal); break;
       case 'closing': this.handlers.closing_receive?.(message.cause); break;
       case 'numbered': {
         this.handlers.numbered_receive?.({

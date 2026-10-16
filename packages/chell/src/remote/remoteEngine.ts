@@ -18,6 +18,8 @@ import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
 import { SERVER_MESSAGE_TYPES, type ClosingCause, type FileDeliverRequest, type FileDeliverResult } from '@fnndsc/menu';
 import { envelope_deliver, sink_get, sink_set, surface_set, type OutputSink, type Surface } from '@fnndsc/brasa';
 import { promptFromContext_render } from '../core/prompt/session.js';
+import { output_above } from '../core/lineDiscipline.js';
+import { terminalId_of } from './terminalId.js';
 
 /** Options for connecting a remote engine. */
 export interface RemoteEngineOptions {
@@ -138,6 +140,9 @@ export class RemoteEngine implements BrasaEngine {
             // A shell has a disk and directories wherever it runs, so a folder
             // it asks for arrives as a folder rather than an archive of one.
             localFilesystem: options.onDeliver !== undefined,
+            // A browser's terminal names itself, so the daemon knows whose
+            // console this chell is (the daemon sets CHELL_TERMINAL).
+            ...(terminalId_of(process.env['CHELL_TERMINAL']) !== null ? { terminal: terminalId_of(process.env['CHELL_TERMINAL']) as string } : {}),
           },
         }));
         ws.once('message', (data: Buffer) => {
@@ -331,6 +336,11 @@ export class RemoteEngine implements BrasaEngine {
         break;
       case 'closing':
         this.onClosing?.(message.cause);
+        break;
+      case 'consoleNote':
+        // A note from the browser this console belongs to: above the line
+        // being typed, which is then drawn again.
+        output_above(message.text.endsWith('\n') ? message.text : `${message.text}\n`);
         break;
       case 'stale':
         this.daemonStale = message.stale;

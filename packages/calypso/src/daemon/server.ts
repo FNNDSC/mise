@@ -38,6 +38,7 @@ import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancel
 import type { z } from 'zod';
 import type { Terminals, TerminalViewer } from './terminals.js';
 import { Lane } from './lane.js';
+import { claim_match, claimCandidates_of, type SurfaceClaim } from './claims.js';
 import { DownloadLedger, downloadId_valid, type DownloadReport, type OpenedFile } from './downloads.js';
 
 /**
@@ -87,6 +88,10 @@ interface Surface {
     fileDelivery: boolean;
     localFilesystem: boolean;
     color: boolean;
+    /** The subjects its own language answers for (claims.ts). */
+    claims: SurfaceClaim[];
+    /** The terminal it draws, when it is a terminal's chell. */
+    terminal?: string;
   };
 }
 
@@ -296,6 +301,12 @@ export class CalypsoDaemon {
   /** The downloads this daemon is serving, for their progress (downloads.ts). */
   private readonly downloads: DownloadLedger = new DownloadLedger();
   private readonly edits: RequestBroker<EditOutcome> = new RequestBroker<EditOutcome>('e', 'surface disconnected before returning the edit');
+  /** Lines run by a surface's own language, by the surface that claims them. */
+  private readonly surfaceLines: RequestBroker<{ rendered: string; status: 'ok' | 'error' }> = new RequestBroker<{ rendered: string; status: 'ok' | 'error' }>('l', 'the surface that answers for this line went away before answering');
+  /** The browser that last did something: the one a claimed line goes to when no terminal of its own typed it. */
+  private browserActive: Surface | null = null;
+  /** Subjects a surface claimed whole this session, so a line in one is refused by name when none is attached. */
+  private readonly claimedSeen: Set<string> = new Set();
   private readonly deliveries: RequestBroker<DeliverOutcome> = new RequestBroker<DeliverOutcome>('d', 'surface disconnected before the file was delivered');
 
   /**
@@ -729,6 +740,7 @@ export class CalypsoDaemon {
     const viewer: TerminalViewer = {
       data: (terminalId: string, data: string): void => this.send(socket, { type: 'terminalData', terminalId, data }),
       exit: (terminalId: string, code: number): void => this.send(socket, { type: 'terminalExit', terminalId, code }),
+      owner: (): unknown => surface,
     };
     // A front that holds the token for a browser — the porter — puts it on
     // the upgrade URL it proxies, the way `/vfs?token=` already travels; the
@@ -758,6 +770,15 @@ export class CalypsoDaemon {
       const value = message.value;
       const attached: Surface = surface;
       if (value.type === 'execute') {
+        if (!attached.capabilities.shellCommands && attached.capabilities.claims.length > 0) this.browserActive = attached;
+        // A line in a surface's own language is that surface's to run: it never
+        // reaches the engine, and needs no turn on the lane (the session is not
+        // touched by it).
+        const claimant: Surface | 'absent' | null = value.instrument === true ? null : this.claimant_for(attached, value.line);
+        if (claimant !== null) {
+          void this.surfaceLine_run(attached, value, claimant);
+          return;
+        }
         // One lane for every surface: commands take turns, and a command
         // waiting on a person stands aside (person_await), so a pane's own
         // reads, or another surface's command, run while a question is open.
@@ -807,6 +828,15 @@ export class CalypsoDaemon {
         this.terminals?.resize(viewer, value.terminalId, value.cols, value.rows);
       } else if (value.type === 'terminalClose') {
         this.terminals?.close(viewer, value.terminalId);
+      } else if (value.type === 'surfaceLineResult') {
+        this.surfaceLines.settle(socket, value.lineId, { rendered: value.rendered, status: value.status });
+      } else if (value.type === 'surfaceLineError') {
+        this.surfaceLines.fail(socket, value.lineId, value.reason);
+      } else if (value.type === 'note') {
+        this.note_relay(viewer, value.text);
+      } else if (value.type === 'surfaceClaims') {
+        attached.capabilities.claims = value.claims;
+        for (const claim of value.claims) if (claim.verbs === undefined) this.claimedSeen.add(claim.subject.toLowerCase());
       } else {
         this.send(socket, { type: 'error', reason: 'already attached' });
       }
@@ -817,11 +847,80 @@ export class CalypsoDaemon {
       this.terminals?.detach(viewer);
       if (surface) {
         this.surfaces.delete(surface);
+        if (this.browserActive === surface) this.browserActive = null;
         // A detached surface holds no watches: whatever it kept live is
         // released, and a subject nobody else watches stops being sampled.
         this.engine.watch_release?.(surface.id);
       }
     });
+  }
+
+  /**
+   * The surface that runs a line in its own language: the browser whose
+   * terminal typed it, else the browser that last did something, else any
+   * that claims the subject. 'absent' when the subject is a surface's but no
+   * surface that claims it is attached; null when the session owns the line.
+   *
+   * @param origin - The surface the line came from.
+   * @param line - The line.
+   * @returns The claimant, 'absent', or null.
+   */
+  private claimant_for(origin: Surface, line: string): Surface | 'absent' | null {
+    const claiming = (surface: Surface | null | undefined): surface is Surface =>
+      surface !== null && surface !== undefined && surface !== origin && this.surfaces.has(surface) && claim_match(surface.capabilities.claims, line) !== null;
+    const owner: unknown = origin.capabilities.terminal === undefined ? null : this.terminals?.viewer_get(origin.capabilities.terminal)?.owner?.();
+    if (claiming(owner as Surface | null)) return owner as Surface;
+    if (claiming(this.browserActive)) return this.browserActive;
+    const any: Surface | undefined = [...this.surfaces].find((surface: Surface): boolean => claiming(surface));
+    if (any !== undefined) return any;
+    // A subject a surface claimed whole is no command of the session's: with
+    // no such surface attached, the line is refused by name, not run.
+    const subject: string = (line.trim().split(/\s+/)[0] ?? '').toLowerCase();
+    if (this.claimedSeen.has(subject) && claim_match([{ subject }], line) !== null) return 'absent';
+    return null;
+  }
+
+  /**
+   * Runs a line in a surface's own language, and answers the surface that
+   * typed it with what the language said.
+   *
+   * @param origin - The surface that typed the line.
+   * @param message - The execute request.
+   * @param claimant - The surface that runs it, or 'absent'.
+   */
+  private async surfaceLine_run(origin: Surface, message: ExecuteMessage, claimant: Surface | 'absent'): Promise<void> {
+    const subject: string = (message.line.trim().split(/\s+/)[0] ?? '').toLowerCase();
+    if (claimant === 'absent') {
+      this.send(origin.socket, { type: 'result', id: message.id, envelopes: [{ status: 'error', rendered: '', renderedErr: `${subject}: an ARGUS word; no ARGUS is attached to this session\n` }] });
+      return;
+    }
+    try {
+      const answer = await this.surfaceLines.open(claimant.socket, (lineId: string): void => {
+        this.send(claimant.socket, { type: 'surfaceLine', lineId, line: message.line, ...(origin.capabilities.terminal !== undefined ? { terminal: origin.capabilities.terminal } : {}) });
+      });
+      const rendered: string = answer.rendered === '' || answer.rendered.endsWith('\n') ? answer.rendered : `${answer.rendered}\n`;
+      this.send(origin.socket, { type: 'result', id: message.id, envelopes: [answer.status === 'ok' ? { status: 'ok', rendered } : { status: 'error', rendered: '', renderedErr: rendered }] });
+    } catch (err: unknown) {
+      const reason: string = err instanceof Error ? err.message : String(err);
+      this.send(origin.socket, { type: 'result', id: message.id, envelopes: [{ status: 'error', rendered: '', renderedErr: `${subject}: ${reason}\n` }] });
+    }
+  }
+
+  /**
+   * Carries a browser's note to its consoles: the chell of every terminal it
+   * draws prints it above the line being typed.
+   *
+   * @param viewer - The browser's terminal viewer.
+   * @param text - The note.
+   */
+  private note_relay(viewer: TerminalViewer, text: string): void {
+    const owned: string[] = this.terminals?.ids_of(viewer) ?? [];
+    if (owned.length === 0) return;
+    for (const surface of this.surfaces) {
+      if (surface.capabilities.terminal !== undefined && owned.includes(surface.capabilities.terminal)) {
+        this.send(surface.socket, { type: 'consoleNote', text });
+      }
+    }
   }
 
   /**
@@ -876,9 +975,12 @@ export class CalypsoDaemon {
         fileDelivery: attach.value.capabilities?.fileDelivery ?? false,
         localFilesystem: attach.value.capabilities?.localFilesystem ?? false,
         color: attach.value.capabilities?.color ?? false,
+        claims: attach.value.capabilities?.claims ?? [],
+        ...(attach.value.capabilities?.terminal !== undefined ? { terminal: attach.value.capabilities.terminal } : {}),
       },
     };
     this.surfaces.add(surface);
+    for (const claim of surface.capabilities.claims) if (claim.verbs === undefined) this.claimedSeen.add(claim.subject.toLowerCase());
     this.send(socket, {
       type: 'attached',
       session: this.sessionId,
@@ -1373,11 +1475,14 @@ export class CalypsoDaemon {
   private async complete_run(socket: WebSocket, message: CompleteRequest): Promise<void> {
     try {
       const result: CompletionResult = await this.engine.line_complete(message.prefix);
+      // The surfaces' own subjects and claimed verbs complete like any command.
+      const claims: SurfaceClaim[] = [...this.surfaces].flatMap((each: Surface): SurfaceClaim[] => each.capabilities.claims);
+      const offered: string[] = claimCandidates_of(claims, message.prefix).filter((word: string): boolean => !result.candidates.includes(word));
       this.send(socket, {
         type: 'complete',
         id: message.id,
         prefix: result.prefix,
-        candidates: result.candidates,
+        candidates: [...result.candidates, ...offered],
       });
     } catch (err: unknown) {
       const reason: string = err instanceof Error ? err.message : String(err);

@@ -24,7 +24,7 @@ import type { OutputSink, Surface, SurfaceCapabilities, SurfacePeer, PromptReque
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { backend_get, type Backend, type SessionIdentity } from '@fnndsc/brasa/core';
 import { stackBanner_rows, stackBannerRow_paint, versions_get, buildHash_get } from '@fnndsc/brasa/core';
-import { identity_normalise, berth_write, berth_read, berth_path, berthUrl_isAlive, closing_take, type Berth } from './berth.js';
+import { identity_normalise, berth_write, berthOwn_read, berth_path, berthUrl_isAlive, closing_take, type Berth } from './berth.js';
 import type { ClosingCause } from '@fnndsc/menu';
 import { attachFile_write, attachFile_remove } from './attachFile.js';
 import { HOST_CONTROL_OFF, hostControl_describe, hostControl_guard, hostControl_tiers, hostPipe_run, hostShell_run, type HostControlPolicy } from './hostControl.js';
@@ -198,7 +198,7 @@ export async function daemon_launch(
   // already live, point the operator at it and refuse rather than host a rival
   // and orphan the running one's berth. This covers both launch paths (chell
   // --daemon and the standalone calypso binary), since both land here.
-  const existing: Berth | null = berth_read(identity);
+  const existing: Berth | null = berthOwn_read(identity);
   if (existing && (await berthUrl_isAlive(existing.url))) {
     const attachHint: string = sessionIdentity.connected ? ` ${identity}` : '';
     console.error(chalk.red(`[!] Calypso is already running for ${identity} at ${existing.url}`));

@@ -24,7 +24,7 @@
 import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, rmSync } from 'fs';
 import { dirname, join } from 'path';
 import { CLOSING_CAUSES, type ClosingCause } from '@fnndsc/menu';
-import { tmpdir } from 'os';
+import { homedir, tmpdir } from 'os';
 import { createHash } from 'node:crypto';
 import { connect as net_connect, type Socket } from 'node:net';
 
@@ -195,7 +195,65 @@ function berth_validate(parsed: unknown): Berth | null {
  * @returns The berth, or null when none is advertised or it is malformed.
  */
 export function berth_read(identity: string): Berth | null {
-  const path: string = berth_path(identity);
+  // This runtime's own berth first; then a porter's session for the same
+  // identity, which keeps its berth under the porter's state (a session a
+  // browser login started is attached to as any other).
+  for (const path of berthPaths_of(identity)) {
+    const berth: Berth | null = berthFile_read(path, identity);
+    if (berth !== null) return berth;
+  }
+  return null;
+}
+
+/**
+ * Reads this runtime's own berth for an identity, never a porter's: what a
+ * daemon starting here checks so as not to host a rival to one of its own.
+ * A porter's session is its own runtime, and starting beside it is allowed.
+ *
+ * @param identity - A normalised identity.
+ * @returns The berth, or null.
+ */
+export function berthOwn_read(identity: string): Berth | null {
+  return berthFile_read(berth_path(identity), identity);
+}
+
+/**
+ * The state directories a porter on this machine keeps its sessions under,
+ * in the order looked: the porter's own setting, the user's state directory
+ * (a porter run as this user), the system one (a porter run as a service).
+ *
+ * @returns The candidate roots.
+ */
+export function porterStateRoots_get(): string[] {
+  const roots: string[] = [];
+  if (process.env.PORTER_STATE_DIR) roots.push(process.env.PORTER_STATE_DIR);
+  roots.push(join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'porter'));
+  roots.push('/var/lib/porter/sessions');
+  return [...new Set(roots)];
+}
+
+/**
+ * Where an identity's berth may be: this runtime's directory, then each
+ * porter root's session runtime (`<root>/<key>/run`, porter's own layout).
+ *
+ * @param identity - A normalised identity.
+ * @returns The candidate paths.
+ */
+export function berthPaths_of(identity: string): string[] {
+  return [
+    berth_path(identity),
+    ...porterStateRoots_get().map((root: string): string => berth_pathIn(join(root, berthKey_compute(identity), 'run'), identity)),
+  ];
+}
+
+/**
+ * Reads one berth file, when it exists and names the identity.
+ *
+ * @param path - The file.
+ * @param identity - The identity it must name.
+ * @returns The berth, or null.
+ */
+function berthFile_read(path: string, identity: string): Berth | null {
   if (!existsSync(path)) {
     return null;
   }
@@ -218,7 +276,42 @@ export function berth_read(identity: string): Berth | null {
  *   or holds none.
  */
 export function berthAll_read(): Berth[] {
-  const dir: string = berthDir_path();
+  const berths: Berth[] = [];
+  // This runtime's berths, then each porter session's, one per identity.
+  for (const dir of [berthDir_path(), ...porterSessionDirs_get()]) {
+    for (const berth of berthDir_read(dir)) {
+      if (!berths.some((one: Berth): boolean => one.identity === berth.identity)) berths.push(berth);
+    }
+  }
+  return berths;
+}
+
+/**
+ * The berth directories of every porter session this user can read.
+ *
+ * @returns The directories.
+ */
+function porterSessionDirs_get(): string[] {
+  const dirs: string[] = [];
+  for (const root of porterStateRoots_get()) {
+    try {
+      for (const entry of readdirSync(root, { withFileTypes: true })) {
+        if (entry.isDirectory()) dirs.push(join(root, entry.name, 'run', BERTH_SUBDIR));
+      }
+    } catch {
+      // No porter here, or not one this user may read.
+    }
+  }
+  return dirs;
+}
+
+/**
+ * Reads every well-formed berth in one directory.
+ *
+ * @param dir - The directory.
+ * @returns Its berths.
+ */
+function berthDir_read(dir: string): Berth[] {
   if (!existsSync(dir)) {
     return [];
   }

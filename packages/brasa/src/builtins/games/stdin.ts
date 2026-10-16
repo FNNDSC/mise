@@ -11,9 +11,19 @@
  *
  * @module
  */
+import { turnPart_register } from '../../core/turn.js';
 
 /** The text piped into the segment now running, or null when nothing was. */
 let piped: string | null = null;
+
+// A pipe's text not yet taken belongs to its command, not to one that runs
+// while that command waits on a question.
+turnPart_register({
+  name: 'stdin',
+  save: (): unknown => piped,
+  clear: (): void => { piped = null; },
+  restore: (saved: unknown): void => { piped = typeof saved === 'string' ? saved : null; },
+});
 
 /**
  * Sets what the next builtin may read; the pipe calls this before a segment

@@ -30,6 +30,7 @@ import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { TerminalProgressRenderer } from '../core/progressRenderer.js';
 import { greeting_print } from '../core/greeting.js';
 import { surfaceLine_execute } from '../core/surfaceDispatch.js';
+import { output_above } from '../core/lineDiscipline.js';
 
 /**
  * Builds a berth from an address given on the command line.
@@ -266,7 +267,9 @@ export async function remote_run(
       onSession: commandToExecute === undefined
         ? (surface: string, envelope: CommandEnvelope): void => {
             if (envelope.rendered.length > 0) {
-              process.stdout.write(`\n${chalk.gray(`[surface ${surface.slice(0, 6)}]`)}\n${envelope.rendered}`);
+              // Above whatever is being typed, which is then drawn again:
+              // the prompt at rest, or an open question.
+              output_above(`${chalk.gray(`[surface ${surface.slice(0, 6)}]`)}\n${envelope.rendered}`);
             }
           }
         : undefined,

@@ -25,6 +25,7 @@ import { join } from 'path';
 import type { Surface, SurfaceCapabilities, PromptRequest, LocalEditRequest, LocalEditResult } from '@fnndsc/brasa';
 import { segment_pipeThrough, file_read } from '@fnndsc/brasa';
 import { promptKind_of, type FileDeliverRequest, type FileDeliverResult, type PromptKind } from '@fnndsc/menu';
+import { question_openSet, typeahead_take } from './lineDiscipline.js';
 
 /**
  * What a typed line means, given what an empty one stands for.
@@ -89,8 +90,18 @@ export function promptLine_render(request: PromptRequest): { message: string; fa
 function persistentPrompt_ask(rl: readline.Interface, request: PromptRequest): Promise<string> {
   if (!request.hidden) {
     const shown: { message: string; fallback: string } = promptLine_render(request);
+    // A line typed while the command ran is this question's answer, as a
+    // terminal hands typed-ahead input to whatever reads next. A secret is
+    // never answered that way: it is typed when it is asked for.
+    const ahead: string | undefined = typeahead_take();
+    if (ahead !== undefined) {
+      process.stdout.write(`${shown.message}${ahead}\n`);
+      return Promise.resolve(promptAnswer_take(ahead, shown.fallback));
+    }
+    question_openSet(true);
     return new Promise((resolve: (answer: string) => void) => {
       rl.question(shown.message, (answer: string) => {
+        question_openSet(false);
         resolve(promptAnswer_take(answer, shown.fallback));
       });
     });

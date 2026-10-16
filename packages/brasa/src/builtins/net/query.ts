@@ -921,7 +921,7 @@ async function csv_deliver(
  * directory here would mean creating one behind the operator's back, which
  * is what the surface used to do.
  *
- * @returns The location given, or '' when the operator abandoned the ask.
+ * @returns The location given, absolute, or '' when the operator abandoned the ask.
  */
 async function csvDestination_ask(): Promise<string> {
   const { session } = await import('../../session/index.js');
@@ -944,7 +944,14 @@ async function csvDestination_ask(): Promise<string> {
       },
       'EXPORT HERE',
     );
-    return answer.trim();
+    // Absolute, against the place the question showed: other commands run
+    // while it is open, and a `cd` among them must not move the file.
+    const given: string = answer.trim();
+    if (given === '') return '';
+    const { path_resolve } = await import('../utils.js');
+    if (given.startsWith('/') || given.startsWith('~')) return await path_resolve(given);
+    const base: string = virtual ? '~' : cwd;
+    return await path_resolve(`${base === '/' ? '' : base}/${given}`);
   } catch {
     // A refused or abandoned ask is not a failure of the query: the answer
     // stands, and only the writing of it does not happen.

@@ -13,6 +13,7 @@
  *
  * @module
  */
+import { turnPart_register } from '../core/turn.js';
 
 /** Where the recording will be written, or null when nothing is recording. */
 let target: string | null = null;
@@ -22,6 +23,15 @@ let captured: string[] = [];
 let startedAt: number = 0;
 /** Depth of work that must not be captured: a played manifest's own lines. */
 let muted: number = 0;
+
+// A mute is the running manifest's: a command run while it waits on a
+// question is recorded as the operator's own.
+turnPart_register({
+  name: 'recorderMute',
+  save: (): unknown => muted,
+  clear: (): void => { muted = 0; },
+  restore: (saved: unknown): void => { muted = typeof saved === 'number' ? saved : 0; },
+});
 
 /** What a recording is doing. */
 export interface RecorderState {

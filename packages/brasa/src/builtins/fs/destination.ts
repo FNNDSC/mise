@@ -37,14 +37,20 @@ export interface DestinationAsk {
  * case is a rename. The anchor is the first source's own folder: a fact,
  * never a directory invented for the occasion.
  *
+ * The answer comes back absolute, resolved against the directory the
+ * session stood in when it asked: while the question is open other commands
+ * run, and a `cd` among them must not move where a relative answer lands.
+ *
  * @param ask - The verb, its committing word, and the sources.
- * @returns The destination the operator gave, or '' when they abandoned it.
+ * @returns The destination the operator gave, absolute, or '' when they abandoned it.
  */
 export async function destination_ask(ask: DestinationAsk): Promise<string> {
   const { path_resolve } = await import('../utils.js');
   const { repl_questionPath } = await import('../../core/question.js');
   const first: string = ask.sources[0] ?? '';
   const resolved: string = await path_resolve(first);
+  // Where the session stands now, before the question lets anything move it.
+  const here: string = await path_resolve('.');
   const cut: number = resolved.lastIndexOf('/');
   const folder: string = cut <= 0 ? '/' : resolved.slice(0, cut);
   const name: string = resolved.slice(cut + 1);
@@ -64,7 +70,10 @@ export async function destination_ask(ask: DestinationAsk): Promise<string> {
       },
       ask.commit,
     );
-    return answer.trim();
+    const given: string = answer.trim();
+    if (given === '') return '';
+    if (given.startsWith('/') || given.startsWith('~')) return await path_resolve(given);
+    return await path_resolve(`${here === '/' ? '' : here}/${given}`);
   } catch {
     // A refused or abandoned ask is not a failure to describe: the operator
     // was asked and chose not to say.
@@ -83,4 +92,26 @@ export async function destination_ask(ask: DestinationAsk): Promise<string> {
  */
 export function destination_missing(verb: string): string {
   return `${verb}: no destination given; nothing ${verb === 'cp' ? 'copied' : 'moved'}.`;
+}
+
+/**
+ * Fixes operands to absolute paths before a question is asked, so the
+ * answer acts on what the operator named and not on what those names mean
+ * after another command moved the session. An operand that does not resolve
+ * is kept as given; the verb reports it in its place.
+ *
+ * @param operands - The operands as typed.
+ * @returns The operands, absolute where they resolve.
+ */
+export async function operands_fix(operands: string[]): Promise<string[]> {
+  const { path_resolve } = await import('../utils.js');
+  const fixed: string[] = [];
+  for (const operand of operands) {
+    try {
+      fixed.push(await path_resolve(operand));
+    } catch {
+      fixed.push(operand);
+    }
+  }
+  return fixed;
 }

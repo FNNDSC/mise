@@ -230,3 +230,38 @@ describe('a question that is never answered', () => {
     expect(envelope.status).toBe('ok');
   });
 });
+
+describe('a question does not move what rm removes', () => {
+  // While a question is open the session runs other commands; a `cd` among
+  // them must not turn the answer into a removal somewhere else.
+  const cwdMoves = (): void => {
+    mockResolve.mockImplementation(async (p: string): Promise<string> => (p.startsWith('/') ? p : `/elsewhere/${p}`));
+  };
+  const cwdHome = (): void => {
+    mockResolve.mockImplementation(async (p: string): Promise<string> => (p.startsWith('/') ? p : `/home/me/${p}`));
+  };
+
+  it('-I: every operand is fixed before the one question', async () => {
+    filesystem_reset((store) => { store.write?.('/elsewhere/a', 'theirs'); });
+    mockConfirm.mockImplementationOnce(async (): Promise<boolean> => { cwdMoves(); return true; });
+    try {
+      await rm_run({ recursive: false, force: false, interactive: false, once: true, paths: ['a', 'b'] });
+    } finally {
+      cwdHome();
+    }
+    expect(await home_names()).not.toContain('a');
+    expect(await home_names()).not.toContain('b');
+  });
+
+  it('-i: the second operand was fixed before the first question', async () => {
+    mockConfirm.mockImplementationOnce(async (): Promise<boolean> => { cwdMoves(); return true; }).mockImplementationOnce(async (): Promise<boolean> => true);
+    try {
+      await rm_run({ recursive: false, force: false, interactive: true, once: false, paths: ['c', 'd'] });
+    } finally {
+      cwdHome();
+    }
+    expect(await home_names()).not.toContain('c');
+    expect(await home_names()).not.toContain('d');
+  });
+});
+

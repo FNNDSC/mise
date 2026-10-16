@@ -7,7 +7,7 @@ import path from 'path';
 import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
 import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
 import type { ListingCache } from '../../core/backend.js';
-import { destination_ask, destination_missing } from './destination.js';
+import { destination_ask, destination_missing, operands_fix } from './destination.js';
 import { cp_render, vfsRefusal_text, type VFSDispatcher, type VfsOutcome } from '@fnndsc/fond';
 import { entry_at, entry_isFolder } from './entries.js';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
@@ -50,28 +50,32 @@ export async function builtin_cp(args: string[]): Promise<CommandEnvelope> {
     if (typeof target === 'string' && target !== '') {
       return cp_run({ sources: pathArgs, dest: target });
     }
+    // The sources are fixed before the question: other commands run while it is open.
+    const sources: string[] = await operands_fix(pathArgs);
     const chosen: string = await destination_ask({
-      verb: 'cp', commit: 'COPY HERE', sources: pathArgs, wantsDirectory: true,
+      verb: 'cp', commit: 'COPY HERE', sources, wantsDirectory: true,
     });
     if (chosen === '') {
       process.exitCode = 1;
       return envelope_error('', undefined, `${chalk.red(destination_missing('cp'))}\n`);
     }
-    return cp_run({ sources: pathArgs, dest: chosen });
+    return cp_run({ sources, dest: chosen });
   }
   const recursive: boolean = !!parsed['r'] || !!parsed['recursive'];
 
   // One operand names what to copy and not where: a question, not a usage
   // error. See `destination_ask`.
   if (pathArgs.length === 1) {
+    // The sources are fixed before the question: other commands run while it is open.
+    const sources: string[] = await operands_fix(pathArgs);
     const chosen: string = await destination_ask({
-      verb: 'cp', commit: 'COPY HERE', sources: pathArgs,
+      verb: 'cp', commit: 'COPY HERE', sources,
     });
     if (chosen === '') {
       process.exitCode = 1;
       return envelope_error('', undefined, `${chalk.red(destination_missing('cp'))}\n`);
     }
-    return cp_run({ sources: pathArgs, dest: chosen, recursive });
+    return cp_run({ sources, dest: chosen, recursive });
   }
 
   // Last arg is destination, all others are sources

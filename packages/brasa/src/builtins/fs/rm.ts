@@ -206,6 +206,19 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
     return envelope_error('', undefined, `${chalk.red('Usage: rm [-rfiI] <path> [path...]')}\n`);
   }
 
+  // Every target is fixed before any question is asked: while a question is
+  // open the session runs other commands, and a `cd` among them must not
+  // turn the answer into a removal somewhere else. A path that does not
+  // resolve keeps its failure, reported in its place below.
+  const fixed: Array<{ target: string } | { failure: unknown }> = [];
+  for (const pathArg of paths) {
+    try {
+      fixed.push({ target: await path_resolve(pathArg) });
+    } catch (failure: unknown) {
+      fixed.push({ failure });
+    }
+  }
+
   // One question for the whole list, asked before anything is removed and
   // naming what will go. A refusal removes nothing at all — there is no
   // half of a set.
@@ -275,7 +288,9 @@ export async function rm_run(runArgs: RmArgs): Promise<CommandEnvelope> {
   for (let index: number = 0; index < paths.length; index++) {
     const pathArg: string = paths[index] as string;
     try {
-      const target: string = await path_resolve(pathArg);
+      const resolution: { target: string } | { failure: unknown } = fixed[index] as { target: string } | { failure: unknown };
+      if ('failure' in resolution) throw resolution.failure;
+      const target: string = resolution.target;
 
       if (interactive) {
         let confirmed: boolean = false;

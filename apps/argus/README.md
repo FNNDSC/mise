@@ -2,7 +2,7 @@
 
 ARGUS is an LCARS-based web console and terminal surface for mise. It is one possible ChRIS user experience, not the canonical or exclusive UI.
 
-ARGUS attaches to a CALYPSO session and presents an indwelling terminal surrounded by graphical instruments. Those instruments organize the operational domain into Files, Runs, Tools, Sources, and Compute. They consume CALYPSO's public wire contract and do not speak directly to CUBE or `chrisapi`.
+ARGUS attaches to a CALYPSO session and presents an indwelling terminal surrounded by graphical instruments. Those instruments organize the operational domain into Files, Runs, Tools, Sources, and Compute. They consume CALYPSO's public wire contract and do not speak directly to CUBE or `chrisapi`. The terminal is xterm.js drawing a chell the daemon runs for the page under a pseudo-terminal; on a host where node-pty did not build, the console falls back to the deprecated transcript (see [docs/architecture.adoc](docs/architecture.adoc)).
 
 The first implementation increment is live: the LCARS frame, the terminal as a retractable drawer attached over the wire, and the Files instrument repainting from `fs.listing` envelope models. Typing `ls` in the terminal updates the Files panel as data, and activating a directory row in the panel lowers to the same `cd` and `ls` commands an operator could type. Two projections of one session, in both directions.
 

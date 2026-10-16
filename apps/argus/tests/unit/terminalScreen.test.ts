@@ -159,49 +159,37 @@ describe('the terminal screen', () => {
 
 describe('the console switch', () => {
   /** The page's console, and what the switch drives. */
-  function page_make(): { client: Record<string, jest.Mock>; terminal: Record<string, jest.Mock>; capsule: HTMLButtonElement; container: HTMLElement } {
-    document.body.innerHTML = '<div id="terminal"></div><button class="console-mode" hidden>TERMINAL</button>';
+  function page_make(): { client: Record<string, jest.Mock>; terminal: Record<string, jest.Mock>; container: HTMLElement } {
+    document.body.innerHTML = '<div id="terminal"></div>';
     const client = { terminal_open: jest.fn(), terminal_input: jest.fn(), terminal_resize: jest.fn(), mirror_set: jest.fn(), note_send: jest.fn() };
     const terminal = { delegate_set: jest.fn(), line_note: jest.fn(), focus_take: jest.fn() };
-    return { client, terminal, capsule: document.querySelector('.console-mode') as HTMLButtonElement, container: document.getElementById('terminal') as HTMLElement };
+    return { client, terminal, container: document.getElementById('terminal') as HTMLElement };
   }
 
-  it('shows no capsule where no terminal is offered, and the transcript is the console', () => {
-    const { client, terminal, capsule } = page_make();
+  it('falls back to the transcript only where no terminal is offered, and its first line says why', () => {
+    const { client, terminal } = page_make();
     const control = consoleMode_wire({ client: client as never, terminal: terminal as never, offered: false, screen_set: () => undefined });
-    expect(capsule.hidden).toBe(true);
     expect(control.terminal_is()).toBe(false);
+    expect(client.terminal_open).not.toHaveBeenCalled();
+    expect(terminal.line_note).toHaveBeenCalledWith(expect.stringMatching(/^console: the transcript, deprecated: this host offers no pseudo-terminal/));
   });
 
-  it('switches, reads as its next action, mirrors, and keeps the device\'s choice', () => {
+  it('is the terminal wherever one is offered, whatever a device once chose, and mirrors what the page runs', () => {
     localStorage.setItem('argus.consoleMode', 'transcript');
-    const { client, terminal, capsule, container } = page_make();
+    const { client, terminal, container } = page_make();
     let screen: unknown = null;
     const control = consoleMode_wire({ client: client as never, terminal: terminal as never, offered: true, screen_set: (built) => { screen = built; } });
-    expect(capsule.hidden).toBe(false);
-    expect(capsule.textContent).toBe('TERMINAL');
-    capsule.click();
     expect(control.terminal_is()).toBe(true);
+    expect(localStorage.getItem('argus.consoleMode')).toBeNull();
+    expect(client.terminal_open).toHaveBeenCalled();
     expect(container.classList.contains('console-terminal')).toBe(true);
-    expect(capsule.textContent).toBe('TRANSCRIPT');
     expect(client.mirror_set).toHaveBeenLastCalledWith(true);
     expect(screen).not.toBeNull();
-    expect(localStorage.getItem('argus.consoleMode')).toBe('terminal');
+    expect(terminal.line_note).not.toHaveBeenCalled();
     const delegate = terminal.delegate_set.mock.calls.at(-1)?.[0] as { note: (t: string) => void };
     delegate.note('a note');
     expect(client.note_send).toHaveBeenCalledWith('a note');
-    expect(document.getElementById('terminal')?.dataset['terminalState']).toBe('busy');
+    expect(container.dataset['terminalState']).toBe('busy');
     expect((globalThis as unknown as { __argusConsole: { mode: () => string } }).__argusConsole.mode()).toBe('terminal');
-    capsule.click();
-    expect(control.terminal_is()).toBe(false);
-    expect(terminal.delegate_set).toHaveBeenLastCalledWith(null);
-    expect(client.mirror_set).toHaveBeenLastCalledWith(false);
-  });
-
-  it('opens as the terminal wherever one is offered, unless the device chose the transcript', () => {
-    const { client, terminal } = page_make();
-    const control = consoleMode_wire({ client: client as never, terminal: terminal as never, offered: true, screen_set: () => undefined });
-    expect(control.terminal_is()).toBe(true);
-    expect(client.terminal_open).toHaveBeenCalled();
   });
 });

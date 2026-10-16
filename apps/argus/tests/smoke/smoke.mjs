@@ -101,6 +101,8 @@ let suiteConsole = 'transcript';
  * lane runs them.
  */
 const TRANSCRIPT_ONLY = ['console-asks', 'question-both-places'];
+/** The terminal's own: its questions are chell's, asked and answered in line. */
+const TERMINAL_ONLY = ['terminal-asks'];
 
 async function stage(name) {
   if (stageName !== null) await stage_leaks(stageName);
@@ -110,6 +112,10 @@ async function stage(name) {
   if (!wanted) return false;
   if (suiteConsole === 'terminal' && TRANSCRIPT_ONLY.includes(name)) {
     console.log(`${name}: skipped, the transcript's own (the transcript lane runs it)`);
+    return false;
+  }
+  if (suiteConsole !== 'terminal' && TERMINAL_ONLY.includes(name)) {
+    console.log(`${name}: skipped, the terminal's own`);
     return false;
   }
   console.log(name);
@@ -391,18 +397,18 @@ try {
   // The baseline is home, not whatever cwd the session kept from before
   // the suite: a session left in a since-removed directory made every
   // scenario read as a leak and every repair cd into nothing.
-  // Which console the suite drives (#1125): SMOKE_CONSOLE=terminal|transcript
-  // presses the console's capsule into that mode; unset, the page's own
-  // default stands. A terminal console is ready once its chell marks idle.
+  // Which console the suite drives (#1125): the terminal wherever the daemon
+  // offers one; the transcript, deprecated, only on a daemon that offers none
+  // (CALYPSO_NO_PTY=1 makes one). SMOKE_CONSOLE=terminal|transcript says
+  // which the suite expects; a terminal console is ready once its chell marks idle.
   const consoleWanted = process.env.SMOKE_CONSOLE ?? '';
   if (consoleWanted === 'terminal' || consoleWanted === 'transcript') {
     const chosen = await evalIn(`
-      const capsule = document.querySelector('.console-mode');
-      if (capsule === null || capsule.hidden) return { mode: window.__argusConsole?.mode?.() ?? 'transcript', offered: false };
-      if (window.__argusConsole.mode() !== ${JSON.stringify(consoleWanted)}) capsule.click();
       for (let i = 0; i < 120 && terminal_mode() && !console_quiet(); i++) await sleep(250);
-      return { mode: window.__argusConsole.mode(), offered: true, state: document.getElementById('terminal')?.dataset.terminalState ?? null };`);
+      const first = document.querySelector('#terminal .argus-output')?.textContent ?? '';
+      return { mode: window.__argusConsole?.mode?.() ?? 'transcript', state: document.getElementById('terminal')?.dataset.terminalState ?? null, deprecated: /the transcript, deprecated: this host offers no pseudo-terminal/.test(first) };`);
     check(`the console is the ${consoleWanted} the suite asked for`, chosen.mode === consoleWanted, JSON.stringify(chosen));
+    if (consoleWanted === 'transcript') check('the transcript says it is the deprecated fallback, and why', chosen.deprecated, JSON.stringify(chosen));
   }
   suiteConsole = await evalIn('return window.__argusConsole?.mode?.() ?? "transcript";');
   console.log(`console: ${suiteConsole}`);
@@ -5440,6 +5446,65 @@ try {
       JSON.stringify(servers));
     check('Esc retracts the server strip, as it retracts a mode frame',
       servers.closedByEsc === true, JSON.stringify(servers.closedByEsc));
+  }
+
+  if (await stage('terminal-asks')) {
+  // The terminal's questions are chell's own (#1125): a command typed in it
+  // asks in line, the answer is typed there, Ctrl-C abandons the question as
+  // Esc does in the transcript, and a question answered on a pane is written
+  // into the scrollback with its answer.
+  const asks = await evalIn(`
+    await console_idle();
+    const type = (keys) => window.__argusConsole.type(keys);
+    const asked = async () => { for (let i = 0; i < 80 && !console_asking(); i++) await sleep(250); return console_asking(); };
+    const rested = async () => { for (let i = 0; i < 120 && !console_quiet(); i++) await sleep(250); return console_quiet(); };
+    await console_run('rm -r ~/smoke-tasks'); await console_run('mkdir -p ~/smoke-tasks');
+    await console_run('touch --withContents "kept" ~/smoke-tasks/a.txt');
+    const kept = async () => { const m = console_mark(); await console_run('ls ~/smoke-tasks'); return /a\\.txt/.test(console_since(m)); };
+
+    // Asked in line, answered there: no removes nothing.
+    type('rm -i ~/smoke-tasks/a.txt\\r');
+    const inLine = await asked();
+    const question = console_lastAsk();
+    type('n\\r');
+    const answeredRest = await rested();
+    const keptAfterNo = await kept();
+
+    // Ctrl-C abandons the question, and the command that asked it.
+    type('rm -i ~/smoke-tasks/a.txt\\r');
+    const askedAgain = await asked();
+    const before = console_mark();
+    type('\\u0003');
+    const abandonedRest = await rested();
+    const said = console_since(before);
+    const keptAfterAbandon = await kept();
+
+    // A question pressed on a pane stands on the pane; its answer lands in the scrollback.
+    await console_run('cd ~/smoke-tasks');
+    document.getElementById('gutter-files').click(); await sleep(800);
+    const fp = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+    for (let i = 0; i < 60 && !(window.__argusPromptContext?.cwd ?? '').endsWith('/smoke-tasks'); i++) await sleep(250);
+    let row = null;
+    for (let i = 0; i < 60 && row === null; i++) { row = [...(fp()?.querySelectorAll('.files-row') ?? [])].find((r) => r.querySelector('.files-name')?.textContent.trim() === 'a.txt') ?? null; if (row === null) await sleep(250); }
+    row?.dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(700);
+    const mirrorMark = console_mark();
+    [...(fp()?.querySelectorAll('.files-row-zone .listing-action') ?? [])].find((b) => b.textContent.trim() === 'DELETE')?.click();
+    let bar = null;
+    for (let i = 0; i < 60 && bar === null; i++) { bar = fp()?.querySelector('.ask-bar') ?? null; if (bar === null) await sleep(250); }
+    const onPane = bar !== null;
+    const no = [...(bar?.querySelectorAll('button') ?? [])].find((b) => /^no$/i.test(b.textContent.trim()));
+    no?.click();
+    let mirrored = '';
+    for (let i = 0; i < 60 && mirrored === ''; i++) { mirrored = console_since(mirrorMark).split('\\n').find((l) => /^\\? .*\\s(n|no)$/i.test(l.trim())) ?? ''; if (mirrored === '') await sleep(250); }
+    const keptAfterPane = await kept();
+    await console_run('cd ~'); await console_run('rm -r ~/smoke-tasks');
+    return { inLine, question, answeredRest, keptAfterNo, askedAgain, abandonedRest, said: said.slice(-300), keptAfterAbandon, onPane, mirrored, keptAfterPane };`);
+  check('a command typed in the terminal asks in line, and no removes nothing',
+    asks.inLine && /a\.txt/.test(asks.question) && asks.answeredRest && asks.keptAfterNo, JSON.stringify(asks));
+  check('Ctrl-C abandons a question in the terminal, and the command that asked it',
+    asks.askedAgain && asks.abandonedRest && asks.keptAfterAbandon, JSON.stringify({ said: asks.said }));
+  check('a question pressed on a pane stands on the pane, and its answer is written into the terminal\'s scrollback',
+    asks.onPane && asks.mirrored !== '' && asks.keptAfterPane, JSON.stringify({ onPane: asks.onPane, mirrored: asks.mirrored }));
   }
 
   if (await stage('console-asks')) {

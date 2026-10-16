@@ -549,10 +549,12 @@ export async function door_enter(door: string, username: string | undefined, pas
     return null;
   }
   if (entered.state === 'starting') {
-    console.log(chalk.gray(`[+] Starting your session at ${doorUrl} — the boot as it happens:`));
+    // The boot is progress, not the answer: stderr, so `chell -c` stdout is
+    // the command's output alone even when a session had to be started.
+    console.error(chalk.gray(`[+] Starting your session at ${doorUrl} — the boot as it happens:`));
     let ended: { state: 'ready' } | { state: 'failed'; reason: string };
     try {
-      ended = await doorBoot_follow(doorUrl, entered, (text: string): void => { console.log(text); }, fetchLike);
+      ended = await doorBoot_follow(doorUrl, entered, (text: string): void => { console.error(text); }, fetchLike);
     } catch (error: unknown) {
       return unreached(error);
     }
@@ -590,10 +592,12 @@ async function doorByToken_enter(doorUrl: string, token: string, name: string | 
     return null;
   }
   if (entered.state === 'starting') {
-    console.log(chalk.gray(`[+] Starting your session at ${doorUrl} — the boot as it happens:`));
+    // The boot is progress, not the answer: stderr, so `chell -c` stdout is
+    // the command's output alone even when a session had to be started.
+    console.error(chalk.gray(`[+] Starting your session at ${doorUrl} — the boot as it happens:`));
     let ended: { state: 'ready' } | { state: 'failed'; reason: string };
     try {
-      ended = await doorBoot_follow(doorUrl, entered, (text: string): void => { console.log(text); }, fetchLike);
+      ended = await doorBoot_follow(doorUrl, entered, (text: string): void => { console.error(text); }, fetchLike);
     } catch (error: unknown) {
       console.error(chalk.red(`[!] The door at ${doorUrl} could not be reached: ${doorUnreached_reason(error)}`));
       return null;

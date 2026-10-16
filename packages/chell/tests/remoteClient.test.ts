@@ -157,7 +157,8 @@ describe('remote_run', () => {
     const logged: string[] = [];
     const logSpy = jest.spyOn(console, 'log').mockImplementation((line?: unknown): void => { logged.push(String(line)); });
     const written: string[] = [];
-    const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(((chunk: unknown): boolean => { written.push(String(chunk)); return true; }) as never);
+    // The mid-session notice is a diagnostic: stderr, never mixed into output.
+    const writeSpy = jest.spyOn(process.stderr, 'write').mockImplementation(((chunk: unknown): boolean => { written.push(String(chunk)); return true; }) as never);
     // Interactive: the greeting and its warnings print; a one-shot command prints only its answer.
     await remote_run(berth.identity);
     expect(logged.some((line: string): boolean => /out of date/.test(line))).toBe(true);

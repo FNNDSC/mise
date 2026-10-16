@@ -25,7 +25,7 @@ import {
   type SessionIdentity,
 } from '@fnndsc/brasa';
 import { daemon_launch, identity_normalise, packageWebRoot_find, type DaemonLaunchInfo, hostControl_fromInputs, type HostControlInputs } from '@fnndsc/calypso';
-import { daemonConsole_run, type DaemonConsoleTarget } from './daemonConsole.js';
+import { CHELL_LAUNCH, daemonConsole_run, type DaemonConsoleTarget } from './daemonConsole.js';
 import { logo_animateHalt } from '../lib/logo.js';
 import { sink_set, StdoutSink, count_noun } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
@@ -720,6 +720,8 @@ export async function daemonSession_run(
       hostControl: parsedPolicy.policy,
       // chell's surface is ARGUS: the bundle the installed @fnndsc/argus ships.
       webRoot: packageWebRoot_find('@fnndsc/argus', import.meta.url),
+      // A browser's terminal runs this very chell, not one found on the path.
+      surfaceLaunch: CHELL_LAUNCH,
     });
 
     if (interactive) {

@@ -27,6 +27,8 @@ import { stackBanner_rows, stackBannerRow_paint, versions_get, buildHash_get } f
 import { identity_normalise, berth_write, berthOwn_read, berth_path, berthUrl_isAlive, closing_take, type Berth } from './berth.js';
 import type { ClosingCause } from '@fnndsc/menu';
 import { attachFile_write, attachFile_remove } from './attachFile.js';
+import { CHELL_ON_PATH, type SurfaceLaunch } from './consoleSession.js';
+import { Terminals, ptySpawn_load, type PtySpawn } from './terminals.js';
 import { HOST_CONTROL_OFF, hostControl_describe, hostControl_guard, hostControl_tiers, hostPipe_run, hostShell_run, type HostControlPolicy } from './hostControl.js';
 
 /** What a launched daemon hands back to its host (the console face's feed). */
@@ -174,6 +176,11 @@ export interface DaemonLaunchOptions {
    * enclosing checkout come first. calypso itself depends on no surface.
    */
   webRoot?: string | null;
+  /**
+   * How to run the chell a browser's terminal holds: chell passes itself;
+   * the standalone calypso binary runs the `chell` on the path.
+   */
+  surfaceLaunch?: SurfaceLaunch;
 }
 
 export async function daemon_launch(
@@ -282,6 +289,20 @@ export async function daemon_launch(
   // restarts the session at the next login rather than mount an older kernel.
   const berth: Berth = { identity, url, token, pid: process.pid, versions: { ...versions_get() } as Record<string, string>, booted: new Date().toISOString() };
   berth_write(berth);
+
+  // Terminals: a browser's console as a chell under a pty, attached back
+  // over loopback (or the one address bound, when that is not a wildcard).
+  // A machine where node-pty did not build offers none; its surfaces keep
+  // their transcript console.
+  const ptySpawn: PtySpawn | null = await ptySpawn_load();
+  if (ptySpawn !== null) {
+    const terminalHost: string = bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost;
+    daemon.terminals_set(new Terminals({
+      spawn: ptySpawn,
+      launch: options.surfaceLaunch ?? CHELL_ON_PATH,
+      target: { identity, url: `ws://${terminalHost}:${port}`, token },
+    }));
+  }
 
   const attachHint: string = sessionIdentity.connected ? ` ${identity}` : '';
   // The boot animation keeps repainting this terminal, and scrollback dies with

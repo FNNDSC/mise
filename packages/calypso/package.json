@@ -61,5 +61,8 @@
     "ws": "^8.18.0",
     "zod": "^3.23.8",
     "@fnndsc/menu": "^0.22.1"
+  },
+  "optionalDependencies": {
+    "node-pty": "1.1.0"
   }
 }

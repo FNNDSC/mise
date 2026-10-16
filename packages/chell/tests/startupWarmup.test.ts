@@ -53,6 +53,7 @@ const mockConsole = jest.fn(async (_target: { identity: string; url: string; tok
 // daemon test runs against this inert stand-in instead.
 jest.unstable_mockModule('../src/core/daemonConsole.js', () => ({
   daemonConsole_run: mockConsole,
+  CHELL_LAUNCH: { exec: 'node', prefixArgs: ['chell.js'] },
 }));
 const mockUniverseLayoutsWarm = jest.fn(async (): Promise<number> => 0);
 // Who the backend says the session is; each block names its own user.
@@ -253,6 +254,8 @@ describe('daemonSession_run', () => {
     expect(mockDaemonLaunch).toHaveBeenCalledWith(engine, expect.any(Function), {
       hostControl: { tiers: new Set<string>(), exposed: false },
       webRoot: '/installed/@fnndsc/argus/dist',
+      // A browser's terminal runs this chell.
+      surfaceLaunch: { exec: 'node', prefixArgs: ['chell.js'] },
     });
 
     const readyOrder: number = report.mock.invocationCallOrder[report.mock.calls.findIndex((call: unknown[]) => call[1] === 'Engine')];

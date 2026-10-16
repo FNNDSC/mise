@@ -36,6 +36,7 @@ import { CONTRACT_VERSION } from '@fnndsc/menu';
 import { clientMessage_parse, attach_parse } from '@fnndsc/menu';
 import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, PromptKind, PromptPath, FileDeliverRequest, Regard, WatchState, AmbientEvent, ClosingCause } from '@fnndsc/menu';
 import type { z } from 'zod';
+import type { Terminals, TerminalViewer } from './terminals.js';
 import { DownloadLedger, downloadId_valid, type DownloadReport, type OpenedFile } from './downloads.js';
 
 /**
@@ -230,6 +231,8 @@ export class CalypsoDaemon {
   private readonly backend: string | undefined;
   /** Whether the daemon's own code on disk has moved on since it started. */
   private stale: boolean = false;
+  /** The terminals this daemon offers, or null when it offers none (no pty here). */
+  private terminals: Terminals | null = null;
   private readonly codeCheck: (() => void) | undefined;
   private readonly hostControl: string[];
   /** The one session all surfaces share; returned in each attach ack. */
@@ -298,6 +301,16 @@ export class CalypsoDaemon {
     this.webRoot = options.webRoot;
     this.hostControl = options.hostControl ?? [];
     this.codeCheck = options.codeCheck;
+  }
+
+  /**
+   * Offers terminals: a surface's console as a chell under a pty
+   * (terminals.ts). Set once the daemon knows its own address.
+   *
+   * @param terminals - The terminals, or null to offer none.
+   */
+  public terminals_set(terminals: Terminals | null): void {
+    this.terminals = terminals;
   }
 
   /**
@@ -422,6 +435,8 @@ export class CalypsoDaemon {
    * @returns A promise resolving when the server has closed.
    */
   public stop(): Promise<void> {
+    // A terminal's chell is a child of this process: it goes with it.
+    this.terminals?.stop();
     if (this.telemetryTimer !== null) {
       clearInterval(this.telemetryTimer);
       this.telemetryTimer = null;
@@ -694,6 +709,11 @@ export class CalypsoDaemon {
    */
   private connection_handle(socket: WebSocket, request?: IncomingMessage): void {
     let surface: Surface | null = null;
+    // This socket as a terminal's viewer: output and exits go back down it.
+    const viewer: TerminalViewer = {
+      data: (terminalId: string, data: string): void => this.send(socket, { type: 'terminalData', terminalId, data }),
+      exit: (terminalId: string, code: number): void => this.send(socket, { type: 'terminalExit', terminalId, code }),
+    };
     // A front that holds the token for a browser — the porter — puts it on
     // the upgrade URL it proxies, the way `/vfs?token=` already travels; the
     // page then attaches with an empty token and is judged by the URL's.
@@ -773,12 +793,27 @@ export class CalypsoDaemon {
         this.regard_receive(value.regard);
       } else if (value.type === 'watch' || value.type === 'unwatch') {
         this.watch_receive(attached, value.subject, value.type === 'watch');
+      } else if (value.type === 'terminalOpen') {
+        if (this.terminals === null) {
+          this.send(socket, { type: 'terminalOpened', terminalId: '', replay: '', refused: 'this daemon offers no terminals (node-pty is not built here)' });
+        } else {
+          const opened = this.terminals.open(viewer, value.cols, value.rows, value.terminalId);
+          this.send(socket, { type: 'terminalOpened', terminalId: opened.terminalId, replay: opened.replay });
+        }
+      } else if (value.type === 'terminalInput') {
+        this.terminals?.input(viewer, value.terminalId, value.data);
+      } else if (value.type === 'terminalResize') {
+        this.terminals?.resize(viewer, value.terminalId, value.cols, value.rows);
+      } else if (value.type === 'terminalClose') {
+        this.terminals?.close(viewer, value.terminalId);
       } else {
         this.send(socket, { type: 'error', reason: 'already attached' });
       }
     });
 
     socket.on('close', () => {
+      // Its terminals keep running, unwatched, for a reattach.
+      this.terminals?.detach(viewer);
       if (surface) {
         this.surfaces.delete(surface);
         // A detached surface holds no watches: whatever it kept live is
@@ -858,6 +893,7 @@ export class CalypsoDaemon {
       // says CALYPSO DAEMON OUT OF DATE only on this, never on its own
       // build alone (an ARGUS-only release changes no daemon code).
       stale: this.stale,
+      terminals: this.terminals !== null,
     });
     this.codeCheck?.();
     this.scrollback_replay(socket);

@@ -221,6 +221,40 @@ export const unwatchMessageSchema = z.object({
   subject: z.string(),
 });
 
+/**
+ * Opens a terminal: the session's console as a real terminal, a chell the
+ * daemon runs under a pseudo-terminal. `terminalId` names one opened before
+ * (a reload reattaches); absent or no longer running, a new one starts.
+ * The size is the viewer's grid, in cells.
+ */
+export const terminalOpenMessageSchema = z.object({
+  type: z.literal('terminalOpen'),
+  terminalId: z.string().optional(),
+  cols: z.number().int(),
+  rows: z.number().int(),
+});
+
+/** Keystrokes typed into a terminal, as the terminal emulator encodes them. */
+export const terminalInputMessageSchema = z.object({
+  type: z.literal('terminalInput'),
+  terminalId: z.string(),
+  data: z.string(),
+});
+
+/** A terminal's new size, in cells. */
+export const terminalResizeMessageSchema = z.object({
+  type: z.literal('terminalResize'),
+  terminalId: z.string(),
+  cols: z.number().int(),
+  rows: z.number().int(),
+});
+
+/** Ends a terminal its viewer is done with. */
+export const terminalCloseMessageSchema = z.object({
+  type: z.literal('terminalClose'),
+  terminalId: z.string(),
+});
+
 /** What a watched subject is doing: sampled live, settled for good, or last sample failed. */
 export const WATCH_STATES = ['live', 'settled', 'stale'] as const;
 export const watchStateSchema = z.enum(WATCH_STATES);
@@ -332,6 +366,10 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   regardMessageSchema,
   watchMessageSchema,
   unwatchMessageSchema,
+  terminalOpenMessageSchema,
+  terminalInputMessageSchema,
+  terminalResizeMessageSchema,
+  terminalCloseMessageSchema,
 ]);
 
 /** A message a surface sends to the daemon. */
@@ -373,6 +411,8 @@ export const attachedMessageSchema = z.object({
   hostControl: z.array(z.string()).optional(),
   /** Whether the daemon's own code on disk has moved on since it started; absent from older daemons. */
   stale: z.boolean().optional(),
+  /** Whether the daemon offers terminals (`terminalOpen`); absent from older daemons, which do not. */
+  terminals: z.boolean().optional(),
 });
 
 /** The final result of one executed line: one envelope per command. */
@@ -752,6 +792,32 @@ export type CubeTelemetry = z.infer<typeof telemetryMessageSchema>['cube'];
 /** What a telemetry heartbeat says about the lab's pulse. */
 export type JobsStateTelemetry = z.infer<typeof telemetryMessageSchema>['state'];
 
+/**
+ * A terminal is open: its id, kept by the viewer to reattach, and the recent
+ * output to draw before anything new (empty for a new terminal). `refused`
+ * instead says why none could be opened (the daemon offers no terminals).
+ */
+export const terminalOpenedMessageSchema = z.object({
+  type: z.literal('terminalOpened'),
+  terminalId: z.string(),
+  replay: z.string(),
+  refused: z.string().optional(),
+});
+
+/** Output a terminal's program wrote, raw (escape sequences and all). */
+export const terminalDataMessageSchema = z.object({
+  type: z.literal('terminalData'),
+  terminalId: z.string(),
+  data: z.string(),
+});
+
+/** A terminal's program has exited; the terminal is gone. */
+export const terminalExitMessageSchema = z.object({
+  type: z.literal('terminalExit'),
+  terminalId: z.string(),
+  code: z.number().int(),
+});
+
 /** Any message the daemon may send to a surface. */
 export const serverMessageSchema = z.discriminatedUnion('type', [
   attachedMessageSchema,
@@ -773,6 +839,9 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   staleMessageSchema,
   closingMessageSchema,
   numberedMessageSchema,
+  terminalOpenedMessageSchema,
+  terminalDataMessageSchema,
+  terminalExitMessageSchema,
 ]);
 
 /** A message the daemon sends to a surface. */

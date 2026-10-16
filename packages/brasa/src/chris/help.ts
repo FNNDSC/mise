@@ -81,6 +81,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   setfacl: {
+    posix: { group: 'Files', differs: 'ChRIS sharing, as ACL entries' },
     category: 'Sharing',
     usage: 'setfacl -m u:<user>:r|g:<group>:r|o::r|o::- <path>... | setfacl -x u:<user>|g:<group> <path>...',
     summary: 'Share a feed with a user, a group or everyone, or stop sharing it',
@@ -106,6 +107,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   getfacl: {
+    posix: { group: 'Files', differs: 'who a feed or folder is shared with, as ACL entries' },
     category: 'Sharing',
     usage: 'getfacl <path>...',
     summary: 'Show who can read a feed: users, groups, and whether it is public',
@@ -118,6 +120,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   chmod: {
+    posix: { group: 'Files', differs: 'sets who may see a feed or folder (ChRIS sharing)' },
     category: 'Sharing',
     usage: 'chmod o+r|o-r <feed>...',
     summary: 'Make a feed public, or private again',
@@ -129,6 +132,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   setfattr: {
+    posix: { group: 'Files', differs: 'tags on a feed, as extended attributes' },
     category: 'Sharing',
     usage: 'setfattr -n tag -v <value> <path>... | setfattr -x tag [-v <value>] <path>...',
     summary: 'Hang a tag on a feed, or take it off',
@@ -151,6 +155,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   getfattr: {
+    posix: { group: 'Files', differs: 'a feed\'s tags, as extended attributes' },
     category: 'Sharing',
     usage: 'getfattr [-n tag] <path>...',
     summary: 'Show the tags a feed wears',
@@ -670,6 +675,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['chrisfetch', 'chrisfetch | lolcat'],
   },
   file: {
+    posix: { group: 'Files', differs: 'names a CFS file by its first bytes (DICOM, NIfTI, …)' },
     category: 'Files',
     usage: 'file <path>...',
     summary: 'What a file is, by its first bytes',
@@ -677,6 +683,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['file 0001.dcm', 'file ~/data/*'],
   },
   xxd: {
+    posix: { group: 'Text', differs: 'reads a CFS file' },
     usage: 'xxd [-s OFFSET] [-l LENGTH] <path>',
     summary: 'A hex dump of a file',
     description: 'The canonical hex dump — offset, sixteen bytes in pairs, the text beside — of a CFS file. 256 bytes unless -l asks for more; -s starts further in. Says how much of the file it showed.',
@@ -684,6 +691,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['xxd 0001.dcm', 'xxd -s 128 -l 16 0001.dcm', 'xxd -l 4096 image.nii'],
   },
   strings: {
+    posix: { group: 'Text', differs: 'reads a CFS file' },
     usage: 'strings [-n MIN] [-l LIMIT] <path>',
     summary: 'The readable runs in a file',
     description: 'Prints the runs of printable characters, MIN (4) or longer, in a CFS file — the way to see what a binary carries. 200 lines unless -l asks for more; says how many there were.',
@@ -691,12 +699,14 @@ export const chrisHelp: Record<string, CommandHelp> = {
     examples: ['strings 0001.dcm', 'strings -n 8 report.pdf'],
   },
   sha256sum: {
+    posix: { group: 'Text', differs: 'hashes a CFS file' },
     usage: 'sha256sum <path>...',
     summary: 'The SHA-256 digest of a file',
     description: 'Prints each CFS file\'s SHA-256 as hex, then its name, in the format the coreutils tool uses.',
     examples: ['sha256sum image.nii.gz', 'sha256sum ~/uploads/*'],
   },
   md5sum: {
+    posix: { group: 'Text', differs: 'hashes a CFS file' },
     usage: 'md5sum <path>...',
     summary: 'The MD5 digest of a file',
     description: 'Prints each CFS file\'s MD5 as hex, then its name.',
@@ -797,6 +807,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   tree: {
+    posix: { group: 'Files', differs: 'a CFS tree' },
     category: 'Navigation',
     usage: 'tree [options] [path]',
     description: 'Display directory tree structure',
@@ -816,6 +827,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   du: {
+    posix: { group: 'Files', differs: 'sizes in CFS' },
     category: 'Navigation',
     usage: 'du [options] [path]',
     description: 'Display disk usage statistics (mimics Linux du)',

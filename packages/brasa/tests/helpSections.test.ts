@@ -3,7 +3,7 @@
  * capitalised word, the Shell topics, and apropos ranking.
  */
 import { describe, it, expect } from '@jest/globals';
-import { apropos_search, helpSection_render, helpToc_render, section_find, sectionCommands_of, shellTopic_render, HELP_SECTIONS, type HelpLookup } from '../src/builtins/helpSections.js';
+import { apropos_search, helpPosix_render, helpSection_render, helpToc_render, section_find, sectionCommands_of, shellTopic_render, HELP_SECTIONS, type HelpLookup } from '../src/builtins/helpSections.js';
 
 const strip = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
 const summaries: Record<string, string> = { ls: 'List a folder', cd: 'Change folder', query: 'Ask a PACS', gather: 'Hold a cohort', dcm: 'DICOM tags', wtf: 'What an acronym means' };
@@ -14,6 +14,7 @@ const lookup = (commands: string[]): HelpLookup => ({
   text: (name) => (name === 'wtf' ? 'acronyms like DICOM and PACS' : ''),
   section: (name) => sections[name] ?? (name === 'wtf' ? 'Games' : undefined),
   games: () => ['wtf'],
+  posix: (name) => (name === 'ls' ? { group: 'Files', differs: 'lists CFS' } : undefined),
 });
 
 describe('the table of contents', () => {
@@ -57,5 +58,16 @@ describe('apropos', () => {
     expect(hits.findIndex((line) => line.startsWith('dcm'))).toBeLessThan(hits.indexOf('also mentioned in:'));
     expect(hits[hits.length - 1]).toContain('wtf (Games)');
     expect(apropos_search('zzzq', lookup(['ls']))).toEqual([]);
+  });
+});
+
+describe('help POSIX', () => {
+  it('lists the commands that mirror Unix utilities, by group, with how each differs, and the TOC points at it', () => {
+    const page: string = strip(helpPosix_render(lookup(['ls', 'cd', 'query'])));
+    expect(page).toContain('POSIX');
+    expect(page).toMatch(/Files\n +ls +lists CFS/);
+    expect(page).toContain('Shell syntax');
+    expect(strip(helpToc_render(lookup(['ls'])))).toContain('POSIX');
+    expect(section_find('POSIX', () => false)?.name).toBe('POSIX');
   });
 });

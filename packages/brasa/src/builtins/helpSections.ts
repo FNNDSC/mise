@@ -47,6 +47,16 @@ export const SHELL_SECTION: HelpSection = {
   examples: ['help pipes', 'help handles', 'help pronouns'],
 };
 
+/** The view across sections: every command that mirrors a Unix utility. */
+export const POSIX_SECTION: HelpSection = {
+  name: 'POSIX',
+  blurb: "chell's commands that mirror Unix utilities, and how each differs (most work on ChRIS's filesystem, not this machine's).",
+  examples: ['ls', 'cat', 'grep', 'tac', 'md5sum'],
+};
+
+/** The groups `help POSIX` lists under, in order. */
+const POSIX_GROUPS: ReadonlyArray<string> = ['Files', 'Text', 'System', 'Shell'];
+
 /** A Shell topic: its one line, and its page (or the command whose page it is). */
 interface ShellTopic {
   name: string;
@@ -115,6 +125,8 @@ export interface HelpLookup {
   section(name: string): string | undefined;
   /** The games shelf's commands, for the Games section. */
   games(): ReadonlyArray<string>;
+  /** How a command mirrors a Unix utility, when it does. */
+  posix(name: string): { group: string; differs: string } | undefined;
 }
 
 /** Wraps a paragraph to a width, each line indented. */
@@ -173,6 +185,7 @@ export function helpToc_render(lookup: HelpLookup): string {
     if (count > 0) entry(section, count);
   }
   entry(SHELL_SECTION, null);
+  if (lookup.commands().some((name: string): boolean => lookup.posix(name) !== undefined)) entry(POSIX_SECTION, null);
   if (runnable.has('query') && runnable.has('gather')) {
     out.push(`${chalk.gray('Start here:')}  ${chalk.yellow('query PatientID:1234567 | grep -i t1 | gather add')}`, '');
   }
@@ -188,7 +201,7 @@ export function helpToc_render(lookup: HelpLookup): string {
  * @returns The section, or undefined.
  */
 export function section_find(word: string, isCommand: (name: string) => boolean): HelpSection | undefined {
-  const all: HelpSection[] = [...HELP_SECTIONS, SHELL_SECTION];
+  const all: HelpSection[] = [...HELP_SECTIONS, SHELL_SECTION, POSIX_SECTION];
   const exact: HelpSection | undefined = all.find((section: HelpSection): boolean => section.name === word);
   if (exact !== undefined) return exact;
   if (isCommand(word)) return undefined;
@@ -210,6 +223,29 @@ export function helpSection_render(section: HelpSection, lookup: HelpLookup): st
   const width: number = Math.max(12, ...rows.map((row): number => row.name.length + 2));
   for (const row of rows) out.push(`  ${chalk.cyan(row.name.padEnd(width))}${row.line}`);
   out.push('', chalk.gray(`help <${section === SHELL_SECTION ? 'topic' : 'command'}> for each.`), '');
+  return `${out.join('\n')}\n`;
+}
+
+/**
+ * `help POSIX`: every command that mirrors a Unix utility, by group, each
+ * with how chell's differs.
+ *
+ * @param lookup - The commands.
+ * @returns The page.
+ */
+export function helpPosix_render(lookup: HelpLookup): string {
+  const out: string[] = ['', `${chalk.bold.cyan(POSIX_SECTION.name)} ${chalk.gray('—')} ${POSIX_SECTION.blurb}`, ''];
+  const mirrored: string[] = lookup.commands().filter((name: string): boolean => lookup.posix(name) !== undefined);
+  const width: number = Math.max(10, ...mirrored.map((name: string): number => name.length + 2));
+  for (const group of POSIX_GROUPS) {
+    const members: string[] = mirrored.filter((name: string): boolean => lookup.posix(name)?.group === group).sort();
+    if (members.length === 0) continue;
+    out.push(`  ${chalk.bold(group)}`);
+    for (const name of members) out.push(`    ${chalk.cyan(name.padEnd(width))}${lookup.posix(name)?.differs ?? ''}`);
+    out.push('');
+  }
+  if (mirrored.length > 0) out.push(`  ${chalk.bold('Shell syntax')}`, `    ${chalk.cyan('|'.padEnd(width))}between builtins it carries numbered listings (help pipes)`, `    ${chalk.cyan('> >>'.padEnd(width))}write to this machine's disk, not ChRIS's (help redirection)`, '');
+  out.push(chalk.gray('help <command> for each · command <name> runs the system\'s own'), '');
   return `${out.join('\n')}\n`;
 }
 
@@ -242,7 +278,7 @@ export function apropos_search(word: string, lookup: HelpLookup): string[] {
   const holds = (text: string): boolean => text.toLowerCase().includes(needle);
   const strong: string[] = [];
   const mentioned: string[] = [];
-  for (const section of [...HELP_SECTIONS, SHELL_SECTION]) {
+  for (const section of [...HELP_SECTIONS, SHELL_SECTION, POSIX_SECTION]) {
     if (holds(`${section.name} ${section.blurb}`)) strong.push(`${chalk.cyan(section.name)} ${chalk.gray('(section)')} — ${section.blurb}`);
   }
   for (const name of lookup.commands()) {

@@ -25,4 +25,13 @@ describe('help categories', () => {
     expect([of('query'), of('pull')]).toEqual(['PACS', 'PACS']);
     expect(of('url')).toBe('Sharing');
   });
+
+  it('every command named like a Unix utility says how it mirrors it, so help POSIX cannot drift', () => {
+    const UNIX: ReadonlyArray<string> = ['ls', 'cd', 'pwd', 'tree', 'du', 'cat', 'cp', 'mv', 'rm', 'touch', 'mkdir', 'rmdir', 'chmod', 'setfacl', 'getfacl',
+      'setfattr', 'getfattr', 'grep', 'file', 'tac', 'rev', 'seq', 'yes', 'shuf', 'strings', 'xxd', 'md5sum', 'sha256sum', 'date', 'cal', 'uptime', 'who',
+      'units', 'factor', 'primes', 'command', 'apropos', 'man', 'head', 'tail', 'wc', 'sort', 'uniq', 'cut', 'tr', 'echo', 'printf', 'env', 'find', 'ln', 'stat'];
+    const all = { ...helpText, ...chrisHelp } as Record<string, { posix?: unknown }>;
+    const missing: string[] = UNIX.filter((name) => all[name] !== undefined && all[name]?.posix === undefined);
+    expect(missing).toEqual([]);
+  });
 });

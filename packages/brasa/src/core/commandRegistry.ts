@@ -41,6 +41,11 @@ export interface CommandHelp {
    * so a new command cannot be missing from help.
    */
   category?: string;
+  /**
+   * The command mirrors a Unix utility: the group `help POSIX` lists it
+   * under, and how chell's differs, in a line.
+   */
+  posix?: { group: 'Files' | 'Text' | 'System' | 'Shell'; differs: string };
   description: string;
   subcommands?: string[];
   options?: string[];

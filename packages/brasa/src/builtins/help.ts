@@ -6,7 +6,7 @@
  * @module
  */
 import { pronounsPage_render } from './pronouns.js';
-import { HELP_SECTIONS, helpSection_render, helpToc_render, section_find, shellTopic_render, type HelpLookup, type HelpSection } from './helpSections.js';
+import { HELP_SECTIONS, helpPosix_render, helpSection_render, helpToc_render, section_find, shellTopic_render, type HelpLookup, type HelpSection } from './helpSections.js';
 import { gamesShelf_render, gamesShelf_names } from './games/shelf.js';
 import chalk from 'chalk';
 import { CAT_USAGE } from './fs/cat.args.js';
@@ -33,6 +33,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   ls: {
+    posix: { group: 'Files', differs: 'lists ChRIS\'s filesystem (CFS), not this machine\'s; -l numbers rows' },
     category: 'Navigation',
     usage: 'ls [options] [path]',
     description: 'List directory contents',
@@ -60,6 +61,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   cd: {
+    posix: { group: 'Files', differs: 'moves in CFS, including /proc and /net' },
     category: 'Navigation',
     usage: 'cd [path]',
     description: 'Change current working directory',
@@ -72,6 +74,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   apropos: {
+    posix: { group: 'Shell', differs: 'as apropos: searches every command\'s line and description' },
     category: 'General',
     usage: 'apropos <word>',
     summary: 'Find commands by a word in their name, summary or description',
@@ -80,6 +83,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['apropos dicom', 'apropos link', 'man -k pull'],
   },
   man: {
+    posix: { group: 'Shell', differs: 'man <name> is help <name>; man -k is apropos' },
     category: 'General',
     usage: 'man <command|Section|topic>  |  man -k <word>',
     summary: 'The page for a command, a section or a Shell topic (help, by its Unix name)',
@@ -88,6 +92,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['man grep', 'man PACS', 'man -k dicom'],
   },
   command: {
+    posix: { group: 'Shell', differs: 'as in any POSIX shell: runs the system\'s program, not the builtin' },
     category: 'General',
     usage: 'command <name> [args...]',
     summary: 'Run the system program of a name, not the builtin',
@@ -100,6 +105,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['query PatientID:1234567 | command grep -i t1', 'command -v grep'],
   },
   grep: {
+    posix: { group: 'Files', differs: 'also filters numbered listings, keeping their handles (help grep)' },
     category: 'Files',
     usage: 'grep [-ivwEFc] [-e PATTERN]... [PATTERN]',
     summary: 'Keep the lines, or the rows of a numbered listing, that match',
@@ -140,6 +146,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   pwd: {
+    posix: { group: 'Files', differs: 'where the session stands in CFS' },
     category: 'Navigation',
     usage: 'pwd [options]',
     description: 'Print current working directory',
@@ -159,6 +166,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   cat: {
+    posix: { group: 'Files', differs: 'reads CFS files (and a pipe)' },
     category: 'Files',
     usage: CAT_USAGE,
     description: 'Display file contents, with terminal syntax highlighting for recognized text formats',
@@ -177,6 +185,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   rm: {
+    posix: { group: 'Files', differs: 'removes from CFS; -r for folders, -i asks' },
     category: 'Files',
     usage: 'rm [options] <path> [path...]',
     description: 'Remove files or directories',
@@ -201,6 +210,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   cp: {
+    posix: { group: 'Files', differs: 'copies within CFS; -r for folders' },
     category: 'Files',
     usage: 'cp [-t <dir>] [options] <source...> [dest]',
     description: 'Copy files or directories (supports wildcards and multiple sources)',
@@ -227,6 +237,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   mv: {
+    posix: { group: 'Files', differs: 'moves within CFS' },
     category: 'Files',
     usage: 'mv [-t <dir>] <source...> [dest]',
     description: 'Move or rename files or directories (supports wildcards and multiple sources)',
@@ -243,6 +254,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   touch: {
+    posix: { group: 'Files', differs: 'makes a CFS file; --withContents writes text into it' },
     category: 'Files',
     usage: 'touch [options] <file>',
     description: 'Create empty files or files with content',
@@ -257,6 +269,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   mkdir: {
+    posix: { group: 'Files', differs: 'makes CFS folders; -p for parents' },
     category: 'Files',
     usage: 'mkdir [-p] <directory> [directory...]',
     description: 'Create directories',
@@ -272,6 +285,7 @@ export const helpText: Record<string, CommandHelp> = {
     ],
   },
   rmdir: {
+    posix: { group: 'Files', differs: 'removes empty CFS folders' },
     category: 'Files',
     usage: 'rmdir <directory> [directory...]',
     summary: 'Remove empty directories',
@@ -334,18 +348,21 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['fortune | lolcat', 'figlet ARGUS | lolcat', 'motd | lolcat -p 12'],
   },
   rev: {
+    posix: { group: 'Text', differs: 'reads a pipe or its words' },
     usage: 'rev [text]',
     summary: 'Reverse each line',
     description: 'Reverses the characters of each line, keeping the lines in order. Reads what is piped in, else the words given.',
     examples: ['rev stressed', 'fortune | rev'],
   },
   tac: {
+    posix: { group: 'Text', differs: 'reads a pipe or its words' },
     usage: 'tac [text]',
     summary: 'Lines last to first',
     description: 'cat backwards: prints the lines in reverse order. Reads what is piped in.',
     examples: ['help games | tac', 'seq 5 | tac'],
   },
   yes: {
+    posix: { group: 'Text', differs: 'bounded: ten lines unless told how many, never forever' },
     usage: 'yes [word] [-n N]',
     summary: 'Repeat a word (ten times, not forever)',
     description: 'Prints a word on its own line, over and over — but bounded: ten times unless -n N asks for more (up to 10000), and it says how many it printed. The real yes runs until killed; a session is not the place.',
@@ -353,24 +370,28 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['yes', 'yes no -n 3', 'yes | head -n 2'],
   },
   seq: {
+    posix: { group: 'Text', differs: 'as seq' },
     usage: 'seq [FIRST [STEP]] LAST',
     summary: 'Count from one number to another',
     description: 'Prints the numbers from FIRST to LAST by STEP, one per line, as seq does: seq 5 is 1 to 5, seq 2 10 is 2 to 10, seq 10 -2 0 counts down. At most 100000 numbers.',
     examples: ['seq 5', 'seq 0 5 30', 'seq 10 -1 1 | tac'],
   },
   factor: {
+    posix: { group: 'System', differs: 'as factor' },
     usage: 'factor N [N...]',
     summary: 'Prime factors of a number',
     description: 'Prints each number with its prime factors, smallest first, repeats included, as factor does.',
     examples: ['factor 360', 'factor 2026 1729'],
   },
   primes: {
+    posix: { group: 'System', differs: 'as primes' },
     usage: 'primes [FROM] TO',
     summary: 'The primes up to a number',
     description: 'Lists the primes from FROM (2 when omitted) to TO, at most 10000 of them.',
     examples: ['primes 100', 'primes 1000 1100'],
   },
   shuf: {
+    posix: { group: 'Text', differs: 'reads a pipe or its words' },
     usage: 'shuf [words...]',
     summary: 'Shuffle lines',
     description: 'Prints the lines piped in, or the words given, in a random order.',
@@ -402,18 +423,21 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['calc 2^10', 'calc (3+4)*5', 'calc sqrt(2)*pi', 'calc 1024*1024'],
   },
   units: {
+    posix: { group: 'System', differs: 'a small set of conversions' },
     usage: 'units VALUE FROM [to] TO | units list',
     summary: 'Convert between units: units 10 mm in',
     description: 'Converts a quantity between two units of one kind: length (mm cm m km in ft yd mi), mass (g kg mg lb oz), time (ms s min h d wk yr), data (B kB MB GB TB KiB MiB GiB TiB bit) and temperature (C F K). units list names them all.',
     examples: ['units 10 mm in', 'units 72 F to C', 'units 1 GiB MB', 'units list'],
   },
   who: {
+    posix: { group: 'System', differs: 'the surfaces on this session (each terminal and browser), not logged-in users' },
     usage: 'who',
     summary: 'Who is attached to this session',
     description: 'Lists the surfaces on this session — each terminal and browser, by the host\'s name for it — marking the one you are at. A local shell answers for itself alone.',
     examples: ['who'],
   },
   uptime: {
+    posix: { group: 'System', differs: 'how long this session\'s process has run, not this machine' },
     usage: 'uptime',
     summary: 'How long this session\'s process has been up',
     description: 'The time, how long the process serving this session has run, how many surfaces are attached, since when, and its pid.',
@@ -553,6 +577,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['weather', 'weather Cape Town', 'weather Boston --units imperial', 'weather Paris -d 7'],
   },
   date: {
+    posix: { group: 'System', differs: 'as date, with its + formats' },
     category: 'General',
     usage: 'date [-u] [+FORMAT]',
     summary: 'Print the current date and time',
@@ -564,6 +589,7 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['date', 'date -u', 'date +%Y-%m-%d', 'date "+%A, %B %e %Y"'],
   },
   cal: {
+    posix: { group: 'System', differs: 'as cal' },
     category: 'Games',
     usage: 'cal [[month] year]',
     summary: 'Print a calendar',
@@ -936,6 +962,7 @@ export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   if (commandName) {
     const lookup: HelpLookup = helpLookup_make();
     const section = section_find(commandName, (name: string): boolean => verb_available(name));
+    if (section?.name === 'POSIX') return { status: 'ok', rendered: helpPosix_render(lookup) };
     // The Games section is the shelf's own page, by its categories.
     if (section?.name === 'Games') return { status: 'ok', rendered: gamesShelf_render(commandSummary_get) };
     if (section !== undefined) return { status: 'ok', rendered: helpSection_render(section, lookup) };
@@ -974,6 +1001,7 @@ export function helpLookup_make(): HelpLookup {
     // A command on the games shelf is the Games section's, whatever it declares.
     section: (name: string): string | undefined => commandHelpEntry_get(name)?.category ?? (gamesShelf_names(commandSummary_get).includes(name) ? 'Games' : undefined),
     games: (): ReadonlyArray<string> => gamesShelf_names(commandSummary_get),
+    posix: (name: string): { group: string; differs: string } | undefined => commandHelpEntry_get(name)?.posix,
   };
 }
 

@@ -609,6 +609,19 @@ label {
   color: #000;
 }
 
+/* A question open somewhere in the session: its command is paused, waiting on
+ * someone. The same amber as an annunciation, because it asks for attention. */
+.lamp-question {
+  background: #ffaf00;
+  color: #000;
+  padding: 0 0.5rem;
+  border-radius: 0.6rem;
+}
+
+#status-strip .lamp-question {
+  color: #000;
+}
+
 .lamp-offline {
   background: var(--state-error);
   color: var(--butter);
@@ -4540,6 +4553,7 @@ body[data-zoom] #header-restore {
 [data-theme='pharos'] .telemetry-label,
 [data-theme='pharos'] .lamp-online,
 [data-theme='pharos'] .lamp-host,
+[data-theme='pharos'] .lamp-question,
 [data-theme='pharos'] .lamp-offline {
   border-radius: 0;
   clip-path: polygon(0 0, calc(100% - var(--pharos-cut-small)) 0, 100% var(--pharos-cut-small), 100% 100%, 0 100%);

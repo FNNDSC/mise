@@ -672,6 +672,8 @@ export const promptContextSchema = z.object({
     label: z.string(),
     message: z.string(),
   })).optional(),
+  /** How many questions are open in the session, on any surface. Optional, so an older daemon still parses here. */
+  questions: z.number().optional(),
 });
 
 export type PromptContext = z.infer<typeof promptContextSchema>;
@@ -767,6 +769,11 @@ export const telemetryMessageSchema = z.object({
       surface: z.string(),
     }).nullable(),
     waiting: z.number(),
+    /**
+     * The questions open now: which surface asked, what, and for how long. A
+     * command waiting on one has stepped out of the lane. Absent on older daemons.
+     */
+    questions: z.array(z.object({ surface: z.string(), message: z.string(), sinceMs: z.number() })).optional(),
   }).optional(),
   /** Every surface attached now, by id: a terminal (`chell`) or a `browser`. Absent on older daemons. */
   surfaces: z.array(z.object({ id: z.string(), kind: z.enum(['chell', 'browser']) })).optional(),

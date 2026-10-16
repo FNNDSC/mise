@@ -89,6 +89,11 @@ export class ThemeDefault implements PromptTheme {
     if (ctx.warmupFailures && ctx.warmupFailures.length > 0) {
       warmup += chalk.hex(PROMPT_PALETTE.ERROR)(warmupFailures_format(ctx.warmupFailures));
     }
+    // A question open somewhere in the session: its command is paused,
+    // waiting on someone, and `who` says who asked what.
+    if (ctx.questions !== undefined && ctx.questions > 0) {
+      warmup += chalk.hex(PROMPT_PALETTE.HOSTCTL.bg)(` [? ${ctx.questions} waiting]`);
+    }
     return (
       modePrefix +
       chalk.hex(PROMPT_PALETTE.USER.bg)(ctx.user) +

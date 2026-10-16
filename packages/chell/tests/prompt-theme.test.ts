@@ -211,3 +211,16 @@ describe('prompt Powerlevel10k-inspired palette', (): void => {
     expect(rendered).toContain('\x1b[38;2;255;215;95m');
   });
 });
+
+describe('an open question shows in the prompt', () => {
+  for (const theme of ['default', 'p10k'] as const satisfies readonly ThemeName[]) {
+    it(`${theme}: a ? segment while any surface has a question open, none otherwise`, () => {
+      const quiet: string = prompt_render(theme, promptContext_create('/home/user'));
+      const asking: string = prompt_render(theme, { ...promptContext_create('/home/user'), questions: 2 });
+      const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
+      expect(plain(quiet)).not.toContain('waiting');
+      expect(plain(asking)).toContain('? 2 waiting');
+    });
+  }
+});
+

@@ -271,6 +271,8 @@ export class CalypsoDaemon {
    * gives the lane up until the answer comes (`person_await`).
    */
   private readonly lane: Lane = new Lane();
+  /** The questions open now, by the surface asked: what, and since when. */
+  private readonly questionsOpen: Map<Surface, { message: string; at: number }> = new Map();
   /** The session's retained regard: the last indication from any surface. */
   private regard: Regard | null = null;
   /** Unsubscribes from the engine's ambient events; null until started. */
@@ -359,6 +361,8 @@ export class CalypsoDaemon {
           ? { line: this.currentLine, sinceMs: Math.round(performance.now() - this.currentStartedAt), surface: this.currentOrigin?.id ?? '' }
           : null,
         waiting: this.lane.waiting,
+        // Questions open: each one's command has stepped out of the lane.
+        questions: [...this.questionsOpen].map(([surface, open]) => ({ surface: surface.id, message: open.message, sinceMs: Math.round(performance.now() - open.at) })),
       };
       // Who else is here: a restart asked from one surface names the rest.
       // A surface that runs host shells is a terminal; one that does not, a browser.
@@ -980,7 +984,9 @@ export class CalypsoDaemon {
     if (!this.promptProvider) {
       return;
     }
-    const context: PromptContext = await this.promptProvider(this.lastCommand);
+    const provided: PromptContext = await this.promptProvider(this.lastCommand);
+    // The session's open questions are the daemon's to count, not the backend's.
+    const context: PromptContext = this.questionsOpen.size > 0 ? { ...provided, questions: this.questionsOpen.size } : provided;
     this.promptWarmupActive = context.procWarmup !== undefined;
     if (target) {
       this.send(target.socket, { type: 'promptline', context });
@@ -1165,6 +1171,14 @@ export class CalypsoDaemon {
       // question whose command they have forgotten issuing.
       return Promise.reject(new Error('another question is already open on this surface'));
     }
+    // An open question is the session's to show: every surface's prompt
+    // context counts it, and `who` says who asked what.
+    this.questionsOpen.set(origin, { message: request.message, at: performance.now() });
+    void this.promptline_push();
+    const settled = (): void => {
+      this.questionsOpen.delete(origin);
+      void this.promptline_push();
+    };
     return this.person_await((): Promise<string> => this.prompts.open(origin.socket, (promptId: string): void => {
       this.send(origin.socket, {
         type: 'prompt',
@@ -1175,7 +1189,7 @@ export class CalypsoDaemon {
         ...(request.path === undefined ? {} : { path: request.path }),
         ...(request.commit === undefined ? {} : { commit: request.commit }),
       });
-    }));
+    }).finally(settled));
   }
 
   /**
@@ -1301,6 +1315,7 @@ export class CalypsoDaemon {
       id: each.id,
       kind: each.capabilities.shellCommands ? 'chell' as const : 'browser' as const,
       you: each === this.currentOrigin,
+      ...(this.questionsOpen.has(each) ? { asking: (this.questionsOpen.get(each) as { message: string }).message } : {}),
     }));
   }
 

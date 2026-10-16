@@ -129,6 +129,8 @@ export interface SurfacePeer {
   kind: 'chell' | 'browser';
   /** Whether it is the surface running the current command. */
   you: boolean;
+  /** The question it has open, waiting for an answer; absent when none. */
+  asking?: string;
 }
 
 export interface Surface {

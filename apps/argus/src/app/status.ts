@@ -28,6 +28,7 @@ interface StatusFields {
   mismatch: HTMLElement;
   lamp: HTMLElement;
   host: HTMLElement;
+  questions: HTMLElement;
 }
 
 /** Frames for the activity indicator, matching the console's spinner. */
@@ -101,6 +102,7 @@ export class StatusBar {
       mismatch: element_require(root, 'status-mismatch'),
       lamp: element_require(root, 'status-lamp'),
       host: element_require(root, 'status-host'),
+      questions: element_require(root, 'status-questions'),
     };
   }
 
@@ -155,6 +157,19 @@ export class StatusBar {
     this.fields.host.title = tiers.length > 0
       ? 'Calypso was started with --host-control: `!` and pipes run on its host, upload/download reach its disk.'
       : '';
+  }
+
+  /**
+   * Shows the questions open in the session: `? N WAITING`, each named in the
+   * title (which surface asked what, and for how long); nothing when none is.
+   *
+   * @param questions - The open questions, from the heartbeat.
+   */
+  public questions_show(questions: ReadonlyArray<{ surface: string; message: string; sinceMs: number }>): void {
+    this.fields.questions.textContent = questions.length > 0 ? `? ${questions.length} WAITING` : '';
+    this.fields.questions.title = questions
+      .map((open): string => `surface ${open.surface.slice(0, 6)} asks "${open.message.trim()}" (${Math.round(open.sinceMs / 1000)} s); its command is paused until answered there`)
+      .join('\n');
   }
 
   /**

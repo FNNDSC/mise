@@ -1457,3 +1457,56 @@ describe('CalypsoDaemon a question does not block the errand', () => {
     }
   });
 });
+
+describe('an open question shows across the session', () => {
+  it('rides the heartbeat, counts in every prompt context, names itself in the surface list, and clears when answered', async () => {
+    const engine: HostedEngine = {
+      line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+        if (line === 'asking') await daemon.prompt_current({ message: 'Another game: ', hidden: false });
+        return [{ status: 'ok', rendered: '' }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const promptContext = () => ({ user: 'u', uri: 'http://cube', cwd: '/home/u', pacsserver: null, physicalMode: false, lastExitCode: 0, lastCommandDurationMs: 0 });
+    const daemon = new CalypsoDaemon({
+      engine, token: TOKEN, promptProvider: promptContext,
+      telemetryProvider: (): { jobs: number; feeds: number } => ({ jobs: 1, feeds: 1 }),
+    });
+    const port = await daemon.start();
+    try {
+      const asker = await client_open(port);
+      const other = await client_open(port);
+      const got: Record<string, unknown>[] = [];
+      const seen: Record<string, unknown>[] = [];
+      asker.on('message', (d) => got.push(JSON.parse(d.toString())));
+      other.on('message', (d) => seen.push(JSON.parse(d.toString())));
+      send(asker, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      send(other, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      await until(() => got.some((m) => m.type === 'attached') && seen.some((m) => m.type === 'attached'));
+
+      send(asker, { type: 'execute', id: '1', line: 'asking' });
+      await until(() => got.some((m) => m.type === 'prompt'));
+      // The other surface's prompt context counts it at once.
+      await until(() => seen.some((m) => m.type === 'promptline' && (m.context as { questions?: number }).questions === 1));
+      // The surface list says who asks what.
+      const listed = daemon.surfaces_list();
+      expect(listed.filter((s) => s.asking === 'Another game: ')).toHaveLength(1);
+      // The heartbeat carries it.
+      await until(() => seen.some((m) => m.type === 'telemetry' && ((m.lane as { questions?: unknown[] }).questions ?? []).length === 1));
+      const beat = [...seen].reverse().find((m) => m.type === 'telemetry') as { lane: { questions: Array<{ message: string; surface: string }> } };
+      expect(beat.lane.questions[0]?.message).toBe('Another game: ');
+
+      const prompt = got.find((m) => m.type === 'prompt') as Record<string, unknown>;
+      send(asker, { type: 'promptAnswer', promptId: prompt.promptId, answer: 'n' });
+      await until(() => got.some((m) => m.type === 'result' && m.id === '1'));
+      await until(() => {
+        const last = [...seen].reverse().find((m) => m.type === 'promptline') as { context: { questions?: number } } | undefined;
+        return last !== undefined && last.context.questions === undefined;
+      });
+      expect(daemon.surfaces_list().some((s) => s.asking !== undefined)).toBe(false);
+    } finally {
+      await daemon.stop();
+    }
+  }, 15_000);
+});
+

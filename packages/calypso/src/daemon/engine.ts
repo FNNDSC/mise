@@ -47,6 +47,21 @@ export interface HostedEngine {
   line_cancel?(): boolean;
 
   /**
+   * The running command steps aside to wait on a person: the engine saves
+   * and clears its per-command state, so the next command starts clean.
+   *
+   * @returns What it left behind, handed back to `turn_resume`.
+   */
+  turn_leave?(): unknown;
+
+  /**
+   * A command that stepped aside resumes: the engine puts its state back.
+   *
+   * @param state - What `turn_leave` returned for it.
+   */
+  turn_resume?(state: unknown): void;
+
+  /**
    * Computes completion candidates for a partial input line.
    *
    * @param linePrefix - The input line up to the cursor.

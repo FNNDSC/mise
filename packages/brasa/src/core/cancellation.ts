@@ -8,6 +8,7 @@
  * @module
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { turnPart_register } from './turn.js';
 
 /** State owned by one top-level foreground command. */
 interface CommandCancellationState {
@@ -18,6 +19,15 @@ interface CommandCancellationState {
 const cancellationScope: AsyncLocalStorage<CommandCancellationState> =
   new AsyncLocalStorage<CommandCancellationState>();
 let foreground: CommandCancellationState | undefined;
+
+// Ctrl-C cancels the command holding the turn: one that stepped aside to
+// wait on a question takes its cancellation back when it resumes.
+turnPart_register({
+  name: 'cancellation',
+  save: (): unknown => foreground,
+  clear: (): void => { foreground = undefined; },
+  restore: (saved: unknown): void => { foreground = saved as CommandCancellationState | undefined; },
+});
 
 /**
  * Runs work inside the foreground-command cancellation scope.
@@ -44,6 +54,16 @@ export async function commandCancellation_run<T>(operation: () => Promise<T>): P
   } finally {
     if (foreground === state) foreground = previous;
   }
+}
+
+/**
+ * Whether code is running inside a command's scope (a line within a
+ * command, rather than a line of its own).
+ *
+ * @returns True inside a command.
+ */
+export function commandCancellation_active(): boolean {
+  return cancellationScope.getStore() !== undefined;
 }
 
 /**

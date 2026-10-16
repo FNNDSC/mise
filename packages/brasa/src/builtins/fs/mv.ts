@@ -7,7 +7,7 @@ import path from 'path';
 import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
 import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
 import type { ListingCache } from '../../core/backend.js';
-import { destination_ask, destination_missing } from './destination.js';
+import { destination_ask, destination_missing, operands_fix } from './destination.js';
 import { entry_at, entry_isFolder } from './entries.js';
 import { mv_render, vfs_fail, vfsRefusal_text, type VFSDispatcher, type VfsOutcome } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
@@ -50,28 +50,32 @@ export async function builtin_mv(args: string[]): Promise<CommandEnvelope> {
     if (typeof target === 'string' && target !== '') {
       return mv_run({ sources: pathArgs, dest: target });
     }
+    // The sources are fixed before the question: other commands run while it is open.
+    const sources: string[] = await operands_fix(pathArgs);
     const chosen: string = await destination_ask({
-      verb: 'mv', commit: 'MOVE HERE', sources: pathArgs, wantsDirectory: true,
+      verb: 'mv', commit: 'MOVE HERE', sources, wantsDirectory: true,
     });
     if (chosen === '') {
       process.exitCode = 1;
       return envelope_error('', undefined, `${chalk.red(destination_missing('mv'))}\n`);
     }
-    return mv_run({ sources: pathArgs, dest: chosen });
+    return mv_run({ sources, dest: chosen });
   }
 
   // One operand names what to move and not where: that is a question, not a
   // usage error. The answer opens where the file already lives and offers
   // its own name, so the ordinary case is a rename.
   if (pathArgs.length === 1) {
+    // The sources are fixed before the question: other commands run while it is open.
+    const sources: string[] = await operands_fix(pathArgs);
     const chosen: string = await destination_ask({
-      verb: 'mv', commit: 'MOVE HERE', sources: pathArgs,
+      verb: 'mv', commit: 'MOVE HERE', sources,
     });
     if (chosen === '') {
       process.exitCode = 1;
       return envelope_error('', undefined, `${chalk.red(destination_missing('mv'))}\n`);
     }
-    return mv_run({ sources: pathArgs, dest: chosen });
+    return mv_run({ sources, dest: chosen });
   }
 
   // Last arg is destination, all others are sources

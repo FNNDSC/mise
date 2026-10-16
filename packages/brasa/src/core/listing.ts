@@ -12,6 +12,7 @@
  */
 import { answer_get, answerRows_of, type AnswerRow } from '../session/answer.js';
 import { answerKinds_get } from './answerKinds.js';
+import { turnPart_register } from './turn.js';
 
 /** A listing as an envelope's model carries it. */
 export interface ListingModel {
@@ -21,6 +22,15 @@ export interface ListingModel {
 
 /** The listing the previous builtin in a pipe produced, for the next to take. */
 let piped: ListingModel | null = null;
+
+// A pipe's listing not yet taken belongs to its command, not to one that
+// runs while that command waits on a question.
+turnPart_register({
+  name: 'listingIn',
+  save: (): unknown => piped,
+  clear: (): void => { piped = null; },
+  restore: (saved: unknown): void => { piped = (saved as ListingModel | null) ?? null; },
+});
 
 /**
  * Hands a listing to the next builtin in a pipe (null clears it).

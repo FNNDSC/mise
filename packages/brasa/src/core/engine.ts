@@ -45,7 +45,9 @@ import {
   pipe_execute,
 } from './dispatch.js';
 import { capability_require, surface_get, surface_set, type Surface } from './surface.js';
-import { commandCancellation_request, commandCancellation_run } from './cancellation.js';
+import { commandCancellation_active, commandCancellation_request, commandCancellation_run } from './cancellation.js';
+import { turn_leave, turn_resume, type TurnState } from './turn.js';
+import { errorStack } from '@fnndsc/fond';
 import { recorder_note } from '../session/recorder.js';
 import { answerAdapters_register } from '../session/answerAdapters.js';
 import { numbering_get, type Numbering } from '../session/answer.js';
@@ -89,6 +91,23 @@ export interface BrasaEngine {
    * @returns True when the active command accepted the request.
    */
   line_cancel?(): boolean;
+
+  /**
+   * The running command steps aside to wait on a person (its host gives the
+   * turn to the next command): its per-command state is saved and cleared
+   * (turn.ts).
+   *
+   * @returns What it left behind, for `turn_resume`.
+   */
+  turn_leave?(): TurnState;
+
+  /**
+   * A command that stepped aside resumes: its per-command state is put
+   * back over whatever ran in between.
+   *
+   * @param state - What `turn_leave` returned for it.
+   */
+  turn_resume?(state: TurnState): void;
 
   /**
    * Computes completion candidates for a partial input line.
@@ -301,7 +320,14 @@ async function batch_execute(
  * @returns The envelopes of the executed commands, in execution order.
  */
 export async function line_execute(line: string): Promise<CommandEnvelope[]> {
-  return await commandCancellation_run(async (): Promise<CommandEnvelope[]> => line_execute_run(line));
+  // A line inside a command (a manifest's) shares that command's scope.
+  if (commandCancellation_active()) return await line_execute_run(line);
+  // A top-level line keeps its own error stack: another command running
+  // while this one waits on a question cannot pop its messages, nor have
+  // its own drained by this one.
+  return await commandCancellation_run(
+    (): Promise<CommandEnvelope[]> => errorStack.scope_run((): Promise<CommandEnvelope[]> => line_execute_run(line)),
+  );
 }
 
 /**
@@ -444,6 +470,8 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
   return {
     line_execute,
     line_cancel,
+    turn_leave,
+    turn_resume,
     line_complete,
     file_read,
     file_stream,

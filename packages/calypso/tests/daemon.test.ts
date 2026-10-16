@@ -1367,15 +1367,72 @@ describe('CalypsoDaemon a question does not block the errand', () => {
 
   // A command that changes state is never instrument traffic, so nothing
   // else may overtake the queue.
-  it('still queues an ordinary command behind the one waiting on a question', async () => {
+  it('runs an ordinary command while another waits on a question, and the asker resumes in its own turn', async () => {
     const ran: string[] = [];
+    let releaseSlow: () => void = (): void => undefined;
     const engine: HostedEngine = {
       line_execute: async (line: string): Promise<CommandEnvelope[]> => {
         ran.push(line);
         if (line === 'asking') {
-          await daemon.prompt_current({ message: 'where? ', hidden: false }).catch(() => '');
+          const answer = await daemon.prompt_current({ message: 'where? ', hidden: false });
+          ran.push(`answered ${answer}`);
+          daemon.output_current('data', `asker says ${answer}\n`);
+          return [{ status: 'ok', rendered: `went ${answer}` }];
         }
-        return [{ status: 'ok', rendered: '' }];
+        if (line === 'slow') {
+          await new Promise<void>((resolve) => { releaseSlow = resolve; });
+          ran.push('slow done');
+        }
+        return [{ status: 'ok', rendered: line }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    const port = await daemon.start();
+    try {
+      const asker = await client_open(port);
+      const other = await client_open(port);
+      const got: Record<string, unknown>[] = [];
+      const gotOther: Record<string, unknown>[] = [];
+      asker.on('message', (d) => got.push(JSON.parse(d.toString())));
+      other.on('message', (d) => gotOther.push(JSON.parse(d.toString())));
+      send(asker, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      send(other, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
+      await until(() => got.some((m) => m.type === 'attached') && gotOther.some((m) => m.type === 'attached'));
+
+      send(asker, { type: 'execute', id: '1', line: 'asking' });
+      await until(() => got.some((m) => m.type === 'prompt'));
+      // The question is open: the session is free, and another surface's command runs.
+      send(other, { type: 'execute', id: '9', line: 'cd /bin' });
+      await until(() => gotOther.some((m) => m.type === 'result' && m.id === '9'));
+      expect(ran).toEqual(['asking', 'cd /bin']);
+
+      // A slow command holds the lane when the answer arrives: the asker waits its turn.
+      send(other, { type: 'execute', id: '10', line: 'slow' });
+      await until(() => ran.includes('slow'));
+      const prompt = got.find((m) => m.type === 'prompt') as Record<string, unknown>;
+      send(asker, { type: 'promptAnswer', promptId: prompt.promptId, answer: 'home' });
+      await new Promise((r) => setTimeout(r, 200));
+      expect(ran).toEqual(['asking', 'cd /bin', 'slow']);
+      releaseSlow();
+      await until(() => got.some((m) => m.type === 'result' && m.id === '1'));
+      expect(ran).toEqual(['asking', 'cd /bin', 'slow', 'slow done', 'answered home']);
+      // Resumed in its own slot: its output and result went home, under its own id.
+      expect(got.some((m) => m.type === 'output' && m.id === '1' && m.chunk === 'asker says home\n')).toBe(true);
+      expect(gotOther.some((m) => m.type === 'output' && m.chunk === 'asker says home\n')).toBe(false);
+      expect(daemon.busy_get()).toBe(false);
+    } finally {
+      await daemon.stop();
+    }
+  });
+
+  it('an editor open is a person waiting too: the session is free meanwhile', async () => {
+    const ran: string[] = [];
+    const engine: HostedEngine = {
+      line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+        ran.push(line);
+        if (line === 'editing') await daemon.edit_current('text', 'txt').catch(() => undefined);
+        return [{ status: 'ok', rendered: line }];
       },
       line_complete: async (prefix: string) => ({ candidates: [], prefix }),
     };
@@ -1387,16 +1444,14 @@ describe('CalypsoDaemon a question does not block the errand', () => {
       ws.on('message', (d) => got.push(JSON.parse(d.toString())));
       send(ws, { type: 'attach', protocolVersion: CONTRACT_VERSION, token: TOKEN });
       await until(() => got.some((m) => m.type === 'attached'));
-
-      send(ws, { type: 'execute', id: '1', line: 'asking' });
-      await until(() => got.some((m) => m.type === 'prompt'));
-      send(ws, { type: 'execute', id: '2', line: 'cd /bin' });
-      await new Promise((r) => setTimeout(r, 300));
-      expect(ran).toEqual(['asking']);
-
-      const prompt = got.find((m) => m.type === 'prompt') as Record<string, unknown>;
-      send(ws, { type: 'promptError', promptId: prompt.promptId, reason: 'abandoned' });
-      await until(() => ran.includes('cd /bin'));
+      send(ws, { type: 'execute', id: '1', line: 'editing' });
+      await until(() => got.some((m) => m.type === 'edit'));
+      send(ws, { type: 'execute', id: '2', line: 'pwd' });
+      await until(() => got.some((m) => m.type === 'result' && m.id === '2'));
+      const edit = got.find((m) => m.type === 'edit') as Record<string, unknown>;
+      send(ws, { type: 'editError', editId: edit.editId, reason: 'closed' });
+      await until(() => got.some((m) => m.type === 'result' && m.id === '1'));
+      expect(ran).toEqual(['editing', 'pwd']);
     } finally {
       await daemon.stop();
     }

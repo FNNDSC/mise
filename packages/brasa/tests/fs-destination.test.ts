@@ -11,19 +11,22 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
 const mockPrompt = jest.fn<(request: Record<string, unknown>) => Promise<string>>();
+/** The session's directory, as the mocked resolver reads it. */
+const where: { cwd: string } = { cwd: '/home/chris' };
 jest.unstable_mockModule('../src/core/question.js', () => ({
   repl_questionPath: (message: string, path: unknown, commit?: string): Promise<string> =>
     mockPrompt({ message, wants: 'path', path, commit }),
 }));
 jest.unstable_mockModule('../src/builtins/utils.js', () => ({
   path_resolve: async (p: string): Promise<string> =>
-    (p.startsWith('/') ? p : `/home/chris/${p}`),
+    (p.startsWith('/') ? p : p === '.' ? where.cwd : `${where.cwd}/${p}`),
 }));
 
-const { destination_ask, destination_missing } = await import('../src/builtins/fs/destination.js');
+const { destination_ask, destination_missing, operands_fix } = await import('../src/builtins/fs/destination.js');
 
 beforeEach((): void => {
   jest.clearAllMocks();
+  where.cwd = '/home/chris';
   mockPrompt.mockResolvedValue('/home/chris/elsewhere/report.txt');
 });
 
@@ -63,6 +66,15 @@ describe('destination_ask', () => {
     await destination_ask({ verb: 'cp', commit: 'COPY HERE', sources: ['/data/one.nii', '/data/two.nii'] });
     const asked = mockPrompt.mock.calls[0][0] as { path?: { anchor?: string } };
     expect(asked.path?.anchor).toBe('/data');
+  });
+
+  it('a relative answer lands where the session stood when it asked, not where a cd moved it', async () => {
+    mockPrompt.mockImplementation(async (): Promise<string> => { where.cwd = '/elsewhere'; return 'kept/report.txt'; });
+    expect(await destination_ask({ verb: 'mv', commit: 'MOVE HERE', sources: ['report.txt'] })).toBe('/home/chris/kept/report.txt');
+  });
+
+  it('operands are fixed to absolute paths before a question', async () => {
+    expect(await operands_fix(['a', '/data/b'])).toEqual(['/home/chris/a', '/data/b']);
   });
 
   it('reads an abandoned question as no destination', async () => {

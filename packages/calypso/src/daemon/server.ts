@@ -37,6 +37,7 @@ import { clientMessage_parse, attach_parse } from '@fnndsc/menu';
 import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, PromptKind, PromptPath, FileDeliverRequest, Regard, WatchState, AmbientEvent, ClosingCause } from '@fnndsc/menu';
 import type { z } from 'zod';
 import type { Terminals, TerminalViewer } from './terminals.js';
+import { Lane } from './lane.js';
 import { DownloadLedger, downloadId_valid, type DownloadReport, type OpenedFile } from './downloads.js';
 
 /**
@@ -152,6 +153,18 @@ export interface TelemetrySnapshot {
   state?: { running: number; runningFeeds: number; scheduled: number; errored: number; erroredFeeds: number };
 }
 
+/** Who holds the lane, for which command: what output, progress and questions are routed by. */
+interface CommandSlot {
+  origin: Surface | null;
+  id: string | null;
+  instrument: boolean;
+  line: string | null;
+  startedAt: number;
+}
+
+/** The slot while nobody holds the lane. */
+const SLOT_EMPTY: CommandSlot = { origin: null, id: null, instrument: false, line: null, startedAt: 0 };
+
 export interface DaemonOptions {
   engine: HostedEngine;
   token: string;
@@ -217,8 +230,6 @@ export class CalypsoDaemon {
   /** The last executed command's measured facts, sticky across pushes. */
   private lastCommand: PromptLastCommand | undefined;
   private readonly telemetryProvider: (() => TelemetrySnapshot) | undefined;
-  /** Commands queued behind the one running: the lane's depth. */
-  private queueWaiting: number = 0;
   /** The line holding the lane, and since when; null while the lane is idle. */
   private currentLine: string | null = null;
   private currentStartedAt: number = 0;
@@ -254,11 +265,12 @@ export class CalypsoDaemon {
   private wss: WebSocketServer | null = null;
   private httpServer: Server | null = null;
   /**
-   * Execution is serialized across the whole session (one foreground command
-   * at a time), so a prompt raised mid-command has one unambiguous surface to
-   * ask — the one running the current command.
+   * Execution takes turns across the whole session (lane.ts): one command
+   * works at a time, so a prompt raised mid-command has one unambiguous
+   * surface to ask, the one holding the lane. A command waiting on a person
+   * gives the lane up until the answer comes (`person_await`).
    */
-  private queue: Promise<void> = Promise.resolve();
+  private readonly lane: Lane = new Lane();
   /** The session's retained regard: the last indication from any surface. */
   private regard: Regard | null = null;
   /** Unsubscribes from the engine's ambient events; null until started. */
@@ -346,7 +358,7 @@ export class CalypsoDaemon {
         running: this.currentLine !== null && !this.currentInstrument
           ? { line: this.currentLine, sinceMs: Math.round(performance.now() - this.currentStartedAt), surface: this.currentOrigin?.id ?? '' }
           : null,
-        waiting: this.queueWaiting,
+        waiting: this.lane.waiting,
       };
       // Who else is here: a restart asked from one surface names the rest.
       // A surface that runs host shells is a terminal; one that does not, a browser.
@@ -742,25 +754,10 @@ export class CalypsoDaemon {
       const value = message.value;
       const attached: Surface = surface;
       if (value.type === 'execute') {
-        if (value.instrument === true && this.prompts.pending_has(socket)) {
-          // An instrument command runs BESIDE a question, not behind it.
-          // The errand that answers a question browses with instrument
-          // reads, and the command that asked is waiting on that answer —
-          // so queuing them behind it would deadlock: the answer waits on
-          // the browsing, the browsing waits on the answer.
-          //
-          // Safe because of what an instrument is: a pane's own read, which
-          // never asks (refused above) and never moves the session. A
-          // command that changes state is never instrument traffic.
-          void this.execute_run(attached, value);
-        } else {
-          // One shared queue: commands from every surface run one at a time.
-          this.queueWaiting += 1;
-          this.queue = this.queue.then((): Promise<void> => {
-            this.queueWaiting -= 1;
-            return this.execute_run(attached, value);
-          });
-        }
+        // One lane for every surface: commands take turns, and a command
+        // waiting on a person stands aside (person_await), so a pane's own
+        // reads, or another surface's command, run while a question is open.
+        void this.lane.run((): Promise<void> => this.execute_run(attached, value));
       } else if (value.type === 'cancel') {
         this.cancel_run(attached, value);
       } else if (value.type === 'complete') {
@@ -1036,15 +1033,8 @@ export class CalypsoDaemon {
   private async execute_run(origin: Surface, message: ExecuteMessage): Promise<void> {
     // The command runs with this surface as the prompt target, so any prompt
     // the engine raises is asked of the surface that submitted the command.
-    // Saved and restored rather than set and cleared: an instrument command
-    // may run beside a command that is waiting on a question, and the outer
-    // command's output must still find its way home when the inner one
-    // finishes.
-    const outerOrigin: Surface | null = this.currentOrigin;
-    const outerId: string | null = this.currentId;
-    const outerInstrument: boolean = this.currentInstrument;
-    const outerLine: string | null = this.currentLine;
-    const outerStartedAt: number = this.currentStartedAt;
+    // The slot is the lane holder's: set when the command takes its turn,
+    // put aside while it waits on a person, and cleared when it finishes.
     this.currentOrigin = origin;
     this.currentId = message.id;
     this.currentInstrument = message.instrument === true;
@@ -1090,11 +1080,57 @@ export class CalypsoDaemon {
         });
       }
     } finally {
-      this.currentOrigin = outerOrigin;
-      this.currentId = outerId;
-      this.currentInstrument = outerInstrument;
-      this.currentLine = outerLine;
-      this.currentStartedAt = outerStartedAt;
+      this.slot_restore(SLOT_EMPTY);
+    }
+  }
+
+  /**
+   * The current-command slot, as it stands.
+   *
+   * @returns Who holds the lane, for which command.
+   */
+  private slot_take(): CommandSlot {
+    return { origin: this.currentOrigin, id: this.currentId, instrument: this.currentInstrument, line: this.currentLine, startedAt: this.currentStartedAt };
+  }
+
+  /**
+   * Puts a slot back.
+   *
+   * @param slot - The slot.
+   */
+  private slot_restore(slot: CommandSlot): void {
+    this.currentOrigin = slot.origin;
+    this.currentId = slot.id;
+    this.currentInstrument = slot.instrument;
+    this.currentLine = slot.line;
+    this.currentStartedAt = slot.startedAt;
+  }
+
+  /**
+   * Waits on a person without holding the session: the request is sent, the
+   * lane given up and the slot put aside, so the next command takes its
+   * turn; when the person answers, the command queues for the lane again
+   * and resumes with its own slot.
+   *
+   * @param ask - Sends the request (under the asking command's slot) and
+   *   resolves with the person's answer.
+   * @returns The answer.
+   */
+  private async person_await<T>(ask: () => Promise<T>): Promise<T> {
+    const answered: Promise<T> = ask();
+    const mine: CommandSlot = this.slot_take();
+    // The engine's per-command state goes with the command (its exit code,
+    // a pipe's untaken input, its cancellation), so the next command starts
+    // clean and this one finds its own on return.
+    const engineTurn: unknown = this.engine.turn_leave?.();
+    this.slot_restore(SLOT_EMPTY);
+    this.lane.release();
+    try {
+      return await answered;
+    } finally {
+      await this.lane.acquire();
+      this.slot_restore(mine);
+      if (engineTurn !== undefined) this.engine.turn_resume?.(engineTurn);
     }
   }
 
@@ -1129,7 +1165,7 @@ export class CalypsoDaemon {
       // question whose command they have forgotten issuing.
       return Promise.reject(new Error('another question is already open on this surface'));
     }
-    return this.prompts.open(origin.socket, (promptId: string): void => {
+    return this.person_await((): Promise<string> => this.prompts.open(origin.socket, (promptId: string): void => {
       this.send(origin.socket, {
         type: 'prompt',
         promptId,
@@ -1139,7 +1175,7 @@ export class CalypsoDaemon {
         ...(request.path === undefined ? {} : { path: request.path }),
         ...(request.commit === undefined ? {} : { commit: request.commit }),
       });
-    });
+    }));
   }
 
   /**
@@ -1240,9 +1276,10 @@ export class CalypsoDaemon {
     if (!origin) {
       return Promise.reject(new Error('no active command to edit for'));
     }
-    return this.edits.open(origin.socket, (editId: string): void => {
+    // Someone is editing: the session is free meanwhile.
+    return this.person_await((): Promise<EditOutcome> => this.edits.open(origin.socket, (editId: string): void => {
       this.send(origin.socket, { type: 'edit', editId, content, extension, ...(path === undefined ? {} : { path }) });
-    });
+    }));
   }
 
   /**

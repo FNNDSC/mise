@@ -30,6 +30,7 @@ import { paramScope_run, reference_isReserved, reference_resolve, unresolvedStan
 import { shellWords_referencesExpand, shellWords_tokenize, type ReferenceExpansion, type ShellWord } from '../../lib/parser.js';
 import { errorStack, type Result } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { turnPart_register } from '../../core/turn.js';
 
 /** The model kind under which a played manifest's outcome travels. */
 export const PLAY_MODEL_KIND: string = 'manifest.played';
@@ -39,6 +40,15 @@ const NESTING_MAX: number = 2;
 
 /** How deep the current play is. */
 let depth: number = 0;
+
+// The depth is the running manifest's: a command run while it waits on a
+// question starts at the top, not nested inside it.
+turnPart_register({
+  name: 'playDepth',
+  save: (): unknown => depth,
+  clear: (): void => { depth = 0; },
+  restore: (saved: unknown): void => { depth = typeof saved === 'number' ? saved : 0; },
+});
 
 /** One parameter a manifest declares. */
 export interface ManifestParam {

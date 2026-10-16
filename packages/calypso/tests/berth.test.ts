@@ -18,6 +18,9 @@ import {
   berth_path,
   berth_write,
   berth_read,
+  berthOwn_read,
+  berthPaths_of,
+  berth_pathIn,
   berthAll_read,
   berth_remove,
   berthUrl_isAlive,
@@ -29,10 +32,15 @@ import type { AddressInfo } from 'node:net';
 
 let runtimeDir: string;
 const savedXdg: string | undefined = process.env.XDG_RUNTIME_DIR;
+const savedState: string | undefined = process.env.XDG_STATE_HOME;
+const savedPorter: string | undefined = process.env.PORTER_STATE_DIR;
 
 beforeEach(() => {
   runtimeDir = mkdtempSync(join(tmpdir(), 'berth-test-'));
   process.env.XDG_RUNTIME_DIR = runtimeDir;
+  // A porter's sessions are looked for under the user's state: this test's own.
+  process.env.XDG_STATE_HOME = join(runtimeDir, 'state');
+  delete process.env.PORTER_STATE_DIR;
   // Some tests write a berth file directly (bypassing berth_write, which would
   // otherwise create the directory) to exercise malformed/mismatched reads.
   mkdirSync(join(runtimeDir, 'calypso'), { recursive: true });
@@ -40,6 +48,8 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(runtimeDir, { recursive: true, force: true });
+  if (savedState === undefined) delete process.env.XDG_STATE_HOME; else process.env.XDG_STATE_HOME = savedState;
+  if (savedPorter === undefined) delete process.env.PORTER_STATE_DIR; else process.env.PORTER_STATE_DIR = savedPorter;
   if (savedXdg === undefined) {
     delete process.env.XDG_RUNTIME_DIR;
   } else {
@@ -221,5 +231,30 @@ describe('closing reasons', () => {
     } finally {
       rmSync(runtime, { recursive: true, force: true });
     }
+  });
+});
+
+describe('a porter\'s sessions', () => {
+  it('are found by identity and listed, under the porter\'s own layout; a starting daemon ignores them', () => {
+    const identity: string = identity_normalise('chris', 'http://cube/api/v1/');
+    const root: string = join(runtimeDir, 'state', 'porter');
+    const path: string = berth_pathIn(join(root, berthKey_compute(identity), 'run'), identity);
+    expect(berthPaths_of(identity)).toContain(path);
+    mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, JSON.stringify(berth_of(identity, 'ws://127.0.0.1:9999')));
+    expect(berth_read(identity)?.url).toBe('ws://127.0.0.1:9999');
+    expect(berthAll_read().map((one) => one.identity)).toContain(identity);
+    // The start-up guard is this runtime's own: a porter session is not a rival.
+    expect(berthOwn_read(identity)).toBeNull();
+    // This runtime's own berth wins over the porter's.
+    berth_write(berth_of(identity, 'ws://127.0.0.1:1111'));
+    expect(berth_read(identity)?.url).toBe('ws://127.0.0.1:1111');
+    expect(berthAll_read().filter((one) => one.identity === identity)).toHaveLength(1);
+  });
+
+  it('honours PORTER_STATE_DIR', () => {
+    process.env.PORTER_STATE_DIR = join(runtimeDir, 'elsewhere');
+    const identity: string = identity_normalise('chris', 'http://cube/api/v1/');
+    expect(berthPaths_of(identity)[1]).toContain(join(runtimeDir, 'elsewhere'));
   });
 });

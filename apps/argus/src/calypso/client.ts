@@ -100,6 +100,8 @@ export interface AttachInfo {
   surface?: string;
   /** The session's backend id; absent from older daemons, which are all ChRIS. */
   backend?: string;
+  /** Whether the daemon offers terminals (a console that is a terminal); absent from older daemons, which do not. */
+  terminals?: boolean;
 }
 
 /**
@@ -192,6 +194,12 @@ export interface ClientHandlers {
    * the line is not the surface's after all.
    */
   surfaceLine_receive?: (line: string, terminal: string | undefined) => Promise<{ rendered: string; status: 'ok' | 'error' }>;
+  /** A terminal opened: its id and the output to draw first, or why none could be. */
+  terminalOpened_receive?: (terminalId: string, replay: string, refused: string | undefined) => void;
+  /** A terminal's program wrote. */
+  terminalData_receive?: (terminalId: string, data: string) => void;
+  /** A terminal's program exited. */
+  terminalExit_receive?: (terminalId: string, code: number) => void;
   /**
    * Which listing the session's numbers currently count.
    *
@@ -244,6 +252,8 @@ export class ArgusClient {
   /** Requests whose live output must not reach the transcript. */
   private readonly silentIds: Set<string> = new Set();
   private nextId: number = 0;
+  /** Whether what this surface runs is mirrored into a terminal console (mirror_set). */
+  private mirroring: boolean = false;
 
   private constructor(socket: WebSocket, handlers: ClientHandlers, token: string) {
     this.socket = socket;
@@ -321,6 +331,7 @@ export class ArgusClient {
             ...(message.stack !== undefined ? { stack: message.stack } : {}),
             ...(message.hostControl !== undefined ? { hostControl: message.hostControl } : {}),
             ...(message.stale !== undefined ? { stale: message.stale } : {}),
+            ...(message.terminals !== undefined ? { terminals: message.terminals } : {}),
             ...(message.surface !== undefined ? { surface: message.surface } : {}),
             ...(message.backend !== undefined ? { backend: message.backend } : {}),
           },
@@ -368,9 +379,53 @@ export class ArgusClient {
           // A state-changing act the operator pressed for is theirs, never
           // instrument traffic: the daemon lets it ask them a question.
           ...(options?.silent === true && options.operator !== true ? { instrument: true } : {}),
+          // A terminal console shows what this surface runs as notes of its
+          // own, so the session's echo of it skips that terminal.
+          ...(this.mirroring && options?.silent !== true ? { mirrored: true } : {}),
         }),
       );
     });
+  }
+
+  /**
+   * Says whether this surface mirrors what it runs into a terminal console.
+   *
+   * @param on - True while the console is a terminal.
+   */
+  public mirror_set(on: boolean): void {
+    this.mirroring = on;
+  }
+
+  /**
+   * Opens a terminal (or reopens the one named), the size of the viewer.
+   *
+   * @param cols - Its width in cells.
+   * @param rows - Its height in cells.
+   * @param terminalId - The terminal to reattach, when this page had one.
+   */
+  public terminal_open(cols: number, rows: number, terminalId?: string): void {
+    this.socket.send(JSON.stringify({ type: 'terminalOpen', cols, rows, ...(terminalId === undefined ? {} : { terminalId }) }));
+  }
+
+  /**
+   * Types into a terminal.
+   *
+   * @param terminalId - The terminal.
+   * @param data - The keystrokes, as the emulator encodes them.
+   */
+  public terminal_input(terminalId: string, data: string): void {
+    this.socket.send(JSON.stringify({ type: 'terminalInput', terminalId, data }));
+  }
+
+  /**
+   * Tells a terminal its new size.
+   *
+   * @param terminalId - The terminal.
+   * @param cols - Its width in cells.
+   * @param rows - Its height in cells.
+   */
+  public terminal_resize(terminalId: string, cols: number, rows: number): void {
+    this.socket.send(JSON.stringify({ type: 'terminalResize', terminalId, cols, rows }));
   }
 
   /**
@@ -386,6 +441,17 @@ export class ArgusClient {
       this.pendingCompletions.set(id, { resolve, reject });
       this.socket.send(JSON.stringify({ type: 'complete', id, prefix }));
     });
+  }
+
+  /**
+   * Hands a terminal's messages to the console that draws it.
+   *
+   * @param message - A terminal message.
+   */
+  private terminalMessage_handle(message: Extract<ServerMessage, { type: 'terminalOpened' | 'terminalData' | 'terminalExit' }>): void {
+    if (message.type === 'terminalOpened') this.handlers.terminalOpened_receive?.(message.terminalId, message.replay, message.refused);
+    else if (message.type === 'terminalData') this.handlers.terminalData_receive?.(message.terminalId, message.data);
+    else this.handlers.terminalExit_receive?.(message.terminalId, message.code);
   }
 
   /**
@@ -527,6 +593,7 @@ export class ArgusClient {
       }
       case 'stale': this.handlers.stale_receive?.(message.stale); break;
       case 'surfaceLine': this.surfaceLine_handle(message.lineId, message.line, message.terminal); break;
+      case 'terminalOpened': case 'terminalData': case 'terminalExit': this.terminalMessage_handle(message); break;
       case 'closing': this.handlers.closing_receive?.(message.cause); break;
       case 'numbered': {
         this.handlers.numbered_receive?.({
@@ -537,18 +604,9 @@ export class ArgusClient {
         });
         break;
       }
-      case 'promptline': {
-        this.handlers.promptline_receive?.(message.context);
-        break;
-      }
-      case 'telemetry': {
-        this.handlers.telemetry_receive?.(message.index, { lane: message.lane, cube: message.cube, state: message.state, surfaces: message.surfaces });
-        break;
-      }
-      case 'regard': {
-        this.handlers.regard_receive?.(message.regard);
-        break;
-      }
+      case 'promptline': this.handlers.promptline_receive?.(message.context); break;
+      case 'telemetry': this.handlers.telemetry_receive?.(message.index, { lane: message.lane, cube: message.cube, state: message.state, surfaces: message.surfaces }); break;
+      case 'regard': this.handlers.regard_receive?.(message.regard); break;
       case 'error': {
         if (message.id !== undefined) {
           const request: PendingExecute | undefined = this.pending.get(message.id);

@@ -160,4 +160,24 @@ describe('lines in a surface\'s own language', () => {
     const completed = await mine.next((m) => m.type === 'complete' && m.id === 'c');
     expect(completed.candidates).toEqual(['date', 'du', 'desktop']);
   });
+
+  it('a command the browser mirrors into its own console skips that console\'s echo, and reaches every other surface', async () => {
+    const browser = await client_attach(port(), { claims: [] });
+    sockets.push(browser.ws);
+    daemon.terminals_set(new Terminals({ spawn, launch: { exec: 'chell', prefixArgs: [] }, target: { identity: 'i', url: 'ws://x', token: 't' } }));
+    browser.ws.send(JSON.stringify({ type: 'terminalOpen', cols: 80, rows: 24 }));
+    const terminalId = (await browser.next((m) => m.type === 'terminalOpened')).terminalId as string;
+    const mine = await client_attach(port(), { shellCommands: true, terminal: terminalId });
+    const other = await client_attach(port(), { shellCommands: true });
+    sockets.push(mine.ws, other.ws);
+    browser.ws.send(JSON.stringify({ type: 'execute', id: 'm1', line: 'ls', mirrored: true }));
+    await browser.next((m) => m.type === 'result' && m.id === 'm1');
+    await other.next((m) => m.type === 'session');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mine.got.some((m) => m.type === 'session')).toBe(false);
+    // Unmirrored, it reaches the console's chell as any session echo does.
+    browser.ws.send(JSON.stringify({ type: 'execute', id: 'm2', line: 'pwd' }));
+    await mine.next((m) => m.type === 'session');
+  });
 });
+

@@ -121,6 +121,18 @@ export interface AskRequest {
  * terminal.prompt_draw();
  * ```
  */
+/** A terminal console standing in for the transcript: what the transcript hands it. */
+export interface ConsoleDelegate {
+  /** A line of this surface's own (an echo, a note, output, a result) for the terminal. */
+  note: (text: string) => void;
+  /** A line put on the terminal's prompt, unrun. */
+  offer: (line: string) => void;
+  /** The keyboard. */
+  focus: () => void;
+  /** The pane changed size. */
+  fit: () => void;
+}
+
 export class ArgusTerminal {
   private readonly output: HTMLElement;
   /** The splash's greeting column, once a splash is written. */
@@ -134,6 +146,10 @@ export class ArgusTerminal {
   private readonly complete: (prefix: string) => Promise<CompletionAnswer>;
   private promptContext: PromptContext | null = null;
   private busy: boolean = true;
+  /** The terminal console standing in for this transcript, or null while the transcript is the console. */
+  private delegate: ConsoleDelegate | null = null;
+  /** The unfinished line the mirror holds until it closes. */
+  private mirrorPending: string = '';
   /** The element the console lives in; it wears `data-busy` while a command runs. */
   private readonly container: HTMLElement;
   /**
@@ -215,11 +231,16 @@ export class ArgusTerminal {
 
   /** Scrolls the transcript to its end (called after drawer resizes too). */
   public size_fit(): void {
+    if (this.delegate !== null) this.delegate.fit();
     this.output.scrollTop = this.output.scrollHeight;
   }
 
   /** Focuses the input so keystrokes land in the session. */
   public focus_take(): void {
+    if (this.delegate !== null) {
+      this.delegate.focus();
+      return;
+    }
     this.input.focus();
   }
 
@@ -337,6 +358,9 @@ export class ArgusTerminal {
    * @param chunk - The text chunk.
    */
   public output_write(channel: OutputChannel, chunk: string): void {
+    // A status line (a spinner, a phase) is the transcript's live readout,
+    // not part of the record a terminal console keeps.
+    if (channel !== 'status') this.mirror_emit(chunk);
     this.stream_ensure();
     let rest: string = chunk;
     while (rest.length > 0) {
@@ -406,15 +430,20 @@ export class ArgusTerminal {
    * @param outcome - The envelopes and the channels that streamed live.
    */
   public outcome_write(outcome: ExecuteOutcome): void {
+    // A result starts on a line of its own, after whatever streamed.
+    this.mirror_flush();
     for (const envelope of outcome.envelopes) {
       if (!outcome.liveChannels.has('data') && envelope.rendered.length > 0) {
         this.block_append('argus-result', ansi_toHtml(envelope.rendered));
+        this.mirror_emit(envelope.rendered);
       }
       const renderedErr: string = envelope.renderedErr ?? '';
       if (!outcome.liveChannels.has('err') && renderedErr.length > 0) {
         this.block_append('argus-result error', ansi_toHtml(renderedErr));
+        this.mirror_emit(`\u001b[31m${renderedErr.replace(/\n$/, '')}\u001b[0m\n`);
       }
     }
+    this.mirror_flush();
   }
 
   /**
@@ -433,6 +462,54 @@ export class ArgusTerminal {
   }
 
   /**
+   * Mirrors what this surface writes into a terminal console as well: its
+   * echoes, notes, the output it streams and the results it renders, a line
+   * at a time (another surface's echo is the terminal's own to print). The
+   * terminal also takes the keyboard, the fit and an offered line.
+   *
+   * @param delegate - The terminal console, or null when the transcript is the console again.
+   */
+  public delegate_set(delegate: ConsoleDelegate | null): void {
+    this.mirror_flush();
+    this.delegate = delegate;
+  }
+
+  /**
+   * Mirrors text, sending each complete line as it closes. A line rewritten
+   * in place (`\r`) is mirrored as it stood last.
+   *
+   * @param text - What was written.
+   */
+  private mirror_emit(text: string): void {
+    if (this.delegate === null) return;
+    this.mirrorPending += text;
+    const cut: number = this.mirrorPending.lastIndexOf('\n');
+    if (cut < 0) return;
+    const lines: string = this.mirrorPending.slice(0, cut).split('\n').map((line: string): string => line.slice(line.lastIndexOf('\r') + 1)).join('\n');
+    this.mirrorPending = this.mirrorPending.slice(cut + 1);
+    this.delegate.note(`${lines}\n`);
+  }
+
+  /** Mirrors whatever is left of an unfinished line. */
+  private mirror_flush(): void {
+    if (this.delegate === null || this.mirrorPending === '') return;
+    const line: string = this.mirrorPending.slice(this.mirrorPending.lastIndexOf('\r') + 1);
+    this.mirrorPending = '';
+    if (line !== '') this.delegate.note(`${line}\n`);
+  }
+
+  /**
+   * Mirrors a command line as the terminal would show one this surface ran.
+   *
+   * @param line - The line.
+   */
+  private mirrorEcho_emit(line: string): void {
+    if (this.delegate === null) return;
+    this.mirror_flush();
+    this.delegate.note(`\u001b[36m❯\u001b[0m ${line}\n`);
+  }
+
+  /**
    * Writes one line of the surface's own reporting into the transcript.
    *
    * A gesture the surface performs itself — delivering a file the operator
@@ -444,6 +521,7 @@ export class ArgusTerminal {
    */
   public line_note(text: string): void {
     this.block_append('argus-result', html_escape(text));
+    this.mirror_emit(`${text}\n`);
     this.size_fit();
   }
 
@@ -463,6 +541,7 @@ export class ArgusTerminal {
     // The line's own answer starts beneath it, not in the block an earlier line streamed into.
     this.stream_close();
     this.block_append('argus-echo', `<span class="prompt-glyph">❯</span> <span class="user-input">${html_escape(line)}</span>`);
+    this.mirrorEcho_emit(line);
     this.size_fit();
   }
 
@@ -485,6 +564,10 @@ export class ArgusTerminal {
    * @param line - The line to offer.
    */
   public line_offer(line: string): void {
+    if (this.delegate !== null) {
+      this.delegate.offer(line);
+      return;
+    }
     this.input.value = line;
     this.focus_take();
     this.input.setSelectionRange(line.length, line.length);
@@ -511,6 +594,7 @@ export class ArgusTerminal {
       // that command finishes.
       this.history_push(line);
       this.block_append('argus-echo', `<span class="prompt-glyph">❯</span> <span class="user-input">${html_escape(line)}</span>`);
+      this.mirrorEcho_emit(line);
       this.size_fit();
       void this.submit(line);
       return;
@@ -518,6 +602,7 @@ export class ArgusTerminal {
     this.busy_set(true);
     this.history_push(line);
     this.block_append('argus-echo', `<span class="prompt-glyph">❯</span> <span class="user-input">${html_escape(line)}</span>`);
+    this.mirrorEcho_emit(line);
     this.size_fit();
     void this.submit(line);
   }

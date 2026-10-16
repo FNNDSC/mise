@@ -1,0 +1,655 @@
+
+   * * *   S T A R   T R E K   * * *
+
+Press return to continue.
+What length game: What skill game: Enter a password: 10 Klingons
+4 starbases at 0,5, 4,2, 5,2, 4,4
+It takes 400 units to kill a Klingon
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      3200.00
+1 . . . . . . . . # . 1   condition     GREEN
+2 . . . . . * . . . . 2   position      0,5/9,0
+3 . . . . . . * . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  5000
+5 . . . . . . . . . . 5   torpedoes     10
+6 . . . . . .   . . . 6   shields       up, 100%
+7 . . . . . * . . . . 7   Klingons left 10
+8 . . . . . . . * * . 8   time left     8.00
+9 E . . . . . @ . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Pyris III
+
+Command: Condition RED
+
+Uhura: Captain, starsystem Marcus XII in quadrant 0,1 is under attack
+
+Uhura:  Captain, we have received a distress signal
+  from the starbase in quadrant 5,2.
+
+Stardate 3201.29: Klingon attack:
+HIT: 174 units from 9,5, shields absorb 100%, effective hit 0
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Fat chance, captain
+Klingon at 9,5 moves to 9,6
+
+Stardate 3201.34: Klingon attack:
+HIT: 128 units from 9,6, shields absorb 88%, effective hit 15
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      3201.34
+1 . . . . . . . . . . 1   condition     RED
+2 . * . . . . . . . . 2   position      3,6/8,4
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  4325
+5 . . . . . . . . . . 5   torpedoes     10
+6 . . . . . . . . . . 6   shields       up, 80%
+7 . . . . . . . . . * 7   Klingons left 10
+8 . . . . E . . . . . 8   time left     6.66
+9 * . . . . . K * . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Torpedo track, torpedo number 1:
+   8.5	 4.5
+   8.9	 5.5
+   9.3	 6.5
+   *** Klingon at 9,6 destroyed ***
+Torpedo track, torpedo number 2:
+   8.5	 4.5
+   9.3	 5.5
+Torpedo missed
+Torpedo track, torpedo number 3:
+   8.5	 4.5
+   9.1	 5.5
+   9.6	 6.5
+Torpedo missed
+
+Command: Spock: That would take 621% of our remaining time.
+Are you sure that is wise: (He's finally gone mad)
+Computer reports navigation error; Enterprise stopped at 9,1
+
+Uhura:  We've lost contact with starsystem Marcus XII
+  in quadrant 0,1.
+
+Uhura: Captain, starsystem Arrikis in quadrant 5,2 is under attack
+
+Uhura:  We've lost contact with starsystem Arrikis
+  in quadrant 5,2.
+
+You ran out of time
+
+*** Your score:
+1 Klingons killed                               100
+Kill rate 0.12 Klingons/stardate                 47
+Penalty for 11 klingons remaining             -2200
+
+***  TOTAL                                    -2053
+Another game: What length game: What skill game: Enter a password: Enter tournament code: 20 Klingons
+4 starbases at 1,2, 6,5, 7,4, 3,7
+It takes 250 units to kill a Klingon
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . E . 0   stardate      2200.00
+1 . . . . . . . . . . 1   condition     GREEN
+2 * * . . . . . . . . 2   position      1,2/0,8
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  5000
+5 . . . . . . . . . . 5   torpedoes     10
+6 . . . . . . . . @ . 6   shields       up, 100%
+7 . . . . . . . . . . 7   Klingons left 20
+8 . . . . . * . . . . 8   time left     26.00
+9 * . . . . . . . # . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Spectros V
+
+Command: Condition RED
+Klingon at 3,8 escapes to quadrant 2,2
+
+Stardate 2201.13: Klingon attack:
+HIT: 73 units from 3,7, shields absorb 100%, effective hit 0
+HIT: 65 units from 2,8, shields absorb 93%, effective hit 4
+HIT: 56 units from 0,4, shields absorb 89%, effective hit 6
+Klingon at 3,7 escapes to quadrant 2,2
+Klingon at 2,8 escapes to quadrant 2,2
+
+Command: Sector: s-y: 
+Stardate 2201.13: Klingon attack:
+HIT: 44 units from 0,4, shields absorb 86%, effective hit 6
+Klingon at 0,4 escapes to quadrant 3,3
+
+Command: Sector: s-y: 2,5/5,7 to 3,4/5,5: course 230  dist 1.562
+
+Command: Computer reports navigation error; Enterprise stopped at 5,7
+
+Command: Condition RED
+Klingon at 3,8 moves to 8,1
+
+Stardate 2202.92: Klingon attack:
+HIT: 101 units from 8,3, shields absorb 89%, effective hit 11
+HIT: 79 units from 8,1, shields absorb 83%, effective hit 13
+
+Command: Photon tubes misfire on torpedo 1
+Torpedo track, torpedo number 1:
+   6.5	 2.5
+   7.5	 2.6
+   8.5	 2.7
+   9.5	 2.8
+Torpedo missed
+Torpedo track, torpedo number 2:
+   6.5	 2.5
+   7.5	 3.0
+   8.5	 3.5
+   *** Klingon at 8,3 destroyed ***
+Torpedo track, torpedo number 3:
+   6.5	 2.5
+   7.5	 2.9
+   8.5	 3.4
+   9.5	 3.8
+Spock: Star at 9,3 gone nova
+
+Stardate 2202.92: Klingon attack:
+HIT: 75 units from 8,1, shields absorb 78%, effective hit 16
+Klingon at 8,1 moves to 9,2
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2202.92
+1 . . . . . . . . . . 1   condition     RED
+2 . . . . * . . . * . 2   position      1,5/6,2
+3 . . . . .   * . . . 3   warp factor   5.0
+4 . . . . . * . * . . 4   total energy  3598
+5 . . . . . . . . . . 5   torpedoes     7
+6 . . E . . . . . . . 6   shields       up, 75%
+7 . . . . . * . . . . 7   Klingons left 19
+8 . . . . . . . . . . 8   time left     24.29
+9 . . K . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Torpedo track:
+   6.5	 2.5
+   7.5	 2.8
+   8.5	 3.0
+   9.5	 3.3
+Torpedo missed
+
+Stardate 2202.92: Klingon attack:
+HIT: 58 units from 9,2, shields absorb 74%, effective hit 15
+
+Command: Torpedo track, torpedo number 1:
+   6.5	 2.5
+   7.5	 2.6
+   8.5	 2.6
+   9.5	 2.7
+   *** Klingon at 9,2 destroyed ***
+Torpedo track, torpedo number 2:
+   6.5	 2.5
+   7.5	 2.5
+   8.5	 2.5
+   9.5	 2.5
+Torpedo missed
+Torpedo track, torpedo number 3:
+   6.5	 2.5
+   7.5	 2.3
+   8.5	 2.0
+   9.5	 1.8
+Torpedo missed
+
+Command: Condition RED
+Klingon at 2,2 escapes to quadrant 4,6
+
+Command: Condition RED
+Klingon at 8,0 escapes to quadrant 4,7
+
+Command: Condition RED
+
+Stardate 2204.72: Klingon attack:
+HIT: 76 units from 5,2, shields absorb 80%, effective hit 15
+
+Command: Torpedo track:
+   6.5	 7.5
+   6.6	 6.5
+   6.8	 5.5
+   6.9	 4.5
+   7.1	 3.5
+   7.2	 2.5
+Spock: Star at 7,2 gone nova
+
+Stardate 2204.72: Klingon attack:
+HIT: 54 units from 5,2, shields absorb 75%, effective hit 13
+Klingon at 5,2 moves to 7,7
+
+Command: No-burst mode selected
+Torpedo track:
+   6.5	 7.5
+   7.5	 7.8
+   *** Klingon at 7,7 destroyed ***
+
+Command: Computer reports navigation error; Enterprise stopped at 5,6
+
+Command: 
+Uhura: Captain, Starfleet Command reports a supernova
+  in quadrant 0,4.  Caution is advised
+
+Uhura: Captain, Starfleet Command reports a supernova
+  in quadrant 1,4.  Caution is advised
+
+Command: 
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Phasers are 4% effective at that range
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: 
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: invalid input; ? for valid inputs
+
+Request: Computer record of galaxy for all long range sensor scans
+
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+0 ... ... ... ... /// ... ... ... 0
+1 ... ... $$$ ... ///   6 ... ... 1
+2 ... ... ... ... ... ... ... ... 2
+3 ... ... ... ... ... ... ... .1. 3
+4 ... ... ... ... ... ... ... ... 4
+5 ... ... ... ... ... ... ... ... 5
+6 ... ... ... ... ... .1. ... ... 6
+7 ... ... ... ... .1. ... ... ... 7
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: 
+No known distress calls are active
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Shields are down while docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: 5,6 . . # 6,5
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Long range scan for quadrant 1,2
+
+     1     2     3
+  -------------------
+0 !   4 !   7 !   2 !
+  -------------------
+1 !   1 !  15 !   4 !
+  -------------------
+2 !   3 ! 302 !   2 !
+  -------------------
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Computer record of galaxy for all long range sensor scans
+
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+0 ...   4   7   2 /// ... ... ... 0
+1 ...   1 $$$   4 ///   6 ... ... 1
+2 ...   3 302   2 ... ... ... ... 2
+3 ... ... ... ... ... ... ... .1. 3
+4 ... ... ... ... ... ... ... ... 4
+5 ... ... ... ... ... ... ... ... 5
+6 ... ... ... ... ... .1. ... ... 6
+7 ... ... ... ... .1. ... ... ... 7
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: stardate      2207.20
+condition     DOCKED
+position      1,2/5,5
+warp factor   5.0
+total energy  5000
+torpedoes     10
+shields       down, 100%
+Klingons left 17
+time left     22.77
+life support  active
+current crew  387
+brig space    400
+Klingon power 250
+Length, Skill long, novice
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Computer record of galaxy for all long range sensor scans
+
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+0 ...   4   7   2 /// ... ... ... 0
+1 ...   1 $$$   4 ///   6 ... ... 1
+2 ...   3 302   2 ... ... ... ... 2
+3 ... ... ... ... ... ... ... .1. 3
+4 ... ... ... ... ... ... ... ... 4
+5 ... ... ... ... ... ... ... ... 5
+6 ... ... ... ... ... .1. ... ... 6
+7 ... ... ... ... .1. ... ... ... 7
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Another game: 

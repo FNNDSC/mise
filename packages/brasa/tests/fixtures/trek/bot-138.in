@@ -1,0 +1,60 @@
+
+short
+good
+foo
+move 153 0.67
+srscan
+phasers manual
+torpedo 225 no
+impulse 0 1.20
+yes
+move 41 0.92
+phasers automatic 600
+impulse 279 0.05
+impulse 281 1.53
+no
+move 261 1.32
+move 288 0.95
+move 304 0.72
+move 270 0.70
+srscan
+torpedo 127 yes 5
+torpedo 321 yes 5
+torpedo 326 no
+torpedo 326 no
+phasers manual
+torpedo 326 yes 10
+phasers manual
+torpedo 326 no
+srscan
+phasers automatic 600
+phasers manual
+shield up
+phasers manual
+phasers manual
+capture
+torpedo 326 yes 5
+phasers automatic 600
+phasers manual
+phasers automatic 300
+torpedo 326 yes 5
+srscan
+phasers automatic 1500
+shield up
+torpedo 326 no
+srscan
+phasers manual
+phasers automatic 1000
+phasers automatic 300
+capture
+move 152 1.70
+torpedo 45 yes 10
+srscan
+capture
+move 117 2.82
+capture
+move 187 0.81
+yes
+move 211 1.17
+yes
+no

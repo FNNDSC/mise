@@ -1,0 +1,521 @@
+
+   * * *   S T A R   T R E K   * * *
+
+Press return to continue.
+What length game: What skill game: Enter a password: Enter tournament code: 20 Klingons
+4 starbases at 1,2, 6,5, 7,4, 3,7
+It takes 250 units to kill a Klingon
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . E . 0   stardate      2200.00
+1 . . . . . . . . . . 1   condition     GREEN
+2 * * . . . . . . . . 2   position      1,2/0,8
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  5000
+5 . . . . . . . . . . 5   torpedoes     10
+6 . . . . . . . . @ . 6   shields       up, 100%
+7 . . . . . . . . . . 7   Klingons left 20
+8 . . . . . * . . . . 8   time left     26.00
+9 * . . . . . . . # . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Spectros V
+
+Command: Condition RED
+Klingon at 0,4 escapes to quadrant 2,2
+
+Stardate 2201.12: Klingon attack:
+HIT: 61 units from 3,7, shields absorb 100%, effective hit 0
+HIT: 57 units from 3,8, shields absorb 94%, effective hit 3
+HIT: 53 units from 2,8, shields absorb 90%, effective hit 5
+Klingon at 3,7 escapes to quadrant 2,3
+Klingon at 3,8 escapes to quadrant 3,3
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2201.12
+1 . * . . . . * . . . 1   condition     RED
+2 . . . . . . . . K . 2   position      3,2/7,1
+3 . . . . * . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  4433
+5 . . . . . . . . . . 5   torpedoes     10
+6 . . . . . . . . . . 6   shields       up, 89%
+7 . E . . . . . . . . 7   Klingons left 20
+8 . . . . . . . . . . 8   time left     24.88
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Torpedo track, torpedo number 1:
+   7.5	 1.5
+   6.5	 2.5
+   5.5	 3.5
+   4.5	 4.5
+   3.5	 5.5
+   2.5	 6.5
+   1.5	 7.5
+   0.5	 8.5
+Torpedo missed
+Torpedo track, torpedo number 2:
+   7.5	 1.5
+   6.8	 2.5
+   6.0	 3.5
+   5.3	 4.5
+   4.6	 5.5
+   3.9	 6.5
+   3.1	 7.5
+   2.4	 8.5
+   *** Klingon at 2,8 destroyed ***
+Photon tubes misfire on torpedo 3
+Torpedo track, torpedo number 3:
+   7.5	 1.5
+   8.5	 2.5
+   9.5	 3.5
+Torpedo missed
+
+Command: Phasers are 4% effective at that range
+
+Command: Condition RED
+
+Stardate 2201.58: Klingon attack:
+HIT: 84 units from 7,3, shields absorb 89%, effective hit 9
+
+Command: Klingon at 7,3 moves to 8,6
+
+Stardate 2202.64: Klingon attack:
+HIT: 75 units from 8,6, shields absorb 86%, effective hit 10
+
+Command: Shields already up
+
+Command: Torpedo track, torpedo number 1:
+   7.5	 6.5
+   8.5	 6.9
+   *** Klingon at 8,6 destroyed ***
+Torpedo track, torpedo number 2:
+   7.5	 6.5
+   8.5	 6.2
+   9.5	 5.9
+Torpedo missed
+Photon tubes misfire on torpedo 3
+	photon tubes damaged
+Torpedo track, torpedo number 3:
+   7.5	 6.5
+   8.1	 5.5
+   8.8	 4.5
+   9.4	 3.5
+Torpedo missed
+
+Command: Condition RED
+
+Stardate 2203.00: Klingon attack:
+HIT: 109 units from 2,4, shields absorb 84%, effective hit 17
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2203.00
+1 . . . E . . . . . . 1   condition     RED
+2 . . . . K . . .   . 2   position      2,3/1,3
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . @ . . . . 4   total energy  4140
+5 . . . . . . . . . * 5   torpedoes     4
+6 . . . . . . . . . . 6   shields       up, 78%
+7 . . . . . . . . .   7   Klingons left 18
+8 . . . . . . . . . . 8   time left     25.68
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Arrikis
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Shields already up
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: 
+Stardate 2203.53: Klingon attack:
+HIT: 78 units from 2,4, shields absorb 79%, effective hit 16
+
+Command: Fat chance, captain
+Klingon at 2,4 moves to 0,2
+
+Stardate 2203.58: Klingon attack:
+HIT: 58 units from 0,2, shields absorb 75%, effective hit 14
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: 
+Stardate 2204.11: Klingon attack:
+HIT: 48 units from 0,2, shields absorb 75%, effective hit 12
+Klingon at 0,2 escapes to quadrant 1,3
+
+Command: Condition RED
+Klingon at 6,6 escapes to quadrant 0,3
+
+Command: Condition RED
+
+Uhura: Captain, Starfleet Command reports a supernova
+  in quadrant 7,0.  Caution is advised
+Sulu reports repair work on the photon tubes finished.
+Klingon at 3,9 escapes to quadrant 0,4
+
+Command: Condition RED
+Klingon at 7,4 escapes to quadrant 0,3
+
+Command: Condition RED
+Klingon at 1,9 moves to 7,3
+
+Stardate 2214.57: Klingon attack:
+HIT: 74 units from 7,3, shields absorb 95%, effective hit 3
+
+Command: Fat chance, captain
+
+Stardate 2214.62: Klingon attack:
+HIT: 96 units from 7,3, shields absorb 91%, effective hit 8
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2214.62
+1 . * . . . . . . . . 1   condition     RED
+2 . . . . . . . . . . 2   position      0,3/8,3
+3   . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  4283
+5 . . @ . . . . . . . 5   torpedoes     4
+6 . . . . . . . . . . 6   shields       up, 86%
+7 . . . K . . . . . . 7   Klingons left 18
+8 . . . E . . . . . . 8   time left     14.06
+9 . .   . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Epsilon Eridani IV
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Computer reports navigation error; Enterprise stopped at 8,3
+Klingon at 7,3 escapes to quadrant 1,3
+
+Command: Condition RED
+
+Uhura: Captain, starsystem Stratos in quadrant 5,4 is under attack
+
+Stardate 2223.25: Klingon attack:
+HIT: 94 units from 8,3, shields absorb 96%, effective hit 3
+Klingon at 8,3 escapes to quadrant 2,3
+
+Command: Condition RED
+
+Stardate 2223.59: Klingon attack:
+HIT: 113 units from 2,6, shields absorb 91%, effective hit 10
+
+Command: 3,7 . ? ? 2,262
+Klingon at 2,6 moves to 3,8
+
+Stardate 2223.64: Klingon attack:
+HIT: 89 units from 3,8, shields absorb 84%, effective hit 14
+
+Command: Torpedo track:
+   2.5	 7.5
+   3.0	 8.5
+   *** Klingon at 3,8 destroyed ***
+
+Command: Condition RED
+Klingon at 5,3 escapes to quadrant 3,2
+
+Stardate 2224.29: Klingon attack:
+HIT: 99 units from 9,2, shields absorb 81%, effective hit 18
+Klingon at 9,2 escapes to quadrant 3,2
+
+Command: Condition RED
+Klingon at 8,2 escapes to quadrant 3,1
+
+Stardate 2224.54: Klingon attack:
+HIT: 87 units from 3,2, shields absorb 78%, effective hit 19
+
+Command: 
+Stardate 2225.06: Klingon attack:
+HIT: 76 units from 3,2, shields absorb 76%, effective hit 18
+Klingon at 3,2 moves to 3,5
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2225.06
+1 . . . . . . . . . . 1   condition     RED
+2 . . . . . . . . . . 2   position      3,2/5,5
+3 . . . . . K . * . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  4212
+5 . . . . . E . . . . 5   torpedoes     3
+6 . . . . . . . . . . 6   shields       up, 72%
+7 . . . . . . . . . . 7   Klingons left 17
+8 . . . . * . . . . . 8   time left     3.91
+9 . . . * . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Torpedo track:
+   5.5	 5.5
+   4.5	 5.5
+   3.5	 5.5
+   *** Klingon at 3,5 destroyed ***
+
+Command: Spock: That would take 192% of our remaining time.
+Are you sure that is wise: (He's finally gone mad)
+Condition RED
+
+You ran out of time
+
+*** Your score:
+4 Klingons killed                               248
+Kill rate 0.12 Klingons/stardate                 48
+Penalty for 16 klingons remaining             -1280
+
+***  TOTAL                                     -984
+Another game: What length game: cannot restart
+What length game: cannot restart
+What length game: What skill game: Enter a password: 32 Klingons
+4 starbases at 7,6, 7,1, 5,6, 0,1
+It takes 550 units to kill a Klingon
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . * . . . . . . 0   stardate      3100.00
+1 . . . . * . . . . . 1   condition     GREEN
+2 . . . * . . . . . . 2   position      7,6/8,1
+3 . . * . . * . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  5000
+5 . . . . . . . . . . 5   torpedoes     10
+6 . . . . . . . . . . 6   shields       up, 100%
+7 . . . # . . . . . . 7   Klingons left 32
+8 . E . . . . . . . . 8   time left     14.00
+9 * * . . . * . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Condition RED
+Klingon at 9,0 moves to 9,2
+
+Stardate 3100.76: Klingon attack:
+HIT: 247 units from 7,5, shields absorb 100%, effective hit 0
+HIT: 218 units from 9,3, shields absorb 83%, effective hit 36
+HIT: 179 units from 9,2, shields absorb 70%, effective hit 52
+Klingon at 7,5 moves to 8,6
+Klingon at 9,3 escapes to quadrant 6,3
+
+Command: Torpedo track:
+   8.5	 5.5
+   8.4	 6.5
+   *** Klingon at 8,6 destroyed ***
+
+Stardate 3100.76: Klingon attack:
+HIT: 147 units from 9,2, shields absorb 62%, effective hit 55
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Starbase in 7,6 responds
+first attempt to rematerialize fails
+second attempt to rematerialize succeeds
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Distance 2.00 cost 21.05 stardates 220 units
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: invalid input; ? for valid inputs
+
+Request: invalid input; ? for valid inputs
+
+Request: Computer record of galaxy for all long range sensor scans
+
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+0 ... .1. ... ... ... ... ... ... 0
+1 ... ... ... ... ... ... ... ... 1
+2 ... ... ... ... ... ... ... ... 2
+3 ... ... ... ... ... ... ... ... 3
+4 ... ... ... ... ... ... ... ... 4
+5 ... ... ... ... ... ... .1. ... 5
+6 ... ... ... ... ... ... ... ... 6
+7 ... .1. ... ... ... ... $$$ ... 7
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: invalid input; ? for valid inputs
+
+Request: invalid input; ? for valid inputs
+
+Request: 
+*** Your score:
+1 Klingons killed                               137
+Kill rate 1.00 Klingons/stardate                400
+Penalty for 31 klingons remaining             -6200
+1 calls for help                               -100
+
+***  TOTAL                                    -5763
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Shields are down while docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Scotty: Sorry captain, but we are still docked.
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: Enterprise is docked
+
+Command: 
+ --- WORKING ---
+10
+   9
+      8
+         7
+            6
+Enter password verification: Password verified; self destruct sequence continues:
+5
+   4
+      3
+         2
+            1
+               0
+***** Enterprise destroyed *****
+
+Well, you destroyed yourself, but it didn't do any good
+
+*** Your score:
+1 Klingons killed                               137
+Kill rate 1.00 Klingons/stardate                400
+Penalty for 31 klingons remaining             -6200
+Penalty for getting killed                     -500
+1 calls for help                               -100
+387 casualties                                 -387
+
+***  TOTAL                                    -6650
+Another game: 

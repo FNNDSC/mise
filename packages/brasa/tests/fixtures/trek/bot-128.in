@@ -1,0 +1,214 @@
+
+short
+fair
+foo
+move 109 3.38
+srscan
+ram 329 0.58
+move 234 0.86
+capture
+torpedo 0 no
+phasers manual
+ram 0 0.10
+phasers automatic 600
+ram 0 0.50
+ram 0 0.50
+capture
+phasers manual
+phasers manual
+phasers automatic 1500
+ram 0 0.50
+phasers automatic 1000
+ram 0 0.50
+phasers manual
+ram 0 0.50
+ram 0 0.50
+ram 0 0.50
+shield up
+torpedo 0 no
+phasers automatic 1500
+ram 0 0.50
+ram 0 0.50
+damages
+ram 0 0.50
+phasers manual
+ram 0 0.50
+ram 0 0.50
+ram 0 0.50
+impulse 0 0.05
+impulse 354 1.00
+yes
+yes
+restart
+short
+fair
+foo
+move 127 0.50
+impulse 186 0.91
+yes
+phasers automatic 600
+phasers automatic 1000
+phasers manual
+phasers automatic 600
+phasers automatic 1000
+ram 180 0.10
+phasers manual
+impulse 30 0.05
+move 297 0.67
+phasers automatic 600
+phasers automatic 300
+shield up
+srscan
+ram 0 0.20
+move 243 1.34
+move 264 1.00
+move 238 0.94
+move 255 1.14
+move 276 0.91
+computer distresslist
+move 262 1.41
+destruct
+move 266 1.40
+move 261 1.32
+move 243 0.89
+move 270 0.80
+move 257 1.33
+computer pheff 3
+move 256 1.24
+move 252 0.95
+move 250 1.17
+move 256 0.82
+move 250 1.17
+move 236 1.08
+impulse 243 1.34
+move 264 0.91
+move 270 1.50
+move 249 1.39
+impulse 270 1.10
+undock
+move 264 1.00
+impulse 277 0.81
+move 250 1.49
+move 254 1.46
+move 275 1.20
+destruct
+move 266 1.40
+move 274 1.50
+move 257 1.33
+move 262 1.51
+impulse 277 0.81
+move 266 1.30
+impulse 262 1.51
+impulse 246 0.98
+move 246 1.21
+computer lrscan
+move 252 0.95
+move 256 0.82
+move 266 1.40
+impulse 270 1.30
+move 275 1.20
+impulse 265 1.10
+move 275 1.20
+move 265 1.10
+move 274 1.30
+move 245 1.43
+move 238 0.94
+move 264 1.00
+move 253 1.04
+move 270 1.40
+move 247 1.52
+move 270 1.00
+move 270 1.20
+move 253 1.36
+move 264 1.00
+move 257 1.33
+move 261 1.32
+move 266 1.40
+move 270 1.50
+move 261 1.32
+move 275 1.10
+move 277 0.81
+move 248 1.08
+computer impcost 2
+move 257 1.33
+move 266 1.30
+move 255 1.55
+move 265 1.20
+move 245 1.43
+move 274 1.40
+move 260 1.12
+move 270 0.80
+impulse 255 1.55
+move 270 1.30
+visual 45
+abandon
+impulse 270 1.20
+move 275 1.10
+impulse 258 1.43
+move 245 1.43
+move 246 0.98
+move 260 1.12
+move 241 1.03
+move 246 1.21
+move 248 1.62
+move 266 1.50
+move 262 1.41
+move 274 1.50
+move 270 0.90
+computer warpcost 3 6
+move 270 1.40
+move 252 0.95
+move 270 1.10
+move 256 0.82
+move 270 1.20
+impulse 275 1.20
+move 247 1.30
+move 246 0.98
+move 277 0.81
+move 260 1.12
+move 262 1.41
+impulse 261 1.22
+move 250 1.49
+move 264 1.00
+move 260 1.12
+move 270 0.80
+move 257 0.92
+move 247 1.30
+move 270 0.80
+move 239 1.17
+move 266 1.30
+move 239 1.17
+move 256 0.82
+move 241 1.25
+move 264 0.91
+move 265 1.20
+move 261 1.22
+move 241 1.03
+move 260 1.12
+destruct
+move 255 1.55
+impulse 246 1.21
+move 270 1.40
+move 257 0.92
+move 276 1.00
+move 247 1.30
+move 253 1.36
+impulse 261 1.32
+move 261 1.32
+move 259 1.53
+move 249 1.39
+move 265 1.10
+move 247 1.52
+move 266 1.30
+move 246 0.98
+move 256 0.82
+move 274 1.50
+move 241 1.03
+move 247 1.52
+move 252 0.95
+move 274 1.30
+impulse 270 1.10
+move 266 1.50
+destruct
+terminate
+no

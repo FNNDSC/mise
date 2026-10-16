@@ -1,0 +1,761 @@
+
+   * * *   S T A R   T R E K   * * *
+
+Press return to continue.
+What length game: What skill game: Enter a password: 83 Klingons
+3 starbases at 1,2, 2,6, 1,7
+It takes 700 units to kill a Klingon
+Condition RED
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2800.00
+1 K . . . . . . # . . 1   condition     RED
+2 . . . . . . . . . . 2   position      1,2/9,9
+3 . . . . . . K . . . 3   warp factor   5.0
+4 K . . . K . . . * . 4   total energy  5000
+5 . * . . . . . . . . 5   torpedoes     10
+6 . . . . . * . . * . 6   shields       up, 100%
+7 . . . K . . . . . * 7   Klingons left 83
+8 . . * . . . . . . . 8   time left     26.00
+9 . . . @ . . . . . E 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Ardana
+Klingon at 3,6 escapes to quadrant 0,2
+Klingon at 4,4 moves to 8,8
+
+Stardate 2800.00: Klingon attack:
+HIT: 227 units from 8,8, shields absorb 100%, effective hit 0
+HIT: 185 units from 7,3, shields absorb 84%, effective hit 28
+HIT: 129 units from 4,0, shields absorb 73%, effective hit 34
+HIT: 106 units from 1,0, shields absorb 67%, effective hit 34
+Klingon at 4,0 escapes to quadrant 1,1
+
+Command: stardate      2800.00
+condition     RED
+position      1,2/9,9
+warp factor   5.0
+total energy  4904
+torpedoes     10
+shields       up, 63%
+Klingons left 83
+time left     26.00
+life support  active
+current crew  387
+brig space    400
+Klingon power 700
+Length, Skill long, expert
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2800.00
+1 K . . . . . . # . . 1   condition     RED
+2 . . . . . . . . . . 2   position      1,2/9,9
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . * . 4   total energy  4904
+5 . * . . . . . . . . 5   torpedoes     10
+6 . . . . . * . . * . 6   shields       up, 63%
+7 . . . K . . . . . * 7   Klingons left 83
+8 . . * . . . . . K . 8   time left     26.00
+9 . . . @ . . . . . E 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Ardana
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2800.00
+1 K . . . . . . # . . 1   condition     RED
+2 . . . . . . . . . . 2   position      1,2/9,9
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . * . 4   total energy  4904
+5 . * . . . . . . . . 5   torpedoes     10
+6 . . . . . * . . * . 6   shields       up, 63%
+7 . . . K . . . . . * 7   Klingons left 83
+8 . . * . . . . . K . 8   time left     26.00
+9 . . . @ . . . . . E 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Ardana
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Torpedo track:
+   9.5	 9.5
+   8.9	 8.5
+   *** Klingon at 8,8 destroyed ***
+Klingon at 7,3 escapes to quadrant 1,3
+
+Stardate 2800.00: Klingon attack:
+HIT: 92 units from 1,0, shields absorb 63%, effective hit 34
+Klingon at 1,0 escapes to quadrant 1,1
+
+Command: Computer reports navigation error; Enterprise stopped at 8,9
+
+Command: Computer reports navigation error; Enterprise stopped at 7,8
+
+Command: Computer reports navigation error; Enterprise stopped at 7,8
+
+Command: Condition RED
+
+Stardate 2800.51: Klingon attack:
+HIT: 200 units from 3,0, shields absorb 60%, effective hit 80
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Torpedo track, torpedo number 1:
+   8.5	 3.5
+   7.5	 2.5
+   6.6	 1.5
+   5.6	 0.5
+Torpedo missed
+Torpedo track, torpedo number 2:
+   8.5	 3.5
+   7.5	 2.7
+   6.5	 1.8
+   5.5	 1.0
+   4.5	 0.1
+Torpedo missed
+Photon tubes misfire on torpedo 3
+	photon tubes damaged
+Torpedo track, torpedo number 3:
+   8.5	 3.5
+   7.8	 2.5
+   7.0	 1.5
+   6.3	 0.5
+Torpedo missed
+
+Stardate 2800.51: Klingon attack:
+HIT: 163 units from 3,0, shields absorb 52%, effective hit 78
+Klingon at 3,0 moves to 5,2
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: 
+Stardate 2801.03: Klingon attack:
+HIT: 157 units from 5,2, shields absorb 47%, effective hit 82
+Klingon at 5,2 escapes to quadrant 0,1
+
+Command: Condition RED
+Klingon at 4,4 escapes to quadrant 1,1
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2801.43
+1 . . . . . . . . . . 1   condition     GREEN
+2 . . . . . * . * . * 2   position      0,1/7,3
+3 . . . . * . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  3728
+5 . . . . . . . . . . 5   torpedoes     6
+6 . * . . . . . . * . 6   shields       up, 44%
+7 . . . E . . . . * . 7   Klingons left 82
+8 . . . . . . * . . . 8   time left     24.88
+9 . . * . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: Condition RED
+
+Stardate 2801.84: Klingon attack:
+HIT: 247 units from 3,6, shields absorb 44%, effective hit 136
+Klingon at 3,6 moves to 6,1
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2801.84
+1 . . . . . . . . . . 1   condition     RED
+2 . . * . . . . * . . 2   position      0,0/5,3
+3 . . . . . . . . . . 3   warp factor   5.0
+4 * . . . . . . . . . 4   total energy  3367
+5 * . . E . . . . . . 5   torpedoes     6
+6 . K . . . . . . . @ 6   shields       up, 37%
+7 . * . . * . . . . . 7   Klingons left 82
+8 . . . . . . . . . . 8   time left     24.47
+9 * . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Canopus V
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Distance 2.00 cost 21.05 stardates 220 units
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Fat chance, captain
+
+Stardate 2801.89: Klingon attack:
+HIT: 216 units from 6,1, shields absorb 37%, effective hit 135
+Klingon at 6,1 moves to 7,0
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: invalid input; ? for valid inputs
+
+Request: Computer record of galaxy for all long range sensor scans
+
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+0 $$$   9 ... ... ... ... ... ... 0
+1 ... ...  17 ... ... ... ... .1. 1
+2 ... ... ... ... ... ... .1. ... 2
+3 ... ... ... ... ... ... ... ... 3
+4 ... ... ... ... ... ... ... ... 4
+5 ... ... ... ... ... ... ... ... 5
+6 ... ... ... ... ... ... ... ... 6
+7 ... ... ... ... ... ... ... ... 7
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+
+Command: invalid input; ? for valid inputs
+
+Request: invalid input; ? for valid inputs
+
+Request: 
+*** Your score:
+1 Klingons killed                               175
+Kill rate 0.53 Klingons/stardate                211
+Penalty for 82 klingons remaining            -16400
+
+***  TOTAL                                   -16014
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: 
+No known distress calls are active
+
+Command: Sulu reports photon tubes are damaged
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2801.89
+1 . . . . . . . . . . 1   condition     RED
+2 . . * . . . . * . . 2   position      0,0/5,3
+3 . . . . . . . . . . 3   warp factor   5.0
+4 * . . . . . . . . . 4   total energy  3236
+5 * . . E . . . . . . 5   torpedoes     6
+6 . . . . . . . . . @ 6   shields       up, 32%
+7 K * . . * . . . . . 7   Klingons left 82
+8 . . . . . . . . . . 8   time left     24.42
+9 * . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Canopus V
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2801.89
+1 . . . . . . . . . . 1   condition     RED
+2 . . * . . . . * . . 2   position      0,0/5,3
+3 . . . . . . . . . . 3   warp factor   5.0
+4 * . . . . . . . . . 4   total energy  3236
+5 * . . E . . . . . . 5   torpedoes     6
+6 . . . . . . . . . @ 6   shields       up, 32%
+7 K * . . * . . . . . 7   Klingons left 82
+8 . . . . . . . . . . 8   time left     24.42
+9 * . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Canopus V
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sector: s-y: 
+Stardate 2801.89: Klingon attack:
+HIT: 76 units from 7,0, shields absorb 31%, effective hit 52
+Condition RED
+Klingon at 2,0 moves to 1,1
+Klingon at 6,3 escapes to quadrant 3,5
+
+Stardate 2803.97: Klingon attack:
+HIT: 295 units from 1,1, shields absorb 37%, effective hit 184
+HIT: 228 units from 6,1, shields absorb 30%, effective hit 159
+HIT: 176 units from 9,0, shields absorb 25%, effective hit 131
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2803.97
+1 . K . . . . . . . . 1   condition     RED
+2 . . E . . . . . . . 2   position      2,5/2,2
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  1719
+5 . . . . . . . . . . 5   torpedoes     6
+6 @ K . . . . . . . . 6   shields       up, 22%
+7 . . . . . . . . . . 7   Klingons left 82
+8 . . . . . . . . . . 8   time left     22.35
+9 K . * . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Triad III
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2803.97
+1 . K . . . . . . . . 1   condition     RED
+2 . . E . . . . . . . 2   position      2,5/2,2
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  1719
+5 . . . . . . . . . . 5   torpedoes     6
+6 @ K . . . . . . . . 6   shields       up, 22%
+7 . . . . . . . . . . 7   Klingons left 82
+8 . . . . . . . . . . 8   time left     22.35
+9 K . * . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Triad III
+
+Command: Fat chance, captain
+Klingon at 6,1 moves to 7,2
+
+Stardate 2804.02: Klingon attack:
+HIT: 263 units from 1,1, shields absorb 22%, effective hit 204
+HIT: 168 units from 7,2, shields absorb 18%, effective hit 137
+HIT: 131 units from 9,0, shields absorb 16%, effective hit 109
+Klingon at 1,1 escapes to quadrant 1,4
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Shields already up
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Fat chance, captain
+
+Stardate 2804.07: Klingon attack:
+HIT: 128 units from 7,2, shields absorb 14%, effective hit 109
+HIT: 99 units from 9,0, shields absorb 14%, effective hit 85
+Klingon at 9,0 escapes to quadrant 1,5
+
+Command: 
+Stardate 2804.07: Klingon attack:
+HIT: 97 units from 7,2, shields absorb 12%, effective hit 85
+Klingon at 7,2 escapes to quadrant 3,5
+Condition RED
+Sulu reports repair work on the photon tubes finished.
+
+Enterprise caught in long range tractor beam
+*** Pulled to quadrant 7,3
+Condition RED
+
+Stardate 2804.61: Klingon attack:
+HIT: 283 units from 5,0, shields absorb 14%, effective hit 241
+CRITICAL HIT!!!
+	photon tubes damaged
+HIT: 246 units from 3,5, shields absorb 11%, effective hit 217
+HIT: 228 units from 6,6, shields absorb 10%, effective hit 205
+HIT: 203 units from 7,7, shields absorb 8%, effective hit 186
+CRITICAL HIT!!!
+	photon tubes damaged
+
+You have been destroyed
+
+*** Your score:
+1 Klingons killed                               175
+Kill rate 0.22 Klingons/stardate                 86
+Penalty for 82 klingons remaining            -16400
+Penalty for getting killed                     -500
+
+***  TOTAL                                   -16639
+Another game: What length game: What skill game: Enter a password: 40 Klingons
+2 starbases at 5,1, 7,5
+It takes 700 units to kill a Klingon
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2900.00
+1 . . . . . . . . . * 1   condition     GREEN
+2 . . . . . . . . . . 2   position      5,1/8,0
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  5000
+5 . . * . . @ . . . . 5   torpedoes     10
+6 . . . . . # . . . . 6   shields       up, 100%
+7 . . . . . . . . . . 7   Klingons left 40
+8 E . . . . . . . . . 8   time left     14.00
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Exo III
+
+Command: Computer reports navigation error; Enterprise stopped at 2,8
+
+Command: Condition RED
+
+Uhura: Captain, starsystem Deneb VII in quadrant 0,2 is under attack
+
+Stardate 2900.87: Klingon attack:
+HIT: 264 units from 3,4, shields absorb 100%, effective hit 0
+Klingon at 3,4 escapes to quadrant 5,2
+
+Command: Condition RED
+
+Stardate 2901.45: Klingon attack:
+HIT: 262 units from 5,9, shields absorb 82%, effective hit 45
+
+Command: Torpedo track:
+   5.5	 6.5
+   5.3	 7.5
+   5.1	 8.5
+   5.0	 9.5
+Torpedo missed
+Klingon at 5,9 escapes to quadrant 5,3
+
+Command: Condition RED
+
+Stardate 2901.85: Klingon attack:
+HIT: 227 units from 8,4, shields absorb 68%, effective hit 71
+
+Command: Klingon at 8,4 surrenders
+37 klingons commit suicide rather than be taken captive
+163 captives taken
+   *** Klingon at 8,4 destroyed ***
+
+Command: Condition RED
+Klingon at 3,5 escapes to quadrant 7,3
+Klingon at 6,1 escapes to quadrant 7,3
+
+Stardate 2902.46: Klingon attack:
+HIT: 162 units from 1,9, shields absorb 59%, effective hit 66
+
+Command: Torpedo track, torpedo number 1:
+   8.5	 6.5
+   7.5	 6.8
+   6.5	 7.0
+   5.5	 7.3
+   4.5	 7.6
+   3.5	 7.8
+
+RED ALERT: supernova occurring at 3,7
+RED ALERT:  The Enterprise is in a supernova quadrant
+***  Emergency override attempts to hurl Enterprise to safety
+
+Command: Computer reports navigation error; Enterprise stopped at 1,6
+
+Command: Computer reports navigation error; Enterprise stopped at 1,6
+
+Command: Computer reports navigation error; Enterprise stopped at 1,6
+
+Command: Computer reports navigation error; Enterprise stopped at 1,6
+
+Command: Computer reports navigation error; Enterprise stopped at 2,6
+
+Command: Computer reports navigation error; Enterprise stopped at 7,8
+
+Command: 	warp drive damaged
+Computer reports navigation error; Enterprise stopped at 7,8
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: 
+Command: Scotty reports warp drive is damaged
+
+Command: 6,2/7,8 to 3,4/1,1: course 20  dist 3.828
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: invalid input; ? for valid inputs
+
+Request: Computer record of galaxy for all long range sensor scans
+
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+0 ... ... ... ... ... ... ... ... 0
+1 ... ... ... ... ... ... ... ... 1
+2 ... ... ... ... ... ... ... ... 2
+3 ... ... ... ... ... ... ... ... 3
+4 ... ... ... ... ... ... ... ... 4
+5 ...  13 ... ... ... ... ... ... 5
+6 ... ... $$$ /// ... ... ... ... 6
+7 ... ... ... ... ... .1. ... ... 7
+  -0- -1- -2- -3- -4- -5- -6- -7- 
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Shields already up
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Officers escape in shuttlecraft
+Entire crew of 387 left to die in outer space
+
+You have been captured by Klingons and mercilessly tortured
+
+*** Your score:
+2 Klingons killed                               350
+Kill rate 0.75 Klingons/stardate                299
+Penalty for 38 klingons remaining             -5066
+Penalty for getting killed                     -500
+3 stars destroyed                               -15
+387 casualties                                 -387
+
+***  TOTAL                                    -5319
+Another game: 

@@ -1,0 +1,216 @@
+
+long
+expert
+foo
+status
+srscan
+srscan
+phasers manual
+torpedo 315 no
+move 347 1.33
+move 328 1.30
+move 350 1.12
+move 331 1.03
+phasers automatic 600
+phasers automatic 600
+torpedo 329 yes 5
+phasers manual
+phasers automatic 600
+torpedo 342 no
+phasers automatic 300
+impulse 342 0.05
+move 276 1.00
+srscan
+move 281 1.02
+srscan
+torpedo 243 no
+torpedo 243 yes 5
+phasers automatic 1500
+computer impcost 2
+torpedo 243 no
+capture
+phasers manual
+computer lrscan
+chart
+computer kill
+kill
+score
+phasers manual
+torpedo 236 no
+phasers automatic 300
+phasers automatic 600
+torpedo 236 yes 10
+torpedo 236 yes 10
+phasers automatic 1500
+phasers manual
+phasers manual
+computer distresslist
+torpedo 236 yes 5
+srscan
+srscan
+phasers manual
+torpedo 236 no
+torpedo 236 yes 10
+torpedo 236 yes 5
+computer move 2,5
+2
+2
+phasers manual
+srscan
+srscan
+capture
+torpedo 180 yes 10
+torpedo 180 yes 10
+phasers manual
+shield up
+torpedo 180 no
+torpedo 180 yes 10
+capture
+move 285 2.79
+yes
+medium
+expert
+foo
+move 52 1.64
+move 20 1.17
+move 164 1.46
+torpedo 90 no
+move 84 1.00
+capture
+move 180 1.40
+torpedo 23 yes 5
+move 140 1.70
+move 133 1.63
+move 151 1.84
+move 138 1.35
+move 156 1.21
+move 157 1.52
+move 138 1.35
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+cloak up
+move 313 1.77
+computer course 3,4/1,1
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+computer kill
+chart
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+shield up
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+move 313 1.77
+abandon
+no

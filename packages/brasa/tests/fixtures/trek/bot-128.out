@@ -1,0 +1,635 @@
+
+   * * *   S T A R   T R E K   * * *
+
+Press return to continue.
+What length game: What skill game: Enter a password: 10 Klingons
+5 starbases at 5,1, 1,0, 7,7, 3,1, 1,1
+It takes 400 units to kill a Klingon
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      2400.00
+1   . . . . . . . . . 1   condition     GREEN
+2 . . . . . * . . . . 2   position      5,1/4,2
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . @ E . . . . . . . 4   total energy  5000
+5 # . . . . . . . . . 5   torpedoes     10
+6 . . . . . . . . . . 6   shields       up, 100%
+7 . . . . . . . . . . 7   Klingons left 10
+8 . . . * . . . . .   8   time left     8.00
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Triad III
+
+Command: Condition RED
+
+Uhura: Captain, Starfleet Command reports a supernova
+  in quadrant 1,4.  Caution is advised
+Klingon at 3,0 escapes to quadrant 6,3
+Klingon at 2,0 escapes to quadrant 6,3
+
+Stardate 2401.35: Klingon attack:
+HIT: 129 units from 7,8, shields absorb 100%, effective hit 0
+HIT: 111 units from 0,1, shields absorb 90%, effective hit 10
+Klingon at 7,8 escapes to quadrant 6,3
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . K . . . . . .   . 0   stardate      2401.35
+1 . . . . . . . . . * 1   condition     RED
+2 . . . . . . . . . . 2   position      6,4/5,4
+3 . . . . . . * . . . 3   warp factor   5.0
+4 . . . . . . . . . . 4   total energy  4300
+5 . . . . E . . . . . 5   torpedoes     10
+6 . . . . . . . . . . 6   shields       up, 84%
+7 . . . . . . . . . . 7   Klingons left 10
+8 . . . . . . . . .   8   time left     6.65
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+
+Command: RED ALERT: collision imminent
+Enterprise rams Klingon at 0,1
+   *** Klingon at 0,1 destroyed ***
+Enterprise heavily damaged
+McCoy: Take it easy Jim; we had 47 casualties.
+	S.R. scanners damaged
+	L.R. scanners damaged
+	phasers damaged
+	photon tubes damaged
+	computer damaged
+	subspace radio damaged
+	life support damaged
+	navigation system damaged
+	cloaking device damaged
+	transporter damaged
+	shuttlecraft damaged
+
+Command: Condition RED
+
+Stardate 2401.93: Klingon attack:
+HIT: 156 units
+HIT: 109 units
+HIT: 90 units
+
+Command: Uhura reports subspace radio is damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports phasers are damaged
+
+Command: RED ALERT: collision imminent
+Enterprise rams Klingon at 6,5
+   *** Klingon at 6,5 destroyed ***
+Enterprise heavily damaged
+McCoy: Take it easy Jim; we had 35 casualties.
+	warp drive damaged
+	S.R. scanners damaged
+	L.R. scanners damaged
+	phasers damaged
+	photon tubes damaged
+	shield control damaged
+	computer damaged
+	subspace radio damaged
+	life support damaged
+	navigation system damaged
+	cloaking device damaged
+	transporter damaged
+	shuttlecraft damaged
+
+Stardate 2401.97: Klingon attack:
+HIT: 101 units
+
+Command: Sulu reports phasers are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Uhura reports subspace radio is damaged
+
+Command: Sulu reports phasers are damaged
+
+Command: Sulu reports phasers are damaged
+
+Command: Sulu reports phasers are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Sulu reports phasers are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Sulu reports phasers are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Sulu reports shield control is damaged
+
+Command: Sulu reports photon tubes are damaged
+
+Command: Sulu reports phasers are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Damage control report:
+			  repair times
+device			in flight  docked
+S.R. scanners              4.73     2.37
+L.R. scanners              3.52     1.76
+phasers                    6.54     3.27
+photon tubes               4.74     2.37
+computer                   6.13     3.07
+subspace radio             7.27     3.64
+life support               4.86     2.43
+navigation system          6.89     3.45
+cloaking device            6.85     3.43
+transporter                5.93     2.97
+shuttlecraft               6.91     3.46
+warp drive                 2.53     1.27
+shield control             2.63     1.32
+
+Command: Scotty reports warp drive is damaged
+
+Command: Sulu reports phasers are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: 
+Stardate 2402.50: Klingon attack:
+HIT: 83 units
+
+Command: Spock: That would take 148% of our remaining time.
+Are you sure that is wise: (He's finally gone mad)
+Condition RED
+Scotty reports repair work on the warp drive finished.
+Sulu reports repair work on the shield control finished.
+Scotty reports repair work on the L.R. scanners finished.
+Scotty reports repair work on the S.R. scanners finished.
+Sulu reports repair work on the photon tubes finished.
+Scotty reports repair work on the life support finished.
+Scotty reports repair work on the transporter finished.
+Spock reports repair work on the computer finished.
+Sulu reports repair work on the phasers finished.
+Scotty reports repair work on the cloaking device finished.
+Chekov reports repair work on the navigation system finished.
+Spock has tried to recalibrate your Space Internal Navigation System,
+  but he has no standard base to calibrate to.  Suggest you get
+  to a starbase immediately so that you can properly recalibrate.
+Scotty reports repair work on the shuttlecraft finished.
+Uhura reports repair work on the subspace radio finished.
+
+You ran out of time
+
+*** Your score:
+2 Klingons killed                               200
+Kill rate 0.21 Klingons/stardate                 82
+Penalty for 8 klingons remaining              -1066
+82 casualties                                   -82
+
+***  TOTAL                                     -866
+Another game: What length game: cannot restart
+What length game: What skill game: Enter a password: 10 Klingons
+4 starbases at 4,0, 0,2, 3,0, 4,3
+It takes 400 units to kill a Klingon
+
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 . . . . . . . . . . 0   stardate      3700.00
+1 * . . . . . . . . . 1   condition     GREEN
+2 . . . . * . . . # . 2   position      4,0/4,9
+3 . . . . . . . . . . 3   warp factor   5.0
+4 . . . . . . . @ . E 4   total energy  5000
+5 . . . . . . . . . . 5   torpedoes     10
+6 . . . . . . . . . . 6   shields       up, 100%
+7 . . . . . . . . . . 7   Klingons left 10
+8 . . . . . . . . . . 8   time left     8.00
+9 . . . . . . . . . . 9   life support  active
+  0 1 2 3 4 5 6 7 8 9 
+Starsystem Icarus I
+
+Command: Condition RED
+Klingon at 4,6 escapes to quadrant 5,1
+
+Command: Spock: That would take 123% of our remaining time.
+Are you sure that is wise: (He's finally gone mad)
+Condition RED
+
+Uhura: Captain, starsystem Procyon IV in quadrant 0,7 is under attack
+
+Uhura: Captain, Starfleet Command reports a supernova
+  in quadrant 2,3.  Caution is advised
+
+Uhura:  We've lost contact with starsystem Procyon IV
+  in quadrant 0,7.
+
+Enterprise caught in long range tractor beam
+*** Pulled to quadrant 0,7
+Condition RED
+Klingon at 2,4 moves to 0,6
+Klingon at 0,5 escapes to quadrant 1,7
+
+Stardate 3706.46: Klingon attack:
+HIT: 180 units from 7,2, shields absorb 100%, effective hit 0
+HIT: 108 units from 0,6, shields absorb 87%, effective hit 13
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: Sulu: Captain, we cannot fire through shields.
+
+Command: RED ALERT: collision imminent
+Enterprise rams Klingon at 7,2
+   *** Klingon at 7,2 destroyed ***
+Enterprise heavily damaged
+McCoy: Take it easy Jim; we had 49 casualties.
+	L.R. scanners damaged
+	phasers damaged
+	photon tubes damaged
+	computer damaged
+	subspace radio damaged
+	life support damaged
+	navigation system damaged
+	cloaking device damaged
+	transporter damaged
+
+Stardate 3706.50: Klingon attack:
+HIT: 66 units from 0,6
+
+Command: Sulu reports phasers are damaged
+
+Command: Klingon at 0,6 escapes to quadrant 1,7
+Distress call for Procyon IV in quadrant 0,7 nullified
+
+Command: Condition RED
+Klingon at 3,2 moves to 7,6
+Klingon at 8,8 escapes to quadrant 1,6
+
+Stardate 3707.29: Klingon attack:
+HIT: 139 units from 7,6
+HIT: 121 units from 1,2
+
+Command: Sulu reports phasers are damaged
+
+Command: Sulu reports phasers are damaged
+
+Command: Klingon at 7,6 moves to 2,6
+Klingon at 1,2 moves to 0,0
+
+Stardate 3707.29: Klingon attack:
+HIT: 124 units from 2,6, shields absorb 40%, effective hit 74
+HIT: 82 units from 0,0, shields absorb 37%, effective hit 51
+
+Command: 
+Short range sensor scan
+  0 1 2 3 4 5 6 7 8 9 
+0 K . . . . . . . . . 0   stardate      3707.29
+1 . * . @ . . . . . * 1   condition     RED
+2 . . . . . . K . . . 2   position      0,6/4,6
+3 .   . . . . . . . . 3   warp factor   5.0
+4 . . . . . . E . . . 4   total energy  4318
+5 . . . . . . . . . . 5   torpedoes     10
+6 . . . . . . . . . . 6   shields       up, 78%
+7 . . . . . . . . . . 7   Klingons left 10
+8 . . .   . . . . . . 8   time left     0.59
+9 . . . . . . . . . . 9   life support  damaged, reserves = 7.17
+  0 1 2 3 4 5 6 7 8 9 
+Distressed Starsystem Eden
+
+Command: RED ALERT: collision imminent
+Enterprise rams Klingon at 2,6
+   *** Klingon at 2,6 destroyed ***
+Enterprise heavily damaged
+McCoy: Take it easy Jim; we had 42 casualties.
+	warp drive damaged
+	L.R. scanners damaged
+	phasers damaged
+	photon tubes damaged
+	impulse engines damaged
+	shield control damaged
+	computer damaged
+	life support damaged
+	navigation system damaged
+	cloaking device damaged
+	shuttlecraft damaged
+
+Stardate 3707.37: Klingon attack:
+HIT: 68 units from 0,0
+Klingon at 0,0 escapes to quadrant 0,5
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Spock reports computer is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Spock reports computer is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Spock reports computer is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Sulu: Pardon me captain, but we are not docked.
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Spock reports computer is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Spock reports computer is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Spock reports computer is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: 257,6 ? ? . 2,7
+
+Command: Scotty reports shuttlecraft is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Spock reports computer is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Spock reports computer is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Scotty reports impulse engines are damaged
+
+Command: Scotty reports warp drive is damaged
+
+Command: Spock reports computer is damaged
+
+Command: Another game: 

@@ -1,0 +1,72 @@
+
+short
+commodore
+tournament
+abc
+move 90 1.50
+capture
+srscan
+phasers automatic 1500
+phasers manual
+torpedo 239 yes 5
+move 355 1.10
+srscan
+torpedo 315 yes 10
+phasers automatic 1500
+phasers automatic 600
+torpedo 135 yes 5
+move 225 1.41
+move 225 1.27
+move 225 1.27
+move 225 1.27
+abandon
+yes
+short
+novice
+foo
+move 295 3.85
+move 6 1.00
+torpedo 143 yes 10
+move 6 2.01
+computer kill
+chart
+move 3 1.90
+move 357 1.90
+move 352 1.51
+move 12 1.94
+move 357 2.00
+move 4 1.40
+move 3 1.90
+move 8 1.41
+move 12 1.94
+move 11 1.53
+move 353 1.61
+impulse 18 1.58
+yes
+move 20 1.49
+impulse 6 1.91
+yes
+move 3 1.70
+move 356 1.60
+move 18 1.58
+move 8 2.12
+move 8 1.51
+move 0 1.50
+move 0 1.70
+move 4 1.40
+move 10 1.73
+move 10 1.73
+move 126 3.94
+move 14 4.22
+move 21 0.85
+phasers manual
+torpedo 338 yes 10
+move 264 4.63
+srscan
+torpedo 99 no
+phasers automatic 1000
+torpedo 146 yes 5
+move 143 5.50
+impulse 239 0.48
+yes
+no

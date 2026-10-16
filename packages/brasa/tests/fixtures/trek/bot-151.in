@@ -1,0 +1,214 @@
+
+medium
+novice
+foo
+move 291 1.93
+move 279 1.92
+move 281 1.63
+move 291 1.71
+move 279 1.92
+move 281 2.14
+move 281 1.53
+impulse 298 1.92
+no
+move 297 2.01
+phasers automatic 1500
+torpedo 45 no
+move 266 1.30
+move 236 0.72
+impulse 90 0.05
+srscan
+phasers manual
+capture
+srscan
+torpedo 90 no
+move 180 0.80
+capture
+srscan
+move 343 3.45
+capture
+torpedo 315 yes 5
+move 301 0.58
+torpedo 23 yes 5
+move 22 1.84
+move 149 0.58
+move 73 1.68
+torpedo 230 yes 5
+move 153 6.08
+move 153 5.72
+impulse 225 0.47
+dock
+move 327 5.58
+move 330 4.75
+move 329 4.89
+impulse 329 4.80
+move 331 5.15
+move 324 5.22
+move 324 4.94
+move 328 5.52
+move 324 4.94
+move 324 5.08
+move 329 5.25
+move 329 5.02
+move 329 4.66
+impulse 330 5.33
+impulse 327 5.27
+move 323 5.00
+move 330 5.42
+move 331 5.28
+move 326 5.55
+move 329 5.47
+move 328 5.16
+move 328 4.72
+move 331 4.92
+move 328 5.08
+move 331 4.92
+impulse 328 5.22
+move 329 5.25
+impulse 327 5.27
+move 328 5.08
+move 324 5.16
+move 327 4.77
+move 330 4.84
+move 329 4.66
+move 327 4.99
+move 327 4.99
+move 329 5.25
+move 328 5.30
+computer trajectory
+move 329 5.25
+move 328 4.72
+move 331 5.37
+impulse 327 5.63
+move 326 5.55
+move 325 5.02
+move 326 5.41
+computer chart
+move 331 5.15
+move 328 5.22
+move 332 5.32
+move 329 5.02
+impulse 331 5.28
+impulse 324 5.16
+shield down
+move 332 5.19
+move 328 5.16
+move 331 5.24
+impulse 331 5.37
+move 323 5.14
+impulse 329 5.47
+move 327 4.77
+move 331 5.15
+move 325 5.46
+move 327 5.63
+impulse 332 5.19
+move 328 5.44
+move 332 5.32
+move 331 5.28
+move 328 5.44
+move 325 5.38
+move 331 5.01
+computer srscan
+chart
+move 326 5.19
+move 325 4.88
+move 328 4.72
+move 329 4.89
+move 327 5.49
+move 325 4.88
+move 327 5.27
+move 324 4.94
+move 324 5.22
+move 330 5.33
+move 330 4.84
+move 327 5.35
+move 327 5.49
+move 331 5.28
+move 329 4.89
+impulse 331 5.01
+move 326 4.96
+move 327 5.27
+move 325 5.02
+move 329 5.25
+move 331 5.01
+move 324 5.22
+impulse 330 5.06
+impulse 330 5.20
+move 324 5.30
+move 331 4.92
+cloak down
+move 329 5.39
+move 326 5.55
+move 331 5.28
+move 327 5.35
+move 329 5.11
+move 324 5.08
+impulse 330 4.84
+move 329 5.02
+move 328 4.85
+impulse 326 5.19
+move 329 4.66
+lrscan
+impulse 328 5.08
+move 331 4.92
+impulse 326 5.05
+impulse 328 5.16
+impulse 331 4.92
+move 326 5.19
+move 332 5.32
+move 333 5.28
+impulse 327 5.27
+impulse 325 5.10
+move 329 5.47
+move 330 5.42
+move 324 5.16
+move 329 5.47
+move 323 5.14
+status
+move 323 5.00
+move 322 5.06
+move 329 4.89
+move 331 5.15
+move 333 5.28
+dump
+move 333 5.28
+move 325 5.02
+move 325 5.24
+move 330 5.06
+move 326 4.96
+move 327 5.13
+move 329 5.47
+move 330 5.42
+move 326 4.96
+impulse 327 5.27
+move 332 5.10
+impulse 329 5.47
+impulse 332 5.10
+move 322 5.06
+move 328 4.85
+move 329 5.11
+move 330 4.97
+move 324 4.94
+move 331 5.37
+impulse 329 5.02
+computer kill
+chart
+move 331 5.28
+move 332 5.19
+move 322 5.06
+move 331 5.37
+move 324 4.94
+move 331 4.92
+move 332 5.10
+move 329 4.80
+move 326 4.83
+move 327 5.58
+move 328 4.85
+move 331 5.28
+terminate
+yes
+long
+expert
+foo
+abandon
+no

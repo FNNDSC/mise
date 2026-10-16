@@ -1,0 +1,134 @@
+
+long
+novice
+tournament
+zz9
+move 195 2.79
+srscan
+torpedo 54 yes 10
+computer pheff 3
+move 31 1.17
+impulse 270 0.05
+shield up
+torpedo 180 yes 10
+move 49 0.92
+srscan
+phasers manual
+torpedo 135 yes 10
+shield up
+phasers automatic 1000
+impulse 135 0.05
+capture
+phasers manual
+torpedo 315 yes 5
+impulse 315 0.05
+move 27 1.12
+impulse 339 0.85
+move 108 1.26
+move 266 1.40
+capture
+srscan
+phasers manual
+phasers automatic 1000
+impulse 0 0.05
+impulse 194 0.82
+move 135 0.85
+visual 225
+torpedo 135 no
+move 202 1.62
+move 288 0.63
+impulse 304 0.05
+srscan
+torpedo 0 no
+impulse 247 0.76
+yes
+yes
+restart
+restart
+medium
+good
+foo
+move 302 1.89
+torpedo 90 no
+phasers automatic 300
+help
+move 300 2.42
+move 297 2.46
+move 291 2.25
+move 289 2.12
+move 283 2.26
+move 283 2.26
+move 286 2.18
+impulse 297 2.68
+computer impcost 2
+move 293 2.06
+move 282 2.45
+move 295 1.88
+impulse 284 2.06
+move 291 2.25
+move 287 2.09
+move 295 2.64
+move 287 2.09
+computer kill
+kill
+chart
+move 298 1.92
+move 291 1.93
+move 287 2.09
+move 293 2.28
+impulse 295 2.64
+move 288 2.21
+move 288 2.21
+move 300 2.20
+move 295 2.64
+move 292 2.15
+move 286 1.87
+move 293 2.60
+move 285 2.38
+move 289 2.12
+move 294 1.97
+impulse 290 2.34
+move 298 2.59
+move 284 2.06
+move 296 2.55
+move 285 1.96
+move 288 2.21
+move 288 2.53
+move 300 2.42
+move 303 2.02
+move 290 2.34
+move 294 2.42
+move 285 1.96
+impulse 290 2.34
+move 297 2.46
+impulse 295 1.88
+move 296 2.55
+impulse 287 2.09
+move 288 2.53
+move 285 1.96
+move 291 1.93
+move 297 2.46
+move 298 2.59
+computer time 3 8
+kill
+score
+move 290 2.02
+move 290 2.02
+impulse 300 1.97
+move 283 2.26
+move 298 2.37
+move 298 1.92
+move 290 2.34
+move 283 2.16
+move 295 2.33
+move 302 2.25
+shield down
+move 285 2.38
+move 293 2.06
+impulse 288 1.90
+move 292 1.84
+move 298 2.37
+move 294 1.97
+destruct
+foo
+no

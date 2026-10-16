@@ -1,0 +1,92 @@
+
+restart
+medium
+good
+foo
+impulse 72 0.32
+torpedo 207 no
+phasers manual
+phasers manual
+shield up
+torpedo 236 yes 10
+srscan
+phasers automatic 300
+torpedo 236 yes 10
+torpedo 236 yes 10
+torpedo 236 no
+torpedo 236 yes 10
+impulse 236 0.05
+torpedo 236 no
+torpedo 236 yes 10
+srscan
+phasers automatic 600
+torpedo 236 no
+phasers manual
+torpedo 236 no
+phasers automatic 1000
+phasers manual
+capture
+move 346 0.41
+capture
+impulse 63 0.05
+phasers automatic 1000
+torpedo 63 yes 5
+capture
+shield up
+capture
+warp 4
+srscan
+shield up
+phasers automatic 1500
+phasers automatic 600
+phasers automatic 1500
+torpedo 63 yes 5
+torpedo 63 yes 5
+phasers manual
+capture
+move 262 1.51
+torpedo 243 no
+phasers automatic 1500
+phasers automatic 300
+phasers automatic 300
+srscan
+capture
+impulse 256 0.05
+impulse 252 0.05
+computer kill
+kill
+score
+torpedo 236 no
+torpedo 236 no
+srscan
+impulse 236 0.05
+phasers automatic 600
+impulse 243 0.05
+impulse 349 0.51
+torpedo 0 yes 5
+torpedo 131 no
+move 38 1.14
+phasers manual
+srscan
+torpedo 277 no
+move 306 1.86
+capture
+torpedo 45 no
+move 172 1.41
+move 164 1.46
+move 167 0.92
+move 189 1.22
+move 171 1.22
+move 167 1.33
+move 170 1.12
+move 151 1.03
+move 338 0.54
+impulse 353 1.61
+no
+move 353 1.71
+move 353 1.61
+move 349 1.63
+move 349 1.63
+impulse 4 1.40
+yes
+no

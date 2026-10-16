@@ -1,0 +1,110 @@
+/*
+ * compkl.ts: a TypeScript port of BSD trek(6), from compkl.c.
+ * Ported from NetBSD src/games/trek (trunk 7a9ca154a8f6144307865f23390a3c63b400b801): compkl.c 1.8 2009/05/24.
+ *
+ * Copyright (c) 1980, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ */
+/**
+ * @file The Klingons' distances from the ship, recomputed and sorted.
+ *
+ * @module
+ */
+import type { Trek } from './context.js';
+import type { Kling } from './state.js';
+
+/*
+**  compute klingon distances
+**
+**	The klingon list has the distances for all klingons recomputed
+**	and sorted.  The parameter is a Boolean flag which is set if
+**	we have just entered a new quadrant.
+**
+**	This routine is used every time the Enterprise or the Klingons
+**	move.
+**
+**  f -- set if new quadrant
+*/
+
+/** Recomputes the Klingon distances and leaves the list sorted. */
+export function compkldist(t: Trek, f: number): void {
+  const { Ship, Etc } = t.s;
+  let dx: number;
+  let dy: number;
+  let d: number;
+  let temp: number;
+
+  if (Etc.nkling === 0) return;
+  for (let i: number = 0; i < Etc.nkling; i++) {
+    /* compute distance to the Klingon */
+    dx = Ship.sectx - Etc.klingon[i].x;
+    dy = Ship.secty - Etc.klingon[i].y;
+    d = dx * dx + dy * dy;
+    d = Math.sqrt(d);
+
+    /* compute average of new and old distances to Klingon */
+    if (!f) {
+      temp = Etc.klingon[i].dist;
+      Etc.klingon[i].avgdist = 0.5 * (temp + d);
+    } else {
+      /* new quadrant: average is current */
+      Etc.klingon[i].avgdist = d;
+    }
+    Etc.klingon[i].dist = d;
+  }
+
+  /* leave them sorted */
+  sortkl(t);
+}
+
+/*
+**  sort klingons
+**
+**	bubble sort on ascending distance
+*/
+
+/** Bubble sorts the Klingons on ascending distance (a swap of slots, as the C's struct swap). */
+function sortkl(t: Trek): void {
+  const { Etc } = t.s;
+  let f: number;
+  let tk: Kling;
+
+  const m: number = Etc.nkling - 1;
+  f = 1;
+  while (f) {
+    f = 0;
+    for (let i: number = 0; i < m; i++) {
+      if (Etc.klingon[i].dist > Etc.klingon[i + 1].dist) {
+        tk = Etc.klingon[i];
+        Etc.klingon[i] = Etc.klingon[i + 1];
+        Etc.klingon[i + 1] = tk;
+        f = 1;
+      }
+    }
+  }
+}

@@ -50,3 +50,22 @@ describe('line discipline', () => {
     expect(question_isOpen()).toBe(true);
   });
 });
+
+describe('the terminal state mark', () => {
+  it('is written only when this shell is a browser\'s terminal', async () => {
+    const { terminalState_mark } = await import('../src/core/lineDiscipline.js');
+    const written: string[] = [];
+    const before: string | undefined = process.env['CHELL_TERMINAL'];
+    try {
+      delete process.env['CHELL_TERMINAL'];
+      terminalState_mark('busy', (chunk: string): void => { written.push(chunk); });
+      expect(written).toEqual([]);
+      process.env['CHELL_TERMINAL'] = '0123456789abcdef01234567';
+      terminalState_mark('asking', (chunk: string): void => { written.push(chunk); });
+      expect(written).toEqual(['\u001b]6677;state=asking\u0007']);
+    } finally {
+      if (before === undefined) delete process.env['CHELL_TERMINAL'];
+      else process.env['CHELL_TERMINAL'] = before;
+    }
+  });
+});

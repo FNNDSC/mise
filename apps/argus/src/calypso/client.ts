@@ -174,7 +174,7 @@ export interface ClientHandlers {
   telemetry_receive?: (index: { jobs: number; feeds: number }, extra?: { lane?: LaneTelemetry; cube?: CubeTelemetry; state?: JobsStateTelemetry; surfaces?: SurfaceSeen[] }) => void;
   /** The daemon is going away, and says why. */
   closing_receive?: (cause: ClosingCause) => void;
-  session_receive?: (surface: string, envelope: WireEnvelope) => void;
+  session_receive?: (surface: string, envelope: WireEnvelope, terminal?: string) => void;
   envelope_observe?: (envelope: WireEnvelope) => void;
   /** The session's retained regard, pushed on any surface's write and on attach. */
   regard_receive?: (regard: Regard) => void;
@@ -583,7 +583,7 @@ export class ArgusClient {
           this.handlers.ambient_receive?.(message.envelope);
           break;
         }
-        this.handlers.session_receive?.(message.surface, message.envelope);
+        this.handlers.session_receive?.(message.surface, message.envelope, message.terminal);
         this.handlers.envelope_observe?.(message.envelope);
         break;
       }

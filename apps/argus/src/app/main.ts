@@ -2195,18 +2195,7 @@ async function surface_start(token: string): Promise<void> {
       try {
         const outcome: ExecuteOutcome = await client.line_execute(line);
         terminal.outcome_write(outcome);
-        // `say`: a surface with a voice speaks the words (games shelf, #892).
-        for (const envelope of outcome.envelopes) {
-          if (envelope.model?.kind === 'games.say') voice_say(envelope.model.data);
-          // A showpiece or a game: the console keeps the still, the GAMES pane runs it.
-          if (envelope.model?.kind === 'games.show') terminal.line_note(gamesPane.show(envelope.model.data));
-        }
-        // The panel is slaved to the working directory: any command that
-        // moved it (an fs.cwd model) triggers a silent listing refresh,
-        // whose fs.listing envelope repaints the panel on observation.
-        if (outcome.envelopes.some((envelope): boolean => envelope.model?.kind === 'fs.cwd')) {
-          void client.line_execute('ls', { silent: true });
-        }
+        consoleModels_take(outcome.envelopes);
       } catch (error: unknown) {
         const reason: string = error instanceof Error ? error.message : String(error);
         terminal.output_write('err', `\x1b[31m${reason}\x1b[0m\n`);
@@ -2235,6 +2224,28 @@ async function surface_start(token: string): Promise<void> {
   // The console as a terminal (#1125): built once the daemon says it offers
   // one and this device chose it (consoleMode.ts).
   let consoleScreen: TerminalScreen | null = null;
+  /**
+   * What a console command's answers move beyond the console: `say` speaks,
+   * a showpiece or game opens the GAMES pane, a moved working directory
+   * re-lists the panel slaved to it. The transcript's own commands, and in
+   * terminal mode the ones typed in this page's terminal (their echoes).
+   *
+   * @param envelopes - The command's envelopes.
+   */
+  const consoleModels_take = (envelopes: ReadonlyArray<WireEnvelope>): void => {
+    for (const envelope of envelopes) {
+      // `say`: a surface with a voice speaks the words (games shelf, #892).
+      if (envelope.model?.kind === 'games.say') voice_say(envelope.model.data);
+      // A showpiece or a game: the console keeps the still, the GAMES pane runs it.
+      if (envelope.model?.kind === 'games.show') terminal.line_note(gamesPane.show(envelope.model.data));
+    }
+    // The panel is slaved to the working directory: any command that
+    // moved it (an fs.cwd model) triggers a silent listing refresh,
+    // whose fs.listing envelope repaints the panel on observation.
+    if (envelopes.some((envelope): boolean => envelope.model?.kind === 'fs.cwd')) {
+      void client.line_execute('ls', { silent: true });
+    }
+  };
   const attached: { client: ArgusClient; attach: AttachInfo } = await ArgusClient.session_attach(
     wsUrl_resolve(),
     token,
@@ -2330,8 +2341,11 @@ async function surface_start(token: string): Promise<void> {
         if (answer === null) throw new Error('not a line of this surface');
         return { rendered: answer, status: 'ok' };
       },
-      session_receive: (surface: string, envelope: WireEnvelope): void =>
-        terminal.session_write(surface, envelope),
+      session_receive: (surface: string, envelope: WireEnvelope, from?: string): void => {
+        terminal.session_write(surface, envelope);
+        // A line typed in this page's own terminal is this console's command.
+        if (from !== undefined && from === consoleScreen?.terminalId_get()) consoleModels_take([envelope]);
+      },
       // The sampler's refreshed models: every DAG pane showing that feed
       // repaints in place; nothing pins, nothing reaches the transcript.
       ambient_receive: (envelope: WireEnvelope): void => {

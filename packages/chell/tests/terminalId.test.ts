@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from '@jest/globals';
 
-const { terminalId_of } = await import('../src/remote/terminalId.js');
+const { terminalId_of } = await import('../src/core/terminalId.js');
 
 describe('terminalId_of', () => {
   it('reads a terminal id', () => {

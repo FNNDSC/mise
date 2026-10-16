@@ -33,6 +33,23 @@ export interface TerminalWire {
   resize: (terminalId: string, cols: number, rows: number) => void;
 }
 
+/** What the terminal's chell marks it is doing (OSC 6677; chell `lineDiscipline.ts`). */
+export type TerminalState = 'idle' | 'busy' | 'asking';
+
+/** The operating-system command chell marks its state with. */
+const STATE_OSC: number = 6677;
+
+/**
+ * Reads a state mark's payload.
+ *
+ * @param payload - What followed the OSC number (`state=idle`).
+ * @returns The state, or null when the mark says nothing known.
+ */
+export function terminalState_parse(payload: string): TerminalState | null {
+  const match: RegExpExecArray | null = /^state=(idle|busy|asking)$/.exec(payload.trim());
+  return match === null ? null : (match[1] as TerminalState);
+}
+
 /** Where the tab keeps its terminal's id. */
 const TERMINAL_KEY: string = 'argus.terminalId';
 
@@ -106,14 +123,17 @@ export class TerminalScreen {
   private ended: boolean = false;
   private ctrlHeld: boolean = false;
   private resizeFrame: number | null = null;
+  /** Every line feed the terminal has taken, scrolled off or not: a mark that never moves. */
+  private feeds: number = 0;
   private readonly observer: ResizeObserver | null;
 
   /**
    * @param mount - Where the terminal is drawn.
    * @param wire - The session's terminal messages.
    * @param refused - Told why, when the daemon offers no terminal.
+   * @param state - Told what the terminal's chell is doing, as it marks it.
    */
-  constructor(private readonly mount: HTMLElement, private readonly wire: TerminalWire, private readonly refused: (why: string) => void) {
+  constructor(private readonly mount: HTMLElement, private readonly wire: TerminalWire, private readonly refused: (why: string) => void, private readonly state: (state: TerminalState) => void = (): void => undefined) {
     const foreground: string = getComputedStyle(mount).color || '#ffaa44';
     this.term = new Terminal({
       fontFamily: CONSOLE_FONT,
@@ -133,6 +153,13 @@ export class TerminalScreen {
     this.term.open(screen);
     this.keyRow_build();
     this.term.onData((data: string): void => this.keys_send(data));
+    this.term.onLineFeed((): void => { this.feeds++; });
+    // The chell's own marks: at its prompt, running, or asking. Never drawn.
+    this.term.parser.registerOscHandler(STATE_OSC, (payload: string): boolean => {
+      const marked: TerminalState | null = terminalState_parse(payload);
+      if (marked !== null) this.state(marked);
+      return true;
+    });
     this.term.onResize(({ cols, rows }: { cols: number; rows: number }): void => {
       if (this.terminalId !== null) this.wire.resize(this.terminalId, cols, rows);
     });
@@ -154,6 +181,15 @@ export class TerminalScreen {
         // Not laid out yet: the next resize fits it.
       }
     });
+  }
+
+  /**
+   * The terminal this screen draws, once opened.
+   *
+   * @returns Its id, or null before it opens or after its shell ended.
+   */
+  public terminalId_get(): string | null {
+    return this.terminalId;
   }
 
   /** Takes the keyboard. */
@@ -217,16 +253,45 @@ export class TerminalScreen {
 
   /**
    * The terminal's text as it reads now: every line of its buffer, scrollback
-   * included, trailing blanks trimmed.
+   * included, a line the terminal wrapped joined again, trailing blanks
+   * trimmed.
    *
    * @returns The lines.
    */
   public buffer_lines(): string[] {
     const buffer = this.term.buffer.active;
     const lines: string[] = [];
-    for (let row: number = 0; row < buffer.length; row++) lines.push(buffer.getLine(row)?.translateToString(true) ?? '');
+    for (let row: number = 0; row < buffer.length; row++) {
+      const line = buffer.getLine(row);
+      const text: string = line?.translateToString(true) ?? '';
+      // A row the terminal wrapped onto is the rest of the line above: one line, as it was printed.
+      if (line?.isWrapped === true && lines.length > 0) lines[lines.length - 1] += text;
+      else lines.push(text);
+    }
     while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
     return lines;
+  }
+
+  /**
+   * A mark in the terminal's output: the line feeds taken so far. Unlike a
+   * position in the buffer it holds while old lines scroll out of it.
+   *
+   * @returns The mark.
+   */
+  public mark(): number {
+    return this.feeds;
+  }
+
+  /**
+   * The lines written since a mark, from the line its prompt stood on.
+   *
+   * @param mark - What `mark` returned.
+   * @returns The lines (as far back as the buffer still holds).
+   */
+  public lines_since(mark: number): string[] {
+    const lines: string[] = this.buffer_lines();
+    const back: number = Math.max(0, this.feeds - mark) + 1;
+    return lines.slice(Math.max(0, lines.length - back));
   }
 
   /**

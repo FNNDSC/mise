@@ -669,6 +669,7 @@ export class ArgusTerminal {
           ? 'abandoned'
           : (kind === 'secret' ? '••••••' : answer);
         asked.insertAdjacentHTML('beforeend', ` <span class="ask-answer">${html_escape(said)}</span>`);
+        this.askAnswered_mirror(request.message, said);
         this.size_fit();
         resolve(answer);
       };
@@ -730,8 +731,23 @@ export class ArgusTerminal {
         'beforeend',
         ` <span class="ask-answer">${html_escape(answer ?? 'abandoned')}</span>`,
       );
+      this.askAnswered_mirror(message, answer ?? 'abandoned');
       this.size_fit();
     };
+  }
+
+  /**
+   * Records an answered question in the terminal standing in for this
+   * transcript, so its scrollback keeps the whole exchange (a pressed verb's
+   * question stands on its pane, not in the terminal).
+   *
+   * @param message - The question.
+   * @param said - The answer as the transcript records it (a secret masked).
+   */
+  private askAnswered_mirror(message: string, said: string): void {
+    if (this.delegate === null) return;
+    this.mirror_flush();
+    this.delegate.note(`\u001b[33m?\u001b[0m ${message.trim()} \u001b[36m${said}\u001b[0m\n`);
   }
 
   /**

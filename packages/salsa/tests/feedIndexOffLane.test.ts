@@ -14,7 +14,7 @@ jest.mock('@fnndsc/cumin', () => ({
 jest.mock('../src/jobs/index', () => ({}));
 
 import { procCache_get } from '@fnndsc/cumin';
-import { feedInstances_ensureStarted, feedInstances_ensureLoaded, procFeed_refreshStart, procRoster_syncStart, procVisitState_reset } from '../src/vfs/providers/proc';
+import { feedInstances_ensureStarted, feedInstances_ensureLoaded, procFeed_refreshStart, procRoster_sync, procRoster_syncStart, procVisitState_reset } from '../src/vfs/providers/proc';
 
 const cache = procCache_get();
 
@@ -144,6 +144,29 @@ describe('feedInstances_ensureStarted', () => {
     while (gates.length > 0) { (gates.shift() as () => void)(); await flush(); }
     for (let i = 0; i < 5 && cache.rosterSync_get() !== null; i++) { while (gates.length > 0) (gates.shift() as () => void)(); await flush(); }
     expect(cache.rosterSync_get()).toBeNull();            // cleared when it lands
+  });
+
+  it('a forced sync asked while a delta runs is not that delta: the whole walk follows it', async () => {
+    cache.feed_add({ id: 5, title: 'f', ownerUsername: 'u', public: false, creationDate: 'd', finishedJobs: 0, erroredJobs: 0, startedJobs: 0, scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0 });
+    cache.built_set();
+    cache.warmup_complete();
+    let gated: boolean = false;
+    const gates: Array<() => void> = [];
+    const page = (): Promise<{ data: unknown[]; totalCount: number }> => gated
+      ? new Promise((resolve) => { gates.push(() => resolve({ data: [], totalCount: 0 })); })
+      : Promise.resolve({ data: [], totalCount: 0 });
+    mockClientGet.mockResolvedValue({ getFeeds: jest.fn(page), getPublicFeeds: jest.fn(page), getPluginInstances: jest.fn(async () => ({ data: [], totalCount: 0 })) });
+    await procRoster_sync(true); // walked just now: the next unforced sync is a delta
+    const kinds: string[] = [];
+    const progress = cache.rosterSync_progress.bind(cache);
+    jest.spyOn(cache, 'rosterSync_progress').mockImplementation((kind) => { kinds.push(kind); progress(kind); });
+
+    gated = true;
+    expect(procRoster_syncStart()).toBe('delta');
+    expect(procRoster_syncStart(true)).toBe('full');   // the operator's REFRESH
+    for (let i = 0; i < 10 && (gates.length > 0 || cache.rosterSync_get() !== null); i++) { while (gates.length > 0) (gates.shift() as () => void)(); await flush(); }
+    expect(kinds).toEqual(['delta', 'full']);
+    expect(cache.rosterSync_get()).toBeNull();
   });
 
   it('feedInstances_ensureLoaded still waits for the walk it shares', async () => {

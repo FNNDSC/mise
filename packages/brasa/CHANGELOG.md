@@ -1,5 +1,11 @@
 # @fnndsc/brasa
 
+## 0.37.1
+
+### Patch Changes
+
+- 9dc62f7: Help now has a POSIX page for the commands that mirror Unix utilities. `help POSIX` groups them as Files, Text, System and Shell, each with a line on how chell's version differs: `ls` lists ChRIS's filesystem rather than this machine's, and `grep` also filters numbered listings. The help table of contents points to it.
+
 ## 0.37.0
 
 ### Minor Changes

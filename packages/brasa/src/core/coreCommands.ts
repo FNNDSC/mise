@@ -41,6 +41,7 @@ import { builtin_url } from '../builtins/fs/url.js';
 import { builtin_rm } from '../builtins/fs/rm.js';
 import { builtin_rmdir } from '../builtins/fs/rmdir.js';
 import { builtin_touch } from '../builtins/fs/touch.js';
+import { builtin_find } from '../builtins/fs/find.js';
 import { builtin_help } from '../builtins/help.js';
 import { builtin_cal } from '../builtins/sys/cal.js';
 import { builtin_date } from '../builtins/sys/date.js';
@@ -53,6 +54,7 @@ import { envelopeHandler_wrap } from './sink.js';
 
 const envelope: Record<string, EnvelopeHandler> = {
   cat: builtin_cat,
+  find: builtin_find,
   cd: builtin_cd,
   cp: builtin_cp,
   mv: builtin_mv,
@@ -123,6 +125,7 @@ const plain: Record<string, CommandHandler> = {
   pwd: envelopeHandler_wrap(builtin_pwd),
   url: envelopeHandler_wrap((args: string[]) => builtin_url(args)),
   cat: envelopeHandler_wrap(builtin_cat),
+  find: envelopeHandler_wrap(builtin_find),
   rm: envelopeHandler_wrap(builtin_rm),
   cp: envelopeHandler_wrap(builtin_cp),
   mv: envelopeHandler_wrap(builtin_mv),

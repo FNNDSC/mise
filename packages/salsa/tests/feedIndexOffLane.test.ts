@@ -14,7 +14,7 @@ jest.mock('@fnndsc/cumin', () => ({
 jest.mock('../src/jobs/index', () => ({}));
 
 import { procCache_get } from '@fnndsc/cumin';
-import { feedInstances_ensureStarted, feedInstances_ensureLoaded, procFeed_refreshStart, procRoster_sync, procRoster_syncStart, procVisitState_reset } from '../src/vfs/providers/proc';
+import { feedInstances_ensureStarted, feedInstances_ensureLoaded, procFeed_refreshStart, procRoster_sync, procRoster_syncStart, procVisitState_reset, ROSTER_DELTA_MIN_MS } from '../src/vfs/providers/proc';
 
 const cache = procCache_get();
 
@@ -157,6 +157,8 @@ describe('feedInstances_ensureStarted', () => {
       : Promise.resolve({ data: [], totalCount: 0 });
     mockClientGet.mockResolvedValue({ getFeeds: jest.fn(page), getPublicFeeds: jest.fn(page), getPluginInstances: jest.fn(async () => ({ data: [], totalCount: 0 })) });
     await procRoster_sync(true); // walked just now: the next unforced sync is a delta
+    const walkedAt: number = Date.now();
+    jest.spyOn(Date, 'now').mockReturnValue(walkedAt + ROSTER_DELTA_MIN_MS + 1); // past the delta's least interval
     const kinds: string[] = [];
     const progress = cache.rosterSync_progress.bind(cache);
     jest.spyOn(cache, 'rosterSync_progress').mockImplementation((kind) => { kinds.push(kind); progress(kind); });
@@ -167,6 +169,21 @@ describe('feedInstances_ensureStarted', () => {
     for (let i = 0; i < 10 && (gates.length > 0 || cache.rosterSync_get() !== null); i++) { while (gates.length > 0) (gates.shift() as () => void)(); await flush(); }
     expect(kinds).toEqual(['delta', 'full']);
     expect(cache.rosterSync_get()).toBeNull();
+    jest.restoreAllMocks();
+  });
+
+  it('an unforced delta within a minute of the last sync asks CUBE nothing; REFRESH still walks', async () => {
+    cache.feed_add({ id: 5, title: 'f', ownerUsername: 'u', public: false, creationDate: 'd', finishedJobs: 0, erroredJobs: 0, startedJobs: 0, scheduledJobs: 0, cancelledJobs: 0, createdJobs: 0 });
+    cache.built_set();
+    cache.warmup_complete();
+    const getFeeds: jest.Mock = jest.fn(async () => ({ data: [], totalCount: 0 }));
+    mockClientGet.mockResolvedValue({ getFeeds, getPublicFeeds: jest.fn(async () => ({ data: [], totalCount: 0 })), getPluginInstances: jest.fn(async () => ({ data: [], totalCount: 0 })) });
+    await procRoster_sync(true);
+    getFeeds.mockClear();
+    expect(procRoster_syncStart()).toBe('none');          // too soon: nothing asked
+    await procRoster_sync();
+    expect(getFeeds).not.toHaveBeenCalled();
+    expect(procRoster_syncStart(true)).toBe('full');       // the operator's REFRESH
   });
 
   it('feedInstances_ensureLoaded still waits for the walk it shares', async () => {

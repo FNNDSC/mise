@@ -25,7 +25,7 @@ export interface HelpSection {
 
 /** The sections, in the order `help` lists them. */
 export const HELP_SECTIONS: ReadonlyArray<HelpSection> = [
-  { name: 'Navigation', blurb: "Move around ChRIS's filesystem, including the /proc and /net projections.", examples: ['cd', 'ls', 'tree', 'du', 'cubepath'] },
+  { name: 'Navigation', blurb: "Move around ChRIS's filesystem, including the /proc and /net projections.", examples: ['cd', 'ls', 'tree', 'find', 'du', 'cubepath'] },
   { name: 'Files', blurb: 'Read, write, copy and move files and folders; upload from and download to this machine.', examples: ['cat', 'cp', 'mv', 'upload', 'download', 'grep'] },
   { name: 'Sharing', blurb: 'Who may see a folder or file, and links that open ARGUS where you are.', examples: ['chmod', 'setfacl', 'url'] },
   { name: 'Connection', blurb: 'Who you are, which CUBE you are on, and where the session stands.', examples: ['connect', 'whoami', 'context'] },

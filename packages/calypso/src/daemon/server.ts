@@ -880,6 +880,15 @@ export class CalypsoDaemon {
   }
 
   /**
+   * Whether the running command was typed in a browser's terminal.
+   *
+   * @returns True for a terminal's chell.
+   */
+  public current_isTerminal(): boolean {
+    return this.currentOrigin?.capabilities.terminal !== undefined;
+  }
+
+  /**
    * The surface that acts for the running command: the one that issued it,
    * except a browser's terminal, whose chell runs on this daemon's host. A
    * shell, a pipe segment, an editor or a delivered file asked of a
@@ -1484,8 +1493,10 @@ export class CalypsoDaemon {
    * @returns The surface process exit code.
    * @throws {Error} When no command is executing or the surface disconnects.
    */
-  public shell_current(command: string): Promise<number> {
-    const origin: Surface | null = this.surfaceActing();
+  public shell_current(command: string, toIssuer: boolean = false): Promise<number> {
+    // Under host control a terminal's own chell runs it, in its pty: it is
+    // on this host already, and a full-screen program gets a terminal.
+    const origin: Surface | null = toIssuer ? this.currentOrigin : this.surfaceActing();
     if (!origin) {
       return Promise.reject(new Error('no active command to run a shell command for'));
     }

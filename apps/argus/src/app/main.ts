@@ -2413,7 +2413,7 @@ async function surface_start(token: string): Promise<void> {
   // The language's subjects, the composition's included: a line in one typed
   // in any chell on the session is routed here (claims.ts on the daemon).
   client.claims_send(claims_list());
-  consoleStop_wire(client);
+  consoleStop_wire(client, (): string | null => consoleScreen?.terminalId_get() ?? null);
   consoleMode = consoleMode_wire({
     client,
     terminal,

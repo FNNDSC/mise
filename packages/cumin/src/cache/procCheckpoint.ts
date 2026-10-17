@@ -190,7 +190,9 @@ function procInstance_check(value: unknown): value is ProcInstance {
   const metricsValid: boolean =
     (instance.startedAt === undefined || typeof instance.startedAt === 'string') &&
     (instance.finishedAt === undefined || typeof instance.finishedAt === 'string') &&
-    (instance.outputBytes === undefined || typeof instance.outputBytes === 'number');
+    (instance.outputBytes === undefined || typeof instance.outputBytes === 'number') &&
+    (instance.pipelineName === undefined || instance.pipelineName === null || typeof instance.pipelineName === 'string') &&
+    (instance.workflowID === undefined || instance.workflowID === null || typeof instance.workflowID === 'number');
   return metricsValid &&
     integer_check(instance.id) &&
     integer_check(instance.feedID) &&

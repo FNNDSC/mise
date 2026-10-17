@@ -203,8 +203,33 @@ describe('ProcVfsProvider.list', () => {
     expect(all?.unanswered).toEqual(['feed_6']);
     expect((await provider.subtree('/proc/jobs/feed_5/pl-root_10'))?.entries.map((e) => e.rel)).toEqual(expect.arrayContaining(['status', 'params', 'log', 'pl-child_11']));
     expect(await provider.subtree('/proc/jobs/feed_6')).toBeNull();     // its jobs are not indexed: walk it
-    expect(client.getPluginInstances).not.toHaveBeenCalled();
+    // The only rows read are the pipeline backfill's, behind the answer, feed by feed.
+    for (const call of client.getPluginInstances.mock.calls) expect(call[0]).toMatchObject({ feed_id: 5 });
     expect(client.getFeeds).not.toHaveBeenCalled();
+  });
+
+  it('learns which pipeline run made each job once, behind the prompt, and the subtree then says', async () => {
+    cache.feed_add(feed({ id: 5 }));
+    cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-root', params: null, status: 'finishedSuccessfully' });
+    cache.instance_add({ id: 11, feedID: 5, parentID: 10, pluginName: 'pl-child', params: null, status: 'finishedSuccessfully' });
+    cache.topologyLoaded_mark(5);
+    cache.built_set();
+    const client = pagingClient([], [
+      // A direct run: the client drops null fields, so the row carries none.
+      { id: 10, feed_id: 5, plugin_name: 'pl-root', status: 'finishedSuccessfully' },
+      { id: 11, feed_id: 5, plugin_name: 'pl-child', status: 'finishedSuccessfully', pipeline_name: 'FreeSurfer 8.2.0', workflow_id: 51177 },
+    ]);
+    mockClientGet.mockResolvedValue(client);
+
+    const first = await provider.subtree('/proc/jobs/feed_5');
+    expect(first?.entries.find((e) => e.rel.endsWith('pl-child_11'))?.attrs?.['pipeline']).toBeUndefined();   // not known yet
+    for (let i = 0; i < 20 && cache.instance_get(11)?.pipelineName === undefined; i++) await new Promise((r) => setImmediate(r));
+    expect(cache.instance_get(11)).toMatchObject({ pipelineName: 'FreeSurfer 8.2.0', workflowID: 51177 });
+    expect(cache.instance_get(10)).toMatchObject({ pipelineName: null, workflowID: null });
+    const second = await provider.subtree('/proc/jobs/feed_5');
+    expect(second?.entries.find((e) => e.rel.endsWith('pl-child_11'))?.attrs).toMatchObject({ pipeline: 'FreeSurfer 8.2.0', workflow: '51177' });
+    expect(second?.entries.find((e) => e.rel === 'pl-root_10')?.attrs).toMatchObject({ pipeline: '', workflow: '' });
+    expect(client.getPluginInstances).toHaveBeenCalledTimes(1);     // read once, not again
   });
 
   it('lists children from cache; terminal status needs no API call', async () => {

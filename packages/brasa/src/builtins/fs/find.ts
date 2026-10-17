@@ -45,6 +45,10 @@ export interface FindNode {
   status?: string;
   /** The plugin a job ran. */
   plugin?: string;
+  /** The pipeline whose run made a job ('' for a direct run), when the namespace knows it. */
+  pipeline?: string;
+  /** The workflow (pipeline run) that made a job ('' for a direct run). */
+  workflow?: string;
 }
 
 /** A parsed expression. */
@@ -62,6 +66,8 @@ export interface FindQuery {
   mindepth: number;
   /** Whether the expression names an action; without one, every match is printed. */
   acts: boolean;
+  /** Whether a test asks which pipeline run made a job (`-pipeline`, `-workflow`). */
+  asksRuns: boolean;
 }
 
 /** How long a walk runs before it says how far it has got. */
@@ -113,6 +119,7 @@ export function find_parse(args: string[]): FindQuery | string {
   let maxdepth: number = Number.POSITIVE_INFINITY;
   let mindepth: number = 0;
   let acts: boolean = false;
+  let asksRuns: boolean = false;
 
   const argument = (predicate: string): string => {
     const value: string | undefined = words[++at];
@@ -151,6 +158,13 @@ export function find_parse(args: string[]): FindQuery | string {
         const kind: string = argument(word);
         if (!['f', 'd', 'l'].includes(kind)) throw new Error(`find: -type takes f, d or l, not '${kind}'`);
         expr = { kind: 'test', test: (node: FindNode): boolean => node.type === kind };
+        break;
+      }
+      case '-pipeline': case '-workflow': {
+        const re: RegExp = pattern_toRegExp(argument(word), true);
+        const field: 'pipeline' | 'workflow' = word === '-pipeline' ? 'pipeline' : 'workflow';
+        asksRuns = true;
+        expr = { kind: 'test', test: (node: FindNode): boolean => node[field] !== undefined && re.test(node[field] as string) };
         break;
       }
       case '-status': case '-plugin': {
@@ -198,7 +212,7 @@ export function find_parse(args: string[]): FindQuery | string {
   try {
     const expr: FindExpr = words.length === 0 ? { kind: 'test', test: (): boolean => true } : or();
     if (at < words.length) return `find: unexpected '${words[at]}'`;
-    return { starts, expr, maxdepth, mindepth, acts };
+    return { starts, expr, maxdepth, mindepth, acts, asksRuns };
   } catch (error: unknown) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -260,7 +274,10 @@ export async function builtin_find(args: string[]): Promise<CommandEnvelope> {
     const words: string = `find: ${folders} folder${folders === 1 ? '' : 's'} walked, ${found} found`;
     if (announced) spinner.updateMessage(words); else { spinner.start(words); announced = true; }
   };
+  // Jobs a -pipeline or -workflow test could not judge: their run is not known yet.
+  let unjudged: number = 0;
   const visit = (node: FindNode): void => {
+    if (query.asksRuns && node.plugin !== undefined && node.pipeline === undefined) unjudged++;
     if (node.depth < query.mindepth) return;
     const before: number = out.length;
     const matched: boolean = find_evaluate(query.expr, node, out);
@@ -324,6 +341,8 @@ export async function builtin_find(args: string[]): Promise<CommandEnvelope> {
             depth: entry.depth,
             status: entry.attrs?.['status'] ?? entry.item.status,
             plugin: entry.attrs?.['plugin'],
+            pipeline: entry.attrs?.['pipeline'],
+            workflow: entry.attrs?.['workflow'],
           });
         }
         let stopped: boolean = false;
@@ -343,6 +362,12 @@ export async function builtin_find(args: string[]): Promise<CommandEnvelope> {
     if (announced) spinner.stop();
   }
 
+  // Not a failure: said, so an answer that leaves jobs out never looks whole.
+  const unjudgedNote: string = unjudged > 0
+    ? `find: ${unjudged} job${unjudged === 1 ? '' : 's'} not judged: which pipeline run made ${unjudged === 1 ? 'it' : 'them'} is not known yet (being read now, behind the prompt); asked again, find judges ${unjudged === 1 ? 'it' : 'them'} too\n`
+    : '';
   if (failures !== '') process.exitCode = 1;
-  return { status: failures === '' ? 'ok' : 'error', rendered: out.join(''), renderedErr: failures === '' ? undefined : chalk.red(failures) };
+  failures += unjudgedNote;
+  const failed: boolean = failures !== unjudgedNote;
+  return { status: failed ? 'error' : 'ok', rendered: out.join(''), renderedErr: failures === '' ? undefined : (failed ? chalk.red(failures) : chalk.yellow(failures)) };
 }

@@ -18,13 +18,18 @@ Every feed this identity can see, and under each its jobs as a tree (a job's chi
 
 === Finding runs
 
-`find` answers `/proc/jobs` whole from the session's job index, so a question about runs asks CUBE nothing: `-plugin` and `-status` test what a job ran and how it ended, beside `-name`, `-type`, `-newermt` and the depth bounds. A feed whose jobs are not indexed yet is walked as `ls` would walk it.
+`find` answers `/proc/jobs` whole from the session's job index, so a question about runs asks CUBE nothing: `-plugin` and `-status` test what a job ran and how it ended, `-pipeline` and `-workflow` which pipeline run made it (`-pipeline ''` is a direct run), beside `-name`, `-type`, `-newermt` and the depth bounds. A feed whose jobs are not indexed yet is walked as `ls` would walk it.
+
+The index keeps each job's `pipeline_name` and `workflow_id` from its CUBE row. Jobs restored from a checkpoint written before it kept them are read again once, feed by feed, behind the prompt; until a job's row is read, `-pipeline` and `-workflow` cannot judge it, and `find` says on stderr how many it left out (`find: N jobs not judged: ...`) rather than cutting them silently.
 
 [source]
 ----
 find /proc/jobs -plugin pl-dylld -status finishedWithError     # every failed pl-dylld run
 find /proc/jobs -plugin 'pl-dcm*' -newermt 2026-10-10          # recent conversions
 find /proc/jobs -maxdepth 1 -status started                    # feeds still running
+find /proc/jobs -pipeline 'FreeSurfer*' -status finishedWithError  # failed FreeSurfer pipeline jobs
+find /proc/jobs -plugin pl-dylld -pipeline ''                  # pl-dylld run directly, not from a pipeline
+find /proc/jobs -workflow 1365                                 # every job of one pipeline run
 ----
 
 On ekanite, a `find` over all 5,542 plugin jobs in 661 feeds answers in under a quarter of a second with no CUBE request. It sees what this identity sees: its own feeds, and those shared with it or public.
@@ -65,4 +70,4 @@ The questions worth asking are about runs: which pipelines ran (FreeSurfer, anon
 
 === What replaces it
 
-`find` over `/proc/jobs` answered from the cache (`-plugin`, `-status`, `-newermt`; see Finding runs), the run's identity on the job rows (`-pipeline`, `-workflow`, once the cache carries them), the CUBE searches above with their short forms repaired, and the listing-aware grep of #1101. The provider (`salsa/src/vfs/providers/workflows.ts`) was removed with the mount; `salsa/src/workflows/` stays, as the `workflows` command's.
+`find` over `/proc/jobs` answered from the cache (`-plugin`, `-status`, `-newermt`; see Finding runs), the run's identity on the job rows (`-pipeline`, `-workflow`), the CUBE searches above with their short forms repaired, and the listing-aware grep of #1101. The provider (`salsa/src/vfs/providers/workflows.ts`) was removed with the mount; `salsa/src/workflows/` stays, as the `workflows` command's.

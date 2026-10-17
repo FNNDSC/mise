@@ -177,6 +177,8 @@ export const helpText: Record<string, CommandHelp> = {
       '-newermt DATE                  Changed after DATE (2026-10-10, or an ISO time)',
       '-status PATTERN                A job\'s or feed\'s status (/proc/jobs): finishedWithError, started, ...',
       '-plugin PATTERN                The plugin a job ran (/proc/jobs): pl-dircopy, \'pl-dy*\'',
+      '-pipeline PATTERN              The pipeline whose run made a job (/proc/jobs); \'\' is a direct run',
+      '-workflow ID                   The pipeline run (workflow) that made a job (/proc/jobs)',
       '-maxdepth N, -mindepth N       Descend at most N levels; test only from level N',
       '-print, -print0                Print the path (the default), or end it with NUL',
     ],

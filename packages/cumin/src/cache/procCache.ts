@@ -114,6 +114,10 @@ export interface ProcInstance {
   outputBytes?: number;
   /** The compute resource the job ran on; undefined when unobserved. */
   computeResource?: string;
+  /** The pipeline whose run made the job; null when it was run directly, undefined until a row said. */
+  pipelineName?: string | null;
+  /** The workflow (pipeline run) that made the job; null when run directly, undefined until a row said. */
+  workflowID?: number | null;
   /** null until first cat — immutable once populated. */
   params: Record<string, unknown> | null;
   /**
@@ -646,7 +650,7 @@ export class ProcCache {
    */
   instanceMetrics_set(
     id: number,
-    metrics: { startedAt?: string; finishedAt?: string; outputBytes?: number; computeResource?: string },
+    metrics: { startedAt?: string; finishedAt?: string; outputBytes?: number; computeResource?: string; pipelineName?: string | null; workflowID?: number | null },
   ): void {
     const inst: ProcInstance | undefined = this.instances.get(id);
     if (!inst) return;
@@ -655,6 +659,8 @@ export class ProcCache {
     if (metrics.finishedAt !== undefined && inst.finishedAt !== metrics.finishedAt) { inst.finishedAt = metrics.finishedAt; changed = true; }
     if (metrics.outputBytes !== undefined && inst.outputBytes !== metrics.outputBytes) { inst.outputBytes = metrics.outputBytes; changed = true; }
     if (metrics.computeResource !== undefined && inst.computeResource !== metrics.computeResource) { inst.computeResource = metrics.computeResource; changed = true; }
+    if (metrics.pipelineName !== undefined && inst.pipelineName !== metrics.pipelineName) { inst.pipelineName = metrics.pipelineName; changed = true; }
+    if (metrics.workflowID !== undefined && inst.workflowID !== metrics.workflowID) { inst.workflowID = metrics.workflowID; changed = true; }
     if (changed) this.change_emit({ scope: 'feed', feedID: inst.feedID });
   }
 

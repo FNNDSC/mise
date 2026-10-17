@@ -47,7 +47,7 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
 
 const { cliSurface_create, promptLine_render, promptAnswer_take } =
   await import('../src/core/cliSurface.js');
-const { typeahead_push, typeahead_clear, typeahead_count, question_isOpen } = await import('../src/core/lineDiscipline.js');
+const { typeahead_push, typeahead_clear, typeahead_count, question_isOpen, interrupt_set } = await import('../src/core/lineDiscipline.js');
 
 let writeSpy: jest.SpiedFunction<typeof process.stdout.write>;
 beforeEach(() => {
@@ -64,6 +64,14 @@ describe('cliSurface capabilities', () => {
     expect(caps.localEdit).toBe(true);
     expect(caps.tty).toBe(!!process.stdout.isTTY);
     expect(caps.shellCommands).toBe(true);
+  });
+
+  it('does not start a shell asked for after Ctrl-C stopped its command', async () => {
+    spawnMock.mockClear();
+    interrupt_set(true);
+    await expect(cliSurface_create().shellCommand('sleep 30')).resolves.toBe(130);
+    expect(spawnMock).not.toHaveBeenCalled();
+    interrupt_set(false);
   });
 
   it('runs a shell command on the CLI host with inherited terminal I/O', async () => {

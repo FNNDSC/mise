@@ -20,7 +20,7 @@ import { TerminalProgressRenderer } from './progressRenderer.js';
 import { surfaceLine_executeSafely } from './surfaceDispatch.js';
 import { game_play, gameShow_of, gameTerminal_is, type GameShow } from './gamePlayer.js';
 import { promptGuard_create, type PromptGuard } from './promptGuard.js';
-import { lineRedraw_set, question_isOpen, terminalState_mark, typeahead_clear, typeahead_push, typeahead_take } from './lineDiscipline.js';
+import { interrupt_set, lineRedraw_set, question_isOpen, terminalState_mark, typeahead_clear, typeahead_push, typeahead_take } from './lineDiscipline.js';
 import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
 
 /**
@@ -145,6 +145,7 @@ export class REPL {
     process.stdin.prependListener('data', (chunk: Buffer | string): void => {
       if (!this.busy || question_isOpen() || !chunk.toString().includes('\u0003')) return;
       this.rawInterruptAt = Date.now();
+      interrupt_set(true);
       typeahead_clear();
       this.engine.line_cancel?.();
     });
@@ -229,6 +230,7 @@ export class REPL {
 
     const startMs: number = Date.now();
     process.exitCode = 0;
+    interrupt_set(false);
     const envelopes = await surfaceLine_executeSafely(this.engine, line);
     // A showpiece or a game the kernel named plays here, on this terminal.
     const show: GameShow | null = gameShow_of(envelopes);

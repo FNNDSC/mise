@@ -22,8 +22,9 @@ const RUNNING: ReadonlySet<string> = new Set(['busy', 'asking', 'playing']);
  * Wires the STOP pill.
  *
  * @param client - The session client.
+ * @param terminalId - The page's terminal, when the console is one.
  */
-export function consoleStop_wire(client: ArgusClient): void {
+export function consoleStop_wire(client: ArgusClient, terminalId: () => string | null = (): null => null): void {
   const pill: HTMLButtonElement | null = document.querySelector<HTMLButtonElement>('.console-stop');
   const console_: HTMLElement | null = document.getElementById('terminal');
   if (pill === null || console_ === null) return;
@@ -36,5 +37,11 @@ export function consoleStop_wire(client: ArgusClient): void {
   };
   new MutationObserver(show).observe(console_, { attributes: true, attributeFilter: ['data-busy', 'data-terminal-state', 'class'] });
   show();
-  pill.addEventListener('click', (): void => { client.stop_send(); });
+  pill.addEventListener('click', (): void => {
+    // A program running in the terminal's pty (`!cmd` under host control)
+    // takes Ctrl-C as any shell's child does; the daemon's stop ends the rest.
+    const id: string | null = console_.classList.contains('console-terminal') ? terminalId() : null;
+    if (id !== null) client.terminal_input(id, '\u0003');
+    client.stop_send();
+  });
 }

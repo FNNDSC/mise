@@ -25,7 +25,7 @@ import { join } from 'path';
 import type { Surface, SurfaceCapabilities, PromptRequest, LocalEditRequest, LocalEditResult } from '@fnndsc/brasa';
 import { segment_pipeThrough, file_read } from '@fnndsc/brasa';
 import { promptKind_of, type FileDeliverRequest, type FileDeliverResult, type PromptKind } from '@fnndsc/menu';
-import { question_openSet, terminalState_mark, typeahead_take } from './lineDiscipline.js';
+import { interrupt_pending, question_openSet, terminalState_mark, typeahead_take } from './lineDiscipline.js';
 
 /**
  * What a typed line means, given what an empty one stands for.
@@ -220,14 +220,38 @@ function localEdit_run(request: LocalEditRequest): Promise<LocalEditResult> {
  * @returns The child process exit code.
  */
 function shellCommand_run(command: string): Promise<number> {
+  // Ctrl-C pressed before the daemon asked for this shell: the command was
+  // stopped, so its shell is not started.
+  if (interrupt_pending()) return Promise.resolve(130);
   return new Promise((resolve: (exitCode: number) => void, reject: (error: Error) => void) => {
+    // The child owns the terminal while it runs: whoever reads keys here
+    // (readline, the interrupt watcher) is set aside and the terminal left
+    // cooked, so a full-screen program (vi, less, top) gets its keys and
+    // Ctrl-C reaches it as a signal. This shell ignores that signal meanwhile.
+    const input: NodeJS.ReadStream = process.stdin;
+    const keyed: Array<(...args: unknown[]) => void> = input.listeners('keypress') as Array<(...args: unknown[]) => void>;
+    const fed: Array<(...args: unknown[]) => void> = input.listeners('data') as Array<(...args: unknown[]) => void>;
+    const wasRaw: boolean = input.isTTY === true && input.isRaw === true;
+    input.removeAllListeners('keypress');
+    input.removeAllListeners('data');
+    input.pause();
+    if (input.isTTY === true) input.setRawMode(false);
+    const ignore = (): void => undefined;
+    process.on('SIGINT', ignore);
+    const settle = (): void => {
+      process.off('SIGINT', ignore);
+      if (input.isTTY === true) input.setRawMode(wasRaw);
+      for (const listener of fed) input.on('data', listener);
+      for (const listener of keyed) input.on('keypress', listener);
+      input.resume();
+    };
     const child: ChildProcess = spawn(command, {
       shell: true,
       stdio: 'inherit',
       env: process.env,
     });
-    child.once('error', reject);
-    child.once('close', (code: number | null) => resolve(code ?? 1));
+    child.once('error', (error: Error): void => { settle(); reject(error); });
+    child.once('close', (code: number | null): void => { settle(); resolve(code ?? 1); });
   });
 }
 

@@ -121,10 +121,14 @@ export function daemonSurface_create(daemon: CalypsoDaemon, policy: HostControlP
     // the surface that typed them.
     pipeSegment: (command: string, input: Buffer, signal?: AbortSignal): Promise<Buffer> =>
       policy.tiers.has('pipes') ? hostPipe_run(command, input, signal) : daemon.pipe_current(command, input),
+    // A terminal's chell is on this host: under host control it runs `!` in
+    // its own pty, so a full-screen program gets a terminal (#1096).
     shellCommand: (command: string, signal?: AbortSignal): Promise<number> =>
-      policy.tiers.has('shell')
-        ? hostShell_run(command, (channel: 'data' | 'err', chunk: string): void => { daemon.output_current(channel, chunk); }, signal)
-        : daemon.shell_current(command),
+      !policy.tiers.has('shell')
+        ? daemon.shell_current(command)
+        : daemon.current_isTerminal()
+          ? daemon.shell_current(command, true)
+          : hostShell_run(command, (channel: 'data' | 'err', chunk: string): void => { daemon.output_current(channel, chunk); }, signal),
     localEdit: (request: LocalEditRequest): Promise<LocalEditResult> =>
       daemon.edit_current(request.content, request.extension, request.path),
     fileDeliver: (request: FileDeliverRequest): Promise<FileDeliverResult> =>

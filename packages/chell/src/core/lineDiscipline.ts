@@ -120,3 +120,25 @@ export function terminalState_mark(state: TerminalState, write: (chunk: string) 
   write(`\u001b]6677;state=${state}\u0007`);
 }
 
+/** Whether the operator pressed Ctrl-C during the command now running. */
+let interrupted: boolean = false;
+
+/**
+ * Notes, or forgets, an interrupt pressed while a command runs. A shell the
+ * daemon asks this chell to start after the interrupt is not started: the
+ * key was pressed to stop the command, whichever part of it was running.
+ *
+ * @param on - True when pressed; false when a new command starts.
+ */
+export function interrupt_set(on: boolean): void {
+  interrupted = on;
+}
+
+/**
+ * Whether the running command was interrupted.
+ *
+ * @returns True after a Ctrl-C during the command.
+ */
+export function interrupt_pending(): boolean {
+  return interrupted;
+}

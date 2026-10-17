@@ -97,7 +97,10 @@ export function daemonSurface_create(daemon: CalypsoDaemon, policy: HostControlP
         // Colour follows the executing surface: a colour terminal or a browser
         // console renders ANSI, a bare pipe does not.
         color: attached?.color ?? false,
-        pipeSegments: true,
+        // A segment runs on this host under host control, else on the acting
+        // surface: a chell runs one, a browser none. Said truly, a builtin
+        // that would hand text to a system program answers in the kernel instead.
+        pipeSegments: policy.tiers.has('pipes') || (attached?.pipeSegments ?? false),
         shellCommands: true,
         fileDelivery: attached?.fileDelivery ?? false,
         // The daemon's disk belongs to nobody attending this session — unless

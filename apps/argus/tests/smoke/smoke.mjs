@@ -5537,26 +5537,25 @@ try {
     const shallow = rel(await ask('find ~/smoke-find -maxdepth 1'));
     const either = rel(await ask("find ~/smoke-find -type f ( -name 'n*' -o -path '*/b/*' )"));
     const refused = await ask('find ~/smoke-find -bogus');
-    await console_run('rm -r ~/smoke-find');
 
     // /proc/jobs: the index judges every job's run (a backfill behind the
     // prompt, once); a pattern nothing matches prints only what find could
     // not judge. A direct run and a pipeline's runs together are every job.
     let unjudged = '';
     for (let i = 0; i < 40; i++) { unjudged = (await ask("find /proc/jobs -pipeline 'no pipeline is named this'")).split('\\n').find((l) => /not judged/.test(l)) ?? ''; if (unjudged === '') break; await sleep(3000); }
-    // Counted on one feed (the last the roster lists): the console keeps a
-    // bounded scrollback, and this surface pipes to no host wc.
-    const feedOut = paths(await ask('find /proc/jobs -mindepth 1 -maxdepth 1'));
-    const feed = feedOut[feedOut.length - 1] ?? '';
-    const jobsOf = async (tests) => paths(await ask('find ' + feed + ' ' + tests)).filter((p) => p.startsWith(feed + '/')).length;
+    // Counted by the kernel's wc: a filter at the end of a pipe runs in the
+    // session on every surface, a browser's terminal among them.
+    const count = (out) => Number(out.split('\\n').map((l) => l.trim()).filter((l) => /^\\d+$/.test(l)).pop() ?? NaN);
+    const niiCount = count(await ask("find ~/smoke-find -name '*.nii' | wc -l"));
+    await console_run('rm -r ~/smoke-find');
     await console_run('netstat -r');
-    const jobs = await jobsOf("-plugin '*'");
-    const direct = await jobsOf("-pipeline ''");
-    const piped = await jobsOf("-plugin '*' ! -pipeline ''");
+    const jobs = count(await ask("find /proc/jobs -plugin '*' | wc -l"));
+    const direct = count(await ask("find /proc/jobs -pipeline '' | wc -l"));
+    const piped = count(await ask("find /proc/jobs -plugin '*' ! -pipeline '' | wc -l"));
     const wire = await ask('netstat');
     const asked = Number(/REQUESTS (\\d+) since/.exec(wire)?.[1] ?? NaN);
     const families = [...wire.matchAll(/^\\s*(\\S+)\\s+(\\d+)\\s+\\d+ ms$/gm)].map((m) => m[1] + ' ' + m[2]);
-    return { all, nii, dirs, shallow, either, refused: refused.slice(-200), unjudged, jobs, direct, piped, asked, families, feed };`);
+    return { all, nii, dirs, shallow, either, refused: refused.slice(-200), unjudged, jobs, direct, piped, asked, families, niiCount };`);
   check('find prints everything beneath a path, an entry before what lies under it',
     JSON.stringify(found.all) === JSON.stringify(['/smoke-find', '/smoke-find/a', '/smoke-find/a/b', '/smoke-find/a/b/y.nii', '/smoke-find/a/x.nii', '/smoke-find/notes.txt']),
     JSON.stringify(found.all));
@@ -5566,13 +5565,18 @@ try {
     && JSON.stringify(found.shallow) === JSON.stringify(['/smoke-find', '/smoke-find/a', '/smoke-find/notes.txt'])
     && JSON.stringify(found.either) === JSON.stringify(['/smoke-find/a/b/y.nii', '/smoke-find/notes.txt']),
     JSON.stringify({ nii: found.nii, dirs: found.dirs, shallow: found.shallow, either: found.either }));
+  check('a pipe ends in the kernel\'s wc on every surface: find … | wc -l counts what find printed',
+    found.niiCount === 2, JSON.stringify(found.niiCount));
   check('find refuses a predicate it does not know, by name',
     /unknown predicate '-bogus'/.test(found.refused), JSON.stringify(found.refused));
   check('find judges every job\'s pipeline run once the index has read it',
     found.unjudged === '', JSON.stringify(found.unjudged));
-  check('over /proc/jobs, a direct run and a pipeline\'s runs together are every job, and CUBE is asked nothing',
-    found.jobs > 0 && found.direct + found.piped === found.jobs && found.asked === 0,
-    JSON.stringify({ jobs: found.jobs, direct: found.direct, piped: found.piped, asked: found.asked, families: found.families, feed: found.feed }));
+  // The wire counts the whole session: the roster's delta and a pane's own
+  // reads may land meanwhile. What find would ask is jobs and folders.
+  check('over /proc/jobs, a direct run and a pipeline\'s runs together are every job, and find asks CUBE for no job or folder',
+    found.jobs > 0 && found.direct + found.piped === found.jobs
+    && !found.families.some((f) => /instances|filebrowser|^feeds/.test(f)),
+    JSON.stringify({ jobs: found.jobs, direct: found.direct, piped: found.piped, asked: found.asked, families: found.families }));
   }
 
   if (await stage('console-asks')) {

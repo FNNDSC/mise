@@ -1556,11 +1556,13 @@ export class CalypsoDaemon {
     }));
   }
 
-  public capabilities_current(): { fileDelivery: boolean; localFilesystem: boolean; color: boolean } | null {
+  public capabilities_current(): { fileDelivery: boolean; localFilesystem: boolean; color: boolean; pipeSegments: boolean } | null {
     const origin: Surface | null = this.surfaceActing();
     return origin ? {
       fileDelivery: origin.capabilities.fileDelivery,
       localFilesystem: origin.capabilities.localFilesystem,
+      // A surface that runs shell commands (a chell) runs pipe segments too.
+      pipeSegments: origin.capabilities.shellCommands,
       color: this.currentOrigin?.capabilities.color ?? origin.capabilities.color,
     } : null;
   }

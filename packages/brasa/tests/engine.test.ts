@@ -316,9 +316,9 @@ describe('line_execute', () => {
   it('captures the first segment and pipes it through the rest', async () => {
     const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
     mockSegmentPipe.mockResolvedValue(Buffer.from('piped'));
-    const envelopes = await line_execute('whoami | sort -r');
+    const envelopes = await line_execute('whoami | awk 1');
     expect(mockWhoami).toHaveBeenCalled();
-    expect(mockSegmentPipe).toHaveBeenCalledWith('sort -r', expect.any(Buffer));
+    expect(mockSegmentPipe).toHaveBeenCalledWith('awk 1', expect.any(Buffer));
     expect(envelopes).toEqual([{ status: 'ok', rendered: 'piped' }]);
     writeSpy.mockRestore();
   });
@@ -373,7 +373,7 @@ describe('line_execute', () => {
       shellCommand: async (): Promise<number> => 0,
       localEdit: async (r: { content: string }): Promise<{ content: string; changed: boolean }> => ({ content: r.content, changed: false }),
     });
-    const envelopes = await line_execute('whoami | sort -r');
+    const envelopes = await line_execute('whoami | awk 1');
     expect(output.errText_get()).toContain('cannot run pipeline segments');
     expect(envelopes).toEqual([{ status: 'error', rendered: '' }]);
     expect(mockSegmentPipe).not.toHaveBeenCalled();
@@ -381,7 +381,7 @@ describe('line_execute', () => {
 
   it('yields an error envelope when a pipe segment fails', async () => {
     mockSegmentPipe.mockRejectedValue(new Error('broken pipe'));
-    const envelopes = await line_execute('whoami | sort -r');
+    const envelopes = await line_execute('whoami | awk 1');
     expect(output.errText_get()).toContain('broken pipe');
     expect(envelopes).toEqual([{ status: 'error', rendered: '' }]);
   });

@@ -93,6 +93,15 @@ export const cancelMessageSchema = z.object({
   id: z.string(),
 });
 
+/**
+ * The operator's STOP: ends the command running for this surface (its own,
+ * or one typed in a terminal it owns), whatever it is. A command that does
+ * not end when asked is abandoned and the session is free again.
+ */
+export const stopMessageSchema = z.object({
+  type: z.literal('stop'),
+});
+
 /** Request completion candidates for a partial line, correlated by `id`. */
 export const completeRequestSchema = z.object({
   type: z.literal('complete'),
@@ -393,6 +402,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   attachMessageSchema,
   executeMessageSchema,
   cancelMessageSchema,
+  stopMessageSchema,
   completeRequestSchema,
   promptAnswerMessageSchema,
   promptErrorMessageSchema,

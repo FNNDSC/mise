@@ -12,6 +12,7 @@
  *
  * @module
  */
+import { commandCancellation_enable, commandCancellation_signalGet } from './cancellation.js';
 import { commands_register, commandOrder_set, envelopeHandler_get, plainHandler_get, builtinCommand_has, type CommandHandler, type EnvelopeHandler } from './commandRegistry.js';
 import { coreCommands } from './coreCommands.js';
 import { ENVELOPE_ORDER, PLAIN_ORDER, HELP_ORDER } from './commandOrder.js';
@@ -498,7 +499,9 @@ export async function pipe_execute(segments: string[]): Promise<CommandEnvelope>
       continue;
     }
     capability_require('pipeSegments', 'this surface cannot run pipeline segments');
-    currentInput = await surface_get().pipeSegment(segment, currentInput);
+    // A segment run as a process is cancellable: Ctrl-C (or STOP) kills it.
+    commandCancellation_enable();
+    currentInput = await surface_get().pipeSegment(segment, currentInput, commandCancellation_signalGet());
     currentModel = undefined;
   }
 

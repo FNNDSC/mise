@@ -91,12 +91,12 @@ export class HeadlessSurface implements Surface {
   }
 
   /** @inheritdoc */
-  public pipeSegment(_command: string, _input: Buffer): Promise<Buffer> {
+  public pipeSegment(_command: string, _input: Buffer, _signal?: AbortSignal): Promise<Buffer> {
     throw new CapabilityError('pipeSegments', 'This surface cannot run pipeline segments.');
   }
 
   /** @inheritdoc */
-  public shellCommand(_command: string): Promise<number> {
+  public shellCommand(_command: string, _signal?: AbortSignal): Promise<number> {
     throw new CapabilityError('shellCommands', 'This surface cannot run shell commands.');
   }
 

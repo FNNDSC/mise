@@ -35,6 +35,7 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({ vfs: { listing_get: m
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({ spinner: { start: jest.fn(), stop: jest.fn(), updateMessage: jest.fn() } }));
 
 const { builtin_find, find_parse, pattern_toRegExp } = await import('../src/builtins/fs/find.js');
+const { commandCancellation_run, commandCancellation_abort } = await import('../src/core/cancellation.js');
 
 beforeEach(() => { listed.length = 0; process.exitCode = 0; });
 
@@ -79,6 +80,19 @@ describe('find', () => {
     expect(process.exitCode).toBe(1);
     const missing = await builtin_find(['/nowhere']);
     expect(missing.renderedErr).toContain("find: '/nowhere': No such file or directory");
+  });
+
+  it('Ctrl-C (or STOP) stops a walk, saying how far it got', async () => {
+    const result = await commandCancellation_run(async () => {
+      mockListingGet.mockImplementationOnce(async (target: string) => {
+        commandCancellation_abort();
+        listed.push(target);
+        return { ok: true, value: { path: target, items: [{ name: 'feeds', type: 'dir', size: 0, owner: '', date: '' }], fresh: true } };
+      });
+      return builtin_find(['/home/chris']);
+    });
+    expect(result.renderedErr).toMatch(/find: stopped \(Ctrl-C\) after \d+ folders; \d+ found so far/);
+    expect(listed.length).toBeLessThanOrEqual(1);      // nothing walked past the stop
   });
 
   it('matches shell patterns: * crosses /, ? one character, [..] a class, \\ escapes', () => {

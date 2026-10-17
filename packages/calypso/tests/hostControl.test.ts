@@ -62,6 +62,27 @@ describe('the readout and the runners', () => {
     expect(code).toBe(3);
     expect(out).toEqual(expect.arrayContaining([['data', 'out'], ['err', 'err']]));
   });
+  it('a cancelled host command is killed, its whole group, and says it was stopped', async () => {
+    const controller: AbortController = new AbortController();
+    const out: string[] = [];
+    const started: number = Date.now();
+    const running: Promise<number> = hostShell_run('sleep 30 & sleep 30; wait', (_channel, chunk): void => { out.push(chunk); }, controller.signal);
+    setTimeout((): void => controller.abort(), 150);
+    const code: number = await running;
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(code).not.toBe(0);
+    expect(out.join('')).toContain('stopped');
+  }, 10000);
+
+  it('a cancelled pipe segment is killed too', async () => {
+    const controller: AbortController = new AbortController();
+    const started: number = Date.now();
+    const running: Promise<Buffer> = hostPipe_run('sleep 30', Buffer.from(''), controller.signal);
+    setTimeout((): void => controller.abort(), 150);
+    await running;
+    expect(Date.now() - started).toBeLessThan(5000);
+  }, 10000);
+
   it('runs a pipe segment on the host with the input on stdin', async () => {
     const output: Buffer = await hostPipe_run('tr a-z A-Z', Buffer.from('hello'));
     expect(output.toString('utf8')).toBe('HELLO');

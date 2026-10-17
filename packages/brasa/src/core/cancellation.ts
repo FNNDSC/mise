@@ -97,3 +97,27 @@ export function commandCancellation_request(): boolean {
   foreground.controller.abort();
   return true;
 }
+
+/**
+ * Aborts the foreground command whether or not it declared it can honor a
+ * cancellation: the operator's STOP. A command that checks its signal ends;
+ * one that does not is left for the host to abandon, and everything it does
+ * afterwards can see that it was stopped ({@link commandCancellation_stopped}).
+ *
+ * @returns True when there was a foreground command to abort.
+ */
+export function commandCancellation_abort(): boolean {
+  if (foreground === undefined) return false;
+  if (!foreground.controller.signal.aborted) foreground.controller.abort();
+  return true;
+}
+
+/**
+ * Whether the command this code runs inside has been stopped: its output is
+ * no longer anyone's, and it may not ask a question.
+ *
+ * @returns True inside a stopped command; false outside any command.
+ */
+export function commandCancellation_stopped(): boolean {
+  return cancellationScope.getStore()?.controller.signal.aborted === true;
+}

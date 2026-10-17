@@ -119,11 +119,11 @@ export function daemonSurface_create(daemon: CalypsoDaemon, policy: HostControlP
     // Under host control the host wins: the segment or the shell runs here,
     // output on the session bus like any command's. Otherwise both relay to
     // the surface that typed them.
-    pipeSegment: (command: string, input: Buffer): Promise<Buffer> =>
-      policy.tiers.has('pipes') ? hostPipe_run(command, input) : daemon.pipe_current(command, input),
-    shellCommand: (command: string): Promise<number> =>
+    pipeSegment: (command: string, input: Buffer, signal?: AbortSignal): Promise<Buffer> =>
+      policy.tiers.has('pipes') ? hostPipe_run(command, input, signal) : daemon.pipe_current(command, input),
+    shellCommand: (command: string, signal?: AbortSignal): Promise<number> =>
       policy.tiers.has('shell')
-        ? hostShell_run(command, (channel: 'data' | 'err', chunk: string): void => { daemon.output_current(channel, chunk); })
+        ? hostShell_run(command, (channel: 'data' | 'err', chunk: string): void => { daemon.output_current(channel, chunk); }, signal)
         : daemon.shell_current(command),
     localEdit: (request: LocalEditRequest): Promise<LocalEditResult> =>
       daemon.edit_current(request.content, request.extension, request.path),

@@ -45,7 +45,7 @@ import {
   pipe_execute,
 } from './dispatch.js';
 import { capability_require, surface_get, surface_set, type Surface } from './surface.js';
-import { commandCancellation_active, commandCancellation_request, commandCancellation_run } from './cancellation.js';
+import { commandCancellation_abort, commandCancellation_stopped, commandCancellation_active, commandCancellation_enable, commandCancellation_request, commandCancellation_run, commandCancellation_signalGet } from './cancellation.js';
 import { turn_leave, turn_resume, type TurnState } from './turn.js';
 import { errorStack } from '@fnndsc/fond';
 import { recorder_note } from '../session/recorder.js';
@@ -91,6 +91,10 @@ export interface BrasaEngine {
    * @returns True when the active command accepted the request.
    */
   line_cancel?(): boolean;
+  /** Aborts the foreground command, cancellable or not; the host abandons one that does not end. */
+  line_abort?(): boolean;
+  /** Whether the command the caller runs inside was stopped (its output and questions are no one's). */
+  command_stopped?(): boolean;
 
   /**
    * The running command steps aside to wait on a person (its host gives the
@@ -257,7 +261,10 @@ async function shellEscape_execute(
   if (!shellCommand) return [];
   try {
     capability_require('shellCommands', 'this surface cannot run shell commands');
-    const exitCode: number = await surface_get().shellCommand(shellCommand);
+    // A host command is cancellable: Ctrl-C (or the console's STOP) kills
+    // the process it started rather than leave it holding the session.
+    commandCancellation_enable();
+    const exitCode: number = await surface_get().shellCommand(shellCommand, commandCancellation_signalGet());
     command_timingMaybePrint(startTime, timingEnabled);
     return [{ status: exitCode === 0 ? 'ok' : 'error', rendered: '' }];
   } catch (error: unknown) {
@@ -393,6 +400,15 @@ export function line_cancel(): boolean {
 }
 
 /**
+ * Aborts the active foreground command, cancellable or not (the operator's STOP).
+ *
+ * @returns True when a command was running.
+ */
+export function line_abort(): boolean {
+  return commandCancellation_abort();
+}
+
+/**
  * Computes completion candidates for a partial input line.
  *
  * Promise-shaped facade over the callback-style completer, for hosts that
@@ -470,6 +486,8 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
   return {
     line_execute,
     line_cancel,
+    line_abort,
+    command_stopped: commandCancellation_stopped,
     turn_leave,
     turn_resume,
     line_complete,

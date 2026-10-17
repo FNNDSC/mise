@@ -4770,6 +4770,17 @@ body[data-zoom] #header-restore {
   text-transform: none;
 }
 
+/* STOP stands in the console's drawer only while a command runs; it ends
+ * it, whatever it is (app/consoleStop.ts). The alarm hue says it is not a mode. */
+#console-drawer .pacs-capsule.console-stop {
+  background-color: var(--state-error);
+  color: #000;
+}
+
+#console-drawer .pacs-capsule.console-stop[hidden] {
+  display: none;
+}
+
 /* The bar law (docs/aegis.adoc): an end-cap is frame PUNCTUATION — it
  * terminates the bar in the frame's own color. Red exists on a bar only
  * when something is actually wrong; machinery never rides a title bar. */

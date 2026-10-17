@@ -102,7 +102,7 @@ export function output_above(text: string, write: (chunk: string) => void = (chu
 }
 
 /** What a browser's terminal is doing, as it marks it for the page drawing it. */
-export type TerminalState = 'idle' | 'busy' | 'asking';
+export type TerminalState = 'idle' | 'busy' | 'asking' | 'playing';
 
 /**
  * Marks what this shell is doing, for the browser that draws it: at its

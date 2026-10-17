@@ -1183,15 +1183,25 @@ try {
     await say('pom'); const pom = after('pom');
     await say('timer 2s the kettle'); const timerSet = after('timer 2s the kettle');
     let chimed = ''; for (let i = 0; i < 20; i++) { await sleep(300); if (/🔔 the kettle/.test(text())) { chimed = 'yes'; break; } }
-    // The showpieces and the arcade: a still in the console, the moving one
-    // on a GAMES pane; a game takes the keyboard, Esc gives it back, a
-    // second program reuses the pane on stage.
-    await say('sl'); const slNote = after('sl');
+    // A terminal plays a showpiece in place: the game has the screen and
+    // the keys (the console reads playing), q gives them back, no pane opens.
+    let inPlace = null;
+    if (terminal_mode()) {
+      window.__argusConsole.type('sl\\r');
+      let playing = false; for (let i = 0; i < 40 && !playing; i++) { await sleep(250); playing = document.getElementById('terminal')?.dataset.terminalState === 'playing'; }
+      const paneWhile = [...document.querySelectorAll('.pane-games')].some((p) => p.offsetParent !== null);
+      window.__argusConsole.type('q');
+      let back = false; for (let i = 0; i < 40 && !back; i++) { await sleep(250); back = console_quiet(); }
+      inPlace = { playing, paneWhile, back };
+    }
+    // --pane: a still in the console, the moving one on a GAMES pane; a game
+    // takes the keyboard, Esc gives it back, a second program reuses the pane.
+    await say('sl --pane'); const slNote = after('sl --pane');
     const gamesPane = () => [...document.querySelectorAll('.pane-games')].find((p) => p.offsetParent !== null);
     for (let i = 0; i < 40; i++) { await sleep(250); if (gamesPane()) break; }
     const slPane = gamesPane();
     const slDrawn = slPane ? { canvas: slPane.querySelector('.games-canvas') !== null, state: slPane.querySelector('.pane-state')?.textContent ?? '', controlsInField: slPane.querySelector('.games-field button') !== null } : null;
-    await say('tetris'); await sleep(600);
+    await say('tetris --pane'); await sleep(600);
     const panes = [...document.querySelectorAll('.pane-games')].filter((p) => p.offsetParent !== null).length;
     const tetrisPane = gamesPane();
     const focused = tetrisPane ? tetrisPane.classList.contains('games-field-focused') && tetrisPane.querySelector('.games-field').contains(document.activeElement) : false;
@@ -1214,7 +1224,7 @@ try {
     await console_idle();
     const hanged = after('hangman');
     return { pom: pom.slice(0, 80), timerSet: timerSet.slice(0, 80), chimed, page: page.slice(0, 2000), cow: cow.slice(0, 2000), big: big.slice(0, 200), refused: refused.slice(0, 200), shelf: shelf.slice(0, 800), wtf: wtf.slice(0, 200), who: who.slice(0, 300), qr: qr.slice(0, 400), said: said.slice(0, 80),
-      slNote: slNote.slice(0, 900), slDrawn, panes, focused, tetrisState, released, paused, closed, gallows, hanged: hanged.match(/the word was [a-z]+/)?.[0] ?? hanged.slice(-120) };`);
+      slNote: slNote.slice(0, 900), slDrawn, inPlace, panes, focused, tetrisState, released, paused, closed, gallows, hanged: hanged.match(/the word was [a-z]+/)?.[0] ?? hanged.slice(-120) };`);
   check('help games lists the shelf by category, and ls /usr/games walks it',
     /Text toys/.test(games.page) && /cowsay/.test(games.page) && /Time and sky/.test(games.page) && /cowsay/.test(games.shelf) && /fortune/.test(games.shelf), JSON.stringify({ page: games.page.slice(0, 120), shelf: games.shelf.slice(0, 120) }));
   check('fortune | cowsay runs in the kernel, brain and all; builtins chain',
@@ -1226,8 +1236,10 @@ try {
   check('the lab\'s own: wtf knows LONK, who sees this browser, qr draws blocks, say prints the words',
     /Light Oxidicom NotifiKations/.test(games.wtf) && /browser/.test(games.who) && /\(you\)/.test(games.who) && /█/.test(games.qr) && /♪ hello there/.test(games.said),
     JSON.stringify({ wtf: games.wtf.slice(0, 60), who: games.who.slice(0, 80), qr: games.qr.slice(0, 30), said: games.said }));
-  check('sl prints a still and opens a GAMES pane with a canvas and no control in its field',
-    /a still; ARGUS draws sl/.test(games.slNote) && /GAMES pane/.test(games.slNote) && games.slDrawn?.canvas === true && games.slDrawn?.controlsInField === false && /SL/.test(games.slDrawn?.state ?? ''),
+  if (games.inPlace !== null) check('a terminal plays sl in place: the game has the screen, no pane opens, q gives the prompt back',
+    games.inPlace.playing && !games.inPlace.paneWhile && games.inPlace.back, JSON.stringify(games.inPlace));
+  check('sl --pane prints a still and opens a GAMES pane with a canvas and no control in its field',
+    /sl: ARGUS draws it in its GAMES pane/.test(games.slNote) && games.slDrawn?.canvas === true && games.slDrawn?.controlsInField === false && /SL/.test(games.slDrawn?.state ?? ''),
     JSON.stringify({ note: games.slNote.slice(0, 120), drawn: games.slDrawn }));
   check('tetris reuses the pane on stage, takes the keyboard, Esc gives it back, PAUSE reads on the bar, CLOSE closes',
     games.panes === 1 && games.focused && /TETRIS/.test(games.tetrisState) && games.released && /PAUSED/.test(games.paused) && games.closed,

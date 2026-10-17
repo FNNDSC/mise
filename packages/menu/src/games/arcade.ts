@@ -6,7 +6,6 @@
  * @module
  */
 import type { GameProgram, Grid, Palette } from './program.js';
-import { SIDES, SIDE_LIST, type FocusWord } from '../../app/sides.js';
 
 /* -------------------------------------------------------------- tetris */
 
@@ -130,8 +129,8 @@ export function tetris_make(): GameProgram {
 
 /* --------------------------------------------------------------- snake */
 
-/** Where the snake goes next: the screen's own directions, the sides table's words. */
-export type Heading = FocusWord;
+/** Where the snake goes next: the screen's own directions. */
+export type Heading = 'left' | 'right' | 'up' | 'down';
 
 /** The snake's state: the body head-first, the food, the heading. */
 export interface SnakeState { body: Array<[number, number]>; food: [number, number]; heading: Heading; next: Heading; score: number; over: boolean; cols: number; rows: number }
@@ -173,9 +172,9 @@ export function snake_step(state: SnakeState, random: () => number): void {
   else state.body.pop();
 }
 
-/** The keys that steer: the arrows as the sides table spells them, and vi's and wasd beside them. */
+/** The keys that steer: the arrows (as a keyboard event names them), and vi's and wasd beside them. */
 const SNAKE_KEYS: Readonly<Record<string, Heading>> = {
-  ...Object.fromEntries(SIDE_LIST.map((side): [string, Heading] => [SIDES[side].arrow, SIDES[side].focusWord])),
+  ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down',
   k: 'up', w: 'up', j: 'down', s: 'down', h: 'left', a: 'left', l: 'right', d: 'right',
 };
 

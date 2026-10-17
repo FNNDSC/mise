@@ -40,6 +40,7 @@ import type { DaemonConsoleTarget } from './daemonConsole.js';
 import { surface_set } from '@fnndsc/brasa';
 import { cliSurface_create } from './cliSurface.js';
 import { surfaceLine_execute } from './surfaceDispatch.js';
+import { game_play, gameShow_of, gameTerminal_is, type GameShow } from './gamePlayer.js';
 import { greeting_print } from './greeting.js';
 import { versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, type PackageInfo } from '@fnndsc/brasa';
 import {
@@ -373,6 +374,7 @@ async function connection_fromSavedToken(
     const why: string = !theirs && result.status === 'restored'
       ? `the saved token is ${ctx.user}@${ctx.URL}'s, not ${user}@${url}'s`
       : result.status === 'invalid-token' ? `the server refused the saved token${result.error ? ` (${result.error})` : ''}`
+        : result.status === 'unreachable' ? `CUBE did not answer${result.error ? ` (${result.error})` : ''}; the saved token was not checked, so log in again once it answers`
         : 'no token is saved for this identity';
     console.error(chalk.red(`[!] Connection refused: ${why}`));
     boot?.log('fail', 'Connect', why);
@@ -416,6 +418,12 @@ async function connection_fromSavedSession(
       break;
     case 'no-client':
       console.log(chalk.yellow('[!] Failed to create client'));
+      console.log(chalk.yellow('[!] Running in disconnected mode'));
+      reconnectHint();
+      break;
+    case 'unreachable':
+      console.log(chalk.yellow('[!] CUBE did not answer; the saved token was not checked'));
+      if (result.error) console.log(chalk.gray(`    Error: ${result.error}`));
       console.log(chalk.yellow('[!] Running in disconnected mode'));
       reconnectHint();
       break;
@@ -711,6 +719,9 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
     // a scripted PACS question troubles the PACS at all.
     await queryCheckpoint_prime(currentContext.user ?? undefined);
     const envelopes: CommandEnvelope[] = await surfaceLine_execute(engine, config.commandToExecute);
+    // `chell -c cmatrix` on a terminal plays it, as the shell would.
+    const show: GameShow | null = gameShow_of(envelopes);
+    if (show !== null && gameTerminal_is()) await game_play(show);
     // An error envelope means the command failed, whether or not the builtin
     // set an exit code itself; scripts must never see failure exit 0.
     const anyError: boolean = envelopes.some((envelope: CommandEnvelope): boolean => envelope.status === 'error');

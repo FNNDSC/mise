@@ -29,7 +29,8 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
   },
 }));
 
-const { sessionConnect_fromSaved, sessionConnect_withToken } = await import('../src/chris/connect.js');
+const { sessionConnect_fromSaved,
+  SAVED_TOKEN_RETRY_MS, sessionConnect_withToken } = await import('../src/chris/connect.js');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -73,6 +74,32 @@ describe('sessionConnect_fromSaved', () => {
     expect(result.status).toBe('invalid-token');
     expect(result.error).toBe('401');
     expect(sessionState.offline).toBe(true);
+  });
+
+  it('asks a silent CUBE once more before giving up, and a second answer restores', async () => {
+    jest.useFakeTimers();
+    mockAuthTokenGet.mockResolvedValue('SAVED');
+    const getUser = jest.fn<() => Promise<unknown>>()
+      .mockRejectedValueOnce(new Error('No server response!'))
+      .mockResolvedValueOnce({ username: 'chris' });
+    mockClientGet.mockResolvedValue({ getUser });
+    const pending = sessionConnect_fromSaved();
+    await jest.advanceTimersByTimeAsync(SAVED_TOKEN_RETRY_MS);
+    await expect(pending).resolves.toMatchObject({ status: 'restored' });
+    expect(getUser).toHaveBeenCalledTimes(2);
+    jest.useRealTimers();
+  });
+
+  it('a CUBE that never answers is unreachable, not a refused token', async () => {
+    jest.useFakeTimers();
+    mockAuthTokenGet.mockResolvedValue('SAVED');
+    mockClientGet.mockResolvedValue({ getUser: jest.fn(async () => { throw new Error('No server response!'); }) });
+    const pending = sessionConnect_fromSaved();
+    await jest.advanceTimersByTimeAsync(SAVED_TOKEN_RETRY_MS);
+    const result = await pending;
+    expect(result.status).toBe('unreachable');
+    expect(result.error).toBe('No server response!');
+    jest.useRealTimers();
   });
 });
 

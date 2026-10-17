@@ -2236,8 +2236,13 @@ async function surface_start(token: string): Promise<void> {
     for (const envelope of envelopes) {
       // `say`: a surface with a voice speaks the words (games shelf, #892).
       if (envelope.model?.kind === 'games.say') voice_say(envelope.model.data);
-      // A showpiece or a game: the console keeps the still, the GAMES pane runs it.
-      if (envelope.model?.kind === 'games.show') terminal.line_note(gamesPane.show(envelope.model.data));
+      // A showpiece or a game: a terminal console plays it in place (its
+      // chell takes the screen); `--pane`, or the transcript, which has no
+      // screen to play on, runs it in the GAMES pane.
+      if (envelope.model?.kind === 'games.show') {
+        const pane: boolean = (envelope.model.data as { pane?: boolean } | undefined)?.pane === true;
+        if (pane || consoleMode === null || !consoleMode.terminal_is()) terminal.line_note(gamesPane.show(envelope.model.data));
+      }
     }
     // The panel is slaved to the working directory: any command that
     // moved it (an fs.cwd model) triggers a silent listing refresh,

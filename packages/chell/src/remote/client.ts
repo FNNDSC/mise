@@ -30,6 +30,7 @@ import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { TerminalProgressRenderer } from '../core/progressRenderer.js';
 import { greeting_print } from '../core/greeting.js';
 import { surfaceLine_execute } from '../core/surfaceDispatch.js';
+import { game_play, gameShow_of, gameTerminal_is, type GameShow } from '../core/gamePlayer.js';
 import { output_above } from '../core/lineDiscipline.js';
 
 /**
@@ -323,6 +324,9 @@ export async function remote_run(
         ? await segments_execute(engine, commandToExecute)
         : await surfaceLine_execute(engine, commandToExecute);
       process.exitCode = envelopes.some((envelope: CommandEnvelope): boolean => envelope.status === 'error') ? 1 : 0;
+      // `chell --remote -c cmatrix` on a terminal plays it here.
+      const show: GameShow | null = gameShow_of(envelopes);
+      if (show !== null && gameTerminal_is()) await game_play(show);
     } catch (error: unknown) {
       const message: string = error instanceof Error ? error.message : String(error);
       process.exitCode = 1;

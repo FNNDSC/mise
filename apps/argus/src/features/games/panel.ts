@@ -12,24 +12,9 @@
  *
  * @module
  */
-import type { GameProgram, Grid, Palette, ProgramName } from './program.js';
-import { sl_make, cmatrix_make, rain_make, aquarium_make } from './shows.js';
-import { tetris_make, snake_make } from './arcade.js';
+import { PROGRAMS, program_isName, type GameProgram, type Grid, type Palette, type ProgramName } from '@fnndsc/menu/games';
 
-/** The factories by the kernel's program name. */
-export const PROGRAMS: Record<ProgramName, () => GameProgram> = {
-  sl: sl_make,
-  cmatrix: cmatrix_make,
-  rain: rain_make,
-  aquarium: aquarium_make,
-  tetris: tetris_make,
-  snake: snake_make,
-};
-
-/** Whether a word names a program. */
-export function program_isName(word: string): word is ProgramName {
-  return word in PROGRAMS;
-}
+export { PROGRAMS, program_isName };
 
 /** The glyph cell's bounds, in pixels; the cell itself is sized to the field. */
 const CELL_MIN: number = 8;

@@ -34,7 +34,7 @@ export interface TerminalWire {
 }
 
 /** What the terminal's chell marks it is doing (OSC 6677; chell `lineDiscipline.ts`). */
-export type TerminalState = 'idle' | 'busy' | 'asking';
+export type TerminalState = 'idle' | 'busy' | 'asking' | 'playing';
 
 /** The operating-system command chell marks its state with. */
 const STATE_OSC: number = 6677;
@@ -46,7 +46,7 @@ const STATE_OSC: number = 6677;
  * @returns The state, or null when the mark says nothing known.
  */
 export function terminalState_parse(payload: string): TerminalState | null {
-  const match: RegExpExecArray | null = /^state=(idle|busy|asking)$/.exec(payload.trim());
+  const match: RegExpExecArray | null = /^state=(idle|busy|asking|playing)$/.exec(payload.trim());
   return match === null ? null : (match[1] as TerminalState);
 }
 

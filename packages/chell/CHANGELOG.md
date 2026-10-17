@@ -1,5 +1,23 @@
 # @fnndsc/chell
 
+## 5.15.0
+
+### Minor Changes
+
+- 66f1956: sl, cmatrix, rain, asciiquarium, tetris and snake play in the terminal they are typed in; --pane draws them in ARGUS's GAMES pane. The programs move to `@fnndsc/menu/games` so chell and ARGUS run the same ones; chell takes the screen (alternate screen, raw keys, the console's hues) and gives it back on q, Esc or Ctrl-C, and marks the console `playing` meanwhile. The transcript console, with no screen to play on, keeps the pane.
+
+### Patch Changes
+
+- 66f1956: A login whose token check gets no answer from CUBE asks once more before failing. If CUBE stays silent the session says CUBE did not answer, not that it refused the token.
+- Updated dependencies [66f1956]
+- Updated dependencies [66f1956]
+  - @fnndsc/brasa@0.39.0
+  - @fnndsc/menu@0.25.0
+  - @fnndsc/argus@0.31.0
+  - @fnndsc/calypso@0.23.1
+  - @fnndsc/chili@3.7.10
+  - @fnndsc/cumin@3.27.17
+
 ## 5.14.0
 
 ### Minor Changes

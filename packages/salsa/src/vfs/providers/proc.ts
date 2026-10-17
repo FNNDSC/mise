@@ -90,6 +90,13 @@ export const FEED_VISIT_COALESCE_MS: number = 1000;
 export const ROSTER_DELTA_PAGE: number = 20;
 
 /**
+ * How long listing `/proc/jobs` waits for the roster's sync before answering
+ * from the cache: long enough for a quick CUBE to show a feed shared since
+ * the last look, short enough that a slow one is never felt.
+ */
+export const ROSTER_LIST_BUDGET_MS: number = 250;
+
+/**
  * Per-feed visit bookkeeping. Session memory only — never checkpointed; a
  * restart simply re-derives the cursor from the cached instance timestamps.
  *
@@ -668,7 +675,7 @@ export class ProcVfsProvider implements VFSProvider {
 
     // /proc/jobs — list all feeds with aggregate status from counters
     if (clean === PROC_JOBS_PREFIX) {
-      await procRoster_sync();
+      await procRoster_syncWithin(ROSTER_LIST_BUDGET_MS);
       const items: VFSItem[] = cache.feedIDs_get().map((feedID: number): VFSItem => {
         const feed: ProcFeed | undefined = cache.feed_get(feedID);
         const status: string = feed ? feedStatus_derive(feed) : 'unknown';
@@ -1327,6 +1334,27 @@ export async function procRoster_sync(force: boolean = false): Promise<number[]>
 function procRosterSync_kind(cache: ProcCache, force: boolean): ProcRosterSyncKind | null {
   if (!cache.built || cache.lifecycle_get().state !== 'current') return null;
   return force || Date.now() - rosterWalkedAt >= ROSTER_FULL_WALK_MS ? 'full' : 'delta';
+}
+
+/**
+ * Waits for the roster's sync at most `budgetMs`: a quick CUBE lands what it
+ * found in the answer (a share is seen on the next look), a slow one is left
+ * to land behind it, announced as arrivals, and the listing answers from the
+ * cache. A listing never waits on CUBE longer than the budget.
+ *
+ * @param budgetMs - How long the caller may wait.
+ */
+export async function procRoster_syncWithin(budgetMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const budget: Promise<void> = new Promise((resolve: () => void): void => {
+    timer = setTimeout(resolve, budgetMs);
+    (timer as { unref?: () => void }).unref?.();
+  });
+  try {
+    await Promise.race([procRoster_sync().then((): void => undefined), budget]);
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
 }
 
 /**

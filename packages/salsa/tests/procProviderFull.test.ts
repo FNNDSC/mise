@@ -51,6 +51,7 @@ import {
   FEED_RECHECK_MS,
   ROSTER_FULL_WALK_MS,
   ROSTER_DELTA_PAGE,
+  ROSTER_LIST_BUDGET_MS,
   procFeed_probe,
   procTarget_parse,
   procTarget_locate,
@@ -997,6 +998,29 @@ describe('visit-driven freshness', () => {
     expect(client.getFeeds).toHaveBeenCalledTimes(1);
     expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ limit: ROSTER_DELTA_PAGE, offset: 0 }));
     expect(client.getFeeds).toHaveBeenCalledWith(expect.not.objectContaining({ min_id: expect.anything() }));
+    jest.restoreAllMocks();
+  });
+
+  it('/proc/jobs answers from the cache when CUBE is slow, and the sync lands behind it', async () => {
+    cache.feed_add(feed({ id: 3, title: 'old' }));
+    cache.built_set();
+    cache.lifecycle_set('current');
+    let release: () => void = (): void => undefined;
+    const slow = new Promise<{ data: unknown[]; totalCount: number }>((resolve) => { release = (): void => resolve({ data: [{ id: 9, name: 'fresh', owner_username: 'chris' }, { id: 3, name: 'old', owner_username: 'chris' }], totalCount: 2 }); });
+    const client = { getFeeds: jest.fn(() => slow), getPublicFeeds: jest.fn(() => slow.then(() => ({ data: [], totalCount: 0 }))), getPluginInstances: jest.fn() };
+    mockClientGet.mockResolvedValue(client);
+    jest.spyOn(Date, 'now').mockReturnValue(1);
+
+    const started: number = performance.now();
+    const r = await provider.list('/proc/jobs');
+    const waited: number = performance.now() - started;
+    expect((r.ok ? r.value : []).map((i) => i.name)).toEqual(['feed_3']);
+    expect(waited).toBeLessThan(ROSTER_LIST_BUDGET_MS + 200);
+    expect(cache.rosterSync_get()).toBe('delta');            // still running, behind the answer
+
+    release();
+    for (let i = 0; i < 20 && cache.rosterSync_get() !== null; i++) await new Promise((resolve) => setImmediate(resolve));
+    expect(cache.feedIDs_get().sort()).toEqual([3, 9]);     // landed for the next look
     jest.restoreAllMocks();
   });
 

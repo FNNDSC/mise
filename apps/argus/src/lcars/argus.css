@@ -4819,7 +4819,8 @@ body[data-zoom] #header-restore {
   background-color: black;
   padding: 0.5rem 0.8rem;
   font-family: 'JetBrainsMono NF Mono', 'MesloLGS NF', monospace;
-  font-size: 0.85rem;
+  /* The transcript's own size (.argus-output): xterm reads it from here. */
+  font-size: 0.75rem;
   color: var(--daybreak);
 }
 

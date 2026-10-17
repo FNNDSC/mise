@@ -277,7 +277,7 @@ export class VFS {
    * @param targetPath - The path to list. If empty, uses CWD.
    * @param options - Listing options (long, human, sort, reverse, directory).
    */
-  async list(targetPath?: string, options: { long?: boolean, human?: boolean, oneColumn?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}): Promise<CommandEnvelope> {
+  async list(targetPath?: string, options: { long?: boolean, human?: boolean, oneColumn?: boolean, sort?: 'name' | 'size' | 'date' | 'owner', reverse?: boolean, directory?: boolean } = {}, kept?: { listing?: VfsListing }): Promise<CommandEnvelope> {
     // Resolve effective path for cache checking
     const cwd: string = await session.getCWD();
     const effectivePath: string = targetPath
@@ -306,6 +306,9 @@ export class VFS {
 
     // Fetch data (may be from cache)
     const listing: Result<VfsListing> = await this.listing_get(targetPath, options);
+    // The caller that wants the entries too takes them here, not by a second
+    // read: a path the cache never holds (/proc) would be asked of CUBE again.
+    if (kept !== undefined && listing.ok) kept.listing = listing.value;
     const blindParents: string[] = await unreadLinks_take();
     const result: Result<ListingItem[]> = listing.ok ? Ok(listing.value.items) : Err();
 

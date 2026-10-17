@@ -2,8 +2,8 @@
  * @file A folder lookup is asked of CUBE once per path per session, shared
  * in flight, forgotten on a miss, and dropped with the listing it belongs to.
  */
-import { describe, it, expect, beforeEach } from '@jest/globals';
-import { listCache_get } from '../src/cache/listCache';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { listCache_get, FOLDER_MISS_TTL_MS } from '../src/cache/listCache';
 import { folderLookup_memoize } from '../src/filebrowser/folderMemo';
 import type { Client } from '../src/chrisapi/adapter.js';
 
@@ -31,15 +31,23 @@ describe('folderLookup_memoize', () => {
     expect(listCache_get().folders_count()).toBe(2);
   });
 
-  it('keeps no miss and no failure', async () => {
-    const { client, calls } = client_fake((path) => (path === '/gone' ? null : new Error('down')));
+  it('keeps a miss briefly, drops it with its parent, and never keeps a failure', async () => {
+    const { client, calls } = client_fake((path) => (path.startsWith('/home/x/gone') ? null : new Error('down')));
     folderLookup_memoize(client);
-    expect(await client.getFileBrowserFolderByPath('/gone')).toBeNull();
-    expect(await client.getFileBrowserFolderByPath('/gone')).toBeNull();
+    expect(await client.getFileBrowserFolderByPath('/home/x/gone')).toBeNull();
+    expect(await client.getFileBrowserFolderByPath('/home/x/gone')).toBeNull();
+    expect(calls).toEqual(['/home/x/gone']);                       // a shared feed's logical path: asked once
+    listCache_get().cache_invalidate('/home/x');                   // a folder made there: the miss goes too
+    await client.getFileBrowserFolderByPath('/home/x/gone');
+    expect(calls).toEqual(['/home/x/gone', '/home/x/gone']);
+    const now = Date.now();
+    jest.spyOn(Date, 'now').mockReturnValue(now + FOLDER_MISS_TTL_MS + 1);
+    await client.getFileBrowserFolderByPath('/home/x/gone');       // made elsewhere: seen after the window
+    expect(calls).toHaveLength(3);
+    jest.restoreAllMocks();
     await expect(client.getFileBrowserFolderByPath('/broken')).rejects.toThrow('down');
     await expect(client.getFileBrowserFolderByPath('/broken')).rejects.toThrow('down');
-    expect(calls).toEqual(['/gone', '/gone', '/broken', '/broken']);
-    expect(listCache_get().folders_count()).toBe(0);
+    expect(calls.filter((p) => p === '/broken')).toHaveLength(2);
   });
 
   it('drops the record with the listing: the path and its subtree on an invalidation, all on a clear', async () => {

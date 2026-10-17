@@ -21,6 +21,7 @@ import { pacsRetrieve_deleteByUrl } from '../src/chrisapi/adapter';
 import {
   pacsServer_resolve,
   pacsServers_list,
+  pacsServers_forget,
   pacsQueries_list,
   pacsQueries_create,
   pacsQuery_resultDecode,
@@ -45,6 +46,7 @@ const result_encode = (payload: unknown): string =>
 let pushSpy: jest.SpyInstance;
 beforeEach(() => {
   jest.clearAllMocks();
+  pacsServers_forget();
   pushSpy = jest.spyOn(errorStack, 'stack_push').mockImplementation(() => undefined);
 });
 afterEach(() => {
@@ -104,6 +106,18 @@ describe('pacsServers_list', () => {
       expect(result.value).toHaveLength(1);
       expect(result.value[0].identifier).toBe('PACSDCM');
     }
+  });
+
+  it('keeps the whole list a minute for the same client, and asks again for another', async () => {
+    const getPACSList: jest.Mock = jest.fn(async () => listResource_make([{ id: 1, identifier: 'PACSDCM', name: 'main' }], 'pacs'));
+    const client = { getPACSList };
+    mockClientGet.mockResolvedValue(client);
+    await pacsServers_list();
+    await pacsServers_list();
+    expect(getPACSList).toHaveBeenCalledTimes(1);
+    mockClientGet.mockResolvedValue({ getPACSList });   // a new login: a new client
+    await pacsServers_list();
+    expect(getPACSList).toHaveBeenCalledTimes(2);
   });
 
   it('returns an empty list when no servers exist', async () => {

@@ -210,7 +210,8 @@ export class ChRISConnection {
     await this._config!.context_set(user, url);
     this.tokenFile = this._config!.tokenFilepath;
     this.authToken = token;
-    this.client = client;
+    // One folder lookup per path per session, as client_get makes it.
+    this.client = folderLookup_memoize(client);
     await this.token_saveToFile(this.tokenFile, token);
     return { connected: true };
   }
@@ -331,7 +332,7 @@ export class ChRISConnection {
     this.chrisURL = await this.chrisURL_get();
     this.authToken = await this.authToken_get(true); // Pass true directly
     if (this.chrisURL && this.authToken) {
-      this.client = client_create(this.chrisURL, this.authToken);
+      this.client = folderLookup_memoize(client_create(this.chrisURL, this.authToken));
     }
     return this.client;
   }

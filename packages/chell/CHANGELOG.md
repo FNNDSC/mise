@@ -1,5 +1,15 @@
 # @fnndsc/chell
 
+## 5.16.2
+
+### Patch Changes
+
+- Updated dependencies [20cd854]
+  - @fnndsc/cumin@3.28.0
+  - @fnndsc/salsa@4.2.0
+  - @fnndsc/brasa@0.42.0
+  - @fnndsc/calypso@0.24.2
+
 ## 5.16.1
 
 ### Patch Changes

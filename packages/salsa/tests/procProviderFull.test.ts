@@ -183,6 +183,30 @@ describe('ProcVfsProvider.list', () => {
     expect(r.ok && r.value).toEqual([]);
   });
 
+  it('answers a subtree from the cache in listing order, leaving an unindexed feed to the walk', async () => {
+    cache.feed_add(feed({ id: 5 }));
+    cache.feed_add(feed({ id: 6 }));
+    cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-root', params: null, status: 'finishedSuccessfully', startedAt: '2026-10-02T00:00:00Z' });
+    cache.instance_add({ id: 11, feedID: 5, parentID: 10, pluginName: 'pl-child', params: null, status: 'finishedWithError' });
+    cache.topologyLoaded_mark(5);
+    cache.built_set();
+    const client = pagingClient([], []);
+    mockClientGet.mockResolvedValue(client);
+
+    const all = await provider.subtree('/proc/jobs');
+    const rels: string[] = (all?.entries ?? []).map((e) => e.rel);
+    expect(rels).toEqual(expect.arrayContaining(['feed_5', 'feed_5/status', 'feed_5/title', 'feed_5/note', 'feed_5/pl-root_10', 'feed_5/pl-root_10/status', 'feed_5/pl-root_10/pl-child_11', 'feed_6']));
+    expect(rels.indexOf('feed_5/pl-root_10')).toBeLessThan(rels.indexOf('feed_5/pl-root_10/pl-child_11'));
+    const child = all?.entries.find((e) => e.rel === 'feed_5/pl-root_10/pl-child_11');
+    expect(child).toMatchObject({ depth: 3, attrs: { status: 'finishedWithError', plugin: 'pl-child' } });
+    expect(all?.entries.find((e) => e.rel === 'feed_5/pl-root_10')?.item.date).toBe('2026-10-02T00:00:00Z');
+    expect(all?.unanswered).toEqual(['feed_6']);
+    expect((await provider.subtree('/proc/jobs/feed_5/pl-root_10'))?.entries.map((e) => e.rel)).toEqual(expect.arrayContaining(['status', 'params', 'log', 'pl-child_11']));
+    expect(await provider.subtree('/proc/jobs/feed_6')).toBeNull();     // its jobs are not indexed: walk it
+    expect(client.getPluginInstances).not.toHaveBeenCalled();
+    expect(client.getFeeds).not.toHaveBeenCalled();
+  });
+
   it('lists children from cache; terminal status needs no API call', async () => {
     cache.feed_add(feed({ id: 5 }));
     cache.instance_add({ id: 10, feedID: 5, parentID: null, pluginName: 'pl-root', params: null, status: 'finishedSuccessfully' });

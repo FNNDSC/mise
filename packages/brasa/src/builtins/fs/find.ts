@@ -12,7 +12,8 @@
  * walk.
  *
  * Tests: `-name`, `-iname`, `-path`, `-ipath` (shell patterns, `*` crossing `/`
- * in a path), `-type f|d|l`, `-newermt DATE`; options `-maxdepth N`,
+ * in a path), `-type f|d|l`, `-newermt DATE`, and, where the namespace knows
+ * them, `-status` and `-plugin` (a job's, in `/proc/jobs`); options `-maxdepth N`,
  * `-mindepth N`; actions `-print` (the default) and `-print0`. Anything else
  * is refused by name.
  *
@@ -22,9 +23,10 @@ import chalk from 'chalk';
 import path from 'path';
 import { path_resolve } from '../utils.js';
 import { vfs, type VfsListing } from '../../lib/vfs/vfs.js';
+import { vfsDispatcher_get } from '../../core/filesystem.js';
 import { spinner } from '../../lib/spinner.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
-import { errorStack, type Result } from '@fnndsc/fond';
+import { errorStack, type Result, type VFSSubtree } from '@fnndsc/fond';
 import { envelope_error, type CommandEnvelope, type ListingItem } from '@fnndsc/menu';
 
 /** One entry the walk visits. */
@@ -39,6 +41,10 @@ export interface FindNode {
   date?: string;
   /** Levels below its starting point. */
   depth: number;
+  /** A job's or feed's status, when the namespace knows it. */
+  status?: string;
+  /** The plugin a job ran. */
+  plugin?: string;
 }
 
 /** A parsed expression. */
@@ -147,6 +153,12 @@ export function find_parse(args: string[]): FindQuery | string {
         expr = { kind: 'test', test: (node: FindNode): boolean => node.type === kind };
         break;
       }
+      case '-status': case '-plugin': {
+        const re: RegExp = pattern_toRegExp(argument(word), true);
+        const field: 'status' | 'plugin' = word === '-status' ? 'status' : 'plugin';
+        expr = { kind: 'test', test: (node: FindNode): boolean => node[field] !== undefined && re.test(node[field] as string) };
+        break;
+      }
       case '-newermt': {
         const when: string = argument(word);
         const time: number = Date.parse(when);
@@ -208,6 +220,13 @@ export function find_evaluate(expr: FindExpr, node: FindNode, out: string[]): bo
     case 'test': return expr.test(node);
     case 'print': out.push(node.shown + expr.separator); return true;
   }
+}
+
+/** The plugin a `/proc/jobs` job ran, read from its name (`pl-x_10`). */
+function plugin_of(item: ListingItem): string | undefined {
+  if (item.type !== 'job' || /^feed_\d+$/.test(item.name)) return undefined;
+  const match: RegExpExecArray | null = /^(.+)_\d+$/.exec(item.name);
+  return match === null ? undefined : match[1];
 }
 
 /** An entry's kind, as `-type` names it. */
@@ -282,12 +301,39 @@ export async function builtin_find(args: string[]): Promise<CommandEnvelope> {
             type: type_of(item),
             date: item.date || undefined,
             depth: depth + 1,
+            status: typeof item.status === 'string' ? item.status : undefined,
+            plugin: plugin_of(item),
           };
           visit(node);
           if (node.type === 'd' && !(await walk(path.posix.join(real, item.name), node.shown, node.depth))) return false;
         }
         return true;
       };
+      // A mount that holds the subtree answers it whole (/proc/jobs, from
+      // its cache); only what it leaves unanswered is walked.
+      const held: VFSSubtree | null = await vfsDispatcher_get().subtree(resolved).catch((): null => null);
+      if (held !== null) {
+        const join = (base: string, rel: string): string => (base === '/' ? `/${rel}` : `${base}/${rel}`);
+        for (const entry of held.entries) {
+          if (entry.depth > query.maxdepth) continue;
+          visit({
+            shown: join(shownRoot, entry.rel),
+            name: entry.item.name,
+            type: type_of(entry.item as ListingItem),
+            date: entry.item.date || undefined,
+            depth: entry.depth,
+            status: entry.attrs?.['status'] ?? entry.item.status,
+            plugin: entry.attrs?.['plugin'],
+          });
+        }
+        let stopped: boolean = false;
+        for (const rel of held.unanswered) {
+          const depth: number = rel.split('/').length;
+          if (!(await walk(path.posix.join(resolved, rel), join(shownRoot, rel), depth))) { stopped = true; break; }
+        }
+        if (stopped) { failures += `find: stopped (Ctrl-C) after ${folders} folders; ${found} found so far\n`; break; }
+        continue;
+      }
       if (!(await walk(resolved, shownRoot, 0))) {
         failures += `find: stopped (Ctrl-C) after ${folders} folders; ${found} found so far\n`;
         break;

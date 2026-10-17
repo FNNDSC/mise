@@ -62,6 +62,25 @@ export interface CpOptions {
   recursive?: boolean;
 }
 
+/** One entry of a subtree a mount answers whole, from what it already holds. */
+export interface VFSSubtreeEntry {
+  /** The entry's path below the subtree's root (`feed_5/pl-x_10/status`). */
+  rel: string;
+  /** The entry as a listing would show it. */
+  item: VFSItem;
+  /** Levels below the root (1 for its children). */
+  depth: number;
+  /** What a test may ask of it beyond the listing (`status`, `plugin`, ...). */
+  attrs?: Readonly<Record<string, string>>;
+}
+
+/** A subtree a mount answered: its entries in walk order, and what it could not answer. */
+export interface VFSSubtree {
+  entries: VFSSubtreeEntry[];
+  /** Folders below the root (`rel` paths) whose contents must be walked instead. */
+  unanswered: string[];
+}
+
 /**
  * Base contract that every Virtual File System Provider must implement.
  */
@@ -182,4 +201,14 @@ export interface VFSProvider {
    * @returns The target path, or an error when the provider cannot resolve it.
    */
   linkTarget_resolve?(path: string): Promise<Result<string>>;
+
+  /**
+   * Answers everything beneath a path at once, from what the mount already
+   * holds, so a walk (`find`) need not list it folder by folder. Null when
+   * the mount holds nothing it can answer from.
+   *
+   * @param path - The subtree's root.
+   * @returns The entries in walk order and what is left to walk, or null.
+   */
+  subtree?(path: string): Promise<VFSSubtree | null>;
 }

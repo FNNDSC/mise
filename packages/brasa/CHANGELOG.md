@@ -1,5 +1,22 @@
 # @fnndsc/brasa
 
+## 0.40.0
+
+### Minor Changes
+
+- c7acb1b: A new find command walks the namespace through the listing cache and prints the paths its expression selects. Tests are -name, -iname, -path, -type and -newermt, bounded by -maxdepth and -mindepth, printed with -print or -print0, and joined by -o, ! and parentheses; a tree already seen is walked without asking CUBE. An unforced /proc/jobs roster check runs at most once a minute, and REFRESH still forces one.
+- fb6813d: Any running command can now be stopped, with Ctrl-C or the console's new STOP capsule. A host process it started is killed, and a command that does not end when asked is abandoned after three seconds so the session is free again. A chell that disconnects stops its command, and Ctrl-C reaches a host program in the terminal.
+
+### Patch Changes
+
+- 5dadfdd: The terminal console's text is the old console's size again, and a new clear command empties the console. The terminal had taken the page's larger size because xterm measured it before the console's styles applied. clear empties the screen and scrollback in a terminal and the record in the transcript; Ctrl-L still clears the screen alone.
+- Updated dependencies [c7acb1b]
+- Updated dependencies [fb6813d]
+  - @fnndsc/salsa@4.0.6
+  - @fnndsc/menu@0.26.0
+  - @fnndsc/chili@3.7.11
+  - @fnndsc/cumin@3.27.19
+
 ## 0.39.0
 
 ### Minor Changes

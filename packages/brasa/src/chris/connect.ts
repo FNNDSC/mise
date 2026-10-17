@@ -24,14 +24,23 @@ import { SingleContext, Client, chrisContext, Context, type TokenConnectOutcome 
  * - `no-client` — a token, but a client could not be created.
  * - `invalid-token` — a token that the server rejected (expired/invalid).
  */
-export type SavedSessionStatus = 'restored' | 'no-context' | 'no-token' | 'no-client' | 'invalid-token';
+export type SavedSessionStatus = 'restored' | 'no-context' | 'no-token' | 'no-client' | 'invalid-token' | 'unreachable';
 
 /** The result of {@link sessionConnect_fromSaved}. */
 export interface SavedSessionResult {
   status: SavedSessionStatus;
   context: SingleContext;
-  /** The server error message when the status is `invalid-token`. */
+  /** The server's error message (`invalid-token`), or what met the request (`unreachable`). */
   error?: string;
+}
+
+/** How long the saved token's check waits before asking a silent CUBE again. */
+export const SAVED_TOKEN_RETRY_MS: number = 2000;
+
+/** Whether a request got no answer at all (not a refusal: nothing came back). */
+function answer_none(error: unknown): boolean {
+  const message: string = error instanceof Error ? error.message : String(error);
+  return /^No server response!$|^fetch failed$|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket hang up/.test(message);
 }
 
 /**
@@ -61,11 +70,21 @@ export async function sessionConnect_fromSaved(): Promise<SavedSessionResult> {
       session.offline = true;
       return { status: 'no-client', context };
     }
-    await client.getUser();
+    try {
+      await client.getUser();
+    } catch (first: unknown) {
+      // No answer at all is not a refusal: CUBE's first byte can be slow
+      // (its root, which the check reads first, is the feed list). Asked
+      // once more before the session gives up on it.
+      if (!answer_none(first)) throw first;
+      await new Promise((resolve: (value: unknown) => void): unknown => setTimeout(resolve, SAVED_TOKEN_RETRY_MS));
+      await client.getUser();
+    }
     return { status: 'restored', context };
   } catch (error: unknown) {
     session.offline = true;
-    return { status: 'invalid-token', context, error: error instanceof Error ? error.message : String(error) };
+    const message: string = error instanceof Error ? error.message : String(error);
+    return { status: answer_none(error) ? 'unreachable' : 'invalid-token', context, error: message };
   }
 }
 

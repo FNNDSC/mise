@@ -34,13 +34,17 @@ describe('showpieces', () => {
       expect(still_of(program, () => 0.5).length).toBeGreaterThan(3);
     }
     const sl = await builtin_sl([]);
-    expect(sl.model).toEqual({ kind: 'games.show', data: { program: 'sl', args: [], arcade: false } });
+    expect(sl.model).toEqual({ kind: 'games.show', data: { program: 'sl', args: [], arcade: false, pane: false } });
     expect(plain(sl.rendered)).toContain(STARSHIP[3]);
-    const tetris = await builtin_tetris(['-x']);
-    expect(tetris.model).toEqual({ kind: 'games.show', data: { program: 'tetris', args: ['-x'], arcade: true } });
-    expect(plain(tetris.rendered)).toContain('plays in ARGUS');
+    expect(plain(sl.rendered)).toContain('a terminal plays it in place');
+    const tetris = await builtin_tetris(['--pane']);
+    expect(tetris.model).toEqual({ kind: 'games.show', data: { program: 'tetris', args: [], arcade: true, pane: true } });
+    expect(plain(tetris.rendered)).toContain('ARGUS draws it in its GAMES pane');
+    const refused = await builtin_tetris(['-x']);
+    expect(refused.status).toBe('error');
+    expect(plain(refused.rendered)).toContain("unknown option '-x' (--pane)");
     for (const [run, program, arcade] of [[builtin_cmatrix, 'cmatrix', false], [builtin_rain, 'rain', false], [builtin_asciiquarium, 'aquarium', false], [builtin_snake, 'snake', true]] as const) {
-      expect((await run([])).model).toEqual({ kind: 'games.show', data: { program, args: [], arcade } });
+      expect((await run([])).model).toEqual({ kind: 'games.show', data: { program, args: [], arcade, pane: false } });
     }
   });
 });

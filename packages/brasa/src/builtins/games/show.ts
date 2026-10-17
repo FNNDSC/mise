@@ -2,15 +2,16 @@
  * @file The showpieces — `sl`, `cmatrix`, `rain`, `asciiquarium` — and the
  * arcade: `tetris`, `snake`.
  *
- * Each is a program a surface with a canvas runs: ARGUS opens its GAMES
- * pane on the `games.show` model and draws. The console gets the text: a
- * still of the show, or the words that there is nothing to play here and
- * where there is.
+ * Each is a program on a cell grid (`@fnndsc/menu/games`). A terminal
+ * plays it in place: chell takes the screen on the `games.show` model, and
+ * gives it back on q, Esc or Ctrl-C. `--pane` asks ARGUS to draw it in its
+ * GAMES pane instead, as the deprecated transcript console always does.
+ * Every surface also gets the text: a still of the show, and how to play it.
  *
  * @module
  */
 import chalk from 'chalk';
-import { CommandEnvelope, envelope_ok } from '@fnndsc/menu';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** The programs a GAMES pane can run. */
 export type ShowProgram = 'sl' | 'cmatrix' | 'rain' | 'aquarium' | 'tetris' | 'snake';
@@ -57,16 +58,19 @@ export function still_of(program: ShowProgram, random: () => number = Math.rando
   }
 }
 
-/** What the console says beside a still: where the moving one is. */
-function note_of(program: ShowProgram, arcade: boolean): string {
-  return arcade
-    ? chalk.gray(`${program} plays in ARGUS: type it there and the GAMES pane opens with the keys live (arrows; Esc gives the keyboard back).`)
-    : chalk.gray(`a still; ARGUS draws ${program} moving in its GAMES pane.`);
+/** What the console says beside a still: how the moving one is played. */
+function note_of(program: ShowProgram, arcade: boolean, pane: boolean): string {
+  if (pane) return chalk.gray(`${program}: ARGUS draws it in its GAMES pane${arcade ? ' with the keys live (arrows; Esc gives the keyboard back)' : ''}.`);
+  return chalk.gray(`${program}: a terminal plays it in place${arcade ? ' (arrows steer)' : ''}; q, Esc or Ctrl-C leaves. --pane draws it in ARGUS's GAMES pane.`);
 }
 
 function show_run(program: ShowProgram, args: string[], arcade: boolean): CommandEnvelope {
+  const unknown: string | undefined = args.find((arg: string): boolean => arg.startsWith('-') && arg !== '--pane');
+  if (unknown !== undefined) return envelope_error(`${program}: unknown option '${unknown}' (--pane)\n`);
+  const pane: boolean = args.includes('--pane');
+  const rest: string[] = args.filter((arg: string): boolean => arg !== '--pane');
   const still: string[] = still_of(program);
-  return envelope_ok(`${still.join('\n')}\n${note_of(program, arcade)}\n`, { kind: 'games.show', data: { program, args, arcade } });
+  return envelope_ok(`${still.join('\n')}\n${note_of(program, arcade, pane)}\n`, { kind: 'games.show', data: { program, args: rest, arcade, pane } });
 }
 
 /** `sl`: a starship crosses the screen. */
@@ -77,7 +81,7 @@ export async function builtin_cmatrix(args: string[]): Promise<CommandEnvelope> 
 export async function builtin_rain(args: string[]): Promise<CommandEnvelope> { return show_run('rain', args, false); }
 /** `asciiquarium`: fish. */
 export async function builtin_asciiquarium(args: string[]): Promise<CommandEnvelope> { return show_run('aquarium', args, false); }
-/** `tetris`: falling blocks, in ARGUS. */
+/** `tetris`: falling blocks. */
 export async function builtin_tetris(args: string[]): Promise<CommandEnvelope> { return show_run('tetris', args, true); }
-/** `snake`: the snake, in ARGUS. */
+/** `snake`: the snake. */
 export async function builtin_snake(args: string[]): Promise<CommandEnvelope> { return show_run('snake', args, true); }

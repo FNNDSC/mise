@@ -34,6 +34,10 @@
       "import": "./dist/surface.js",
       "types": "./dist/surface.d.ts"
     },
+    "./games": {
+      "import": "./dist/games/index.js",
+      "types": "./dist/games/index.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

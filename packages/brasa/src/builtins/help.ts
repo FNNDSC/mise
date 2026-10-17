@@ -617,6 +617,12 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Prints a month or year calendar with today highlighted, in the spirit of UNIX cal.',
     examples: ['cal', 'cal 2026', 'cal 7 2026'],
   },
+  clear: {
+    category: 'Settings',
+    usage: 'clear',
+    description: 'Empty the console: the screen and its scrollback in a terminal, the record in the transcript. Ctrl-L clears the screen alone.',
+    examples: ['clear'],
+  },
   prompt: {
     category: 'Settings',
     usage: 'prompt [list | <theme>]',

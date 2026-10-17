@@ -2182,6 +2182,13 @@ async function surface_start(token: string): Promise<void> {
     async (line: string): Promise<void> => {
       // The argus language claims its reserved subjects client-side; the
       // sentence never touches the wire.
+      // `clear` empties the transcript, as clear(1) empties a terminal.
+      if (line.trim() === 'clear') {
+        terminal.clear();
+        terminal.prompt_draw();
+        mode_show('READY');
+        return;
+      }
       const local: string | null = await argusLine_run(argusHost, line);
       if (local !== null) {
         terminal.output_write('data', `${local}\n`);

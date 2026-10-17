@@ -137,7 +137,7 @@ export class TerminalScreen {
     const foreground: string = getComputedStyle(mount).color || '#ffaa44';
     this.term = new Terminal({
       fontFamily: CONSOLE_FONT,
-      fontSize: Math.max(10, Math.round(parseFloat(getComputedStyle(mount).fontSize) || 13)),
+      fontSize: Math.max(10, Math.floor(parseFloat(getComputedStyle(mount).fontSize) || 13)),
       theme: terminalTheme_of(foreground),
       cursorBlink: true,
       scrollback: 5000,

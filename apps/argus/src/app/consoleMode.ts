@@ -73,6 +73,9 @@ export function consoleMode_wire(wiring: ConsoleModeWiring): ConsoleModeControl 
   const apply = (next: ConsoleMode): void => {
     if (container === null) return;
     if (next === 'terminal' && offered) {
+      // The terminal's styles (its font size above all) must apply before
+      // xterm measures the mount, or it keeps the page's inherited size.
+      container.classList.add('console-terminal');
       if (screen === null) {
         const mount: HTMLElement = document.createElement('div');
         mount.className = 'argus-terminal-mount';
@@ -95,7 +98,6 @@ export function consoleMode_wire(wiring: ConsoleModeWiring): ConsoleModeControl 
         wiring.screen_set(screen);
       }
       const shown: TerminalScreen = screen;
-      container.classList.add('console-terminal');
       client.mirror_set(true);
       terminal.delegate_set({
         note: (text: string): void => client.note_send(text),

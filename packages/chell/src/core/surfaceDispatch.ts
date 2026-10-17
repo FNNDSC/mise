@@ -18,6 +18,9 @@ import { builtin_prompt } from '../builtins/sys/prompt.js';
 /** Commands the CLI surface runs locally and never forwards to the engine. */
 const SURFACE_COMMANDS: Record<string, (args: string[]) => Promise<void>> = {
   prompt: builtin_prompt,
+  // The terminal is this surface's: `clear` empties its screen and its
+  // scrollback, as clear(1) does (Ctrl-L clears the screen alone).
+  clear: async (): Promise<void> => { process.stdout.write('\u001b[H\u001b[2J\u001b[3J'); },
 };
 
 /**

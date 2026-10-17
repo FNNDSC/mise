@@ -4830,7 +4830,8 @@ body[data-zoom] #header-restore {
   background-color: black;
   padding: 0.5rem 0.8rem;
   font-family: 'JetBrainsMono NF Mono', 'MesloLGS NF', monospace;
-  /* The transcript's own size (.argus-output): xterm reads it from here. */
+  /* The transcript's own size (.argus-output). xterm reads it from here,
+   * once the console's terminal class applies (app/consoleMode.ts). */
   font-size: 0.75rem;
   color: var(--daybreak);
 }

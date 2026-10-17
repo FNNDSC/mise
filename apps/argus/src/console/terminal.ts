@@ -135,6 +135,11 @@ export interface ConsoleDelegate {
 
 export class ArgusTerminal {
   private readonly output: HTMLElement;
+
+  /** Empties the transcript (`clear`): its record goes, the prompt stays. */
+  public clear(): void {
+    this.output.replaceChildren();
+  }
   /** The splash's greeting column, once a splash is written. */
   private splashGreeting: HTMLDivElement | null = null;
   /** Live progress rows, between the transcript and the prompt. */

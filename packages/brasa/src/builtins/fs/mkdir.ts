@@ -67,6 +67,30 @@ function refusal_said(doing: string): string {
 export type MkdirArgs = MkdirOptions | { refused: string };
 
 /**
+ * Forgets every listing above a folder `-p` made that does not yet hold the
+ * folder it leads to: the store makes missing parents in one step and names
+ * none of them, so each listing up to the first that already held its child
+ * is behind.
+ *
+ * @param targetPath - The folder made.
+ */
+function ancestors_invalidate(targetPath: string): void {
+  const cache = listingCache_get();
+  let child: string = targetPath;
+  while (child !== '/') {
+    const parent: string = child.substring(0, child.lastIndexOf('/')) || '/';
+    const name: string = child.substring(child.lastIndexOf('/') + 1);
+    const kept: { data: unknown; fresh: boolean } | null = cache.cache_get(parent);
+    const holds: boolean = kept !== null && Array.isArray(kept.data)
+      && (kept.data as VFSItem[]).some((item: VFSItem): boolean => item.name === name);
+    // The folder made is new, so its own parent is always behind.
+    if (holds && child !== targetPath) break;
+    cache.cache_invalidate?.(parent);
+    child = parent;
+  }
+}
+
+/**
  * Parses `mkdir` arguments: `-p` / `--parents`, and `--` to end options.
  * Any other option is refused by name rather than taken for a path — a
  * `-p` the session did not know once became a folder named `-p`.
@@ -138,7 +162,8 @@ export async function mkdir_run(options: MkdirOptions): Promise<CommandEnvelope>
       if (made.ok) {
         rendered += `${mkdir_render(targetPath, true)}\n`;
         outcomes.push({ path: targetPath, created: true });
-        listingCache_get().cache_invalidate?.(parentDir);
+        if (parents) ancestors_invalidate(targetPath);
+        else listingCache_get().cache_invalidate?.(parentDir);
         continue;
       }
       if (made.errno === 'EEXIST') {

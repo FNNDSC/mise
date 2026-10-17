@@ -66,6 +66,20 @@ describe('folderLookup_memoize', () => {
     expect(listCache_get().folders_count()).toBe(0);
   });
 
+  it('drops a miss kept above a changed folder: what holds a change is there, and so is every folder above it', async () => {
+    const present: Set<string> = new Set(['/home']);
+    const { client, calls } = client_fake((path) => (present.has(path) ? { data: { path } } : null));
+    folderLookup_memoize(client);
+    expect(await client.getFileBrowserFolderByPath('/home/x')).toBeNull();
+    expect(await client.getFileBrowserFolderByPath('/home/x/a')).toBeNull();
+    expect(await client.getFileBrowserFolderByPath('/home')).not.toBeNull();
+    present.add('/home/x'); present.add('/home/x/a');               // mkdir -p /home/x/a/b, made in one step
+    listCache_get().cache_invalidate('/home/x/a');                  // the made folder's parent
+    expect(await client.getFileBrowserFolderByPath('/home/x')).not.toBeNull();
+    expect(await client.getFileBrowserFolderByPath('/home')).not.toBeNull();
+    expect(calls).toEqual(['/home/x', '/home/x/a', '/home', '/home/x']);   // /home kept: it was no miss
+  });
+
   it('wraps a client once', async () => {
     const { client, calls } = client_fake((path) => ({ data: { path } }));
     folderLookup_memoize(client);

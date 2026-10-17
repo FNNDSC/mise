@@ -8,7 +8,7 @@
  * record is kept beside the folder's listing, under the listing's own
  * TTL, and dropped by the same invalidations the poller of record and
  * local mutations already make (epic #367): no second clock. A lookup in
- * flight is shared; a miss or a failure is never kept.
+ * flight is shared; a miss is kept as an answer, a failure never.
  */
 import type { Client } from '../chrisapi/adapter.js';
 import { listCache_get } from '../cache/listCache';

@@ -219,7 +219,7 @@ export class ListCache {
    * is the lookup's promise, so callers in flight together share one
    * request; a miss (null) or a failure is never kept.
    */
-  private folders: Map<string, { promise: Promise<unknown>; timestamp: number; ttl: number }> = new Map();
+  private folders: Map<string, { promise: Promise<unknown>; timestamp: number; ttl: number; missed?: boolean }> = new Map();
 
   /**
    * Registers a callback for checkpoint-worthy mutations (set, update,
@@ -386,17 +386,18 @@ export class ListCache {
    * not an answer. One that answers no folder is an answer and is kept like
    * any other: a shared feed's logical path has no folder of its own, and
    * every resolver, check and listing asked CUBE so again. A folder made
-   * here invalidates its parent, which drops the miss with it; one made
-   * elsewhere is seen when the TTL runs out, as a listing's change is.
+   * here invalidates its parent, which drops the misses kept for it and
+   * every folder above; one made elsewhere is seen when the TTL runs out,
+   * as a listing's change is.
    *
    * @param path - The folder's path.
    * @param promise - The lookup under way.
    */
   folder_set(path: string, promise: Promise<unknown>): void {
-    const record = { promise, timestamp: Date.now(), ttl: this.ttl_get(path) };
+    const record: { promise: Promise<unknown>; timestamp: number; ttl: number; missed?: boolean } = { promise, timestamp: Date.now(), ttl: this.ttl_get(path) };
     this.folders.set(path, record);
     promise.then(
-      (): void => undefined,
+      (folder: unknown): void => { if (folder === null || folder === undefined) record.missed = true; },
       (): void => { if (this.folders.get(path) === record) this.folders.delete(path); },
     );
   }
@@ -404,7 +405,9 @@ export class ListCache {
   /**
    * Drops the folder records a listing invalidation calls into question:
    * the path's own and everything beneath it (a removed or renamed entry
-   * takes its subtree's records with it).
+   * takes its subtree's records with it), and a miss kept for any folder
+   * above it: a path changed here is there, so its ancestors are too
+   * (`mkdir -p a/b` makes `a` without a word about it).
    *
    * @param path - The invalidated listing's path; omitted, every record.
    */
@@ -412,7 +415,10 @@ export class ListCache {
     if (path === undefined) { this.folders.clear(); return; }
     this.folders.delete(path);
     const prefix: string = path.endsWith('/') ? path : `${path}/`;
-    for (const key of this.folders.keys()) if (key.startsWith(prefix)) this.folders.delete(key);
+    for (const [key, record] of this.folders) {
+      if (key.startsWith(prefix)) this.folders.delete(key);
+      else if (record.missed === true && (key === '/' || prefix.startsWith(`${key}/`))) this.folders.delete(key);
+    }
   }
 
   /** How many folder records are kept (for a readout or a test). */

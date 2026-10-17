@@ -121,6 +121,7 @@ import { greeting_ask } from './greeting.js';
 // not, the type falls back and the frame is unchanged.
 import '../lcars/argus.css';
 import { consoleMode_wire, type ConsoleModeControl } from './consoleMode.js';
+import { consoleStop_wire } from './consoleStop.js';
 import type { TerminalScreen } from '../console/terminalScreen.js';
 
 /**
@@ -2412,6 +2413,7 @@ async function surface_start(token: string): Promise<void> {
   // The language's subjects, the composition's included: a line in one typed
   // in any chell on the session is routed here (claims.ts on the daemon).
   client.claims_send(claims_list());
+  consoleStop_wire(client);
   consoleMode = consoleMode_wire({
     client,
     terminal,

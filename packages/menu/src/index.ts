@@ -56,6 +56,7 @@ export {
   attachMessageSchema,
   executeMessageSchema,
   cancelMessageSchema,
+  stopMessageSchema,
   completeRequestSchema,
   promptAnswerMessageSchema,
   promptErrorMessageSchema,

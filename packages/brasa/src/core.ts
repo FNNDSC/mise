@@ -20,3 +20,4 @@ export * from './core/tasks.js';
 export * from './core/version.js';
 export * from './logo/brain.js';
 export { nullBackend_make, type NullBackendOptions } from './null/backend.js';
+export { commandCancellation_stopped } from './core/cancellation.js';

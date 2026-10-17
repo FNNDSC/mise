@@ -160,20 +160,24 @@ export interface Surface {
    *
    * @param command - The segment command line (e.g. `grep foo`).
    * @param input - The bytes to feed the segment on stdin.
+   * @param signal - Aborted when the operator cancels the command; a surface
+   *   that started a process kills it.
    * @returns The segment's stdout.
    * @throws {CapabilityError} When the surface lacks the `pipeSegments`
    *   capability.
    */
-  pipeSegment(command: string, input: Buffer): Promise<Buffer>;
+  pipeSegment(command: string, input: Buffer, signal?: AbortSignal): Promise<Buffer>;
 
   /**
    * Runs one host-shell command on the surface machine.
    *
    * @param command - The shell command without the leading `!`.
+   * @param signal - Aborted when the operator cancels the command; a surface
+   *   that started a process kills it.
    * @returns The process exit code.
    * @throws {CapabilityError} When the surface lacks `shellCommands`.
    */
-  shellCommand(command: string): Promise<number>;
+  shellCommand(command: string, signal?: AbortSignal): Promise<number>;
 
   /**
    * Opens content in the surface's local editor and returns the result. The

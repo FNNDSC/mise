@@ -49,12 +49,17 @@ export interface ReplOptions {
 /**
  * Handles the Read-Eval-Print Loop (REPL) interaction.
  */
+
+/** How long after a raw Ctrl-C readline's own SIGINT is taken as the same press. */
+const RAW_INTERRUPT_WINDOW_MS: number = 200;
 export class REPL {
   private rl: readline.Interface;
   private engine: BrasaEngine;
   private isOpen: boolean = true;
   /** Whether a command is in flight: lines typed meanwhile wait (lineDiscipline.ts). */
   private busy: boolean = false;
+  /** When the raw watcher last stopped a command on Ctrl-C. */
+  private rawInterruptAt: number = 0;
   /** Draws progress for the command in flight; cleared when it ends. */
   private readonly progressRenderer: TerminalProgressRenderer = new TerminalProgressRenderer();
   private lastCommandDurationMs: number = 0;
@@ -132,7 +137,21 @@ export class REPL {
       void this.line_receive(line);
     });
 
+    // While a command runs, Ctrl-C is read from the raw bytes, ahead of
+    // readline's key decoder: a host program's output can make the terminal
+    // answer queries into this input, and a half-read reply would swallow
+    // the interrupt. The command is stopped (the daemon abandons one that
+    // does not end); readline's own SIGINT then has nothing left to do.
+    process.stdin.prependListener('data', (chunk: Buffer | string): void => {
+      if (!this.busy || question_isOpen() || !chunk.toString().includes('\u0003')) return;
+      this.rawInterruptAt = Date.now();
+      typeahead_clear();
+      this.engine.line_cancel?.();
+    });
+
     this.rl.on('SIGINT', () => {
+      // The raw watcher above already stopped the running command.
+      if (Date.now() - this.rawInterruptAt < RAW_INTERRUPT_WINDOW_MS) return;
       // A cancellable foreground command (currently recursive scans) gets the
       // interrupt first. Otherwise Ctrl+C retains readline's usual behavior:
       // clear an unfinished input line and redraw the prompt. Either way,

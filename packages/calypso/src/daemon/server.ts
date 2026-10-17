@@ -34,7 +34,7 @@ import { token_matches } from './token.js';
 import { RequestBroker } from './broker.js';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
 import { clientMessage_parse, attach_parse } from '@fnndsc/menu';
-import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, ProgressEvent, PromptContext, PromptKind, PromptPath, FileDeliverRequest, Regard, WatchState, AmbientEvent, ClosingCause } from '@fnndsc/menu';
+import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, stopMessageSchema, ProgressEvent, PromptContext, PromptKind, PromptPath, FileDeliverRequest, Regard, WatchState, AmbientEvent, ClosingCause } from '@fnndsc/menu';
 import type { z } from 'zod';
 import type { Terminals, TerminalViewer } from './terminals.js';
 import { Lane } from './lane.js';
@@ -77,6 +77,13 @@ export interface DaemonStackInfo {
 type ExecuteMessage = z.infer<typeof executeMessageSchema>;
 type CompleteRequest = z.infer<typeof completeRequestSchema>;
 type CancelMessage = z.infer<typeof cancelMessageSchema>;
+type StopMessage = z.infer<typeof stopMessageSchema>;
+
+/** How long a stopped command has to end before the session abandons it. */
+export const STOP_GRACE_MS: number = 3000;
+
+/** How long a STOP pressed while its command waits still applies when the command starts. */
+export const STOP_PENDING_MS: number = 10000;
 
 /** An attached surface: its socket, bus id, and locally executable capabilities. */
 interface Surface {
@@ -292,6 +299,10 @@ export class CalypsoDaemon {
    * than shown.
    */
   private currentInstrument: boolean = false;
+  /** Abandons the running command: the session stops waiting for it. */
+  private abandonCurrent: (() => void) | null = null;
+  /** Surfaces whose STOP found their command still waiting its turn, and when. */
+  private readonly stopPending: Map<Surface, number> = new Map();
   // One RequestBroker per surface-delegated request kind. The broker owns the
   // whole correlation lifecycle uniformly: id generation, close-guard,
   // origin-validated settles, listener cleanup. See broker.ts.
@@ -788,6 +799,8 @@ export class CalypsoDaemon {
         void this.lane.run((): Promise<void> => this.execute_run(attached, value));
       } else if (value.type === 'cancel') {
         this.cancel_run(attached, value);
+      } else if (value.type === 'stop') {
+        this.stop_run(attached, value);
       } else if (value.type === 'complete') {
         void this.complete_run(socket, value);
       } else if (value.type === 'promptAnswer') {
@@ -848,6 +861,13 @@ export class CalypsoDaemon {
     socket.on('close', () => {
       // Its terminals keep running, unwatched, for a reattach.
       this.terminals?.detach(viewer);
+      // A shell that goes away hangs up on its command, as a terminal's
+      // SIGHUP does: one still running is stopped, or nothing could stop it.
+      // A browser is not a shell (it reloads and reattaches), and its
+      // command runs on (a chell declares a filesystem; a browser does not).
+      if (surface && this.currentOrigin === surface && (surface.capabilities.localFilesystem || surface.capabilities.terminal !== undefined)) {
+        this.command_stop();
+      }
       if (surface) {
         this.surfaces.delete(surface);
         this.viewerOf.delete(surface);
@@ -969,9 +989,58 @@ export class CalypsoDaemon {
       this.send(origin.socket, { type: 'error', reason: 'cancel: no matching foreground command' });
       return;
     }
-    if (!this.engine.line_cancel?.()) {
-      this.send(origin.socket, { type: 'error', reason: 'cancel: command cannot be interrupted' });
+    // Ctrl-C is a stop: the command is asked to end, and abandoned if it does not.
+    this.command_stop();
+  }
+
+  /**
+   * The operator's STOP: ends the command running for this surface, its own
+   * or one typed in a terminal it owns, whatever the command is.
+   *
+   * @param origin - The surface pressing STOP.
+   * @param _message - The request.
+   */
+  private stop_run(origin: Surface, _message: StopMessage): void {
+    const running: Surface | null = this.currentOrigin;
+    // A surface's silent housekeeping is not what the operator stops.
+    if (running !== null && !this.currentInstrument && this.stopper_of(running) === origin) {
+      this.command_stop();
+      return;
     }
+    // Its command may be waiting its turn behind someone else's: it is
+    // stopped the moment it starts, without running.
+    if (this.lane.waiting > 0) {
+      this.stopPending.set(origin, Date.now());
+      return;
+    }
+    this.send(origin.socket, { type: 'error', reason: 'stop: nothing of yours is running' });
+  }
+
+  /**
+   * Who may stop a surface's command: the surface itself, or, for a
+   * terminal's chell, the browser that owns the terminal.
+   *
+   * @param surface - The surface that issued the command.
+   * @returns The surface whose STOP reaches it.
+   */
+  private stopper_of(surface: Surface): Surface {
+    const owner: unknown = surface.capabilities.terminal === undefined ? null : this.terminals?.viewer_get(surface.capabilities.terminal)?.owner?.();
+    return owner !== null && owner !== undefined && this.surfaces.has(owner as Surface) ? owner as Surface : surface;
+  }
+
+  /**
+   * Stops the running command: its signal is aborted (a command that checks
+   * it ends, a host process it started is killed), and one still running
+   * after {@link STOP_GRACE_MS} is abandoned, so the session is free again
+   * whatever the command was waiting on.
+   */
+  private command_stop(): void {
+    const id: string | null = this.currentId;
+    this.engine.line_abort?.() ?? this.engine.line_cancel?.();
+    const timer: ReturnType<typeof setTimeout> = setTimeout((): void => {
+      if (this.currentId === id && id !== null) this.abandonCurrent?.();
+    }, STOP_GRACE_MS);
+    timer.unref?.();
   }
 
   /**
@@ -1190,10 +1259,23 @@ export class CalypsoDaemon {
     this.currentLine = message.line;
     this.currentStartedAt = startedAt;
     try {
-      try {
-        envelopes = await this.engine.line_execute(message.line);
+      // A STOP pressed while this command waited its turn ends it unrun.
+      const stopper: Surface = this.stopper_of(origin);
+      const pendingAt: number | undefined = message.instrument === true ? undefined : this.stopPending.get(stopper);
+      if (pendingAt !== undefined) this.stopPending.delete(stopper);
+      if (pendingAt !== undefined && Date.now() - pendingAt < STOP_PENDING_MS) {
+        envelopes = [{ status: 'error', rendered: '', renderedErr: `stopped: \`${message.line}\` was stopped before it ran\n` }];
+      } else try {
+        // A stopped command that does not end is abandoned: the session
+        // stops waiting, and whatever it does later is no one's.
+        const abandoned: Promise<CommandEnvelope[]> = new Promise((resolve: (value: CommandEnvelope[]) => void): void => {
+          this.abandonCurrent = (): void => resolve([{ status: 'error', rendered: '', renderedErr: `stopped: \`${message.line}\` did not end when asked and was abandoned\n` }]);
+        });
+        envelopes = await Promise.race([this.engine.line_execute(message.line), abandoned]);
       } catch (err: unknown) {
         failureReason = err instanceof Error ? err.message : String(err);
+      } finally {
+        this.abandonCurrent = null;
       }
       this.lastCommand = {
         durationMs: Math.round(performance.now() - startedAt),
@@ -1293,6 +1375,8 @@ export class CalypsoDaemon {
    *   answering.
    */
   public prompt_current(request: PromptRelay): Promise<string> {
+    // A stopped command may not ask anyone anything.
+    if (this.engine.command_stopped?.() === true) return Promise.reject(new Error('the command was stopped'));
     const origin: Surface | null = this.currentOrigin;
     if (!origin) {
       return Promise.reject(new Error('no active command to prompt for'));
@@ -1360,6 +1444,8 @@ export class CalypsoDaemon {
    * @returns True when the chunk was sent to a surface.
    */
   public output_current(channel: 'data' | 'err' | 'status', chunk: string): boolean {
+    // An abandoned command's late output belongs to no one.
+    if (this.engine.command_stopped?.() === true) return false;
     const origin: Surface | null = this.currentOrigin;
     const id: string | null = this.currentId;
     if (!origin || !id || origin.socket.readyState !== WebSocket.OPEN) {

@@ -138,14 +138,46 @@ export function hostControl_tiers(policy: HostControlPolicy): string[] {
  * @param write - Receives output chunks by channel.
  * @returns The exit code (1 when the process died without one).
  */
-export function hostShell_run(command: string, write: (channel: 'data' | 'err', chunk: string) => void): Promise<number> {
+export function hostShell_run(command: string, write: (channel: 'data' | 'err', chunk: string) => void, signal?: AbortSignal): Promise<number> {
   return new Promise((resolve: (code: number) => void, reject: (error: Error) => void): void => {
-    const child: ChildProcess = spawn(command, { shell: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: process.cwd() });
+    // Its own process group, so a cancel reaches everything the shell started.
+    const child: ChildProcess = spawn(command, { shell: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: process.cwd(), detached: true });
+    const stop: () => void = processGroup_stopper(child);
+    signal?.addEventListener('abort', stop, { once: true });
     child.stdout?.on('data', (chunk: Buffer): void => write('data', chunk.toString('utf8')));
     child.stderr?.on('data', (chunk: Buffer): void => write('err', chunk.toString('utf8')));
-    child.once('error', (error: Error): void => reject(error));
-    child.once('close', (code: number | null): void => resolve(code ?? 1));
+    child.once('error', (error: Error): void => { signal?.removeEventListener('abort', stop); reject(error); });
+    child.once('close', (code: number | null): void => {
+      signal?.removeEventListener('abort', stop);
+      if (signal?.aborted === true) write('err', `${command}: stopped\n`);
+      resolve(code ?? (signal?.aborted === true ? 130 : 1));
+    });
   });
+}
+
+/** How long a cancelled host process has to end after SIGTERM before SIGKILL. */
+export const HOST_KILL_GRACE_MS: number = 2000;
+
+/**
+ * Stops a child and everything in its process group: SIGTERM, then SIGKILL
+ * after {@link HOST_KILL_GRACE_MS} if it has not ended.
+ *
+ * @param child - A child spawned `detached`, so it leads its own group.
+ * @returns The stopper, safe to call more than once.
+ */
+export function processGroup_stopper(child: ChildProcess): () => void {
+  let stopping: boolean = false;
+  return (): void => {
+    if (stopping || child.pid === undefined || child.exitCode !== null) return;
+    stopping = true;
+    const signalGroup = (name: NodeJS.Signals): void => {
+      try { process.kill(-(child.pid as number), name); } catch { try { child.kill(name); } catch { /* already gone */ } }
+    };
+    signalGroup('SIGTERM');
+    const hard: ReturnType<typeof setTimeout> = setTimeout((): void => { if (child.exitCode === null) signalGroup('SIGKILL'); }, HOST_KILL_GRACE_MS);
+    hard.unref?.();
+    child.once('close', (): void => clearTimeout(hard));
+  };
 }
 
 /**
@@ -156,13 +188,15 @@ export function hostShell_run(command: string, write: (channel: 'data' | 'err', 
  * @param input - The upstream bytes.
  * @returns The segment's stdout.
  */
-export function hostPipe_run(command: string, input: Buffer): Promise<Buffer> {
+export function hostPipe_run(command: string, input: Buffer, signal?: AbortSignal): Promise<Buffer> {
   return new Promise((resolve: (output: Buffer) => void, reject: (error: Error) => void): void => {
-    const child: ChildProcess = spawn(command, { shell: true, stdio: ['pipe', 'pipe', 'inherit'], cwd: process.cwd() });
+    const child: ChildProcess = spawn(command, { shell: true, stdio: ['pipe', 'pipe', 'inherit'], cwd: process.cwd(), detached: true });
+    const stop: () => void = processGroup_stopper(child);
+    signal?.addEventListener('abort', stop, { once: true });
     const chunks: Buffer[] = [];
     child.stdout?.on('data', (chunk: Buffer): void => { chunks.push(chunk); });
-    child.once('error', (error: Error): void => reject(error));
-    child.once('close', (): void => resolve(Buffer.concat(chunks)));
+    child.once('error', (error: Error): void => { signal?.removeEventListener('abort', stop); reject(error); });
+    child.once('close', (): void => { signal?.removeEventListener('abort', stop); resolve(Buffer.concat(chunks)); });
     child.stdin?.end(input);
   });
 }

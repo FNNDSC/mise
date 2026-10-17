@@ -45,6 +45,10 @@ export interface HostedEngine {
    * @returns True when the active command accepted the request.
    */
   line_cancel?(): boolean;
+  /** Aborts the foreground command, cancellable or not (STOP). */
+  line_abort?(): boolean;
+  /** Whether the caller runs inside a stopped command. */
+  command_stopped?(): boolean;
 
   /**
    * The running command steps aside to wait on a person: the engine saves

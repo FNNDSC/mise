@@ -495,6 +495,15 @@ export class ArgusClient {
   }
 
   /**
+   * The operator's STOP: ends the command running for this page (its own, or
+   * one typed in its terminal), whatever it is; one that does not end when
+   * asked is abandoned by the daemon and the session is free again.
+   */
+  public stop_send(): void {
+    this.socket.send(JSON.stringify({ type: 'stop' }));
+  }
+
+  /**
    * Shares the operator's regard with the session: the daemon keeps the
    * truth and rebroadcasts to every surface.
    *

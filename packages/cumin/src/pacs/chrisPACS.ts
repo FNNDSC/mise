@@ -184,6 +184,42 @@ export async function pacsServer_resolve(
 export async function pacsServers_list(
   options: PACSServerListOptions = {}
 ): Promise<Result<PACSServer[]>> {
+  // The whole list, unfiltered, changes when an administrator registers a
+  // server: it is kept a minute and shared while asked, so a query, a
+  // listing and `pacs list` stop asking CUBE for it each time.
+  const whole: boolean = Object.keys(options).length === 0;
+  if (whole) {
+    const now: number = Date.now();
+    // Kept per client: a login is a new client, and another identity's list is not this one's.
+    const client: unknown = await chrisConnection.client_get();
+    if (serversKept !== null && serversKept.client === client && now - serversKept.at < PACS_SERVERS_KEEP_MS) return serversKept.answer;
+    const answer: Promise<Result<PACSServer[]>> = pacsServers_fetch(options);
+    serversKept = { at: now, answer, client };
+    // A refusal or a failure is not kept: the next ask tries again.
+    void answer.then((result: Result<PACSServer[]>): void => { if (!result.ok && serversKept?.answer === answer) serversKept = null; });
+    return answer;
+  }
+  return pacsServers_fetch(options);
+}
+
+/** How long the unfiltered server list is kept. */
+export const PACS_SERVERS_KEEP_MS: number = 60 * 1000;
+
+/** The unfiltered server list, as last asked. */
+let serversKept: { at: number; answer: Promise<Result<PACSServer[]>>; client: unknown } | null = null;
+
+/** Forgets the kept server list (a server registered, an identity changed, a test). */
+export function pacsServers_forget(): void {
+  serversKept = null;
+}
+
+/**
+ * Asks CUBE for the PACS servers.
+ *
+ * @param options - Search/pagination parameters.
+ * @returns The servers, or Err with the error stack holding why.
+ */
+async function pacsServers_fetch(options: PACSServerListOptions): Promise<Result<PACSServer[]>> {
   try {
     const group: ChRISPACSGroup = new ChRISPACSGroup();
     const clientAvailable: unknown = await group.client_get();

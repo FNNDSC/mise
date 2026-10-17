@@ -191,6 +191,17 @@ describe('connection_connectWithToken', () => {
     expect(mockAuthToken).not.toHaveBeenCalled();
   });
 
+  it('keeps the folder lookups memoised on the client it takes, as client_get makes them', async () => {
+    const lookup: jest.Mock = jest.fn(async (path: string) => ({ data: { path } }));
+    mockClientCreate.mockReturnValue({ getUser: jest.fn(async () => ({ username: 'chris' })), getFileBrowserFolderByPath: lookup });
+    const conn: ChRISConnection = connection_make({ files: {} });
+    await conn.connection_connectWithToken(options);
+    const client = (await conn.client_get()) as unknown as { getFileBrowserFolderByPath: (p: string) => Promise<unknown> };
+    await client.getFileBrowserFolderByPath('/home/chris/token-boot');
+    await client.getFileBrowserFolderByPath('/home/chris/token-boot');
+    expect(lookup).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses in the outcome, writes nothing, and leaves the error stack clean', async () => {
     const store: FakeStore = { files: {} };
     const conn: ChRISConnection = connection_make(store);

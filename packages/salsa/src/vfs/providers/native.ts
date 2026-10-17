@@ -7,7 +7,7 @@
  */
 
 import { vfsOutcome_ofBoolean, vfs_ok, vfs_fail, vfs_failFromStack, type VfsOutcome, type VfsErrno } from '@fnndsc/fond';
-import { Result, Ok, Err, errorStack } from "@fnndsc/cumin";
+import { Result, Ok, Err, errorStack, listCache_get } from "@fnndsc/cumin";
 import { VFSProvider, VFSItem, CpOptions } from "../provider.js";
 import { vfsItems_sort } from "../sort.js";
 import {
@@ -493,6 +493,11 @@ async function path_checkFileExists(targetPath: string): Promise<boolean> {
 async function path_checkIsDir(targetPath: string): Promise<Result<boolean>> {
   const parent: string = path.posix.dirname(targetPath);
   const name: string = path.posix.basename(targetPath);
+  // A parent listed freshly already says which of its children are folders.
+  const kept = listCache_get().cache_get<VFSItem[]>(parent);
+  if (kept !== null && kept.fresh && Array.isArray(kept.data)) {
+    return Ok(kept.data.some((item: VFSItem): boolean => item.name === name && (item.type === "dir" || item.type === "vfs")));
+  }
   try {
     const results = await files_listAll({ limit: 1000, offset: 0 }, "dirs", parent);
     if (!results || !results.tableData) {

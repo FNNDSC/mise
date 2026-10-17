@@ -9,7 +9,7 @@ import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
 import { errorStack, type Result, type VFSItem } from '@fnndsc/fond';
 import type { ListingCache } from '../../core/backend.js';
 import { session } from '../../session/index.js';
-import { vfs } from '../../lib/vfs/vfs.js';
+import { vfs, type VfsListing } from '../../lib/vfs/vfs.js';
 import { envelope_error, type ListingItem, type CommandEnvelope } from '@fnndsc/menu';
 
 /** Valid sort fields for ls. */
@@ -221,7 +221,8 @@ export async function ls_run(runOptions: LsOptions): Promise<CommandEnvelope> {
   const listings: LsListing[] = [];
   for (const index of order) {
     const target: string | undefined = targets[index];
-    const envelope: CommandEnvelope = await vfs.list(target, options);
+    const kept: { listing?: VfsListing } = {};
+    const envelope: CommandEnvelope = await vfs.list(target, options, kept);
     if (folders.has(index) && envelope.status !== 'error') {
       rendered += `${blocks > 0 ? '\n' : ''}${pathArgs[index]}:\n`;
       blocks++;
@@ -236,11 +237,9 @@ export async function ls_run(runOptions: LsOptions): Promise<CommandEnvelope> {
       anyFailed = true;
       continue;
     }
-    // Collect the entries for the model; vfs.list just populated the
-    // listing cache, so this second read is served from it.
-    const listing = await vfs.listing_get(target, options);
-    if (listing.ok) {
-      listings.push({ path: listing.value.path, items: listing.value.items, fresh: listing.value.fresh });
+    // The entries for the model: the listing vfs.list just rendered.
+    if (kept.listing !== undefined) {
+      listings.push({ path: kept.listing.path, items: kept.listing.items, fresh: kept.listing.fresh });
     }
   }
 

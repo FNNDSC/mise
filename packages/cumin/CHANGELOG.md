@@ -1,5 +1,12 @@
 # @fnndsc/cumin
 
+## 3.27.19
+
+### Patch Changes
+
+- Updated dependencies [fb6813d]
+  - @fnndsc/menu@0.26.0
+
 ## 3.27.18
 
 ### Patch Changes

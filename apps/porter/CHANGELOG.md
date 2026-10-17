@@ -1,5 +1,17 @@
 # @fnndsc/porter
 
+## 0.6.12
+
+### Patch Changes
+
+- Updated dependencies [c1ad144]
+- Updated dependencies [5dadfdd]
+- Updated dependencies [fb6813d]
+  - @fnndsc/calypso@0.24.0
+  - @fnndsc/chell@5.16.0
+  - @fnndsc/menu@0.26.0
+  - @fnndsc/cumin@3.27.19
+
 ## 0.6.11
 
 ### Patch Changes

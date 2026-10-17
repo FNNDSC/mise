@@ -1,5 +1,21 @@
 # @fnndsc/calypso
 
+## 0.24.0
+
+### Minor Changes
+
+- c1ad144: Full-screen host programs such as vi, top or your own zsh now work in the ARGUS terminal when host control is on. `!cmd` typed there runs in the terminal's own pty, and Ctrl-C reaches it as an interrupt.
+- fb6813d: Any running command can now be stopped, with Ctrl-C or the console's new STOP capsule. A host process it started is killed, and a command that does not end when asked is abandoned after three seconds so the session is free again. A chell that disconnects stops its command, and Ctrl-C reaches a host program in the terminal.
+
+### Patch Changes
+
+- Updated dependencies [5dadfdd]
+- Updated dependencies [c7acb1b]
+- Updated dependencies [fb6813d]
+  - @fnndsc/brasa@0.40.0
+  - @fnndsc/menu@0.26.0
+  - @fnndsc/cumin@3.27.19
+
 ## 0.23.1
 
 ### Patch Changes

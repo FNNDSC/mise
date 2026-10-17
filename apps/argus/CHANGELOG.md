@@ -1,5 +1,18 @@
 # @fnndsc/argus
 
+## 0.32.0
+
+### Minor Changes
+
+- fb6813d: Any running command can now be stopped, with Ctrl-C or the console's new STOP capsule. A host process it started is killed, and a command that does not end when asked is abandoned after three seconds so the session is free again. A chell that disconnects stops its command, and Ctrl-C reaches a host program in the terminal.
+
+### Patch Changes
+
+- c1ad144: Full-screen host programs such as vi, top or your own zsh now work in the ARGUS terminal when host control is on. `!cmd` typed there runs in the terminal's own pty, and Ctrl-C reaches it as an interrupt.
+- 5dadfdd: The terminal console's text is the old console's size again, and a new clear command empties the console. The terminal had taken the page's larger size because xterm measured it before the console's styles applied. clear empties the screen and scrollback in a terminal and the record in the transcript; Ctrl-L still clears the screen alone.
+- Updated dependencies [fb6813d]
+  - @fnndsc/menu@0.26.0
+
 ## 0.31.0
 
 ### Minor Changes

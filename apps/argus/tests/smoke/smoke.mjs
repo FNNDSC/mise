@@ -5519,6 +5519,62 @@ try {
     asks.onPane && asks.mirrored !== '' && asks.keptAfterPane, JSON.stringify({ onPane: asks.onPane, mirrored: asks.mirrored }));
   }
 
+  if (await stage('find')) {
+  // find is POSIX's: an expression over the namespace, an entry before what
+  // lies under it, an unknown predicate refused by name. Over /proc/jobs it
+  // answers from the job index, so asking which runs a plugin made, or a
+  // pipeline, asks CUBE nothing once the index knows.
+  const found = await evalIn(`
+    await console_idle();
+    const ask = async (line) => { const m = console_mark(); await console_run(line, 60000); return console_since(m); };
+    const paths = (out) => out.split('\\n').map((l) => l.trim()).filter((l) => /^\\/\\S*$/.test(l));
+    await console_run('rm -r ~/smoke-find'); await console_run('mkdir -p ~/smoke-find/a/b');
+    await console_run('touch ~/smoke-find/a/x.nii'); await console_run('touch ~/smoke-find/a/b/y.nii'); await console_run('touch ~/smoke-find/notes.txt');
+    const rel = (out) => paths(out).map((p) => p.slice(p.indexOf('/smoke-find'))).filter((p) => p.startsWith('/smoke-find'));
+    const all = rel(await ask('find ~/smoke-find'));
+    const nii = rel(await ask("find ~/smoke-find -name '*.nii'"));
+    const dirs = rel(await ask('find ~/smoke-find -type d'));
+    const shallow = rel(await ask('find ~/smoke-find -maxdepth 1'));
+    const either = rel(await ask("find ~/smoke-find -type f ( -name 'n*' -o -path '*/b/*' )"));
+    const refused = await ask('find ~/smoke-find -bogus');
+    await console_run('rm -r ~/smoke-find');
+
+    // /proc/jobs: the index judges every job's run (a backfill behind the
+    // prompt, once); a pattern nothing matches prints only what find could
+    // not judge. A direct run and a pipeline's runs together are every job.
+    let unjudged = '';
+    for (let i = 0; i < 40; i++) { unjudged = (await ask("find /proc/jobs -pipeline 'no pipeline is named this'")).split('\\n').find((l) => /not judged/.test(l)) ?? ''; if (unjudged === '') break; await sleep(3000); }
+    // Counted on one feed (the last the roster lists): the console keeps a
+    // bounded scrollback, and this surface pipes to no host wc.
+    const feedOut = paths(await ask('find /proc/jobs -mindepth 1 -maxdepth 1'));
+    const feed = feedOut[feedOut.length - 1] ?? '';
+    const jobsOf = async (tests) => paths(await ask('find ' + feed + ' ' + tests)).filter((p) => p.startsWith(feed + '/')).length;
+    await console_run('netstat -r');
+    const jobs = await jobsOf("-plugin '*'");
+    const direct = await jobsOf("-pipeline ''");
+    const piped = await jobsOf("-plugin '*' ! -pipeline ''");
+    const wire = await ask('netstat');
+    const asked = Number(/REQUESTS (\\d+) since/.exec(wire)?.[1] ?? NaN);
+    const families = [...wire.matchAll(/^\\s*(\\S+)\\s+(\\d+)\\s+\\d+ ms$/gm)].map((m) => m[1] + ' ' + m[2]);
+    return { all, nii, dirs, shallow, either, refused: refused.slice(-200), unjudged, jobs, direct, piped, asked, families, feed };`);
+  check('find prints everything beneath a path, an entry before what lies under it',
+    JSON.stringify(found.all) === JSON.stringify(['/smoke-find', '/smoke-find/a', '/smoke-find/a/b', '/smoke-find/a/b/y.nii', '/smoke-find/a/x.nii', '/smoke-find/notes.txt']),
+    JSON.stringify(found.all));
+  check('find selects by -name, -type and -maxdepth, and joins tests with ( -o )',
+    JSON.stringify(found.nii) === JSON.stringify(['/smoke-find/a/b/y.nii', '/smoke-find/a/x.nii'])
+    && JSON.stringify(found.dirs) === JSON.stringify(['/smoke-find', '/smoke-find/a', '/smoke-find/a/b'])
+    && JSON.stringify(found.shallow) === JSON.stringify(['/smoke-find', '/smoke-find/a', '/smoke-find/notes.txt'])
+    && JSON.stringify(found.either) === JSON.stringify(['/smoke-find/a/b/y.nii', '/smoke-find/notes.txt']),
+    JSON.stringify({ nii: found.nii, dirs: found.dirs, shallow: found.shallow, either: found.either }));
+  check('find refuses a predicate it does not know, by name',
+    /unknown predicate '-bogus'/.test(found.refused), JSON.stringify(found.refused));
+  check('find judges every job\'s pipeline run once the index has read it',
+    found.unjudged === '', JSON.stringify(found.unjudged));
+  check('over /proc/jobs, a direct run and a pipeline\'s runs together are every job, and CUBE is asked nothing',
+    found.jobs > 0 && found.direct + found.piped === found.jobs && found.asked === 0,
+    JSON.stringify({ jobs: found.jobs, direct: found.direct, piped: found.piped, asked: found.asked, families: found.families, feed: found.feed }));
+  }
+
   if (await stage('console-asks')) {
     // The session can ask this surface a question now. A `text` or a
     // `secret` is answered in the console — where the session speaks, and

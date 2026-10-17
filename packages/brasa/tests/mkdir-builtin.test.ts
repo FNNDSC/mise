@@ -25,9 +25,14 @@ const state: { dispatcher: VFSDispatcher; store: MemoryVfsProvider } = (() => {
   return { store, dispatcher: new VFSDispatcher(store) };
 })();
 const mockInvalidate = jest.fn();
+/** Listings the session keeps, by folder. */
+const kept: Map<string, Array<{ name: string }>> = new Map();
 jest.unstable_mockModule('../src/core/filesystem.js', () => ({
   vfsDispatcher_get: () => state.dispatcher,
-  listingCache_get: () => ({ cache_invalidate: mockInvalidate }),
+  listingCache_get: () => ({
+    cache_invalidate: mockInvalidate,
+    cache_get: (path: string) => (kept.has(path) ? { data: kept.get(path), fresh: true } : null),
+  }),
 }));
 
 const { builtin_mkdir, mkdirArgs_parse } = await import('../src/builtins/fs/mkdir.js');
@@ -54,6 +59,7 @@ async function names_of(folder: string): Promise<string[]> {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  kept.clear();
   errorStack.stack_clear();
   filesystem_reset();
 });
@@ -72,6 +78,14 @@ describe('mkdir', () => {
     expect(envelope.model?.kind).toBe('fs.mkdir');
     expect(await names_of('/home/chris')).toContain('newdir:dir');
     expect(mockInvalidate).toHaveBeenCalledWith('/home/chris');
+  });
+
+  it('with -p, forgets every listing above the folder up to the first that already held its child', async () => {
+    kept.set('/home', [{ name: 'chris' }]);
+    kept.set('/home/chris', [{ name: 'here' }]);                  // listed before x was made
+    const envelope: CommandEnvelope = await builtin_mkdir(['-p', 'x/a/b']);
+    expect(envelope.status).toBe('ok');
+    expect(mockInvalidate.mock.calls.map((c) => c[0])).toEqual(['/home/chris/x/a', '/home/chris/x', '/home/chris']);
   });
 
   it('refuses an option it does not have by name, making nothing', async () => {

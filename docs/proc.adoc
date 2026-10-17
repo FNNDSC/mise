@@ -1,0 +1,55 @@
+= /proc: CUBE's runtime state as paths
+:toc:
+
+`/proc` holds what CUBE has run, beside `/bin`, which holds what it can run. On Linux, `/bin/grep` is a program and `/proc/<pid>/` is one running process; here `/bin/pl-dircopy` is a plugin (`/bin/zip_v20240311` a pipeline, a script of plugins) and `/proc/jobs/feed_N/...` is one run of it.
+
+[cols="1,1"]
+|===
+| Linux | mise / CUBE
+
+| `/bin/grep`: a program | `/bin/<plugin>`, `/bin/<pipeline>`
+| a process: one run of a program | a job (plugin instance) in `/proc/jobs/feed_N/<plugin>_<id>`
+| a shell script's run: processes that belong together | a pipeline's run: CUBE calls it a *workflow*
+|===
+
+== /proc/jobs
+
+Every feed this identity can see, and under each its jobs as a tree (a job's children beneath it), with `status`, `title`, `note`, `params`, `log` and the `data` link into the feed's files. The roster and the topology are cached and kept current by visits (a visit is a delta, not a re-walk); see the salsa `/proc` provider.
+
+== /proc/tags
+
+Tags as directories: `mkdir` makes one, `rmdir` removes one no feed wears, `setfattr -n tag` hangs one on a feed (`docs/menu.adoc`, Tags).
+
+== /proc/workflows (deprecated)
+
+`/proc/workflows/<id>/` projects one CUBE workflow: `title`, a `pipeline` link into `/bin`, and `jobs/` linking into `/proc/jobs`. It is deprecated: it holds no fact the jobs do not already carry, it is unbounded, and nothing consumes it. This section keeps why it was built and what was learned, so the reasoning is not lost.
+
+=== Why it was built
+
+A browser can save one file, not a folder. DOWNLOAD on a folder in ARGUS therefore asks CUBE to archive it first, as the ChRIS web UI's download does: it runs the registered pipeline `zip v20240311` (`pl-dircopy` then zip) and hands the browser the one zip (#234). Running a pipeline creates a workflow (and a feed and its jobs), and there was no way to see those runs: the archive left an unexplained feed in `/proc/jobs`. `/proc/workflows` was added so the run that a download started could be seen as such: which pipeline ran, and its jobs (#235, 2026-08-27; designed in `docs/menu.adoc`, Workflows). A collaborator's own workaround for a large file, running a zip plugin on his feed by hand, is the same mechanism.
+
+=== What was measured (ekanite, 2026-10-17)
+
+* CUBE holds 51,294 workflows and the count grows daily; 18,913 belong to one user's automated PACS, anonymization and neuro-tree runs, 21 to `rudolphpienaar`, none to the e2e identity.
+* Listing `/proc/workflows` paged through all of them (about 512 pages at about 1.5 s each, some 13 minutes) on the session's lane, freezing every other command for that time; reading one workflow's `title` or following its `pipeline` link walked them all too.
+* Every job already records its run: a plugin instance carries `workflow_id`, `pipeline_id` and `pipeline_name` beside `feed_id` and `status`. A workflow adds only its title and per-status job counts.
+* Visibility differs by resource. Jobs are scoped to the feeds an identity can see (owned, shared, public); workflows are not. The e2e identity sees every workflow on the CUBE, other users' titles included, and not one job inside them.
+
+=== The questions, and where they are answered
+
+The questions worth asking are about runs: which pipelines ran (FreeSurfer, anonymization), every run of a plugin, which of them failed this week. A tree keyed by run id answers none of them without walking it whole; a tree per key (by pipeline, by plugin, by owner: `/dev/disk/by-id` style) is a group-by built as directories, one cached index per key, and still cannot express a combined filter. Each is a query.
+
+* *Everyone's runs* are CUBE queries, filtered and paged on CUBE's side, answered in about a second with exact counts:
+** `workflows list --search pipeline_name:freesurfer`: pipeline runs, each row with its job counts.
+** `plugininstances list --search plugin_name:pl-dylld,status:finishedWithError`: runs of a plugin, by status. As `radstar`, `pl-dylld` reads 763 runs (757 finished successfully, 6 with an error), 2025-04-18 to 2026-10-16, run directly rather than from a pipeline, so no workflow ever listed them.
+* *This identity's own work* is `/proc/jobs`, cached: the jobs' `pipeline_name` and `workflow_id`, shown as a column or an attribute there, say which run a job came from; the listing-aware grep of #1101 filters them locally.
+
+=== Defects found on the way
+
+* `workflows search <term>` and `plugininstances search <term>`, the forms the help documents, fail: the rewrite to `list --search` keeps the term as the first argument, which is then read as an unknown subcommand. `list --search field:value,...` works.
+* `workflow jobs <id>`, `run`, `rename` and `delete` are in the help and have no handler in the builtin.
+* A search term must name CUBE's field (`plugin_name:`, `pipeline_name:`, `status:`); nothing says which fields a resource takes beyond `inspect`.
+
+=== What replaces it
+
+The run's identity on the job rows of `/proc/jobs` (pipeline and workflow), the CUBE searches above with their short forms repaired, and the listing-aware grep of #1101. The provider (`salsa/src/vfs/providers/workflows.ts`) stays mounted until those land, and its listing must not walk the CUBE whole in the meantime.

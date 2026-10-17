@@ -135,7 +135,7 @@ A `Tag` is a first-class user-owned resource pointing at many feeds; a `Tagging`
 
 === Workflows
 
-A `Workflow` is an instantiated pipeline: it owns the plugin instances it created and names the pipeline it ran. That is runtime state, so it belongs beside the jobs.
+A `Workflow` is an instantiated pipeline: it owns the plugin instances it created and names the pipeline it ran. That is runtime state, so it belongs beside the jobs. (Deprecated: see `docs/proc.adoc`, /proc/workflows, for why it was built, what was measured, and what answers its questions instead.)
 
 [source]
 ----

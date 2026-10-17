@@ -11,6 +11,9 @@
  */
 
 import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
+
+/** How long `/etc`'s compute resources and the user's own record are kept. */
+export const ETC_KEEP_MS: number = 10 * 60 * 1000;
 import { Result, Ok, Err, errorStack,
   listCache_get,
 } from '@fnndsc/cumin';
@@ -118,8 +121,25 @@ export class EtcVfsProvider implements VFSProvider {
     }
   }
 
+  /**
+   * A record CUBE rarely changes, kept in the listing cache for
+   * {@link ETC_KEEP_MS} per identity, so a `cat` answers without asking.
+   *
+   * @param name - The record's name.
+   * @param fetch - How CUBE is asked when nothing fresh is kept.
+   * @returns The record.
+   */
+  private async record_kept<T>(name: string, fetch: () => Promise<Result<T>>): Promise<Result<T>> {
+    const key: string = `etc:${name}:${await chrisContext.ChRISuser_get()}@${await chrisContext.ChRISURL_get()}`;
+    const kept = listCache_get().cache_get<T>(key);
+    if (kept !== null && kept.fresh) return Ok(kept.data);
+    const fetched: Result<T> = await fetch();
+    if (fetched.ok) listCache_get().cache_set<T>(key, fetched.value, { ttl: ETC_KEEP_MS });
+    return fetched;
+  }
+
   private async computeYaml_render(): Promise<Result<string>> {
-    const result: Result<ComputeResource[]> = await computeResources_getAll();
+    const result: Result<ComputeResource[]> = await this.record_kept('compute', computeResources_getAll);
     if (!result.ok) return Err();
 
     const lines: string[] = ['# ChRIS compute resources'];
@@ -212,7 +232,7 @@ export class EtcVfsProvider implements VFSProvider {
   }
 
   private async passwd_render(): Promise<Result<string>> {
-    const result: Result<ChrisUser> = await currentUser_get();
+    const result: Result<ChrisUser> = await this.record_kept('passwd', currentUser_get);
     if (!result.ok) return Err();
 
     const u: ChrisUser = result.value;

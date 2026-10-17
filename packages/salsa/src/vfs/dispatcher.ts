@@ -16,7 +16,6 @@ import { NativeVfsProvider } from "./providers/native.js";
 import { PacsVfsProvider } from "./providers/pacs.js";
 import { EtcVfsProvider } from "./providers/etc.js";
 import { ProcVfsProvider } from "./providers/proc.js";
-import { WorkflowsVfsProvider } from "./providers/workflows.js";
 import { ProcTagsVfsProvider } from "./providers/procTags.js";
 import { ShareVfsProvider } from "./providers/share.js";
 
@@ -32,10 +31,9 @@ export class CubeVfsDispatcher extends VFSDispatcher {
     this.provider_register(new PacsVfsProvider());
     this.provider_register(new EtcVfsProvider());
     this.provider_register(new ProcVfsProvider());
-    // Three relations CUBE owns: the tags a feed can carry, the runs a
-    // pipeline produced, and what is known about a plugin as opposed to how
-    // to invoke it.
-    this.provider_register(new WorkflowsVfsProvider());
+    // Two relations CUBE owns: the tags a feed can carry, and what is known
+    // about a plugin as opposed to how to invoke it. (/proc/workflows was
+    // unmounted: docs/proc.adoc says why.)
     this.provider_register(new ProcTagsVfsProvider());
     this.provider_register(new ShareVfsProvider());
   }

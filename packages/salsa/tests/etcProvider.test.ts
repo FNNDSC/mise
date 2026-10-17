@@ -31,7 +31,7 @@ let etc: EtcVfsProvider;
 beforeEach(() => {
   jest.clearAllMocks();
   errorStack.stack_clear();
-  listCache_get().cache_invalidate('/etc/group');
+  listCache_get().cache_invalidate();
   mockCtx.ChRISURL_get.mockResolvedValue(null);
   mockCtx.ChRISuser_get.mockResolvedValue(null);
   etc = new EtcVfsProvider();
@@ -54,6 +54,17 @@ describe('list / cp', () => {
 });
 
 describe('compute.yaml', () => {
+  it('is kept: a second cat answers without asking CUBE, and passwd likewise', async () => {
+    mockCompute.mockResolvedValue(Ok([{ id: 1, name: 'host', compute_url: 'http://c/' }]));
+    mockUser.mockResolvedValue(Ok({ username: 'chris', id: 3, email: 'c@x' }));
+    await etc.read('/etc/compute.yaml');
+    await etc.read('/etc/compute.yaml');
+    await etc.read('/etc/passwd');
+    await etc.read('/etc/passwd');
+    expect(mockCompute).toHaveBeenCalledTimes(1);
+    expect(mockUser).toHaveBeenCalledTimes(1);
+  });
+
   it('renders compute resources, including optional description', async () => {
     mockCompute.mockResolvedValue(
       Ok([

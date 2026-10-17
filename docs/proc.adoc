@@ -20,9 +20,9 @@ Every feed this identity can see, and under each its jobs as a tree (a job's chi
 
 Tags as directories: `mkdir` makes one, `rmdir` removes one no feed wears, `setfattr -n tag` hangs one on a feed (`docs/menu.adoc`, Tags).
 
-== /proc/workflows (deprecated)
+== /proc/workflows (removed)
 
-`/proc/workflows/<id>/` projects one CUBE workflow: `title`, a `pipeline` link into `/bin`, and `jobs/` linking into `/proc/jobs`. It is deprecated: it holds no fact the jobs do not already carry, it is unbounded, and nothing consumes it. This section keeps why it was built and what was learned, so the reasoning is not lost.
+`/proc/workflows/<id>/` projected one CUBE workflow: `title`, a `pipeline` link into `/bin`, and `jobs/` linking into `/proc/jobs`. It was deprecated and unmounted on 2026-10-17: it held no fact the jobs do not already carry, it was unbounded, and nothing consumed it. This section keeps why it was built and what was learned, so the reasoning is not lost.
 
 === Why it was built
 
@@ -52,4 +52,4 @@ The questions worth asking are about runs: which pipelines ran (FreeSurfer, anon
 
 === What replaces it
 
-The run's identity on the job rows of `/proc/jobs` (pipeline and workflow), the CUBE searches above with their short forms repaired, and the listing-aware grep of #1101. The provider (`salsa/src/vfs/providers/workflows.ts`) stays mounted until those land, and its listing must not walk the CUBE whole in the meantime.
+The run's identity on the job rows of `/proc/jobs` (pipeline and workflow), `find` over `/proc/jobs` answered from the cache (`-plugin`, `-pipeline`, `-workflow`, `-status`, `-newer`), the CUBE searches above with their short forms repaired, and the listing-aware grep of #1101. The provider (`salsa/src/vfs/providers/workflows.ts`) was removed with the mount; `salsa/src/workflows/` stays, as the `workflows` command's.

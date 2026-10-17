@@ -96,6 +96,9 @@ export const ROSTER_DELTA_PAGE: number = 20;
  */
 export const ROSTER_LIST_BUDGET_MS: number = 250;
 
+/** The least time between two unforced roster deltas. */
+export const ROSTER_DELTA_MIN_MS: number = 60 * 1000;
+
 /**
  * Per-feed visit bookkeeping. Session memory only — never checkpointed; a
  * restart simply re-derives the cursor from the cached instance timestamps.
@@ -116,6 +119,8 @@ let rosterWalkedAt: number = 0;
 let rosterSyncInflight: Promise<number[]> | null = null;
 /** Whether the sync in flight walks the whole index (a forced one waits out a delta, then walks). */
 let rosterSyncInflightFull: boolean = false;
+/** When the last roster sync settled (0: none yet). */
+let rosterSyncedAt: number = 0;
 
 /**
  * Each feed collection's total as the last walk read it: the yardstick a
@@ -1317,6 +1322,7 @@ export async function procRoster_sync(force: boolean = false): Promise<number[]>
   }
   const cache: ProcCache = procCache_get();
   const kind: ProcRosterSyncKind | null = procRosterSync_kind(cache, force);
+  if (rosterDelta_throttled(kind, force)) return [];
   if (kind !== null) cache.rosterSync_progress(kind);
   const run: Promise<number[]> = procRoster_run(force)
     .catch((error: unknown): number[] => {
@@ -1324,10 +1330,26 @@ export async function procRoster_sync(force: boolean = false): Promise<number[]>
       errorStack.stack_push('warning', `proc roster: live sync failed (${msg}); showing cached roster`);
       return [];
     })
-    .finally((): void => { rosterSyncInflight = null; rosterSyncInflightFull = false; cache.rosterSync_clear(); });
+    .finally((): void => { rosterSyncInflight = null; rosterSyncInflightFull = false; rosterSyncedAt = Date.now(); cache.rosterSync_clear(); });
   rosterSyncInflight = run;
   rosterSyncInflightFull = kind === 'full';
   return run;
+}
+
+/**
+ * Whether an unforced delta comes too soon after the last sync to be worth
+ * a word to CUBE: every `/proc/jobs` listing (and every `cd` into a feed,
+ * which lists it) would otherwise ask, and the surfaces re-ask on a timer.
+ * REFRESH forces one; a full walk is never throttled.
+ *
+ * @param kind - The sync that would run.
+ * @param force - Whether the operator asked for it.
+ * @returns True when it is skipped.
+ */
+function rosterDelta_throttled(kind: ProcRosterSyncKind | null, force: boolean): boolean {
+  if (force || kind !== 'delta' || rosterSyncedAt === 0) return false;
+  const since: number = Date.now() - rosterSyncedAt;
+  return since >= 0 && since < ROSTER_DELTA_MIN_MS;
 }
 
 /** Which roster walk a sync would run now, or null when the cache is not in service. */
@@ -1376,7 +1398,7 @@ export function procRoster_syncStart(force: boolean = false): ProcRosterSyncKind
   }
   if (inflight !== null) return inflight;
   const kind: ProcRosterSyncKind | null = procRosterSync_kind(cache, force);
-  if (kind === null) return 'none';
+  if (kind === null || rosterDelta_throttled(kind, force)) return 'none';
   void procRoster_sync(force);
   return kind;
 }
@@ -1693,6 +1715,7 @@ export function procVisitState_reset(): void {
   rosterWalkedAt = 0;
   rosterSyncInflight = null;
   rosterSyncInflightFull = false;
+  rosterSyncedAt = 0;
   rosterTotals = { owned: null, public: null };
   procTopologyCatchup_reset();
 }

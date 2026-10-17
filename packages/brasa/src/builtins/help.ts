@@ -165,6 +165,21 @@ export const helpText: Record<string, CommandHelp> = {
       '# /home/chris/feeds/Brain MRI Analysis/dircopy v2.1.1/data',
     ],
   },
+  find: {
+    posix: { group: 'Files', differs: 'walks the namespace through the listing cache; links are not followed' },
+    category: 'Navigation',
+    usage: 'find [path...] [expression]',
+    description: 'Walk from each path (. when none) and print the paths the expression selects. Tests and actions join by implicit AND, -o, ! (or -not) and parentheses. Folders are read from the listing cache, so a tree already seen is walked without asking CUBE. A long walk says how far it has got; Ctrl-C stops it and says where.',
+    options: [
+      '-name PATTERN, -iname PATTERN  The entry\'s name matches a shell pattern (-iname ignores case)',
+      '-path PATTERN, -ipath PATTERN  The printed path matches; * crosses /',
+      '-type f|d|l                    A file, a folder, a link',
+      '-newermt DATE                  Changed after DATE (2026-10-10, or an ISO time)',
+      '-maxdepth N, -mindepth N       Descend at most N levels; test only from level N',
+      '-print, -print0                Print the path (the default), or end it with NUL',
+    ],
+    examples: ["find ~ -name '*.nii'", 'find ~/feeds -maxdepth 2 -type d', "find . -name '*.json' -o -name '*.csv'", "find /proc/jobs -maxdepth 1 -newermt 2026-10-10"],
+  },
   cat: {
     posix: { group: 'Files', differs: 'reads CFS files (and a pipe)' },
     category: 'Files',

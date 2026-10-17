@@ -299,9 +299,16 @@ async function cache_ensure(): Promise<void> {
  */
 /** Pulls the execution metrics a CUBE list row carries, defined-only. */
 function instanceMetrics_fromRow(inst: PluginInstanceData): {
-  startedAt?: string; finishedAt?: string; outputBytes?: number; computeResource?: string;
+  startedAt?: string; finishedAt?: string; outputBytes?: number; computeResource?: string; pipelineName: string | null; workflowID: number | null;
 } {
+  // Which pipeline run made the job: null is a direct run. The client drops
+  // a row's null fields, so a run made by no pipeline arrives without them.
+  const row = inst as PluginInstanceData & { pipeline_name?: unknown; workflow_id?: unknown };
+  const pipelineName: string | null = typeof row.pipeline_name === 'string' && row.pipeline_name !== '' ? row.pipeline_name : null;
+  const workflowID: number | null = row.workflow_id === null || row.workflow_id === undefined ? null : Number(row.workflow_id);
   return {
+    pipelineName,
+    workflowID,
     ...(typeof inst.start_date === 'string' ? { startedAt: inst.start_date } : {}),
     ...(typeof inst.end_date === 'string' ? { finishedAt: inst.end_date } : {}),
     ...(typeof inst.size === 'number' ? { outputBytes: inst.size } : {}),
@@ -699,7 +706,13 @@ export class ProcVfsProvider implements VFSProvider {
       entries.push({
         rel: here, depth,
         item: { name, type: 'job', size: 0, owner: '', date: inst.startedAt ?? '', status: inst.status ?? 'unknown' },
-        attrs: { status: inst.status ?? 'unknown', plugin: inst.pluginName },
+        attrs: {
+          status: inst.status ?? 'unknown',
+          plugin: inst.pluginName,
+          // Which pipeline run made it: '' for a direct run; absent until a row said.
+          ...(inst.pipelineName !== undefined ? { pipeline: inst.pipelineName ?? '' } : {}),
+          ...(inst.workflowID !== undefined ? { workflow: inst.workflowID === null ? '' : String(inst.workflowID) } : {}),
+        },
       });
       jobInside(id, here, depth + 1);
     };
@@ -715,6 +728,9 @@ export class ProcVfsProvider implements VFSProvider {
       for (const name of ['status', 'title', 'note']) file(rel, name, depth);
       for (const root of cache.feedRoots_get(id)) job(root, rel, depth);
     };
+    // Rows restored from before the cache kept a job's pipeline run are read
+    // again once, behind the prompt; until then those jobs say they do not know.
+    procPipeline_backfillStart();
     if (clean === PROC_JOBS_PREFIX) {
       for (const id of cache.feedIDs_get()) {
         const feed: ProcFeed | undefined = cache.feed_get(id);
@@ -1264,6 +1280,60 @@ function feedCursor_derive(cache: ProcCache, feedID: number): string | null {
   return newest;
 }
 
+/** How many feeds the pipeline backfill reads at once. */
+const PIPELINE_BACKFILL_LANES: number = 6;
+
+/** The backfill of jobs' pipeline runs, once per session; null until started. */
+let pipelineBackfill: Promise<void> | null = null;
+
+/**
+ * Reads every visible job's row once more so the cache learns which
+ * pipeline run made each (rows restored from an older checkpoint lack it),
+ * behind the prompt: started the first time a `find` needs it, and never
+ * again once every job knows. Off the lane; a failure leaves the jobs as
+ * they were.
+ *
+ * @returns Nothing; the walk runs on.
+ */
+export function procPipeline_backfillStart(): void {
+  if (pipelineBackfill !== null) return;
+  const cache: ProcCache = procCache_get();
+  let unknown: boolean = false;
+  for (const id of cache.feedIDs_get()) {
+    for (const instID of cache.feedInstanceIDs_get(id)) {
+      if (cache.instance_get(instID)?.pipelineName === undefined) { unknown = true; break; }
+    }
+    if (unknown) break;
+  }
+  if (!unknown) return;
+  pipelineBackfill = (async (): Promise<void> => {
+    const client = await chrisConnection.client_get();
+    if (!client) return;
+    // Feed by feed: CUBE answers a feed's rows at once, and the global list
+    // slows with every page it is asked to skip.
+    const feeds: number[] = cache.feedIDs_get().filter((id: number): boolean =>
+      cache.feedInstanceIDs_get(id).some((instID: number): boolean => cache.instance_get(instID)?.pipelineName === undefined));
+    const next = async (): Promise<void> => {
+      for (let id: number | undefined = feeds.shift(); id !== undefined; id = feeds.shift()) {
+        for await (const step of listPages_walk(
+          (offset: number, limit: number): Promise<ListPage<PluginInstanceData>> => pluginInstancesPage_get(client, { feed_id: id, limit, offset }),
+          { pageSize: PAGE },
+        )) {
+          for (const inst of step.items) {
+            const instID: number = Number(inst.id);
+            if (cache.instance_get(instID) !== undefined) cache.instanceMetrics_set(instID, instanceMetrics_fromRow(inst));
+          }
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: PIPELINE_BACKFILL_LANES }, next));
+  })().catch((error: unknown): void => {
+    const msg: string = error instanceof Error ? error.message : String(error);
+    errorStack.stack_push('warning', `proc: reading jobs' pipeline runs failed (${msg})`);
+    pipelineBackfill = null;
+  });
+}
+
 /**
  * Walks one filtered plugin-instance listing for a feed, merging every row.
  *
@@ -1782,6 +1852,7 @@ export function procVisitState_reset(): void {
   rosterSyncInflight = null;
   rosterSyncInflightFull = false;
   rosterSyncedAt = 0;
+  pipelineBackfill = null;
   rosterTotals = { owned: null, public: null };
   procTopologyCatchup_reset();
 }

@@ -40,8 +40,8 @@ const mockSubtree = jest.fn(async (root: string) => root !== '/proc/jobs' ? null
   entries: [
     { rel: 'feed_5', depth: 1, item: { name: 'feed_5', type: 'job', size: 0, owner: '', date: '2026-10-01T00:00:00Z', status: 'finishedSuccessfully' }, attrs: { status: 'finishedSuccessfully' } },
     { rel: 'feed_5/status', depth: 2, item: { name: 'status', type: 'file', size: 0, owner: '', date: '' } },
-    { rel: 'feed_5/pl-dircopy_10', depth: 2, item: { name: 'pl-dircopy_10', type: 'job', size: 0, owner: '', date: '2026-10-02T00:00:00Z' }, attrs: { status: 'finishedSuccessfully', plugin: 'pl-dircopy' } },
-    { rel: 'feed_5/pl-dircopy_10/pl-dylld_11', depth: 3, item: { name: 'pl-dylld_11', type: 'job', size: 0, owner: '', date: '2026-10-03T00:00:00Z' }, attrs: { status: 'finishedWithError', plugin: 'pl-dylld' } },
+    { rel: 'feed_5/pl-dircopy_10', depth: 2, item: { name: 'pl-dircopy_10', type: 'job', size: 0, owner: '', date: '2026-10-02T00:00:00Z' }, attrs: { status: 'finishedSuccessfully', plugin: 'pl-dircopy', pipeline: '', workflow: '' } },
+    { rel: 'feed_5/pl-dircopy_10/pl-dylld_11', depth: 3, item: { name: 'pl-dylld_11', type: 'job', size: 0, owner: '', date: '2026-10-03T00:00:00Z' }, attrs: { status: 'finishedWithError', plugin: 'pl-dylld', pipeline: 'FreeSurfer 8.2.0 per subject', workflow: '51177' } },
     { rel: 'feed_6', depth: 1, item: { name: 'feed_6', type: 'job', size: 0, owner: '', date: '' }, attrs: { status: 'started' } },
   ],
   unanswered: ['feed_6'],
@@ -116,6 +116,16 @@ describe('find', () => {
     expect(listed).toEqual(['/proc/jobs/feed_6', '/proc/jobs/feed_6/pl-dylld_12']);   // only the feed not indexed is walked
     expect((await builtin_find(['/proc/jobs', '-status', 'finishedWithError'])).rendered).toBe('/proc/jobs/feed_5/pl-dircopy_10/pl-dylld_11\n');
     expect((await builtin_find(['/proc/jobs', '-maxdepth', '1'])).rendered).toBe('/proc/jobs\n/proc/jobs/feed_5\n/proc/jobs/feed_6\n');
+  });
+
+  it('-pipeline and -workflow ask which pipeline run made a job, and say what they could not judge', async () => {
+    const result = await builtin_find(['/proc/jobs', '-pipeline', 'freesurfer*']);
+    expect(result.rendered).toBe('/proc/jobs/feed_5/pl-dircopy_10/pl-dylld_11\n');
+    // feed_6's job came from the walk, its run not known: said, and the find is not a failure.
+    expect(result.renderedErr).toContain('find: 1 job not judged: which pipeline run made it is not known yet');
+    expect(result.status).toBe('ok');
+    expect((await builtin_find(['/proc/jobs', '-workflow', '51177'])).rendered).toBe('/proc/jobs/feed_5/pl-dircopy_10/pl-dylld_11\n');
+    expect((await builtin_find(['/proc/jobs', '-pipeline', ''])).rendered).toBe('/proc/jobs/feed_5/pl-dircopy_10\n');   // run directly
   });
 
   it('matches shell patterns: * crosses /, ? one character, [..] a class, \\ escapes', () => {

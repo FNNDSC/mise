@@ -25,6 +25,7 @@ import { builtin_qr } from '../builtins/games/qr.js';
 import { builtin_asciiquarium, builtin_cmatrix, builtin_rain, builtin_sl, builtin_snake, builtin_tetris } from '../builtins/games/show.js';
 import { builtin_ddate, builtin_pom, builtin_stardate, builtin_sunrise } from '../builtins/games/sky.js';
 import { builtin_grep } from '../builtins/sys/grep.js';
+import { builtin_cut, builtin_head, builtin_sort, builtin_tail, builtin_uniq, builtin_wc } from '../builtins/sys/textFilters.js';
 import { builtin_command } from '../builtins/sys/command.js';
 import { builtin_apropos, builtin_man } from '../builtins/sys/apropos.js';
 import { builtin_rev, builtin_rot13, builtin_seq, builtin_shuf, builtin_tac, builtin_yes } from '../builtins/games/text.js';
@@ -76,6 +77,12 @@ const envelope: Record<string, EnvelopeHandler> = {
   rev: builtin_rev,
   tac: builtin_tac,
   grep: builtin_grep,
+  wc: builtin_wc,
+  head: builtin_head,
+  tail: builtin_tail,
+  sort: builtin_sort,
+  uniq: builtin_uniq,
+  cut: builtin_cut,
   command: builtin_command,
   apropos: builtin_apropos,
   man: builtin_man,
@@ -143,6 +150,12 @@ const plain: Record<string, CommandHandler> = {
   rev: envelopeHandler_wrap(builtin_rev),
   tac: envelopeHandler_wrap(builtin_tac),
   grep: envelopeHandler_wrap(builtin_grep),
+  wc: envelopeHandler_wrap(builtin_wc),
+  head: envelopeHandler_wrap(builtin_head),
+  tail: envelopeHandler_wrap(builtin_tail),
+  sort: envelopeHandler_wrap(builtin_sort),
+  uniq: envelopeHandler_wrap(builtin_uniq),
+  cut: envelopeHandler_wrap(builtin_cut),
   command: envelopeHandler_wrap(builtin_command),
   apropos: envelopeHandler_wrap(builtin_apropos),
   man: envelopeHandler_wrap(builtin_man),

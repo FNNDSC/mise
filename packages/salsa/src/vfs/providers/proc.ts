@@ -28,7 +28,7 @@
  * @module
  */
 
-import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
+import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome, type VFSSubtree, type VFSSubtreeEntry } from '@fnndsc/fond';
 import { type ProcRosterSyncKind,
   chrisConnection,
   errorStack,
@@ -668,6 +668,72 @@ export class ProcVfsProvider implements VFSProvider {
 
     errorStack.stack_push('error', `No CFS output path is available for job ${instanceID}`);
     return Err();
+  }
+
+  /**
+   * Everything beneath a `/proc/jobs` path from the cache, in the order its
+   * listings give it (a feed's `status`, `title`, `note` and root jobs; a
+   * job's `status`, `params`, `log`, `data` and children), so `find` asks
+   * CUBE nothing. Each job carries its status and plugin for a test to ask;
+   * a feed whose jobs are not indexed yet is left to the walk.
+   *
+   * @param pathStr - The subtree's root.
+   * @returns The subtree, or null when the cache is not in service.
+   */
+  async subtree(pathStr: string): Promise<VFSSubtree | null> {
+    const cache: ProcCache = procCache_get();
+    if (!cache.built) return null;
+    const clean: string = pathStr.replace(/\/$/, '');
+    const { feedID, instanceID, virtualFile } = procPath_parse(clean);
+    if (virtualFile !== null) return { entries: [], unanswered: [] };
+    const entries: VFSSubtreeEntry[] = [];
+    const unanswered: string[] = [];
+    const file = (rel: string, name: string, depth: number): void => {
+      entries.push({ rel: rel === '' ? name : `${rel}/${name}`, depth, item: { name, type: 'file', size: 0, owner: '', date: '' } });
+    };
+    const job = (id: number, rel: string, depth: number): void => {
+      const inst: ProcInstance | undefined = cache.instance_get(id);
+      if (inst === undefined) return;
+      const name: string = `${inst.pluginName}_${id}`;
+      const here: string = rel === '' ? name : `${rel}/${name}`;
+      entries.push({
+        rel: here, depth,
+        item: { name, type: 'job', size: 0, owner: '', date: inst.startedAt ?? '', status: inst.status ?? 'unknown' },
+        attrs: { status: inst.status ?? 'unknown', plugin: inst.pluginName },
+      });
+      jobInside(id, here, depth + 1);
+    };
+    const jobInside = (id: number, rel: string, depth: number): void => {
+      const inst: ProcInstance | undefined = cache.instance_get(id);
+      if (inst === undefined) return;
+      for (const name of ['status', 'params', 'log']) file(rel, name, depth);
+      if (inst.outputPath !== null) entries.push({ rel: `${rel}/data`, depth, item: { name: 'data', type: 'link', size: 0, owner: '', date: '' } });
+      for (const child of cache.children_get(id)) job(child, rel, depth);
+    };
+    const feedInside = (id: number, rel: string, depth: number): void => {
+      if (!cache.topologyLoaded_has(id)) { unanswered.push(rel); return; }
+      for (const name of ['status', 'title', 'note']) file(rel, name, depth);
+      for (const root of cache.feedRoots_get(id)) job(root, rel, depth);
+    };
+    if (clean === PROC_JOBS_PREFIX) {
+      for (const id of cache.feedIDs_get()) {
+        const feed: ProcFeed | undefined = cache.feed_get(id);
+        const name: string = `feed_${id}`;
+        const status: string = feed ? feedStatus_derive(feed) : 'unknown';
+        entries.push({ rel: name, depth: 1, item: { name, type: 'job', size: 0, owner: '', date: feed?.creationDate ?? '', title: feed?.title ?? name, status }, attrs: { status } });
+        feedInside(id, name, 2);
+      }
+    } else if (feedID !== null && instanceID === null) {
+      if (cache.feed_get(feedID) === undefined) return null;
+      feedInside(feedID, '', 1);
+      if (unanswered.length > 0) return null;
+    } else if (feedID !== null && instanceID !== null) {
+      if (cache.instance_get(instanceID) === undefined) return null;
+      jobInside(instanceID, '', 1);
+    } else {
+      return null;
+    }
+    return { entries, unanswered };
   }
 
   async list(

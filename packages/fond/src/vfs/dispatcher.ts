@@ -14,7 +14,7 @@
 
 import { Result, Ok, Err } from "../result.js";
 import { errorStack } from "../errorStack.js";
-import { VFSProvider, VFSItem, CpOptions } from "./provider.js";
+import { VFSProvider, VFSItem, CpOptions, type VFSSubtree } from "./provider.js";
 import { vfs_ok, vfs_fail, type VfsOutcome } from "./outcome.js";
 
 /**
@@ -116,6 +116,21 @@ export class VFSDispatcher {
         p.prefix.length > 0 &&
         (clean === p.prefix || clean.startsWith(p.prefix + "/") || p.prefix.startsWith(clean + "/")),
     );
+  }
+
+  /**
+   * Asks the mount that owns a path to answer its whole subtree from what it
+   * holds (see {@link VFSProvider.subtree}).
+   *
+   * @param pathStr - The subtree's root.
+   * @returns The answer, or null when the mount cannot give one.
+   */
+  async subtree(pathStr: string): Promise<VFSSubtree | null> {
+    const absolutePath: string = pathStr.startsWith("/") ? pathStr : "/" + pathStr;
+    const clean: string = absolutePath.length > 1 && absolutePath.endsWith("/") ? absolutePath.slice(0, -1) : absolutePath;
+    const provider: VFSProvider = this.provider_get(clean);
+    if (provider === this.defaultProvider || provider.subtree === undefined) return null;
+    return provider.subtree(clean);
   }
 
   /**

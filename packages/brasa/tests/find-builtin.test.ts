@@ -16,7 +16,10 @@ jest.unstable_mockModule('@fnndsc/chili/models/listing.js', () => ({}));
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: { getCWD: jest.fn(async () => '/home/chris'), setCWD: jest.fn() } }));
 
 /** The tree: what each folder lists. */
-const TREE: Record<string, Array<{ name: string; type: string; date?: string }>> = {
+const TREE: Record<string, Array<{ name: string; type: string; date?: string; status?: string }>> = {
+  '/proc/jobs': [{ name: 'feed_5', type: 'job' }, { name: 'feed_6', type: 'job' }],
+  '/proc/jobs/feed_6': [{ name: 'pl-dylld_12', type: 'job', status: 'started' }],
+  '/proc/jobs/feed_6/pl-dylld_12': [{ name: 'status', type: 'file' }],
   '/home/chris': [{ name: 'a.nii', type: 'file', date: '2026-10-01T00:00:00Z' }, { name: 'feeds', type: 'dir' }, { name: 'link1', type: 'link' }],
   '/home/chris/feeds': [{ name: 'feed_1', type: 'dir' }, { name: 'notes.txt', type: 'file', date: '2026-10-15T00:00:00Z' }],
   '/home/chris/feeds/feed_1': [{ name: 'b.nii', type: 'file', date: '2026-10-16T00:00:00Z' }],
@@ -32,6 +35,18 @@ const mockListingGet = jest.fn(async (target: string, options: { directory?: boo
   return items === undefined ? { ok: false } : { ok: true, value: { path: target, items: items.map((i) => ({ size: 0, owner: '', date: '', ...i })), fresh: true } };
 });
 jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({ vfs: { listing_get: mockListingGet } }));
+/** /proc/jobs answered whole, as its mount does from the job index: one feed indexed, one not. */
+const mockSubtree = jest.fn(async (root: string) => root !== '/proc/jobs' ? null : {
+  entries: [
+    { rel: 'feed_5', depth: 1, item: { name: 'feed_5', type: 'job', size: 0, owner: '', date: '2026-10-01T00:00:00Z', status: 'finishedSuccessfully' }, attrs: { status: 'finishedSuccessfully' } },
+    { rel: 'feed_5/status', depth: 2, item: { name: 'status', type: 'file', size: 0, owner: '', date: '' } },
+    { rel: 'feed_5/pl-dircopy_10', depth: 2, item: { name: 'pl-dircopy_10', type: 'job', size: 0, owner: '', date: '2026-10-02T00:00:00Z' }, attrs: { status: 'finishedSuccessfully', plugin: 'pl-dircopy' } },
+    { rel: 'feed_5/pl-dircopy_10/pl-dylld_11', depth: 3, item: { name: 'pl-dylld_11', type: 'job', size: 0, owner: '', date: '2026-10-03T00:00:00Z' }, attrs: { status: 'finishedWithError', plugin: 'pl-dylld' } },
+    { rel: 'feed_6', depth: 1, item: { name: 'feed_6', type: 'job', size: 0, owner: '', date: '' }, attrs: { status: 'started' } },
+  ],
+  unanswered: ['feed_6'],
+});
+jest.unstable_mockModule('../src/core/filesystem.js', () => ({ vfsDispatcher_get: () => ({ subtree: mockSubtree }) }));
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({ spinner: { start: jest.fn(), stop: jest.fn(), updateMessage: jest.fn() } }));
 
 const { builtin_find, find_parse, pattern_toRegExp } = await import('../src/builtins/fs/find.js');
@@ -93,6 +108,14 @@ describe('find', () => {
     });
     expect(result.renderedErr).toMatch(/find: stopped \(Ctrl-C\) after \d+ folders; \d+ found so far/);
     expect(listed.length).toBeLessThanOrEqual(1);      // nothing walked past the stop
+  });
+
+  it('answers /proc/jobs from the job index, walking only what it left unanswered', async () => {
+    const result = await builtin_find(['/proc/jobs', '-plugin', 'pl-dy*']);
+    expect(result.rendered).toBe('/proc/jobs/feed_5/pl-dircopy_10/pl-dylld_11\n/proc/jobs/feed_6/pl-dylld_12\n');
+    expect(listed).toEqual(['/proc/jobs/feed_6', '/proc/jobs/feed_6/pl-dylld_12']);   // only the feed not indexed is walked
+    expect((await builtin_find(['/proc/jobs', '-status', 'finishedWithError'])).rendered).toBe('/proc/jobs/feed_5/pl-dircopy_10/pl-dylld_11\n');
+    expect((await builtin_find(['/proc/jobs', '-maxdepth', '1'])).rendered).toBe('/proc/jobs\n/proc/jobs/feed_5\n/proc/jobs/feed_6\n');
   });
 
   it('matches shell patterns: * crosses /, ? one character, [..] a class, \\ escapes', () => {

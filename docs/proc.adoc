@@ -16,6 +16,19 @@
 
 Every feed this identity can see, and under each its jobs as a tree (a job's children beneath it), with `status`, `title`, `note`, `params`, `log` and the `data` link into the feed's files. The roster and the topology are cached and kept current by visits (a visit is a delta, not a re-walk); see the salsa `/proc` provider.
 
+=== Finding runs
+
+`find` answers `/proc/jobs` whole from the session's job index, so a question about runs asks CUBE nothing: `-plugin` and `-status` test what a job ran and how it ended, beside `-name`, `-type`, `-newermt` and the depth bounds. A feed whose jobs are not indexed yet is walked as `ls` would walk it.
+
+[source]
+----
+find /proc/jobs -plugin pl-dylld -status finishedWithError     # every failed pl-dylld run
+find /proc/jobs -plugin 'pl-dcm*' -newermt 2026-10-10          # recent conversions
+find /proc/jobs -maxdepth 1 -status started                    # feeds still running
+----
+
+On ekanite, a `find` over all 5,542 plugin jobs in 661 feeds answers in under a quarter of a second with no CUBE request. It sees what this identity sees: its own feeds, and those shared with it or public.
+
 == /proc/tags
 
 Tags as directories: `mkdir` makes one, `rmdir` removes one no feed wears, `setfattr -n tag` hangs one on a feed (`docs/menu.adoc`, Tags).
@@ -52,4 +65,4 @@ The questions worth asking are about runs: which pipelines ran (FreeSurfer, anon
 
 === What replaces it
 
-The run's identity on the job rows of `/proc/jobs` (pipeline and workflow), `find` over `/proc/jobs` answered from the cache (`-plugin`, `-pipeline`, `-workflow`, `-status`, `-newer`), the CUBE searches above with their short forms repaired, and the listing-aware grep of #1101. The provider (`salsa/src/vfs/providers/workflows.ts`) was removed with the mount; `salsa/src/workflows/` stays, as the `workflows` command's.
+`find` over `/proc/jobs` answered from the cache (`-plugin`, `-status`, `-newermt`; see Finding runs), the run's identity on the job rows (`-pipeline`, `-workflow`, once the cache carries them), the CUBE searches above with their short forms repaired, and the listing-aware grep of #1101. The provider (`salsa/src/vfs/providers/workflows.ts`) was removed with the mount; `salsa/src/workflows/` stays, as the `workflows` command's.

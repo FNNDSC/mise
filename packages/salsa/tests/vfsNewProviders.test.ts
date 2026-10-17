@@ -1,19 +1,13 @@
 /**
- * @file Tests for the three projections that complete the namespace.
+ * @file Tests for `/usr/share`: what is known about a plugin as opposed to
+ * how to invoke it.
  *
- * Each covers a relation CUBE owns that the filesystem could not previously
- * reach: the runs a pipeline produced, and what is
- * known about a plugin as opposed to how to invoke it.
- *
- * The assertions worth keeping are about *shape*: a workflow's jobs are links
- * into `/proc/jobs` rather than copies of them, and plugin metadata sits
- * beside `/bin` rather than nested inside it. (The tags moved to /proc/tags:
- * procTagsProvider.test.ts.)
+ * The assertion worth keeping is about *shape*: plugin metadata sits beside
+ * `/bin` rather than nested inside it. (The tags are at /proc/tags:
+ * procTagsProvider.test.ts; /proc/workflows was unmounted, docs/proc.adoc.)
  */
-const workflowsListAll = jest.fn();
 const metasListAll = jest.fn();
 
-jest.mock('../src/workflows/index', () => ({ workflows_listAll: (...a: unknown[]) => workflowsListAll(...a) }));
 jest.mock('../src/pluginmetas/index', () => ({ pluginMetas_listAll: (...a: unknown[]) => metasListAll(...a) }));
 const PACKAGE_FIXTURE = {
   id: 7,
@@ -28,116 +22,12 @@ jest.mock('../src/pipelines/packages', () => ({
   pipelinePackage_find: (name: string) => (name === 'brainy' ? PACKAGE_FIXTURE : null),
 }));
 
-import { WorkflowsVfsProvider } from '../src/vfs/providers/workflows';
+import { listCache_get } from '@fnndsc/cumin';
 import { ShareVfsProvider } from '../src/vfs/providers/share';
-
-describe('WorkflowsVfsProvider', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    workflowsListAll.mockResolvedValue({
-      tableData: [{
-        id: 7,
-        title: 'Archive of series',
-        owner_username: 'me',
-        creation_date: '2026-08-27',
-        pipeline_name: 'zip v20240311',
-        plugin_instances: [101, 102],
-      }],
-      selectedFields: [],
-    });
-  });
-
-  it('lists runs at its root, one directory each', async () => {
-    const result = await new WorkflowsVfsProvider().list('/proc/workflows');
-
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value).toEqual([expect.objectContaining({ name: '7', type: 'dir', title: 'Archive of series' })]);
-    }
-  });
-
-  it('presents a run as its pipeline, its jobs, and its title', async () => {
-    const result = await new WorkflowsVfsProvider().list('/proc/workflows/7');
-
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value.map((item) => `${item.name}:${item.type}`))
-        .toEqual(['pipeline:link', 'jobs:dir', 'title:file']);
-    }
-  });
-
-  it('links a run to the jobs it created rather than restating them', async () => {
-    // A job already has a representation under /proc/jobs. Restating it here
-    // would be a second view of one fact, drifting the moment either changes.
-    const result = await new WorkflowsVfsProvider().list('/proc/workflows/7/jobs');
-
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value).toEqual([
-        expect.objectContaining({ name: '101', type: 'link', target: '/proc/jobs/101' }),
-        expect.objectContaining({ name: '102', type: 'link', target: '/proc/jobs/102' }),
-      ]);
-    }
-  });
-
-  it('resolves the pipeline link into /bin only when followed', async () => {
-    const provider = new WorkflowsVfsProvider();
-    // The listing above named the link without resolving it; resolution is a
-    // separate call, so navigation pays for it and browsing does not.
-    const target = await provider.linkTarget_resolve('/proc/workflows/7/pipeline');
-
-    expect(target.ok).toBe(true);
-    if (target.ok) expect(target.value).toBe('/bin/zip v20240311');
-  });
-
-  it('refuses to copy a run', async () => {
-    // Copying would assert that a computation happened twice.
-    expect(await new WorkflowsVfsProvider().cp('/proc/workflows/7', '/tmp', {})).toEqual({ ok: false, errno: 'EROFS', reason: 'A workflow records a run; it cannot be copied.' });
-  });
-
-  it('reports an unknown run rather than an empty directory', async () => {
-    const result = await new WorkflowsVfsProvider().list('/proc/workflows/999/jobs');
-
-    expect(result.ok).toBe(false);
-  });
-
-  it('reads a run title', async () => {
-    const result = await new WorkflowsVfsProvider().read('/proc/workflows/7/title');
-
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.value).toBe('Archive of series\n');
-  });
-
-  it('refuses paths that name no workflow file or link', async () => {
-    const provider = new WorkflowsVfsProvider();
-
-    expect((await provider.list('/proc/workflows/7/jobs/101/extra')).ok).toBe(false);
-    expect((await provider.read('/proc/workflows/7/jobs')).ok).toBe(false);
-    expect((await provider.linkTarget_resolve('/proc/workflows/7/title')).ok).toBe(false);
-  });
-
-  it('reports an unknown run when reading or following one of its entries', async () => {
-    const provider = new WorkflowsVfsProvider();
-
-    expect((await provider.read('/proc/workflows/999/title')).ok).toBe(false);
-    expect((await provider.linkTarget_resolve('/proc/workflows/999/pipeline')).ok).toBe(false);
-  });
-
-  it('lists no jobs for a run that created none', async () => {
-    workflowsListAll.mockResolvedValue({
-      tableData: [{ id: 8, title: 'empty', owner_username: 'me', creation_date: '', pipeline_name: 'p' }],
-      selectedFields: [],
-    });
-
-    const result = await new WorkflowsVfsProvider().list('/proc/workflows/8/jobs');
-
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.value).toEqual([]);
-  });
-});
 
 describe('ShareVfsProvider', () => {
   beforeEach(() => {
+    listCache_get().cache_invalidate();
     jest.clearAllMocks();
     metasListAll.mockResolvedValue({
       tableData: [{
@@ -154,6 +44,13 @@ describe('ShareVfsProvider', () => {
       }],
       selectedFields: [],
     });
+  });
+
+  it('keeps the plugin metas: a second read answers without walking them again', async () => {
+    const provider = new ShareVfsProvider();
+    await provider.list('/usr/share');
+    await provider.list('/usr/share');
+    expect(metasListAll).toHaveBeenCalledTimes(1);
   });
 
   it('lists plugins beside /bin rather than nesting them inside it', async () => {

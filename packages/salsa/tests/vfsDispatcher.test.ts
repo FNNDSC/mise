@@ -48,6 +48,7 @@ jest.mock('../src/vfs/providers/proc', () => ({
 }));
 
 // The dispatcher reports through fond's one error stack: watch the real instance.
+import { listCache_get } from '@fnndsc/cumin';
 import { vfsRefusal_text } from '@fnndsc/fond';
 import { errorStack } from '@fnndsc/fond';
 let mockStackPush: jest.SpiedFunction<typeof errorStack.stack_push>;
@@ -60,6 +61,7 @@ const item = (name: string): VFSItem => ({
 } as unknown as VFSItem);
 
 beforeEach(() => {
+    listCache_get().cache_invalidate();
   jest.clearAllMocks();
   mockStackPush?.mockRestore();
   mockStackPush = jest.spyOn(errorStack, 'stack_push').mockImplementation((): void => undefined);
@@ -121,9 +123,9 @@ describe('provider matching', () => {
     } as never);
     expect(d.provider_get('/net/pacs/queries/q1').prefix).toBe('/net/pacs/queries');
     expect(d.provider_get('/net/pacs/other').prefix).toBe('/net/pacs');
-    // native, /etc, /proc/jobs, /net/pacs, /tags, /usr/share, plus the one
-    // registered above.
-    expect(d.providers_get().length).toBe(7);
+    // The mounts beside the native fallback: /net/pacs, /etc, /proc/jobs,
+    // /proc/tags, /usr/share, plus the one registered above.
+    expect(d.providers_get().length).toBe(6);
   });
 });
 

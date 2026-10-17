@@ -37,9 +37,6 @@ export const LIST_CACHE_PLUGIN_INDEX_TTL_MS: number = 24 * 60 * 60 * 1000;
 /** How many path listings the cache retains before evicting the oldest. */
 export const LIST_CACHE_MAX_ENTRIES: number = 500;
 
-/** How long a folder lookup that found no folder is kept (see `folder_set`). */
-export const FOLDER_MISS_TTL_MS: number = 15 * 1000;
-
 /**
  * Cache entry with metadata.
  */
@@ -384,12 +381,13 @@ export class ListCache {
   }
 
   /**
-   * Keeps a folder lookup for a path. A lookup that rejects is forgotten as
-   * it settles: a failure is not an answer. One that answers no folder is
-   * kept only {@link FOLDER_MISS_TTL_MS}: a shared feed's logical path has
-   * no folder of its own, and every resolver, check and listing asked CUBE
-   * so again; a folder made here invalidates its parent, which drops the
-   * miss with it, and one made elsewhere is seen within the window.
+   * Keeps a folder lookup for a path, under the listing's own TTL (one
+   * clock). A lookup that rejects is forgotten as it settles: a failure is
+   * not an answer. One that answers no folder is an answer and is kept like
+   * any other: a shared feed's logical path has no folder of its own, and
+   * every resolver, check and listing asked CUBE so again. A folder made
+   * here invalidates its parent, which drops the miss with it; one made
+   * elsewhere is seen when the TTL runs out, as a listing's change is.
    *
    * @param path - The folder's path.
    * @param promise - The lookup under way.
@@ -398,7 +396,7 @@ export class ListCache {
     const record = { promise, timestamp: Date.now(), ttl: this.ttl_get(path) };
     this.folders.set(path, record);
     promise.then(
-      (folder: unknown): void => { if (folder === null || folder === undefined) record.ttl = Math.min(record.ttl, FOLDER_MISS_TTL_MS); },
+      (): void => undefined,
       (): void => { if (this.folders.get(path) === record) this.folders.delete(path); },
     );
   }

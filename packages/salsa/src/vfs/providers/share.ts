@@ -21,6 +21,9 @@ import {
   Err,
   Ok,
   errorStack,
+  chrisContext,
+  listCache_get,
+  LIST_CACHE_PLUGIN_INDEX_TTL_MS,
   type FilteredResourceData,
   type Result,
 } from '@fnndsc/cumin';
@@ -239,8 +242,17 @@ export class ShareVfsProvider implements VFSProvider {
    * @returns The rows, empty when the fetch failed.
    */
   private async rows_get(): Promise<Record<string, unknown>[]> {
+    // Kept as the plugin index is (a day, per identity): a read answers
+    // without walking every plugin meta CUBE holds.
+    let who: string = '';
+    try { who = `${await chrisContext.ChRISuser_get()}@${await chrisContext.ChRISURL_get()}`; } catch { /* no session: an unkeyed record */ }
+    const key: string = `share:pluginmetas:${who}`;
+    const kept = listCache_get().cache_get<Record<string, unknown>[]>(key);
+    if (kept !== null && kept.fresh) return kept.data;
     const data: FilteredResourceData | null = await pluginMetas_listAll();
-    return data?.tableData ?? [];
+    if (data === null) return [];
+    listCache_get().cache_set<Record<string, unknown>[]>(key, data.tableData, { ttl: LIST_CACHE_PLUGIN_INDEX_TTL_MS });
+    return data.tableData;
   }
 
   /**

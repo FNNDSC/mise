@@ -7,7 +7,7 @@
  */
 
 import { vfsOutcome_ofBoolean, vfs_ok, vfs_fail, vfs_failFromStack, type VfsOutcome, type VfsErrno } from '@fnndsc/fond';
-import { Result, Ok, Err, errorStack, listCache_get } from "@fnndsc/cumin";
+import { Result, Ok, Err, errorStack, listCache_get, chrisConnection } from "@fnndsc/cumin";
 import { VFSProvider, VFSItem, CpOptions } from "../provider.js";
 import { vfsItems_sort } from "../sort.js";
 import {
@@ -497,6 +497,19 @@ async function path_checkIsDir(targetPath: string): Promise<Result<boolean>> {
   const kept = listCache_get().cache_get<VFSItem[]>(parent);
   if (kept !== null && kept.fresh && Array.isArray(kept.data)) {
     return Ok(kept.data.some((item: VFSItem): boolean => item.name === name && (item.type === "dir" || item.type === "vfs")));
+  }
+  // The folder lookup is memoised for the session, a miss included: asked
+  // once, it answers every later probe of the same path without CUBE. The
+  // parent is listed only when there is no client to ask.
+  const client = await chrisConnection.client_get();
+  const lookup = (client as { getFileBrowserFolderByPath?: (p: string) => Promise<unknown> } | null)?.getFileBrowserFolderByPath;
+  if (client !== null && typeof lookup === "function") {
+    try {
+      const folder: unknown = await lookup.call(client, targetPath);
+      return Ok(folder !== null && folder !== undefined);
+    } catch {
+      // A lookup that failed is not an answer: the listing below decides.
+    }
   }
   try {
     const results = await files_listAll({ limit: 1000, offset: 0 }, "dirs", parent);

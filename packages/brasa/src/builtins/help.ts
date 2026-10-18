@@ -629,10 +629,10 @@ export const helpText: Record<string, CommandHelp> = {
     examples: ['hangman'],
   },
   trek: {
-    usage: 'trek [--classic] [-f | -s] [--seed N]',
+    usage: 'trek [--classic] [-f | -s] [--seed N] [--credits]',
     summary: 'The 1976 Berkeley space war game (BSD trek)',
-    description: 'Command a starship against an invading fleet across an 8×8 galaxy of quadrants, by question: srscan, lrscan, move, phasers, torpedo, shield, dock, computer and the rest (? at any prompt lists the answers it takes). Answers can be typed ahead on one line, as in the original. The scans wear glyphs and colours; --classic shows them as printed in 1976. -f and -s are the original fast and slow modes; --seed N replays a galaxy. terminate ends a game; answer no to Another game to leave.',
-    examples: ['trek', 'trek --classic', 'trek --seed 42'],
+    description: 'Command a starship against an invading fleet across an 8×8 galaxy of quadrants, by question: srscan, lrscan, move, phasers, torpedo, shield, dock, computer and the rest (? at any prompt lists the answers it takes). Answers can be typed ahead on one line, as in the original. The scans wear glyphs and colours; --classic shows them as printed in 1976. -f and -s are the original fast and slow modes; --seed N replays a galaxy; --credits (or credits in the game) names who made it. terminate ends a game; answer no to Another game to leave.',
+    examples: ['trek', 'trek --classic', 'trek --seed 42', 'trek --credits'],
   },
   '2048': {
     usage: '2048',

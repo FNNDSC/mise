@@ -110,6 +110,8 @@ describe('answers from stdin', () => {
     const ending: Promise<string | null> = terminal.question_ask('more? ');
     input.end();
     expect(await ending).toBeNull();
+    // Asked again once input has ended (as after Ctrl-D): EOF, and no prompt drawn on the closed readline.
+    expect(await terminal.question_ask('again? ')).toBeNull();
   });
 });
 
@@ -121,6 +123,14 @@ describe('the command\'s words', () => {
     expect(help.out).toContain(join('bsd-trek', 'trek.dump'));
     const version: CapturedOutput = await output_capture((): Promise<number> => cli_run(['--version']));
     expect(version.out).toMatch(/^bsd-trek \d+\.\d+\.\d+\n$/);
+  });
+
+  it('--credits names the game\'s authors, the port, mise and ChRIS', async () => {
+    const credits: CapturedOutput = await output_capture((): Promise<number> => cli_run(['--credits']));
+    expect(credits.code).toBe(0);
+    expect(credits.out).toContain('Eric P. Allman');
+    expect(credits.out).toContain('Rudolph Pienaar');
+    expect(credits.out).toContain('https://github.com/FNNDSC/mise');
   });
 
   it('refuses an unknown flag by name, with status 2', async () => {

@@ -57,7 +57,7 @@ function terminal_style(terminal: TrekTerminal): TrekTerminal {
 }
 
 /** The flags trek takes, as its usage line. */
-export const TREK_USAGE: string = 'usage: trek [--classic] [-f | -s] [--seed N]';
+export const TREK_USAGE: string = 'usage: trek [--classic] [-f | -s] [--seed N] [--credits]';
 
 /** What trek's flags ask. */
 export interface TrekArgs {
@@ -67,6 +67,8 @@ export interface TrekArgs {
   fast: number;
   /** The random seed; a fixed one replays the same galaxy. */
   seed: number;
+  /** Who made the game, shown instead of a game (`--credits`). */
+  credits: boolean;
 }
 
 /** Why trek's flags were refused. */
@@ -76,20 +78,21 @@ export interface TrekRefusal {
 }
 
 /**
- * Reads trek's flags: `--classic`, `-f` (faster, repeatable), `-s` (slow)
- * and `--seed N`. An unknown flag or a stray word is refused by name.
+ * Reads trek's flags: `--classic`, `-f` (faster, repeatable), `-s` (slow),
+ * `--seed N` and `--credits`. An unknown flag or a stray word is refused by name.
  *
  * @param args - The words after the command.
  * @param now - The seed when none is given (seconds since the epoch).
  * @returns What they ask, or why not.
  */
 export function trekArgs_parse(args: ReadonlyArray<string>, now: number = Math.floor(Date.now() / 1000)): TrekArgs | TrekRefusal {
-  const asked: TrekArgs = { classic: false, fast: 1, seed: now };
+  const asked: TrekArgs = { classic: false, fast: 1, seed: now, credits: false };
   for (let at: number = 0; at < args.length; at++) {
     const word: string = args[at] as string;
     if (word === '--classic') asked.classic = true;
     else if (word === '-f') asked.fast++;
     else if (word === '-s') asked.fast = 0;
+    else if (word === '--credits') asked.credits = true;
     else if (word === '--seed' && at + 1 < args.length && /^-?\d+$/.test(args[at + 1] as string)) asked.seed = Number(args[++at]);
     else return { refusal: word.startsWith('-') ? `trek: unknown option '${word}'\ntrek: ${TREK_USAGE}` : `trek: ${TREK_USAGE}` };
   }

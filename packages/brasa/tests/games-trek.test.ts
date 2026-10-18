@@ -35,6 +35,12 @@ describe('the trek command', () => {
     expect(((await builtin_trek(['extra'])) as { renderedErr?: string }).renderedErr).toContain('usage: trek');
   });
 
+  it('--credits answers with the credits, no game played', async () => {
+    const shown = await builtin_trek(['--credits']);
+    expect((shown as { rendered?: string }).rendered).toContain('Rudolph Pienaar');
+    expect((shown as { model?: { kind: string } }).model?.kind).toBe('games.trek.credits');
+  });
+
   it('plays a seeded classic game through the session, prompts as questions', async () => {
     answers.push('', 's', 'n', 'pw', 'terminate', 'n');
     const ended = await builtin_trek(['--classic', '--seed', '42', '-f', '-s']);

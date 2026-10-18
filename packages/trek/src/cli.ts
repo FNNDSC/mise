@@ -16,7 +16,8 @@ import { dirname, join } from 'node:path';
 import { createInterface, type Interface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
-import { trek_play, trekArgs_parse, TREK_USAGE, type TrekArgs } from './trek.js';
+import { TREK_CREDITS } from './credits.js';
+import { trek_play, trekArgs_parse, TREK_USAGE, type TrekArgs, type TrekRefusal } from './trek.js';
 import type { TrekDump } from './context.js';
 import type { TrekTerminal } from './io.js';
 
@@ -24,12 +25,6 @@ import type { TrekTerminal } from './io.js';
 interface PackageManifest {
   /** The package's version. */
   version?: string;
-}
-
-/** Why the command's words were refused, as the argument parser says it. */
-interface ArgsRefusal {
-  /** The message for stderr. */
-  refusal: string;
 }
 
 /** Hands a typed line (or null at end of input) to the question waiting for it. */
@@ -117,6 +112,11 @@ export function stdioTerminal_make(lines: Interface): TrekTerminal {
   lines.on('line', (line: string): void => {
     if (waiting !== null) { const answer: AnswerResolve = waiting; waiting = null; answer(line); } else typed.push(line);
   });
+  // Ctrl-C ends the game where it stands, as the C's default interrupt did: no save, status 130.
+  lines.on('SIGINT', (): void => {
+    process.stdout.write('\n');
+    process.exit(130);
+  });
   lines.on('close', (): void => {
     ended = true;
     if (waiting !== null) { const answer: AnswerResolve = waiting; waiting = null; answer(null); }
@@ -135,10 +135,11 @@ export function stdioTerminal_make(lines: Interface): TrekTerminal {
      * @returns The line, or null at end of input.
      */
     question_ask: (prompt: string): Promise<string | null> => {
+      // Input that has ended (Ctrl-D, the end of a pipe) answers EOF; readline is closed then and cannot draw a prompt.
+      if (ended && typed.length === 0) return Promise.resolve(null);
       // On a terminal readline draws the prompt, so editing a line redraws it; a pipe just gets it written.
-      if (lines.terminal) { lines.setPrompt(prompt); lines.prompt(); } else process.stdout.write(prompt);
+      if (lines.terminal && !ended) { lines.setPrompt(prompt); lines.prompt(); } else process.stdout.write(prompt);
       if (typed.length > 0) return Promise.resolve(typed.shift() as string);
-      if (ended) return Promise.resolve(null);
       return new Promise((resolve: AnswerResolve): void => { waiting = resolve; });
     },
     /**
@@ -166,9 +167,11 @@ function helpText_build(): string {
     '  --classic   The original look: no glyphs, no colour.',
     '  -f          Faster messages (repeat for faster still); -s slow.',
     '  --seed N    A fixed galaxy: the same seed and answers replay the same game.',
+    '  --credits   Who made the game, and where this port comes from.',
     '  --help      This text.    --version   The version.',
     '',
     '  In the game, type "help" at the Command: prompt for every command.',
+    '  Ctrl-C ends the game where it stands; "dump" saves it first.',
     `  A saved game (dump) lives in ${dumpPath_get()}.`,
     '',
   ].join('\n');
@@ -177,7 +180,7 @@ function helpText_build(): string {
 /**
  * Plays a game with the command's words.
  *
- * Answers `--help` and `--version` itself, refuses words it does not know, and otherwise plays on this terminal with the saved game kept in its file.
+ * Answers `--help`, `--version` and `--credits` itself, refuses words it does not know, and otherwise plays on this terminal with the saved game kept in its file.
  *
  * @param argv - The words after `trek`.
  * @returns The exit status.
@@ -185,8 +188,9 @@ function helpText_build(): string {
 export async function cli_run(argv: ReadonlyArray<string>): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) { process.stdout.write(helpText_build()); return 0; }
   if (argv.includes('--version') || argv.includes('-V')) { process.stdout.write(`bsd-trek ${version_read()}\n`); return 0; }
-  const asked: TrekArgs | ArgsRefusal = trekArgs_parse(argv);
+  const asked: TrekArgs | TrekRefusal = trekArgs_parse(argv);
   if ('refusal' in asked) { process.stderr.write(`${asked.refusal}\n`); return 2; }
+  if (asked.credits) { process.stdout.write(TREK_CREDITS); return 0; }
   const plain: boolean = asked.classic || (process.env.NO_COLOR ?? '') !== '' || chalk.level === 0 || !process.stdout.isTTY;
   const lines: Interface = createInterface({ input: process.stdin, output: process.stdout, terminal: process.stdin.isTTY === true });
   try {

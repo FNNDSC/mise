@@ -29,9 +29,6 @@ import ts from 'typescript';
 /** The house name of a function or method: `object_verb`. */
 const RPN_PATTERN = /^[a-z][A-Za-z0-9]*_[a-z][A-Za-z0-9]*$/;
 
-/** Matches the module named by an import, re-export or require. */
-const IMPORT_PATTERN = /(?:from|import|require)\s*\(?\s*['"]([^'"]+)['"]/g;
-
 /**
  * Recursively collects .ts source files under a directory.
  *
@@ -68,17 +65,16 @@ function specifier_refusal(spec) {
   return declared.has(name) ? null : 'is not a declared dependency';
 }
 
+// TypeScript's own scanner names every module a file imports, re-exports or
+// loads dynamically, and reads no string or comment as one.
 for (const file of sourceFiles_collect(join(trekRoot, 'src'), [])) {
   const text = readFileSync(file, 'utf8');
-  IMPORT_PATTERN.lastIndex = 0;
-  let match = IMPORT_PATTERN.exec(text);
-  while (match !== null) {
-    const why = specifier_refusal(match[1]);
+  for (const imported of ts.preProcessFile(text, true, true).importedFiles) {
+    const why = specifier_refusal(imported.fileName);
     if (why !== null) {
-      const line = text.slice(0, match.index).split('\n').length;
-      violations.push(`  ${file.slice(trekRoot.length)}:${line}  ${match[1]} ${why}`);
+      const line = text.slice(0, imported.pos).split('\n').length;
+      violations.push(`  ${file.slice(trekRoot.length)}:${line}  ${imported.fileName} ${why}`);
     }
-    match = IMPORT_PATTERN.exec(text);
   }
 }
 

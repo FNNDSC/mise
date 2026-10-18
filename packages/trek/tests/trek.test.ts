@@ -257,11 +257,25 @@ describe('the styled scans', () => {
 });
 
 describe('the flags', () => {
-  it('reads --classic, -f, -s and --seed, and refuses anything else by name', () => {
-    expect(trekArgs_parse(['--classic', '-f', '-f', '--seed', '42'], 7)).toEqual({ classic: true, fast: 3, seed: 42 });
-    expect(trekArgs_parse(['-s'], 7)).toEqual({ classic: false, fast: 0, seed: 7 });
-    expect(trekArgs_parse(['--warp'], 7)).toEqual({ refusal: "trek: unknown option '--warp'\ntrek: usage: trek [--classic] [-f | -s] [--seed N]" });
-    expect(trekArgs_parse(['extra'], 7)).toEqual({ refusal: 'trek: usage: trek [--classic] [-f | -s] [--seed N]' });
+  it('reads --classic, -f, -s, --seed and --credits, and refuses anything else by name', () => {
+    expect(trekArgs_parse(['--classic', '-f', '-f', '--seed', '42'], 7)).toEqual({ classic: true, fast: 3, seed: 42, credits: false });
+    expect(trekArgs_parse(['-s'], 7)).toEqual({ classic: false, fast: 0, seed: 7, credits: false });
+    expect(trekArgs_parse(['--credits'], 7)).toEqual({ classic: false, fast: 1, seed: 7, credits: true });
+    expect(trekArgs_parse(['--warp'], 7)).toEqual({ refusal: "trek: unknown option '--warp'\ntrek: usage: trek [--classic] [-f | -s] [--seed N] [--credits]" });
+    expect(trekArgs_parse(['extra'], 7)).toEqual({ refusal: 'trek: usage: trek [--classic] [-f | -s] [--seed N] [--credits]' });
     expect(trekArgs_parse(['--seed'], 7)).toHaveProperty('refusal');
+  });
+});
+
+describe('the credits', () => {
+  it('the credits command shows them at the Command: prompt, last in ? and free of time', async () => {
+    const { terminal, transcript_get } = scriptedTerminal_make(['', 's', 'n', 'pw', '?', 'credits', 'terminate', 'n']);
+    await trek_play(terminal, { seed: 42, fast: 1, trace: 0, styled: false });
+    const shown: string = transcript_get();
+    expect(shown).toContain('Ported line for line to TypeScript by Rudolph Pienaar');
+    expect(shown).toContain('https://chrisproject.org');
+    expect(shown).toMatch(/warp\s+credits\n/);
+    const dates: string[] = [...shown.matchAll(/stardate\s+([\d.]+)/g)].map((m: RegExpMatchArray): string => m[1] as string);
+    expect(new Set(dates).size).toBe(1);
   });
 });

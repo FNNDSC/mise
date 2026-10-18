@@ -40,21 +40,26 @@ import { DOCKED, E_LRTB } from './consts.js';
 import type { Trek } from './context.js';
 import { getfltpar, getynpar } from './getpar.js';
 
-/*
-**  REST FOR REPAIRS
-**
-**	You sit around and wait for repairs to happen.  Actually, you
-**	sit around and wait for anything to happen.  I do want to point
-**	out however, that Klingons are not as patient as you are, and
-**	they tend to attack you while you are resting.
-**
-**	You can never rest through a long range tractor beam.
-**
-**	In events() you will be given an opportunity to cancel the
-**	rest period if anything momentous happens.
-*/
-
-/** The rest command. */
+/**
+ * The rest command: waits the time asked, for repairs or anything else.
+ *
+ * REST FOR REPAIRS
+ *
+ * You sit around and wait for repairs to happen.  Actually, you
+ * sit around and wait for anything to happen.  I do want to point
+ * out however, that Klingons are not as patient as you are, and
+ * they tend to attack you while you are resting.
+ *
+ * You can never rest through a long range tractor beam.
+ *
+ * In events() you will be given an opportunity to cancel the
+ * rest period if anything momentous happens.
+ *
+ * C: `rest()` in rest.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table's argument, unused here.
+ */
 export async function rest(t: Trek, _v: number): Promise<void> {
   const { Ship, Move } = t.s;
   let tm: number;

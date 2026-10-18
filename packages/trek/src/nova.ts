@@ -45,24 +45,31 @@ import { killb, killk, kills } from './kill.js';
 import { lose } from './lose.js';
 import { ranf } from './rand.js';
 import { snova } from './snova.js';
+import type { TrekState } from './state.js';
 
-/*
-**  CAUSE A NOVA TO OCCUR
-**
-**	A nova occurs.  It is the result of having a star hit with
-**	a photon torpedo.  There are several things which may happen.
-**	The star may not be affected.  It may go nova.  It may turn
-**	into a black hole.  Any (yummy) it may go supernova.
-**
-**	Stars that go nova cause stars which surround them to undergo
-**	the same probabilistic process.  Klingons next to them are
-**	destroyed.  And if the starship is next to it, it gets zapped.
-**	If the zap is too much, it gets destroyed.
-*/
-
-/** Cause a nova to occur. */
+/**
+ * Causes a nova at a star hit by a photon torpedo, which may fail, go nova, turn into a black hole or go supernova.
+ *
+ * CAUSE A NOVA TO OCCUR
+ *
+ * A nova occurs.  It is the result of having a star hit with
+ * a photon torpedo.  There are several things which may happen.
+ * The star may not be affected.  It may go nova.  It may turn
+ * into a black hole.  Any (yummy) it may go supernova.
+ *
+ * Stars that go nova cause stars which surround them to undergo
+ * the same probabilistic process.  Klingons next to them are
+ * destroyed.  And if the starship is next to it, it gets zapped.
+ * If the zap is too much, it gets destroyed.
+ *
+ * C: `nova()` in nova.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param x - The sector row of the star.
+ * @param y - The sector column of the star.
+ */
 export async function nova(t: Trek, x: number, y: number): Promise<void> {
-  const { Sect, Quad, Ship, Game } = t.s;
+  const { Sect, Quad, Ship, Game }: TrekState = t.s;
 
   if (Sect[x][y] !== STAR || Quad[Ship.quadx][Ship.quady].stars < 0) return;
   if (ranf(t.rnd, 100) < 15) {

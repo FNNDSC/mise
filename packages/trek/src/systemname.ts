@@ -40,7 +40,18 @@ import type { Trek } from './context.js';
 import { Q_DISTRESSED, Q_SYSTEM, Systemname } from './consts.js';
 import type { Quad, TrekEvent } from './state.js';
 
-/** RETRIEVE THE STARSYSTEM NAME: null when the quadrant has none. */
+/**
+ * Gets the name of a quadrant's starsystem.
+ *
+ * RETRIEVE THE STARSYSTEM NAME. A distressed system's name is held by its
+ * distress event.
+ *
+ * C: `systemname()` in systemname.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param q - The quadrant.
+ * @returns The starsystem's name, or null when the quadrant has none (the C's NULL).
+ */
 export function systemname(t: Trek, q: Quad): string | null {
   let i: number = q.qsystemname;
   if (i & Q_DISTRESSED) i = (t.s.Event[i & Q_SYSTEM] as TrekEvent).systemname;

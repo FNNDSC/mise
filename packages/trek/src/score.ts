@@ -40,8 +40,18 @@ import { ENTERPRISE } from './consts.js';
 import type { Cvntab } from './getpar.js';
 import { sprintf, type PrintfArg } from './printf.js';
 import { Skitab } from './setup.js';
+import type { TrekState } from './state.js';
 
-/** One line of the score; nothing when it is worth nothing. */
+/**
+ * Prints one line of the score, or nothing when it is worth nothing.
+ *
+ * C: `scoreitem()` in score.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param amount - The points the item is worth.
+ * @param descfmt - The printf format of the item's description.
+ * @param args - The values for the format.
+ */
 function scoreitem(t: Trek, amount: number, descfmt: string, ...args: PrintfArg[]): void {
   if (amount === 0) return;
   // vsnprintf into char buf[128]
@@ -49,9 +59,18 @@ function scoreitem(t: Trek, amount: number, descfmt: string, ...args: PrintfArg[
   t.io.printf('%-40s %10ld\n', buf, amount);
 }
 
-/** PRINT OUT THE CURRENT SCORE */
+/**
+ * Prints the current score, item by item, and the total.
+ *
+ * PRINT OUT THE CURRENT SCORE
+ *
+ * C: `score()` in score.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @returns The total score.
+ */
 export function score(t: Trek): number {
-  const { Game, Param, Now, Move, Ship } = t.s;
+  const { Game, Param, Now, Move, Ship }: TrekState = t.s;
   let u: number;
   let tt: number;
   let s: number;

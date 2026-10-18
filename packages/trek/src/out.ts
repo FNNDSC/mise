@@ -38,11 +38,16 @@
 import { Device } from './consts.js';
 import type { Trek } from './context.js';
 
-/*
-**  Announce Device Out
-*/
-
-/** Says a device is damaged. */
+/**
+ * Says a device is damaged.
+ *
+ * Announce Device Out
+ *
+ * C: `out()` in out.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param dev - The device index.
+ */
 export async function out(t: Trek, dev: number): Promise<void> {
   const d: Device = Device[dev];
   t.io.printf('%s reports %s ', d.person, d.name);

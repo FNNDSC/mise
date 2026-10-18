@@ -42,32 +42,36 @@ import { autover } from './autover.js';
 import { killd } from './kill.js';
 import { lose } from './lose.js';
 
-/*
-**  Check for Condition After a Move
-**
-**	Various ship conditions are checked.  First we check
-**	to see if we have already lost the game, due to running
-**	out of life support reserves, running out of energy,
-**	or running out of crew members.  The check for running
-**	out of time is in events().
-**
-**	If we are in automatic override mode (Etc.nkling < 0), we
-**	don't want to do anything else, lest we call autover
-**	recursively.
-**
-**	In the normal case, if there is a supernova, we call
-**	autover() to help us escape.  If after calling autover()
-**	we are still in the grips of a supernova, we get burnt
-**	up.
-**
-**	If there are no Klingons in this quadrant, we nullify any
-**	distress calls which might exist.
-**
-**	We then set the condition code, based on the energy level
-**	and battle conditions.
-*/
-
-/** Check for Condition After a Move */
+/**
+ * Checks the ship's condition after a move and sets its condition code.
+ *
+ * Check for Condition After a Move
+ *
+ * Various ship conditions are checked.  First we check
+ * to see if we have already lost the game, due to running
+ * out of life support reserves, running out of energy,
+ * or running out of crew members.  The check for running
+ * out of time is in events().
+ *
+ * If we are in automatic override mode (Etc.nkling < 0), we
+ * don't want to do anything else, lest we call autover
+ * recursively.
+ *
+ * In the normal case, if there is a supernova, we call
+ * autover() to help us escape.  If after calling autover()
+ * we are still in the grips of a supernova, we get burnt
+ * up.
+ *
+ * If there are no Klingons in this quadrant, we nullify any
+ * distress calls which might exist.
+ *
+ * We then set the condition code, based on the energy level
+ * and battle conditions.
+ *
+ * C: `checkcond()` in checkcond.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ */
 export async function checkcond(t: Trek): Promise<void> {
   /* see if we are still alive and well */
   if (t.s.Ship.reserves < 0.0) await lose(t, L_NOLIFE);

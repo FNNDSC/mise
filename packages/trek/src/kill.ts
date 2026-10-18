@@ -41,7 +41,7 @@ import type { Trek } from './context.js';
 import { damaged } from './damaged.js';
 import { undock } from './dock.js';
 import { schedule, unschedule } from './schedule.js';
-import type { Quad, TrekEvent, XY } from './state.js';
+import type { Quad, TrekEvent, TrekState, XY } from './state.js';
 import { systemname } from './systemname.js';
 import { win } from './win.js';
 
@@ -51,19 +51,23 @@ import { win } from './win.js';
 **	This file handles the killing off of almost anything.
 */
 
-/*
-**  Handle a Klingon's death
-**
-**	The Klingon at the sector given by the parameters is killed
-**	and removed from the Klingon list.  Notice that it is not
-**	removed from the event list; this is done later, when the
-**	the event is to be caught.  Also, the time left is recomputed,
-**	and the game is won if that was the last klingon.
-*/
-
-/** Handle a Klingon's death. */
+/**
+ * Handle a Klingon's death.
+ *
+ * The Klingon at the sector given by the parameters is killed
+ * and removed from the Klingon list.  Notice that it is not
+ * removed from the event list; this is done later, when the
+ * the event is to be caught.  Also, the time left is recomputed,
+ * and the game is won if that was the last klingon.
+ *
+ * C: `killk()` in kill.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param ix - The sector row of the Klingon.
+ * @param iy - The sector column of the Klingon.
+ */
 export async function killk(t: Trek, ix: number, iy: number): Promise<void> {
-  const { Now, Sect, Quad, Ship, Game, Etc } = t.s;
+  const { Now, Sect, Quad, Ship, Game, Etc }: TrekState = t.s;
   t.io.printf('   *** Klingon at %d,%d destroyed ***\n', ix, iy);
 
   /* remove the scoundrel */
@@ -91,13 +95,19 @@ export async function killk(t: Trek, ix: number, iy: number): Promise<void> {
   Now.time = Now.resource / Now.klings;
 }
 
-/*
-**  handle a starbase's death
-*/
-
-/** Handle a starbase's death. */
+/**
+ * Handle a starbase's death.
+ *
+ * handle a starbase's death
+ *
+ * C: `killb()` in kill.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param qx - The quadrant row of the starbase.
+ * @param qy - The quadrant column of the starbase.
+ */
 export async function killb(t: Trek, qx: number, qy: number): Promise<void> {
-  const { Now, Sect, Ship, Etc } = t.s;
+  const { Now, Sect, Ship, Etc }: TrekState = t.s;
   const q: Quad = t.s.Quad[qx][qy];
 
   if (q.bases <= 0) return;
@@ -129,15 +139,22 @@ export async function killb(t: Trek, qx: number, qy: number): Promise<void> {
 }
 
 /**
- **	kill an inhabited starsystem
- **
- ** x, y are quad coords if f == 0, else sector coords
- ** f != 0 -- this quad;  f < 0 -- Enterprise's fault
- **/
-
-/** Kill an inhabited starsystem. */
+ * Kill an inhabited starsystem.
+ *
+ * kill an inhabited starsystem
+ *
+ * x, y are quad coords if f == 0, else sector coords
+ * f != 0 -- this quad;  f < 0 -- Enterprise's fault
+ *
+ * C: `kills()` in kill.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param x - The quadrant row (f == 0) or sector row (f != 0).
+ * @param y - The quadrant column (f == 0) or sector column (f != 0).
+ * @param f - 0 for another quadrant; non-zero for this one, negative when it is the Enterprise's fault.
+ */
 export async function kills(t: Trek, x: number, y: number, f: number): Promise<void> {
-  const { Ship, Game } = t.s;
+  const { Ship, Game }: TrekState = t.s;
   let q: Quad;
 
   if (f) {
@@ -163,13 +180,20 @@ export async function kills(t: Trek, x: number, y: number, f: number): Promise<v
 }
 
 /**
- **	"kill" a distress call
- **
- ** x, y are quadrant coordinates
- ** f is set if user is to be informed
- **/
-
-/** "Kill" a distress call. */
+ * "Kill" a distress call.
+ *
+ * "kill" a distress call
+ *
+ * x, y are quadrant coordinates
+ * f is set if user is to be informed
+ *
+ * C: `killd()` in kill.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param x - The quadrant row.
+ * @param y - The quadrant column.
+ * @param f - Non-zero when the user is to be informed.
+ */
 export async function killd(t: Trek, x: number, y: number, f: number): Promise<void> {
   const q: Quad = t.s.Quad[x][y];
   for (let i: number = 0; i < MAXEVENTS; i++) {

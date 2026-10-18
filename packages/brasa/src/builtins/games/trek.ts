@@ -21,14 +21,14 @@ const TREK_DUMP: TrekDump = { saved: null };
 
 /** The session's terminal: the data channel, the question, a real pause. */
 const SESSION_TERMINAL: TrekTerminal = {
-  write: (text: string): void => sink_get().data_write(text),
-  ask: async (prompt: string): Promise<string | null> => {
+  text_write: (text: string): void => sink_get().data_write(text),
+  question_ask: async (prompt: string): Promise<string | null> => {
     // What is printed before the last newline is output; the rest is the question.
     const cut: number = prompt.lastIndexOf('\n');
     if (cut >= 0) sink_get().data_write(prompt.slice(0, cut + 1));
     return repl_question(prompt.slice(cut + 1));
   },
-  sleep: (seconds: number): Promise<void> => new Promise((resolve: () => void): void => { setTimeout(resolve, seconds * 1000); }),
+  seconds_sleep: (seconds: number): Promise<void> => new Promise((resolve: () => void): void => { setTimeout(resolve, seconds * 1000); }),
 };
 
 /**

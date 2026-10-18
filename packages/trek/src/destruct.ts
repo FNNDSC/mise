@@ -45,27 +45,32 @@ import { lose } from './lose.js';
 import { out } from './out.js';
 import type { Kling } from './state.js';
 
-/*
-**  Self Destruct Sequence
-**
-**	The computer starts up the self destruct sequence.  Obviously,
-**	if the computer is out nothing can happen.  You get a countdown
-**	and a request for password.  This must match the password that
-**	you entered at the start of the game.
-**
-**	You get to destroy things when you blow up; hence, it is
-**	possible to win the game by destructing if you take the last
-**	Klingon with you.
-**
-**	By the way, the \032 in the message is a ^Z, which is because
-**	the terminal in my office is an ADM-3, which uses that char-
-**	acter to clear the screen.  I also stick in a \014 (form feed)
-**	because that clears some other screens.
-**
-**	Uses trace flag 41
-*/
-
-/** Self Destruct Sequence */
+/**
+ * Runs the self destruct sequence: a countdown, the password check, then the ship blows up with whatever is near enough.
+ *
+ * Self Destruct Sequence
+ *
+ * The computer starts up the self destruct sequence.  Obviously,
+ * if the computer is out nothing can happen.  You get a countdown
+ * and a request for password.  This must match the password that
+ * you entered at the start of the game.
+ *
+ * You get to destroy things when you blow up; hence, it is
+ * possible to win the game by destructing if you take the last
+ * Klingon with you.
+ *
+ * By the way, the \032 in the message is a ^Z, which is because
+ * the terminal in my office is an ADM-3, which uses that char-
+ * acter to clear the screen.  I also stick in a \014 (form feed)
+ * because that clears some other screens.
+ *
+ * Uses trace flag 41
+ *
+ * C: `destruct()` in destruct.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table value, unused.
+ */
 export async function destruct(t: Trek, _v: number): Promise<void> {
   let i: number;
 

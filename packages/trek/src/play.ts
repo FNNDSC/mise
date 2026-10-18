@@ -59,16 +59,25 @@ import { rest } from './rest.js';
 import { setwarp } from './setwarp.js';
 import { shield } from './shield.js';
 import { srscan } from './srscan.js';
+import type { TrekState } from './state.js';
 import { torped } from './torped.js';
 import { visual } from './visual.js';
 import { dowarp } from './warp.js';
 
-/** terminate: back to the question of another game. */
+/**
+ * Ends the game in play, back to the question of another game.
+ *
+ * C: `myreset()` in play.c.
+ *
+ * @param _t - The game, unused.
+ * @param _v - The command table value, unused.
+ * @throws {TrekReset} Always, unwinding to the main loop as the C's longjmp() did.
+ */
 async function myreset(_t: Trek, _v: number): Promise<void> {
   throw new TrekReset();
 }
 
-/** The commands. */
+/** The commands, as the Command: prompt matches them. */
 const Comtab: ReadonlyArray<Cvntab> = [
   { abbrev: 'abandon', full: '', value: abandon, value2: 0 },
   { abbrev: 'ca', full: 'pture', value: capture, value2: 0 },
@@ -95,9 +104,20 @@ const Comtab: ReadonlyArray<Cvntab> = [
   { abbrev: 'w', full: 'arp', value: setwarp, value2: 0 },
 ];
 
-/** INSTRUCTION READ AND MAIN PLAY LOOP: never returns. */
+/**
+ * Runs the main play loop: reads a command, executes it, then lets time pass, the Klingons attack and the ship's condition be checked.
+ *
+ * INSTRUCTION READ AND MAIN PLAY LOOP
+ *
+ * Never returns: the game leaves it only by a TrekReset or the end of the game.
+ *
+ * C: `play()` in play.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @returns Never.
+ */
 export async function play(t: Trek): Promise<never> {
-  const { Move } = t.s;
+  const { Move }: TrekState = t.s;
   while (true) {
     Move.free = 1;
     Move.time = 0.0;

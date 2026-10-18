@@ -43,19 +43,24 @@ import { franf, ranf } from './rand.js';
 import { reschedule } from './schedule.js';
 import type { TrekEvent } from './state.js';
 
-/*
-**  Dump the starship somewhere in the galaxy
-**
-**	Parameter is zero if bounce off of negative energy barrier,
-**	one if through a black hole
-**
-**	Note that the quadrant is NOT initialized here.  This must
-**	be done from the calling routine.
-**
-**	Repair of devices must be deferred.
-*/
-
-/** Dump the starship somewhere in the galaxy */
+/**
+ * Throws the ship to a random place in the galaxy.
+ *
+ * Dump the starship somewhere in the galaxy
+ *
+ * Parameter is zero if bounce off of negative energy barrier,
+ * one if through a black hole
+ *
+ * Note that the quadrant is NOT initialized here.  This must
+ * be done from the calling routine.
+ *
+ * Repair of devices must be deferred.
+ *
+ * C: `dumpme()` in dumpme.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param flag - Zero if bounce off of negative energy barrier, one if through a black hole.
+ */
 export async function dumpme(t: Trek, flag: number): Promise<void> {
   const f: number = flag;
   t.s.Ship.quadx = ranf(t.rnd, NQUADS);

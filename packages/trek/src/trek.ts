@@ -8,9 +8,9 @@
  */
 import type { Trek, TrekDump } from './context.js';
 import { TrekIO, type TrekTerminal } from './io.js';
-import { trek_main, type TrekOptions } from './main.js';
+import { main, type TrekOptions } from './main.js';
 import { TrekRandom } from './rand.js';
-import { state_new } from './state.js';
+import { state_create } from './state.js';
 import { trekLine_style } from './style.js';
 
 /** How a game is played: the game's own options, the look, and where it runs. */
@@ -30,9 +30,9 @@ export interface TrekPlay extends TrekOptions {
  * @returns The exit status.
  */
 export async function trek_play(terminal: TrekTerminal, play: TrekPlay, dump: TrekDump = { saved: null }): Promise<number> {
-  const shown: TrekTerminal = play.styled ? terminal_styled(terminal) : terminal;
-  const t: Trek = { s: state_new(), io: new TrekIO(shown), rnd: new TrekRandom(play.seed), dump };
-  return trek_main(t, { fast: play.fast, trace: play.trace });
+  const shown: TrekTerminal = play.styled ? terminal_style(terminal) : terminal;
+  const t: Trek = { s: state_create(), io: new TrekIO(shown), rnd: new TrekRandom(play.seed), dump };
+  return main(t, { fast: play.fast, trace: play.trace });
 }
 
 /**
@@ -41,12 +41,18 @@ export async function trek_play(terminal: TrekTerminal, play: TrekPlay, dump: Tr
  * @param terminal - The terminal underneath.
  * @returns The styling terminal.
  */
-function terminal_styled(terminal: TrekTerminal): TrekTerminal {
-  const lines_style = (text: string): string => text.split('\n').map(trekLine_style).join('\n');
+function terminal_style(terminal: TrekTerminal): TrekTerminal {
+  /**
+   * Styles each line of a piece of text.
+   *
+   * @param text - What the game wrote: complete lines joined by newlines.
+   * @returns The text with every line styled.
+   */
+  const lines_style: (text: string) => string = (text: string): string => text.split('\n').map(trekLine_style).join('\n');
   return {
-    write: (text: string): void => terminal.write(lines_style(text)),
-    ask: (prompt: string): Promise<string | null> => terminal.ask(prompt),
-    sleep: (seconds: number): Promise<void> => terminal.sleep(seconds),
+    text_write: (text: string): void => terminal.text_write(lines_style(text)),
+    question_ask: (prompt: string): Promise<string | null> => terminal.question_ask(prompt),
+    seconds_sleep: (seconds: number): Promise<void> => terminal.seconds_sleep(seconds),
   };
 }
 
@@ -63,6 +69,12 @@ export interface TrekArgs {
   seed: number;
 }
 
+/** Why trek's flags were refused. */
+export interface TrekRefusal {
+  /** The words to show: the bad flag and the usage line. */
+  refusal: string;
+}
+
 /**
  * Reads trek's flags: `--classic`, `-f` (faster, repeatable), `-s` (slow)
  * and `--seed N`. An unknown flag or a stray word is refused by name.
@@ -71,7 +83,7 @@ export interface TrekArgs {
  * @param now - The seed when none is given (seconds since the epoch).
  * @returns What they ask, or why not.
  */
-export function trekArgs_parse(args: ReadonlyArray<string>, now: number = Math.floor(Date.now() / 1000)): TrekArgs | { refusal: string } {
+export function trekArgs_parse(args: ReadonlyArray<string>, now: number = Math.floor(Date.now() / 1000)): TrekArgs | TrekRefusal {
   const asked: TrekArgs = { classic: false, fast: 1, seed: now };
   for (let at: number = 0; at < args.length; at++) {
     const word: string = args[at] as string;

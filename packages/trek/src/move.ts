@@ -48,48 +48,58 @@ import { initquad } from './initquad.js';
 import { lose } from './lose.js';
 import { ram } from './ram.js';
 import { franf } from './rand.js';
+import type { TrekState } from './state.js';
 
 /** float.h's DBL_MIN: the smallest normalized double (not Number.MIN_VALUE, which is subnormal). */
 const DBL_MIN: number = 2.2250738585072014e-308;
 
-/*
-**  Move Under Warp or Impulse Power
-**
-**	`Ramflag' is set if we are to be allowed to ram stars,
-**	Klingons, etc.  This is passed from warp(), which gets it from
-**	either play() or ram().  Course is the course (0 -> 360) at
-**	which we want to move.  `Speed' is the speed we
-**	want to go, and `time' is the expected time.  It
-**	can get cut short if a long range tractor beam is to occur.  We
-**	cut short the move so that the user doesn't get docked time and
-**	energy for distance which he didn't travel.
-**
-**	We check the course through the current quadrant to see that he
-**	doesn't run into anything.  After that, though, space sort of
-**	bends around him.  Note that this puts us in the awkward posi-
-**	tion of being able to be dropped into a sector which is com-
-**	pletely surrounded by stars.  Oh Well.
-**
-**	If the SINS (Space Inertial Navigation System) is out, we ran-
-**	domize the course accordingly before ever starting to move.
-**	We will still move in a straight line.
-**
-**	Note that if your computer is out, you ram things anyway.  In
-**	other words, if your computer and sins are both out, you're in
-**	potentially very bad shape.
-**
-**	Klingons get a chance to zap you as you leave the quadrant.
-**	By the way, they also try to follow you (heh heh).
-**
-**	Return value is the actual amount of time used.
-**
-**
-**	Uses trace flag 4.
-*/
-
-/** Moves the ship; returns the time the move actually took. */
+/**
+ * Moves the ship under warp or impulse power.
+ *
+ * Move Under Warp or Impulse Power
+ *
+ * `Ramflag' is set if we are to be allowed to ram stars,
+ * Klingons, etc.  This is passed from warp(), which gets it from
+ * either play() or ram().  Course is the course (0 -> 360) at
+ * which we want to move.  `Speed' is the speed we
+ * want to go, and `time' is the expected time.  It
+ * can get cut short if a long range tractor beam is to occur.  We
+ * cut short the move so that the user doesn't get docked time and
+ * energy for distance which he didn't travel.
+ *
+ * We check the course through the current quadrant to see that he
+ * doesn't run into anything.  After that, though, space sort of
+ * bends around him.  Note that this puts us in the awkward posi-
+ * tion of being able to be dropped into a sector which is com-
+ * pletely surrounded by stars.  Oh Well.
+ *
+ * If the SINS (Space Inertial Navigation System) is out, we ran-
+ * domize the course accordingly before ever starting to move.
+ * We will still move in a straight line.
+ *
+ * Note that if your computer is out, you ram things anyway.  In
+ * other words, if your computer and sins are both out, you're in
+ * potentially very bad shape.
+ *
+ * Klingons get a chance to zap you as you leave the quadrant.
+ * By the way, they also try to follow you (heh heh).
+ *
+ * Return value is the actual amount of time used.
+ *
+ *
+ * Uses trace flag 4.
+ *
+ * C: `move()` in move.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param ramflag - Positive when the ship may ram what is in its way.
+ * @param course - The course, 0 .. 360 degrees.
+ * @param time - The time the move is expected to take.
+ * @param speed - The speed.
+ * @returns The time the move actually took.
+ */
 export async function move(t: Trek, ramflag: number, course: number, time: number, speed: number): Promise<number> {
-  const { Ship, Param, Move, Etc } = t.s;
+  const { Ship, Param, Move, Etc }: TrekState = t.s;
   let angle: number;
   let x: number;
   let y: number;

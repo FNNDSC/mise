@@ -41,18 +41,24 @@ import type { Trek } from './context.js';
 import { damaged } from './damaged.js';
 import { out } from './out.js';
 
-/*
-**  CHECK IF A DEVICE IS OUT
-**
-**	The indicated device is checked to see if it is disabled.  If
-**	it is, an attempt is made to use the starbase device.  If both
-**	of these fails, it returns non-zero (device is REALLY out),
-**	otherwise it returns zero (I can get to it somehow).
-**
-**	It prints appropriate messages too.
-*/
-
-/** CHECK IF A DEVICE IS OUT */
+/**
+ * Checks whether a device is out: damaged, with no starbase device to use instead.
+ *
+ * CHECK IF A DEVICE IS OUT
+ *
+ * The indicated device is checked to see if it is disabled.  If
+ * it is, an attempt is made to use the starbase device.  If both
+ * of these fails, it returns non-zero (device is REALLY out),
+ * otherwise it returns zero (I can get to it somehow).
+ *
+ * It prints appropriate messages too.
+ *
+ * C: `check_out()` in check_out.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param device - The device index.
+ * @returns Non-zero if the device is REALLY out, zero if it can be got to somehow.
+ */
 export function check_out(t: Trek, device: number): number {
   const dev: number = device;
 

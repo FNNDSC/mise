@@ -42,22 +42,25 @@ import { damaged } from './damaged.js';
 import { reschedule, schedule } from './schedule.js';
 import type { TrekEvent } from './state.js';
 
-/*
-**  Schedule Ship.damages to a Device
-**
-**	Device `dev1' is damaged in an amount `dam'.  Dam is measured
-**	in stardates, and is an additional amount of damage.  It should
-**	be the amount to occur in non-docked mode.  The adjustment
-**	to docked mode occurs automatically if we are docked.
-**
-**	Note that the repair of the device occurs on a DATE, meaning
-**	that the dock() and undock() have to reschedule the event.
-**
-**  dev1 -- device index
-**  dam -- time to repair
-*/
-
-/** Schedule Ship.damages to a Device */
+/**
+ * Damages a device: schedules its repair, or adds to the repair already waiting.
+ *
+ * Schedule Ship.damages to a Device
+ *
+ * Device `dev1' is damaged in an amount `dam'.  Dam is measured
+ * in stardates, and is an additional amount of damage.  It should
+ * be the amount to occur in non-docked mode.  The adjustment
+ * to docked mode occurs automatically if we are docked.
+ *
+ * Note that the repair of the device occurs on a DATE, meaning
+ * that the dock() and undock() have to reschedule the event.
+ *
+ * C: `damage()` in damage.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param dev1 - device index
+ * @param dam - time to repair
+ */
 export async function damage(t: Trek, dev1: number, dam: number): Promise<void> {
   let e: TrekEvent;
 

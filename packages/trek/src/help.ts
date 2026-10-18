@@ -47,29 +47,35 @@ import { out } from './out.js';
 import { franf, ranf } from './rand.js';
 import type { XY } from './state.js';
 
-/*
-**  call starbase for help
-**
-**	First, the closest starbase is selected.  If there is a
-**	a starbase in your own quadrant, you are in good shape.
-**	This distance takes quadrant distances into account only.
-**
-**	A magic number is computed based on the distance which acts
-**	as the probability that you will be rematerialized.  You
-**	get three tries.
-**
-**	When it is determined that you should be able to be remater-
-**	ialized (i.e., when the probability thing mentioned above
-**	comes up positive), you are put into that quadrant (anywhere).
-**	Then, we try to see if there is a spot adjacent to the star-
-**	base.  If not, you can't be rematerialized!!!  Otherwise,
-**	it drops you there.  It only tries five times to find a spot
-**	to drop you.  After that, it's your problem.
-*/
-
+/** The ordinal words for the three rematerialization attempts. */
 const Cntvect: ReadonlyArray<string> = ['first', 'second', 'third'];
 
-/** call starbase for help */
+/**
+ * Calls the closest starbase for help, which tries three times to rematerialize the ship beside it.
+ *
+ * call starbase for help
+ *
+ * First, the closest starbase is selected.  If there is a
+ * a starbase in your own quadrant, you are in good shape.
+ * This distance takes quadrant distances into account only.
+ *
+ * A magic number is computed based on the distance which acts
+ * as the probability that you will be rematerialized.  You
+ * get three tries.
+ *
+ * When it is determined that you should be able to be remater-
+ * ialized (i.e., when the probability thing mentioned above
+ * comes up positive), you are put into that quadrant (anywhere).
+ * Then, we try to see if there is a spot adjacent to the star-
+ * base.  If not, you can't be rematerialized!!!  Otherwise,
+ * it drops you there.  It only tries five times to find a spot
+ * to drop you.  After that, it's your problem.
+ *
+ * C: `help()` in help.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table value, unused.
+ */
 export async function help(t: Trek, _v: number): Promise<void> {
   let i: number;
   let dist: number;

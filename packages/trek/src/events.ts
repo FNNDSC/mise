@@ -60,12 +60,41 @@ import { reschedule, schedule, unschedule, xresched, xsched } from './schedule.j
 import { snova } from './snova.js';
 import { snapshot_take, type Kling, type Quad, type TrekEvent, type TrekState, type XY } from './state.js';
 
-/** CAUSE TIME TO ELAPSE: 'timewarp' is set if called in a time warp. */
+/**
+ * Causes time to elapse: processes every event that falls due, in date order, then eats and regenerates energy.
+ *
+ * CAUSE TIME TO ELAPSE
+ *
+ * This routine does a hell of a lot.  It elapses time, eats up
+ * energy, regenerates energy, processes any events that occur,
+ * and so on.
+ *
+ * 'timewarp' is set if called in a time warp.
+ *
+ * C: `events()` in events.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param timewarp - Nonzero when called in a time warp, which skips the energy accounting.
+ * @returns Always 0, as the C's int return.
+ */
 export async function events(t: Trek, timewarp: number): Promise<number> {
   const s: TrekState = t.s;
   const { Move, Now, Ship, Param, Etc, Game } = s;
-  const quad = (x: number, y: number): Quad => (s.Quad[x] as Quad[])[y] as Quad;
-  const event = (n: number): TrekEvent => s.Event[n] as TrekEvent;
+  /**
+   * Reads one quadrant of the galaxy.
+   *
+   * @param x - The quadrant row.
+   * @param y - The quadrant column.
+   * @returns The quadrant at x,y.
+   */
+  const quad_get = (x: number, y: number): Quad => (s.Quad[x] as Quad[])[y] as Quad;
+  /**
+   * Reads one entry of the event list.
+   *
+   * @param n - The index into Event[].
+   * @returns The event at index n.
+   */
+  const event_get = (n: number): TrekEvent => s.Event[n] as TrekEvent;
   let i: number;
   let j: number = 0;
   let rtime: number;
@@ -102,7 +131,7 @@ export async function events(t: Trek, timewarp: number): Promise<number> {
 
     // find the first event that has happened
     for (i = 0; i < MAXEVENTS; i++) {
-      const one: TrekEvent = event(i);
+      const one: TrekEvent = event_get(i);
       if (one.evcode === 0 || one.evcode & E_GHOST) continue;
       if (one.date < xdate) {
         xdate = one.date;
@@ -126,7 +155,7 @@ export async function events(t: Trek, timewarp: number): Promise<number> {
     // check for out of time
     if (Now.time <= 0.0) await lose(t, L_NOTIME);
     if (evnum >= 0 && s.Trace) {
-      const one: TrekEvent = event(e);
+      const one: TrekEvent = event_get(e);
       t.io.printf('xdate = %.2f, evcode %d params %d %d %d\n', xdate, one.evcode, one.x, one.y, one.systemname);
     }
 
@@ -134,7 +163,7 @@ export async function events(t: Trek, timewarp: number): Promise<number> {
     if (evnum < 0) break;
 
     // otherwise one did.  Find out what it is
-    switch (event(e).evcode & E_EVENT) {
+    switch (event_get(e).evcode & E_EVENT) {
       case E_SNOVA: // supernova
         // cause the supernova to happen
         await snova(t, -1, 0);
@@ -151,7 +180,7 @@ export async function events(t: Trek, timewarp: number): Promise<number> {
           i = ranf(t.rnd, Now.klings) + 1;
           for (ix = 0; ix < NQUADS; ix++) {
             for (iy = 0; iy < NQUADS; iy++) {
-              q = quad(ix, iy);
+              q = quad_get(ix, iy);
               if (q.stars >= 0) if ((i -= q.klings) <= 0) break;
             }
             if (i <= 0) break;
@@ -185,12 +214,12 @@ export async function events(t: Trek, timewarp: number): Promise<number> {
           ix = (Now.base[i] as XY).x;
           iy = (Now.base[i] as XY).y;
           // see if a Klingon exists in this quadrant
-          q = quad(ix, iy);
+          q = quad_get(ix, iy);
           if (q.klings <= 0) continue;
 
           // see if already distressed
           for (j = 0; j < MAXEVENTS; j++) {
-            const one: TrekEvent = event(j);
+            const one: TrekEvent = event_get(j);
             if ((one.evcode & E_EVENT) !== E_KDESB) continue;
             if (one.x === ix && one.y === iy) break;
           }
@@ -216,14 +245,14 @@ export async function events(t: Trek, timewarp: number): Promise<number> {
           restcancel++;
         } else {
           // SSRADIO out, make it so we can't see the distress call but it's still there!!!
-          event(e).evcode |= E_HIDDEN;
+          event_get(e).evcode |= E_HIDDEN;
         }
         break;
 
       case E_KDESB: { // Klingon destroys starbase
         unschedule(t, e);
-        const one: TrekEvent = event(e);
-        q = quad(one.x, one.y);
+        const one: TrekEvent = event_get(e);
+        q = quad_get(one.x, one.y);
         // if the base has mysteriously gone away, or if the Klingon got tired and went home, ignore this event
         if (q.bases <= 0 || q.klings <= 0) break;
         // are we in the same quadrant?
@@ -243,11 +272,11 @@ export async function events(t: Trek, timewarp: number): Promise<number> {
         // if we already have too many, throw this one away
         if (Ship.distressed >= MAXDISTR) break;
         // try a bunch of times to find something suitable
-        q = quad(0, 0);
+        q = quad_get(0, 0);
         for (i = 0; i < 100; i++) {
           ix = ranf(t.rnd, NQUADS);
           iy = ranf(t.rnd, NQUADS);
-          q = quad(ix, iy);
+          q = quad_get(ix, iy);
           // need a quadrant which is not the current one, which has some inhabited stars which are not
           // already under attack, which is not supernova'ed, and which has some Klingons in it
           if (!((ix === Ship.quadx && iy === Ship.quady) || q.stars < 0 || q.qsystemname & Q_DISTRESSED || (q.qsystemname & Q_SYSTEM) === 0 || q.klings <= 0)) break;
@@ -262,19 +291,19 @@ export async function events(t: Trek, timewarp: number): Promise<number> {
 
         // tell the captain about it if we can
         if (!damaged(t, SSRADIO)) {
-          t.io.printf('\nUhura: Captain, starsystem %s in quadrant %d,%d is under attack\n', Systemname[event(e).systemname] as string, ix, iy);
+          t.io.printf('\nUhura: Captain, starsystem %s in quadrant %d,%d is under attack\n', Systemname[event_get(e).systemname] as string, ix, iy);
           restcancel++;
         } else {
           // if we can't tell him, make it invisible
-          event(e).evcode |= E_HIDDEN;
+          event_get(e).evcode |= E_HIDDEN;
         }
         break;
 
       case E_ENSLV: { // starsystem is enslaved
         unschedule(t, e);
         // see if current distress call still active
-        const one: TrekEvent = event(e);
-        q = quad(one.x, one.y);
+        const one: TrekEvent = event_get(e);
+        q = quad_get(one.x, one.y);
         if (q.klings <= 0) {
           // no Klingons, clean up
           // restore the system name
@@ -286,7 +315,7 @@ export async function events(t: Trek, timewarp: number): Promise<number> {
         e = schedule(t, E_REPRO, (Param.eventdly[E_REPRO] as number) * franf(t.rnd), one.x, one.y, one.systemname);
 
         // report the disaster if we can
-        const baby: TrekEvent = event(e);
+        const baby: TrekEvent = event_get(e);
         if (!damaged(t, SSRADIO)) {
           t.io.printf("\nUhura:  We've lost contact with starsystem %s\n", Systemname[baby.systemname] as string);
           t.io.printf('  in quadrant %d,%d.\n', baby.x, baby.y);
@@ -298,8 +327,8 @@ export async function events(t: Trek, timewarp: number): Promise<number> {
 
       case E_REPRO: { // Klingon reproduces
         // see if distress call is still active
-        const one: TrekEvent = event(e);
-        q = quad(one.x, one.y);
+        const one: TrekEvent = event_get(e);
+        q = quad_get(one.x, one.y);
         if (q.klings <= 0) {
           unschedule(t, e);
           q.qsystemname = one.systemname;
@@ -319,7 +348,7 @@ export async function events(t: Trek, timewarp: number): Promise<number> {
             if (i < 0 || i >= NQUADS) continue;
             for (j = iy - 1; j <= iy + 1; j++) {
               if (j < 0 || j >= NQUADS) continue;
-              q = quad(i, j);
+              q = quad_get(i, j);
               // check for this quad ok (not full & no snova)
               if (q.klings >= MAXKLQUAD || q.stars < 0) continue;
               break;
@@ -370,7 +399,7 @@ export async function events(t: Trek, timewarp: number): Promise<number> {
         break;
 
       case E_FIXDV: {
-        i = event(e).systemname;
+        i = event_get(e).systemname;
         unschedule(t, e);
 
         // de-damage the device

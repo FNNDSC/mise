@@ -42,25 +42,29 @@ import type { Trek } from './context.js';
 import { franf, ranf } from './rand.js';
 import { warp } from './warp.js';
 
-/*
-**  Automatic Override
-**
-**	If we should be so unlucky as to be caught in a quadrant
-**	with a supernova in it, this routine is called.  It is
-**	called from checkcond().
-**
-**	It sets you to a random warp (guaranteed to be over 6.0)
-**	and starts sending you off "somewhere" (whereever that is).
-**
-**	Please note that it is VERY important that you reset your
-**	warp speed after the automatic override is called.  The new
-**	warp factor does not stay in effect for just this routine.
-**
-**	This routine will never try to send you more than sqrt(2)
-**	quadrants, since that is all that is needed.
-*/
-
-/** Sends the ship out of a supernova quadrant. */
+/**
+ * Sends the ship out of a supernova quadrant.
+ *
+ * Automatic Override
+ *
+ * If we should be so unlucky as to be caught in a quadrant
+ * with a supernova in it, this routine is called.  It is
+ * called from checkcond().
+ *
+ * It sets you to a random warp (guaranteed to be over 6.0)
+ * and starts sending you off "somewhere" (whereever that is).
+ *
+ * Please note that it is VERY important that you reset your
+ * warp speed after the automatic override is called.  The new
+ * warp factor does not stay in effect for just this routine.
+ *
+ * This routine will never try to send you more than sqrt(2)
+ * quadrants, since that is all that is needed.
+ *
+ * C: `autover()` in autover.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ */
 export async function autover(t: Trek): Promise<void> {
   const { Ship, Etc } = t.s;
   let dist: number;

@@ -41,18 +41,12 @@ import type { Trek } from './context.js';
 import { getintpar } from './getpar.js';
 import type { XY } from './state.js';
 
-/*
-**  VISUAL SCAN
-**
-**	A visual scan is made in a particular direction of three sectors
-**	in the general direction specified.  This takes time, and
-**	Klingons can attack you, so it should be done only when sensors
-**	are out.
-*/
-
-/* This struct[] has the delta x, delta y for particular directions */
-// As compiled: struct xy holds unsigned chars, so the C's -1 is stored as 255 and those
-// directions look off the edge ('?'). Kept, so the scan reads as the original's does.
+/**
+ * This struct[] has the delta x, delta y for particular directions.
+ *
+ * As compiled: struct xy holds unsigned chars, so the C's -1 is stored as 255 and those
+ * directions look off the edge ('?'). Kept, so the scan reads as the original's does.
+ */
 const Visdelta: ReadonlyArray<XY> = [
   { x: 255, y: 255 },
   { x: 255, y: 0 },
@@ -69,30 +63,52 @@ const Visdelta: ReadonlyArray<XY> = [
 
 /** A sector seen by the visual scan: where it is, and what is there. */
 interface SectorSeen {
+  /** The sector row looked at. */
   ix: number;
+  /** The sector column looked at. */
   iy: number;
   /** The sector's character, or '?' off the edge. */
   co: string;
 }
 
-/** The sector at a delta from the ship: its character, or '?' off the edge. */
-function look(t: Trek, v: XY): SectorSeen {
+/**
+ * Looks at the sector at a delta from the ship: its character, or '?' off the edge.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param v - The delta from the ship's sector.
+ * @returns The sector looked at and what is there.
+ */
+function sector_look(t: Trek, v: XY): SectorSeen {
   const ix: number = t.s.Ship.sectx + v.x;
   const iy: number = t.s.Ship.secty + v.y;
   const co: string = ix < 0 || ix >= NSECTS || iy < 0 || iy >= NSECTS ? '?' : t.s.Sect[ix][iy];
   return { ix, iy, co };
 }
 
-/** VISUAL SCAN */
+/**
+ * Makes a visual scan of three sectors in the direction asked.
+ *
+ * VISUAL SCAN
+ *
+ * A visual scan is made in a particular direction of three sectors
+ * in the general direction specified.  This takes time, and
+ * Klingons can attack you, so it should be done only when sensors
+ * are out.
+ *
+ * C: `visual()` in visual.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _z - The command table's argument, unused here.
+ */
 export async function visual(t: Trek, _z: number): Promise<void> {
   let co: number = await getintpar(t, 'direction');
   if (co < 0 || co > 360) return;
   co = Math.trunc((co + 22) / 45);
-  const a: SectorSeen = look(t, Visdelta[co] as XY);
+  const a: SectorSeen = sector_look(t, Visdelta[co] as XY);
   t.io.printf('%d,%d %c ', a.ix, a.iy, a.co);
-  const b: SectorSeen = look(t, Visdelta[co + 1] as XY);
+  const b: SectorSeen = sector_look(t, Visdelta[co + 1] as XY);
   t.io.printf('%c ', b.co);
-  const c: SectorSeen = look(t, Visdelta[co + 2] as XY);
+  const c: SectorSeen = sector_look(t, Visdelta[co + 2] as XY);
   t.io.printf('%c %d,%d\n', c.co, c.ix, c.iy);
   t.s.Move.time = 0.05;
   t.s.Move.free = 0;

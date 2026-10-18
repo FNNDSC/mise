@@ -43,21 +43,26 @@ import { out } from './out.js';
 import { ranf } from './rand.js';
 import type { Kling } from './state.js';
 
-/*
-**  Ask a Klingon To Surrender
-**
-**	(Fat chance)
-**
-**	The Subspace Radio is needed to ask a Klingon if he will kindly
-**	surrender.  A random Klingon from the ones in the quadrant is
-**	chosen.
-**
-**	The Klingon is requested to surrender.  The probability of this
-**	is a function of that Klingon's remaining power, our power,
-**	etc.
-*/
-
-/** Ask a Klingon To Surrender */
+/**
+ * Asks a Klingon in the quadrant to surrender over the subspace radio, taking captives when he does.
+ *
+ * Ask a Klingon To Surrender
+ *
+ * (Fat chance)
+ *
+ * The Subspace Radio is needed to ask a Klingon if he will kindly
+ * surrender.  A random Klingon from the ones in the quadrant is
+ * chosen.
+ *
+ * The Klingon is requested to surrender.  The probability of this
+ * is a function of that Klingon's remaining power, our power,
+ * etc.
+ *
+ * C: `capture()` in capture.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table value, unused.
+ */
 export async function capture(t: Trek, _v: number): Promise<void> {
   let i: number;
 
@@ -106,13 +111,18 @@ export async function capture(t: Trek, _v: number): Promise<void> {
   return;
 }
 
-/*
-**  SELECT A KLINGON
-**
-**	Cruddy, just takes one at random.  Should ask the captain.
-*/
-
-/** SELECT A KLINGON */
+/**
+ * Selects a Klingon in the quadrant to talk to, at random.
+ *
+ * SELECT A KLINGON
+ *
+ * Cruddy, just takes one at random.  Should ask the captain.
+ *
+ * C: `selectklingon()` in capture.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @returns The chosen Klingon.
+ */
 function selectklingon(t: Trek): Kling {
   let i: number;
 

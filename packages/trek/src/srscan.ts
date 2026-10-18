@@ -45,25 +45,30 @@ import { Lentab, Skitab } from './setup.js';
 import type { Quad } from './state.js';
 import { systemname } from './systemname.js';
 
-/*
-**  SHORT RANGE SENSOR SCAN
-**
-**	A short range scan is taken of the current quadrant.  If the
-**	flag 'f' is one, it is an "auto srscan", which is not done
-**	unless in 'fast' mode.  It does a status report and a srscan.
-**	If 'f' is -1, you get a status report only.  If it is zero,
-**	you get a srscan and an optional status report.  The status
-**	report is taken if you enter "srscan yes"; for all srscans
-**	thereafter you get a status report with your srscan until
-**	you type "srscan no".  It defaults to on.
-**
-**	The current quadrant is filled in on the computer chart.
-*/
-
 /** The condition names, by Ship.cond. */
 const Color: ReadonlyArray<string> = ['GREEN', 'DOCKED', 'YELLOW', 'RED'];
 
-/** SHORT RANGE SENSOR SCAN */
+/**
+ * Takes a short range sensor scan of the current quadrant, with a status report beside it.
+ *
+ * SHORT RANGE SENSOR SCAN
+ *
+ * A short range scan is taken of the current quadrant.  If the
+ * flag 'f' is one, it is an "auto srscan", which is not done
+ * unless in 'fast' mode.  It does a status report and a srscan.
+ * If 'f' is -1, you get a status report only.  If it is zero,
+ * you get a srscan and an optional status report.  The status
+ * report is taken if you enter "srscan yes"; for all srscans
+ * thereafter you get a status report with your srscan until
+ * you type "srscan no".  It defaults to on.
+ *
+ * The current quadrant is filled in on the computer chart.
+ *
+ * C: `srscan()` in srscan.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param f - 1 for an auto scan (fast mode only), 0 for a scan with an optional status report, -1 for a status report only.
+ */
 export async function srscan(t: Trek, f: number): Promise<void> {
   let statinfo: number;
   let s: string;

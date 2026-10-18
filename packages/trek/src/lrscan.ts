@@ -41,19 +41,24 @@ import type { Trek } from './context.js';
 import { check_out } from './check_out.js';
 import type { Quad } from './state.js';
 
-/*
-**  LONG RANGE OF SCANNERS
-**
-**	A summary of the quadrants that surround you is printed.  The
-**	hundreds digit is the number of Klingons in the quadrant,
-**	the tens digit is the number of starbases, and the units digit
-**	is the number of stars.  If the printout is "///" it means
-**	that that quadrant is rendered uninhabitable by a supernova.
-**	It also updates the "scanned" field of the quadrants it scans,
-**	for future use by the "chart" option of the computer.
-*/
-
-/** LONG RANGE OF SCANNERS */
+/**
+ * Prints the long range scan of the quadrants around the ship.
+ *
+ * LONG RANGE OF SCANNERS
+ *
+ * A summary of the quadrants that surround you is printed.  The
+ * hundreds digit is the number of Klingons in the quadrant,
+ * the tens digit is the number of starbases, and the units digit
+ * is the number of stars.  If the printout is "///" it means
+ * that that quadrant is rendered uninhabitable by a supernova.
+ * It also updates the "scanned" field of the quadrants it scans,
+ * for future use by the "chart" option of the computer.
+ *
+ * C: `lrscan()` in lrscan.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table's argument, unused here.
+ */
 export async function lrscan(t: Trek, _v: number): Promise<void> {
   let q: Quad;
 

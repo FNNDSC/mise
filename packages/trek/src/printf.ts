@@ -14,7 +14,9 @@
 export type PrintfArg = number | string;
 
 /**
- * Formats as C's sprintf.
+ * Formats values into text as C's sprintf does.
+ *
+ * Port: stands in for C's sprintf().
  *
  * @param format - The format string.
  * @param args - The values, in order.
@@ -23,20 +25,25 @@ export type PrintfArg = number | string;
 export function sprintf(format: string, ...args: PrintfArg[]): string {
   let out: string = '';
   let next: number = 0;
-  const take = (): PrintfArg => args[next++] ?? 0;
+  /**
+   * Takes the next value from the argument list (0 once it runs out).
+   *
+   * @returns The next value.
+   */
+  const arg_take = (): PrintfArg => args[next++] ?? 0;
   const spec: RegExp = /%([-+ 0#]*)(\*|\d+)?(?:\.(\*|\d*))?(?:hh|h|ll|l|L|z|j|t)?([diucsfFeEgGxXo%])/g;
   let last: number = 0;
   let match: RegExpExecArray | null;
   while ((match = spec.exec(format)) !== null) {
     out += format.slice(last, match.index);
     last = spec.lastIndex;
-    const [, flags = '', widthSpec, precSpec, conversion = ''] = match;
+    const [, flags = '', widthSpec, precSpec, conversion = '']: RegExpExecArray = match;
     if (conversion === '%') { out += '%'; continue; }
-    let width: number = widthSpec === undefined ? 0 : widthSpec === '*' ? Number(take()) : Number(widthSpec);
+    let width: number = widthSpec === undefined ? 0 : widthSpec === '*' ? Number(arg_take()) : Number(widthSpec);
     let left: boolean = flags.includes('-');
     if (width < 0) { left = true; width = -width; }
-    const precision: number | null = precSpec === undefined ? null : precSpec === '*' ? Number(take()) : Number(precSpec || '0');
-    const value: PrintfArg = take();
+    const precision: number | null = precSpec === undefined ? null : precSpec === '*' ? Number(arg_take()) : Number(precSpec || '0');
+    const value: PrintfArg = arg_take();
     let body: string;
     let sign: string = '';
     let numeric: boolean = true;
@@ -82,11 +89,19 @@ export function sprintf(format: string, ...args: PrintfArg[]): string {
   return out + format.slice(last);
 }
 
-/** A non-negative double in %f, %e or %g. */
+/**
+ * Formats a non-negative double in %f, %e or %g.
+ *
+ * @param n - A non-negative double.
+ * @param conversion - The conversion letter: f F e E g G.
+ * @param precision - The precision, as printf reads it.
+ * @param alternate - Whether the `#` flag is set (keeps %g's trailing zeros).
+ * @returns The digits, without a sign.
+ */
 function float_format(n: number, conversion: string, precision: number, alternate: boolean): string {
   if (!Number.isFinite(n)) return Number.isNaN(n) ? 'nan' : 'inf';
   const lower: string = conversion.toLowerCase();
-  if (lower === 'f') return fixed_exact(n, precision);
+  if (lower === 'f') return fixed_formatExact(n, precision);
   if (lower === 'e') return exp_format(n, precision, conversion === 'E');
   // %g: precision 0 is 1; %e when the exponent is < -4 or >= precision.
   const p: number = precision === 0 ? 1 : precision;
@@ -98,16 +113,25 @@ function float_format(n: number, conversion: string, precision: number, alternat
   return text;
 }
 
-/** %e: d.ddde+XX, at least two exponent digits. */
+/**
+ * Formats a double as %e: d.ddde+XX, at least two exponent digits.
+ *
+ * @param n - A non-negative double.
+ * @param precision - Digits after the point.
+ * @param upper - Whether to print the `E` in upper case.
+ * @returns The digits, without a sign.
+ */
 function exp_format(n: number, precision: number, upper: boolean): string {
-  const [mantissa, exp = '0'] = n.toExponential(precision).split('e');
+  const [mantissa, exp = '0']: string[] = n.toExponential(precision).split('e');
   const e: number = Number(exp);
   const text: string = `${mantissa}e${e < 0 ? '-' : '+'}${String(Math.abs(e)).padStart(2, '0')}`;
   return upper ? text.toUpperCase() : text;
 }
 
 /**
- * %f as glibc prints it: the double's exact binary value rounded to the
+ * Formats a double as glibc prints %f.
+ *
+ * The double's exact binary value rounded to the
  * precision, an exact tie to even. (JavaScript's toFixed rounds a tie up:
  * `%.0f` of 2.5 is 2 in C and 3 in toFixed.)
  *
@@ -115,7 +139,7 @@ function exp_format(n: number, precision: number, upper: boolean): string {
  * @param precision - Digits after the point.
  * @returns The digits.
  */
-export function fixed_exact(n: number, precision: number): string {
+export function fixed_formatExact(n: number, precision: number): string {
   const view: DataView = new DataView(new ArrayBuffer(8));
   view.setFloat64(0, n);
   const bits: bigint = view.getBigUint64(0);

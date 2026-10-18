@@ -42,20 +42,38 @@
  */
 import { RANDOM_MAX } from './consts.js';
 
-/** glibc's random(), from a seed. */
+/**
+ * glibc's random(), from a seed.
+ *
+ * The additive feedback generator of degree 31 (TYPE_3), the source every
+ * ranf() and franf() in the game draws from.
+ *
+ * Port: stands in for C's random() and srandom().
+ */
 export class TrekRandom {
+  /** The 31-word state table. */
   private table: number[] = [];
+  /** Index of the front pointer into the table. */
   private front: number = 0;
+  /** Index of the rear pointer into the table. */
   private rear: number = 0;
 
   /**
+   * Builds a generator seeded as srandom() seeds it.
+   *
    * @param seed - As srandom() takes it.
    */
   constructor(seed: number) {
     this.srandom(seed);
   }
 
-  /** Seeds as glibc's srandom (TYPE_3, degree 31, separation 3). */
+  /**
+   * Seeds the generator as glibc's srandom (TYPE_3, degree 31, separation 3).
+   *
+   * Port: stands in for C's srandom().
+   *
+   * @param seed - The seed, as srandom() takes it.
+   */
   public srandom(seed: number): void {
     let word: number = seed | 0;
     if (word === 0) word = 1;
@@ -76,7 +94,13 @@ export class TrekRandom {
     for (let i: number = 0; i < 310; i++) this.random();
   }
 
-  /** The next value, 0 .. RANDOM_MAX. */
+  /**
+   * Draws the next value, 0 .. RANDOM_MAX.
+   *
+   * Port: stands in for C's random().
+   *
+   * @returns The next value of the sequence.
+   */
   public random(): number {
     const sum: number = ((this.table[this.front] as number) + (this.table[this.rear] as number)) | 0;
     this.table[this.front] = sum;
@@ -88,10 +112,12 @@ export class TrekRandom {
 }
 
 /**
- * ranf: a random integer, 0 .. max-1 (0 when max <= 0).
+ * Draws a random integer, 0 .. max-1 (0 when max <= 0).
  *
- * @param rnd - The source.
- * @param max - The bound.
+ * C: `ranf()` in ranf.c.
+ *
+ * @param rnd - The random source.
+ * @param max - The exclusive upper bound.
  * @returns The integer.
  */
 export function ranf(rnd: TrekRandom, max: number): number {
@@ -100,9 +126,11 @@ export function ranf(rnd: TrekRandom, max: number): number {
 }
 
 /**
- * franf: a random double, 0 .. 1.
+ * Draws a random double, 0 .. 1.
  *
- * @param rnd - The source.
+ * C: `franf()` in ranf.c.
+ *
+ * @param rnd - The random source.
  * @returns The double.
  */
 export function franf(rnd: TrekRandom): number {

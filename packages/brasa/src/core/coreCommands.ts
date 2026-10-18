@@ -20,7 +20,7 @@ import { builtin_lolcat } from '../builtins/games/lolcat.js';
 import { builtin_morse } from '../builtins/games/morse.js';
 import { builtin_calc, builtin_factor, builtin_primes, builtin_roll, builtin_units } from '../builtins/games/numbers.js';
 import { builtin_2048, builtin_hangman, builtin_quiz } from '../builtins/games/play.js';
-import { builtin_trek } from '../builtins/games/trek/trek.js';
+import { builtin_trek } from '../builtins/games/trek.js';
 import { builtin_qr } from '../builtins/games/qr.js';
 import { builtin_asciiquarium, builtin_cmatrix, builtin_rain, builtin_sl, builtin_snake, builtin_tetris } from '../builtins/games/show.js';
 import { builtin_ddate, builtin_pom, builtin_stardate, builtin_sunrise } from '../builtins/games/sky.js';

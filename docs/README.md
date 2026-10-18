@@ -77,6 +77,7 @@ documentation; for using the shell and the packages, see the per-package READMEs
 
 - **[linux-metaphor.adoc](linux-metaphor.adoc)** — mise read as an ordinary Linux machine: `fond` the syscalls and mount table, `brasa` core bash and coreutils, a backend a filesystem driver with its own programs (ChRIS: `salsa` and `cumin`), `calypso` sshd, chell and ARGUS terminals, `porter` the login manager; followed down to CUBE's jobs as processes and the OpenShift and Kubernetes cluster under them, and out to the original ChRIS UI (a vendor's console) and ARGUS (a desktop session). Explains; does not bind.
 - **[proc.adoc](proc.adoc)** — `/proc` as CUBE's runtime state: `/proc/jobs`, `/proc/tags`, and the deprecated `/proc/workflows` (why it was built for folder downloads, what 51k workflows cost, how the run questions are answered by CUBE searches and `/proc/jobs` instead).
+- **[trek.adoc](trek.adoc)** — trek, the BSD trek(6) port: `bsd-trek` on npm (name, licence, saves, publishing by hand first), the boundary that keeps it free of mise's internals (`lint:trek`), typed asks from its questions, and the ARGUS bridge that takes the whole screen (header of ship state, stations that follow the question); the first package built as if from outside, and what is deferred until a second consumer.
 
 - **[feed-dag-viewer.adoc](feed-dag-viewer.adoc)** — the shipped cache-first
   feed and pipeline diagram model, including shallow trees, topological joins,

@@ -12,7 +12,7 @@
  */
 import chalk from 'chalk';
 import { CommandEnvelope, envelope_error, envelope_ok } from '@fnndsc/menu';
-import { trek_play, trekArgs_parse, type TrekDump, type TrekTerminal } from 'bsd-trek';
+import { TREK_CREDITS, trek_play, trekArgs_parse, type TrekDump, type TrekTerminal } from 'bsd-trek';
 import { repl_question } from '../../core/question.js';
 import { sink_get } from '../../core/sink.js';
 
@@ -40,6 +40,7 @@ const SESSION_TERMINAL: TrekTerminal = {
 export async function builtin_trek(args: string[]): Promise<CommandEnvelope> {
   const asked = trekArgs_parse(args);
   if ('refusal' in asked) return envelope_error('', undefined, `${asked.refusal}\n`);
+  if (asked.credits) return envelope_ok(TREK_CREDITS, { kind: 'games.trek.credits', data: {} });
   try {
     const code: number = await trek_play(SESSION_TERMINAL, { seed: asked.seed, fast: asked.fast, trace: 0, styled: !asked.classic && chalk.level > 0 }, TREK_DUMP);
     return envelope_ok('', { kind: 'games.trek', data: { seed: asked.seed, exit: code } });

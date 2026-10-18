@@ -41,16 +41,18 @@ Then it prints a short-range scan of the quadrant you are in, a 10 by 10 grid of
 | `r`est | Let time pass (repairs happen while you rest) |
 | `c`omputer | Course and distance to a quadrant, a record of scans, and more |
 | `da`mages | Damage report |
-| `help` | Every command, in the game itself |
+| `help` | Call a starbase for help (it costs you) |
+| `cr`edits | Who made the game; takes no time |
+| `?` | Every command, in the game itself |
 
 Courses are in degrees: 0 is up, 90 is right, and so on clockwise. Distances are in quadrants (one quadrant is ten sectors). In the scans, `E` is you, `K` a Klingon, `#` a starbase, `*` a star and `@` an inhabited star system.
 
-Klingons shoot back, multiply and attack starbases, and running out of energy or time ends the game. Dock often.
+Klingons shoot back, multiply and attack starbases, and running out of energy or time ends the game. Dock often. Ctrl-C quits on the spot (`dump` first to keep the game).
 
 ## Options
 
 ```
-trek [--classic] [-f | -s] [--seed N]
+trek [--classic] [-f | -s] [--seed N] [--credits]
 ```
 
 | Option | Effect |
@@ -58,6 +60,7 @@ trek [--classic] [-f | -s] [--seed N]
 | `--classic` | The original look: no glyphs, no colour. Colour is also off when the output is piped or `NO_COLOR` is set. |
 | `-f` | Faster messages (repeat for faster still); `-s` slow. |
 | `--seed N` | A fixed galaxy: the same seed and the same answers replay the same game. |
+| `--credits` | Who made the game, and where this port comes from (also `credits` in the game). |
 | `--help`, `--version` | As usual. |
 
 ## Saving a game
@@ -66,7 +69,7 @@ trek [--classic] [-f | -s] [--seed N]
 
 ## History
 
-Eric Allman wrote trek in C at Berkeley in 1976, from a FORTRAN version, itself from a BASIC game by Mike Mayfield, with help and ideas from the people the original credits (they are in [LICENSE](LICENSE)). It shipped in BSD's games collection and still does in NetBSD, whose sources this port follows; each module names the C file and revision it came from.
+Eric Allman wrote trek in C at Berkeley in 1976, from a FORTRAN version, itself from a BASIC game by Mike Mayfield, with help and ideas from the people the original credits (they are in [LICENSE](LICENSE)). It shipped in BSD's games collection and still does in NetBSD, whose sources this port follows; each module names the C file and revision it came from. Rudolph Pienaar ported it to TypeScript in 2026; `trek --credits` names everyone.
 
 ## Licence
 

@@ -44,6 +44,7 @@ import { capture } from './capture.js';
 import { checkcond } from './checkcond.js';
 import { computer } from './computer.js';
 import type { Trek } from './context.js';
+import { credits_show } from './credits.js';
 import { dcrept } from './dcrept.js';
 import { destruct } from './destruct.js';
 import { dock, undock } from './dock.js';
@@ -102,6 +103,8 @@ const Comtab: ReadonlyArray<Cvntab> = [
   { abbrev: 'u', full: 'ndock', value: undock, value2: 0 },
   { abbrev: 'v', full: 'isual', value: visual, value2: 0 },
   { abbrev: 'w', full: 'arp', value: setwarp, value2: 0 },
+  // The port's own, after the C's: who made the game.
+  { abbrev: 'cr', full: 'edits', value: credits_show, value2: 0 },
 ];
 
 /**

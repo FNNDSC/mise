@@ -29,13 +29,19 @@ trek also matters beyond the game. It is the first part of mise built inside the
 | What CI tests (22 and 24); Node 20 reached its end of life in April 2026. npm warns at install rather than failing mid-game.
 
 | The CLI behaves as the session's `trek`
-| The same flags (`--classic`, `-f`/`-s`, `--seed N`, read by one parser, `trekArgs_parse`), plus `--help` and `--version`. Scans are styled with glyphs and colour on a colour terminal, plain when piped, with `NO_COLOR`, or with `--classic`.
+| The same flags (`--classic`, `-f`/`-s`, `--seed N`, `--credits`, read by one parser, `trekArgs_parse`), plus `--help` and `--version`. Scans are styled with glyphs and colour on a colour terminal, plain when piped, with `NO_COLOR`, or with `--classic`.
 
 | A saved game on file
 | The original wrote `trek.dump` in the current directory; the port keeps the save in a slot (`TrekDump`). The session's slot lives as long as the session; the CLI's is a file at `$XDG_STATE_HOME/bsd-trek/trek.dump` (`~/.local/state` on Linux, `~/Library/Application Support` on macOS, `%LOCALAPPDATA%` on Windows), so a save outlives the process. The engine does not change.
 
 | Version `0.1.0`
 | The gameplay is complete, but the engine's exports change with the typed asks (below). `1.0.0` comes once the typed asks and the ARGUS bridge have used the engine.
+
+| Credits in the game and on the command line
+| `credits` at the `Command:` prompt and `trek --credits` show one text (`TREK_CREDITS`): the game's authors as the C's own credits name them, the port and its author, and a word on mise and ChRIS. The command is the port's, added last to the C's command table, so `?` lists the C's own first, no recorded game changes, and it takes no time (no stardate passes, the Klingons do not act).
+
+| Ctrl-C ends the game
+| As the C's default interrupt did: at once, with no save and status 130, and no trace from readline. `dump` saves first.
 
 | A README for the player
 | The game first: play in one line, how to play, options, saves, history and credit, licence; mise last. It carries one disclaimer: Star Trek is Paramount's trademark, and this is an unaffiliated port of a 1976 game. The package holds no Paramount art or sounds.

@@ -9,7 +9,8 @@
  *
  * @module
  */
-export { trek_play, trekArgs_parse, TREK_USAGE, type TrekPlay, type TrekArgs } from './trek.js';
+export { trek_play, trekArgs_parse, TREK_USAGE, type TrekPlay, type TrekArgs, type TrekRefusal } from './trek.js';
+export { TREK_CREDITS } from './credits.js';
 export type { TrekTerminal } from './io.js';
 export type { TrekDump } from './context.js';
 export type { TrekOptions } from './main.js';

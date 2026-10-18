@@ -233,4 +233,18 @@ export interface OutputSink {
   status_write(text: string): void;
 
   progress_write(event: ProgressEvent): void;
+
+  /**
+   * Sends a typed event to the command's origin surface, while the command
+   * runs.
+   *
+   * The kind names what the data is (`games.trek.state`); a surface shows
+   * the kinds it knows and drops the rest. Optional: a sink that predates
+   * events, or has nowhere to send one, leaves it out, and a command sends
+   * with `sink.event_write?.(kind, data)`.
+   *
+   * @param kind - What the data is.
+   * @param data - The event, shaped by its kind; it must survive JSON.
+   */
+  event_write?(kind: string, data: unknown): void;
 }

@@ -14,6 +14,7 @@
  * @module
  */
 import { sprintf, type PrintfArg } from './printf.js';
+import type { TrekState } from './state.js';
 
 /**
  * Thrown by exit(code): the game is over and the command returns.
@@ -66,6 +67,14 @@ export interface TrekTerminal {
    * @param seconds - How long to wait.
    */
   seconds_sleep(seconds: number): Promise<void>;
+  /**
+   * Shows the game's state, at every Command: prompt.
+   *
+   * The port's own: a host that draws the game (a bridge) reads the state here instead of the printed scans. The state is a copy; the game does not see what a host does with it. A terminal that only prints leaves this out.
+   *
+   * @param state - A copy of the whole game state.
+   */
+  state_show?(state: TrekState): void;
 }
 
 /** What a scanf read: how many items it matched (EOF at end of input), and the value. */
@@ -96,6 +105,18 @@ export class TrekIO {
    * @param terminal - What it is wired to.
    */
   constructor(private readonly terminal: TrekTerminal) {}
+
+  /**
+   * Shows the terminal the game's state, when it asked to see it.
+   *
+   * The port's own, with nothing printed: the recorded C games replay unchanged. The copy is deep, so a host keeping an old state sees it as it was.
+   *
+   * @param state - The live game state.
+   */
+  public state_show(state: TrekState): void {
+    if (this.terminal.state_show === undefined) return;
+    this.terminal.state_show(structuredClone(state));
+  }
 
   /**
    * Prints formatted text, writing out each complete line.

@@ -35,7 +35,7 @@ trek also matters beyond the game. It is the first part of mise built inside the
 | The original wrote `trek.dump` in the current directory; the port keeps the save in a slot (`TrekDump`). The session's slot lives as long as the session; the CLI's is a file at `$XDG_STATE_HOME/bsd-trek/trek.dump` (`~/.local/state` on Linux, `~/Library/Application Support` on macOS, `%LOCALAPPDATA%` on Windows), so a save outlives the process. The engine does not change.
 
 | Version `0.1.0`
-| The gameplay is complete, but the engine's exports change with the typed asks (below). `1.0.0` comes once the typed asks and the ARGUS bridge have used the engine.
+| The gameplay is complete, but the engine's exports widened once for the bridge (`state_show`, `TrekState`). `1.0.0` comes once the ARGUS bridge has used the engine.
 
 | Credits in the game and on the command line
 | `credits` at the `Command:` prompt and `trek --credits` show one text (`TREK_CREDITS`): the game's authors as the C's own credits name them, the port and its author, and a word on mise and ChRIS. The command is the port's, added last to the C's command table, so `?` lists the C's own first, no recorded game changes, and it takes no time (no stardate passes, the Klingons do not act).
@@ -67,44 +67,52 @@ npm's trusted publishing cannot create a package name, so the first version is p
 . The release is verified with a clean `npx bsd-trek` in an empty directory, not `npm view`: a version record proves nothing about installing.
 . The PR merges, and brasa releases depending on `bsd-trek`. Later versions release through changesets with their siblings.
 
-== Typed asks
+== The engine shows its state
 
-The engine asks every question through four functions in `getpar.ts`: `intParameter_get` (a whole number), `floatParameter_get` (a decimal), `codedParameter_get` (one choice from a table: "Manual or automatic", the computer's requests, the commands) and `yesNoParameter_get` (yes or no), the C's `getintpar`, `getfltpar`, `getcodpar` and `getynpar`. Today they reach the terminal as prompt text only (`TrekTerminal.question_ask(prompt)`). They will pass a description of the question as well: its kind, its name, its range, and the choices of a table. A terminal that only shows text ignores it; a surface that draws controls answers with them. That is a change to `TrekTerminal`, and why the package starts below 1.0.
+The engine asks every question through the C's own `getpar` functions, and a host answers them one line at a time; that does not change. What a host that draws the game needs is the state, not the printed scans: `TrekTerminal` has an optional `state_show(state)`, called with a deep copy of the whole `TrekState` before each `Command:` prompt. The recorded C games replay unchanged (nothing is printed for it), a terminal that only prints leaves it out, and `TrekState` and its parts are exported. This is the one widening of the terminal the bridge needed; the typed asks once planned here are not: the bridge sends the commands itself, so it knows what it asked.
 
-The session already has typed asks (`PromptRequest.wants`, from the "a surface can be asked" epic, #440), so the session's `trek` passes them on, and ARGUS answers them like any other.
+The session's `trek` passes the state on as a typed event, `games.trek.state`, through a channel that did not exist before and is now part of mise's contract: `OutputSink.event_write(kind, data)`, the `event` message from the daemon to the command's origin surface (live only, like output), and `event_receive` on the ARGUS client. A surface shows the kinds it knows and drops the rest.
 
 == The ARGUS bridge
 
-Running `trek` in ARGUS takes the whole screen, and ARGUS comes back when the game ends. Mockups: https://claude.ai/artifact/MojBJ5btnJEchTenGCBkAf[the trek canvas] (v3 is this design; v1 and v2 are the two before it; private to the operator until shared).
+Running `trek` in ARGUS takes the whole screen, and ARGUS comes back when the game ends. Mockups: https://claude.ai/artifact/MojBJ5btnJEchTenGCBkAf[the trek canvas]; v4 is this design (the BRIDGE view and the four station views); v1 to v3 are what came before (private to the operator until shared).
+
+=== The harness plays the game
+
+The bridge is a player at a terminal, not a rewrite of the game. It runs the session's `trek` as the operator's own command, reads the state the engine shows before every `Command:` prompt, and answers the engine's questions one at a time with lines built from its controls: pressing MOVE sends `m`, the course wheel's SET COURSE answers `Course:`, the distance slider's ENGAGE answers `Distance:`. The engine asks only what it would ask a typist, so the bridge never predicts the dialogue; it answers the prompt in front of it, identified by its text and the station that is open. Questions the engine asks on its own ("Are you sure that is wise", "Do you want a burst", Spock's "Shall we cancel our rest period", "Another game") are a yes/no strip over the body. Nobody types: the ship's log at the foot of the screen is the game's own prose, read-only, in the bridge's type (the C's tables, status report, damage report, score, scans, are panes drawn from the state, not log text). Ranges live in the bridge as presentation (a course is 0 to 360, a warp factor 1 to 10, phaser units up to the energy the state shows); the engine still checks every answer, so the bridge can never do more than a typist could.
 
 === Why a takeover, not a pane
 
 * It is the shell's own idiom. In a terminal a full-screen program (`vi`, `tetris`) switches to the alternate screen and hands it back on exit; ARGUS, built around an embedded terminal, does the same one level up.
 * A pane among panes would mislead. While the game runs it is the session's running command and holds the lane; anything another pane asks the session queues behind it. A screen given wholly to the game says so.
-* ARGUS's zoom already removes its gutter, header and console; a takeover is a zoomed surface opened when the game starts and closed when it ends.
+* ARGUS's zoom already removes its gutter, header and console; a takeover is a zoomed surface opened when the game starts and closed when it ends, with the frame drawn by the bridge itself (two elbows: the header's bar sweeping into the upper gutter, the body's into the stations).
 
 === The screen
 
-* *The header* carries the ship's state, every value one that play changes; nothing in it is decoration. Condition (RED, YELLOW, GREEN, DOCKED, and why: "3 Klingons in this quadrant"); ship (energy, shields, torpedoes, life support); mission (stardate, time left to the deadline, Klingons destroyed and left, starbases and the nearest); position (quadrant, sector, warp, score); and the last turn, what just happened and what it cost (shield hits, repairs, new damage).
-* *The gutter* is trek's own: its block, then the stations (helm, fire control, scans, engineering, computer), the one being asked lit, and LEAVE BRIDGE, which ends the game and gives ARGUS back.
-* *The body is all play.* The short-range scan is always on, with the command pills under it. Beside it, the long-range scan and the galaxy chart (a quadrant pressed asks the computer for course and distance). The station being asked stands on the other side, with engineering's repair state always beneath it.
-* *The terminal stays*: a strip with the last line of the dialogue and the line being answered. Typing works throughout; the pills and the line are one answer.
+* *The header* carries the ship's state, every value one that play changes: condition (and why), ship (energy, shields, torpedoes), mission (stardate, time left, Klingons), position and score, and what changed since the last command (a diff of two states). It is the C's status report, always on.
+* *The gutter* is trek's own: its block, then the views, BRIDGE, HELM, TACTICAL, ENGINEERING, COMPUTER, and LEAVE BRIDGE. A view changes what the body shows, as an LCARS gutter does; a command works in place and never jumps the view.
+* *BRIDGE* shows everything at once: the long-range scan, the galaxy chart (only what the ship has seen) and engineering on the left; the short-range scan and the ship's commands in the middle; HELM over TACTICAL on the right, each with its own commands and its own controls. The other views enlarge one station: HELM a big course wheel and long sliders; TACTICAL the wheel with Klingons at their bearings and the burst as a wedge, phasers and shields beneath; ENGINEERING the damage report whole (repair times in flight and docked, as `dcrept` prints them) and the ship's reserves; COMPUTER the chart large and the computer's requests as pills, with the answers drawn.
+* *The controls follow the value, one per value, lit by the command.* A course wheel (0 to 360, Klingons and starbases at their bearings; a sector pressed on the scan fills course and distance); sliders for continuous values (distance 0 to 15, warp factor 1 to 10 with the warning above 6, rest time up to the time left, phaser units up to the energy free, spread 0 to 1); pills for choices (manual or automatic, up or down, burst angle, yes or no). A dimmed control is a readout: the warp factor slider sits at the ship's speed until WARP lights it. In trek(6) shields are up or down and their energy a readout refilled at a starbase; there is no transfer to set.
+* *LEAVE BRIDGE* abandons the question the engine is waiting on; the engine reads end of input and ends the game as the C does, and ARGUS returns. Esc asks first.
 
-=== Stations follow the question
+=== Sound
 
-A typed ask brings its station forward: "Units to fire" brings fire control (ten pills, each a tenth of the energy available, the exact number under each, and the typed field); "Course" brings the helm's compass wheel (0° up, clockwise, Klingons and starbases marked at their bearings, a torpedo burst as a wedge); a warp factor is ten pills. Nobody hunts for the control that answers the question in front of them: control lives where it acts (#454).
+Every sound is synthesized in the browser; no recording ships. Each cue is a spectral resynthesis of a reference recording (hundreds of partial tracks, each with its own pitch and amplitude curve, plus the residual as shaped noise), kept as a compact table and played by Web Audio oscillators and band-pass noise. The bank: the console's own voice (press, acknowledge, deny, view open and close, the computer working, a sensor sweep, the scanner) and the bridge's (ship phasers, photon torpedo, incoming fire, hull hit, explosion, red, yellow and green alert, dock, warp, impulse, transporter, self-destruct, hail, game over). Pills that only open, set or answer take one computer beep each from a pool of 77; pills that do something are heard as the thing (FIRE is the phaser or the torpedo, ENGAGE is warp or impulse) and never beep. Events read from the state and the log decide the rest: condition changes, a Klingon firing, a hit, a kill, docking, the hail, abandon, destruct, the end. ARGUS's existing beeps (press, arrive, retreat) are played by the same engine, and the porter's `PORTER_SOUNDS_DIR` override stays. The audio pill is the one mute. The bank was chosen on https://claude.ai/artifact/VwZqrUrQAn2zsdXf7Np6bu[the sound chooser] (private to the operator).
 
-=== To settle before it is built
+=== Settled
 
-* Esc in ARGUS gives the full surface back, but the session is held by the game. In trek, Esc asks "Leave the bridge? The game ends", or pauses; leaving is the one way out.
-* The surface follows ARGUS's colour scheme (the mockups show classic and medical).
-* "A program may take the screen and give it back" is a surface decision: its laws and a row in `apps/argus/docs/aegis.adoc` are drafted with this slice.
+* Esc asks "Leave the bridge? The game ends"; LEAVE BRIDGE leaves.
+* The bridge wears ARGUS's theme: its palette tokens, under whichever scheme is set.
+* A command works in place; only the gutter changes the view.
+* "A program may take the screen and give it back" is a surface decision: its laws and a row in `apps/argus/docs/aegis.adoc` land with the takeover.
 
 == The order of work
 
-. *S1, the package*: `packages/trek` with the engine, the `trek` command, its README and licence, `lint:trek`; brasa's builtin as a consumer; this document. Merged after the first publish by hand.
-. *S2, typed asks*: `getpar.ts` describes each question; the session passes the descriptions on.
-. *S3, the takeover and the bridge*: ARGUS's narrow API for a program that takes the screen (the console, the theme, typed asks, enter and leave), with the trek bridge as its first user, the bridge talking only to that API.
+. *S1, the package* (#1156, done): `packages/trek` with the engine, the `trek` command, its README and licence, `lint:trek`; brasa's builtin as a consumer; this document. Merged after the first publish by hand.
+. *S2, the engine shows its state*: `state_show`, the `event` channel through menu, brasa, calypso and the ARGUS client; the session's `trek` sends `games.trek.state`.
+. *S3a, the takeover and the BRIDGE view*: ARGUS's takeover layer and the harness, header, scans, helm and tactical, the ship's log, LEAVE BRIDGE; entry from the GAMES pane and the console line.
+. *S3b, the station views*: HELM, TACTICAL, ENGINEERING, COMPUTER.
+. *S3c, sound*: the resynthesis player, the bank as a static asset, the cues on their events, ARGUS's own beeps through it.
 . *S4, proof*: a smoke scenario for the bridge, and its AEGIS laws.
 
 == Deferred, deliberately

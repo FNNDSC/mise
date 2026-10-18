@@ -62,6 +62,11 @@ export class StdoutSink implements OutputSink {
   public progress_write(event: ProgressEvent): void {
     this.progressRenderer.write(event);
   }
+
+  /** @inheritdoc */
+  public event_write(_kind: string, _data: unknown): void {
+    // A terminal has no surface to show a typed event; it is dropped.
+  }
 }
 
 /**
@@ -93,6 +98,11 @@ export class BufferSink implements OutputSink {
 
   public progress_write(_event: ProgressEvent): void {
     // Progress is ephemeral by contract: never accumulated.
+  }
+
+  /** @inheritdoc */
+  public event_write(_kind: string, _data: unknown): void {
+    // An event is live by contract: never accumulated.
   }
 
   /**
@@ -160,6 +170,11 @@ export class CaptureSink implements OutputSink {
     this.live.progress_write(event);
   }
 
+  /** @inheritdoc */
+  public event_write(kind: string, data: unknown): void {
+    this.live.event_write?.(kind, data);
+  }
+
   /**
    * Returns the captured data channel as UTF-8 text.
    *
@@ -221,6 +236,11 @@ export class PipeCaptureSink implements OutputSink {
 
   public progress_write(_event: ProgressEvent): void {
     // Progress is ephemeral by contract.
+  }
+
+  /** @inheritdoc */
+  public event_write(_kind: string, _data: unknown): void {
+    // An event is live by contract; a pipe carries data only.
   }
 
   /**

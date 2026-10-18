@@ -158,6 +158,11 @@ export interface SurfaceEdit {
 export interface ClientHandlers {
   output_receive?: (channel: OutputChannel, chunk: string) => void;
   progress_receive?: (message: ProgressMessage) => void;
+  /**
+   * A typed event from this surface's own executing command: its kind names
+   * what the data is (`games.trek.state`); the host shows the kinds it knows.
+   */
+  event_receive?: (id: string, kind: string, data: unknown) => void;
   promptline_receive?: (context: PromptContext) => void;
   /**
    * A question the session is waiting on. The handler answers it, or
@@ -585,6 +590,10 @@ export class ArgusClient {
       }
       case 'progress': {
         this.handlers.progress_receive?.(message);
+        break;
+      }
+      case 'event': {
+        this.handlers.event_receive?.(message.id, message.kind, message.data);
         break;
       }
       case 'session': {

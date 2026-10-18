@@ -63,6 +63,8 @@ export class DaemonSink implements OutputSink {
   public status_write(text: string): void { this.daemon.output_current('status', text); }
   /** @inheritdoc */
   public progress_write(event: ProgressEvent): void { this.daemon.progress_current(event); }
+  /** @inheritdoc */
+  public event_write(kind: string, data: unknown): void { this.daemon.event_current(kind, data); }
 
   private output_write(channel: 'data' | 'err', chunk: string | Buffer): void {
     const text: string = typeof chunk === 'string' ? chunk : chunk.toString('utf-8');

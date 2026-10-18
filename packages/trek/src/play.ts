@@ -128,6 +128,8 @@ export async function play(t: Trek): Promise<never> {
     Move.newquad = 0;
     Move.resting = 0;
     await skiptonl(t, 0);
+    // The port's own: a host drawing the game sees the state before each command is asked for.
+    t.io.state_show(t.s);
     const r: Cvntab = await getcodpar(t, '\nCommand', Comtab);
     if (r.value) await r.value(t, r.value2);
     await events(t, 0);

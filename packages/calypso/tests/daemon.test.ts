@@ -338,6 +338,30 @@ describe('CalypsoDaemon', () => {
     expect(result).toEqual(expect.objectContaining({ type: 'result', id: 'p1' }));
   });
 
+
+  it('forwards a typed event from the running command to the origin surface', async () => {
+    let daemonRef: CalypsoDaemon | undefined;
+    const eventEngine: HostedEngine = {
+      line_execute: async (): Promise<CommandEnvelope[]> => {
+        (daemonRef as CalypsoDaemon).event_current('games.trek.state', { Ship: { energy: 2350 } });
+        return [{ status: 'ok', rendered: 'done' }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+    };
+    await daemon.stop();
+    daemon = new CalypsoDaemon({ engine: eventEngine, token: TOKEN });
+    daemonRef = daemon;
+    port = await daemon.start();
+
+    const ws = await client_attach(port);
+    clients.push(ws);
+    const messages = messages_collect(ws, 2);
+    send(ws, { type: 'execute', id: 'e1', line: 'trek' });
+    const [event, result] = await messages;
+    expect(event).toEqual({ type: 'event', id: 'e1', kind: 'games.trek.state', data: { Ship: { energy: 2350 } } });
+    expect(result.type).toBe('result');
+  });
+
   it('forwards live output from the running command only to the origin surface', async () => {
     let daemonRef: CalypsoDaemon | undefined;
     const outputEngine: HostedEngine = {

@@ -21,11 +21,12 @@ jest.unstable_mockModule('../src/core/question.js', () => ({
     return next;
   },
 }));
-jest.unstable_mockModule('../src/core/sink.js', () => ({ sink_get: () => ({ data_write: (text: string): void => { written += text; } }) }));
+const events: { kind: string; data: unknown }[] = [];
+jest.unstable_mockModule('../src/core/sink.js', () => ({ sink_get: () => ({ data_write: (text: string): void => { written += text; }, event_write: (kind: string, data: unknown): void => { events.push({ kind, data }); } }) }));
 
 const { builtin_trek } = await import('../src/builtins/games/trek.js');
 
-beforeEach(() => { answers.length = 0; written = ''; });
+beforeEach(() => { answers.length = 0; written = ''; events.length = 0; });
 
 describe('the trek command', () => {
   it('refuses an unknown flag by name', async () => {
@@ -49,6 +50,18 @@ describe('the trek command', () => {
     expect(written).toContain('S T A R   T R E K');
     expect(written).toContain('What length game: ');
     expect(written).toContain('\nCommand: ');
+  });
+
+  it('shows the game state as a games.trek.state event at every Command: prompt', async () => {
+    answers.push('', 's', 'n', 'pw', 'srscan', 'terminate', 'n');
+    await builtin_trek(['--classic', '--seed', '42', '-f', '-s']);
+    const states = events.filter((e) => e.kind === 'games.trek.state');
+    expect(states.length).toBe((written.match(/\nCommand: /g) ?? []).length);
+    const state = states[0]?.data as { Ship: { energy: number; quadx: number }; Now: { klings: number; date: number } };
+    expect(state.Ship.energy).toBeGreaterThan(0);
+    expect(state.Now.klings).toBeGreaterThan(0);
+    // it survives the wire: plain data, no functions or cycles
+    expect(JSON.parse(JSON.stringify(state)).Now.date).toBe(state.Now.date);
   });
 
   it('says so when the session cannot ask', async () => {

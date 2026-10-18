@@ -485,6 +485,25 @@ export const completeReplySchema = z.object({
   candidates: z.array(z.string()),
 });
 
+/**
+ * A typed event from the executing command to its origin surface, correlated
+ * to the command.
+ *
+ * Output is text and progress is a fixed vocabulary; an event is whatever a
+ * command has to show while it runs, named by a kind the surface may know
+ * (`games.trek.state`) and shaped by that kind. A surface that does not know
+ * the kind drops it. Like output, an event is live only: nothing retains it.
+ */
+export const eventMessageSchema = z.object({
+  type: z.literal('event'),
+  id: z.string(),
+  kind: z.string(),
+  data: z.unknown(),
+});
+
+/** A typed event as it appears on the wire, correlated to its command. */
+export type EventMessage = z.infer<typeof eventMessageSchema>;
+
 /** A streamed output event on one channel, correlated to its command. */
 export const outputMessageSchema = z.object({
   type: z.literal('output'),
@@ -907,6 +926,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   completeReplySchema,
   outputMessageSchema,
   progressMessageSchema,
+  eventMessageSchema,
   sessionMessageSchema,
   errorMessageSchema,
   promptMessageSchema,

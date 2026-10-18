@@ -308,6 +308,9 @@ export class RemoteEngine implements BrasaEngine {
           sink_get().progress_write(event);
         }
         break;
+      case 'event':
+        sink_get().event_write?.(message.kind, message.data);
+        break;
       case 'output':
         if (message.channel === 'data' || message.channel === 'err') {
           const channels: Set<'data' | 'err'> = this.liveEnvelopeChannels.get(message.id) ?? new Set<'data' | 'err'>();

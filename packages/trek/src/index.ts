@@ -13,4 +13,5 @@ export { trek_play, trekArgs_parse, TREK_USAGE, type TrekPlay, type TrekArgs, ty
 export { TREK_CREDITS } from './credits.js';
 export type { TrekTerminal } from './io.js';
 export type { TrekDump } from './context.js';
+export type { TrekState, Quad, TrekEvent, Kling, XY, Ship, Game, Move, Param, Now, Etc, Snapshot } from './state.js';
 export type { TrekOptions } from './main.js';

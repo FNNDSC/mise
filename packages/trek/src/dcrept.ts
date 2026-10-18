@@ -40,19 +40,24 @@ import { Device, DOCKED, E_FIXDV, MAXEVENTS } from './consts.js';
 import type { Trek } from './context.js';
 import type { TrekEvent } from './state.js';
 
-/*
-**  damage control report
-**
-**	Print damages and time to fix.  This is taken from the event
-**	list.  A couple of factors are set up, based on whether or not
-**	we are docked.  (One of these factors will always be 1.0.)
-**	The event list is then scanned for damage fix events, the
-**	time until they occur is determined, and printed out.  The
-**	magic number DAMFAC is used to tell how much faster you can
-**	fix things if you are docked.
-*/
-
-/** damage control report */
+/**
+ * Prints each damaged device and its repair time in flight and docked.
+ *
+ * damage control report
+ *
+ * Print damages and time to fix.  This is taken from the event
+ * list.  A couple of factors are set up, based on whether or not
+ * we are docked.  (One of these factors will always be 1.0.)
+ * The event list is then scanned for damage fix events, the
+ * time until they occur is determined, and printed out.  The
+ * magic number DAMFAC is used to tell how much faster you can
+ * fix things if you are docked.
+ *
+ * C: `dcrept()` in dcrept.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table's argument, unused here.
+ */
 export async function dcrept(t: Trek, _v: number): Promise<void> {
   let m1: number;
   let m2: number;

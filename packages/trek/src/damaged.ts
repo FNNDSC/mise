@@ -39,14 +39,21 @@ import { E_FIXDV, MAXEVENTS } from './consts.js';
 import type { Trek } from './context.js';
 import type { TrekEvent } from './state.js';
 
-/*  DAMAGED -- check for device damaged
-**
-**	This is a boolean function which returns non-zero if the
-**	specified device is broken.  It does this by checking the
-**	event list for a "device fix" action on that device.
-*/
-
-/** DAMAGED -- check for device damaged */
+/**
+ * Checks whether a device is damaged.
+ *
+ * DAMAGED -- check for device damaged
+ *
+ * This is a boolean function which returns non-zero if the
+ * specified device is broken.  It does this by checking the
+ * event list for a "device fix" action on that device.
+ *
+ * C: `damaged()` in damaged.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param dev - The device index.
+ * @returns Non-zero if the device is broken, zero if not.
+ */
 export function damaged(t: Trek, dev: number): number {
   const d: number = dev;
 

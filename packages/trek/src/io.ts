@@ -15,16 +15,31 @@
  */
 import { sprintf, type PrintfArg } from './printf.js';
 
-/** exit(code): the game is over and the command returns. */
+/**
+ * Thrown by exit(code): the game is over and the command returns.
+ *
+ * Port: stands in for C's exit().
+ */
 export class TrekExit extends Error {
-  /** @param code - The exit status. */
+  /**
+   * Carries the exit status up to main.
+   *
+   * @param code - The exit status.
+   */
   constructor(public readonly code: number) {
     super(`trek exited ${code}`);
   }
 }
 
-/** longjmp(env, 1): back to main's "Another game" question. */
+/**
+ * Thrown by longjmp(env, 1): back to main's "Another game" question.
+ *
+ * Port: stands in for C's longjmp().
+ */
 export class TrekReset extends Error {
+  /**
+   * Builds the reset signal.
+   */
   constructor() {
     super('trek reset');
   }
@@ -32,83 +47,150 @@ export class TrekReset extends Error {
 
 /** What the terminal is wired to. */
 export interface TrekTerminal {
-  /** Writes text out (whole lines, or the rest at the end). */
-  write(text: string): void;
-  /** Asks for a line with a prompt; null at end of input. */
-  ask(prompt: string): Promise<string | null>;
-  /** Waits a number of seconds (sleep()); a test passes a no-op. */
-  sleep(seconds: number): Promise<void>;
+  /**
+   * Writes text out (whole lines, or the rest at the end).
+   *
+   * @param text - The text to write.
+   */
+  text_write(text: string): void;
+  /**
+   * Asks for a line with a prompt.
+   *
+   * @param prompt - The text shown before the line is read.
+   * @returns The line typed, without its newline; null at end of input.
+   */
+  question_ask(prompt: string): Promise<string | null>;
+  /**
+   * Waits a number of seconds (sleep()); a test passes a no-op.
+   *
+   * @param seconds - How long to wait.
+   */
+  seconds_sleep(seconds: number): Promise<void>;
 }
 
 /** What a scanf read: how many items it matched (EOF at end of input), and the value. */
 export interface Scanned<T> {
+  /** Items matched: 1 read, 0 no match, -1 end of input. */
   count: number;
+  /** The value read (0 or '' when nothing matched). */
   value: T;
 }
 
 /** End of input, as getchar() returns it. */
 export const EOF: number = -1;
 
-/** The terminal the game reads and writes. */
+/**
+ * The terminal the game reads and writes.
+ *
+ * Port: stands in for C's stdio (printf, getchar, scanf and the rest).
+ */
 export class TrekIO {
   /** Printed, not yet written out (the tail is the next prompt). */
   private pending: string = '';
   /** Characters typed, not yet read. */
   private input: number[] = [];
 
-  /** @param terminal - What it is wired to. */
+  /**
+   * Wires the game's stdio to a terminal.
+   *
+   * @param terminal - What it is wired to.
+   */
   constructor(private readonly terminal: TrekTerminal) {}
 
-  /** printf(format, ...). */
+  /**
+   * Prints formatted text, writing out each complete line.
+   *
+   * Port: stands in for C's printf().
+   *
+   * @param format - The printf format string.
+   * @param args - The values, in order.
+   */
   public printf(format: string, ...args: PrintfArg[]): void {
     this.pending += sprintf(format, ...args);
     this.lines_flush();
   }
 
-  /** putchar(c). */
+  /**
+   * Prints one character.
+   *
+   * Port: stands in for C's putchar().
+   *
+   * @param c - The character, as a string or a character code.
+   */
   public putchar(c: string | number): void {
     this.pending += typeof c === 'number' ? String.fromCharCode(c) : c;
     this.lines_flush();
   }
 
-  /** Writes out every complete line printed; the partial tail waits. */
+  /**
+   * Writes out every complete line printed; the partial tail waits.
+   */
   private lines_flush(): void {
     const cut: number = this.pending.lastIndexOf('\n');
     if (cut < 0) return;
-    this.terminal.write(this.pending.slice(0, cut + 1));
+    this.terminal.text_write(this.pending.slice(0, cut + 1));
     this.pending = this.pending.slice(cut + 1);
   }
 
-  /** Writes out everything printed, the partial tail too (fflush). */
+  /**
+   * Writes out everything printed, the partial tail too.
+   *
+   * Port: stands in for C's fflush().
+   */
   public fflush(): void {
-    if (this.pending !== '') this.terminal.write(this.pending);
+    if (this.pending !== '') this.terminal.text_write(this.pending);
     this.pending = '';
   }
 
-  /** getchar(): the next character typed, asking when none is waiting. */
+  /**
+   * Reads the next character typed, asking for a line when none is waiting.
+   *
+   * Port: stands in for C's getchar().
+   *
+   * @returns The character code, or EOF at end of input.
+   */
   public async getchar(): Promise<number> {
     if (this.input.length === 0) {
       const prompt: string = this.pending;
       this.pending = '';
-      const line: string | null = await this.terminal.ask(prompt);
+      const line: string | null = await this.terminal.question_ask(prompt);
       if (line === null) return EOF;
       for (const char of `${line}\n`) this.input.push(char.charCodeAt(0));
     }
     return this.input.shift() as number;
   }
 
-  /** ungetc(c): puts a character back to be read next. */
+  /**
+   * Puts a character back to be read next.
+   *
+   * Port: stands in for C's ungetc().
+   *
+   * @param c - The character code (EOF is ignored).
+   */
   public ungetc(c: number): void {
     if (c !== EOF) this.input.unshift(c);
   }
 
-  /** sleep(seconds). */
+  /**
+   * Writes out the complete lines, then waits.
+   *
+   * Port: stands in for C's sleep().
+   *
+   * @param seconds - How long to wait.
+   */
   public async sleep(seconds: number): Promise<void> {
     this.lines_flush();
-    await this.terminal.sleep(seconds);
+    await this.terminal.seconds_sleep(seconds);
   }
 
-  /** exit(code). */
+  /**
+   * Writes out everything printed and ends the game.
+   *
+   * Port: stands in for C's exit().
+   *
+   * @param code - The exit status.
+   * @returns Never: it throws TrekExit.
+   */
   public exit(code: number): never {
     this.fflush();
     throw new TrekExit(code);
@@ -116,7 +198,11 @@ export class TrekIO {
 
   /* ------------------------------------------------- scanf, as trek uses it */
 
-  /** Skips white space, as a scanf numeric conversion does; returns the next character, unread. */
+  /**
+   * Skips white space, as a scanf numeric conversion does.
+   *
+   * @returns The next character after the white space, read (the caller puts it back or uses it).
+   */
   private async space_skip(): Promise<number> {
     let c: number = await this.getchar();
     while (c === 32 || c === 9 || c === 10 || c === 11 || c === 12 || c === 13) c = await this.getchar();
@@ -124,11 +210,13 @@ export class TrekIO {
   }
 
   /**
-   * scanf("%d"): skips white space and reads an integer.
+   * Skips white space and reads an integer.
+   *
+   * Port: stands in for C's scanf("%d").
    *
    * @returns The count (1 read, 0 no match, -1 end of input) and the value.
    */
-  public async scanInt(): Promise<Scanned<number>> {
+  public async int_scan(): Promise<Scanned<number>> {
     let c: number = await this.space_skip();
     if (c === EOF) return { count: -1, value: 0 };
     let text: string = '';
@@ -143,24 +231,34 @@ export class TrekIO {
   }
 
   /**
-   * scanf("%lf"): skips white space and reads a decimal number.
+   * Skips white space and reads a decimal number.
+   *
+   * Port: stands in for C's scanf("%lf").
    *
    * @returns The count (1 read, 0 no match, -1 end of input) and the value.
    */
-  public async scanDouble(): Promise<Scanned<number>> {
+  public async double_scan(): Promise<Scanned<number>> {
     let c: number = await this.space_skip();
     if (c === EOF) return { count: -1, value: 0 };
     let text: string = '';
-    const digit = (x: number): boolean => x >= 48 && x <= 57;
+    /**
+     * Tests a character code for a decimal digit.
+     *
+     * Port: stands in for C's isdigit().
+     *
+     * @param x - The character code.
+     * @returns Whether it is 0 .. 9.
+     */
+    const char_checkIsDigit = (x: number): boolean => x >= 48 && x <= 57;
     if (c === 43 || c === 45) { text += String.fromCharCode(c); c = await this.getchar(); }
-    while (digit(c)) { text += String.fromCharCode(c); c = await this.getchar(); }
-    if (c === 46) { text += '.'; c = await this.getchar(); while (digit(c)) { text += String.fromCharCode(c); c = await this.getchar(); } }
+    while (char_checkIsDigit(c)) { text += String.fromCharCode(c); c = await this.getchar(); }
+    if (c === 46) { text += '.'; c = await this.getchar(); while (char_checkIsDigit(c)) { text += String.fromCharCode(c); c = await this.getchar(); } }
     if (/\d/.test(text) && (c === 101 || c === 69)) {
       const mark: string = text;
       text += 'e';
       c = await this.getchar();
       if (c === 43 || c === 45) { text += String.fromCharCode(c); c = await this.getchar(); }
-      if (digit(c)) { while (digit(c)) { text += String.fromCharCode(c); c = await this.getchar(); } } else { text = mark; }
+      if (char_checkIsDigit(c)) { while (char_checkIsDigit(c)) { text += String.fromCharCode(c); c = await this.getchar(); } } else { text = mark; }
     }
     this.ungetc(c);
     if (!/\d/.test(text)) return { count: 0, value: 0 };
@@ -168,13 +266,14 @@ export class TrekIO {
   }
 
   /**
-   * scanf("%*[set]"): reads and discards characters in the set (no white
-   * space skipped first).
+   * Reads and discards characters in the set (no white space skipped first).
+   *
+   * Port: stands in for C's scanf("%*[set]").
    *
    * @param set - The characters.
    * @returns -1 at end of input before any, else 0.
    */
-  public async scanSkip(set: string): Promise<number> {
+  public async chars_skip(set: string): Promise<number> {
     let c: number = await this.getchar();
     if (c === EOF) return -1;
     while (c !== EOF && set.includes(String.fromCharCode(c))) c = await this.getchar();
@@ -183,13 +282,15 @@ export class TrekIO {
   }
 
   /**
-   * scanf("%N[^set]"): reads up to N characters not in the set.
+   * Reads up to N characters not in the set.
+   *
+   * Port: stands in for C's scanf("%N[^set]").
    *
    * @param stop - The characters that end it.
    * @param max - At most this many.
    * @returns The count (1 read, 0 none, -1 end of input) and the text.
    */
-  public async scanUntil(stop: string, max: number): Promise<Scanned<string>> {
+  public async text_scanUntil(stop: string, max: number): Promise<Scanned<string>> {
     let c: number = await this.getchar();
     if (c === EOF) return { count: -1, value: '' };
     let text: string = '';

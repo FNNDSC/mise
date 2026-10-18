@@ -49,52 +49,6 @@ import { score } from './score.js';
 import type { Quad, TrekEvent } from './state.js';
 import { warp } from './warp.js';
 
-/*
-**  On-Board Computer
-**
-**	A computer request is fetched from the captain.  The requests
-**	are:
-**
-**	chart -- print a star chart of the known galaxy.  This includes
-**		every quadrant that has ever had a long range or
-**		a short range scan done of it, plus the location of
-**		all starbases.  This is of course updated by any sub-
-**		space radio broadcasts (unless the radio is out).
-**		The format is the same as that of a long range scan
-**		except that ".1." indicates that a starbase exists
-**		but we know nothing else.
-**
-**	trajectory -- gives the course and distance to every know
-**		Klingon in the quadrant.  Obviously this fails if the
-**		short range scanners are out.
-**
-**	course -- gives a course computation from whereever you are
-**		to any specified location.  If the course begins
-**		with a slash, the current quadrant is taken.
-**		Otherwise the input is quadrant and sector coordi-
-**		nates of the target sector.
-**
-**	move -- identical to course, except that the move is performed.
-**
-**	score -- prints out the current score.
-**
-**	pheff -- "PHaser EFFectiveness" at a given distance.  Tells
-**		you how much stuff you need to make it work.
-**
-**	warpcost -- Gives you the cost in time and units to move for
-**		a given distance under a given warp speed.
-**
-**	impcost -- Same for the impulse engines.
-**
-**	distresslist -- Gives a list of the currently known starsystems
-**		or starbases which are distressed, together with their
-**		quadrant coordinates.
-**
-**	If a command is terminated with a semicolon, you remain in
-**	the computer; otherwise, you escape immediately to the main
-**	command processor.
-*/
-
 /** The request table. */
 const Cputab: ReadonlyArray<Cvntab> = [
   { abbrev: 'ch', full: 'art', value: null, value2: 0 },
@@ -111,7 +65,58 @@ const Cputab: ReadonlyArray<Cvntab> = [
 /** The C's `(cmdfun)N` of each Cputab entry, in table order. */
 const CPUCASE: ReadonlyArray<number> = [1, 2, 3, 3, 4, 5, 6, 7, 8];
 
-/** On-board computer. */
+/**
+ * Runs the on-board computer: takes requests from the captain until one ends in a newline.
+ *
+ * On-Board Computer
+ *
+ * A computer request is fetched from the captain.  The requests
+ * are:
+ *
+ * chart -- print a star chart of the known galaxy.  This includes
+ *   every quadrant that has ever had a long range or
+ *   a short range scan done of it, plus the location of
+ *   all starbases.  This is of course updated by any sub-
+ *   space radio broadcasts (unless the radio is out).
+ *   The format is the same as that of a long range scan
+ *   except that ".1." indicates that a starbase exists
+ *   but we know nothing else.
+ *
+ * trajectory -- gives the course and distance to every know
+ *   Klingon in the quadrant.  Obviously this fails if the
+ *   short range scanners are out.
+ *
+ * course -- gives a course computation from whereever you are
+ *   to any specified location.  If the course begins
+ *   with a slash, the current quadrant is taken.
+ *   Otherwise the input is quadrant and sector coordi-
+ *   nates of the target sector.
+ *
+ * move -- identical to course, except that the move is performed.
+ *
+ * score -- prints out the current score.
+ *
+ * pheff -- "PHaser EFFectiveness" at a given distance.  Tells
+ *   you how much stuff you need to make it work.
+ *
+ * warpcost -- Gives you the cost in time and units to move for
+ *   a given distance under a given warp speed.
+ *
+ * impcost -- Same for the impulse engines.
+ *
+ * distresslist -- Gives a list of the currently known starsystems
+ *   or starbases which are distressed, together with their
+ *   quadrant coordinates.
+ *
+ * If a command is terminated with a semicolon, you remain in
+ * the computer; otherwise, you escape immediately to the main
+ * command processor.
+ *
+ * C: `computer()` in computer.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table's argument, unused.
+ */
 export async function computer(t: Trek, _v: number): Promise<void> {
   const { Ship, Etc, Param } = t.s;
   let ix: number;
@@ -277,14 +282,7 @@ export async function computer(t: Trek, _v: number): Promise<void> {
   }
 }
 
-/*
-**  Course Calculation
-**
-**	Computes and outputs the course and distance from position
-**	sqx,sqy/ssx,ssy to tqx,tqy/tsx,tsy.
-*/
-
-/** A course and a distance, as kalc works them out. */
+/** A course and a distance, as kalc() works them out. */
 interface CourseCalc {
   /** The course, in degrees. */
   course: number;
@@ -292,7 +290,25 @@ interface CourseCalc {
   dist: number;
 }
 
-/** Course calculation: the course (the C's return) and the distance (its out-parameter). */
+/**
+ * Works out the course and distance from the ship to a target sector.
+ *
+ * Course Calculation
+ *
+ * Computes and outputs the course and distance from position
+ * sqx,sqy/ssx,ssy to tqx,tqy/tsx,tsy.
+ *
+ * The course is the C's return and the distance its out-parameter; here both come back in one CourseCalc.
+ *
+ * C: `kalc()` in computer.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param tqx - The target quadrant row.
+ * @param tqy - The target quadrant column.
+ * @param tsx - The target sector row.
+ * @param tsy - The target sector column.
+ * @returns The course in degrees and the distance in quadrants.
+ */
 function kalc(t: Trek, tqx: number, tqy: number, tsx: number, tsy: number): CourseCalc {
   const { Ship } = t.s;
   let dx: number;
@@ -312,7 +328,15 @@ function kalc(t: Trek, tqx: number, tqy: number, tsx: number, tsy: number): Cour
   return { course, dist: Math.sqrt(dx) };
 }
 
-/** Prints a course and distance. */
+/**
+ * Prints a course and distance.
+ *
+ * C: `prkalc()` in computer.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param course - The course, in degrees.
+ * @param dist - The distance, in quadrants.
+ */
 function prkalc(t: Trek, course: number, dist: number): void {
   t.io.printf(': course %d  dist %.3f\n', course, dist);
 }

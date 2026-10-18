@@ -43,10 +43,18 @@ import type { TrekEvent } from './state.js';
 import { systemname } from './systemname.js';
 
 /**
- **	output hidden distress calls
- **/
-
-/** output hidden distress calls */
+ * Prints the distress calls hidden while the subspace radio was out.
+ *
+ * output hidden distress calls
+ *
+ * Each ghost (a call that went quiet meanwhile) is unscheduled and reported
+ * as no longer distressed.
+ *
+ * C: `dumpssradio()` in dumpssradio.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @returns The number of distress calls still standing.
+ */
 export function dumpssradio(t: Trek): number {
   let chkrest: number = 0;
   for (let j: number = 0; j < MAXEVENTS; j++) {

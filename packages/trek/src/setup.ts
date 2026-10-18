@@ -73,12 +73,36 @@ export const Skitab: ReadonlyArray<Cvntab> = [
   { abbrev: 'i', full: 'mpossible', value: null, value2: 6 },
 ];
 
-/** A store into a C `char`: gcc truncates to int, then keeps the low byte, signed. */
-function char_of(n: number): number {
+/**
+ * Truncates a number as a store into a C `char` does.
+ *
+ * gcc truncates to int, then keeps the low byte, signed.
+ *
+ * Port: stands in for C's implicit conversion on a store into a `char`.
+ *
+ * @param n - The number stored.
+ * @returns The value the `char` holds, -128 to 127.
+ */
+function cChar_truncate(n: number): number {
   return (Math.trunc(n) << 24) >> 24;
 }
 
-/** INITIALIZE THE GAME */
+/**
+ * Initializes a game: reads its length, skill and password, then lays out the galaxy, the ship and the event queue.
+ *
+ * INITIALIZE THE GAME
+ *
+ * The length, skill, and password are read, and the game
+ * is initialized.  It is far too difficult to describe all
+ * that goes on in here, but it is all straight-line code;
+ * give it a look.
+ *
+ * Game restart and tournament games are handled here.
+ *
+ * C: `setup()` in setup.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ */
 export async function setup(t: Trek): Promise<void> {
   const { Game, Param, Now, Ship, Move } = t.s;
   let r: Cvntab;
@@ -112,8 +136,8 @@ export async function setup(t: Trek): Promise<void> {
   Param.time = Now.time = 6.0 * Game.length + 2.0;
   i = Game.skill;
   j = Game.length;
-  Param.klings = Now.klings = char_of(i * j * 3.5 * (franf(t.rnd) + 0.75));
-  if (Param.klings < i * j * 5) Param.klings = Now.klings = char_of(i * j * 5);
+  Param.klings = Now.klings = cChar_truncate(i * j * 3.5 * (franf(t.rnd) + 0.75));
+  if (Param.klings < i * j * 5) Param.klings = Now.klings = cChar_truncate(i * j * 5);
   // numerical overflow problems
   if (Param.klings <= i) Param.klings = Now.klings = 127;
   Param.energy = Ship.energy = 5000;

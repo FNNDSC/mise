@@ -43,33 +43,39 @@ import { damaged } from './damaged.js';
 import { killb, killd } from './kill.js';
 import { lose } from './lose.js';
 import { ranf } from './rand.js';
-import type { Quad } from './state.js';
+import type { Quad, TrekState } from './state.js';
 import { win } from './win.js';
 
-/*
-**  CAUSE SUPERNOVA TO OCCUR
-**
-**	A supernova occurs.  If 'ix' < 0, a random quadrant is chosen;
-**	otherwise, the current quadrant is taken, and (ix, iy) give
-**	the sector quadrants of the star which is blowing up.
-**
-**	If the supernova turns out to be in the quadrant you are in,
-**	you go into "emergency override mode", which tries to get you
-**	out of the quadrant as fast as possible.  However, if you
-**	don't have enough fuel, or if you by chance run into something,
-**	or some such thing, you blow up anyway.  Oh yeh, if you are
-**	within two sectors of the star, there is nothing that can
-**	be done for you.
-**
-**	When a star has gone supernova, the quadrant becomes uninhab-
-**	itable for the rest of eternity, i.e., the game.  If you ever
-**	try stopping in such a quadrant, you will go into emergency
-**	override mode.
-*/
-
-/** Cause a supernova to occur. */
+/**
+ * Causes a supernova, in a random quadrant or at a given star in the current one.
+ *
+ * CAUSE SUPERNOVA TO OCCUR
+ *
+ * A supernova occurs.  If 'ix' < 0, a random quadrant is chosen;
+ * otherwise, the current quadrant is taken, and (ix, iy) give
+ * the sector quadrants of the star which is blowing up.
+ *
+ * If the supernova turns out to be in the quadrant you are in,
+ * you go into "emergency override mode", which tries to get you
+ * out of the quadrant as fast as possible.  However, if you
+ * don't have enough fuel, or if you by chance run into something,
+ * or some such thing, you blow up anyway.  Oh yeh, if you are
+ * within two sectors of the star, there is nothing that can
+ * be done for you.
+ *
+ * When a star has gone supernova, the quadrant becomes uninhab-
+ * itable for the rest of eternity, i.e., the game.  If you ever
+ * try stopping in such a quadrant, you will go into emergency
+ * override mode.
+ *
+ * C: `snova()` in snova.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param x - The sector row of the star blowing up, or negative for a random quadrant.
+ * @param y - The sector column of the star blowing up (used only when `x` is not negative).
+ */
 export async function snova(t: Trek, x: number, y: number): Promise<void> {
-  const { Ship, Sect, Now, Game } = t.s;
+  const { Ship, Sect, Now, Game }: TrekState = t.s;
   let qx: number;
   let qy: number;
   let ix: number;

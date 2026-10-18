@@ -51,34 +51,52 @@ import { move } from './move.js';
 import { out } from './out.js';
 import { franf, ranf } from './rand.js';
 import { reschedule } from './schedule.js';
-import { snapshot_take } from './state.js';
+import { snapshot_take, type TrekState } from './state.js';
 
-/*
-**  MOVE UNDER WARP POWER
-**
-**	This is both the "move" and the "ram" commands, differing
-**	only in the flag 'fl'.  It is also used for automatic
-**	emergency override mode, when 'fl' is < 0 and 'c' and 'd'
-**	are the course and distance to be moved.  If 'fl' >= 0,
-**	the course and distance are asked of the captain.
-**
-**	The guts of this routine are in the routine move(), which
-**	is shared with impulse().  Also, the working part of this
-**	routine is very small; the rest is to handle the slight chance
-**	that you may be moving at some riduculous speed.  In that
-**	case, there is code to handle time warps, etc.
-*/
-
-/** The move and ram commands: asks the course and distance, then warps. */
+/**
+ * The move and ram commands: asks the course and distance, then warps.
+ *
+ * MOVE UNDER WARP POWER
+ *
+ * This is both the "move" and the "ram" commands, differing
+ * only in the flag 'fl'.  It is also used for automatic
+ * emergency override mode, when 'fl' is < 0 and 'c' and 'd'
+ * are the course and distance to be moved.  If 'fl' >= 0,
+ * the course and distance are asked of the captain.
+ *
+ * The guts of this routine are in the routine move(), which
+ * is shared with impulse().  Also, the working part of this
+ * routine is very small; the rest is to handle the slight chance
+ * that you may be moving at some riduculous speed.  In that
+ * case, there is code to handle time warps, etc.
+ *
+ * C: `dowarp()` in warp.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param fl - 0 for move, 1 for ram (the command table's value).
+ */
 export async function dowarp(t: Trek, fl: number): Promise<void> {
   const codi: CourseDistance | null = await getcodi(t);
   if (codi === null) return;
   await warp(t, fl, codi.co, codi.value);
 }
 
-/** Moves under warp power on course c for distance d. */
+/**
+ * Moves under warp power on course c for distance d.
+ *
+ * Asks before a move that would use 85% or more of the energy or time
+ * left, damages the warp engines now and then above warp 6, and above
+ * warp 9 risks a time warp or extreme damage.
+ *
+ * C: `warp()` in warp.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param fl - 0 for move, 1 for ram, < 0 for emergency override.
+ * @param c - The course, 0 .. 360 degrees.
+ * @param d - The distance, in quadrants.
+ */
 export async function warp(t: Trek, fl: number, c: number, d: number): Promise<void> {
-  const { Ship, Param, Move, Game } = t.s;
+  const { Ship, Param, Move, Game }: TrekState = t.s;
   let percent: number;
 
   if (Ship.cond === DOCKED) {

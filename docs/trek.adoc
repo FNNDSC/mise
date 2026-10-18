@@ -47,7 +47,7 @@ trek also matters beyond the game. It is the first part of mise built inside the
 
 === Fidelity
 
-The port keeps the C's function and variable names (`dowarp`, `getcodpar`, `klmove`, `shldabsb`), and each module's header names the NetBSD C file and revision it came from, so the port can be diffed against the C function by function. Code written for the port follows the house style (`trek_play`, `trekArgs_parse`, `snapshot_take`, the CLI). The engine is typed throughout, with named interfaces for its non-primitive data.
+The port reads side by side with the C. A function ported from the C keeps the C's name (`dowarp`, `getcodpar`, `klmove`), as do the game state's fields (`Ship.shldup`, `Now.klings`) and the stand-ins for C library calls (`printf`, `getchar`, `srandom`); its JSDoc names the C function and file it came from (`C: \`dowarp()\` in warp.c.`), the C's own comments are kept in its authors' words, and each module's header names the NetBSD C file and revision. Everything the port added is named in the house style, `object_verb`: the command (`cli_run`, `dumpPath_get`), the engine's entry (`trek_play`, `trekArgs_parse`), the terminal a host implements (`TrekTerminal`: `text_write`, `question_ask`, `seconds_sleep`), the styled scans, snapshots and helpers. `lint:trek` holds the line: a name that is not `object_verb` passes only when its JSDoc names it as the C's. The whole package is typed explicitly, with named interfaces for its non-primitive data and a JSDoc block on every function.
 
 The tests replay eighteen games recorded from the C built with glibc's `random()`: for the same seed and answers the port prints the C's transcript byte for byte. The same games replay through the `trek` command itself, input piped in, with the same result.
 
@@ -63,7 +63,7 @@ npm's trusted publishing cannot create a package name, so the first version is p
 
 == Typed asks
 
-The engine asks every question through four functions in `getpar.ts`: `getintpar` (a whole number), `getfltpar` (a decimal), `getcodpar` (one choice from a table: "Manual or automatic", the computer's requests, the commands) and `getynpar` (yes or no). Today they reach the terminal as prompt text only (`TrekTerminal.ask(prompt)`). They will pass a description of the question as well: its kind, its name, its range, and the choices of a table. A terminal that only shows text ignores it; a surface that draws controls answers with them. That is a change to `TrekTerminal`, and why the package starts below 1.0.
+The engine asks every question through four functions in `getpar.ts`: `intParameter_get` (a whole number), `floatParameter_get` (a decimal), `codedParameter_get` (one choice from a table: "Manual or automatic", the computer's requests, the commands) and `yesNoParameter_get` (yes or no), the C's `getintpar`, `getfltpar`, `getcodpar` and `getynpar`. Today they reach the terminal as prompt text only (`TrekTerminal.question_ask(prompt)`). They will pass a description of the question as well: its kind, its name, its range, and the choices of a table. A terminal that only shows text ignores it; a surface that draws controls answers with them. That is a change to `TrekTerminal`, and why the package starts below 1.0.
 
 The session already has typed asks (`PromptRequest.wants`, from the "a surface can be asked" epic, #440), so the session's `trek` passes them on, and ARGUS answers them like any other.
 
@@ -97,7 +97,7 @@ A typed ask brings its station forward: "Units to fire" brings fire control (ten
 == The order of work
 
 . *S1, the package*: `packages/trek` with the engine, the `trek` command, its README and licence, `lint:trek`; brasa's builtin as a consumer; this document. Merged after the first publish by hand.
-. *S2, typed asks*: `getpar` describes each question; the session passes the descriptions on.
+. *S2, typed asks*: `getpar.ts` describes each question; the session passes the descriptions on.
 . *S3, the takeover and the bridge*: ARGUS's narrow API for a program that takes the screen (the console, the theme, typed asks, enter and leave), with the trek bridge as its first user, the bridge talking only to that API.
 . *S4, proof*: a smoke scenario for the bridge, and its AEGIS laws.
 

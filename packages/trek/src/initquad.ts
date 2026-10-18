@@ -46,9 +46,14 @@ import { shield } from './shield.js';
 import type { Kling, Quad, XY } from './state.js';
 
 /**
- * Paramize Quadrant Upon Entering. With Klingons present the captain is
- * told the condition is RED and offered the shields. The flag `f`
- * disables that check, for when you are about to be docked.
+ * Lays out the current quadrant on entering it: the starship, then its Klingons, starbase, inhabited starsystem, black holes and stars in random empty sectors.
+ *
+ * Paramize Quadrant Upon Entering. With Klingons present the captain is told the condition is RED and offered the shields. The flag `f` disables that check, for when you are about to be docked.
+ *
+ * C: `initquad()` in initquad.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param f - Nonzero to skip the Condition RED check, for when the ship is about to dock.
  */
 export async function initquad(t: Trek, f: number): Promise<void> {
   const q: Quad = (t.s.Quad[t.s.Ship.quadx] as Quad[])[t.s.Ship.quady] as Quad;
@@ -113,7 +118,14 @@ export async function initquad(t: Trek, f: number): Promise<void> {
   t.s.Move.newquad = 1;
 }
 
-/** An empty sector, chosen at random. */
+/**
+ * Picks an empty sector of the current quadrant at random.
+ *
+ * C: `sector()` in initquad.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @returns The sector's coordinates.
+ */
 export function sector(t: Trek): XY {
   let i: number;
   let j: number;

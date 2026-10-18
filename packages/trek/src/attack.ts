@@ -44,42 +44,46 @@ import { damaged } from './damaged.js';
 import { klmove } from './klmove.js';
 import { lose } from './lose.js';
 import { franf, ranf } from './rand.js';
+import type { TrekState } from './state.js';
 
-/*
-**  Klingon Attack Routine
-**
-**	This routine performs the Klingon attack provided that
-**	(1) Something happened this move (i.e., not free), and
-**	(2) You are not cloaked.  Note that if you issue the
-**	cloak command, you are not considered cloaked until you
-**	expend some time.
-**
-**	Klingons are permitted to move both before and after the
-**	attack.  They will tend to move toward you before the
-**	attack and away from you after the attack.
-**
-**	Under certain conditions you can get a critical hit.  This
-**	sort of hit damages devices.  The probability that a given
-**	device is damaged depends on the device.  Well protected
-**	devices (such as the computer, which is in the core of the
-**	ship and has considerable redundancy) almost never get
-**	damaged, whereas devices which are exposed (such as the
-**	warp engines) or which are particularly delicate (such as
-**	the transporter) have a much higher probability of being
-**	damaged.
-**
-**	The actual amount of damage (i.e., how long it takes to fix
-**	it) depends on the amount of the hit and the "damfac[]"
-**	entry for the particular device.
-**
-**	Casualties can also occur.
-**
-**  resting -- set if attack while resting
-*/
-
-/** Klingon Attack Routine. */
+/**
+ * Has every Klingon in the quadrant with power to spare fire on the ship.
+ *
+ * Klingon Attack Routine
+ *
+ * This routine performs the Klingon attack provided that
+ * (1) Something happened this move (i.e., not free), and
+ * (2) You are not cloaked.  Note that if you issue the
+ * cloak command, you are not considered cloaked until you
+ * expend some time.
+ *
+ * Klingons are permitted to move both before and after the
+ * attack.  They will tend to move toward you before the
+ * attack and away from you after the attack.
+ *
+ * Under certain conditions you can get a critical hit.  This
+ * sort of hit damages devices.  The probability that a given
+ * device is damaged depends on the device.  Well protected
+ * devices (such as the computer, which is in the core of the
+ * ship and has considerable redundancy) almost never get
+ * damaged, whereas devices which are exposed (such as the
+ * warp engines) or which are particularly delicate (such as
+ * the transporter) have a much higher probability of being
+ * damaged.
+ *
+ * The actual amount of damage (i.e., how long it takes to fix
+ * it) depends on the amount of the hit and the "damfac[]"
+ * entry for the particular device.
+ *
+ * Casualties can also occur.
+ *
+ * C: `attack()` in attack.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param resting - set if attack while resting
+ */
 export async function attack(t: Trek, resting: number): Promise<void> {
-  const { Ship, Move, Etc, Param, Game, Quad } = t.s;
+  const { Ship, Move, Etc, Param, Game, Quad }: TrekState = t.s;
   let hit: number;
   let l: number;
   let maxhit: number;

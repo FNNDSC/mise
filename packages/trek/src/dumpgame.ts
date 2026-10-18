@@ -48,26 +48,57 @@ const VERSION: number = 2;
 
 /** The data areas, in the C's Dump_template order. */
 interface Dump {
+  /** The VERSION the dump was written under. */
   version: number;
+  /** The ship's state. */
   Ship: Ship;
+  /** The current game state: date, time left, counts. */
   Now: Now;
+  /** The game's parameters as set up. */
   Param: Param;
+  /** The miscellaneous state: Klingons in the quadrant and the like. */
   Etc: Etc;
+  /** The game's running totals. */
   Game: Game;
+  /** The sectors of the current quadrant. */
   Sect: string[][];
+  /** The galaxy's quadrants. */
   Quad: Quad[][];
+  /** The last move's bookkeeping. */
   Move: Move;
+  /** The event list. */
   Event: TrekEvent[];
 }
 
-/** DUMP GAME */
+/**
+ * Dumps the game into the session's dump slot for a later restart.
+ *
+ * DUMP GAME
+ *
+ * Deviation: the C writes the data areas to the file "trek.dump"; here they
+ * are kept in `t.dump`.
+ *
+ * C: `dumpgame()` in dumpgame.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table's argument, unused here.
+ */
 export async function dumpgame(t: Trek, _v: number): Promise<void> {
   const { Ship, Now, Param, Etc, Game, Sect, Quad, Move, Event } = t.s;
   const dump: Dump = { version: VERSION, Ship, Now, Param, Etc, Game, Sect, Quad, Move, Event };
   t.dump.saved = structuredClone(dump);
 }
 
-/** RESTORE GAME: zero for success, one for failure. */
+/**
+ * Restores the game dumped into the session's dump slot.
+ *
+ * RESTORE GAME
+ *
+ * C: `restartgame()` in dumpgame.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @returns Zero for success, one for failure (no dump, or one of another version).
+ */
 export async function restartgame(t: Trek): Promise<number> {
   const dump: Dump | null = t.dump.saved === null ? null : structuredClone(t.dump.saved as Dump);
   if (dump === null || dump.version !== VERSION) {

@@ -38,14 +38,19 @@
 import type { Trek } from './context.js';
 import { getfltpar } from './getpar.js';
 
-/*
-**  SET WARP FACTOR
-**
-**	The warp factor is set for future move commands.  It is
-**	checked for consistency.
-*/
-
-/** The warp command. */
+/**
+ * The warp command: sets the warp factor for the moves to come.
+ *
+ * SET WARP FACTOR
+ *
+ * The warp factor is set for future move commands.  It is
+ * checked for consistency.
+ *
+ * C: `setwarp()` in setwarp.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table's argument, unused here.
+ */
 export async function setwarp(t: Trek, _v: number): Promise<void> {
   const { Ship } = t.s;
 

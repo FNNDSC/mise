@@ -45,29 +45,35 @@ import { getcodpar, getynpar, testnl, type Cvntab } from './getpar.js';
 import { out } from './out.js';
 import { sprintf } from './printf.js';
 
-/*
-**  SHIELD AND CLOAKING DEVICE CONTROL
-**
-**	'f' is one for auto shield up (in case of Condition RED),
-**	zero for shield control, and negative one for cloaking
-**	device control.
-**
-**	Called with an 'up' or 'down' on the same line, it puts
-**	the shields/cloak into the specified mode.  Otherwise it
-**	reports to the user the current mode, and asks if she wishes
-**	to change.
-**
-**	This is not a free move.  Hits that occur as a result of
-**	this move appear as though the shields are half up/down,
-**	so you get partial hits.
-*/
-
+/** The answers to "Up or down": value2 is 1 for up, 0 for down. */
 const Udtab: ReadonlyArray<Cvntab> = [
   { abbrev: 'u', full: 'p', value: null, value2: 1 },
   { abbrev: 'd', full: 'own', value: null, value2: 0 },
 ];
 
-/** SHIELD AND CLOAKING DEVICE CONTROL */
+/**
+ * Raises or lowers the shields or the cloaking device, as the command line says or as asked.
+ *
+ * SHIELD AND CLOAKING DEVICE CONTROL
+ *
+ * 'f' is one for auto shield up (in case of Condition RED),
+ * zero for shield control, and negative one for cloaking
+ * device control.
+ *
+ * Called with an 'up' or 'down' on the same line, it puts
+ * the shields/cloak into the specified mode.  Otherwise it
+ * reports to the user the current mode, and asks if she wishes
+ * to change.
+ *
+ * This is not a free move.  Hits that occur as a result of
+ * this move appear as though the shields are half up/down,
+ * so you get partial hits.
+ *
+ * C: `shield()` in shield.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param f - 1 for auto shield up on Condition RED, 0 for shield control, -1 for cloaking device control.
+ */
 export async function shield(t: Trek, f: number): Promise<void> {
   let i: number;
   let device: string;

@@ -44,10 +44,15 @@ import { move } from './move.js';
 import { out } from './out.js';
 
 /**
- **	move under impulse power
- **/
-
-/** The impulse command. */
+ * The impulse command: moves the ship under impulse power.
+ *
+ * move under impulse power
+ *
+ * C: `impulse()` in impulse.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table's argument, unused here.
+ */
 export async function impulse(t: Trek, _v: number): Promise<void> {
   const { Ship, Move } = t.s;
   let percent: number;

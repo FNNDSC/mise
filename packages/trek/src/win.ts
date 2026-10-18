@@ -44,8 +44,15 @@ import { score } from './score.js';
 import { Skitab } from './setup.js';
 
 /**
+ * Ends the game won: the message, the score, a promotion when earned.
+ *
  * Signal game won. The promotion algorithm is, as the C says, pretty off
- * the wall.
+ * the wall. The C's longjmp to the top is a thrown TrekReset.
+ *
+ * C: `win()` in win.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @returns Never: it always throws TrekReset.
  */
 export async function win(t: Trek): Promise<never> {
   const { Game, Move, Ship } = t.s;

@@ -41,16 +41,6 @@
 import type { Trek } from './context.js';
 import { getfltpar, getintpar } from './getpar.js';
 
-/*
-**  get course and distance
-**
-**	The user is asked for a course and distance.  This is used by
-**	move, impulse, and some of the computer functions.
-**
-**	The return value is zero for success, one for an invalid input
-**	(meaning to drop the request).
-*/
-
 /** A course and a distance, as getcodi reads them. */
 export interface CourseDistance {
   /** The course, in degrees: 0 up, 90 right. */
@@ -59,7 +49,23 @@ export interface CourseDistance {
   value: number;
 }
 
-/** Asks the course and distance; null for an invalid input. */
+/**
+ * Asks the course and distance; null for an invalid input.
+ *
+ * get course and distance
+ *
+ * The user is asked for a course and distance.  This is used by
+ * move, impulse, and some of the computer functions.
+ *
+ * The return value is zero for success, one for an invalid input
+ * (meaning to drop the request). The port returns null for the one and
+ * the course and distance for the zero.
+ *
+ * C: `getcodi()` in getcodi.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @returns The course and distance, or null for an invalid input.
+ */
 export async function getcodi(t: Trek): Promise<CourseDistance | null> {
   const co: number = await getintpar(t, 'Course');
 

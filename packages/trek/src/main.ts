@@ -58,8 +58,19 @@ export interface TrekOptions {
   trace: number;
 }
 
-/** main(): the exit status the game ends with. */
-export async function trek_main(t: Trek, options: TrekOptions): Promise<number> {
+/**
+ * Runs the game: the banner, then games until the captain asks for no more.
+ *
+ * A TrekReset caught here stands for the C's longjmp back to setjmp(env); a
+ * TrekExit for exit().
+ *
+ * C: `main()` in main.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param options - How the game is started: fast mode and trace.
+ * @returns The exit status the game ends with.
+ */
+export async function main(t: Trek, options: TrekOptions): Promise<number> {
   // Default to fast mode
   t.s.Etc.fast = options.fast;
   t.s.Trace = options.trace;

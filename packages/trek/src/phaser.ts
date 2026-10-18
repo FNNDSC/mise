@@ -36,7 +36,8 @@
  * shared out by the computer over the Klingons in the quadrant).
  *
  * Deviation: the C's klingon pointer walking the list is an index here,
- * re-read after each kill, since killk() copies the list down.
+ * re-read after each kill, since killk() copies
+ * the list down.
  *
  * @module
  */
@@ -64,29 +65,6 @@ const OMEGA: number = 10.596;
 
 /* OMEGA ~= 100 * (ALPHA + 1) * (BETA + 1) / (EPSILON + 1) */
 
-/*
-**  Phaser Control
-**
-**	There are up to NBANKS phaser banks which may be fired
-**	simultaneously.  There are two modes, "manual" and
-**	"automatic".  In manual mode, you specify exactly which
-**	direction you want each bank to be aimed, the number
-**	of units to fire, and the spread angle.  In automatic
-**	mode, you give only the total number of units to fire.
-**
-**	The spread is specified as a number between zero and
-**	one, with zero being minimum spread and one being maximum
-**	spread.  You  will normally want zero spread, unless your
-**	short range scanners are out, in which case you probably
-**	don't know exactly where the Klingons are.  In that case,
-**	you really don't have any choice except to specify a
-**	fairly large spread.
-**
-**	Phasers spread slightly, even if you specify zero spread.
-**
-**	Uses trace flag 30
-*/
-
 /** The mode table: value2 carries the C's (cmdfun) 1 / 0. */
 const Matab: ReadonlyArray<Cvntab> = [
   { abbrev: 'm', full: 'anual', value: null, value2: 1 },
@@ -95,12 +73,43 @@ const Matab: ReadonlyArray<Cvntab> = [
 
 /** One phaser bank. */
 interface Banks {
+  /** Units of energy to fire from this bank. */
   units: number;
+  /** The course to fire on, in radians. */
   angle: number;
+  /** The spread, 0 (minimum) to 1 (maximum). */
   spread: number;
 }
 
-/** Phaser control. */
+/**
+ * Fires the phasers, aimed by hand or by the computer.
+ *
+ * Phaser Control
+ *
+ * There are up to NBANKS phaser banks which may be fired
+ * simultaneously.  There are two modes, "manual" and
+ * "automatic".  In manual mode, you specify exactly which
+ * direction you want each bank to be aimed, the number
+ * of units to fire, and the spread angle.  In automatic
+ * mode, you give only the total number of units to fire.
+ *
+ * The spread is specified as a number between zero and
+ * one, with zero being minimum spread and one being maximum
+ * spread.  You  will normally want zero spread, unless your
+ * short range scanners are out, in which case you probably
+ * don't know exactly where the Klingons are.  In that case,
+ * you really don't have any choice except to specify a
+ * fairly large spread.
+ *
+ * Phasers spread slightly, even if you specify zero spread.
+ *
+ * Uses trace flag 30
+ *
+ * C: `phaser()` in phaser.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table's argument, unused.
+ */
 export async function phaser(t: Trek, _v: number): Promise<void> {
   const { Ship, Etc, Move } = t.s;
   let i: number;

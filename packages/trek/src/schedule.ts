@@ -44,9 +44,21 @@ import { franf } from './rand.js';
 import type { TrekEvent } from './state.js';
 
 /**
+ * Schedules an event into the first free slot of the event list.
+ *
  * SCHEDULE AN EVENT: an event of type 'type' is scheduled for time NOW +
  * 'offset' into the first available slot; 'x', 'y' and 'z' are its
  * attributes. The slot is returned.
+ *
+ * C: `schedule()` in schedule.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param type - The event code, E_GHOST bit and all.
+ * @param offset - How long from now the event falls due, in stardates.
+ * @param x - The event's quadrant row.
+ * @param y - The event's quadrant column.
+ * @param z - The event's third attribute (a system name or device), kept in `systemname`.
+ * @returns The slot the event went into (the game exits when there is none).
  */
 export function schedule(t: Trek, type: number, offset: number, x: number, y: number, z: number): number {
   const date: number = t.s.Now.date + offset;
@@ -67,7 +79,17 @@ export function schedule(t: Trek, type: number, offset: number, x: number, y: nu
   return t.io.exit(1);
 }
 
-/** RESCHEDULE AN EVENT: the event in slot 'e' is rescheduled to the current time plus 'offset'. */
+/**
+ * Moves an event already in the list to a new date.
+ *
+ * RESCHEDULE AN EVENT: the event in slot 'e' is rescheduled to the current time plus 'offset'.
+ *
+ * C: `reschedule()` in schedule.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param e - The event's slot.
+ * @param offset - How long from now the event falls due, in stardates.
+ */
 export function reschedule(t: Trek, e: number, offset: number): void {
   const ev: TrekEvent = t.s.Event[e] as TrekEvent;
   const date: number = t.s.Now.date + offset;
@@ -75,7 +97,16 @@ export function reschedule(t: Trek, e: number, offset: number): void {
   if (t.s.Trace) t.io.printf('reschedule: type %d parm %d %d %d @ %.2f\n', ev.evcode, ev.x, ev.y, ev.systemname, date);
 }
 
-/** UNSCHEDULE AN EVENT: the event at slot 'e' is deleted. */
+/**
+ * Deletes an event from the list.
+ *
+ * UNSCHEDULE AN EVENT: the event at slot 'e' is deleted.
+ *
+ * C: `unschedule()` in schedule.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param e - The event's slot.
+ */
 export function unschedule(t: Trek, e: number): void {
   const ev: TrekEvent = t.s.Event[e] as TrekEvent;
   if (t.s.Trace) t.io.printf('unschedule: type %d @ %.2f parm %d %d %d\n', ev.evcode, ev.date, ev.x, ev.y, ev.systemname);
@@ -84,13 +115,38 @@ export function unschedule(t: Trek, e: number): void {
   ev.evcode = 0;
 }
 
-/** Abbreviated schedule routine: the event index and a factor for the time figure. */
+/**
+ * Schedules an event at a random date drawn from its usual delay.
+ *
+ * Abbreviated schedule routine: the event index and a factor for the time figure.
+ *
+ * C: `xsched()` in schedule.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param ev - The event index, into Param.eventdly.
+ * @param factor - The division factor for the time figure.
+ * @param x - The event's quadrant row.
+ * @param y - The event's quadrant column.
+ * @param z - The event's third attribute, kept in `systemname`.
+ * @returns The slot the event went into.
+ */
 export function xsched(t: Trek, ev: number, factor: number, x: number, y: number, z: number): number {
   const when: number = -(t.s.Param.eventdly[ev] as number) * t.s.Param.time * Math.log(franf(t.rnd)) / factor;
   return schedule(t, ev, when, x, y, z);
 }
 
-/** Simplified reschedule routine: the event, its index and the division factor. */
+/**
+ * Reschedules an event to a random date drawn from its usual delay.
+ *
+ * Simplified reschedule routine: the event, its index and the division factor.
+ *
+ * C: `xresched()` in schedule.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param e - The event's slot.
+ * @param ev - The event index, into Param.eventdly.
+ * @param factor - The division factor for the time figure.
+ */
 export function xresched(t: Trek, e: number, ev: number, factor: number): void {
   const when: number = -(t.s.Param.eventdly[ev] as number) * t.s.Param.time * Math.log(franf(t.rnd)) / factor;
   reschedule(t, e, when);

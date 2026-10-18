@@ -45,29 +45,35 @@ import { getintpar, getynpar, testnl } from './getpar.js';
 import { killb, killk, kills } from './kill.js';
 import { nova } from './nova.js';
 import { franf, ranf } from './rand.js';
+import type { TrekState } from './state.js';
 
-/*
-**  PHOTON TORPEDO CONTROL
-**
-**	Either one or three photon torpedoes are fired.  If three
-**	are fired, it is called a "burst" and you also specify
-**	a spread angle.
-**
-**	Torpedoes are never 100% accurate.  There is always a random
-**	cludge factor in their course which is increased if you have
-**	your shields up.  Hence, you will find that they are more
-**	accurate at close range.  However, they have the advantage that
-**	at long range they don't lose any of their power as phasers
-**	do, i.e., a hit is a hit is a hit, by any other name.
-**
-**	When the course spreads too much, you get a misfire, and the
-**	course is randomized even more.  You also have the chance that
-**	the misfire damages your torpedo tubes.
-*/
-
-/** Photon torpedo control. */
+/**
+ * Fires one photon torpedo, or a burst of three.
+ *
+ * PHOTON TORPEDO CONTROL
+ *
+ * Either one or three photon torpedoes are fired.  If three
+ * are fired, it is called a "burst" and you also specify
+ * a spread angle.
+ *
+ * Torpedoes are never 100% accurate.  There is always a random
+ * cludge factor in their course which is increased if you have
+ * your shields up.  Hence, you will find that they are more
+ * accurate at close range.  However, they have the advantage that
+ * at long range they don't lose any of their power as phasers
+ * do, i.e., a hit is a hit is a hit, by any other name.
+ *
+ * When the course spreads too much, you get a misfire, and the
+ * course is randomized even more.  You also have the chance that
+ * the misfire damages your torpedo tubes.
+ *
+ * C: `torped()` in torped.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table's value (unused).
+ */
 export async function torped(t: Trek, _v: number): Promise<void> {
-  const { Ship, Etc, Sect, Game, Move } = t.s;
+  const { Ship, Etc, Sect, Game, Move }: TrekState = t.s;
   let ix: number;
   let iy: number;
   let x: number;
@@ -199,17 +205,23 @@ export async function torped(t: Trek, _v: number): Promise<void> {
   Move.free = 0;
 }
 
-/*
-**  RANDOMIZE COURSE
-**
-**	This routine randomizes the course for torpedo number 'n'.
-**	Other things handled by this routine are misfires, damages
-**	to the tubes, etc.
-*/
-
-/** Randomize the course for torpedo number n. */
+/**
+ * Randomize the course for torpedo number n.
+ *
+ * RANDOMIZE COURSE
+ *
+ * This routine randomizes the course for torpedo number 'n'.
+ * Other things handled by this routine are misfires, damages
+ * to the tubes, etc.
+ *
+ * C: `randcourse()` in torped.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param n - The torpedo's number in a burst (1 .. 3), or -1 for a single torpedo.
+ * @returns The course error, in degrees.
+ */
 async function randcourse(t: Trek, n: number): Promise<number> {
-  const { Ship, Param } = t.s;
+  const { Ship, Param }: TrekState = t.s;
   let r: number;
   let d: number;
 

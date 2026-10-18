@@ -146,7 +146,9 @@ export const RANDOM_MAX: number = 0x7fffffff;
 
 /** A device and the person who fixes it. */
 export interface Device {
+  /** The device's name, as the crew reports it. */
   name: string;
+  /** The crew member who reports on and fixes it. */
   person: string;
 }
 

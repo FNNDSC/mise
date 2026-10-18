@@ -49,32 +49,37 @@ import { unschedule } from './schedule.js';
 import type { Quad, TrekEvent, XY } from './state.js';
 import { systemname } from './systemname.js';
 
-/*
-**  Abandon Ship
-**
-**	The ship is abandoned.  If your current ship is the Faire
-**	Queene, or if your shuttlecraft is dead, you're out of
-**	luck.  You need the shuttlecraft in order for the captain
-**	(that's you!!) to escape.
-**
-**	Your crew can beam to an inhabited starsystem in the
-**	quadrant, if there is one and if the transporter is working.
-**	If there is no inhabited starsystem, or if the transporter
-**	is out, they are left to die in outer space.
-**
-**	These currently just count as regular deaths, but they
-**	should count very heavily against you.
-**
-**	If there are no starbases left, you are captured by the
-**	Klingons, who torture you mercilessly.  However, if there
-**	is at least one starbase, you are returned to the
-**	Federation in a prisoner of war exchange.  Of course, this
-**	can't happen unless you have taken some prisoners.
-**
-**	Uses trace flag 40
-*/
-
-/** Abandon Ship */
+/**
+ * Abandons ship: the officers escape, the crew beams down or is lost, and the captain takes the Faire Queene or is captured.
+ *
+ * Abandon Ship
+ *
+ * The ship is abandoned.  If your current ship is the Faire
+ * Queene, or if your shuttlecraft is dead, you're out of
+ * luck.  You need the shuttlecraft in order for the captain
+ * (that's you!!) to escape.
+ *
+ * Your crew can beam to an inhabited starsystem in the
+ * quadrant, if there is one and if the transporter is working.
+ * If there is no inhabited starsystem, or if the transporter
+ * is out, they are left to die in outer space.
+ *
+ * These currently just count as regular deaths, but they
+ * should count very heavily against you.
+ *
+ * If there are no starbases left, you are captured by the
+ * Klingons, who torture you mercilessly.  However, if there
+ * is at least one starbase, you are returned to the
+ * Federation in a prisoner of war exchange.  Of course, this
+ * can't happen unless you have taken some prisoners.
+ *
+ * Uses trace flag 40
+ *
+ * C: `abandon()` in abandon.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table value, unused.
+ */
 export async function abandon(t: Trek, _v: number): Promise<void> {
   let i: number;
 

@@ -38,20 +38,23 @@
 import type { Trek } from './context.js';
 import type { Kling } from './state.js';
 
-/*
-**  compute klingon distances
-**
-**	The klingon list has the distances for all klingons recomputed
-**	and sorted.  The parameter is a Boolean flag which is set if
-**	we have just entered a new quadrant.
-**
-**	This routine is used every time the Enterprise or the Klingons
-**	move.
-**
-**  f -- set if new quadrant
-*/
-
-/** Recomputes the Klingon distances and leaves the list sorted. */
+/**
+ * Recomputes the Klingon distances and leaves the list sorted.
+ *
+ * compute klingon distances
+ *
+ * The klingon list has the distances for all klingons recomputed
+ * and sorted.  The parameter is a Boolean flag which is set if
+ * we have just entered a new quadrant.
+ *
+ * This routine is used every time the Enterprise or the Klingons
+ * move.
+ *
+ * C: `compkldist()` in compkl.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param f - set if new quadrant (nonzero: the average distance is the current one).
+ */
 export function compkldist(t: Trek, f: number): void {
   const { Ship, Etc } = t.s;
   let dx: number;
@@ -82,13 +85,17 @@ export function compkldist(t: Trek, f: number): void {
   sortkl(t);
 }
 
-/*
-**  sort klingons
-**
-**	bubble sort on ascending distance
-*/
-
-/** Bubble sorts the Klingons on ascending distance (a swap of slots, as the C's struct swap). */
+/**
+ * Bubble sorts the Klingons on ascending distance (a swap of slots, as the C's struct swap).
+ *
+ * sort klingons
+ *
+ * bubble sort on ascending distance
+ *
+ * C: `sortkl()` in compkl.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ */
 function sortkl(t: Trek): void {
   const { Etc } = t.s;
   let f: number;

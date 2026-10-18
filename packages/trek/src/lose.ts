@@ -59,7 +59,18 @@ const Losemsg: ReadonlyArray<string> = [
   'Your last crew member died',
 ];
 
-/** PRINT OUT LOSER MESSAGES, then the score, and the game is restarted. */
+/**
+ * Ends the game lost: the reason, the score, then back to the question of another game.
+ *
+ * PRINT OUT LOSER MESSAGES, then the score, and the game is restarted.
+ * The C's longjmp to the top is a thrown TrekReset.
+ *
+ * C: `lose()` in lose.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param why - The L_* code of how the game was lost.
+ * @returns Never: it always throws TrekReset.
+ */
 export async function lose(t: Trek, why: number): Promise<never> {
   t.s.Game.killed = 1;
   await t.io.sleep(1);

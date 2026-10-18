@@ -41,34 +41,39 @@ import { EMPTY, KLINGON, MAXKLQUAD, NQUADS, NSECTS, SRSCAN } from './consts.js';
 import type { Trek } from './context.js';
 import { damaged } from './damaged.js';
 import { ranf } from './rand.js';
-import type { Kling } from './state.js';
+import type { Kling, TrekState } from './state.js';
 
-/*
-**  Move Klingons Around
-**
-**	This is a largely incomprehensible block of code that moves
-**	Klingons around in a quadrant.  It was written in a very
-**	"program as you go" fashion, and is a prime candidate for
-**	rewriting.
-**
-**	The flag `fl' is zero before an attack, one after an attack,
-**	and two if you are leaving a quadrant.  This serves to
-**	change the probability and distance that it moves.
-**
-**	Basically, what it will try to do is to move a certain number
-**	of steps either toward you or away from you.  It will avoid
-**	stars whenever possible.  Nextx and nexty are the next
-**	sector to move to on a per-Klingon basis; they are roughly
-**	equivalent to Ship.sectx and Ship.secty for the starship.  Lookx and
-**	looky are the sector that you are going to look at to see
-**	if you can move their.  Dx and dy are the increment.  Fudgex
-**	and fudgey are the things you change around to change your
-**	course around stars.
-*/
-
-/** Moves the Klingons of the current quadrant. */
+/**
+ * Moves the Klingons of the current quadrant.
+ *
+ * Move Klingons Around
+ *
+ * This is a largely incomprehensible block of code that moves
+ * Klingons around in a quadrant.  It was written in a very
+ * "program as you go" fashion, and is a prime candidate for
+ * rewriting.
+ *
+ * The flag `fl' is zero before an attack, one after an attack,
+ * and two if you are leaving a quadrant.  This serves to
+ * change the probability and distance that it moves.
+ *
+ * Basically, what it will try to do is to move a certain number
+ * of steps either toward you or away from you.  It will avoid
+ * stars whenever possible.  Nextx and nexty are the next
+ * sector to move to on a per-Klingon basis; they are roughly
+ * equivalent to Ship.sectx and Ship.secty for the starship.  Lookx and
+ * looky are the sector that you are going to look at to see
+ * if you can move their.  Dx and dy are the increment.  Fudgex
+ * and fudgey are the things you change around to change your
+ * course around stars.
+ *
+ * C: `klmove()` in klmove.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param fl - 0 before an attack, 1 after an attack, 2 when leaving a quadrant.
+ */
 export async function klmove(t: Trek, fl: number): Promise<void> {
-  const { Ship, Param, Move, Etc } = t.s;
+  const { Ship, Param, Move, Etc }: TrekState = t.s;
   let k: Kling | null;
   let dx: number;
   let dy: number;

@@ -43,18 +43,24 @@ import { killb, killk } from './kill.js';
 import { lose } from './lose.js';
 import { franf, ranf } from './rand.js';
 
-/*
-**  RAM SOME OBJECT
-**
-**	You have run into some sort of object.  It may be a Klingon,
-**	a star, or a starbase.  If you run into a star, you are really
-**	stupid, because there is no hope for you.
-**
-**	If you run into something else, you destroy that object.  You
-**	also rack up incredible damages.
-*/
-
-/** Rams whatever is at ix,iy. */
+/**
+ * Rams whatever is at ix,iy.
+ *
+ * RAM SOME OBJECT
+ *
+ * You have run into some sort of object.  It may be a Klingon,
+ * a star, or a starbase.  If you run into a star, you are really
+ * stupid, because there is no hope for you.
+ *
+ * If you run into something else, you destroy that object.  You
+ * also rack up incredible damages.
+ *
+ * C: `ram()` in ram.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param ix - The sector row of the object rammed.
+ * @param iy - The sector column of the object rammed.
+ */
 export async function ram(t: Trek, ix: number, iy: number): Promise<void> {
   const { Ship, Game, Param } = t.s;
   let i: number;

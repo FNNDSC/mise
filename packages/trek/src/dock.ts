@@ -39,26 +39,31 @@ import { BASE, DOCKED, E_FIXDV, GREEN, MAXEVENTS, NSECTS } from './consts.js';
 import type { Trek } from './context.js';
 import { dumpssradio } from './dumpssradio.js';
 import { reschedule } from './schedule.js';
-import type { TrekEvent } from './state.js';
+import type { TrekEvent, TrekState } from './state.js';
 
-/*
-**  DOCK TO STARBASE
-**
-**	The starship is docked to a starbase.  For this to work you
-**	must be adjacent to a starbase.
-**
-**	You get your supplies replenished and your captives are
-**	disembarked.  Note that your score is updated now, not when
-**	you actually take the captives.
-**
-**	Any repairs that need to be done are rescheduled to take
-**	place sooner.  This provides for the faster repairs when you
-**	are docked.
-*/
-
-/** The dock command. */
+/**
+ * Docks the ship to an adjacent starbase: supplies are replenished, captives disembarked and repairs hastened.
+ *
+ * DOCK TO STARBASE
+ *
+ * The starship is docked to a starbase.  For this to work you
+ * must be adjacent to a starbase.
+ *
+ * You get your supplies replenished and your captives are
+ * disembarked.  Note that your score is updated now, not when
+ * you actually take the captives.
+ *
+ * Any repairs that need to be done are rescheduled to take
+ * place sooner.  This provides for the faster repairs when you
+ * are docked.
+ *
+ * C: `dock()` in dock.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table value, unused.
+ */
 export async function dock(t: Trek, _v: number): Promise<void> {
-  const { Ship, Param, Game } = t.s;
+  const { Ship, Param, Game }: TrekState = t.s;
   let i: number;
   let j: number;
   let ok: number;
@@ -114,16 +119,21 @@ export async function dock(t: Trek, _v: number): Promise<void> {
   }
 }
 
-/*
-**  LEAVE A STARBASE
-**
-**	This is the inverse of dock().  The main function it performs
-**	is to reschedule any damages so that they will take longer.
-*/
-
-/** The undock command. */
+/**
+ * Leaves the starbase the ship is docked to, so repairs take longer again.
+ *
+ * LEAVE A STARBASE
+ *
+ * This is the inverse of dock().  The main function it performs
+ * is to reschedule any damages so that they will take longer.
+ *
+ * C: `undock()` in dock.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table value, unused.
+ */
 export async function undock(t: Trek, _v: number): Promise<void> {
-  const { Ship, Param, Move } = t.s;
+  const { Ship, Param, Move }: TrekState = t.s;
   let e: TrekEvent;
 
   if (Ship.cond !== DOCKED) {

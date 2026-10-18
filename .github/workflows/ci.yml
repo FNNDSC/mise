@@ -99,6 +99,7 @@ jobs:
       # ratchets that cannot repair what exists but stop it growing.
       - run: npm run lint:kernel
       - run: npm run lint:fond
+      - run: npm run lint:trek
       - run: npm run lint:core-deps
       # The core boots over the null backend with no ChRIS package loaded.
       - run: npm run test:core-boot --workspace @fnndsc/brasa

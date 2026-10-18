@@ -1,0 +1,53 @@
+{
+  "name": "bsd-trek",
+  "version": "0.1.0",
+  "description": "The 1976 Berkeley trek game (BSD trek(6)), ported line for line to TypeScript: play it in your terminal with npx bsd-trek",
+  "keywords": ["trek", "star trek", "bsd", "bsd-games", "terminal game", "cli game", "retro", "klingon"],
+  "license": "BSD-3-Clause",
+  "author": "Rudolph Pienaar",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FNNDSC/mise.git",
+    "directory": "packages/trek"
+  },
+  "homepage": "https://github.com/FNNDSC/mise/tree/main/packages/trek#readme",
+  "bugs": {
+    "url": "https://github.com/FNNDSC/mise/issues"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "bin": {
+    "trek": "dist/cli.js",
+    "bsd-trek": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "rm -fr dist && tsc && chmod +x dist/cli.js",
+    "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --coverage",
+    "prepublishOnly": "test -f dist/index.js && test -f dist/cli.js"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.2.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.0.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.5",
+    "typescript": "^5.5.2"
+  }
+}

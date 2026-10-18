@@ -1,0 +1,112 @@
+= trek: a game as the first package built as if from outside
+:toc:
+
+trek is BSD trek(6), the 1976 Berkeley space war game, ported line for line to TypeScript. It plays three ways: as `bsd-trek`, a package anyone installs from npm to play in a terminal; as `trek` in chell, mise's shell; and, to come, as a bridge in ARGUS that takes the whole screen. This document records the decisions behind that, settled with the operator on 2026-10-18, and the order of the work.
+
+trek also matters beyond the game. It is the first part of mise built inside the monorepo as if it came from outside: it imports nothing of mise, and what it needs from mise becomes mise's public contract rather than a reach into its internals. Contracts for outside contributions are drawn from this consumer instead of being designed ahead of any.
+
+== The package
+
+`packages/trek` publishes as `bsd-trek`.
+
+[cols="1,3"]
+|===
+| Decision | Why
+
+| Name `bsd-trek`, unscoped
+| The name a casual player searches for and types (`npx bsd-trek`); it says what the game is. A toy does not belong under the FNNDSC scope, and a neutral org is a decision deferred (below). Plain `trek` on npm is a Rails CMS; no terminal trek game was on npm before this.
+
+| Commands `trek` and `bsd-trek`
+| `trek` is the game's name, as in trek(6). `bsd-trek` matches the package, so `npx bsd-trek` and a typed `bsd-trek` behave the same, and a machine where `trek` is something else still has a way in.
+
+| BSD-3-Clause for the whole package
+| The original's licence travels with the port; the code written around it (the command, the terminal wiring, the styled scans) is too small to carve out under another. `LICENSE` holds the Regents' notice, the port's copyright line and the original's credits.
+
+| One engine
+| The engine lives only in `packages/trek`. brasa's `trek` builtin is a thin consumer (the session's terminal and saved-game slot); the ARGUS bridge will be another. A fix lands once.
+
+| `engines: node >=22`
+| What CI tests (22 and 24); Node 20 reached its end of life in April 2026. npm warns at install rather than failing mid-game.
+
+| The CLI behaves as the session's `trek`
+| The same flags (`--classic`, `-f`/`-s`, `--seed N`, read by one parser, `trekArgs_parse`), plus `--help` and `--version`. Scans are styled with glyphs and colour on a colour terminal, plain when piped, with `NO_COLOR`, or with `--classic`.
+
+| A saved game on file
+| The original wrote `trek.dump` in the current directory; the port keeps the save in a slot (`TrekDump`). The session's slot lives as long as the session; the CLI's is a file at `$XDG_STATE_HOME/bsd-trek/trek.dump` (`~/.local/state` on Linux, `~/Library/Application Support` on macOS, `%LOCALAPPDATA%` on Windows), so a save outlives the process. The engine does not change.
+
+| Version `0.1.0`
+| The gameplay is complete, but the engine's exports change with the typed asks (below). `1.0.0` comes once the typed asks and the ARGUS bridge have used the engine.
+
+| A README for the player
+| The game first: play in one line, how to play, options, saves, history and credit, licence; mise last. It carries one disclaimer: Star Trek is Paramount's trademark, and this is an unaffiliated port of a 1976 game. The package holds no Paramount art or sounds.
+|===
+
+=== The boundary
+
+`npm run lint:trek` (`scripts/trek-isolation.mjs`, in CI) fails when a source file in `packages/trek` imports anything but its own modules, Node's, `../package.json` (for `--version`), and the dependencies its `package.json` names, or when that `package.json` names anything of `@fnndsc`. A convention alone is how brasa's builtin came to reach into the session's question and sink; the lint keeps the boundary from eroding one convenient import at a time.
+
+=== Fidelity
+
+The port keeps the C's function and variable names (`dowarp`, `getcodpar`, `klmove`, `shldabsb`), and each module's header names the NetBSD C file and revision it came from, so the port can be diffed against the C function by function. Code written for the port follows the house style (`trek_play`, `trekArgs_parse`, `snapshot_take`, the CLI). The engine is typed throughout, with named interfaces for its non-primitive data.
+
+The tests replay eighteen games recorded from the C built with glibc's `random()`: for the same seed and answers the port prints the C's transcript byte for byte. The same games replay through the `trek` command itself, input piped in, with the same result.
+
+=== Publishing
+
+npm's trusted publishing cannot create a package name, so the first version is published by hand:
+
+. The PR that adds the package is built; it is not merged yet.
+. The operator publishes `0.1.0` by hand from pannotia (npm user `debio`), from the branch with `dist` built.
+. The operator configures the trusted publisher on npmjs: FNNDSC / mise / `release.yml` / no environment / "Allow npm publish" ticked.
+. The release is verified with a clean `npx bsd-trek` in an empty directory, not `npm view`: a version record proves nothing about installing.
+. The PR merges, and brasa releases depending on `bsd-trek`. Later versions release through changesets with their siblings.
+
+== Typed asks
+
+The engine asks every question through four functions in `getpar.ts`: `getintpar` (a whole number), `getfltpar` (a decimal), `getcodpar` (one choice from a table: "Manual or automatic", the computer's requests, the commands) and `getynpar` (yes or no). Today they reach the terminal as prompt text only (`TrekTerminal.ask(prompt)`). They will pass a description of the question as well: its kind, its name, its range, and the choices of a table. A terminal that only shows text ignores it; a surface that draws controls answers with them. That is a change to `TrekTerminal`, and why the package starts below 1.0.
+
+The session already has typed asks (`PromptRequest.wants`, from the "a surface can be asked" epic, #440), so the session's `trek` passes them on, and ARGUS answers them like any other.
+
+== The ARGUS bridge
+
+Running `trek` in ARGUS takes the whole screen, and ARGUS comes back when the game ends. Mockups: https://claude.ai/artifact/MojBJ5btnJEchTenGCBkAf[the trek canvas] (v3 is this design; v1 and v2 are the two before it; private to the operator until shared).
+
+=== Why a takeover, not a pane
+
+* It is the shell's own idiom. In a terminal a full-screen program (`vi`, `tetris`) switches to the alternate screen and hands it back on exit; ARGUS, built around an embedded terminal, does the same one level up.
+* A pane among panes would mislead. While the game runs it is the session's running command and holds the lane; anything another pane asks the session queues behind it. A screen given wholly to the game says so.
+* ARGUS's zoom already removes its gutter, header and console; a takeover is a zoomed surface opened when the game starts and closed when it ends.
+
+=== The screen
+
+* *The header* carries the ship's state, every value one that play changes; nothing in it is decoration. Condition (RED, YELLOW, GREEN, DOCKED, and why: "3 Klingons in this quadrant"); ship (energy, shields, torpedoes, life support); mission (stardate, time left to the deadline, Klingons destroyed and left, starbases and the nearest); position (quadrant, sector, warp, score); and the last turn, what just happened and what it cost (shield hits, repairs, new damage).
+* *The gutter* is trek's own: its block, then the stations (helm, fire control, scans, engineering, computer), the one being asked lit, and LEAVE BRIDGE, which ends the game and gives ARGUS back.
+* *The body is all play.* The short-range scan is always on, with the command pills under it. Beside it, the long-range scan and the galaxy chart (a quadrant pressed asks the computer for course and distance). The station being asked stands on the other side, with engineering's repair state always beneath it.
+* *The terminal stays*: a strip with the last line of the dialogue and the line being answered. Typing works throughout; the pills and the line are one answer.
+
+=== Stations follow the question
+
+A typed ask brings its station forward: "Units to fire" brings fire control (ten pills, each a tenth of the energy available, the exact number under each, and the typed field); "Course" brings the helm's compass wheel (0° up, clockwise, Klingons and starbases marked at their bearings, a torpedo burst as a wedge); a warp factor is ten pills. Nobody hunts for the control that answers the question in front of them: control lives where it acts (#454).
+
+=== To settle before it is built
+
+* Esc in ARGUS gives the full surface back, but the session is held by the game. In trek, Esc asks "Leave the bridge? The game ends", or pauses; leaving is the one way out.
+* The surface follows ARGUS's colour scheme (the mockups show classic and medical).
+* "A program may take the screen and give it back" is a surface decision: its laws and a row in `apps/argus/docs/aegis.adoc` are drafted with this slice.
+
+== The order of work
+
+. *S1, the package*: `packages/trek` with the engine, the `trek` command, its README and licence, `lint:trek`; brasa's builtin as a consumer; this document. Merged after the first publish by hand.
+. *S2, typed asks*: `getpar` describes each question; the session passes the descriptions on.
+. *S3, the takeover and the bridge*: ARGUS's narrow API for a program that takes the screen (the console, the theme, typed asks, enter and leave), with the trek bridge as its first user, the bridge talking only to that API.
+. *S4, proof*: a smoke scenario for the bridge, and its AEGIS laws.
+
+== Deferred, deliberately
+
+These wait for a second consumer or a first outside contributor; designed now, they would take the shape of nothing in particular.
+
+* *A browser build*: ARGUS trek playable on a static page with no daemon, the kernel in a worker over an in-memory store. It needs an audit of what brasa's core takes from Node.
+* *A persistent memory backend*: the null backend (`nullBackend_make`) is already a filesystem held in memory, and enough for a first `--web` entry; saves and high scores would want it kept on disk or in browser storage, and a name better than "null".
+* *Runtime loading of extensions*: an operator naming outside packages to load into the kernel and ARGUS, with the trust that implies.
+* *A neutral org* for the framework and community extensions, apart from FNNDSC's ChRIS backend.
+* *Splitting brasa's core from its ChRIS backend* into separate packages, so a bridge install no longer downloads the CUBE client stack it never loads.

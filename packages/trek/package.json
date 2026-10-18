@@ -1,8 +1,17 @@
 {
   "name": "bsd-trek",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The 1976 Berkeley trek game (BSD trek(6)), ported line for line to TypeScript: play it in your terminal with npx bsd-trek",
-  "keywords": ["trek", "star trek", "bsd", "bsd-games", "terminal game", "cli game", "retro", "klingon"],
+  "keywords": [
+    "trek",
+    "star trek",
+    "bsd",
+    "bsd-games",
+    "terminal game",
+    "cli game",
+    "retro",
+    "klingon"
+  ],
   "license": "BSD-3-Clause",
   "author": "Rudolph Pienaar",
   "repository": {

@@ -1,6 +1,6 @@
 {
   "name": "bsd-trek",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The 1976 Berkeley trek game (BSD trek(6)), ported line for line to TypeScript: play it in your terminal with npx bsd-trek",
   "keywords": [
     "trek",

@@ -1,7 +1,8 @@
 /* The trek bridge: the screen the game takes over (features/trek/bridge.ts).
  * Palette from the theme tokens; the frame (two elbows) is the bridge's own
  * because the takeover removes ARGUS's. Grid: gutter | content; rows: header,
- * body elbow bar, body, ask strip, log. */
+ * body elbow bar, body, ask strip, log. The body's own grid changes with the
+ * view: BRIDGE shows everything, a station view enlarges one station. */
 .trek-bridge {
   position: fixed;
   inset: 0;
@@ -31,38 +32,37 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-seed { background: var(--harvestgold); color: #000; font-size: 0.8rem; font-weight: 700; text-align: right; padding: 0.35rem 0.8rem; letter-spacing: 0.06em; }
 .tb-gutter-fill { flex: 1 1 0; background: var(--orange); min-height: 1rem; }
 .tb-gutter-top .tb-gutter-fill { border-bottom-left-radius: 3rem; min-height: 2.5rem; }
+.tb-gutter-cap { flex: 0 0 2.5rem; background: var(--orange); border-top-left-radius: 3rem; }
 .tb-views { display: flex; flex-direction: column; gap: 0.35rem; }
 .tb-view { border: none; background: var(--harvestgold); color: #000; font-family: var(--face-label); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.08em; text-align: right; padding: 1.3rem 0.8rem 0.4rem; opacity: 0.55; cursor: pointer; }
-.tb-view-tactical { background: var(--mars); }
-.tb-view-computer { background: var(--butter); }
+.tb-view.tb-view-tactical { background: var(--mars); }
+.tb-view.tb-view-computer { background: var(--butter); }
 .tb-view.tb-view-on { background: var(--butter); opacity: 1; }
-.tb-view:first-child { border-top-left-radius: 3rem; padding-top: 2rem; }
 .tb-leave { border: none; background: var(--mars); color: #000; font-family: var(--face-label); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.08em; text-align: right; padding: 1rem 0.8rem; border-bottom-left-radius: 2.5rem; cursor: pointer; }
 
-/* the frame: the header's bar is the arm of the elbow that sweeps down into the upper gutter, the body's the arm of the one
- * that sweeps up into the views; each first segment carries the inner notch (a black quarter round over its own colour) */
-.tb-elbow { display: none; }
-.tb-bar { grid-column: 2; margin-left: 0.5rem; display: flex; gap: 0.35rem; align-items: stretch; }
+/* the frame: the header's bar is the arm of the elbow whose column is the upper gutter (the fill above it sweeps down
+ * into it), the body's bar the arm of the elbow whose column is the cap above the views; each bar's first segment
+ * touches the gutter and carries the inner notch, a black quarter round on the arm's own colour */
+.tb-bar { grid-column: 2; display: flex; gap: 0.35rem; align-items: stretch; }
 .tb-bar-top { grid-row: 2; }
 .tb-bar-body { grid-row: 3 / 5; align-items: flex-end; }
 .tb-bar-body > span { height: 1rem; }
 .tb-bar > span { display: block; }
 .tb-bar .tb-bar-a { flex: 0 0 14rem; position: relative; background: var(--orange); }
-.tb-bar-body .tb-bar-a { background: var(--harvestgold); }
-.tb-bar-body .tb-bar-c { background: var(--october-sunset); border-radius: 0 0.35rem 0.35rem 0; flex: 0 0 9rem; }
-.tb-bar-body .tb-bar-b { flex: 1 1 0; }
 .tb-bar .tb-bar-a::after { content: ''; position: absolute; left: 0; width: 1.6rem; height: 1.6rem; background: inherit; }
 .tb-bar .tb-bar-a::before { content: ''; position: absolute; left: 0; width: 1.6rem; height: 1.6rem; background: #000; z-index: 1; }
-.tb-bar-top .tb-bar-a::after { top: 100%; }
-.tb-bar-top .tb-bar-a::before { top: 100%; border-top-left-radius: 1.6rem; }
-.tb-bar-body .tb-bar-a::after { bottom: 100%; }
-.tb-bar-body .tb-bar-a::before { bottom: 100%; border-bottom-left-radius: 1.6rem; }
+.tb-bar-top .tb-bar-a::after { bottom: 100%; }
+.tb-bar-top .tb-bar-a::before { bottom: 100%; border-bottom-left-radius: 1.6rem; }
+.tb-bar-body .tb-bar-a::after { top: 100%; }
+.tb-bar-body .tb-bar-a::before { top: 100%; border-top-left-radius: 1.6rem; }
 .tb-bar .tb-bar-b { flex: 0 0 18rem; background: var(--harvestgold); }
 .tb-bar .tb-bar-c { flex: 1 1 0; background: var(--butter); }
 .tb-bar .tb-bar-d { flex: 0 0 7rem; background: var(--october-sunset); border-radius: 0 0.35rem 0.35rem 0; }
+.tb-bar-body .tb-bar-b { flex: 1 1 0; }
+.tb-bar-body .tb-bar-c { flex: 0 0 9rem; background: var(--october-sunset); border-radius: 0 0.35rem 0.35rem 0; }
 
 /* the header */
-.tb-header { grid-column: 2; grid-row: 1; margin-left: 0.5rem; display: grid; grid-template-columns: 15rem repeat(4, minmax(0, 1fr)); gap: 1.2rem; padding: 0.4rem 0.6rem 0.6rem 1rem; align-items: start; }
+.tb-header { grid-column: 2; grid-row: 1; display: grid; grid-template-columns: 15rem repeat(4, minmax(0, 1fr)); gap: 1.2rem; padding: 0.4rem 0.6rem 0.6rem 1.6rem; align-items: start; }
 .tb-head-condition { display: flex; flex-direction: column; gap: 0.4rem; }
 .tb-condition { border-radius: 2rem; padding: 0.4rem 0; display: flex; flex-direction: column; align-items: center; color: #000; background: var(--harvestgold); }
 .tb-condition[data-condition='red'] { background: var(--mars); }
@@ -77,11 +77,18 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-head-grid { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 0.3rem 0.5rem; align-items: center; }
 .tb-head-label { background: var(--butter); color: #000; border-radius: 0.8rem; padding: 0.05rem 0.6rem; font-size: 0.7rem; font-weight: 700; text-align: right; }
 .tb-head-value { font-size: 0.9rem; color: var(--face-data-ink, #fec); font-family: var(--face-data); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tb-head-value.tb-bad { color: var(--mars); }
-.tb-head-value.tb-good { color: var(--daybreak); }
+.tb-head-value.tb-bad, .tb-bad { color: var(--mars); }
+.tb-head-value.tb-good, .tb-good { color: var(--daybreak); }
 
-/* the body */
-.tb-body { grid-column: 2; grid-row: 5; margin-left: 0.5rem; display: grid; grid-template-columns: 17rem minmax(0, 1fr) minmax(0, 1.2fr); gap: 1.2rem; padding: 0.6rem 0.6rem 0.3rem 1rem; min-height: 0; overflow: hidden; }
+/* the body: one grid per view */
+.tb-body { grid-column: 2; grid-row: 5; display: grid; gap: 1.2rem; padding: 0.6rem 0.6rem 0.3rem 1.6rem; min-height: 0; overflow: hidden; }
+.tb-body[data-view='bridge'] { grid-template-columns: 17rem minmax(0, 1fr) minmax(0, 1.2fr); }
+.tb-body[data-view='bridge'] > .tb-view-body { display: none; }
+.tb-body:not([data-view='bridge']) > .tb-scans, .tb-body:not([data-view='bridge']) > .tb-stations { display: none; }
+.tb-body[data-view='helm'], .tb-body[data-view='tactical'] { grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); }
+.tb-body[data-view='helm'] > .tb-view-body:not(.tb-view-helm), .tb-body[data-view='tactical'] > .tb-view-body:not(.tb-view-tactical) { display: none; }
+.tb-body[data-view='engineering'], .tb-body[data-view='computer'] { grid-template-columns: minmax(0, 1fr); }
+.tb-body[data-view='engineering'] > :not(.tb-view-engineering), .tb-body[data-view='computer'] > :not(.tb-view-computer) { display: none; }
 .tb-title { font-size: 0.7rem; letter-spacing: 0.2em; color: var(--harvestgold); }
 .tb-note { font-size: 0.65rem; letter-spacing: 0.08em; color: var(--october-sunset); }
 .tb-scans { display: flex; flex-direction: column; gap: 0.4rem; min-height: 0; overflow: auto; }
@@ -124,22 +131,31 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-station-tactical .tb-pill.tb-command { background: var(--mars); }
 .tb-commit { background: var(--butter); }
 .tb-choice { background: var(--honey); }
+.tb-fire { background: var(--mars); font-size: 0.9rem; padding: 0.4rem 1.2rem; }
 
 .tb-stations { display: flex; flex-direction: column; gap: 0.8rem; min-height: 0; overflow: auto; }
-.tb-station { border-left: 6px solid var(--butter); padding-left: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.tb-station { border-left: 6px solid var(--butter); padding-left: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
 .tb-station-tactical { border-left-color: var(--mars); }
+.tb-station-time { border-left-color: var(--harvestgold); }
+.tb-station-computer { border-left-color: var(--daybreak); }
 .tb-station-head { display: flex; align-items: baseline; gap: 0.6rem; }
 .tb-station-name { font-size: 1.1rem; letter-spacing: 0.15em; color: var(--face-data-ink, #fec); }
 .tb-station-step { font-size: 0.7rem; letter-spacing: 0.08em; color: var(--harvestgold); }
+.tb-station-fill { flex: 1 1 0; }
 .tb-controls { display: flex; gap: 0.8rem; align-items: flex-start; }
 .tb-sliders { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; }
 .tb-slider, .tb-pillrow { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) 3.2rem auto; gap: 0.4rem; align-items: center; opacity: 0.4; }
 .tb-pillrow { grid-template-columns: 5.5rem minmax(0, 1fr); }
 .tb-slider.tb-lit, .tb-pillrow.tb-lit, .tb-wheel.tb-lit { opacity: 1; }
+.tb-slider.tb-local { opacity: 1; grid-template-columns: 5.5rem minmax(0, 1fr) 3.2rem; }
+.tb-slider.tb-local .tb-commit { display: none; }
 .tb-slider-label { background: var(--butter); color: #000; border-radius: 0.8rem; padding: 0.05rem 0.5rem; font-size: 0.65rem; font-weight: 700; text-align: right; letter-spacing: 0.06em; }
 .tb-slider-column { display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; }
 .tb-slider-input { width: 100%; min-width: 0; margin: 0; accent-color: var(--harvestgold); }
+.tb-slider-ticks { display: flex; justify-content: space-between; font-family: var(--face-data); font-size: 0.55rem; color: rgba(255, 204, 153, 0.5); padding: 0 0.3rem; }
+.tb-slider-ticks:empty { display: none; }
 .tb-slider-note { font-size: 0.55rem; letter-spacing: 0.06em; color: var(--october-sunset); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-slider-note:empty { display: none; }
 .tb-slider-readout { font-family: var(--face-data); font-size: 0.9rem; color: var(--face-data-ink, #fec); text-align: right; }
 .tb-wheel { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; opacity: 0.4; flex: 0 0 auto; }
 .tb-wheel-face { touch-action: none; cursor: crosshair; }
@@ -151,21 +167,72 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-wheel-label { fill: var(--butter); font-size: 11px; font-family: var(--face-label); }
 .tb-wheel-needle { stroke: var(--face-data-ink, #fec); stroke-width: 4; stroke-linecap: round; }
 .tb-wheel-hub { fill: var(--face-data-ink, #fec); }
+.tb-wheel-wedge { fill: rgba(242, 64, 42, 0.25); stroke: var(--mars); stroke-width: 1; }
 .tb-wheel-mark-klingon { fill: var(--mars); }
 .tb-wheel-mark-base { fill: var(--harvestgold); }
 .tb-wheel-row { display: flex; gap: 0.5rem; align-items: center; }
 .tb-wheel-readout { font-family: var(--face-data); font-size: 1rem; color: var(--face-data-ink, #fec); }
-.tb-targets { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.tb-fire-row { display: flex; gap: 0.8rem; align-items: flex-start; flex-wrap: wrap; }
+.tb-targets { display: grid; grid-template-columns: auto repeat(3, minmax(0, auto)); gap: 0.2rem 0.6rem; align-items: center; font-family: var(--face-data); font-size: 0.75rem; }
+.tb-targets > .tb-note { grid-column: 1 / -1; }
+.tb-target-head { font-family: var(--face-label); font-size: 0.6rem; letter-spacing: 0.15em; color: var(--harvestgold); }
 .tb-target { border: 1px solid var(--mars); border-radius: 0.6rem; background: transparent; color: var(--mars); font-family: var(--face-data); font-size: 0.7rem; padding: 0.15rem 0.5rem; cursor: pointer; }
+.tb-target-cell { color: var(--face-data-ink, #fec); }
+
+/* the station views: a station drawn large */
+.tb-view-body { min-height: 0; overflow: auto; }
+.tb-view-helm .tb-controls, .tb-view-tactical .tb-controls { gap: 1.4rem; }
+.tb-view-helm .tb-slider, .tb-view-tactical .tb-slider { grid-template-columns: 7rem minmax(0, 1fr) 4rem auto; }
+.tb-view-helm .tb-pillrow, .tb-view-tactical .tb-pillrow { grid-template-columns: 7rem minmax(0, 1fr); }
+.tb-view-helm .tb-station-name, .tb-view-tactical .tb-station-name { font-size: 1.5rem; }
+.tb-view-helm .tb-wheel-readout, .tb-view-tactical .tb-wheel-readout { font-size: 1.4rem; }
+.tb-panel { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+.tb-view-engineering { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 1.4rem; }
+.tb-dc { display: grid; grid-template-columns: 9rem minmax(0, 1fr) 4rem 4rem 3rem; gap: 0.25rem 0.6rem; align-items: center; font-size: 0.7rem; letter-spacing: 0.04em; }
+.tb-dc-head { font-size: 0.6rem; letter-spacing: 0.15em; color: var(--harvestgold); }
+.tb-dc-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-dc-time, .tb-sys-value, .tb-sys-text { font-family: var(--face-data); font-size: 0.8rem; color: var(--face-data-ink, #fec); text-align: right; white-space: nowrap; }
+.tb-sys-text { text-align: left; grid-column: 2 / -1; white-space: normal; }
+.tb-dc-state { font-weight: 700; text-align: right; }
+.tb-bar-track { height: 0.6rem; border-radius: 0.3rem; background: rgba(255, 204, 153, 0.1); overflow: hidden; }
+.tb-bar-fill { height: 100%; border-radius: 0.3rem; }
+.tb-bar-ok { background: var(--daybreak); }
+.tb-bar-down { background: var(--mars); }
+.tb-systems { display: grid; grid-template-columns: 7rem minmax(0, 1fr) auto; gap: 0.35rem 0.6rem; align-items: center; font-size: 0.7rem; letter-spacing: 0.04em; }
+.tb-pips { display: flex; gap: 0.2rem; flex-wrap: wrap; }
+.tb-pip { width: 0.6rem; height: 0.6rem; border-radius: 50%; border: 1px solid var(--harvestgold); }
+.tb-pip-on { background: var(--harvestgold); }
+.tb-since-grid { grid-template-columns: 7rem minmax(0, 1fr); }
+.tb-station-time .tb-slider { grid-template-columns: 6rem minmax(0, 1fr) 3.5rem auto; }
+.tb-in-that-time { display: flex; flex-direction: column; gap: 0.3rem; }
+.tb-in-that-time .tb-head-value { white-space: normal; }
+.tb-view-computer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 1.4rem; }
+.tb-chart-big { display: grid; grid-template-columns: 1.2rem repeat(8, minmax(0, 1fr)); gap: 0.25rem; }
+.tb-cq { border: 1px solid rgba(255, 204, 153, 0.15); border-radius: 0.6rem; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; aspect-ratio: 1.2; padding: 0.2rem; cursor: pointer; color: var(--face-data-ink, #fec); font-family: var(--face-data); }
+.tb-cq:not(.tb-unscanned) { background: rgba(255, 170, 68, 0.1); }
+.tb-cq.tb-unscanned .tb-cq-code { color: rgba(255, 204, 153, 0.35); }
+.tb-cq.tb-hostile .tb-cq-code { color: var(--mars); }
+.tb-cq.tb-based { border-color: var(--harvestgold); }
+.tb-cq.tb-here { background: var(--butter); color: #000; }
+.tb-cq.tb-here .tb-cq-at { color: #000; }
+.tb-cq.tb-pressed { outline: 2px solid var(--daybreak); }
+.tb-cq-code { font-size: 1rem; line-height: 1.1; }
+.tb-cq-at { font-size: 0.55rem; color: var(--october-sunset); }
+.tb-computer-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem 1.4rem; }
+.tb-answer-panel { grid-column: 1 / -1; }
+.tb-computer-answer { margin: 0; font-family: var(--face-data); font-size: 0.85rem; color: var(--face-data-ink, #fec); white-space: pre-wrap; max-height: 12rem; overflow: auto; }
+.tb-score { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.15rem 0.8rem; font-size: 0.7rem; letter-spacing: 0.04em; }
+.tb-score-points { font-family: var(--face-data); text-align: right; }
+.tb-score-total { font-weight: 700; color: var(--face-data-ink, #fec); border-top: 1px solid rgba(255, 204, 153, 0.3); padding-top: 0.2rem; }
 
 /* the strip for the engine's own questions */
-.tb-ask { grid-column: 2; grid-row: 6; margin-left: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; padding: 0.4rem 0.6rem 0.4rem 1rem; border-top: 3px solid var(--october-sunset); }
+.tb-ask { grid-column: 2; grid-row: 6; display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; padding: 0.4rem 0.6rem 0.4rem 1.6rem; border-top: 3px solid var(--october-sunset); }
 .tb-ask-label { font-size: 0.7rem; letter-spacing: 0.2em; color: var(--mars); }
 .tb-ask-text { font-size: 0.95rem; color: var(--face-data-ink, #fec); }
 .tb-ask-input { background: #0a0804; color: var(--butter); border: 1px solid rgba(255, 204, 153, 0.3); border-radius: 0.5rem; padding: 0.25rem 0.5rem; font-family: var(--face-data); min-width: 12rem; }
 
 /* the ship's log */
-.tb-log-section { grid-column: 2; grid-row: 7; margin-left: 0.5rem; display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: 0.8rem; border-top: 3px solid var(--october-sunset); padding: 0.4rem 0.6rem 0 1rem; min-height: 0; }
+.tb-log-section { grid-column: 2; grid-row: 7; display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: 0.8rem; border-top: 3px solid var(--october-sunset); padding: 0.4rem 0.6rem 0 1.6rem; min-height: 0; }
 .tb-log-head { display: flex; flex-direction: column; gap: 0.2rem; }
 .tb-log { overflow-y: auto; font-size: 0.9rem; letter-spacing: 0.03em; color: var(--butter); min-height: 0; }
 .tb-log-line { white-space: pre-wrap; line-height: 1.3; }
@@ -175,7 +242,9 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-leave-ask { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 0.6rem; align-items: center; background: #000; border: 3px solid var(--mars); border-radius: 1.5rem; padding: 1.2rem 1.8rem; z-index: 61; }
 
 @media (max-width: 1100px) {
-  .tb-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .tb-stations { grid-column: 1 / -1; }
+  .tb-body[data-view='bridge'] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .tb-body[data-view='bridge'] > .tb-stations { grid-column: 1 / -1; }
+  .tb-body[data-view='helm'], .tb-body[data-view='tactical'], .tb-view-computer { grid-template-columns: minmax(0, 1fr); }
+  .tb-view-engineering { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .tb-header { grid-template-columns: 12rem repeat(2, minmax(0, 1fr)); }
 }

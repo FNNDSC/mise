@@ -2,13 +2,15 @@
  * @file The bridge: the screen trek takes over, drawn from the state the
  * engine shows and answering the engine through the harness.
  *
- * One view in this slice, BRIDGE: the header of ship state, the gutter of
- * views, the long-range scan and galaxy chart with engineering beneath, the
- * short-range scan with the ship's commands, HELM over TACTICAL with their
- * own commands and controls, the strip for the questions the engine asks
- * on its own, and the ship's log. Every control answers one of the engine's
- * questions and is lit only while that question is open; a dimmed control
- * is a readout. Nobody types: the log is read-only.
+ * Five views share one header, gutter, strip and log. BRIDGE shows
+ * everything at once: the long-range scan and galaxy chart with engineering
+ * beneath, the short-range scan with the ship's commands, HELM over
+ * TACTICAL. The other views enlarge one station: HELM and TACTICAL draw
+ * their stations large beside the scan, ENGINEERING the damage control
+ * report whole, COMPUTER the chart large with the computer's requests.
+ * Every control answers one of the engine's questions and is lit only while
+ * that question is open; a dimmed control is a readout. Nobody types: the
+ * log is read-only.
  *
  * The bridge draws its own LCARS frame (two elbows) because the takeover
  * removes ARGUS's. Colours come from the theme's palette tokens.
@@ -16,14 +18,19 @@
  * @module
  */
 import type { TrekState, XY } from 'bsd-trek/host';
+import { el, pill_make } from './controls.js';
 import { TrekHarness, type OpenQuestion } from './harness.js';
 import {
-  BRIDGE_COMMANDS, bearing_of, question_control, range_of, readout_build, readout_diff,
-  type BridgeCommand, type BridgeReadout, type ChartCell, type DeviceState, type KlingonSeen, type QuestionControl, type SectorCell, type Station, type TrekQuestion,
+  BRIDGE_COMMANDS, bearing_of, question_control, range_of, readout_build, readout_diff, score_of,
+  type BridgeCommand, type BridgeReadout, type ChartCell, type DeviceState, type QuestionControl, type TrekQuestion,
 } from './model.js';
+import { commandPill_make, commandPills_show, ComputerView, EngineeringView, HelmStation, TacticalStation, type StationHost } from './stations.js';
 
-/** The views the gutter offers; only BRIDGE is drawn in this slice. */
+/** The views the gutter offers. */
 export type BridgeView = 'bridge' | 'helm' | 'tactical' | 'engineering' | 'computer';
+
+/** The views, in the gutter's order. */
+const VIEWS: ReadonlyArray<BridgeView> = ['bridge', 'helm', 'tactical', 'engineering', 'computer'];
 
 /** What the bridge needs from its host. */
 export interface BridgeHooks {
@@ -37,271 +44,13 @@ export interface BridgeHooks {
 type BridgeParts = Partial<TrekBridge['parts']>;
 
 /** The glyphs the scan draws, by kind. */
-const SECTOR_GLYPHS: Readonly<Record<SectorCell['kind'], string>> = { ship: 'E', klingon: 'K', base: '#', star: '*', inhabited: '@', hole: ' ', empty: '·' };
+const SECTOR_GLYPHS: Readonly<Record<string, string>> = { ship: 'E', klingon: 'K', base: '#', star: '*', inhabited: '@', hole: ' ', empty: '·' };
 
 /** How many log lines are kept. */
 const LOG_LIMIT: number = 400;
 
-/**
- * Makes an element with a class and optional text.
- *
- * @param tag - The tag.
- * @param className - Its classes.
- * @param text - Its text, when it has some.
- * @returns The element.
- */
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
-  const node: HTMLElementTagNameMap[K] = document.createElement(tag);
-  node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-/**
- * Makes an SVG element.
- *
- * @param tag - The SVG tag.
- * @param attributes - Its attributes.
- * @returns The element.
- */
-function svg(tag: string, attributes: Record<string, string | number>): SVGElement {
-  const node: SVGElement = document.createElementNS('http://www.w3.org/2000/svg', tag);
-  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
-  return node;
-}
-
-/** A course wheel: a needle the operator drags, marks for what is out there, and a commit pill. */
-class CourseWheel {
-  public readonly root: HTMLElement;
-  private readonly needle: SVGElement;
-  private readonly marks: SVGElement;
-  private readonly readout: HTMLElement;
-  private readonly commit: HTMLButtonElement;
-  private degrees: number = 0;
-  private readonly size: number;
-
-  /**
-   * Builds a wheel.
-   *
-   * @param size - Its width and height in CSS pixels.
-   * @param label - Its accessible name.
-   * @param onCommit - Called with the course when SET COURSE is pressed.
-   */
-  constructor(size: number, label: string, private readonly onCommit: (degrees: number) => void) {
-    this.size = size;
-    const r: number = size / 2;
-    this.root = el('div', 'tb-wheel');
-    const picture: SVGElement = svg('svg', { width: size, height: size, viewBox: `0 0 ${size} ${size}`, role: 'img', 'aria-label': label });
-    picture.classList.add('tb-wheel-face');
-    picture.append(svg('circle', { cx: r, cy: r, r: r - 4, class: 'tb-wheel-rim' }));
-    picture.append(svg('circle', { cx: r, cy: r, r: (r - 4) * 0.66, class: 'tb-wheel-ring' }));
-    picture.append(svg('circle', { cx: r, cy: r, r: (r - 4) * 0.33, class: 'tb-wheel-ring' }));
-    for (let i: number = 0; i < 36; i++) {
-      const a: number = (i * Math.PI) / 18;
-      const major: boolean = i % 3 === 0;
-      const r1: number = r - 4 - (major ? 12 : 7);
-      picture.append(svg('line', { x1: r + r1 * Math.sin(a), y1: r - r1 * Math.cos(a), x2: r + (r - 4) * Math.sin(a), y2: r - (r - 4) * Math.cos(a), class: major ? 'tb-wheel-tick-major' : 'tb-wheel-tick' }));
-    }
-    for (const d of [0, 90, 180, 270]) {
-      const a: number = (d * Math.PI) / 180;
-      const text: SVGElement = svg('text', { x: r + (r - 26) * Math.sin(a), y: r - (r - 26) * Math.cos(a) + 4, 'text-anchor': 'middle', class: 'tb-wheel-label' });
-      text.textContent = String(d);
-      picture.append(text);
-    }
-    this.marks = svg('g', { class: 'tb-wheel-marks' });
-    picture.append(this.marks);
-    this.needle = svg('line', { x1: r, y1: r, x2: r, y2: 14, class: 'tb-wheel-needle' });
-    picture.append(this.needle);
-    picture.append(svg('circle', { cx: r, cy: r, r: 6, class: 'tb-wheel-hub' }));
-    this.root.append(picture);
-    const row: HTMLElement = el('div', 'tb-wheel-row');
-    this.readout = el('span', 'tb-wheel-readout', '0°');
-    this.commit = el('button', 'tb-pill tb-commit', 'SET COURSE');
-    this.commit.type = 'button';
-    this.commit.addEventListener('click', (): void => this.onCommit(Math.round(this.degrees)));
-    row.append(this.readout, this.commit);
-    this.root.append(row);
-    const drag = (event: PointerEvent): void => {
-      const box: DOMRect = picture.getBoundingClientRect();
-      const x: number = event.clientX - box.left - box.width / 2;
-      const y: number = event.clientY - box.top - box.height / 2;
-      this.degrees_set(((Math.atan2(x, -y) * 180) / Math.PI + 360) % 360);
-    };
-    picture.addEventListener('pointerdown', (event: PointerEvent): void => { picture.setPointerCapture(event.pointerId); drag(event); });
-    picture.addEventListener('pointermove', (event: PointerEvent): void => { if (event.buttons !== 0) drag(event); });
-  }
-
-  /**
-   * Points the needle.
-   *
-   * @param degrees - The course.
-   */
-  public degrees_set(degrees: number): void {
-    this.degrees = degrees;
-    const r: number = this.size / 2;
-    const a: number = (degrees * Math.PI) / 180;
-    this.needle.setAttribute('x2', String(r + (r - 14) * Math.sin(a)));
-    this.needle.setAttribute('y2', String(r - (r - 14) * Math.cos(a)));
-    this.readout.textContent = `${Math.round(degrees)}°`;
-  }
-
-  /**
-   * Marks bearings on the rim: Klingons, a starbase.
-   *
-   * @param marks - Each bearing with its class and label.
-   */
-  public marks_set(marks: ReadonlyArray<{ bearing: number; kind: 'klingon' | 'base'; label: string }>): void {
-    this.marks.replaceChildren();
-    const r: number = this.size / 2;
-    for (const mark of marks) {
-      const a: number = (mark.bearing * Math.PI) / 180;
-      const rr: number = (r - 4) * 0.8;
-      const dot: SVGElement = svg('circle', { cx: r + rr * Math.sin(a), cy: r - rr * Math.cos(a), r: 6, class: `tb-wheel-mark tb-wheel-mark-${mark.kind}` });
-      const title: SVGElement = svg('title', {});
-      title.textContent = mark.label;
-      dot.append(title);
-      this.marks.append(dot);
-    }
-  }
-
-  /**
-   * Lights or dims the wheel; only a lit wheel commits.
-   *
-   * @param lit - Whether its question is open.
-   * @param commit - The commit pill's word.
-   */
-  public lit_set(lit: boolean, commit: string = 'SET COURSE'): void {
-    this.root.classList.toggle('tb-lit', lit);
-    this.commit.disabled = !lit;
-    this.commit.textContent = commit;
-  }
-}
-
-/** A slider for one continuous value, with its readout and commit pill. */
-class ValueSlider {
-  public readonly root: HTMLElement;
-  private readonly input: HTMLInputElement;
-  private readonly shown: HTMLElement;
-  private readonly commit: HTMLButtonElement;
-  private readonly note: HTMLElement;
-
-  /**
-   * Builds a slider.
-   *
-   * @param id - The input's id.
-   * @param label - The pill label beside it.
-   * @param digits - How many decimals the readout shows.
-   * @param onCommit - Called with the value when the commit pill is pressed.
-   */
-  constructor(id: string, label: string, private readonly digits: number, private readonly onCommit: (value: number) => void) {
-    this.root = el('div', 'tb-slider');
-    const name: HTMLLabelElement = el('label', 'tb-slider-label', label);
-    name.htmlFor = id;
-    this.input = document.createElement('input');
-    this.input.type = 'range';
-    this.input.id = id;
-    this.input.className = 'tb-slider-input';
-    this.input.addEventListener('input', (): void => this.shown_refresh());
-    const column: HTMLElement = el('div', 'tb-slider-column');
-    this.note = el('span', 'tb-slider-note');
-    column.append(this.input, this.note);
-    this.shown = el('span', 'tb-slider-readout', '—');
-    this.commit = el('button', 'tb-pill tb-commit', 'SET');
-    this.commit.type = 'button';
-    this.commit.addEventListener('click', (): void => this.onCommit(this.value_get()));
-    this.root.append(name, column, this.shown, this.commit);
-  }
-
-  /**
-   * Sets the range and the value.
-   *
-   * @param control - The question's control.
-   * @param value - The value to show.
-   * @param note - A word under the track.
-   */
-  public range_set(control: QuestionControl, value: number, note: string): void {
-    this.input.min = String(control.min ?? 0);
-    this.input.max = String(control.max ?? 1);
-    this.input.step = String(control.step ?? 1);
-    this.input.value = String(Math.min(control.max ?? value, Math.max(control.min ?? value, value)));
-    this.note.textContent = note;
-    this.shown_refresh();
-  }
-
-  /**
-   * The value as set.
-   *
-   * @returns The number.
-   */
-  public value_get(): number {
-    return Number(this.input.value);
-  }
-
-  /**
-   * Sets the value.
-   *
-   * @param value - The value.
-   */
-  public value_set(value: number): void {
-    this.input.value = String(value);
-    this.shown_refresh();
-  }
-
-  /**
-   * Lights or dims the slider; only a lit slider commits.
-   *
-   * @param lit - Whether its question is open.
-   * @param commit - The commit pill's word.
-   */
-  public lit_set(lit: boolean, commit: string = 'SET'): void {
-    this.root.classList.toggle('tb-lit', lit);
-    this.input.disabled = !lit;
-    this.commit.disabled = !lit;
-    this.commit.textContent = commit;
-  }
-
-  private shown_refresh(): void {
-    this.shown.textContent = this.value_get().toFixed(this.digits);
-  }
-}
-
-/** A row of pills, one answer each. */
-class PillRow {
-  public readonly root: HTMLElement;
-  private readonly buttons: HTMLButtonElement[] = [];
-
-  /**
-   * Builds the row.
-   *
-   * @param label - The pill label beside it, empty for none.
-   * @param choices - What each pill says and sends.
-   * @param onPress - Called with the line when a pill is pressed.
-   */
-  constructor(label: string, choices: ReadonlyArray<{ label: string; line: string }>, onPress: (line: string) => void) {
-    this.root = el('div', 'tb-pillrow');
-    if (label !== '') this.root.append(el('span', 'tb-slider-label', label));
-    const pills: HTMLElement = el('div', 'tb-pills');
-    for (const choice of choices) {
-      const button: HTMLButtonElement = el('button', 'tb-pill tb-choice', choice.label);
-      button.type = 'button';
-      button.dataset['line'] = choice.line;
-      button.addEventListener('click', (): void => onPress(choice.line));
-      this.buttons.push(button);
-      pills.append(button);
-    }
-    this.root.append(pills);
-  }
-
-  /**
-   * Lights or dims the row.
-   *
-   * @param lit - Whether its question is open.
-   */
-  public lit_set(lit: boolean): void {
-    this.root.classList.toggle('tb-lit', lit);
-    for (const button of this.buttons) button.disabled = !lit;
-  }
-}
+/** The questions that stand on the strip whatever their control: the setup's, and the engine's own. */
+const STRIP_QUESTIONS: ReadonlyArray<TrekQuestion> = ['length', 'skill', 'request', 'quadrant', 'quadrant-y', 'sector', 'sector-y', 'range', 'computer-distance', 'computer-warp', 'status-report', 'another', 'yes-no', 'unknown'];
 
 /**
  * The bridge over a game.
@@ -314,15 +63,17 @@ export class TrekBridge {
   private previous: BridgeReadout | null = null;
   private view: BridgeView = 'bridge';
   private nextDistance: number | null = null;
+  private readonly plan: Map<TrekQuestion, string> = new Map<TrekQuestion, string>();
+  private answering: boolean = false;
+  private computerRunning: boolean = false;
   private readonly parts: {
-    seed: HTMLElement; views: Map<BridgeView, HTMLButtonElement>;
+    seed: HTMLElement; views: Map<BridgeView, HTMLButtonElement>; body: HTMLElement;
     condition: HTMLElement; conditionWhy: HTMLElement; ship: HTMLElement; mission: HTMLElement; position: HTMLElement; since: HTMLElement;
     lrs: HTMLElement; chart: HTMLElement; engineering: HTMLElement; srs: HTMLElement; srsTitle: HTMLElement;
-    commandPills: Map<string, HTMLButtonElement>; stationHeads: Map<Station, HTMLElement>;
-    helmWheel: CourseWheel; distance: ValueSlider; warp: ValueSlider; rest: ValueSlider;
-    tacticalWheel: CourseWheel; manual: PillRow; units: ValueSlider; spread: ValueSlider; burstAngle: PillRow; upDown: PillRow;
+    shipPills: Map<string, HTMLButtonElement>;
+    helm: HelmStation; tactical: TacticalStation; helmView: HelmStation; tacticalView: TacticalStation; engineeringView: EngineeringView; computerView: ComputerView;
     ask: HTMLElement; askText: HTMLElement; askPills: HTMLElement; askInput: HTMLInputElement; askSend: HTMLButtonElement;
-    log: HTMLElement; leaveAsk: HTMLElement; targets: HTMLElement;
+    log: HTMLElement; leaveAsk: HTMLElement;
   };
 
   /**
@@ -344,7 +95,7 @@ export class TrekBridge {
     this.root.setAttribute('aria-label', 'trek: the bridge');
     const parts: BridgeParts = {};
     const gutter: HTMLElement = this.gutter_build(parts, seed);
-    const [barTop, barBody] = this.frame_build(parts);
+    const [barTop, barBody] = this.frame_build();
     const header: HTMLElement = this.header_build(parts);
     const body: HTMLElement = this.body_build(parts);
     this.strip_build(parts);
@@ -356,13 +107,28 @@ export class TrekBridge {
   }
 
   /**
+   * The bridge as its stations see it.
+   *
+   * @returns The host verbs.
+   */
+  private stationHost_get(): StationHost {
+    return {
+      answer_send: (line: string): void => this.answer_send(line),
+      command_send: (command: BridgeCommand): boolean => this.command_send(command),
+      plan_set: (answers: ReadonlyArray<[TrekQuestion, string]>): void => { for (const [question, line] of answers) this.plan.set(question, line); },
+      course_set: (degrees: number, distance: number | null): void => this.course_set(degrees, distance),
+      sound: (name: string): void => this.hooks.sound(name),
+    };
+  }
+
+  /**
    * Builds the gutter: the block, the seed, the views, LEAVE BRIDGE.
    *
    * @param parts - Where the live elements are registered.
+   * @param seed - The game's seed, or null.
    * @returns The gutter.
    */
   private gutter_build(parts: BridgeParts, seed: number | null): HTMLElement {
-    // the gutter: the block, the views, LEAVE BRIDGE
     const gutter: HTMLElement = el('aside', 'tb-gutter');
     const block: HTMLElement = el('div', 'tb-block');
     block.append(el('span', 'tb-block-name', 'TREK'), el('span', 'tb-block-sub', 'ARGUS · BSD TREK'));
@@ -370,21 +136,19 @@ export class TrekBridge {
     const views: HTMLElement = el('nav', 'tb-views');
     views.setAttribute('aria-label', 'views');
     parts.views = new Map<BridgeView, HTMLButtonElement>();
-    for (const view of ['bridge', 'helm', 'tactical', 'engineering', 'computer'] as const) {
-      const button: HTMLButtonElement = el('button', `tb-view tb-view-${view}`, view.toUpperCase());
-      button.type = 'button';
+    for (const view of VIEWS) {
+      const button: HTMLButtonElement = pill_make(`tb-view tb-view-${view}`, view.toUpperCase(), (): void => this.view_set(view));
+      button.classList.remove('tb-pill');
       button.dataset['view'] = view;
-      button.addEventListener('click', (): void => this.view_set(view));
       parts.views.set(view, button);
       views.append(button);
     }
-    const leave: HTMLButtonElement = el('button', 'tb-leave', 'LEAVE BRIDGE');
-    leave.type = 'button';
-    leave.addEventListener('click', (): void => this.leave_ask());
+    const leave: HTMLButtonElement = pill_make('tb-leave', 'LEAVE BRIDGE', (): void => this.leave_ask());
+    leave.classList.remove('tb-pill');
     const gutterTop: HTMLElement = el('div', 'tb-gutter-top');
     gutterTop.append(block, parts.seed, el('div', 'tb-gutter-fill'));
     const gutterBody: HTMLElement = el('div', 'tb-gutter-body');
-    gutterBody.append(views, el('div', 'tb-gutter-fill'), leave);
+    gutterBody.append(el('div', 'tb-gutter-cap'), views, el('div', 'tb-gutter-fill'), leave);
     gutter.append(gutterTop, gutterBody);
     return gutter;
   }
@@ -392,11 +156,9 @@ export class TrekBridge {
   /**
    * Builds the frame's two bars, each the arm of an elbow.
    *
-   * @param parts - Where the live elements are registered.
    * @returns The header's bar and the body's.
    */
-  private frame_build(parts: BridgeParts): [HTMLElement, HTMLElement] {
-    // the frame: two elbows and their bars
+  private frame_build(): [HTMLElement, HTMLElement] {
     const barTop: HTMLElement = el('div', 'tb-bar tb-bar-top');
     for (const span of ['tb-bar-a', 'tb-bar-b', 'tb-bar-c', 'tb-bar-d']) barTop.append(el('span', span));
     const barBody: HTMLElement = el('div', 'tb-bar tb-bar-body');
@@ -411,7 +173,6 @@ export class TrekBridge {
    * @returns The header.
    */
   private header_build(parts: BridgeParts): HTMLElement {
-    // the header
     const header: HTMLElement = el('header', 'tb-header');
     const condition: HTMLElement = el('section', 'tb-head-condition');
     const conditionCapsule: HTMLElement = el('div', 'tb-condition');
@@ -437,14 +198,16 @@ export class TrekBridge {
   }
 
   /**
-   * Builds the body: scans and engineering, the short-range scan and the ship's commands, HELM over TACTICAL.
+   * Builds the body: the BRIDGE view's scans, short-range scan and stations, and the four station views beside them; the view chooses which show.
    *
    * @param parts - Where the live elements are registered.
    * @returns The body.
    */
   private body_build(parts: BridgeParts): HTMLElement {
-    // the body: scans and engineering · short range and the ship · helm over tactical
+    const host: StationHost = this.stationHost_get();
     const body: HTMLElement = el('main', 'tb-body');
+    body.dataset['view'] = 'bridge';
+    parts.body = body;
     const scans: HTMLElement = el('section', 'tb-scans');
     scans.append(el('span', 'tb-title', 'LONG RANGE'));
     parts.lrs = el('div', 'tb-lrs');
@@ -463,55 +226,28 @@ export class TrekBridge {
     parts.srs = el('div', 'tb-srs');
     parts.srs.setAttribute('role', 'grid');
     srsSection.append(parts.srs, el('span', 'tb-note', 'PRESS A SECTOR: ITS COURSE AND DISTANCE FILL IN'));
-    parts.commandPills = new Map<string, HTMLButtonElement>();
+    parts.shipPills = new Map<string, HTMLButtonElement>();
     const shipPills: HTMLElement = el('div', 'tb-pills tb-ship-pills');
     shipPills.append(el('span', 'tb-slider-label', 'SHIP'));
-    for (const command of BRIDGE_COMMANDS.filter((c: BridgeCommand): boolean => c.station === 'ship')) shipPills.append(this.commandPill_make(command, parts.commandPills));
+    for (const command of BRIDGE_COMMANDS.filter((c: BridgeCommand): boolean => c.station === 'ship')) {
+      const pill: HTMLButtonElement = commandPill_make(command, host);
+      parts.shipPills.set(command.id, pill);
+      shipPills.append(pill);
+    }
     srsSection.append(shipPills);
 
     const stations: HTMLElement = el('section', 'tb-stations');
-    parts.stationHeads = new Map<Station, HTMLElement>();
-    // HELM
-    const helm: HTMLElement = el('div', 'tb-station tb-station-helm');
-    const helmHead: HTMLElement = el('div', 'tb-station-head');
-    helmHead.append(el('span', 'tb-station-name', 'HELM'));
-    const helmStep: HTMLElement = el('span', 'tb-station-step', '');
-    helmHead.append(helmStep);
-    parts.stationHeads.set('helm', helmStep);
-    const helmPills: HTMLElement = el('div', 'tb-pills');
-    for (const command of BRIDGE_COMMANDS.filter((c: BridgeCommand): boolean => c.station === 'helm')) helmPills.append(this.commandPill_make(command, parts.commandPills));
-    const helmControls: HTMLElement = el('div', 'tb-controls');
-    parts.helmWheel = new CourseWheel(150, 'course wheel', (degrees: number): void => this.answer_send(String(degrees)));
-    const helmSliders: HTMLElement = el('div', 'tb-sliders');
-    parts.distance = new ValueSlider('tb-distance', 'DISTANCE', 1, (value: number): void => this.answer_send(value.toFixed(1)));
-    parts.warp = new ValueSlider('tb-warp', 'WARP FACTOR', 1, (value: number): void => this.answer_send(value.toFixed(1)));
-    parts.rest = new ValueSlider('tb-rest', 'REST', 1, (value: number): void => this.answer_send(value.toFixed(1)));
-    helmSliders.append(parts.distance.root, parts.warp.root, parts.rest.root);
-    helmControls.append(parts.helmWheel.root, helmSliders);
-    helm.append(helmHead, helmPills, helmControls);
-    // TACTICAL
-    const tactical: HTMLElement = el('div', 'tb-station tb-station-tactical');
-    const tacticalHead: HTMLElement = el('div', 'tb-station-head');
-    tacticalHead.append(el('span', 'tb-station-name', 'TACTICAL'));
-    const tacticalStep: HTMLElement = el('span', 'tb-station-step', '');
-    tacticalHead.append(tacticalStep);
-    parts.stationHeads.set('tactical', tacticalStep);
-    const tacticalPills: HTMLElement = el('div', 'tb-pills');
-    for (const command of BRIDGE_COMMANDS.filter((c: BridgeCommand): boolean => c.station === 'tactical')) tacticalPills.append(this.commandPill_make(command, parts.commandPills));
-    const tacticalControls: HTMLElement = el('div', 'tb-controls');
-    parts.tacticalWheel = new CourseWheel(150, 'firing course wheel', (degrees: number): void => this.answer_send(String(degrees)));
-    const tacticalRows: HTMLElement = el('div', 'tb-sliders');
-    parts.manual = new PillRow('PHASERS', question_control('manual-automatic', null).choices ?? [], (line: string): void => this.answer_send(line));
-    parts.units = new ValueSlider('tb-units', 'UNITS', 0, (value: number): void => this.answer_send(String(Math.round(value))));
-    parts.spread = new ValueSlider('tb-spread', 'SPREAD', 2, (value: number): void => this.answer_send(value.toFixed(2)));
-    parts.burstAngle = new PillRow('BURST ANGLE', question_control('burst-angle', null).choices ?? [], (line: string): void => this.answer_send(line));
-    parts.upDown = new PillRow('SHIELDS', question_control('up-down', null).choices ?? [], (line: string): void => this.answer_send(line));
-    parts.targets = el('div', 'tb-targets');
-    tacticalRows.append(parts.manual.root, parts.units.root, parts.spread.root, parts.burstAngle.root, parts.upDown.root, parts.targets);
-    tacticalControls.append(parts.tacticalWheel.root, tacticalRows);
-    tactical.append(tacticalHead, tacticalPills, tacticalControls);
-    stations.append(helm, tactical);
-    body.append(scans, srsSection, stations);
+    parts.helm = new HelmStation(host, 150, 'tb');
+    parts.tactical = new TacticalStation(host, 150, 'tb');
+    stations.append(parts.helm.root, parts.tactical.root);
+
+    parts.helmView = new HelmStation(host, 260, 'tbh');
+    parts.helmView.root.classList.add('tb-view-body', 'tb-view-helm');
+    parts.tacticalView = new TacticalStation(host, 260, 'tbt');
+    parts.tacticalView.root.classList.add('tb-view-body', 'tb-view-tactical');
+    parts.engineeringView = new EngineeringView(host);
+    parts.computerView = new ComputerView(host);
+    body.append(scans, srsSection, stations, parts.helmView.root, parts.tacticalView.root, parts.engineeringView.root, parts.computerView.root);
     return body;
   }
 
@@ -519,10 +255,8 @@ export class TrekBridge {
    * Builds the strip for the questions the engine asks on its own, and the ones the bridge has no control for.
    *
    * @param parts - Where the live elements are registered.
-   * @returns Nothing; the strip is registered.
    */
   private strip_build(parts: BridgeParts): void {
-    // the strip for the questions the engine asks on its own, and the ones the bridge has no control for
     parts.ask = el('div', 'tb-ask');
     parts.ask.hidden = true;
     parts.ask.setAttribute('role', 'dialog');
@@ -532,13 +266,10 @@ export class TrekBridge {
     parts.askInput.type = 'text';
     parts.askInput.className = 'tb-ask-input';
     parts.askInput.setAttribute('aria-label', 'the answer');
-    parts.askSend = el('button', 'tb-pill tb-commit', 'ANSWER');
-    parts.askSend.type = 'button';
     const askInput: HTMLInputElement = parts.askInput;
-    parts.askSend.addEventListener('click', (): void => this.answer_send(askInput.value));
+    parts.askSend = pill_make('tb-commit', 'ANSWER', (): void => this.answer_send(askInput.value));
     askInput.addEventListener('keydown', (event: KeyboardEvent): void => { if (event.key === 'Enter') this.answer_send(askInput.value); });
     parts.ask.append(el('span', 'tb-ask-label', 'THE GAME ASKS'), parts.askText, parts.askPills, parts.askInput, parts.askSend);
-    return undefined;
   }
 
   /**
@@ -548,7 +279,6 @@ export class TrekBridge {
    * @returns The log section.
    */
   private log_build(parts: BridgeParts): HTMLElement {
-    // the ship's log
     const footer: HTMLElement = el('footer', 'tb-log-section');
     const logHead: HTMLElement = el('div', 'tb-log-head');
     logHead.append(el('span', 'tb-title', "SHIP'S LOG"), el('span', 'tb-note', 'READ ONLY'));
@@ -562,22 +292,15 @@ export class TrekBridge {
    * Builds the leave question, asked before the game ends.
    *
    * @param parts - Where the live elements are registered.
-   * @returns Nothing; the question is registered.
    */
   private leaveAsk_build(parts: BridgeParts): void {
-    // leaving: asked first
     parts.leaveAsk = el('div', 'tb-leave-ask');
     parts.leaveAsk.hidden = true;
     parts.leaveAsk.setAttribute('role', 'dialog');
-    const leaveYes: HTMLButtonElement = el('button', 'tb-pill tb-grave', 'LEAVE · THE GAME ENDS');
-    leaveYes.type = 'button';
-    leaveYes.addEventListener('click', (): void => { this.hooks.sound('audio3'); this.hooks.leave(); });
-    const leaveNo: HTMLButtonElement = el('button', 'tb-pill', 'STAY');
-    leaveNo.type = 'button';
     const leaveAsk: HTMLElement = parts.leaveAsk;
-    leaveNo.addEventListener('click', (): void => { leaveAsk.hidden = true; });
+    const leaveYes: HTMLButtonElement = pill_make('tb-grave', 'LEAVE · THE GAME ENDS', (): void => { this.hooks.sound('audio3'); this.hooks.leave(); });
+    const leaveNo: HTMLButtonElement = pill_make('', 'STAY', (): void => { leaveAsk.hidden = true; });
     parts.leaveAsk.append(el('span', 'tb-ask-label', 'LEAVE THE BRIDGE?'), el('span', 'tb-ask-text', 'The game ends where it stands; dump first to keep it.'), leaveYes, leaveNo);
-    return undefined;
   }
 
   /**
@@ -622,13 +345,14 @@ export class TrekBridge {
   }
 
   /**
-   * Chooses a view. Only BRIDGE is drawn in this slice; the others mark the gutter and leave the bridge on stage.
+   * Chooses a view: the body shows that view's parts; the header, strip and log stay.
    *
    * @param view - The view.
    */
   public view_set(view: BridgeView): void {
     this.view = view;
     this.root.dataset['view'] = view;
+    this.parts.body.dataset['view'] = view;
     for (const [name, button] of this.parts.views) button.classList.toggle('tb-view-on', name === view);
     this.hooks.sound('audio1');
   }
@@ -643,23 +367,19 @@ export class TrekBridge {
   }
 
   /**
-   * Makes a command pill: pressed at the Command: prompt it sends the command's line.
+   * Sends a command at the Command: prompt.
    *
    * @param command - The command.
-   * @param pills - Where the pill is registered, by id.
-   * @returns The pill.
+   * @returns True when the prompt was open.
    */
-  private commandPill_make(command: BridgeCommand, pills: Map<string, HTMLButtonElement>): HTMLButtonElement {
-    const button: HTMLButtonElement = el('button', `tb-pill tb-command${command.grave === true ? ' tb-grave' : ''}`, command.label);
-    button.type = 'button';
-    button.dataset['command'] = command.id;
-    button.addEventListener('click', (): void => {
-      if (!this.harness.command_send(command)) { this.hooks.sound('audio4'); return; }
-      this.hooks.sound('audio1');
-      this.nextDistance = null;
-    });
-    pills.set(command.id, button);
-    return button;
+  private command_send(command: BridgeCommand): boolean {
+    if (!this.harness.command_send(command)) { this.hooks.sound('audio4'); return false; }
+    this.hooks.sound('audio1');
+    this.nextDistance = null;
+    this.computerRunning = command.id === 'computer';
+    if (this.computerRunning) this.parts.computerView.answer_take(null);
+    this.log_write(`${command.line}\n`, true);
+    return true;
   }
 
   /**
@@ -670,11 +390,28 @@ export class TrekBridge {
   private answer_send(line: string): void {
     if (!this.harness.answer(line)) { this.hooks.sound('audio4'); return; }
     this.hooks.sound('audio2');
-    this.log_write(`${line}\n`);
+    this.log_write(`${line}\n`, true);
   }
 
   /**
-   * Draws the state the engine showed: the header, the scans, the chart, engineering, and the controls' ranges.
+   * Points every wheel at a course and sets every distance slider.
+   *
+   * @param degrees - The course.
+   * @param distance - The distance in quadrants, or null to leave the sliders.
+   */
+  private course_set(degrees: number, distance: number | null): void {
+    const { parts } = this;
+    for (const station of [parts.helm, parts.helmView, parts.tactical, parts.tacticalView]) station.wheel.degrees_set(degrees);
+    if (distance !== null) {
+      parts.helm.distance.value_set(distance);
+      parts.helmView.distance.value_set(distance);
+      this.nextDistance = distance;
+    }
+    this.hooks.sound('audio1');
+  }
+
+  /**
+   * Draws the state the engine showed: the header, the scans, the chart, engineering, and every station.
    *
    * @param state - The state.
    */
@@ -686,6 +423,23 @@ export class TrekBridge {
     parts.condition.textContent = readout.condition.name;
     parts.condition.parentElement?.setAttribute('data-condition', readout.condition.name.toLowerCase());
     parts.conditionWhy.textContent = readout.condition.why.toUpperCase();
+    this.header_draw(readout);
+    this.srs_draw(readout);
+    this.lrs_draw(readout);
+    this.chart_draw(readout);
+    this.engineering_draw(readout.devices);
+    for (const station of [parts.helm, parts.helmView, parts.tactical, parts.tacticalView, parts.computerView]) station.state_show(readout);
+    parts.engineeringView.state_show(readout, this.previous);
+    this.question_show(this.harness.question_get());
+  }
+
+  /**
+   * Draws the header's four sections from the readout.
+   *
+   * @param readout - The readout.
+   */
+  private header_draw(readout: BridgeReadout): void {
+    const { parts } = this;
     const pairs = (grid: HTMLElement, rows: ReadonlyArray<[string, string, string?]>): void => {
       grid.replaceChildren();
       for (const [label, value, className] of rows) {
@@ -710,25 +464,10 @@ export class TrekBridge {
       ['SECTOR', `${readout.position.sector.x},${readout.position.sector.y}`],
       ['CREW', `${readout.ship.crew}`],
       ['LIFE SUPPORT', `${readout.ship.reserves.toFixed(1)} / ${readout.ship.reservesMax.toFixed(1)}`],
+      ['SCORE', `${score_of(readout).total}`],
     ]);
     const since = this.previous === null ? [] : readout_diff(this.previous, readout);
     pairs(parts.since, since.length === 0 ? [['—', 'NOTHING MOVED']] : since.map((line): [string, string, string] => [line.label, line.change, line.bad ? 'tb-bad' : 'tb-good']));
-    this.srs_draw(readout);
-    this.lrs_draw(readout);
-    this.chart_draw(readout);
-    this.engineering_draw(readout.devices);
-    this.targets_draw(readout.klingons);
-    const bearings = readout.klingons.map((k: KlingonSeen) => ({ bearing: k.bearing, kind: 'klingon' as const, label: `Klingon at ${k.x},${k.y} · ${k.range.toFixed(1)} · ${Math.round(k.bearing)}°` }));
-    parts.helmWheel.marks_set(bearings);
-    parts.tacticalWheel.marks_set(bearings);
-    if (readout.klingons[0] !== undefined) parts.tacticalWheel.degrees_set(readout.klingons[0].bearing);
-    // dimmed sliders are readouts: the warp factor sits at the ship's speed
-    parts.warp.range_set(question_control('warp-factor', readout), readout.ship.warp, 'THE SHIP NOW · ABOVE 6 THE ENGINES MAY BURN');
-    parts.distance.range_set(question_control('distance', readout), parts.distance.value_get(), 'SECTORS · 10 IS ONE QUADRANT');
-    parts.rest.range_set(question_control('how-long', readout), 0, `STARDATES · ${readout.mission.timeLeft.toFixed(1)} LEFT`);
-    parts.units.range_set(question_control('units', readout), Math.round(readout.ship.energy / 10 / 10) * 10, `UP TO THE ${readout.ship.energy} FREE`);
-    parts.spread.range_set(question_control('spread', readout), 0.5, 'MANUAL PHASERS ONLY');
-    this.question_show(this.harness.question_get());
   }
 
   /**
@@ -746,32 +485,28 @@ export class TrekBridge {
     for (const row of readout.sectors) {
       parts.srs.append(el('span', 'tb-srs-axis', String(row[0]?.x ?? '')));
       for (const cell of row) {
-        const button: HTMLButtonElement = el('button', `tb-sector tb-sector-${cell.kind}`, SECTOR_GLYPHS[cell.kind]);
-        button.type = 'button';
-        button.dataset['x'] = String(cell.x);
-        button.dataset['y'] = String(cell.y);
         const bearing: number = bearing_of(here, cell);
         const range: number = range_of(here, cell);
-        button.title = cell.kind === 'ship' ? 'the ship' : `${cell.x},${cell.y} · course ${Math.round(bearing)}° · ${range.toFixed(1)}`;
-        button.addEventListener('click', (): void => this.sector_press(bearing, range));
+        const button: HTMLButtonElement = pill_make(`tb-sector tb-sector-${cell.kind}`, SECTOR_GLYPHS[cell.kind] ?? '·', (): void => this.sector_press(cell, bearing, range));
+        button.classList.remove('tb-pill');
+        button.dataset['x'] = String(cell.x);
+        button.dataset['y'] = String(cell.y);
+        button.title = cell.kind === 'ship' ? 'the ship' : `${cell.x},${cell.y} · course ${Math.round(bearing)}° · ${(range / 10).toFixed(1)}`;
         parts.srs.append(button);
       }
     }
   }
 
   /**
-   * A sector pressed: the wheels point at it, the distance slider is set to it, and the open course question is kept for SET COURSE.
+   * A sector pressed: the wheels point at it, the distance sliders are set to it (in quadrants: a sector is a tenth), and the computer's course panel aims at it.
    *
+   * @param cell - The sector.
    * @param bearing - The course to the sector.
-   * @param range - The distance to it.
+   * @param range - The distance to it, in sectors.
    */
-  private sector_press(bearing: number, range: number): void {
-    const { parts } = this;
-    parts.helmWheel.degrees_set(bearing);
-    parts.tacticalWheel.degrees_set(bearing);
-    parts.distance.value_set(Math.round(range * 10) / 10);
-    this.nextDistance = Math.round(range * 10) / 10;
-    this.hooks.sound('audio1');
+  private sector_press(cell: XY, bearing: number, range: number): void {
+    this.course_set(bearing, Math.round(range) / 10);
+    this.parts.computerView.sector_set(cell);
   }
 
   /**
@@ -811,14 +546,14 @@ export class TrekBridge {
   }
 
   /**
-   * Draws engineering: every device, the damaged ones with their repair stardate.
+   * Draws engineering on the BRIDGE view: every device, the damaged ones with their repair stardate.
    *
    * @param devices - The devices.
    */
   private engineering_draw(devices: ReadonlyArray<DeviceState>): void {
     const { parts } = this;
     parts.engineering.replaceChildren();
-    for (const device of devices.slice(0, 14)) {
+    for (const device of devices) {
       const row: HTMLElement = el('div', `tb-device${device.repairAt === null ? '' : ' tb-bad'}`);
       row.append(el('span', 'tb-device-name', device.name.toUpperCase()), el('span', 'tb-device-state', device.repairAt === null ? 'OK' : `DOWN · ${device.repairAt.toFixed(2)}`));
       parts.engineering.append(row);
@@ -826,82 +561,62 @@ export class TrekBridge {
   }
 
   /**
-   * Draws the targets beside the firing wheel: each Klingon's bearing and range.
-   *
-   * @param klingons - The Klingons in the quadrant, nearest first.
-   */
-  private targets_draw(klingons: ReadonlyArray<KlingonSeen>): void {
-    const { parts } = this;
-    parts.targets.replaceChildren();
-    if (klingons.length === 0) { parts.targets.append(el('span', 'tb-note', 'NO KLINGONS IN THIS QUADRANT')); return; }
-    for (const k of klingons) {
-      const row: HTMLButtonElement = el('button', 'tb-target', `K ${k.x},${k.y} · ${Math.round(k.bearing)}° · ${k.range.toFixed(1)}`);
-      row.type = 'button';
-      row.addEventListener('click', (): void => this.sector_press(k.bearing, k.range));
-      parts.targets.append(row);
-    }
-  }
-
-  /**
-   * Lights the control that answers the open question, and dims the rest.
+   * Lights the control that answers the open question, and dims the rest; a planned answer is given at once.
    *
    * @param open - The open question, or null while the engine runs.
    */
   private question_show(open: OpenQuestion | null): void {
     const { parts } = this;
-    const question: TrekQuestion | null = open?.question ?? null;
-    const atCommand: boolean = question === 'command';
-    for (const [id, pill] of parts.commandPills) {
-      pill.disabled = !atCommand;
-      pill.classList.toggle('tb-pill-on', open?.command?.id === id);
+    if (open?.question === 'command') { this.plan.clear(); this.computerRunning = false; }
+    const planned: string | undefined = open === null ? undefined : this.plan.get(open.question);
+    if (planned !== undefined && open !== null && !this.answering) {
+      this.plan.delete(open.question);
+      this.answering = true;
+      try { this.answer_send(planned); } finally { this.answering = false; }
+      return;
     }
-    const control: QuestionControl | null = question === null ? null : question_control(question, this.readout);
-    const lit = (names: ReadonlyArray<TrekQuestion>): boolean => question !== null && names.includes(question);
-    parts.helmWheel.lit_set(lit(['course', 'direction']), control?.commit ?? 'SET COURSE');
-    parts.tacticalWheel.lit_set(lit(['torpedo-course', 'bank-course']), control?.commit ?? 'SET COURSE');
-    parts.distance.lit_set(lit(['distance']), 'ENGAGE');
-    if (question === 'distance' && this.nextDistance !== null) parts.distance.value_set(this.nextDistance);
-    parts.warp.lit_set(lit(['warp-factor']), 'SET WARP');
-    parts.rest.lit_set(lit(['how-long']), 'REST');
-    parts.manual.lit_set(lit(['manual-automatic']));
-    parts.units.lit_set(lit(['units', 'bank-units']), question === 'units' ? 'FIRE' : 'SET');
-    parts.spread.lit_set(lit(['spread']), 'SET');
-    parts.burstAngle.lit_set(lit(['burst-angle']));
-    parts.upDown.lit_set(lit(['up-down']));
-    for (const [station, head] of parts.stationHeads) {
-      const command: BridgeCommand | null = open?.command ?? null;
-      head.textContent = command !== null && command.station === station && question !== null && question !== 'command' ? `${command.label} · ${question.replace(/-/g, ' ').toUpperCase()}` : atCommand ? 'READY' : '';
+    commandPills_show(parts.shipPills, open);
+    for (const station of [parts.helm, parts.helmView, parts.tactical, parts.tacticalView, parts.engineeringView, parts.computerView]) station.question_show(open);
+    if (open?.question === 'distance' && this.nextDistance !== null) {
+      parts.helm.distance.value_set(this.nextDistance);
+      parts.helmView.distance.value_set(this.nextDistance);
     }
-    // the strip: yes/no, pills with no station, and anything the bridge has no control for
-    const stripKinds: ReadonlyArray<QuestionControl['kind']> = ['yesno', 'text'];
-    const stripQuestions: ReadonlyArray<TrekQuestion> = ['length', 'skill', 'request', 'quadrant', 'quadrant-y', 'sector', 'sector-y', 'range', 'computer-distance', 'computer-warp', 'burst', 'status-report', 'another', 'yes-no', 'unknown'];
-    const onStrip: boolean = control !== null && question !== null && (stripKinds.includes(control.kind) || stripQuestions.includes(question)) && question !== 'command';
-    parts.ask.hidden = !onStrip;
-    if (onStrip && control !== null && question !== null) {
-      parts.askText.textContent = open?.prompt.replace(/[:\s]+$/, '').trim() ?? '';
-      parts.askPills.replaceChildren();
-      const choices = control.choices ?? [];
-      for (const choice of choices) {
-        const button: HTMLButtonElement = el('button', 'tb-pill tb-choice', choice.label);
-        button.type = 'button';
-        button.addEventListener('click', (): void => this.answer_send(choice.line));
-        parts.askPills.append(button);
-      }
-      const typed: boolean = control.kind === 'text' || control.kind === 'slider';
-      parts.askInput.hidden = !typed;
-      parts.askSend.hidden = !typed;
-      if (typed) { parts.askInput.value = ''; parts.askInput.focus(); }
-    }
+    this.strip_show(open);
   }
 
   /**
-   * Writes the engine's text to the ship's log, a line at a time.
+   * Shows the strip for a yes/no, a typed answer, and the questions no station draws.
+   *
+   * @param open - The open question.
+   */
+  private strip_show(open: OpenQuestion | null): void {
+    const { parts } = this;
+    const question: TrekQuestion | null = open?.question ?? null;
+    const control: QuestionControl | null = question === null ? null : question_control(question, this.readout);
+    const onStrip: boolean = control !== null && question !== null && question !== 'command'
+      && (control.kind === 'yesno' || control.kind === 'text' || STRIP_QUESTIONS.includes(question));
+    parts.ask.hidden = !onStrip;
+    if (!onStrip || control === null || open === null) return;
+    parts.askText.textContent = open.prompt.replace(/[:\s]+$/, '').trim();
+    parts.askPills.replaceChildren();
+    for (const choice of control.choices ?? []) parts.askPills.append(pill_make('tb-choice', choice.label, (): void => this.answer_send(choice.line)));
+    const typed: boolean = control.kind === 'text' || control.kind === 'slider';
+    parts.askInput.hidden = !typed;
+    parts.askSend.hidden = !typed;
+    if (typed) { parts.askInput.value = ''; parts.askInput.focus(); }
+  }
+
+  /**
+   * Writes the engine's text to the ship's log, a line at a time, and to the computer's answer while a request runs.
    *
    * @param text - The text.
+   * @param own - True for a line the bridge sent, which is never the computer's answer.
    */
-  private log_write(text: string): void {
+  private log_write(text: string, own: boolean = false): void {
     const { parts } = this;
-    const lines: string[] = text.replace(/\x1b\[[0-9;]*m/g, '').split('\n');
+    const clean: string = text.replace(/\x1b\[[0-9;]*m/g, '');
+    if (this.computerRunning && !own) parts.computerView.answer_take(clean);
+    const lines: string[] = clean.split('\n');
     const last: HTMLElement | null = parts.log.lastElementChild as HTMLElement | null;
     lines.forEach((line: string, index: number): void => {
       if (index === 0 && last !== null && last.dataset['open'] === 'true') {

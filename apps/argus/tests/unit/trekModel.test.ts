@@ -9,7 +9,10 @@
 import { describe, it, expect, beforeAll } from '@jest/globals';
 import { trek_play } from 'bsd-trek';
 import type { TrekState, TrekTerminal } from 'bsd-trek/host';
-import { BRIDGE_COMMANDS, bearing_of, question_classify, question_control, range_of, readout_build, readout_diff, type BridgeReadout } from '../../src/features/trek/model.js';
+import {
+  BRIDGE_COMMANDS, arrival_of, bearing_of, course_calc, impulseCost_of, phaserEffect_of, question_classify, question_control, range_of, readout_build, readout_diff, repairTimes_of, score_of, warpCost_of,
+  type BridgeReadout, type DeviceState, type Place,
+} from '../../src/features/trek/model.js';
 
 const shown: TrekState[] = [];
 let transcript: string = '';
@@ -63,9 +66,10 @@ describe('the readout of a shown state', () => {
     expect(cell?.code).toHaveLength(3);
   });
 
-  it('lists the C\'s sixteen devices, none under repair at the start', () => {
+  it('lists the C\'s fourteen devices (its table\'s two *ERR* rows are no device), none under repair at the start', () => {
     const readout: BridgeReadout = readout_build(shown[0] as TrekState);
-    expect(readout.devices).toHaveLength(16);
+    expect(readout.devices).toHaveLength(14);
+    expect(readout.devices.some((device) => device.name.startsWith('*'))).toBe(false);
     expect(readout.devices[0]?.name).toBe('warp drive');
     expect(readout.damaged).toHaveLength(0);
   });
@@ -138,5 +142,61 @@ describe('the engine\'s questions, named from their prompts', () => {
     const lines: string[] = BRIDGE_COMMANDS.map((c) => c.line);
     expect(lines).toEqual(expect.arrayContaining(['m', 'ram', 'w', 'i', 'do', 'u', 'r', 'p', 't', 'sh', 'cl', 'ca', 'v', 'c', 'help', 'dump', 'cr', 'abandon', 'destruct', 'terminate']));
     expect(new Set(lines).size).toBe(lines.length);
+  });
+});
+
+describe("the bridge's arithmetic against the computer's own", () => {
+  const states: TrekState[] = [];
+  let words: string = '';
+
+  beforeAll(async () => {
+    // the computer: score, warp cost 3 at warp 5, phaser effect at range 0.36, impulse cost 1.5, course to 3,4/5,6
+    const script: string[] = ['', 's', 'n', 'pw', 'c', 's', 'c', 'w', '3', '5', 'c', 'p', '0.36', 'c', 'i', '1.5', 'c', 'c', '3', '4', '5', '6', 'terminate', 'n'];
+    const terminal: TrekTerminal = {
+      text_write: (text: string): void => { words += text; },
+      question_ask: async (prompt: string): Promise<string | null> => { words += prompt; return script.length > 0 ? (script.shift() as string) : null; },
+      seconds_sleep: async (): Promise<void> => {},
+      state_show: (state: TrekState): void => { states.push(state); },
+    };
+    await trek_play(terminal, { seed: 7, fast: 1, trace: 0, styled: false }, { saved: null });
+  });
+
+  it('scores a fresh game as the C does, item by item', () => {
+    const readout: BridgeReadout = readout_build(states[0] as TrekState);
+    const tally = score_of(readout);
+    const printed: RegExpMatchArray | null = words.match(/\*\*\*  TOTAL\s+(-?\d+)/);
+    expect(printed).not.toBeNull();
+    expect(tally.total).toBe(Number(printed?.[1]));
+    expect(tally.items.some((item) => /Klingons remaining/.test(item.label))).toBe(true);
+  });
+
+  it('counts a warp move, an impulse move and a phaser shot as the computer prints them', () => {
+    const readout: BridgeReadout = readout_build(states[0] as TrekState);
+    const warp = warpCost_of(3, 5, readout.param.warptime);
+    expect(words).toContain(`Warp 5.00 distance 3.00 cost ${warp.stardates.toFixed(2)} stardates ${warp.units} (${warp.unitsShielded} w/ shlds up) units`);
+    const impulse = impulseCost_of(1.5);
+    expect(words).toContain(`Distance 1.50 cost ${impulse.stardates.toFixed(2)} stardates ${impulse.units} units`);
+    expect(words).toContain(`Phasers are ${phaserEffect_of(0.36)}% effective at that range`);
+  });
+
+  it('works a course and distance out as kalc does', () => {
+    const readout: BridgeReadout = readout_build(states[0] as TrekState);
+    const calc = course_calc(readout, { quadrant: { x: 3, y: 4 }, sector: { x: 5, y: 6 } });
+    expect(words).toContain(`to 3,4/5,6: course ${calc.course}  dist ${calc.distance.toFixed(3)}`);
+    // a course of 0 runs up the scan: one sector is a tenth of a quadrant
+    const up: Place = arrival_of(readout, 0, 0.1);
+    expect(up.quadrant.x * 10 + up.sector.x).toBe(readout.position.quadrant.x * 10 + readout.position.sector.x - 1);
+    expect(up.quadrant.y * 10 + up.sector.y).toBe(readout.position.quadrant.y * 10 + readout.position.sector.y);
+  });
+
+  it('reports repair times only for a device that is down', () => {
+    const readout: BridgeReadout = readout_build(states[0] as TrekState);
+    const working = readout.devices.find((device) => device.repairAt === null);
+    expect(working).toBeDefined();
+    expect(repairTimes_of(working as DeviceState, readout)).toBeNull();
+    const down: DeviceState = { index: 0, name: 'warp drive', person: 'Scott', repairAt: readout.mission.stardate + 2 };
+    const times = repairTimes_of(down, readout);
+    expect(times?.inFlight).toBeCloseTo(2.005, 3);
+    expect(times?.docked).toBeCloseTo(2 * readout.param.dockfac + 0.005, 3);
   });
 });

@@ -25,4 +25,15 @@ describe('soundOverride_read', () => {
     expect(await soundOverride_read(dir, '/sounds/sub/press.mp3')).toBeNull();
     expect(await soundOverride_read(null, 'sounds/press.mp3')).toBeNull();
   });
+
+  it('names the sounds the folder keeps at sounds/index.json, and nothing when there is no folder', async () => {
+    const dir: string = await mkdtemp(join(tmpdir(), 'sounds-'));
+    await writeFile(join(dir, 'press.mp3'), Buffer.from('beep'));
+    await writeFile(join(dir, 'arrive.wav'), Buffer.from('beep'));
+    await writeFile(join(dir, 'notes.txt'), Buffer.from('not a sound'));
+    const index = await soundOverride_read(dir, '/sounds/index.json');
+    expect(index?.type).toBe('application/json; charset=utf-8');
+    expect(JSON.parse(String(index?.bytes))).toEqual({ files: ['arrive.wav', 'press.mp3'] });
+    expect(await soundOverride_read(null, '/sounds/index.json')).toBeNull();
+  });
 });

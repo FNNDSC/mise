@@ -1,0 +1,22 @@
+= trek-sound: the bridge's voice, built from reference recordings
+
+Every sound ARGUS makes is synthesized in the browser from a compact spectral model (`apps/argus/src/lcars/synth.ts`); no recording ships. This folder holds the analysis that makes the models from reference clips, the choices that name a clip for each cue and each pill, and a way to hear a model offline.
+
+== The pipeline
+
+. *Analysis* (`sms2.py`): spectral modelling resynthesis. An STFT (4096-point Hann, 128-sample hop) of the clip; per frame the strongest peaks with parabolic interpolation of frequency and amplitude and the phase read at the interpolated bin; peaks linked frame to frame into partial tracks. The deterministic part is one sinusoid per track with the McAulay-Quatieri cubic phase between frames, so each frame's measured phase is met and the partials beat as the original's did; the residual is the original minus that, its STFT magnitude smoothed into bands. It prints the log-spectral distance of the resynthesis from the original.
+. *Export* (`model_export.py IN OUT.json`): the same analysis, then tracks quieter than -46 dB below the loudest or shorter than three frames are dropped, the rest resampled to a 512-sample grid (11.6 ms) and quantized; the residual's magnitude is summed into 32 log-spaced bands (60 Hz to 16 kHz) per frame as the RMS each band should carry. No phase is kept: the player does not need it, only the analysis did, to find the residual.
+. *Candidates* (`candidates.py FILES_ROOT OUT_DIR`): exports a model for every candidate clip of every cue, from a library of recordings on disk, for choosing between.
+. *Choice* (`choices.json`): the clip chosen for each of the twenty-three cues and the computer beep chosen for each of the forty-seven pills, as settled with the operator on a chooser page. `apps/argus/public/sound/bank.json` is this file reduced to the model each name plays; the models beside it are the exports.
+. *Hearing a model* (`render.mjs MODEL.json OUT.wav [rate] [pitch]`): renders a model through the page's own player, offline, with `node-web-audio-api`, to a WAV; the way the player's noise calibration was set.
+. *Looking* (`analyze.py OUT_DIR FILE...`): spectrograms and spectra of clips, for comparing a resynthesis with its original by eye.
+
+== Running it
+
+The Python needs `numpy`, `scipy`, `matplotlib` and `ffmpeg` on the path (`python -m venv .venv && .venv/bin/pip install numpy scipy matplotlib`). The reference library is not in the repository: the clips are named in `choices.json` by their path under the operator's library, and a model file records its source by name only.
+
+The render script imports the player from a build of `synth.ts`: `npx tsc -p tools/trek-sound/tsconfig.synth.json` writes it to `tools/trek-sound/build/`, then `npm --prefix tools/trek-sound install node-web-audio-api` once, then `node tools/trek-sound/render.mjs apps/argus/public/sound/phaser__tos_ship_phaser_1.json /tmp/phaser.wav`.
+
+== Rebuilding the bank
+
+Export a model for each clip `choices.json` names (`model_export.py` with `--name` the cue and `--source` the clip's name), place it under `apps/argus/public/sound/` at the path the choice gives, and write `bank.json` as `{ "cues": { name: file }, "pills": { label: file }, "sources": { name: clip } }`. The unit test `apps/argus/tests/unit/trekCues.test.ts` checks that every name has a file and every file is a model.

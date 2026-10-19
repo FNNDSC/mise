@@ -338,15 +338,15 @@ export class PillRow {
    *
    * @param label - The pill label beside it, empty for none.
    * @param choices - What each pill says and sends.
-   * @param onPress - Called with the line when a pill is pressed.
+   * @param onPress - Called with the line and the pill's label when a pill is pressed.
    */
-  constructor(label: string, choices: ReadonlyArray<{ label: string; line: string }>, onPress: (line: string) => void) {
+  constructor(label: string, choices: ReadonlyArray<{ label: string; line: string }>, onPress: (line: string, label: string) => void) {
     this.root = el('div', 'tb-pillrow');
     if (label !== '') this.root.append(el('span', 'tb-slider-label', label));
     const column: HTMLElement = el('div', 'tb-slider-column');
     const pills: HTMLElement = el('div', 'tb-pills');
     for (const choice of choices) {
-      const button: HTMLButtonElement = pill_make('tb-choice', choice.label, (): void => onPress(choice.line));
+      const button: HTMLButtonElement = pill_make('tb-choice', choice.label, (): void => onPress(choice.line, choice.label));
       button.dataset['line'] = choice.line;
       this.buttons.push(button);
       pills.append(button);

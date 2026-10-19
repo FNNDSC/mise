@@ -19,6 +19,7 @@
  */
 import type { TrekState, XY } from 'bsd-trek/host';
 import { el, pill_make } from './controls.js';
+import { answerCue_of, commandCue_of, lineCues_of, pillLabel_of, stateCues_of, type BridgeVoice } from './cues.js';
 import { TrekHarness, type OpenQuestion } from './harness.js';
 import {
   BRIDGE_COMMANDS, bearing_of, question_control, range_of, readout_build, readout_diff, score_of,
@@ -34,8 +35,8 @@ const VIEWS: ReadonlyArray<BridgeView> = ['bridge', 'helm', 'tactical', 'enginee
 
 /** What the bridge needs from its host. */
 export interface BridgeHooks {
-  /** Plays a sound by the host's name for it. */
-  sound: (name: string) => void;
+  /** How the bridge is heard. */
+  voice: BridgeVoice;
   /** The operator asked to leave: the host ends the game. */
   leave: () => void;
 }
@@ -66,6 +67,7 @@ export class TrekBridge {
   private readonly plan: Map<TrekQuestion, string> = new Map<TrekQuestion, string>();
   private answering: boolean = false;
   private computerRunning: boolean = false;
+  private leaving: boolean = false;
   private readonly parts: {
     seed: HTMLElement; views: Map<BridgeView, HTMLButtonElement>; body: HTMLElement;
     condition: HTMLElement; conditionWhy: HTMLElement; ship: HTMLElement; mission: HTMLElement; position: HTMLElement; since: HTMLElement;
@@ -87,7 +89,7 @@ export class TrekBridge {
       question_changed: (open: OpenQuestion | null): void => this.question_show(open),
       text_written: (text: string): void => this.log_write(text),
       state_shown: (state: TrekState): void => this.state_show(state),
-      ended: (): void => undefined,
+      ended: (): void => { if (!this.leaving) this.hooks.voice.cue('gameover'); },
     });
     this.root = el('section', 'trek-bridge');
     this.root.id = 'trek-bridge';
@@ -113,11 +115,11 @@ export class TrekBridge {
    */
   private stationHost_get(): StationHost {
     return {
-      answer_send: (line: string): void => this.answer_send(line),
+      answer_send: (line: string, label: string | null): void => this.answer_send(line, label),
       command_send: (command: BridgeCommand): boolean => this.command_send(command),
       plan_set: (answers: ReadonlyArray<[TrekQuestion, string]>): void => { for (const [question, line] of answers) this.plan.set(question, line); },
       course_set: (degrees: number, distance: number | null): void => this.course_set(degrees, distance),
-      sound: (name: string): void => this.hooks.sound(name),
+      voice: this.hooks.voice,
     };
   }
 
@@ -267,8 +269,8 @@ export class TrekBridge {
     parts.askInput.className = 'tb-ask-input';
     parts.askInput.setAttribute('aria-label', 'the answer');
     const askInput: HTMLInputElement = parts.askInput;
-    parts.askSend = pill_make('tb-commit', 'ANSWER', (): void => this.answer_send(askInput.value));
-    askInput.addEventListener('keydown', (event: KeyboardEvent): void => { if (event.key === 'Enter') this.answer_send(askInput.value); });
+    parts.askSend = pill_make('tb-commit', 'ANSWER', (): void => this.answer_send(askInput.value, 'ANSWER'));
+    askInput.addEventListener('keydown', (event: KeyboardEvent): void => { if (event.key === 'Enter') this.answer_send(askInput.value, 'ANSWER'); });
     parts.ask.append(el('span', 'tb-ask-label', 'THE GAME ASKS'), parts.askText, parts.askPills, parts.askInput, parts.askSend);
   }
 
@@ -298,7 +300,7 @@ export class TrekBridge {
     parts.leaveAsk.hidden = true;
     parts.leaveAsk.setAttribute('role', 'dialog');
     const leaveAsk: HTMLElement = parts.leaveAsk;
-    const leaveYes: HTMLButtonElement = pill_make('tb-grave', 'LEAVE · THE GAME ENDS', (): void => { this.hooks.sound('audio3'); this.hooks.leave(); });
+    const leaveYes: HTMLButtonElement = pill_make('tb-grave', 'LEAVE · THE GAME ENDS', (): void => { this.leaving = true; this.hooks.voice.cue('close'); this.hooks.leave(); });
     const leaveNo: HTMLButtonElement = pill_make('', 'STAY', (): void => { leaveAsk.hidden = true; });
     parts.leaveAsk.append(el('span', 'tb-ask-label', 'LEAVE THE BRIDGE?'), el('span', 'tb-ask-text', 'The game ends where it stands; dump first to keep it.'), leaveYes, leaveNo);
   }
@@ -316,6 +318,7 @@ export class TrekBridge {
    * Asks whether to leave; Esc and LEAVE BRIDGE come here.
    */
   public leave_ask(): void {
+    if (this.parts.leaveAsk.hidden) this.hooks.voice.pill('LEAVE BRIDGE');
     this.parts.leaveAsk.hidden = false;
   }
 
@@ -354,7 +357,7 @@ export class TrekBridge {
     this.root.dataset['view'] = view;
     this.parts.body.dataset['view'] = view;
     for (const [name, button] of this.parts.views) button.classList.toggle('tb-view-on', name === view);
-    this.hooks.sound('audio1');
+    this.hooks.voice.pill(pillLabel_of(view.toUpperCase(), 'view'));
   }
 
   /**
@@ -373,8 +376,10 @@ export class TrekBridge {
    * @returns True when the prompt was open.
    */
   private command_send(command: BridgeCommand): boolean {
-    if (!this.harness.command_send(command)) { this.hooks.sound('audio4'); return false; }
-    this.hooks.sound('audio1');
+    if (!this.harness.command_send(command)) { this.hooks.voice.cue('deny'); return false; }
+    const cue = commandCue_of(command.id);
+    if (cue === null) this.hooks.voice.pill(pillLabel_of(command.label, 'command'));
+    else this.hooks.voice.cue(cue);
     this.nextDistance = null;
     this.computerRunning = command.id === 'computer';
     if (this.computerRunning) this.parts.computerView.answer_take(null);
@@ -383,13 +388,17 @@ export class TrekBridge {
   }
 
   /**
-   * Answers the open question with a line the controls built.
+   * Answers the open question with a line the controls built, and is heard: the pill's beep, or the thing the answer does.
    *
    * @param line - The line.
+   * @param label - The pill heard for it; null for an answer the bridge gives on its own.
    */
-  private answer_send(line: string): void {
-    if (!this.harness.answer(line)) { this.hooks.sound('audio4'); return; }
-    this.hooks.sound('audio2');
+  private answer_send(line: string, label: string | null): void {
+    const open: OpenQuestion | null = this.harness.question_get();
+    if (!this.harness.answer(line)) { this.hooks.voice.cue('deny'); return; }
+    const cue = open === null ? null : answerCue_of(open.question, open.command?.id ?? null);
+    if (cue !== null) this.hooks.voice.cue(cue);
+    else if (label !== null) this.hooks.voice.pill(label);
     this.log_write(`${line}\n`, true);
   }
 
@@ -407,7 +416,6 @@ export class TrekBridge {
       parts.helmView.distance.value_set(distance);
       this.nextDistance = distance;
     }
-    this.hooks.sound('audio1');
   }
 
   /**
@@ -430,6 +438,7 @@ export class TrekBridge {
     this.engineering_draw(readout.devices);
     for (const station of [parts.helm, parts.helmView, parts.tactical, parts.tacticalView, parts.computerView]) station.state_show(readout);
     parts.engineeringView.state_show(readout, this.previous);
+    for (const cue of stateCues_of(this.previous, readout)) this.hooks.voice.cue(cue);
     this.question_show(this.harness.question_get());
   }
 
@@ -505,6 +514,7 @@ export class TrekBridge {
    * @param range - The distance to it, in sectors.
    */
   private sector_press(cell: XY, bearing: number, range: number): void {
+    this.hooks.voice.cue('scanner');
     this.course_set(bearing, Math.round(range) / 10);
     this.parts.computerView.sector_set(cell);
   }
@@ -572,7 +582,7 @@ export class TrekBridge {
     if (planned !== undefined && open !== null && !this.answering) {
       this.plan.delete(open.question);
       this.answering = true;
-      try { this.answer_send(planned); } finally { this.answering = false; }
+      try { this.answer_send(planned, null); } finally { this.answering = false; }
       return;
     }
     commandPills_show(parts.shipPills, open);
@@ -599,7 +609,7 @@ export class TrekBridge {
     if (!onStrip || control === null || open === null) return;
     parts.askText.textContent = open.prompt.replace(/[:\s]+$/, '').trim();
     parts.askPills.replaceChildren();
-    for (const choice of control.choices ?? []) parts.askPills.append(pill_make('tb-choice', choice.label, (): void => this.answer_send(choice.line)));
+    for (const choice of control.choices ?? []) parts.askPills.append(pill_make('tb-choice', choice.label, (): void => this.answer_send(choice.line, choice.label)));
     const typed: boolean = control.kind === 'text' || control.kind === 'slider';
     parts.askInput.hidden = !typed;
     parts.askSend.hidden = !typed;
@@ -619,17 +629,30 @@ export class TrekBridge {
     const lines: string[] = clean.split('\n');
     const last: HTMLElement | null = parts.log.lastElementChild as HTMLElement | null;
     lines.forEach((line: string, index: number): void => {
+      const complete: boolean = index < lines.length - 1;
       if (index === 0 && last !== null && last.dataset['open'] === 'true') {
         last.textContent = `${last.textContent ?? ''}${line}`;
-        if (lines.length > 1) delete last.dataset['open'];
+        if (complete) { delete last.dataset['open']; this.line_hear(last.textContent, own); }
         return;
       }
-      if (index === lines.length - 1 && line === '') return;
+      if (!complete && line === '') return;
       const node: HTMLElement = el('div', 'tb-log-line', line);
-      if (index === lines.length - 1) node.dataset['open'] = 'true';
+      if (complete) this.line_hear(line, own);
+      else node.dataset['open'] = 'true';
       parts.log.append(node);
     });
     while (parts.log.childElementCount > LOG_LIMIT) parts.log.firstElementChild?.remove();
     parts.log.scrollTop = parts.log.scrollHeight;
+  }
+
+  /**
+   * A complete line of the engine's is heard, when it says something the bank has a cue for.
+   *
+   * @param line - The line.
+   * @param own - True for a line the bridge sent, which is never heard.
+   */
+  private line_hear(line: string, own: boolean): void {
+    if (own) return;
+    for (const cue of lineCues_of(line)) this.hooks.voice.cue(cue);
   }
 }

@@ -101,6 +101,7 @@ import { feedRowHandlers_make, feedVerbs_wire, type FeedVerbs } from './feedRows
 import { helpPane_wire, type HelpPaneHooks, type HelpPaneModule } from './helpPane.js';
 import { gamesPane_wire, type GamesPaneModule } from './gamesPane.js';
 import { trekBridge_wire, trekLine_isGame, type TrekBridgeModule } from './trekBridge.js';
+import { synthVoice } from '../lcars/synth.js';
 import { notesPane_wire, type NotesPaneModule } from './notesPane.js';
 import { asks_wire, type Asks } from './asks.js';
 import { keys_wire } from './keys.js';
@@ -153,20 +154,50 @@ const SURFACE_NAME: string = 'ARGUS';
 /** The localStorage key remembering the operator's audio choice. */
 const AUDIO_STORAGE_KEY: string = 'argus-audio';
 
-/** The panel beeps' volume; the theme's files are mastered hot. */
+/** The recorded beeps' volume; a deployment's files are mastered hot. */
 const AUDIO_VOLUME: number = 0.4;
 
 /** Whether the panel beeps are muted; the audio pill owns this. */
 let audioMuted: boolean = false;
 
+/** The frame's four beeps: the audio element, the file the porter may override, and the synthesized cue otherwise. */
+const FRAME_SOUNDS: Readonly<Record<string, { file: string; cue: string }>> = {
+  audio1: { file: 'press', cue: 'press' },
+  audio2: { file: 'arrive', cue: 'ack' },
+  audio3: { file: 'retreat', cue: 'close' },
+  audio4: { file: 'refuse', cue: 'deny' },
+};
+
+/** The sounds the deployment keeps as recordings (the porter's `sounds/index.json`), by bare name; empty when it keeps none. */
+const recordedSounds: Set<string> = new Set<string>();
+
 /**
- * Plays one of the page's LCARS beeps, silently tolerating autoplay refusal.
+ * Asks the porter which sounds it serves as recordings; without a porter, or a sounds folder, the answer is none.
+ */
+function recordedSounds_learn(): void {
+  void fetch('sounds/index.json')
+    .then((response: Response): Promise<unknown> => (response.ok ? response.json() : Promise.resolve(null)))
+    .then((listed: unknown): void => {
+      const files: unknown = typeof listed === 'object' && listed !== null ? (listed as { files?: unknown }).files : undefined;
+      if (!Array.isArray(files)) return;
+      for (const file of files) if (typeof file === 'string') recordedSounds.add(file.replace(/\.[a-z0-9]+$/, ''));
+    })
+    .catch((): void => undefined);
+}
+
+/**
+ * Plays one of the page's LCARS beeps: the deployment's recording when it keeps one, else the page's own voice, synthesized.
  * The audio pill can mute the whole voice.
  *
  * @param audioId - The id of the audio element to play.
  */
 function sound_play(audioId: string): void {
   if (audioMuted) {
+    return;
+  }
+  const sound: { file: string; cue: string } | undefined = FRAME_SOUNDS[audioId];
+  if (sound !== undefined && !recordedSounds.has(sound.file)) {
+    synthVoice.cue_play(sound.cue);
     return;
   }
   const audio: HTMLElement | null = document.getElementById(audioId);
@@ -214,8 +245,10 @@ function audioPill_wire(): void {
   }
   const paint: () => void = (): void => {
     pill.classList.toggle('audio-off', audioMuted);
+    synthVoice.muted_set(audioMuted);
   };
   paint();
+  recordedSounds_learn();
   pill.addEventListener('click', (): void => {
     audioMuted = !audioMuted;
     try {

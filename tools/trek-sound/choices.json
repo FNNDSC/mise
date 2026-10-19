@@ -1,0 +1,448 @@
+{
+ "cues": {
+  "press": {
+   "file": "beeps/computerbeep_5.json",
+   "source": "computer/computerbeep_5.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "ack": {
+   "file": "beeps/computerbeep_18.json",
+   "source": "computer/computerbeep_18.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "deny": {
+   "file": "deny__computer_error.json",
+   "source": "computer/computer_error.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "open": {
+   "file": "open__tos_viewscreen_magnification.json",
+   "source": "viewscreen/tos_viewscreen_magnification.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "close": {
+   "file": "close__tos_main_viewing_screen.json",
+   "source": "viewscreen/tos_main_viewing_screen.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "thinking": {
+   "file": "thinking__tos_computerthinking_clean.json",
+   "source": "toscomputer/sequences/tos_computerthinking_clean.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "sensor": {
+   "file": "sensor__tos_sensordisplay_clean.json",
+   "source": "toscomputer/tos_sensordisplay_clean.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "scanner": {
+   "file": "scanner__tos_scanner.json",
+   "source": "toscomputer/tos_scanner.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "phaser": {
+   "file": "phaser__tos_ship_phaser_1.json",
+   "source": "weapons/tos_ship_phaser_1.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "torpedo": {
+   "file": "torpedo__tos_photon_torpedo.json",
+   "source": "weapons/tos_photon_torpedo.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "incoming": {
+   "file": "incoming__klingon_disruptor_clean.json",
+   "source": "aliensounds/klingon_disruptor_clean.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "hit": {
+   "file": "hit__tos_hullhit_1.json",
+   "source": "explosions/tos_hullhit_1.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "explosion": {
+   "file": "explosion__largeexplosion1.json",
+   "source": "explosions/largeexplosion1.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "redalert": {
+   "file": "redalert__tos_red_alert.json",
+   "source": "redalertandklaxons/tos_red_alert.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "yellowalert": {
+   "file": "yellowalert__alertklaxon_clean.json",
+   "source": "redalertandklaxons/alertklaxon_clean.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "green": {
+   "file": "green__tos_hailing_frequencies_open.json",
+   "source": "toscomputer/sequences/tos_hailing_frequencies_open.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "dock": {
+   "file": "dock__tos_bridge_1_activate.json",
+   "source": "background/tos_bridge_1_activate.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "warp": {
+   "file": "warp__tos_flyby_1.json",
+   "source": "warp/tos_flyby_1.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "impulse": {
+   "file": "impulse__tos_bridge_8_powerup.json",
+   "source": "background/tos_bridge_8_powerup.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "transporter": {
+   "file": "transporter__tos_energize.json",
+   "source": "toscomputer/tos_energize.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "destruct": {
+   "file": "destruct__tos_emergency_signal.json",
+   "source": "toscomputer/tos_emergency_signal.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "hail": {
+   "file": "hail__tos_intercom_whistle.json",
+   "source": "toscomputer/tos_intercom_whistle.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  },
+  "gameover": {
+   "file": "gameover__tos_shipannouncement.json",
+   "source": "toscomputer/tos_shipannouncement.mp3",
+   "start": 0,
+   "end": 9999,
+   "rate": 1,
+   "pitch": 1,
+   "gain": 1
+  }
+ },
+ "pills": {
+  "BRIDGE": {
+   "file": "beeps/computerbeep_1.json",
+   "source": "computer/computerbeep_1.mp3",
+   "station": "views"
+  },
+  "HELM": {
+   "file": "beeps/computerbeep_6.json",
+   "source": "computer/computerbeep_6.mp3",
+   "station": "views"
+  },
+  "TACTICAL": {
+   "file": "beeps/computerbeep_11.json",
+   "source": "computer/computerbeep_11.mp3",
+   "station": "views"
+  },
+  "ENGINEERING": {
+   "file": "beeps/computerbeep_16.json",
+   "source": "computer/computerbeep_16.mp3",
+   "station": "views"
+  },
+  "COMPUTER": {
+   "file": "beeps/computerbeep_21.json",
+   "source": "computer/computerbeep_21.mp3",
+   "station": "views"
+  },
+  "LEAVE BRIDGE": {
+   "file": "beeps/computerbeep_26.json",
+   "source": "computer/computerbeep_26.mp3",
+   "station": "views"
+  },
+  "MOVE": {
+   "file": "beeps/computerbeep_14.json",
+   "source": "computer/computerbeep_14.mp3",
+   "station": "helm"
+  },
+  "RAM": {
+   "file": "beeps/computerbeep_19.json",
+   "source": "computer/computerbeep_19.mp3",
+   "station": "helm"
+  },
+  "WARP": {
+   "file": "beeps/computerbeep_24.json",
+   "source": "computer/computerbeep_24.mp3",
+   "station": "helm"
+  },
+  "IMPULSE": {
+   "file": "beeps/computerbeep_29.json",
+   "source": "computer/computerbeep_29.mp3",
+   "station": "helm"
+  },
+  "DOCK": {
+   "file": "beeps/computerbeep_34.json",
+   "source": "computer/computerbeep_34.mp3",
+   "station": "helm"
+  },
+  "UNDOCK": {
+   "file": "beeps/computerbeep_39.json",
+   "source": "computer/computerbeep_39.mp3",
+   "station": "helm"
+  },
+  "REST": {
+   "file": "beeps/computerbeep_44.json",
+   "source": "computer/computerbeep_44.mp3",
+   "station": "helm"
+  },
+  "SET COURSE": {
+   "file": "beeps/computerbeep_49.json",
+   "source": "computer/computerbeep_49.mp3",
+   "station": "helm"
+  },
+  "PHASERS": {
+   "file": "beeps/computerbeep_27.json",
+   "source": "computer/computerbeep_27.mp3",
+   "station": "tactical"
+  },
+  "TORPEDO": {
+   "file": "beeps/computerbeep_32.json",
+   "source": "computer/computerbeep_32.mp3",
+   "station": "tactical"
+  },
+  "SHIELDS": {
+   "file": "beeps/computerbeep_37.json",
+   "source": "computer/computerbeep_37.mp3",
+   "station": "tactical"
+  },
+  "CLOAK": {
+   "file": "beeps/computerbeep_42.json",
+   "source": "computer/computerbeep_42.mp3",
+   "station": "tactical"
+  },
+  "CAPTURE": {
+   "file": "beeps/computerbeep_47.json",
+   "source": "computer/computerbeep_47.mp3",
+   "station": "tactical"
+  },
+  "VISUAL": {
+   "file": "beeps/computerbeep_52.json",
+   "source": "computer/computerbeep_52.mp3",
+   "station": "tactical"
+  },
+  "MANUAL": {
+   "file": "beeps/computerbeep_57.json",
+   "source": "computer/computerbeep_57.mp3",
+   "station": "tactical"
+  },
+  "AUTOMATIC": {
+   "file": "beeps/computerbeep_62.json",
+   "source": "computer/computerbeep_62.mp3",
+   "station": "tactical"
+  },
+  "UP": {
+   "file": "beeps/computerbeep_67.json",
+   "source": "computer/computerbeep_67.mp3",
+   "station": "tactical"
+  },
+  "DOWN": {
+   "file": "beeps/computerbeep_72.json",
+   "source": "computer/computerbeep_72.mp3",
+   "station": "tactical"
+  },
+  "BURST ANGLE": {
+   "file": "beeps/computerbeep_77.json",
+   "source": "computer/computerbeep_77.mp3",
+   "station": "tactical"
+  },
+  "CALL STARBASE": {
+   "file": "beeps/computerbeep_40.json",
+   "source": "computer/computerbeep_40.mp3",
+   "station": "ship"
+  },
+  "DUMP": {
+   "file": "beeps/computerbeep_45.json",
+   "source": "computer/computerbeep_45.mp3",
+   "station": "ship"
+  },
+  "ABANDON": {
+   "file": "beeps/computerbeep_50.json",
+   "source": "computer/computerbeep_50.mp3",
+   "station": "ship"
+  },
+  "DESTRUCT": {
+   "file": "beeps/computerbeep_55.json",
+   "source": "computer/computerbeep_55.mp3",
+   "station": "ship"
+  },
+  "TERMINATE": {
+   "file": "beeps/computerbeep_60.json",
+   "source": "computer/computerbeep_60.mp3",
+   "station": "ship"
+  },
+  "CREDITS": {
+   "file": "beeps/computerbeep_65.json",
+   "source": "computer/computerbeep_65.mp3",
+   "station": "ship"
+  },
+  "CHART": {
+   "file": "beeps/computerbeep_53.json",
+   "source": "computer/computerbeep_53.mp3",
+   "station": "computer"
+  },
+  "TRAJECTORY": {
+   "file": "beeps/computerbeep_58.json",
+   "source": "computer/computerbeep_58.mp3",
+   "station": "computer"
+  },
+  "COURSE": {
+   "file": "beeps/computerbeep_63.json",
+   "source": "computer/computerbeep_63.mp3",
+   "station": "computer"
+  },
+  "MOVE (COMPUTER)": {
+   "file": "beeps/computerbeep_68.json",
+   "source": "computer/computerbeep_68.mp3",
+   "station": "computer"
+  },
+  "SCORE": {
+   "file": "beeps/computerbeep_73.json",
+   "source": "computer/computerbeep_73.mp3",
+   "station": "computer"
+  },
+  "PHASER EFFECT": {
+   "file": "beeps/computerbeep_1.json",
+   "source": "computer/computerbeep_1.mp3",
+   "station": "computer"
+  },
+  "WARP COST": {
+   "file": "beeps/computerbeep_6.json",
+   "source": "computer/computerbeep_6.mp3",
+   "station": "computer"
+  },
+  "IMPULSE COST": {
+   "file": "beeps/computerbeep_11.json",
+   "source": "computer/computerbeep_11.mp3",
+   "station": "computer"
+  },
+  "DISTRESS LIST": {
+   "file": "beeps/computerbeep_16.json",
+   "source": "computer/computerbeep_16.mp3",
+   "station": "computer"
+  },
+  "SEND TO HELM": {
+   "file": "beeps/computerbeep_21.json",
+   "source": "computer/computerbeep_21.mp3",
+   "station": "computer"
+  },
+  "YES": {
+   "file": "beeps/computerbeep_66.json",
+   "source": "computer/computerbeep_66.mp3",
+   "station": "answers"
+  },
+  "NO": {
+   "file": "beeps/computerbeep_71.json",
+   "source": "computer/computerbeep_71.mp3",
+   "station": "answers"
+  },
+  "CANCEL": {
+   "file": "beeps/computerbeep_76.json",
+   "source": "computer/computerbeep_76.mp3",
+   "station": "answers"
+  },
+  "SECTOR PRESSED": {
+   "file": "beeps/computerbeep_4.json",
+   "source": "computer/computerbeep_4.mp3",
+   "station": "answers"
+  },
+  "QUADRANT PRESSED": {
+   "file": "beeps/computerbeep_9.json",
+   "source": "computer/computerbeep_9.mp3",
+   "station": "answers"
+  },
+  "SLIDER SET": {
+   "file": "beeps/computerbeep_14.json",
+   "source": "computer/computerbeep_14.mp3",
+   "station": "answers"
+  }
+ }
+}

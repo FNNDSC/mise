@@ -6,7 +6,10 @@
  *
  * @module
  */
+import { mark_use, svg } from './marks.js';
 import type { QuestionControl } from './model.js';
+
+export { svg };
 
 /**
  * Makes an element with a class and optional text.
@@ -20,19 +23,6 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: str
   const node: HTMLElementTagNameMap[K] = document.createElement(tag);
   node.className = className;
   if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-/**
- * Makes an SVG element.
- *
- * @param tag - The SVG tag.
- * @param attributes - Its attributes.
- * @returns The element.
- */
-export function svg(tag: string, attributes: Record<string, string | number>): SVGElement {
-  const node: SVGElement = document.createElementNS('http://www.w3.org/2000/svg', tag);
-  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
   return node;
 }
 
@@ -59,7 +49,12 @@ export interface WheelMark {
   kind: 'klingon' | 'base';
   /** Its title. */
   label: string;
+  /** A Klingon's own mark, when it has one. */
+  variant?: string | null;
 }
+
+/** The side of a wheel's rim mark, in CSS pixels. */
+const WHEEL_MARK_SIZE: number = 16;
 
 /** A course wheel: a needle the operator drags, marks for what is out there, a burst wedge, and a commit pill. */
 export class CourseWheel {
@@ -172,7 +167,7 @@ export class CourseWheel {
   }
 
   /**
-   * Marks bearings on the rim: Klingons, a starbase.
+   * Marks bearings on the rim with the same marks the scan draws: a Klingon's own mark, turned to face the hub; a starbase.
    *
    * @param marks - Each bearing with its kind and label.
    */
@@ -182,11 +177,16 @@ export class CourseWheel {
     for (const mark of marks) {
       const a: number = (mark.bearing * Math.PI) / 180;
       const rr: number = (r - 4) * 0.8;
-      const dot: SVGElement = svg('circle', { cx: r + rr * Math.sin(a), cy: r - rr * Math.cos(a), r: 6, class: `tb-wheel-mark tb-wheel-mark-${mark.kind}` });
+      const cx: number = r + rr * Math.sin(a);
+      const cy: number = r - rr * Math.cos(a);
+      const use: SVGElement = mark_use(mark.kind, { x: cx - WHEEL_MARK_SIZE / 2, y: cy - WHEEL_MARK_SIZE / 2, size: WHEEL_MARK_SIZE }, mark.variant ?? null);
+      use.classList.add('tb-wheel-mark', `tb-wheel-mark-${mark.kind}`);
+      // a Klingon on the rim faces the ship at the hub: its nose turns through the bearing plus a half turn
+      if (mark.kind === 'klingon') use.setAttribute('transform', `rotate(${mark.bearing + 180} ${cx} ${cy})`);
       const title: SVGElement = svg('title', {});
       title.textContent = mark.label;
-      dot.append(title);
-      this.marks.append(dot);
+      use.append(title);
+      this.marks.append(use);
     }
   }
 

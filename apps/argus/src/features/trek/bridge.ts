@@ -21,11 +21,12 @@ import type { TrekState, XY } from 'bsd-trek/host';
 import { el, pill_make } from './controls.js';
 import { answerCue_of, commandCue_of, lineCues_of, pillLabel_of, stateCues_of, type BridgeVoice } from './cues.js';
 import { TrekHarness, type OpenQuestion } from './harness.js';
+import { KLINGON_MARKS, KlingonTracker, LEGEND, MARK_GLYPHS, mark_use, markDefs_make, markIcon_make, shieldRing_of, svg, type MarkKind } from './marks.js';
 import {
   BRIDGE_COMMANDS, bearing_of, question_control, range_of, readout_build, readout_diff, score_of,
-  type BridgeCommand, type BridgeReadout, type ChartCell, type DeviceState, type QuestionControl, type TrekQuestion,
+  type BridgeCommand, type BridgeReadout, type ChartCell, type DeviceState, type KlingonSeen, type QuestionControl, type SectorCell, type TrekQuestion,
 } from './model.js';
-import { commandPill_make, commandPills_show, ComputerView, EngineeringView, HelmStation, TacticalStation, type StationHost } from './stations.js';
+import { chartCode_make, chartTitle_of, commandPill_make, commandPills_show, ComputerView, EngineeringView, HelmStation, TacticalStation, type StationHost } from './stations.js';
 
 /** The views the gutter offers. */
 export type BridgeView = 'bridge' | 'helm' | 'tactical' | 'engineering' | 'computer';
@@ -44,11 +45,22 @@ export interface BridgeHooks {
 /** The live elements, as they are registered while the screen is built. */
 type BridgeParts = Partial<TrekBridge['parts']>;
 
-/** The glyphs the scan draws, by kind. */
-const SECTOR_GLYPHS: Readonly<Record<string, string>> = { ship: 'E', klingon: 'K', base: '#', star: '*', inhabited: '@', hole: ' ', empty: '·' };
-
 /** How many log lines are kept. */
 const LOG_LIMIT: number = 400;
+
+/** The scan's drawing: a sector is one unit; the axes sit in the margin. */
+const SCAN_VIEWBOX: string = '-0.6 -0.6 10.6 10.6';
+
+/** How much of a sector a mark fills, and where it starts. */
+const MARK_SIZE: number = 0.7;
+const MARK_INSET: number = (1 - MARK_SIZE) / 2;
+
+/** The devices the standing order and the Klingon marks depend on, by the C's names. */
+const SRSCAN_NAME: RegExp = /^S\.R\. scanners$/i;
+const LRSCAN_NAME: RegExp = /^L\.R\. scanners$/i;
+
+/** The arrow keys that walk the scan, as row and column steps. */
+const ARROW_STEPS: Readonly<Record<string, [number, number]>> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
 
 /** The questions that stand on the strip whatever their control: the setup's, and the engine's own. */
 const STRIP_QUESTIONS: ReadonlyArray<TrekQuestion> = ['length', 'skill', 'request', 'quadrant', 'quadrant-y', 'sector', 'sector-y', 'range', 'computer-distance', 'computer-warp', 'status-report', 'another', 'yes-no', 'unknown'];
@@ -68,10 +80,20 @@ export class TrekBridge {
   private answering: boolean = false;
   private computerRunning: boolean = false;
   private leaving: boolean = false;
+  /** Which Klingon wears which mark. */
+  private readonly tracker: KlingonTracker = new KlingonTracker();
+  /** The course last committed to the engine: the way the ship's mark points. */
+  private heading: number = 0;
+  /** The sector last pressed, outlined on the scan. */
+  private pressedSector: XY | null = null;
+  /** A long-range scan is owed at the next Command: prompt (the standing order: at the start, and on arriving in a quadrant). */
+  private scanDue: boolean = false;
+  /** The log's open fold, while a standing order's lines print. */
+  private fold: HTMLElement | null = null;
   private readonly parts: {
     seed: HTMLElement; views: Map<BridgeView, HTMLButtonElement>; body: HTMLElement;
     condition: HTMLElement; conditionWhy: HTMLElement; ship: HTMLElement; mission: HTMLElement; position: HTMLElement; since: HTMLElement;
-    lrs: HTMLElement; chart: HTMLElement; engineering: HTMLElement; srs: HTMLElement; srsTitle: HTMLElement;
+    lrs: HTMLElement; chart: HTMLElement; engineering: HTMLElement; scan: SVGElement; srsTitle: HTMLElement; legend: HTMLElement;
     shipPills: Map<string, HTMLButtonElement>;
     helm: HelmStation; tactical: TacticalStation; helmView: HelmStation; tacticalView: TacticalStation; engineeringView: EngineeringView; computerView: ComputerView;
     ask: HTMLElement; askText: HTMLElement; askPills: HTMLElement; askInput: HTMLInputElement; askSend: HTMLButtonElement;
@@ -96,6 +118,8 @@ export class TrekBridge {
     this.root.dataset['view'] = 'bridge';
     this.root.setAttribute('aria-label', 'trek: the bridge');
     const parts: BridgeParts = {};
+    const defs: SVGElement | null = markDefs_make();
+    if (defs !== null) this.root.append(defs);
     const gutter: HTMLElement = this.gutter_build(parts, seed);
     const [barTop, barBody] = this.frame_build();
     const header: HTMLElement = this.header_build(parts);
@@ -225,9 +249,10 @@ export class TrekBridge {
     const srsSection: HTMLElement = el('section', 'tb-srs-section');
     parts.srsTitle = el('span', 'tb-title', 'SHORT RANGE');
     srsSection.append(parts.srsTitle);
-    parts.srs = el('div', 'tb-srs');
-    parts.srs.setAttribute('role', 'grid');
-    srsSection.append(parts.srs, el('span', 'tb-note', 'PRESS A SECTOR: ITS COURSE AND DISTANCE FILL IN'));
+    parts.scan = svg('svg', { class: 'tb-scan', viewBox: SCAN_VIEWBOX, role: 'grid', 'aria-label': 'short range scan' });
+    parts.scan.addEventListener('keydown', (event: KeyboardEvent): void => this.scan_key(event));
+    parts.legend = this.legend_build();
+    srsSection.append(parts.scan, el('span', 'tb-note', 'PRESS A SECTOR: ITS COURSE AND DISTANCE FILL IN'), parts.legend);
     parts.shipPills = new Map<string, HTMLButtonElement>();
     const shipPills: HTMLElement = el('div', 'tb-pills tb-ship-pills');
     shipPills.append(el('span', 'tb-slider-label', 'SHIP'));
@@ -251,6 +276,23 @@ export class TrekBridge {
     parts.computerView = new ComputerView(host);
     body.append(scans, srsSection, stations, parts.helmView.root, parts.tacticalView.root, parts.engineeringView.root, parts.computerView.root);
     return body;
+  }
+
+  /**
+   * Builds the legend under the scan: each mark beside the C's glyph for it, the four Klingon marks together.
+   *
+   * @returns The legend.
+   */
+  private legend_build(): HTMLElement {
+    const legend: HTMLElement = el('div', 'tb-legend');
+    for (const row of LEGEND) {
+      const item: HTMLElement = el('span', `tb-legend-item tb-legend-${row.kind}`);
+      const variants: ReadonlyArray<string | null> = row.kind === 'klingon' ? KLINGON_MARKS : [null];
+      for (const variant of variants) item.append(markIcon_make(row.kind, variant));
+      item.append(el('span', 'tb-legend-glyph', MARK_GLYPHS[row.kind].trim() === '' ? '␠' : MARK_GLYPHS[row.kind]), el('span', 'tb-legend-name', row.name));
+      legend.append(item);
+    }
+    return legend;
   }
 
   /**
@@ -400,6 +442,11 @@ export class TrekBridge {
     if (cue !== null) this.hooks.voice.cue(cue);
     else if (label !== null) this.hooks.voice.pill(label);
     this.log_write(`${line}\n`, true);
+    // the ship's mark turns to the course the moment it is committed, and keeps its heading after the move
+    if (open?.question === 'course' && Number.isFinite(Number(line))) {
+      this.heading = ((Number(line) % 360) + 360) % 360;
+      if (this.readout !== null) this.srs_draw(this.readout);
+    }
   }
 
   /**
@@ -428,6 +475,14 @@ export class TrekBridge {
     const readout: BridgeReadout = readout_build(state);
     this.readout = readout;
     const { parts } = this;
+    const arrived: boolean = this.previous === null
+      || this.previous.position.quadrant.x !== readout.position.quadrant.x || this.previous.position.quadrant.y !== readout.position.quadrant.y;
+    // the Klingons' marks: carried by the engine's lines while the short-range sensors print them, by list order when they do not
+    this.tracker.reconcile(readout.klingons, { reset: arrived, byOrder: !this.device_isOk(readout, SRSCAN_NAME) });
+    for (const k of readout.klingons) k.mark = this.tracker.mark_of(k);
+    if (arrived) this.pressedSector = null;
+    // the standing order: a long-range scan at the first prompt and on arriving somewhere, when the long-range sensors work
+    if (arrived && this.device_isOk(readout, LRSCAN_NAME)) this.scanDue = true;
     parts.condition.textContent = readout.condition.name;
     parts.condition.parentElement?.setAttribute('data-condition', readout.condition.name.toLowerCase());
     parts.conditionWhy.textContent = readout.condition.why.toUpperCase();
@@ -480,34 +535,102 @@ export class TrekBridge {
   }
 
   /**
-   * Draws the short-range scan; a sector pressed fills the course and distance to it.
+   * Draws the short-range scan as one picture: a sector is a focusable cell with its mark, the ship wears its shield ring and points along the committed course, each Klingon wears its own mark and faces the ship. A sector pressed fills the course and distance to it.
    *
    * @param readout - The readout.
    */
   private srs_draw(readout: BridgeReadout): void {
     const { parts } = this;
     parts.srsTitle.textContent = `SHORT RANGE · QUADRANT ${readout.position.quadrant.x},${readout.position.quadrant.y}`;
-    parts.srs.replaceChildren();
-    parts.srs.append(el('span', 'tb-srs-corner', ''));
-    for (let y: number = 0; y < (readout.sectors[0]?.length ?? 0); y++) parts.srs.append(el('span', 'tb-srs-axis', String(y)));
+    const scan: SVGElement = parts.scan;
+    scan.replaceChildren();
+    const columns: number = readout.sectors[0]?.length ?? 0;
+    for (let y: number = 0; y < columns; y++) scan.append(this.axis_make(String(y), y + 0.5, -0.3));
+    for (const row of readout.sectors) scan.append(this.axis_make(String(row[0]?.x ?? ''), -0.3, (row[0]?.x ?? 0) + 0.5));
     const here: XY = readout.position.sector;
+    const focusAt: XY = this.pressedSector ?? here;
     for (const row of readout.sectors) {
-      parts.srs.append(el('span', 'tb-srs-axis', String(row[0]?.x ?? '')));
-      for (const cell of row) {
-        const bearing: number = bearing_of(here, cell);
-        const range: number = range_of(here, cell);
-        const button: HTMLButtonElement = pill_make(`tb-sector tb-sector-${cell.kind}`, SECTOR_GLYPHS[cell.kind] ?? '·', (): void => this.sector_press(cell, bearing, range));
-        button.classList.remove('tb-pill');
-        button.dataset['x'] = String(cell.x);
-        button.dataset['y'] = String(cell.y);
-        button.title = cell.kind === 'ship' ? 'the ship' : `${cell.x},${cell.y} · course ${Math.round(bearing)}° · ${(range / 10).toFixed(1)}`;
-        parts.srs.append(button);
-      }
+      for (const cell of row) scan.append(this.sector_make(cell, readout, here, focusAt));
     }
+    const ring = shieldRing_of(readout.ship.shield, readout.ship.shieldMax, readout.ship.shieldsUp, readout.condition.name === 'DOCKED');
+    const ringNode: SVGElement = svg('circle', { class: ring.className, cx: here.y + 0.5, cy: here.x + 0.5, r: 0.46, 'stroke-width': ring.width });
+    ringNode.dataset['percent'] = String(Math.round(ring.percent));
+    scan.append(ringNode);
   }
 
   /**
-   * A sector pressed: the wheels point at it, the distance sliders are set to it (in quadrants: a sector is a tenth), and the computer's course panel aims at it.
+   * Makes one axis label of the scan.
+   *
+   * @param text - The number.
+   * @param x - Its centre across.
+   * @param y - Its centre down.
+   * @returns The label.
+   */
+  private axis_make(text: string, x: number, y: number): SVGElement {
+    const label: SVGElement = svg('text', { class: 'tb-scan-axis', x, y });
+    label.textContent = text;
+    return label;
+  }
+
+  /**
+   * Makes one sector of the scan: a pressable cell carrying its mark.
+   *
+   * @param cell - The sector.
+   * @param readout - The readout.
+   * @param here - The ship's sector.
+   * @param focusAt - The one sector in the tab order.
+   * @returns The cell.
+   */
+  private sector_make(cell: SectorCell, readout: BridgeReadout, here: XY, focusAt: XY): SVGElement {
+    const bearing: number = bearing_of(here, cell);
+    const range: number = range_of(here, cell);
+    const pressed: boolean = this.pressedSector?.x === cell.x && this.pressedSector.y === cell.y;
+    const node: SVGElement = svg('g', { class: `tb-sector tb-sector-${cell.kind}${pressed ? ' tb-pressed' : ''}`, role: 'button', tabindex: focusAt.x === cell.x && focusAt.y === cell.y ? 0 : -1 });
+    node.dataset['x'] = String(cell.x);
+    node.dataset['y'] = String(cell.y);
+    const title: SVGElement = svg('title', {});
+    const glyph: string = cell.kind === 'empty' ? '·' : MARK_GLYPHS[cell.kind];
+    title.textContent = cell.kind === 'ship' ? `the ship · ${cell.x},${cell.y}` : `${cell.x},${cell.y} ${glyph.trim() === '' ? 'black hole' : glyph} · course ${Math.round(bearing)}° · ${(range / 10).toFixed(1)}`;
+    node.append(title, svg('rect', { class: 'tb-cell', x: cell.y + 0.04, y: cell.x + 0.04, width: 0.92, height: 0.92, rx: 0.16 }));
+    if (cell.kind === 'empty') node.append(svg('circle', { class: 'tb-cell-dot', cx: cell.y + 0.5, cy: cell.x + 0.5, r: 0.03 }));
+    else {
+      const kind: MarkKind = cell.kind;
+      const klingon: KlingonSeen | undefined = kind === 'klingon' ? readout.klingons.find((k: KlingonSeen): boolean => k.x === cell.x && k.y === cell.y) : undefined;
+      const mark: SVGElement = mark_use(kind, { x: cell.y + MARK_INSET, y: cell.x + MARK_INSET, size: MARK_SIZE }, klingon?.mark ?? null);
+      const cx: number = cell.y + 0.5;
+      const cy: number = cell.x + 0.5;
+      if (kind === 'ship') mark.setAttribute('transform', `rotate(${this.heading} ${cx} ${cy})`);
+      else if (kind === 'klingon') mark.setAttribute('transform', `rotate(${bearing_of(cell, here)} ${cx} ${cy})`);
+      else if (kind === 'star') mark.style.animationDelay = `-${((cell.x * 7 + cell.y * 3) % 11) * 0.33}s`;
+      node.append(mark);
+    }
+    const press = (): void => this.sector_press(cell, bearing, range);
+    node.addEventListener('click', press);
+    node.addEventListener('keydown', (event: KeyboardEvent): void => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); press(); } });
+    return node;
+  }
+
+  /**
+   * The arrow keys walk the scan from the focused sector.
+   *
+   * @param event - The key.
+   */
+  private scan_key(event: KeyboardEvent): void {
+    const step: [number, number] | undefined = ARROW_STEPS[event.key];
+    const from: SVGElement | null = (event.target as Element | null)?.closest<SVGElement>('.tb-sector') ?? null;
+    if (step === undefined || from === null) return;
+    const x: number = Number(from.dataset['x']) + step[0];
+    const y: number = Number(from.dataset['y']) + step[1];
+    const to: SVGElement | null = this.parts.scan.querySelector<SVGElement>(`.tb-sector[data-x="${x}"][data-y="${y}"]`);
+    if (to === null) return;
+    event.preventDefault();
+    from.setAttribute('tabindex', '-1');
+    to.setAttribute('tabindex', '0');
+    to.focus();
+  }
+
+  /**
+   * A sector pressed: the wheels point at it, the distance sliders are set to it (in quadrants: a sector is a tenth), the computer's course panel aims at it, and the scan outlines it.
    *
    * @param cell - The sector.
    * @param bearing - The course to the sector.
@@ -517,10 +640,28 @@ export class TrekBridge {
     this.hooks.voice.cue('scanner');
     this.course_set(bearing, Math.round(range) / 10);
     this.parts.computerView.sector_set(cell);
+    this.pressedSector = { x: cell.x, y: cell.y };
+    for (const node of this.parts.scan.querySelectorAll<SVGElement>('.tb-sector')) {
+      const isPressed: boolean = node.dataset['x'] === String(cell.x) && node.dataset['y'] === String(cell.y);
+      node.classList.toggle('tb-pressed', isPressed);
+      node.setAttribute('tabindex', isPressed ? '0' : '-1');
+    }
   }
 
   /**
-   * Draws the long-range scan: the three-by-three of quadrants around the ship, from the chart.
+   * Whether a device works, by the C's name for it.
+   *
+   * @param readout - The readout.
+   * @param name - The name.
+   * @returns True when it is not under repair.
+   */
+  private device_isOk(readout: BridgeReadout, name: RegExp): boolean {
+    const device: DeviceState | undefined = readout.devices.find((d: DeviceState): boolean => name.test(d.name));
+    return device === undefined || device.repairAt === null;
+  }
+
+  /**
+   * Draws the long-range scan: the three-by-three of quadrants around the ship, from the chart; space outside the galaxy is an edge.
    *
    * @param readout - The readout.
    */
@@ -531,15 +672,23 @@ export class TrekBridge {
     for (let dx: number = -1; dx <= 1; dx++) {
       for (let dy: number = -1; dy <= 1; dy++) {
         const cell: ChartCell | undefined = readout.chart[quadrant.x + dx]?.[quadrant.y + dy];
-        const node: HTMLElement = el('div', `tb-lrs-cell${cell?.here === true ? ' tb-here' : ''}${(cell?.klingons ?? 0) > 0 ? ' tb-hostile' : ''}`);
-        node.append(el('span', 'tb-lrs-code', cell === undefined ? '' : (cell.code ?? '···')), el('span', 'tb-lrs-at', cell === undefined ? '' : `${cell.x},${cell.y}`));
+        if (cell === undefined) {
+          const edge: HTMLElement = el('div', 'tb-lrs-cell tb-lrs-edge');
+          edge.append(el('span', 'tb-lrs-code', '—'), el('span', 'tb-lrs-at', 'EDGE'));
+          edge.title = 'outside the galaxy';
+          parts.lrs.append(edge);
+          continue;
+        }
+        const node: HTMLElement = el('div', `tb-lrs-cell${cell.here ? ' tb-here' : ''}${cell.klingons > 0 ? ' tb-hostile' : ''}${cell.code === null ? ' tb-unscanned' : ''}${cell.supernova ? ' tb-supernova' : ''}`);
+        node.append(chartCode_make('tb-lrs-code', cell), el('span', 'tb-lrs-at', `${cell.x},${cell.y}`));
+        node.title = chartTitle_of(cell);
         parts.lrs.append(node);
       }
     }
   }
 
   /**
-   * Draws the galaxy chart as the ship knows it.
+   * Draws the galaxy chart as the ship knows it: a code where it has scanned, the supernova mark where a quadrant died, nothing where it has not looked.
    *
    * @param readout - The readout.
    */
@@ -548,8 +697,8 @@ export class TrekBridge {
     parts.chart.replaceChildren();
     for (const row of readout.chart) {
       for (const cell of row) {
-        const node: HTMLElement = el('span', `tb-quadrant${cell.here ? ' tb-here' : ''}${cell.klingons > 0 ? ' tb-hostile' : ''}${cell.bases > 0 ? ' tb-based' : ''}`, cell.code ?? '···');
-        node.title = `quadrant ${cell.x},${cell.y}${cell.code === null ? ' · unscanned' : ''}`;
+        const node: HTMLElement = chartCode_make(`tb-quadrant${cell.here ? ' tb-here' : ''}${cell.klingons > 0 ? ' tb-hostile' : ''}${cell.bases > 0 ? ' tb-based' : ''}${cell.code === null ? ' tb-unscanned' : ''}${cell.supernova ? ' tb-supernova' : ''}`, cell);
+        node.title = chartTitle_of(cell);
         parts.chart.append(node);
       }
     }
@@ -577,7 +726,12 @@ export class TrekBridge {
    */
   private question_show(open: OpenQuestion | null): void {
     const { parts } = this;
-    if (open?.question === 'command') { this.plan.clear(); this.computerRunning = false; }
+    if (open?.question === 'command') {
+      this.plan.clear();
+      this.computerRunning = false;
+      this.fold_close();
+      if (this.scanDue && !this.answering) { this.scanDue = false; this.standingOrder_send(); return; }
+    }
     const planned: string | undefined = open === null ? undefined : this.plan.get(open.question);
     if (planned !== undefined && open !== null && !this.answering) {
       this.plan.delete(open.question);
@@ -617,6 +771,36 @@ export class TrekBridge {
   }
 
   /**
+   * The standing order: the long-range scan sent at the Command: prompt as the ship's own command, its lines folded in the log under one dim head.
+   */
+  private standingOrder_send(): void {
+    const quadrant: XY | undefined = this.readout?.position.quadrant;
+    this.fold_open(`LONG RANGE SCAN · STANDING ORDER${quadrant === undefined ? '' : ` · QUADRANT ${quadrant.x},${quadrant.y}`}`);
+    if (!this.harness.answer('l')) { this.fold_close(); return; }
+    this.log_write('l\n', true);
+  }
+
+  /**
+   * Opens a fold in the log: the lines that follow print under a head that opens on press.
+   *
+   * @param head - The head's words.
+   */
+  private fold_open(head: string): void {
+    this.fold_close();
+    const fold: HTMLDetailsElement = el('details', 'tb-log-fold');
+    fold.append(el('summary', 'tb-log-fold-head', head));
+    this.parts.log.append(fold);
+    this.fold = fold;
+  }
+
+  /**
+   * Closes the open fold, if any: the lines after it print on the log itself.
+   */
+  private fold_close(): void {
+    this.fold = null;
+  }
+
+  /**
    * Writes the engine's text to the ship's log, a line at a time, and to the computer's answer while a request runs.
    *
    * @param text - The text.
@@ -624,10 +808,12 @@ export class TrekBridge {
    */
   private log_write(text: string, own: boolean = false): void {
     const { parts } = this;
-    const clean: string = text.replace(/\x1b\[[0-9;]*m/g, '');
+    // the engine's colour codes and its bell (the C rings it on a hit) are not words
+    const clean: string = text.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x07/g, '');
     if (this.computerRunning && !own) parts.computerView.answer_take(clean);
     const lines: string[] = clean.split('\n');
-    const last: HTMLElement | null = parts.log.lastElementChild as HTMLElement | null;
+    const into: HTMLElement = this.fold ?? parts.log;
+    const last: HTMLElement | null = into.lastElementChild as HTMLElement | null;
     lines.forEach((line: string, index: number): void => {
       const complete: boolean = index < lines.length - 1;
       if (index === 0 && last !== null && last.dataset['open'] === 'true') {
@@ -639,20 +825,21 @@ export class TrekBridge {
       const node: HTMLElement = el('div', 'tb-log-line', line);
       if (complete) this.line_hear(line, own);
       else node.dataset['open'] = 'true';
-      parts.log.append(node);
+      into.append(node);
     });
     while (parts.log.childElementCount > LOG_LIMIT) parts.log.firstElementChild?.remove();
     parts.log.scrollTop = parts.log.scrollHeight;
   }
 
   /**
-   * A complete line of the engine's is heard, when it says something the bank has a cue for.
+   * A complete line of the engine's is heard, when it says something the bank has a cue for, and read for the Klingons it moves.
    *
    * @param line - The line.
    * @param own - True for a line the bridge sent, which is never heard.
    */
   private line_hear(line: string, own: boolean): void {
     if (own) return;
+    this.tracker.line_hear(line);
     for (const cue of lineCues_of(line)) this.hooks.voice.cue(cue);
   }
 }

@@ -1259,7 +1259,8 @@ try {
     await console_idle();
     const input = console_input();
     const until = async (read, ms = 20000) => { const end = Date.now() + ms; while (Date.now() < end) { if (read()) return true; await sleep(150); } return false; };
-    const click = (sel) => { const b = document.querySelector(sel); if (!b) return false; b.click(); return true; };
+    // a sector of the scan is an SVG cell (role button), which has no click(): it is pressed as a pointer presses it
+    const click = (sel) => { const b = document.querySelector(sel); if (!b) return false; if (typeof b.click === 'function') b.click(); else b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); return true; };
     const q = (sel) => document.querySelector(sel);
     const label = (name) => [...document.querySelectorAll('.tb-head-label')].find((l) => l.textContent === name)?.nextElementSibling?.textContent ?? null;
     // Under a terminal the line goes down the command line (the LANG capsule, prefix-:), where the

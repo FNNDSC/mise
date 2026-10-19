@@ -37,24 +37,74 @@ function bridge_make(): { bridge: TrekBridge; sounds: string[]; left: number[] }
   return { bridge, sounds, left };
 }
 
+/** Presses a sector of the scan: an SVG cell has no click(), a pointer's click reaches it as an event. */
+function sector_press(bridge: TrekBridge, x: number, y: number): void {
+  const sector: Element | null = bridge.root.querySelector(`.tb-sector[data-x="${x}"][data-y="${y}"]`);
+  if (sector === null) throw new Error(`no sector ${x},${y}`);
+  sector.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+}
+
+/**
+ * Shows the first state and takes the standing order: at the first Command: prompt the bridge sends the long-range scan itself, then the engine shows the state again.
+ *
+ * @param bridge - The bridge.
+ * @returns After the second state, with the next Command: prompt the operator's.
+ */
+async function game_open(bridge: TrekBridge): Promise<void> {
+  const harness = bridge.harness_get();
+  harness.event_take('games.trek.state', shown[0]);
+  const standing: Promise<string | null> = harness.ask('\nCommand: ');
+  expect(await standing).toBe('l');
+  harness.event_take('games.trek.state', shown[0]);
+}
+
 describe('the bridge', () => {
-  it('draws the shown state: the condition, the scan with one ship, the chart, the devices', () => {
+  it('draws the shown state: the condition, the scan with one ship wearing its shield ring, the legend, the chart, the devices', () => {
     const { bridge } = bridge_make();
     bridge.harness_get().event_take('games.trek.state', shown[0]);
     const root: HTMLElement = bridge.root;
     expect(root.querySelector('.tb-condition-name')?.textContent).toMatch(/GREEN|YELLOW|RED|DOCKED/);
-    expect(root.querySelectorAll('.tb-sector')).toHaveLength(100);
+    expect(root.querySelectorAll('.tb-scan .tb-sector')).toHaveLength(100);
     expect(root.querySelectorAll('.tb-sector-ship')).toHaveLength(1);
+    expect(root.querySelector('.tb-sector-ship use')?.getAttribute('href')).toBe('#tm-ship');
+    expect(root.querySelector('.tb-scan .tb-ring')).not.toBeNull();
     expect(root.querySelectorAll('.tb-quadrant')).toHaveLength(64);
+    expect(root.querySelectorAll('.tb-legend-item')).toHaveLength(7);
+    expect(root.querySelectorAll('.tb-legend-klingon .tm-icon')).toHaveLength(4);
     expect(root.querySelectorAll('.tb-device').length).toBeGreaterThanOrEqual(14);
     expect(root.querySelector('.tb-seed')?.textContent).toBe('SEED 42');
     root.remove();
   });
 
-  it('a command pill answers the Command: prompt, and the wheel and slider answer Course and Distance', async () => {
+  it('the standing order: at the first Command: prompt the bridge sends the long-range scan itself, folded in the log, and not at the next', async () => {
     const { bridge, sounds } = bridge_make();
     const harness = bridge.harness_get();
     harness.event_take('games.trek.state', shown[0]);
+    const first: Promise<string | null> = harness.ask('\nCommand: ');
+    expect(await first).toBe('l');
+    // the scan's lines print under the fold's head, not on the log itself
+    harness.text_take('Long range scan for quadrant 1,1\n     0     1     2\n  -------------------\n');
+    const fold: HTMLDetailsElement | null = bridge.root.querySelector('.tb-log-fold');
+    expect(fold?.querySelector('.tb-log-fold-head')?.textContent).toMatch(/^LONG RANGE SCAN · STANDING ORDER/);
+    expect(fold?.querySelectorAll('.tb-log-line').length).toBeGreaterThanOrEqual(3);
+    expect(bridge.root.querySelectorAll('.tb-log > .tb-log-line')).toHaveLength(0);
+    // the same quadrant again: no second scan, the prompt is the operator's, and the log is unfolded
+    harness.event_take('games.trek.state', shown[0]);
+    const second: Promise<string | null> = harness.ask('\nCommand: ');
+    expect(harness.question_get()?.question).toBe('command');
+    harness.text_take('after\n');
+    expect(bridge.root.querySelectorAll('.tb-log > .tb-log-line')).toHaveLength(1);
+    (bridge.root.querySelector('[data-command="dump"]') as HTMLButtonElement).click();
+    expect(await second).toBe('dump');
+    // the standing order is a command, not a pill: nothing was heard for it
+    expect(sounds.filter((s: string): boolean => s.startsWith('pill:'))).toEqual(['pill:DUMP']);
+    bridge.root.remove();
+  });
+
+  it('a command pill answers the Command: prompt, and the wheel and slider answer Course and Distance', async () => {
+    const { bridge, sounds } = bridge_make();
+    const harness = bridge.harness_get();
+    await game_open(bridge);
     const move: HTMLButtonElement = bridge.root.querySelector<HTMLButtonElement>('[data-command="move"]') as HTMLButtonElement;
     // before the Command: prompt the pills are dimmed and press nothing
     expect(move.disabled).toBe(true);
@@ -66,12 +116,14 @@ describe('the bridge', () => {
     const course: Promise<string | null> = harness.ask('Course: ');
     const helmWheel: HTMLElement = bridge.root.querySelector('.tb-station-helm .tb-wheel') as HTMLElement;
     expect(helmWheel.classList.contains('tb-lit')).toBe(true);
-    const sector: HTMLButtonElement = bridge.root.querySelector<HTMLButtonElement>('.tb-sector[data-x="0"][data-y="9"]') as HTMLButtonElement;
-    sector.click();
+    sector_press(bridge, 0, 9);
+    expect(bridge.root.querySelector('.tb-sector[data-x="0"][data-y="9"]')?.classList.contains('tb-pressed')).toBe(true);
     (helmWheel.querySelector('.tb-commit') as HTMLButtonElement).click();
     const courseAnswer: string | null = await course;
     expect(Number(courseAnswer)).toBeGreaterThanOrEqual(0);
     expect(Number(courseAnswer)).toBeLessThan(360);
+    // the ship's mark turned to the committed course
+    expect(bridge.root.querySelector('.tb-sector-ship use')?.getAttribute('transform')).toMatch(new RegExp(`^rotate\\(${Number(courseAnswer)} `));
     // Distance: the slider is lit with the pressed sector's distance; ENGAGE answers it
     const distance: Promise<string | null> = harness.ask('Distance: ');
     const slider: HTMLElement = bridge.root.querySelector('#tb-distance')?.closest('.tb-slider') as HTMLElement;
@@ -134,7 +186,7 @@ describe('the station views', () => {
     const readout = bridge.readout_get();
     const here = readout?.position.sector as { x: number; y: number };
     const target: { x: number; y: number } = { x: here.x, y: here.y === 0 ? 3 : 0 };
-    (bridge.root.querySelector(`.tb-sector[data-x="${target.x}"][data-y="${target.y}"]`) as HTMLButtonElement).click();
+    sector_press(bridge, target.x, target.y);
     const slider: HTMLInputElement = bridge.root.querySelector('#tb-distance') as HTMLInputElement;
     expect(Number(slider.value)).toBeCloseTo(Math.abs(here.y - target.y) / 10, 5);
     // the helm view's slider follows
@@ -145,7 +197,7 @@ describe('the station views', () => {
   it("the computer's SCORE pill sends c at Command: and answers Request: itself; WARP COST answers the distance and warp factor from its sliders", async () => {
     const { bridge } = bridge_make();
     const harness = bridge.harness_get();
-    harness.event_take('games.trek.state', shown[0]);
+    await game_open(bridge);
     const command: Promise<string | null> = harness.ask('\nCommand: ');
     (bridge.root.querySelector('[data-request="s"]') as HTMLButtonElement).click();
     expect(await command).toBe('c');
@@ -171,7 +223,7 @@ describe('the station views', () => {
   it('ENGINEERING draws every device with its repair times and lights its rest slider at How long', async () => {
     const { bridge } = bridge_make();
     const harness = bridge.harness_get();
-    harness.event_take('games.trek.state', shown[0]);
+    await game_open(bridge);
     (bridge.root.querySelector('[data-view="engineering"]') as HTMLButtonElement).click();
     expect(bridge.root.querySelectorAll('.tb-dc-name').length).toBeGreaterThanOrEqual(14);
     expect(bridge.root.querySelectorAll('.tb-pip').length).toBe(bridge.readout_get()?.ship.torpedoesMax);
@@ -189,7 +241,7 @@ describe('the station views', () => {
   it('TACTICAL: a burst angle draws the wedge on the firing wheel, and a bank of phasers can be set and fired', async () => {
     const { bridge } = bridge_make();
     const harness = bridge.harness_get();
-    harness.event_take('games.trek.state', shown[0]);
+    await game_open(bridge);
     const command: Promise<string | null> = harness.ask('\nCommand: ');
     (bridge.root.querySelector('[data-command="torpedo"]') as HTMLButtonElement).click();
     expect(await command).toBe('t');

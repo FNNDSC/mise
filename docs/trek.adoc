@@ -106,13 +106,18 @@ Every sound is synthesized in the browser; no recording ships. Each cue is a spe
 * The bridge wears ARGUS's theme: its palette tokens, under whichever scheme is set.
 * A command works in place; only the gutter changes the view.
 * "A program may take the screen and give it back" is a surface decision: its laws and a row in `apps/argus/docs/aegis.adoc` land with the takeover.
+* A distance is in quadrants, as the C reads it: a sector pressed on the scan sets a tenth per sector, and the helm's note says where the ship arrives and what the move costs, worked out as the computer would.
+* The computer's requests are pills on the COMPUTER view (and on the BRIDGE view's strip). A request pill at `Command:` sends `c` and answers `Request:` itself; the questions a request then asks (a target's quadrant and sector, a range, a distance and warp factor) are answered from the view's panels, which are the controls: the course panel aims at a quadrant pressed on the chart and a sector pressed on a scan, the cost panel's sliders hold the distance and warp factor. The panels also show the arithmetic live, mirrored from the C (`kalc`, `warpcost`, `impcost`, `pheff`, `score`), and the engine's own answer is drawn beside them; the engine's print is the authority, and the mirrors are tested against it.
+* Manual phasers are played at TACTICAL: each bank's units, course and spread from the slider, wheel and slider in turn, and FIRE THE BANKS SET sends the bank of 0 units that ends the banks, as the C reads it.
+* A station's head shows the step the command is on and a CANCEL pill whenever the open question has a "never mind" in the C (a course of -1, a rest of 0).
+* The C's device table runs past its last device with two `*ERR*` rows; the bridge lists the fourteen devices.
 
 == The order of work
 
 . *S1, the package* (#1156, done): `packages/trek` with the engine, the `trek` command, its README and licence, `lint:trek`; brasa's builtin as a consumer; this document. Merged after the first publish by hand.
-. *S2, the engine shows its state*: `state_show`, the `event` channel through menu, brasa, calypso and the ARGUS client; the session's `trek` sends `games.trek.state`.
-. *S3a, the takeover and the BRIDGE view*: ARGUS's takeover layer and the harness, header, scans, helm and tactical, the ship's log, LEAVE BRIDGE; entry from the GAMES pane and the console line.
-. *S3b, the station views*: HELM, TACTICAL, ENGINEERING, COMPUTER.
+. *S2, the engine shows its state* (#1163): `state_show`, the `event` channel through menu, brasa, calypso and the ARGUS client; the session's `trek` sends `games.trek.state`.
+. *S3a, the takeover and the BRIDGE view* (#1164): ARGUS's takeover layer and the harness, header, scans, helm and tactical, the ship's log, LEAVE BRIDGE; entry from the GAMES pane and the console line.
+. *S3b, the station views* (#1165): HELM and TACTICAL large with the scan beside them, ENGINEERING with the damage control report whole (repair times in flight and docked) and the ship's reserves, COMPUTER with the chart large and the requests as pills with the answers drawn; manual phasers; the score in the header; the frame's two elbows joined.
 . *S3c, sound*: the resynthesis player, the bank as a static asset, the cues on their events, ARGUS's own beeps through it.
 . *S4, proof*: a smoke scenario for the bridge, and its AEGIS laws.
 

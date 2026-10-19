@@ -104,6 +104,10 @@ export interface BridgeReadout {
   devices: DeviceState[];
   /** The devices under repair, soonest first. */
   damaged: DeviceState[];
+  /** The game's tallies, as the score reads them. */
+  game: { killk: number; killb: number; kills: number; killinhab: number; helps: number; captives: number; deaths: number; killed: boolean; skill: number; won: boolean; abandoned: boolean };
+  /** The parameters the C's arithmetic uses: warp time, the dock factor, Klingon power, the start date. */
+  param: { warptime: number; dockfac: number; klingpwr: number; date: number };
 }
 
 /** The C's condition names, by code. */
@@ -164,7 +168,9 @@ function devices_read(events: ReadonlyArray<TrekEvent>): DeviceState[] {
     if ((event.evcode & E_EVENT) !== E_FIXDV || (event.evcode & E_GHOST) !== 0) continue;
     repairs.set(event.systemname, event.date);
   }
-  return Device.map((device, index: number): DeviceState => ({ index, name: device.name, person: device.person, repairAt: repairs.get(index) ?? null }));
+  // the C's table runs to NDEV with `*ERR*` names past the last device; those are no device
+  return Device.map((device, index: number): DeviceState => ({ index, name: device.name, person: device.person, repairAt: repairs.get(index) ?? null }))
+    .filter((device: DeviceState): boolean => !device.name.startsWith('*'));
 }
 
 /**
@@ -233,7 +239,138 @@ export function readout_build(state: TrekState): BridgeReadout {
     mission: { stardate: Now.date, timeLeft: Now.time, klingonsLeft: Now.klings, klingonsStart: Param.klings, killed: Game.killk, captives: Game.captives, starbases: Now.bases },
     position: { quadrant: here, sector: sectorHere },
     sectors, klingons, bases, nearestBase, chart, devices, damaged,
+    game: {
+      killk: Game.killk, killb: Game.killb, kills: Game.kills, killinhab: Game.killinhab, helps: Game.helps, captives: Game.captives, deaths: Game.deaths,
+      killed: Game.killed !== 0, skill: Game.skill, won: state.Move.endgame > 0, abandoned: Ship.ship !== ENTERPRISE,
+    },
+    param: { warptime: Param.warptime, dockfac: Param.dockfac, klingpwr: Param.klingpwr, date: Param.date },
   };
+}
+
+/** One line of the score, as the C prints it. */
+export interface ScoreItem {
+  /** What it is for. */
+  label: string;
+  /** Its points, signed. */
+  points: number;
+}
+
+/** The skills' names, by the C's number. */
+const SKILL_NAMES: ReadonlyArray<string> = ['novice', 'fair', 'good', 'expert', 'commodore', 'impossible'];
+
+/**
+ * The score so far, item by item, as the C's `score()` counts it; the engine's own print at the end is the authority.
+ *
+ * @param readout - The readout.
+ * @returns The items and their total.
+ */
+export function score_of(readout: BridgeReadout): { items: ScoreItem[]; total: number } {
+  const { game, mission, param } = readout;
+  const items: ScoreItem[] = [];
+  items.push({ label: `${game.killk} Klingons killed`, points: Math.trunc(param.klingpwr / 4) * game.killk });
+  const elapsed: number = Math.max(1, mission.stardate - param.date);
+  const rate: number = game.killk / elapsed;
+  items.push({ label: `kill rate ${rate.toFixed(2)} Klingons/stardate`, points: Math.trunc(400 * rate) });
+  items.push({ label: `penalty for ${mission.klingonsLeft} Klingons remaining`, points: Math.trunc((-400 * mission.klingonsLeft) / (game.killk + 1)) });
+  if (game.won) items.push({ label: `bonus for winning a ${SKILL_NAMES[game.skill - 1] ?? ''} game`, points: 100 * game.skill });
+  if (game.killed) items.push({ label: 'penalty for getting killed', points: -500 });
+  items.push({ label: `${game.killb} starbases killed`, points: -100 * game.killb });
+  items.push({ label: `${game.helps} calls for help`, points: -100 * game.helps });
+  items.push({ label: `${game.kills} stars destroyed`, points: -5 * game.kills });
+  items.push({ label: `${game.killinhab} inhabited starsystems destroyed`, points: -150 * game.killinhab });
+  if (game.abandoned) items.push({ label: 'penalty for abandoning ship', points: -200 });
+  items.push({ label: `${game.captives} Klingons captured`, points: 3 * game.captives });
+  items.push({ label: `${game.deaths} casualties`, points: -game.deaths });
+  return { items, total: items.reduce((sum: number, item: ScoreItem): number => sum + item.points, 0) };
+}
+
+/** A place in the galaxy: a quadrant and a sector in it. */
+export interface Place {
+  /** The quadrant's row and column. */
+  quadrant: XY;
+  /** The sector's row and column. */
+  sector: XY;
+}
+
+/**
+ * The course and distance from the ship to a place, as the computer's `kalc` finds them: whole degrees, quadrants.
+ *
+ * @param readout - The readout, for where the ship is.
+ * @param to - The place.
+ * @returns The course in whole degrees and the distance in quadrants.
+ */
+export function course_calc(readout: BridgeReadout, to: Place): { course: number; distance: number } {
+  const { quadrant, sector } = readout.position;
+  const dx: number = quadrant.x + sector.x / NSECTS - (to.quadrant.x + to.sector.x / NSECTS);
+  const dy: number = to.quadrant.y + to.sector.y / NSECTS - (quadrant.y + sector.y / NSECTS);
+  let angle: number = Math.atan2(dy, dx);
+  if (angle < 0) angle += 2 * Math.PI;
+  return { course: Math.trunc((angle * 180) / Math.PI + 0.5) % 360, distance: Math.hypot(dx, dy) };
+}
+
+/**
+ * Where a course and distance from the ship arrive, in the galaxy's sectors.
+ *
+ * @param readout - The readout, for where the ship is.
+ * @param course - The course in degrees.
+ * @param distance - The distance in quadrants.
+ * @returns The place, clamped to the galaxy.
+ */
+export function arrival_of(readout: BridgeReadout, course: number, distance: number): Place {
+  const { quadrant, sector } = readout.position;
+  const a: number = (course * Math.PI) / 180;
+  const x: number = Math.min(NQUADS * NSECTS - 1, Math.max(0, Math.round(quadrant.x * NSECTS + sector.x - Math.cos(a) * distance * NSECTS)));
+  const y: number = Math.min(NQUADS * NSECTS - 1, Math.max(0, Math.round(quadrant.y * NSECTS + sector.y + Math.sin(a) * distance * NSECTS)));
+  return { quadrant: { x: Math.trunc(x / NSECTS), y: Math.trunc(y / NSECTS) }, sector: { x: x % NSECTS, y: y % NSECTS } };
+}
+
+/**
+ * What a warp move costs, as the computer's `warpcost` counts it.
+ *
+ * @param distance - The distance in quadrants.
+ * @param warp - The warp factor.
+ * @param warptime - The C's warp time parameter.
+ * @returns The stardates and the units, and the units with shields up.
+ */
+export function warpCost_of(distance: number, warp: number, warptime: number): { stardates: number; units: number; unitsShielded: number } {
+  const units: number = Math.trunc((distance + 0.05) * warp * warp * warp);
+  return { stardates: (warptime * distance) / (warp * warp), units, unitsShielded: 2 * units };
+}
+
+/**
+ * What an impulse move costs, as the computer's `impcost` counts it.
+ *
+ * @param distance - The distance in quadrants.
+ * @returns The stardates and the units.
+ */
+export function impulseCost_of(distance: number): { stardates: number; units: number } {
+  return { stardates: distance / 0.095, units: Math.trunc(20 + 100 * distance) };
+}
+
+/**
+ * How effective phasers are at a range, as the computer's `pheff` counts it.
+ *
+ * @param range - The range in quadrants.
+ * @returns The percentage.
+ */
+export function phaserEffect_of(range: number): number {
+  return Math.trunc(Math.pow(0.9, range * 10) * 98 + 0.5);
+}
+
+/**
+ * How long a device's repair takes, in flight and docked, as `dcrept` prints them.
+ *
+ * @param device - The device.
+ * @param readout - The readout, for the date, the condition and the dock factor.
+ * @returns The two times in stardates, or null when the device works.
+ */
+export function repairTimes_of(device: DeviceState, readout: BridgeReadout): { inFlight: number; docked: number } | null {
+  if (device.repairAt === null) return null;
+  const left: number = device.repairAt - readout.mission.stardate;
+  const docked: boolean = readout.condition.name === 'DOCKED';
+  const m1: number = docked ? 1 / readout.param.dockfac : 1;
+  const m2: number = docked ? 1 : readout.param.dockfac;
+  return { inFlight: left * m1 + 0.005, docked: left * m2 + 0.005 };
 }
 
 /**

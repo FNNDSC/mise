@@ -112,3 +112,115 @@ describe('the bridge', () => {
     bridge.root.remove();
   });
 });
+
+describe('the station views', () => {
+  it('the gutter changes the view: HELM shows the helm large, the body says which view it is, and the BRIDGE parts hide', () => {
+    const { bridge, sounds } = bridge_make();
+    bridge.harness_get().event_take('games.trek.state', shown[0]);
+    (bridge.root.querySelector('[data-view="helm"]') as HTMLButtonElement).click();
+    expect(bridge.view_get()).toBe('helm');
+    expect((bridge.root.querySelector('.tb-body') as HTMLElement).dataset['view']).toBe('helm');
+    expect(bridge.root.querySelector('.tb-view-helm .tb-wheel-face')?.getAttribute('width')).toBe('260');
+    expect(sounds).toContain('audio1');
+    bridge.root.remove();
+  });
+
+  it('a sector pressed sets the distance in quadrants: a sector is a tenth', () => {
+    const { bridge } = bridge_make();
+    const harness = bridge.harness_get();
+    harness.event_take('games.trek.state', shown[0]);
+    const readout = bridge.readout_get();
+    const here = readout?.position.sector as { x: number; y: number };
+    const target: { x: number; y: number } = { x: here.x, y: here.y === 0 ? 3 : 0 };
+    (bridge.root.querySelector(`.tb-sector[data-x="${target.x}"][data-y="${target.y}"]`) as HTMLButtonElement).click();
+    const slider: HTMLInputElement = bridge.root.querySelector('#tb-distance') as HTMLInputElement;
+    expect(Number(slider.value)).toBeCloseTo(Math.abs(here.y - target.y) / 10, 5);
+    // the helm view's slider follows
+    expect(Number((bridge.root.querySelector('#tbh-distance') as HTMLInputElement).value)).toBeCloseTo(Math.abs(here.y - target.y) / 10, 5);
+    bridge.root.remove();
+  });
+
+  it("the computer's SCORE pill sends c at Command: and answers Request: itself; WARP COST answers the distance and warp factor from its sliders", async () => {
+    const { bridge } = bridge_make();
+    const harness = bridge.harness_get();
+    harness.event_take('games.trek.state', shown[0]);
+    const command: Promise<string | null> = harness.ask('\nCommand: ');
+    (bridge.root.querySelector('[data-request="s"]') as HTMLButtonElement).click();
+    expect(await command).toBe('c');
+    const request: Promise<string | null> = harness.ask('\nRequest: ');
+    expect(await request).toBe('s');
+    harness.text_take('*** Your score:\n');
+    expect(bridge.root.querySelector('.tb-computer-answer')?.textContent).toContain('Your score');
+    // the next request, already at Request:
+    const again: Promise<string | null> = harness.ask('\nCommand: ');
+    (bridge.root.querySelector('[data-request="w"]') as HTMLButtonElement).click();
+    expect(await again).toBe('c');
+    const request2: Promise<string | null> = harness.ask('\nRequest: ');
+    expect(await request2).toBe('w');
+    const distance: Promise<string | null> = harness.ask('distance: ');
+    expect(Number(await distance)).toBeGreaterThanOrEqual(0);
+    const warp: Promise<string | null> = harness.ask('warp factor: ');
+    expect(Number(await warp)).toBeGreaterThanOrEqual(1);
+    // the score panel stands on the computer view
+    expect(bridge.root.querySelector('.tb-score-total')?.textContent).toBe('TOTAL');
+    bridge.root.remove();
+  });
+
+  it('ENGINEERING draws every device with its repair times and lights its rest slider at How long', async () => {
+    const { bridge } = bridge_make();
+    const harness = bridge.harness_get();
+    harness.event_take('games.trek.state', shown[0]);
+    (bridge.root.querySelector('[data-view="engineering"]') as HTMLButtonElement).click();
+    expect(bridge.root.querySelectorAll('.tb-dc-name').length).toBeGreaterThanOrEqual(14);
+    expect(bridge.root.querySelectorAll('.tb-pip').length).toBe(bridge.readout_get()?.ship.torpedoesMax);
+    const command: Promise<string | null> = harness.ask('\nCommand: ');
+    (bridge.root.querySelector('.tb-station-time [data-command="rest"]') as HTMLButtonElement).click();
+    expect(await command).toBe('r');
+    const howLong: Promise<string | null> = harness.ask('How long: ');
+    const rest: HTMLElement = bridge.root.querySelector('#tbe-rest')?.closest('.tb-slider') as HTMLElement;
+    expect(rest.classList.contains('tb-lit')).toBe(true);
+    (rest.querySelector('.tb-commit') as HTMLButtonElement).click();
+    expect(await howLong).toMatch(/^\d+\.\d$/);
+    bridge.root.remove();
+  });
+
+  it('TACTICAL: a burst angle draws the wedge on the firing wheel, and a bank of phasers can be set and fired', async () => {
+    const { bridge } = bridge_make();
+    const harness = bridge.harness_get();
+    harness.event_take('games.trek.state', shown[0]);
+    const command: Promise<string | null> = harness.ask('\nCommand: ');
+    (bridge.root.querySelector('[data-command="torpedo"]') as HTMLButtonElement).click();
+    expect(await command).toBe('t');
+    const angle: Promise<string | null> = harness.ask('burst angle: ');
+    const tactical: HTMLElement = bridge.root.querySelector('.tb-station-tactical') as HTMLElement;
+    (tactical.querySelector('.tb-pillrow.tb-lit .tb-choice[data-line="10"]') as HTMLButtonElement).click();
+    expect(await angle).toBe('10');
+    expect(tactical.querySelector('.tb-wheel-wedge')?.getAttribute('d')).toMatch(/^M /);
+    // manual phasers: a bank's units, course and spread from the controls, then FIRE THE BANKS SET sends the 0 that ends the banks
+    const command2: Promise<string | null> = harness.ask('\nCommand: ');
+    (bridge.root.querySelector('[data-command="phasers"]') as HTMLButtonElement).click();
+    expect(await command2).toBe('p');
+    const mode: Promise<string | null> = harness.ask('Manual or automatic: ');
+    (tactical.querySelector('.tb-pillrow.tb-lit .tb-choice[data-line="m"]') as HTMLButtonElement).click();
+    expect(await mode).toBe('m');
+    const units: Promise<string | null> = harness.ask('units: ');
+    const unitsSlider: HTMLElement = tactical.querySelector('#tb-units')?.closest('.tb-slider') as HTMLElement;
+    expect(unitsSlider.classList.contains('tb-lit')).toBe(true);
+    expect(unitsSlider.querySelector('.tb-commit')?.textContent).toBe('SET BANK');
+    (unitsSlider.querySelector('.tb-commit') as HTMLButtonElement).click();
+    expect(await units).toMatch(/^\d+$/);
+    const course: Promise<string | null> = harness.ask('course: ');
+    expect(tactical.querySelector('.tb-wheel')?.classList.contains('tb-lit')).toBe(true);
+    (tactical.querySelector('.tb-wheel .tb-commit') as HTMLButtonElement).click();
+    expect(await course).toMatch(/^\d+$/);
+    const spread: Promise<string | null> = harness.ask('spread: ');
+    (tactical.querySelector('#tb-spread')?.closest('.tb-slider')?.querySelector('.tb-commit') as HTMLButtonElement).click();
+    expect(await spread).toBe('0.50');
+    const more: Promise<string | null> = harness.ask('units: ');
+    const fire: HTMLButtonElement = tactical.querySelector('.tb-fire') as HTMLButtonElement;
+    expect(fire.disabled).toBe(false);
+    fire.click();
+    expect(await more).toBe('0');
+    bridge.root.remove();
+  });
+});

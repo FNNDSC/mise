@@ -63,6 +63,8 @@ export interface ArgusHost {
   consoleZoom_toggle(): void;
   /** Opens the launcher, the place a session begins when nothing is open. */
   launcher_enter(): void;
+  /** Opens the trek bridge over the surface with a `trek` line; answers what happened, for the console. */
+  trek_open(line: string): string;
   /** Who this session belongs to, as the prompt names them; null before the first prompt. */
   identity_get(): string | null;
   /** The serialized desktop of the current composition. */
@@ -82,7 +84,7 @@ interface Sentence {
 
 /** Subjects this language owns; all other lines belong to the session. */
 const SUBJECTS: Set<string> = new Set([
-  'pane', 'view', 'file', 'header', 'console', 'back', 'desktop', 'dashboard', 'help', 'notes', 'launcher', 'attach', 'argus',
+  'pane', 'view', 'file', 'header', 'console', 'back', 'desktop', 'dashboard', 'help', 'notes', 'launcher', 'attach', 'argus', 'trek',
 ]);
 
 /** The frame's own subjects, which no composition answers for. */
@@ -106,6 +108,10 @@ const SHARED_SUBJECTS: Record<string, ReadonlySet<string>> = {
   // `file` is the kernel's too (what a file is, by its bytes — games shelf);
   // the surface claims only its files-pane verbs.
   file: new Set(['home', 'back', 'download', 'delete', 'follow', 'root', 'open', 'list', 'cards', 'preview', 'sort', 'filter']),
+  // `trek` is the kernel's game; the surface claims only a game to draw on
+  // its bridge (bare, or with a seed): --credits, --help and --version are
+  // the session's answers.
+  trek: new Set(['', '--seed']),
 };
 
 /**
@@ -375,7 +381,23 @@ const FRAME_TAIL_LINES: ReadonlyArray<string> = [
   'argus keys                  (the prefix chords: one key, one drawer verb)',
   'help pane|keys|verbs        (the KEYS pane on the stage; keys and verbs print the tables here; bare help is the session\'s)',
   'notes pane                  (what the installed releases changed, as a pane; bare notes prints it here)',
+  'trek [--seed <n>]           (the bridge takes the screen: BSD trek played from its controls; --credits, --help and --version are the session\'s)',
 ];
+
+/** The words of a `trek` line that never open the bridge: they answer at once in the session. */
+const TREK_CONSOLE_WORDS: ReadonlySet<string> = new Set<string>(['--credits', '--help', '-h', '--version', '-V']);
+
+/**
+ * Whether a line is a game of trek the bridge should take.
+ *
+ * @param line - The line as typed.
+ * @returns True for `trek` and its play options; false for anything else, including `trek --credits`.
+ */
+export function trekLine_isGame(line: string): boolean {
+  const words: string[] = line.trim().split(/\s+/);
+  if (words[0] !== 'trek') return false;
+  return !words.slice(1).some((word: string): boolean => TREK_CONSOLE_WORDS.has(word));
+}
 
 /**
  * Lays the verb lines out: the frame's, a composition's each after the line it names.
@@ -478,6 +500,12 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   if (subject === 'back') {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     return 'back';
+  }
+
+  if (subject === 'trek') {
+    // The surface claims only a game: `trek --credits` and its kin answer at once in the session, as they always did.
+    if (!trekLine_isGame(['trek', ...words].join(' '))) return null;
+    return host.trek_open(['trek', ...words].join(' '));
   }
 
   if (subject === 'attach') {

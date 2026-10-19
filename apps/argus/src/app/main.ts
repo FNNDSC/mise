@@ -68,7 +68,7 @@ import { StatusBar } from './status.js';
 import { LaneInstrument } from './laneInstrument.js';
 import { Cascade } from './cascade.js';
 import { PipelineCycler, cyclerNames_seed } from './cycler.js';
-import { argusLine_run, claims_list, language_extend, viewScript_run, DRAWER_CHORDS, VERB_LINES, type ArgusHost, type DrawerChord } from '../console/argusLang.js';
+import { argusLine_run, claims_list, language_extend, viewScript_run, DRAWER_CHORDS, VERB_LINES, type ArgusHost, type DrawerChord, trekLine_isGame } from '../console/argusLang.js';
 import { chrisLanguage, type ChrisLangHost } from '../compositions/chris/lang.js';
 
 /** Console zoom, exposed for the language (the bar carries no control). */
@@ -100,7 +100,7 @@ import { editor_wire, type EditorModule } from './editor.js';
 import { feedRowHandlers_make, feedVerbs_wire, type FeedVerbs } from './feedRows.js';
 import { helpPane_wire, type HelpPaneHooks, type HelpPaneModule } from './helpPane.js';
 import { gamesPane_wire, type GamesPaneModule } from './gamesPane.js';
-import { trekBridge_wire, trekLine_isGame, type TrekBridgeModule } from './trekBridge.js';
+import { trekBridge_wire, type TrekBridgeModule } from './trekBridge.js';
 import { synthVoice } from '../lcars/synth.js';
 import { notesPane_wire, type NotesPaneModule } from './notesPane.js';
 import { asks_wire, type Asks } from './asks.js';
@@ -2078,6 +2078,12 @@ async function surface_start(token: string): Promise<void> {
     help_open,
     notes_open: notesPane.open,
     launcher_enter,
+    // `trek` on the command line (either console): the bridge takes the screen and gives it back when the game ends.
+    trek_open: (line: string): string => {
+      if (trekBridge.active_is()) return 'trek: the bridge is already up';
+      void trekBridge.open(line);
+      return 'trek: the bridge takes the screen (Esc or LEAVE BRIDGE gives it back)';
+    },
     identity_get: (): string | null => promptIdentity,
     consoleZoom_toggle,
     feed_enter: (feedId: number): void => dagPanel.feed_enter(feedId),
@@ -2180,7 +2186,12 @@ async function surface_start(token: string): Promise<void> {
       const line: string = paletteInput.value.trim();
       if (line.length === 0) { palette_close(); return; }
       void argusLine_run(argusHost, line).then((result: string | null): void => {
-        if (result !== null) {
+        if (result !== null && trekBridge.active_is()) {
+          // The sentence gave the screen to a program (trek's bridge): the command line
+          // stands down, or its Esc would take the one meant for the bridge.
+          terminal.output_write('data', `: ${line}\n${result}\n`);
+          palette_close();
+        } else if (result !== null) {
           paletteResult.textContent = result;
           terminal.output_write('data', `: ${line}\n${result}\n`);
           paletteInput.value = '';

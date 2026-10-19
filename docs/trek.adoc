@@ -104,7 +104,7 @@ The frame's four beeps (press, arrive, retreat, refuse) go through the same voic
 === Settled
 
 * Esc asks "Leave the bridge? The game ends"; LEAVE BRIDGE leaves. Abandoning the engine's open question is end of input, as Ctrl-D is: the game ends as the C does, and the console's outcome is the game's own.
-* The bridge opens from `trek` typed at the transcript console (ARGUS claims the line before it reaches the wire, then runs the command itself). In a terminal console the line runs in that chell and plays as text, as it does in any terminal; a control that opens the bridge from the terminal console is a later slice.
+* The bridge opens from `trek` on the command line of either console (the ARGUS language's `trek` subject: prefix-`:` or the LANG capsule, then `trek [--seed <n>]`), and from `trek` typed at the transcript console (ARGUS claims the line before it reaches the wire, then runs the command itself). In a terminal console the bare line typed at the prompt runs in that chell and plays as text, as it does in any terminal. The surface claims only a game: `trek --credits`, `--help` and `--version` answer at once in the session.
 * The bridge wears ARGUS's theme: its palette tokens, under whichever scheme is set.
 * A command works in place; only the gutter changes the view.
 * "A program may take the screen and give it back" is a surface decision: its laws and a row in `apps/argus/docs/aegis.adoc` land with the takeover.

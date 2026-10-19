@@ -2,9 +2,9 @@
  * @file The trek bridge, as the host wires it: a program that takes the
  * screen and gives it back.
  *
- * `trek` typed at the transcript console, or asked for by a surface control,
- * opens the bridge over ARGUS and runs the session's `trek` as the operator's
- * own command. While it runs, the command's questions, output and typed
+ * `trek` typed at the transcript console, or on the command line of either
+ * console (the ARGUS language's `trek` subject), opens the bridge over ARGUS
+ * and runs the session's `trek` as the operator's own command. While it runs, the command's questions, output and typed
  * events come here instead of the console; when it ends, ARGUS is given back.
  * Esc asks whether to leave; leaving abandons the engine's open question,
  * which the engine reads as end of input and ends the game as the C does.
@@ -30,21 +30,6 @@ export interface TrekBridgeModule {
   output_take: (chunk: string) => void;
   /** A typed event from the running command, while the bridge is up. */
   event_take: (kind: string, data: unknown) => void;
-}
-
-/** The words of a `trek` line that never open the bridge: they answer at once in the console. */
-const CONSOLE_ONLY_WORDS: ReadonlySet<string> = new Set<string>(['--credits', '--help', '-h', '--version', '-V']);
-
-/**
- * Whether a console line is a game of trek the bridge should take.
- *
- * @param line - The line as typed.
- * @returns True for `trek` and its play options; false for anything else, including `trek --credits`.
- */
-export function trekLine_isGame(line: string): boolean {
-  const words: string[] = line.trim().split(/\s+/);
-  if (words[0] !== 'trek') return false;
-  return !words.slice(1).some((word: string): boolean => CONSOLE_ONLY_WORDS.has(word));
 }
 
 /**

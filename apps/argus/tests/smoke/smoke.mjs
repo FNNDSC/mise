@@ -100,7 +100,7 @@ let suiteConsole = 'transcript';
  * suite driving a terminal skips them by name, and the nightly transcript
  * lane runs them.
  */
-const TRANSCRIPT_ONLY = ['console-asks', 'question-both-places', 'trek-bridge'];
+const TRANSCRIPT_ONLY = ['console-asks', 'question-both-places'];
 /** The terminal's own: its questions are chell's, asked and answered in line. */
 const TERMINAL_ONLY = ['terminal-asks'];
 
@@ -1249,11 +1249,12 @@ try {
   }
 
   if (await stage('trek-bridge')) {
-  // The trek bridge (#1157): `trek` at the transcript console is a program
-  // that takes the screen and gives it back. The bridge plays the game
-  // through the engine's own prompts from controls lit by the question,
-  // is heard by rule through the page's voice, and LEAVE BRIDGE (Esc asks
-  // first) ends the game as end of input, the console returning READY.
+  // The trek bridge (#1157): `trek` on the command line of either console
+  // (and typed at the transcript) is a program that takes the screen and
+  // gives it back. The bridge plays the game through the engine's own
+  // prompts from controls lit by the question, is heard by rule through
+  // the page's voice, and LEAVE BRIDGE (Esc asks first) ends the game as
+  // end of input, the console returning READY.
   const trek = await evalIn(`
     await console_idle();
     const input = console_input();
@@ -1261,9 +1262,21 @@ try {
     const click = (sel) => { const b = document.querySelector(sel); if (!b) return false; b.click(); return true; };
     const q = (sel) => document.querySelector(sel);
     const label = (name) => [...document.querySelectorAll('.tb-head-label')].find((l) => l.textContent === name)?.nextElementSibling?.textContent ?? null;
-    // Not through say(): the line does not return its prompt until the game ends.
-    input.value = 'trek --seed 42'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    // Under a terminal the line goes down the command line (the LANG capsule, prefix-:), where the
+    // surface's trek subject takes it; the transcript takes it from its own input. Not through
+    // say(): the line does not return its prompt until the game ends.
+    let entry = 'transcript';
+    if (terminal_mode()) {
+      entry = 'command line';
+      const pill = document.getElementById('lang-pill');
+      if (document.getElementById('lang-palette').hidden) { pill.click(); await sleep(150); }
+      const li = document.getElementById('lang-input'); li.value = 'trek --seed 42';
+      li.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    } else {
+      input.value = 'trek --seed 42'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    }
     const opened = await until(() => q('#trek-bridge') !== null && document.body.dataset.takeover === 'trek');
+    const paletteClosed = document.getElementById('lang-palette').hidden;
     const hidden = [...document.body.children].filter((el) => el.id !== 'trek-bridge').every((el) => getComputedStyle(el).visibility === 'hidden');
     // setup: the strip asks the length and the skill; the command pills stay dimmed until Command:
     const lengthAsked = await until(() => !q('.tb-ask')?.hidden && /length/i.test(q('.tb-ask-text')?.textContent ?? ''));
@@ -1315,10 +1328,10 @@ try {
     const restored = [...document.body.children].every((el) => getComputedStyle(el).visibility !== 'hidden' || el.hidden || el.offsetParent === null || getComputedStyle(el).display === 'none');
     await console_idle();
     const tail = console_text().slice(-400);
-    return { opened, hidden, lengthAsked, dimmedBefore, dimmedPressed, commandReady, drawn, wheelLit, asksCourse, distanceLit, distanceValue, moved, since: since.slice(0, 160), helmView, engineeringRows, scored, voice, heard: { events: heard.events, states: heard.states, lastError: heard.lastError }, leaveAsked, stayed, closed, restored, tail, asking: console_asking() };`);
+    return { entry, paletteClosed, opened, hidden, lengthAsked, dimmedBefore, dimmedPressed, commandReady, drawn, wheelLit, asksCourse, distanceLit, distanceValue, moved, since: since.slice(0, 160), helmView, engineeringRows, scored, voice, heard: { events: heard.events, states: heard.states, lastError: heard.lastError }, leaveAsked, stayed, closed, restored, tail, asking: console_asking() };`);
   check('trek takes the screen and gives it back: the page hides behind the bridge, Esc asks, STAY stays, LEAVE ends the game, the console returns READY',
-    trek.opened && trek.hidden && trek.leaveAsked && trek.stayed && trek.closed && trek.restored && !trek.asking && !/cannot ask here/.test(trek.tail),
-    JSON.stringify({ opened: trek.opened, hidden: trek.hidden, leaveAsked: trek.leaveAsked, stayed: trek.stayed, closed: trek.closed, restored: trek.restored, asking: trek.asking, tail: trek.tail.slice(-160) }));
+    trek.opened && trek.hidden && trek.paletteClosed && trek.leaveAsked && trek.stayed && trek.closed && trek.restored && !trek.asking && !/cannot ask here/.test(trek.tail),
+    JSON.stringify({ entry: trek.entry, paletteClosed: trek.paletteClosed, opened: trek.opened, hidden: trek.hidden, leaveAsked: trek.leaveAsked, stayed: trek.stayed, closed: trek.closed, restored: trek.restored, asking: trek.asking, tail: trek.tail.slice(-160) }));
   check("the bridge answers the engine's own prompts from lit controls, and a dimmed pill presses nothing",
     trek.lengthAsked && trek.dimmedBefore && trek.dimmedPressed && trek.commandReady && trek.wheelLit && trek.asksCourse === 'course' && trek.distanceLit && trek.moved,
     JSON.stringify({ lengthAsked: trek.lengthAsked, dimmedBefore: trek.dimmedBefore, dimmedPressed: trek.dimmedPressed, commandReady: trek.commandReady, wheelLit: trek.wheelLit, asksCourse: trek.asksCourse, distanceLit: trek.distanceLit, moved: trek.moved }));

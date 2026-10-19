@@ -44,7 +44,8 @@ const LINES: string[] = [
   "argus verbs                 (this table; the long form is docs/argus-lang.adoc)",
   "argus keys                  (the prefix chords: one key, one drawer verb)",
   "help pane|keys|verbs        (the KEYS pane on the stage; keys and verbs print the tables here; bare help is the session's)",
-  "notes pane                  (what the installed releases changed, as a pane; bare notes prints it here)"
+  "notes pane                  (what the installed releases changed, as a pane; bare notes prints it here)",
+  "trek [--seed <n>]           (the bridge takes the screen: BSD trek played from its controls; --credits, --help and --version are the session's)"
 ];
 /** The first chords as they stood. */
 const KEYS: string[] = ["%", "\"", "h", "j", "k", "l", "H", "J", "K", "L", "m", "z", "x", "u", "f", "v", "1", "2", "3", "o", ";", "q"];

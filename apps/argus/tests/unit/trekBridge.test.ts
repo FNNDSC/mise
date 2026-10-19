@@ -27,6 +27,9 @@ beforeAll(async () => {
   await trek_play(terminal, { seed: 42, fast: 1, trace: 0, styled: false }, { saved: null });
 });
 
+// the picture plays its frames at once here: reduced motion, as a viewer may ask for it
+(window as unknown as { matchMedia: (q: string) => { matches: boolean } }).matchMedia = (): { matches: boolean } => ({ matches: true });
+
 /** A bridge on a detached body, with its sounds and leaves recorded. */
 function bridge_make(): { bridge: TrekBridge; sounds: string[]; left: number[] } {
   const sounds: string[] = [];
@@ -56,12 +59,14 @@ async function game_open(bridge: TrekBridge): Promise<void> {
   const standing: Promise<string | null> = harness.ask('\nCommand: ');
   expect(await standing).toBe('l');
   harness.event_take('games.trek.state', shown[0]);
+  await bridge.frames_settle();
 }
 
 describe('the bridge', () => {
-  it('draws the shown state: the condition, the scan with one ship wearing its shield ring, the legend, the chart, the devices', () => {
+  it('draws the shown state: the condition, the scan with one ship wearing its shield ring, the legend, the chart, the devices', async () => {
     const { bridge } = bridge_make();
     bridge.harness_get().event_take('games.trek.state', shown[0]);
+    await bridge.frames_settle();
     const root: HTMLElement = bridge.root;
     expect(root.querySelector('.tb-condition-name')?.textContent).toMatch(/GREEN|YELLOW|RED|DOCKED/);
     expect(root.querySelectorAll('.tb-scan .tb-sector')).toHaveLength(100);
@@ -84,6 +89,7 @@ describe('the bridge', () => {
     expect(await first).toBe('l');
     // the scan's lines print under the fold's head, not on the log itself
     harness.text_take('Long range scan for quadrant 1,1\n     0     1     2\n  -------------------\n');
+    await bridge.frames_settle();
     const fold: HTMLDetailsElement | null = bridge.root.querySelector('.tb-log-fold');
     expect(fold?.querySelector('.tb-log-fold-head')?.textContent).toMatch(/^LONG RANGE SCAN · STANDING ORDER/);
     expect(fold?.querySelectorAll('.tb-log-line').length).toBeGreaterThanOrEqual(3);
@@ -93,6 +99,7 @@ describe('the bridge', () => {
     const second: Promise<string | null> = harness.ask('\nCommand: ');
     expect(harness.question_get()?.question).toBe('command');
     harness.text_take('after\n');
+    await bridge.frames_settle();
     expect(bridge.root.querySelectorAll('.tb-log > .tb-log-line')).toHaveLength(1);
     (bridge.root.querySelector('[data-command="dump"]') as HTMLButtonElement).click();
     expect(await second).toBe('dump');
@@ -152,10 +159,14 @@ describe('the bridge', () => {
     bridge.root.remove();
   });
 
-  it('the log keeps the engine\'s words, and LEAVE BRIDGE asks before it leaves', () => {
+  it('the log keeps the engine\'s words in their turn (a line without its newline lands when the engine stops to ask), and LEAVE BRIDGE asks before it leaves', async () => {
     const { bridge, left } = bridge_make();
     bridge.harness_get().text_take('Klingon at 1,7 fires 274 units\n');
     bridge.harness_get().text_take('Shields hold.');
+    await bridge.frames_settle();
+    expect([...bridge.root.querySelectorAll('.tb-log-line')].map((l: Element): string => l.textContent ?? '')).toEqual(['Klingon at 1,7 fires 274 units']);
+    void bridge.harness_get().ask('Are you sure that is wise: ');
+    await bridge.frames_settle();
     const lines: string[] = [...bridge.root.querySelectorAll('.tb-log-line')].map((l: Element): string => l.textContent ?? '');
     expect(lines).toEqual(['Klingon at 1,7 fires 274 units', 'Shields hold.']);
     (bridge.root.querySelector('.tb-leave') as HTMLButtonElement).click();
@@ -179,10 +190,11 @@ describe('the station views', () => {
     bridge.root.remove();
   });
 
-  it('a sector pressed sets the distance in quadrants: a sector is a tenth', () => {
+  it('a sector pressed sets the distance in quadrants: a sector is a tenth', async () => {
     const { bridge } = bridge_make();
     const harness = bridge.harness_get();
     harness.event_take('games.trek.state', shown[0]);
+    await bridge.frames_settle();
     const readout = bridge.readout_get();
     const here = readout?.position.sector as { x: number; y: number };
     const target: { x: number; y: number } = { x: here.x, y: here.y === 0 ? 3 : 0 };

@@ -100,6 +100,23 @@ export function markDefs_make(): SVGElement | null {
     symbol.innerHTML = markup;
     defs.append(symbol);
   }
+  // the glows the motion layer paints with: a burst's halo in three colours, the photon torpedo's heart and halo
+  const gradient = (id: string, stops: ReadonlyArray<[number, string, number]>): SVGElement => {
+    const node: SVGElement = svg('radialGradient', { id: `${SYMBOL_PREFIX}${id}` });
+    for (const [offset, color, opacity] of stops) {
+      const stop: SVGElement = svg('stop', { offset });
+      stop.setAttribute('style', `stop-color: ${color}; stop-opacity: ${opacity}`);
+      node.append(stop);
+    }
+    return node;
+  };
+  defs.append(
+    gradient('halo', [[0, 'var(--butter)', 0.9], [0.35, 'var(--harvestgold)', 0.5], [1, 'var(--harvestgold)', 0]]),
+    gradient('halo-nova', [[0, 'var(--butter)', 0.9], [0.3, 'var(--pumpkin-pie)', 0.6], [1, 'var(--pumpkin-pie)', 0]]),
+    gradient('halo-mars', [[0, 'var(--butter)', 0.8], [0.3, 'var(--mars)', 0.6], [1, 'var(--mars)', 0]]),
+    gradient('photon-core', [[0, '#fff', 1], [0.35, '#ffd27a', 1], [1, '#ff6a1a', 1]]),
+    gradient('photon-halo', [[0, '#ff6a1a', 0.55], [1, '#ff6a1a', 0]]),
+  );
   root.append(defs);
   return root;
 }

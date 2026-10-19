@@ -26,6 +26,7 @@ import {
   BRIDGE_COMMANDS, bearing_of, question_control, range_of, readout_build, readout_diff, score_of,
   type BridgeCommand, type BridgeReadout, type ChartCell, type DeviceState, type KlingonSeen, type QuestionControl, type SectorCell, type TrekQuestion,
 } from './model.js';
+import { beam_play, burst_play, course_between, crossing_of, FrameQueue, lineEvent_of, lrsBloom_play, rescan_set, ringFlare_play, slide_play, Torpedo, PACE, type Frame, type LineEvent } from './motion.js';
 import { chartCode_make, chartTitle_of, commandPill_make, commandPills_show, ComputerView, EngineeringView, HelmStation, TacticalStation, type StationHost } from './stations.js';
 
 /** The views the gutter offers. */
@@ -90,6 +91,18 @@ export class TrekBridge {
   private scanDue: boolean = false;
   /** The log's open fold, while a standing order's lines print. */
   private fold: HTMLElement | null = null;
+  /** The frames' clock: the engine's lines and states replay in order, and the log scrolls with the picture. */
+  private readonly frames: FrameQueue = new FrameQueue();
+  /** The picture as drawn, a copy of the readout that frames move things on before the next readout lands. */
+  private shown: BridgeReadout | null = null;
+  /** A torpedo in flight on the scan, while its track prints. */
+  private torpedo: Torpedo | null = null;
+  /** Whether the engine is printing a torpedo track, so a bare pair of decimals is a point of it. */
+  private trackPrinting: boolean = false;
+  /** Text the engine printed without a newline yet. */
+  private partial: string = '';
+  /** A long-range cell owed a bloom at the next draw: a quadrant a Klingon fled to, or one Starfleet reported. */
+  private lrsBloom: { at: XY; hostile: boolean } | null = null;
   private readonly parts: {
     seed: HTMLElement; views: Map<BridgeView, HTMLButtonElement>; body: HTMLElement;
     condition: HTMLElement; conditionWhy: HTMLElement; ship: HTMLElement; mission: HTMLElement; position: HTMLElement; since: HTMLElement;
@@ -108,8 +121,8 @@ export class TrekBridge {
    */
   constructor(private readonly hooks: BridgeHooks, seed: number | null) {
     this.harness = new TrekHarness({
-      question_changed: (open: OpenQuestion | null): void => this.question_show(open),
-      text_written: (text: string): void => this.log_write(text),
+      question_changed: (open: OpenQuestion | null): void => { this.partial_flush(); this.question_show(open); },
+      text_written: (text: string): void => this.text_take(text),
       state_shown: (state: TrekState): void => this.state_show(state),
       ended: (): void => { if (!this.leaving) this.hooks.voice.cue('gameover'); },
     });
@@ -360,8 +373,27 @@ export class TrekBridge {
    * Asks whether to leave; Esc and LEAVE BRIDGE come here.
    */
   public leave_ask(): void {
+    this.frames.skip();
     if (this.parts.leaveAsk.hidden) this.hooks.voice.pill('LEAVE BRIDGE');
     this.parts.leaveAsk.hidden = false;
+  }
+
+  /**
+   * What the picture has played, for a smoke scenario or a test: frames by kind, and what still waits.
+   *
+   * @returns The tally.
+   */
+  public frames_get(): { played: Record<string, number>; pending: number; busy: boolean } {
+    return { played: { ...this.frames.played }, pending: this.frames.pending_count(), busy: this.frames.busy_is() };
+  }
+
+  /**
+   * Resolves once the picture has caught up with the engine, for a test.
+   *
+   * @returns When no frame waits.
+   */
+  public frames_settle(): Promise<void> {
+    return this.frames.settle();
   }
 
   /**
@@ -395,6 +427,7 @@ export class TrekBridge {
    * @param view - The view.
    */
   public view_set(view: BridgeView): void {
+    this.frames.skip();
     this.view = view;
     this.root.dataset['view'] = view;
     this.parts.body.dataset['view'] = view;
@@ -418,6 +451,7 @@ export class TrekBridge {
    * @returns True when the prompt was open.
    */
   private command_send(command: BridgeCommand): boolean {
+    this.frames.skip();
     if (!this.harness.command_send(command)) { this.hooks.voice.cue('deny'); return false; }
     const cue = commandCue_of(command.id);
     if (cue === null) this.hooks.voice.pill(pillLabel_of(command.label, 'command'));
@@ -445,7 +479,7 @@ export class TrekBridge {
     // the ship's mark turns to the course the moment it is committed, and keeps its heading after the move
     if (open?.question === 'course' && Number.isFinite(Number(line))) {
       this.heading = ((Number(line) % 360) + 360) % 360;
-      if (this.readout !== null) this.srs_draw(this.readout);
+      if (this.shown !== null) this.srs_draw(this.shown);
     }
   }
 
@@ -483,18 +517,65 @@ export class TrekBridge {
     if (arrived) this.pressedSector = null;
     // the standing order: a long-range scan at the first prompt and on arriving somewhere, when the long-range sensors work
     if (arrived && this.device_isOk(readout, LRSCAN_NAME)) this.scanDue = true;
+    // the readouts and the controls take the state at once; the picture takes it in its turn, after the lines before it
     parts.condition.textContent = readout.condition.name;
     parts.condition.parentElement?.setAttribute('data-condition', readout.condition.name.toLowerCase());
     parts.conditionWhy.textContent = readout.condition.why.toUpperCase();
     this.header_draw(readout);
-    this.srs_draw(readout);
-    this.lrs_draw(readout);
-    this.chart_draw(readout);
     this.engineering_draw(readout.devices);
     for (const station of [parts.helm, parts.helmView, parts.tactical, parts.tacticalView, parts.computerView]) station.state_show(readout);
     parts.engineeringView.state_show(readout, this.previous);
-    for (const cue of stateCues_of(this.previous, readout)) this.hooks.voice.cue(cue);
+    this.partial_flush();
+    this.frames.push(this.stateFrame_make(readout, this.previous));
     this.question_show(this.harness.question_get());
+  }
+
+  /**
+   * The frame that lands a state on the picture: the ship's move from where it was drawn to where the state says, as one slide or as a crossing, then the scans and the chart drawn afresh and the state's cues.
+   *
+   * @param readout - The readout.
+   * @param previous - The readout before it, for the cues.
+   * @returns The frame.
+   */
+  private stateFrame_make(readout: BridgeReadout, previous: BridgeReadout | null): Frame {
+    return {
+      kind: 'state',
+      run: async (instant: boolean): Promise<void> => {
+        const scan: SVGElement = this.parts.scan;
+        await this.torpedo_end(true);
+        const shown: BridgeReadout | null = this.shown;
+        const crossed: boolean = shown !== null && (shown.position.quadrant.x !== readout.position.quadrant.x || shown.position.quadrant.y !== readout.position.quadrant.y);
+        const moved: boolean = shown !== null && (crossed || shown.position.sector.x !== readout.position.sector.x || shown.position.sector.y !== readout.position.sector.y);
+        if (moved && shown !== null) {
+          const from = { x: shown.position.quadrant.x * 10 + shown.position.sector.x, y: shown.position.quadrant.y * 10 + shown.position.sector.y };
+          const to = { x: readout.position.quadrant.x * 10 + readout.position.sector.x, y: readout.position.quadrant.y * 10 + readout.position.sector.y };
+          this.heading = Math.round(course_between(from, to));
+        }
+        const ship = { kind: 'ship' as const, variant: null };
+        if (moved && !instant && shown !== null && !crossed) {
+          this.srs_draw(shown, false);
+          await slide_play(scan, this.frames, ship, shown.position.sector, readout.position.sector, { heading: this.heading });
+        } else if (moved && !instant && shown !== null && crossed) {
+          const { exit, entry } = crossing_of(shown.position, readout.position);
+          this.srs_draw(shown, false);
+          await slide_play(scan, this.frames, ship, shown.position.sector, exit, { heading: this.heading });
+          rescan_set(scan, true);
+          this.shown = readout_copy(readout);
+          this.srs_draw(this.shown, false);
+          this.lrs_draw(this.shown, true);
+          this.chart_draw(this.shown);
+          await this.frames.wait(PACE.rescan);
+          rescan_set(scan, false);
+          await slide_play(scan, this.frames, ship, entry, readout.position.sector, { heading: this.heading });
+        }
+        this.shown = readout_copy(readout);
+        this.srs_draw(this.shown);
+        this.lrs_draw(this.shown, crossed && instant);
+        this.chart_draw(this.shown);
+        for (const cue of stateCues_of(previous, readout)) this.hooks.voice.cue(cue);
+        this.standingOrder_try();
+      },
+    };
   }
 
   /**
@@ -537,12 +618,14 @@ export class TrekBridge {
   /**
    * Draws the short-range scan as one picture: a sector is a focusable cell with its mark, the ship wears its shield ring and points along the committed course, each Klingon wears its own mark and faces the ship. A sector pressed fills the course and distance to it.
    *
-   * @param readout - The readout.
+   * @param readout - The picture to draw.
+   * @param withShip - False while the ship's mark is sliding on the motion layer instead.
    */
-  private srs_draw(readout: BridgeReadout): void {
+  private srs_draw(readout: BridgeReadout, withShip: boolean = true): void {
     const { parts } = this;
     parts.srsTitle.textContent = `SHORT RANGE · QUADRANT ${readout.position.quadrant.x},${readout.position.quadrant.y}`;
     const scan: SVGElement = parts.scan;
+    const motion: SVGElement[] = [...scan.querySelectorAll<SVGElement>(':scope > .tb-motion')];
     scan.replaceChildren();
     const columns: number = readout.sectors[0]?.length ?? 0;
     for (let y: number = 0; y < columns; y++) scan.append(this.axis_make(String(y), y + 0.5, -0.3));
@@ -550,12 +633,16 @@ export class TrekBridge {
     const here: XY = readout.position.sector;
     const focusAt: XY = this.pressedSector ?? here;
     for (const row of readout.sectors) {
-      for (const cell of row) scan.append(this.sector_make(cell, readout, here, focusAt));
+      for (const cell of row) scan.append(this.sector_make(cell, readout, here, focusAt, withShip));
     }
-    const ring = shieldRing_of(readout.ship.shield, readout.ship.shieldMax, readout.ship.shieldsUp, readout.condition.name === 'DOCKED');
-    const ringNode: SVGElement = svg('circle', { class: ring.className, cx: here.y + 0.5, cy: here.x + 0.5, r: 0.46, 'stroke-width': ring.width });
-    ringNode.dataset['percent'] = String(Math.round(ring.percent));
-    scan.append(ringNode);
+    if (withShip) {
+      const ring = shieldRing_of(readout.ship.shield, readout.ship.shieldMax, readout.ship.shieldsUp, readout.condition.name === 'DOCKED');
+      const ringNode: SVGElement = svg('circle', { class: ring.className, cx: here.y + 0.5, cy: here.x + 0.5, r: 0.46, 'stroke-width': ring.width });
+      ringNode.dataset['percent'] = String(Math.round(ring.percent));
+      scan.append(ringNode);
+    }
+    // whatever was in flight stays above the redrawn cells
+    scan.append(...motion);
   }
 
   /**
@@ -579,9 +666,10 @@ export class TrekBridge {
    * @param readout - The readout.
    * @param here - The ship's sector.
    * @param focusAt - The one sector in the tab order.
+   * @param withShip - False to leave the ship's own cell bare while its mark slides.
    * @returns The cell.
    */
-  private sector_make(cell: SectorCell, readout: BridgeReadout, here: XY, focusAt: XY): SVGElement {
+  private sector_make(cell: SectorCell, readout: BridgeReadout, here: XY, focusAt: XY, withShip: boolean = true): SVGElement {
     const bearing: number = bearing_of(here, cell);
     const range: number = range_of(here, cell);
     const pressed: boolean = this.pressedSector?.x === cell.x && this.pressedSector.y === cell.y;
@@ -592,7 +680,7 @@ export class TrekBridge {
     const glyph: string = cell.kind === 'empty' ? '·' : MARK_GLYPHS[cell.kind];
     title.textContent = cell.kind === 'ship' ? `the ship · ${cell.x},${cell.y}` : `${cell.x},${cell.y} ${glyph.trim() === '' ? 'black hole' : glyph} · course ${Math.round(bearing)}° · ${(range / 10).toFixed(1)}`;
     node.append(title, svg('rect', { class: 'tb-cell', x: cell.y + 0.04, y: cell.x + 0.04, width: 0.92, height: 0.92, rx: 0.16 }));
-    if (cell.kind === 'empty') node.append(svg('circle', { class: 'tb-cell-dot', cx: cell.y + 0.5, cy: cell.x + 0.5, r: 0.03 }));
+    if (cell.kind === 'empty' || (cell.kind === 'ship' && !withShip)) node.append(svg('circle', { class: 'tb-cell-dot', cx: cell.y + 0.5, cy: cell.x + 0.5, r: 0.03 }));
     else {
       const kind: MarkKind = cell.kind;
       const klingon: KlingonSeen | undefined = kind === 'klingon' ? readout.klingons.find((k: KlingonSeen): boolean => k.x === cell.x && k.y === cell.y) : undefined;
@@ -661,14 +749,17 @@ export class TrekBridge {
   }
 
   /**
-   * Draws the long-range scan: the three-by-three of quadrants around the ship, from the chart; space outside the galaxy is an edge.
+   * Draws the long-range scan: the three-by-three of quadrants around the ship, from the chart; space outside the galaxy is an edge. A cell owed a bloom blooms: the quadrant just entered, or one a Klingon fled to.
    *
-   * @param readout - The readout.
+   * @param readout - The picture to draw.
+   * @param arrived - True when the ship has just entered this quadrant: its cell blooms.
    */
-  private lrs_draw(readout: BridgeReadout): void {
+  private lrs_draw(readout: BridgeReadout, arrived: boolean = false): void {
     const { parts } = this;
     parts.lrs.replaceChildren();
     const { quadrant } = readout.position;
+    const owed: { at: XY; hostile: boolean } | null = this.lrsBloom;
+    this.lrsBloom = null;
     for (let dx: number = -1; dx <= 1; dx++) {
       for (let dy: number = -1; dy <= 1; dy++) {
         const cell: ChartCell | undefined = readout.chart[quadrant.x + dx]?.[quadrant.y + dy];
@@ -682,7 +773,10 @@ export class TrekBridge {
         const node: HTMLElement = el('div', `tb-lrs-cell${cell.here ? ' tb-here' : ''}${cell.klingons > 0 ? ' tb-hostile' : ''}${cell.code === null ? ' tb-unscanned' : ''}${cell.supernova ? ' tb-supernova' : ''}`);
         node.append(chartCode_make('tb-lrs-code', cell), el('span', 'tb-lrs-at', `${cell.x},${cell.y}`));
         node.title = chartTitle_of(cell);
+        node.dataset['x'] = String(cell.x);
+        node.dataset['y'] = String(cell.y);
         parts.lrs.append(node);
+        if ((arrived && cell.here) || (owed !== null && owed.at.x === cell.x && owed.at.y === cell.y)) lrsBloom_play(node, owed !== null && !cell.here && owed.hostile);
       }
     }
   }
@@ -730,7 +824,7 @@ export class TrekBridge {
       this.plan.clear();
       this.computerRunning = false;
       this.fold_close();
-      if (this.scanDue && !this.answering) { this.scanDue = false; this.standingOrder_send(); return; }
+      if (this.standingOrder_try()) return;
     }
     const planned: string | undefined = open === null ? undefined : this.plan.get(open.question);
     if (planned !== undefined && open !== null && !this.answering) {
@@ -771,75 +865,245 @@ export class TrekBridge {
   }
 
   /**
-   * The standing order: the long-range scan sent at the Command: prompt as the ship's own command, its lines folded in the log under one dim head.
+   * The standing order, when one is owed and the Command: prompt is open: the long-range scan sent as the ship's own command, its lines folded in the log under one dim head.
+   *
+   * @returns True when it was sent.
    */
-  private standingOrder_send(): void {
+  private standingOrder_try(): boolean {
+    if (!this.scanDue || this.answering || this.harness.question_get()?.question !== 'command') return false;
+    this.scanDue = false;
     const quadrant: XY | undefined = this.readout?.position.quadrant;
     this.fold_open(`LONG RANGE SCAN · STANDING ORDER${quadrant === undefined ? '' : ` · QUADRANT ${quadrant.x},${quadrant.y}`}`);
-    if (!this.harness.answer('l')) { this.fold_close(); return; }
+    if (!this.harness.answer('l')) { this.fold_close(); return false; }
     this.log_write('l\n', true);
+    return true;
   }
 
   /**
-   * Opens a fold in the log: the lines that follow print under a head that opens on press.
+   * Opens a fold in the log, in its turn among the lines: the lines that follow print under a head that opens on press.
    *
    * @param head - The head's words.
    */
   private fold_open(head: string): void {
-    this.fold_close();
-    const fold: HTMLDetailsElement = el('details', 'tb-log-fold');
-    fold.append(el('summary', 'tb-log-fold-head', head));
-    this.parts.log.append(fold);
-    this.fold = fold;
+    this.frames.push({
+      kind: 'fold',
+      run: (): void => {
+        const fold: HTMLDetailsElement = el('details', 'tb-log-fold');
+        fold.append(el('summary', 'tb-log-fold-head', head));
+        this.parts.log.append(fold);
+        this.fold = fold;
+      },
+    });
   }
 
   /**
-   * Closes the open fold, if any: the lines after it print on the log itself.
+   * Closes the open fold, in its turn: the lines after it print on the log itself.
    */
   private fold_close(): void {
-    this.fold = null;
+    this.frames.push({ kind: 'fold', run: (): void => { this.fold = null; } });
   }
 
   /**
-   * Writes the engine's text to the ship's log, a line at a time, and to the computer's answer while a request runs.
+   * Takes the engine's text: each complete line becomes a frame, in order, that prints it in the log, is heard, and moves what the line says moved; a line not yet complete waits for its end.
    *
    * @param text - The text.
-   * @param own - True for a line the bridge sent, which is never the computer's answer.
    */
-  private log_write(text: string, own: boolean = false): void {
-    const { parts } = this;
+  private text_take(text: string): void {
     // the engine's colour codes and its bell (the C rings it on a hit) are not words
     const clean: string = text.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x07/g, '');
-    if (this.computerRunning && !own) parts.computerView.answer_take(clean);
-    const lines: string[] = clean.split('\n');
-    const into: HTMLElement = this.fold ?? parts.log;
-    const last: HTMLElement | null = into.lastElementChild as HTMLElement | null;
-    lines.forEach((line: string, index: number): void => {
-      const complete: boolean = index < lines.length - 1;
-      if (index === 0 && last !== null && last.dataset['open'] === 'true') {
-        last.textContent = `${last.textContent ?? ''}${line}`;
-        if (complete) { delete last.dataset['open']; this.line_hear(last.textContent, own); }
-        return;
-      }
-      if (!complete && line === '') return;
-      const node: HTMLElement = el('div', 'tb-log-line', line);
-      if (complete) this.line_hear(line, own);
-      else node.dataset['open'] = 'true';
-      into.append(node);
+    if (this.computerRunning) this.parts.computerView.answer_take(clean);
+    const pieces: string[] = (this.partial + clean).split('\n');
+    this.partial = pieces.pop() ?? '';
+    for (const line of pieces) this.line_take(line, false);
+  }
+
+  /**
+   * A line the engine left without its newline is a line once the engine stops to ask or to show its state.
+   */
+  private partial_flush(): void {
+    if (this.partial === '') return;
+    const line: string = this.partial;
+    this.partial = '';
+    this.line_take(line, false);
+  }
+
+  /**
+   * Writes a line of the bridge's own (a command, an answer) to the log, in its turn.
+   *
+   * @param text - The line, with its newline.
+   * @param own - Always true here: the bridge's own words are never heard and move nothing.
+   */
+  private log_write(text: string, own: boolean = true): void {
+    for (const line of text.replace(/\n$/, '').split('\n')) this.line_take(line, own);
+  }
+
+  /**
+   * One complete line: the Klingon tracker reads it now (the next state may reconcile before its frame plays), and a frame prints it, sounds it and plays what it says, in its turn.
+   *
+   * @param line - The line.
+   * @param own - True for a line the bridge sent, which is never heard and moves nothing.
+   */
+  private line_take(line: string, own: boolean): void {
+    const event: LineEvent | null = own ? null : lineEvent_of(line);
+    const isPoint: boolean = event?.kind === 'torpedo-point';
+    if (!own) this.tracker.line_hear(line);
+    if (event?.kind === 'torpedo-head') this.trackPrinting = true;
+    else if (!isPoint) this.trackPrinting = false;
+    const played: LineEvent | null = isPoint && !this.trackPrinting ? null : event;
+    this.frames.push({
+      kind: played === null ? 'line' : played.kind,
+      run: async (instant: boolean): Promise<void> => {
+        this.log_append(line);
+        if (own) return;
+        for (const cue of lineCues_of(line)) this.hooks.voice.cue(cue);
+        if (played !== null) await this.event_play(played, instant);
+      },
     });
+  }
+
+  /**
+   * Appends a line to the log, in the open fold when there is one.
+   *
+   * @param line - The line.
+   */
+  private log_append(line: string): void {
+    const { parts } = this;
+    (this.fold ?? parts.log).append(el('div', 'tb-log-line', line));
     while (parts.log.childElementCount > LOG_LIMIT) parts.log.firstElementChild?.remove();
     parts.log.scrollTop = parts.log.scrollHeight;
   }
 
   /**
-   * A complete line of the engine's is heard, when it says something the bank has a cue for, and read for the Klingons it moves.
+   * Plays what a line says on the picture: the torpedo's next point, a Klingon's flight, a beam, a burst, the ring taking a hit.
    *
-   * @param line - The line.
-   * @param own - True for a line the bridge sent, which is never heard.
+   * @param event - What the line says.
+   * @param instant - Jump to the end state at once.
    */
-  private line_hear(line: string, own: boolean): void {
-    if (own) return;
-    this.tracker.line_hear(line);
-    for (const cue of lineCues_of(line)) this.hooks.voice.cue(cue);
+  private async event_play(event: LineEvent, instant: boolean): Promise<void> {
+    const shown: BridgeReadout | null = this.shown;
+    const scan: SVGElement = this.parts.scan;
+    if (shown === null) return;
+    if (event.kind !== 'torpedo-point' && event.kind !== 'torpedo-head') await this.torpedo_end(instant);
+    switch (event.kind) {
+      case 'torpedo-head':
+        await this.torpedo_end(true);
+        this.torpedo = new Torpedo(scan, shown.position.sector);
+        return;
+      case 'torpedo-point':
+        if (this.torpedo !== null) await this.torpedo.point_reach(this.frames, event.at, instant);
+        return;
+      case 'torpedo-end':
+        return;
+      case 'kill':
+        await burst_play(scan, this.frames, event.at, 'kill', instant);
+        this.shown_clear(event.at);
+        return;
+      case 'nova':
+        this.hooks.voice.cue('nova');
+        await burst_play(scan, this.frames, event.at, 'nova', instant);
+        this.shown_clear(event.at);
+        return;
+      case 'misfire':
+        this.hooks.voice.cue('deny');
+        await burst_play(scan, this.frames, shown.position.sector, 'misfire', instant);
+        return;
+      case 'phaser':
+        await beam_play(scan, this.frames, shown.position.sector, event.at, false, instant);
+        return;
+      case 'incoming': {
+        this.hooks.voice.cue('shield');
+        const flare: Promise<void> = ringFlare_play(scan, this.frames, instant);
+        if (event.from !== null) await beam_play(scan, this.frames, event.from, shown.position.sector, true, instant);
+        // the ring takes the absorbed share off, as the engine does: shield -= trunc(proportion × hit)
+        const absorbed: number = Math.trunc((event.hit * event.absorb) / 100);
+        shown.ship.shield = Math.max(0, shown.ship.shield - absorbed);
+        this.srs_draw(shown);
+        await flare;
+        return;
+      }
+      case 'klingon-move': {
+        this.hooks.voice.cue('klingon-pass');
+        const variant: string | null = this.tracker.mark_of(event.to) ?? this.tracker.mark_of(event.from);
+        this.shown_clear(event.from);
+        this.srs_draw(shown);
+        await slide_play(scan, this.frames, { kind: 'klingon', variant }, event.from, event.to, { hostile: true }, instant);
+        this.shown_put(event.to, 'klingon', variant);
+        return;
+      }
+      case 'klingon-escape': {
+        this.hooks.voice.cue('klingon-pass');
+        const variant: string | null = this.tracker.mark_of(event.from);
+        const away = { x: Math.sign(event.quadrant.x - shown.position.quadrant.x), y: Math.sign(event.quadrant.y - shown.position.quadrant.y) };
+        const edge = { x: away.x > 0 ? 10.2 : away.x < 0 ? -1.2 : event.from.x, y: away.y > 0 ? 10.2 : away.y < 0 ? -1.2 : event.from.y };
+        this.shown_clear(event.from);
+        this.srs_draw(shown);
+        await slide_play(scan, this.frames, { kind: 'klingon', variant }, event.from, edge, { hostile: true }, instant);
+        this.lrsBloom = { at: event.quadrant, hostile: true };
+        return;
+      }
+      case 'supernova':
+        this.hooks.voice.cue('supernova');
+        await burst_play(scan, this.frames, event.at, 'supernova', instant);
+        return;
+      case 'supernova-report':
+        this.hooks.voice.cue('supernova');
+        this.lrsBloom = { at: event.quadrant, hostile: true };
+        return;
+      default:
+        return;
+    }
   }
+
+  /**
+   * Ends the torpedo in flight, if any.
+   *
+   * @param instant - Without its tail's fade.
+   */
+  private async torpedo_end(instant: boolean): Promise<void> {
+    const torpedo: Torpedo | null = this.torpedo;
+    if (torpedo === null) return;
+    this.torpedo = null;
+    await torpedo.end(this.frames, instant);
+  }
+
+  /**
+   * Empties a sector on the picture: what was there is gone.
+   *
+   * @param at - The sector.
+   */
+  private shown_clear(at: XY): void {
+    const shown: BridgeReadout | null = this.shown;
+    if (shown === null) return;
+    const cell: SectorCell | undefined = shown.sectors[at.x]?.[at.y];
+    if (cell !== undefined) { cell.kind = 'empty'; cell.glyph = '.'; }
+    shown.klingons = shown.klingons.filter((k: KlingonSeen): boolean => k.x !== at.x || k.y !== at.y);
+    this.srs_draw(shown);
+  }
+
+  /**
+   * Puts a Klingon on the picture at a sector, wearing its mark.
+   *
+   * @param at - The sector.
+   * @param kind - What arrives (a Klingon).
+   * @param variant - Its mark.
+   */
+  private shown_put(at: XY, kind: 'klingon', variant: string | null): void {
+    const shown: BridgeReadout | null = this.shown;
+    if (shown === null) return;
+    const cell: SectorCell | undefined = shown.sectors[at.x]?.[at.y];
+    if (cell !== undefined) { cell.kind = kind; cell.glyph = MARK_GLYPHS[kind]; }
+    const here: XY = shown.position.sector;
+    shown.klingons.push({ x: at.x, y: at.y, bearing: bearing_of(here, at), range: range_of(here, at), power: 0, mark: variant });
+    this.srs_draw(shown);
+  }
+}
+
+/**
+ * A copy of a readout for the picture to move things on, leaving the engine's own untouched.
+ *
+ * @param readout - The readout.
+ * @returns The copy.
+ */
+function readout_copy(readout: BridgeReadout): BridgeReadout {
+  return JSON.parse(JSON.stringify(readout)) as BridgeReadout;
 }

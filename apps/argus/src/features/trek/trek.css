@@ -147,6 +147,53 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-ring-low { stroke: var(--mars); }
 .tb-ring-down { stroke: rgba(255, 204, 153, 0.5); stroke-dasharray: 0.06 0.06; }
 .tb-ring-docked { stroke: var(--honey); stroke-dasharray: 0.12 0.06; }
+/* motion: what a frame draws over the scan, gone when the frame ends (features/trek/motion.ts) */
+.tb-motion { pointer-events: none; }
+.tb-track { fill: none; stroke: var(--harvestgold); stroke-width: 0.04; stroke-dasharray: 0.12 0.1; stroke-linecap: round; opacity: 0.55; }
+.tb-track.tb-hostile { stroke: var(--mars); }
+.tb-pulse { fill: none; stroke-linecap: round; }
+.tb-pulse-wide { stroke: var(--harvestgold); stroke-width: 0.16; opacity: 0.45; }
+.tb-pulse-core { stroke: var(--butter); stroke-width: 0.05; }
+.tb-pulse-wide.tb-hostile { stroke: var(--mars); }
+.tb-pulse-core.tb-hostile { stroke: #fff; }
+.tb-beam { stroke: var(--mars); stroke-width: 0.12; stroke-linecap: round; fill: none; animation: tb-beam-pulse 0.3s ease-out 3; }
+.tb-beam-core { stroke: var(--butter); stroke-width: 0.04; }
+.tb-beam.tb-hostile { stroke: var(--daybreak); stroke-width: 0.1; }
+.tb-beam-core.tb-hostile { stroke: #fff; stroke-width: 0.03; }
+@keyframes tb-beam-pulse { 0%, 100% { opacity: 0; } 20%, 70% { opacity: 1; } }
+/* a burst, after the ARGUS node flare: a core that blooms, a halo that reaches out and settles, spikes that fly */
+.tb-burst-halo { fill: url(#tm-halo); animation: tb-bloom var(--tb-ms, 800ms) ease-out forwards; }
+.tb-burst-core { fill: var(--butter); animation: tb-core var(--tb-ms, 800ms) ease-out forwards; }
+.tb-burst-spikes { transform-box: fill-box; transform-origin: center; animation: tb-spikes var(--tb-ms, 800ms) cubic-bezier(0.2, 0.8, 0.3, 1) forwards; }
+.tb-burst-spike { stroke: var(--butter); stroke-width: 0.045; stroke-linecap: round; }
+.tb-burst-nova .tb-burst-halo, .tb-burst-supernova .tb-burst-halo { fill: url(#tm-halo-nova); }
+.tb-burst-nova .tb-burst-spike, .tb-burst-supernova .tb-burst-spike { stroke: var(--pumpkin-pie); }
+.tb-burst-misfire .tb-burst-halo { fill: url(#tm-halo-mars); }
+.tb-burst-misfire .tb-burst-spike { stroke: var(--mars); }
+@keyframes tb-bloom { 0% { r: 0.1; opacity: 1; } 100% { r: 1.6; opacity: 0; } }
+@keyframes tb-core { 0% { r: 0.04; opacity: 1; } 30% { r: 0.32; opacity: 1; } 100% { r: 0.5; opacity: 0; } }
+@keyframes tb-spikes { 0% { transform: scale(0.15); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
+.tb-ring-flare { fill: none; stroke: var(--butter); stroke-width: 0.08; pointer-events: none; animation: tb-ring-flare 900ms ease-out forwards; }
+@keyframes tb-ring-flare { 0% { r: 0.46; opacity: 1; } 100% { r: 1.1; opacity: 0; } }
+/* the photon torpedo: an orange-red sphere with a white-hot heart and flat radial pulses that flicker; its own colour under every palette */
+.tb-photon-halo { fill: url(#tm-photon-halo); }
+.tb-photon-core { fill: url(#tm-photon-core); }
+.tb-photon-pulses { transform-box: fill-box; transform-origin: center; animation: tb-photon-spin 1.4s linear infinite; }
+.tb-photon-pulses rect { fill: #ffd27a; opacity: 0.9; transform-box: fill-box; transform-origin: left center; }
+.tb-photon-pulses g:nth-child(odd) rect { animation: tb-photon-flicker 0.26s steps(2) infinite; }
+.tb-photon-pulses g:nth-child(even) rect { animation: tb-photon-flicker 0.34s steps(2) infinite reverse; }
+.tb-photon-pulses g:nth-child(3n) rect { animation-duration: 0.42s; }
+@keyframes tb-photon-spin { to { transform: rotate(360deg); } }
+@keyframes tb-photon-flicker { 0% { opacity: 0.35; transform: scaleX(0.6); } 100% { opacity: 1; transform: scaleX(1.25); } }
+.tb-tail-segment { fill: none; stroke: #ff6a1a; stroke-linecap: round; }
+/* a quadrant crossing: the scan dims while it is redrawn; the long-range cell entered, or one a Klingon fled to, blooms */
+.tb-scan .tb-sector { transition: opacity 0.35s; }
+.tb-scan.tb-rescan .tb-sector { opacity: 0.08; }
+@keyframes tb-lrs-bloom { 0% { box-shadow: 0 0 0 0 var(--butter); } 100% { box-shadow: 0 0 28px 18px transparent; } }
+@keyframes tb-lrs-bloom-hostile { 0% { box-shadow: 0 0 0 0 var(--mars); } 100% { box-shadow: 0 0 28px 18px transparent; } }
+.tb-lrs-cell.tb-bloom { animation: tb-lrs-bloom 1000ms ease-out forwards; }
+.tb-lrs-cell.tb-bloom.tb-bloom-hostile { animation-name: tb-lrs-bloom-hostile; }
+@media (prefers-reduced-motion: reduce) { .tb-beam, .tb-burst-halo, .tb-burst-core, .tb-burst-spikes, .tb-ring-flare, .tb-photon-pulses, .tb-photon-pulses rect, .tb-lrs-cell.tb-bloom { animation: none; } }
 /* the legend: each mark beside the C's glyph for it */
 .tb-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; }
 .tb-legend-item { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.6rem; letter-spacing: 0.12em; color: var(--october-sunset); }

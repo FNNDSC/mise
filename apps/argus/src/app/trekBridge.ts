@@ -64,6 +64,7 @@ export function trekBridge_wire(context: Pick<HostContext, 'client'>): TrekBridg
     readout: (): unknown => bridge?.readout_get() ?? null,
     view: (): string | null => bridge?.view_get() ?? null,
     heard: (): typeof heard & { voice: ReturnType<typeof synthVoice.tally_get> } => ({ ...heard, voice: synthVoice.tally_get() }),
+    frames: (): ReturnType<TrekBridge['frames_get']> | null => bridge?.frames_get() ?? null,
   };
 
   const close = (): void => {

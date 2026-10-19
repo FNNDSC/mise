@@ -279,3 +279,37 @@ describe('the credits', () => {
     expect(new Set(dates).size).toBe(1);
   });
 });
+
+describe('the state shown', () => {
+  it('is shown at every Command: prompt, as a deep copy, and prints nothing', async () => {
+    const shown: TrekState[] = [];
+    const script: string[] = ['', 's', 'n', 'pw', 'srscan', 'terminate', 'n'];
+    let out: string = '';
+    const terminal: TrekTerminal = {
+      text_write: (text: string): void => { out += text; },
+      question_ask: async (prompt: string): Promise<string | null> => { out += prompt; return script.length > 0 ? (script.shift() as string) : null; },
+      seconds_sleep: async (): Promise<void> => {},
+      state_show: (state: TrekState): void => { shown.push(state); },
+    };
+    await trek_play(terminal, { seed: 42, fast: 1, trace: 0, styled: false }, { saved: null });
+    // one state per Command: prompt (srscan, terminate), none for the setup questions
+    expect(shown.length).toBe((out.match(/\nCommand: /g) ?? []).length);
+    expect(shown.length).toBeGreaterThanOrEqual(2);
+    const first: TrekState = shown[0] as TrekState;
+    expect(first.Ship.energy).toBeGreaterThan(0);
+    expect(first.Now.klings).toBeGreaterThan(0);
+    expect(first.Quad.length).toBe(8);
+    expect(first.Sect.length).toBe(10);
+    // a copy: the host's keeping an old state does not hold the live one
+    expect(shown[1]).not.toBe(first);
+    expect((shown[1] as TrekState).Ship).not.toBe(first.Ship);
+    // nothing printed for it: the transcript is the game's own words only
+    expect(out).not.toContain('state');
+  });
+
+  it('a terminal without state_show is never asked for it', async () => {
+    const { terminal, transcript_get } = scriptedTerminal_make(['', 's', 'n', 'pw', 'terminate', 'n']);
+    await trek_play(terminal, { seed: 42, fast: 1, trace: 0, styled: false }, { saved: null });
+    expect(transcript_get()).toContain('\nCommand: ');
+  });
+});

@@ -1444,6 +1444,26 @@ export class CalypsoDaemon {
   }
 
   /**
+   * Sends a typed event from the executing command to its origin surface.
+   * Like output, an event is live only: when no command is active or the
+   * origin surface is gone, it is dropped.
+   *
+   * @param kind - What the data is (`games.trek.state`).
+   * @param data - The event, shaped by its kind.
+   * @returns True when the event was sent to a surface.
+   */
+  public event_current(kind: string, data: unknown): boolean {
+    if (this.engine.command_stopped?.() === true) return false;
+    const origin: Surface | null = this.currentOrigin;
+    const id: string | null = this.currentId;
+    if (!origin || !id || origin.socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    this.send(origin.socket, { type: 'event', id, kind, data });
+    return true;
+  }
+
+  /**
    * Streams an opaque live output chunk from the executing command to its
    * origin surface. Output is live telemetry, distinct from final envelopes;
    * when no command is active or the origin surface is gone, it is dropped.

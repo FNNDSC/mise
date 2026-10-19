@@ -4,15 +4,16 @@
  *
  * The game is the `bsd-trek` package; this module wires it to the session:
  * lines to the data channel, each pending partial line as the question asked,
- * sleeps as real pauses, and one saved-game slot that lasts as long as the
- * session. Scans wear glyphs and colours unless `--classic` asks for the
+ * sleeps as real pauses, the game's state as a typed event (`games.trek.state`)
+ * at every Command: prompt for a surface that draws a bridge, and one
+ * saved-game slot that lasts as long as the session. Scans wear glyphs and colours unless `--classic` asks for the
  * original look or the output has no colour.
  *
  * @module
  */
 import chalk from 'chalk';
 import { CommandEnvelope, envelope_error, envelope_ok } from '@fnndsc/menu';
-import { TREK_CREDITS, trek_play, trekArgs_parse, type TrekDump, type TrekTerminal } from 'bsd-trek';
+import { TREK_CREDITS, trek_play, trekArgs_parse, type TrekDump, type TrekState, type TrekTerminal } from 'bsd-trek';
 import { repl_question } from '../../core/question.js';
 import { sink_get } from '../../core/sink.js';
 
@@ -29,6 +30,7 @@ const SESSION_TERMINAL: TrekTerminal = {
     return repl_question(prompt.slice(cut + 1));
   },
   seconds_sleep: (seconds: number): Promise<void> => new Promise((resolve: () => void): void => { setTimeout(resolve, seconds * 1000); }),
+  state_show: (state: TrekState): void => { sink_get().event_write?.('games.trek.state', state); },
 };
 
 /**

@@ -17,7 +17,8 @@ import type { BridgeReadout, TrekQuestion } from './model.js';
 export type CueName =
   | 'press' | 'ack' | 'deny' | 'open' | 'close' | 'thinking' | 'sensor' | 'scanner'
   | 'phaser' | 'torpedo' | 'incoming' | 'hit' | 'explosion' | 'redalert' | 'yellowalert' | 'green'
-  | 'dock' | 'warp' | 'impulse' | 'transporter' | 'destruct' | 'hail' | 'gameover';
+  | 'dock' | 'warp' | 'impulse' | 'transporter' | 'destruct' | 'hail' | 'gameover'
+  | 'nova' | 'supernova' | 'klingon-pass' | 'shield';
 
 /** How the bridge is heard: a beep for a pill, a cue for an event. */
 export interface BridgeVoice {

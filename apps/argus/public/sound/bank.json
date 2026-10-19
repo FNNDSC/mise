@@ -22,7 +22,11 @@
   "transporter": "transporter__tos_energize.json",
   "destruct": "destruct__tos_emergency_signal.json",
   "hail": "hail__tos_intercom_whistle.json",
-  "gameover": "gameover__tos_shipannouncement.json"
+  "gameover": "gameover__tos_shipannouncement.json",
+  "nova": "explosion__largeexplosion1.json",
+  "supernova": "redalert__tos_red_alert.json",
+  "klingon-pass": "incoming__klingon_disruptor_clean.json",
+  "shield": "hit__tos_hullhit_1.json"
  },
  "pills": {
   "BRIDGE": "beeps/computerbeep_1.json",

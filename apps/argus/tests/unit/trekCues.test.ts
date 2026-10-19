@@ -64,7 +64,7 @@ describe('the bank', () => {
   const bank: SynthBank = JSON.parse(readFileSync(join(SOUND_DIR, 'bank.json'), 'utf8')) as SynthBank;
 
   it('names a model for every cue the bridge plays and for every pill, and each file is there and well formed', () => {
-    for (const cue of ['press', 'ack', 'deny', 'open', 'close', 'thinking', 'sensor', 'scanner', 'phaser', 'torpedo', 'incoming', 'hit', 'explosion', 'redalert', 'yellowalert', 'green', 'dock', 'warp', 'impulse', 'transporter', 'destruct', 'hail', 'gameover']) {
+    for (const cue of ['press', 'ack', 'deny', 'open', 'close', 'thinking', 'sensor', 'scanner', 'phaser', 'torpedo', 'incoming', 'hit', 'explosion', 'redalert', 'yellowalert', 'green', 'dock', 'warp', 'impulse', 'transporter', 'destruct', 'hail', 'gameover', 'nova', 'supernova', 'klingon-pass', 'shield']) {
       expect(bank.cues[cue]).toBeDefined();
     }
     for (const label of ['MOVE', 'SET COURSE', 'SLIDER SET', 'YES', 'NO', 'CANCEL', 'LEAVE BRIDGE', 'MOVE (COMPUTER)', 'BURST ANGLE', 'SEND TO HELM']) {

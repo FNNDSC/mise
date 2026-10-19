@@ -551,6 +551,8 @@ export class ArgusClient {
    */
   private message_handle(payload: string): void {
     const message: ServerMessage | null = message_fromPayload(payload);
+    // A tally of the wire, by message type, with what the contract refused: the smoke suite's only sight of the socket.
+    wire_tally(message?.type ?? `refused:${payloadType_of(payload)}`);
     if (!message) {
       return;
     }
@@ -788,6 +790,35 @@ export class ArgusClient {
  * @returns The typed message, or null when the payload is not a valid
  *   contract message.
  */
+/** How many messages of each type this page has heard, and how many the contract refused, by their claimed type. */
+const WIRE_TALLY: Record<string, number> = {};
+// a page has a window; the client's unit tests run without one
+if (typeof window !== 'undefined') (window as unknown as { __argusWire?: Record<string, number> }).__argusWire = WIRE_TALLY;
+
+/**
+ * Counts one message on the wire.
+ *
+ * @param type - The message's type, or `refused:<type>` for one the contract did not accept.
+ */
+function wire_tally(type: string): void {
+  WIRE_TALLY[type] = (WIRE_TALLY[type] ?? 0) + 1;
+}
+
+/**
+ * The type a payload claims, read without the contract, for the tally of refused messages.
+ *
+ * @param payload - The raw message text.
+ * @returns The claimed type, or `?` when the text is not even JSON with one.
+ */
+function payloadType_of(payload: string): string {
+  try {
+    const type: unknown = (JSON.parse(payload) as { type?: unknown }).type;
+    return typeof type === 'string' ? type : '?';
+  } catch {
+    return '?';
+  }
+}
+
 function message_fromPayload(payload: string): ServerMessage | null {
   try {
     const parsed = serverMessage_parse(JSON.parse(payload));

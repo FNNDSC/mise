@@ -9,6 +9,7 @@
 import type { Trek, TrekDump } from './context.js';
 import { TrekIO, type TrekTerminal } from './io.js';
 import { main, type TrekOptions } from './main.js';
+import type { TrekState } from './state.js';
 import { TrekRandom } from './rand.js';
 import { state_create } from './state.js';
 import { trekLine_style } from './style.js';
@@ -49,11 +50,14 @@ function terminal_style(terminal: TrekTerminal): TrekTerminal {
    * @returns The text with every line styled.
    */
   const lines_style: (text: string) => string = (text: string): string => text.split('\n').map(trekLine_style).join('\n');
-  return {
+  const styled: TrekTerminal = {
     text_write: (text: string): void => terminal.text_write(lines_style(text)),
     question_ask: (prompt: string): Promise<string | null> => terminal.question_ask(prompt),
     seconds_sleep: (seconds: number): Promise<void> => terminal.seconds_sleep(seconds),
   };
+  // The state is not text: a host that asked to see it sees it, styled or not.
+  if (terminal.state_show !== undefined) styled.state_show = (state: TrekState): void => terminal.state_show?.(state);
+  return styled;
 }
 
 /** The flags trek takes, as its usage line. */

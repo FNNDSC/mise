@@ -100,6 +100,7 @@ import { editor_wire, type EditorModule } from './editor.js';
 import { feedRowHandlers_make, feedVerbs_wire, type FeedVerbs } from './feedRows.js';
 import { helpPane_wire, type HelpPaneHooks, type HelpPaneModule } from './helpPane.js';
 import { gamesPane_wire, type GamesPaneModule } from './gamesPane.js';
+import { trekBridge_wire, trekLine_isGame, type TrekBridgeModule } from './trekBridge.js';
 import { notesPane_wire, type NotesPaneModule } from './notesPane.js';
 import { asks_wire, type Asks } from './asks.js';
 import { keys_wire } from './keys.js';
@@ -120,6 +121,7 @@ import { greeting_ask } from './greeting.js';
 // has put their own LCARS-26.zip where the build can find it; where they have
 // not, the type falls back and the frame is unchanged.
 import '../lcars/argus.css';
+import '../features/trek/trek.css';
 import { consoleMode_wire, type ConsoleModeControl } from './consoleMode.js';
 import { consoleStop_wire } from './consoleStop.js';
 import type { TerminalScreen } from '../console/terminalScreen.js';
@@ -1898,6 +1900,8 @@ async function surface_start(token: string): Promise<void> {
   const helpPane: HelpPaneModule = helpPane_wire(context, paneHooks);
   const help_open: () => string = helpPane.open;
   const gamesPane: GamesPaneModule = gamesPane_wire(context, paneHooks);
+  // trek takes the screen: a program over ARGUS, given back when the game ends.
+  const trekBridge: TrekBridgeModule = trekBridge_wire(context);
   const notesPane: NotesPaneModule = notesPane_wire(context, { ...paneHooks, ask: (line: string): Promise<ExecuteOutcome> => client.line_execute(line, { silent: true }) });
   const editorModule: EditorModule = editor_wire(context, { ...paneHooks, replayPlace_get: desktop.replayPlace_get, errandHost_find, saved: (): void => { for (const dag of panels.values('dag')) dag.marks_refresh(); } });
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
@@ -2198,6 +2202,16 @@ async function surface_start(token: string): Promise<void> {
         mode_show('READY');
         return;
       }
+      // A game of trek takes the screen: the bridge runs the command and
+      // answers its questions; the transcript keeps the game's text.
+      if (trekLine_isGame(line)) {
+        mode_show('BUSY');
+        terminal.line_note('trek: the bridge takes the screen (Esc or LEAVE BRIDGE gives it back)');
+        await trekBridge.open(line);
+        mode_show('READY');
+        terminal.prompt_draw();
+        return;
+      }
       mode_show('BUSY');
       const startedAt: number = performance.now();
       try {
@@ -2263,7 +2277,11 @@ async function surface_start(token: string): Promise<void> {
     wsUrl_resolve(),
     token,
     {
-      output_receive: (channel: OutputChannel, chunk: string): void => terminal.output_write(channel, chunk),
+      output_receive: (channel: OutputChannel, chunk: string): void => {
+        terminal.output_write(channel, chunk);
+        if (channel === 'data' && trekBridge.active_is()) trekBridge.output_take(chunk);
+      },
+      event_receive: (_id: string, kind: string, data: unknown): void => { if (trekBridge.active_is()) trekBridge.event_take(kind, data); },
       terminalOpened_receive: (terminalId: string, replay: string, refused: string | undefined): void => consoleScreen?.opened(terminalId, replay, refused),
       terminalData_receive: (terminalId: string, data: string): void => consoleScreen?.data(terminalId, data),
       terminalExit_receive: (terminalId: string, code: number): void => consoleScreen?.exited(terminalId, code),
@@ -2283,6 +2301,8 @@ async function surface_start(token: string): Promise<void> {
        * what matters.
        */
       ask_receive: async (request: SurfaceAsk): Promise<string | null> => {
+        // The bridge owns the screen and the running command: its game's questions are answered there.
+        if (trekBridge.active_is()) return trekBridge.ask(request);
         if (request.kind !== 'path') {
           // A question a PRESSED VERB provoked stands on the pane that was
           // pressed: `rm -i` asks before it removes, and the operator is

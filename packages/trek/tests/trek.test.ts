@@ -307,6 +307,34 @@ describe('the state shown', () => {
     expect(out).not.toContain('state');
   });
 
+  it('a styled game shows its state too: the styling wrapper passes it through', async () => {
+    const shown: TrekState[] = [];
+    const script: string[] = ['', 's', 'n', 'pw', 'terminate', 'n'];
+    const terminal: TrekTerminal = {
+      text_write: (): void => undefined,
+      question_ask: async (): Promise<string | null> => (script.length > 0 ? (script.shift() as string) : null),
+      seconds_sleep: async (): Promise<void> => {},
+      state_show: (state: TrekState): void => { shown.push(state); },
+    };
+    await trek_play(terminal, { seed: 42, fast: 1, trace: 0, styled: true }, { saved: null });
+    expect(shown.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('end of input is asked for once: after a null the terminal is not asked again, and the game ends', async () => {
+    let asks: number = 0;
+    let nulls: number = 0;
+    const script: string[] = ['', 's', 'n', 'pw'];
+    const terminal: TrekTerminal = {
+      text_write: (): void => undefined,
+      question_ask: async (): Promise<string | null> => { asks++; if (script.length > 0) return script.shift() as string; nulls++; return null; },
+      seconds_sleep: async (): Promise<void> => {},
+    };
+    const code: number = await trek_play(terminal, { seed: 42, fast: 1, trace: 0, styled: false }, { saved: null });
+    expect(nulls).toBe(1);
+    expect(asks).toBe(5);
+    expect(code).toBe(1);
+  });
+
   it('a terminal without state_show is never asked for it', async () => {
     const { terminal, transcript_get } = scriptedTerminal_make(['', 's', 'n', 'pw', 'terminate', 'n']);
     await trek_play(terminal, { seed: 42, fast: 1, trace: 0, styled: false }, { saved: null });

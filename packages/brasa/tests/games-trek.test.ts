@@ -18,6 +18,7 @@ jest.unstable_mockModule('../src/core/question.js', () => ({
     written += prompt;
     const next: string | undefined = answers.shift();
     if (next === undefined) throw new Error('no surface');
+    if (next === '<abandon>') throw new Error('the operator abandoned the question');
     return next;
   },
 }));
@@ -62,6 +63,14 @@ describe('the trek command', () => {
     expect(state.Now.klings).toBeGreaterThan(0);
     // it survives the wire: plain data, no functions or cycles
     expect(JSON.parse(JSON.stringify(state)).Now.date).toBe(state.Now.date);
+  });
+
+  it('a question the operator abandons is end of input: the game ends, no error', async () => {
+    answers.push('', 's', 'n', 'pw', '<abandon>');
+    const ended = await builtin_trek(['--seed', '42', '-f']);
+    expect(ended.status).toBe('ok');
+    expect((ended.model as { kind: string }).kind).toBe('games.trek');
+    expect((ended as { renderedErr?: string }).renderedErr).toBeUndefined();
   });
 
   it('says so when the session cannot ask', async () => {

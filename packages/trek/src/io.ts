@@ -98,6 +98,8 @@ export class TrekIO {
   private pending: string = '';
   /** Characters typed, not yet read. */
   private input: number[] = [];
+  /** Set once the terminal has said end of input: a stream at EOF stays there, and is not asked again. */
+  private ended: boolean = false;
 
   /**
    * Wires the game's stdio to a terminal.
@@ -172,10 +174,11 @@ export class TrekIO {
    */
   public async getchar(): Promise<number> {
     if (this.input.length === 0) {
+      if (this.ended) return EOF;
       const prompt: string = this.pending;
       this.pending = '';
       const line: string | null = await this.terminal.question_ask(prompt);
-      if (line === null) return EOF;
+      if (line === null) { this.ended = true; return EOF; }
       for (const char of `${line}\n`) this.input.push(char.charCodeAt(0));
     }
     return this.input.shift() as number;

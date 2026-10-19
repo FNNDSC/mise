@@ -30,6 +30,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./host": {
+      "import": "./dist/host.js",
+      "types": "./dist/host.d.ts"
     }
   },
   "bin": {

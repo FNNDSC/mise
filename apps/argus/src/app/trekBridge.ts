@@ -14,6 +14,8 @@
  */
 import type { SurfaceAsk } from '../calypso/client.js';
 import { TrekBridge } from '../features/trek/bridge.js';
+import type { BridgeVoice, CueName } from '../features/trek/cues.js';
+import { synthVoice } from '../lcars/synth.js';
 import type { HostContext } from './hostContext.js';
 
 /** The bridge verbs a wired host has. */
@@ -62,11 +64,13 @@ function seed_of(line: string): number | null {
 /**
  * Wires the trek bridge to a host.
  *
- * @param context - The sound and, read when needed, the client.
+ * @param context - The client, read when needed.
  * @returns The bridge verbs.
  */
-export function trekBridge_wire(context: Pick<HostContext, 'sound' | 'client'>): TrekBridgeModule {
+export function trekBridge_wire(context: Pick<HostContext, 'client'>): TrekBridgeModule {
   let bridge: TrekBridge | null = null;
+  // the bridge is heard through the page's voice: a beep per pill, a cue per event, the audio pill the one mute
+  const voice: BridgeVoice = { pill: (label: string): void => synthVoice.pill_play(label), cue: (name: CueName): void => synthVoice.cue_play(name) };
   // What the bridge has heard: for the smoke suite, argus's only executable verification, and for a diagnosis.
   const heard: { events: number; states: number; lastError: string | null } = { events: 0, states: 0, lastError: null };
   (window as unknown as { __argusTrek?: unknown }).__argusTrek = {
@@ -74,7 +78,7 @@ export function trekBridge_wire(context: Pick<HostContext, 'sound' | 'client'>):
     prompt: (): string | null => bridge?.harness_get().question_get()?.prompt ?? null,
     readout: (): unknown => bridge?.readout_get() ?? null,
     view: (): string | null => bridge?.view_get() ?? null,
-    heard: (): typeof heard => ({ ...heard }),
+    heard: (): typeof heard & { voice: ReturnType<typeof synthVoice.tally_get> } => ({ ...heard, voice: synthVoice.tally_get() }),
   };
 
   const close = (): void => {
@@ -102,11 +106,12 @@ export function trekBridge_wire(context: Pick<HostContext, 'sound' | 'client'>):
 
   const open = async (line: string): Promise<void> => {
     if (bridge !== null) return;
-    const opened: TrekBridge = new TrekBridge({ sound: context.sound, leave }, seed_of(line));
+    const opened: TrekBridge = new TrekBridge({ voice, leave }, seed_of(line));
     bridge = opened;
     document.body.append(opened.root);
     document.body.dataset['takeover'] = 'trek';
-    context.sound('audio2');
+    synthVoice.preload();
+    synthVoice.cue_play('open');
     try {
       // The operator's own command, never instrument traffic: the daemon lets it ask its questions.
       const outcome = await context.client.line_execute(line, { operator: true });

@@ -14,6 +14,7 @@
  * @module
  */
 import type { OpenQuestion } from './harness.js';
+import { pillLabel_of, type BridgeVoice } from './cues.js';
 import { CourseWheel, el, pill_make, PillRow, ValueSlider, type WheelMark } from './controls.js';
 import {
   BRIDGE_COMMANDS, arrival_of, course_calc, impulseCost_of, phaserEffect_of, question_control, readout_diff, repairTimes_of, score_of, warpCost_of,
@@ -22,16 +23,16 @@ import {
 
 /** What a station asks of the bridge. */
 export interface StationHost {
-  /** Answers the open question with a line. */
-  answer_send: (line: string) => void;
+  /** Answers the open question with a line; the label is the pill heard for it, null for an answer the bridge gives on its own. */
+  answer_send: (line: string, label: string | null) => void;
   /** Sends a command at the Command: prompt; false when it is not open. */
   command_send: (command: BridgeCommand) => boolean;
   /** Plans the answers to questions that follow, given as they come; cleared at the next Command: prompt. */
   plan_set: (answers: ReadonlyArray<[TrekQuestion, string]>) => void;
   /** Points every wheel at a course and sets the distance sliders, in quadrants. */
   course_set: (degrees: number, distance: number | null) => void;
-  /** Plays a sound by the host's name for it. */
-  sound: (name: string) => void;
+  /** How the bridge is heard. */
+  voice: BridgeVoice;
 }
 
 /** A station's head: its name, the step it is on, and a CANCEL pill for the question the C lets go of. */
@@ -65,7 +66,7 @@ export function question_isAmong(open: OpenQuestion | null, names: ReadonlyArray
 export function stationHead_make(name: string, host: StationHost): StationHead {
   const root: HTMLElement = el('div', 'tb-station-head');
   const step: HTMLElement = el('span', 'tb-station-step', '');
-  const cancel: HTMLButtonElement = pill_make('tb-grave tb-cancel', 'CANCEL', (): void => { host.answer_send(cancel.dataset['line'] ?? ''); });
+  const cancel: HTMLButtonElement = pill_make('tb-grave tb-cancel', 'CANCEL', (): void => { host.answer_send(cancel.dataset['line'] ?? '', 'CANCEL'); });
   cancel.hidden = true;
   root.append(el('span', 'tb-station-name', name), step, el('span', 'tb-station-fill'), cancel);
   return { root, step, cancel };
@@ -178,11 +179,11 @@ export class HelmStation {
     const commands = commandPills_make('helm', host);
     this.pills = commands.pills;
     const controls: HTMLElement = el('div', 'tb-controls');
-    this.wheel = new CourseWheel(size, 'course wheel', (degrees: number): void => host.answer_send(String(degrees)));
+    this.wheel = new CourseWheel(size, 'course wheel', (degrees: number): void => host.answer_send(String(degrees), 'SET COURSE'));
     const sliders: HTMLElement = el('div', 'tb-sliders');
-    this.distance = new ValueSlider(`${prefix}-distance`, 'DISTANCE', 1, (value: number): void => host.answer_send(value.toFixed(1)));
-    this.warp = new ValueSlider(`${prefix}-warp`, 'WARP FACTOR', 1, (value: number): void => host.answer_send(value.toFixed(1)));
-    this.rest = new ValueSlider(`${prefix}-rest`, 'REST', 1, (value: number): void => host.answer_send(value.toFixed(1)));
+    this.distance = new ValueSlider(`${prefix}-distance`, 'DISTANCE', 1, (value: number): void => host.answer_send(value.toFixed(1), 'SLIDER SET'));
+    this.warp = new ValueSlider(`${prefix}-warp`, 'WARP FACTOR', 1, (value: number): void => host.answer_send(value.toFixed(1), 'SLIDER SET'));
+    this.rest = new ValueSlider(`${prefix}-rest`, 'REST', 1, (value: number): void => host.answer_send(value.toFixed(1), 'SLIDER SET'));
     this.distance.input_listen((): void => this.arrival_note());
     sliders.append(this.distance.root, this.warp.root, this.rest.root);
     controls.append(this.wheel.root, sliders);
@@ -257,16 +258,16 @@ export class TacticalStation {
     const commands = commandPills_make('tactical', host);
     this.pills = commands.pills;
     const controls: HTMLElement = el('div', 'tb-controls');
-    this.wheel = new CourseWheel(size, 'firing course wheel', (degrees: number): void => host.answer_send(String(degrees)));
+    this.wheel = new CourseWheel(size, 'firing course wheel', (degrees: number): void => host.answer_send(String(degrees), 'SET COURSE'));
     const rows: HTMLElement = el('div', 'tb-sliders');
-    this.burst = new PillRow('BURST', question_control('burst', null).choices ?? [], (line: string): void => host.answer_send(line));
-    this.burstAngle = new PillRow('BURST ANGLE', question_control('burst-angle', null).choices ?? [], (line: string): void => { this.wheel.wedge_set(Number(line)); host.answer_send(line); });
-    this.manual = new PillRow('PHASERS', question_control('manual-automatic', null).choices ?? [], (line: string): void => host.answer_send(line));
-    this.units = new ValueSlider(`${prefix}-units`, 'UNITS', 0, (value: number): void => host.answer_send(String(Math.round(value))));
-    this.spread = new ValueSlider(`${prefix}-spread`, 'SPREAD', 2, (value: number): void => host.answer_send(value.toFixed(2)));
-    this.upDown = new PillRow('SHIELDS', question_control('up-down', null).choices ?? [], (line: string): void => host.answer_send(line));
+    this.burst = new PillRow('BURST', question_control('burst', null).choices ?? [], (line: string, label: string): void => host.answer_send(line, pillLabel_of(label, 'choice')));
+    this.burstAngle = new PillRow('BURST ANGLE', question_control('burst-angle', null).choices ?? [], (line: string, label: string): void => { this.wheel.wedge_set(Number(line)); host.answer_send(line, pillLabel_of(label, 'choice')); });
+    this.manual = new PillRow('PHASERS', question_control('manual-automatic', null).choices ?? [], (line: string, label: string): void => host.answer_send(line, pillLabel_of(label, 'choice')));
+    this.units = new ValueSlider(`${prefix}-units`, 'UNITS', 0, (value: number): void => host.answer_send(String(Math.round(value)), 'SLIDER SET'));
+    this.spread = new ValueSlider(`${prefix}-spread`, 'SPREAD', 2, (value: number): void => host.answer_send(value.toFixed(2), 'SLIDER SET'));
+    this.upDown = new PillRow('SHIELDS', question_control('up-down', null).choices ?? [], (line: string, label: string): void => host.answer_send(line, pillLabel_of(label, 'choice')));
     const fireRow: HTMLElement = el('div', 'tb-fire-row');
-    this.fire = pill_make('tb-fire', 'FIRE', (): void => host.answer_send('0'));
+    this.fire = pill_make('tb-fire', 'FIRE', (): void => host.answer_send('0', null));
     this.targets = el('div', 'tb-targets');
     fireRow.append(this.fire, this.targets);
     rows.append(this.burst.root, this.burstAngle.root, this.manual.root, this.units.root, this.spread.root, this.upDown.root, fireRow);
@@ -317,7 +318,7 @@ export class TacticalStation {
     if (readout.klingons.length === 0) { this.targets.append(el('span', 'tb-note', 'NO KLINGONS IN THIS QUADRANT')); return; }
     for (const word of ['TARGET', 'RANGE', 'BEARING', 'PHASER HIT']) this.targets.append(el('span', 'tb-target-head', word));
     for (const k of readout.klingons) {
-      const row: HTMLButtonElement = pill_make('tb-target', `K ${k.x},${k.y}`, (): void => this.host.course_set(k.bearing, k.range / 10));
+      const row: HTMLButtonElement = pill_make('tb-target', `K ${k.x},${k.y}`, (): void => { this.host.voice.cue('scanner'); this.host.course_set(k.bearing, k.range / 10); });
       this.targets.append(row, el('span', 'tb-target-cell', k.range.toFixed(1)), el('span', 'tb-target-cell', `${Math.round(k.bearing)}°`), el('span', 'tb-target-cell', `${phaserEffect_of(k.range / 10)}%`));
     }
   }
@@ -363,7 +364,7 @@ export class EngineeringView {
       this.pills.set(id, pill);
       pills.append(pill);
     }
-    this.rest = new ValueSlider('tbe-rest', 'HOW LONG', 1, (value: number): void => host.answer_send(value.toFixed(1)));
+    this.rest = new ValueSlider('tbe-rest', 'HOW LONG', 1, (value: number): void => host.answer_send(value.toFixed(1), 'SLIDER SET'));
     this.rest.input_listen((): void => this.inThatTime_note());
     this.inThatTime = el('div', 'tb-in-that-time');
     timeSection.append(this.head.root, pills, this.rest.root, el('span', 'tb-title', 'IN THAT TIME'), this.inThatTime);
@@ -599,13 +600,16 @@ export class ComputerView {
     if (this.open?.question === 'request') {
       this.host.plan_set(plan);
       this.answer_take(null);
-      this.host.answer_send(request.line);
+      this.host.answer_send(request.line, pillLabel_of(request.label, 'computer'));
+      this.host.voice.cue('thinking');
       return;
     }
     const computer: BridgeCommand | undefined = BRIDGE_COMMANDS.find((c: BridgeCommand): boolean => c.id === 'computer');
-    if (computer === undefined || this.open?.question !== 'command') { this.host.sound('audio4'); return; }
+    if (computer === undefined || this.open?.question !== 'command') { this.host.voice.cue('deny'); return; }
     this.host.plan_set([['request', request.line], ...plan]);
     this.answer_take(null);
+    // the pill beeps, then the computer is heard thinking as the command goes
+    this.host.voice.pill(pillLabel_of(request.label, 'computer'));
     this.host.command_send(computer);
   }
 
@@ -627,6 +631,7 @@ export class ComputerView {
   private helm_send(): void {
     if (this.readout === null || this.target === null) return;
     const calc = course_calc(this.readout, this.target);
+    this.host.voice.pill('SEND TO HELM');
     this.host.course_set(calc.course, Math.round(calc.distance * 10) / 10);
   }
 
@@ -645,7 +650,7 @@ export class ComputerView {
     const button: HTMLButtonElement = pill_make(`tb-cq${cell.here ? ' tb-here' : ''}${cell.klingons > 0 ? ' tb-hostile' : ''}${cell.bases > 0 ? ' tb-based' : ''}${cell.code === null ? ' tb-unscanned' : ''}${pressed ? ' tb-pressed' : ''}`, '', (): void => {
       if (this.readout === null) return;
       this.target = { quadrant: { x: cell.x, y: cell.y }, sector: this.target?.sector ?? { ...this.readout.position.sector } };
-      this.host.sound('audio1');
+      this.host.voice.cue('scanner');
       this.chart_draw(this.readout);
       this.course_note();
     });
@@ -688,7 +693,7 @@ export class ComputerView {
     for (const word of ['AT', 'COURSE', 'RANGE', 'PHASER HIT']) this.trajectory.append(el('span', 'tb-target-head', word));
     for (const k of readout.klingons) {
       this.trajectory.append(
-        pill_make('tb-target', `${k.x},${k.y}`, (): void => this.host.course_set(k.bearing, k.range / 10)),
+        pill_make('tb-target', `${k.x},${k.y}`, (): void => { this.host.voice.cue('scanner'); this.host.course_set(k.bearing, k.range / 10); }),
         el('span', 'tb-target-cell', `${Math.round(k.bearing)}°`), el('span', 'tb-target-cell', k.range.toFixed(1)), el('span', 'tb-target-cell', `${phaserEffect_of(k.range / 10)}%`),
       );
     }

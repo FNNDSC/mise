@@ -31,7 +31,8 @@ beforeAll(async () => {
 function bridge_make(): { bridge: TrekBridge; sounds: string[]; left: number[] } {
   const sounds: string[] = [];
   const left: number[] = [];
-  const bridge: TrekBridge = new TrekBridge({ sound: (name: string): void => { sounds.push(name); }, leave: (): void => { left.push(1); } }, 42);
+  const voice = { pill: (label: string): void => { sounds.push(`pill:${label}`); }, cue: (name: string): void => { sounds.push(name); } };
+  const bridge: TrekBridge = new TrekBridge({ voice, leave: (): void => { left.push(1); } }, 42);
   document.body.append(bridge.root);
   return { bridge, sounds, left };
 }
@@ -80,7 +81,8 @@ describe('the bridge', () => {
     engage.click();
     const distanceAnswer: string | null = await distance;
     expect(Number(distanceAnswer)).toBeGreaterThan(0);
-    expect(sounds).toContain('audio1');
+    // heard: the MOVE pill's beep, the scanner at the sector press, SET COURSE's beep, and ENGAGE as warp
+    expect(sounds).toEqual(expect.arrayContaining(['pill:MOVE', 'scanner', 'pill:SET COURSE', 'warp']));
     bridge.root.remove();
   });
 
@@ -121,7 +123,7 @@ describe('the station views', () => {
     expect(bridge.view_get()).toBe('helm');
     expect((bridge.root.querySelector('.tb-body') as HTMLElement).dataset['view']).toBe('helm');
     expect(bridge.root.querySelector('.tb-view-helm .tb-wheel-face')?.getAttribute('width')).toBe('260');
-    expect(sounds).toContain('audio1');
+    expect(sounds).toContain('pill:HELM');
     bridge.root.remove();
   });
 

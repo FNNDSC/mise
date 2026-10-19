@@ -52,7 +52,7 @@ import fastifyFormbody from '@fastify/formbody';
 import replyFrom from '@fastify/reply-from';
 import { z } from 'zod';
 import { connect as net_connect, type Socket } from 'node:net';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
@@ -157,6 +157,8 @@ const SOUND_TYPES: Readonly<Record<string, string>> = { mp3: 'audio/mpeg', wav: 
  * The deployment's own copy of a sound the page asks for, when it has one:
  * `sounds/<name>.<mp3|wav|ogg>` under the session, read from the sounds
  * folder. A name is taken as a bare file name only, so no path climbs out.
+ * `sounds/index.json` names the files the folder has, so the page knows
+ * which of its sounds the deployment keeps and synthesizes the rest.
  *
  * @param soundsDir - The deployment's sounds folder, or null for none.
  * @param rest - The path after `/s/<key>/`, query included.
@@ -166,6 +168,15 @@ export async function soundOverride_read(soundsDir: string | null, rest: string)
   if (soundsDir === null) return null;
   // The rest as the mount splits it begins with a slash (`/sounds/press.mp3`).
   const path: string = (rest.split('?')[0] ?? '').replace(/^\/+/, '');
+  // The page asks which sounds the deployment keeps: it plays those recordings and synthesizes the rest itself.
+  if (path === 'sounds/index.json') {
+    try {
+      const names: string[] = (await readdir(soundsDir)).filter((name: string): boolean => /^[A-Za-z0-9_-]+\.(mp3|wav|ogg)$/.test(name)).sort();
+      return { bytes: Buffer.from(`${JSON.stringify({ files: names })}\n`), type: 'application/json; charset=utf-8' };
+    } catch {
+      return null;
+    }
+  }
   const match: RegExpMatchArray | null = path.match(/^sounds\/([A-Za-z0-9_-]+)\.(mp3|wav|ogg)$/);
   if (match === null) return null;
   const name: string = `${match[1]}.${match[2]}`;

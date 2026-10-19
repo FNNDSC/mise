@@ -607,6 +607,22 @@ LINT_CHECKS['a-field-says-it-holds-more'] = () => {
   }
 };
 
+LINT_CHECKS['a-program-gives-the-screen-back'] = () => {
+  // A program that takes the screen (trek's bridge) hides the page behind
+  // it with one body attribute and gives it back however the game ends:
+  // the host sets `data-takeover` when it opens, removes it in a `finally`
+  // around the command, and the stylesheet hides everything but the
+  // bridge under that attribute, so no other path can leave ARGUS hidden.
+  const host = readFileSync('apps/argus/src/app/trekBridge.ts', 'utf8');
+  const css = readFileSync('apps/argus/src/features/trek/trek.css', 'utf8');
+  if (!/document\.body\.dataset\['takeover'\] = 'trek'/.test(host)) fail('a-program-gives-the-screen-back', 'trekBridge.ts does not set body[data-takeover] when the bridge opens');
+  if (!/delete document\.body\.dataset\['takeover'\]/.test(host)) fail('a-program-gives-the-screen-back', 'trekBridge.ts does not remove body[data-takeover] when the bridge closes');
+  if (!/finally \{\s*if \(bridge === opened\) close\(\);/.test(host)) fail('a-program-gives-the-screen-back', 'trekBridge.ts does not close the bridge in a finally around the command: a thrown run would leave the page hidden');
+  if (!/body\[data-takeover='trek'\] > \*:not\(#trek-bridge\) \{ visibility: hidden; \}/.test(css)) fail('a-program-gives-the-screen-back', "trek.css does not hide the page behind the bridge under body[data-takeover='trek']");
+  const takeovers = [...readFileSync('apps/argus/src/app/main.ts', 'utf8').matchAll(/dataset\['takeover'\]/g)].length;
+  if (takeovers > 0) fail('a-program-gives-the-screen-back', `main.ts touches body[data-takeover] (${takeovers}): the bridge module owns it`);
+};
+
 // -------------------------------------------------- the table enforces itself
 
 const lawsTable = aegis.match(/\| Law \| Statement \| Enforcement\n([\s\S]*?)\n\|===/);

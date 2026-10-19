@@ -121,7 +121,7 @@ The frame's four beeps (press, arrive, retreat, refuse) go through the same voic
 . *S3a, the takeover and the BRIDGE view* (#1164): ARGUS's takeover layer and the harness, header, scans, helm and tactical, the ship's log, LEAVE BRIDGE; entry from the GAMES pane and the console line.
 . *S3b, the station views* (#1165): HELM and TACTICAL large with the scan beside them, ENGINEERING with the damage control report whole (repair times in flight and docked) and the ship's reserves, COMPUTER with the chart large and the requests as pills with the answers drawn; manual phasers; the score in the header; the frame's two elbows joined.
 . *S3c, sound* (#1167): the resynthesis player (`apps/argus/src/lcars/synth.ts`), the bank as static files under `sound/`, the cues on their events and a beep per pill, ARGUS's own beeps through the same voice with the porter's recordings kept where it has them, the audio pill the one mute; the analysis tooling in `tools/trek-sound`.
-. *S4, proof*: a smoke scenario for the bridge, and its AEGIS laws.
+. *S4, proof* (#1168): the `trek-bridge` smoke scenario (the transcript lane's), and four AEGIS laws: a program may take the screen, a program gives the screen back, a bridge answers the prompt in front of it, a pill that acts is heard as the thing.
 
 == Deferred, deliberately
 

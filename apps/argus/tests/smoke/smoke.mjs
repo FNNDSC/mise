@@ -100,7 +100,7 @@ let suiteConsole = 'transcript';
  * suite driving a terminal skips them by name, and the nightly transcript
  * lane runs them.
  */
-const TRANSCRIPT_ONLY = ['console-asks', 'question-both-places'];
+const TRANSCRIPT_ONLY = ['console-asks', 'question-both-places', 'trek-bridge'];
 /** The terminal's own: its questions are chell's, asked and answered in line. */
 const TERMINAL_ONLY = ['terminal-asks'];
 
@@ -1246,6 +1246,89 @@ try {
     JSON.stringify({ panes: games.panes, focused: games.focused, state: games.tetrisState, released: games.released, paused: games.paused, closed: games.closed }));
   check('hangman asks in the console and q gives the word up',
     games.gallows && /the word was [a-z]+/.test(games.hanged), JSON.stringify({ gallows: games.gallows, hanged: games.hanged.slice(0, 80) }));
+  }
+
+  if (await stage('trek-bridge')) {
+  // The trek bridge (#1157): `trek` at the transcript console is a program
+  // that takes the screen and gives it back. The bridge plays the game
+  // through the engine's own prompts from controls lit by the question,
+  // is heard by rule through the page's voice, and LEAVE BRIDGE (Esc asks
+  // first) ends the game as end of input, the console returning READY.
+  const trek = await evalIn(`
+    await console_idle();
+    const input = console_input();
+    const until = async (read, ms = 20000) => { const end = Date.now() + ms; while (Date.now() < end) { if (read()) return true; await sleep(150); } return false; };
+    const click = (sel) => { const b = document.querySelector(sel); if (!b) return false; b.click(); return true; };
+    const q = (sel) => document.querySelector(sel);
+    const label = (name) => [...document.querySelectorAll('.tb-head-label')].find((l) => l.textContent === name)?.nextElementSibling?.textContent ?? null;
+    // Not through say(): the line does not return its prompt until the game ends.
+    input.value = 'trek --seed 42'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    const opened = await until(() => q('#trek-bridge') !== null && document.body.dataset.takeover === 'trek');
+    const hidden = [...document.body.children].filter((el) => el.id !== 'trek-bridge').every((el) => getComputedStyle(el).visibility === 'hidden');
+    // setup: the strip asks the length and the skill; the command pills stay dimmed until Command:
+    const lengthAsked = await until(() => !q('.tb-ask')?.hidden && /length/i.test(q('.tb-ask-text')?.textContent ?? ''));
+    const dimmedBefore = q('[data-command="move"]')?.disabled === true;
+    const beforePress = window.__argusTrek.question();
+    click('[data-command="move"]');
+    const dimmedPressed = window.__argusTrek.question() === beforePress;
+    click('.tb-ask .tb-choice');
+    await until(() => /skill/i.test(q('.tb-ask-text')?.textContent ?? ''));
+    click('.tb-ask .tb-choice');
+    const commandReady = await until(() => q('[data-command="move"]')?.disabled === false);
+    const drawn = { condition: q('.tb-condition-name')?.textContent ?? '', sectors: document.querySelectorAll('.tb-sector').length, ship: document.querySelectorAll('.tb-sector-ship').length, quadrants: document.querySelectorAll('.tb-quadrant').length, score: label('SCORE') };
+    // a move: MOVE lights the wheel; a sector pressed points it; SET COURSE; the distance (quadrants) lit; ENGAGE
+    const stardate1 = label('STARDATE');
+    click('[data-command="move"]');
+    const wheelLit = await until(() => q('.tb-station-helm .tb-wheel')?.classList.contains('tb-lit'));
+    const asksCourse = window.__argusTrek.question();
+    const here = window.__argusTrek.readout().position.sector;
+    click('.tb-sector[data-x="' + here.x + '"][data-y="' + (here.y === 0 ? 2 : 0) + '"]');
+    click('.tb-station-helm .tb-wheel .tb-commit');
+    const distanceLit = await until(() => q('#tb-distance')?.closest('.tb-slider')?.classList.contains('tb-lit'));
+    const distanceValue = Number(q('#tb-distance')?.value);
+    q('#tb-distance').closest('.tb-slider').querySelector('.tb-commit').click();
+    const moved = await until(() => label('STARDATE') !== stardate1, 30000);
+    const since = [...document.querySelectorAll('.tb-head-section')].at(-1)?.textContent ?? '';
+    // the views: the gutter changes the body, a station view is drawn large, the computer answers through the engine
+    click('[data-view="helm"]');
+    const helmView = q('.tb-body')?.dataset.view === 'helm' && q('.tb-view-helm .tb-wheel-face')?.getAttribute('width') === '260';
+    click('[data-view="engineering"]');
+    const engineeringRows = document.querySelectorAll('.tb-view-engineering .tb-dc-name').length;
+    click('[data-view="computer"]');
+    click('[data-request="s"]');
+    const scored = await until(() => /TOTAL/.test(q('.tb-computer-answer')?.textContent ?? ''), 20000);
+    await until(() => q('[data-command="move"]')?.disabled === false);
+    click('[data-view="bridge"]');
+    // the voice: the bank and its models fetched, cues played, oscillators started
+    await sleep(600);
+    const voice = window.__argusTrek.heard().voice;
+    const heard = window.__argusTrek.heard();
+    // leaving: Esc asks, STAY stays, LEAVE ends the game as end of input; ARGUS comes back and the console returns READY
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    const leaveAsked = await until(() => q('.tb-leave-ask')?.hidden === false);
+    click('.tb-leave-ask .tb-pill:not(.tb-grave)');
+    const stayed = q('.tb-leave-ask')?.hidden === true && q('#trek-bridge') !== null;
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await until(() => q('.tb-leave-ask')?.hidden === false);
+    click('.tb-leave-ask .tb-grave');
+    const closed = await until(() => q('#trek-bridge') === null && document.body.dataset.takeover === undefined, 20000);
+    const restored = [...document.body.children].every((el) => getComputedStyle(el).visibility !== 'hidden' || el.hidden || el.offsetParent === null || getComputedStyle(el).display === 'none');
+    await console_idle();
+    const tail = console_text().slice(-400);
+    return { opened, hidden, lengthAsked, dimmedBefore, dimmedPressed, commandReady, drawn, wheelLit, asksCourse, distanceLit, distanceValue, moved, since: since.slice(0, 160), helmView, engineeringRows, scored, voice, heard: { events: heard.events, states: heard.states, lastError: heard.lastError }, leaveAsked, stayed, closed, restored, tail, asking: console_asking() };`);
+  check('trek takes the screen and gives it back: the page hides behind the bridge, Esc asks, STAY stays, LEAVE ends the game, the console returns READY',
+    trek.opened && trek.hidden && trek.leaveAsked && trek.stayed && trek.closed && trek.restored && !trek.asking && !/cannot ask here/.test(trek.tail),
+    JSON.stringify({ opened: trek.opened, hidden: trek.hidden, leaveAsked: trek.leaveAsked, stayed: trek.stayed, closed: trek.closed, restored: trek.restored, asking: trek.asking, tail: trek.tail.slice(-160) }));
+  check("the bridge answers the engine's own prompts from lit controls, and a dimmed pill presses nothing",
+    trek.lengthAsked && trek.dimmedBefore && trek.dimmedPressed && trek.commandReady && trek.wheelLit && trek.asksCourse === 'course' && trek.distanceLit && trek.moved,
+    JSON.stringify({ lengthAsked: trek.lengthAsked, dimmedBefore: trek.dimmedBefore, dimmedPressed: trek.dimmedPressed, commandReady: trek.commandReady, wheelLit: trek.wheelLit, asksCourse: trek.asksCourse, distanceLit: trek.distanceLit, moved: trek.moved }));
+  check('the bridge draws the state the engine shows: the condition, 100 sectors with one ship, the 64-quadrant chart, the score; a pressed sector is a tenth of a quadrant',
+    /GREEN|YELLOW|RED|DOCKED/.test(trek.drawn.condition) && trek.drawn.sectors === 100 && trek.drawn.ship === 1 && trek.drawn.quadrants === 64 && /^-?\d+$/.test(trek.drawn.score ?? '') && trek.distanceValue > 0 && trek.distanceValue < 1 && trek.heard.states >= 2 && trek.heard.lastError === null && /STARDATE/.test(trek.since),
+    JSON.stringify({ drawn: trek.drawn, distanceValue: trek.distanceValue, heard: trek.heard, since: trek.since.slice(0, 80) }));
+  check('the gutter changes the view: HELM draws its station large, ENGINEERING every device, COMPUTER answers SCORE through the engine',
+    trek.helmView && trek.engineeringRows >= 14 && trek.scored, JSON.stringify({ helmView: trek.helmView, engineeringRows: trek.engineeringRows, scored: trek.scored }));
+  check("the bridge is heard through the page's voice: the bank and every model fetched, none missing, cues played, oscillators started",
+    trek.voice !== undefined && trek.voice.loaded >= 60 && trek.voice.missing === 0 && trek.voice.played >= 8 && trek.voice.voices > 0, JSON.stringify(trek.voice));
   }
 
   if (await stage('notes')) {

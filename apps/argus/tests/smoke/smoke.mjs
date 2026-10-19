@@ -1345,6 +1345,111 @@ try {
     trek.voice !== undefined && trek.voice.loaded >= 60 && trek.voice.missing === 0 && trek.voice.played >= 8 && trek.voice.voices > 0, JSON.stringify(trek.voice));
   }
 
+  if (await stage('trek-motion')) {
+  // The moving bridge (#1172): nothing on the screen moves without an
+  // engine line or a change of state behind it. On seed 13 a Klingon sits
+  // in the start quadrant: the standing order fills the long-range scan at
+  // the first prompt, a torpedo flies the printed track point by point and
+  // the kill bursts when its line arrives, the frames played are counted
+  // against the log's lines kind by kind, the Klingon wears one mark on the
+  // scan, the wheel and its target pill, and a view pill pressed during a
+  // quadrant crossing lands the picture at its end at once.
+  const motion = await evalIn(`
+    await console_idle();
+    const input = console_input();
+    const until = async (read, ms = 20000) => { const end = Date.now() + ms; while (Date.now() < end) { if (read()) return true; await sleep(100); } return false; };
+    const click = (sel) => { const b = document.querySelector(sel); if (!b) return false; if (typeof b.click === 'function') b.click(); else b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); return true; };
+    const q = (sel) => document.querySelector(sel);
+    const frames = () => window.__argusTrek.frames();
+    const idle = async (ms = 30000) => until(() => !frames().busy && q('[data-command="move"]')?.disabled === false, ms);
+    const logLines = () => [...document.querySelectorAll('.tb-log .tb-log-line')].map((l) => l.textContent ?? '');
+    if (terminal_mode()) {
+      const pill = document.getElementById('lang-pill');
+      if (document.getElementById('lang-palette').hidden) { pill.click(); await sleep(150); }
+      const li = document.getElementById('lang-input'); li.value = 'trek --seed 13';
+      li.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    } else {
+      input.value = 'trek --seed 13'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    }
+    const opened = await until(() => q('#trek-bridge') !== null);
+    await until(() => !q('.tb-ask')?.hidden && /length/i.test(q('.tb-ask-text')?.textContent ?? ''));
+    click('.tb-ask .tb-choice');
+    await until(() => /skill/i.test(q('.tb-ask-text')?.textContent ?? ''));
+    click('.tb-ask .tb-choice');
+    const ready = await idle();
+    // the standing order: the first prompt answered with the engine's own l, the scan's lines folded, the long-range cells filled
+    const standing = { fold: q('.tb-log-fold .tb-log-fold-head')?.textContent ?? null, scanned: document.querySelectorAll('.tb-lrs-cell:not(.tb-unscanned):not(.tb-lrs-edge)').length, edge: document.querySelectorAll('.tb-lrs-cell.tb-lrs-edge').length };
+    // one mark per Klingon, everywhere it is drawn
+    const scanMark = q('.tb-sector-klingon use')?.getAttribute('href') ?? null;
+    const wheelMark = q('.tb-station-tactical .tb-wheel-marks use.tb-wheel-mark-klingon')?.getAttribute('href') ?? null;
+    const pillMark = q('.tb-station-tactical .tb-target use')?.getAttribute('href') ?? null;
+    const ring = q('.tb-scan .tb-ring')?.dataset.percent ?? null;
+    // a torpedo at the Klingon: its sector pressed sets the firing course, no burst
+    const klingon = window.__argusTrek.readout().klingons[0];
+    const before = frames().played;
+    click('[data-command="torpedo"]');
+    await until(() => q('.tb-station-tactical .tb-wheel')?.classList.contains('tb-lit'));
+    click('.tb-sector[data-x="' + klingon.x + '"][data-y="' + klingon.y + '"]');
+    click('.tb-station-tactical .tb-wheel .tb-commit');
+    await until(() => /burst/i.test(window.__argusTrek.prompt() ?? ''));
+    click('.tb-station-tactical .tb-pillrow .tb-choice[data-line="n"]');
+    const flew = await until(() => q('.tb-photon') !== null, 8000);
+    const fired = await idle();
+    const played = frames().played;
+    const lines = logLines();
+    // the frames played against the lines printed, kind by kind
+    const count = (re) => lines.filter((l) => re.test(l)).length;
+    const printed = {
+      'torpedo-head': count(/^Torpedo track(, torpedo number \\d+)?:/), 'torpedo-point': count(/^\\s*\\d+\\.\\d\\s+\\d+\\.\\d\\s*$/), 'torpedo-end': count(/^Torpedo missed|^Torpedo disappears/),
+      'kill': count(/\\*\\*\\* Klingon at \\d+,\\d+ destroyed|^Starbase at \\d+,\\d+ destroyed|^Inhabited starsystem .* destroyed|^Unknown object . at \\d+,\\d+ destroyed/), 'nova': count(/Star at \\d+,\\d+ gone nova/),
+      'misfire': count(/^Photon tubes misfire/), 'phaser': count(/^\\d+ unit hit on Klingon at/), 'incoming': count(/^HIT: \\d+ units/),
+      'klingon-move': count(/^Klingon at \\d+,\\d+ moves to/), 'klingon-escape': count(/^Klingon at \\d+,\\d+ escapes to quadrant/), 'supernova': count(/RED ALERT: supernova occurring/), 'supernova-report': count(/Caution is advised/),
+    };
+    const unmatched = Object.entries(played).filter(([kind, n]) => !['line', 'state', 'fold'].includes(kind) && printed[kind] !== n).map(([kind, n]) => kind + ':' + n + '/' + (printed[kind] ?? 'none'));
+    const trackFrames = (played['torpedo-point'] ?? 0) - (before['torpedo-point'] ?? 0);
+    const killLine = lines.findIndex((l) => /\\*\\*\\* Klingon at \\d+,\\d+ destroyed/.test(l));
+    const lastPoint = lines.reduce((at, l, i) => (/^\\s*\\d+\\.\\d\\s+\\d+\\.\\d\\s*$/.test(l) ? i : at), -1);
+    const klingonsDrawn = document.querySelectorAll('.tb-sector-klingon').length;
+    const klingonsState = window.__argusTrek.readout().klingons.length;
+    const motionLeft = document.querySelectorAll('.tb-motion').length;
+    // a move west that crosses the quadrant line, cut short by a view pill: the picture lands at once
+    const quadrantBefore = window.__argusTrek.readout().position.quadrant;
+    const here = window.__argusTrek.readout().position.sector;
+    click('[data-command="move"]');
+    await until(() => q('.tb-station-helm .tb-wheel')?.classList.contains('tb-lit'));
+    click('.tb-sector[data-x="' + here.x + '"][data-y="' + Math.max(0, here.y - 1) + '"]');
+    click('.tb-station-helm .tb-wheel .tb-commit');
+    await until(() => q('#tb-distance')?.closest('.tb-slider')?.classList.contains('tb-lit'));
+    const slider = q('#tb-distance'); slider.value = String(((here.y + 2) / 10).toFixed(1)); slider.dispatchEvent(new Event('input', { bubbles: true }));
+    slider.closest('.tb-slider').querySelector('.tb-commit').click();
+    const sliding = await until(() => q('.tb-motion-slide') !== null, 30000);
+    const pressedAt = Date.now();
+    click('[data-view="helm"]');
+    const landed = await until(() => !frames().busy && q('.tb-motion') === null, 5000);
+    const skipMs = Date.now() - pressedAt;
+    await idle();
+    const quadrantAfter = window.__argusTrek.readout().position.quadrant;
+    click('[data-view="bridge"]');
+    const title = q('.tb-srs-section .tb-title')?.textContent ?? '';
+    const logWhole = logLines().filter((l) => /^HIT:|moves to|escapes to|Starsystem/.test(l)).length;
+    // leave
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await until(() => q('.tb-leave-ask')?.hidden === false);
+    click('.tb-leave-ask .tb-grave');
+    const closed = await until(() => q('#trek-bridge') === null && document.body.dataset.takeover === undefined, 20000);
+    await console_idle();
+    return { opened, ready, standing, scanMark, wheelMark, pillMark, ring, flew, fired, played, printed, unmatched, trackFrames, killLine, lastPoint, klingonsDrawn, klingonsState, motionLeft, quadrantBefore, quadrantAfter, sliding, landed, skipMs, title, logWhole, closed, asking: console_asking() };`);
+  check("a frame replays a printed line: every torpedo point, kill, nova, move and hit the picture played is a line in the log, and the track's frames are the printed points",
+    motion.flew && motion.fired && motion.unmatched.length === 0 && motion.trackFrames > 0 && motion.trackFrames === motion.printed['torpedo-point'] && motion.killLine > motion.lastPoint && motion.klingonsDrawn === motion.klingonsState && motion.motionLeft === 0,
+    JSON.stringify({ flew: motion.flew, fired: motion.fired, unmatched: motion.unmatched, trackFrames: motion.trackFrames, printed: motion.printed, played: motion.played, killLine: motion.killLine, lastPoint: motion.lastPoint, klingonsDrawn: motion.klingonsDrawn, klingonsState: motion.klingonsState, motionLeft: motion.motionLeft }));
+  check('the standing order fills the long-range scan at the first prompt, and the marks are one table: the Klingon wears the same mark on the scan, the wheel and its target pill',
+    motion.ready && /^LONG RANGE SCAN · STANDING ORDER/.test(motion.standing.fold ?? '') && motion.standing.scanned >= 5 && motion.standing.edge === 3 && motion.scanMark !== null && motion.scanMark === motion.wheelMark && motion.scanMark === motion.pillMark && motion.ring !== null,
+    JSON.stringify({ ready: motion.ready, standing: motion.standing, scanMark: motion.scanMark, wheelMark: motion.wheelMark, pillMark: motion.pillMark, ring: motion.ring }));
+  check('a press that acts skips the picture to its end: a view pill during a crossing lands the ship in the new quadrant at once, the log whole',
+    motion.sliding && motion.landed && motion.skipMs < 1500 && (motion.quadrantAfter.x !== motion.quadrantBefore.x || motion.quadrantAfter.y !== motion.quadrantBefore.y) && motion.title.includes(motion.quadrantAfter.x + ',' + motion.quadrantAfter.y) && motion.logWhole >= 1 && motion.closed && !motion.asking,
+    JSON.stringify({ sliding: motion.sliding, landed: motion.landed, skipMs: motion.skipMs, quadrantBefore: motion.quadrantBefore, quadrantAfter: motion.quadrantAfter, title: motion.title, logWhole: motion.logWhole, closed: motion.closed, asking: motion.asking }));
+  }
+
   if (await stage('notes')) {
   // What's new (#897): the kernel's notes in the console and as NEWS; the
   // dashboard's WHAT'S NEW block naming the installed release; the NOTES

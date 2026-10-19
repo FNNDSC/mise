@@ -623,6 +623,30 @@ LINT_CHECKS['a-program-gives-the-screen-back'] = () => {
   if (takeovers > 0) fail('a-program-gives-the-screen-back', `main.ts touches body[data-takeover] (${takeovers}): the bridge module owns it`);
 };
 
+LINT_CHECKS['a-mark-means-one-thing-everywhere'] = () => {
+  // One symbol table (features/trek/marks.ts) draws every mark the bridge
+  // shows: the scan, the wheels' rims, the target pills and the legend all
+  // take a kind's symbol from it, never a glyph or a drawing of their own.
+  const marks = readFileSync('apps/argus/src/features/trek/marks.ts', 'utf8');
+  const names = [...marks.matchAll(/^\s+'([a-z-]+)': '<[^\n]*$/gm)].map((m) => m[1]);
+  for (const kind of ['ship', 'base', 'inhabited', 'star', 'hole', 'supernova', 'klingon-cruiser', 'klingon-raptor', 'klingon-talon', 'klingon-warbird']) {
+    if (!names.includes(kind)) fail('a-mark-means-one-thing-everywhere', `marks.ts has no symbol '${kind}'`);
+  }
+  const trek = 'apps/argus/src/features/trek/';
+  for (const file of ['bridge.ts', 'controls.ts', 'stations.ts']) {
+    const text = readFileSync(trek + file, 'utf8');
+    if (!/from '\.\/marks\.js'/.test(text)) fail('a-mark-means-one-thing-everywhere', `${file} draws no mark from marks.ts`);
+    if (/['"`]#tm-/.test(text)) fail('a-mark-means-one-thing-everywhere', `${file} refers to a symbol by its id: ask marks.ts for it`);
+    if (/SECTOR_GLYPHS|textContent = (?:glyph|cell\.glyph)/.test(text)) fail('a-mark-means-one-thing-everywhere', `${file} draws a sector as its glyph: the glyph belongs to titles, the legend and the log`);
+  }
+  const controls = readFileSync(trek + 'controls.ts', 'utf8');
+  if (!/mark_use\(mark\.kind/.test(controls)) fail('a-mark-means-one-thing-everywhere', "controls.ts draws a wheel's rim marks as something other than the kind's symbol");
+  const stations = readFileSync(trek + 'stations.ts', 'utf8');
+  if (!/markIcon_make\('klingon', k\.mark\)/.test(stations)) fail('a-mark-means-one-thing-everywhere', "stations.ts leads a target pill with something other than the Klingon's own mark");
+  const bridge = readFileSync(trek + 'bridge.ts', 'utf8');
+  if (!/markIcon_make\(row\.kind, variant\)/.test(bridge)) fail('a-mark-means-one-thing-everywhere', "bridge.ts draws the legend from something other than the symbol table");
+};
+
 // -------------------------------------------------- the table enforces itself
 
 const lawsTable = aegis.match(/\| Law \| Statement \| Enforcement\n([\s\S]*?)\n\|===/);

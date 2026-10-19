@@ -1,5 +1,21 @@
 # @fnndsc/calypso
 
+## 0.25.0
+
+### Minor Changes
+
+- 21649d1: A running command can show its surface a typed event, and trek shows its state at every Command: prompt.
+
+  `OutputSink` gains `event_write(kind, data)`, the wire gains the `event` message (daemon to the command's origin surface, live only), and the ARGUS client hands events to its host. bsd-trek's `TrekTerminal` gains `state_show`, called with a deep copy of the whole game state before each command is asked for; the session's `trek` sends it as `games.trek.state`. The recorded C games replay unchanged; a terminal that only prints leaves `state_show` out. This is what a bridge that draws the game reads, instead of the printed scans.
+
+### Patch Changes
+
+- Updated dependencies [f42918a]
+- Updated dependencies [21649d1]
+  - @fnndsc/brasa@0.44.0
+  - @fnndsc/menu@0.27.0
+  - @fnndsc/cumin@3.28.2
+
 ## 0.24.3
 
 ### Patch Changes

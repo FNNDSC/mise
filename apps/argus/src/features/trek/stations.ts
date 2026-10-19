@@ -16,6 +16,7 @@
 import type { OpenQuestion } from './harness.js';
 import { pillLabel_of, type BridgeVoice } from './cues.js';
 import { CourseWheel, el, pill_make, PillRow, ValueSlider, type WheelMark } from './controls.js';
+import { markIcon_make } from './marks.js';
 import {
   BRIDGE_COMMANDS, arrival_of, course_calc, impulseCost_of, phaserEffect_of, question_control, readout_diff, repairTimes_of, score_of, warpCost_of,
   type BridgeCommand, type BridgeReadout, type ChartCell, type DeviceState, type KlingonSeen, type Place, type QuestionControl, type ScoreItem, type Station, type TrekQuestion,
@@ -137,13 +138,50 @@ export function commandPills_show(pills: ReadonlyMap<string, HTMLButtonElement>,
 }
 
 /**
+ * Makes a target pill: the Klingon's own mark, then its sector.
+ *
+ * @param k - The Klingon.
+ * @param onPress - What pressing it does.
+ * @returns The pill.
+ */
+export function targetPill_make(k: KlingonSeen, onPress: () => void): HTMLButtonElement {
+  const pill: HTMLButtonElement = pill_make('tb-target', '', onPress);
+  pill.append(markIcon_make('klingon', k.mark), document.createTextNode(`${k.x},${k.y}`));
+  pill.title = `Klingon at ${k.x},${k.y}`;
+  return pill;
+}
+
+/**
+ * Makes a chart cell's code: the C's three digits, the supernova mark for a dead quadrant, nothing when never scanned.
+ *
+ * @param className - The span's class.
+ * @param cell - The quadrant.
+ * @returns The span.
+ */
+export function chartCode_make(className: string, cell: ChartCell): HTMLElement {
+  const code: HTMLElement = el('span', className, cell.supernova ? '' : (cell.code ?? ''));
+  if (cell.supernova) code.append(markIcon_make('supernova'));
+  return code;
+}
+
+/**
+ * A chart cell's title: the quadrant, and whether it is unscanned or dead.
+ *
+ * @param cell - The quadrant.
+ * @returns The title.
+ */
+export function chartTitle_of(cell: ChartCell): string {
+  return `quadrant ${cell.x},${cell.y}${cell.supernova ? ' · supernova' : cell.code === null ? ' · unscanned' : ''}`;
+}
+
+/**
  * The marks a wheel carries: the Klingons in the quadrant and a starbase here.
  *
  * @param readout - The readout.
  * @returns The marks.
  */
 export function wheelMarks_of(readout: BridgeReadout): WheelMark[] {
-  const marks: WheelMark[] = readout.klingons.map((k: KlingonSeen): WheelMark => ({ bearing: k.bearing, kind: 'klingon', label: `Klingon at ${k.x},${k.y} · ${k.range.toFixed(1)} · ${Math.round(k.bearing)}°` }));
+  const marks: WheelMark[] = readout.klingons.map((k: KlingonSeen): WheelMark => ({ bearing: k.bearing, kind: 'klingon', label: `Klingon at ${k.x},${k.y} · ${k.range.toFixed(1)} · ${Math.round(k.bearing)}°`, variant: k.mark }));
   for (const row of readout.sectors) {
     for (const cell of row) {
       if (cell.kind !== 'base') continue;
@@ -318,7 +356,7 @@ export class TacticalStation {
     if (readout.klingons.length === 0) { this.targets.append(el('span', 'tb-note', 'NO KLINGONS IN THIS QUADRANT')); return; }
     for (const word of ['TARGET', 'RANGE', 'BEARING', 'PHASER HIT']) this.targets.append(el('span', 'tb-target-head', word));
     for (const k of readout.klingons) {
-      const row: HTMLButtonElement = pill_make('tb-target', `K ${k.x},${k.y}`, (): void => { this.host.voice.cue('scanner'); this.host.course_set(k.bearing, k.range / 10); });
+      const row: HTMLButtonElement = targetPill_make(k, (): void => { this.host.voice.cue('scanner'); this.host.course_set(k.bearing, k.range / 10); });
       this.targets.append(row, el('span', 'tb-target-cell', k.range.toFixed(1)), el('span', 'tb-target-cell', `${Math.round(k.bearing)}°`), el('span', 'tb-target-cell', `${phaserEffect_of(k.range / 10)}%`));
     }
   }
@@ -656,8 +694,8 @@ export class ComputerView {
     });
     button.dataset['x'] = String(cell.x);
     button.dataset['y'] = String(cell.y);
-    button.append(el('span', 'tb-cq-code', cell.code ?? '···'), el('span', 'tb-cq-at', `${cell.x},${cell.y}`));
-    button.title = `quadrant ${cell.x},${cell.y}${cell.code === null ? ' · unscanned' : ''}`;
+    button.append(chartCode_make('tb-cq-code', cell), el('span', 'tb-cq-at', `${cell.x},${cell.y}`));
+    button.title = chartTitle_of(cell);
     return button;
   }
 
@@ -693,7 +731,7 @@ export class ComputerView {
     for (const word of ['AT', 'COURSE', 'RANGE', 'PHASER HIT']) this.trajectory.append(el('span', 'tb-target-head', word));
     for (const k of readout.klingons) {
       this.trajectory.append(
-        pill_make('tb-target', `${k.x},${k.y}`, (): void => { this.host.voice.cue('scanner'); this.host.course_set(k.bearing, k.range / 10); }),
+        targetPill_make(k, (): void => { this.host.voice.cue('scanner'); this.host.course_set(k.bearing, k.range / 10); }),
         el('span', 'tb-target-cell', `${Math.round(k.bearing)}°`), el('span', 'tb-target-cell', k.range.toFixed(1)), el('span', 'tb-target-cell', `${phaserEffect_of(k.range / 10)}%`),
       );
     }

@@ -42,6 +42,8 @@ export interface ChartCell {
   here: boolean;
   /** The C's three-digit code (hundreds Klingons, tens bases, ones stars), `///` for a supernova, null when never scanned. */
   code: string | null;
+  /** Whether the quadrant died in a supernova (the C's `///`). */
+  supernova: boolean;
   /** Klingons the last scan saw; 0 when unscanned. */
   klingons: number;
   /** Starbases the last scan saw; 0 when unscanned. */
@@ -60,6 +62,8 @@ export interface KlingonSeen {
   range: number;
   /** Its remaining power. */
   power: number;
+  /** The mark it wears on the bridge, given by the tracker; null until it is. */
+  mark: string | null;
 }
 
 /** A device and whether it is under repair. */
@@ -209,7 +213,7 @@ export function readout_build(state: TrekState): BridgeReadout {
     sectors.push(row);
   }
   const klingons: KlingonSeen[] = Etc.klingon.slice(0, Etc.nkling)
-    .map((k): KlingonSeen => ({ x: k.x, y: k.y, bearing: bearing_of(sectorHere, k), range: range_of(sectorHere, k), power: k.power }))
+    .map((k): KlingonSeen => ({ x: k.x, y: k.y, bearing: bearing_of(sectorHere, k), range: range_of(sectorHere, k), power: k.power, mark: null }))
     .sort((a: KlingonSeen, b: KlingonSeen): number => a.range - b.range);
   const bases: XY[] = Now.base.slice(0, Now.bases).map((b): XY => ({ x: b.x, y: b.y }));
   let nearestBase: BridgeReadout['nearestBase'] = null;
@@ -224,7 +228,7 @@ export function readout_build(state: TrekState): BridgeReadout {
       const quad = Quad[x]?.[y];
       const scanned: number = quad?.scanned ?? -1;
       const code: string | null = scanned < 0 ? null : scanned >= 1000 ? '///' : String(scanned).padStart(3, '0');
-      row.push({ x, y, here: x === here.x && y === here.y, code, klingons: scanned < 0 || scanned >= 1000 ? 0 : Math.floor(scanned / 100), bases: scanned < 0 || scanned >= 1000 ? 0 : Math.floor((scanned % 100) / 10) });
+      row.push({ x, y, here: x === here.x && y === here.y, code, supernova: scanned >= 1000, klingons: scanned < 0 || scanned >= 1000 ? 0 : Math.floor(scanned / 100), bases: scanned < 0 || scanned >= 1000 ? 0 : Math.floor((scanned % 100) / 10) });
     }
     chart.push(row);
   }

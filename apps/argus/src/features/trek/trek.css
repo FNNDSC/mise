@@ -96,12 +96,15 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-lrs-cell { border-radius: 0.6rem; background: rgba(255, 170, 68, 0.1); border: 2px solid transparent; display: flex; flex-direction: column; align-items: center; padding: 0.3rem 0; font-family: var(--face-data); }
 .tb-lrs-cell.tb-here { border-color: var(--harvestgold); background: rgba(255, 170, 68, 0.3); }
 .tb-lrs-cell.tb-hostile .tb-lrs-code { color: var(--mars); }
-.tb-lrs-code { font-size: 1.1rem; line-height: 1; }
+.tb-lrs-cell.tb-unscanned { background: transparent; border-color: rgba(255, 204, 153, 0.12); }
+.tb-lrs-cell.tb-edge, .tb-lrs-cell.tb-lrs-edge { background: transparent; border-color: rgba(255, 204, 153, 0.08); color: rgba(255, 204, 153, 0.35); }
+.tb-lrs-code { font-size: 1.1rem; line-height: 1; min-height: 1.1rem; }
 .tb-lrs-at { font-size: 0.6rem; color: var(--october-sunset); }
 .tb-chart { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 0.15rem; }
-.tb-quadrant { border: 1px solid rgba(255, 204, 153, 0.15); border-radius: 0.4rem; text-align: center; font-family: var(--face-data); font-size: 0.7rem; padding: 0.25rem 0; color: rgba(255, 204, 153, 0.35); }
-.tb-quadrant:not([title$='unscanned']) { color: var(--face-data-ink, #fec); background: rgba(255, 170, 68, 0.1); }
+.tb-quadrant { border: 1px solid rgba(255, 204, 153, 0.15); border-radius: 0.4rem; text-align: center; font-family: var(--face-data); font-size: 0.7rem; padding: 0.25rem 0; min-height: 1.5rem; color: var(--face-data-ink, #fec); background: rgba(255, 170, 68, 0.1); }
+.tb-quadrant.tb-unscanned { background: transparent; border-color: rgba(255, 204, 153, 0.08); }
 .tb-quadrant.tb-hostile { color: var(--mars); }
+.tb-quadrant.tb-supernova, .tb-lrs-cell.tb-supernova .tb-lrs-code, .tb-cq.tb-supernova .tb-cq-code { color: var(--mars); }
 .tb-quadrant.tb-based { border-color: var(--harvestgold); }
 .tb-quadrant.tb-here { background: var(--butter); color: #000; }
 .tb-engineering { border-left: 6px solid var(--harvestgold); padding-left: 0.6rem; display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.3rem; }
@@ -110,16 +113,45 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-device.tb-bad { color: var(--mars); }
 .tb-device-state { font-family: var(--face-data); }
 
-.tb-srs-section { display: flex; flex-direction: column; gap: 0.4rem; min-height: 0; overflow: auto; }
+/* the scan's section: title, the scan as large as the room allows, the note, the legend, the ship's pills */
+.tb-srs-section { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto; gap: 0.4rem; min-height: 0; overflow: hidden; }
+/* the short-range scan is one picture: a sector is one unit, the axes in the margin; the computer's chart (.tb-srs-axis) keeps its own grid */
 .tb-srs { display: grid; grid-template-columns: 1rem repeat(10, minmax(0, 1fr)); gap: 0.15rem; font-family: var(--face-data); }
 .tb-srs-axis, .tb-srs-corner { font-size: 0.6rem; color: var(--october-sunset); display: flex; align-items: center; justify-content: center; }
-.tb-sector { aspect-ratio: 1; min-height: 1.6rem; border: 1px solid rgba(255, 204, 153, 0.12); border-radius: 0.4rem; background: transparent; color: var(--butter); font-family: var(--face-data); font-size: 0.9rem; cursor: pointer; padding: 0; }
-.tb-sector-ship { background: rgba(255, 170, 68, 0.25); color: var(--face-data-ink, #fec); font-weight: 700; }
-.tb-sector-klingon { background: rgba(242, 64, 42, 0.18); color: var(--mars); font-weight: 700; }
-.tb-sector-base { color: var(--harvestgold); font-weight: 700; }
-.tb-sector-star { color: var(--pumpkin-pie); }
-.tb-sector-inhabited { color: var(--daybreak); }
-.tb-sector-empty { color: rgba(255, 204, 153, 0.3); }
+.tb-scan { display: block; height: 100%; width: auto; max-width: 100%; max-height: 100%; aspect-ratio: 1; justify-self: start; font-family: var(--face-data); }
+.tb-scan-axis { font-size: 0.32px; fill: var(--october-sunset); text-anchor: middle; dominant-baseline: central; font-family: var(--face-label); }
+.tb-sector { cursor: pointer; outline: none; }
+.tb-cell { fill: transparent; stroke: rgba(255, 204, 153, 0.12); stroke-width: 0.02; }
+.tb-cell-dot { fill: rgba(255, 204, 153, 0.3); }
+.tb-sector:focus-visible .tb-cell { stroke: var(--butter); stroke-width: 0.05; }
+.tb-sector.tb-pressed .tb-cell { stroke: var(--daybreak); stroke-width: 0.05; }
+.tb-sector-ship .tb-cell { fill: rgba(255, 170, 68, 0.25); }
+.tb-sector-klingon .tb-cell { fill: rgba(242, 64, 42, 0.18); }
+/* a mark takes its kind's colour wherever it is drawn: the scan, a wheel's rim, a pill, the legend */
+.tb-sector-ship, .tm-icon-ship { color: var(--face-data-ink, #fec); }
+.tb-sector-klingon, .tm-icon-klingon, .tb-wheel-mark-klingon { color: var(--mars); }
+.tb-sector-base, .tm-icon-base, .tb-wheel-mark-base { color: var(--harvestgold); }
+.tb-sector-inhabited, .tm-icon-inhabited { color: var(--daybreak); }
+.tb-sector-star, .tm-icon-star { color: var(--pumpkin-pie); }
+.tb-sector-hole, .tm-icon-hole { color: rgba(255, 204, 153, 0.6); }
+.tm-icon-supernova { color: var(--mars); }
+.tm-defs { position: absolute; width: 0; height: 0; }
+.tm-icon { width: 1em; height: 1em; vertical-align: -0.15em; display: inline-block; }
+/* stars breathe, slowly and out of step: the one motion on the scan with no line behind it */
+@keyframes tb-star-breathe { 0%, 100% { opacity: 0.62; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1); } }
+.tb-sector-star .tm-mark { transform-box: fill-box; transform-origin: center; animation: tb-star-breathe 3.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .tb-sector-star .tm-mark { animation: none; } }
+/* the shield ring: width and colour are the shield over its maximum; dashed and thin when down; the starbase's own when docked */
+.tb-ring { fill: none; stroke: var(--daybreak); pointer-events: none; transition: stroke-width 0.6s ease-out, stroke 0.6s; }
+.tb-ring-mid { stroke: var(--harvestgold); }
+.tb-ring-low { stroke: var(--mars); }
+.tb-ring-down { stroke: rgba(255, 204, 153, 0.5); stroke-dasharray: 0.06 0.06; }
+.tb-ring-docked { stroke: var(--honey); stroke-dasharray: 0.12 0.06; }
+/* the legend: each mark beside the C's glyph for it */
+.tb-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; }
+.tb-legend-item { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.6rem; letter-spacing: 0.12em; color: var(--october-sunset); }
+.tb-legend-item .tm-icon { font-size: 0.9rem; }
+.tb-legend-glyph { font-family: var(--face-data); color: var(--butter); letter-spacing: 0; }
 .tb-ship-pills { align-items: center; }
 
 /* pills and controls */
@@ -168,15 +200,15 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-wheel-needle { stroke: var(--face-data-ink, #fec); stroke-width: 4; stroke-linecap: round; }
 .tb-wheel-hub { fill: var(--face-data-ink, #fec); }
 .tb-wheel-wedge { fill: rgba(242, 64, 42, 0.25); stroke: var(--mars); stroke-width: 1; }
-.tb-wheel-mark-klingon { fill: var(--mars); }
-.tb-wheel-mark-base { fill: var(--harvestgold); }
+.tb-wheel-mark { pointer-events: auto; }
 .tb-wheel-row { display: flex; gap: 0.5rem; align-items: center; }
 .tb-wheel-readout { font-family: var(--face-data); font-size: 1rem; color: var(--face-data-ink, #fec); }
 .tb-fire-row { display: flex; gap: 0.8rem; align-items: flex-start; flex-wrap: wrap; }
 .tb-targets { display: grid; grid-template-columns: auto repeat(3, minmax(0, auto)); gap: 0.2rem 0.6rem; align-items: center; font-family: var(--face-data); font-size: 0.75rem; }
 .tb-targets > .tb-note { grid-column: 1 / -1; }
 .tb-target-head { font-family: var(--face-label); font-size: 0.6rem; letter-spacing: 0.15em; color: var(--harvestgold); }
-.tb-target { border: 1px solid var(--mars); border-radius: 0.6rem; background: transparent; color: var(--mars); font-family: var(--face-data); font-size: 0.7rem; padding: 0.15rem 0.5rem; cursor: pointer; }
+.tb-target { border: 1px solid var(--mars); border-radius: 0.6rem; background: transparent; color: var(--mars); font-family: var(--face-data); font-size: 0.7rem; padding: 0.15rem 0.5rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem; }
+.tb-target .tm-icon { font-size: 1rem; }
 .tb-target-cell { color: var(--face-data-ink, #fec); }
 
 /* the station views: a station drawn large */
@@ -237,6 +269,12 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-log { overflow-y: auto; font-size: 0.9rem; letter-spacing: 0.03em; color: var(--butter); min-height: 0; }
 .tb-log-line { white-space: pre-wrap; line-height: 1.3; }
 .tb-log-line:empty { min-height: 0.4rem; }
+/* a standing order's lines fold under one dim head */
+.tb-log-fold-head { cursor: pointer; font-size: 0.65rem; letter-spacing: 0.15em; color: var(--october-sunset); list-style: none; line-height: 1.6; }
+.tb-log-fold-head::-webkit-details-marker { display: none; }
+.tb-log-fold-head::before { content: '▸ '; }
+.tb-log-fold[open] .tb-log-fold-head::before { content: '▾ '; }
+.tb-log-fold .tb-log-line { padding-left: 1rem; opacity: 0.8; }
 
 /* leaving, asked first */
 .tb-leave-ask { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 0.6rem; align-items: center; background: #000; border: 3px solid var(--mars); border-radius: 1.5rem; padding: 1.2rem 1.8rem; z-index: 61; }

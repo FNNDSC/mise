@@ -27,7 +27,13 @@ const SESSION_TERMINAL: TrekTerminal = {
     // What is printed before the last newline is output; the rest is the question.
     const cut: number = prompt.lastIndexOf('\n');
     if (cut >= 0) sink_get().data_write(prompt.slice(0, cut + 1));
-    return repl_question(prompt.slice(cut + 1));
+    try {
+      return await repl_question(prompt.slice(cut + 1));
+    } catch (error: unknown) {
+      // A question the operator abandoned (Esc, LEAVE BRIDGE) is end of input, as Ctrl-D is: the game ends as the C does.
+      if (error instanceof Error && /abandoned/.test(error.message)) return null;
+      throw error;
+    }
   },
   seconds_sleep: (seconds: number): Promise<void> => new Promise((resolve: () => void): void => { setTimeout(resolve, seconds * 1000); }),
   state_show: (state: TrekState): void => { sink_get().event_write?.('games.trek.state', state); },

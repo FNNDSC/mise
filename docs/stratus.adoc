@@ -356,6 +356,7 @@ Each step is one change or a short series, released on its own; nothing changes 
 * *Duplicate display names* are common in OCI, and Azure subscriptions share names too; the suffix rule (<<tree>>) has to hold everywhere a path is resolved. AWS accounts are numbers: the alias when set, else the id.
 * *Rate limits and size.* Resource Search and the Limits API throttle; listings cache and refresh in the background.
 * *One region, one domain* is all `harbor-oci` has proved; the tree and prompt allow more, but the build is not claimed for more until it has been done.
+* *Terraform is one implementation of a step, not the domain machine.* MultiCluster Engine can itself create clusters (Hive; a Cluster API provider for OCI exists), so a hub may one day lay a Trusted Domain's instances down instead of the bastion's Terraform. `infra-plan` and `infra-apply` stay steps whose implementation the driver owns (<<port>>); the spec, the tasks, the controller and the tree never name the tool.
 * *The descriptor will move again.* It was drawn from ChRIS and checked by the null backend; stratus is the first real second backend, and the descriptor should change where stratus shows it is wrong, rather than stratus bending around it.
 
 [[fleet]]

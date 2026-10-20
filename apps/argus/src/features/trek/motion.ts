@@ -19,7 +19,7 @@
  * @module
  */
 import type { XY } from 'bsd-trek/host';
-import { mark_use, svg, type MarkKind } from './marks.js';
+import { mark_place, mark_use, svg, type MarkKind } from './marks.js';
 
 /** How long each frame takes, in milliseconds. */
 export const PACE = {
@@ -351,10 +351,10 @@ export async function slide_play(scan: SVGElement, queue: FrameQueue, mark: { ki
   layer.append(svg('line', { class: `tb-track${hostile}`, x1, y1, x2, y2 }));
   const pulseWide: SVGElement = svg('line', { class: `tb-pulse tb-pulse-wide${hostile}`, x1, y1, x2: x1, y2: y1 });
   const pulseCore: SVGElement = svg('line', { class: `tb-pulse tb-pulse-core${hostile}`, x1, y1, x2: x1, y2: y1 });
-  const use: SVGElement = mark_use(mark.kind, { x: x1 - MARK_SIZE / 2, y: y1 - MARK_SIZE / 2, size: MARK_SIZE }, mark.variant);
-  use.classList.add(`tb-sector-${mark.kind}`);
-  layer.append(pulseWide, pulseCore, use);
   const course: number = options.heading ?? course_between(from, to);
+  const sprite: SVGElement = mark_use(mark.kind, { cx: x1, cy: y1, size: MARK_SIZE }, mark.variant, course);
+  sprite.classList.add(`tb-sector-${mark.kind}`);
+  layer.append(pulseWide, pulseCore, sprite);
   const sectors: number = Math.max(1, Math.hypot(to.x - from.x, to.y - from.y));
   await queue.tween(sectors * PACE.sector, (share: number): void => {
     const cx: number = x1 + (x2 - x1) * share;
@@ -363,9 +363,7 @@ export async function slide_play(scan: SVGElement, queue: FrameQueue, mark: { ki
     const bx: number = x1 + (x2 - x1) * back;
     const by: number = y1 + (y2 - y1) * back;
     for (const pulse of [pulseWide, pulseCore]) { pulse.setAttribute('x1', String(bx)); pulse.setAttribute('y1', String(by)); pulse.setAttribute('x2', String(cx)); pulse.setAttribute('y2', String(cy)); }
-    use.setAttribute('x', String(cx - MARK_SIZE / 2));
-    use.setAttribute('y', String(cy - MARK_SIZE / 2));
-    use.setAttribute('transform', `rotate(${course} ${cx} ${cy})`);
+    mark_place(sprite, cx, cy, course);
   });
   layer.remove();
 }

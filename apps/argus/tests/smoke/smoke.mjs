@@ -1302,7 +1302,7 @@ try {
     const distanceValue = Number(q('#tb-distance')?.value);
     q('#tb-distance').closest('.tb-slider').querySelector('.tb-commit').click();
     const moved = await until(() => label('STARDATE') !== stardate1, 30000);
-    const since = [...document.querySelectorAll('.tb-head-section')].at(-1)?.textContent ?? '';
+    const since = q('.tb-head-since')?.textContent ?? '';
     // the views: the gutter changes the body, a station view is drawn large, the computer answers through the engine
     click('[data-view="helm"]');
     const helmView = q('.tb-body')?.dataset.view === 'helm' && q('.tb-view-helm .tb-wheel-face')?.getAttribute('width') === '260';
@@ -1381,7 +1381,7 @@ try {
     const standing = { fold: q('.tb-log-fold .tb-log-fold-head')?.textContent ?? null, scanned: document.querySelectorAll('.tb-lrs-cell:not(.tb-unscanned):not(.tb-lrs-edge)').length, edge: document.querySelectorAll('.tb-lrs-cell.tb-lrs-edge').length };
     // one mark per Klingon, everywhere it is drawn
     const scanMark = q('.tb-sector-klingon use')?.getAttribute('href') ?? null;
-    const wheelMark = q('.tb-station-tactical .tb-wheel-marks use.tb-wheel-mark-klingon')?.getAttribute('href') ?? null;
+    const wheelMark = q('.tb-station-tactical .tb-wheel-marks .tb-wheel-mark-klingon use')?.getAttribute('href') ?? null;
     const pillMark = q('.tb-station-tactical .tb-target use')?.getAttribute('href') ?? null;
     const ring = q('.tb-scan .tb-ring')?.dataset.percent ?? null;
     // a torpedo at the Klingon: its sector pressed sets the firing course, no burst

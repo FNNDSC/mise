@@ -122,15 +122,33 @@ export function markDefs_make(): SVGElement | null {
 }
 
 /**
- * Makes a `<use>` of a kind's symbol, placed in its drawing's own units.
+ * Makes a mark of a kind's symbol, centred on a point of its drawing and turned to a heading.
+ *
+ * The mark is a group that carries the place; the symbol inside it is drawn about the group's own origin. So whatever scales or turns the symbol (a star's breathing, a ship's heading) does so about the mark itself. A `<use>` placed by its own x and y cannot be scaled in place: every browser resolves its transform origin to the drawing's corner, and the symbol slides as it scales.
  *
  * @param kind - The kind.
- * @param box - Where: the top-left corner and the side of the square it fills.
+ * @param at - Where: the centre and the side of the square the symbol fills.
  * @param variant - A Klingon's mark.
- * @returns The `<use>`.
+ * @param turn - The heading, in degrees clockwise from up; 0 for none.
+ * @returns The group.
  */
-export function mark_use(kind: MarkKind, box: { x: number; y: number; size: number }, variant: string | null = null): SVGElement {
-  return svg('use', { href: `#${symbolId_of(kind, variant)}`, x: box.x, y: box.y, width: box.size, height: box.size, class: `tm-mark tm-mark-${kind}` });
+export function mark_use(kind: MarkKind, at: { cx: number; cy: number; size: number }, variant: string | null = null, turn: number = 0): SVGElement {
+  const mark: SVGElement = svg('g', { class: `tm-mark tm-mark-${kind}` });
+  mark.append(svg('use', { href: `#${symbolId_of(kind, variant)}`, x: -at.size / 2, y: -at.size / 2, width: at.size, height: at.size, class: 'tm-symbol' }));
+  mark_place(mark, at.cx, at.cy, turn);
+  return mark;
+}
+
+/**
+ * Moves a mark to a point and heading.
+ *
+ * @param mark - A mark `mark_use` made.
+ * @param cx - The centre's x.
+ * @param cy - The centre's y.
+ * @param turn - The heading, in degrees clockwise from up; 0 for none.
+ */
+export function mark_place(mark: SVGElement, cx: number, cy: number, turn: number = 0): void {
+  mark.setAttribute('transform', turn === 0 ? `translate(${cx} ${cy})` : `translate(${cx} ${cy}) rotate(${turn})`);
 }
 
 /**

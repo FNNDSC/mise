@@ -7,7 +7,7 @@
  * wheel answers Course, the slider answers Distance, and a dimmed control
  * answers nothing.
  */
-import { describe, it, expect, beforeAll } from '@jest/globals';
+import { describe, it, expect, beforeAll, jest } from '@jest/globals';
 import { trek_play } from 'bsd-trek';
 import type { TrekState, TrekTerminal } from 'bsd-trek/host';
 import { TrekBridge } from '../../src/features/trek/bridge.js';
@@ -108,6 +108,36 @@ describe('the bridge', () => {
     // the standing order is a command, not a pill: nothing was heard for it
     expect(sounds.filter((s: string): boolean => s.startsWith('pill:'))).toEqual(['pill:DUMP']);
     bridge.root.remove();
+  });
+
+  it('a question opened scrolls its lit control into view, and phasers stand barred under raised shields', async () => {
+    const { bridge } = bridge_make();
+    const harness = bridge.harness_get();
+    // jsdom lays nothing out: every node reads as drawn, and the scroll is recorded
+    const rects = jest.spyOn(Element.prototype, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
+    const scrolled: Element[] = [];
+    (Element.prototype as unknown as { scrollIntoView: (this: Element) => void }).scrollIntoView = function (this: Element): void { scrolled.push(this); };
+    try {
+      await game_open(bridge);
+      const command: Promise<string | null> = harness.ask('\nCommand: ');
+      (bridge.root.querySelector('[data-command="torpedo"]') as HTMLButtonElement).click();
+      expect(await command).toBe('t');
+      scrolled.length = 0;
+      const course: Promise<string | null> = harness.ask('Torpedo course: ');
+      expect(scrolled.length).toBeGreaterThan(0);
+      expect(scrolled[0]?.classList.contains('tb-lit')).toBe(true);
+      sector_press(bridge, 0, 9);
+      (bridge.root.querySelector('.tb-station-tactical .tb-wheel .tb-commit') as HTMLButtonElement).click();
+      await course;
+      // seed 42 starts with shields up: the phaser pill is barred and says why
+      const phasers: HTMLButtonElement = bridge.root.querySelector('.tb-station-tactical [data-command="phasers"]') as HTMLButtonElement;
+      expect(bridge.readout_get()?.ship.shieldsUp).toBe(true);
+      expect(phasers.classList.contains('tb-barred')).toBe(true);
+      expect(phasers.title).toMatch(/cannot fire through/);
+    } finally {
+      rects.mockRestore();
+      delete (Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView;
+    }
   });
 
   it('a command pill answers the Command: prompt, and the wheel and slider answer Course and Distance', async () => {

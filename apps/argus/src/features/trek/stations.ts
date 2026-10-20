@@ -327,6 +327,12 @@ export class TacticalStation {
     this.spread.range_set(question_control('spread', readout), 0.5, 'MANUAL PHASERS ONLY', 3);
     this.burst.note_set(`${readout.ship.torpedoes} TORPEDOES · A BURST FIRES 3`);
     this.upDown.note_set(`${readout.ship.shieldsUp ? 'UP' : 'DOWN'} · ${readout.ship.shield} OF ${readout.ship.shieldMax} · REFILLS AT A STARBASE`);
+    // phasers cannot fire through raised shields (the engine's Sulu says so): the pill stands hollow and says why; the engine still answers it
+    const phasers: HTMLButtonElement | undefined = this.pills.get('phasers');
+    if (phasers !== undefined) {
+      phasers.classList.toggle('tb-barred', readout.ship.shieldsUp);
+      phasers.title = readout.ship.shieldsUp ? 'Shields are up: phasers cannot fire through them. SHIELDS, then DOWN, first.' : '';
+    }
     this.targets_draw(readout);
   }
 

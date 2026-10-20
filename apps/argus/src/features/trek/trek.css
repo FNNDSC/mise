@@ -205,6 +205,8 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-pill.tb-pill-on { background: var(--butter); outline: 2px solid var(--butter); }
 .tb-pill.tb-grave { background: transparent; color: var(--october-sunset); border: 2px solid var(--october-sunset); padding: calc(0.25rem - 2px) calc(0.8rem - 2px); }
 .tb-station-tactical .tb-pill.tb-command { background: var(--mars); }
+/* a command the ship cannot give now (phasers under raised shields) stands hollow; its title says why; the engine still answers it */
+.tb-pill.tb-command.tb-barred, .tb-station-tactical .tb-pill.tb-command.tb-barred { background: transparent; color: var(--mars); box-shadow: inset 0 0 0 2px var(--mars); }
 .tb-commit { background: var(--butter); }
 .tb-choice { background: var(--honey); }
 .tb-fire { background: var(--mars); font-size: 0.9rem; padding: 0.4rem 1.2rem; }
@@ -223,10 +225,10 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 /* a narrow slider column (a station at a small window) stacks each slider: the label and readout on one row, the track whole on the next, the commit pill on its own */
 @container (max-width: 24rem) {
   .tb-slider, .tb-slider.tb-local, .tb-view-helm .tb-slider, .tb-view-tactical .tb-slider, .tb-station-time .tb-slider { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'label readout' 'track track' 'commit commit'; row-gap: 0.2rem; }
-  .tb-slider-label { grid-area: label; justify-self: start; }
-  .tb-slider-readout { grid-area: readout; }
+  .tb-slider > .tb-slider-label { grid-area: label; justify-self: start; }
+  .tb-slider > .tb-slider-readout { grid-area: readout; }
   .tb-slider .tb-commit { grid-area: commit; justify-self: end; white-space: nowrap; }
-  .tb-slider-column { grid-area: track; }
+  .tb-slider > .tb-slider-column { grid-area: track; }
 }
 .tb-slider, .tb-pillrow { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) 3.2rem auto; gap: 0.4rem; align-items: center; opacity: 0.4; }
 .tb-pillrow { grid-template-columns: 5.5rem minmax(0, 1fr); }

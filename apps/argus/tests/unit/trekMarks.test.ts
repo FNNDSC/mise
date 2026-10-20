@@ -26,9 +26,14 @@ describe('the symbol table', () => {
     expect(symbolId_of('klingon', 'talon')).toBe('tm-klingon-talon');
     expect(symbolId_of('klingon', null)).toBe('tm-klingon-cruiser');
     expect(symbolId_of('klingon', 'not-a-mark')).toBe('tm-klingon-cruiser');
-    const use: SVGElement = mark_use('base', { x: 1, y: 2, size: 0.7 });
-    expect(use.getAttribute('href')).toBe('#tm-base');
-    expect(use.getAttribute('width')).toBe('0.7');
+    const mark: SVGElement = mark_use('base', { cx: 1.5, cy: 2.5, size: 0.7 });
+    const use: SVGElement | null = mark.querySelector('use');
+    expect(use?.getAttribute('href')).toBe('#tm-base');
+    expect(use?.getAttribute('width')).toBe('0.7');
+    // the group carries the place and the symbol sits about its origin, so a scale or a turn acts about the mark itself
+    expect(mark.getAttribute('transform')).toBe('translate(1.5 2.5)');
+    expect(use?.getAttribute('x')).toBe('-0.35');
+    expect(mark_use('ship', { cx: 4.5, cy: 9.5, size: 0.7 }, null, 236).getAttribute('transform')).toBe('translate(4.5 9.5) rotate(236)');
     const icon: SVGElement = markIcon_make('klingon', 'raptor');
     expect(icon.classList.contains('tm-icon-klingon')).toBe(true);
     expect(icon.querySelector('use')?.getAttribute('href')).toBe('#tm-klingon-raptor');

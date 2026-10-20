@@ -62,7 +62,7 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-bar-body .tb-bar-c { flex: 0 0 9rem; background: var(--october-sunset); border-radius: 0 0.35rem 0.35rem 0; }
 
 /* the header */
-.tb-header { grid-column: 2; grid-row: 1; display: grid; grid-template-columns: 15rem repeat(4, minmax(0, 1fr)); gap: 1.2rem; padding: 0.4rem 0.6rem 0.6rem 1.6rem; align-items: start; }
+.tb-header { grid-column: 2; grid-row: 1; display: grid; grid-template-columns: 12rem repeat(3, minmax(0, 1fr)); gap: 1.2rem; padding: 0.4rem 0.6rem 0.6rem 1.6rem; align-items: start; }
 .tb-head-condition { display: flex; flex-direction: column; gap: 0.4rem; }
 .tb-condition { border-radius: 2rem; padding: 0.4rem 0; display: flex; flex-direction: column; align-items: center; color: #000; background: var(--harvestgold); }
 .tb-condition[data-condition='red'] { background: var(--mars); }
@@ -70,13 +70,13 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-condition[data-condition='green'] { background: var(--daybreak); }
 .tb-condition[data-condition='docked'] { background: var(--butter); }
 .tb-condition-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.2em; }
-.tb-condition-name { font-size: 2rem; font-weight: 700; letter-spacing: 0.25em; line-height: 1; }
+.tb-condition-name { font-size: 1.7rem; font-weight: 700; letter-spacing: 0.25em; line-height: 1; }
 .tb-condition-why { font-size: 0.75rem; letter-spacing: 0.08em; text-align: center; color: var(--pumpkin-pie); }
 .tb-head-section { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
 .tb-head-title { font-size: 0.7rem; letter-spacing: 0.2em; color: var(--orange); }
-.tb-head-grid { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 0.3rem 0.5rem; align-items: center; }
-.tb-head-label { background: var(--butter); color: #000; border-radius: 0.8rem; padding: 0.05rem 0.6rem; font-size: 0.7rem; font-weight: 700; text-align: right; }
-.tb-head-value { font-size: 0.9rem; color: var(--face-data-ink, #fec); font-family: var(--face-data); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-head-grid { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 0.3rem 0.5rem; align-items: center; }
+.tb-head-label { background: var(--butter); color: #000; border-radius: 0.8rem; padding: 0.05rem 0.5rem; font-size: 0.65rem; font-weight: 700; text-align: right; }
+.tb-head-value { font-size: 0.85rem; color: var(--face-data-ink, #fec); font-family: var(--face-data); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tb-head-value.tb-bad, .tb-bad { color: var(--mars); }
 .tb-head-value.tb-good, .tb-good { color: var(--daybreak); }
 
@@ -91,7 +91,8 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-body[data-view='engineering'] > :not(.tb-view-engineering), .tb-body[data-view='computer'] > :not(.tb-view-computer) { display: none; }
 .tb-title { font-size: 0.7rem; letter-spacing: 0.2em; color: var(--harvestgold); }
 .tb-note { font-size: 0.65rem; letter-spacing: 0.08em; color: var(--october-sunset); }
-.tb-scans { display: flex; flex-direction: column; gap: 0.4rem; min-height: 0; overflow: auto; }
+/* the left column: the long-range scan at its size, the chart in what is left, down to a floor; under that the column scrolls */
+.tb-scans { display: grid; grid-template-rows: auto auto auto minmax(6rem, 1fr); align-content: start; gap: 0.4rem; min-height: 0; overflow: auto; }
 .tb-lrs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.25rem; }
 .tb-lrs-cell { border-radius: 0.6rem; background: rgba(255, 170, 68, 0.1); border: 2px solid transparent; display: flex; flex-direction: column; align-items: center; padding: 0.3rem 0; font-family: var(--face-data); }
 .tb-lrs-cell.tb-here { border-color: var(--harvestgold); background: rgba(255, 170, 68, 0.3); }
@@ -100,18 +101,13 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-lrs-cell.tb-edge, .tb-lrs-cell.tb-lrs-edge { background: transparent; border-color: rgba(255, 204, 153, 0.08); color: rgba(255, 204, 153, 0.35); }
 .tb-lrs-code { font-size: 1.1rem; line-height: 1; min-height: 1.1rem; }
 .tb-lrs-at { font-size: 0.6rem; color: var(--october-sunset); }
-.tb-chart { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 0.15rem; }
-.tb-quadrant { border: 1px solid rgba(255, 204, 153, 0.15); border-radius: 0.4rem; text-align: center; font-family: var(--face-data); font-size: 0.7rem; padding: 0.25rem 0; min-height: 1.5rem; color: var(--face-data-ink, #fec); background: rgba(255, 170, 68, 0.1); }
+.tb-chart { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(8, minmax(0, 2.4rem)); align-content: start; gap: 0.15rem; height: 100%; min-height: 0; container-type: size; }
+.tb-quadrant { border: 1px solid rgba(255, 204, 153, 0.15); border-radius: 0.4rem; display: flex; align-items: center; justify-content: center; font-family: var(--face-data); font-size: clamp(0.45rem, 6.5cqh, 0.75rem); padding: 0; min-height: 0; color: var(--face-data-ink, #fec); background: rgba(255, 170, 68, 0.1); }
 .tb-quadrant.tb-unscanned { background: transparent; border-color: rgba(255, 204, 153, 0.08); }
 .tb-quadrant.tb-hostile { color: var(--mars); }
 .tb-quadrant.tb-supernova, .tb-lrs-cell.tb-supernova .tb-lrs-code, .tb-cq.tb-supernova .tb-cq-code { color: var(--mars); }
 .tb-quadrant.tb-based { border-color: var(--harvestgold); }
 .tb-quadrant.tb-here { background: var(--butter); color: #000; }
-.tb-engineering { border-left: 6px solid var(--harvestgold); padding-left: 0.6rem; display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.3rem; }
-.tb-devices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.15rem 0.6rem; }
-.tb-device { display: flex; justify-content: space-between; gap: 0.4rem; font-size: 0.65rem; letter-spacing: 0.04em; }
-.tb-device.tb-bad { color: var(--mars); }
-.tb-device-state { font-family: var(--face-data); }
 
 /* the scan's section: title, the scan as large as the room allows, the note, the legend, the ship's pills */
 .tb-srs-section { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto; gap: 0.4rem; min-height: 0; overflow: hidden; }
@@ -139,8 +135,9 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tm-icon { width: 1em; height: 1em; vertical-align: -0.15em; display: inline-block; }
 /* stars breathe, slowly and out of step: the one motion on the scan with no line behind it */
 @keyframes tb-star-breathe { 0%, 100% { opacity: 0.62; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1); } }
-.tb-sector-star .tm-mark { transform-box: fill-box; transform-origin: center; animation: tb-star-breathe 3.6s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .tb-sector-star .tm-mark { animation: none; } }
+/* the symbol scales about its mark's origin, which is the star's centre: never transform-box on a <use> placed by x,y, which every browser scales about the drawing's corner */
+.tb-sector-star .tm-mark > .tm-symbol { animation: tb-star-breathe 3.6s ease-in-out infinite; animation-delay: var(--tb-breathe, 0s); }
+@media (prefers-reduced-motion: reduce) { .tb-sector-star .tm-mark > .tm-symbol { animation: none; } }
 /* the shield ring: width and colour are the shield over its maximum; dashed and thin when down; the starbase's own when docked */
 .tb-ring { fill: none; stroke: var(--daybreak); pointer-events: none; transition: stroke-width 0.6s ease-out, stroke 0.6s; }
 .tb-ring-mid { stroke: var(--harvestgold); }
@@ -222,7 +219,15 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-station-step { font-size: 0.7rem; letter-spacing: 0.08em; color: var(--harvestgold); }
 .tb-station-fill { flex: 1 1 0; }
 .tb-controls { display: flex; gap: 0.8rem; align-items: flex-start; }
-.tb-sliders { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.tb-sliders { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; container-type: inline-size; }
+/* a narrow slider column (a station at a small window) stacks each slider: the label and readout on one row, the track whole on the next, the commit pill on its own */
+@container (max-width: 24rem) {
+  .tb-slider, .tb-slider.tb-local, .tb-view-helm .tb-slider, .tb-view-tactical .tb-slider, .tb-station-time .tb-slider { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'label readout' 'track track' 'commit commit'; row-gap: 0.2rem; }
+  .tb-slider-label { grid-area: label; justify-self: start; }
+  .tb-slider-readout { grid-area: readout; }
+  .tb-slider .tb-commit { grid-area: commit; justify-self: end; white-space: nowrap; }
+  .tb-slider-column { grid-area: track; }
+}
 .tb-slider, .tb-pillrow { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) 3.2rem auto; gap: 0.4rem; align-items: center; opacity: 0.4; }
 .tb-pillrow { grid-template-columns: 5.5rem minmax(0, 1fr); }
 .tb-slider.tb-lit, .tb-pillrow.tb-lit, .tb-wheel.tb-lit { opacity: 1; }
@@ -231,7 +236,10 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-slider-label { background: var(--butter); color: #000; border-radius: 0.8rem; padding: 0.05rem 0.5rem; font-size: 0.65rem; font-weight: 700; text-align: right; letter-spacing: 0.06em; }
 .tb-slider-column { display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; }
 .tb-slider-input { width: 100%; min-width: 0; margin: 0; accent-color: var(--harvestgold); }
-.tb-slider-ticks { display: flex; justify-content: space-between; font-family: var(--face-data); font-size: 0.55rem; color: rgba(255, 204, 153, 0.5); padding: 0 0.3rem; }
+.tb-slider-ticks { display: flex; justify-content: space-between; font-family: var(--face-data); font-size: 0.55rem; color: rgba(255, 204, 153, 0.5); padding: 0 0.3rem; container-type: inline-size; }
+/* a narrow track keeps every other tick, a narrower one only its ends: the labels never run together */
+@container (max-width: 12rem) { .tb-slider-tick:nth-child(even):not(:last-child) { display: none; } }
+@container (max-width: 6rem) { .tb-slider-tick:not(:first-child):not(:last-child) { display: none; } }
 .tb-slider-ticks:empty { display: none; }
 .tb-slider-note { font-size: 0.55rem; letter-spacing: 0.06em; color: var(--october-sunset); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tb-slider-note:empty { display: none; }
@@ -316,6 +324,7 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-log { overflow-y: auto; font-size: 0.9rem; letter-spacing: 0.03em; color: var(--butter); min-height: 0; }
 .tb-log-line { white-space: pre-wrap; line-height: 1.3; }
 .tb-log-line:empty { min-height: 0.4rem; }
+.tb-log-line.tb-log-own { color: var(--october-sunset); font-size: 0.75rem; letter-spacing: 0.06em; }
 /* a standing order's lines fold under one dim head */
 .tb-log-fold-head { cursor: pointer; font-size: 0.65rem; letter-spacing: 0.15em; color: var(--october-sunset); list-style: none; line-height: 1.6; }
 .tb-log-fold-head::-webkit-details-marker { display: none; }

@@ -76,7 +76,9 @@ describe('the bridge', () => {
     expect(root.querySelectorAll('.tb-quadrant')).toHaveLength(64);
     expect(root.querySelectorAll('.tb-legend-item')).toHaveLength(7);
     expect(root.querySelectorAll('.tb-legend-klingon .tm-icon')).toHaveLength(4);
-    expect(root.querySelectorAll('.tb-device').length).toBeGreaterThanOrEqual(14);
+    // the devices live in the ENGINEERING view; the bridge's left column is the two scans
+    expect(root.querySelectorAll('.tb-view-engineering .tb-dc-name').length).toBeGreaterThanOrEqual(14);
+    expect(root.querySelector('.tb-scans .tb-device')).toBeNull();
     expect(root.querySelector('.tb-seed')?.textContent).toBe('SEED 42');
     root.remove();
   });
@@ -130,7 +132,12 @@ describe('the bridge', () => {
     expect(Number(courseAnswer)).toBeGreaterThanOrEqual(0);
     expect(Number(courseAnswer)).toBeLessThan(360);
     // the ship's mark turned to the committed course
-    expect(bridge.root.querySelector('.tb-sector-ship use')?.getAttribute('transform')).toMatch(new RegExp(`^rotate\\(${Number(courseAnswer)} `));
+    expect(bridge.root.querySelector('.tb-sector-ship .tm-mark')?.getAttribute('transform')).toMatch(new RegExp(`^translate\\([\\d.]+ [\\d.]+\\) rotate\\(${Number(courseAnswer)}\\)$`));
+    // the log carries the prompt each answer answered, set apart from the engine's lines
+    await bridge.frames_settle();
+    const own: string[] = [...bridge.root.querySelectorAll('.tb-log-line.tb-log-own')].map((l: Element): string => l.textContent ?? '');
+    expect(own).toContain('Command: m');
+    expect(own).toContain(`Course: ${courseAnswer}`);
     // Distance: the slider is lit with the pressed sector's distance; ENGAGE answers it
     const distance: Promise<string | null> = harness.ask('Distance: ');
     const slider: HTMLElement = bridge.root.querySelector('#tb-distance')?.closest('.tb-slider') as HTMLElement;

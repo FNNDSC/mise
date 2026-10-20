@@ -52,9 +52,8 @@ const LOG_LIMIT: number = 400;
 /** The scan's drawing: a sector is one unit; the axes sit in the margin. */
 const SCAN_VIEWBOX: string = '-0.6 -0.6 10.6 10.6';
 
-/** How much of a sector a mark fills, and where it starts. */
+/** How much of a sector a mark fills. */
 const MARK_SIZE: number = 0.7;
-const MARK_INSET: number = (1 - MARK_SIZE) / 2;
 
 /** The devices the standing order and the Klingon marks depend on, by the C's names. */
 const SRSCAN_NAME: RegExp = /^S\.R\. scanners$/i;
@@ -106,7 +105,7 @@ export class TrekBridge {
   private readonly parts: {
     seed: HTMLElement; views: Map<BridgeView, HTMLButtonElement>; body: HTMLElement;
     condition: HTMLElement; conditionWhy: HTMLElement; ship: HTMLElement; mission: HTMLElement; position: HTMLElement; since: HTMLElement;
-    lrs: HTMLElement; chart: HTMLElement; engineering: HTMLElement; scan: SVGElement; srsTitle: HTMLElement; legend: HTMLElement;
+    lrs: HTMLElement; chart: HTMLElement; scan: SVGElement; srsTitle: HTMLElement; legend: HTMLElement;
     shipPills: Map<string, HTMLButtonElement>;
     helm: HelmStation; tactical: TacticalStation; helmView: HelmStation; tacticalView: TacticalStation; engineeringView: EngineeringView; computerView: ComputerView;
     ask: HTMLElement; askText: HTMLElement; askPills: HTMLElement; askInput: HTMLInputElement; askSend: HTMLButtonElement;
@@ -206,7 +205,7 @@ export class TrekBridge {
   }
 
   /**
-   * Builds the header: condition, ship, mission, position, since last command.
+   * Builds the header: condition, ship, mission (with what moved since the last command), position.
    *
    * @param parts - Where the live elements are registered.
    * @returns The header.
@@ -230,9 +229,11 @@ export class TrekBridge {
     const [shipSection, shipGrid] = section_make('SHIP');
     const [missionSection, missionGrid] = section_make('MISSION');
     const [positionSection, positionGrid] = section_make('POSITION');
-    const [sinceSection, sinceGrid] = section_make('SINCE LAST COMMAND');
+    // what moved since the last command sits under the mission: three groups share the width, and a value is never cut short to make room for a fourth
+    const sinceGrid: HTMLElement = el('div', 'tb-head-grid tb-head-since');
+    missionSection.append(el('span', 'tb-head-title', 'SINCE LAST COMMAND'), sinceGrid);
     parts.ship = shipGrid; parts.mission = missionGrid; parts.position = positionGrid; parts.since = sinceGrid;
-    header.append(condition, shipSection, missionSection, positionSection, sinceSection);
+    header.append(condition, shipSection, missionSection, positionSection);
     return header;
   }
 
@@ -253,11 +254,6 @@ export class TrekBridge {
     scans.append(parts.lrs, el('span', 'tb-title', 'GALAXY · WHAT THE SHIP HAS SEEN'));
     parts.chart = el('div', 'tb-chart');
     scans.append(parts.chart);
-    const engineering: HTMLElement = el('div', 'tb-engineering');
-    engineering.append(el('span', 'tb-station-name', 'ENGINEERING'));
-    parts.engineering = el('div', 'tb-devices');
-    engineering.append(parts.engineering);
-    scans.append(engineering);
 
     const srsSection: HTMLElement = el('section', 'tb-srs-section');
     parts.srsTitle = el('span', 'tb-title', 'SHORT RANGE');
@@ -459,7 +455,7 @@ export class TrekBridge {
     this.nextDistance = null;
     this.computerRunning = command.id === 'computer';
     if (this.computerRunning) this.parts.computerView.answer_take(null);
-    this.log_write(`${command.line}\n`, true);
+    this.log_write(`Command: ${command.line}\n`, true);
     return true;
   }
 
@@ -475,7 +471,9 @@ export class TrekBridge {
     const cue = open === null ? null : answerCue_of(open.question, open.command?.id ?? null);
     if (cue !== null) this.hooks.voice.cue(cue);
     else if (label !== null) this.hooks.voice.pill(label);
-    this.log_write(`${line}\n`, true);
+    // the log keeps the transcript's shape: the prompt the engine left open, then the answer
+    const prompt: string = open === null ? '' : open.prompt.trim();
+    this.log_write(`${prompt === '' ? '' : `${prompt} `}${line}\n`, true);
     // the ship's mark turns to the course the moment it is committed, and keeps its heading after the move
     if (open?.question === 'course' && Number.isFinite(Number(line))) {
       this.heading = ((Number(line) % 360) + 360) % 360;
@@ -522,7 +520,6 @@ export class TrekBridge {
     parts.condition.parentElement?.setAttribute('data-condition', readout.condition.name.toLowerCase());
     parts.conditionWhy.textContent = readout.condition.why.toUpperCase();
     this.header_draw(readout);
-    this.engineering_draw(readout.devices);
     for (const station of [parts.helm, parts.helmView, parts.tactical, parts.tacticalView, parts.computerView]) station.state_show(readout);
     parts.engineeringView.state_show(readout, this.previous);
     this.partial_flush();
@@ -684,12 +681,10 @@ export class TrekBridge {
     else {
       const kind: MarkKind = cell.kind;
       const klingon: KlingonSeen | undefined = kind === 'klingon' ? readout.klingons.find((k: KlingonSeen): boolean => k.x === cell.x && k.y === cell.y) : undefined;
-      const mark: SVGElement = mark_use(kind, { x: cell.y + MARK_INSET, y: cell.x + MARK_INSET, size: MARK_SIZE }, klingon?.mark ?? null);
-      const cx: number = cell.y + 0.5;
-      const cy: number = cell.x + 0.5;
-      if (kind === 'ship') mark.setAttribute('transform', `rotate(${this.heading} ${cx} ${cy})`);
-      else if (kind === 'klingon') mark.setAttribute('transform', `rotate(${bearing_of(cell, here)} ${cx} ${cy})`);
-      else if (kind === 'star') mark.style.animationDelay = `-${((cell.x * 7 + cell.y * 3) % 11) * 0.33}s`;
+      const turn: number = kind === 'ship' ? this.heading : kind === 'klingon' ? bearing_of(cell, here) : 0;
+      const mark: SVGElement = mark_use(kind, { cx: cell.y + 0.5, cy: cell.x + 0.5, size: MARK_SIZE }, klingon?.mark ?? null, turn);
+      // stars breathe out of step: each starts its cycle at its own moment
+      if (kind === 'star') mark.style.setProperty('--tb-breathe', `-${((cell.x * 7 + cell.y * 3) % 11) * 0.33}s`);
       node.append(mark);
     }
     const press = (): void => this.sector_press(cell, bearing, range);
@@ -799,21 +794,6 @@ export class TrekBridge {
   }
 
   /**
-   * Draws engineering on the BRIDGE view: every device, the damaged ones with their repair stardate.
-   *
-   * @param devices - The devices.
-   */
-  private engineering_draw(devices: ReadonlyArray<DeviceState>): void {
-    const { parts } = this;
-    parts.engineering.replaceChildren();
-    for (const device of devices) {
-      const row: HTMLElement = el('div', `tb-device${device.repairAt === null ? '' : ' tb-bad'}`);
-      row.append(el('span', 'tb-device-name', device.name.toUpperCase()), el('span', 'tb-device-state', device.repairAt === null ? 'OK' : `DOWN · ${device.repairAt.toFixed(2)}`));
-      parts.engineering.append(row);
-    }
-  }
-
-  /**
    * Lights the control that answers the open question, and dims the rest; a planned answer is given at once.
    *
    * @param open - The open question, or null while the engine runs.
@@ -875,7 +855,7 @@ export class TrekBridge {
     const quadrant: XY | undefined = this.readout?.position.quadrant;
     this.fold_open(`LONG RANGE SCAN · STANDING ORDER${quadrant === undefined ? '' : ` · QUADRANT ${quadrant.x},${quadrant.y}`}`);
     if (!this.harness.answer('l')) { this.fold_close(); return false; }
-    this.log_write('l\n', true);
+    this.log_write('Command: l\n', true);
     return true;
   }
 
@@ -953,7 +933,7 @@ export class TrekBridge {
     this.frames.push({
       kind: played === null ? 'line' : played.kind,
       run: async (instant: boolean): Promise<void> => {
-        this.log_append(line);
+        this.log_append(line, own);
         if (own) return;
         for (const cue of lineCues_of(line)) this.hooks.voice.cue(cue);
         if (played !== null) await this.event_play(played, instant);
@@ -962,13 +942,14 @@ export class TrekBridge {
   }
 
   /**
-   * Appends a line to the log, in the open fold when there is one.
+   * Appends a line to the log, in the open fold when there is one; the bridge's own lines are set apart from the engine's.
    *
    * @param line - The line.
+   * @param own - True for a line the bridge sent.
    */
-  private log_append(line: string): void {
+  private log_append(line: string, own: boolean = false): void {
     const { parts } = this;
-    (this.fold ?? parts.log).append(el('div', 'tb-log-line', line));
+    (this.fold ?? parts.log).append(el('div', own ? 'tb-log-line tb-log-own' : 'tb-log-line', line));
     while (parts.log.childElementCount > LOG_LIMIT) parts.log.firstElementChild?.remove();
     parts.log.scrollTop = parts.log.scrollHeight;
   }

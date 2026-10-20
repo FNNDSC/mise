@@ -179,14 +179,14 @@ export class CourseWheel {
       const rr: number = (r - 4) * 0.8;
       const cx: number = r + rr * Math.sin(a);
       const cy: number = r - rr * Math.cos(a);
-      const use: SVGElement = mark_use(mark.kind, { x: cx - WHEEL_MARK_SIZE / 2, y: cy - WHEEL_MARK_SIZE / 2, size: WHEEL_MARK_SIZE }, mark.variant ?? null);
-      use.classList.add('tb-wheel-mark', `tb-wheel-mark-${mark.kind}`);
       // a Klingon on the rim faces the ship at the hub: its nose turns through the bearing plus a half turn
-      if (mark.kind === 'klingon') use.setAttribute('transform', `rotate(${mark.bearing + 180} ${cx} ${cy})`);
+      const turn: number = mark.kind === 'klingon' ? mark.bearing + 180 : 0;
+      const drawn: SVGElement = mark_use(mark.kind, { cx, cy, size: WHEEL_MARK_SIZE }, mark.variant ?? null, turn);
+      drawn.classList.add('tb-wheel-mark', `tb-wheel-mark-${mark.kind}`);
       const title: SVGElement = svg('title', {});
       title.textContent = mark.label;
-      use.append(title);
-      this.marks.append(use);
+      drawn.append(title);
+      this.marks.append(drawn);
     }
   }
 

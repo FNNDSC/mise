@@ -40,6 +40,8 @@ export class VFSDispatcher {
   private providers: VFSProvider[] = [];
   private defaultProvider: VFSProvider;
   private pathResolver?: (path: string) => Promise<string>;
+  /** Whether an item type is a folder; folders and mounts until a backend's look says more. */
+  private containerTest: (type: string) => boolean = (type: string): boolean => type === 'dir' || type === 'vfs';
 
   /**
    * @param fallback - The provider for paths no mount claims; one that holds
@@ -47,6 +49,16 @@ export class VFSDispatcher {
    */
   constructor(fallback: VFSProvider = VFS_FALLBACK_NONE) {
     this.defaultProvider = fallback;
+  }
+
+  /**
+   * Says which item types are folders, beyond `dir` and `vfs`: the installed
+   * backend's listing look, through `itemType_isContainer`.
+   *
+   * @param test - True for a type that holds other items.
+   */
+  containerTest_register(test: (type: string) => boolean): void {
+    this.containerTest = test;
   }
 
   /**
@@ -287,7 +299,7 @@ export class VFSDispatcher {
     const mark: number = errorStack.checkpoint_mark();
     const siblings: Result<VFSItem[]> = await this.list(clean.slice(0, slash) || '/');
     errorStack.checkpoint_drain(mark);
-    const folder: boolean = siblings.ok && siblings.value.some((item: VFSItem): boolean => item.name === name && (item.type === 'dir' || item.type === 'vfs'));
+    const folder: boolean = siblings.ok && siblings.value.some((item: VFSItem): boolean => item.name === name && this.containerTest(item.type));
     return folder ? vfs_fail('EISDIR') : outcome;
   }
 

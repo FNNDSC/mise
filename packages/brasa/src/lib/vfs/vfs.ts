@@ -16,7 +16,8 @@ import type { ListingCache } from '../../core/backend.js';
 import { spinner } from '../spinner.js';
 import { error_stripDebugPrefix } from '../../core/errorText.js';
 import { listingItemsFromVfs_make } from './listing.js';
-import { Result, Ok, Err, errorStack, grid_render, long_render, listingItems_sort, LISTING_LOOK_PLAIN, type ListingLook } from '@fnndsc/fond';
+import { Result, Ok, Err, errorStack, grid_render, long_render, listingItems_sort, type ListingLook } from '@fnndsc/fond';
+import { itemType_isContainer, listingLook_get } from '../../core/itemKinds.js';
 import { backendInstalled_get } from '../../core/backend.js';
 
 /**
@@ -238,7 +239,7 @@ export class VFS {
       if (listingCache_holds(parentPath)) listingCache_get().cache_set(parentPath, parentItems);
     }
     const item: ListingItem | undefined = parentItems.find((candidate: ListingItem): boolean => candidate.name === baseName);
-    if (!item || item.type === 'dir' || item.type === 'vfs' || item.type === 'job') return null;
+    if (!item || itemType_isContainer(item.type)) return null;
     return item;
   }
 
@@ -261,7 +262,7 @@ export class VFS {
     // so it must fall through to the dispatcher, whose PathMapper resolves
     // the target. Returning the link entry here rendered `ls ~/public` as
     // the link itself whenever the parent listing happened to be cached.
-    if (!item || item.type === 'dir' || item.type === 'vfs' || item.type === 'job' || item.type === 'link') {
+    if (!item || itemType_isContainer(item.type) || item.type === 'link') {
       return null;
     }
     return item;
@@ -347,7 +348,7 @@ export class VFS {
 
     // Render based on options. A long listing over feeds shows their tags:
     // one map for the whole listing, never a read per feed.
-    const look: ListingLook = backendInstalled_get()?.listingLook ?? LISTING_LOOK_PLAIN;
+    const look: ListingLook = listingLook_get();
     let rendered: string = options.long
       ? `${long_render(await longRows_annotate(result.value), { human: !!options.human }, look)}\n`
       : `${grid_render(result.value, { oneColumn: !!options.oneColumn }, look)}\n`;

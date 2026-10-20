@@ -119,6 +119,20 @@ function kind_find(look: ListingLook, type: string): ItemKindLook | undefined {
 }
 
 /**
+ * Whether an item type holds other items, under a look: a folder, a mount,
+ * or a kind the look marks as a container (ChRIS: a job; stratus: a
+ * compartment). The tools that must know (`cd`, `ls FILE`, a read that
+ * failed on a folder) ask this rather than naming types.
+ *
+ * @param look - The listing's look.
+ * @param type - The item type.
+ * @returns True for a container.
+ */
+export function itemType_isContainer(look: ListingLook, type: string): boolean {
+  return type === 'dir' || type === 'vfs' || kind_find(look, type)?.container === true;
+}
+
+/**
  * One item's name as a listing shows it: coloured, and ending in `/` when
  * it is a container.
  *

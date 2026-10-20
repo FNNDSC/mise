@@ -9,6 +9,7 @@ import { path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { Ok, Err, type Result, type StackMessage, type VFSItem } from '@fnndsc/fond';
 import { backendInstalled_get, type FolderEntry } from '../../core/backend.js';
 import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
+import { itemType_isContainer } from '../../core/itemKinds.js';
 import { envelope_ok, envelope_error, type CommandEnvelope } from '@fnndsc/menu';
 
 /**
@@ -129,7 +130,7 @@ async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<Com
     if (vfsDispatcher.path_isVirtual(target)) return cdVirtual_handle(vfsPath_normalize(target), pathArg);
     return cdReal_handle(target, pathArg);
   }
-  if (entry && !['dir', 'job', 'vfs'].includes(entry.type)) {
+  if (entry && !itemType_isContainer(entry.type)) {
     return envelope_error('', undefined, `${chalk.red(`cd: ${pathArg}: Not a directory`)}\n`);
   }
 

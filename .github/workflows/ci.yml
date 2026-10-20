@@ -103,6 +103,10 @@ jobs:
       - run: npm run lint:core-deps
       # The core boots over the null backend with no ChRIS package loaded.
       - run: npm run test:core-boot --workspace @fnndsc/brasa
+      # stratus: oci-* only inside its OCI driver, no ChRIS package; it boots
+      # over the fake cloud and walks the tenancy tree (docs/stratus.adoc).
+      - run: npm run lint:stratus-deps
+      - run: npm run test:boot --workspace @fnndsc/stratus
       - run: npm run lint:commands
       - run: npm run lint:prompt
       - run: npm run lint:wire

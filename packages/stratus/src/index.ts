@@ -1,0 +1,19 @@
+/**
+ * @file `@fnndsc/stratus`: a mise session over the cloud substrate a Trusted
+ * Domain runs on. One backend, clouds as drivers, OCI first
+ * (docs/stratus.adoc).
+ *
+ * @module
+ */
+export * from './cloud/driver.js';
+export { FakeDriver, fakeCloud_sample, availabilityKey_make, type FakeCloud } from './cloud/fake/driver.js';
+export { OciDriver, ociTags_flatten, shape_ofRecord, type OciDriverOptions } from './cloud/oci/driver.js';
+export { ociApi_make, type OciApi, type OciApiOptions, type OciCompartmentRecord, type OciLimitValueRecord, type OciShapeRecord, type OciTenancyRecord } from './cloud/oci/api.js';
+export { SHAPE_TERMS, familyName_derive, shapeTerms_get, partPrices_index, shapePrices_map, ociPrices_read, PRICE_LIST_URL, type ShapeTerms, type JsonFetch } from './cloud/oci/prices.js';
+export { TenancyProvider, TENANCY_RESERVED, CONTAINER_RESERVED, READ_ONLY_REASON, type TenancyProviderOptions } from './vfs/tenancy.js';
+export { stratusListingLook, stratusName_colorize, STRATUS_ITEM_KINDS, CONTAINER_TYPES } from './vfs/look.js';
+export { StratusSession, configDir_default, type StratusSessionOptions } from './session.js';
+export { stratusBackend_make, type StratusBackend, type StratusBackendOptions } from './backend.js';
+export { AnswerCache } from './cache.js';
+export { segments_assign, segment_resolve, idSuffix_of, ambiguity_words, type Named, type Segment, type SegmentMatch } from './names.js';
+export { stratusArgs_parse, type StratusArgs } from './args.js';

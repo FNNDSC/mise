@@ -153,6 +153,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   vfsDispatcher: {
     provider_register: mockProviderRegister,
     pathResolver_register: mockPathResolverRegister,
+    containerTest_register: jest.fn(),
     path_isVirtual: mockIsVirtual,
     readBinary: mockReadBinary,
     linkTarget_resolve: mockLinkTarget,

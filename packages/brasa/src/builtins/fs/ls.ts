@@ -6,6 +6,7 @@ import { answerNumbering_of, handle_word, numberedFooter_of, type NumberedHandle
 import chalk from 'chalk';
 import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
 import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
+import { itemType_isContainer } from '../../core/itemKinds.js';
 import { errorStack, type Result, type VFSItem } from '@fnndsc/fond';
 import type { ListingCache } from '../../core/backend.js';
 import { session } from '../../session/index.js';
@@ -110,7 +111,7 @@ async function folder_is(target: string): Promise<boolean> {
   const mark: number = errorStack.checkpoint_mark();
   const siblings: Result<VFSItem[]> = await vfsDispatcher_get().list(clean.slice(0, slash) || '/');
   errorStack.checkpoint_drain(mark);
-  return siblings.ok && siblings.value.some((item: VFSItem): boolean => item.name === clean.slice(slash + 1) && (item.type === 'dir' || item.type === 'vfs'));
+  return siblings.ok && siblings.value.some((item: VFSItem): boolean => item.name === clean.slice(slash + 1) && itemType_isContainer(item.type));
 }
 
 /** Typed invocation options for ls. */

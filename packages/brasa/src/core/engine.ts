@@ -54,6 +54,7 @@ import { numbering_get, type Numbering } from '../session/answer.js';
 import { sink_get, sink_set, type OutputSink } from './sink.js';
 import { backend_install, backendInstalled_get, type Backend, type FileByteStream } from './backend.js';
 import { vfsDispatcher_get } from './filesystem.js';
+import { itemType_isContainer } from './itemKinds.js';
 import type { VFSDispatcher } from '@fnndsc/fond';
 
 /**
@@ -483,6 +484,8 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
   answerAdapters_register();
   await session.init();
   await vfsProviders_register();
+  // A backend's containers are folders to every tool, the dispatcher's read included.
+  vfsDispatcher_get().containerTest_register(itemType_isContainer);
   return {
     line_execute,
     line_cancel,

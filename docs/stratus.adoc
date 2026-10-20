@@ -84,7 +84,7 @@ Each was put to the operator on 2026-10-20 and agreed unless marked otherwise.
 
 Two shapes were weighed. *A backend per cloud* (`oci`, `aws`, `gcp`, …): four trees, four prompts, four compositions saying DOMAINS, CAPACITY and STEPS, and a fifth package for what they share. *One substrate backend with the cloud as a driver inside it*: the tree, the `domain` verbs, the task source, the prompt segments and the ARGUS composition written once; a cloud is a set of providers behind one interface, which `harbor-oci` already drew. The second is chosen.
 
-What differs between clouds, as the session sees it, is small and named: the container noun (compartment, project, resource group), the credential and identity, the limits, shapes and prices, the infrastructure plan and apply (a per-cloud Terraform stack). The Assisted Installer and the Helm chart are the same on every cloud.
+What differs between clouds, as the session sees it, is small and named: how containers nest and what they are called, where a region sits, the credential and identity, the limits, shapes and prices, the infrastructure plan and apply (a per-cloud Terraform stack). The Assisted Installer and the Helm chart are the same on every cloud. <<tree>> says how four clouds map onto one tree.
 
 The caution from #977 applies with more force: an abstraction drawn from one cloud takes its shape. Three guards:
 
@@ -106,8 +106,9 @@ packages/stratus/
 │   ├── backend.ts            the descriptor: session, prompt, telemetry, tasks, vfs, listingLook
 │   ├── session.ts            identity, home, working directory
 │   ├── cloud/
-│   │   ├── driver.ts         CloudDriver: tenancy, containers, resources, limits, shapes, prices,
-│   │   │                     buckets, dns, identity, infra plan and apply
+│   │   ├── driver.ts         CloudDriver: root, containers_list(parent), kinds() (generic + native),
+│   │   │                     resources_list(container, kind, region), regions(), zones(region),
+│   │   │                     limits, shapes, prices, objects, records, identity, infra plan and apply
 │   │   ├── contract.test.ts  the driver contract suite
 │   │   ├── fake/             the in-memory driver
 │   │   └── oci/              the OCI driver: identity, compartments, limits, shapes, prices,
@@ -143,14 +144,14 @@ Precedent: `/net/pacs/queries/…` is a remote server and then what it holds. A 
 │   └── oci/                           the driver's mount; a second cloud would be /net/aws
 │       └── fnndsc/                    a tenancy, by display name: the root compartment
 │           ├── harbor-oci/            a compartment; nested compartments nest
-│           │   ├── instances/node-0/  name id state created tags info.json  shape ad ips
-│           │   ├── networks/vcn/      subnets/<subnet>/  nsgs/<nsg>/  info.json
+│           │   ├── instances/node-0/  name id state region created tags info.json  shape zone ips
+│           │   ├── networks/vcn/      subnets/<subnet>/  securitygroups/<group>/  info.json
 │           │   ├── loadbalancers/api/ … ip shape
 │           │   ├── volumes/node-0/    … size attached
 │           │   ├── buckets/iso/       its objects are files; an object has a field `link` (its PAR)
 │           │   └── dns/<zone>/        its records are files
 │           ├── regions/us-ashburn-1/
-│           │   ├── ads/<availability domain>/
+│           │   ├── zones/<zone>/              OCI: an availability domain
 │           │   ├── limits/<service>/<limit>   value used available
 │           │   ├── shapes/<shape>
 │           │   └── prices/<shape>
@@ -164,11 +165,25 @@ Precedent: `/net/pacs/queries/…` is a remote server and then what it holds. A 
 └── bin/  etc/  usr/                   the core's
 ....
 
+* *One shape for every cloud:* `/net/<cloud>/<root>/<container>/…/<kind>/<name>`. Four clouds map onto it; what differs is how containers nest, where a region sits, and what a zone is called.
++
+[cols="1,1,2,2,1",options="header"]
+|===
+| Cloud | Root | Containers (nest) | Region | Zone
+| OCI | tenancy | compartments, any depth | orthogonal to compartments; an API client per region | availability domain
+| AWS | account (alias, else id; or the organization) | none below the account: resource groups are tag views | the primary partition; an API per region | availability zone
+| GCP | organization | folders, then a project | an attribute of a resource | zone
+| Azure | tenant | management groups, a subscription, a resource group | an attribute of a resource | availability zone
+|===
++
+The path carries names only; the container noun (compartment, account, project, folder, subscription, resource group) is the row's type in `ls -l`. The driver answers `containers_list(parent)`, so OCI nests arbitrarily, Azure three fixed levels, AWS none, under one path grammar.
+* *Region is the session's, not the path's.* The session has one region (<<prompt>>, the `region` verb), and the tree lists that region's resources; `regions/` under the root holds every region's facts; global kinds (DNS zones; buckets on AWS and GCP) list regardless. Every resource has a `region` field. A region segment in the path would be real on AWS and faked on OCI and GCP, and an `ls` on AWS that fanned out over twenty regions would never be quick; `harbor-oci` already forces one region, so OCI loses nothing.
+* *Kind folders are generic nouns; native detail is in `info.json`.* Every cloud has `instances networks subnets securitygroups loadbalancers volumes buckets dns`, so the `domain` verbs and the tiles touch only those. A driver may add native kinds nobody else has (OCI: dynamic groups) as extra folders. OCI's NSGs are `securitygroups`, its availability domains are `zones`.
 * *No new root.* Only `/net/<cloud>` is claimed, and a session has one cloud. `/net/oci` lists one tenancy today (one API-key profile is one tenancy); the level stays because the path says which tenancy you are in, and `~/.oci/config` can hold several profiles. Whether one session should ever mount two is a posture question for later; the shape allows it.
 * *Everything under the tenancy.* Limits are per tenancy per region; a domain is built in one tenancy. So `regions/` and `domains/` sit inside `/net/oci/<tenancy>/`, one rule, rather than beside it. Shapes and prices repeat per tenancy, harmless with one.
 * *Compartments beside kind folders.* `/net/oci/fnndsc/` holds child compartments and the kind folders at one level, as OCI's own compartment view does; `ls -l`'s type column (`compartment` against `instance`) tells them apart. The kind folders are reserved names: a compartment called `instances` shows as `instances~<last six of its OCID>`.
-* *Kinds in the tree:* `instances networks loadbalancers volumes buckets dns`; subnets and NSGs nest under their network. Images, policies, dynamic groups and tag namespaces stay out until a verb wants them; they appear in a parent's `info.json` where OCI returns them.
-* *Field files.* Every kind: `name id state created tags info.json`. Per kind on top: an instance `shape ad ips`, a volume `size attached`, a load balancer `ip shape`. The rule `/proc/jobs` follows: a field is a file when a shell line wants it (`cat state`, `grep running`); everything else is in `info.json` only.
+* *Kinds in the tree, first:* `instances networks loadbalancers volumes buckets dns`; subnets and security groups nest under their network. Images, policies, dynamic groups and tag namespaces stay out until a verb wants them; they appear in a parent's `info.json` where OCI returns them.
+* *Field files.* Every kind: `name id state region created tags info.json`. Per kind on top: an instance `shape zone ips`, a volume `size attached`, a load balancer `ip shape`. The rule `/proc/jobs` follows: a field is a file when a shell line wants it (`cat state`, `grep running`); everything else is in `info.json` only.
 * *Names, not OCIDs, in paths.* The OCID is the field `id`. OCI allows two resources in one compartment to share a display name, so a duplicate shows as `name~<last six of its OCID>` and the plain name refuses ("ambiguous: name~1a2b3c, name~9f8e7d"), never picks one. The rule holds wherever a path is resolved: `cd`, completion, globbing and `@N` expansion.
 * *Structural paths* (`cd` without a lookup, as `CHRIS_STRUCTURAL_PATHS`): `/net`, `/net/oci`, `/net/oci/<tenancy>`, each kind folder, `regions`, `domains`.
 * *Home is the tenancy's `domains/`*, because building and running domains is the session's purpose; the prompt shows it as `~`. `/home/<user>` is the core's and holds the operator's own files.
@@ -181,7 +196,7 @@ Precedent: `/net/pacs/queries/…` is a remote server and then what it holds. A 
 Three fields of a listing row do three jobs, and only one gains anything new.
 
 * *Numbering kind* (`answerKinds`, `@KIND N`). An index expands to a path; the kind says what a verb may be handed and whether a group row hands on its children (ChRIS: `pull` takes SER, STD and PAT and refuses a DIR; a study handed whole gives its series). Every stratus row is a path and no stratus verb needs to refuse by kind or expand a group, so stratus registers *no kinds*: rows are DIR and FIL, `cd @3`, `cat @2/state`, `domain build @1` work by path. A kind earns its place when a listing's rows are not paths or a verb must refuse by kind; the first such listing is `domain plan`'s output, where one change among the `Oracle-Tags` drift must be nameable (`--allow @CHG4`). That kind arrives with that verb (<<order>>, step 4), not before.
-* *Item type* (`ListingItem.type`, an open string; the backend's `ListingLook`). How `ls -l` draws the row: mark, colour, container, size column. Stratus adds `compartment instance network subnet nsg loadbalancer volume bucket object zone record domain step`, coloured by lifecycle state as jobs are by status: running green, stopped dim, provisioning amber, failed red.
+* *Item type* (`ListingItem.type`, an open string; the backend's `ListingLook`). How `ls -l` draws the row: mark, colour, container, size column. Stratus adds the container nouns (`compartment`, and on other clouds `account project folder subscription resourcegroup`) and `instance network subnet securitygroup loadbalancer volume bucket object dnszone record domain step`, coloured by lifecycle state as jobs are by status: running green, stopped dim, provisioning amber, failed red.
 * *Tags* (`ListingItem.tags`). ChRIS fills it with a user's tags on files (`/proc/tags`). Stratus fills it with the cloud's tags, freeform and defined, so the attribution tag (`openshift-tags.openshift-resource=<domain>`) shows in `ls -l` and `grep` over a listing (#1101) finds every row a teardown would take.
 
 [[writes]]
@@ -270,7 +285,7 @@ When a domain's ChRIS is deployed, the domain records its CUBE address. `domain 
 
 Each step is one change or a short series, released on its own; nothing changes for a ChRIS session at any step.
 
-. *Read the tenancy.* (a) `packages/stratus` with the descriptor, the driver interface, the fake driver and the contract suite, the OCI driver's identity and compartments, the tree for `/net/oci/<tenancy>/` (compartments) and `regions/` (availability domains, limits, shapes, prices), the `stratus` launcher, the stratus boot and `lint:stratus-deps` in CI. (b) The prompt segments on the wire, and ARGUS's `stratus` composition with its brand and prompt only. AEGIS rows with (b).
+. *Read the tenancy.* (a) `packages/stratus` with the descriptor, the driver interface, the fake driver and the contract suite, the OCI driver's identity and compartments, the tree for `/net/oci/<tenancy>/` (compartments) and `regions/` (availability domains, limits, shapes, prices), the `stratus` launcher, the stratus boot and `lint:stratus-deps` in CI. (b) the prompt segments on the wire, and ARGUS's `stratus` composition with its brand and prompt only. AEGIS rows with (b).
 . *Resources.* Instances, networks, load balancers, volumes, buckets and DNS in the tree, through Resource Search and the service clients; `ls -l` types and states; cloud tags in `tags`.
 . *Domains, read.* `domains/` over an existing `harbor-oci` state folder — the live compact cluster as the first domain — with `domain status`, `domain verify` and `spend`; the DOMAINS and CAPACITY tiles.
 . *The supervised runner and the `tasks` tier* (#986), shaped by the build's real steps; `domain plan` and `domain build` run `harboroci` steps as tasks; the plan-row answer kind; STEPS tile and domain pane.
@@ -301,7 +316,7 @@ Each step is one change or a short series, released on its own; nothing changes 
 
 * *One cloud draws the abstraction.* The driver interface, the fake driver and the ratchet are the answer (<<one-backend-many-clouds>>); a second real driver is the test.
 * *`Oracle-Tags` drift.* Until clean re-plans are solved, every re-plan of a built domain shows alterations; `domain plan` must say which are tag drift.
-* *Duplicate display names* are common in OCI; the suffix rule (<<tree>>) has to hold everywhere a path is resolved.
+* *Duplicate display names* are common in OCI, and Azure subscriptions share names too; the suffix rule (<<tree>>) has to hold everywhere a path is resolved. AWS accounts are numbers: the alias when set, else the id.
 * *Rate limits and size.* Resource Search and the Limits API throttle; listings cache and refresh in the background.
 * *One region, one domain* is all `harbor-oci` has proved; the tree and prompt allow more, but the build is not claimed for more until it has been done.
 * *The descriptor will move again.* It was drawn from ChRIS and checked by the null backend; stratus is the first real second backend, and the descriptor should change where stratus shows it is wrong, rather than stratus bending around it.

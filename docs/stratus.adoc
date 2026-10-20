@@ -358,6 +358,20 @@ Each step is one change or a short series, released on its own; nothing changes 
 * *One region, one domain* is all `harbor-oci` has proved; the tree and prompt allow more, but the build is not claimed for more until it has been done.
 * *The descriptor will move again.* It was drawn from ChRIS and checked by the null backend; stratus is the first real second backend, and the descriptor should change where stratus shows it is wrong, rather than stratus bending around it.
 
+[[fleet]]
+== Later: a fleet of Trusted Domains
+
+Verified 2026-10-20. Red Hat's fleet tool is *Advanced Cluster Management for Kubernetes* (RHACM, support matrix at 2.16 with MultiCluster Engine 2.11; included in OpenShift Platform Plus), the product form of the upstream *Open Cluster Management* project. A *hub* cluster runs the management plane; each managed cluster runs an agent, the klusterlet, that connects outward to the hub, so clusters behind NAT or in private tenancies work. The fleet is Kubernetes objects on the hub: `ManagedCluster` (one per cluster), `ManagedClusterSet` (grouping by label), `Placement` and `PlacementDecision` (choose clusters by label, count or score), `ManifestWork` (push any resource to the chosen clusters), policies for compliance, and an application lifecycle above them. A cluster built through the Assisted Installer can be imported into a hub, and MultiCluster Engine carries the Assisted Installer service itself. Two Red Hat things that are not this: *OpenShift Cluster Manager* at console.redhat.com, where the Assisted Installer lives and every cluster built through it is listed, which holds subscriptions but manages no workload or policy; and *Red Hat Edge Manager* (flightctl), fleet management for edge devices, not clusters.
+
+What follows for stratus, in order, none of it before several Trusted Domains exist:
+
+* *No hub first.* console.redhat.com already knows every TD stratus builds, through the same service account the build uses. A fleet listing comes from that API, read-only: a `fleet` verb, or `/net/redhat/clusters/` as one more mount under `/net`.
+* *A hub is a cluster someone runs.* A hub holding administrator rights over every TD cuts against an institution controlling its own; a hub per institution, managing that institution's TDs, fits. Which it is is governance before it is design.
+* *With a hub, the Kubernetes driver points at it.* `ManagedCluster` rows are the fleet; `Placement` and `ManifestWork` are how one ChRIS chart version rolls to many TDs. The same driver, one more kubeconfig; the TD controller gains a FLEET view.
+* *Posture holds.* The agent pulls from the cluster; the hub never needs a cloud credential, so the bastion split (<<bastion>>) stands.
+
+Sources: https://www.redhat.com/en/technologies/management/advanced-cluster-management[RHACM], https://access.redhat.com/articles/7136928[RHACM 2.16 support matrix], https://github.com/open-cluster-management-io/api[open-cluster-management-io/api], https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/installation_overview/ocp-installation-overview[OpenShift installation overview].
+
 [[open]]
 == Open, decided later
 
@@ -366,4 +380,5 @@ Each step is one change or a short series, released on its own; nothing changes 
 * Whether one session may mount two tenancies from one key file.
 * Domains spanning regions, and a second cloud.
 * The bastion inside the tenancy: an instance principal, and who may reach it.
+* A fleet: when, and whose hub (<<fleet>>).
 * porter starting a substrate daemon, and what its door is.

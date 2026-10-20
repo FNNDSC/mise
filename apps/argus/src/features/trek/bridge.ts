@@ -820,6 +820,15 @@ export class TrekBridge {
       parts.helmView.distance.value_set(this.nextDistance);
     }
     this.strip_show(open);
+    this.lit_reveal();
+  }
+
+  /**
+   * Scrolls the control that answers the open question into view: a station column shorter than its stations would otherwise hold the question below the fold, lit and unseen.
+   */
+  private lit_reveal(): void {
+    const lit: Element | undefined = [...this.parts.body.querySelectorAll('.tb-lit')].find((node: Element): boolean => node.getClientRects().length > 0);
+    if (lit !== undefined && typeof lit.scrollIntoView === 'function') lit.scrollIntoView({ block: 'nearest' });
   }
 
   /**

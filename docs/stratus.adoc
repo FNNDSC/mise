@@ -9,7 +9,7 @@ Rudolph Pienaar <rudolph.pienaar@gmail.com>
 [abstract]
 == Abstract
 
-A *Trusted Domain* (TD) is a ChRIS deployed on OpenShift inside a cloud tenancy that an institution controls; the first are on Oracle Cloud Infrastructure (an *OCI TD*). Building one today is the job of `harbor-oci`, a Python command-line harness that turns an empty OCI tenancy into a running ChRIS by driving Red Hat's Assisted Installer, Oracle's `oci-openshift` Terraform stack and the `fnndsc/chris` Helm chart.
+A *Trusted Domain* (TD) is three layers an institution controls: a cloud tenancy, an OpenShift cluster built on it, and a ChRIS deployed on the cluster; the first are on Oracle Cloud Infrastructure (an *OCI TD*). Building one today is the job of `harbor-oci`, a Python command-line harness that turns an empty OCI tenancy into a running ChRIS by driving Red Hat's Assisted Installer, Oracle's `oci-openshift` Terraform stack and the `fnndsc/chris` Helm chart.
 
 This document designs *stratus*: the second backend that issue #977 made room for. A stratus session is *outside* any ChRIS. It reads and changes the substrate — a tenancy's compartments, limits, networks, DNS, buckets, instances and clusters — and builds Trusted Domains on it, with the shell, the console, ARGUS's frame and the session host that ChRIS sessions already have. The cloud is a *driver* inside stratus, not a backend of its own: OCI is the first driver, and a second cloud adds a driver, never a backend. `harbor-oci`'s README names this direction: "building a cluster becomes one more mise backend, with a web interface and a console for `oc` and friends".
 
@@ -37,6 +37,18 @@ A Trusted Domain has an outside and an inside, and mise gives each its own sessi
 |===
 
 They are separate calypso daemons, as #977's <<backend-neutral.adoc#one-backend,one backend per session>> requires: one process never holds cloud credentials and a CUBE token together. ARGUS can show both as two attached sessions; the substrate session hands off to the domain session when a build finishes (<<handoff>>).
+
+[[bastion]]
+=== The bastion, and chell as the surface
+
+The substrate daemon runs on one host, the *bastion*: the machine that holds the cloud credential, the Red Hat service account, the SSH key and, once a domain is built, its kubeconfig. Today it is the operator's workstation; later a small instance inside the tenancy, using an instance principal (<<identity>>). Nothing else ever holds those files.
+
+chell on the bastion is the surface that drives a Trusted Domain: `suggest`, `domain new`, `domain plan`, `domain build`. ARGUS drives it the same way, because since #1125 the ARGUS console is a chell running on the daemon's host under a pty: typing in the browser is typing at the bastion. There is no web-only path to start a step; a control on a pane or on the controller (<<controller>>) runs a console line, as #1082's law says a view is a script. What ARGUS adds is watching and shaping: tiles, the domain pane, the log view, the controller, the brand.
+
+[[three-layers]]
+=== Three layers, three tools, one spec
+
+Each layer has a tool today: the cloud is Terraform and the SDK; the cluster is the Assisted Installer and `oc`; the application is Helm and the seed. The first draft described the cluster in a spec and the application only as three step names and a chart version, so "deploys ChRIS to it" had nothing to deploy from. One spec, two halves: `spec.yaml` holds the cluster (CPU family, control-plane and worker pools in vCPU and GiB, boot disks) and the ChRIS on it (chart version, `dataGib`, `databaseGib`, `queueGib` as `harbor-oci` already has them, the compute backend, the PACS to connect, the seed users). `domain plan` prices and checks both; `domain build --through verify` builds the machine, `domain build` to the end installs the application.
 
 [[findings]]
 == What exists: harbor-oci
@@ -113,7 +125,9 @@ packages/stratus/
 │   │   ├── fake/             the in-memory driver
 │   │   └── oci/              the OCI driver: identity, compartments, limits, shapes, prices,
 │   │                         search, storage, dns, compute, network, infra (the Terraform stack)
-│   ├── vfs/                  fond providers over the driver: tenancy, regions, domains, look
+│   ├── cluster/              the Kubernetes driver: one on every cloud, over a domain's kubeconfig:
+│   │                         projects, deployments, pods, services, routes, pvcs, nodes, operators
+│   ├── vfs/                  fond providers over the drivers: tenancy, regions, domains, cluster, look
 │   ├── domain/               spec, sizing, state, steps (harbor-oci's neutral pieces, ported)
 │   ├── commands/             domain, limits, capacity, shapes, prices, spend, suggest, region
 │   ├── tasks/                the step task source; the supervised runner's client
@@ -159,7 +173,11 @@ Precedent: `/net/pacs/queries/…` is a remote server and then what it holds. A 
 │               └── harbor/
 │                   ├── spec.yaml  state.json
 │                   ├── steps/01-preflight/   state log started ended
-│                   ├── cluster/              console api version nodes/
+│                   ├── cluster/              api console version   the cluster, through the Kubernetes driver
+│                   │   ├── nodes/<node>/     state roles zone cpu memory
+│                   │   ├── operators/<op>/   state version
+│                   │   └── projects/chris/   deployments/<d>/  pods/<pod>/ (state node started log)
+│                   │                         services/  routes/  pvcs/  configmaps/  events
 │                   └── resources/            links into the compartment: what this domain owns
 ├── proc/steps/                        the steps running now (a task source; the core mounts it)
 └── bin/  etc/  usr/                   the core's
@@ -186,6 +204,7 @@ The path carries names only; the container noun (compartment, account, project, 
 * *Field files.* Every kind: `name id state region created tags info.json`. Per kind on top: an instance `shape zone ips`, a volume `size attached`, a load balancer `ip shape`. The rule `/proc/jobs` follows: a field is a file when a shell line wants it (`cat state`, `grep running`); everything else is in `info.json` only.
 * *Names, not OCIDs, in paths.* The OCID is the field `id`. OCI allows two resources in one compartment to share a display name, so a duplicate shows as `name~<last six of its OCID>` and the plain name refuses ("ambiguous: name~1a2b3c, name~9f8e7d"), never picks one. The rule holds wherever a path is resolved: `cd`, completion, globbing and `@N` expansion.
 * *Structural paths* (`cd` without a lookup, as `CHRIS_STRUCTURAL_PATHS`): `/net`, `/net/oci`, `/net/oci/<tenancy>`, each kind folder, `regions`, `domains`.
+* *The cluster is under its domain*, not a root of its own: built in that tenancy by that domain's steps, reached with that domain's kubeconfig. The Kubernetes driver that serves it is the same on every cloud, so it is a second driver kind (`cluster/`) beside `cloud/`, never inside a cloud driver. The linux-metaphor note already drew it ("projects as folders; deployments, pods and routes as entries in them"). Read-only in the tree; `oc` and `helm` under the `tasks` tier are the write path. This closes the first draft's open question of `oc` against a Kubernetes provider: both, each for what it is good at.
 * *Home is the tenancy's `domains/`*, because building and running domains is the session's purpose; the prompt shows it as `~`. `/home/<user>` is the core's and holds the operator's own files.
 * *Listings walk.* A compartment can hold thousands of objects; the tree follows the house rule that an unbounded ask walks and a bounded one says what it shows. Listings cache with a short life, refresh in the background, say when they serve a cached answer, and `--fresh` forces, as ChRIS listings do.
 * *Disconnected.* No `~/.oci/config`, a missing profile or a refused key: the daemon still starts, with identity `disconnected@oci` (ChRIS: `disconnected@no-cube`). `/net/oci` lists empty with one note, `ls` elsewhere works, the `domain` verbs refuse "not connected". The credential is a file on the host, not a password, so there is no in-session login: fix the profile and restart.
@@ -196,7 +215,7 @@ The path carries names only; the container noun (compartment, account, project, 
 Three fields of a listing row do three jobs, and only one gains anything new.
 
 * *Numbering kind* (`answerKinds`, `@KIND N`). An index expands to a path; the kind says what a verb may be handed and whether a group row hands on its children (ChRIS: `pull` takes SER, STD and PAT and refuses a DIR; a study handed whole gives its series). Every stratus row is a path and no stratus verb needs to refuse by kind or expand a group, so stratus registers *no kinds*: rows are DIR and FIL, `cd @3`, `cat @2/state`, `domain build @1` work by path. A kind earns its place when a listing's rows are not paths or a verb must refuse by kind; the first such listing is `domain plan`'s output, where one change among the `Oracle-Tags` drift must be nameable (`--allow @CHG4`). That kind arrives with that verb (<<order>>, step 4), not before.
-* *Item type* (`ListingItem.type`, an open string; the backend's `ListingLook`). How `ls -l` draws the row: mark, colour, container, size column. Stratus adds the container nouns (`compartment`, and on other clouds `account project folder subscription resourcegroup`) and `instance network subnet securitygroup loadbalancer volume bucket object dnszone record domain step`, coloured by lifecycle state as jobs are by status: running green, stopped dim, provisioning amber, failed red.
+* *Item type* (`ListingItem.type`, an open string; the backend's `ListingLook`). How `ls -l` draws the row: mark, colour, container, size column. Stratus adds the container nouns (`compartment`, and on other clouds `account project folder subscription resourcegroup`) and `instance network subnet securitygroup loadbalancer volume bucket object dnszone record domain step`, and for the cluster `node operator project deployment pod service route pvc configmap`, coloured by lifecycle state as jobs are by status: running green, stopped dim, provisioning amber, failed red.
 * *Tags* (`ListingItem.tags`). ChRIS fills it with a user's tags on files (`/proc/tags`). Stratus fills it with the cloud's tags, freeform and defined, so the attribution tag (`openshift-tags.openshift-resource=<domain>`) shows in `ls -l` and `grep` over a listing (#1101) finds every row a teardown would take.
 
 [[writes]]
@@ -224,6 +243,7 @@ Core commands (`ls`, `cd`, `cat`, `cp`, `find`, `grep`, `wc`, `head`, `sort`, �
 | `domain status`, `domain verify` | Where each step stands; the live checks.
 | `domain teardown <name>` | Plans removal of everything carrying the domain's tag, shows it, asks.
 | `domain attach <name>` | Opens the domain session against the domain's CUBE (<<handoff>>).
+| `domain` | In ARGUS, opens the TD controller (<<controller>>); in chell, `domain status` for every domain.
 | `limits`, `capacity`, `shapes`, `prices` | What the region allows, has free, offers and charges.
 | `spend [<name>]` | What a domain has cost so far and costs per hour (`burn`).
 | `suggest` | Sizes a spec from workload figures (`--workers`, `--worker-ram`, …).
@@ -274,6 +294,20 @@ The domain segment appears when the working directory is inside a domain or one 
 * *Tiles:* DOMAINS (each domain, its last step and state, its hourly cost), CAPACITY (headroom per availability domain for the shapes a spec needs), TENANCY (compartments and resource counts by kind), STEPS (running and recent, with progress).
 * *Panes:* a domain pane listing its steps as rows with progress, as RUNS lists jobs; the frame's view pane following a step's log; later a topology view in orrery — networks, subnets, load balancers and nodes as a graph.
 * *Signals:* the prompt segments (<<prompt>>), and telemetry of resource counts, running steps and the domains' combined hourly cost.
+* The tiles and panes are the glance: what a dashboard shows while something else is going on. Working on a domain happens in the controller (<<controller>>).
+
+[[controller]]
+=== D13. The TD controller: a screen over the engine, as the trek bridge is
+
+`docs/trek.adoc` built a full-screen ARGUS surface over an engine without changing the engine: the engine shows its state before each prompt, a typed `event` carries it, the bridge takes the screen, and plays by answering the engine's questions with lines built from its controls; nothing moves without an engine line behind it. The TD controller is that pattern over the domain machine:
+
+* *The engine* is stratus's domain machine, already driven by console lines (`suggest`, `domain new`, `domain plan`, `domain build`, the questions it asks before billing).
+* *The state shown:* a `stratus.domain.state` event before every prompt and on every change: the spec, each step's state and progress, the cost so far and per hour, the cluster's readiness, and what changed since the last event (the diff the trek header shows).
+* *A takeover.* `domain` with no arguments in the ARGUS console opens the controller full screen; LEAVE returns, as trek's bridge does. Same reasons as trek's "why a takeover": a build holds the lane for two hours, and a pane among panes would mislead. In chell the same lines play as text.
+* *The screen,* in trek's layout under ARGUS's theme: the header carries the domain's condition (sizing, building, up, billing, failed), its cost and the time in the current step; the gutter holds the views, OVERVIEW, SIZE, BUILD, CLUSTER, CHRIS, TEARDOWN and LEAVE; a view changes the body, a command works in place. SIZE is `suggest` as controls: sliders for workers, worker RAM, ChRIS data, with fit and cost live from `regions/`. BUILD is the steps as a strip, the running one with its log. CLUSTER and CHRIS read `cluster/`. TEARDOWN is the attribution-scoped plan and its question.
+* *The controls follow the value.* A slider commits as `domain new --workers 2 …`; BUILD's pill sends `domain build --through run`; the engine's "billing starts at this rate, continue?" is answered by a pill and never skipped. Nothing on the screen starts anything without a console line behind it: #1082's law, and trek's `a-frame-replays-a-printed-line`.
+* *The one difference from trek:* a game dies with its surface, a build does not. The controller attaches to a step already running, so the state must be replayable on attach: the task source is the baseline, the event the delta. Trek's event is live only; this one is not.
+* *Order:* a mockup page first, grilled, as trek's was; built after step 4 (<<order>>), when the runner and the steps it drives are real. The tiles of <<argus>> are the glance; the controller is where a domain is worked on.
 
 [[handoff]]
 === D12. From building a domain to working in it
@@ -289,6 +323,8 @@ Each step is one change or a short series, released on its own; nothing changes 
 . *Resources.* Instances, networks, load balancers, volumes, buckets and DNS in the tree, through Resource Search and the service clients; `ls -l` types and states; cloud tags in `tags`.
 . *Domains, read.* `domains/` over an existing `harbor-oci` state folder — the live compact cluster as the first domain — with `domain status`, `domain verify` and `spend`; the DOMAINS and CAPACITY tiles.
 . *The supervised runner and the `tasks` tier* (#986), shaped by the build's real steps; `domain plan` and `domain build` run `harboroci` steps as tasks; the plan-row answer kind; STEPS tile and domain pane.
+. *The cluster in the tree.* The Kubernetes driver over a domain's kubeconfig; `cluster/` fills in; the CLUSTER and CHRIS halves of the spec; `chris-deploy`, `chris-seed` and `smoke` as steps.
+. *The TD controller* (<<controller>>): the state event, the takeover, the views; mockup and grill first.
 . *Data writes.* Bucket objects and a domain's DNS records through the core file verbs.
 . *Teardown,* designed on its own when it is reached: `harbor-oci`'s placeholder becomes an attribution-scoped plan. It must first be run once by hand there, as every harbor-oci step was.
 . *The handoff* to the domain session, and the TD brand on it.
@@ -310,6 +346,7 @@ Each step is one change or a short series, released on its own; nothing changes 
 * *Host control stays per daemon and off by default:* the `tasks` tier for build steps, `shell` for `!`; the guard refusing a non-loopback bind with any tier on, unless `--expose-host-control` is given, applies unchanged.
 * *Secrets never cross `/vfs`* (<<identity>>).
 * *Spending asks first:* a step that starts billing shows the hourly cost and asks, and a plan that alters existing resources refuses unless asked for by name (<<writes>>).
+* *A browser that reaches the bastion's daemon can spend money,* because its console is a chell on the bastion (<<bastion>>). That is the same power `!` has, gated the same way: the `tasks` tier is chosen at launch, and a non-loopback bind with it on refuses without `--expose-host-control` and a porter door.
 
 [[cautions]]
 == Cautions
@@ -328,5 +365,5 @@ Each step is one change or a short series, released on its own; nothing changes 
 * How the console password reaches an operator (shown once on the terminal; a host command); never through the browser.
 * Whether one session may mount two tenancies from one key file.
 * Domains spanning regions, and a second cloud.
-* Whether the substrate session reads the cluster's own state (nodes, operators, storage) through `oc`, or through a Kubernetes provider in the tree.
+* The bastion inside the tenancy: an instance principal, and who may reach it.
 * porter starting a substrate daemon, and what its door is.

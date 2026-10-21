@@ -1,5 +1,13 @@
 # @fnndsc/salsa
 
+## 4.2.1
+
+### Patch Changes
+
+- Updated dependencies [1e637f1]
+  - @fnndsc/fond@0.5.0
+  - @fnndsc/cumin@3.28.3
+
 ## 4.2.0
 
 ### Minor Changes

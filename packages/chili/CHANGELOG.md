@@ -1,5 +1,14 @@
 # @fnndsc/chili
 
+## 3.7.14
+
+### Patch Changes
+
+- Updated dependencies [1e637f1]
+  - @fnndsc/fond@0.5.0
+  - @fnndsc/cumin@3.28.3
+  - @fnndsc/salsa@4.2.1
+
 ## 3.7.13
 
 ### Patch Changes

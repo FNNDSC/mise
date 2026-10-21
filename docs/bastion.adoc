@@ -8,7 +8,7 @@
 
 == Abstract
 
-A Trusted Domain (TD) is built from a *bastion*: one host that runs the mise stack and, beside it, the tools and the keys for one cloud. There are two bastions, and they are the same shape with different contents. The *Hub bastion* is the cloud controller: it sits at the Hub Trusted Domain, outside every tenancy it builds, holds the cloud keys, and lays a spoke Trusted Domain down in three layers, each through its own door. The *spoke bastion* is a development space inside a spoke's own cluster, next to that spoke's data; it holds a CUBE token and nothing that reaches beyond its project. This document draws the Hub bastion, names what runs where, and corrects two lines in <<stratus.adoc#bastion,stratus.adoc>> that placed the bastion inside the tenancy.
+A Trusted Domain (TD) is built from a *bastion*: one host that runs the mise stack and, beside it, the tools and the keys for one cloud. There are two bastions, and they are the same shape with different contents. The *Hub bastion* is the cloud controller: it sits at the Hub Trusted Domain, outside every tenancy it builds, holds the cloud keys, and lays a spoke Trusted Domain down in three layers, each through its own door. The *spoke bastion* is a runner inside a spoke's own cluster, next to that spoke's cohort: code written at the Hub is shipped to it as source and run there under the spoke's policy, and only `/outgoing` comes back; it holds that TD's CUBE token and nothing else. A third host, the *Hub dev bastion*, is where the developer edits; it holds door tokens for spoke bastions and no cloud key. This document draws the Hub bastion and the spoke bastion, names what runs where, and corrects two lines in <<stratus.adoc#bastion,stratus.adoc>> that placed the bastion inside the tenancy.
 
 The companion documents are <<stratus.adoc#,stratus.adoc>> (the substrate backend the Hub bastion hosts) and <<linux-metaphor.adoc#,linux-metaphor.adoc>> (the machine metaphor every column of the figure is drawn in).
 
@@ -68,17 +68,39 @@ The spoke reads bottom up as a machine: Oracle's API lays the nodes; OpenShift i
 * There is no instance principal. The bastion never runs inside a tenancy, so its identity is the key file, as <<stratus.adoc#identity,stratus.adoc>> describes.
 
 [[spoke]]
-== The spoke bastion
+== The spoke bastion: code comes to the cohort
 
-Inside a spoke Trusted Domain the bastion is a development space: a Linux container with the tools, running in its own project on the spoke's cluster, next to the spoke's data. It is the same shape as the Hub bastion, a mise container, with other contents:
+image::images/bastion-spoke.png[The spoke bastion: the Hub dev bastion on the left, the spoke's bastion host in the centre as a runner, and on the right the logical view, a project directory over a cohort with the policy on its two mounts]
 
-* the mise stack: porter as the door, calypso hosting *this* Trusted Domain's ChRIS session with the `tasks` tier on, chell as the console;
-* a tool image: compilers, `podman`, `chris_plugin`, `pfdo`, `hostlib`, an editor;
-* the keys: a CUBE token for this Trusted Domain and a kubeconfig scoped to this project, to build. No cloud key, no other Trusted Domain.
+The spoke bastion has nothing to do with the cloud, little to do with the cluster, and only one thing to do with ChRIS: ChRIS gathered the cohort and ChRIS receives the results. It is a coding surface over a cohort, in the shape a plugin has from the inside.
 
-Development code lands and runs here. `plugin build` pushes an image to the cluster's internal registry; `plugin register` lands it in this CUBE's register of apps over the CUBE API; a run then happens on the data beside it, staged by pfcon. The Trusted Domain's data is mounted into the container read-only and written only through CUBE. Nothing leaves; the space is destroyed with the Trusted Domain.
+[[spoke-logical]]
+=== The logical view
 
-The development space is not a new backend. It is a host for the ChRIS session, not a world to mount; it would become a backend only if a tree of its own emerged, which would reopen the cross-backend question #977 deferred. OpenShift Dev Spaces ships this shape as a workspace container per developer; whether the spoke bastion is that or a plain Deployment with our image is an implementation choice, and the plain one is smaller. Its figure follows the Hub figure's conventions and is drawn when the space is built.
+* *The cohort* is identified and collected by ChRIS before any code arrives: a feed, a `gather`, one TD's data.
+* *The project directory* is where code lands: `~/project/` with scaffolding pre-built, `incoming/` holding the cohort, `outgoing/` for results, `src/` for the code, and `run`. The shape of a plugin's inside, lived in rather than packaged.
+* *Policy on the two mounts* is a property of the spoke, chosen when its bastion is made for the cohort, never from inside:
+** *open*: `/incoming` is readable; the human or agent reads and manipulates the data directly in the shell; `/outgoing` is visible as written.
+** *sealed*: `/incoming` is a listing, names, sizes and metadata; only code that passed the gate runs against the files, as a job; `/outgoing` is shown per policy, reviewed, de-identified, or whole.
+* *The loop* is edit, run, look at `/outgoing`, repeat, in minutes. Under the sealed policy the run passes the gate and executes against the real `/incoming` while the shell sees only the listing.
+* *The exit* is `/outgoing` returning to ChRIS as a node of the cohort's feed; later, optionally, `plugin build` makes working code a plugin.
+
+[[spoke-host]]
+=== The host
+
+The host is the Hub bastion's shape with other contents (<<host>>): a container in the spoke, one per cohort, whose entrypoint starts porter; porter starts calypso; calypso spawns a pty per console; one path to the shell through chell, calypso and `!` under the `tasks` tier. calypso hosts this TD's ChRIS session with the ordinary trio, salsa, cumin and chrisapi over the CUBE API; its working directory is the project directory, and `/incoming` and `/outgoing` are mounted under the policy above. The shell holds the runtime: python, compilers, the `chris_plugin` scaffolding, `run`, an editor for the exception. The key ring is this TD's CUBE token and nothing else: no cloud key, no kubeconfig, no `oc`. The cluster is the floor the host stands on, not a thing it operates; how the host is built and where it runs is the Hub figure's subject, not this one's.
+
+[[spoke-common]]
+=== The common case: shipped code, no human inside
+
+In the common case the developer, human or agent, sits at the Hub, in a *Hub dev bastion*: a mise container beside the cloud controller and never the same host, holding the same project scaffolding, a door token for each spoke bastion the developer may run in, and no cloud key, no CUBE token, no kubeconfig. An edit at the Hub is shipped as source to each selected spoke's bastion over the wire, through that spoke's door, and run there unattended under that spoke's policy; `/outgoing` is what comes back. One edit, N spoke bastions, N runs, N results: the fan-out is the session's, attaching to N calypsos, not a fleet controller's. <<redhat-fl.adoc#mechanisms,redhat-fl.adoc>> sets this beside the other mechanism, shipping the code as a HARBOR app, and says why the app path is wrong for development: a quarter of an hour per change.
+
+The exception is a developer who logs in at the spoke's own door and works inside it, under the open policy. Same host, a human in it.
+
+[[spoke-not-backend]]
+=== Not a backend
+
+The spoke bastion is a host for a ChRIS session, not a world to mount. It would become a backend only if a tree of its own emerged, which would reopen the cross-backend question #977 deferred. OpenShift Dev Spaces ships a workspace container per developer on one cluster; it has no policy on mounts, no airlock, and is not multi-cluster aware (<<redhat-fl.adoc#survey,redhat-fl.adoc>>). Whether the spoke bastion is built on it or on a plain Deployment with our image is an implementation choice, and the plain one is smaller.
 
 [[corrections]]
 == What this corrects
@@ -89,5 +111,6 @@ Two lines in stratus.adoc placed the bastion inside the tenancy it builds: the b
 == Open
 
 * The Hub bastion as a container on the Hub cluster: its entrypoint, how the key files arrive (mounted Secrets), and who may reach its porter.
-* The spoke bastion's figure, and whether it is OpenShift Dev Spaces or a plain Deployment.
-* One image family for both bastions, or two.
+* Who runs the sealed job in a spoke bastion: the same host with the mount hidden from the shell, or a job the session launches.
+* How source crosses the wire from the Hub dev bastion to a spoke bastion, and how the gate approves it.
+* Whether the spoke bastion is OpenShift Dev Spaces or a plain Deployment; one image family for the three bastions, or more.

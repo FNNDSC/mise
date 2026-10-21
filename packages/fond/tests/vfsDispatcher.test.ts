@@ -161,3 +161,21 @@ describe('a folder that holds only mounts', () => {
     expect(errorStack.stack_getAll()).toEqual([]);
   });
 });
+
+describe('a failed read of a backend container', () => {
+  it('is EISDIR once the dispatcher is told the kind is a container; before, the mount\'s own answer', async () => {
+    const { VFSDispatcher } = await import('../src/vfs/dispatcher');
+    const { vfs_fail } = await import('../src/vfs/outcome');
+    const seen: string[] = [];
+    const tenancy: VFSProvider = {
+      ...mount('/net/oci', seen),
+      async list(): Promise<Result<VFSItem[]>> { return Ok([{ name: 'harbor', type: 'compartment', size: 0, owner: 'o', date: '2026-10-20' }]); },
+      async read(): Promise<VfsOutcome<string>> { return vfs_fail('EIO', 'no such field'); },
+    };
+    const dispatcher = new VFSDispatcher();
+    dispatcher.provider_register(tenancy);
+    expect(await dispatcher.read('/net/oci/harbor')).toEqual({ ok: false, errno: 'EIO', reason: 'no such field' });
+    dispatcher.containerTest_register((type: string): boolean => type === 'dir' || type === 'vfs' || type === 'compartment');
+    expect(await dispatcher.read('/net/oci/harbor')).toEqual({ ok: false, errno: 'EISDIR' });
+  });
+});

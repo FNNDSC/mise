@@ -93,3 +93,16 @@ describe('size_format', () => {
     expect(size_format(5 * 1024 * 1024)).toBe('5 MB');
   });
 });
+
+describe('itemType_isContainer', () => {
+  it('a folder and a mount are containers under any look; a kind is one when the look says so', async () => {
+    const { itemType_isContainer, LISTING_LOOK_PLAIN, LISTING_CORE_KINDS } = await import('../src/vfs/render');
+    expect(itemType_isContainer(LISTING_LOOK_PLAIN, 'dir')).toBe(true);
+    expect(itemType_isContainer(LISTING_LOOK_PLAIN, 'vfs')).toBe(true);
+    expect(itemType_isContainer(LISTING_LOOK_PLAIN, 'file')).toBe(false);
+    expect(itemType_isContainer(LISTING_LOOK_PLAIN, 'compartment')).toBe(false);
+    const look = { kinds: [...LISTING_CORE_KINDS, { type: 'compartment', mark: 'c', container: true }, { type: 'shape', mark: 's' }], name_colorize: (name: string): string => name };
+    expect(itemType_isContainer(look, 'compartment')).toBe(true);
+    expect(itemType_isContainer(look, 'shape')).toBe(false);
+  });
+});

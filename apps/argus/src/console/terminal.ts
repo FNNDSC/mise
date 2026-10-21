@@ -14,19 +14,14 @@
  * @module
  */
 import { ansi_toHtml, html_escape } from './ansi.js';
-import { procPromptState_get, type ProcPromptState, type PromptContext, type WireEnvelope } from '@fnndsc/menu';
+import { type ProcPromptState, type PromptContext, type WireEnvelope } from '@fnndsc/menu';
+import { promptBar_render, type SegmentColor } from './promptBar.js';
 import type { ExecuteOutcome, OutputChannel } from '../calypso/client.js';
 
 /** A completion answer from the wire: candidates and the prefix they complete. */
 export interface CompletionAnswer {
   candidates: string[];
   prefix: string;
-}
-
-/** Foreground/background hex pair for one powerline segment. */
-interface SegmentColor {
-  bg: string;
-  fg: string;
 }
 
 /**
@@ -36,7 +31,7 @@ interface SegmentColor {
  * not import the execution stack.
  */
 const SEGMENT_PALETTE: Record<
-  'pacs' | 'host' | 'user' | 'dir' | 'physical' | 'duration' | 'status',
+  'pacs' | 'host' | 'user' | 'dir' | 'physical' | 'duration' | 'status' | 'time',
   SegmentColor
 > = {
   pacs: { bg: '#875FFF', fg: '#FFFFFF' },
@@ -46,6 +41,7 @@ const SEGMENT_PALETTE: Record<
   physical: { bg: '#FF5F5F', fg: '#1B0000' },
   duration: { bg: '#FF8700', fg: '#201000' },
   status: { bg: '#FF005F', fg: '#FFFFFF' },
+  time: { bg: '#5F5F87', fg: '#FFFFFF' },
 };
 
 /**
@@ -78,10 +74,10 @@ const GLYPHS = {
   microscope: '\uf610',
   bolt: '\uf0e7',
   error: '\uf057',
+  cloud: '\uf0c2',
+  globe: '\uf0ac',
+  sitemap: '\uf0e8',
 } as const;
-
-/** Minimum command duration (ms) before the duration segment appears. */
-const DURATION_THRESHOLD_MS: number = 3_000;
 
 /** How many submitted lines the arrow-key history retains. */
 const HISTORY_LIMIT: number = 200;
@@ -924,67 +920,13 @@ export class ArgusTerminal {
   }
 
   /**
-   * Renders the Powerlevel10k segment bar from the stored context.
+   * Renders the Powerlevel10k segment bar from the stored context
+   * (`promptBar.ts`), with this terminal's glyphs and palette.
    *
    * @returns The prompt bar's inner HTML.
    */
   private promptSegments_render(): string {
-    const context: PromptContext | null = this.promptContext;
-    if (context === null) {
-      return '<span class="dim">argus</span>';
-    }
-    const host: string = context.uri.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '');
-    const homePrefix: string = `/home/${context.user}`;
-    const displayPath: string = context.cwd.startsWith(homePrefix)
-      ? `~${context.cwd.slice(homePrefix.length)}`
-      : context.cwd;
-
-    // Segment order tracks chell's p10k theme: [pacs] host user dir
-    // [physical] [duration] [status]. The daemon pushes every fact used here.
-    const segments: Array<{ text: string; color: SegmentColor }> = [];
-    if (context.pacsserver !== null && context.pacsserver.length > 0) {
-      segments.push({
-        text: `${GLYPHS.database} ${context.pacsserver}`,
-        color: SEGMENT_PALETTE.pacs,
-      });
-    }
-    segments.push(
-      { text: `${GLYPHS.cube} ${host}`, color: SEGMENT_PALETTE.host },
-      { text: `${GLYPHS.user} ${context.user}`, color: SEGMENT_PALETTE.user },
-      { text: `${GLYPHS.folder} ${displayPath}`, color: SEGMENT_PALETTE.dir },
-    );
-    if (context.physicalMode) {
-      segments.push({ text: `${GLYPHS.microscope} PHYSICAL`, color: SEGMENT_PALETTE.physical });
-    }
-    if (context.procWarmup !== undefined) {
-      const state: ProcPromptState = procPromptState_get(context.procWarmup);
-      const presentation = PROC_STATE_SEGMENTS[state];
-      segments.push({
-        text: `${presentation.icon} ${presentation.label}: ${procProgress_format(context.procWarmup.loaded, context.procWarmup.total ?? 0)}`,
-        color: presentation.color,
-      });
-    }
-    if (context.lastCommandDurationMs >= DURATION_THRESHOLD_MS) {
-      const seconds: number = Math.floor(context.lastCommandDurationMs / 1000);
-      segments.push({ text: `${GLYPHS.bolt} ${seconds}s`, color: SEGMENT_PALETTE.duration });
-    }
-    if (context.lastExitCode !== 0) {
-      segments.push({ text: `${GLYPHS.error} ${context.lastExitCode}`, color: SEGMENT_PALETTE.status });
-    }
-
-    let bar: string = '';
-    for (let index: number = 0; index < segments.length; index++) {
-      const segment = segments[index];
-      if (segment === undefined) {
-        continue;
-      }
-      bar += `<span style="color:${segment.color.fg};background-color:${segment.color.bg}"> ${html_escape(segment.text)} </span>`;
-      const next = segments[index + 1];
-      bar += next !== undefined
-        ? `<span style="color:${segment.color.bg};background-color:${next.color.bg}">${GLYPHS.powerline}</span>`
-        : `<span style="color:${segment.color.bg}">${GLYPHS.powerline}</span>`;
-    }
-    return bar;
+    return promptBar_render(this.promptContext, { glyphs: GLYPHS, palette: SEGMENT_PALETTE, procStates: PROC_STATE_SEGMENTS });
   }
 }
 
@@ -1029,16 +971,3 @@ function commonPrefix_find(candidates: string[]): string {
   return common;
 }
 
-/**
- * Formats warm-up progress for the proc segment, mirroring chell's prompt
- * utils (duplicated by value: argus may not import the execution stack).
- *
- * @param loaded - Plugin instances currently indexed.
- * @param total - Authoritative total, or 0 when CUBE has not reported one.
- * @returns `loaded/total percent%`, or `loaded/?` without a total.
- */
-function procProgress_format(loaded: number, total: number): string {
-  if (total <= 0) return `${loaded}/?`;
-  const percent: number = Math.min(99, Math.floor((loaded / total) * 100));
-  return `${loaded}/${total} ${percent}%`;
-}

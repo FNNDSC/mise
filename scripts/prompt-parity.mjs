@@ -36,6 +36,9 @@ const GLYPH_MAP = {
   microscope: 'ICON_MICROSCOPE',
   bolt: 'ICON_BOLT',
   error: 'ICON_ERROR',
+  cloud: 'ICON_CLOUD',
+  globe: 'ICON_GLOBE',
+  sitemap: 'ICON_SITEMAP',
 };
 
 /** argus palette key to the chell PROMPT_PALETTE key it must equal. */
@@ -47,6 +50,7 @@ const PALETTE_MAP = {
   physical: 'PHYSICAL',
   duration: 'DURATION',
   status: 'STATUS',
+  time: 'TIME',
 };
 
 /**

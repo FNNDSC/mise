@@ -1217,6 +1217,17 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
   -webkit-mask: url('../assets/brand/ChRISlogo-color.svg') no-repeat center / contain;
 }
 
+/* The stratus composition's mark: the Trusted Domain's North Star in the
+ * driver's ring (OCI: Oracle red). Drawn as an image, not a mask: the mark
+ * is two colours. */
+.brand-mark.brand-mark-td {
+  width: 3.2rem;
+  aspect-ratio: 240 / 290;
+  background: url('../assets/brand/td-oci.svg') no-repeat center / contain;
+  mask: none;
+  -webkit-mask: none;
+}
+
 /* ----------------------------------------------------------- elastic gutter */
 /* The theme sizes the gutter buttons in fixed viewport fractions (21vw,
  * 30vh, ...) that sum past any real window once the page stopped
@@ -7363,6 +7374,10 @@ body[data-zoom] #header-strip {
  * another backend has the frame alone. One declaration on the body
  * (`data-composition`) carries which. */
 body:not([data-composition="chris"]) [data-composition="chris"] {
+  display: none !important;
+}
+
+body:not([data-composition="stratus"]) [data-composition="stratus"] {
   display: none !important;
 }
 

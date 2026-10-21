@@ -4,9 +4,9 @@
  * One backend for every cloud (docs/stratus.adoc, D1): its id is `stratus`,
  * its filesystem is the tenancy tree over whichever driver it was given, its
  * identity the cloud user at the tenancy. It registers no commands yet and
- * no answer kinds (every row is a folder or a file, D5); the prompt is the
- * wire's ChRIS-shaped context filled with what a substrate session has,
- * until the segments of D9 land.
+ * no answer kinds (every row is a folder or a file, D5). Its prompt is the
+ * wire's ChRIS-shaped context filled with what a substrate session has, plus
+ * the backend-neutral segments of D9 (`prompt.ts`) a surface draws in order.
  *
  * @module
  */
@@ -18,6 +18,7 @@ import { AnswerCache } from './cache.js';
 import { StratusSession } from './session.js';
 import { TenancyProvider } from './vfs/tenancy.js';
 import { stratusListingLook } from './vfs/look.js';
+import { stratusSegments_build } from './prompt.js';
 
 /** How the backend is made. */
 export interface StratusBackendOptions {
@@ -58,15 +59,19 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
     },
     completion: { rootWords: ['net'] },
     listingLook: stratusListingLook,
-    prompt: async (last?: PromptLastCommand): Promise<PromptContext> => ({
-      user: (await session.user_get()) ?? 'disconnected',
-      uri: session.identity?.tenancy ?? '',
-      cwd: session.cwd_get() ?? (await session.home_get()),
-      pacsserver: null,
-      physicalMode: false,
-      lastExitCode: last?.lastExitCode ?? 0,
-      lastCommandDurationMs: last?.lastCommandDurationMs ?? 0,
-    }),
+    prompt: async (last?: PromptLastCommand): Promise<PromptContext> => {
+      const cwd: string = session.cwd_get() ?? (await session.home_get());
+      return {
+        user: (await session.user_get()) ?? 'disconnected',
+        uri: session.identity?.tenancy ?? '',
+        cwd,
+        pacsserver: null,
+        physicalMode: false,
+        lastExitCode: last?.lastExitCode ?? 0,
+        lastCommandDurationMs: last?.lastCommandDurationMs ?? 0,
+        segments: stratusSegments_build(session, cwd),
+      };
+    },
   };
   return { backend, session, tenancy };
 }

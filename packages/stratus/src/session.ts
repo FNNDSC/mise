@@ -72,6 +72,11 @@ export class StratusSession implements BackendSession {
     this.regionCurrent = region;
   }
 
+  /** The cloud's name as the prompt leads with it: the driver's id in capitals (`OCI`). */
+  get cloudLabel(): string {
+    return this.driver.cloud.toUpperCase();
+  }
+
   /** The mount the tenancy lives under. */
   get mount(): string {
     return `/net/${this.driver.cloud}`;

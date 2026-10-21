@@ -699,6 +699,30 @@ export function promptKind_of(prompt: {
  * Rendering inputs a surface owns (theme, segments, terminal width) are not
  * carried here.
  */
+/**
+ * The tones a prompt segment may wear. A backend says what a segment is for;
+ * each surface maps a tone to its own palette, so no colour crosses the wire.
+ */
+export const PROMPT_SEGMENT_TONES = ['leader', 'place', 'identity', 'path', 'work', 'note', 'alert'] as const;
+
+export type PromptSegmentTone = typeof PROMPT_SEGMENT_TONES[number];
+
+/**
+ * One backend-neutral prompt segment (docs/stratus.adoc, D9): a key the
+ * surface may recognise for a glyph, a label for a reader who meets the key
+ * cold, the value, and a tone. A backend fills them in display order and a
+ * surface draws them in that order; a surface older than the field ignores
+ * them and draws the ChRIS-shaped fields it knows.
+ */
+export const promptSegmentSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  value: z.string(),
+  tone: z.enum(PROMPT_SEGMENT_TONES),
+});
+
+export type PromptSegment = z.infer<typeof promptSegmentSchema>;
+
 export const promptContextSchema = z.object({
   user: z.string(),
   uri: z.string(),
@@ -750,6 +774,11 @@ export const promptContextSchema = z.object({
   })).optional(),
   /** How many questions are open in the session, on any surface. Optional, so an older daemon still parses here. */
   questions: z.number().optional(),
+  /**
+   * Backend-neutral segments a surface draws in order, when a backend sends
+   * them; absent from a ChRIS daemon, whose prompt is the named fields above.
+   */
+  segments: z.array(promptSegmentSchema).optional(),
 });
 
 export type PromptContext = z.infer<typeof promptContextSchema>;

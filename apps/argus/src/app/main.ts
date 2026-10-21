@@ -26,6 +26,7 @@ import { linkLanding_parse, type LinkLanding } from './link.js';
 import { shareSheet_open, viewLink_parse, viewScript_compose } from './shareView.js';
 import { PanesPanel } from '../features/panes/panel.js';
 import { logo_linesRender } from '@fnndsc/menu/logo';
+import { tdMark_linesRender } from '@fnndsc/menu/logo/td';
 import { backend_ask, wireUrl_resolve, vfsUrl_build as routeVfsUrl_build, downloadUrl_build as routeDownloadUrl_build, door_isPresent, doorUrl_build } from '../calypso/routes.js';
 import {
   ArgusClient,
@@ -135,6 +136,12 @@ import type { TerminalScreen } from '../console/terminalScreen.js';
  * about projections: the brain says ChRIS, the pane's title says ARGUS.
  */
 const SPLASH_BRAIN: string[] = logo_linesRender(true);
+
+/** The stratus composition's splash: the Trusted Domain mark in the driver's ring. */
+const SPLASH_TD: string[] = tdMark_linesRender(true);
+
+/** The stratus composition's tab mark: the same TD mark (docs/stratus.adoc, D11). */
+const TD_FAVICON: string = new URL('../assets/brand/td-oci.svg', import.meta.url).href;
 
 /** The frame's own tab mark: a rounded LCARS block in the frame's blue, no backend's logo. */
 const FRAME_FAVICON: string = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#000"/><rect x="6" y="14" width="52" height="36" rx="18" fill="#20bdef"/><rect x="34" y="14" width="24" height="36" fill="#20bdef"/></svg>')}`;
@@ -2522,10 +2529,14 @@ async function surface_start(token: string): Promise<void> {
     void cohortModule.restore();
   }
   mode_show('READY');
-  // The splash is the composition's: ChRIS's brain, or the frame's own line.
-  terminal.splash_write(chris ? SPLASH_BRAIN : []);
-  if (!chris) terminal.line_note(`mise · a session over the ${backend} backend: its files, the console, the frame`);
-  if (!chris) favicon_set(FRAME_FAVICON);
+  // The splash is the composition's: ChRIS's brain, stratus's TD mark, or
+  // the frame's own line; the tab's mark follows it.
+  const stratus: boolean = backend === 'stratus';
+  terminal.splash_write(chris ? SPLASH_BRAIN : stratus ? SPLASH_TD : []);
+  if (stratus) terminal.line_note('stratus · a session over the cloud substrate a Trusted Domain runs on: the tenancy under /net, the console, the frame');
+  else if (!chris) terminal.line_note(`mise · a session over the ${backend} backend: its files, the console, the frame`);
+  if (stratus) favicon_set(TD_FAVICON);
+  else if (!chris) favicon_set(FRAME_FAVICON);
   terminal.prompt_draw();
   terminal.focus_take();
   // The greeting is the session's to give, beneath the brain; the build notes follow it.

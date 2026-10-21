@@ -12,7 +12,7 @@
  */
 
 import chalk from 'chalk';
-import { procPromptState_get, type ProcPromptState } from '@fnndsc/menu';
+import { procPromptState_get, type ProcPromptState, type PromptSegment } from '@fnndsc/menu';
 import type { PromptContext, PromptTheme } from './index.js';
 import { PROMPT_PALETTE, statusColor_get, type HexColor } from './palette.js';
 import {
@@ -40,6 +40,16 @@ const PROC_STATE_LABELS: Record<ProcPromptState, string> = {
 export class ThemeDefault implements PromptTheme {
   render(ctx: PromptContext): string {
     const limit: number = Math.floor(ctx.terminalWidth * FILL_RATIO);
+    const wire: ReadonlyArray<PromptSegment> = ctx.segments ?? [];
+    if (wire.length > 0) {
+      // A backend's segments, plainly: the leading ones space-separated, the
+      // working directory after a colon, the glyph coloured by the last exit.
+      const cwd: string = wire.find((segment: PromptSegment): boolean => segment.key === 'cwd')?.value ?? ctx.cwd;
+      const head: string = wire.filter((segment: PromptSegment): boolean => segment.key !== 'cwd').map((segment: PromptSegment): string => segment.value).join(' ');
+      const budget: number = limit - head.length - 3;
+      const wirePath: string = path_truncate(cwd, Math.max(budget, 4));
+      return `${head}:${wirePath}${chalk.hex(statusColor_get(ctx.lastExitCode))('$ ')}`;
+    }
     const modePrefix: string = ctx.physicalMode
       ? chalk.hex(PROMPT_PALETTE.PHYSICAL.bg)('[PHYSICAL] ')
       : '';

@@ -72,13 +72,13 @@ The spoke reads bottom up as a machine: Oracle's API lays the nodes; OpenShift i
 
 image::images/bastion-spoke.png[The spoke bastion. Top row: the developer at the Hub, the Hub dev bastion where code is written, the spoke bastion where it runs. Below: the logical view, a project directory over a cohort with the policy on its two mounts, and /outgoing returning to the developer]
 
-The spoke bastion has nothing to do with the cloud, little to do with the cluster, and only one thing to do with ChRIS: ChRIS gathered the cohort and ChRIS receives the results. It is a coding surface over a cohort, in the shape a plugin has from the inside. <<dev-bastion.adoc#,dev-bastion.adoc>> is its own document: the problem, the mechanism, and the reasons behind the policy; this section is the summary.
+The spoke bastion has nothing to do with the cloud, little to do with the cluster, and only one thing to do with ChRIS: ChRIS gathered the cohort and ChRIS receives the results. It is a coding surface over a cohort: a host with a shell, a project directory, and two mounted directories. It is not a plugin and runs nothing as one. <<dev-bastion.adoc#,dev-bastion.adoc>> is its own document: the problem, the mechanism, and the reasons behind the policy; this section is the summary.
 
 [[spoke-logical]]
 === The logical view
 
 * *The cohort* is identified and collected by ChRIS before any code arrives: a feed, a `gather`, one TD's data.
-* *The project directory* is where code lands: `~/project/` with scaffolding pre-built, `incoming/` holding the cohort, `outgoing/` for results, `src/` for the code, and `run`. The shape of a plugin's inside, lived in rather than packaged.
+* *The project directory* is where code lands: `~/project/` with scaffolding pre-built, `incoming/` holding the cohort, `outgoing/` for results, `src/` for the code, and `run`. Code runs as an ordinary process in the shell; the two directories are its whole data surface.
 * *Policy on the two mounts* is a property of the spoke, chosen when its bastion is made for the cohort, never from inside:
 ** *open*: `/incoming` is readable; the human or agent reads and manipulates the data directly in the shell; `/outgoing` is visible as written.
 ** *sealed*: `/incoming` is a listing, names, sizes and metadata; only code that passed the gate runs against the files, as a job; `/outgoing` is shown per policy, reviewed, de-identified, or whole.
@@ -88,7 +88,7 @@ The spoke bastion has nothing to do with the cloud, little to do with the cluste
 [[spoke-host]]
 === The host
 
-The host is the Hub bastion's shape with other contents (<<host>>): a container in the spoke, one per cohort, whose entrypoint starts porter; porter starts calypso; calypso spawns a pty per console; one path to the shell through chell, calypso and `!` under the `tasks` tier. calypso hosts this TD's ChRIS session with the ordinary trio, salsa, cumin and chrisapi over the CUBE API; its working directory is the project directory, and `/incoming` and `/outgoing` are mounted under the policy above. The shell holds the runtime: python, compilers, the `chris_plugin` scaffolding, `run`, an editor for the exception. The key ring is this TD's CUBE token and nothing else: no cloud key, no kubeconfig, no `oc`. The cluster is the floor the host stands on, not a thing it operates; how the host is built and where it runs is the Hub figure's subject, not this one's.
+The host is the Hub bastion's shape with other contents (<<host>>): a container in the spoke, one per cohort, whose entrypoint starts porter; porter starts calypso; calypso spawns a pty per console; one path to the shell through chell, calypso and `!` under the `tasks` tier. calypso hosts this TD's ChRIS session with the ordinary trio, salsa, cumin and chrisapi over the CUBE API; its working directory is the project directory, and `/incoming` and `/outgoing` are mounted under the policy above. The shell holds the runtime: python, compilers, the project scaffolding, `run`, an editor for the exception. The key ring is this TD's CUBE token and nothing else: no cloud key, no kubeconfig, no `oc`. The cluster is the floor the host stands on, not a thing it operates; how the host is built and where it runs is the Hub figure's subject, not this one's.
 
 [[spoke-common]]
 === The common case: shipped code, no human inside

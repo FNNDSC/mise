@@ -1,0 +1,93 @@
+= Edit at one OpenShift, run in many: what Red Hat ships, and what HARBOR needs
+:toc: left
+:toclevels: 2
+:sectnums:
+:sectanchors:
+:source-highlighter: rouge
+:icons: font
+
+== Abstract
+
+HARBOR is a fleet of Trusted Domains (TDs), each an OpenShift cluster on its own tenancy holding data that may not move. Its basic need is one primitive: a developer, human or agent, works in one place, the Hub, and runs the same code in many spokes against each spoke's cohort, with only results coming back. Everything else in HARBOR hangs off that primitive: `gather`, policy on what code may see and emit, provenance, the two bastions (<<bastion.adoc#,bastion.adoc>>). This document records what Red Hat's products offer against that primitive, verified against public material on 2026-10-21, and the two mechanisms HARBOR uses to supply it. It is a survey with a date; the products move, the need does not.
+
+The finding in one sentence: Red Hat ships the fleet plane, the per-cluster workspace and the per-cluster compute, and a community pattern that uses the fleet plane for one kind of job; it ships no "code here, run there" loop, and nothing with data policy or an output airlock.
+
+[[need]]
+== The need, stated precisely
+
+* *N clusters, one developer.* The spokes are separate OpenShift clusters, each on its own cloud tenancy, each holding a cohort that stays where it is. The developer sits at the Hub.
+* *The same code, everywhere, now.* An edit at the Hub runs in every selected spoke against that spoke's cohort. The turnaround is a developer's loop: seconds to minutes, not a release.
+* *Only results come back.* Each spoke returns what its policy allows from `/outgoing`: whole, reviewed, or de-identified. Raw data never crosses a TD boundary.
+* *Under policy and with provenance.* What the code may read (`/incoming` open or listed) and what may leave are properties of the spoke, set before the code arrives; every run is a node in that TD's ChRIS feed.
+
+Without the primitive each spoke is an island, and multi-site analysis means pooling data, which a Trusted Domain forbids.
+
+[[survey]]
+== What Red Hat ships, product by product
+
+[cols="1,2,2",options="header"]
+|===
+| Product | What it does | Against the need
+| Red Hat Advanced Cluster Management (RHACM), on Open Cluster Management (OCM) | A hub and spokes. `Placement` picks clusters; `ManifestWork` carries manifests to them; the klusterlet on each spoke pulls the desired state and reports conditions back. Application delivery is Argo CD `ApplicationSet` with `Placement`; the older `Subscription` model is deprecated in 2.16. | A deployment plane for declared state, not a run loop. Feedback is scalar JSONPaths on resource status; a Job's output, logs or files have no path to the hub, and an upstream request for even a Job's status through `ManifestWork` (ACM-1055) was open when read. Nothing per developer, nothing interactive.
+| OpenShift GitOps (Argo CD) | Pushes from Git to remote clusters; a central Argo can target a fleet, namespace-scoped instances restrict teams. | Outer loop only. The unit of change is a commit and a sync, not an edit.
+| OpenShift Dev Spaces (Eclipse Che) | A workspace container per developer on one cluster, devfile scaffolding, browser IDE. | "Not multi-cluster aware by design"; one instance per cluster. The documented multi-cluster answer is a redirector that sends a developer to another cluster's instance. The inner loop never leaves the cluster it runs on. No notion of data policy, listed-only mounts or output review.
+| OpenShift AI, distributed workloads | Ray and Kubeflow training across the worker nodes of one cluster; Kueue for queueing and quota. | Multi-node within one cluster. Upstream Kueue's MultiKueue dispatches a job to whichever worker cluster admits it first, for capacity, not to all clusters for data; no Red Hat document supporting MultiKueue in OpenShift AI was found.
+| OpenShift Pipelines (Tekton) | CI on a cluster; can build and ship to others through GitOps. | Build and promote; not a developer's loop, no data semantics.
+| Federated learning on OCM (two Red Hat blog posts, 2026-01-16 and 2026-03-11) | A federated-learning controller and a Flower addon in OCM's community `addon-contrib`: a `FederatedLearning` resource on the hub; `Placement` picks client clusters by data locality; `ManifestWorkReplicaSet` distributes the client app; clients train locally and return model updates to an aggregator on the hub. | The closest thing to the primitive, for exactly one workload type. Community patterns, not supported features; what comes back is model weights; no code loop, no output review, no provenance. The posts' own framing, "bring the model to the data", is HARBOR's framing.
+| Trusted research environment, airlock | None found under Red Hat. The terms appear from vendors (Lifebit) and from data custodians (CPRD's airlock for output checking). | The governance half of the need has no Red Hat product behind it.
+|===
+
+[[gap]]
+== The gap
+
+The parts exist: a fleet plane (OCM), a per-cluster workspace (Dev Spaces), per-cluster compute (OpenShift AI), a per-cluster build (Pipelines), a fleet-wide sync (GitOps). The composition does not. Specifically absent:
+
+* *A developer's loop across clusters.* No product takes an edit at one cluster and runs it on N others with results returned to the editor. The fleet plane moves state; the workspace is pinned to its cluster; the FL pattern moves one container and returns one artifact.
+* *Data policy as a property of the run.* Nothing in the stack knows `/incoming` and `/outgoing`, open or listed, or an airlock on output. Policy engines (Gatekeeper, Kyverno) constrain pods, not what code may see.
+* *Provenance tied to cohorts.* No product records "this code, this cohort, this output" as a first-class object. ChRIS feeds do.
+
+This is the thing HARBOR adds on top of OpenShift, and the sentence for a Red Hat audience: *you ship the fleet and the workspace; HARBOR is the loop between them, under policy, with provenance.*
+
+[[mechanisms]]
+== Two mechanisms HARBOR uses
+
+Both move code to data; they differ in what moves and how fast.
+
+[[ship-app]]
+=== Ship a HARBOR app
+
+The developer at the Hub writes the code, packs it as a HARBOR app (a ChRIS plugin, a container), and ships the container to a collection of spokes with the same cohort mapping as a `gather`. Each spoke's ChRIS runs it as a plugin instance on its cohort; `/outgoing` returns per policy; each run is a feed node. This is the plugin path, and it is the right path for a finished method, a repeated analysis, or a federated-learning round. It is the shape the Red Hat FL pattern has for one workload; HARBOR has it for any plugin.
+
+It is counter-indicated for development. The smallest change rebuilds a container and redistributes it across the network; a `print()` costs the build, the push, the pull and the scheduling, a quarter of an hour where a developer needs a second.
+
+[[ship-code]]
+=== Ship the code
+
+The developer at the Hub edits in a dev bastion there; the code, and only the code, is transmitted to the spoke TD's bastion and run there, in a project directory that already has the toolchain and the cohort at `/incoming` under that spoke's policy. Results return from `/outgoing`, again per policy. The image never moves; the runtime is already in the spoke bastion; what crosses the wire is source, and the turnaround is the turnaround of a shell.
+
+This is the mechanism the spoke bastion exists for (<<bastion.adoc#spoke,bastion.adoc>>). In the common case the spoke bastion has no human inside: it is a runner with the sealed policy on, driven from the Hub. The open interactive mode is the exception, for code that cannot be written blind.
+
+What the second mechanism asks of mise, and nothing else supplies:
+
+* *A door per spoke bastion.* The Hub developer holds a dev-space credential for each spoke they may run in (a porter door token), never a cloud key and never a cluster role. The key-ring rule of <<bastion.adoc#posture,bastion.adoc>> holds: each key ring stays inside the boundary it belongs to.
+* *Code over the wire.* The Hub session attaches to each spoke's calypso and lands the code in the project directory through the `tasks` tier, then runs it. One edit, N attaches, N runs: the fan-out is the session's, not a fleet controller's.
+* *The gate on code, not on images.* In sealed mode the spoke's policy approves the code that may touch `/incoming`; the container was approved when the bastion was made.
+* *Results as feed nodes.* Each spoke's `/outgoing` lands in that TD's ChRIS; the Hub reads back what policy allows.
+
+When the code is done, the first mechanism takes over: `plugin build` turns the project into a HARBOR app and the fleet runs it without a developer in the loop.
+
+[[sources]]
+== Sources, read 2026-10-21
+
+* https://www.redhat.com/en/resources/advanced-cluster-management-kubernetes-datasheet[RHACM datasheet]: placement across a fleet or specific clusters.
+* https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes/2.16/pdf/applications/Red_Hat_Advanced_Cluster_Management_for_Kubernetes-2.16-Applications-en-US.pdf[RHACM 2.16 Applications]: `Subscription` deprecated; `ApplicationSet` with `Placement`.
+* https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes/2.17/pdf/release_notes/Red_Hat_Advanced_Cluster_Management_for_Kubernetes-2.17-Release_notes-en-US.pdf[RHACM 2.17 release notes]: pull-model applications and `PlacementDecision` requirements.
+* https://github.com/open-cluster-management-io/api/blob/main/docs/manifestwork.md[OCM `ManifestWork` API]: hub creates work in the cluster namespace, agent applies and syncs conditions back; feedback rules are scalar JSONPaths.
+* https://issues.redhat.com/browse/ACM-1055[ACM-1055]: request for the status of a Job run through `ManifestWork`.
+* https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/plan-con_multi_cluster_deployments[Dev Spaces 3.30, multi-cluster architectures]: not multi-cluster aware by design; one instance per cluster; redirector.
+* https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/pdf/working_with_distributed_workloads/Red_Hat_OpenShift_AI_Self-Managed-3.4-Working_with_distributed_workloads-en-US.pdf[OpenShift AI 3.4, distributed workloads]: Ray and Kubeflow across the nodes of one cluster.
+* https://kueue.sigs.k8s.io/docs/concepts/multikueue/[Kueue MultiKueue]: manager and worker clusters; a workload runs on the first cluster to admit it.
+* https://www.redhat.com/en/blog/empowering-federated-learning-multicluster-management[Red Hat blog, 2026-01-16: federated learning with multicluster management]: FL controller in `addon-contrib`, `FederatedLearning` resource, Flower and OpenFL, model updates back to the hub.
+* https://www.redhat.com/en/blog/scaling-enterprise-federated-ai-with-flower-and-open-cluster-management[Red Hat blog, 2026-03-11: Flower and Open Cluster Management]: Flower addon, SuperLink on the hub, SuperNode per cluster, `ManifestWorkReplicaSet` with `Placement`; "works in both OCM and ACM environments".
+* https://www.redhat.com/en/blog/openshift-pipelines-and-openshift-gitops-are-now-generally-available[OpenShift Pipelines and GitOps GA]: Argo CD as a central hub pushing to remote clusters.
+* https://www.cprd.com/patients-reviewed-our-cprd-trusted-research-environment-airlock-system[CPRD: the TRE airlock]: output checking before release, the governance half HARBOR's policy supplies.

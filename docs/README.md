@@ -80,6 +80,7 @@ documentation; for using the shell and the packages, see the per-package READMEs
 - **[trek.adoc](trek.adoc)** — trek, the BSD trek(6) port: `bsd-trek` on npm (name, licence, saves, publishing by hand first), the boundary that keeps it free of mise's internals (`lint:trek`), typed asks from its questions, and the ARGUS bridge that takes the whole screen (header of ship state, stations that follow the question); the first package built as if from outside, and what is deferred until a second consumer.
 - **[stratus.adoc](stratus.adoc)** — the substrate backend: a cloud tenancy mounted under `/net`, clouds as drivers inside one backend, `domain` verbs over build steps as tasks, the TD controller, and a fleet of Trusted Domains later.
 - **[bastion.adoc](bastion.adoc)** — the bastion: the mise stack as the Trusted Domain builder. The Hub bastion as the cloud controller (one host, one path to its shell, three layers through three doors) and the spoke bastion as a development space beside the data; the figure, and what it corrects in stratus.adoc.
+- **[redhat-fl.adoc](redhat-fl.adoc)** — edit at one OpenShift, run in many: HARBOR's basic need stated precisely, what Red Hat ships against it product by product (RHACM/OCM, GitOps, Dev Spaces, OpenShift AI, the federated-learning patterns on OCM), the gap, and HARBOR's two mechanisms, ship the app and ship the code; a dated survey with sources.
 
 - **[feed-dag-viewer.adoc](feed-dag-viewer.adoc)** — the shipped cache-first
   feed and pipeline diagram model, including shallow trees, topological joins,

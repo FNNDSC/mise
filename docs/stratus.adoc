@@ -41,7 +41,7 @@ They are separate calypso daemons, as #977's <<backend-neutral.adoc#one-backend,
 [[bastion]]
 === The bastion, and chell as the surface
 
-The substrate daemon runs on one host, the *bastion*: the machine that holds the cloud credential, the Red Hat service account, the SSH key and, once a domain is built, its kubeconfig. Today it is the operator's workstation; later a small instance inside the tenancy, using an instance principal (<<identity>>). Nothing else ever holds those files.
+The substrate daemon runs on one host, the *bastion*: the machine that holds the cloud credential, the Red Hat service account, the SSH key and, once a domain is built, its kubeconfig. It is a host at the Hub Trusted Domain, outside every tenancy it builds: the operator's workstation today, a container on the Hub cluster later (<<bastion.adoc#,bastion.adoc>> draws it). Nothing else ever holds those files.
 
 chell on the bastion is the surface that drives a Trusted Domain: `suggest`, `domain new`, `domain plan`, `domain build`. ARGUS drives it the same way, because since #1125 the ARGUS console is a chell running on the daemon's host under a pty: typing in the browser is typing at the bastion. There is no web-only path to start a step; a control on a pane or on the controller (<<controller>>) runs a console line, as #1082's law says a view is a script. What ARGUS adds is watching and shaping: tiles, the domain pane, the log view, the controller, the brand.
 
@@ -258,7 +258,7 @@ There is no `terraform` command: Terraform runs only inside `domain` steps, wher
 [[identity]]
 === D8. Identity and credentials stay on the daemon's host
 
-* The driver supplies the identity. For OCI the daemon reads an API-key profile from `~/.oci/config` (`--profile`, default `DEFAULT`); instance principals come later, for a daemon running inside the tenancy.
+* The driver supplies the identity. For OCI the daemon reads an API-key profile from `~/.oci/config` (`--profile`, default `DEFAULT`). There is no instance principal: the bastion never runs inside a tenancy it builds (<<bastion.adoc#posture,bastion.adoc>>).
 * The identity is the IAM user's name (looked up from the user OCID) at the tenancy's name: berth `user@tenancy`, the same form on every cloud. On the live tenancy the user's name is an e-mail address (`rudolph.pienaar@childrens.harvard.edu@fnndsc-bch`): two `@` in a berth, kept as the cloud writes it rather than shortened and made ambiguous. Open: whether a berth should show the local part only. The region belongs to the session, not the identity, so changing region keeps the berth.
 * The Red Hat service account and the SSH key are daemon settings, as in `harbor-oci`'s `config.local.env`.
 * *Secrets are never files the browser can read.* `domains/<td>/cluster/` shows `console api version nodes/`; the kubeconfig and the kubeadmin password live on the host under the domain's state, and `cat` and `/vfs` refuse them with the host path. `oc` and `helm` under the `tasks` tier read the kubeconfig on the host themselves. How an operator gets the console password is <<open,open>>; whatever it is, it is never through the browser.
@@ -382,6 +382,6 @@ Sources: https://www.redhat.com/en/technologies/management/advanced-cluster-mana
 * How the console password reaches an operator (shown once on the terminal; a host command); never through the browser.
 * Whether one session may mount two tenancies from one key file.
 * Domains spanning regions, and a second cloud.
-* The bastion inside the tenancy: an instance principal, and who may reach it.
+* The Hub bastion as a container on the Hub cluster: its entrypoint, how the key files arrive, and who may reach its porter (<<bastion.adoc#open,bastion.adoc>>).
 * A fleet: when, and whose hub (<<fleet>>).
 * porter starting a substrate daemon, and what its door is.

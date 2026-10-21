@@ -1,5 +1,12 @@
 # @fnndsc/cumin
 
+## 3.28.3
+
+### Patch Changes
+
+- Updated dependencies [1e637f1]
+  - @fnndsc/fond@0.5.0
+
 ## 3.28.2
 
 ### Patch Changes

@@ -70,7 +70,7 @@ The spoke reads bottom up as a machine: Oracle's API lays the nodes; OpenShift i
 [[spoke]]
 == The spoke bastion: code comes to the cohort
 
-image::images/bastion-spoke.png[The spoke bastion: the Hub dev bastion on the left, the spoke's bastion host in the centre as a runner, and on the right the logical view, a project directory over a cohort with the policy on its two mounts]
+image::images/bastion-spoke.png[The spoke bastion. Top row: the developer at the Hub, the Hub dev bastion where code is written, the spoke bastion where it runs. Below: the logical view, a project directory over a cohort with the policy on its two mounts, and /outgoing returning to the developer]
 
 The spoke bastion has nothing to do with the cloud, little to do with the cluster, and only one thing to do with ChRIS: ChRIS gathered the cohort and ChRIS receives the results. It is a coding surface over a cohort, in the shape a plugin has from the inside.
 

@@ -72,7 +72,7 @@ The spoke reads bottom up as a machine: Oracle's API lays the nodes; OpenShift i
 
 image::images/bastion-spoke.png[The spoke bastion. Top row: the developer at the Hub, the Hub dev bastion where code is written, the spoke bastion where it runs. Below: the logical view, a project directory over a cohort with the policy on its two mounts, and /outgoing returning to the developer]
 
-The spoke bastion has nothing to do with the cloud, little to do with the cluster, and only one thing to do with ChRIS: ChRIS gathered the cohort and ChRIS receives the results. It is a coding surface over a cohort, in the shape a plugin has from the inside.
+The spoke bastion has nothing to do with the cloud, little to do with the cluster, and only one thing to do with ChRIS: ChRIS gathered the cohort and ChRIS receives the results. It is a coding surface over a cohort, in the shape a plugin has from the inside. <<dev-bastion.adoc#,dev-bastion.adoc>> is its own document: the problem, the mechanism, and the reasons behind the policy; this section is the summary.
 
 [[spoke-logical]]
 === The logical view

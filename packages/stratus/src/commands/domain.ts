@@ -11,12 +11,14 @@
  * @module
  */
 import chalk from 'chalk';
-import { envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/menu';
+import { envelope_error, envelope_ok, STRATUS_DOMAINS_MODEL_KIND, type CommandEnvelope, type DomainSummary, type DomainsModel } from '@fnndsc/menu';
 import type { CommandGroup, CommandHelp } from '@fnndsc/brasa/core';
 import type { CloudDriver, ResourceCounts } from '../cloud/driver.js';
 import type { HarborDomain, StepState } from '../domains/harborOci.js';
 import type { DomainTree } from '../vfs/domains.js';
 import { stateTone_paint } from '../vfs/look.js';
+import { lastDone_of } from '../domains/harborOci.js';
+import { capacity_run, CAPACITY_HELP } from './capacity.js';
 
 /** What `domain` reads from the session. */
 export interface DomainCommandContext {
@@ -24,47 +26,59 @@ export interface DomainCommandContext {
   readonly driver: CloudDriver;
   /** The session's region, or null when not connected. */
   readonly region: () => string | null;
+  /** The folder the domains stand in (`/net/oci/<tenancy>/domains`). */
+  readonly domainsPath: () => string;
 }
 
 /** The order the counted kinds are said in. */
 const COUNT_ORDER: ReadonlyArray<keyof ResourceCounts> = ['instances', 'networks', 'subnets', 'securitygroups', 'loadbalancers', 'volumes', 'buckets', 'dns'];
 
 /**
- * A compartment's live resources in a line, or why they could not be counted.
+ * A compartment's live resources, and the line that says them or why they
+ * could not be counted.
  *
  * @param context - The session.
  * @param compartmentId - The compartment, from the domain's settings.
- * @returns The line.
+ * @returns The counts (null when not counted) and the line.
  */
-async function compartmentLine_of(context: DomainCommandContext, compartmentId: string | undefined): Promise<string> {
+async function compartment_count(context: DomainCommandContext, compartmentId: string | undefined): Promise<{ counts: ResourceCounts | null; line: string }> {
   const region: string | null = context.region();
-  if (compartmentId === undefined) return 'compartment  not in the domain\'s settings';
-  if (region === null) return 'compartment  not counted: not connected';
+  if (compartmentId === undefined) return { counts: null, line: 'compartment  not in the domain\'s settings' };
+  if (region === null) return { counts: null, line: 'compartment  not counted: not connected' };
   try {
     const counts: ResourceCounts = await context.driver.resources_search(compartmentId, region);
     const said: string[] = COUNT_ORDER.filter((kind): boolean => (counts[kind] ?? 0) > 0).map((kind): string => `${counts[kind]} ${kind}`);
-    return `compartment  ${said.length > 0 ? said.join(', ') : 'nothing live'} (${region})`;
+    return { counts, line: `compartment  ${said.length > 0 ? said.join(', ') : 'nothing live'} (${region})` };
   } catch (error: unknown) {
-    return `compartment  not counted: ${error instanceof Error ? error.message : String(error)}`;
+    return { counts: null, line: `compartment  not counted: ${error instanceof Error ? error.message : String(error)}` };
   }
 }
 
 /**
- * One domain's status, as lines.
+ * One domain's status: its lines, and its summary for the model.
  *
  * @param context - The session.
  * @param domain - The domain.
- * @returns The lines.
+ * @returns The lines and the summary.
  */
-export async function domainStatus_lines(context: DomainCommandContext, domain: HarborDomain): Promise<string[]> {
+export async function domainStatus_read(context: DomainCommandContext, domain: HarborDomain): Promise<{ lines: string[]; summary: DomainSummary }> {
   const width: number = Math.max(...domain.steps.map((step: StepState): number => step.folder.length));
+  const compartment = await compartment_count(context, domain.settings['OCI_COMPARTMENT_OCID']);
   const lines: string[] = [
     `${chalk.bold(domain.name)}  ${domain.cluster ?? '(no cluster name in its settings)'}`,
     `checkout     ${domain.root}`,
     ...domain.steps.map((step: StepState): string => `  ${step.folder.padEnd(width)}  ${stateTone_paint(step.state, step.state.padEnd(8))}  ${chalk.gray(step.evidence)}`),
-    await compartmentLine_of(context, domain.settings['OCI_COMPARTMENT_OCID']),
+    compartment.line,
   ];
-  return lines;
+  const summary: DomainSummary = {
+    name: domain.name,
+    path: `${context.domainsPath()}/${domain.name}`,
+    cluster: domain.cluster,
+    lastDone: lastDone_of(domain)?.folder ?? null,
+    steps: domain.steps.map((step: StepState): { folder: string; state: string } => ({ folder: step.folder, state: step.state })),
+    resources: compartment.counts === null ? null : { ...compartment.counts },
+  };
+  return { lines, summary };
 }
 
 /**
@@ -78,13 +92,18 @@ export async function domain_run(context: DomainCommandContext, args: ReadonlyAr
   const [verb = 'status', ...rest] = args;
   if (verb !== 'status') return envelope_error('', undefined, `domain: ${verb}: not a verb this session has: it would start a host program, which only the tasks tier may (domain status)\n`);
   const all: HarborDomain[] = context.domains.domains_read();
-  if (all.length === 0) return envelope_ok('no domains: start stratus with --domain <name>=<harbor-oci checkout>\n');
+  if (all.length === 0) return envelope_ok('no domains: start stratus with --domain <name>=<harbor-oci checkout>\n', { kind: STRATUS_DOMAINS_MODEL_KIND, data: { domains: [] } });
   const chosen: HarborDomain[] = rest.length === 0 ? all : all.filter((domain: HarborDomain): boolean => rest.includes(domain.name));
   const missing: string[] = rest.filter((name: string): boolean => !all.some((domain: HarborDomain): boolean => domain.name === name));
   if (missing.length > 0) return envelope_error('', undefined, `domain: ${missing.join(', ')}: no such domain (${all.map((domain: HarborDomain): string => domain.name).join(', ')})\n`);
   const blocks: string[] = [];
-  for (const domain of chosen) blocks.push((await domainStatus_lines(context, domain)).join('\n'));
-  return envelope_ok(`${blocks.join('\n\n')}\n`);
+  const model: DomainsModel = { domains: [] };
+  for (const domain of chosen) {
+    const read = await domainStatus_read(context, domain);
+    blocks.push(read.lines.join('\n'));
+    model.domains.push(read.summary);
+  }
+  return envelope_ok(`${blocks.join('\n\n')}\n`, { kind: STRATUS_DOMAINS_MODEL_KIND, data: model });
 }
 
 /** `domain`'s help. */
@@ -97,14 +116,17 @@ export const DOMAIN_HELP: CommandHelp = {
 };
 
 /**
- * The stratus backend's commands.
+ * The stratus backend's commands: `domain` and `capacity`.
  *
  * @param context - The session.
  * @returns The group to register as the backend's.
  */
 export function stratusCommands_make(context: DomainCommandContext): CommandGroup {
   return {
-    envelope: { domain: (args: string[]): Promise<CommandEnvelope> => domain_run(context, args) },
-    help: { domain: DOMAIN_HELP },
+    envelope: {
+      domain: (args: string[]): Promise<CommandEnvelope> => domain_run(context, args),
+      capacity: (args: string[]): Promise<CommandEnvelope> => capacity_run(context, args),
+    },
+    help: { domain: DOMAIN_HELP, capacity: CAPACITY_HELP },
   };
 }

@@ -32,6 +32,13 @@ export const TILE_ABOUT: Readonly<Record<string, TileAbout>> = {
     ],
     tail: 'Replay its history, or fly in to any one analysis to see its steps.',
   },
+  // The stratus composition's (compositions/stratus/tiles.ts); drafted 2026-10-21 for the operator's approval.
+  domains: {
+    text: 'The Trusted Domains built in this tenancy: each one\'s last finished build step and its cluster. A domain with a step gone wrong shows in red. Open one to read its spec, settings, state and steps.',
+  },
+  capacity: {
+    text: 'What this region has free for the machine families your domains use, zone by zone: the cores and memory a new domain or a bigger one could take.',
+  },
   analyses: {
     text: 'Your analyses, newest first. Open one to follow it, read its logs and browse its results.',
   },

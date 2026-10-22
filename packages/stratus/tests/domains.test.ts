@@ -134,6 +134,7 @@ describe('domain status', () => {
     domains: new DomainTree({ sources: Object.entries(roots).map(([name, root]) => ({ name, root })), owner: (): string => 'rudolph', now: (): Date => NOW }),
     driver,
     region: (): string | null => region,
+    domainsPath: (): string => '/net/oci/fnndsc/domains',
   });
 
   it('prints each domain: cluster, checkout, every step with its state and evidence, and the compartment\'s live resources', async () => {
@@ -146,6 +147,14 @@ describe('domain status', () => {
     expect(lines[3]).toBe('  02-cluster      done      Assisted Installer cluster cluster-1');
     expect(lines[13]).toBe('compartment  3 instances, 1 networks, 3 subnets, 2 securitygroups, 2 loadbalancers, 5 volumes, 1 buckets, 1 dns (us-ashburn-1)');
     expect((await domain_run(context_make({ harbor: root }), ['status', 'harbor'])).rendered).toBe(answer.rendered);
+    expect(answer.model).toEqual({
+      kind: 'stratus.domains',
+      data: { domains: [{
+        name: 'harbor', path: '/net/oci/fnndsc/domains/harbor', cluster: 'harbor.oci.chrisproject.org', lastDone: '09-run',
+        steps: expect.arrayContaining([{ folder: '02-cluster', state: 'done' }, { folder: '01-preflight', state: 'unknown' }]),
+        resources: { instances: 3, networks: 1, subnets: 3, securitygroups: 2, loadbalancers: 2, volumes: 5, buckets: 1, dns: 1 },
+      }] },
+    });
   });
 
   it('says why a compartment was not counted', async () => {
@@ -153,7 +162,9 @@ describe('domain status', () => {
     const failing = new (class extends FakeDriver {
       override async resources_search(): Promise<ResourceCounts> { throw new Error('throttled'); }
     })(fakeCloud_sample());
-    expect(plain((await domain_run(context_make({ harbor: root }, failing), [])).rendered)).toContain('compartment  not counted: throttled');
+    const failed = await domain_run(context_make({ harbor: root }, failing), []);
+    expect(plain(failed.rendered)).toContain('compartment  not counted: throttled');
+    expect((failed.model?.data as { domains: Array<{ resources: unknown }> }).domains[0]?.resources).toBeNull();
     expect(plain((await domain_run(context_make({ harbor: root }, undefined, null), [])).rendered)).toContain('compartment  not counted: not connected');
     const quiet = new (class extends FakeDriver {
       override async resources_search(): Promise<ResourceCounts> { return {}; }
@@ -162,15 +173,17 @@ describe('domain status', () => {
   });
 
   it('says when the daemon has no domains, refuses an unknown one by name, and a verb that would start a host program', async () => {
-    expect((await domain_run(context_make({}), [])).rendered).toBe('no domains: start stratus with --domain <name>=<harbor-oci checkout>\n');
+    const none = await domain_run(context_make({}), []);
+    expect(none.rendered).toBe('no domains: start stratus with --domain <name>=<harbor-oci checkout>\n');
+    expect(none.model).toEqual({ kind: 'stratus.domains', data: { domains: [] } });
     const context = context_make({ harbor: harborCheckout_make() });
     expect((await domain_run(context, ['status', 'nope'])).renderedErr).toBe('domain: nope: no such domain (harbor)\n');
     expect((await domain_run(context, ['verify'])).renderedErr).toBe('domain: verify: not a verb this session has: it would start a host program, which only the tasks tier may (domain status)\n');
   });
 
-  it('is the backend\'s one command, with its help in the Resources category', async () => {
+  it('is one of the backend\'s two commands, with its help in the Resources category', async () => {
     const group = stratusCommands_make(context_make({}));
-    expect(Object.keys(group.envelope ?? {})).toEqual(['domain']);
+    expect(Object.keys(group.envelope ?? {})).toEqual(['domain', 'capacity']);
     expect(group.help?.['domain']).toBe(DOMAIN_HELP);
     expect(DOMAIN_HELP.category).toBe('Resources');
     expect((await group.envelope!['domain']!([])).status).toBe('ok');

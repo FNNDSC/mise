@@ -303,3 +303,17 @@ export {
   universeLayoutGraph_build,
 } from './universe.js';
 export { netStatsModelSchema, netRequestSchema, netFamilySchema, NET_STATS_MODEL_KIND, type NetStatsModel } from './net.js';
+export {
+  STRATUS_DOMAINS_MODEL_KIND,
+  STRATUS_CAPACITY_MODEL_KIND,
+  domainStepSchema,
+  domainSummarySchema,
+  domainsModelSchema,
+  capacityRowSchema,
+  capacityModelSchema,
+  type DomainStep,
+  type DomainSummary,
+  type DomainsModel,
+  type CapacityRow,
+  type CapacityModel,
+} from './substrate.js';

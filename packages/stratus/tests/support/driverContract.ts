@@ -124,6 +124,7 @@ export function driverContract_describe(name: string, driver_make: () => Promise
         expect(shape.cores.min).toBeLessThanOrEqual(shape.cores.max);
         expect(shape.memoryGib.min).toBeLessThanOrEqual(shape.memoryGib.max);
         expect(shape.vcpuPerCore).toBeGreaterThan(0);
+        expect(shape.limitService).not.toBe('');
       }
       expect(shapes.map((shape: CloudShape): string => shape.name)).toEqual([...shapes.map((shape: CloudShape): string => shape.name)].sort((a: string, b: string): number => a.localeCompare(b)));
     });

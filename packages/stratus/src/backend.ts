@@ -74,7 +74,7 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
     now: (): Date => new Date(),
   });
   const tenancy: TenancyProvider = new TenancyProvider({ driver: options.driver, cache: new AnswerCache(options.cacheLifeMs), region: (): string | null => session.region, domains });
-  commands_register(stratusCommands_make({ domains, driver: options.driver, region: (): string | null => session.region }), 'backend');
+  commands_register(stratusCommands_make({ domains, driver: options.driver, region: (): string | null => session.region, domainsPath: (): string => `${session.tenancyPath}/domains` }), 'backend');
   const dispatcher: VFSDispatcher = new VFSDispatcher();
   dispatcher.provider_register(tenancy);
   const backend: Backend = {

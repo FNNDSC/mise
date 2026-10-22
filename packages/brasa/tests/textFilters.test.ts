@@ -114,7 +114,7 @@ describe('a flag the builtin does not take', () => {
     expect(browser.renderedErr).toContain('tail: -f: the builtin does not take it, and this surface runs no system tail');
     surface.capabilities.pipeSegments = true;
     const file = await builtin_wc(['-L', 'a.csv']);
-    expect(file.renderedErr).toContain('wc: -L: the builtin does not take it, and a system wc cannot read ChRIS files');
+    expect(file.renderedErr).toContain("wc: -L: the builtin does not take it, and a system wc cannot read the session's files");
     expect(surface.pipeSegment).not.toHaveBeenCalled();
   });
 });

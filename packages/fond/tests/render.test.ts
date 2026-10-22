@@ -41,6 +41,17 @@ describe('a listing with the plain look', () => {
     expect(lines[3]).toMatch(/^- chris/);
   });
 
+  it('pads owners to the widest in the listing, never narrower than ten, so the columns stay aligned', () => {
+    const lines: string[] = plain(long_render([
+      { ...item('a', 'file'), owner: 'rudolph.pienaar@childrens.harvard.edu' },
+      { ...item('b', 'file'), owner: 'cloud' },
+    ])).split('\n');
+    expect(lines[0].indexOf(' a')).toBe(lines[1].indexOf(' b'));
+    expect(lines[1]).toContain(`cloud${' '.repeat('rudolph.pienaar@childrens.harvard.edu'.length - 'cloud'.length)} `);
+    const short: string[] = plain(long_render([{ ...item('c', 'file'), owner: 'chris' }])).split('\n');
+    expect(short[0].startsWith('- chris      ')).toBe(true);
+  });
+
   it('carries a title, tags and a version', () => {
     const line: string = plain(long_render([item('feed_9', 'dir', { title: 'Brain', tags: ['mri', 'qc'], version: '1.0' })]));
     expect(line).toContain('feed_9/ (1.0)');

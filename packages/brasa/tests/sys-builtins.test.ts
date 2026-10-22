@@ -54,7 +54,7 @@ const { builtin_fortune, fortune_random } = await import('../src/builtins/sys/fo
 const { FORTUNES } = await import('../src/builtins/sys/fortunes.data.js');
 const { builtin_date, date_format } = await import('../src/builtins/sys/date.js');
 const { builtin_cal } = await import('../src/builtins/sys/cal.js');
-const { versions_get, versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, welcomeLine_compose, stackBanner_build, stackBanner_compose, stackBanner_rows, stackBannerRow_paint, buildHash_get } = await import('../src/core/version.js');
+const { versions_get, versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, welcomeLine_compose, stackBanner_build, stackBanner_compose, stackBanner_rows, stackBannerRow_paint, buildHash_get, versionsForBackend_of } = await import('../src/core/version.js');
 
 let logSpy: jest.SpiedFunction<typeof console.log>;
 beforeEach(() => {
@@ -446,5 +446,19 @@ describe('stackInfo_get / infoReport_build', () => {
       expect(report).toContain(item.name);
       expect(report).toContain(item.version);
     }
+  });
+});
+
+describe('versionsForBackend_of', () => {
+  const stack = { chell: '5.16.7', brasa: '0.44.1', chili: '3.7.14', salsa: '4.2.1', cumin: '3.28.3', calypso: '0.25.0' };
+
+  it('names every package for a ChRIS session', () => {
+    expect(versionsForBackend_of(stack, 'chris')).toEqual(stack);
+  });
+
+  it('leaves ChRIS\'s own packages out for any other backend', () => {
+    expect(versionsForBackend_of(stack, 'stratus')).toEqual({ chell: '5.16.7', brasa: '0.44.1', calypso: '0.25.0' });
+    expect(versionsForBackend_of(stack, 'null')).toEqual({ chell: '5.16.7', brasa: '0.44.1', calypso: '0.25.0' });
+    expect(stack.cumin).toBe('3.28.3');
   });
 });

@@ -10,9 +10,17 @@
  * @module
  */
 import chalk from 'chalk';
-import type { BrasaEngine } from '@fnndsc/brasa';
+import { sinkScope_run, type BrasaEngine, type OutputSink } from '@fnndsc/brasa';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { surfaceLine_execute } from './surfaceDispatch.js';
+
+/** A sink that keeps nothing: the greeting prints what `motd` answered, and nothing it refused. */
+const QUIET_SINK: OutputSink = {
+  data_write: (): void => undefined,
+  err_write: (): void => undefined,
+  status_write: (): void => undefined,
+  progress_write: (): void => undefined,
+};
 
 /** What this surface calls itself in the greeting. */
 const SURFACE_NAME: string = 'chell';
@@ -25,7 +33,9 @@ const SURFACE_NAME: string = 'chell';
 export async function greeting_print(engine: BrasaEngine): Promise<void> {
   let envelopes: CommandEnvelope[];
   try {
-    envelopes = await surfaceLine_execute(engine, `motd ${SURFACE_NAME}`);
+    // Asked quietly: a backend with no `motd` (stratus, null) answers
+    // `command not found`, which is not a greeting and not worth a red line.
+    envelopes = await sinkScope_run(QUIET_SINK, (): Promise<CommandEnvelope[]> => surfaceLine_execute(engine, `motd ${SURFACE_NAME}`));
   } catch {
     return;
   }

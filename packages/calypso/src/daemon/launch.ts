@@ -23,7 +23,7 @@ import type { ProgressEvent, PromptContext } from '@fnndsc/menu';
 import type { OutputSink, Surface, SurfaceCapabilities, SurfacePeer, PromptRequest, LocalEditRequest, LocalEditResult } from '@fnndsc/menu/surface';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { backend_get, type Backend, type SessionIdentity } from '@fnndsc/brasa/core';
-import { stackBanner_rows, stackBannerRow_paint, versions_get, buildHash_get } from '@fnndsc/brasa/core';
+import { stackBanner_rows, stackBannerRow_paint, versions_get, versionsForBackend_of, buildHash_get } from '@fnndsc/brasa/core';
 import { identity_normalise, berth_write, berthOwn_read, berth_path, berthUrl_isAlive, closing_take, type Berth } from './berth.js';
 import type { ClosingCause } from '@fnndsc/menu';
 import { attachFile_write, attachFile_remove } from './attachFile.js';
@@ -271,7 +271,8 @@ export async function daemon_launch(
     ...(backend.prompt !== undefined ? { promptProvider: promptProvider_of(backend.prompt, hostControl) } : {}),
     // Report this process's own versions and build hash so attaching surfaces
     // greet with the daemon's truth rather than their local install's.
-    stack: { ...versions_get(), build: buildHash_get(), ...(surfaceBuild !== null ? { surface: surfaceBuild } : {}) },
+    // The stack the session is made of: ChRIS's packages only for a ChRIS session.
+    stack: { ...versionsForBackend_of(versions_get(), backend.id), build: buildHash_get(), ...(surfaceBuild !== null ? { surface: surfaceBuild } : {}) },
     hostControl: hostControl_tiers(hostControl),
     codeCheck: (): void => { void codeWatch?.check().catch((): void => undefined); },
   });
@@ -348,7 +349,7 @@ export async function daemon_launch(
   // the build hash rides the listening line below rather than one row's
   // version, which pushed that row past the column the rest share.
   const build: string = buildHash_get();
-  for (const row of stackBanner_rows(versions_get(), webRoot !== null ? webRootVersion_read(webRoot) : null)) {
+  for (const row of stackBanner_rows(versionsForBackend_of(versions_get(), backend.id), webRoot !== null ? webRootVersion_read(webRoot) : null)) {
     console.log(`    ${stackBannerRow_paint(row, { name: chalk.bold.cyan, phrase: chalk.white, version: chalk.gray })}`);
   }
   console.log(chalk.green(`[+] CALYPSO listening on ${url} ${chalk.gray(`(build ${build})`)}`));

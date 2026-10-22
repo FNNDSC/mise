@@ -83,22 +83,11 @@ describe('builtin_plugin', () => {
     expect(env.rendered).toContain('showing 1 of 10');
   });
 
-  it('runs a plugin and renders the instance', async () => {
-    mockExecute.mockResolvedValue({ id: 5 });
+  it('refuses the retired run, naming how a plugin runs', async () => {
     const env = await builtin_plugin(['run', 'pl-dircopy', '--dir', '/a']);
-    expect(mockExecute).toHaveBeenCalledWith('pl-dircopy', '--dir /a');
-    expect(env.rendered).toContain('PLUGIN_RUN');
-  });
-
-  it('requires a plugin name for run', async () => {
-    const env = await builtin_plugin(['run']);
-    expect(env.rendered).toContain('Usage: plugin run');
-  });
-
-  it('reports a failed run', async () => {
-    mockExecute.mockResolvedValue(null);
-    const env = await builtin_plugin(['run', 'pl-x']);
-    expect(env.renderedErr).toContain('execution failed');
+    expect(mockExecute).not.toHaveBeenCalled();
+    expect(env.status).toBe('error');
+    expect(env.renderedErr).toContain('plugin run is retired: run a plugin by its name');
   });
 
   it('inspects fields via table_render', async () => {

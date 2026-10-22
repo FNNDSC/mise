@@ -712,7 +712,6 @@ plugin fieldslist
 
 **Delegated Subcommands:**
 
-* `plugin run` - Execute a plugin (delegates to `chili`)
 * `plugin delete` - Remove a plugin instance
 * `plugin share` - Share plugin access
 
@@ -938,7 +937,7 @@ ChELL provides a special virtual directory `/bin` that contains ChRIS plugins as
 * Accessed via `cd /bin`
 * Lists all available plugins as if they were files
 * Plugins shown with `p` type indicator in `ls -l`
-* Cannot execute plugins directly from `/bin` (use `plugin run` instead)
+* A plugin runs by its name as a line of its own (`pl-dircopy-v2.1.1 …`), where the session stands
 * Cannot remove or modify `/bin` contents
 
 **Examples:**
@@ -1042,9 +1041,9 @@ plugins list --search name:dircopy
 cd /bin
 ls -l
 
-# Execute plugin (delegated to chili)
-cd ~
-plugin run pl-dircopy --inputdir /incoming --outputdir /results
+# Run a plugin where you stand, and name the run
+cd ~/incoming
+A=$(pl-dircopy-v2.1.1 --dir .)
 ```
 
 === Batch File Operations

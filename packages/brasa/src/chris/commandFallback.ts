@@ -8,8 +8,8 @@
  *
  * @module
  */
-import { CHRIS_PRONOUN_LINES } from './help.js';
-import { pronounsPage_render } from '../builtins/pronouns.js';
+import { CHRIS_BUILTIN_LINES } from './help.js';
+import { variablesPage_render } from '../builtins/variablesPage.js';
 import type { ListingItem, CommandEnvelope } from '@fnndsc/menu';
 import type { Result } from '@fnndsc/fond';
 import type { BackendFallback } from '../core/backend.js';
@@ -126,8 +126,8 @@ export const chrisFallback: BackendFallback = {
     return chili_delegate(command, args);
   },
   help: async (command: string): Promise<string | null> => {
-    // The session's pronouns: the core's page with this backend's lines.
-    if (command === 'pronouns') return pronounsPage_render(CHRIS_PRONOUN_LINES);
+    // The variables page: the core's, with this backend's built-in lines.
+    if (command === 'variables') return variablesPage_render(CHRIS_BUILTIN_LINES);
     // A plugin version (`pl-dircopy-v2.1.2`) is its own executable.
     if (/-v[^/]+$/.test(command)) return pluginExecutableHelp_render(command);
     const binMatches: BinExecutableMatches = await binExecutableMatches_get(command);

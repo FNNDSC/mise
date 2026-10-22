@@ -11,8 +11,8 @@
  * prints the same envelopes and exits 0 or non-zero. Neither run knows which
  * it is.
  *
- * The file may say what it needs (`@param`) and what it is (`@name`), and
- * may refer to what the session just did through a closed set of pronouns.
+ * The file may say what it needs (`@param`), what it is (`@name`) and what it
+ * answers (`@answers`), and names what its own lines made (`A=$(…)`).
  * It may not say where anything goes: placement is the surface's judgment,
  * and a manifest that named panes would fork into a browser version and a
  * headless one.
@@ -306,8 +306,8 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   const manifest: Manifest = manifest_parse(source.value.text);
 
   // A manifest may not take a name the session answers for: shadowing a
-  // pronoun would make ${feed} mean two things in one language, and a reader
-  // of a shared file could not tell which one they were looking at.
+  // built-in would make ${gather} mean two things in one language, and a
+  // reader of a shared file could not tell which one they were looking at.
   const shadowed: ManifestParam[] = manifest.params.filter(
     (param: ManifestParam): boolean => reference_isReserved(param.name),
   );

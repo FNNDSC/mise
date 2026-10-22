@@ -12,10 +12,9 @@
  */
 
 import chalk from 'chalk';
-import { Client, procCache_get, seriesStorage_resolve, type Dictionary } from '@fnndsc/cumin';
+import { Client, seriesStorage_resolve } from '@fnndsc/cumin';
 import {
   feed_create,
-  plugin_run,
   retrieveTask_make,
   retrieveTasks_fire,
   retrieveTasks_skipComplete,
@@ -38,14 +37,11 @@ import {
   pacsServer_resolve,
 } from '../net/pacsUtils.js';
 import { builtin_cubepath } from '../net/cubepath.js';
-import { pullArgs_parse, type PullArgs, type PullAttachment } from './pull.args.js';
+import { pullArgs_parse, type PullArgs } from './pull.args.js';
 import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { repl_confirm } from '../../core/question.js';
 import type { ProgressStatus } from '../../core/progress.js';
 import { newFeed_cacheAdd, run_follow } from '../feedCreation.js';
-import { builtin_pipeline } from '../res/pipeline.js';
-import { executableArguments_parse } from '../argumentTokens.js';
-import { pluginSelector_normalize } from '../pluginSelector.js';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 interface PullPathResolution {
@@ -501,53 +497,6 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
       return envelope_error('');
     }
     created = feedResult;
-    const attachment: PullAttachment | undefined = parsed.attachment;
-    if (attachment?.kind === 'pipeline') {
-      const attachmentEnvelope: CommandEnvelope = await builtin_pipeline([
-        'run', attachment.selector, '--previous', String(feedResult.rootInstanceID), ...attachment.args,
-      ]);
-      if (attachmentEnvelope.status === 'error') {
-        sink_errLine(chalk.red(
-          `pull: Pipeline attachment failed; Feed ${feedResult.feedID} and root ${feedResult.rootInstanceID} were retained.`,
-        ));
-        process.exitCode = 1;
-        return envelope_error('');
-      }
-      sink_dataLine(chalk.green(`Pipeline attached: ${attachment.selector}`));
-    } else if (attachment?.kind === 'plugin') {
-      let pluginParameters: Record<string, string | boolean | number>;
-      try {
-        pluginParameters = executableArguments_parse(attachment.args);
-      } catch (error: unknown) {
-        const message: string = error instanceof Error ? error.message : String(error);
-        sink_errLine(chalk.red(
-          `pull: Plugin attachment failed (${message}); Feed ${feedResult.feedID} and root ${feedResult.rootInstanceID} were retained.`,
-        ));
-        process.exitCode = 1;
-        return envelope_error('');
-      }
-      const instance: Dictionary | null = await plugin_run(pluginSelector_normalize(attachment.selector), {
-        ...pluginParameters,
-        previous_id: feedResult.rootInstanceID,
-      });
-      const instanceID: number = Number(instance?.id);
-      if (!instance || !Number.isInteger(instanceID) || instanceID <= 0) {
-        sink_errLine(chalk.red(
-          `pull: Plugin attachment failed; Feed ${feedResult.feedID} and root ${feedResult.rootInstanceID} were retained.`,
-        ));
-        process.exitCode = 1;
-        return envelope_error('');
-      }
-      procCache_get().instance_add({
-        id: instanceID,
-        feedID: feedResult.feedID,
-        parentID: feedResult.rootInstanceID,
-        pluginName: typeof instance.plugin_name === 'string' ? instance.plugin_name : attachment.selector,
-        params: null,
-        status: 'scheduled',
-      });
-      sink_dataLine(chalk.green(`Plugin attached: ${attachment.selector} (ID: ${instanceID})`));
-    }
   }
 
   if (newFeedTitle === null) {

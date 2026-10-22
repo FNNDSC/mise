@@ -55,13 +55,14 @@ describe('a PACS answer with its handles', () => {
   });
 });
 
-describe('help pronouns', () => {
-  it('says what a pronoun is, the core\'s own, the backend\'s lines, and the index handles beside them', async () => {
-    const { pronounsPage_render } = await import('../src/builtins/pronouns.js');
-    const page: string = strip(pronounsPage_render(['  ${feed}          the feed']));
-    expect(page).toContain('PRONOUNS');
+describe('help variables', () => {
+  it('says how a line names an answer, the built-ins, the backend\'s lines, and the index handles beside them', async () => {
+    const { variablesPage_render } = await import('../src/builtins/variablesPage.js');
+    const page: string = strip(variablesPage_render(['  ${gather}        every gathered member']));
+    expect(page).toContain('VARIABLES');
+    expect(page).toContain('A=$(command)');
     expect(page).toContain('${cwd}');
-    expect(page).toContain('${feed}          the feed');
+    expect(page).toContain('${gather}        every gathered member');
     expect(page).toContain('numbered: @PAT1, @STD1-9, @SER1-235');
   });
 });

@@ -43,8 +43,8 @@ export const HELP_SECTIONS: ReadonlyArray<HelpSection> = [
 /** The section that is not a list of commands: what the shell does to a line. */
 export const SHELL_SECTION: HelpSection = {
   name: 'Shell',
-  blurb: 'What the shell does to a line: pipes, redirection, index handles (@SER3), pronouns (${cwd}), listing-aware grep, command.',
-  examples: ['help pipes', 'help handles', 'help pronouns'],
+  blurb: 'What the shell does to a line: pipes, redirection, index handles (@SER3), variables (A=$(cmd), ${A.field}), listing-aware grep, command.',
+  examples: ['help pipes', 'help handles', 'help variables'],
 };
 
 /** The view across sections: every command that mirrors a Unix utility. */
@@ -114,7 +114,7 @@ export const SHELL_TOPICS: ReadonlyArray<ShellTopic> = [
       'row. grep keeps the handles rows already wore (@SER41 stays @SER41).',
     ],
   },
-  { name: 'pronouns', summary: '${cwd} ${listing} …: what this session just made or asked' },
+  { name: 'variables', summary: 'A=$(cmd), ${A.field}, set: naming what a command answered' },
   { name: 'grep', summary: 'filter text, or a numbered listing keeping its handles' },
   { name: 'command', summary: 'run the system program, not the builtin' },
 ];

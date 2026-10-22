@@ -34,8 +34,6 @@ const { reference_resolve, unresolvedStands_run, reference_isReserved, reference
 const { variableScope_run, variable_set, variable_unset, textAnswer_make } = await import('../src/core/variables.js');
 (await import('../src/session/answerAdapters.js')).answerAdapters_register();
 const paramScope_run = variableScope_run;
-const { recentFeed_note, recentRunPlace_note, recentRuns_note, recent_forget } =
-  await import('../src/session/recent.js');
 
 /** Expands a whole line the way the dispatcher does, and returns the operands. */
 async function line_words(line: string): Promise<string[] | { missing: string }> {
@@ -45,7 +43,6 @@ async function line_words(line: string): Promise<string[] | { missing: string }>
 
 beforeEach(() => {
   members = [];
-  recent_forget();
   delete process.env.MISE_TEST_VALUE;
 });
 
@@ -86,12 +83,19 @@ describe('quoting decides what an expansion becomes', () => {
 });
 
 describe('what answers a reference, and in what order', () => {
-  it('answers the session before the environment', async () => {
+  it('answers a variable before the environment', async () => {
     process.env.MISE_TEST_VALUE = 'from the environment';
-    recentFeed_note(4599);
-    expect(await line_words('expect feed ${feed} status eq x'))
-      .toEqual(['expect', 'feed', '4599', 'status', 'eq', 'x']);
     expect(await line_words('echo ${MISE_TEST_VALUE}')).toEqual(['echo', 'from the environment']);
+    variable_set('MISE_TEST_VALUE', textAnswer_make('from a line', 'MISE_TEST_VALUE=x'));
+    expect(await line_words('echo ${MISE_TEST_VALUE}')).toEqual(['echo', 'from a line']);
+    variable_unset('MISE_TEST_VALUE');
+  });
+
+  it('has retired the pronouns a run used to fill behind the line', async () => {
+    expect(reference_isReserved('feed')).toBe(false);
+    expect(reference_isReserved('run')).toBe(false);
+    expect(reference_isReserved('query')).toBe(false);
+    expect(await line_words('cd ${run.place}')).toEqual({ missing: 'run.place' });
   });
 
   it("answers a manifest's parameter before the environment", async () => {
@@ -105,7 +109,7 @@ describe('what answers a reference, and in what order', () => {
 
   it('knows which names the session owns', () => {
     expect(reference_isReserved('gather.series.folderPath')).toBe(true);
-    expect(reference_isReserved('feed')).toBe(true);
+    expect(reference_isReserved('cwd')).toBe(true);
     expect(reference_isReserved('MRN')).toBe(false);
   });
 
@@ -124,11 +128,6 @@ describe('what answers a reference, and in what order', () => {
     expect(reference_refusal('gather')).toBe('${gather}: gather is empty.');
   });
 
-  it('answers where the last run wrote, which is what a chain takes', async () => {
-    recentRuns_note([601164]);
-    recentRunPlace_note('/home/chris/feeds/feed_1/pl-x_2/data/');
-    expect(await line_words('cd ${run.place}')).toEqual(['cd', '/home/chris/feeds/feed_1/pl-x_2/data/']);
-  });
 });
 
 describe('a reference nothing answers', () => {
@@ -136,14 +135,14 @@ describe('a reference nothing answers', () => {
     expect(await line_words('rm -rf ${MISE_TEST_UNSET}/scratch')).toEqual({ missing: 'MISE_TEST_UNSET' });
   });
 
-  it('refuses a session pronoun the session cannot answer yet', async () => {
-    expect(await line_words('expect feed ${feed} status eq x')).toEqual({ missing: 'feed' });
+  it('refuses a variable no line has set', async () => {
+    expect(await line_words('expect run ${A.instanceId} status eq x')).toEqual({ missing: 'A.instanceId' });
   });
 
   it('stands as written inside a dry run, which has run nothing', async () => {
     const expanded = await unresolvedStands_run(async () =>
-      await shellWords_referencesExpand(shellWords_tokenize('cd ${run.place}'), reference_resolve, true));
-    expect(expanded.ok && expanded.words.map((word) => word.value)).toEqual(['cd', '${run.place}']);
+      await shellWords_referencesExpand(shellWords_tokenize('cd ${A.outputPath}'), reference_resolve, true));
+    expect(expanded.ok && expanded.words.map((word) => word.value)).toEqual(['cd', '${A.outputPath}']);
   });
 });
 
@@ -173,8 +172,8 @@ describe('a refusal says where it looked', () => {
     expect(reference_refusal('NOWHERE')).toBe("${NOWHERE}: nothing to put there. Looked in the session's built-ins, its variables, the environment.");
   });
 
-  it('adds the manifest parameters inside one, and says a pronoun is not yet filled', async () => {
-    const text: string = await paramScope_run(new Map(), async (): Promise<string> => reference_refusal('feed'));
+  it('adds the manifest parameters inside one, and says a built-in has nothing yet', async () => {
+    const text: string = await paramScope_run(new Map(), async (): Promise<string> => reference_refusal('listing'));
     expect(text).toContain('nothing in this session has one yet');
     expect(text).toContain("this manifest's variables and parameters");
   });

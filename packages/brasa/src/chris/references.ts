@@ -2,15 +2,16 @@
  * @file What the ChRIS backend answers in `${name}`, and the kinds of row its
  * listings number.
  *
- * `${feed}`, `${run}` (and `${run.place}`) and `${query}` are what the session
- * most recently made or asked; `${gather}` is the cohort, read live. Its listings number patients, studies and series beside the core's
- * files and folders, and its verbs say which kinds they take.
+ * `${gather}` is the cohort, read live: the one name the backend keeps for
+ * itself. What a line made is named by the line (`A=$(…)`), never by a
+ * pronoun the session fills behind it. Its listings number patients,
+ * studies and series beside the core's files and folders, and its verbs say
+ * which kinds they take.
  *
  * @module
  */
 import type { ReferenceValue } from '../lib/parser.js';
 import type { AnswerKindLook, ReferenceSource, VerbTakes } from '../core/backend.js';
-import { recentFeed_get, recentQuery_get, recentRunPlace_get, recentRuns_get } from '../session/recent.js';
 import type { SessionAnswer } from '../session/answer.js';
 import { fieldReading_value } from '../core/expansion.js';
 import { answer_read } from '../core/variables.js';
@@ -39,36 +40,6 @@ async function cohort_reference(name: string): Promise<ReferenceValue> {
 
 /** The references the ChRIS session answers. */
 export const chrisReferences: ReadonlyArray<ReferenceSource> = [
-  {
-    name: 'feed',
-    resolve: async (name: string): Promise<ReferenceValue | undefined> => {
-      if (name !== 'feed') return undefined;
-      const feed: number | null = recentFeed_get();
-      return feed === null ? null : { values: [`${feed}`] };
-    },
-  },
-  {
-    name: 'run',
-    resolve: async (name: string): Promise<ReferenceValue | undefined> => {
-      if (name === 'run') {
-        const runs: number[] = recentRuns_get();
-        return runs.length === 0 ? null : { values: [`${runs[runs.length - 1]}`] };
-      }
-      if (name === 'run.place') {
-        const place: string | null = recentRunPlace_get();
-        return place === null ? null : { values: [place] };
-      }
-      return undefined;
-    },
-  },
-  {
-    name: 'query',
-    resolve: async (name: string): Promise<ReferenceValue | undefined> => {
-      if (name !== 'query') return undefined;
-      const query: string | null = recentQuery_get();
-      return query === null ? null : { values: [query] };
-    },
-  },
   {
     name: 'gather',
     resolve: async (name: string): Promise<ReferenceValue | undefined> => await cohort_reference(name),

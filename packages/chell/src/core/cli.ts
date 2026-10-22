@@ -317,7 +317,7 @@ ${chalk.bold.cyan('DESCRIPTION')}
     .option('-p, --password <password>', 'Password')
     .option('-c, --command <command>', 'Execute command(s) and exit (use ; to separate multiple commands)')
     .option('-f, --file <path>', 'Execute commands from script file')
-    .option('-e', 'Stop on first error (like bash set -e). Default: continue on error')
+    .option('-e', 'Stop a -c batch at its first error (like bash set -e). A script always stops at its first refused line')
     .option('--physicalFS', 'Use physical filesystem paths (skip logical-to-physical mapping)')
     .option('--prefetch-feeds', 'Prefetch user feeds at startup (interactive mode)')
     .option('--no-prefetch-feeds', 'Disable feed prefetch at startup')
@@ -365,13 +365,13 @@ ${chalk.bold.cyan('SHELL FEATURES')}
 ${chalk.bold.cyan('AUTOMATION & SCRIPTING')}
   ${chalk.bold('Shebang Support')}     Prepend ${chalk.yellow('#!/usr/bin/env chell')} to make scripts executable
   ${chalk.bold('Comments')}            Lines beginning with ${chalk.bold('#')} are ignored
-  ${chalk.bold('Error Handling')}      Default: continue on error. Use ${chalk.bold.green('-e')} to stop on first failure
+  ${chalk.bold('Error Handling')}      A script stops at its first refused line; ${chalk.bold.green('-e')} stops a -c batch at its first failure
 
 ${chalk.bold.cyan('EXAMPLES')}
   ${chalk.bold('chell')} ${chalk.bold.green('-c')} ${chalk.yellow('"ls /PIPELINES"')}                           # Execute single command and exit
   ${chalk.bold('chell')} ${chalk.bold.green('-c')} ${chalk.yellow('"cd /PIPELINES; ls; cat main.yml"')}     # Sequential CLI command pipeline
   ${chalk.bold('chell')} ${chalk.yellow('script.chell')}                                 # Run script file (auto-detect)
-  ${chalk.bold('chell')} ${chalk.bold.green('-e')} ${chalk.yellow('script.chell')}                               # Run script file, stopping on first error
+  ${chalk.bold('chell')} ${chalk.bold.green('-e')} ${chalk.yellow('script.chell')}                               # Run script file (it always stops on first error)
   ${chalk.bold('./script.chell')}                                     # Execute direct script via shebang
       `)
     .configureHelp({ formatHelp: chellHelp_format });

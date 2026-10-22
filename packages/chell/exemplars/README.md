@@ -119,10 +119,10 @@ have typed, played by the kernel's own `play` (see `docs/manifest.adoc`).
 They are the same artifact three ways — a test, a shareable workflow, and,
 played at a surface with `--pace`, a demonstration.
 
-They lift the caveat above. A run now WAITS for its outcome, `${run}` and
-`${run.place}` name what it produced, `${feed}` names where it landed, and
+They lift the caveat above. A run WAITS for its outcome, `A=$(…)` names
+what it produced (`${A.instanceId}`, `${A.outputPath}`, `${A.feedId}`), and
 `expect` refuses when a claim does not hold — so a workflow that captures
-ids between commands no longer needs a TypeScript program around it.
+ids between commands needs no TypeScript program around it.
 
 ```
 . exemplars/e2e-env.sh

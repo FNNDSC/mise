@@ -42,7 +42,7 @@ export interface StratusBackendOptions {
   readonly domains?: ReadonlyArray<DomainSource>;
   /** Where the domains this daemon builds are kept; `$XDG_STATE_HOME/stratus/domains` when absent. */
   readonly store?: DomainStore;
-  /** The cloud's build half; absent, this cloud cannot build yet and the build verbs say so. */
+  /** The cloud's build half; absent, this cloud cannot build, adopt or plan, and the verbs say so. With no installer beside it, it adopts and plans but does not build. */
   readonly builder?: CloudBuilder;
   /** The installer the build's steps call. */
   readonly installer?: Installer;
@@ -98,7 +98,7 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
   const region = (): string | null => session.region;
   commands_register(stratusCommands_make({
     domains, driver: options.driver, region, domainsPath: (): string => `${session.tenancyPath}/domains`,
-    build: { domains, store, driver: options.driver, region, deps, baseDomain: options.baseDomain ?? null },
+    build: { domains, store, driver: options.driver, region, deps, builder: options.builder ?? null, baseDomain: options.baseDomain ?? null },
   }), 'backend');
   const dispatcher: VFSDispatcher = new VFSDispatcher();
   dispatcher.provider_register(tenancy);

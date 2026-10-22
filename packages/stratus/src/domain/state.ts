@@ -34,6 +34,8 @@ export interface StepRecord {
  * @property steps - Each step's history, by name.
  * @property ids - What the build recorded for later steps (the installer's ids, the stack's, the ISO object).
  * @property billingAccepted - When the operator answered yes to the cost of the first billing step.
+ * @property compartmentId - The compartment its resources live in, when known.
+ * @property adopted - Where it was adopted from, and when: built elsewhere, never built on here.
  */
 export interface DomainRecord {
   name: string;
@@ -43,6 +45,8 @@ export interface DomainRecord {
   steps: Record<string, StepRecord>;
   ids: Record<string, string>;
   billingAccepted?: string;
+  compartmentId?: string;
+  adopted?: { from: string; at: string };
 }
 
 /**

@@ -42,23 +42,26 @@ export class DomainTree {
     this.options = options;
   }
 
-  /** Every domain, read now: those read from checkouts, then those this daemon builds. */
+  /** Every domain, read now: those read from checkouts, then those kept here; one kept here (adopted) stands in for its checkout. */
   domains_read(): HarborDomain[] {
-    const read: HarborDomain[] = this.options.sources.map((source: DomainSource): HarborDomain => harborDomain_read(source, this.options.now()));
     const store: DomainStore | undefined = this.options.store;
+    const kept: string[] = store?.names_list() ?? [];
+    const read: HarborDomain[] = this.options.sources
+      .filter((source: DomainSource): boolean => !kept.includes(source.name))
+      .map((source: DomainSource): HarborDomain => harborDomain_read(source, this.options.now()));
     if (store === undefined) return read;
-    const built: HarborDomain[] = store.names_list()
-      .filter((name: string): boolean => !read.some((domain: HarborDomain): boolean => domain.name === name))
+    const built: HarborDomain[] = kept
       .map((name: string): HarborDomain | null => builtDomain_read(store, name))
       .filter((domain: HarborDomain | null): domain is HarborDomain => domain !== null);
     return [...read, ...built];
   }
 
-  /** One domain by name, read now; null when there is none by that name. */
+  /** One domain by name, read now: the one kept here, else the checkout's; null when there is none. */
   domain_read(name: string): HarborDomain | null {
+    const kept: HarborDomain | null = this.options.store === undefined ? null : builtDomain_read(this.options.store, name);
+    if (kept !== null) return kept;
     const source: DomainSource | undefined = this.options.sources.find((entry: DomainSource): boolean => entry.name === name);
-    if (source !== undefined) return harborDomain_read(source, this.options.now());
-    return this.options.store === undefined ? null : builtDomain_read(this.options.store, name);
+    return source === undefined ? null : harborDomain_read(source, this.options.now());
   }
 
   /**

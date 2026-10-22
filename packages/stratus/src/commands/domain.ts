@@ -19,7 +19,7 @@ import type { DomainTree } from '../vfs/domains.js';
 import { stateTone_paint } from '../vfs/look.js';
 import { lastDone_of } from '../domains/harborOci.js';
 import { capacity_run, CAPACITY_HELP } from './capacity.js';
-import { domainBuild_run, domainNew_run, domainPlan_run, type BuildCommandContext } from './build.js';
+import { domainAdopt_run, domainBuild_run, domainNew_run, domainPlan_run, type BuildCommandContext } from './build.js';
 
 /** What `domain` reads from the session. */
 export interface DomainCommandContext {
@@ -69,7 +69,7 @@ export async function domainStatus_read(context: DomainCommandContext, domain: H
   const compartment = await compartment_count(context, domain.settings['OCI_COMPARTMENT_OCID']);
   const lines: string[] = [
     `${chalk.bold(domain.name)}  ${domain.cluster ?? '(no cluster name in its settings)'}`,
-    `${domain.origin === 'built' ? 'built here ' : 'checkout   '}  ${domain.root}`,
+    `${domain.origin !== 'built' ? 'checkout   ' : (domain.state as { adopted?: unknown } | null)?.adopted !== undefined ? 'adopted    ' : 'built here '}  ${domain.root}`,
     ...domain.steps.map((step: StepState): string => `  ${step.folder.padEnd(width)}  ${stateTone_paint(step.state, step.state.padEnd(8))}  ${chalk.gray(step.evidence)}`),
     compartment.line,
   ];
@@ -93,10 +93,10 @@ export async function domainStatus_read(context: DomainCommandContext, domain: H
  */
 export async function domain_run(context: DomainCommandContext, args: ReadonlyArray<string>): Promise<CommandEnvelope> {
   const [verb = 'status', ...rest] = args;
-  const builds: Readonly<Record<string, (context: BuildCommandContext, args: ReadonlyArray<string>) => Promise<CommandEnvelope>>> = { new: domainNew_run, plan: domainPlan_run, build: domainBuild_run };
+  const builds: Readonly<Record<string, (context: BuildCommandContext, args: ReadonlyArray<string>) => Promise<CommandEnvelope>>> = { new: domainNew_run, plan: domainPlan_run, build: domainBuild_run, adopt: domainAdopt_run };
   const build = builds[verb];
   if (build !== undefined) return context.build === undefined ? envelope_error('', undefined, `domain: ${verb}: this session builds no domains\n`) : build(context.build, rest);
-  if (verb !== 'status') return envelope_error('', undefined, `domain: ${verb}: not a verb this session has yet (domain status, new, plan, build)\n`);
+  if (verb !== 'status') return envelope_error('', undefined, `domain: ${verb}: not a verb this session has yet (domain status, new, plan, build, adopt)\n`);
   const all: HarborDomain[] = context.domains.domains_read();
   if (all.length === 0) return envelope_ok('no domains: domain new <name> makes one; stratus --domain <name>=<harbor-oci checkout> reads one\n', { kind: STRATUS_DOMAINS_MODEL_KIND, data: { domains: [] } });
   const chosen: HarborDomain[] = rest.length === 0 ? all : all.filter((domain: HarborDomain): boolean => rest.includes(domain.name));

@@ -11,7 +11,7 @@ import { BufferSink, HeadlessSurface, JobRunner, runner_install, sink_set, surfa
 import { FakeDriver, fakeCloud_sample } from '../src/cloud/fake/driver.js';
 import { FakeBuildWorld, FakeCloudBuilder, FakeInstaller } from '../src/cloud/fake/builder.js';
 import type { BuildCall, CloudBuilder, InfraPlan, PreflightCheck } from '../src/cloud/builder.js';
-import { planCounts_of } from '../src/cloud/builder.js';
+import { planCounts_alter, planCounts_of, planCounts_words } from '../src/cloud/builder.js';
 import { DomainStore, domainsRoot_of, type DomainRecord } from '../src/domain/state.js';
 import { SPEC_DEFAULT, specOptions_apply, type DomainSpec } from '../src/domain/spec.js';
 import { buildJob_id, buildRun_make, stepNext_of, STEPS_SOURCE, type BuildDeps } from '../src/domain/steps.js';
@@ -93,7 +93,7 @@ describe('building a domain over the fakes', () => {
     expect(first.data['stoppedBefore']).toBe('infra-apply');
     expect(stepNext_of(store.record_read('trial') as DomainRecord)).toBe('infra-apply');
     const planned: InfraPlan = JSON.parse(store.file_read('trial', 'plan.json') as string) as InfraPlan;
-    expect(planCounts_of(planned)).toEqual({ create: 17, change: 0, drift: 0, destroy: 0 });
+    expect(planCounts_of(planned)).toEqual({ create: 17, replace: 0, change: 0, drift: 0, destroy: 0, replacedKinds: [] });
     store.record_update('trial', (record: DomainRecord): void => { record.billingAccepted = 'now'; });
     const second: JobRecord = await runner.job_start(STEPS_SOURCE, buildJob_id('trial'), 'build trial', buildRun_make('trial', undefined, deps)).finished;
     expect(second.data['stoppedBefore']).toBe('postinstall');
@@ -125,8 +125,11 @@ describe('building a domain over the fakes', () => {
       infra_plan: async (_r: unknown, _c: BuildCall): Promise<InfraPlan> => ({ ref: 'p', rows: [{ action: 'change', kind: 'instances', name: 'x' }, { action: 'change', kind: 'instances', name: 'y', drift: true }] }),
     });
     const refused: JobRecord = await runner.job_start(STEPS_SOURCE, 'b', 'b', buildRun_make('trial', undefined, { ...deps, builder: altering })).finished;
-    expect(refused.outcome).toBe('infra-plan: the plan alters 1 and destroys 0 existing resources: refused');
-    expect(planCounts_of({ ref: 'p', rows: [{ action: 'change', kind: 'i', name: 'y', drift: true }, { action: 'destroy', kind: 'i', name: 'z' }] })).toEqual({ create: 0, change: 0, drift: 1, destroy: 1 });
+    expect(refused.outcome).toBe('infra-plan: the plan touches what exists (0 to create, 1 to change and 1 Oracle-Tags drift, 0 to destroy): refused');
+    expect(planCounts_of({ ref: 'p', rows: [{ action: 'change', kind: 'i', name: 'y', drift: true }, { action: 'destroy', kind: 'i', name: 'z' }] })).toEqual({ create: 0, replace: 0, change: 0, drift: 1, destroy: 1, replacedKinds: [] });
+    const replacing = planCounts_of({ ref: 'p', rows: [{ action: 'destroy', kind: 'loadbalancers', name: 'b' }, { action: 'create', kind: 'loadbalancers', name: 'b' }, { action: 'create', kind: 'instances', name: 'n' }] });
+    expect(planCounts_words(replacing)).toBe('1 to create, 1 to replace (loadbalancers), 0 to change, 0 to destroy');
+    expect(planCounts_alter(replacing)).toBe(true);
   });
 
   it('a run with no spec, or no domain, fails saying so', async () => {
@@ -204,7 +207,7 @@ describe('building a domain over the fakes', () => {
     surface_set(surface);
     expect(plain((await domain_run(context, ['plan'])).rendered)).toContain('domain build trial --through infra-plan makes it');
     store.file_write('trial', 'plan.json', JSON.stringify({ ref: 'p', rows: [{ action: 'create', kind: 'i', name: 'a' }, { action: 'change', kind: 'i', name: 'b', drift: true }] }));
-    expect(plain((await domain_run(context, ['plan', 'trial'])).rendered)).toContain('plan  1 to create, 0 to change, 1 of them Oracle-Tags drift, 0 to destroy');
+    expect(plain((await domain_run(context, ['plan', 'trial'])).rendered)).toContain('plan  1 to create, 0 to change and 1 Oracle-Tags drift, 0 to destroy');
     expect((await domain_run(context, ['plan', 'nope'])).renderedErr).toBe('domain plan: nope: no such domain\n');
     expect((await domain_run(context, ['plan', '-x'])).renderedErr).toBe('domain plan: usage: domain plan [<name>]\n');
     record_new('other');

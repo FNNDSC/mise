@@ -25,6 +25,8 @@ import { OciDriver } from './cloud/oci/driver.js';
 import { ociApi_make } from './cloud/oci/api.js';
 import { stratusArgs_parse } from './args.js';
 import { FakeBuildWorld, FakeCloudBuilder, FakeInstaller } from './cloud/fake/builder.js';
+import { OciBuilder } from './cloud/oci/builder.js';
+import { rmApi_make } from './cloud/oci/rmApi.js';
 
 const USAGE: string = [
   'stratus: a mise session over the cloud substrate a Trusted Domain runs on.',
@@ -68,7 +70,10 @@ async function stratus_start(): Promise<void> {
     driver,
     region: parsed.args.region,
     domains: parsed.args.domains,
-    ...(parsed.args.fake ? { builder: new FakeCloudBuilder(world), installer: new FakeInstaller(world), baseDomain: 'fake.example', waits: { pollMs: tickMs, hostsWaitMs: tickMs * 60, installWaitMs: tickMs * 120 } } : {}),
+    ...(parsed.args.fake
+      ? { builder: new FakeCloudBuilder(world), installer: new FakeInstaller(world), baseDomain: 'fake.example', waits: { pollMs: tickMs, hostsWaitMs: tickMs * 60, installWaitMs: tickMs * 120 } }
+      // OCI adopts and plans through Resource Manager; building comes with its installer (step 4d).
+      : { builder: new OciBuilder({ rm: (region: string) => rmApi_make({ configFile: parsed.args.configFile, profile: parsed.args.profile, region }) }) }),
   });
   const engine: BrasaEngine = await engine_create(made.backend);
   if (made.session.identity === null) {

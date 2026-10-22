@@ -100,7 +100,7 @@ chell is a shell, and the shell things work: pipes between commands, `>` and `>>
 ----
 $ chell -c "ls /PIPELINES"
 $ chell -c "cd /PIPELINES; ls; cat main.yml"
-$ chell -f analysis.chell -e
+$ chell -f analysis.chell        # played as a manifest; stops at its first refused line
 ----
 
 == See also

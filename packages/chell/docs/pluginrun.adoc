@@ -131,34 +131,54 @@ This encoding allows ChELL to:
 
 When you `cd` into any `/data/` directory, the parent directory name tells ChELL: "This is the output of plugin instance N, so any new plugin I run should use N as its previous_id."
 
-== Understanding Asynchronous Execution
+== A Run Waits for Its Outcome
 
-Unlike local programs that block until complete, ChRIS plugin execution is **asynchronous**:
+A ChRIS plugin runs on a remote compute node, which may take seconds or hours. A run line holds *its own line*, never the session, until the run settles, then says how it ended:
 
 [source,bash]
 ----
 pl-dcm2niix-v2.1.1 --outputdir results
-# Returns immediately with job ID
-# Plugin runs on a compute node in the background
+# Feed created: 977
+# Job scheduled: pl-dcm2niix-v2.1.1 (ID: 4812)
+# Output will be in: /home/alice/feeds/feed_977/pl-dircopy_4811/pl-dcm2niix_4812/data/
+# pl-dcm2niix-v2.1.1: finished successfully in 36s (instance 4812)
 ----
 
-This is analogous to Unix job control with `&`:
+The wait shows progress while it lasts, other panes keep refreshing, and Esc detaches it. `--detach` asks for the handle at once instead, as `&` does in a Unix shell:
+
 [source,bash]
 ----
-long-running-program &
-[1] 12345              # Job ID returned immediately
+pl-freesurfer-v7.3.2 --detach
+# Job scheduled … and the prompt returns; /proc/jobs shows it running
 ----
 
-**Why asynchronous?**
+A run that fails exits non-zero, so the next line of a script never works on output that does not exist. Your working directory is unchanged: you are observing the run, not standing in it.
 
-ChRIS plugins run on remote compute resources. A single DICOM-to-NIfTI conversion might take seconds, but a brain segmentation could take hours. Rather than blocking your shell, ChELL:
+== Naming the Run
 
-1. Submits the job to ChRIS
-2. Returns a job ID immediately
-3. Lets you continue working
-4. Allows you to check status later (Phase 2 feature: `plugin status <id>`)
+A run answers a model, `run.scheduled`, and a variable holds it, so later lines say which run they mean instead of copying an id out of the readout:
 
-**Your working directory remains unchanged** after execution, because you're not "in" the job—you're *observing* it, like a backgrounded process.
+[source,bash]
+----
+A=$(pl-dcm2niix-v2.1.1 --outputdir results)
+expect run ${A.instanceId} status eq finishedSuccessfully
+cd ${A.outputPath}
+B=$(pl-segmentation-v1.0.0 --threshold 0.5)
+----
+
+[cols="1,3"]
+|===
+| Field | What it is
+
+| `pluginName` | the executable run, as typed
+| `instanceId` | the plugin instance CUBE scheduled
+| `feedId` | the feed it landed in
+| `newFeed` | true when this run made the feed (a `pl-dircopy` root stands above it)
+| `outputPath` | where its output lands
+| `status` | how it settled, in CUBE's word, or `detached`
+|===
+
+`set A` shows the model whole. A pipeline run answers `pipeline.scheduled`, every node with its own `instanceId`, `outputPath` and `status`, so `${P.instances.outputPath}` is each node's folder. Over a gathered cohort, `gather process <plugin|pipeline>` runs once over every member and answers the same way. See `help variables` and `docs/manifest.adoc`.
 
 == Parameter Syntax
 
@@ -500,34 +520,23 @@ pl-dcm2niix-v2.1.1
 
 == Scripting with ChELL
 
-The non-interactive mode (`--` delimiter) enables automation:
+A script names each run and asserts it, and stops at the first line that is refused (`docs/manifest.adoc`):
 
 [source,bash]
 ----
-#!/bin/bash
-# process-patient.sh
-
-PATIENT_ID=$1
-
-# Upload data
-upload ~/raw-data/${PATIENT_ID} ~/uploads/${PATIENT_ID}
-
-# Start analysis (non-interactive)
-cd ~/uploads/${PATIENT_ID}
-pl-dcm2niix-v2.1.1 --outputdir nifti -- feed_title="Patient ${PATIENT_ID} Analysis"
-
-# Note: Job runs asynchronously, script continues immediately
-echo "Analysis started for patient ${PATIENT_ID}"
+#!/usr/bin/env chell
+@param        PATIENT
+cd ~/uploads/${PATIENT}
+A=$(pl-dcm2niix-v2.1.1 --outputdir nifti -- feed_title="Patient ${PATIENT} Analysis")
+expect path ${A.outputPath} count --matching "*.nii*" --deep gt 0
 ----
 
-**Usage:**
 [source,bash]
 ----
-./process-patient.sh 001
-./process-patient.sh 002
-./process-patient.sh 003
-# All analyses submitted in parallel
+chell -c "play $PWD/process-patient.chell --param PATIENT=001"
 ----
+
+Each play waits for its run. To submit several at once and come back later, run with `--detach` and follow them in `/proc/jobs`.
 
 == Comparison with Traditional chili Commands
 
@@ -560,49 +569,9 @@ chili plugin run pl-dcm2niix-v2.1.1 \
 
 ChELL collapses two commands, context management, and parameter marshaling into a single, intuitive invocation.
 
-== Phase 2 Features (Future)
+== Following a Run
 
-The following features are **not yet implemented** but planned:
-
-=== Job Status Monitoring
-
-[source,bash]
-----
-plugin status 789
-# Output:
-# Job ID: 789
-# Plugin: pl-dcm2niix-v2.1.1
-# Status: running
-# Progress: 45%
-# Started: 2025-12-05 14:32:10
-----
-
-=== Real-Time Progress
-
-[source,bash]
-----
-pl-freesurfer-v7.3.2 --follow
-# Streams live output from compute node
-# [14:35:12] Preprocessing...
-# [14:36:45] Surface reconstruction...
-# [14:42:03] Cortical parcellation...
-----
-
-=== Automatic Navigation
-
-[source,bash]
-----
-pl-dcm2niix-v2.1.1 --outputdir results --cd-on-complete
-# After job completes, shell automatically cd's to output directory
-----
-
-=== Dependency Specification
-
-[source,bash]
-----
-pl-registration-v1.0.0 --wait-for 103,104
-# Waits for jobs 103 and 104 to complete before starting
-----
+What was once planned here exists: `/proc/jobs/<feed>/<instance>` shows each run's status, and `expect run <id> status eq finishedSuccessfully --within 20m` waits on one. Streaming a compute node's live output, and starting one run only when others end (other than by running it after them in a script), are not part of chell.
 
 == Best Practices
 
@@ -670,17 +639,16 @@ Or use descriptive feed titles that are easy to search.
 [source,bash]
 ----
 cd ~/feeds/feed_42/pl-dcm2niix_103/data/
-pl-segmentation-v1.0.0 &
-pl-registration-v1.0.0 &
+pl-segmentation-v1.0.0 --detach
+pl-registration-v1.0.0 --detach
 # Both jobs submitted, running in parallel
 ----
 
-**Sequential:** Wait for completion before next step (manual for now, automated in Phase 2):
+**Sequential:** a run waits for its outcome, so the next line runs on output that exists:
 [source,bash]
 ----
-pl-step1-v1.0.0
-# Wait for completion (check with ls or Phase 2 `plugin status`)
-cd ~/feeds/feed_42/pl-step1_104/data/
+S=$(pl-step1-v1.0.0)
+cd ${S.outputPath}
 pl-step2-v1.0.0
 ----
 
@@ -759,14 +727,12 @@ pl-dcm2niix-v2.1.1 --help
 
 **Cause:** Job may have failed, or compute resource is overloaded.
 
-**Solution (Phase 2):**
+**Solution:** look at it in `/proc/jobs`, or assert on it:
 [source,bash]
 ----
-plugin status 789
-# Check job status and logs
+ls /proc/jobs/feed_42/
+expect run 789 status eq finishedSuccessfully
 ----
-
-**Current workaround:** Check ChRIS web UI for job status.
 
 === Wrong previous_id
 

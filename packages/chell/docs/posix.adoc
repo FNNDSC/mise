@@ -136,10 +136,11 @@ ChELL implements a deliberately small shell language:
 * sequential commands separated by unquoted `;`;
 * pipes separated by unquoted `|`;
 * overwrite and append redirection with unquoted `>` and `>>`;
-* `$NAME` and `${NAME}` substitution from the ChELL process environment on the normal plain-command dispatch path; an unset name is left literal;
+* `$NAME` and `${NAME}` references, answered by the session's built-ins (`${cwd}`, `${listing}`, `${gather}`), then its variables, then the engine's environment; a name nothing answers refuses the line rather than expanding to nothing;
+* variables: `NAME=$(command)` holds what the command answered (its typed model, or its printed text, one operand per line, when it has none), `NAME=word` holds one word; `${NAME.field}` reads a field of a model; `set` lists them and `unset` removes them;
 * shell-wide CFS/VFS wildcard expansion of unquoted words before command dispatch.
 
-Where supported, environment substitution is applied to parsed tokens after wildcard expansion. Unlike a POSIX shell, single quotes do not suppress `$NAME` substitution, and a wildcard introduced by an environment value is not subsequently expanded. Unlike the former command-specific behavior, quote and escape provenance is retained for pathname expansion: quoted or escaped `*`, `?`, and character classes remain literal, while unquoted syntax expands against one CFS/VFS directory listing. An unmatched pattern remains one literal word. An environment-expanded value stays one token and cannot inject a semicolon, pipe, or redirect into the already-parsed command structure. The ChELL command captured by a pipe or standalone redirect does not currently take this environment-substitution path; neither does a direct plugin executable that resolves before generic dispatch.
+References are resolved on parsed words, before wildcard expansion, with the shell's quoting rules: inside single quotes a `$` is text; a bare reference holding several values becomes several operands; inside double quotes it stays one. A wildcard introduced by a value is not subsequently expanded. Unlike the former command-specific behavior, quote and escape provenance is retained for pathname expansion: quoted or escaped `*`, `?`, and character classes remain literal, while unquoted syntax expands against one CFS/VFS directory listing. An unmatched pattern remains one literal word. A referenced value cannot inject a semicolon, pipe, or redirect into the already-parsed command structure. Every line resolves its references the same way: a plain command, a pipe's ChELL segment, a redirect, and the command word itself, so a manifest may name its plugin as a parameter (`${ANON} --fileFilter dcm`).
 
 In a pipe, the first segment is a ChELL command. Later segments are ordinary tools run by the originating surface. With `chell --remote`, those tools run on the remote client machine, never on the CALYPSO daemon host. A surface that cannot provide local pipeline execution, such as a browser without an appropriate companion capability, rejects the pipe instead of silently running it somewhere else. Only the data channel is piped or redirected; errors remain visible and progress/status output is never captured. Text is ANSI-stripped at the composition boundary, while binary data is preserved.
 
@@ -155,9 +156,9 @@ POSIX spelling alone does not identify which machine owns an operation. The curr
 | ChRIS CFS/VFS session namespace
 | CALYPSO resolves the path against the connected CUBE.
 
-| `$NAME` on the normal plain-command dispatch path
+| `$NAME` answered by the environment
 | Engine process environment
-| The value comes from the CALYPSO daemon environment, not the remote client's environment. Unset names remain literal.
+| The value comes from the CALYPSO daemon environment, not the remote client's environment. Variables belong to the daemon's session too.
 
 | A standalone `command > file` or `command >> file`
 | Engine host filesystem
@@ -199,7 +200,7 @@ For ordinary ChELL this is the local machine. For `chell --remote` it is still t
 The familiar spelling is an interface, not an emulation promise:
 
 * ChELL does not provide host/Unix processes or PIDs, inodes, device files, Unix ownership, mode changes, hard links, or a general host mount beneath its root.
-* The parser is not Bash: it has no command substitution, shell functions, control structures, `&&`/`||`, stdin or stderr redirection, background jobs, recursive globstar, brace expansion, or general-purpose expansion. It retains quote and escape provenance for pathname expansion, but not for environment substitution.
+* The parser is not Bash: `$(…)` appears only as the whole value of an assignment (`NAME=$(command)`), never as an operand or nested; there are no shell functions, control structures, `&&`/`||`, stdin or stderr redirection, background jobs (`--detach` is a run's own flag), recursive globstar, brace expansion, arithmetic or string slicing. A variable holds a typed answer, not a string, and `set` lists variables only: no options, no positional parameters. A script is a manifest, a straight line with no branches (`docs/manifest.adoc`).
 * VFS capabilities are provider-specific. `/etc` and the executable projections are read-only; `/proc` and `/net/pacs` expose only their documented domain operations.
 * Cache freshness is part of the interface. CFS listings, `/proc`, and `/etc/group` do not all share one cache or one invalidation policy.
 * `!` and local pipeline segments explicitly use surface capabilities; `upload` and `download` are explicit transfers. Ordinary ChELL paths do not name the operator's local files.

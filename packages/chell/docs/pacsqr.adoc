@@ -269,50 +269,21 @@ feed. Because CUBE paths must exist before `pl-dircopy` can consume them, `--new
 combined with `--nowait`.
 
 [[planned-analysis-attachment]]
-=== Analysis attachment
+=== Running over what was pulled
 
-`--new-feed` is deliberately the operation that creates the analysis context. It may
-optionally attach exactly one plugin or one registered pipeline to the newly created
-`pl-dircopy` root:
+`pull` lands data and stops; running over it is a line of its own. Over a gathered cohort, `gather process` makes one feed whose `pl-dircopy` root holds every member (the cohort's own feed when `--new-feed` already made one) and runs a plugin or pipeline once off that root; it answers the run, so a manifest names it:
 
 [source,shell]
 ----
-pacs pull <selection...> \
-  --new-feed "Brain MRI" \
-  --plugin pl-dcm2niix-v1.2.0 \
-  -- --outputdir nii
-
-pacs pull <selection...> \
-  --new-feed "Brain MRI" \
-  --pipeline brain-preprocessing \
-  -- \
-  --registration.dof 12 \
-  --segmentation.threshold 0.4
-
-pacs pull <selection...> \
-  --new-feed "Brain MRI" \
-  --pipeline brain-preprocessing \
-  -- \
-  --paramFile parameter-overrides.yaml
+pull ${gather}
+expect gather unpulled eq 0
+R=$(gather process pl-dcm2niix-v1.2.0 -- --outputdir nii)
+expect run ${R.instanceId} status eq finishedSuccessfully
 ----
 
-The rules are:
+The run's arguments follow `--` in the run's own grammar; a pipeline takes `--<node>.<parameter> <value>` compound parameters or `--paramFile <file>`, as specified in link:../../../docs/feed-dag-viewer.adoc#pipeline-parameter-binding[Pipeline invocation as parameter binding]. A series not pulled yet has no folder to copy, and `gather process` refuses it by name.
 
-* `--plugin` and `--pipeline` are mutually exclusive and each requires `--new-feed`. Neither flag
-  implicitly creates a feed.
-* The selector is resolved exactly as it is for direct plugin execution or `pipeline run`.
-* Arguments after `--` are forwarded using the selected plugin or pipeline's existing invocation
-  semantics; `pacs pull` does not invent a second parameter grammar. Pipeline invocation uses
-  `--<node>.<parameter> <value>` compound parameters or `--paramFile <file>` as specified in
-  link:../../../docs/feed-dag-viewer.adoc#pipeline-parameter-binding[Pipeline invocation as
-  parameter binding].
-* The lifecycle is ordered: retrieve the complete selection, resolve every CUBE directory, create
-  the feed and `pl-dircopy` root, then attach the selected analysis to that root.
-* Retrieval, resolution, or feed-creation failure prevents attachment. If attachment itself fails,
-  the successfully created feed is retained, the command returns nonzero, and output identifies the
-  feed/root so the user can continue manually. There is no rollback of a valid feed.
-* Successful output reports the feed and root identities already shown above plus the created plugin
-  instance or workflow identity.
+`pull` once took `--plugin <selector>` and `--pipeline <selector>` with `--new-feed` to retrieve and run in one line. They were retired with the session pronouns (issue #1208): two ways to make the same feed is the debt `plugin run` was, and the two-step is what ARGUS's PROCESS presses and what a manifest reads as. They refuse by name.
 
 === Synthetic query pattern
 

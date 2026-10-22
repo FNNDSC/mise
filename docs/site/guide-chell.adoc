@@ -39,7 +39,7 @@ Both examples below run in continuous integration against a live CUBE; the `.che
 
 == A `.chell` script
 
-The shell analogue of a bash script: run with `-e` (stop on error) and `-f`, a clean exit is the assertion. This is exemplar `10_fs_roundtrip.chell`, included whole:
+The shell analogue of a bash script, played as a manifest (`docs/manifest.adoc`): `chell -f` stops at the first refused line and exits non-zero, so a clean exit is the assertion. This is exemplar `10_fs_roundtrip.chell`, included whole:
 
 [source,bash]
 ----

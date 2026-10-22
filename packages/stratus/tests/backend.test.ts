@@ -31,6 +31,7 @@ describe('stratusBackend_make', () => {
     await made.backend.session.init();
     expect(await made.backend.prompt!()).toEqual({
       user: 'rudolph', uri: 'fnndsc', cwd: '/net/oci/fnndsc/domains', pacsserver: null, physicalMode: false, lastExitCode: 0, lastCommandDurationMs: 0,
+      segments: expect.arrayContaining([expect.objectContaining({ key: 'cloud', value: 'OCI', tone: 'leader' }), expect.objectContaining({ key: 'cwd', value: '/net/oci/fnndsc/domains' })]),
     });
     await made.backend.session.cwd_save('/net/oci/fnndsc/harbor-oci');
     expect(await made.backend.prompt!({ lastExitCode: 1, lastCommandDurationMs: 42 })).toMatchObject({ cwd: '/net/oci/fnndsc/harbor-oci', lastExitCode: 1, lastCommandDurationMs: 42 });
@@ -42,7 +43,7 @@ describe('stratusBackend_make', () => {
     })(fakeCloud_sample());
     const made = stratusBackend_make({ driver: broken, configDir: mkdtempSync(path.join(tmpdir(), 'stratus-backend-')) });
     await made.backend.session.init();
-    expect(await made.backend.prompt!()).toMatchObject({ user: 'disconnected', uri: '', cwd: '/net/oci' });
+    expect(await made.backend.prompt!()).toMatchObject({ user: 'disconnected', uri: '', cwd: '/net/oci', segments: [{ key: 'cloud', value: 'OCI ✗', tone: 'alert' }, { key: 'cwd', value: '/net/oci' }] });
   });
 });
 

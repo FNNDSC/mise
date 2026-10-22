@@ -259,7 +259,7 @@ There is no `terraform` command: Terraform runs only inside `domain` steps, wher
 === D8. Identity and credentials stay on the daemon's host
 
 * The driver supplies the identity. For OCI the daemon reads an API-key profile from `~/.oci/config` (`--profile`, default `DEFAULT`). There is no instance principal: the bastion never runs inside a tenancy it builds (<<bastion.adoc#posture,bastion.adoc>>).
-* The identity is the IAM user's name (looked up from the user OCID) at the tenancy's name: berth `user@tenancy`, the same form on every cloud. On the live tenancy the user's name is an e-mail address (`rudolph.pienaar@childrens.harvard.edu@fnndsc-bch`): two `@` in a berth, kept as the cloud writes it rather than shortened and made ambiguous. Open: whether a berth should show the local part only. The region belongs to the session, not the identity, so changing region keeps the berth.
+* The identity is the IAM user's name (looked up from the user OCID) at the tenancy's name: berth `user@tenancy`, the same form on every cloud. On the live tenancy the user's name is an e-mail address (`rudolph.pienaar@childrens.harvard.edu@fnndsc-bch`): two `@` in a berth, kept as the cloud writes it rather than shortened and made ambiguous. Decided 2026-10-21: the berth is one string everywhere; the prompt shows it in full and a surface short of room truncates it from the left, as it does a path, so `whoami` and the prompt agree. The region belongs to the session, not the identity, so changing region keeps the berth.
 * The Red Hat service account and the SSH key are daemon settings, as in `harbor-oci`'s `config.local.env`.
 * *Secrets are never files the browser can read.* `domains/<td>/cluster/` shows `console api version nodes/`; the kubeconfig and the kubeadmin password live on the host under the domain's state, and `cat` and `/vfs` refuse them with the host path. `oc` and `helm` under the `tasks` tier read the kubeconfig on the host themselves. How an operator gets the console password is <<open,open>>; whatever it is, it is never through the browser.
 
@@ -276,7 +276,7 @@ The stratus prompt, the leader segment from the driver:
        tenancy   region         user      domain   working directory  last command
 ....
 
-The domain segment appears when the working directory is inside a domain or one of its resources. A running step adds a segment with its name and progress. Disconnected, the leader reads `OCI ✗`.
+The domain segment appears when the working directory is inside a domain or one of its resources. A running step adds a segment with its name and progress. Disconnected, the leader reads `OCI ✗`. The user segment carries the identity as the cloud writes it, in full; a surface that is short of columns truncates it from the left, keeping its ending, before it shortens the path. Each segment carries a key the surface may know a glyph for, a label for a reader who meets the key cold, the value, and a tone (leader, place, identity, path, work, note, alert) the surface maps to its own palette; no colour crosses the wire.
 
 [[tasks]]
 === D10. Build steps are tasks; the supervised runner stops being deferred

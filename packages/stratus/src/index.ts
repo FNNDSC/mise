@@ -17,3 +17,4 @@ export { stratusBackend_make, type StratusBackend, type StratusBackendOptions } 
 export { AnswerCache } from './cache.js';
 export { segments_assign, segment_resolve, idSuffix_of, ambiguity_words, type Named, type Segment, type SegmentMatch } from './names.js';
 export { stratusArgs_parse, type StratusArgs } from './args.js';
+export { stratusSegments_build, domain_ofPath, STRATUS_SEGMENT_KEYS } from './prompt.js';

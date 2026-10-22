@@ -155,6 +155,22 @@ describe('serverMessage_parse', () => {
     });
   });
 
+  it('carries a backend\'s prompt segments and refuses a tone it does not know', (): void => {
+    const context = {
+      user: 'rudolph', uri: 'fnndsc', cwd: '/net/oci/fnndsc/domains', pacsserver: null,
+      physicalMode: false, lastExitCode: 0, lastCommandDurationMs: 0,
+    };
+    const segments = [
+      { key: 'cloud', label: 'cloud', value: 'OCI', tone: 'leader' },
+      { key: 'cwd', label: 'working directory', value: '/net/oci/fnndsc/domains', tone: 'path' },
+    ];
+    const parsed = serverMessage_parse({ type: 'promptline', context: { ...context, segments } });
+    expect(parsed.ok).toBe(true);
+    expect(parsed.value).toEqual({ type: 'promptline', context: { ...context, segments } });
+    expect(serverMessage_parse({ type: 'promptline', context }).ok).toBe(true);
+    expect(serverMessage_parse({ type: 'promptline', context: { ...context, segments: [{ key: 'x', label: 'x', value: 'x', tone: 'loud' }] } }).ok).toBe(false);
+  });
+
   it('rejects an output on an unknown channel', () => {
     expect(serverMessage_parse({ type: 'output', id: '1', channel: 'sideband', chunk: 'x' }).ok).toBe(false);
   });

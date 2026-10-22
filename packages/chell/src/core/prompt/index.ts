@@ -10,6 +10,7 @@
 import { ThemeDefault } from './theme_default.js';
 import { ThemeP10k } from './theme_p10k.js';
 import type { ProcPromptProgress } from '@fnndsc/cumin';
+import type { PromptSegment } from '@fnndsc/menu';
 
 /**
  * Which optional p10k segments are enabled.
@@ -61,6 +62,13 @@ export interface PromptContext {
    * printed to, so the prompt carries it until it clears.
    */
   warmupFailures?: Array<{ label: string; message: string }>;
+  /**
+   * Backend-neutral segments a backend fills in display order (stratus: the
+   * cloud, the tenancy, the region, the user, the domain, the working
+   * directory). When present a theme draws them in place of the ChRIS-shaped
+   * host, user and directory; the trailing telemetry stays the theme's.
+   */
+  segments?: ReadonlyArray<PromptSegment>;
 }
 
 /**

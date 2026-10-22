@@ -14,7 +14,7 @@
  */
 
 import chalk from 'chalk';
-import { procPromptState_get, type ProcPromptState } from '@fnndsc/menu';
+import { procPromptState_get, type ProcPromptState, type PromptSegment, type PromptSegmentTone } from '@fnndsc/menu';
 import type { PromptContext, PromptTheme } from './index.js';
 import {
   PROMPT_PALETTE,
@@ -26,6 +26,7 @@ import {
   ansi_visibleLength,
   homePath_abbreviate,
   path_truncate,
+  text_truncateLeft,
   procProgress_format,
   feedArrivals_format,
 } from './utils.js';
@@ -65,6 +66,45 @@ const ICON_REFRESH: string = '\uf021';
 
 /** Font Awesome warning icon (U+F071). */
 const ICON_WARNING: string = '\uf071';
+
+/** Font Awesome cloud icon (U+F0C2): a stratus prompt's leader. */
+const ICON_CLOUD: string = '\uf0c2';
+
+/** Font Awesome globe icon (U+F0AC): a region. */
+const ICON_GLOBE: string = '\uf0ac';
+
+/** Font Awesome sitemap icon (U+F0E8): a domain. */
+const ICON_SITEMAP: string = '\uf0e8';
+
+/**
+ * The glyph a wire segment wears, by the key a backend gave it; a key the
+ * theme does not know draws its value alone.
+ */
+const SEGMENT_ICONS: Readonly<Record<string, string>> = {
+  cloud: ICON_CLOUD,
+  tenancy: ICON_CUBE,
+  region: ICON_GLOBE,
+  user: ICON_USER,
+  domain: ICON_SITEMAP,
+  cwd: ICON_FOLDER,
+};
+
+/** The palette pair a wire segment's tone maps to. */
+const TONE_COLORS: Readonly<Record<PromptSegmentTone, PromptColorPair>> = {
+  leader: PROMPT_PALETTE.HOST,
+  place: PROMPT_PALETTE.PACS,
+  identity: PROMPT_PALETTE.USER,
+  path: PROMPT_PALETTE.DIR,
+  work: PROMPT_PALETTE.DURATION,
+  note: PROMPT_PALETTE.TIME,
+  alert: PROMPT_PALETTE.STATUS,
+};
+
+/** The fewest columns a path keeps before an identity yields columns to it. */
+const PATH_FLOOR: number = 12;
+
+/** The fewest columns an identity keeps, however tight the line. */
+const IDENTITY_FLOOR: number = 16;
 
 /** Theme-specific presentation for each process-index state. */
 const PROC_STATE_SEGMENTS: Record<ProcPromptState, { icon: string; label: string; color: PromptColorPair }> = {
@@ -165,6 +205,8 @@ function time_now(): string {
  */
 export class ThemeP10k implements PromptTheme {
   render(ctx: PromptContext): string {
+    const wire: ReadonlyArray<PromptSegment> = ctx.segments ?? [];
+    if (wire.length > 0) return this.segments_render(ctx, wire);
     const host: string = uri_abbreviate(ctx.uri);
 
     // Core segments: [pacs] → host → user → dir → [proc]
@@ -285,4 +327,103 @@ export class ThemeP10k implements PromptTheme {
     const line2: string = chalk.hex(glyphColor)('❯') + ' ';
     return `${line1}\n${line2}`;
   }
+
+  /**
+   * Renders a prompt from the segments a backend sent, in their order: the
+   * leading ones as they came, the `cwd` one budgeted like a path, and the
+   * theme's own telemetry trailing. When the line is tight the identity
+   * yields columns first, truncated from the left so its ending stays.
+   *
+   * @param ctx - The prompt context.
+   * @param wire - The backend's segments, at least one.
+   * @returns The two-line prompt.
+   */
+  private segments_render(ctx: PromptContext, wire: ReadonlyArray<PromptSegment>): string {
+    const trailing: SegmentSpec[] = trailing_build(ctx);
+    const cwdSegment: PromptSegment | undefined = wire.find((segment: PromptSegment): boolean => segment.key === 'cwd');
+    const leading: PromptSegment[] = wire.filter((segment: PromptSegment): boolean => segment.key !== 'cwd');
+    const limit: number = Math.floor(ctx.terminalWidth * FILL_RATIO);
+    const trailingOverhead: number = overhead_measure(trailing);
+    const dirOverhead: number = 4;
+
+    const specs_make = (identityMax: number | null): SegmentSpec[] => leading.map((segment: PromptSegment): SegmentSpec => {
+      const icon: string | undefined = SEGMENT_ICONS[segment.key];
+      const value: string = identityMax !== null && segment.tone === 'identity' ? text_truncateLeft(segment.value, identityMax) : segment.value;
+      return { text: icon !== undefined ? `${icon} ${value}` : value, color: TONE_COLORS[segment.tone] };
+    });
+
+    let fixed: SegmentSpec[] = specs_make(null);
+    let pathBudget: number = limit - overhead_measure(fixed) - trailingOverhead - dirOverhead;
+    const identity: PromptSegment | undefined = leading.find((segment: PromptSegment): boolean => segment.tone === 'identity');
+    if (pathBudget < PATH_FLOOR && identity !== undefined && identity.value.length > IDENTITY_FLOOR) {
+      const identityMax: number = Math.max(IDENTITY_FLOOR, identity.value.length - (PATH_FLOOR - pathBudget));
+      fixed = specs_make(identityMax);
+      pathBudget = limit - overhead_measure(fixed) - trailingOverhead - dirOverhead;
+    }
+    const dirPath: string = path_truncate(cwdSegment?.value ?? ctx.cwd, Math.max(pathBudget, 4));
+    const dirColor: PromptColorPair = cwdSegment !== undefined ? TONE_COLORS[cwdSegment.tone] : PROMPT_PALETTE.DIR;
+    const defs: SegmentSpec[] = [...fixed, { text: `${ICON_FOLDER} ${dirPath}`, color: dirColor }, ...trailing];
+    const glyphColor: HexColor = statusColor_get(ctx.lastExitCode);
+    return `${bar_assemble(defs)}\n${chalk.hex(glyphColor)('❯')} `;
+  }
+}
+
+/**
+ * Measures what a run of segments costs in columns once rendered: their
+ * visible text plus one separator each.
+ *
+ * @param specs - The segments.
+ * @returns The columns they take.
+ */
+function overhead_measure(specs: ReadonlyArray<SegmentSpec>): number {
+  const rendered: string = specs.map((segment: SegmentSpec): string => segment_render(segment.text, segment.color)).join('');
+  return ansi_visibleLength(rendered) + specs.length;
+}
+
+/**
+ * Joins segments into the bar: each on its background, a powerline separator
+ * between neighbours and a final one fading to the terminal.
+ *
+ * @param defs - The segments in order.
+ * @returns The bar's ANSI string.
+ */
+function bar_assemble(defs: ReadonlyArray<SegmentSpec>): string {
+  let line: string = '';
+  for (let i: number = 0; i < defs.length; i++) {
+    const def: SegmentSpec = defs[i];
+    line += segment_render(def.text, def.color);
+    line += i < defs.length - 1 ? separator_render(def.color, defs[i + 1].color) : separator_final(def.color);
+  }
+  return line;
+}
+
+/**
+ * The theme's own telemetry, trailing any backend's segments: physical mode,
+ * host control, open questions, the time, the last command's duration and
+ * exit status.
+ *
+ * @param ctx - The prompt context.
+ * @returns The trailing segments, possibly none.
+ */
+function trailing_build(ctx: PromptContext): SegmentSpec[] {
+  const trailing: SegmentSpec[] = [];
+  if (ctx.physicalMode) {
+    trailing.push({ text: `${ICON_MICROSCOPE} PHYSICAL`, color: PROMPT_PALETTE.PHYSICAL });
+  }
+  if (ctx.hostControl !== undefined && ctx.hostControl.length > 0) {
+    trailing.push({ text: `⚠ HOST ${ctx.hostControl.join(',')}`, color: PROMPT_PALETTE.HOSTCTL });
+  }
+  if (ctx.questions !== undefined && ctx.questions > 0) {
+    trailing.push({ text: `? ${ctx.questions} waiting`, color: PROMPT_PALETTE.HOSTCTL });
+  }
+  if (ctx.p10kSegments.time) {
+    trailing.push({ text: `${ICON_CLOCK} ${time_now()}`, color: PROMPT_PALETTE.TIME });
+  }
+  if (ctx.p10kSegments.duration && ctx.lastCommandDurationMs >= DURATION_THRESHOLD_MS) {
+    trailing.push({ text: `${ICON_BOLT} ${duration_format(ctx.lastCommandDurationMs)}`, color: PROMPT_PALETTE.DURATION });
+  }
+  if (ctx.p10kSegments.status && ctx.lastExitCode !== 0) {
+    trailing.push({ text: `${ICON_ERROR} ${ctx.lastExitCode}`, color: PROMPT_PALETTE.STATUS });
+  }
+  return trailing;
 }

@@ -58,6 +58,21 @@ export function path_truncate(path: string, maxLen: number): string {
 }
 
 /**
+ * Truncates text from the left, keeping its tail: an identity that is an
+ * e-mail address at a tenancy keeps its ending, where the tenancy is, the
+ * way a long path keeps its leaf.
+ *
+ * @param text - The text to fit.
+ * @param maxLen - Maximum number of visible columns allowed.
+ * @returns The text, or its tail behind `…` when it was longer.
+ */
+export function text_truncateLeft(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  if (maxLen <= 1) return '…';
+  return '…' + text.slice(-(maxLen - 1));
+}
+
+/**
  * Formats active `/proc` warm-up progress for prompt themes.
  *
  * Active work is capped at 99%; completion removes the prompt segment instead

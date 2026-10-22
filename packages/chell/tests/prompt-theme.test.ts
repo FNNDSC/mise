@@ -224,3 +224,39 @@ describe('an open question shows in the prompt', () => {
   }
 });
 
+
+describe('prompt segments from a backend', (): void => {
+  const segments = [
+    { key: 'cloud', label: 'cloud', value: 'OCI', tone: 'leader' as const },
+    { key: 'tenancy', label: 'tenancy', value: 'fnndsc-bch', tone: 'place' as const },
+    { key: 'region', label: 'region', value: 'us-ashburn-1', tone: 'place' as const },
+    { key: 'user', label: 'user', value: 'rudolph.pienaar@childrens.harvard.edu', tone: 'identity' as const },
+    { key: 'domain', label: 'domain', value: 'harbor', tone: 'work' as const },
+    { key: 'cwd', label: 'working directory', value: '/net/oci/fnndsc-bch/domains/harbor/steps', tone: 'path' as const },
+  ];
+  const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
+
+  it('draws them in the backend\'s order in both themes, the identity whole when the line is wide', (): void => {
+    for (const theme of ['default', 'p10k'] as const) {
+      const rendered: string = plain(prompt_render(theme, { ...promptContext_create('/ignored'), segments }));
+      const positions: number[] = ['OCI', 'fnndsc-bch', 'us-ashburn-1', 'rudolph.pienaar@childrens.harvard.edu', 'harbor', '/net/oci/fnndsc-bch/domains/harbor/steps'].map((value: string): number => rendered.indexOf(value));
+      expect(positions.every((at: number): boolean => at >= 0)).toBe(true);
+      expect([...positions].sort((a: number, b: number): number => a - b)).toEqual(positions);
+      expect(rendered).not.toContain('cube.example.org');
+    }
+  });
+
+  it('truncates the identity from the left before the path gives way, in the p10k theme', (): void => {
+    const rendered: string = plain(prompt_render('p10k', { ...promptContext_create('/ignored'), terminalWidth: 96, segments }));
+    expect(rendered).toContain('…');
+    expect(rendered).toContain('harvard.edu');
+    expect(rendered).not.toContain('rudolph.pienaar@childrens.harvard.edu');
+    expect(rendered).toContain('steps');
+  });
+
+  it('keeps the theme\'s own trailing telemetry after the segments', (): void => {
+    const ctx = { ...promptContext_create('/ignored'), segments, lastExitCode: 3, p10kSegments: { pacs: false, time: false, duration: false, status: true } };
+    const rendered: string = plain(prompt_render('p10k', ctx));
+    expect(rendered.indexOf(' 3 ')).toBeGreaterThan(rendered.indexOf('steps'));
+  });
+});

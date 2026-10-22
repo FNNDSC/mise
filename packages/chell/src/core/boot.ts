@@ -595,11 +595,11 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   // REPL; it needs no local engine, session, or CUBE connection.
   if (config.mode === 'remote') {
     const { remote_run } = await import('../remote/client.js');
-    const { identity_forSession } = await import('@fnndsc/calypso');
     const cc: { user?: string; url?: string } | undefined = config.connectConfig;
-    // A `<user>@<url>` target names the identity to attach to; a bare `--remote`
-    // resolves the sole/most-suitable berth (identity undefined).
-    const identity: string | undefined = cc?.user && cc?.url ? identity_forSession(cc.user, cc.url) : undefined;
+    // A `<user>@<where>` target names the identity to attach to, as typed; the
+    // client tries it exactly before it reads it as a CUBE URL. A bare
+    // `--remote` resolves the sole live berth (identity undefined).
+    const identity: string | undefined = config.remoteTarget;
     // A door wins over everything: the terminal logs in there and attaches
     // to whatever the door mounts, with the door's cookie on the upgrade.
     if (config.door !== undefined) {

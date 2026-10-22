@@ -24,6 +24,7 @@ import { RemoteEngine, type DaemonStack } from './remoteEngine.js';
 import { buildMismatch_line, closingLine_of, staleLines_of, surfaceNews_read } from './buildMatch.js';
 import type { ClosingCause } from '@fnndsc/menu';
 import { LocalBerthResolver, type Berth } from '@fnndsc/calypso';
+import { berthIdentities_of } from './berthTarget.js';
 import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, stackBanner_rows, stackBannerRow_paint, buildHash_get } from '@fnndsc/brasa';
 import { cliSurface_create } from '../core/cliSurface.js';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
@@ -145,23 +146,27 @@ async function berth_pick(berths: Berth[]): Promise<Berth | null> {
 }
 
 /**
- * Selects the berth to attach to: by identity when given, else the sole live
- * berth, else an interactive pick (a non-interactive caller must be explicit).
+ * Selects the berth to attach to: by the target's identity when given, else
+ * the sole live berth, else an interactive pick (a non-interactive caller must
+ * be explicit).
  *
- * @param identity - The normalised identity to attach to, or undefined for a
+ * @param target - The `<user>@<where>` target as typed, or undefined for a
  *   bare `--remote`.
  * @returns The berth to attach, or null when none can be resolved (a message is
  *   printed).
  */
-async function berth_select(identity: string | undefined): Promise<Berth | null> {
+async function berth_select(target: string | undefined): Promise<Berth | null> {
   const resolver: LocalBerthResolver = new LocalBerthResolver(berth_probeLive);
 
-  if (identity) {
-    const berth: Berth | null = await resolver.resolve(identity);
-    if (!berth) {
-      console.error(chalk.red(`[!] No live calypso for ${identity}. Start one with:  calypso ${identity}`));
+  if (target) {
+    for (const identity of berthIdentities_of(target)) {
+      const berth: Berth | null = await resolver.resolve(identity);
+      if (berth) {
+        return berth;
+      }
     }
-    return berth;
+    console.error(chalk.red(`[!] No live calypso for ${target}. Start one with:  calypso ${target}`));
+    return null;
   }
 
   const berths: Berth[] = await resolver.list();
@@ -224,8 +229,8 @@ async function segments_execute(engine: RemoteEngine, line: string): Promise<Com
  * Runs the remote client: resolves a daemon berth, attaches, and enters the
  * REPL.
  *
- * @param identity - The normalised `<user>@<url>` to attach to, or undefined to
- *   resolve the sole/most-suitable berth.
+ * @param identity - The `<user>@<where>` to attach to, as typed (see
+ *   {@link berthIdentities_of}), or undefined to resolve the sole live berth.
  * @param commandToExecute - An optional one-shot command. When present, execute
  *   it and detach without creating an interactive REPL.
  * @param attach - An explicit daemon address, for a daemon on another machine

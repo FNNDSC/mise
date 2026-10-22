@@ -98,6 +98,7 @@ export function shape_ofRecord(record: OciShapeRecord): CloudShape {
     processor: record.processorDescription,
     gpus: record.gpus,
     quotaNames: record.quotaNames,
+    limitService: 'compute',
     raw: record.raw,
   };
 }

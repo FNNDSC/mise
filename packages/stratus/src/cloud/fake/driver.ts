@@ -223,6 +223,7 @@ export function fakeCloud_sample(tenancy: string = 'fnndsc'): FakeCloud {
   const shape = (name: string, family: string, processor: string): CloudShape => ({
     name, family, flexible: true, vcpuPerCore: 2, cores: { min: 1, max: 94 }, memoryGib: { min: 1, max: 1049 }, processor, gpus: 0,
     quotaNames: [`standard-${family.toLowerCase()}-core-count`, `standard-${family.toLowerCase()}-memory-count`],
+    limitService: 'compute',
     raw: { shape: name, processorDescription: processor, isFlexible: true },
   });
   return {

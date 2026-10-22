@@ -59,6 +59,7 @@ import { chrisPanes_make, type ChrisPanes } from '../compositions/chris/panes.js
 import { chrisDicom_make, type ChrisDicom } from '../compositions/chris/dicom.js';
 import { chrisStage_make, type ChrisStage } from '../compositions/chris/stage.js';
 import { chrisTiles_make } from '../compositions/chris/tiles.js';
+import { stratusTiles_make } from '../compositions/stratus/tiles.js';
 import { chrisSignals_make, type ChrisSignals } from '../compositions/chris/signals.js';
 import { ViewerPanel } from '../features/view/panel.js';
 import { ImagePanel, type SeriesChoice } from '../features/image/panel.js';
@@ -1689,6 +1690,13 @@ async function surface_start(token: string): Promise<void> {
       line_offer: (line: string): void => terminal.line_offer(line),
       pacs_query: (): string => pacsPanel.query_get() ?? '',
       pacs_open: (): void => { domain_enter('pacs'); layout.focus_set('pacs'); },
+    }) }),
+    // DOMAINS and CAPACITY: the stratus composition's tiles (compositions/stratus/tiles.ts).
+    ...(backend !== 'stratus' ? {} : { contribution: stratusTiles_make({
+      ask: (line: string): Promise<ExecuteOutcome> => client.line_execute(line, { silent: true, observe: false }),
+      home_cd: (path: string): void => { dagShown = false; home_apply(); terminal.line_run(`cd "${path}"`); },
+      home_open: (): void => { dagShown = false; home_apply(); layout.focus_set('files'); },
+      line_run: (line: string): void => { element_require('gutter-console').click(); terminal.line_run(line); },
     }) }),
   });
 

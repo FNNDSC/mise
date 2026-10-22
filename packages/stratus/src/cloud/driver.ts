@@ -95,6 +95,8 @@ export interface CloudShape {
   readonly gpus: number;
   /** The limit names the shape draws on. */
   readonly quotaNames: ReadonlyArray<string>;
+  /** The limit service those names belong to (OCI: `compute`). */
+  readonly limitService: string;
   /** The whole record, for `info.json`. */
   readonly raw: unknown;
 }

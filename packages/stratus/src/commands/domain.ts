@@ -4,9 +4,8 @@
  * `domain status [<name>]` prints, per domain, its cluster, its checkout,
  * each step with its state and the evidence for it, and how many live
  * resources its compartment holds in the session's region. A bare `domain`
- * is `domain status` for every domain. The verbs that check or build
- * (`verify`, `plan`, `build`) are the driver's steps (D3, D10), not yet
- * written; each is refused by name.
+ * is `domain status` for every domain. `new`, `plan`, `build` and `adopt`
+ * are in `build.ts`, `verify` in `verify.ts`; any other verb is refused by name.
  *
  * @module
  */
@@ -20,6 +19,7 @@ import { stateTone_paint } from '../vfs/look.js';
 import { lastDone_of } from '../domains/harborOci.js';
 import { capacity_run, CAPACITY_HELP } from './capacity.js';
 import { domainAdopt_run, domainBuild_run, domainNew_run, domainPlan_run, type BuildCommandContext } from './build.js';
+import { domainVerify_run, verifyReach_default } from './verify.js';
 
 /** What `domain` reads from the session. */
 export interface DomainCommandContext {
@@ -93,10 +93,10 @@ export async function domainStatus_read(context: DomainCommandContext, domain: H
  */
 export async function domain_run(context: DomainCommandContext, args: ReadonlyArray<string>): Promise<CommandEnvelope> {
   const [verb = 'status', ...rest] = args;
-  const builds: Readonly<Record<string, (context: BuildCommandContext, args: ReadonlyArray<string>) => Promise<CommandEnvelope>>> = { new: domainNew_run, plan: domainPlan_run, build: domainBuild_run, adopt: domainAdopt_run };
+  const builds: Readonly<Record<string, (context: BuildCommandContext, args: ReadonlyArray<string>) => Promise<CommandEnvelope>>> = { new: domainNew_run, plan: domainPlan_run, build: domainBuild_run, adopt: domainAdopt_run, verify: (build: BuildCommandContext, words: ReadonlyArray<string>) => domainVerify_run(build, build.verifyReach ?? verifyReach_default(), words) };
   const build = builds[verb];
   if (build !== undefined) return context.build === undefined ? envelope_error('', undefined, `domain: ${verb}: this session builds no domains\n`) : build(context.build, rest);
-  if (verb !== 'status') return envelope_error('', undefined, `domain: ${verb}: not a verb this session has yet (domain status, new, plan, build, adopt)\n`);
+  if (verb !== 'status') return envelope_error('', undefined, `domain: ${verb}: not a verb this session has yet (domain status, new, plan, build, adopt, verify)\n`);
   const all: HarborDomain[] = context.domains.domains_read();
   if (all.length === 0) return envelope_ok('no domains: domain new <name> makes one; stratus --domain <name>=<harbor-oci checkout> reads one\n', { kind: STRATUS_DOMAINS_MODEL_KIND, data: { domains: [] } });
   const chosen: HarborDomain[] = rest.length === 0 ? all : all.filter((domain: HarborDomain): boolean => rest.includes(domain.name));
@@ -114,11 +114,11 @@ export async function domain_run(context: DomainCommandContext, args: ReadonlyAr
 
 /** `domain`'s help. */
 export const DOMAIN_HELP: CommandHelp = {
-  usage: 'domain [status [<name>…]] | domain new <name> [options] | domain plan [<name>] | domain build [<name>] [--through <step>]',
+  usage: 'domain [status [<name>…]] | domain new <name> [options] | domain plan [<name>] | domain build [<name>] [--through <step>] | domain adopt <name> --from <checkout> | domain verify [<name>]',
   summary: 'Make, plan, build, and see where each Trusted Domain stands',
   category: 'Resources',
-  description: 'domain status prints each domain: those this daemon builds, and those read from a harbor-oci checkout (stratus --domain <name>=<checkout>), with its cluster, each build step with its state and the evidence for it, and its compartment\'s live resources in the session\'s region. A bare domain is domain status for every domain. domain new writes a domain\'s spec and nothing else (--family E5, --plane 3x8/24, --workers 2x8/32 as count x vCPU / GiB, --data, --database, --queue in GiB, --base-domain zone). domain plan reads only: whether the spec fits each availability domain, what it costs an hour, where the steps stand; the infrastructure plan needs the tasks tier. domain build runs the steps from the first not done as a task (/proc/steps/<name>-build) and follows it; before the first step that bills it asks, with the plan\'s counts and the cost. Ctrl-C stops following, not the build: wait <name>-build follows it again, kill <name>-build asks it to stop. The domain\'s files are under ~ (domains/<name>/); its credentials stay on the host.',
-  examples: ['domain', 'domain new trial --workers 2x8/32 --data 100', 'domain plan trial', 'domain build trial --through infra-plan', 'domain build trial', 'cat ~/harbor/steps/05-infra-apply/evidence'],
+  description: 'domain status prints each domain: those this daemon builds, and those read from a harbor-oci checkout (stratus --domain <name>=<checkout>), with its cluster, each build step with its state and the evidence for it, and its compartment\'s live resources in the session\'s region. A bare domain is domain status for every domain. domain new writes a domain\'s spec and nothing else (--family E5, --plane 3x8/24, --workers 2x8/32 as count x vCPU / GiB, --data, --database, --queue in GiB, --base-domain zone). domain plan reads only: whether the spec fits each availability domain, what it costs an hour, where the steps stand; the infrastructure plan needs the tasks tier. domain build runs the steps from the first not done as a task (/proc/steps/<name>-build) and follows it; before the first step that bills it asks, with the plan\'s counts and the cost. Ctrl-C stops following, not the build: wait <name>-build follows it again, kill <name>-build asks it to stop. domain adopt keeps a domain harbor-oci built and, with the tasks tier, takes its stack and state into the cloud\'s Resource Manager; an adopted domain is planned against, never built on. domain verify runs ten checks against the cluster through its kubeconfig, which stays on the host: nine read, and the block-volume probe, which makes a claim and a pod, runs only with the tasks tier. The domain\'s files are under ~ (domains/<name>/); its credentials stay on the host.',
+  examples: ['domain', 'domain new trial --workers 2x8/32 --data 100', 'domain plan trial', 'domain build trial --through infra-plan', 'domain build trial', 'domain adopt harbor --from ~/src/harbor-oci', 'domain verify harbor', 'cat ~/harbor/steps/05-infra-apply/evidence'],
 };
 
 /**

@@ -93,6 +93,11 @@ export function checkout_read(name: string, root: string, now: Date): CheckoutRe
   for (const [key, field] of [['clusterId', 'assistedClusterId'], ['infraEnvId', 'assistedInfraEnvId'], ['isoObject', 'isoObjectName']] as const) {
     if (typeof harbor[field] === 'string') ids[key] = harbor[field] as string;
   }
+  // The load balancers' addresses, from the state's outputs, for the DNS check.
+  const outputs: Record<string, { value?: unknown }> = (JSON.parse(readFileSync(stateFile, 'utf-8')) as { outputs?: Record<string, { value?: unknown }> }).outputs ?? {};
+  for (const [key, output] of [['apiIp', 'open_shift_api_lb_addr'], ['apiIntIp', 'open_shift_api_int_lb_addr'], ['appsIp', 'open_shift_apps_lb_addr']] as const) {
+    if (typeof outputs[output]?.value === 'string') ids[key] = outputs[output]!.value as string;
+  }
   const record: DomainRecord = {
     name, created: now.toISOString(), region, baseDomain, steps, ids, compartmentId,
     adopted: { from: root, at: now.toISOString() },

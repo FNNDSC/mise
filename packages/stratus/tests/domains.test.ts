@@ -178,7 +178,7 @@ describe('domain status', () => {
     expect(none.model).toEqual({ kind: 'stratus.domains', data: { domains: [] } });
     const context = context_make({ harbor: harborCheckout_make() });
     expect((await domain_run(context, ['status', 'nope'])).renderedErr).toBe('domain: nope: no such domain (harbor)\n');
-    expect((await domain_run(context, ['verify'])).renderedErr).toBe('domain: verify: not a verb this session has yet (domain status, new, plan, build, adopt)\n');
+    expect((await domain_run(context, ['teardown'])).renderedErr).toBe('domain: teardown: not a verb this session has yet (domain status, new, plan, build, adopt, verify)\n');
   });
 
   it('is one of the backend\'s two commands, with its help in the Resources category', async () => {

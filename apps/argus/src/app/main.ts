@@ -2580,8 +2580,13 @@ async function surface_start(token: string): Promise<void> {
   element_require('drawer-toggle').addEventListener('click', (): void => {
     if (document.body.dataset['zoom'] === 'console') consoleZoom_set(null);
   }, { capture: true });
-  // A session that begins at the dashboard begins with it alone on the screen.
-  if (layout.activePreset_get() === 'launcher') consoleZoom_set('launcher');
+  // A ChRIS session that begins at the dashboard begins with it alone on the
+  // screen. A frame-alone session (stratus, null) begins with the dashboard
+  // on stage inside the whole frame: its daemon serves on a fresh port each
+  // start, so its browser storage is always a first visit, and a header and
+  // console hidden behind a zoom on every start hide the identity and the
+  // prompt the session is for. The DASHBOARD gutter still zooms it.
+  if (layout.activePreset_get() === 'launcher' && chris) consoleZoom_set('launcher');
   panelSounds_wire();
   window.addEventListener('resize', (): void => terminal.size_fit());
   // SHARE VIEW: the stage as lines a colleague can replay (app/shareView.ts).

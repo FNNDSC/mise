@@ -584,7 +584,9 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   // `--no-logo` hides the logo; it does not print it uncoloured. Off a TTY
   // the flag is implied, so a host reading this boot off a pipe — the
   // porter's greeter, which draws the brain itself — gets rows and no art.
-  if (isInteractiveSession && showLogo) {
+  // A remote surface draws its art after the attach answer, which names the
+  // session's backend and so which art is its own.
+  if (isInteractiveSession && showLogo && config.mode !== 'remote') {
     logo_print(!useAsciiBoot);
   }
 
@@ -600,6 +602,9 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
     // client tries it exactly before it reads it as a CUBE URL. A bare
     // `--remote` resolves the sole live berth (identity undefined).
     const identity: string | undefined = config.remoteTarget;
+    const splash: { colorize: boolean } | undefined = isInteractiveSession && showLogo && config.commandToExecute === undefined
+      ? { colorize: !useAsciiBoot }
+      : undefined;
     // A door wins over everything: the terminal logs in there and attaches
     // to whatever the door mounts, with the door's cookie on the upgrade.
     if (config.door !== undefined) {
@@ -608,7 +613,7 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
       if (reach === null) {
         process.exit(1);
       }
-      await remote_run(reach.identity, config.commandToExecute, { address: reach.url, headers: reach.headers }, { stopOnError: config.stopOnError === true });
+      await remote_run(reach.identity, config.commandToExecute, { address: reach.url, headers: reach.headers }, { stopOnError: config.stopOnError === true, ...(splash !== undefined ? { splash } : {}) });
       if (config.commandToExecute !== undefined) {
         process.exit(process.exitCode ?? 0);
       }
@@ -619,7 +624,7 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
     const attach = config.attach !== undefined
       ? { address: config.attach, ...(config.attachToken !== undefined ? { token: config.attachToken } : {}) }
       : undefined;
-    await remote_run(identity, config.commandToExecute, attach, { stopOnError: config.stopOnError === true });
+    await remote_run(identity, config.commandToExecute, attach, { stopOnError: config.stopOnError === true, ...(splash !== undefined ? { splash } : {}) });
     if (config.commandToExecute !== undefined) {
       process.exit(process.exitCode ?? 0);
     }

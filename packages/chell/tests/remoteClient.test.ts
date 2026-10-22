@@ -21,6 +21,7 @@ interface TestRemoteEngine {
   close(): void;
   promptLine?: () => string;
   daemonStack?: () => { chell: string; calypso: string; build: string } | undefined;
+  backend_get?: () => string | undefined;
 }
 
 const remoteClose_mock = jest.fn<() => void>();
@@ -189,6 +190,37 @@ describe('remote_run', () => {
 
     expect(resolverResolve_mock.mock.calls[0]?.[0]).toBe('rudolph@fnndsc');
     expect(remoteConnect_mock).toHaveBeenCalledWith(expect.objectContaining({ url: berth.url }));
+  });
+
+  it('draws the session\'s splash after the attach answer, by backend', async () => {
+    const { tdMark_linesRender } = await import('@fnndsc/menu/logo/td');
+    const mark: string = tdMark_linesRender(false)[5] as string;
+    const run = async (backend: string): Promise<string[]> => {
+      remoteConnect_mock.mockResolvedValue({
+        close: remoteClose_mock,
+        promptLine: jest.fn((): string => ''),
+        daemonStack: jest.fn(() => undefined),
+        backend_get: jest.fn((): string => backend),
+      });
+      const logged: string[] = [];
+      const logSpy = jest.spyOn(console, 'log').mockImplementation((line?: unknown): void => { logged.push(String(line)); });
+      await remote_run(berth.identity, undefined, undefined, { splash: { colorize: false } });
+      logSpy.mockRestore();
+      return logged;
+    };
+    const stratus: string[] = await run('stratus');
+    expect(stratus).toContain(mark);
+    // Art first, then the attach line beneath it.
+    expect(stratus.indexOf(mark)).toBeLessThan(stratus.findIndex((line: string): boolean => /Attached to CALYPSO/.test(line)));
+    expect(await run('null')).not.toContain(mark);
+  });
+
+  it('draws no splash for a one-shot command', async () => {
+    const logged: string[] = [];
+    const logSpy = jest.spyOn(console, 'log').mockImplementation((line?: unknown): void => { logged.push(String(line)); });
+    await remote_run(berth.identity, 'pwd', undefined, { splash: { colorize: false } });
+    logSpy.mockRestore();
+    expect(logged.join('\n')).not.toMatch(/\+\+\+|xxxx/);
   });
 
   it('uses the sole live berth when no identity is specified', async () => {

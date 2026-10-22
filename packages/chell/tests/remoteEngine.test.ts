@@ -150,6 +150,16 @@ describe('RemoteEngine live output', () => {
     expect(flips).toEqual([false, true]);
   });
 
+  it('carries the backend the attach answer names, and none from a daemon that names none', async () => {
+    attachResponse = { type: 'attached', session: 'test-session', protocolVersion: 1, backend: 'stratus' };
+    remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token' });
+    expect(remote.backend_get()).toBe('stratus');
+    remote.close();
+    attachResponse = { type: 'attached', session: 'test-session', protocolVersion: 1 };
+    remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token' });
+    expect(remote.backend_get()).toBeUndefined();
+  });
+
   it('installs a sink and a surface into this process through the engine\'s seam', async () => {
     remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token' });
     const sink: OutputSink = { data_write: jest.fn(), err_write: jest.fn(), status_write: jest.fn(), progress_write: jest.fn() } as unknown as OutputSink;

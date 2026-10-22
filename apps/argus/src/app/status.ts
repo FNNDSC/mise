@@ -39,6 +39,25 @@ const TERMINAL_ITEM_STATUSES: ReadonlySet<string> = new Set<string>([
   'done', 'error', 'unconfirmed', 'stalled', 'timeout',
 ]);
 
+/** What each host-control tier hands the daemon, as the HOST lamp's title says it. */
+const HOST_TIER_WORDS: Readonly<Record<string, string>> = {
+  shell: '`!` runs on its host',
+  pipes: 'pipes run on its host',
+  files: 'upload/download reach its disk',
+  tasks: 'jobs may change the cloud and bill',
+};
+
+/**
+ * The HOST lamp's title: what the daemon's host-control tiers hand it.
+ *
+ * @param tiers - The tiers the attach ack carried.
+ * @returns The title, or empty when there are none.
+ */
+export function hostTiers_title(tiers: ReadonlyArray<string>): string {
+  if (tiers.length === 0) return '';
+  return `Calypso was started with --host-control: ${tiers.map((tier: string): string => HOST_TIER_WORDS[tier] ?? tier).join('; ')}.`;
+}
+
 /**
  * Folds one progress message into the set of live keys.
  *
@@ -154,9 +173,7 @@ export class StatusBar {
    */
   public hostControl_show(tiers: string[]): void {
     this.fields.host.textContent = tiers.length > 0 ? `HOST ${tiers.join(' ')}` : '';
-    this.fields.host.title = tiers.length > 0
-      ? 'Calypso was started with --host-control: `!` and pipes run on its host, upload/download reach its disk.'
-      : '';
+    this.fields.host.title = hostTiers_title(tiers);
   }
 
   /**

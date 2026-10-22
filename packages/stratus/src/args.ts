@@ -73,6 +73,8 @@ export function stratusArgs_parse(argv: ReadonlyArray<string>): { args: StratusA
       continue;
     }
     if (valued.includes(name) && !word.includes('=') && name !== '--host-control') i++;
+    // `--host-control tasks` takes its tiers as the next word, as calypso reads it; bare, it takes none.
+    if (name === '--host-control' && !word.includes('=') && argv[i + 1] !== undefined && !argv[i + 1].startsWith('-')) i++;
   }
   return {
     args: {

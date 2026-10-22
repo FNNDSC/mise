@@ -29,7 +29,7 @@ const USAGE: string = [
   'stratus: a mise session over the cloud substrate a Trusted Domain runs on.',
   '',
   'Usage: stratus [--profile NAME] [--config FILE] [--region REGION]',
-  '               [--domain NAME=CHECKOUT]… [--host-control[=shell,files,pipes]] [--expose-host-control]',
+  '               [--domain NAME=CHECKOUT]… [--host-control[=shell,files,pipes,tasks]] [--expose-host-control]',
   '       stratus --fake',
   '',
   '  --profile NAME   the ~/.oci/config profile (DEFAULT)',
@@ -38,6 +38,9 @@ const USAGE: string = [
   '  --domain NAME=CHECKOUT',
   '                   a Trusted Domain built by the harbor-oci checkout at CHECKOUT,',
   '                   shown under ~ (domains/NAME); repeat for each',
+  '  --host-control=tasks',
+  '                   let the session start jobs that change the cloud and bill;',
+  '                   never granted by a bare --host-control',
   '  --fake           host a session over the fake cloud, for tests',
 ].join('\n');
 

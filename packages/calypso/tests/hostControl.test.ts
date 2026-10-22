@@ -22,12 +22,22 @@ describe('hostControl_fromInputs', () => {
     const some = hostControl_fromInputs({ flag: 'files,shell' });
     expect('policy' in some && hostControl_tiers(some.policy)).toEqual(['shell', 'files']);
   });
+  it('grants tasks only when named: never by bare or all', () => {
+    const named = hostControl_fromInputs({ flag: 'tasks' });
+    expect('policy' in named && hostControl_tiers(named.policy)).toEqual(['tasks']);
+    const allPlus = hostControl_fromInputs({ flag: 'all,tasks' });
+    expect('policy' in allPlus && hostControl_tiers(allPlus.policy)).toEqual(['shell', 'files', 'pipes', 'tasks']);
+    const all = hostControl_fromInputs({ flag: 'all' });
+    expect('policy' in all && hostControl_tiers(all.policy)).toEqual(['shell', 'files', 'pipes']);
+    const spaced = hostControl_parseArgv(['node', 'stratus', '--host-control', 'tasks', '--fake'], {});
+    expect('policy' in spaced && hostControl_describe(spaced.policy)).toBe('tasks');
+  });
   it('the flag wins over the env twin; the env alone counts; unknown words refuse', () => {
     const env = hostControl_fromInputs({ env: 'pipes' });
     expect('policy' in env && hostControl_tiers(env.policy)).toEqual(['pipes']);
     const both = hostControl_fromInputs({ flag: 'shell', env: 'pipes' });
     expect('policy' in both && hostControl_tiers(both.policy)).toEqual(['shell']);
-    expect(hostControl_fromInputs({ flag: 'shell,root' })).toEqual({ error: "unknown host-control tier 'root' (shell, files, pipes, or all)" });
+    expect(hostControl_fromInputs({ flag: 'shell,root' })).toEqual({ error: "unknown host-control tier 'root' (shell, files, pipes, tasks, or all)" });
   });
   it('parses a raw argv for the standalone binary', () => {
     const bare = hostControl_parseArgv(['node', 'calypso', '--host-control'], {});
@@ -48,6 +58,10 @@ describe('hostControl_guard', () => {
   it('refuses a network bind unless the override was typed', () => {
     expect(hostControl_guard(on, '0.0.0.0')).toContain('--expose-host-control');
     expect(hostControl_guard({ ...on, exposed: true }, '0.0.0.0')).toBeNull();
+  });
+  it('names spending, not a shell, when only tasks is on', () => {
+    expect(hostControl_guard({ tiers: new Set(['tasks'] as const), exposed: false }, '0.0.0.0')).toContain('the power to start jobs that spend money');
+    expect(hostControl_guard({ tiers: new Set(['tasks', 'shell'] as const), exposed: false }, '0.0.0.0')).toContain('a shell on this host');
   });
 });
 

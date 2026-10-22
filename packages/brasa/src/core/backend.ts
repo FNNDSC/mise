@@ -12,6 +12,7 @@
  *
  * @module
  */
+import type { JobSource } from './runner.js';
 import type { PromptContext, CubeTelemetry, JobsStateTelemetry, CommandEnvelope, WatchState, Task } from '@fnndsc/menu';
 import type { ReferenceValue } from '../lib/parser.js';
 import type { ListingLook, VFSDispatcher } from '@fnndsc/fond';
@@ -257,6 +258,8 @@ export interface Backend {
     /** Opens one file's bytes as a stream, never read whole; absent, a surface is served `read`'s buffer. */
     readonly stream?: (path: string) => Promise<FileByteStream>;
   };
+  /** The long jobs it hands the core's runner, by kind (core/runner.ts); each is mounted under `/proc` as a task source. */
+  readonly jobs?: ReadonlyArray<JobSource>;
   /** Its long-running steps, by kind; the core mounts those that bring no mount of their own under `/proc`. */
   readonly tasks?: ReadonlyArray<TaskSource>;
   /** Its filesystem; absent, the session has only the core's own mounts. */

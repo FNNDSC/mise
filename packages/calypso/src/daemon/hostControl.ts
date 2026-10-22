@@ -14,13 +14,20 @@
  * into a shell on this host for anyone holding it, so that combination
  * refuses unless `--expose-host-control` is typed as well.
  *
+ * `tasks` is the fourth tier and the only one never granted by `all`: it lets
+ * the engine start long jobs that change things beyond this host (a cloud's
+ * resources, and its bill), so it is named on its own (docs/stratus.adoc, D10).
+ *
  * @module
  */
 import { spawn, type ChildProcess } from 'child_process';
 
-/** The tiers the policy can grant. */
-export const HOST_CONTROL_TIERS: readonly HostControlTier[] = ['shell', 'files', 'pipes'];
-export type HostControlTier = 'shell' | 'files' | 'pipes';
+/** The tiers the policy can grant, in the order they are told. */
+export const HOST_CONTROL_TIERS: readonly HostControlTier[] = ['shell', 'files', 'pipes', 'tasks'];
+export type HostControlTier = 'shell' | 'files' | 'pipes' | 'tasks';
+
+/** What bare `--host-control` and `all` grant: this host's own tiers; `tasks` only when named. */
+export const HOST_CONTROL_ALL: readonly HostControlTier[] = ['shell', 'files', 'pipes'];
 
 /**
  * The daemon's host-control policy.
@@ -54,11 +61,12 @@ export const HOST_CONTROL_OFF: HostControlPolicy = { tiers: new Set(), exposed: 
  */
 export function hostControlTiers_parse(value: string | boolean | undefined): { tiers: Set<HostControlTier> } | { error: string } {
   if (value === undefined || value === false) return { tiers: new Set() };
-  if (value === true || value.trim() === '' || value.trim() === 'all') return { tiers: new Set(HOST_CONTROL_TIERS) };
+  if (value === true || value.trim() === '' || value.trim() === 'all') return { tiers: new Set(HOST_CONTROL_ALL) };
   const tiers: Set<HostControlTier> = new Set();
   for (const word of value.split(',').map((part: string): string => part.trim()).filter((part: string): boolean => part !== '')) {
+    if (word === 'all') { for (const tier of HOST_CONTROL_ALL) tiers.add(tier); continue; }
     if (!(HOST_CONTROL_TIERS as readonly string[]).includes(word)) {
-      return { error: `unknown host-control tier '${word}' (shell, files, pipes, or all)` };
+      return { error: `unknown host-control tier '${word}' (shell, files, pipes, tasks, or all)` };
     }
     tiers.add(word as HostControlTier);
   }
@@ -111,7 +119,8 @@ export function hostControl_parseArgv(argv: readonly string[], env: NodeJS.Proce
 export function hostControl_guard(policy: HostControlPolicy, bindHost: string): string | null {
   if (policy.tiers.size === 0 || bindHost === '127.0.0.1' || bindHost === 'localhost' || bindHost === '::1') return null;
   if (policy.exposed) return null;
-  return `--host-control with CALYPSO_BIND=${bindHost} would hand a shell on this host to anyone holding the attach URL; bind to loopback, or type --expose-host-control if you mean it.`;
+  const what: string = policy.tiers.size === 1 && policy.tiers.has('tasks') ? 'the power to start jobs that spend money' : 'a shell on this host';
+  return `--host-control with CALYPSO_BIND=${bindHost} would hand ${what} to anyone holding the attach URL; bind to loopback, or type --expose-host-control if you mean it.`;
 }
 
 /**

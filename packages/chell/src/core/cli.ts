@@ -327,7 +327,7 @@ ${chalk.bold.cyan('DESCRIPTION')}
     .option('--ascii-boot', 'Force ASCII-only boot UI (no box-drawing characters)')
     .option('--no-logo', 'Hide the ChRIS logo on startup (interactive mode)')
     .option('--daemon', 'Run calypso here: host this engine as a session other surfaces attach to (same as the `calypso` command)')
-    .option('--host-control [tiers]', 'With --daemon: calypso acts on its own host — `!` runs here, pipes run here, upload/download reach this disk (tiers: shell,files,pipes; bare = all; env CALYPSO_HOST_CONTROL)')
+    .option('--host-control [tiers]', 'With --daemon: calypso acts on its own host — `!` runs here, pipes run here, upload/download reach this disk (tiers: shell,files,pipes,tasks; bare = shell,files,pipes; env CALYPSO_HOST_CONTROL)')
     .option('--expose-host-control', 'With --host-control and a non-loopback CALYPSO_BIND: yes, hand a shell on this host to anyone holding the attach URL')
     .option('--remote', 'Attach to a running calypso as a remote surface')
     .option('--attach <url>', 'Address of calypso on another machine; accepts the URL it prints, token and all')

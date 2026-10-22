@@ -14,6 +14,8 @@ describe('stratusArgs_parse', () => {
     });
     expect(stratusArgs_parse(['--host-control', '--expose-host-control', '--help'])).toMatchObject({ args: { help: true } });
     expect(stratusArgs_parse(['--host-control=shell,files'])).toMatchObject({ args: { fake: false } });
+    expect(stratusArgs_parse(['--host-control', 'tasks', '--fake'])).toMatchObject({ args: { fake: true } });
+    expect(stratusArgs_parse(['--host-control', '--fake'])).toMatchObject({ args: { fake: true } });
   });
 
   it('refuses an unknown word by name', () => {

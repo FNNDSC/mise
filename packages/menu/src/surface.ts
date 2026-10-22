@@ -52,6 +52,9 @@ import type { FileDeliverRequest, FileDeliverResult, PromptKind, PromptPath, Pro
  *   browser, which has no directory to fill and can only accept files one at a
  *   time. It answers a different question from `engineFilesystem`: not *whose*
  *   disk, but whether there is one at all.
+ * @property tasks - The engine may start long jobs that change things beyond
+ *   its host (a cloud's resources, and its bill): the `tasks` tier, declared
+ *   only by a daemon whose operator granted it at launch. Absent means no.
  */
 export interface SurfaceCapabilities {
   hiddenInput: boolean;
@@ -63,6 +66,7 @@ export interface SurfaceCapabilities {
   fileDelivery: boolean;
   engineFilesystem: boolean;
   localFilesystem: boolean;
+  tasks?: boolean;
 }
 
 /**

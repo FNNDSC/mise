@@ -15,7 +15,7 @@ import type { Result } from '@fnndsc/fond';
 import type { BackendFallback } from '../core/backend.js';
 import { envelope_deliver, sink_get } from '../core/sink.js';
 import { exitCode_read, handler_runDirect } from '../core/handlerRun.js';
-import { vfs } from '../lib/vfs/vfs.js';
+import { binExecutableMatches_get, type BinExecutableMatches } from './binExecutables.js';
 import { builtin_pipeline } from '../builtins/res/pipeline.js';
 import { builtin_executePlugin } from '../builtins/pluginExecute.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
@@ -60,32 +60,6 @@ async function pipelineExecutable_handle(name: string, args: string[]): Promise<
   const exitCodeAfter: number = exitCode_read();
   if (exitCodeAfter !== 0 && exitCodeAfter !== exitCodeBefore) result.status = 'error';
   return result;
-}
-
-interface BinExecutableMatches {
-  plugin: ListingItem | undefined;
-  pipeline: ListingItem | undefined;
-}
-
-/**
- * Finds exact plugin and pipeline executable matches in the virtual `/bin`.
- *
- * @param command - Executable name as typed.
- * @returns Matching dynamic executable entries, if the listing is available.
- */
-async function binExecutableMatches_get(command: string): Promise<BinExecutableMatches> {
-  const binResult: Result<ListingItem[]> = await vfs.data_get('/bin');
-  if (!binResult.ok) {
-    return { plugin: undefined, pipeline: undefined };
-  }
-  return {
-    plugin: binResult.value.find(
-      (item: ListingItem): boolean => item.name === command && item.type === 'plugin',
-    ),
-    pipeline: binResult.value.find(
-      (item: ListingItem): boolean => item.name === command && item.type === 'pipeline',
-    ),
-  };
 }
 
 /**

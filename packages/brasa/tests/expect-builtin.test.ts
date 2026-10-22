@@ -132,6 +132,13 @@ describe('expect', () => {
     expect((await builtin_expect(['gather', 'pulled', 'eq', '1'])).status).toBe('ok');
   });
 
+  it('says how many members have not landed, so "all pulled" is one claim', async () => {
+    cohort.series = [member('/a', true), member('/b', false)];
+    expect((await builtin_expect(['gather', 'unpulled', 'eq', '1'])).status).toBe('ok');
+    cohort.series = [member('/a', true)];
+    expect((await builtin_expect(['gather', 'unpulled', 'eq', '0'])).status).toBe('ok');
+  });
+
   it('reads a feed status out of the session index', async () => {
     expect((await builtin_expect(['feed', '4599', 'status', 'eq', 'finishedSuccessfully'])).status).toBe('ok');
   });

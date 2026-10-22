@@ -997,6 +997,12 @@ export const chrisHelp: Record<string, CommandHelp> = {
       'these they refuse rather than guess.',
       '  clear                    Empty it, name and feed included',
       '  name [<name>]            Read the cohort\'s name, or give it one',
+      '  process <name> [--title T] [--detach] [-- <its arguments>]',
+      '                           Run a plugin or pipeline ONCE over the whole',
+      '                           cohort: one feed whose root holds every member',
+      '                           (the cohort\'s own feed when it has one), the run',
+      '                           off that root. Refuses while a series is unpulled.',
+      '                           Answers as the bare run would: R=$(gather process …)',
     ],
     examples: [
       'gather',
@@ -1006,6 +1012,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
       'query PatientID:1234567,Modality:MR | gather add',
       'gather remove 2',
       'gather name "sag cohort"',
+      'R=$(gather process pl-dcm2niix-v1.0.2 --title "sag nifti")',
     ],
   },
   group: {

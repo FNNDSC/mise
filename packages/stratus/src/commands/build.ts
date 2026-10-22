@@ -22,6 +22,7 @@ import {
 import type { CloudDriver, CloudPrice, CloudShape } from '../cloud/driver.js';
 import { planCounts_alter, planCounts_of, planCounts_words, type CloudBuilder, type InfraPlan } from '../cloud/builder.js';
 import { adoption_keep, adoptRun_make, checkout_read, type CheckoutRead } from '../domain/adopt.js';
+import type { VerifyReach } from './verify.js';
 import type { HarborDomain } from '../domains/harborOci.js';
 import type { DomainTree } from '../vfs/domains.js';
 import { DOMAIN_NAME, type DomainRecord, type DomainStore } from '../domain/state.js';
@@ -40,6 +41,8 @@ export interface BuildCommandContext {
   readonly deps: BuildDeps | null;
   /** The cloud's build half, for adopting and planning, or null when it has none. */
   readonly builder: CloudBuilder | null;
+  /** How `verify` reaches a cluster; the network when absent. */
+  readonly verifyReach?: VerifyReach;
   /** The DNS zone a new domain's names live under when `--base-domain` is not given. */
   readonly baseDomain: string | null;
 }

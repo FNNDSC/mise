@@ -26,6 +26,7 @@ import { ociApi_make } from './cloud/oci/api.js';
 import { stratusArgs_parse } from './args.js';
 import { FakeBuildWorld, FakeCloudBuilder, FakeInstaller } from './cloud/fake/builder.js';
 import { OciBuilder } from './cloud/oci/builder.js';
+import { fakeVerifyReach } from './cluster/fakeKube.js';
 import { rmApi_make } from './cloud/oci/rmApi.js';
 
 const USAGE: string = [
@@ -71,7 +72,11 @@ async function stratus_start(): Promise<void> {
     region: parsed.args.region,
     domains: parsed.args.domains,
     ...(parsed.args.fake
-      ? { builder: new FakeCloudBuilder(world), installer: new FakeInstaller(world), baseDomain: 'fake.example', waits: { pollMs: tickMs, hostsWaitMs: tickMs * 60, installWaitMs: tickMs * 120 } }
+      ? {
+        builder: new FakeCloudBuilder(world), installer: new FakeInstaller(world), baseDomain: 'fake.example', waits: { pollMs: tickMs, hostsWaitMs: tickMs * 60, installWaitMs: tickMs * 120 },
+        // The fake cluster a fake build made answers verify: its hosts, healthy.
+        verifyReach: fakeVerifyReach((kubeconfig: string) => world.hosts_now(/cluster-([a-z0-9-]+)/.exec(kubeconfig)?.[1] ?? '').map((host) => ({ name: host.name, zone: host.zone, shape: 'VM.Standard.E5.Flex' }))),
+      }
       // OCI adopts and plans through Resource Manager; building comes with its installer (step 4d).
       : { builder: new OciBuilder({ rm: (region: string) => rmApi_make({ configFile: parsed.args.configFile, profile: parsed.args.profile, region }) }) }),
   });

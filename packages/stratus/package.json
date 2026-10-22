@@ -46,6 +46,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/jest": "^30.0.0",
+    "@types/js-yaml": "^4.0.5",
     "@types/node": "^22.0.0",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.5",
@@ -57,6 +58,7 @@
     "@fnndsc/fond": "^0.5.0",
     "@fnndsc/menu": "^0.27.0",
     "chalk": "^4.1.2",
+    "js-yaml": "^4.1.0",
     "oci-common": "2.144.0",
     "oci-core": "2.144.0",
     "oci-dns": "2.144.0",

@@ -136,15 +136,17 @@ function cohortPulled_count(state: GatherState): number {
 /**
  * Answers a claim about the cohort.
  *
- * @param property - `size` or `pulled`.
+ * @param property - `size`, `pulled`, `unpulled` or `name`.
  * @returns What the cohort says.
  */
 async function gather_read(property: string): Promise<SubjectReading> {
   const state: GatherState = await cohort_read();
   if (property === 'size') return { got: `${state.series.length}` };
   if (property === 'pulled') return { got: `${cohortPulled_count(state)}` };
+  // "Every member landed" said directly: no arithmetic between two readings.
+  if (property === 'unpulled') return { got: `${state.series.length - cohortPulled_count(state)}` };
   if (property === 'name') return { got: state.name ?? '' };
-  return { got: null, refusal: `gather has no property "${property}" — try size, pulled or name` };
+  return { got: null, refusal: `gather has no property "${property}" — try size, pulled, unpulled or name` };
 }
 
 /**

@@ -28,6 +28,9 @@ import { errorStack, Result, type StackMessage } from '@fnndsc/fond';
  *
  * @param pluginName - Full plugin name with version (e.g., pl-dcm2niix-v2.1.1).
  * @param args - Array of command line arguments.
+ * @param place - Where the run stands instead of the session's cwd, so a
+ *   caller can run off a node without moving the operator (`gather process`
+ *   runs off its cohort's feed root).
  * @returns Command envelope whose status matches parsing and execution.
  *
  * @example
@@ -40,7 +43,8 @@ import { errorStack, Result, type StackMessage } from '@fnndsc/fond';
  */
 export async function builtin_executePlugin(
   pluginName: string,
-  args: string[]
+  args: string[],
+  place?: string,
 ): Promise<CommandEnvelope> {
   try {
     // 0. `--detach` is the SESSION's flag, never the plugin's: it says the
@@ -80,7 +84,7 @@ export async function builtin_executePlugin(
     }
 
     // 3. Set default context params if not provided
-    const cwd: string = await session.getCWD();
+    const cwd: string = place ?? await session.getCWD();
     const isInFeed: boolean = cwd.includes('/feeds/feed_');
 
     // If no context params provided and not in a feed, use directory name as feed title

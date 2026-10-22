@@ -253,10 +253,18 @@ export async function builtin_gather(args: string[]): Promise<CommandEnvelope> {
       return subcommand === 'add' ? await gather_add(given) : await gather_remove(given);
     }
     if (subcommand === 'clear') return await gather_clear();
+    // Raw words: the run's own arguments follow `--`, and a generic parser
+    // would read them as gather's options.
+    // Loaded on demand: running carries the plugin and pipeline machinery,
+    // which the cohort's own verbs never need.
+    if (subcommand === 'process') {
+      const { gather_process } = await import('./gather.process.js');
+      return await gather_process(args.slice(args.indexOf('process') + 1));
+    }
     if (subcommand === 'name') return await gather_name(operands);
   } catch (e: unknown) {
     return gather_error(`gather: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  return gather_error(`Unknown subcommand: ${subcommand}. Usage: gather <list|add|remove|clear|name>`);
+  return gather_error(`Unknown subcommand: ${subcommand}. Usage: gather <list|add|remove|clear|name|process>`);
 }

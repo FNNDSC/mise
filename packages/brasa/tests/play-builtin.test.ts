@@ -95,6 +95,15 @@ jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({
 }));
 
 const { builtin_play, manifest_parse, line_expand, playArgs_parse } = await import('../src/builtins/res/play.js');
+// The session's files: the manifest is read through the backend, as CFS is.
+(await import('../src/core/backend.js')).backend_install({
+  id: 'chris',
+  session: {} as never,
+  files: {
+    read: async (): Promise<Buffer> => { if (missing) throw new Error('no such file'); return Buffer.from(stored); },
+    write: async (): Promise<void> => undefined,
+  },
+});
 
 beforeEach(() => {
   ran.length = 0;
@@ -265,5 +274,16 @@ describe('a manifest that declares what it answers', () => {
     expect(envelope.status).toBe('ok');
     expect(output.some((line: string): boolean => line.includes('@answers C'))).toBe(true);
     expect(ran).toEqual([]);
+  });
+});
+
+describe('a play judges its own lines', () => {
+  it('runs through in a session an earlier command left failed, and leaves that status as it found it', async () => {
+    stored = ['pwd', 'ls'].join('\n');
+    process.exitCode = 1;
+    const envelope = await builtin_play(['f.mise']);
+    expect(envelope.status).toBe('ok');
+    expect(ran).toEqual(['pwd', 'ls']);
+    expect(process.exitCode).toBe(1);
   });
 });

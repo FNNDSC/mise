@@ -10,7 +10,7 @@
  * Run after the build: `npm run test:core-boot --workspace @fnndsc/brasa`.
  */
 import { register } from 'node:module';
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -32,6 +32,10 @@ const engine = await engine_create(nullBackend_make({
 engine.sink_install({ data_write: () => undefined, err_write: () => undefined, progress_write: () => undefined });
 
 const redirected = join(scratch, 'out.txt');
+// A manifest on the engine's disk: play and expect are the core's, so a
+// session with no ChRIS in it plays one and makes claims about its paths.
+const manifest = join(scratch, 'core.mise');
+writeFileSync(manifest, '@param WHERE = hello.txt\n@answers L\nL=$(ls)\nexpect path ${WHERE} exists\n');
 /** Each line, the status it answers with, and what its output holds (and must not). */
 const CHECKS = [
   { line: 'pwd', ok: true, has: ['/home/user'] },
@@ -58,6 +62,10 @@ const CHECKS = [
   { line: 'ls /proc/steps', ok: true, has: ['plan', 'apply'] },
   { line: 'cat /proc/steps/apply/progress', ok: true, has: ['3/10 nodes'] },
   { line: 'cat /proc/steps/plan/log', ok: true, has: ['planned'] },
+  { line: 'expect path hello.txt exists', ok: true, has: ['✓ path hello.txt exists'] },
+  { line: 'expect gather size eq 1', ok: false, has: ['expect knows nothing about "gather" in this session — try path'] },
+  { line: `play ${manifest}`, ok: true, has: ['played 2 lines', 'answering L'] },
+  { line: 'A=$(ls)', ok: true },
   { line: 'fortune', ok: true },
   { line: 'nosuch', ok: false, has: ['command not found: nosuch'] },
 ];

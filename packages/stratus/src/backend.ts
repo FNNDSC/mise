@@ -27,6 +27,7 @@ import type { CloudBuilder } from './cloud/builder.js';
 import type { Installer } from './installer/installer.js';
 import type { VerifyReach } from './commands/verify.js';
 import { DomainStore, domainsRoot_of } from './domain/state.js';
+import { domainExpectSubject_make } from './domain/expect.js';
 import { BUILD_WAITS, buildRun_make, STEPS_SOURCE, type BuildDeps } from './domain/steps.js';
 
 /** How the backend is made. */
@@ -126,6 +127,8 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
         : buildRun_make(record.data['domain'], typeof record.data['through'] === 'string' ? record.data['through'] : undefined, deps),
     }],
     listingLook: stratusListingLook,
+    // What a tenant's manifest can claim about its domain (`expect domain …`).
+    expectSubjects: [domainExpectSubject_make({ store, driver: options.driver, now: (): Date => new Date() })],
     prompt: async (last?: PromptLastCommand): Promise<PromptContext> => {
       const cwd: string = session.cwd_get() ?? (await session.home_get());
       return {

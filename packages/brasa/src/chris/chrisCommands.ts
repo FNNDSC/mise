@@ -21,8 +21,6 @@ import { builtin_file, builtin_md5sum, builtin_sha256sum, builtin_strings, built
 import { builtin_du } from '../builtins/fs/du.js';
 import { builtin_edit } from '../builtins/fs/edit.js';
 import { builtin_tree } from '../builtins/fs/tree.js';
-import { builtin_expect } from '../builtins/res/expect.js';
-import { builtin_play } from '../builtins/res/play.js';
 import { builtin_record } from '../builtins/res/record.js';
 import { builtin_motd } from '../builtins/sys/motd.js';
 import { chrisHelp } from './help.js';
@@ -96,8 +94,6 @@ const envelope: Record<string, EnvelopeHandler> = {
   motd: builtin_motd,
   tree: builtin_tree,
   du: builtin_du,
-  expect: builtin_expect,
-  play: builtin_play,
   record: builtin_record,
   edit: builtin_edit,
 };
@@ -170,8 +166,6 @@ const plain: Record<string, CommandHandler> = {
   motd: envelopeHandler_wrap(builtin_motd),
   tree: envelopeHandler_wrap(builtin_tree),
   du: envelopeHandler_wrap(builtin_du),
-  expect: envelopeHandler_wrap(builtin_expect),
-  play: envelopeHandler_wrap(builtin_play),
   record: envelopeHandler_wrap(builtin_record),
 };
 

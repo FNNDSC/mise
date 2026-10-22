@@ -20,12 +20,13 @@
  * @module
  */
 import chalk from 'chalk';
-import { fileContent_get } from '@fnndsc/salsa';
 import { path_resolve } from '../utils.js';
 import { duration_parse } from '../../lib/duration.js';
 import { recorder_mute, recorder_unmute } from '../../session/recorder.js';
 import { sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
+import { backendInstalled_get } from '../../core/backend.js';
+import { exitCode_read } from '../../core/handlerRun.js';
 import { reference_isReserved, reference_resolve, unresolvedStands_run } from '../../core/expansion.js';
 import { VARIABLE_NAME, variable_get, variableScope_run, type Variable } from '../../core/variables.js';
 import { shellWords_referencesExpand, shellWords_tokenize, type ReferenceExpansion, type ShellWord } from '../../lib/parser.js';
@@ -154,7 +155,8 @@ async function pause_take(ms: number, signal: AbortSignal | undefined): Promise<
 
 
 /**
- * Reads a manifest, from the ChRIS filesystem or from the engine's own disk.
+ * Reads a manifest, from the backend's filesystem (ChRIS: CFS) or from the
+ * engine's own disk.
  *
  * A manifest is a ChRIS file: that is what makes one shareable, and sharing
  * it is `setfacl`, like any other file. But a repository's battery lives
@@ -171,10 +173,18 @@ async function manifestText_read(target: string): Promise<Result<{ text: string;
   // Asking CFS is how we find out whether the manifest lives there. The
   // miss is an ANSWER, not a fault: left on the stack it made a play that
   // ran a host-side battery perfectly exit non-zero.
-  const mark: number = errorStack.checkpoint_mark();
-  const held: Result<string> = await fileContent_get(resolved);
-  if (held.ok) return { ok: true, value: { text: held.value, from: resolved } };
-  errorStack.checkpoint_drain(mark);
+  // The backend's files are asked first (ChRIS: CFS); a backend with no
+  // files of its own (stratus) has only the engine's disk.
+  const files = backendInstalled_get()?.files;
+  if (files !== undefined) {
+    const mark: number = errorStack.checkpoint_mark();
+    try {
+      const bytes: Buffer = await files.read(resolved);
+      return { ok: true, value: { text: bytes.toString('utf8'), from: resolved } };
+    } catch {
+      errorStack.checkpoint_drain(mark);
+    }
+  }
 
   try {
     const { readFile } = await import('node:fs/promises');
@@ -300,7 +310,7 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   const source: Result<{ text: string; from: string }> = await manifestText_read(parsed.manifest);
   if (!source.ok) {
     process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.red(`play: cannot read ${parsed.manifest} — no such manifest in the ChRIS filesystem, and none beside the engine.`)}\n`);
+    return envelope_error('', undefined, `${chalk.red(`play: cannot read ${parsed.manifest} — no such manifest in the session's filesystem, and none beside the engine.`)}\n`);
   }
 
   const manifest: Manifest = manifest_parse(source.value.text);
@@ -356,6 +366,7 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   // What the manifest answers with, read before its scope ends with it.
   let answered: Variable | undefined;
 
+  const exitBeforePlay: number = exitCode_read();
   depth += 1;
   // What a play runs is already written down in the file it is playing: a
   // recording that captured it too would hold every line twice.
@@ -377,10 +388,15 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
       // resolves its references the way it resolves every other line's.
       sink_dataLine(chalk.cyan(`▸ ${line.text}`));
 
+      // A line failed when it refused or set the exit status. The status is
+      // cleared before each line, so one an earlier command left set (before
+      // the play, or by a line that passed) is never this line's.
+      process.exitCode = 0;
       const envelopes: CommandEnvelope[] = await line_execute(line.text);
       ran += 1;
-      const refused: boolean = envelopes.some((envelope: CommandEnvelope): boolean => envelope.status === 'error');
-      if (refused || process.exitCode === 1) {
+      const refused: boolean = envelopes.some((envelope: CommandEnvelope): boolean => envelope.status === 'error')
+        || exitCode_read() !== 0;
+      if (refused) {
         // A workflow whose first half failed has a second half that is
         // noise: the play stops where the trouble is.
         sink_errLine(chalk.red(`✗ ${parsed.manifest}:${line.number} refused — stopping.`));
@@ -400,6 +416,9 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
     recorder_unmute();
     depth -= 1;
   }
+
+  // A play that ran through leaves the session's status as it found it.
+  if (stoppedAt === null) process.exitCode = exitBeforePlay;
 
   const outcome: PlayOutcome = {
     manifest: parsed.manifest,

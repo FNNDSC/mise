@@ -95,6 +95,9 @@ jest.unstable_mockModule('../src/builtins/utils.js', () => ({
 }));
 
 const { builtin_expect, claim_holds, duration_parse } = await import('../src/builtins/res/expect.js');
+// The ChRIS world's subjects, registered as the ChRIS backend registers them.
+const { chrisExpectSubjects } = await import('../src/chris/expectSubjects.js');
+(await import('../src/core/backend.js')).backend_install({ id: 'chris', session: {} as never, expectSubjects: chrisExpectSubjects });
 
 beforeEach(() => {
   cohort = { version: 1, name: null, feed: null, series: [] };
@@ -251,3 +254,13 @@ describe('duration_parse', () => {
 function expect_refusal(): string {
   return 'gt compares numbers, and "running" is not one';
 }
+
+describe('the subjects come from the session', () => {
+  it('names every subject this session has, merging one name across the core and the backend', async () => {
+    const envelope = await builtin_expect(['domain', 'quay', 'verify', 'eq', '10']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('expect knows nothing about "domain" in this session — try path, gather, feed, run.');
+    const property = await builtin_expect(['path', '/x', 'size', 'eq', '1']);
+    expect(property.renderedErr).toContain('path has no property "size" — try exists, count, tags.');
+  });
+});

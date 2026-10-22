@@ -2,9 +2,10 @@
  * @file Builtin expect command: a claim the session can refuse.
  *
  * A workflow that only acts is a demonstration. `expect` is what makes one a
- * TEST: it states a claim about the session — how many things are gathered,
- * what a feed's status is, what a produced file's tags say — and refuses,
- * non-zero, when the claim does not hold. Because it is a verb rather than a
+ * TEST: it states a claim about the session — what a path holds, and,
+ * through the subjects a backend registers, how many things are gathered,
+ * what a run's status is, whether a domain verifies — and refuses, non-zero,
+ * when the claim does not hold. Because it is a verb rather than a
  * harness, a workflow asserts wherever it is played: in CI, at an operator's
  * console, or in someone else's browser after they were handed the file.
  *
@@ -13,22 +14,23 @@
  * language has no sleep: a sleep asserts nothing and lies about how long the
  * work actually took.
  *
+ * The grammar, the polling and the verdict are the core's, and so is `path`
+ * (`exists`, `count`). Everything else a claim can be about belongs to a
+ * backend's world, and the backend registers it (`Backend.expectSubjects`):
+ * this file names no backend.
+ *
  * @module
  */
 import chalk from 'chalk';
 import path from 'path';
-import { procCache_get } from '@fnndsc/cumin';
-import { jobs_statusBatch } from '@fnndsc/salsa';
-import { type DicomTag, type DicomTagsModel, type DicomVaryingTag, CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import { commandArgs_process, ParsedArgs, path_resolve } from '../utils.js';
 import { duration_parse } from '../../lib/duration.js';
 
 export { duration_parse };
 import { vfs } from '../../lib/vfs/vfs.js';
 import type { ListingItem } from '@fnndsc/menu';
-import { cohort_read, GatherMember, GatherState } from './gather.store.js';
-import { path_physical, tagsModel_read } from './dicom.js';
-import { feedStatus_derive } from '../proc.helpers.js';
+import { backendInstalled_get, type ExpectAsk, type ExpectReading, type ExpectSubject } from '../../core/backend.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
 import type { Result } from '@fnndsc/fond';
 
@@ -40,8 +42,6 @@ const PREDICATES: ReadonlyArray<string> = [
   'eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'contains', 'notContains', 'matches',
 ];
 
-/** What a claim can be about. */
-const SUBJECTS: ReadonlyArray<string> = ['gather', 'feed', 'run', 'path'];
 
 /** Predicates that only mean anything about numbers. */
 const NUMERIC_PREDICATES: ReadonlySet<string> = new Set(['gt', 'gte', 'lt', 'lte']);
@@ -110,83 +110,9 @@ export function claim_holds(
   }
 }
 
-/** What a subject answered, or why it could not. */
-interface SubjectReading {
-  got: string | null;
-  refusal?: string;
-}
-
-/**
- * Reads how much of the cohort is home.
- *
- * A place gathered from the filesystem was never anywhere else, so it counts
- * as home; a series counts once CUBE has said where it landed.
- *
- * @param state - The cohort.
- * @returns How many members are in CUBE.
- */
-function cohortPulled_count(state: GatherState): number {
-  return state.series.filter((member: GatherMember): boolean => {
-    if (member.kind !== 'series') return true;
-    const landed: unknown = member.folderPath;
-    return typeof landed === 'string' && landed.length > 0;
-  }).length;
-}
-
-/**
- * Answers a claim about the cohort.
- *
- * @param property - `size`, `pulled`, `unpulled` or `name`.
- * @returns What the cohort says.
- */
-async function gather_read(property: string): Promise<SubjectReading> {
-  const state: GatherState = await cohort_read();
-  if (property === 'size') return { got: `${state.series.length}` };
-  if (property === 'pulled') return { got: `${cohortPulled_count(state)}` };
-  // "Every member landed" said directly: no arithmetic between two readings.
-  if (property === 'unpulled') return { got: `${state.series.length - cohortPulled_count(state)}` };
-  if (property === 'name') return { got: state.name ?? '' };
-  return { got: null, refusal: `gather has no property "${property}" — try size, pulled, unpulled or name` };
-}
-
-/**
- * Answers a claim about a feed.
- *
- * @param target - The feed id.
- * @param property - `status` today.
- * @returns What the feed says.
- */
-async function feed_read(target: string, property: string): Promise<SubjectReading> {
-  const feedID: number = Number(target);
-  if (!Number.isInteger(feedID)) return { got: null, refusal: `"${target}" is not a feed id` };
-  if (property !== 'status') return { got: null, refusal: `feed has no property "${property}" — try status` };
-  const feed = procCache_get().feed_get(feedID);
-  if (feed === undefined || feed === null) {
-    return { got: null, refusal: `feed ${feedID} is not in this session's index yet` };
-  }
-  return { got: feedStatus_derive(feed) };
-}
-
-/**
- * Answers a claim about one run.
- *
- * @param target - The plugin instance id.
- * @param property - `status` today.
- * @returns What the run says.
- */
-async function run_read(target: string, property: string): Promise<SubjectReading> {
-  const instanceID: number = Number(target);
-  if (!Number.isInteger(instanceID)) return { got: null, refusal: `"${target}" is not an instance id` };
-  if (property !== 'status') return { got: null, refusal: `run has no property "${property}" — try status` };
-  const statuses: Map<number, string> = await jobs_statusBatch([instanceID]);
-  const status: string | undefined = statuses.get(instanceID);
-  if (status === undefined) return { got: null, refusal: `instance ${instanceID} did not answer` };
-  return { got: status };
-}
-
 
 /** How far beneath a named folder a claim will look for what it was asked about. */
-const DEEP_MAX: number = 4;
+export const DEEP_MAX: number = 4;
 
 /**
  * Walks a folder, gathering what it holds and the folders under it.
@@ -201,7 +127,7 @@ const DEEP_MAX: number = 4;
  * @param depth - How many levels below the root to visit.
  * @returns Every item found, with the folder each was found in.
  */
-async function folder_walkDeep(root: string, depth: number): Promise<Array<{ folder: string; item: ListingItem }>> {
+export async function folder_walkDeep(root: string, depth: number): Promise<Array<{ folder: string; item: ListingItem }>> {
   const found: Array<{ folder: string; item: ListingItem }> = [];
   const queue: Array<{ path: string; level: number }> = [{ path: root, level: 0 }];
 
@@ -233,26 +159,15 @@ function glob_toRegExp(pattern: string): RegExp {
 }
 
 /**
- * Answers a claim about a path: whether it is there, what it holds, what its
- * headers say.
+ * Answers a claim about a path: whether it is there, and what it holds.
  *
- * @param target - The path, as the operator wrote it.
- * @param property - `exists`, `count`, or `tags`.
- * @param tagName - The tag to read, when the property is `tags`.
- * @param matching - A glob narrowing a count.
- * @param deep - Look beneath the folder, not only in it.
+ * @param ask - The claim, as the path subject is asked it.
  * @returns What the path says.
  */
-async function path_read(
-  target: string,
-  property: string,
-  tagName: string | undefined,
-  matching: string | undefined,
-  deep: boolean,
-): Promise<SubjectReading> {
-  const resolved: string = await path_resolve(target);
+async function path_read(ask: ExpectAsk): Promise<ExpectReading> {
+  const resolved: string = await path_resolve(ask.target ?? '');
 
-  if (property === 'exists') {
+  if (ask.property === 'exists') {
     const listed: Result<ListingItem[]> = await vfs.data_get(resolved);
     if (listed.ok) return { got: 'true' };
     // A file is not a listing: its parent knows it.
@@ -262,86 +177,49 @@ async function path_read(
     return { got: `${parent.value.some((item: ListingItem): boolean => item.name === leaf)}` };
   }
 
-  if (property === 'count') {
-    if (deep) {
-      const walked: Array<{ folder: string; item: ListingItem }> = await folder_walkDeep(resolved, DEEP_MAX);
-      const files: ListingItem[] = walked
-        .map((entry): ListingItem => entry.item)
-        .filter((item: ListingItem): boolean => item.type !== 'dir');
-      if (matching === undefined) return { got: `${files.length}` };
-      const deepPattern: RegExp = glob_toRegExp(matching);
-      return { got: `${files.filter((item: ListingItem): boolean => deepPattern.test(item.name)).length}` };
-    }
-    const listed: Result<ListingItem[]> = await vfs.data_get(resolved);
-    if (!listed.ok) return { got: null, refusal: `${resolved} cannot be listed` };
-    if (matching === undefined) return { got: `${listed.value.length}` };
-    const pattern: RegExp = glob_toRegExp(matching);
-    return { got: `${listed.value.filter((item: ListingItem): boolean => pattern.test(item.name)).length}` };
+  if (ask.deep) {
+    const walked: Array<{ folder: string; item: ListingItem }> = await folder_walkDeep(resolved, DEEP_MAX);
+    const files: ListingItem[] = walked
+      .map((entry): ListingItem => entry.item)
+      .filter((item: ListingItem): boolean => item.type !== 'dir');
+    if (ask.matching === undefined) return { got: `${files.length}` };
+    const deepPattern: RegExp = glob_toRegExp(ask.matching);
+    return { got: `${files.filter((item: ListingItem): boolean => deepPattern.test(item.name)).length}` };
   }
+  const listed: Result<ListingItem[]> = await vfs.data_get(resolved);
+  if (!listed.ok) return { got: null, refusal: `${resolved} cannot be listed` };
+  if (ask.matching === undefined) return { got: `${listed.value.length}` };
+  const pattern: RegExp = glob_toRegExp(ask.matching);
+  return { got: `${listed.value.filter((item: ListingItem): boolean => pattern.test(item.name)).length}` };
+}
 
-  if (property === 'tags') {
-    if (tagName === undefined) return { got: null, refusal: 'expect path <p> tags <TagName> <predicate> <value>' };
-    const physical: string = await path_physical(resolved);
-    let model: Result<DicomTagsModel> = await tagsModel_read(physical);
-    if (!model.ok) {
-      // A plugin's output is routinely nested, so a tag claim made at the
-      // node's own folder looks BENEATH it before giving up: the files a run
-      // produced are what the claim is about, wherever the plugin filed them.
-      const walked: Array<{ folder: string; item: ListingItem }> = await folder_walkDeep(resolved, DEEP_MAX);
-      const folders: string[] = [...new Set(walked
-        .filter((entry): boolean => entry.item.type === 'dir')
-        .map((entry): string => `${entry.folder.replace(/\/$/, '')}/${entry.item.name}`))];
-      for (const folder of folders) {
-        const beneath: Result<DicomTagsModel> = await tagsModel_read(await path_physical(folder));
-        if (beneath.ok) { model = beneath; break; }
-      }
-    }
-    if (!model.ok) return { got: null, refusal: `${resolved} holds no readable DICOM, here or beneath it` };
-    const constant: DicomTag | undefined = model.value.constant.find(
-      (tag: DicomTag): boolean => tag.name === tagName || tag.tag === tagName,
-    );
-    if (constant !== undefined) return { got: constant.value };
-    // A tag that varies across the folder answers with every value it takes,
-    // so a claim about "the" value cannot pass by reading only the first file.
-    const varying: DicomVaryingTag | undefined = model.value.varying.find(
-      (tag: DicomVaryingTag): boolean => tag.name === tagName || tag.tag === tagName,
-    );
-    if (varying !== undefined) {
-      const values: string[] = [...new Set(varying.values
-        .map((entry: { value: string | null }): string => entry.value ?? '')
-        .filter((value: string): boolean => value.length > 0))];
-      return { got: values.join(', ') };
-    }
-    return { got: '' };
-  }
+/** The core's own subject: a path in the session's filesystem. */
+const PATH_SUBJECT: ExpectSubject = { name: 'path', named: true, properties: { exists: 0, count: 0 }, read: path_read };
 
-  return { got: null, refusal: `path has no property "${property}" — try exists, count or tags` };
+/** One subject as `expect` sees it: every registration of the name, merged. */
+interface SubjectEntry {
+  named: boolean;
+  /** Each property, with the registration that answers it and the words it takes. */
+  properties: Map<string, { words: number; read: (ask: ExpectAsk) => Promise<ExpectReading> }>;
 }
 
 /**
- * Asks the session once.
+ * Every subject this session can make claims about: the core's `path`, then
+ * the backend's. Two registrations of one name are one subject, each
+ * answering its own properties (ChRIS adds `tags` to `path`).
  *
- * @param subject - What the claim is about.
- * @param target - Which one, for the subjects that need naming.
- * @param property - What about it.
- * @param tagName - The tag, when the property is `tags`.
- * @param matching - A glob, when the property is `count`.
- * @param deep - Whether to look beneath the path as well as in it.
- * @returns What the session answered.
+ * @returns The subjects, by name, in the order they were registered.
  */
-async function subject_read(
-  subject: string,
-  target: string | undefined,
-  property: string,
-  tagName: string | undefined,
-  matching: string | undefined,
-  deep: boolean,
-): Promise<SubjectReading> {
-  if (subject === 'gather') return await gather_read(property);
-  if (subject === 'feed') return await feed_read(target ?? '', property);
-  if (subject === 'run') return await run_read(target ?? '', property);
-  if (subject === 'path') return await path_read(target ?? '', property, tagName, matching, deep);
-  return { got: null, refusal: `expect knows nothing about "${subject}" — try gather, feed, run or path` };
+export function expectSubjects_get(): Map<string, SubjectEntry> {
+  const subjects: Map<string, SubjectEntry> = new Map();
+  for (const subject of [PATH_SUBJECT, ...(backendInstalled_get()?.expectSubjects ?? [])]) {
+    const entry: SubjectEntry = subjects.get(subject.name) ?? { named: subject.named, properties: new Map() };
+    for (const [property, words] of Object.entries(subject.properties)) {
+      entry.properties.set(property, { words, read: subject.read });
+    }
+    subjects.set(subject.name, entry);
+  }
+  return subjects;
 }
 
 /**
@@ -385,31 +263,40 @@ export async function builtin_expect(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args, { booleanLongOptions: ['deep'] });
   const operands: string[] = parsed._;
   const subject: string | undefined = operands[0];
+  const subjects: Map<string, SubjectEntry> = expectSubjects_get();
+  const names: string = [...subjects.keys()].join(', ');
 
   if (subject === undefined) {
     process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.red('Usage: expect <gather|feed|run|path> [<target>] <property> [<predicate> <value>] [--within <duration>]')}\n`);
+    return envelope_error('', undefined, `${chalk.red(`Usage: expect <${[...subjects.keys()].join('|')}> [<target>] <property> [<predicate> <value>] [--within <duration>]`)}\n`);
   }
 
   // The subject is checked FIRST: read as a shape instead, an unknown
   // subject refuses by complaining about whatever word happened to land
   // where a comparison goes, which names the wrong fault.
-  if (!SUBJECTS.includes(subject)) {
+  const entry: SubjectEntry | undefined = subjects.get(subject);
+  if (entry === undefined) {
     process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.red(`expect knows nothing about "${subject}" — try ${SUBJECTS.join(', ')}.`)}\n`);
+    return envelope_error('', undefined, `${chalk.red(`expect knows nothing about "${subject}" in this session — try ${names}.`)}\n`);
   }
 
-  // `gather` is the one subject that names nothing: there is one cohort.
-  const named: boolean = subject !== 'gather';
-  const target: string | undefined = named ? operands[1] : undefined;
-  const property: string | undefined = named ? operands[2] : operands[1];
-  const rest: string[] = named ? operands.slice(3) : operands.slice(2);
-  const tagName: string | undefined = property === 'tags' ? rest.shift() : undefined;
+  // A subject that is one thing (`gather`: there is one cohort) names nothing.
+  const target: string | undefined = entry.named ? operands[1] : undefined;
+  const property: string | undefined = entry.named ? operands[2] : operands[1];
+  const rest: string[] = entry.named ? operands.slice(3) : operands.slice(2);
+  const properties: string = [...entry.properties.keys()].join(', ');
 
   if (property === undefined) {
     process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.red(`expect ${subject}: say what about it — a property such as size, status, exists or count.`)}\n`);
+    return envelope_error('', undefined, `${chalk.red(`expect ${subject}: say what about it — ${properties}.`)}\n`);
   }
+  const answering = entry.properties.get(property);
+  if (answering === undefined) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`expect: ${subject} has no property "${property}" — try ${properties}.`)}\n`);
+  }
+  // A property may take words before the comparison (`tags PatientID`).
+  const words: string[] = rest.splice(0, answering.words);
 
   // `expect path <p> exists` is the claim in full; everything else compares.
   const predicate: string = rest[0] ?? (property === 'exists' ? 'eq' : '');
@@ -434,18 +321,25 @@ export async function builtin_expect(args: string[]): Promise<CommandEnvelope> {
   // held, and a battery is read by people who were not there.
   const narrowing: string = matching_get(parsed) === undefined ? '' : `--matching '${matching_get(parsed)}'`;
   const claim: string = claim_render([
-    subject, target ?? '', property, tagName ?? '', narrowing,
+    subject, target ?? '', property, ...words, narrowing,
     parsed.deep === true ? '--deep' : '', predicate, wanted,
   ]);
   const started: number = Date.now();
   if (deadlineMs > 0) commandCancellation_enable();
   const signal: AbortSignal | undefined = deadlineMs > 0 ? commandCancellation_signalGet() : undefined;
 
-  let reading: SubjectReading = { got: null };
+  const matching: string | undefined = matching_get(parsed);
+  let reading: ExpectReading = { got: null };
   let outcome: { held: boolean } | { refusal: string } = { held: false };
 
   for (;;) {
-    reading = await subject_read(subject, target, property, tagName, matching_get(parsed), parsed.deep === true);
+    reading = await answering.read({
+      ...(target !== undefined ? { target } : {}),
+      property,
+      words,
+      ...(matching !== undefined ? { matching } : {}),
+      deep: parsed.deep === true,
+    });
     if (reading.got !== null) {
       outcome = claim_holds(reading.got, predicate, wanted);
       if ('refusal' in outcome) break;

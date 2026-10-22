@@ -14,18 +14,23 @@
  *
  * @module
  */
-import { realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { engine_create, type BrasaEngine } from '@fnndsc/brasa/core';
 import { daemon_launch, daemonConsole_run, hostControl_parseArgv, packageWebRoot_find, type DaemonLaunchInfo, type HostControlPolicy } from '@fnndsc/calypso';
-import { stratusBackend_make, type StratusBackend } from './backend.js';
+import { stratusBackend_make, type StratusBackend, type StratusBackendOptions } from './backend.js';
 import type { CloudDriver } from './cloud/driver.js';
 import { FakeDriver, fakeCloud_sample } from './cloud/fake/driver.js';
 import { OciDriver } from './cloud/oci/driver.js';
 import { ociApi_make } from './cloud/oci/api.js';
-import { stratusArgs_parse } from './args.js';
+import { stratusArgs_parse, type StratusArgs } from './args.js';
 import { FakeBuildWorld, FakeCloudBuilder, FakeInstaller } from './cloud/fake/builder.js';
 import { OciBuilder } from './cloud/oci/builder.js';
+import { ociBuildApi_make } from './cloud/oci/buildApi.js';
+import { AssistedInstaller, serviceAccount_read } from './installer/assisted.js';
+import { promises as dnsPromises } from 'node:dns';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { fakeVerifyReach } from './cluster/fakeKube.js';
 import { rmApi_make } from './cloud/oci/rmApi.js';
 
@@ -33,7 +38,8 @@ const USAGE: string = [
   'stratus: a mise session over the cloud substrate a Trusted Domain runs on.',
   '',
   'Usage: stratus [--profile NAME] [--config FILE] [--region REGION]',
-  '               [--domain NAME=CHECKOUT]… [--host-control[=shell,files,pipes,tasks]] [--expose-host-control]',
+  '               [--domain NAME=CHECKOUT]… [--redhat-account FILE] [--ssh-key FILE]',
+  '               [--host-control[=shell,files,pipes,tasks]] [--expose-host-control]',
   '       stratus --fake',
   '',
   '  --profile NAME   the ~/.oci/config profile (DEFAULT)',
@@ -45,8 +51,50 @@ const USAGE: string = [
   '  --host-control=tasks',
   '                   let the session start jobs that change the cloud and bill;',
   '                   never granted by a bare --host-control',
+  '  --redhat-account FILE',
+  '                   the Red Hat service account the builds use (~/.config/ocm/service-account.env)',
+  '  --ssh-key FILE   the public key the nodes take (~/.ssh/id_ed25519.pub)',
   '  --fake           host a session over the fake cloud, for tests',
 ].join('\n');
+
+/**
+ * A path with a leading `~` made absolute.
+ *
+ * @param file - The path.
+ * @returns It, from the home folder.
+ */
+function home_expand(file: string): string {
+  return file.startsWith('~/') ? join(homedir(), file.slice(2)) : file;
+}
+
+/**
+ * OCI's build parts: Resource Manager, the build's other calls, the
+ * installer, and the files they read on this host, as `harbor-oci` kept them.
+ *
+ * @param driver - The read driver.
+ * @param args - The launch's arguments.
+ * @returns The builder and installer.
+ */
+function oci_buildParts(driver: CloudDriver, args: StratusArgs): Pick<StratusBackendOptions, 'builder' | 'installer'> {
+  const sshKeyFile: string = home_expand(args.sshKey ?? '~/.ssh/id_ed25519.pub');
+  const accountFile: string = home_expand(args.redhatAccount ?? '~/.config/ocm/service-account.env');
+  const sshPublicKey = (): string | null => (existsSync(sshKeyFile) ? readFileSync(sshKeyFile, 'utf-8') : null);
+  const resolver: dnsPromises.Resolver = new dnsPromises.Resolver();
+  resolver.setServers(['8.8.8.8']);
+  return {
+    builder: new OciBuilder({
+      rm: (region: string) => rmApi_make({ configFile: args.configFile, profile: args.profile, region }),
+      api: (region: string) => ociBuildApi_make({ configFile: args.configFile, profile: args.profile, region }),
+      driver,
+      sshPublicKey,
+      nameservers_resolve: (zone: string): Promise<string[]> => resolver.resolveNs(zone),
+    }),
+    installer: new AssistedInstaller({
+      account: () => serviceAccount_read(readFileSync(accountFile, 'utf-8')),
+      sshPublicKey: (): string => { const key: string | null = sshPublicKey(); if (key === null) throw new Error(`${sshKeyFile}: no SSH public key`); return key; },
+    }),
+  };
+}
 
 /**
  * Hosts the daemon.
@@ -77,8 +125,8 @@ async function stratus_start(): Promise<void> {
         // The fake cluster a fake build made answers verify: its hosts, healthy.
         verifyReach: fakeVerifyReach((kubeconfig: string) => world.hosts_now(/cluster-([a-z0-9-]+)/.exec(kubeconfig)?.[1] ?? '').map((host) => ({ name: host.name, zone: host.zone, shape: 'VM.Standard.E5.Flex' }))),
       }
-      // OCI adopts and plans through Resource Manager; building comes with its installer (step 4d).
-      : { builder: new OciBuilder({ rm: (region: string) => rmApi_make({ configFile: parsed.args.configFile, profile: parsed.args.profile, region }) }) }),
+      // OCI builds through Resource Manager and Red Hat's Assisted Installer; the credentials stay files on this host.
+      : oci_buildParts(driver, parsed.args)),
   });
   const engine: BrasaEngine = await engine_create(made.backend);
   if (made.session.identity === null) {

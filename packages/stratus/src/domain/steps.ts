@@ -19,7 +19,7 @@
  */
 import type { JobContext, JobRun } from '@fnndsc/brasa/core';
 import { planCounts_alter, planCounts_of, planCounts_words, type BuildCall, type CloudBuilder, type InfraOutputs, type InfraPlan, type PreflightCheck } from '../cloud/builder.js';
-import type { Installer, InstallerHost, InstallStatus } from '../installer/installer.js';
+import type { Installer, InstallerHost, InstallerIds, InstallStatus, PlatformManifest } from '../installer/installer.js';
 import { specNodes_of, type DomainSpec, type SpecNode } from './spec.js';
 import type { DomainRecord, DomainStore, StepRecord } from './state.js';
 
@@ -114,11 +114,21 @@ function id_need(record: DomainRecord, key: string, step: string): string {
   return value;
 }
 
+/**
+ * The installer's ids, or why they are missing.
+ *
+ * @param record - The domain's state.
+ * @returns The ids.
+ */
+function ids_need(record: DomainRecord): InstallerIds {
+  return { clusterId: id_need(record, 'clusterId', 'cluster'), infraEnvId: id_need(record, 'infraEnvId', 'cluster') };
+}
+
 /** Each step's work. */
 const STEP_WORK: Readonly<Record<string, (call: StepCall) => Promise<string>>> = {
   preflight: async (call: StepCall): Promise<string> => {
     const record: DomainRecord = call.record();
-    const checks: PreflightCheck[] = await call.deps.builder.preflight({ domain: call.name, spec: call.spec, region: record.region, baseDomain: record.baseDomain }, call);
+    const checks: PreflightCheck[] = await call.deps.builder.preflight({ domain: call.name, spec: call.spec, region: record.region, baseDomain: record.baseDomain, compartmentId: record.compartmentId ?? '' }, call);
     const failed: PreflightCheck[] = checks.filter((check: PreflightCheck): boolean => !check.ok);
     if (failed.length > 0) throw new Error(`preflight: ${failed.map((check: PreflightCheck): string => `${check.name}: ${check.note}`).join('; ')}`);
     return `${checks.length} checks pass`;
@@ -126,85 +136,102 @@ const STEP_WORK: Readonly<Record<string, (call: StepCall) => Promise<string>>> =
   cluster: async (call: StepCall): Promise<string> => {
     const record: DomainRecord = call.record();
     if (record.ids['clusterId'] !== undefined) return `already made: ${record.ids['clusterId']}`;
-    const made = await call.deps.installer.cluster_create({ name: call.name, baseDomain: record.baseDomain, version: call.deps.version });
+    const made = await call.deps.installer.cluster_create({ name: call.name, baseDomain: record.baseDomain, version: call.deps.version, controlPlaneCount: call.spec.controlPlane.count });
     call.remember({ clusterId: made.clusterId, infraEnvId: made.infraEnvId });
     call.log(`installer: cluster ${made.clusterId}, infra-env ${made.infraEnvId}`);
     return `cluster ${made.clusterId}`;
   },
   iso: async (call: StepCall): Promise<string> => {
     const record: DomainRecord = call.record();
-    const image = await call.deps.installer.isoUrl_get(id_need(record, 'infraEnvId', 'cluster'));
-    const stored = await call.deps.builder.iso_store({ domain: call.name, url: image.url, region: record.region }, call);
-    call.remember({ isoObject: stored.object, isoExpires: stored.expires });
+    const image = await call.deps.installer.isoUrl_get(ids_need(record));
+    const stored = await call.deps.builder.iso_store({ domain: call.name, url: image.url, region: record.region, compartmentId: record.compartmentId ?? '' }, call);
+    call.remember({ isoObject: stored.object, isoExpires: stored.expires, isoLinkId: stored.linkId });
+    // The link opens the image to anyone holding it: a secret, kept on the host.
+    call.deps.store.secret_write(call.name, 'iso-link', stored.link);
     return `${stored.object}, linked until ${stored.expires.slice(0, 10)}`;
   },
   'infra-plan': async (call: StepCall): Promise<string> => {
     const record: DomainRecord = call.record();
-    const plan: InfraPlan = await call.deps.builder.infra_plan({ domain: call.name, spec: call.spec, region: record.region, isoObject: id_need(record, 'isoObject', 'iso') }, call);
+    const plan: InfraPlan = await call.deps.builder.infra_plan({
+      domain: call.name, spec: call.spec, region: record.region, isoObject: id_need(record, 'isoObject', 'iso'),
+      baseDomain: record.baseDomain, isoLink: call.deps.store.secret_read(call.name, 'iso-link') ?? '',
+      ...(record.compartmentId !== undefined ? { compartmentId: record.compartmentId } : {}),
+      ...(record.ids['stackRef'] !== undefined ? { stackRef: record.ids['stackRef'] } : {}),
+    }, call);
     const counts = planCounts_of(plan);
     call.deps.store.file_write(call.name, 'plan.json', `${JSON.stringify(plan, null, 2)}\n`);
-    call.remember({ planRef: plan.ref });
+    call.remember({ planRef: plan.ref, ...(plan.stackRef !== undefined ? { stackRef: plan.stackRef } : {}) });
     if (planCounts_alter(counts)) throw new Error(`the plan touches what exists (${planCounts_words(counts)}): refused`);
     return planCounts_words(counts);
   },
   'infra-apply': async (call: StepCall): Promise<string> => {
     const record: DomainRecord = call.record();
-    if (record.ids['stackRef'] !== undefined) return `already applied: ${record.ids['stackRef']}`;
+    if (record.ids['appliedAt'] !== undefined) return `already applied: ${record.ids['stackRef'] ?? ''}`;
     const text: string | null = call.deps.store.file_read(call.name, 'plan.json');
     if (text === null) throw new Error('no plan recorded: infra-plan has not been done');
     const plan: InfraPlan = JSON.parse(text) as InfraPlan;
-    const outputs: InfraOutputs = await call.deps.builder.infra_apply({ domain: call.name, plan, region: record.region }, call);
-    call.remember({ stackRef: outputs.stackRef, apiIp: outputs.apiIp, apiIntIp: outputs.apiIntIp, appsIp: outputs.appsIp });
+    const outputs: InfraOutputs = await call.deps.builder.infra_apply({ domain: call.name, plan, region: record.region, ...(record.ids['stackRef'] !== undefined ? { stackRef: record.ids['stackRef'] } : {}) }, call);
+    call.remember({ stackRef: outputs.stackRef, apiIp: outputs.apiIp, apiIntIp: outputs.apiIntIp, appsIp: outputs.appsIp, appliedAt: new Date().toISOString() });
+    // The manifests the stack made, for the manifests step, kept with the domain.
+    call.deps.store.file_write(call.name, 'manifests.json', `${JSON.stringify(outputs.manifests, null, 2)}\n`);
     return `${planCounts_of(plan).create} created; billing since ${new Date().toISOString().slice(0, 16)}`;
   },
   dns: async (call: StepCall): Promise<string> => {
     const record: DomainRecord = call.record();
-    const outputs: InfraOutputs = { stackRef: id_need(record, 'stackRef', 'infra-apply'), apiIp: id_need(record, 'apiIp', 'infra-apply'), apiIntIp: id_need(record, 'apiIntIp', 'infra-apply'), appsIp: id_need(record, 'appsIp', 'infra-apply') };
-    const names: string[] = await call.deps.builder.dns_upsert({ domain: call.name, baseDomain: record.baseDomain, outputs }, call);
+    const outputs: InfraOutputs = { stackRef: id_need(record, 'stackRef', 'infra-apply'), apiIp: id_need(record, 'apiIp', 'infra-apply'), apiIntIp: id_need(record, 'apiIntIp', 'infra-apply'), appsIp: id_need(record, 'appsIp', 'infra-apply'), manifests: [] };
+    const names: string[] = await call.deps.builder.dns_upsert({ domain: call.name, baseDomain: record.baseDomain, outputs, compartmentId: record.compartmentId ?? '', region: record.region }, call);
     return `${names.length} records`;
   },
   manifests: async (call: StepCall): Promise<string> => {
-    const manifests = await call.deps.builder.manifests_of();
-    await call.deps.installer.manifests_upload(id_need(call.record(), 'clusterId', 'cluster'), manifests);
-    call.log(`sent ${manifests.map((manifest) => manifest.name).join(', ')}`);
+    const text: string | null = call.deps.store.file_read(call.name, 'manifests.json');
+    if (text === null) throw new Error('no manifests recorded: infra-apply has not been done');
+    const manifests: PlatformManifest[] = JSON.parse(text) as PlatformManifest[];
+    await call.deps.installer.manifests_upload(ids_need(call.record()), manifests);
+    call.log(`sent ${manifests.map((manifest: PlatformManifest): string => manifest.name).join(', ')}`);
     return `${manifests.length} platform manifests sent`;
   },
   hosts: async (call: StepCall): Promise<string> => {
-    const clusterId: string = id_need(call.record(), 'clusterId', 'cluster');
+    const ids: InstallerIds = ids_need(call.record());
     const nodes: SpecNode[] = specNodes_of(call.name, call.spec, call.deps.zones);
     const deadline: number = Date.now() + call.deps.hostsWaitMs;
     const assigned: Set<string> = new Set();
     let seen: number = -1;
     while (!call.signal.aborted) {
-      const hosts: InstallerHost[] = await call.deps.installer.hosts_list(clusterId);
-      for (const host of hosts.filter((entry: InstallerHost): boolean => !assigned.has(entry.name))) {
+      const hosts: InstallerHost[] = await call.deps.installer.hosts_list(ids);
+      for (const host of hosts.filter((entry: InstallerHost): boolean => !assigned.has(entry.id))) {
         const role: 'master' | 'worker' = nodes.find((node: SpecNode): boolean => node.name === host.name)?.role === 'worker' ? 'worker' : 'master';
-        await call.deps.installer.role_set(clusterId, host.name, role);
-        assigned.add(host.name);
-        call.log(`${host.name} registered in ${host.zone} · role ${role}`);
+        if (host.role !== role) await call.deps.installer.role_set(ids, host, role);
+        assigned.add(host.id);
+        call.log(`${host.name} registered${host.zone !== '' ? ` in ${host.zone}` : ''} · role ${role}`);
       }
-      if (hosts.length !== seen) { call.progress({ current: hosts.length, total: nodes.length, unit: 'nodes' }); seen = hosts.length; }
-      if (hosts.length >= nodes.length) return `${hosts.length} of ${nodes.length} hosts registered`;
-      if (Date.now() >= deadline) throw new Error(`${hosts.length} of ${nodes.length} hosts registered after ${Math.round(call.deps.hostsWaitMs / 60_000)} minutes`);
+      const ready: number = hosts.filter((host: InstallerHost): boolean => host.ready).length;
+      if (ready !== seen) { call.progress({ current: ready, total: nodes.length, unit: 'nodes' }); seen = ready; }
+      // Every host registered and passing the installer's checks (Assisted: `known`).
+      if (hosts.length >= nodes.length && ready >= nodes.length) return `${hosts.length} of ${nodes.length} hosts registered and ready`;
+      if (Date.now() >= deadline) throw new Error(`${hosts.length} of ${nodes.length} hosts registered, ${ready} ready, after ${Math.round(call.deps.hostsWaitMs / 60_000)} minutes`);
       await poll_wait(call.deps.pollMs, call.signal);
     }
     return 'stopped while waiting for hosts';
   },
   run: async (call: StepCall): Promise<string> => {
     const record: DomainRecord = call.record();
-    const clusterId: string = id_need(record, 'clusterId', 'cluster');
-    if (record.ids['installStarted'] === undefined) {
-      await call.deps.installer.install_start(clusterId);
-      call.remember({ installStarted: new Date().toISOString() });
-    }
+    const ids: InstallerIds = ids_need(record);
     const deadline: number = Date.now() + call.deps.installWaitMs;
     let last: number = -1;
     while (!call.signal.aborted) {
-      const status: InstallStatus = await call.deps.installer.install_status(clusterId);
+      const status: InstallStatus = await call.deps.installer.install_status(ids);
+      // The installer says when the cluster is ready; the install starts then, once.
+      if (status.state === 'ready' && call.record().ids['installStarted'] === undefined) {
+        await call.deps.installer.install_start(ids);
+        call.remember({ installStarted: new Date().toISOString() });
+        call.log('install started');
+        continue;
+      }
       if (status.percent !== last) { call.progress({ current: status.percent, total: 100 }); call.log(`install ${status.percent}% · ${status.note}`); last = status.percent; }
       if (status.state === 'installed') {
-        call.deps.store.secret_write(call.name, 'kubeconfig', await call.deps.installer.kubeconfig_get(clusterId));
-        return 'installed; the kubeconfig is on the host';
+        call.deps.store.secret_write(call.name, 'kubeconfig', await call.deps.installer.kubeconfig_get(ids));
+        call.deps.store.secret_write(call.name, 'kubeadmin-password', `${(await call.deps.installer.credentials_get(ids)).password}\n`);
+        return 'installed; the kubeconfig and the administrator\'s password are on the host';
       }
       if (status.state === 'error') throw new Error(`the install failed: ${status.note}`);
       if (Date.now() >= deadline) throw new Error(`the install was at ${status.percent}% after ${Math.round(call.deps.installWaitMs / 60_000)} minutes`);
@@ -239,6 +266,7 @@ export function buildRun_make(name: string, through: string | undefined, deps: B
     const spec: DomainSpec | null = deps.store.spec_read(name)?.spec ?? null;
     if (spec === null) throw new Error(`${name}: its spec.yaml does not read`);
     if (deps.store.record_read(name)?.adopted !== undefined) throw new Error(`${name} was adopted: building on it is refused until it is allowed by name`);
+    if (deps.store.record_read(name)?.gone !== undefined) throw new Error(`${name} was torn down: domain new makes another`);
     for (;;) {
       if (context.signal.aborted) return;
       const record: DomainRecord | null = deps.store.record_read(name);

@@ -2,9 +2,9 @@
 
 - Last updated: 2026-10-22
 - Last verified against `main`: the merge of #1197, 2026-10-22
-- Working branches, a stack, none merged: #1200 (4a.1 runner, tier) ← #1201 (4a.2 build over fakes) ← #1202 (4b adopt, Resource Manager) ← #1203 (4c.1 verify) ← 4c.2 spend (`agent/stratus-spend`)
+- Working branches, a stack, none merged: #1200 (4a.1) ← #1201 (4a.2) ← #1202 (4b) ← #1203 (4c.1 verify) ← #1204 (4c.2 spend) ← 4d code (`agent/stratus-build`)
 - Current milestone: steps 1 to 3 of the order of work in [stratus.adoc](stratus.adoc#order) are on `main`, all unpublished beyond @fnndsc/stratus 0.1.0 until the next `make publish` (the operator's word). Follow-ups 1 to 3 merged (#1190, #1191, #1192), and the four defects found along the way (#1194, #1195)
-- Next action: the operator's word on the stack, merged in order (#1200 first; each then rebases). Then 4d, the first real build in a scratch compartment, which bills and waits on the operator's word on the day; it needs the OCI builder's preflight, ISO bucket, apply and DNS, and the Assisted Installer driver
+- Next action: the operator's word on the stack, merged in order. 4d's live build (a compact domain in a scratch compartment, billing ~$0.71/h, then `domain teardown`) waits on the operator's word on the day and on the scratch compartment's id; preflight and the installer are proven live, reading only
 
 This file is the handoff between sessions and between models. It says where the work stands and what to do next, with the facts a fresh context needs to do it without rediscovery. The design itself is [stratus.adoc](stratus.adoc); the bastions are [bastion.adoc](bastion.adoc) and [dev-bastion.adoc](dev-bastion.adoc); what Red Hat ships against the primitive is [redhat-fl.adoc](redhat-fl.adoc); the metaphor every figure is drawn in is [linux-metaphor.adoc](linux-metaphor.adoc).
 

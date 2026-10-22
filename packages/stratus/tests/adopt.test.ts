@@ -122,14 +122,12 @@ describe('the OCI builder over Resource Manager', () => {
     await expect(builder.stack_adopt(request, call())).rejects.toThrow('2 stacks in c are tagged mise-domain=harbor');
   });
 
-  it('plans against a stack and reads the plan back; refuses a new stack until 4d', async () => {
+  it('plans against a stack and reads the plan back; a new stack needs what it is made from', async () => {
     rm.plan = { resource_changes: [{ address: 'x', type: 'oci_core_instance', change: { actions: ['create'] } }] };
     const plan = await builder.infra_plan({ domain: 'h', spec: SPEC_DEFAULT, region: 'r', isoObject: '', stackRef: 'ocid1.ormstack.1' }, call());
     expect(plan).toEqual({ ref: 'job-plan', rows: [{ action: 'create', kind: 'instances', name: 'x' }] });
-    await expect(builder.infra_plan({ domain: 'h', spec: SPEC_DEFAULT, region: 'r', isoObject: '' }, call())).rejects.toThrow('step 4d');
-    for (const refused of [builder.preflight({ domain: 'h', spec: SPEC_DEFAULT, region: 'r', baseDomain: 'b' }, call()), builder.iso_store({ domain: 'h', url: 'u', region: 'r' }, call()), builder.infra_apply({ domain: 'h', plan, region: 'r' }, call()), builder.dns_upsert({ domain: 'h', baseDomain: 'b', outputs: { apiIp: '', apiIntIp: '', appsIp: '', stackRef: '' } }, call()), builder.manifests_of()]) {
-      await expect(refused).rejects.toThrow('step 4d');
-    }
+    await expect(builder.infra_plan({ domain: 'h', spec: SPEC_DEFAULT, region: 'r', isoObject: '' }, call())).rejects.toThrow("a new stack needs the compartment, the zone and the image's link");
+    await expect(builder.preflight({ domain: 'h', spec: SPEC_DEFAULT, region: 'r', baseDomain: 'b', compartmentId: 'c' }, call())).rejects.toThrow('this builder adopts and re-plans only');
   });
 
   it('never fails a job for a log read that failed while the job wrote it', async () => {

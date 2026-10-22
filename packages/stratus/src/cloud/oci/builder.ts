@@ -9,17 +9,26 @@
  * asks Resource Manager to cancel the job without forcing it, and waits for
  * Terraform to finish its current operation.
  *
- * What a new domain's build needs beyond that (preflight, the ISO's bucket,
- * the apply, DNS) comes with the first real build (step 4d); until then
- * those calls refuse by name.
+ * A new domain's build, as `harbor-oci` proved it: preflight reads the
+ * credential, the compartment, the attribution tag, the room per availability
+ * domain, the load balancers free, the zone's delegation and the SSH key; the
+ * discovery image is copied through this host into a private bucket and
+ * linked for a week (the link is a secret); a new stack's variables come from
+ * the spec (`stackVars.ts`); the apply's outputs give the load balancers'
+ * addresses and the platform manifest; the three A records are replaced in
+ * the zone. A cluster with workers is refused: only the compact one is proven.
  *
  * @module
  */
 import { createHash } from 'node:crypto';
 import type { DomainSpec } from '../../domain/spec.js';
-import type { PlatformManifest } from '../../installer/installer.js';
-import type { BuildCall, CloudBuilder, InfraOutputs, InfraPlan, PreflightCheck } from '../builder.js';
+import type { BuildCall, CloudBuilder, InfraOutputs, InfraPlan, PreflightCheck, TeardownRequest } from '../builder.js';
+import { Readable } from 'node:stream';
 import { planRows_read } from './planRead.js';
+import type { OciBuildApi } from './buildApi.js';
+import { familyShape_of, stackVariables_build } from './stackVars.js';
+import type { CloudDriver } from '../driver.js';
+import { specFit_read } from '../../domain/sizing.js';
 import type { RmApi, RmJobRecord, RmOperation } from './rmApi.js';
 
 /** The stack release stratus builds with: Oracle's zip of `create-cluster`, pinned. */
@@ -43,6 +52,36 @@ export interface OciBuilderOptions {
   readonly zip_fetch?: () => Promise<Buffer>;
   /** How often a job is asked again, in milliseconds. */
   readonly pollMs?: number;
+  /** The build's other OCI calls in a region; absent, only adoption and re-plans work. */
+  readonly api?: (region: string) => OciBuildApi;
+  /** The read driver, for the fit per availability domain. */
+  readonly driver?: CloudDriver;
+  /** The nodes' SSH public key, read on the host, or null when there is none. */
+  readonly sshPublicKey?: () => string | null;
+  /** A zone's name servers from a resolver outside the tenancy. */
+  readonly nameservers_resolve?: (zone: string) => Promise<string[]>;
+  /** Fetches the discovery image: its bytes as a stream, and their length when known. */
+  readonly iso_fetch?: (url: string) => Promise<{ body: Readable; length?: number }>;
+  /** The bucket the discovery images live in. */
+  readonly bucket?: string;
+  /** How long the image's link lasts, in days. */
+  readonly linkDays?: number;
+}
+
+/** The bucket the discovery images live in, one object per domain. */
+export const ISO_BUCKET: string = 'stratus-iso';
+
+/**
+ * Fetches a discovery image as a stream.
+ *
+ * @param url - Its address.
+ * @returns Its bytes and their length.
+ */
+export async function iso_fetch(url: string): Promise<{ body: Readable; length?: number }> {
+  const response: Response = await fetch(url, { redirect: 'follow' });
+  if (!response.ok || response.body === null) throw new Error(`the discovery image: HTTP ${response.status}`);
+  const length: number = Number(response.headers.get('content-length') ?? NaN);
+  return { body: Readable.from(response.body as AsyncIterable<Uint8Array>), ...(Number.isFinite(length) ? { length } : {}) };
 }
 
 /**
@@ -186,30 +225,167 @@ export class OciBuilder implements CloudBuilder {
     return stack.id;
   }
 
-  async infra_plan(request: { domain: string; spec: DomainSpec; region: string; isoObject: string; stackRef?: string }, call: BuildCall): Promise<InfraPlan> {
-    if (request.stackRef === undefined) throw new Error('a new domain\'s stack comes with the first real build (step 4d)');
+  /**
+   * The build's other calls in a region.
+   *
+   * @param region - The region.
+   * @returns The calls.
+   * @throws Error - When the builder was made without them.
+   */
+  private api_in(region: string): OciBuildApi {
+    if (this.options.api === undefined) throw new Error('this builder adopts and re-plans only');
+    return this.options.api(region);
+  }
+
+  async preflight(request: { domain: string; spec: DomainSpec; region: string; baseDomain: string; compartmentId: string }, call: BuildCall): Promise<PreflightCheck[]> {
+    const api: OciBuildApi = this.api_in(request.region);
+    const checks: PreflightCheck[] = [];
+    const check = async (name: string, run: () => Promise<{ ok: boolean; note: string }>): Promise<void> => {
+      let result: { ok: boolean; note: string };
+      try { result = await run(); } catch (error: unknown) { result = { ok: false, note: error instanceof Error ? error.message : String(error) }; }
+      checks.push({ name, ...result });
+      call.log(`${result.ok ? 'ok' : 'NO'}  ${name}: ${result.note}`);
+    };
+    await check('credential', async () => { const tenancy = await api.tenancy_get(); return { ok: true, note: `the key answers for ${tenancy.name}` }; });
+    await check('compartment', async () => {
+      if (request.compartmentId === '') return { ok: false, note: 'none chosen: domain new --compartment <ocid>' };
+      const state: string = await api.compartmentState_get(request.compartmentId);
+      return { ok: state.toUpperCase() === 'ACTIVE', note: state.toLowerCase() };
+    });
+    await check('attribution tag', async () => {
+      const ok: boolean = request.compartmentId !== '' && await api.tag_exists(request.compartmentId, 'openshift-tags', 'openshift-resource');
+      return { ok, note: ok ? 'openshift-tags.openshift-resource exists' : 'openshift-tags.openshift-resource is missing in the compartment' };
+    });
+    await check('spec', async () => {
+      if (request.spec.workers.count > 0) return { ok: false, note: 'workers are not proven on OCI yet: a compact cluster (workers 0) only' };
+      familyShape_of(request.spec.family);
+      return { ok: true, note: `${request.spec.family}, compact, ${request.spec.controlPlane.count} nodes` };
+    });
+    await check('room', async () => {
+      if (this.options.driver === undefined) return { ok: false, note: 'no driver to read the limits with' };
+      const fits = await specFit_read(this.options.driver, request.region, request.domain, request.spec);
+      const short = fits.filter((fit): boolean => fit.fits !== true);
+      return { ok: short.length === 0, note: short.length === 0 ? `fits all ${fits.length} availability domains` : `does not fit, or not said, in ${short.map((fit) => fit.zone).join(', ')}` };
+    });
+    await check('load balancers', async () => {
+      const free: number | null = await api.limitFree_get('load-balancer', 'lb-flexible-count');
+      return { ok: free !== null && free >= 3, note: `3 needed, ${free ?? 'unknown'} free` };
+    });
+    await check('zone', async () => {
+      const served: string[] = await api.zoneNameservers_get(request.baseDomain, request.compartmentId);
+      const resolved: string[] = this.options.nameservers_resolve === undefined ? [] : (await this.options.nameservers_resolve(request.baseDomain)).map((name: string): string => name.replace(/\.$/, '')).sort();
+      const same: boolean = served.length > 0 && JSON.stringify(served) === JSON.stringify(resolved);
+      return { ok: same, note: same ? `${request.baseDomain} is delegated to OCI's name servers` : `${request.baseDomain}: OCI serves ${served.join(' ') || 'nothing'}, the world asks ${resolved.join(' ') || 'nobody'}` };
+    });
+    await check('SSH key', async () => {
+      const key: string | null = this.options.sshPublicKey?.() ?? null;
+      return { ok: key !== null && key.trim() !== '', note: key === null ? 'no public key on the host' : 'present' };
+    });
+    return checks;
+  }
+
+  async iso_store(request: { domain: string; url: string; region: string; compartmentId: string }, call: BuildCall): Promise<{ object: string; expires: string; link: string; linkId: string }> {
+    const api: OciBuildApi = this.api_in(request.region);
+    const bucket: string = this.options.bucket ?? ISO_BUCKET;
+    const object: string = `${request.domain}-discovery.iso`;
+    await api.bucket_ensure(bucket, request.compartmentId);
+    const image = await (this.options.iso_fetch ?? iso_fetch)(request.url);
+    call.log(`copying the discovery image into ${bucket}/${object}${image.length !== undefined ? ` (${Math.round(image.length / 1_048_576)} MiB)` : ''}`);
+    await api.object_put(bucket, object, image.body, image.length);
+    const expires: Date = new Date(Date.now() + (this.options.linkDays ?? 7) * 24 * 3600 * 1000);
+    const link = await api.link_create(bucket, object, `${object}-link`, expires);
+    call.log(`linked until ${expires.toISOString().slice(0, 10)}`);
+    return { object, expires: expires.toISOString(), link: link.url, linkId: link.id };
+  }
+
+  async infra_plan(request: { domain: string; spec: DomainSpec; region: string; isoObject: string; stackRef?: string; compartmentId?: string; baseDomain?: string; isoLink?: string }, call: BuildCall): Promise<InfraPlan> {
     const rm: RmApi = this.options.rm(request.region);
-    const job: RmJobRecord = await this.job_run(rm, request.stackRef, { kind: 'plan' }, `${request.domain}: plan`, call);
-    return { ref: job.id, rows: planRows_read(await rm.jobPlan_read(job.id)) };
+    let stackRef: string | undefined = request.stackRef;
+    let made: string | undefined;
+    if (stackRef === undefined) {
+      if (request.compartmentId === undefined || request.baseDomain === undefined || request.isoLink === undefined || request.isoLink === '') throw new Error('a new stack needs the compartment, the zone and the image\'s link');
+      const sshPublicKey: string | null = this.options.sshPublicKey?.() ?? null;
+      if (sshPublicKey === null) throw new Error('no SSH public key on the host');
+      const tenancyId: string = (await this.api_in(request.region).tenancy_get()).id;
+      const variables: Record<string, string> = stackVariables_build({
+        domain: request.domain, spec: request.spec, tenancyId, compartmentId: request.compartmentId, region: request.region,
+        baseDomain: request.baseDomain, isoLink: request.isoLink, sshPublicKey: sshPublicKey.trim(),
+      });
+      const stack = await rm.stack_create({
+        compartmentId: request.compartmentId,
+        displayName: `${request.domain} · a Trusted Domain`,
+        description: `The ${request.domain} domain's infrastructure, oci-openshift ${STACK_RELEASE.version}, built by stratus.`,
+        zipBase64: (await this.zip_get()).toString('base64'),
+        variables,
+        tags: { [DOMAIN_TAG]: request.domain },
+      });
+      call.log(`stack ${stack.id} made in ${request.compartmentId}`);
+      stackRef = stack.id;
+      made = stack.id;
+    }
+    const job: RmJobRecord = await this.job_run(rm, stackRef, { kind: 'plan' }, `${request.domain}: plan`, call);
+    return { ref: job.id, rows: planRows_read(await rm.jobPlan_read(job.id)), ...(made !== undefined ? { stackRef: made } : {}) };
   }
 
-  async preflight(_request: { domain: string; spec: DomainSpec; region: string; baseDomain: string }, _call: BuildCall): Promise<PreflightCheck[]> {
-    throw new Error('preflight over OCI comes with the first real build (step 4d)');
+  async infra_apply(request: { domain: string; plan: InfraPlan; region: string; stackRef?: string }, call: BuildCall): Promise<InfraOutputs> {
+    const stackRef: string | undefined = request.stackRef ?? request.plan.stackRef;
+    if (stackRef === undefined) throw new Error('no stack to apply in');
+    const rm: RmApi = this.options.rm(request.region);
+    const job: RmJobRecord = await this.job_run(rm, stackRef, { kind: 'apply', planJobId: request.plan.ref }, `${request.domain}: apply`, call);
+    const outputs: Record<string, string> = await rm.jobOutputs_read(job.id);
+    const need = (key: string): string => {
+      const value: string | undefined = outputs[key];
+      if (value === undefined || value === '') throw new Error(`the apply left no ${key}`);
+      return value;
+    };
+    return {
+      stackRef,
+      apiIp: need('open_shift_api_lb_addr'),
+      apiIntIp: need('open_shift_api_int_lb_addr'),
+      appsIp: need('open_shift_apps_lb_addr'),
+      manifests: [{ name: 'oci-dynamic-custom-manifest.yml', content: need('dynamic_custom_manifest') }],
+    };
   }
 
-  async iso_store(_request: { domain: string; url: string; region: string }, _call: BuildCall): Promise<{ object: string; expires: string }> {
-    throw new Error('the ISO\'s bucket on OCI comes with the first real build (step 4d)');
+  async dns_upsert(request: { domain: string; baseDomain: string; outputs: InfraOutputs; compartmentId: string; region: string }, call: BuildCall): Promise<string[]> {
+    const api: OciBuildApi = this.api_in(request.region);
+    const cluster: string = `${request.domain}.${request.baseDomain}`;
+    const records: Array<[string, string]> = [[`api.${cluster}`, request.outputs.apiIp], [`api-int.${cluster}`, request.outputs.apiIntIp], [`*.apps.${cluster}`, request.outputs.appsIp]];
+    for (const [name, address] of records) {
+      await api.record_upsert(request.baseDomain, name, address, request.compartmentId);
+      call.log(`${name} -> ${address}`);
+    }
+    return records.map(([name]: [string, string]): string => name);
   }
 
-  async infra_apply(_request: { domain: string; plan: InfraPlan; region: string }, _call: BuildCall): Promise<InfraOutputs> {
-    throw new Error('an apply on OCI comes with the first real build (step 4d)');
+  async stackResources_count(request: { region: string; stackRef: string }): Promise<number> {
+    return this.options.rm(request.region).stackResources_count(request.stackRef);
   }
 
-  async dns_upsert(_request: { domain: string; baseDomain: string; outputs: InfraOutputs }, _call: BuildCall): Promise<string[]> {
-    throw new Error('DNS records on OCI come with the first real build (step 4d)');
-  }
-
-  async manifests_of(): Promise<PlatformManifest[]> {
-    throw new Error('the platform manifests come with the first real build (step 4d)');
+  async teardown_run(request: TeardownRequest, call: BuildCall): Promise<string[]> {
+    const api: OciBuildApi = this.api_in(request.region);
+    const gone: string[] = [];
+    if (request.stackRef !== undefined) {
+      await this.job_run(this.options.rm(request.region), request.stackRef, { kind: 'destroy' }, `${request.domain}: destroy`, call);
+      gone.push(`the stack's resources (${request.stackRef})`);
+    }
+    const cluster: string = `${request.domain}.${request.baseDomain}`;
+    for (const name of [`api.${cluster}`, `api-int.${cluster}`, `*.apps.${cluster}`]) {
+      await api.record_delete(request.baseDomain, name, request.compartmentId);
+      call.log(`record ${name} removed`);
+    }
+    gone.push('3 DNS records');
+    const bucket: string = this.options.bucket ?? ISO_BUCKET;
+    if (request.isoLinkId !== undefined) await api.link_delete(bucket, request.isoLinkId);
+    if (request.isoObject !== undefined) {
+      await api.object_delete(bucket, request.isoObject);
+      gone.push(`the image ${request.isoObject} and its link`);
+    }
+    for (const volumeId of request.volumeIds) {
+      await api.volume_delete(volumeId);
+      call.log(`volume ${volumeId} removed`);
+    }
+    if (request.volumeIds.length > 0) gone.push(`${request.volumeIds.length} volumes the cluster made`);
+    return gone;
   }
 }

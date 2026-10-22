@@ -57,6 +57,8 @@ export interface RmApi {
   jobPlan_read(jobId: string): Promise<unknown>;
   /** An apply job's outputs, by name. */
   jobOutputs_read(jobId: string): Promise<Record<string, string>>;
+  /** How many resources a stack's Terraform state holds. */
+  stackResources_count(stackId: string): Promise<number>;
 }
 
 /** How the calls authenticate: an API-key profile, as the read driver does. */
@@ -167,6 +169,10 @@ export function rmApi_make(options: RmApiOptions): RmApi {
     async jobPlan_read(jobId) {
       const response = await client.getJobTfPlan({ jobId, tfPlanFormat: resourcemanager.requests.GetJobTfPlanRequest.TfPlanFormat.Json });
       return JSON.parse(await stream_text(response.value)) as unknown;
+    },
+    async stackResources_count(stackId) {
+      const state = JSON.parse(await stream_text((await client.getStackTfState({ stackId })).value)) as { resources?: Array<{ mode?: string; instances?: unknown[] }> };
+      return (state.resources ?? []).filter((resource): boolean => resource.mode !== 'data').reduce((sum: number, resource): number => sum + (resource.instances?.length ?? 1), 0);
     },
     async jobOutputs_read(jobId) {
       const outputs: Record<string, string> = {};

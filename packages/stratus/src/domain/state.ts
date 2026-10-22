@@ -36,6 +36,7 @@ export interface StepRecord {
  * @property billingAccepted - When the operator answered yes to the cost of the first billing step.
  * @property compartmentId - The compartment its resources live in, when known.
  * @property adopted - Where it was adopted from, and when: built elsewhere, never built on here.
+ * @property gone - When its teardown removed what it built.
  */
 export interface DomainRecord {
   name: string;
@@ -47,6 +48,7 @@ export interface DomainRecord {
   billingAccepted?: string;
   compartmentId?: string;
   adopted?: { from: string; at: string };
+  gone?: string;
 }
 
 /**
@@ -197,6 +199,18 @@ export class DomainStore {
     const folder: string = path.join(this.folder_of(name), 'auth');
     fs.mkdirSync(folder, { recursive: true, mode: 0o700 });
     file_writeAtomic(path.join(folder, file), text);
+  }
+
+  /**
+   * Reads a secret the build kept, for the build's own next step; never served.
+   *
+   * @param name - The domain.
+   * @param file - Its file name under `auth/`.
+   * @returns Its content, or null.
+   */
+  secret_read(name: string, file: string): string | null {
+    const where: string = path.join(this.folder_of(name), 'auth', file);
+    return fs.existsSync(where) ? fs.readFileSync(where, 'utf-8') : null;
   }
 
   /**

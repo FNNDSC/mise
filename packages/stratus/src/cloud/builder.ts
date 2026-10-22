@@ -38,6 +38,8 @@ export interface PlanRow {
 export interface InfraPlan {
   ref: string;
   rows: ReadonlyArray<PlanRow>;
+  /** The stack the plan was made in, when the plan made one. */
+  stackRef?: string;
 }
 
 /** A plan's counts: a resource both destroyed and created is replaced, drift is apart from real change. */
@@ -112,6 +114,23 @@ export interface InfraOutputs {
   appsIp: string;
   /** The stack's handle, for a later plan and the teardown. */
   stackRef: string;
+  /** The platform manifests the stack made for the installer (OCI: its cloud controller and CSI driver). */
+  manifests: PlatformManifest[];
+}
+
+/** What a domain's teardown removes, beside its stack. */
+export interface TeardownRequest {
+  readonly domain: string;
+  readonly region: string;
+  readonly compartmentId: string;
+  readonly baseDomain: string;
+  /** The stack whose resources a destroy job removes, when one was made. */
+  readonly stackRef?: string;
+  /** The discovery image and its link, when the iso step ran. */
+  readonly isoObject?: string;
+  readonly isoLinkId?: string;
+  /** Block volumes the cluster made that the stack never knew (its CSI claims). */
+  readonly volumeIds: ReadonlyArray<string>;
 }
 
 /** A cloud's build half. */
@@ -119,17 +138,19 @@ export interface CloudBuilder {
   /** Its id (`oci`, `fake`). */
   readonly id: string;
   /** Checks the tenancy can take the domain: keys, limits, the tag namespace, the zone. */
-  preflight(request: { domain: string; spec: DomainSpec; region: string; baseDomain: string }, call: BuildCall): Promise<PreflightCheck[]>;
-  /** Puts the discovery image where the machines boot from, and returns its object's name. */
-  iso_store(request: { domain: string; url: string; region: string }, call: BuildCall): Promise<{ object: string; expires: string }>;
-  /** Plans the infrastructure: against the domain's stack when it has one (adopted, or a re-plan), else a new stack. */
-  infra_plan(request: { domain: string; spec: DomainSpec; region: string; isoObject: string; stackRef?: string }, call: BuildCall): Promise<InfraPlan>;
+  preflight(request: { domain: string; spec: DomainSpec; region: string; baseDomain: string; compartmentId: string }, call: BuildCall): Promise<PreflightCheck[]>;
+  /** Puts the discovery image where the machines boot from: its object, a link to it (a secret) and the link's end. */
+  iso_store(request: { domain: string; url: string; region: string; compartmentId: string }, call: BuildCall): Promise<{ object: string; expires: string; link: string; linkId: string }>;
+  /** Plans the infrastructure: against the domain's stack when it has one (adopted, or a re-plan), else in a new one. */
+  infra_plan(request: { domain: string; spec: DomainSpec; region: string; isoObject: string; stackRef?: string; compartmentId?: string; baseDomain?: string; isoLink?: string }, call: BuildCall): Promise<InfraPlan>;
   /** Applies a plan. Billing starts here. */
-  infra_apply(request: { domain: string; plan: InfraPlan; region: string }, call: BuildCall): Promise<InfraOutputs>;
+  infra_apply(request: { domain: string; plan: InfraPlan; region: string; stackRef?: string }, call: BuildCall): Promise<InfraOutputs>;
   /** Writes the cluster's records in its zone. */
-  dns_upsert(request: { domain: string; baseDomain: string; outputs: InfraOutputs }, call: BuildCall): Promise<string[]>;
-  /** The platform's manifests for the installer. */
-  manifests_of(): Promise<PlatformManifest[]>;
+  dns_upsert(request: { domain: string; baseDomain: string; outputs: InfraOutputs; compartmentId: string; region: string }, call: BuildCall): Promise<string[]>;
   /** Takes in infrastructure built elsewhere: a stack with its variables and its Terraform state; returns the stack's handle. */
+  /** How many resources a stack's state holds: what a destroy job removes. */
+  stackResources_count?(request: { region: string; stackRef: string }): Promise<number>;
+  /** Removes what a domain built: the stack's resources (a destroy job), then its records, image, link and volumes. Returns what went, a line each. */
+  teardown_run?(request: TeardownRequest, call: BuildCall): Promise<string[]>;
   stack_adopt?(request: { domain: string; region: string; compartmentId: string; variables: Record<string, string>; state: Buffer; stackVersion: string }, call: BuildCall): Promise<string>;
 }

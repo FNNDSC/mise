@@ -12,6 +12,10 @@ export interface StratusArgs {
   readonly profile?: string;
   readonly configFile?: string;
   readonly region?: string;
+  /** The Red Hat service account file: `RH_CLIENT_ID=`, `RH_CLIENT_SECRET=`. */
+  readonly redhatAccount?: string;
+  /** The nodes' SSH public key file. */
+  readonly sshKey?: string;
   readonly fake: boolean;
   readonly help: boolean;
   /** `--domain <name>=<checkout>`, as many as given. */
@@ -51,8 +55,8 @@ export function domainArg_parse(given: string): { name: string; root: string } |
  * @returns The arguments, or the refusal.
  */
 export function stratusArgs_parse(argv: ReadonlyArray<string>): { args: StratusArgs } | { error: string } {
-  const known: ReadonlyArray<string> = ['--profile', '--config', '--region', '--fake', '--help', '-h', '--host-control', '--expose-host-control', '--domain'];
-  const valued: ReadonlyArray<string> = ['--profile', '--config', '--region', '--host-control'];
+  const known: ReadonlyArray<string> = ['--profile', '--config', '--region', '--fake', '--help', '-h', '--host-control', '--expose-host-control', '--domain', '--redhat-account', '--ssh-key'];
+  const valued: ReadonlyArray<string> = ['--profile', '--config', '--region', '--host-control', '--redhat-account', '--ssh-key'];
   const domains: Array<{ name: string; root: string }> = [];
   for (let i = 0; i < argv.length; i++) {
     const word: string = argv[i];
@@ -81,6 +85,8 @@ export function stratusArgs_parse(argv: ReadonlyArray<string>): { args: StratusA
       profile: flagValue_get(argv, '--profile'),
       configFile: flagValue_get(argv, '--config'),
       region: flagValue_get(argv, '--region'),
+      redhatAccount: flagValue_get(argv, '--redhat-account'),
+      sshKey: flagValue_get(argv, '--ssh-key'),
       fake: argv.includes('--fake'),
       help: argv.includes('--help') || argv.includes('-h'),
       domains,

@@ -98,9 +98,9 @@ describe('building a domain over the fakes', () => {
     const second: JobRecord = await runner.job_start(STEPS_SOURCE, buildJob_id('trial'), 'build trial', buildRun_make('trial', undefined, deps)).finished;
     expect(second.data['stoppedBefore']).toBe('postinstall');
     const record: DomainRecord = store.record_read('trial') as DomainRecord;
-    expect(record.steps['run']).toMatchObject({ state: 'done', note: 'installed; the kubeconfig is on the host' });
+    expect(record.steps['run']).toMatchObject({ state: 'done', note: "installed; the kubeconfig and the administrator's password are on the host" });
     expect(record.ids).toMatchObject({ clusterId: 'cluster-trial', infraEnvId: 'infraenv-trial', isoObject: 'trial-discovery.iso' });
-    expect(store.secrets_list('trial').map((secret) => secret.name)).toEqual(['kubeconfig']);
+    expect(store.secrets_list('trial').map((secret) => secret.name)).toEqual(['iso-link', 'kubeadmin-password', 'kubeconfig']);
     expect(runner.log_read(STEPS_SOURCE, buildJob_id('trial'))).toContain('trial-cp-2 registered');
   });
 
@@ -151,9 +151,10 @@ describe('building a domain over the fakes', () => {
     store.record_update('stuck', (record: DomainRecord): void => {
       for (const step of ['preflight', 'cluster', 'iso', 'infra-plan', 'infra-apply', 'dns', 'manifests']) record.steps[step] = { state: 'done' };
       record.ids['clusterId'] = 'cluster-stuck';
+      record.ids['infraEnvId'] = 'infraenv-stuck';
     });
     const failed: JobRecord = await runner.job_start(STEPS_SOURCE, 'a', 'a', buildRun_make('stuck', undefined, { ...deps, hostsWaitMs: -1 })).finished;
-    expect(failed.outcome).toBe('hosts: 0 of 3 hosts registered after 0 minutes');
+    expect(failed.outcome).toBe('hosts: 0 of 3 hosts registered, 0 ready, after 0 minutes');
   });
 
   it('shows a built domain as every domain is shown', () => {

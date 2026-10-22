@@ -48,7 +48,7 @@ export interface BuildCommandContext {
 }
 
 /** The options `domain new` takes, each with a value. */
-const NEW_OPTIONS: ReadonlyArray<string> = ['--family', '--plane', '--workers', '--data', '--database', '--queue', '--base-domain'];
+const NEW_OPTIONS: ReadonlyArray<string> = ['--family', '--plane', '--workers', '--data', '--database', '--queue', '--base-domain', '--compartment'];
 
 /**
  * Reads `--name value` and `--name=value` pairs.
@@ -94,16 +94,17 @@ export async function domainNew_run(context: BuildCommandContext, args: Readonly
   const read = options_read(args, NEW_OPTIONS);
   if ('error' in read) return envelope_error('', undefined, `domain new: ${read.error} (${NEW_OPTIONS.join(', ')})\n`);
   const [name, ...extra] = read.rest;
-  if (name === undefined || extra.length > 0) return envelope_error('', undefined, 'domain new: usage: domain new <name> [--family E5] [--plane 3x8/24] [--workers 2x8/32] [--data GiB] [--base-domain zone]\n');
+  if (name === undefined || extra.length > 0) return envelope_error('', undefined, 'domain new: usage: domain new <name> [--family E5] [--plane 3x8/24] [--workers 2x8/32] [--data GiB] [--base-domain zone] [--compartment ocid]\n');
   if (!DOMAIN_NAME.test(name)) return envelope_error('', undefined, `domain new: ${name}: a domain's name is a DNS label: lower-case letters, digits and '-', starting with a letter, at most 54\n`);
   if (context.domains.domain_read(name) !== null) return envelope_error('', undefined, `domain new: ${name}: File exists\n`);
   const region: string | null = context.region();
   if (region === null) return envelope_error('', undefined, 'domain new: not connected\n');
   const baseDomain: string | null = read.options.get('--base-domain') ?? context.baseDomain;
   if (baseDomain === null) return envelope_error('', undefined, 'domain new: --base-domain <zone> is needed: the DNS zone the cluster\'s names live under\n');
-  const sized = specOptions_apply(SPEC_DEFAULT, new Map([...read.options].filter(([option]: [string, string]): boolean => option !== '--base-domain')));
+  const sized = specOptions_apply(SPEC_DEFAULT, new Map([...read.options].filter(([option]: [string, string]): boolean => option !== '--base-domain' && option !== '--compartment')));
+  const compartmentId: string | undefined = read.options.get('--compartment');
   if ('error' in sized) return envelope_error('', undefined, `domain new: ${sized.error}\n`);
-  const record: DomainRecord = { name, created: new Date().toISOString(), region, baseDomain, steps: {}, ids: {} };
+  const record: DomainRecord = { name, created: new Date().toISOString(), region, baseDomain, steps: {}, ids: {}, ...(compartmentId !== undefined ? { compartmentId } : {}) };
   context.store.create(record, sized.spec);
   const lines: string[] = [
     `${chalk.bold(name)}  ${name}.${baseDomain}  spec written: ${context.store.folder_of(name)}/spec.yaml`,
@@ -220,7 +221,7 @@ async function run_follow(runner: JobRunner, id: string): Promise<JobRecord | un
  * @param run - Its work.
  * @returns Its record at the end, or why it did not start or end.
  */
-async function job_runFollowed(id: string, label: string, run: Parameters<JobRunner['job_start']>[3]): Promise<{ record: JobRecord } | { error: string }> {
+export async function job_runFollowed(id: string, label: string, run: Parameters<JobRunner['job_start']>[3]): Promise<{ record: JobRecord } | { error: string }> {
   const runner: JobRunner | null = runner_get();
   if (runner === null) return { error: 'this session runs no tasks' };
   try {

@@ -49,6 +49,9 @@ export const LISTING_LOOK_PLAIN: ListingLook = {
   name_colorize: (name: string): string => name,
 };
 
+/** The narrowest the long view's owner column is. */
+const OWNER_WIDTH_MIN: number = 10;
+
 /** The options a listing renders with. */
 export interface ListingViewOptions {
   /** Sizes in B, KB, MB... rather than bytes. */
@@ -220,10 +223,14 @@ export function long_render(items: VFSItem[], options: ListingViewOptions = {}, 
     }),
   );
 
+  // Owners pad to the widest in the listing, never narrower than ten, so a
+  // long owner (a cloud user who is an e-mail address) keeps the columns aligned.
+  const ownerWidth: number = Math.max(OWNER_WIDTH_MIN, ...items.map((item: VFSItem): number => item.owner.length));
+
   return items.map((item: VFSItem): string => {
     const kind: ItemKindLook | undefined = kind_find(look, item.type);
     const typeChar: string = kind?.mark ?? '-';
-    const owner: string = item.owner.padEnd(10);
+    const owner: string = item.owner.padEnd(ownerWidth);
 
     const column: string | null = kind?.sizeColumn?.(item) ?? null;
     const sizeStr: string = column ?? (options.human ? size_format(item.size) : item.size.toString()).padEnd(8);

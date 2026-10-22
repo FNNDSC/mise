@@ -7,7 +7,7 @@
  * runs none, so `find /proc/jobs | wc -l` had nowhere to go. As builtins
  * these run on every surface, and none starts a process anywhere.
  *
- * Each reads what was piped in, else the ChRIS files named (`-` is the
+ * Each reads what was piped in, else the files named (`-` is the
  * pipe), and takes the POSIX flags most lines use, with their meanings. A
  * flag it does not take is the system program's: the line goes there with
  * the piped text when the surface can run one, and is refused by name when
@@ -126,7 +126,7 @@ async function filter_run<T>(
  * @param command - The filter's name.
  * @param args - The words after it.
  * @param flag - The flag not taken.
- * @param operands - The file operands (ChRIS paths, which a system program cannot read).
+ * @param operands - The file operands (session paths, which a system program cannot read).
  * @returns The envelope.
  */
 async function foreign_run(command: string, args: ReadonlyArray<string>, flag: string, operands: ReadonlyArray<string>): Promise<CommandEnvelope> {
@@ -135,7 +135,7 @@ async function foreign_run(command: string, args: ReadonlyArray<string>, flag: s
   if (!surface.capabilities.pipeSegments || operands.length > 0 || text === null) {
     process.exitCode = 1;
     const why: string = operands.length > 0 || text === null
-      ? `the builtin does not take it, and a system ${command} cannot read ChRIS files`
+      ? `the builtin does not take it, and a system ${command} cannot read the session's files`
       : `the builtin does not take it, and this surface runs no system ${command} (command ${command} asks for one)`;
     return envelope_error('', undefined, `${command}: ${flag}: ${why}\n`);
   }

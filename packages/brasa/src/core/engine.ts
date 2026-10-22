@@ -49,6 +49,8 @@ import { commandCancellation_abort, commandCancellation_stopped, commandCancella
 import { turn_leave, turn_resume, type TurnState } from './turn.js';
 import { errorStack } from '@fnndsc/fond';
 import { recorder_note } from '../session/recorder.js';
+import { assignment_parse, type Assignment } from './variables.js';
+import { assignment_execute } from './assignment.js';
 import { answerAdapters_register } from '../session/answerAdapters.js';
 import { numbering_get, type Numbering } from '../session/answer.js';
 import { sink_get, sink_set, type OutputSink } from './sink.js';
@@ -352,15 +354,17 @@ export async function line_execute(line: string): Promise<CommandEnvelope[]> {
  * Executes one line inside its already-established cancellation scope.
  *
  * @param line - The raw input line.
+ * @param captured - Whether the line is a capture's command, already noted with its assignment.
  * @returns The envelopes of the executed commands, in execution order.
  */
-async function line_execute_run(line: string): Promise<CommandEnvelope[]> {
+async function line_execute_run(line: string, captured: boolean = false): Promise<CommandEnvelope[]> {
   const trimmedLine: string = line.trim();
   if (!trimmedLine) return [];
 
   // A press on a surface and a line at a console arrive here alike, which is
-  // what makes recording a session cost nothing: the lowering is the law.
-  recorder_note(trimmedLine);
+  // what makes recording a session cost nothing: the lowering is the law. A
+  // capture's command is part of its assignment's line, already noted.
+  if (!captured) recorder_note(trimmedLine);
 
   // Start timing if enabled
   const timingEnabled: boolean = session.timingEnabled_get();
@@ -373,6 +377,13 @@ async function line_execute_run(line: string): Promise<CommandEnvelope[]> {
   const batch: string[] = semicolons_parse(trimmedLine);
   if (batch.length > 1) {
     return batch_execute(batch, startTime, timingEnabled);
+  }
+
+  // `NAME=$(command)` or `NAME=word`: before pipes, since a capture's
+  // command may be a pipe of its own.
+  const assignment: Assignment | null = assignment_parse(trimmedLine);
+  if (assignment !== null) {
+    return await assignment_execute(assignment, trimmedLine, (capture: string): Promise<CommandEnvelope[]> => line_execute_run(capture, true));
   }
 
   const pipeSegments: string[] = pipes_parse(trimmedLine);

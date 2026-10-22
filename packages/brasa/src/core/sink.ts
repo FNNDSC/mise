@@ -254,6 +254,59 @@ export class PipeCaptureSink implements OutputSink {
 }
 
 /**
+ * Sink that passes everything through to the sink around it and keeps a copy
+ * of the data channel: what `NAME=$(command)` holds when the command answers
+ * no model. The command still prints as it would have, so a captured run's
+ * progress and readout reach the operator; text is kept ANSI-stripped, as a
+ * pipe keeps it.
+ */
+export class TeeSink implements OutputSink {
+  private chunks: Buffer[] = [];
+
+  /**
+   * Initializes a tee sink.
+   *
+   * @param live - The surrounding sink, which receives every channel.
+   */
+  constructor(private readonly live: OutputSink) {}
+
+  /** @inheritdoc */
+  public data_write(chunk: string | Buffer): void {
+    this.chunks.push(typeof chunk === 'string' ? Buffer.from(ansi_strip(chunk), 'utf-8') : chunk);
+    this.live.data_write(chunk);
+  }
+
+  /** @inheritdoc */
+  public err_write(chunk: string | Buffer): void {
+    this.live.err_write(chunk);
+  }
+
+  /** @inheritdoc */
+  public status_write(text: string): void {
+    this.live.status_write(text);
+  }
+
+  /** @inheritdoc */
+  public progress_write(event: ProgressEvent): void {
+    this.live.progress_write(event);
+  }
+
+  /** @inheritdoc */
+  public event_write(kind: string, data: unknown): void {
+    this.live.event_write?.(kind, data);
+  }
+
+  /**
+   * Everything the data channel carried, as text.
+   *
+   * @returns The kept text.
+   */
+  public text_get(): string {
+    return Buffer.concat(this.chunks).toString('utf-8');
+  }
+}
+
+/**
  * The host sink: the process-wide default installed by whoever owns the output
  * destination (the CLI REPL, the daemon). Defaults to stdout so every entry
  * point behaves as the CLI always has.

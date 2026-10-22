@@ -59,12 +59,18 @@ jest.unstable_mockModule('../src/core/sink.js', () => ({
 const scopes: Array<Array<[string, string]>> = [];
 /** The parameters currently in scope, as the real resolver would see them. */
 let scope: Map<string, string> = new Map();
-jest.unstable_mockModule('../src/core/expansion.js', () => ({
-  paramScope_run: async (params: Map<string, string>, operation: () => Promise<unknown>): Promise<unknown> => {
+/** The variables the fake session's lines set, by name. */
+const variables: Map<string, { answer: { source: string; kind: string; rows: unknown[]; data: unknown }; readOnly: boolean }> = new Map();
+jest.unstable_mockModule('../src/core/variables.js', () => ({
+  VARIABLE_NAME: /^[A-Za-z_][A-Za-z0-9_]*$/,
+  variableScope_run: async (params: Map<string, string>, operation: () => Promise<unknown>): Promise<unknown> => {
     scopes.push([...params.entries()]);
     scope = params;
     return await operation();
   },
+  variable_get: (name: string) => variables.get(name),
+}));
+jest.unstable_mockModule('../src/core/expansion.js', () => ({
   reference_isReserved: (name: string): boolean => ['gather', 'feed', 'run', 'query', 'cwd'].includes(name.split('.')[0]),
   reference_resolve: async (name: string): Promise<{ values: string[] } | null> => {
     const held: string | undefined = scope.get(name);
@@ -76,6 +82,8 @@ jest.unstable_mockModule('../src/core/expansion.js', () => ({
 jest.unstable_mockModule('../src/core/engine.js', () => ({
   line_execute: async (line: string): Promise<Array<{ status: string; rendered: string }>> => {
     ran.push(line);
+    const capture: RegExpMatchArray | null = line.match(/^([A-Z])=\$\((.*)\)$/);
+    if (capture !== null) variables.set(capture[1] as string, { answer: { source: capture[2] as string, kind: 'run.scheduled', rows: [], data: { instanceId: 4813 } }, readOnly: false });
     return [{ status: refuseAt !== null && line.includes(refuseAt) ? 'error' : 'ok', rendered: '' }];
   },
 }));
@@ -98,6 +106,7 @@ beforeEach(() => {
   members = [];
   missing = false;
   scopes.length = 0;
+  variables.clear();
   scope = new Map();
   recent_forget();
   process.exitCode = 0;
@@ -228,5 +237,36 @@ describe('play', () => {
     expect(ran).toEqual([]);
     expect(output.some((line: string): boolean => line.includes('pacs query PatientID:1279049'))).toBe(true);
     expect(envelope.status).toBe('ok');
+  });
+});
+
+describe('a manifest that declares what it answers', () => {
+  it('answers with that variable\'s model, so X=$(play f) holds what the flow made', async () => {
+    stored = ['@answers C', 'C=$(pl-dcm2niix)'].join('\n');
+    const envelope = await builtin_play(['f.mise']);
+    expect(envelope.status).toBe('ok');
+    expect(envelope.model).toEqual({ kind: 'run.scheduled', data: { instanceId: 4813 } });
+  });
+
+  it('refuses a play that ends without setting what it answers', async () => {
+    stored = ['@answers C', 'ls'].join('\n');
+    const envelope = await builtin_play(['f.mise']);
+    expect(envelope.status).toBe('error');
+    expect(envelope.renderedErr).toContain('f.mise answers C, and C was never set');
+  });
+
+  it('refuses an answer that is not a name, before a line runs', async () => {
+    stored = ['@answers C.instanceId', 'ls'].join('\n');
+    const envelope = await builtin_play(['f.mise']);
+    expect(envelope.status).toBe('error');
+    expect(ran).toEqual([]);
+  });
+
+  it('shows the answer it would give in a dry run, and sets nothing', async () => {
+    stored = ['@answers C', 'C=$(pl-dcm2niix)'].join('\n');
+    const envelope = await builtin_play(['f.mise', '--dry-run']);
+    expect(envelope.status).toBe('ok');
+    expect(output.some((line: string): boolean => line.includes('@answers C'))).toBe(true);
+    expect(ran).toEqual([]);
   });
 });

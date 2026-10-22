@@ -28,6 +28,7 @@ import { builtin_grep } from '../builtins/sys/grep.js';
 import { builtin_cut, builtin_head, builtin_sort, builtin_tail, builtin_uniq, builtin_wc } from '../builtins/sys/textFilters.js';
 import { builtin_command } from '../builtins/sys/command.js';
 import { builtin_kill, builtin_wait } from '../builtins/sys/tasks.js';
+import { builtin_set, builtin_unset } from '../builtins/sys/variables.js';
 import { builtin_apropos, builtin_man } from '../builtins/sys/apropos.js';
 import { builtin_rev, builtin_rot13, builtin_seq, builtin_shuf, builtin_tac, builtin_yes } from '../builtins/games/text.js';
 import { builtin_wtf } from '../builtins/games/wtf.js';
@@ -109,6 +110,8 @@ const envelope: Record<string, EnvelopeHandler> = {
   timer: builtin_timer,
   kill: builtin_kill,
   wait: builtin_wait,
+  set: builtin_set,
+  unset: builtin_unset,
   leave: builtin_leave,
   stopwatch: builtin_stopwatch,
   sl: builtin_sl,
@@ -184,6 +187,8 @@ const plain: Record<string, CommandHandler> = {
   timer: envelopeHandler_wrap(builtin_timer),
   kill: envelopeHandler_wrap(builtin_kill),
   wait: envelopeHandler_wrap(builtin_wait),
+  set: envelopeHandler_wrap(builtin_set),
+  unset: envelopeHandler_wrap(builtin_unset),
   leave: envelopeHandler_wrap(builtin_leave),
   stopwatch: envelopeHandler_wrap(builtin_stopwatch),
   sl: envelopeHandler_wrap(builtin_sl),

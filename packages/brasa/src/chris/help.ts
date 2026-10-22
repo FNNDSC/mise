@@ -32,10 +32,9 @@ export const RESOURCE_LIST_OPTIONS: string[] = [
 /** The help for each ChRIS command, by name. */
 /** The pronouns the ChRIS session answers, for `help pronouns`. */
 export const CHRIS_PRONOUN_LINES: ReadonlyArray<string> = [
-  '  ${gather}        every gathered member, as operands (where it was gathered FROM)',
-  '  ${gather.place}  the same members, where they LANDED in CUBE',
-  '  ${gather.first}  ${gather.last}  ${gather.3}  ${gather.size}  ${gather.name}',
-  '  ${gather.first.place}  one member, where it landed (pull takes the address, image takes the place)',
+  '  ${gather}        every gathered member, as operands (where it was gathered FROM); read live',
+  '  ${gather.series.folderPath}  the same members, where they LANDED in CUBE',
+  '  ${gather.name}  ${gather.feed.id}  any field of the cohort, as `gather` answers it',
   '  ${feed}          the feed this session most recently worked in',
   '  ${run}           the run it most recently scheduled',
   '  ${run.place}     where that run writes — what the next act in a chain takes',

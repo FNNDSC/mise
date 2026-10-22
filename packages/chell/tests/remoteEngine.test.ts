@@ -195,6 +195,39 @@ describe('RemoteEngine live output', () => {
     expect(err).toEqual([]);
   });
 
+  it('routes a line\'s live output and progress to the sink it was sent from, not the one active when it arrives', async () => {
+    const sentFrom: string[] = [];
+    const later: string[] = [];
+    const sentSink: OutputSink = {
+      data_write: (chunk: string | Buffer): void => { sentFrom.push(`data:${chunk.toString()}`); },
+      err_write: (chunk: string | Buffer): void => { sentFrom.push(`err:${chunk.toString()}`); },
+      status_write: (): void => undefined,
+      progress_write: (): void => { sentFrom.push('progress'); },
+    };
+    const laterSink: OutputSink = {
+      data_write: (chunk: string | Buffer): void => { later.push(chunk.toString()); },
+      err_write: (chunk: string | Buffer): void => { later.push(chunk.toString()); },
+      status_write: (): void => undefined,
+      progress_write: (): void => { later.push('progress'); },
+    };
+    scenario = (ws: FakeWebSocket, sent: Record<string, unknown>): void => {
+      if (sent.type !== 'execute') return;
+      const id = String(sent.id);
+      process.nextTick(() => {
+        // Another surface's work installed its own sink meanwhile.
+        activeSink = laterSink;
+        ws.emit('message', Buffer.from(JSON.stringify({ type: 'output', id, channel: 'err', chunk: 'chell: command not found: motd\n' })));
+        ws.emit('message', Buffer.from(JSON.stringify({ type: 'progress', id, phase: 'start', label: 'x' })));
+        ws.emit('message', Buffer.from(JSON.stringify({ type: 'result', id, envelopes: [{ status: 'error', rendered: '', renderedErr: 'chell: command not found: motd\n' }] })));
+      });
+    };
+    remote = await RemoteEngine.connect({ url: 'ws://127.0.0.1:1', token: 'token' });
+    activeSink = sentSink;
+    await remote.line_execute('motd chell');
+    expect(sentFrom).toEqual(['err:chell: command not found: motd\n', 'progress']);
+    expect(later.filter((line) => line.includes('motd'))).toEqual([]);
+  });
+
   it('sends an origin-correlated cancel for its active execute request', async () => {
     let resolveResult: (() => void) | undefined;
     scenario = (ws: FakeWebSocket, sent: Record<string, unknown>): void => {

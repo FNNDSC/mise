@@ -96,6 +96,13 @@ export class RemoteEngine implements BrasaEngine {
   private nextId: number = 0;
   private activeExecuteId: string | undefined;
   private readonly liveEnvelopeChannels: Map<string, Set<'data' | 'err'>> = new Map<string, Set<'data' | 'err'>>();
+  /**
+   * The sink each running line was sent from. A line's live output arrives
+   * on the socket's own callbacks, outside the caller's async context, so it
+   * is routed to the sink active when the line was sent: a caller that
+   * scoped a sink around a line (a quiet greeting, a capture) keeps it.
+   */
+  private readonly requestSinks: Map<string, OutputSink> = new Map<string, OutputSink>();
 
   /**
    * @param ws - An open, already-attached socket to the daemon.
@@ -183,6 +190,7 @@ export class RemoteEngine implements BrasaEngine {
   public async line_execute(line: string): Promise<CommandEnvelope[]> {
     const id: string = String(this.nextId++);
     this.activeExecuteId = id;
+    this.requestSinks.set(id, sink_get());
     try {
       const envelopes: CommandEnvelope[] = await this.request<CommandEnvelope[]>('execute', { line }, id);
       const liveChannels: Set<'data' | 'err'> | undefined = this.liveEnvelopeChannels.get(id);
@@ -199,6 +207,7 @@ export class RemoteEngine implements BrasaEngine {
       return envelopes;
     } finally {
       if (this.activeExecuteId === id) this.activeExecuteId = undefined;
+      this.requestSinks.delete(id);
     }
   }
 
@@ -307,7 +316,7 @@ export class RemoteEngine implements BrasaEngine {
       case 'progress':
         {
           const { type: _type, id: _id, ...event } = message;
-          sink_get().progress_write(event);
+          this.sink_for(_id).progress_write(event);
         }
         break;
       case 'event':
@@ -319,7 +328,7 @@ export class RemoteEngine implements BrasaEngine {
           channels.add(message.channel);
           this.liveEnvelopeChannels.set(message.id, channels);
         }
-        this.output_render(message.channel, message.chunk);
+        this.output_render(message.channel, message.chunk, message.id);
         break;
       case 'pipe':
         void this.pipe_run(message.pipeId, message.command, message.input);
@@ -483,8 +492,13 @@ export class RemoteEngine implements BrasaEngine {
    * @param channel - The sink channel the chunk belongs to.
    * @param chunk - The streamed text.
    */
-  private output_render(channel: 'data' | 'err' | 'status', chunk: string): void {
-    const sink: OutputSink = sink_get();
+  /** The sink a line's output goes to: the one it was sent from, else the active one. */
+  private sink_for(id: string | undefined): OutputSink {
+    return (id !== undefined ? this.requestSinks.get(id) : undefined) ?? sink_get();
+  }
+
+  private output_render(channel: 'data' | 'err' | 'status', chunk: string, id?: string): void {
+    const sink: OutputSink = this.sink_for(id);
     if (channel === 'data') {
       sink.data_write(chunk);
     } else if (channel === 'err') {

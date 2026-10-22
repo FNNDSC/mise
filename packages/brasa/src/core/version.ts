@@ -193,6 +193,28 @@ export function versions_get(): StackVersions {
   };
 }
 
+/** The packages that are ChRIS's own: a session over another backend runs them without being made of them. */
+export const CHRIS_STACK_PACKAGES = ['chili', 'salsa', 'cumin'] as const;
+
+/** A stack's versions as a session names them: ChRIS's own packages only when it is a ChRIS session. */
+export type SessionStackVersions = Omit<StackVersions, (typeof CHRIS_STACK_PACKAGES)[number]> & Partial<Pick<StackVersions, (typeof CHRIS_STACK_PACKAGES)[number]>>;
+
+/**
+ * The versions a session over a backend is made of: every package for
+ * ChRIS, and without ChRIS's own (`chili salsa cumin`) for any other, which
+ * loads them only because they are installed beside it.
+ *
+ * @param versions - The stack's versions.
+ * @param backendId - The session's backend (`chris`, `stratus`, `null`).
+ * @returns The versions the session's banner and attach answer name.
+ */
+export function versionsForBackend_of(versions: StackVersions, backendId: string): SessionStackVersions {
+  if (backendId === 'chris') return { ...versions };
+  const kept: SessionStackVersions = { ...versions };
+  for (const pkg of CHRIS_STACK_PACKAGES) delete kept[pkg];
+  return kept;
+}
+
 /**
  * Builds the terse `--version` report: one aligned `name  version` line per
  * package, versions in a single column.

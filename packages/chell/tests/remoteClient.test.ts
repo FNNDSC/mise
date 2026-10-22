@@ -67,6 +67,7 @@ jest.unstable_mockModule('@fnndsc/calypso', () => ({
 }));
 jest.unstable_mockModule('@fnndsc/brasa', () => ({
   sink_set: sinkSet_mock,
+  sinkScope_run: <T>(_sink: unknown, fn: () => Promise<T>): Promise<T> => fn(),
   surface_get: jest.fn(() => ({
     prompt: prompt_mock,
     pipeSegment: pipeSegment_mock,

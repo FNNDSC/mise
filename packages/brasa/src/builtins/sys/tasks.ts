@@ -36,7 +36,7 @@ export function jobName_resolve(runner: JobRunner, word: string): JobName | { er
   if (parts.length !== 1) return { error: 'no such task' };
   const matches: JobRecord[] = runner.jobs_list().filter((record: JobRecord): boolean => record.id === parts[0]);
   if (matches.length === 0) return { error: 'no such task' };
-  if (matches.length > 1) return { error: `ambiguous: ${matches.map((record: JobRecord): string => `/proc/${record.source}/${record.id}`).join(', ')}` };
+  if (matches.length > 1) return { error: `ambiguous: ${matches.map((record: JobRecord): string => `/proc/${record.source}/${record.id}`).sort().join(', ')}` };
   return { source: (matches[0] as JobRecord).source, id: (matches[0] as JobRecord).id };
 }
 

@@ -41,7 +41,7 @@ describe('kill and wait', () => {
     expect(jobName_resolve(runner, '/proc/steps/a')).toEqual({ source: 'steps', id: 'a' });
     expect(jobName_resolve(runner, 'steps/a')).toEqual({ source: 'steps', id: 'a' });
     expect(jobName_resolve(runner, 'a')).toEqual({ source: 'steps', id: 'a' });
-    expect(jobName_resolve(runner, 'b')).toEqual({ error: 'ambiguous: /proc/steps/b, /proc/other/b' });
+    expect(jobName_resolve(runner, 'b')).toEqual({ error: 'ambiguous: /proc/other/b, /proc/steps/b' });
     expect(jobName_resolve(runner, 'zz')).toEqual({ error: 'no such task' });
     expect(jobName_resolve(runner, '/proc/a/b/c')).toEqual({ error: 'no such task' });
   });

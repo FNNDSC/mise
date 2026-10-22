@@ -1,10 +1,10 @@
 # Active project handoff: stratus (epic #1056)
 
-- Last updated: 2026-10-21
-- Last verified against `main`: the merge of #1187 (stratus 1b), 2026-10-21
-- Working branches: `agent/remote-berth-exact` (#1190, follow-up 1), `agent/frame-alone-stage` (#1191, follow-up 2), `agent/td-mark-splash` (#1192, follow-up 3), `agent/stratus-resources` (#1193, step 2), `agent/greet-per-backend` (#1194), `agent/listing-owner-width` (#1195), `agent/stratus-domains` (#1196, step 3 tree and `domain status`, stacked on #1193), `agent/stratus-tiles` (step 3 tiles and `capacity`, stacked on #1196); each waits for the operator's review and merge
-- Current milestone: step 1 of the order of work in [stratus.adoc](stratus.adoc#order) is on `main`: 1a (#1181, published as @fnndsc/stratus 0.1.0) and 1b (#1187, unpublished until the next `make publish`). Follow-ups 1 to 3 and step 2 are in open PRs.
-- Next action: the operator reviews and merges the four PRs; follow-up 4 (the epic's status comment) was not asked for in this round; then step 3 (domains, read), after a grill
+- Last updated: 2026-10-22
+- Last verified against `main`: the merge of #1197, 2026-10-22
+- Working branches: none; `main` is clean
+- Current milestone: steps 1 to 3 of the order of work in [stratus.adoc](stratus.adoc#order) are on `main`, all unpublished beyond @fnndsc/stratus 0.1.0 until the next `make publish` (the operator's word). Follow-ups 1 to 3 merged (#1190, #1191, #1192), and the four defects found along the way (#1194, #1195)
+- Next action: the grill for step 4 (the supervised runner and the `tasks` tier, #986) with the operator; the three answers below under "Open questions" first. Follow-up 4 (the epic's status comment) is still unasked
 
 This file is the handoff between sessions and between models. It says where the work stands and what to do next, with the facts a fresh context needs to do it without rediscovery. The design itself is [stratus.adoc](stratus.adoc); the bastions are [bastion.adoc](bastion.adoc) and [dev-bastion.adoc](dev-bastion.adoc); what Red Hat ships against the primitive is [redhat-fl.adoc](redhat-fl.adoc); the metaphor every figure is drawn in is [linux-metaphor.adoc](linux-metaphor.adoc).
 
@@ -39,9 +39,11 @@ These are enforced by the operator in review and most by lint. Read the pointed 
 |---|---|---|
 | `@fnndsc/stratus` 0.1.0 | published through OIDC with provenance; trusted publisher configured | `packages/stratus`; npm page `@fnndsc/stratus` |
 | Step 1a: read the tenancy | on `main` (#1181): descriptor, `CloudDriver`, fake driver and contract suite, OCI identity and compartments, `/net/oci/<tenancy>/` and `regions/`, launcher, stratus boot, `lint:stratus-deps` | `packages/stratus/src/{backend,session,cache,names,args,stratus}.ts`, `cloud/{driver.ts,fake/,oci/}`, `vfs/{tenancy,look}.ts`, `tests/` |
-| Step 1b: prompt segments and the ARGUS composition | on `main` (#1187); its changesets (menu, chell, stratus minor; argus minor) wait in the next Version Packages PR, released by `make publish` on the operator's word | `packages/menu/src/messages.ts` (`promptSegmentSchema`, `segments`), `packages/menu/src/logo/tdMark.ts`, `packages/stratus/src/prompt.ts`, `packages/chell/src/core/prompt/{theme_p10k,theme_default,utils,index}.ts`, `apps/argus/src/console/promptBar.ts`, `apps/argus/src/app/main.ts` (stratus splash, favicon, note), `apps/argus/index.html` + `lcars/argus.css` (`data-composition="stratus"` seams), `assets/brand/td-oci.svg`, `scripts/prompt-parity.mjs` |
-| Step 2: resources in the tree | open PR from `agent/stratus-resources`: `CloudDriver` gains one method per kind plus `objects_list links_list object_read records_list resources_search`; the fake fixture holds a small Trusted Domain; the OCI driver maps Compute, Virtual Network, Block Storage, Load Balancing, Object Storage, DNS and Resource Search; every container level holds `instances networks loadbalancers volumes buckets dns`; verified live and read-only against `fnndsc-bch` on 2026-10-21 | `packages/stratus/src/cloud/{driver.ts,fake/driver.ts,oci/resourceApi.ts,oci/resourceMap.ts,oci/driver.ts}`, `vfs/{resources,tenancy,look}.ts`, `backend.ts` (session region, structural paths), `tests/{resources,oci}.test.ts`, `tests/support/{driverContract,ociResources}.ts` |
-| Step 3, the domains read (tree and `domain status`) | open PR from `agent/stratus-domains`, stacked on step 2: `stratus --domain <name>=<harbor-oci checkout>`; `domains/<name>/` with `spec.yaml settings state.json steps/ auth/`; steps read from the evidence harbor-oci keeps; `domain status`; verified live against the `harbor-oci` checkout and `fnndsc-bch` on 2026-10-21. Not built: `domain verify` and `spend`, which would start host programs (D10, the `tasks` tier). The DOMAINS and CAPACITY tiles, `capacity`, and the `stratus.domains`/`stratus.capacity` models are on `agent/stratus-tiles`; the tiles' descriptions await the operator's approval | `packages/stratus/src/domains/harborOci.ts`, `vfs/domains.ts`, `commands/domain.ts`, `args.ts`, `backend.ts`, `tests/domains.test.ts`, `tests/support/harborCheckout.ts` |
+| Step 1b: prompt segments and the ARGUS composition | on `main` (#1187) | `packages/menu/src/messages.ts` (`promptSegmentSchema`, `segments`), `packages/menu/src/logo/tdMark.ts`, `packages/stratus/src/prompt.ts`, `packages/chell/src/core/prompt/`, `apps/argus/src/console/promptBar.ts`, `apps/argus/src/app/main.ts`, `assets/brand/td-oci.svg`, `scripts/prompt-parity.mjs` |
+| Follow-ups 1 to 3 | on `main`: `chell --remote <berth>` by the exact identity, two-@ too (#1190, `packages/chell/src/remote/berthTarget.ts`); a frame-alone session boots unzoomed (#1191); the attach splash follows the backend, the TD mark for stratus (#1192, `packages/chell/src/remote/splash.ts`) | |
+| Defects found on the way | on `main`: a non-ChRIS attach greets without the `motd` refusal or ChRIS packages; a remote line's live output goes to the sink it was sent from (#1194); `ls -l` pads owners to the widest; text filters say the session's files (#1195) | `packages/chell/src/core/greeting.ts`, `packages/chell/src/remote/remoteEngine.ts`, `packages/brasa/src/core/version.ts` (`versionsForBackend_of`), `packages/fond/src/vfs/render.ts` |
+| Step 2: resources in the tree | on `main` (#1193): one driver method per kind plus `objects_list links_list object_read records_list resources_search`; every container level holds `instances networks loadbalancers volumes buckets dns` for the session's region; verified live and read-only against `fnndsc-bch` on 2026-10-21 | `packages/stratus/src/cloud/{driver.ts,fake/driver.ts,oci/resourceApi.ts,oci/resourceMap.ts,oci/driver.ts}`, `vfs/{resources,tenancy,look}.ts`, `backend.ts` |
+| Step 3: domains, read | on `main` (#1196, #1197): `stratus --domain <name>=<harbor-oci checkout>`; `domains/<name>/` with `spec.yaml settings state.json steps/ auth/`, steps read from the evidence harbor-oci keeps; `domain status` and `capacity` with the `stratus.domains` and `stratus.capacity` models; the DOMAINS and CAPACITY tiles. Not built: `domain verify` and `spend` (see open questions) | `packages/stratus/src/{domains/harborOci.ts,vfs/domains.ts,commands/domain.ts,commands/capacity.ts,args.ts}`, `packages/menu/src/substrate.ts`, `apps/argus/src/compositions/stratus/tiles.ts` |
 | Bastion documents and figures | on `main` (#1185, corrected by #1186) | `docs/bastion.adoc`, `docs/dev-bastion.adoc`, `docs/redhat-fl.adoc`, `docs/linux-metaphor.adoc`, `docs/images/*.png` |
 | Figure sources | a private Design canvas owned by the operator; the repo holds the 2x PNG exports | ask the operator for the canvas; re-export is a headless-chromium screenshot of the board's HTML |
 
@@ -60,61 +62,21 @@ grep -o 'http://127.0.0.1:[0-9]*/?token=[0-9a-f]*' $S/daemon.log
 
 `HOME` must exist: the terminal console's pty chell starts there and dies with `chdir(2) failed` otherwise. Stop it with `kill $(cat $S/pid)`. Against the live tenancy, drop `--fake` and give the daemon a real `HOME` whose `~/.oci/config` holds the profile; every change that touches the tree is checked live and read-only (stratus.adoc, test strategy).
 
-**A chell attached under a pty** (the prompt is interactive): `pty.fork()` with the same four variables and `HOME`, `node packages/chell/dist/index.js --remote <the URL above>`, read until the prompt, write lines, strip ANSI. Attaching by the printed URL works; attaching by `rudolph@fnndsc` does not (follow-up 1).
+**A chell attached under a pty** (the prompt is interactive): `pty.fork()` with the same four variables and `HOME`, `node packages/chell/dist/index.js --remote <the URL above>`, read until the prompt, write lines, strip ANSI. Attaching by the printed URL or by the berth (`chell --remote rudolph@fnndsc`) both work.
 
 **ARGUS screenshots** without Playwright: `apps/argus/tests/smoke/driver.mjs` exports `page_open(url)` returning `{ eval, shot, send, close }` over CDP. Run with `SMOKE_CHROME_BIN=$HOME/.cache/ms-playwright/chromium-1080/chrome-linux/chrome SMOKE_CHROME_FLAGS="--no-sandbox --user-data-dir=<fresh dir>" SMOKE_CDP_PORT=<free port>`. Chromium 153 on this host cannot load loopback pages headless; the 1080 build can.
+
+**npm's advisory endpoint flakes** (503 or a five-minute timeout on `/-/npm/v1/security/advisories/bulk`, seen 2026-10-22): the required `audit` check then fails with "audit endpoint returned an error", which is not a finding. Rerun only that job (`gh run rerun <run> --failed`) until it answers, then `make merge` alone. With strict protection every merge makes the next PR BEHIND; `make rebase` first when its last checks were red, since `make merge` rebases only on BEHIND or DIRTY.
 
 **Build order** when types cross packages: `npm run build -w @fnndsc/menu`, then stratus, chell, calypso, argus as needed (`npm run build` at the root builds all in order).
 
 **Figure re-export**: strip the Design wrapper (`support.js` line, `<x-dc>`, `<helmet>`, the `text/x-dc` script), screenshot with the 1080 chromium at `--force-device-scale-factor=2 --window-size=1680,<h+80>`, crop to the board size, save under `docs/images/`.
 
-## Follow-ups to land before step 2
-
-### Follow-up 1: `chell --remote <berth>` for a stratus identity
-
-- **Symptom**: the launcher prints `attach a surface with: chell --remote rudolph@fnndsc`; chell answers `No live calypso for rudolph@http://fnndsc` (`packages/chell/src/remote/client.ts:162`). The remote client normalises the part after `@` as a CUBE URL before it looks for a berth, so a tenancy name becomes `http://fnndsc` and no berth file matches. The daemon's berth file is written by `packages/calypso/src/daemon/berth.ts` (`berth_write`, `berth_path(identity)`), keyed by the identity string the backend gave.
-- **Fix shape**: resolve a berth by the exact identity string first, and only normalise to a URL when no berth matches and the string parses as a host. Do not change what the daemon writes. The two-`@` form (`rudolph.pienaar@childrens.harvard.edu@fnndsc-bch`) must resolve too: split on the last `@`.
-- **Tests**: a chell unit test for the resolver with `user@cube.example.org`, `rudolph@fnndsc`, and the two-`@` berth; a live check against the private fake daemon by berth.
-- **Changeset**: `@fnndsc/chell` patch. No AEGIS row (no ARGUS change).
-
-### Follow-up 2: a frame-alone session boots with the launcher zoomed
-
-- **Symptom**: ARGUS over `stratus` (and over `null`) boots with `document.body.dataset.zoom === 'launcher'`: the header and the console drawer are off stage until the zoom is restored. The ChRIS composition does not do this. `zoom_set` lives in `apps/argus/src/app/main.ts` (around line 432); find where the launcher preset is raised for a session with no composition stage and why it zooms.
-- **Fix shape**: a frame-alone session boots with the dashboard on stage and the header and console visible, as a ChRIS session does. Keep the zoom reachable by the operator's gesture.
-- **Tests**: the smoke stage `frame-alone` (`apps/argus/tests/smoke/smoke.mjs`) asserts the header's brand mark and the console drawer are on stage; screenshots desk and phone. Then an ARGUS screenshot over the fake stratus daemon showing the TD mark in the header and the terminal console's prompt `OCI fnndsc us-ashburn-1 rudolph:…$`, sent to the operator.
-- **Changeset**: `@fnndsc/argus` patch. **AEGIS row** describing the boot posture of a frame-alone session.
-
-### Follow-up 3: the TD mark wherever a stratus session greets
-
-- **What the operator asked** (2026-10-21): decorate the console ASCII art with the agreed OCI stratus mark, and ARGUS likewise. Slice 1b did ARGUS's console splash (the TD mark from `@fnndsc/menu/logo/td`, `tdMark_linesRender(true)`) and the header's brand mark. Still drawing ChRIS's brain or nothing: chell's own banner when it attaches to a stratus daemon, and the daemon console `stratus` opens on a TTY (`daemonConsole_run` in calypso), which prints the brain.
-- **Fix shape**: the splash follows the backend id the attach answer carries (`backend: 'stratus'`): chell's banner and calypso's daemon console draw `tdMark_linesRender` for `stratus`, the brain for `chris`, nothing for another backend. The mark is already colour-coded (ring Oracle red, star blue); keep it. If chell cannot know the backend before its banner, print the banner after the attach answer.
-- **Where**: chell's attach greeting in `packages/chell/src/remote/` (search for `logo_linesRender`), calypso's `daemonConsole_run` and the launch banner in `packages/calypso/src/daemon/{launch,face}.ts`.
-- **Tests**: chell and calypso unit tests on the banner lines by backend id; a pty capture against the private fake daemon showing the mark.
-- **Changesets**: `@fnndsc/chell` and `@fnndsc/calypso` patch.
+## Follow-up still open
 
 ### Follow-up 4: epic #1056's body
 
 The epic body still says "no code yet". Post a status comment pointing at this file and the merged PRs; do not rewrite the operator's body.
-
-## Step 2: resources in the tree
-
-Design: stratus.adoc D4 (the tree), D5 (what a row is), D6 (read-only by default). Scope from the order of work: instances, networks (with subnets and security groups nested), load balancers, volumes, buckets and DNS under each compartment; `ls -l` types and states; cloud tags in `tags`.
-
-- **Driver**: extend `CloudDriver` (`packages/stratus/src/cloud/driver.ts`) with one method per kind, each taking `(compartmentId, region)` and answering a typed record list, plus `resources_search(compartmentId, region)` over OCI Resource Search for counts. Keep the interface cloud-neutral: generic kinds `instances networks subnets securitygroups loadbalancers volumes buckets dns`, native detail only in `info.json`. Every new method joins the contract suite (`tests/support/`, `driverContract_describe`) and the fake driver's fixture (`FakeCloud` in `cloud/fake/driver.ts`).
-- **OCI**: `cloud/oci/api.ts` gains the per-service SDK clients (`oci-core`, `oci-loadbalancer`, `oci-objectstorage`, `oci-dns`, `oci-resourcesearch`, already dependencies or added as per-service packages, never `oci-sdk`); `cloud/oci/driver.ts` maps records to the generic shapes. `lint:stratus-deps` keeps `oci-*` imports inside `cloud/oci/`. Recorded answers for the contract suite follow `tests/oci.test.ts`'s `recordedApi_make`.
-- **Tree**: `vfs/tenancy.ts` adds the kind folders beside child compartments at every compartment level (`TENANCY_RESERVED`, `CONTAINER_RESERVED`), each resource a folder of field files (`name id state region created tags info.json` plus the kind's own: instance `shape zone ips`, volume `size attached`, load balancer `ip shape`; a bucket's objects as files with a `link` field; a DNS zone's records as files). Duplicate display names wear `~<id6>` (`names.ts`). Structural paths include every kind folder. Answers cached a minute (`cache.ts`).
-- **Look**: `vfs/look.ts` gives each kind its type word and state colour (`stratusName_colorize`), consistent with the ChRIS listing look.
-- **Tests**: tenancy provider tests over the fake driver for every kind, duplicate names, the field files, `cat info.json`; the contract suite on fake and recorded OCI; stratus boot still loads no ChRIS package. Live read-only against the tenancy before the PR is opened: `ls -l /net/oci/<tenancy>/<compartment>/instances` and friends, screenshots or transcripts to the operator.
-- **Changeset**: `@fnndsc/stratus` minor. No AEGIS row unless ARGUS changes.
-- **Size**: one PR if the driver and tree land together with the fake; two if OCI recording proves slow (fake and tree first, OCI driver second).
-
-## Step 3: domains, read
-
-Design: D4 (`domains/`), D12 (handoff later), the harbor-oci facts in stratus.adoc's "What exists". The live compact cluster is the first domain, read over the existing `~/src/harbor-oci/state/` folder (`state/harbor.json`, Terraform state, `state/auth/`): `domains/harbor/` with `spec.yaml`, `state.json`, `steps/<nn-name>/ state log started ended`; `domain status`, `domain verify` (wrapping `harboroci verify` read-only), `spend` (wrapping `burn`); the DOMAINS and CAPACITY tiles in the ARGUS stratus composition.
-
-- **Where**: a `domains` provider in `vfs/`, a `domain` command family registered by the backend (`Backend.commands`, see brasa's `chris/` commands for the shape and `lint:commands` for the declaration gate), and `apps/argus/src/compositions/stratus/tiles.ts` returning a `TileContribution` (`apps/argus/src/app/dashboardTiles.ts`), wired in `main.ts` where the ChRIS tiles are, under `backend === 'stratus'`.
-- **Secrets never cross the wire**: kubeconfig and kubeadmin password stay on the host (D8); `cat` and `/vfs` refuse them with the host path.
-- **Tests**: provider tests over a fixture state folder; command tests; ARGUS unit test for the tile source; smoke stage for the stratus dashboard against the fake daemon. **AEGIS rows** for the tiles.
 
 ## Steps 4 and on
 
@@ -122,6 +84,9 @@ As the order of work lists them: the supervised runner and the `tasks` tier (#98
 
 ## Open questions, for the operator
 
+- How `domain verify` and `spend` run: they would start host programs (`harboroci verify` runs `oc` and `dig`; `burn` is the Python CLI), which D10 puts under the `tasks` tier. Run them under today's `shell` tier, wait for the `tasks` tier, or port them into the driver (`spend` then needs block-volume and load-balancer prices beside the shape prices). Today `domain verify` is refused by name and `spend` is not registered.
+- The words on the DOMAINS and CAPACITY tiles (`apps/argus/src/features/launcher/about.ts`): drafted 2026-10-21, awaiting the operator's approval as that file's rule asks.
+- Whether DOMAINS should carry an hourly cost (D11) before `spend` is settled.
 - Who runs the sealed job in a spoke bastion: the same container with the mount hidden from the shell, or a job the session launches (dev-bastion.adoc, open).
 - How source crosses the wire from the Hub dev bastion to a spoke bastion, and what the gate is.
 - The Hub bastion as a pod on the Hub cluster: entrypoint, mounted Secrets, who may reach its porter.

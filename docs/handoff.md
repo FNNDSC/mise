@@ -2,9 +2,9 @@
 
 - Last updated: 2026-10-22
 - Last verified against `main`: the merge of #1197, 2026-10-22
-- Working branches: `agent/stratus-no-wrap`, PR #1199 (D3 rewritten: harbor-oci is the specification, never run; Terraform through Resource Manager; the step 4 grill and the controller's mockup grill recorded)
+- Working branches: `agent/stratus-runner` (PR #1200: brasa's runner, `kill`, `wait`, calypso's `tasks` tier) and `agent/stratus-steps` stacked on it (4a.2: the build over fakes: `domain new`, `plan`, `build`, the state folder)
 - Current milestone: steps 1 to 3 of the order of work in [stratus.adoc](stratus.adoc#order) are on `main`, all unpublished beyond @fnndsc/stratus 0.1.0 until the next `make publish` (the operator's word). Follow-ups 1 to 3 merged (#1190, #1191, #1192), and the four defects found along the way (#1194, #1195)
-- Next action: the operator's word on #1199; then step 4a (the runner and the tier, on fakes) as stratus.adoc's order of work lists it. The TD controller's mockup is grilled (v2, https://claude.ai/artifact/L4nAHMfFqmHYytnnUReuo2, private to the operator) and is built after 4a to 4d. Follow-up 4 (the epic's status comment) is still unasked
+- Next action: the operator's word on #1200 and the 4a.2 PR; then 4b (adoption, live, plan only) as stratus.adoc's order of work lists it, its own grill first if the operator wants one.
 
 This file is the handoff between sessions and between models. It says where the work stands and what to do next, with the facts a fresh context needs to do it without rediscovery. The design itself is [stratus.adoc](stratus.adoc); the bastions are [bastion.adoc](bastion.adoc) and [dev-bastion.adoc](dev-bastion.adoc); what Red Hat ships against the primitive is [redhat-fl.adoc](redhat-fl.adoc); the metaphor every figure is drawn in is [linux-metaphor.adoc](linux-metaphor.adoc).
 

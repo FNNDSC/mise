@@ -174,11 +174,11 @@ describe('domain status', () => {
 
   it('says when the daemon has no domains, refuses an unknown one by name, and a verb not yet written', async () => {
     const none = await domain_run(context_make({}), []);
-    expect(none.rendered).toBe('no domains: start stratus with --domain <name>=<harbor-oci checkout>\n');
+    expect(none.rendered).toBe('no domains: domain new <name> makes one; stratus --domain <name>=<harbor-oci checkout> reads one\n');
     expect(none.model).toEqual({ kind: 'stratus.domains', data: { domains: [] } });
     const context = context_make({ harbor: harborCheckout_make() });
     expect((await domain_run(context, ['status', 'nope'])).renderedErr).toBe('domain: nope: no such domain (harbor)\n');
-    expect((await domain_run(context, ['verify'])).renderedErr).toBe('domain: verify: not a verb this session has yet (domain status)\n');
+    expect((await domain_run(context, ['verify'])).renderedErr).toBe('domain: verify: not a verb this session has yet (domain status, new, plan, build)\n');
   });
 
   it('is one of the backend\'s two commands, with its help in the Resources category', async () => {

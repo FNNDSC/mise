@@ -16,6 +16,8 @@
 import type { VFSItem } from '@fnndsc/fond';
 import { harborDomain_read, lastDone_of, type DomainSecret, type DomainSource, type HarborDomain, type StepState } from '../domains/harborOci.js';
 import type { ResourceNode } from './resources.js';
+import type { DomainStore } from '../domain/state.js';
+import { builtDomain_read } from '../domain/view.js';
 
 /** What a domain folder holds, in listing order. */
 export const DOMAIN_ENTRIES: ReadonlyArray<string> = ['spec.yaml', 'settings', 'state.json', 'steps', 'auth'];
@@ -28,6 +30,8 @@ export interface DomainTreeOptions {
   readonly owner: () => string;
   /** The clock. */
   readonly now: () => Date;
+  /** The domains this daemon builds, kept on its host. */
+  readonly store?: DomainStore;
 }
 
 /** The domains a tenancy holds, as folders. */
@@ -38,15 +42,23 @@ export class DomainTree {
     this.options = options;
   }
 
-  /** Every domain, read now. */
+  /** Every domain, read now: those read from checkouts, then those this daemon builds. */
   domains_read(): HarborDomain[] {
-    return this.options.sources.map((source: DomainSource): HarborDomain => harborDomain_read(source, this.options.now()));
+    const read: HarborDomain[] = this.options.sources.map((source: DomainSource): HarborDomain => harborDomain_read(source, this.options.now()));
+    const store: DomainStore | undefined = this.options.store;
+    if (store === undefined) return read;
+    const built: HarborDomain[] = store.names_list()
+      .filter((name: string): boolean => !read.some((domain: HarborDomain): boolean => domain.name === name))
+      .map((name: string): HarborDomain | null => builtDomain_read(store, name))
+      .filter((domain: HarborDomain | null): domain is HarborDomain => domain !== null);
+    return [...read, ...built];
   }
 
-  /** One domain by name, read now; null when the daemon was given none by that name. */
+  /** One domain by name, read now; null when there is none by that name. */
   domain_read(name: string): HarborDomain | null {
     const source: DomainSource | undefined = this.options.sources.find((entry: DomainSource): boolean => entry.name === name);
-    return source === undefined ? null : harborDomain_read(source, this.options.now());
+    if (source !== undefined) return harborDomain_read(source, this.options.now());
+    return this.options.store === undefined ? null : builtDomain_read(this.options.store, name);
   }
 
   /**

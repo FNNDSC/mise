@@ -10,7 +10,7 @@
  *
  * @module
  */
-import { commands_register, type Backend, type PromptLastCommand } from '@fnndsc/brasa/core';
+import { commands_register, type Backend, type JobRecord, type JobRun, type PromptLastCommand } from '@fnndsc/brasa/core';
 import { VFSDispatcher } from '@fnndsc/fond';
 import type { PromptContext } from '@fnndsc/menu';
 import type { CloudDriver } from './cloud/driver.js';
@@ -23,6 +23,10 @@ import type { DomainSource } from './domains/harborOci.js';
 import { stratusCommands_make } from './commands/domain.js';
 import { stratusListingLook } from './vfs/look.js';
 import { stratusSegments_build } from './prompt.js';
+import type { CloudBuilder } from './cloud/builder.js';
+import type { Installer } from './installer/installer.js';
+import { DomainStore, domainsRoot_of } from './domain/state.js';
+import { BUILD_WAITS, buildRun_make, STEPS_SOURCE, type BuildDeps } from './domain/steps.js';
 
 /** How the backend is made. */
 export interface StratusBackendOptions {
@@ -36,6 +40,16 @@ export interface StratusBackendOptions {
   readonly cacheLifeMs?: number;
   /** The Trusted Domains this daemon knows, each a `harbor-oci` checkout. */
   readonly domains?: ReadonlyArray<DomainSource>;
+  /** Where the domains this daemon builds are kept; `$XDG_STATE_HOME/stratus/domains` when absent. */
+  readonly store?: DomainStore;
+  /** The cloud's build half; absent, this cloud cannot build yet and the build verbs say so. */
+  readonly builder?: CloudBuilder;
+  /** The installer the build's steps call. */
+  readonly installer?: Installer;
+  /** The DNS zone a new domain's names live under when `domain new` is not told. */
+  readonly baseDomain?: string;
+  /** The build's waits, `harbor-oci`'s when absent. */
+  readonly waits?: Pick<BuildDeps, 'pollMs' | 'hostsWaitMs' | 'installWaitMs'>;
 }
 
 /** The backend and the pieces a host may reach into. */
@@ -44,6 +58,7 @@ export interface StratusBackend {
   readonly session: StratusSession;
   readonly tenancy: TenancyProvider;
   readonly domains: DomainTree;
+  readonly store: DomainStore;
 }
 
 /**
@@ -68,13 +83,23 @@ export function structuralPaths_of(session: StratusSession): string[] {
  */
 export function stratusBackend_make(options: StratusBackendOptions): StratusBackend {
   const session: StratusSession = new StratusSession({ driver: options.driver, region: options.region, configDir: options.configDir });
+  const store: DomainStore = options.store ?? new DomainStore(domainsRoot_of());
+  // The steps run over the cloud's build half and the installer; a cloud with neither cannot build yet.
+  const deps: BuildDeps | null = options.builder !== undefined && options.installer !== undefined
+    ? { store, builder: options.builder, installer: options.installer, zones: 3, version: '4.22', ...(options.waits ?? BUILD_WAITS) }
+    : null;
   const domains: DomainTree = new DomainTree({
+    store,
     sources: options.domains ?? [],
     owner: (): string => session.identity?.user ?? 'disconnected',
     now: (): Date => new Date(),
   });
   const tenancy: TenancyProvider = new TenancyProvider({ driver: options.driver, cache: new AnswerCache(options.cacheLifeMs), region: (): string | null => session.region, domains });
-  commands_register(stratusCommands_make({ domains, driver: options.driver, region: (): string | null => session.region, domainsPath: (): string => `${session.tenancyPath}/domains` }), 'backend');
+  const region = (): string | null => session.region;
+  commands_register(stratusCommands_make({
+    domains, driver: options.driver, region, domainsPath: (): string => `${session.tenancyPath}/domains`,
+    build: { domains, store, driver: options.driver, region, deps, baseDomain: options.baseDomain ?? null },
+  }), 'backend');
   const dispatcher: VFSDispatcher = new VFSDispatcher();
   dispatcher.provider_register(tenancy);
   const backend: Backend = {
@@ -89,6 +114,14 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
       },
     },
     completion: { rootWords: ['net'] },
+    // A domain's build runs as a task; one left running when the daemon stopped goes on from its first step not done.
+    jobs: [{
+      id: STEPS_SOURCE,
+      label: 'build steps',
+      resume: (record: JobRecord): JobRun | null => deps === null || typeof record.data['domain'] !== 'string'
+        ? null
+        : buildRun_make(record.data['domain'], typeof record.data['through'] === 'string' ? record.data['through'] : undefined, deps),
+    }],
     listingLook: stratusListingLook,
     prompt: async (last?: PromptLastCommand): Promise<PromptContext> => {
       const cwd: string = session.cwd_get() ?? (await session.home_get());
@@ -104,5 +137,5 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
       };
     },
   };
-  return { backend, session, tenancy, domains };
+  return { backend, session, tenancy, domains, store };
 }

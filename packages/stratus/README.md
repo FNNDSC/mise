@@ -12,7 +12,11 @@ The `stratus` command hosts the session as a calypso daemon on the bastion, the 
 stratus                          # the DEFAULT profile of ~/.oci/config, its home region
 stratus --profile BCH --region us-phoenix-1
 stratus --fake                   # a session over the fake cloud, for tests
+stratus --fake --host-control tasks
+                                 # one that may build domains over the fake cloud
 ```
+
+A domain is made, priced and built with `domain new`, `domain plan` and `domain build`. The build runs as a task (`/proc/steps/<name>-build`) that outlives every surface and a daemon restart; `wait` follows it, `kill` asks it to stop. Starting it needs the `tasks` tier, and before the first step that bills it asks, with the cost. Over the fake cloud the build moves on a clock (`STRATUS_FAKE_TICK_MS`, 700 by default).
 
 Attach with `chell --remote`, or open the ARGUS address the daemon prints. A credential that does not work still starts the daemon, disconnected, with `/net/oci` empty.
 
@@ -22,6 +26,7 @@ Attach with `chell --remote`, or open the ARGUS address the daemon prints. A cre
 - `src/cloud/oci/` is the OCI driver over Oracle's TypeScript SDK (`api.ts` wraps the few calls made, `prices.ts` reads Oracle's public price list). Only this folder may import an `oci-*` package: `npm run lint:stratus-deps` at the repository root keeps it so.
 - `src/cloud/fake/` is an in-memory cloud. It runs the same driver contract (`tests/support/driverContract.ts`) the OCI driver runs over recorded answers, and it is what the boot proof hosts.
 - `src/vfs/tenancy.ts` is the tree, a fond provider over the driver; `src/vfs/look.ts` is how its rows show.
+- `src/domain/` is a domain built here: its spec (`spec.ts`, `harbor-oci`'s `spec.yaml` shape), its state on the host (`state.ts`, `$XDG_STATE_HOME/stratus/domains/<name>/`), its fit and cost (`sizing.ts`), and its steps (`steps.ts`), written once over the cloud's build half (`src/cloud/builder.ts`) and the installer (`src/installer/`). `src/cloud/fake/builder.ts` is the fake of both.
 - `src/session.ts` is who the session is (`user@tenancy`), where it starts (`domains/`) and where it left off; `src/backend.ts` is the descriptor `engine_create` takes.
 
 ## Proving it

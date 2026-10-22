@@ -19,6 +19,7 @@ import type { DomainTree } from '../vfs/domains.js';
 import { stateTone_paint } from '../vfs/look.js';
 import { lastDone_of } from '../domains/harborOci.js';
 import { capacity_run, CAPACITY_HELP } from './capacity.js';
+import { domainBuild_run, domainNew_run, domainPlan_run, type BuildCommandContext } from './build.js';
 
 /** What `domain` reads from the session. */
 export interface DomainCommandContext {
@@ -28,6 +29,8 @@ export interface DomainCommandContext {
   readonly region: () => string | null;
   /** The folder the domains stand in (`/net/oci/<tenancy>/domains`). */
   readonly domainsPath: () => string;
+  /** What the build verbs run over; absent, `new`, `plan` and `build` refuse. */
+  readonly build?: BuildCommandContext;
 }
 
 /** The order the counted kinds are said in. */
@@ -66,7 +69,7 @@ export async function domainStatus_read(context: DomainCommandContext, domain: H
   const compartment = await compartment_count(context, domain.settings['OCI_COMPARTMENT_OCID']);
   const lines: string[] = [
     `${chalk.bold(domain.name)}  ${domain.cluster ?? '(no cluster name in its settings)'}`,
-    `checkout     ${domain.root}`,
+    `${domain.origin === 'built' ? 'built here ' : 'checkout   '}  ${domain.root}`,
     ...domain.steps.map((step: StepState): string => `  ${step.folder.padEnd(width)}  ${stateTone_paint(step.state, step.state.padEnd(8))}  ${chalk.gray(step.evidence)}`),
     compartment.line,
   ];
@@ -90,9 +93,12 @@ export async function domainStatus_read(context: DomainCommandContext, domain: H
  */
 export async function domain_run(context: DomainCommandContext, args: ReadonlyArray<string>): Promise<CommandEnvelope> {
   const [verb = 'status', ...rest] = args;
-  if (verb !== 'status') return envelope_error('', undefined, `domain: ${verb}: not a verb this session has yet (domain status)\n`);
+  const builds: Readonly<Record<string, (context: BuildCommandContext, args: ReadonlyArray<string>) => Promise<CommandEnvelope>>> = { new: domainNew_run, plan: domainPlan_run, build: domainBuild_run };
+  const build = builds[verb];
+  if (build !== undefined) return context.build === undefined ? envelope_error('', undefined, `domain: ${verb}: this session builds no domains\n`) : build(context.build, rest);
+  if (verb !== 'status') return envelope_error('', undefined, `domain: ${verb}: not a verb this session has yet (domain status, new, plan, build)\n`);
   const all: HarborDomain[] = context.domains.domains_read();
-  if (all.length === 0) return envelope_ok('no domains: start stratus with --domain <name>=<harbor-oci checkout>\n', { kind: STRATUS_DOMAINS_MODEL_KIND, data: { domains: [] } });
+  if (all.length === 0) return envelope_ok('no domains: domain new <name> makes one; stratus --domain <name>=<harbor-oci checkout> reads one\n', { kind: STRATUS_DOMAINS_MODEL_KIND, data: { domains: [] } });
   const chosen: HarborDomain[] = rest.length === 0 ? all : all.filter((domain: HarborDomain): boolean => rest.includes(domain.name));
   const missing: string[] = rest.filter((name: string): boolean => !all.some((domain: HarborDomain): boolean => domain.name === name));
   if (missing.length > 0) return envelope_error('', undefined, `domain: ${missing.join(', ')}: no such domain (${all.map((domain: HarborDomain): string => domain.name).join(', ')})\n`);
@@ -108,11 +114,11 @@ export async function domain_run(context: DomainCommandContext, args: ReadonlyAr
 
 /** `domain`'s help. */
 export const DOMAIN_HELP: CommandHelp = {
-  usage: 'domain [status [<name>…]]',
-  summary: 'Where each Trusted Domain\'s build stands',
+  usage: 'domain [status [<name>…]] | domain new <name> [options] | domain plan [<name>] | domain build [<name>] [--through <step>]',
+  summary: 'Make, plan, build, and see where each Trusted Domain stands',
   category: 'Resources',
-  description: 'Prints each domain the daemon was given (stratus --domain <name>=<harbor-oci checkout>): its cluster, its checkout, each build step with its state and the evidence for it (unknown where the host keeps none), and its compartment\'s live resources in the session\'s region. A bare domain is domain status for every domain. The domain\'s files are under ~ (domains/<name>/); its credentials stay on the host.',
-  examples: ['domain', 'domain status harbor', 'cat ~/harbor/steps/05-infra-apply/evidence'],
+  description: 'domain status prints each domain: those this daemon builds, and those read from a harbor-oci checkout (stratus --domain <name>=<checkout>), with its cluster, each build step with its state and the evidence for it, and its compartment\'s live resources in the session\'s region. A bare domain is domain status for every domain. domain new writes a domain\'s spec and nothing else (--family E5, --plane 3x8/24, --workers 2x8/32 as count x vCPU / GiB, --data, --database, --queue in GiB, --base-domain zone). domain plan reads only: whether the spec fits each availability domain, what it costs an hour, where the steps stand; the infrastructure plan needs the tasks tier. domain build runs the steps from the first not done as a task (/proc/steps/<name>-build) and follows it; before the first step that bills it asks, with the plan\'s counts and the cost. Ctrl-C stops following, not the build: wait <name>-build follows it again, kill <name>-build asks it to stop. The domain\'s files are under ~ (domains/<name>/); its credentials stay on the host.',
+  examples: ['domain', 'domain new trial --workers 2x8/32 --data 100', 'domain plan trial', 'domain build trial --through infra-plan', 'domain build trial', 'cat ~/harbor/steps/05-infra-apply/evidence'],
 };
 
 /**

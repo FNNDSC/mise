@@ -102,6 +102,7 @@ describe('the runner', () => {
     runner.job_start('steps', 'a', 'A', held.run);
     const lines: string[] = [];
     const following: Promise<JobRecord | undefined> = runner.job_follow('steps', 'a', (line: string): void => { lines.push(line); });
+    expect(lines[0]).toMatch(/waiting$/);
     held.release();
     expect((await following)?.state).toBe('done');
     const second = job_held();

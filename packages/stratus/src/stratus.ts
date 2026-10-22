@@ -24,6 +24,7 @@ import { FakeDriver, fakeCloud_sample } from './cloud/fake/driver.js';
 import { OciDriver } from './cloud/oci/driver.js';
 import { ociApi_make } from './cloud/oci/api.js';
 import { stratusArgs_parse } from './args.js';
+import { FakeBuildWorld, FakeCloudBuilder, FakeInstaller } from './cloud/fake/builder.js';
 
 const USAGE: string = [
   'stratus: a mise session over the cloud substrate a Trusted Domain runs on.',
@@ -60,7 +61,15 @@ async function stratus_start(): Promise<void> {
   const driver: CloudDriver = parsed.args.fake
     ? new FakeDriver(fakeCloud_sample())
     : new OciDriver({ api: ociApi_make({ configFile: parsed.args.configFile, profile: parsed.args.profile }) });
-  const made: StratusBackend = stratusBackend_make({ driver, region: parsed.args.region, domains: parsed.args.domains });
+  // The fake cloud builds over a fake installer on a clock, so a build is seen moving; a real cloud's build half is not written yet.
+  const tickMs: number = Number(process.env['STRATUS_FAKE_TICK_MS'] ?? 700);
+  const world: FakeBuildWorld = new FakeBuildWorld(tickMs);
+  const made: StratusBackend = stratusBackend_make({
+    driver,
+    region: parsed.args.region,
+    domains: parsed.args.domains,
+    ...(parsed.args.fake ? { builder: new FakeCloudBuilder(world), installer: new FakeInstaller(world), baseDomain: 'fake.example', waits: { pollMs: tickMs, hostsWaitMs: tickMs * 60, installWaitMs: tickMs * 120 } } : {}),
+  });
   const engine: BrasaEngine = await engine_create(made.backend);
   if (made.session.identity === null) {
     console.error(`[!] Not connected to ${driver.cloud}: ${made.session.disconnectedReason ?? 'no credential'}; hosting offline.`);

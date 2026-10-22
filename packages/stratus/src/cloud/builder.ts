@@ -84,12 +84,14 @@ export interface CloudBuilder {
   preflight(request: { domain: string; spec: DomainSpec; region: string; baseDomain: string }, call: BuildCall): Promise<PreflightCheck[]>;
   /** Puts the discovery image where the machines boot from, and returns its object's name. */
   iso_store(request: { domain: string; url: string; region: string }, call: BuildCall): Promise<{ object: string; expires: string }>;
-  /** Plans the infrastructure. */
-  infra_plan(request: { domain: string; spec: DomainSpec; region: string; isoObject: string }, call: BuildCall): Promise<InfraPlan>;
+  /** Plans the infrastructure: against the domain's stack when it has one (adopted, or a re-plan), else a new stack. */
+  infra_plan(request: { domain: string; spec: DomainSpec; region: string; isoObject: string; stackRef?: string }, call: BuildCall): Promise<InfraPlan>;
   /** Applies a plan. Billing starts here. */
   infra_apply(request: { domain: string; plan: InfraPlan; region: string }, call: BuildCall): Promise<InfraOutputs>;
   /** Writes the cluster's records in its zone. */
   dns_upsert(request: { domain: string; baseDomain: string; outputs: InfraOutputs }, call: BuildCall): Promise<string[]>;
   /** The platform's manifests for the installer. */
   manifests_of(): Promise<PlatformManifest[]>;
+  /** Takes in infrastructure built elsewhere: a stack with its variables and its Terraform state; returns the stack's handle. */
+  stack_adopt?(request: { domain: string; region: string; compartmentId: string; variables: Record<string, string>; state: Buffer; stackVersion: string }, call: BuildCall): Promise<string>;
 }

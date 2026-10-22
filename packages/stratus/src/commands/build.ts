@@ -20,13 +20,14 @@ import {
   type JobRecord, type JobRunner,
 } from '@fnndsc/brasa/core';
 import type { CloudDriver, CloudPrice, CloudShape } from '../cloud/driver.js';
-import { planCounts_of, type InfraPlan } from '../cloud/builder.js';
+import { planCounts_of, type CloudBuilder, type InfraPlan } from '../cloud/builder.js';
+import { adoption_keep, adoptRun_make, checkout_read, type CheckoutRead } from '../domain/adopt.js';
 import type { HarborDomain } from '../domains/harborOci.js';
 import type { DomainTree } from '../vfs/domains.js';
 import { DOMAIN_NAME, type DomainRecord, type DomainStore } from '../domain/state.js';
 import { SPEC_DEFAULT, specOptions_apply, type DomainSpec } from '../domain/spec.js';
 import { cost_words, familyShape_find, specCost_of, specFit_read, type SpecCost, type ZoneFit } from '../domain/sizing.js';
-import { BUILD_STEPS, buildJob_id, buildRun_make, FIRST_BILLING_STEP, stepNext_of, STEPS_SOURCE, STEPS_WRITTEN, type BuildDeps } from '../domain/steps.js';
+import { BUILD_STEPS, buildJob_id, buildRun_make, FIRST_BILLING_STEP, planRun_make, stepNext_of, STEPS_SOURCE, STEPS_WRITTEN, type BuildDeps } from '../domain/steps.js';
 
 /** What the build verbs read from the session. */
 export interface BuildCommandContext {
@@ -37,6 +38,8 @@ export interface BuildCommandContext {
   readonly region: () => string | null;
   /** What the steps run over, or null when this cloud cannot build yet. */
   readonly deps: BuildDeps | null;
+  /** The cloud's build half, for adopting and planning, or null when it has none. */
+  readonly builder: CloudBuilder | null;
   /** The DNS zone a new domain's names live under when `--base-domain` is not given. */
   readonly baseDomain: string | null;
 }
@@ -174,11 +177,18 @@ export async function domainPlan_run(context: BuildCommandContext, args: Readonl
   lines.push(`cost  ${cost === null ? chalk.gray(`${spec.family} is not in the price list`) : chalk.yellow(cost_words(cost))}`);
   const next: string | null = stepNext_of(record);
   lines.push(`steps ${next === null ? 'every step done' : `next: ${next}`}`);
+  if (record.ids['stackRef'] !== undefined && tasks_granted() && context.builder !== null) {
+    const ran = await job_runFollowed(`${domain.name}-plan`, `plan ${domain.name}`, planRun_make(domain.name, context.builder, context.store));
+    if ('error' in ran) return envelope_error('', undefined, `domain plan: ${ran.error}\n`);
+  } else if (record.adopted !== undefined && record.ids['stackRef'] === undefined) {
+    lines.push(chalk.gray(`plan  ${domain.name} is not in Resource Manager yet: domain adopt ${domain.name} --from ${record.adopted.from} with the tasks tier puts it there`));
+  }
   const planText: string | null = context.store.file_read(domain.name, 'plan.json');
   if (planText !== null) {
     const counts = planCounts_of(JSON.parse(planText) as InfraPlan);
-    lines.push(`plan  ${counts.create} to create, ${counts.change} to change${counts.drift > 0 ? `, ${counts.drift} of them Oracle-Tags drift` : ''}, ${counts.destroy} to destroy (recorded by infra-plan)`);
-  } else if (!tasks_granted()) {
+    lines.push(`plan  ${counts.create} to create, ${counts.change} to change${counts.drift > 0 ? ` and ${counts.drift} Oracle-Tags drift` : ''}, ${counts.destroy} to destroy${counts.change > 0 || counts.destroy > 0 ? chalk.red(' · an apply would alter what exists: refused unless allowed by name') : ''}`);
+    if (record.adopted !== undefined) lines.push(chalk.gray(`      adopted from ${record.adopted.from}: planned against, never built on`));
+  } else if (!tasks_granted() && record.adopted === undefined) {
     lines.push(chalk.gray('plan  the infrastructure plan needs the tasks tier (stratus --host-control tasks): without it, nothing outside this host changes'));
   } else {
     lines.push(chalk.gray(`plan  not made yet: domain build ${domain.name} --through infra-plan makes it, and nothing it makes bills`));
@@ -197,6 +207,30 @@ async function run_follow(runner: JobRunner, id: string): Promise<JobRecord | un
   commandCancellation_enable();
   const signal: AbortSignal | undefined = commandCancellation_signalGet();
   return runner.job_follow(STEPS_SOURCE, id, (line: string): void => sink_dataLine(line), signal);
+}
+
+/**
+ * Starts a job and follows it to its end.
+ *
+ * @param id - Its id in the build steps' source.
+ * @param label - What it is called.
+ * @param run - Its work.
+ * @returns Its record at the end, or why it did not start or end.
+ */
+async function job_runFollowed(id: string, label: string, run: Parameters<JobRunner['job_start']>[3]): Promise<{ record: JobRecord } | { error: string }> {
+  const runner: JobRunner | null = runner_get();
+  if (runner === null) return { error: 'this session runs no tasks' };
+  try {
+    runner.job_start(STEPS_SOURCE, id, label, run);
+  } catch (error: unknown) {
+    return { error: error instanceof JobRefusal ? error.message : String(error) };
+  }
+  sink_dataLine(chalk.gray(`following /proc/${STEPS_SOURCE}/${id}; Ctrl-C stops following, not the task (wait ${id} follows it again)`));
+  const ended: JobRecord | undefined = await run_follow(runner, id);
+  if (ended === undefined) return { error: `/proc/${STEPS_SOURCE}/${id}: gone` };
+  if (!taskState_isOver(ended.state)) return { error: `stopped following; /proc/${STEPS_SOURCE}/${id} goes on` };
+  if (ended.state !== 'done') return { error: `${id}: ${ended.state}${ended.outcome !== undefined ? `: ${ended.outcome}` : ''}` };
+  return { record: ended };
 }
 
 /**
@@ -230,6 +264,7 @@ export async function domainBuild_run(context: BuildCommandContext, args: Readon
   if (through !== undefined && !BUILD_STEPS.includes(through)) return envelope_error('', undefined, `domain build: --through ${through}: no such step (${BUILD_STEPS.join(' ')})\n`);
   const need = builtDomain_need(context, 'build', read.rest[0]);
   if ('error' in need) return envelope_error('', undefined, `${need.error}\n`);
+  if (need.record.adopted !== undefined) return envelope_error('', undefined, `domain build: ${need.domain.name}: adopted from ${need.record.adopted.from}: building on it is refused until it is allowed by name\n`);
   if (context.deps === null) return envelope_error('', undefined, 'domain build: this cloud\'s build steps are not written yet; stratus --fake builds over the fake cloud\n');
   const runner: JobRunner | null = runner_get();
   if (runner === null) return envelope_error('', undefined, 'domain build: this session runs no tasks\n');
@@ -264,4 +299,43 @@ export async function domainBuild_run(context: BuildCommandContext, args: Readon
         : `${name}: done through ${BUILD_STEPS[BUILD_STEPS.indexOf(next) - 1] ?? ''}; next: ${next}`;
     return envelope_ok(`${summary}\n`);
   }
+}
+
+/**
+ * `domain adopt <name> --from <checkout> [--stack-compartment <ocid>]`.
+ *
+ * @param context - The session.
+ * @param args - The words after `adopt`.
+ * @returns The envelope.
+ */
+export async function domainAdopt_run(context: BuildCommandContext, args: ReadonlyArray<string>): Promise<CommandEnvelope> {
+  const read = options_read(args, ['--from', '--stack-compartment']);
+  if ('error' in read) return envelope_error('', undefined, `domain adopt: ${read.error} (--from, --stack-compartment)\n`);
+  const [name, ...extra] = read.rest;
+  const from: string | undefined = read.options.get('--from');
+  if (name === undefined || from === undefined || extra.length > 0) return envelope_error('', undefined, 'domain adopt: usage: domain adopt <name> --from <harbor-oci checkout> [--stack-compartment <ocid>]\n');
+  if (!DOMAIN_NAME.test(name)) return envelope_error('', undefined, `domain adopt: ${name}: a domain's name is a DNS label\n`);
+  const checkout: CheckoutRead | { error: string } = checkout_read(name, from, new Date());
+  if ('error' in checkout) return envelope_error('', undefined, `domain adopt: ${checkout.error}\n`);
+  const kept: DomainRecord | null = context.store.record_read(name);
+  const lines: string[] = [];
+  if (kept === null) {
+    adoption_keep(context.store, checkout);
+    lines.push(`${chalk.bold(name)}  ${name}.${checkout.record.baseDomain}  adopted from ${from}`);
+    lines.push(`  kept here: its ids (${Object.keys(checkout.record.ids).join(', ')}), its spec, its settings, its secrets (${checkout.secrets.map((secret) => secret.name).join(', ') || 'none'}) in ${context.store.folder_of(name)}`);
+  } else if (kept.adopted === undefined) {
+    return envelope_error('', undefined, `domain adopt: ${name}: a domain of that name was built here\n`);
+  } else if (kept.ids['stackRef'] !== undefined) {
+    return envelope_ok(`${name}: already adopted; its stack is ${kept.ids['stackRef']}\n`);
+  }
+  if (!tasks_granted()) {
+    lines.push(chalk.gray(`  its stack and Terraform state go to Resource Manager with the tasks tier: domain adopt ${name} --from ${from} again, under stratus --host-control tasks`));
+    return envelope_ok(`${lines.join('\n')}\n`);
+  }
+  if (context.builder === null || context.builder.stack_adopt === undefined) return envelope_error('', undefined, `domain adopt: ${lines.join('\n')}\nthis cloud cannot take a stack in yet\n`);
+  const compartment: string = read.options.get('--stack-compartment') ?? checkout.record.compartmentId ?? '';
+  for (const line of lines) sink_dataLine(line);
+  const ran = await job_runFollowed(`${name}-adopt`, `adopt ${name}`, adoptRun_make(context.store, context.builder, name, checkout.variables, checkout.stateFile, compartment, checkout.stackVersion));
+  if ('error' in ran) return envelope_error('', undefined, `domain adopt: ${ran.error}\n`);
+  return envelope_ok(`${name}: adopted; its stack is ${context.store.record_read(name)?.ids['stackRef'] ?? '?'} (domain plan ${name} plans against it)\n`);
 }

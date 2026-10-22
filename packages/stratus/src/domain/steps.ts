@@ -238,6 +238,7 @@ export function buildRun_make(name: string, through: string | undefined, deps: B
   return async (context: JobContext): Promise<void> => {
     const spec: DomainSpec | null = deps.store.spec_read(name)?.spec ?? null;
     if (spec === null) throw new Error(`${name}: its spec.yaml does not read`);
+    if (deps.store.record_read(name)?.adopted !== undefined) throw new Error(`${name} was adopted: building on it is refused until it is allowed by name`);
     for (;;) {
       if (context.signal.aborted) return;
       const record: DomainRecord | null = deps.store.record_read(name);
@@ -277,5 +278,32 @@ export function buildRun_make(name: string, through: string | undefined, deps: B
       context.log_write(`${step}: done · ${note}`);
       if (step === through) { context.data_set('stoppedBefore', stepNext_of(deps.store.record_read(name) as DomainRecord) ?? ''); return; }
     }
+  };
+}
+
+/**
+ * The run that plans a domain against its stack and records the plan:
+ * an adopted domain's, or a built one's re-plan. It applies nothing.
+ *
+ * @param name - The domain.
+ * @param builder - The cloud's build half.
+ * @param store - The domains.
+ * @returns The job's work.
+ */
+export function planRun_make(name: string, builder: CloudBuilder, store: DomainStore): JobRun {
+  return async (context: JobContext): Promise<void> => {
+    const record: DomainRecord | null = store.record_read(name);
+    const spec: DomainSpec | null = store.spec_read(name)?.spec ?? null;
+    if (record === null || spec === null) throw new Error(`${name}: no such domain, or its spec.yaml does not read`);
+    const stackRef: string | undefined = record.ids['stackRef'];
+    if (stackRef === undefined) throw new Error(`${name}: no stack yet`);
+    const plan: InfraPlan = await builder.infra_plan(
+      { domain: name, spec, region: record.region, isoObject: record.ids['isoObject'] ?? '', stackRef },
+      { log: (line: string): void => context.log_write(line), signal: context.signal },
+    );
+    if (context.signal.aborted) return;
+    store.file_write(name, 'plan.json', `${JSON.stringify(plan, null, 2)}\n`);
+    const counts = planCounts_of(plan);
+    context.log_write(`plan: ${counts.create} to create, ${counts.change} to change${counts.drift > 0 ? ` and ${counts.drift} Oracle-Tags drift` : ''}, ${counts.destroy} to destroy`);
   };
 }

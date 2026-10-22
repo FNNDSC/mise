@@ -64,6 +64,7 @@
     "oci-limits": "2.144.0",
     "oci-loadbalancer": "2.144.0",
     "oci-objectstorage": "2.144.0",
+    "oci-resourcemanager": "2.144.0",
     "oci-resourcesearch": "2.144.0"
   }
 }

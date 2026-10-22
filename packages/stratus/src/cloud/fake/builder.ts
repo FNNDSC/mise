@@ -121,8 +121,14 @@ export class FakeCloudBuilder implements CloudBuilder {
     return { object, expires: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString() };
   }
 
-  async infra_plan(request: { domain: string; spec: DomainSpec; region: string; isoObject: string }, call: BuildCall): Promise<InfraPlan> {
+  async infra_plan(request: { domain: string; spec: DomainSpec; region: string; isoObject: string; stackRef?: string }, call: BuildCall): Promise<InfraPlan> {
     await this.world.tick(3, call.signal);
+    if (request.stackRef !== undefined) {
+      // A built stack re-planned: nothing to make, OCI's own tags to strip.
+      const drift: PlanRow[] = specNodes_of(request.domain, request.spec, FAKE_ZONES.length).map((node: SpecNode): PlanRow => ({ action: 'change', kind: 'instances', name: node.name, drift: true }));
+      call.log(`plan job done: 0 to create, ${drift.length} to change, 0 to destroy`);
+      return { ref: this.world.id_next('plan'), rows: drift };
+    }
     const nodes: SpecNode[] = specNodes_of(request.domain, request.spec, FAKE_ZONES.length);
     const create = (kind: string, name: string): PlanRow => ({ action: 'create', kind, name });
     const rows: PlanRow[] = [
@@ -155,6 +161,12 @@ export class FakeCloudBuilder implements CloudBuilder {
     const names: string[] = [`api.${request.domain}.${request.baseDomain}`, `api-int.${request.domain}.${request.baseDomain}`, `*.apps.${request.domain}.${request.baseDomain}`];
     call.log(`upserted ${names.join(', ')}`);
     return names;
+  }
+
+  async stack_adopt(request: { domain: string; region: string; compartmentId: string; variables: Record<string, string>; state: Buffer; stackVersion: string }, call: BuildCall): Promise<string> {
+    await this.world.tick(2, call.signal);
+    call.log(`stack made for ${request.domain} with ${Object.keys(request.variables).length} variables; ${request.state.length} bytes of state imported`);
+    return this.world.id_next('stack');
   }
 
   async manifests_of(): Promise<PlatformManifest[]> {

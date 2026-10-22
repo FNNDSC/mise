@@ -37,7 +37,7 @@ export function builtDomain_read(store: DomainStore, name: string): HarborDomain
     name,
     root: store.folder_of(name),
     spec: store.spec_read(name)?.text ?? null,
-    settings: { CLUSTER_NAME: name, BASE_DOMAIN: record.baseDomain, OCI_REGION: record.region },
+    settings: { CLUSTER_NAME: name, BASE_DOMAIN: record.baseDomain, OCI_REGION: record.region, ...(record.compartmentId !== undefined ? { OCI_COMPARTMENT_OCID: record.compartmentId } : {}) },
     state: { ...record },
     steps: builtSteps_of(record),
     secrets: store.secrets_list(name),

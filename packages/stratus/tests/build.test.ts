@@ -204,7 +204,7 @@ describe('building a domain over the fakes', () => {
     surface_set(surface);
     expect(plain((await domain_run(context, ['plan'])).rendered)).toContain('domain build trial --through infra-plan makes it');
     store.file_write('trial', 'plan.json', JSON.stringify({ ref: 'p', rows: [{ action: 'create', kind: 'i', name: 'a' }, { action: 'change', kind: 'i', name: 'b', drift: true }] }));
-    expect(plain((await domain_run(context, ['plan', 'trial'])).rendered)).toContain('plan  1 to create, 0 to change, 1 of them Oracle-Tags drift, 0 to destroy');
+    expect(plain((await domain_run(context, ['plan', 'trial'])).rendered)).toContain('plan  1 to create, 0 to change and 1 Oracle-Tags drift, 0 to destroy');
     expect((await domain_run(context, ['plan', 'nope'])).renderedErr).toBe('domain plan: nope: no such domain\n');
     expect((await domain_run(context, ['plan', '-x'])).renderedErr).toBe('domain plan: usage: domain plan [<name>]\n');
     record_new('other');

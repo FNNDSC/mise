@@ -350,6 +350,27 @@ Settled on the mockup, 2026-10-22:
 
 When a domain's ChRIS is deployed, the domain records its CUBE address. `domain attach` (and ATTACH on the controller's CHRIS view) starts the domain session: a separate daemon on the ChRIS backend, logged in through the domain's own sign-in, which ARGUS shows as a second attached session wearing the TD brand with a domain segment in its prompt. The substrate session never holds the CUBE token, and the domain session never holds cloud credentials.
 
+[[d14]]
+=== D14. A second tenant, built by the instrument
+
+Settled with the operator 2026-10-22. 4d was first an end-to-end test: build in a scratch compartment, verify, tear down. It is instead the real use: stratus deploys a second live Trusted Domain, `quay`, beside `harbor`, and treats each as first class.
+
+[cols="1,3"]
+|===
+| Deliverable | quay is built through `run` and verified, and stays up; the ChRIS half (step 5: `postinstall`, `chris-deploy`, `chris-seed`, `smoke`) is built next and run against quay, which makes it a tenant.
+| Lifetime | Until the operator says. DOMAINS shows each domain's hourly rate and running total, side by side.
+| Compartments | stratus makes them: a `domains` compartment under the tenancy root, once, and `domains/<name>` per domain, tagged `mise-domain=<name>`. `harbor-oci` stays where it is (adopted, not moved). Preflight checks the profile may create compartments.
+| Name | Always the operator's: `domain new <name>`, or the controller's NEW DOMAIN ask. Checked as a DNS label, unused by any domain, and with no record of that name in the zone. This one is `quay`, at `quay.oci.chrisproject.org`.
+| DNS zone | `oci.chrisproject.org` stays in the `harbor-oci` compartment. quay writes its records (`api`, `api-int`, `*.apps`) there; a domain's teardown removes only its own records.
+| First class | Every domain is drawn with the same rows: status, steps, verify, cost, alerts. What differs is shown, not hidden: harbor carries `adopted · plans only` and refuses `build` and `teardown` by name. Making harbor operable (why its plan replaces 21 load balancers) is its own later task.
+| Guards | A domain is born `protected: true`. Teardown refuses a protected domain by name; `domain protect <name> off` is its own line, and teardown still asks for the name typed back. The controller shows the lock.
+| Asking | The session asks, by typed questions answered at chell's prompt (hidden input) or in ARGUS's errand pane, for the OCI key's passphrase and the Red Hat service account. Both are kept on the host only (`~/.config/stratus/redhat-account`, mode 600) and never sent back to a surface. This narrows the mockup grill's "no password through stratus": the passphrase and the Red Hat account cross once, inbound, as porter's CUBE password already does.
+| Reaching it | Porter gains a stratus door, and an inline switch in the style of `trek`: `stratus` in a ChRIS session swaps the surface to the controller (porter starts or rejoins the stratus session), `chris` swaps back. The `tasks` tier stays a launch-time choice, made on the operator's word.
+| The controller | A view over the session, as the trek bridge is: every press lowers to a chell line, and everything it does can be typed in chell. It is built whole, the mockup v2 plus NEW DOMAIN (a pill raising a typed ask: name, then size with fit and $/h beside it, lowering to `domain new …`), the lock and the class badge, before quay's build, which is watched and shown in it.
+| A tenant as a manifest | A shared `tenant.mise` (`@param NAME`) is the procedure (`domain new`, `domain build`, `domain verify`, `expect`, `@answers`); `spec.yaml` stays the truth of what a domain is. NEW DOMAIN plays it.
+| Claims | `expect` and `play` come back to core in a backend-neutral form: core keeps `expect`'s grammar, `--within`, the verdict model and `path exists|count`; each backend registers its subjects (ChRIS `gather`, `feed`, `run`, `path … tags`; stratus `domain`: `verify`, `step`, `cost`); `play` reads a manifest through the backend's files or the engine's disk. Today both are in the ChRIS group (#1001), so a stratus session has neither.
+|===
+
 [[order]]
 == Order of work
 
@@ -362,9 +383,15 @@ Each step is one change or a short series, released on its own; nothing changes 
 .. *4a, the runner and the tier, on fakes* (built 2026-10-22, #1200 and its follower): brasa's `core/runner.ts`, job records and logs, `kill` and `wait`, the `tasks` tier in calypso with its launch flag; `domain/steps.ts` over a fake cloud and a fake installer, so `domain build` runs end to end under `stratus --fake`; the state folder; `domain plan` in its tierless form.
 .. *4b, adoption, live, plan only* (code 2026-10-22: the stack is Oracle's own `create-cluster-v1.6.1.zip`, pinned by digest; Resource Manager runs Terraform 1.5.x at most while the live state was written by 1.15.9, and the import job proved it reads. Run live 2026-10-22 on the operator's word, the stack in the domain's own compartment by exception: the re-plan reads 0 to create, 21 to replace (the load-balancer backends), 24 `Oracle-Tags` drift, so its apply is refused, as `harbor-oci` found): Resource Manager in the cloud driver, `domain adopt`, and `domain plan` with the tier against the live domain (no creations, drift only). Nothing applied; the checkout reader retires.
 .. *4c, `verify` and `spend`* (built 2026-10-22: verify passes nine of ten live against the running cluster, and ten of ten with the tier on the operator's word, the block-volume probe's claim made, read back and released; spend reads the live domain at $0.71 an hour at list price, and DOMAINS shows it): the least of the cluster driver verify needs, over the adopted kubeconfig; `dig` as `node:dns`; block-volume and load-balancer prices; the hourly cost on DOMAINS. Live against the running cluster, reads only.
-.. *4d, a real build in a scratch compartment* (code 2026-10-22: the Assisted Installer driver, OCI's preflight, ISO bucket and link, new stack, apply, records and teardown; preflight passed its eight checks live and the installer read the live cluster, both reading only; the build itself waits on the operator's word), on the operator's word on the day: every step's writes, the question before billing, then teardown's first form (<<writes>>).
-. *The cluster in the tree.* The Kubernetes driver over a domain's kubeconfig; `cluster/` fills in; the CLUSTER and CHRIS halves of the spec; `chris-deploy`, `chris-seed` and `smoke` as steps.
-. *The TD controller* (<<controller>>): the state event, the takeover, the views, built against the settled mockup.
+.. *4d, the build's code* (superseded as a scratch test by <<d14>>; code 2026-10-22: the Assisted Installer driver, OCI's preflight, ISO bucket and link, new stack, apply, records and teardown; preflight passed its eight checks live and the installer read the live cluster, both reading only; the build itself waits on the operator's word), on the operator's word on the day: every step's writes, the question before billing, then teardown's first form (<<writes>>).
+. *A second tenant* (<<d14>>, settled 2026-10-22), in this order, each its own change, live-verified before the next:
+.. *Claims across backends:* `expect`'s subject registry and `play` in core; stratus registers `domain`.
+.. *Domain lifecycle:* the `domains` compartment and `domains/<name>`, `protected` and `domain protect`, the session's typed asks for the OCI passphrase and the Red Hat account.
+.. *Porter's stratus door,* and the inline `stratus` and `chris` switch.
+.. *The TD controller* (<<controller>>), whole: the mockup v2, NEW DOMAIN, the lock, the class badge.
+.. *`tenant.mise`.*
+.. *quay,* played from the controller, shown step by step.
+. *The cluster in the tree,* run against quay: the Kubernetes driver over a domain's kubeconfig; `cluster/` fills in; the CLUSTER and CHRIS halves of the spec; `postinstall`, `chris-deploy`, `chris-seed` and `smoke` as steps.
 . *Data writes.* Bucket objects and a domain's DNS records through the core file verbs.
 . *The tag sweep,* designed on its own when it is reached: everything carrying a domain's tag that its first teardown does not reach. It is first run live in a scratch compartment, never against a domain.
 . *The handoff* to the domain session, and the TD brand on it.

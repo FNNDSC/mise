@@ -85,7 +85,7 @@ A row of the last answer is named by its handle, which says WHAT it counts: `@SE
 
 What a row hands over differs by kind: a series its path; a file or folder its path; a STUDY its series, which is what the surface's GATHER on a study hands over, so `gather add @STD001` and `pull @STD001` act on the whole study. A verb refuses a kind it does not take, by name and at expansion: `image @STD001` says "image takes a series or a folder or a file; STD001 is a study" rather than resolving to a path and failing three steps later for a reason that names nothing typed.
 
-Three sources answer, in order: the session's *reserved pronouns*, then the played manifest's *parameters*, then the *environment*. A manifest that declares a `@param` with a reserved name is refused when the file is read, because `${feed}` meaning two things is a language with a hole in it.
+Three sources answer, in order: the session's *built-ins* (its reserved names, read-only), then *variables* (what a line set with `NAME=$(command)` or `NAME=word`, and inside a play the manifest's parameters, read-only), then the *environment*. A variable holds the command's answer, its model, not its printed text: `${A.instanceId}` is a field of that model by the name the model gives it, a field holding a list reaches through it one operand per element, and a bare `${A}` is its rows or refuses by name when the answer is one thing with several fields (issue #1208). A manifest that declares a `@param` with a reserved name is refused when the file is read, because `${feed}` meaning two things is a language with a hole in it.
 
 A reference nothing answers *refuses the line* — it does not expand to nothing and does not stand as text. `rm -rf ${DIR}/scratch` with `DIR` unset is how a script deletes the wrong thing. The refusal names the reference and where it looked. The single exception is a dry run, which has run nothing and so leaves a reference to what a later line would produce standing as written.
 
@@ -94,8 +94,8 @@ A reference nothing answers *refuses the line* — it does not expand to nothing
 [cols="1,3"]
 |===
 | `${gather}` | The cohort, as an operand list, each member at the address it was GATHERED FROM — what `pull` takes.
-| `${gather.1}` | The nth member, one-based. `${gather.first}`, `${gather.last}`, `${gather.size}` and `${gather.name}` read the same way.
-| `${gather.first.place}` | Where a member LANDED in CUBE — what `image` and a run take. A member has two addresses and the difference is load-bearing; `.place` refuses by name when a member is not in CUBE yet.
+| `${gather.series.folderPath}` | Where each member LANDED in CUBE — what `image` and a run take. A member has two addresses and the difference is load-bearing; this refuses by name when a member is not in CUBE yet.
+| `${gather.name}` | Any field of the cohort as `gather` answers it, by the field rule every variable follows: `${gather.feed.id}`, `${gather.series.modality}`. `${gather}` is read live on every use. One member is named by an `@` handle, never by an index.
 | `${feed}` | The feed most recently created in this session.
 | `${run}` | The run most recently scheduled; `${run.place}` is where it writes, which is what the next act in a chain works on.
 | `${query}` | The PACS query most recently answered.
@@ -197,10 +197,10 @@ expect gather size gt 0
 
 # Bring them home. Blocks until the retrieve settles; the surface's badges turn as each lands.
 pull ${gather}
-expect gather pulled eq ${gather.size}
+expect gather unpulled eq 0
 
 # Look at one before committing the group to compute.
-image ${gather.first}
+image @SER1
 
 # Process the cohort as a group: one feed, one node per member.
 gather process --pipeline pl-dcm2niix --name "${LABEL}"

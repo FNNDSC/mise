@@ -26,7 +26,8 @@ import { duration_parse } from '../../lib/duration.js';
 import { recorder_mute, recorder_unmute } from '../../session/recorder.js';
 import { sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
-import { paramScope_run, reference_isReserved, reference_resolve, unresolvedStands_run } from '../../core/expansion.js';
+import { reference_isReserved, reference_resolve, unresolvedStands_run } from '../../core/expansion.js';
+import { VARIABLE_NAME, variable_get, variableScope_run, type Variable } from '../../core/variables.js';
 import { shellWords_referencesExpand, shellWords_tokenize, type ReferenceExpansion, type ShellWord } from '../../lib/parser.js';
 import { errorStack, type Result } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
@@ -68,6 +69,8 @@ export interface Manifest {
   name: string | null;
   description: string | null;
   params: ManifestParam[];
+  /** The variable whose model the play answers with (`@answers`), when the manifest names one. */
+  answers: string | null;
   lines: ManifestLine[];
 }
 
@@ -98,6 +101,7 @@ export function manifest_parse(text: string): Manifest {
   const lines: ManifestLine[] = [];
   let name: string | null = null;
   let description: string | null = null;
+  let answers: string | null = null;
 
   const raw: string[] = text.split('\n');
   for (let index = 0; index < raw.length; index++) {
@@ -111,6 +115,7 @@ export function manifest_parse(text: string): Manifest {
       const value: string = space === -1 ? '' : trimmed.slice(space + 1).trim();
       if (directive === '@name') name = value;
       else if (directive === '@description') description = value;
+      else if (directive === '@answers') answers = value;
       else if (directive === '@param') {
         const equals: number = value.indexOf('=');
         if (equals === -1) params.push({ name: value.trim() });
@@ -122,7 +127,7 @@ export function manifest_parse(text: string): Manifest {
     lines.push({ number: index + 1, text: trimmed });
   }
 
-  return { name, description, params, lines };
+  return { name, description, params, answers, lines };
 }
 
 
@@ -326,6 +331,11 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   }
   for (const [key, value] of parsed.params) values.set(key, value);
 
+  if (manifest.answers !== null && !VARIABLE_NAME.test(manifest.answers)) {
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`play: ${parsed.manifest} answers '${manifest.answers}', which is not a variable's name.`)}\n`);
+  }
+
   if (missing.length > 0) {
     process.exitCode = 1;
     return envelope_error('', undefined, `${chalk.red(
@@ -343,13 +353,15 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   const { line_execute } = await import('../../core/engine.js');
   let ran: number = 0;
   let stoppedAt: number | null = null;
+  // What the manifest answers with, read before its scope ends with it.
+  let answered: Variable | undefined;
 
   depth += 1;
   // What a play runs is already written down in the file it is playing: a
   // recording that captured it too would hold every line twice.
   recorder_mute();
   try {
-    await paramScope_run(values, async (): Promise<void> => {
+    await variableScope_run(values, async (): Promise<void> => {
     for (const line of manifest.lines) {
       // A dry run shows what WOULD run, expanded by the kernel's own
       // expander rather than a second one living here: a reference nothing
@@ -382,6 +394,7 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
         break;
       }
     }
+    if (manifest.answers !== null) answered = variable_get(manifest.answers);
     });
   } finally {
     recorder_unmute();
@@ -404,5 +417,18 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   }
 
   const what: string = parsed.dryRun ? 'would play' : 'played';
+  if (parsed.dryRun && manifest.answers !== null) sink_dataLine(chalk.cyan(`▸ @answers ${manifest.answers}`));
+  // A manifest that declares its answer hands back that variable's model,
+  // so `X=$(play f)` holds what the flow made, as a verb's capture would.
+  if (!parsed.dryRun && manifest.answers !== null) {
+    if (answered === undefined) {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(`play: ${parsed.manifest} answers ${manifest.answers}, and ${manifest.answers} was never set`)}\n`);
+    }
+    return envelope_ok(
+      `${chalk.green(`play: ${what} ${ran} line${ran === 1 ? '' : 's'} of ${parsed.manifest} (${took}), answering ${manifest.answers}`)}\n`,
+      { kind: answered.answer.kind, data: answered.answer.data },
+    );
+  }
   return envelope_ok(`${chalk.green(`play: ${what} ${ran} line${ran === 1 ? '' : 's'} of ${parsed.manifest} (${took})`)}\n`, model);
 }

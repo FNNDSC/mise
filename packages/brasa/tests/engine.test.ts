@@ -596,3 +596,61 @@ describe('file_read: one file, three names', () => {
     expect(mockLinkTarget).not.toHaveBeenCalled();
   });
 });
+
+const { variable_get, variable_unset } = await import('../src/core/variables.js');
+
+describe('an assignment line', () => {
+  const RUN = { kind: 'run.scheduled', data: { instanceId: 4812, feedId: 977, outputPath: '/o' } };
+
+  beforeEach(() => {
+    variable_unset('A');
+    process.exitCode = 0;
+  });
+
+  it("holds the command's model, and returns the command's own envelopes", async () => {
+    mockWhoami.mockResolvedValue({ status: 'ok', rendered: 'Job scheduled\n', model: RUN });
+    const envelopes = await line_execute('A=$(whoami)');
+    expect(mockWhoami).toHaveBeenCalledWith([]);
+    expect(envelopes).toEqual([{ status: 'ok', rendered: 'Job scheduled\n', model: RUN }]);
+    expect(variable_get('A')?.answer).toMatchObject({ kind: 'run.scheduled', data: RUN.data, source: 'whoami' });
+  });
+
+  it('holds the text a command printed when it answers no model', async () => {
+    mockWhoami.mockResolvedValue({ status: 'ok', rendered: '\u001b[1mrudolph\u001b[0m\n' });
+    await line_execute('A=$(whoami)');
+    expect(variable_get('A')?.answer).toMatchObject({ kind: 'text', data: 'rudolph\n' });
+  });
+
+  it('holds what a pipe ends with', async () => {
+    mockWhoami.mockResolvedValue({ status: 'ok', rendered: 'rudolph\n' });
+    mockSegmentPipe.mockResolvedValue(Buffer.from('RUDOLPH\n'));
+    await line_execute('A=$(whoami | tr a-z A-Z)');
+    expect(mockSegmentPipe).toHaveBeenCalledWith('tr a-z A-Z', expect.any(Buffer));
+    expect(variable_get('A')?.answer).toMatchObject({ kind: 'text', data: 'RUDOLPH\n' });
+  });
+
+  it('leaves the name as it was when the command fails, and fails the line', async () => {
+    mockWhoami.mockResolvedValueOnce({ status: 'ok', rendered: '', model: RUN });
+    await line_execute('A=$(whoami)');
+    mockWhoami.mockResolvedValueOnce({ status: 'error', rendered: '' });
+    const envelopes = await line_execute('A=$(whoami)');
+    expect(envelopes.at(-1)?.status).toBe('error');
+    expect(variable_get('A')?.answer.data).toEqual(RUN.data);
+  });
+
+  it('holds one word, and refuses a value that is several', async () => {
+    expect(await line_execute("A='sag cohort'")).toEqual([]);
+    expect(variable_get('A')?.answer).toMatchObject({ kind: 'text', data: 'sag cohort' });
+    const refused = await line_execute('A=sag cohort');
+    expect(refused).toEqual([{ status: 'error', rendered: '' }]);
+    expect(variable_get('A')?.answer.data).toBe('sag cohort');
+  });
+
+  it("refuses the session's own names, and a capture that is not the whole value", async () => {
+    expect((await line_execute('cwd=/tmp'))[0]?.status).toBe('error');
+    expect((await line_execute('A=$(whoami) extra'))[0]?.status).toBe('error');
+    expect((await line_execute('A=$(whoami'))[0]?.status).toBe('error');
+    expect(variable_get('cwd')).toBeUndefined();
+    expect(mockWhoami).not.toHaveBeenCalled();
+  });
+});

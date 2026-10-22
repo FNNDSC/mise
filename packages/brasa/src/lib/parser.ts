@@ -45,7 +45,7 @@ export type ShellArguments = string[] & {
  * What a reference looks like: `${name}` or a bare `$NAME`.
  *
  * A braced name may carry dots, which is how a session pronoun names part
- * of what it refers to (`${gather.first.place}`); a bare one may not, so
+ * of what it refers to (`${gather.series.folderPath}`); a bare one may not, so
  * `$HOME.txt` keeps its extension.
  */
 const REFERENCE_PATTERN: RegExp = /^\$(?:\{([A-Za-z_][A-Za-z0-9_.]*)\}|([A-Za-z_][A-Za-z0-9_]*))/;

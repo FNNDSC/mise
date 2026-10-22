@@ -10,9 +10,11 @@
  *
  * One resolver now answers for all of them, in a fixed order:
  *
- * . *Session pronouns*: the place the session stands (`cwd`), and those
- *   the backend answers (ChRIS: the cohort, the feed, the run, the query).
- * . *Parameters* of the manifest being played, if one is.
+ * . *Built-ins*: the place the session stands (`cwd`), the held listing,
+ *   and those the backend answers (ChRIS: the cohort, the feed, the run,
+ *   the query). Read-only.
+ * . *Variables* (`core/variables.ts`): what lines set, and inside a play
+ *   the manifest's parameters, read-only.
  * . *The environment*.
  *
  * A name nothing answers refuses the LINE rather than expanding to nothing
@@ -28,6 +30,7 @@ import { session } from '../session/index.js';
 import { answer_get, answerHandles_get, answerKind_count, answerRow_get, handle_word, numberedFooter_of, type AnswerHandle, type AnswerKind, type AnswerRow } from '../session/answer.js';
 import { heldListingOperands_get } from './listing.js';
 import { backendInstalled_get, type AnswerKindLook, type ReferenceSource } from './backend.js';
+import { answer_read, variable_get, variableScope_isPlay, type FieldReading, type Variable } from './variables.js';
 import { answerKind_find, answerKinds_get, verbTakes_get } from './answerKinds.js';
 
 /** The name the core answers for itself: where the session stands. */
@@ -47,18 +50,30 @@ function referenceSources_get(): ReadonlyArray<ReferenceSource> {
 /** Whether an unanswerable reference may stand as written: what a dry run does. */
 const standsScope: AsyncLocalStorage<boolean> = new AsyncLocalStorage<boolean>();
 
-/** Parameters of the manifest being played, if one is. */
-const paramScope: AsyncLocalStorage<Map<string, string>> = new AsyncLocalStorage<Map<string, string>>();
+/** Why the last reference was refused, when a variable or a built-in said why. */
+let fieldRefusal: string | null = null;
 
 /**
- * Runs work with a manifest's parameters in scope.
+ * Records why a reference was refused, for the line's refusal to say.
  *
- * @param params - The parameters, already checked for completeness.
- * @param operation - The work to run.
- * @returns The operation's result.
+ * @param reason - The reason, or null to clear it.
  */
-export async function paramScope_run<T>(params: Map<string, string>, operation: () => Promise<T>): Promise<T> {
-  return await paramScope.run(params, operation);
+export function referenceRefusal_set(reason: string | null): void {
+  fieldRefusal = reason;
+}
+
+/**
+ * Turns a reading into what the resolver returns, keeping the refusal.
+ *
+ * @param reading - What reading the variable or built-in gave.
+ * @returns Its operands, or null with the reason recorded.
+ */
+export function fieldReading_value(reading: FieldReading): ReferenceValue {
+  if ('refused' in reading) {
+    fieldRefusal = reading.refused;
+    return null;
+  }
+  return { values: reading.values };
 }
 
 /**
@@ -183,13 +198,14 @@ function index_resolve(name: string): ReferenceValue {
 }
 
 /**
- * Answers a reference: an index, then the session, then the manifest, then
- * the environment.
+ * Answers a reference: an index, then the built-ins, then the variables,
+ * then the environment.
  *
  * @param name - The reference's name.
  * @returns What it refers to, or null when nothing does.
  */
 export async function reference_resolve(name: string): Promise<ReferenceValue> {
+  fieldRefusal = null;
   if (name.startsWith('@')) return index_resolve(name);
 
   if (name === CORE_REFERENCE) return { values: [await session.getCWD()] };
@@ -206,9 +222,8 @@ export async function reference_resolve(name: string): Promise<ReferenceValue> {
     if (answered !== undefined) return answered;
   }
 
-  const params: Map<string, string> | undefined = paramScope.getStore();
-  const given: string | undefined = params?.get(name);
-  if (given !== undefined) return { values: [given] };
+  const variable: Variable | undefined = variable_get(stem);
+  if (variable !== undefined) return fieldReading_value(answer_read(variable.answer, stem, name.split('.').slice(1)));
 
   const environment: string | undefined = process.env[name];
   return environment === undefined ? null : { values: [environment] };
@@ -221,8 +236,10 @@ export async function reference_resolve(name: string): Promise<ReferenceValue> {
  * @returns The refusal's text.
  */
 export function reference_refusal(name: string): string {
-  const scoped: boolean = paramScope.getStore() !== undefined;
-  const places: string = scoped ? "the session, this manifest's parameters, the environment" : 'the session, the environment';
+  if (fieldRefusal !== null) return `\${${name}}: ${fieldRefusal}.`;
+  const places: string = variableScope_isPlay()
+    ? "the session's built-ins, this manifest's variables and parameters, the environment"
+    : "the session's built-ins, its variables, the environment";
   if (name.startsWith('@')) {
     if (kindRefusal !== null) return `${name}: ${kindRefusal}`;
     const numbered = answer_get();

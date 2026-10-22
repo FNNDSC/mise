@@ -31,8 +31,8 @@ import {
 } from './gather.store.js';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
-/** The model kind under which a cohort travels to a surface. */
-export const GATHER_MODEL_KIND: string = 'gather.cohort';
+import { GATHER_MODEL_KIND } from './gather.kind.js';
+export { GATHER_MODEL_KIND };
 
 /**
  * Renders a refusal.

@@ -562,6 +562,22 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Asks Open-Meteo (the service weather uses; no key) for sunrise, sunset and the length of the day at a place, today and tomorrow, in the place\'s own time. Boston when no place is named. Needs the session host to reach the internet.',
     examples: ['sunrise', 'sunrise Cape Town', 'sunrise Tromsø'],
   },
+  set: {
+    posix: { group: 'System', differs: 'lists and shows variables only: no options, no positional parameters; a variable holds a command\'s typed answer' },
+    category: 'General',
+    usage: 'set [NAME]',
+    summary: 'List the variables, or show one',
+    description: 'Bare, lists every variable in scope: its name, the kind of answer it holds, and what it expands to; a manifest\'s parameters are marked read-only. With a name, shows that variable\'s answer whole (JSON for a model) and answers with it, so it can be captured again. A variable is set by a line of its own: NAME=$(command) holds what the command answered (its model, or the text it printed when it has none), NAME=word holds one word. ${NAME} expands to its rows; ${NAME.field} to a field of its model. See help variables.',
+    examples: ['set', 'set A', 'A=$(ls ~/uploads)', 'LABEL=\'sag cohort\''],
+  },
+  unset: {
+    posix: { group: 'System', differs: 'removes session variables; a manifest\'s parameters and the session\'s built-ins refuse' },
+    category: 'General',
+    usage: 'unset NAME…',
+    summary: 'Remove variables',
+    description: 'Removes each named variable from the scope the line runs in. Quiet when it removes, as unset is. A manifest\'s parameter and the session\'s own names (cwd, listing, gather) are read-only and refuse by name.',
+    examples: ['unset A', 'unset A B'],
+  },
   kill: {
     posix: { group: 'System', differs: 'stops a session task (/proc/<source>/<id>), never a process; asks, never forces' },
     category: 'General',

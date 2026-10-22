@@ -1,5 +1,32 @@
 # @fnndsc/brasa
 
+## 0.45.0
+
+### Minor Changes
+
+- 49501d4: Long jobs now outlive the command that starts them, and kill and wait reach them. A backend hands its jobs to the core's runner (`core/runner.ts`); each kind is mounted under `/proc/<source>` as a task source, its record and whole log kept under `$XDG_STATE_HOME/<backend>/jobs`. A job that was running when the session ended is picked up again through its source's `resume`, or marked failed saying why. Starting a job needs the `tasks` tier. `kill <task>` asks a job to stop and never forces it (a second `kill` says so); `wait [<task>]` follows a job's log to its end and takes its status, and Ctrl-C stops following, not the job. A job's end is announced to every surface.
+
+### Patch Changes
+
+- 0388f12: A stratus or null session greets cleanly: no red `motd` refusal on attach, and no ChRIS packages in its banner.
+
+  The greeting asks `motd` with its output scoped away and prints only what `motd` answered, so a backend without one says nothing. A remote line's live output now goes to the sink it was sent from, not whichever is active when it arrives. The daemon's banner and attach answer name chili, salsa and cumin only for a ChRIS session (`versionsForBackend_of`).
+
+- 01fcb59: A long listing stays aligned when an owner is long, such as a cloud user who is an e-mail address.
+
+  `ls -l` pads the owner column to the widest owner in the listing, never narrower than ten. The text filters (`head tail wc sort uniq cut`) no longer say a system program "cannot read ChRIS files" in a session over another backend: they say the session's files, in their refusals and their help.
+
+- 2a5a921: Following a task now starts with its last lines, as tail -f does, so nothing it said before you attached is lost. A backend can reach the runner and the command's cancellation through `@fnndsc/brasa/core`.
+- Updated dependencies [01fcb59]
+- Updated dependencies [49ccdfd]
+- Updated dependencies [49501d4]
+- Updated dependencies [14f8fc1]
+- Updated dependencies [dcdc6cd]
+  - @fnndsc/fond@0.5.1
+  - @fnndsc/menu@0.28.0
+  - @fnndsc/chili@3.7.15
+  - @fnndsc/cumin@3.28.4
+
 ## 0.44.1
 
 ### Patch Changes

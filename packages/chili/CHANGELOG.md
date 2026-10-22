@@ -1,5 +1,18 @@
 # @fnndsc/chili
 
+## 3.7.15
+
+### Patch Changes
+
+- Updated dependencies [01fcb59]
+- Updated dependencies [49ccdfd]
+- Updated dependencies [49501d4]
+- Updated dependencies [14f8fc1]
+- Updated dependencies [dcdc6cd]
+  - @fnndsc/fond@0.5.1
+  - @fnndsc/menu@0.28.0
+  - @fnndsc/cumin@3.28.4
+
 ## 3.7.14
 
 ### Patch Changes

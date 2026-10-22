@@ -31,7 +31,7 @@ ChRIS already moves code to data: a plugin is a container, a cohort is a feed, a
 * *Data never crosses a TD boundary.* The developer may not be inside the TD, and the data may not come out to them.
 * *An agent may be the developer.* Whatever the loop permits a human, it permits an agent; the design cannot rely on a person's discretion.
 * *Credentials stay inside their boundary.* The person who builds TDs holds cloud keys; the person who writes code holds none; a spoke bastion holds its own TD's token and nothing that reaches another.
-* *Every run is accountable.* What code ran on which cohort and produced which output is recorded, by the same mechanism ChRIS already uses for plugins.
+* *Every run is accountable.* What code ran on which cohort and produced which output is recorded; when results return to ChRIS they land as a node of the cohort's feed, so the record is the one ChRIS already keeps.
 * *The loop must be a shell.* A developer, or an agent driving one, works in a terminal and an editor; the mechanism must present as one, not as a submission form.
 
 [[what]]
@@ -49,7 +49,7 @@ The figure's top row shows two of HARBOR's three bastions. All three are the sam
 | | Hub cloud controller | Hub dev bastion | Spoke bastion
 | Where | the Hub TD, outside every spoke tenancy | the Hub TD, beside the controller, never the same host | inside a spoke TD, next to one cohort
 | Session | stratus: the tenancy at `/net/oci` | the developer's: cwd `~/project/` | this TD's ChRIS: cwd the project directory, `/incoming` and `/outgoing` under policy
-| Shell holds | `terraform`, `oci`, `oc`, `helm` | the editor and the toolchain | the runtime: python, compilers, the `chris_plugin` scaffolding, `run`
+| Shell holds | `terraform`, `oci`, `oc`, `helm` | the editor and the toolchain | the runtime: python, compilers, the project scaffolding, `run`
 | Key ring | a cloud API key per spoke, the Red Hat account, a kubeconfig per cluster | a porter door token per spoke bastion the developer may run in | this TD's CUBE token
 | Holds | no CUBE token, no data | code, never data | one cohort, under policy; nothing of any other TD
 | Exists | before any spoke, outlives all | one per developer | one per cohort, destroyed with it
@@ -58,10 +58,10 @@ The figure's top row shows two of HARBOR's three bastions. All three are the sam
 [[logical]]
 === The logical view
 
-What the code lands in is the figure's lower band, and it is deliberately the inside of a ChRIS plugin, lived in rather than packaged:
+The dev bastion is a host with a shell, and what the code lands in is a directory on that host. Nothing about it is a plugin: no container per run, no CUBE scheduling, no plugin contract. The figure's lower band draws it:
 
 * *The cohort* is identified and collected by ChRIS before any code arrives: a feed, a `gather`, one TD's data. The dev bastion never chooses data; it receives a cohort already chosen and already recorded.
-* *The project directory* is `~/project/` with scaffolding pre-built: `incoming/` holding the cohort, `outgoing/` for results, `src/` for the code, and `run`. A plugin sees exactly these two directories; code that works here is a plugin in all but packaging.
+* *The project directory* is `~/project/` with scaffolding pre-built: `incoming/` holding the cohort, `outgoing/` for results, `src/` for the code, and `run`. Code runs as an ordinary process in the shell, reading one directory and writing the other; those two directories are its whole data surface.
 * *The policy on the two mounts* is one of two postures, open or sealed (<<policy>>), chosen when the bastion is made for the cohort.
 * *The loop* is edit in `src`, `run`, look at `/outgoing`, repeat, in minutes. Under the sealed posture the run passes a gate and executes against the real `/incoming` while the shell sees only a listing.
 * *The exit* is `/outgoing` returning to ChRIS as a node of the cohort's feed, and to the developer at the Hub as the result they see. Later, optionally, `plugin build` turns working code into a HARBOR app and the fleet runs it without a developer.
@@ -77,7 +77,7 @@ The developer logs in at the Hub dev bastion's door and attaches, from ARGUS or 
 [[wire]]
 === Over the wire
 
-For each spoke the Hub session holds a porter door token for that spoke's bastion, and nothing else about that spoke. It logs in at the door, attaches to the spoke bastion's calypso, lands `src` in the project directory through the `tasks` tier, and issues the run as a line. The spoke's calypso is a ChRIS session like any other; the run arrives as a line a chell could have typed, and the result is written to `/outgoing` as a plugin would write it. Nothing about the transport is new to mise: it is the wire, a door, and the host-control tier, used N times.
+For each spoke the Hub session holds a porter door token for that spoke's bastion, and nothing else about that spoke. It logs in at the door, attaches to the spoke bastion's calypso, lands `src` in the project directory through the `tasks` tier, and issues the run as a line. The spoke's calypso is a ChRIS session like any other; the run arrives as a line a chell could have typed, and the result is whatever the process wrote into `/outgoing`. Nothing about the transport is new to mise: it is the wire, a door, and the host-control tier, used N times.
 
 [[spoke-side]]
 === In the spoke
@@ -114,7 +114,7 @@ A developer may log in at a spoke's own door and work inside its bastion. Same h
 
 The policy is applied to two directories, set when the bastion is made for the cohort, and not changeable from inside. Three reasons:
 
-* *It is the plugin boundary already.* A ChRIS plugin's entire relationship with data is `/incoming` and `/outgoing`. Governing those two mounts governs everything the code can do with data, with no new surface to audit.
+* *Two directories are the whole data surface.* The code in the shell reaches the cohort through `/incoming` and leaves anything behind only through `/outgoing`. Governing those two mounts governs everything the code can do with data, with no new surface to audit.
 * *It cannot be argued with.* A policy a developer can relax from the shell is a policy an agent can relax from the shell. Setting it at creation, by whoever makes the bastion for that cohort, keeps it out of the hands of the code that runs under it.
 * *It composes with the cohort.* The data custodian decides, per cohort, how much a developer may see. Tying the posture to the bastion ties it to the cohort, not to the person, so the same developer gets different postures on different data, as they should.
 
@@ -123,7 +123,7 @@ The policy is applied to two directories, set when the bastion is made for the c
 
 * *Nobody is inside.* In the common case the spoke bastion runs code sent from the Hub, with no human present. A posture that assumes a person's judgment has nothing to attach to.
 * *The developer may be an agent.* An agent driving the loop from the Hub must be able to iterate without being able to read patient data. Sealed gives it the listing, the run, and the policed output: enough to develop, not enough to exfiltrate.
-* *Blind coding is what plugin development already is.* A plugin author writes against the contract of `/incoming` and `/outgoing`, usually with synthetic or sample data, and sees results. Sealed is that practice, made real-time and made safe against the real cohort.
+* *Blind coding is ordinary.* Developers routinely write against a listing, a schema or a sample and judge by the output. Sealed is that practice, made real-time against the real cohort, with the data itself never on the developer's side of the shell.
 * *The gate makes the run accountable.* Code that touches the files has passed an explicit check, so every run under sealed is a run of approved code on a named cohort, which is what a feed node records.
 
 [[why-open]]
@@ -154,11 +154,11 @@ Because the cohort is a feed and `/outgoing` becomes a node of it, every run und
 [[related]]
 == Related work
 
-* *Trusted research environments and the Five Safes.* The dev bastion's postures are the Five Safes in mechanism: safe projects (a cohort is gathered and recorded before code arrives), safe people (a door token per spoke per developer), safe settings (a container next to the data, one path in), safe data (open or sealed `/incoming`), safe outputs (`/outgoing` reviewed, de-identified, or whole). What TREs do with a desktop and an airlock, this does with a shell and two mounts, and it does it across a fleet.
-* *Federated learning frameworks* (Flower, OpenFL, NVIDIA FLARE) move one kind of code, a training client, to data and return one kind of artifact, model updates. They are a special case of the loop with the posture fixed at sealed and the output fixed at weights. HARBOR runs them as plugins; the dev bastion is how their code gets written.
-* *Code-to-data platforms* (DataSHIELD, the Personal Health Train) ship analysis to sites and return aggregates, with a vetted function library standing in for a gate. The dev bastion's gate plays the same role for arbitrary code, and its loop is interactive where theirs is a request.
-* *OpenShift Dev Spaces and notebook workbenches* give one developer a container on one cluster with the data connected. They are the open posture on one spoke, without the output review and without the fan-out (<<redhat-fl.adoc#survey,redhat-fl.adoc>>).
-* *The ChRIS plugin* is the dev bastion's ancestor and its exit: the same two directories, the same cohort, the same provenance, at release cadence.
+* *Trusted research environments and the Five Safes.* The dev bastion's postures map onto the Five Safes, one mechanism per safe: safe projects (a cohort is gathered and recorded before code arrives), safe people (a door token per spoke per developer), safe settings (a container next to the data, one path in), safe data (open or sealed `/incoming`), safe outputs (`/outgoing` reviewed, de-identified, or whole). What TREs do with a desktop and an airlock, this does with a shell and two mounts, and it does it across a fleet.
+* *Federated learning frameworks* (Flower, OpenFL, NVIDIA FLARE) move one kind of code, a training client, to data and return one kind of artifact, model updates. They share one thing with the dev bastion, code goes to the data, and differ in execution model: a standing client at each site exchanging rounds with an aggregator, not an edit-run loop in a shell. In HARBOR such a client would ship as an app; the dev bastion is where its code gets written and tried.
+* *Code-to-data platforms* (DataSHIELD, the Personal Health Train) ship analysis to sites and return aggregates, with a vetted function library standing in for a gate. The dev bastion's gate plays a comparable role for arbitrary code; its loop is interactive where theirs is a request.
+* *OpenShift Dev Spaces and notebook workbenches* give one developer a container on one cluster with the data connected. They resemble the open posture on one spoke, a container with a shell beside the data, without the output review and without the fan-out (<<redhat-fl.adoc#survey,redhat-fl.adoc>>).
+* *The ChRIS plugin* is one exit, not the model. Working code can later be packaged as a container for ChRIS to run across the fleet at release cadence; the dev bastion itself is a shell over a cohort, and runs nothing as a plugin.
 
 [[open]]
 == Open

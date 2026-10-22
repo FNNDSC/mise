@@ -110,6 +110,9 @@ export function daemonSurface_create(daemon: CalypsoDaemon, policy: HostControlP
         // tier of --host-control, in which case it is theirs by declaration.
         engineFilesystem: policy.tiers.has('files'),
         localFilesystem: attached?.localFilesystem ?? false,
+        // Long jobs that change things beyond this host, and bill: only the
+        // operator who started the daemon grants them, never a surface.
+        tasks: policy.tiers.has('tasks'),
       };
     },
     peers: (): SurfacePeer[] => daemon.surfaces_list(),
@@ -282,6 +285,8 @@ export async function daemon_launch(
   // reach them (or this host, where a host-control tier allows).
   engine.sink_install(new DaemonSink(daemon));
   engine.surface_install(daemonSurface_create(daemon, hostControl));
+  // Jobs that were running when the daemon last stopped go on, or say why not.
+  const resumed: number = engine.jobs_resume?.() ?? 0;
 
   const port: number = await daemon.start();
   // The berth records where this daemon can actually be reached. Loopback is
@@ -355,11 +360,12 @@ export async function daemon_launch(
   console.log(chalk.green(`[+] CALYPSO listening on ${url} ${chalk.gray(`(build ${build})`)}`));
   if (hostControl.tiers.size > 0) {
     // Annunciated every launch: this daemon acts on its own host.
-    console.log(chalk.yellow(`[!] HOST CONTROL: ${hostControl_describe(hostControl)} — \`!\`, pipes, and the disk are this host's`));
+    console.log(chalk.yellow(`[!] HOST CONTROL: ${hostControl_describe(hostControl)} — ${hostControl.tiers.has('tasks') && hostControl.tiers.size === 1 ? 'this session may start jobs that change the cloud and bill' : `\`!\`, pipes, and the disk are this host's${hostControl.tiers.has('tasks') ? '; jobs may change the cloud and bill' : ''}`}`));
     if (hostControl.exposed && bindHost !== '127.0.0.1') {
       console.log(chalk.red(`[!] HOST CONTROL EXPOSED ON ${bindHost}: the attach URL is a shell on this host`));
     }
   }
+  if (resumed > 0) console.log(chalk.yellow(`[!] ${resumed} task${resumed === 1 ? '' : 's'} picked up again after the restart (ls /proc)`));
   console.log(chalk.gray(`    identity:  ${identity}`));
   console.log(chalk.gray(`    token:     ${token}`));
   console.log(chalk.gray(`    berth:     ${berth_path(identity)}`));

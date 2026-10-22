@@ -75,6 +75,7 @@ Turn on what is needed, in tiers:
 $ chell --daemon --host-control              # shell, files, pipes
 $ chell --daemon --host-control=files        # just upload/download against this disk
 $ chell --daemon --host-control=shell,pipes  # a subset
+$ stratus --host-control=tasks               # jobs that change the cloud; never in bare or all
 ----
 
 `CALYPSO_HOST_CONTROL` sets the same thing from the environment.

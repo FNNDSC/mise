@@ -27,6 +27,7 @@ import { builtin_ddate, builtin_pom, builtin_stardate, builtin_sunrise } from '.
 import { builtin_grep } from '../builtins/sys/grep.js';
 import { builtin_cut, builtin_head, builtin_sort, builtin_tail, builtin_uniq, builtin_wc } from '../builtins/sys/textFilters.js';
 import { builtin_command } from '../builtins/sys/command.js';
+import { builtin_kill, builtin_wait } from '../builtins/sys/tasks.js';
 import { builtin_apropos, builtin_man } from '../builtins/sys/apropos.js';
 import { builtin_rev, builtin_rot13, builtin_seq, builtin_shuf, builtin_tac, builtin_yes } from '../builtins/games/text.js';
 import { builtin_wtf } from '../builtins/games/wtf.js';
@@ -106,6 +107,8 @@ const envelope: Record<string, EnvelopeHandler> = {
   ddate: builtin_ddate,
   sunrise: builtin_sunrise,
   timer: builtin_timer,
+  kill: builtin_kill,
+  wait: builtin_wait,
   leave: builtin_leave,
   stopwatch: builtin_stopwatch,
   sl: builtin_sl,
@@ -179,6 +182,8 @@ const plain: Record<string, CommandHandler> = {
   ddate: envelopeHandler_wrap(builtin_ddate),
   sunrise: envelopeHandler_wrap(builtin_sunrise),
   timer: envelopeHandler_wrap(builtin_timer),
+  kill: envelopeHandler_wrap(builtin_kill),
+  wait: envelopeHandler_wrap(builtin_wait),
   leave: envelopeHandler_wrap(builtin_leave),
   stopwatch: envelopeHandler_wrap(builtin_stopwatch),
   sl: envelopeHandler_wrap(builtin_sl),

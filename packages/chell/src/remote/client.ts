@@ -34,6 +34,7 @@ import { greeting_print } from '../core/greeting.js';
 import { surfaceLine_execute } from '../core/surfaceDispatch.js';
 import { game_play, gameShow_of, gameTerminal_is, type GameShow } from '../core/gamePlayer.js';
 import { output_above } from '../core/lineDiscipline.js';
+import { hostControl_phrase } from './hostControl.js';
 
 /**
  * Builds a berth from an address given on the command line.
@@ -387,7 +388,7 @@ export async function remote_run(
   if (hostControl.length > 0) {
     // The daemon acts on its own host: `!`, pipes, and the disk are the
     // daemon's, not this machine's. Said once here, and on every prompt.
-    console.log(chalk.yellow(`[!] HOST CONTROL: ${hostControl.join(' ')} — \`!\` and pipes run on calypso's host, upload/download reach ITS disk`));
+    console.log(chalk.yellow(`[!] HOST CONTROL: ${hostControl.join(' ')} — ${hostControl_phrase(hostControl)}`));
   }
   console.log(chalk.gray("    Type 'exit' to detach.\n"));
   // The session greets: who you are, what you hold, what is running — the

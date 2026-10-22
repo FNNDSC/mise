@@ -52,7 +52,8 @@ import { recorder_note } from '../session/recorder.js';
 import { answerAdapters_register } from '../session/answerAdapters.js';
 import { numbering_get, type Numbering } from '../session/answer.js';
 import { sink_get, sink_set, type OutputSink } from './sink.js';
-import { backend_install, backendInstalled_get, type Backend, type FileByteStream } from './backend.js';
+import { backend_install, backendInstalled_get, type Backend, type FileByteStream, type TaskSource } from './backend.js';
+import { JobRunner, jobsRoot_of, runner_get, runner_install, type JobSource } from './runner.js';
 import { vfsDispatcher_get } from './filesystem.js';
 import { itemType_isContainer } from './itemKinds.js';
 import type { VFSDispatcher } from '@fnndsc/fond';
@@ -225,6 +226,15 @@ export interface BrasaEngine {
    * @param surface - The surface.
    */
   surface_install(surface: Surface): void;
+
+  /**
+   * Picks up the backend's jobs that were running when the session last
+   * ended (core/runner.ts). A host calls it once, after installing its surface,
+   * which says whether the `tasks` tier is granted.
+   *
+   * @returns How many went on.
+   */
+  jobs_resume?(): number;
 }
 
 /**
@@ -458,11 +468,20 @@ async function vfsProviders_register(): Promise<void> {
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr/games'));
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr/share'));
   vfsDispatcher.provider_register(new StaticVfsProvider('/usr/share/doc'));
-  // A backend's task sources that bring no mount of their own are the core's to show.
+  // A backend's task sources that bring no mount of their own are the core's to show, the runner's among them.
   const { TaskSourceVfsProvider } = await import('./tasks.js');
-  for (const source of backendInstalled_get()?.tasks ?? []) {
+  for (const source of taskSources_all()) {
     if (source.mounted !== true) vfsDispatcher.provider_register(new TaskSourceVfsProvider(source));
   }
+}
+
+/**
+ * Every task source of the session: the backend's own, and its jobs as the runner keeps them.
+ *
+ * @returns The sources.
+ */
+function taskSources_all(): TaskSource[] {
+  return [...(backendInstalled_get()?.tasks ?? []), ...(runner_get()?.taskSources_get() ?? [])];
 }
 
 /**
@@ -482,6 +501,8 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
   if (backend !== undefined) backend_install(backend);
   // What each listing's rows are, so `@3` can name one.
   answerAdapters_register();
+  const jobs: ReadonlyArray<JobSource> = backendInstalled_get()?.jobs ?? [];
+  runner_install(jobs.length > 0 ? new JobRunner(jobsRoot_of(backendInstalled_get()?.id ?? 'session'), jobs) : null);
   await session.init();
   await vfsProviders_register();
   // A backend's containers are folders to every tool, the dispatcher's read included.
@@ -504,7 +525,7 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
     // leaves to the core is watched by the core.
     watch_set: (subject: string, owner: string, on: boolean): WatchState | null =>
       backendInstalled_get()?.watch?.set(subject, owner, on)
-        ?? taskWatch_set(subject, owner, on, backendInstalled_get()?.tasks ?? []),
+        ?? taskWatch_set(subject, owner, on, taskSources_all()),
     watch_release: (owner: string): void => {
       backendInstalled_get()?.watch?.release(owner);
       taskWatch_release(owner);
@@ -512,6 +533,7 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
     ambient_listen,
     sink_install: (sink: OutputSink): void => { sink_set(sink); },
     surface_install: (surface: Surface): void => { surface_set(surface); },
+    jobs_resume: (): number => runner_get()?.jobs_resume() ?? 0,
   };
 }
 

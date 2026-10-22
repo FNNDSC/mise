@@ -562,6 +562,22 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Asks Open-Meteo (the service weather uses; no key) for sunrise, sunset and the length of the day at a place, today and tomorrow, in the place\'s own time. Boston when no place is named. Needs the session host to reach the internet.',
     examples: ['sunrise', 'sunrise Cape Town', 'sunrise Tromsø'],
   },
+  kill: {
+    posix: { group: 'System', differs: 'stops a session task (/proc/<source>/<id>), never a process; asks, never forces' },
+    category: 'General',
+    usage: 'kill <task>…',
+    summary: 'Ask a running task to stop',
+    description: 'Asks each task to stop: /proc/<source>/<id>, <source>/<id>, or its name alone when one source has it. Quiet when it is asked, as kill is. The task ends when its current operation does: a cloud job cut short can leave its state locked, so a task is never forced, there is no -9, and a second kill says so instead.',
+    examples: ['kill /proc/steps/trial-build', 'kill trial-build'],
+  },
+  wait: {
+    posix: { group: 'System', differs: 'waits on session tasks, following each one\'s log' },
+    category: 'General',
+    usage: 'wait [<task>…]',
+    summary: 'Follow a task until it ends',
+    description: 'Follows each task\'s log until it ends, then says how it ended; bare, every running task. The status is the tasks\': 0 when all ended done. Ctrl-C stops following and leaves the task running; wait again picks it up.',
+    examples: ['wait trial-build', 'wait'],
+  },
   timer: {
     usage: 'timer <duration> [words] | timer | timer cancel [id|all]',
     summary: 'A chime after a while: timer 5m tea',

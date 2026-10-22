@@ -112,6 +112,117 @@ export interface CloudPrice {
 }
 
 /**
+ * The resource kinds every cloud has, as the tree's folder names
+ * (docs/stratus.adoc, D4). Subnets and security groups nest under their
+ * network; the rest stand at a container's level.
+ */
+export type ResourceKind = 'instances' | 'networks' | 'subnets' | 'securitygroups' | 'loadbalancers' | 'volumes' | 'buckets' | 'dns';
+
+/** What every resource row carries: the fields every kind has. */
+export interface CloudResource {
+  /** Its display name; the path segment. */
+  readonly name: string;
+  /** Its id (an OCID). */
+  readonly id: string;
+  /** Its lifecycle state, lower case (`running`, `available`). */
+  readonly state: string;
+  /** The region it lives in; for a global kind, the region it was asked in. */
+  readonly region: string;
+  /** When it was made, ISO 8601, or empty when the cloud does not say. */
+  readonly created: string;
+  /** Its tags, flattened: freeform as `key`, defined as `namespace.key`. */
+  readonly tags: Readonly<Record<string, string>>;
+  /** The whole record, for `info.json`. */
+  readonly raw: unknown;
+}
+
+/** A machine. */
+export interface CloudInstance extends CloudResource {
+  /** The cloud's shape name. */
+  readonly shape: string;
+  /** The zone it runs in. */
+  readonly zone: string;
+  /** Its addresses, private first. */
+  readonly ips: ReadonlyArray<string>;
+}
+
+/** A private network: a VCN, a VPC. */
+export type CloudNetwork = CloudResource;
+
+/** A subnet, inside a network. */
+export interface CloudSubnet extends CloudResource {
+  /** The network it belongs to. */
+  readonly networkId: string;
+}
+
+/** A security group (OCI: a network security group), inside a network. */
+export interface CloudSecurityGroup extends CloudResource {
+  /** The network it belongs to. */
+  readonly networkId: string;
+}
+
+/** A load balancer. */
+export interface CloudLoadBalancer extends CloudResource {
+  /** Its addresses. */
+  readonly ips: ReadonlyArray<string>;
+  /** The cloud's shape name (`flexible`). */
+  readonly shape: string;
+}
+
+/** A block volume or a boot volume. */
+export interface CloudVolume extends CloudResource {
+  /** Its size in GiB. */
+  readonly sizeGib: number;
+  /** The id of the instance it is attached to, or null. */
+  readonly attachedTo: string | null;
+  /** Whether it is an instance's boot volume. */
+  readonly boot: boolean;
+}
+
+/** An object-storage bucket. */
+export type CloudBucket = CloudResource;
+
+/** One object in a bucket. */
+export interface CloudObject {
+  /** Its name; may hold `/`, which the tree keeps flat. */
+  readonly name: string;
+  /** Its size in bytes. */
+  readonly size: number;
+  /** When it last changed, ISO 8601, or empty. */
+  readonly modified: string;
+}
+
+/** A pre-authenticated link to a bucket or one of its objects. */
+export interface CloudLink {
+  /** The object it opens, or null for the whole bucket. */
+  readonly object: string | null;
+  /** Its name. */
+  readonly name: string;
+  /** What it allows (`ObjectRead`). */
+  readonly access: string;
+  /** When it stops working, ISO 8601. */
+  readonly expires: string;
+}
+
+/** A DNS zone. */
+export type CloudDnsZone = CloudResource;
+
+/** One DNS record. */
+export interface CloudRecord {
+  /** The fully qualified name it answers for. */
+  readonly domain: string;
+  /** Its type (`A`, `CNAME`). */
+  readonly type: string;
+  /** Its time to live, in seconds. */
+  readonly ttl: number;
+  /** Its data, as a zone file writes it. */
+  readonly data: string;
+}
+
+/** How many of each kind a container holds in a region, as a search counts them. */
+export type ResourceCounts = Readonly<Partial<Record<ResourceKind, number>>>;
+
+/**
  * A cloud, as stratus sees it. Every method answers for the region it is
  * given: the region is the session's, not the driver's (docs/stratus.adoc,
  * D4), so a driver holds no current region.
@@ -139,4 +250,30 @@ export interface CloudDriver {
   shapes_list(region: string): Promise<CloudShape[]>;
   /** List prices for the shapes, per hour. */
   prices_list(): Promise<CloudPrice[]>;
+  /** The machines in a container, in a region. */
+  instances_list(containerId: string, region: string): Promise<CloudInstance[]>;
+  /** The private networks in a container, in a region. */
+  networks_list(containerId: string, region: string): Promise<CloudNetwork[]>;
+  /** The subnets in a container, in a region, each naming its network. */
+  subnets_list(containerId: string, region: string): Promise<CloudSubnet[]>;
+  /** The security groups in a container, in a region, each naming its network. */
+  securitygroups_list(containerId: string, region: string): Promise<CloudSecurityGroup[]>;
+  /** The load balancers in a container, in a region. */
+  loadbalancers_list(containerId: string, region: string): Promise<CloudLoadBalancer[]>;
+  /** The block and boot volumes in a container, in a region. */
+  volumes_list(containerId: string, region: string): Promise<CloudVolume[]>;
+  /** The buckets in a container, in a region. */
+  buckets_list(containerId: string, region: string): Promise<CloudBucket[]>;
+  /** The DNS zones in a container, public and private. */
+  dns_list(containerId: string, region: string): Promise<CloudDnsZone[]>;
+  /** A bucket's objects, every page. */
+  objects_list(bucket: string, region: string): Promise<CloudObject[]>;
+  /** A bucket's pre-authenticated links. */
+  links_list(bucket: string, region: string): Promise<CloudLink[]>;
+  /** One object's bytes. */
+  object_read(bucket: string, object: string, region: string): Promise<Buffer>;
+  /** A zone's records. */
+  records_list(zoneId: string, region: string): Promise<CloudRecord[]>;
+  /** How many of each kind a container holds in a region, in one search; live resources only. */
+  resources_search(containerId: string, region: string): Promise<ResourceCounts>;
 }

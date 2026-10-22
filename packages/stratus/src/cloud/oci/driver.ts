@@ -3,14 +3,23 @@
  *
  * Containers are compartments, the root the tenancy; zones are availability
  * domains; limits come from the Limits service and shapes from Compute,
- * each asked in the region given; prices from Oracle's public list. The SDK
+ * each asked in the region given; prices from Oracle's public list. The
+ * resource kinds come from their services (Compute, Virtual Network, Block
+ * Storage, Load Balancing, Object Storage, DNS) and their counts from
+ * Resource Search: VCNs are networks, NSGs security groups, block and boot
+ * volumes both volumes. The SDK
  * is reached through `OciApi` (`api.ts`), so this file maps records and
  * tests run it over recorded answers.
  *
  * @module
  */
-import type { CloudAvailability, CloudContainer, CloudDriver, CloudIdentity, CloudLimit, CloudPrice, CloudShape, CloudZone } from '../driver.js';
+import type {
+  CloudAvailability, CloudBucket, CloudContainer, CloudDnsZone, CloudDriver, CloudIdentity, CloudInstance, CloudLimit, CloudLink, CloudLoadBalancer,
+  CloudNetwork, CloudObject, CloudPrice, CloudRecord, CloudSecurityGroup, CloudShape, CloudSubnet, CloudVolume, CloudZone, ResourceCounts,
+} from '../driver.js';
 import type { OciApi, OciCompartmentRecord, OciLimitValueRecord, OciShapeRecord, OciTenancyRecord } from './api.js';
+import type { OciAttachmentRecord, OciInstanceRecord, OciResourceRecord, OciVnicAttachmentRecord, OciVnicRecord, OciVolumeRecord } from './resourceApi.js';
+import { byName_sort, resource_ofRecord, searchCounts_of, searchQuery_of } from './resourceMap.js';
 import { ociPrices_read, shapeTerms_get, type JsonFetch } from './prices.js';
 
 /** How the driver is made. */
@@ -98,10 +107,22 @@ export class OciDriver implements CloudDriver {
   readonly cloud: string = 'oci';
   private readonly api: OciApi;
   private readonly fetchJson: JsonFetch | undefined;
+  private readonly namespaces: Map<string, Promise<string>> = new Map();
 
   constructor(options: OciDriverOptions) {
     this.api = options.api;
     this.fetchJson = options.fetchJson;
+  }
+
+  /** The Object Storage namespace, asked once per region. */
+  private namespace_get(region: string): Promise<string> {
+    let namespace: Promise<string> | undefined = this.namespaces.get(region);
+    if (namespace === undefined) {
+      namespace = this.api.namespace_get(region);
+      namespace.catch((): void => { this.namespaces.delete(region); });
+      this.namespaces.set(region, namespace);
+    }
+    return namespace;
   }
 
   async identity_get(): Promise<CloudIdentity> {
@@ -161,5 +182,101 @@ export class OciDriver implements CloudDriver {
 
   async prices_list(): Promise<CloudPrice[]> {
     return ociPrices_read(this.fetchJson);
+  }
+
+  async instances_list(containerId: string, region: string): Promise<CloudInstance[]> {
+    const [records, attachments]: [OciInstanceRecord[], OciVnicAttachmentRecord[]] = await Promise.all([
+      this.api.instances_list(region, containerId),
+      this.api.vnicAttachments_list(region, containerId),
+    ]);
+    const live: OciVnicAttachmentRecord[] = attachments.filter((attachment: OciVnicAttachmentRecord): boolean => attachment.lifecycleState.toUpperCase() === 'ATTACHED' && attachment.vnicId !== '');
+    const vnics: OciVnicRecord[] = await Promise.all(live.map((attachment: OciVnicAttachmentRecord): Promise<OciVnicRecord> => this.api.vnic_get(region, attachment.vnicId)));
+    const ipsByInstance: Map<string, string[]> = new Map();
+    live.forEach((attachment: OciVnicAttachmentRecord, index: number): void => {
+      const vnic: OciVnicRecord = vnics[index] as OciVnicRecord;
+      const ips: string[] = ipsByInstance.get(attachment.instanceId) ?? [];
+      if (vnic.privateIp !== null) ips.unshift(vnic.privateIp);
+      if (vnic.publicIp !== null) ips.push(vnic.publicIp);
+      ipsByInstance.set(attachment.instanceId, ips);
+    });
+    return byName_sort(records.map((record: OciInstanceRecord): CloudInstance => ({
+      ...resource_ofRecord(record, region), shape: record.shape, zone: record.availabilityDomain, ips: ipsByInstance.get(record.id) ?? [],
+    })));
+  }
+
+  async networks_list(containerId: string, region: string): Promise<CloudNetwork[]> {
+    return byName_sort((await this.api.vcns_list(region, containerId)).map((record: OciResourceRecord): CloudNetwork => resource_ofRecord(record, region)));
+  }
+
+  async subnets_list(containerId: string, region: string): Promise<CloudSubnet[]> {
+    return byName_sort((await this.api.subnets_list(region, containerId)).map((record) => ({ ...resource_ofRecord(record, region), networkId: record.vcnId })));
+  }
+
+  async securitygroups_list(containerId: string, region: string): Promise<CloudSecurityGroup[]> {
+    return byName_sort((await this.api.nsgs_list(region, containerId)).map((record) => ({ ...resource_ofRecord(record, region), networkId: record.vcnId })));
+  }
+
+  async loadbalancers_list(containerId: string, region: string): Promise<CloudLoadBalancer[]> {
+    return byName_sort((await this.api.loadBalancers_list(region, containerId)).map((record) => ({ ...resource_ofRecord(record, region), ips: record.ipAddresses, shape: record.shapeName })));
+  }
+
+  async volumes_list(containerId: string, region: string): Promise<CloudVolume[]> {
+    const zones: string[] = await this.api.availabilityDomains_list(region, this.api.credential_get().tenancyId);
+    const [blocks, attachments, boots, bootAttachments]: [OciVolumeRecord[], OciAttachmentRecord[], OciVolumeRecord[][], OciAttachmentRecord[][]] = await Promise.all([
+      this.api.volumes_list(region, containerId),
+      this.api.volumeAttachments_list(region, containerId),
+      Promise.all(zones.map((zone: string): Promise<OciVolumeRecord[]> => this.api.bootVolumes_list(region, containerId, zone))),
+      Promise.all(zones.map((zone: string): Promise<OciAttachmentRecord[]> => this.api.bootVolumeAttachments_list(region, containerId, zone))),
+    ]);
+    const attachedTo: Map<string, string> = new Map();
+    for (const attachment of [...attachments, ...bootAttachments.flat()]) {
+      if (['ATTACHED', 'ATTACHING'].includes(attachment.lifecycleState.toUpperCase())) attachedTo.set(attachment.volumeId, attachment.instanceId);
+    }
+    const volume_of = (record: OciVolumeRecord, boot: boolean): CloudVolume => ({
+      ...resource_ofRecord(record, region), sizeGib: record.sizeInGBs, attachedTo: attachedTo.get(record.id) ?? null, boot,
+    });
+    return byName_sort([
+      ...blocks.map((record: OciVolumeRecord): CloudVolume => volume_of(record, false)),
+      ...boots.flat().map((record: OciVolumeRecord): CloudVolume => volume_of(record, true)),
+    ]);
+  }
+
+  async buckets_list(containerId: string, region: string): Promise<CloudBucket[]> {
+    const namespace: string = await this.namespace_get(region);
+    return byName_sort((await this.api.buckets_list(region, namespace, containerId)).map((record: OciResourceRecord): CloudBucket => resource_ofRecord(record, region)));
+  }
+
+  async dns_list(containerId: string, region: string): Promise<CloudDnsZone[]> {
+    const seen: Set<string> = new Set();
+    const zones: CloudDnsZone[] = [];
+    for (const record of await this.api.zones_list(region, containerId)) {
+      if (seen.has(record.id)) continue;
+      seen.add(record.id);
+      zones.push(resource_ofRecord(record, region));
+    }
+    return byName_sort(zones);
+  }
+
+  async objects_list(bucket: string, region: string): Promise<CloudObject[]> {
+    const records = await this.api.objects_list(region, await this.namespace_get(region), bucket);
+    return records.map((record): CloudObject => ({ name: record.name, size: record.size, modified: record.timeModified }));
+  }
+
+  async links_list(bucket: string, region: string): Promise<CloudLink[]> {
+    const records = await this.api.pars_list(region, await this.namespace_get(region), bucket);
+    return records.map((record): CloudLink => ({ object: record.objectName, name: record.name, access: record.accessType, expires: record.timeExpires }));
+  }
+
+  async object_read(bucket: string, object: string, region: string): Promise<Buffer> {
+    return this.api.object_get(region, await this.namespace_get(region), bucket, object);
+  }
+
+  async records_list(zoneId: string, region: string): Promise<CloudRecord[]> {
+    const records = await this.api.zoneRecords_list(region, zoneId);
+    return records.map((record): CloudRecord => ({ domain: record.domain, type: record.rtype, ttl: record.ttl, data: record.rdata }));
+  }
+
+  async resources_search(containerId: string, region: string): Promise<ResourceCounts> {
+    return searchCounts_of(await this.api.search_list(region, searchQuery_of(containerId)));
   }
 }

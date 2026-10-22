@@ -2,9 +2,9 @@
 
 - Last updated: 2026-10-21
 - Last verified against `main`: the merge of #1187 (stratus 1b), 2026-10-21
-- Working branches: none; `main` is clean
-- Current milestone: step 1 of the order of work in [stratus.adoc](stratus.adoc#order) is on `main`: 1a (#1181, published as @fnndsc/stratus 0.1.0) and 1b (#1187, unpublished until the next `make publish`)
-- Next action: the four follow-ups below in order, each its own branch and PR, then step 2 (resources in the tree)
+- Working branches: `agent/remote-berth-exact` (#1190, follow-up 1), `agent/frame-alone-stage` (#1191, follow-up 2), `agent/td-mark-splash` (#1192, follow-up 3), `agent/stratus-resources` (step 2); each waits for the operator's review and merge
+- Current milestone: step 1 of the order of work in [stratus.adoc](stratus.adoc#order) is on `main`: 1a (#1181, published as @fnndsc/stratus 0.1.0) and 1b (#1187, unpublished until the next `make publish`). Follow-ups 1 to 3 and step 2 are in open PRs.
+- Next action: the operator reviews and merges the four PRs; follow-up 4 (the epic's status comment) was not asked for in this round; then step 3 (domains, read), after a grill
 
 This file is the handoff between sessions and between models. It says where the work stands and what to do next, with the facts a fresh context needs to do it without rediscovery. The design itself is [stratus.adoc](stratus.adoc); the bastions are [bastion.adoc](bastion.adoc) and [dev-bastion.adoc](dev-bastion.adoc); what Red Hat ships against the primitive is [redhat-fl.adoc](redhat-fl.adoc); the metaphor every figure is drawn in is [linux-metaphor.adoc](linux-metaphor.adoc).
 
@@ -40,6 +40,7 @@ These are enforced by the operator in review and most by lint. Read the pointed 
 | `@fnndsc/stratus` 0.1.0 | published through OIDC with provenance; trusted publisher configured | `packages/stratus`; npm page `@fnndsc/stratus` |
 | Step 1a: read the tenancy | on `main` (#1181): descriptor, `CloudDriver`, fake driver and contract suite, OCI identity and compartments, `/net/oci/<tenancy>/` and `regions/`, launcher, stratus boot, `lint:stratus-deps` | `packages/stratus/src/{backend,session,cache,names,args,stratus}.ts`, `cloud/{driver.ts,fake/,oci/}`, `vfs/{tenancy,look}.ts`, `tests/` |
 | Step 1b: prompt segments and the ARGUS composition | on `main` (#1187); its changesets (menu, chell, stratus minor; argus minor) wait in the next Version Packages PR, released by `make publish` on the operator's word | `packages/menu/src/messages.ts` (`promptSegmentSchema`, `segments`), `packages/menu/src/logo/tdMark.ts`, `packages/stratus/src/prompt.ts`, `packages/chell/src/core/prompt/{theme_p10k,theme_default,utils,index}.ts`, `apps/argus/src/console/promptBar.ts`, `apps/argus/src/app/main.ts` (stratus splash, favicon, note), `apps/argus/index.html` + `lcars/argus.css` (`data-composition="stratus"` seams), `assets/brand/td-oci.svg`, `scripts/prompt-parity.mjs` |
+| Step 2: resources in the tree | open PR from `agent/stratus-resources`: `CloudDriver` gains one method per kind plus `objects_list links_list object_read records_list resources_search`; the fake fixture holds a small Trusted Domain; the OCI driver maps Compute, Virtual Network, Block Storage, Load Balancing, Object Storage, DNS and Resource Search; every container level holds `instances networks loadbalancers volumes buckets dns`; verified live and read-only against `fnndsc-bch` on 2026-10-21 | `packages/stratus/src/cloud/{driver.ts,fake/driver.ts,oci/resourceApi.ts,oci/resourceMap.ts,oci/driver.ts}`, `vfs/{resources,tenancy,look}.ts`, `backend.ts` (session region, structural paths), `tests/{resources,oci}.test.ts`, `tests/support/{driverContract,ociResources}.ts` |
 | Bastion documents and figures | on `main` (#1185, corrected by #1186) | `docs/bastion.adoc`, `docs/dev-bastion.adoc`, `docs/redhat-fl.adoc`, `docs/linux-metaphor.adoc`, `docs/images/*.png` |
 | Figure sources | a private Design canvas owned by the operator; the repo holds the 2x PNG exports | ask the operator for the canvas; re-export is a headless-chromium screenshot of the board's HTML |
 

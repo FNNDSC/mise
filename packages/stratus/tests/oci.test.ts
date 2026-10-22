@@ -9,14 +9,15 @@ import { describe, it, expect } from '@jest/globals';
 import { OciDriver, ociTags_flatten, shape_ofRecord } from '../src/cloud/oci/driver.js';
 import type { OciApi, OciCompartmentRecord, OciLimitValueRecord, OciShapeRecord, OciTenancyRecord } from '../src/cloud/oci/api.js';
 import { driverContract_describe } from './support/driverContract.js';
+import { HARBOR_ID, RECORDED_ZONES, recordedResourceApi_make } from './support/ociResources.js';
 
 const TENANCY: OciTenancyRecord = { id: 'ocid1.tenancy.oc1..aaaaaa', name: 'fnndsc-bch', description: 'fnndsc-bch', homeRegionKey: 'IAD', freeformTags: {}, definedTags: {} };
 const COMPARTMENTS: OciCompartmentRecord[] = [
-  { id: 'ocid1.compartment.oc1..harbor', compartmentId: TENANCY.id, name: 'harbor-oci', description: 'Trusted Domain builds', lifecycleState: 'ACTIVE', timeCreated: '2026-10-06T14:00:00.000Z', freeformTags: { owner: 'rudolph' }, definedTags: { 'Oracle-Tags': { CreatedBy: 'rudolph', CreatedOn: '2026-10-06T14:00:00.000Z' } } },
+  { id: HARBOR_ID, compartmentId: TENANCY.id, name: 'harbor-oci', description: 'Trusted Domain builds', lifecycleState: 'ACTIVE', timeCreated: '2026-10-06T14:00:00.000Z', freeformTags: { owner: 'rudolph' }, definedTags: { 'Oracle-Tags': { CreatedBy: 'rudolph', CreatedOn: '2026-10-06T14:00:00.000Z' } } },
   { id: 'ocid1.compartment.oc1..gone00', compartmentId: TENANCY.id, name: 'old', description: 'removed', lifecycleState: 'DELETED', timeCreated: '2026-09-01T00:00:00.000Z', freeformTags: {}, definedTags: {} },
   { id: 'ocid1.compartment.oc1..alpha0', compartmentId: TENANCY.id, name: 'alpha', description: '', lifecycleState: 'ACTIVE', timeCreated: '2026-09-02T00:00:00.000Z', freeformTags: {}, definedTags: {} },
 ];
-const ZONES: string[] = ['disG:US-ASHBURN-AD-1', 'disG:US-ASHBURN-AD-2', 'disG:US-ASHBURN-AD-3'];
+const ZONES: string[] = [...RECORDED_ZONES];
 const LIMITS: Record<string, OciLimitValueRecord[]> = {
   compute: [
     ...ZONES.map((zone: string): OciLimitValueRecord => ({ name: 'standard-e5-core-count', scopeType: 'AD', availabilityDomain: zone, value: 4629 })),
@@ -43,6 +44,7 @@ const PRICE_LIST = {
 /** A recorded API: every call answers from the fixtures and counts itself. */
 export function recordedApi_make(seen: string[] = []): OciApi {
   return {
+    ...recordedResourceApi_make(seen),
     credential_get: () => ({ tenancyId: TENANCY.id, userId: 'ocid1.user.oc1..user00', region: 'us-ashburn-1' }),
     async tenancy_get(tenancyId: string) { seen.push(`tenancy_get ${tenancyId}`); return TENANCY; },
     async userName_get(userId: string) { seen.push(`userName_get ${userId}`); return 'rudolph.pienaar@childrens.harvard.edu'; },
@@ -112,5 +114,86 @@ describe('the OCI driver', () => {
       { shape: 'VM.Standard.A1.Flex', vcpuHour: 0.01, gibHour: 0.0015, currency: 'USD' },
       { shape: 'VM.Standard.E5.Flex', vcpuHour: 0.015, gibHour: 0.002, currency: 'USD' },
     ]);
+  });
+});
+
+describe('the OCI driver\'s resources', () => {
+  const region = 'us-ashburn-1';
+
+  it('gives each instance its private addresses first, its public after, from attached VNICs only', async () => {
+    const seen: string[] = [];
+    const driver = new OciDriver({ api: recordedApi_make(seen), fetchJson });
+    const instances = await driver.instances_list(HARBOR_ID, region);
+    expect(instances.map((i) => [i.name, i.zone, i.ips])).toEqual([
+      ['harbor-cp-1', ZONES[0], ['10.0.16.11']],
+      ['harbor-cp-2', ZONES[1], ['10.0.16.12', '129.0.0.12']],
+      ['harbor-cp-3', ZONES[2], ['10.0.16.13']],
+    ]);
+    expect(instances[0]).toMatchObject({ state: 'running', shape: 'VM.Standard.E5.Flex', region, created: '2026-10-06T14:00:00.000Z', tags: { 'openshift-resource': 'harbor', 'Oracle-Tags.CreatedBy': 'rudolph' } });
+    expect(seen.filter((call) => call.startsWith('vnic_get'))).toHaveLength(3);
+    expect(await driver.instances_list('ocid1.compartment.oc1..alpha0', region)).toEqual([]);
+  });
+
+  it('lists block and boot volumes together, each boot volume asked per availability domain, attached only while attached', async () => {
+    const seen: string[] = [];
+    const driver = new OciDriver({ api: recordedApi_make(seen), fetchJson });
+    const volumes = await driver.volumes_list(HARBOR_ID, region);
+    expect(volumes.map((v) => [v.name, v.state, v.sizeGib, v.attachedTo, v.boot])).toEqual([
+      ['csi-52676dc4', 'terminated', 50, null, false],
+      ['csi-9d5b2f0a', 'available', 50, 'ocid1.instance.oc1.iad.cp0003', false],
+      ['harbor-cp-1 (Boot Volume)', 'available', 200, 'ocid1.instance.oc1.iad.cp0001', true],
+      ['harbor-cp-2 (Boot Volume)', 'available', 200, 'ocid1.instance.oc1.iad.cp0002', true],
+      ['harbor-cp-3 (Boot Volume)', 'available', 200, 'ocid1.instance.oc1.iad.cp0003', true],
+    ]);
+    expect(seen.filter((call) => call.startsWith('bootVolumes_list'))).toEqual(ZONES.map((zone) => `bootVolumes_list ${zone}`));
+  });
+
+  it('nests subnets and NSGs in their VCN, and gives load balancers their addresses and shape', async () => {
+    const driver = new OciDriver({ api: recordedApi_make(), fetchJson });
+    expect((await driver.networks_list(HARBOR_ID, region)).map((n) => n.name)).toEqual(['harbor']);
+    expect((await driver.subnets_list(HARBOR_ID, region)).map((n) => [n.name, n.networkId])).toEqual([['private_bare_metal', 'ocid1.vcn.oc1.iad.harbor'], ['private_ocp', 'ocid1.vcn.oc1.iad.harbor'], ['public', 'ocid1.vcn.oc1.iad.harbor']]);
+    expect((await driver.securitygroups_list(HARBOR_ID, region)).map((n) => n.name)).toEqual(['cluster-compute-nsg', 'cluster-controlplane-nsg', 'cluster-lb-nsg']);
+    expect((await driver.loadbalancers_list(HARBOR_ID, region)).map((n) => [n.name, n.ips, n.shape, n.state])).toEqual([
+      ['harbor-openshift_api_int_lb', ['10.0.32.5'], 'flexible', 'active'],
+      ['harbor-openshift_api_lb', ['129.0.0.10'], 'flexible', 'active'],
+      ['harbor-openshift_apps_lb', ['129.0.0.11'], 'flexible', 'active'],
+    ]);
+  });
+
+  it('asks the Object Storage namespace once, and reads buckets, objects, links and bytes in it', async () => {
+    const seen: string[] = [];
+    const driver = new OciDriver({ api: recordedApi_make(seen), fetchJson });
+    expect((await driver.buckets_list(HARBOR_ID, region)).map((b) => [b.name, b.state])).toEqual([['harbor-oci-iso', 'active']]);
+    expect(await driver.objects_list('harbor-oci-iso', region)).toEqual([{ name: 'harbor-discovery.iso', size: 138_596_352, modified: '2026-10-06T14:10:00.000Z' }]);
+    expect(await driver.links_list('harbor-oci-iso', region)).toEqual([{ object: 'harbor-discovery.iso', name: 'harbor-discovery-iso', access: 'ObjectRead', expires: '2026-11-06T14:10:00.000Z' }]);
+    expect((await driver.object_read('harbor-oci-iso', 'harbor-discovery.iso', region)).toString()).toBe('iso bytes');
+    expect(seen.filter((call) => call === 'namespace_get')).toHaveLength(1);
+    expect(seen).toContain('object_get scrubbedns/harbor-oci-iso/harbor-discovery.iso');
+  });
+
+  it('asks the namespace again after a failure', async () => {
+    let fails = 1;
+    const api = { ...recordedApi_make(), async namespace_get() { if (fails-- > 0) throw new Error('throttled'); return 'scrubbedns'; } };
+    const driver = new OciDriver({ api, fetchJson });
+    await expect(driver.buckets_list(HARBOR_ID, region)).rejects.toThrow('throttled');
+    expect(await driver.buckets_list(HARBOR_ID, region)).toHaveLength(1);
+  });
+
+  it('lists a zone answering in both scopes once, and its records as the zone holds them', async () => {
+    const driver = new OciDriver({ api: recordedApi_make(), fetchJson });
+    const zones = await driver.dns_list(HARBOR_ID, region);
+    expect(zones.map((z) => z.name)).toEqual(['oci.chrisproject.org', 'privateocp.openshiftvcn.oraclevcn.com']);
+    expect((await driver.records_list(zones[0].id, region)).map((r) => [r.domain, r.type])).toEqual([
+      ['oci.chrisproject.org', 'SOA'], ['oci.chrisproject.org', 'NS'], ['api.harbor.oci.chrisproject.org', 'A'], ['*.apps.harbor.oci.chrisproject.org', 'A'],
+    ]);
+  });
+
+  it('counts a compartment\'s live resources by kind in one structured search', async () => {
+    const seen: string[] = [];
+    const driver = new OciDriver({ api: recordedApi_make(seen), fetchJson });
+    expect(await driver.resources_search(HARBOR_ID, region)).toEqual({ instances: 3, networks: 1, subnets: 3, securitygroups: 3, loadbalancers: 3, volumes: 4, buckets: 1, dns: 2 });
+    const query = seen.find((call) => call.startsWith('search_list')) ?? '';
+    expect(query).toContain(`where compartmentId = '${HARBOR_ID}'`);
+    expect(query).toContain('query instance, vcn, subnet, networksecuritygroup, loadbalancer, volume, bootvolume, bucket, customerdnszone resources');
   });
 });

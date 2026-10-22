@@ -17,6 +17,7 @@ module.exports = {
     '!<rootDir>/src/**/*.d.ts',
     '!<rootDir>/src/stratus.ts',
     '!<rootDir>/src/cloud/oci/api.ts',
+    '!<rootDir>/src/cloud/oci/resourceApi.ts',
   ],
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
   coverageProvider: 'babel',

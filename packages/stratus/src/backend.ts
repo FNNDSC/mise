@@ -17,6 +17,7 @@ import type { CloudDriver } from './cloud/driver.js';
 import { AnswerCache } from './cache.js';
 import { StratusSession } from './session.js';
 import { TenancyProvider } from './vfs/tenancy.js';
+import { KIND_FOLDERS } from './vfs/resources.js';
 import { stratusListingLook } from './vfs/look.js';
 import { stratusSegments_build } from './prompt.js';
 
@@ -40,6 +41,20 @@ export interface StratusBackend {
 }
 
 /**
+ * The paths a session enters without a lookup: the mount, and once the
+ * tenancy is known, the tenancy, `regions`, `domains` and its kind folders.
+ *
+ * @param session - The session.
+ * @returns The structural paths.
+ */
+export function structuralPaths_of(session: StratusSession): string[] {
+  const paths: string[] = ['/', '/net', session.mount];
+  if (session.identity === null) return paths;
+  const tenancy: string = session.tenancyPath;
+  return [...paths, tenancy, `${tenancy}/regions`, `${tenancy}/domains`, ...KIND_FOLDERS.map((kind: string): string => `${tenancy}/${kind}`)];
+}
+
+/**
  * Makes the stratus backend over a driver.
  *
  * @param options - The driver and the session's settings.
@@ -47,7 +62,7 @@ export interface StratusBackend {
  */
 export function stratusBackend_make(options: StratusBackendOptions): StratusBackend {
   const session: StratusSession = new StratusSession({ driver: options.driver, region: options.region, configDir: options.configDir });
-  const tenancy: TenancyProvider = new TenancyProvider({ driver: options.driver, cache: new AnswerCache(options.cacheLifeMs) });
+  const tenancy: TenancyProvider = new TenancyProvider({ driver: options.driver, cache: new AnswerCache(options.cacheLifeMs), region: (): string | null => session.region });
   const dispatcher: VFSDispatcher = new VFSDispatcher();
   dispatcher.provider_register(tenancy);
   const backend: Backend = {
@@ -55,7 +70,11 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
     session,
     vfs: {
       dispatcher,
-      structural: ['/', '/net', session.mount],
+      // The tenancy and its fixed folders are entered without asking once
+      // the session knows its tenancy (docs/stratus.adoc, D4).
+      get structural(): ReadonlyArray<string> {
+        return structuralPaths_of(session);
+      },
     },
     completion: { rootWords: ['net'] },
     listingLook: stratusListingLook,

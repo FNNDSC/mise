@@ -6,7 +6,30 @@
  * interface uses, so a new driver is proven by running it and nothing else.
  */
 import { describe, it, expect } from '@jest/globals';
-import type { CloudContainer, CloudDriver, CloudIdentity, CloudLimit, CloudPrice, CloudShape, CloudZone } from '../../src/cloud/driver.js';
+import type { CloudContainer, CloudDriver, CloudIdentity, CloudLimit, CloudPrice, CloudResource, CloudShape, CloudZone, ResourceKind } from '../../src/cloud/driver.js';
+
+/** The kinds a driver lists, each by its own method. */
+const KINDS: ReadonlyArray<ResourceKind> = ['instances', 'networks', 'subnets', 'securitygroups', 'loadbalancers', 'volumes', 'buckets', 'dns'];
+
+/** One kind's resources in a container, through the driver's method for it. */
+function kind_list(driver: CloudDriver, kind: ResourceKind, containerId: string, region: string): Promise<CloudResource[]> {
+  switch (kind) {
+    case 'instances': return driver.instances_list(containerId, region);
+    case 'networks': return driver.networks_list(containerId, region);
+    case 'subnets': return driver.subnets_list(containerId, region);
+    case 'securitygroups': return driver.securitygroups_list(containerId, region);
+    case 'loadbalancers': return driver.loadbalancers_list(containerId, region);
+    case 'volumes': return driver.volumes_list(containerId, region);
+    case 'buckets': return driver.buckets_list(containerId, region);
+    case 'dns': return driver.dns_list(containerId, region);
+  }
+}
+
+/** Every container a driver has under its root, the root first. */
+async function containers_all(driver: CloudDriver): Promise<CloudContainer[]> {
+  const root: CloudContainer = await driver.root_get();
+  return [root, ...(await driver.containers_list(root.id))];
+}
 
 /**
  * Describes the contract for one driver.
@@ -103,6 +126,88 @@ export function driverContract_describe(name: string, driver_make: () => Promise
         expect(shape.vcpuPerCore).toBeGreaterThan(0);
       }
       expect(shapes.map((shape: CloudShape): string => shape.name)).toEqual([...shapes.map((shape: CloudShape): string => shape.name)].sort((a: string, b: string): number => a.localeCompare(b)));
+    });
+
+    it('lists every resource kind in every container, sorted by name, with the fields every kind has', async () => {
+      const driver: CloudDriver = await driver_make();
+      const identity: CloudIdentity = await driver.identity_get();
+      let seen: number = 0;
+      for (const container of await containers_all(driver)) {
+        for (const kind of KINDS) {
+          const resources: CloudResource[] = await kind_list(driver, kind, container.id, identity.homeRegion);
+          seen += resources.length;
+          for (const resource of resources) {
+            expect(resource.name).not.toBe('');
+            expect(resource.id).not.toBe('');
+            expect(resource.state).toBe(resource.state.toLowerCase());
+            expect(resource.region).toBe(identity.homeRegion);
+            expect(typeof resource.tags).toBe('object');
+          }
+          expect(resources.map((resource: CloudResource): string => resource.name)).toEqual([...resources.map((resource: CloudResource): string => resource.name)].sort((a: string, b: string): number => a.localeCompare(b)));
+        }
+      }
+      expect(seen).toBeGreaterThan(0);
+    });
+
+    it('nests subnets and security groups in a network the same container lists', async () => {
+      const driver: CloudDriver = await driver_make();
+      const identity: CloudIdentity = await driver.identity_get();
+      for (const container of await containers_all(driver)) {
+        const networks: string[] = (await driver.networks_list(container.id, identity.homeRegion)).map((network: CloudResource): string => network.id);
+        for (const member of [...(await driver.subnets_list(container.id, identity.homeRegion)), ...(await driver.securitygroups_list(container.id, identity.homeRegion))]) {
+          expect(networks).toContain(member.networkId);
+        }
+      }
+    });
+
+    it('gives machines a shape and a zone, volumes a size and an attachment or none', async () => {
+      const driver: CloudDriver = await driver_make();
+      const identity: CloudIdentity = await driver.identity_get();
+      const zones: string[] = (await driver.zones_list(identity.homeRegion)).map((zone: CloudZone): string => zone.name);
+      for (const container of await containers_all(driver)) {
+        for (const instance of await driver.instances_list(container.id, identity.homeRegion)) {
+          expect(instance.shape).not.toBe('');
+          expect(zones).toContain(instance.zone);
+        }
+        for (const volume of await driver.volumes_list(container.id, identity.homeRegion)) {
+          expect(volume.sizeGib).toBeGreaterThan(0);
+          expect(volume.attachedTo === null || volume.attachedTo !== '').toBe(true);
+        }
+      }
+    });
+
+    it('lists a bucket\'s objects and links, and a zone\'s records', async () => {
+      const driver: CloudDriver = await driver_make();
+      const identity: CloudIdentity = await driver.identity_get();
+      for (const container of await containers_all(driver)) {
+        for (const bucket of await driver.buckets_list(container.id, identity.homeRegion)) {
+          for (const object of await driver.objects_list(bucket.name, identity.homeRegion)) {
+            expect(object.name).not.toBe('');
+            expect(object.size).toBeGreaterThanOrEqual(0);
+          }
+          for (const link of await driver.links_list(bucket.name, identity.homeRegion)) expect(link.name).not.toBe('');
+        }
+        for (const zone of await driver.dns_list(container.id, identity.homeRegion)) {
+          for (const record of await driver.records_list(zone.id, identity.homeRegion)) {
+            expect(record.domain.replace(/\.$/, '').endsWith(zone.name)).toBe(true);
+            expect(record.type).toMatch(/^[A-Z0-9]+$/);
+          }
+        }
+      }
+    });
+
+    it('counts a container\'s live resources by kind in one search', async () => {
+      const driver: CloudDriver = await driver_make();
+      const identity: CloudIdentity = await driver.identity_get();
+      for (const container of await containers_all(driver)) {
+        const counts = await driver.resources_search(container.id, identity.homeRegion);
+        for (const [kind, count] of Object.entries(counts)) {
+          expect(KINDS).toContain(kind);
+          expect(Number.isInteger(count) && (count ?? 0) > 0).toBe(true);
+          const live: number = (await kind_list(driver, kind as ResourceKind, container.id, identity.homeRegion)).filter((resource: CloudResource): boolean => !['terminated', 'deleted'].includes(resource.state)).length;
+          expect(count).toBe(live);
+        }
+      }
     });
 
     it('prices shapes per hour in one currency', async () => {

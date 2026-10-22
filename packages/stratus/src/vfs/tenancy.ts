@@ -4,7 +4,8 @@
  * A fond provider over the cloud driver. Under the mount: the tenancy by its
  * display name; inside it, its containers (compartments) nesting as the cloud
  * nests them, `regions/` with each region's zones, limits, shapes and prices,
- * and `domains/`. A container lists its children and `info.json`; a fact
+ * and `domains/`. Every container level, the tenancy's included, also holds
+ * the resource kind folders for the session's region (`resources.ts`). A container lists its children and `info.json`; a fact
  * (a limit, a shape, a price) is a folder of field files, as `/proc` does it:
  * a field is a file when a shell line wants it, and `info.json` holds the
  * whole record.
@@ -21,11 +22,12 @@ import { Err, Ok, errorStack, vfs_fail, vfs_ok, type CpOptions, type Result, typ
 import type { CloudAvailability, CloudContainer, CloudDriver, CloudIdentity, CloudLimit, CloudPrice, CloudShape, CloudZone } from '../cloud/driver.js';
 import { AnswerCache } from '../cache.js';
 import { ambiguity_words, idSuffix_of, segment_resolve, segments_assign, type Segment, type SegmentMatch } from '../names.js';
+import { KIND_FOLDERS, kindFolder_is, ResourceTree, type ResourceNode } from './resources.js';
 
 /** The folders a tenancy level reserves beside its containers. */
-export const TENANCY_RESERVED: ReadonlyArray<string> = ['regions', 'domains', 'info.json'];
+export const TENANCY_RESERVED: ReadonlyArray<string> = ['regions', 'domains', 'info.json', ...KIND_FOLDERS];
 /** The folders a container level reserves beside its children. */
-export const CONTAINER_RESERVED: ReadonlyArray<string> = ['info.json'];
+export const CONTAINER_RESERVED: ReadonlyArray<string> = ['info.json', ...KIND_FOLDERS];
 /** What a region holds. */
 const REGION_FOLDERS: ReadonlyArray<string> = ['zones', 'limits', 'shapes', 'prices'];
 
@@ -57,6 +59,9 @@ type Node =
   | { readonly kind: 'prices'; readonly region: string }
   | { readonly kind: 'price'; readonly region: string; readonly price: CloudPrice }
   | { readonly kind: 'file'; readonly text: string }
+  | { readonly kind: 'listing'; readonly list: () => Promise<VFSItem[]> }
+  | { readonly kind: 'bytes'; readonly size: number; readonly read: () => Promise<Buffer> }
+  | { readonly kind: 'refused'; readonly reason: string }
   | { readonly kind: 'missing'; readonly reason?: string };
 
 /** How the provider is made. */
@@ -66,6 +71,8 @@ export interface TenancyProviderOptions {
   readonly cache?: AnswerCache;
   /** The clock for item dates the cloud does not give. */
   readonly now?: () => string;
+  /** The session's region, whose resources the kind folders list; the credential's home region when absent or null. */
+  readonly region?: () => string | null;
 }
 
 /** The tenancy as a tree under `/net/<cloud>`. */
@@ -74,12 +81,27 @@ export class TenancyProvider implements VFSProvider {
   private readonly driver: CloudDriver;
   private readonly cache: AnswerCache;
   private readonly now: () => string;
+  private readonly region: () => string | null;
+  private readonly resources: ResourceTree;
 
   constructor(options: TenancyProviderOptions) {
     this.driver = options.driver;
     this.prefix = `/net/${options.driver.cloud}`;
     this.cache = options.cache ?? new AnswerCache();
     this.now = options.now ?? ((): string => new Date().toISOString());
+    this.region = options.region ?? ((): null => null);
+    this.resources = new ResourceTree({ driver: this.driver, cache: this.cache, now: this.now });
+  }
+
+  /** The region the kind folders list. */
+  private region_of(identity: CloudIdentity): string {
+    return this.region() ?? identity.homeRegion;
+  }
+
+  /** A path below a container's kind folder, resolved by the resource tree. */
+  private async resourceNode_resolve(identity: CloudIdentity, container: CloudContainer, segments: string[]): Promise<Node> {
+    const node: ResourceNode = await this.resources.node_resolve(container.id, this.region_of(identity), segments, identity.user);
+    return node;
   }
 
   /** Forgets every kept answer: the next listing asks the cloud. */
@@ -180,6 +202,7 @@ export class TenancyProvider implements VFSProvider {
     if (rest[0] === 'regions') return this.regionNode_resolve(rest.slice(1));
     if (rest[0] === 'domains') return rest.length === 1 ? { kind: 'domains' } : { kind: 'missing' };
     if (rest[0] === 'info.json') return rest.length === 1 ? { kind: 'file', text: json_text(root.raw) } : { kind: 'missing' };
+    if (kindFolder_is(rest[0])) return this.resourceNode_resolve(identity, root, rest);
     return this.containerNode_resolve(identity, root, rest, TENANCY_RESERVED);
   }
 
@@ -192,6 +215,7 @@ export class TenancyProvider implements VFSProvider {
     if (match.kind === 'none') return { kind: 'missing' };
     if (rest.length === 0) return { kind: 'container', identity, container: match.item };
     if (rest[0] === 'info.json' && rest.length === 1) return { kind: 'file', text: json_text(match.item.raw) };
+    if (kindFolder_is(rest[0])) return this.resourceNode_resolve(identity, match.item, rest);
     return this.containerNode_resolve(identity, match.item, rest, CONTAINER_RESERVED);
   }
 
@@ -301,10 +325,11 @@ export class TenancyProvider implements VFSProvider {
     };
   }
 
-  /** What a container level lists: its children, the reserved folders, `info.json`. */
+  /** What a container level lists: its children, its kind folders, the reserved folders, `info.json`. */
   private async containerLevel_list(identity: CloudIdentity, container: CloudContainer, reserved: ReadonlyArray<string>, extraFolders: ReadonlyArray<string>): Promise<VFSItem[]> {
     const children: CloudContainer[] = await this.containers_list(container.id);
     const items: VFSItem[] = this.containerSegments_of(children, reserved).map((entry: Segment<CloudContainer>): VFSItem => this.container_item(entry, identity.user));
+    items.push(...(await this.resources.kindFolders_items(container.id, this.region_of(identity))));
     for (const folder of extraFolders) items.push(this.folder_item(folder));
     items.push(this.file_item({ name: 'info.json', text: json_text(container.raw) }));
     return items;
@@ -358,8 +383,11 @@ export class TenancyProvider implements VFSProvider {
         return Ok((await this.prices_list()).map((price: CloudPrice): VFSItem => this.folder_item(price.shape, 'price')));
       case 'price':
         return Ok(price_fields(node.price).map((field: Field): VFSItem => this.file_item(field)));
+      case 'listing':
+        return Ok(await node.list());
       case 'file':
-        return Err();
+      case 'bytes':
+      case 'refused':
       case 'missing':
         return Err();
     }
@@ -373,7 +401,7 @@ export class TenancyProvider implements VFSProvider {
       errorStack.stack_push('error', `Cannot list ${pathStr}: ${node.reason ?? 'No such file or directory'}`);
       return Err();
     }
-    if (node.kind === 'file') {
+    if (node.kind === 'file' || node.kind === 'bytes' || node.kind === 'refused') {
       errorStack.stack_push('error', `Cannot list ${pathStr}: Not a directory`);
       return Err();
     }
@@ -381,15 +409,23 @@ export class TenancyProvider implements VFSProvider {
   }
 
   async read(pathStr: string): Promise<VfsOutcome<string>> {
-    const node: Node = await this.node_resolve(pathStr);
-    if (node.kind === 'missing') return vfs_fail('ENOENT', node.reason);
-    if (node.kind !== 'file') return vfs_fail('EISDIR');
-    return vfs_ok(node.text);
+    const bytes: VfsOutcome<Buffer> = await this.readBinary(pathStr);
+    return bytes.ok ? vfs_ok(bytes.value.toString('utf-8')) : bytes;
   }
 
   async readBinary(pathStr: string): Promise<VfsOutcome<Buffer>> {
-    const text: VfsOutcome<string> = await this.read(pathStr);
-    return text.ok ? vfs_ok(Buffer.from(text.value, 'utf-8')) : text;
+    const node: Node = await this.node_resolve(pathStr);
+    if (node.kind === 'missing') return vfs_fail('ENOENT', node.reason);
+    if (node.kind === 'refused') return vfs_fail('EPERM', node.reason);
+    if (node.kind === 'file') return vfs_ok(Buffer.from(node.text, 'utf-8'));
+    if (node.kind === 'bytes') {
+      try {
+        return vfs_ok(await node.read());
+      } catch (error: unknown) {
+        return vfs_fail('EIO', error instanceof Error ? error.message : String(error));
+      }
+    }
+    return vfs_fail('EISDIR');
   }
 
   async cp(): Promise<VfsOutcome> {

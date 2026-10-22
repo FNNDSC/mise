@@ -124,6 +124,12 @@ function poll_wait(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+/** The tag namespace the stack attributes what it makes with: one per tenancy. */
+export const TAG_NAMESPACE: string = 'openshift-tags';
+
+/** The compartment every built domain's own compartment sits in, under the tenancy root. */
+export const DOMAINS_COMPARTMENT: string = 'domains';
+
 /** OCI's build half, over Resource Manager. */
 export class OciBuilder implements CloudBuilder {
   readonly id: string = 'oci';
@@ -237,6 +243,44 @@ export class OciBuilder implements CloudBuilder {
     return this.options.api(region);
   }
 
+  /**
+   * The domain's compartment, `domains/<name>` under the tenancy root.
+   * Compartments are free; making one is still a change to the tenancy, so
+   * it runs in the build (the `tasks` tier), never at `domain new`.
+   *
+   * @param request - The domain, and the region its calls go through.
+   * @param call - The step's log and stop.
+   * @returns The compartment's id, and whether this call made it.
+   */
+  async compartment_ensure(request: { domain: string; region: string }, call: BuildCall): Promise<{ id: string; made: boolean }> {
+    const api: OciBuildApi = this.api_in(request.region);
+    const tenancy = await api.tenancy_get();
+    const parent = await api.compartmentChild_ensure(tenancy.id, DOMAINS_COMPARTMENT, 'The Trusted Domains stratus builds, one compartment each', { 'mise-role': 'domains' });
+    call.log(parent.made ? `made the compartment ${DOMAINS_COMPARTMENT} under ${tenancy.name}` : `${DOMAINS_COMPARTMENT} is there`);
+    await this.compartment_awaitActive(api, parent.id, call);
+    const own = await api.compartmentChild_ensure(parent.id, request.domain, `The Trusted Domain ${request.domain}`, { 'mise-domain': request.domain });
+    call.log(own.made ? `made the compartment ${DOMAINS_COMPARTMENT}/${request.domain}` : `${DOMAINS_COMPARTMENT}/${request.domain} is there`);
+    await this.compartment_awaitActive(api, own.id, call);
+    return own;
+  }
+
+  /**
+   * Waits until a compartment is active: a new one takes a moment to be usable.
+   *
+   * @param api - The build calls.
+   * @param id - The compartment.
+   * @param call - The step's log and stop.
+   */
+  private async compartment_awaitActive(api: OciBuildApi, id: string, call: BuildCall): Promise<void> {
+    for (;;) {
+      const state: string = await api.compartmentState_get(id);
+      if (state === 'ACTIVE') return;
+      if (call.signal.aborted) throw new Error(`stopped while ${id} was ${state}`);
+      call.log(`compartment ${state.toLowerCase()}; waiting`);
+      await poll_wait(this.options.pollMs ?? 5000, call.signal);
+    }
+  }
+
   async preflight(request: { domain: string; spec: DomainSpec; region: string; baseDomain: string; compartmentId: string }, call: BuildCall): Promise<PreflightCheck[]> {
     const api: OciBuildApi = this.api_in(request.region);
     const checks: PreflightCheck[] = [];
@@ -253,8 +297,9 @@ export class OciBuilder implements CloudBuilder {
       return { ok: state.toUpperCase() === 'ACTIVE', note: state.toLowerCase() };
     });
     await check('attribution tag', async () => {
-      const ok: boolean = request.compartmentId !== '' && await api.tag_exists(request.compartmentId, 'openshift-tags', 'openshift-resource');
-      return { ok, note: ok ? 'openshift-tags.openshift-resource exists' : 'openshift-tags.openshift-resource is missing in the compartment' };
+      const home: string | null = await api.tagNamespaceCompartment_find(TAG_NAMESPACE);
+      const ok: boolean = home !== null && await api.tag_exists(home, TAG_NAMESPACE, 'openshift-resource');
+      return { ok, note: ok ? `${TAG_NAMESPACE}.openshift-resource exists${home === request.compartmentId ? '' : ', shared from another compartment'}` : `${TAG_NAMESPACE}.openshift-resource is missing in the tenancy` };
     });
     await check('spec', async () => {
       if (request.spec.workers.count > 0) return { ok: false, note: 'workers are not proven on OCI yet: a compact cluster (workers 0) only' };
@@ -272,7 +317,9 @@ export class OciBuilder implements CloudBuilder {
       return { ok: free !== null && free >= 3, note: `3 needed, ${free ?? 'unknown'} free` };
     });
     await check('zone', async () => {
-      const served: string[] = await api.zoneNameservers_get(request.baseDomain, request.compartmentId);
+      const zoneHome: string | null = await api.zoneCompartment_find(request.baseDomain);
+      if (zoneHome === null) return { ok: false, note: `no zone ${request.baseDomain} in the tenancy` };
+      const served: string[] = await api.zoneNameservers_get(request.baseDomain, zoneHome);
       const resolved: string[] = this.options.nameservers_resolve === undefined ? [] : (await this.options.nameservers_resolve(request.baseDomain)).map((name: string): string => name.replace(/\.$/, '')).sort();
       const same: boolean = served.length > 0 && JSON.stringify(served) === JSON.stringify(resolved);
       return { ok: same, note: same ? `${request.baseDomain} is delegated to OCI's name servers` : `${request.baseDomain}: OCI serves ${served.join(' ') || 'nothing'}, the world asks ${resolved.join(' ') || 'nobody'}` };
@@ -306,9 +353,12 @@ export class OciBuilder implements CloudBuilder {
       if (request.compartmentId === undefined || request.baseDomain === undefined || request.isoLink === undefined || request.isoLink === '') throw new Error('a new stack needs the compartment, the zone and the image\'s link');
       const sshPublicKey: string | null = this.options.sshPublicKey?.() ?? null;
       if (sshPublicKey === null) throw new Error('no SSH public key on the host');
-      const tenancyId: string = (await this.api_in(request.region).tenancy_get()).id;
+      const api: OciBuildApi = this.api_in(request.region);
+      const tenancyId: string = (await api.tenancy_get()).id;
+      const tagHome: string | null = await api.tagNamespaceCompartment_find(TAG_NAMESPACE);
       const variables: Record<string, string> = stackVariables_build({
         domain: request.domain, spec: request.spec, tenancyId, compartmentId: request.compartmentId, region: request.region,
+        ...(tagHome !== null ? { tagNamespaceCompartmentId: tagHome } : {}),
         baseDomain: request.baseDomain, isoLink: request.isoLink, sshPublicKey: sshPublicKey.trim(),
       });
       const stack = await rm.stack_create({
@@ -351,8 +401,10 @@ export class OciBuilder implements CloudBuilder {
     const api: OciBuildApi = this.api_in(request.region);
     const cluster: string = `${request.domain}.${request.baseDomain}`;
     const records: Array<[string, string]> = [[`api.${cluster}`, request.outputs.apiIp], [`api-int.${cluster}`, request.outputs.apiIntIp], [`*.apps.${cluster}`, request.outputs.appsIp]];
+    // The zone is shared and lives where it was made, not in the domain's own compartment.
+    const zoneHome: string = (await api.zoneCompartment_find(request.baseDomain)) ?? request.compartmentId;
     for (const [name, address] of records) {
-      await api.record_upsert(request.baseDomain, name, address, request.compartmentId);
+      await api.record_upsert(request.baseDomain, name, address, zoneHome);
       call.log(`${name} -> ${address}`);
     }
     return records.map(([name]: [string, string]): string => name);
@@ -370,8 +422,9 @@ export class OciBuilder implements CloudBuilder {
       gone.push(`the stack's resources (${request.stackRef})`);
     }
     const cluster: string = `${request.domain}.${request.baseDomain}`;
+    const zoneHome: string = (await api.zoneCompartment_find(request.baseDomain)) ?? request.compartmentId;
     for (const name of [`api.${cluster}`, `api-int.${cluster}`, `*.apps.${cluster}`]) {
-      await api.record_delete(request.baseDomain, name, request.compartmentId);
+      await api.record_delete(request.baseDomain, name, zoneHome);
       call.log(`record ${name} removed`);
     }
     gone.push('3 DNS records');

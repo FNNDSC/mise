@@ -37,6 +37,9 @@ export interface StepRecord {
  * @property compartmentId - The compartment its resources live in, when known.
  * @property adopted - Where it was adopted from, and when: built elsewhere, never built on here.
  * @property gone - When its teardown removed what it built.
+ * @property protected - Whether teardown is refused. A domain is born
+ *   protected; `domain protect <name> off` lifts it, as its own line, so no
+ *   single slip or replayed line removes a tenant. Absent reads as protected.
  */
 export interface DomainRecord {
   name: string;
@@ -49,6 +52,7 @@ export interface DomainRecord {
   compartmentId?: string;
   adopted?: { from: string; at: string };
   gone?: string;
+  protected?: boolean;
 }
 
 /**

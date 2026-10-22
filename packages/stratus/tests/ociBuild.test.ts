@@ -37,6 +37,20 @@ class RecordedApi implements OciBuildApi {
   served: string[] = ['ns1.p68.dns.oraclecloud.net', 'ns2.p68.dns.oraclecloud.net'];
   async tenancy_get() { return { id: 'ocid1.tenancy.t', name: 'fnndsc-bch' }; }
   async compartmentState_get() { return this.compartment; }
+  zoneHome: string | null = 'ocid1.compartment.oc1..harbor-oci';
+  tagHome: string | null = 'ocid1.compartment.oc1..harbor-oci';
+  children: Map<string, string> = new Map();
+  async zoneCompartment_find() { return this.zoneHome; }
+  async tagNamespaceCompartment_find() { return this.tagHome; }
+  async compartmentChild_ensure(parentId: string, name: string, _description: string, tags: Record<string, string>) {
+    const key: string = `${parentId}/${name}`;
+    const kept: string | undefined = this.children.get(key);
+    if (kept !== undefined) return { id: kept, made: false };
+    const id: string = `ocid1.compartment.oc1..${name}`;
+    this.children.set(key, id);
+    this.calls.push(`compartment ${name} under ${parentId} ${JSON.stringify(tags)}`);
+    return { id, made: true };
+  }
   async tag_exists() { return this.tagged; }
   async limitFree_get() { return this.lbFree; }
   async zoneNameservers_get() { return this.served; }
@@ -45,7 +59,7 @@ class RecordedApi implements OciBuildApi {
   async object_delete(bucket: string, object: string) { this.calls.push(`delete ${bucket}/${object}`); }
   async link_create(bucket: string, object: string): Promise<OciLink> { this.calls.push(`link ${bucket}/${object}`); return { id: 'par-1', url: 'https://objectstorage/p/SECRET/o/x.iso' }; }
   async link_delete(_bucket: string, linkId: string) { this.calls.push(`unlink ${linkId}`); }
-  async record_upsert(zone: string, name: string, address: string) { this.calls.push(`A ${name} ${address} in ${zone}`); }
+  async record_upsert(zone: string, name: string, address: string, compartmentId: string) { this.calls.push(`A ${name} ${address} in ${zone} (${compartmentId})`); }
   async record_delete(_zone: string, name: string) { this.calls.push(`unrecord ${name}`); }
   async volume_delete(id: string) { this.calls.push(`volume ${id}`); }
 }
@@ -107,6 +121,17 @@ describe('the OCI builder\'s build and teardown', () => {
     });
   });
 
+  it("makes the domain's compartment under domains, once, tagged with its name", async () => {
+    const made = await builder.compartment_ensure({ domain: 'quay', region: 'r' }, call());
+    expect(made).toEqual({ id: 'ocid1.compartment.oc1..quay', made: true });
+    expect(api.calls).toEqual([
+      'compartment domains under ocid1.tenancy.t {"mise-role":"domains"}',
+      'compartment quay under ocid1.compartment.oc1..domains {"mise-domain":"quay"}',
+    ]);
+    expect(await builder.compartment_ensure({ domain: 'quay', region: 'r' }, call())).toEqual({ id: 'ocid1.compartment.oc1..quay', made: false });
+    expect(api.calls).toHaveLength(2);
+  });
+
   it('preflight checks what harbor-oci checked, each on its own', async () => {
     const checks = await builder.preflight({ domain: 'trial', spec: SPEC_DEFAULT, region: 'us-ashburn-1', baseDomain: 'b.org', compartmentId: 'c' }, call());
     expect(checks.map((check) => `${check.name}:${check.ok}`)).toEqual(['credential:true', 'compartment:true', 'attribution tag:true', 'spec:true', 'room:false', 'load balancers:true', 'zone:true', 'SSH key:true']);
@@ -134,7 +159,11 @@ describe('the OCI builder\'s build and teardown', () => {
     expect(outputs).toEqual({ stackRef: 'stack-1', apiIp: '129.0.0.1', apiIntIp: '10.0.0.2', appsIp: '129.0.0.3', manifests: [{ name: 'oci-dynamic-custom-manifest.yml', content: 'kind: List\n' }] });
     expect(rm.calls).toEqual(['stack {"mise-domain":"trial"}', 'plan stack-1', 'apply stack-1 from job-plan']);
     expect(await builder.dns_upsert({ domain: 'trial', baseDomain: 'b.org', outputs, compartmentId: 'c', region: 'r' }, call())).toEqual(['api.trial.b.org', 'api-int.trial.b.org', '*.apps.trial.b.org']);
-    expect(api.calls.slice(-3)).toEqual(['A api.trial.b.org 129.0.0.1 in b.org', 'A api-int.trial.b.org 10.0.0.2 in b.org', 'A *.apps.trial.b.org 129.0.0.3 in b.org']);
+    // The records go in the zone where it lives (harbor-oci's), not the domain's own compartment.
+    const zone: string = '(ocid1.compartment.oc1..harbor-oci)';
+    expect(api.calls.slice(-3)).toEqual([`A api.trial.b.org 129.0.0.1 in b.org ${zone}`, `A api-int.trial.b.org 10.0.0.2 in b.org ${zone}`, `A *.apps.trial.b.org 129.0.0.3 in b.org ${zone}`]);
+    // The stack attributes with the tenancy's one tag namespace, where it lives.
+    expect(rm.variables['tag_namespace_compartment_ocid_resource_tagging']).toBe('ocid1.compartment.oc1..harbor-oci');
     delete rm.outputs['dynamic_custom_manifest'];
     await expect(builder.infra_apply({ domain: 'trial', plan, region: 'r' }, call())).rejects.toThrow('the apply left no dynamic_custom_manifest');
     await expect(builder.infra_apply({ domain: 'trial', plan: { ref: 'p', rows: [] }, region: 'r' }, call())).rejects.toThrow('no stack to apply in');
@@ -182,10 +211,34 @@ describe('domain teardown', () => {
     surface_set(surface);
     runner_install(new JobRunner(join(root, 'jobs'), [{ id: STEPS_SOURCE, label: 'steps' }]));
     sink_set(new BufferSink());
-    store.create({ name: 'trial', created: 'now', region: 'r', baseDomain: 'b', steps: {}, ids: { stackRef: 'stack-1', isoObject: 'trial-discovery.iso', clusterId: 'cluster-trial', infraEnvId: 'infraenv-trial' }, compartmentId: 'c' }, SPEC_DEFAULT);
+    // Unprotected: these tests are about teardown itself; protection has its own.
+    store.create({ name: 'trial', created: 'now', region: 'r', baseDomain: 'b', steps: {}, ids: { stackRef: 'stack-1', isoObject: 'trial-discovery.iso', clusterId: 'cluster-trial', infraEnvId: 'infraenv-trial' }, compartmentId: 'c', protected: false }, SPEC_DEFAULT);
     store.secret_write('trial', 'kubeconfig', 'clusters: []\n');
   });
   afterEach(() => { runner_install(null); surface_set(new HeadlessSurface()); rmSync(root, { recursive: true, force: true }); });
+
+  it("asks for the installer's account when a build will need it and none is kept, and keeps it on the host", async () => {
+    const { fileAccount_make } = await import('../src/installer/account.js');
+    const account = fileAccount_make(join(root, 'ocm', 'service-account.env'));
+    const asking: DomainCommandContext = { ...context, build: { ...context.build!, account } };
+    store.create({ name: 'fresh', created: 'now', region: 'r', baseDomain: 'b', steps: {}, ids: {}, protected: true }, SPEC_DEFAULT);
+    surface.answer = 'client-1';
+    await domain_run(asking, ['build', 'fresh', '--through', 'compartment']);
+    expect(account.present()).toBe(false);
+    await domain_run(asking, ['build', 'fresh', '--through', 'cluster']);
+    expect(account.present()).toBe(true);
+    expect(store.record_read('fresh')?.compartmentId).toBe('ocid1.compartment.oc1..fake-fresh');
+  });
+
+  it('refuses a protected domain by name, and lifting it is a line of its own', async () => {
+    store.record_update('trial', (record: DomainRecord): void => { record.protected = true; });
+    expect((await domain_run(context, ['teardown', 'trial'])).renderedErr).toBe('domain teardown: trial: Operation not permitted: protected (domain protect trial off lifts it, as its own line)\n');
+    expect(plain((await domain_run(context, ['protect', 'trial'])).rendered)).toBe('trial: protected (teardown refused)\n');
+    expect(plain((await domain_run(context, ['protect', 'trial', 'off'])).rendered)).toBe('trial: no longer protected; domain teardown trial will ask for its name\n');
+    expect(store.record_read('trial')?.protected).toBe(false);
+    expect((await domain_run(context, ['protect', 'trial', 'maybe'])).renderedErr).toBe('domain protect: usage: domain protect <name> [on|off]\n');
+    expect((await domain_run(context, ['protect', 'ghost', 'on'])).renderedErr).toBe('domain protect: ghost: no such domain kept here\n');
+  });
 
   it('shows what goes, asks for the name, and removes it; a wrong name removes nothing', async () => {
     surface.answer = 'tria';

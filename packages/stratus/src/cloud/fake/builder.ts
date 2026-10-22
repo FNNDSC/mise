@@ -30,6 +30,8 @@ interface FakeCluster {
  */
 export class FakeBuildWorld {
   private readonly clusters: Map<string, FakeCluster> = new Map();
+  /** The compartments made, by domain. */
+  readonly compartments: Map<string, string> = new Map();
   private serial: number = 0;
 
   constructor(readonly tickMs: number = 0) {}
@@ -101,6 +103,16 @@ export class FakeCloudBuilder implements CloudBuilder {
   readonly id: string = 'fake';
 
   constructor(private readonly world: FakeBuildWorld) {}
+
+  async compartment_ensure(request: { domain: string; region: string }, call: BuildCall): Promise<{ id: string; made: boolean }> {
+    await this.world.tick(1, call.signal);
+    const kept: string | undefined = this.world.compartments.get(request.domain);
+    if (kept !== undefined) return { id: kept, made: false };
+    const id: string = `ocid1.compartment.oc1..fake-${request.domain}`;
+    this.world.compartments.set(request.domain, id);
+    call.log(`made the compartment domains/${request.domain}`);
+    return { id, made: true };
+  }
 
   async preflight(request: { domain: string; spec: DomainSpec; region: string; baseDomain: string; compartmentId: string }, call: BuildCall): Promise<PreflightCheck[]> {
     await this.world.tick(1, call.signal);

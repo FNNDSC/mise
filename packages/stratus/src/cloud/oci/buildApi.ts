@@ -28,6 +28,12 @@ export interface OciBuildApi {
   tenancy_get(): Promise<{ id: string; name: string }>;
   /** A compartment's lifecycle state. */
   compartmentState_get(compartmentId: string): Promise<string>;
+  /** The compartment a DNS zone of a name lives in, anywhere in the tenancy, or null. */
+  zoneCompartment_find(zone: string): Promise<string | null>;
+  /** The compartment a tag namespace of a name lives in, anywhere in the tenancy, or null. Its name is the tenancy's, not a compartment's. */
+  tagNamespaceCompartment_find(namespace: string): Promise<string | null>;
+  /** An active compartment of a name directly under a parent, made (with the tags given) when there is none; its id. */
+  compartmentChild_ensure(parentId: string, name: string, description: string, tags: Record<string, string>): Promise<{ id: string; made: boolean }>;
   /** Whether a tag namespace holds a tag, in a compartment. */
   tag_exists(compartmentId: string, namespace: string, tag: string): Promise<boolean>;
   /** How many of a limit are free, region-wide. */
@@ -85,6 +91,12 @@ export function ociBuildApi_make(options: OciBuildApiOptions): OciBuildApi {
   const blocks: core.BlockstorageClient = regional(new core.BlockstorageClient({ authenticationDetailsProvider: provider }));
   const tenancyId: string = provider.getTenantId();
   let namespace: string | null = null;
+  // The root and every active compartment beneath it: where a shared thing
+  // (the zone, the tag namespace) may live.
+  const compartments_all = async (): Promise<string[]> => {
+    const beneath = (await ident.listCompartments({ compartmentId: tenancyId, compartmentIdInSubtree: true, lifecycleState: identity.models.Compartment.LifecycleState.Active })).items;
+    return [tenancyId, ...beneath.map((compartment): string => compartment.id).filter((id): id is string => typeof id === 'string')];
+  };
   const namespace_get = async (): Promise<string> => {
     if (namespace === null) namespace = (await store.getNamespace({ compartmentId: tenancyId })).value;
     return namespace;
@@ -96,6 +108,27 @@ export function ociBuildApi_make(options: OciBuildApiOptions): OciBuildApi {
     },
     async compartmentState_get(compartmentId) {
       return String((await ident.getCompartment({ compartmentId })).compartment.lifecycleState);
+    },
+    async zoneCompartment_find(zone) {
+      for (const compartmentId of await compartments_all()) {
+        const zones = (await dnsClient.listZones({ compartmentId, name: zone })).items;
+        if (zones.length > 0) return compartmentId;
+      }
+      return null;
+    },
+    async tagNamespaceCompartment_find(namespaceName) {
+      for (const compartmentId of await compartments_all()) {
+        const spaces = (await ident.listTagNamespaces({ compartmentId })).items;
+        if (spaces.some((space): boolean => space.name === namespaceName)) return compartmentId;
+      }
+      return null;
+    },
+    async compartmentChild_ensure(parentId, name, description, tags) {
+      const children = (await ident.listCompartments({ compartmentId: parentId, lifecycleState: identity.models.Compartment.LifecycleState.Active })).items;
+      const found = children.find((child): boolean => child.name === name);
+      if (found?.id !== undefined) return { id: found.id, made: false };
+      const made = (await ident.createCompartment({ createCompartmentDetails: { compartmentId: parentId, name, description, freeformTags: tags } })).compartment;
+      return { id: made.id ?? '', made: true };
     },
     async tag_exists(compartmentId, namespaceName, tag) {
       const spaces = (await ident.listTagNamespaces({ compartmentId, lifecycleState: identity.models.TagNamespace.LifecycleState.Active })).items;

@@ -24,13 +24,13 @@ import { specNodes_of, type DomainSpec, type SpecNode } from './spec.js';
 import type { DomainRecord, DomainStore, StepRecord } from './state.js';
 
 /** The build's steps, in order: the machine, then ChRIS on it. */
-export const BUILD_STEPS: ReadonlyArray<string> = ['preflight', 'cluster', 'iso', 'infra-plan', 'infra-apply', 'dns', 'manifests', 'hosts', 'run', 'postinstall', 'verify', 'chris-deploy', 'chris-seed', 'smoke'];
+export const BUILD_STEPS: ReadonlyArray<string> = ['compartment', 'preflight', 'cluster', 'iso', 'infra-plan', 'infra-apply', 'dns', 'manifests', 'hosts', 'run', 'postinstall', 'verify', 'chris-deploy', 'chris-seed', 'smoke'];
 
 /** The first step that bills: the run stops before it until the cost is accepted. */
 export const FIRST_BILLING_STEP: string = 'infra-apply';
 
 /** The steps this session has; the run stops before any other. */
-export const STEPS_WRITTEN: ReadonlyArray<string> = ['preflight', 'cluster', 'iso', 'infra-plan', 'infra-apply', 'dns', 'manifests', 'hosts', 'run'];
+export const STEPS_WRITTEN: ReadonlyArray<string> = ['compartment', 'preflight', 'cluster', 'iso', 'infra-plan', 'infra-apply', 'dns', 'manifests', 'hosts', 'run'];
 
 /** The task source the runs are kept in. */
 export const STEPS_SOURCE: string = 'steps';
@@ -126,6 +126,14 @@ function ids_need(record: DomainRecord): InstallerIds {
 
 /** Each step's work. */
 const STEP_WORK: Readonly<Record<string, (call: StepCall) => Promise<string>>> = {
+  compartment: async (call: StepCall): Promise<string> => {
+    const record: DomainRecord = call.record();
+    if (record.compartmentId !== undefined) return `in ${record.compartmentId}`;
+    if (call.deps.builder.compartment_ensure === undefined) throw new Error('this cloud cannot make a compartment: domain new --compartment <id> names one');
+    const own = await call.deps.builder.compartment_ensure({ domain: call.name, region: record.region }, call);
+    call.deps.store.record_update(call.name, (current: DomainRecord): void => { current.compartmentId = own.id; });
+    return `${own.made ? 'made' : 'found'} domains/${call.name}: ${own.id}`;
+  },
   preflight: async (call: StepCall): Promise<string> => {
     const record: DomainRecord = call.record();
     const checks: PreflightCheck[] = await call.deps.builder.preflight({ domain: call.name, spec: call.spec, region: record.region, baseDomain: record.baseDomain, compartmentId: record.compartmentId ?? '' }, call);

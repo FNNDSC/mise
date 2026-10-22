@@ -16,12 +16,13 @@
 import chalk from 'chalk';
 import { envelope_error, envelope_ok, taskState_isOver, type CommandEnvelope } from '@fnndsc/menu';
 import {
-  commandCancellation_enable, commandCancellation_signalGet, JobRefusal, repl_confirm, runner_get, sink_dataLine, surface_get,
+  commandCancellation_enable, commandCancellation_signalGet, JobRefusal, repl_confirm, repl_question, repl_questionHidden, runner_get, sink_dataLine, surface_get,
   type JobRecord, type JobRunner,
 } from '@fnndsc/brasa/core';
 import type { CloudDriver, CloudPrice, CloudShape } from '../cloud/driver.js';
 import { planCounts_alter, planCounts_of, planCounts_words, type CloudBuilder, type InfraPlan } from '../cloud/builder.js';
 import { adoption_keep, adoptRun_make, checkout_read, type CheckoutRead } from '../domain/adopt.js';
+import type { InstallerAccountKeeper } from '../installer/account.js';
 import type { VerifyReach } from './verify.js';
 import type { HarborDomain } from '../domains/harborOci.js';
 import type { DomainTree } from '../vfs/domains.js';
@@ -45,6 +46,8 @@ export interface BuildCommandContext {
   readonly verifyReach?: VerifyReach;
   /** The DNS zone a new domain's names live under when `--base-domain` is not given. */
   readonly baseDomain: string | null;
+  /** Where the installer's account is kept; a build asks for it when it is missing. */
+  readonly account?: InstallerAccountKeeper;
 }
 
 /** The options `domain new` takes, each with a value. */
@@ -104,7 +107,7 @@ export async function domainNew_run(context: BuildCommandContext, args: Readonly
   const sized = specOptions_apply(SPEC_DEFAULT, new Map([...read.options].filter(([option]: [string, string]): boolean => option !== '--base-domain' && option !== '--compartment')));
   const compartmentId: string | undefined = read.options.get('--compartment');
   if ('error' in sized) return envelope_error('', undefined, `domain new: ${sized.error}\n`);
-  const record: DomainRecord = { name, created: new Date().toISOString(), region, baseDomain, steps: {}, ids: {}, ...(compartmentId !== undefined ? { compartmentId } : {}) };
+  const record: DomainRecord = { name, created: new Date().toISOString(), region, baseDomain, steps: {}, ids: {}, protected: true, ...(compartmentId !== undefined ? { compartmentId } : {}) };
   context.store.create(record, sized.spec);
   const lines: string[] = [
     `${chalk.bold(name)}  ${name}.${baseDomain}  spec written: ${context.store.folder_of(name)}/spec.yaml`,
@@ -273,6 +276,8 @@ export async function domainBuild_run(context: BuildCommandContext, args: Readon
   const runner: JobRunner | null = runner_get();
   if (runner === null) return envelope_error('', undefined, 'domain build: this session runs no tasks\n');
   const name: string = need.domain.name;
+  const asked: string | null = await account_askWhenMissing(context, need.record, through);
+  if (asked !== null) return envelope_error('', undefined, `domain build: ${asked}\n`);
   const id: string = buildJob_id(name);
   for (;;) {
     const running: JobRecord | undefined = runner.job_get(STEPS_SOURCE, id);
@@ -303,6 +308,32 @@ export async function domainBuild_run(context: BuildCommandContext, args: Readon
         : `${name}: done through ${BUILD_STEPS[BUILD_STEPS.indexOf(next) - 1] ?? ''}; next: ${next}`;
     return envelope_ok(`${summary}\n`);
   }
+}
+
+/**
+ * Asks for the installer's account when the build will need it and the host
+ * has none: the id in the open, the secret hidden, kept on the host only.
+ *
+ * @param context - The session.
+ * @param record - The domain's state.
+ * @param through - The last step asked for, when one was.
+ * @returns Why the build cannot go on, or null when it can.
+ */
+async function account_askWhenMissing(context: BuildCommandContext, record: DomainRecord, through: string | undefined): Promise<string | null> {
+  const account: InstallerAccountKeeper | undefined = context.account;
+  if (account === undefined || account.present()) return null;
+  const next: string | null = stepNext_of(record);
+  const needs: boolean = next !== null && BUILD_STEPS.indexOf(next) <= BUILD_STEPS.indexOf('cluster')
+    && (through === undefined || BUILD_STEPS.indexOf(through) >= BUILD_STEPS.indexOf('cluster'));
+  if (!needs) return null;
+  sink_dataLine(chalk.yellow(`The build needs Red Hat's service account (console.redhat.com, Service Accounts); none is kept in ${account.path}.`));
+  const clientId: string = (await repl_question('Red Hat service account client id:')).trim();
+  if (clientId === '') return 'no client id given; nothing kept, nothing started';
+  const secret: string = (await repl_questionHidden('Its client secret:')).trim();
+  if (secret === '') return 'no secret given; nothing kept, nothing started';
+  account.keep(clientId, secret);
+  sink_dataLine(chalk.gray(`kept in ${account.path}, mode 600, on this host only`));
+  return null;
 }
 
 /**

@@ -4,8 +4,8 @@
  * is a string, as Resource Manager takes them.
  *
  * The choices: the stack writes no DNS (the zone is long-lived and the dns
- * step writes the three records), the attribution tag namespace lives in the
- * domain's compartment, the API's load balancer is public, the Assisted
+ * step writes the three records), the attribution tag namespace is the one
+ * the tenancy already has, wherever it lives (its name is tenancy-wide), the API's load balancer is public, the Assisted
  * Installer installs. With no workers only `compute_count` is set: the stack
  * still reads `compute_shape` for the image, so its other compute variables
  * keep their defaults and a compact cluster plans unchanged.
@@ -64,6 +64,8 @@ export interface StackVarsRequest {
   readonly spec: DomainSpec;
   readonly tenancyId: string;
   readonly compartmentId: string;
+  /** Where the `openshift-tags` namespace lives: a tenancy-wide name, so wherever the first domain made it. */
+  readonly tagNamespaceCompartmentId?: string;
   readonly region: string;
   readonly baseDomain: string;
   /** The discovery image's link; a secret. */
@@ -81,7 +83,7 @@ export function stackVariables_build(request: StackVarsRequest): Record<string, 
   return {
     tenancy_ocid: request.tenancyId,
     compartment_ocid: request.compartmentId,
-    tag_namespace_compartment_ocid_resource_tagging: request.compartmentId,
+    tag_namespace_compartment_ocid_resource_tagging: request.tagNamespaceCompartmentId ?? request.compartmentId,
     region: request.region,
     cluster_name: request.domain,
     zone_dns: request.baseDomain,

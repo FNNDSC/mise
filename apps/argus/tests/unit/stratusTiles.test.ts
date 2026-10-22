@@ -7,12 +7,12 @@
  * teaching the line that names a family when there is none.
  */
 import { describe, it, expect } from '@jest/globals';
-import { limitShort_of, stratusTiles_make, zoneShort_of, type StratusTileHooks } from '../../src/compositions/stratus/tiles.js';
+import { limitShort_of, money_text, stratusTiles_make, zoneShort_of, type StratusTileHooks } from '../../src/compositions/stratus/tiles.js';
 import type { ExecuteOutcome } from '../../src/calypso/client.js';
 
 const DOMAINS = {
   domains: [
-    { name: 'harbor', path: '/net/oci/t/domains/harbor', cluster: 'harbor.oci.example.org', lastDone: '09-run', steps: [{ folder: '03-iso', state: 'expired' }, { folder: '09-run', state: 'done' }], resources: { instances: 3 } },
+    { name: 'harbor', path: '/net/oci/t/domains/harbor', cluster: 'harbor.oci.example.org', lastDone: '09-run', steps: [{ folder: '03-iso', state: 'expired' }, { folder: '09-run', state: 'done' }], resources: { instances: 3 }, cost: { hourly: 0.6213, soFar: 210, currency: 'USD' } },
     { name: 'lab', path: '/net/oci/t/domains/lab', cluster: null, lastDone: null, steps: [{ folder: '01-preflight', state: 'unknown' }], resources: null },
   ],
 };
@@ -47,8 +47,9 @@ describe('the stratus tiles', () => {
     const tiles = await stratusTiles_make(hooks_make({ 'domain status': DOMAINS, capacity: CAPACITY }, seen))();
     const domains = tiles.lead!.tile;
     expect(tiles.lead!.weight).toBe(2);
-    expect(domains.figures.map((f) => [f.text, f.errored ?? false])).toEqual([['2 DOMAINS', false], ['1 NEEDS A LOOK', true]]);
-    expect(domains.rows.map((r) => [r.text, r.errored])).toEqual([['harbor  09-run  harbor.oci.example.org', true], ['lab  NOTHING DONE', false]]);
+    expect(domains.figures.map((f) => [f.text, f.errored ?? false])).toEqual([['2 DOMAINS', false], ['1 NEEDS A LOOK', true], ['$0.62/H', false]]);
+    expect(domains.rows.map((r) => [r.text, r.errored])).toEqual([['harbor  09-run  $0.62/h  harbor.oci.example.org', true], ['lab  NOTHING DONE', false]]);
+    expect(money_text(1, 'EUR')).toBe('EUR 1.00');
     domains.rows[0]!.open!();
     domains.enter();
     expect(seen).toEqual(['cd /net/oci/t/domains/harbor', 'home']);

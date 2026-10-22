@@ -114,6 +114,22 @@ export interface CloudPrice {
 }
 
 /**
+ * What storage and load balancing cost, per the price list.
+ *
+ * @property volumeGibMonth - A GiB of block or boot volume, a month.
+ * @property vpuGibMonth - A volume performance unit on a GiB, a month.
+ * @property balancerHour - A flexible load balancer, an hour, before bandwidth.
+ * @property balancerMbpsHour - A megabit per second of its minimum bandwidth, an hour.
+ */
+export interface ServicePrices {
+  readonly volumeGibMonth: number;
+  readonly vpuGibMonth: number;
+  readonly balancerHour: number;
+  readonly balancerMbpsHour: number;
+  readonly currency: string;
+}
+
+/**
  * The resource kinds every cloud has, as the tree's folder names
  * (docs/stratus.adoc, D4). Subnets and security groups nest under their
  * network; the rest stand at a container's level.
@@ -146,6 +162,9 @@ export interface CloudInstance extends CloudResource {
   readonly zone: string;
   /** Its addresses, private first. */
   readonly ips: ReadonlyArray<string>;
+  /** Its vCPUs and memory, when the cloud says. */
+  readonly vcpus?: number;
+  readonly memoryGib?: number;
 }
 
 /** A private network: a VCN, a VPC. */
@@ -169,6 +188,8 @@ export interface CloudLoadBalancer extends CloudResource {
   readonly ips: ReadonlyArray<string>;
   /** The cloud's shape name (`flexible`). */
   readonly shape: string;
+  /** A flexible shape's minimum bandwidth, what it bills by. */
+  readonly minimumMbps?: number;
 }
 
 /** A block volume or a boot volume. */
@@ -179,6 +200,8 @@ export interface CloudVolume extends CloudResource {
   readonly attachedTo: string | null;
   /** Whether it is an instance's boot volume. */
   readonly boot: boolean;
+  /** Its performance, in volume performance units per GiB. */
+  readonly vpusPerGib?: number;
 }
 
 /** An object-storage bucket. */
@@ -252,6 +275,8 @@ export interface CloudDriver {
   shapes_list(region: string): Promise<CloudShape[]>;
   /** List prices for the shapes, per hour. */
   prices_list(): Promise<CloudPrice[]>;
+  /** What storage and load balancing cost; null when the list does not say. */
+  servicePrices_get(): Promise<ServicePrices | null>;
   /** The machines in a container, in a region. */
   instances_list(containerId: string, region: string): Promise<CloudInstance[]>;
   /** The private networks in a container, in a region. */

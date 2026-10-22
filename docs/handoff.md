@@ -2,9 +2,9 @@
 
 - Last updated: 2026-10-22
 - Last verified against `main`: the merge of #1197, 2026-10-22
-- Working branches: `agent/stratus-runner` (PR #1200, 4a.1), `agent/stratus-steps` (PR #1201, 4a.2, on #1200), `agent/stratus-adopt` (4b code, on #1201); none merged
+- Working branches, a stack, none merged: #1200 (4a.1 runner, tier) ← #1201 (4a.2 build over fakes) ← #1202 (4b adopt, Resource Manager) ← #1203 (4c.1 verify) ← 4c.2 spend (`agent/stratus-spend`)
 - Current milestone: steps 1 to 3 of the order of work in [stratus.adoc](stratus.adoc#order) are on `main`, all unpublished beyond @fnndsc/stratus 0.1.0 until the next `make publish` (the operator's word). Follow-ups 1 to 3 merged (#1190, #1191, #1192), and the four defects found along the way (#1194, #1195)
-- Next action: the operator's word on #1200, #1201 and #1202. 4b ran live 2026-10-22: harbor's Resource Manager stack (tagged mise-domain=harbor, in its own compartment by the operator's exception) holds the imported state; the operator's daemon finds it by tag on `domain adopt harbor --from ~/src/harbor-oci`. Then 4c (verify and spend)
+- Next action: the operator's word on the stack, merged in order (#1200 first; each then rebases). Then 4d, the first real build in a scratch compartment, which bills and waits on the operator's word on the day; it needs the OCI builder's preflight, ISO bucket, apply and DNS, and the Assisted Installer driver
 
 This file is the handoff between sessions and between models. It says where the work stands and what to do next, with the facts a fresh context needs to do it without rediscovery. The design itself is [stratus.adoc](stratus.adoc); the bastions are [bastion.adoc](bastion.adoc) and [dev-bastion.adoc](dev-bastion.adoc); what Red Hat ships against the primitive is [redhat-fl.adoc](redhat-fl.adoc); the metaphor every figure is drawn in is [linux-metaphor.adoc](linux-metaphor.adoc).
 

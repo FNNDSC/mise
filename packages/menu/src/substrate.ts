@@ -30,6 +30,8 @@ export const domainSummarySchema = z.object({
   steps: z.array(domainStepSchema),
   /** Its compartment's live resources by kind, or null when not counted. */
   resources: z.record(z.string(), z.number()).nullable(),
+  /** What it costs at list price, an hour and so far, or null when not priced; absent from an older daemon. */
+  cost: z.object({ hourly: z.number(), soFar: z.number(), currency: z.string() }).nullable().optional(),
 });
 
 /** What `domain status` answers. */

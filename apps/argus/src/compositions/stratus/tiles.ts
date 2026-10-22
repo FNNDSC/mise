@@ -73,6 +73,17 @@ function capacityRow_text(row: CapacityRow): string {
 }
 
 /**
+ * Money on a tile: `$0.62`, or `EUR 0.62`.
+ *
+ * @param amount - The amount.
+ * @param currency - Its currency.
+ * @returns The text.
+ */
+export function money_text(amount: number, currency: string): string {
+  return `${currency === 'USD' ? '$' : `${currency} `}${amount.toFixed(2)}`;
+}
+
+/**
  * Makes the stratus tiles' source: asked each time the dashboard paints.
  *
  * @param hooks - What the tiles reach.
@@ -85,14 +96,19 @@ export function stratusTiles_make(hooks: StratusTileHooks): () => Promise<TileCo
     const domains: DomainSummary[] = domainsModel?.domains ?? [];
     const wrong = (domain: DomainSummary): boolean => domain.steps.some((step): boolean => WRONG_STATES.includes(step.state));
     const wrongCount: number = domains.filter(wrong).length;
+    // What the domains cost an hour together, at list price, when the daemon priced them.
+    const priced: DomainSummary[] = domains.filter((domain: DomainSummary): boolean => domain.cost !== undefined && domain.cost !== null);
+    const hourly: number = priced.reduce((sum: number, domain: DomainSummary): number => sum + (domain.cost?.hourly ?? 0), 0);
     const domainsTile: LauncherTile = {
       key: 'domains', name: 'DOMAINS', hue: '--october-sunset', numeral: '',
       figures: [
         { text: domains.length === 0 ? 'NONE' : `${domains.length} DOMAIN${domains.length === 1 ? '' : 'S'}` },
         ...(wrongCount > 0 ? [{ text: `${wrongCount} NEED${wrongCount === 1 ? 'S' : ''} A LOOK`, errored: true }] : []),
+        ...(priced.length > 0 ? [{ text: `${money_text(hourly, priced[0]?.cost?.currency ?? 'USD')}/H` }] : []),
       ],
       rows: domains.slice(0, 6).map((domain: DomainSummary): LauncherRow => ({
-        text: `${domain.name}  ${domain.lastDone ?? 'NOTHING DONE'}  ${domain.cluster ?? ''}`.trimEnd(),
+        // The rate before the cluster's long name, so a narrow tile cuts the name, not the money.
+        text: `${domain.name}  ${domain.lastDone ?? 'NOTHING DONE'}${domain.cost !== undefined && domain.cost !== null ? `  ${money_text(domain.cost.hourly, domain.cost.currency)}/h` : ''}  ${domain.cluster ?? ''}`.trimEnd(),
         errored: wrong(domain),
         open: (): void => hooks.home_cd(domain.path),
       })),

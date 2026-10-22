@@ -18,6 +18,8 @@ import type { DomainTree } from '../vfs/domains.js';
 import { stateTone_paint } from '../vfs/look.js';
 import { lastDone_of } from '../domains/harborOci.js';
 import { capacity_run, CAPACITY_HELP } from './capacity.js';
+import { spend_line, spend_read, type Spend } from '../domain/spend.js';
+import { spend_run, SPEND_HELP } from './spend.js';
 import { domainAdopt_run, domainBuild_run, domainNew_run, domainPlan_run, type BuildCommandContext } from './build.js';
 import { domainVerify_run, verifyReach_default } from './verify.js';
 
@@ -58,6 +60,26 @@ async function compartment_count(context: DomainCommandContext, compartmentId: s
 }
 
 /**
+ * What a domain costs, and the line that says it or why it is not priced.
+ *
+ * @param context - The session.
+ * @param domain - The domain.
+ * @returns The spend (null when not priced) and the line.
+ */
+async function domainCost_read(context: DomainCommandContext, domain: HarborDomain): Promise<{ spend: Spend | null; line: string }> {
+  const compartmentId: string | undefined = domain.settings['OCI_COMPARTMENT_OCID'];
+  const region: string | null = domain.settings['OCI_REGION'] ?? context.region();
+  if (compartmentId === undefined || region === null) return { spend: null, line: 'cost         not priced: no compartment known' };
+  try {
+    const spend: Spend = await spend_read(context.driver, compartmentId, region, new Date());
+    return { spend, line: `cost         ${spend_line(spend)}` };
+  } catch (error: unknown) {
+    return { spend: null, line: `cost         not priced: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+
+/**
  * One domain's status: its lines, and its summary for the model.
  *
  * @param context - The session.
@@ -66,12 +88,13 @@ async function compartment_count(context: DomainCommandContext, compartmentId: s
  */
 export async function domainStatus_read(context: DomainCommandContext, domain: HarborDomain): Promise<{ lines: string[]; summary: DomainSummary }> {
   const width: number = Math.max(...domain.steps.map((step: StepState): number => step.folder.length));
-  const compartment = await compartment_count(context, domain.settings['OCI_COMPARTMENT_OCID']);
+  const [compartment, cost] = await Promise.all([compartment_count(context, domain.settings['OCI_COMPARTMENT_OCID']), domainCost_read(context, domain)]);
   const lines: string[] = [
     `${chalk.bold(domain.name)}  ${domain.cluster ?? '(no cluster name in its settings)'}`,
     `${domain.origin !== 'built' ? 'checkout   ' : (domain.state as { adopted?: unknown } | null)?.adopted !== undefined ? 'adopted    ' : 'built here '}  ${domain.root}`,
     ...domain.steps.map((step: StepState): string => `  ${step.folder.padEnd(width)}  ${stateTone_paint(step.state, step.state.padEnd(8))}  ${chalk.gray(step.evidence)}`),
     compartment.line,
+    cost.line,
   ];
   const summary: DomainSummary = {
     name: domain.name,
@@ -80,6 +103,7 @@ export async function domainStatus_read(context: DomainCommandContext, domain: H
     lastDone: lastDone_of(domain)?.folder ?? null,
     steps: domain.steps.map((step: StepState): { folder: string; state: string } => ({ folder: step.folder, state: step.state })),
     resources: compartment.counts === null ? null : { ...compartment.counts },
+    cost: cost.spend === null ? null : { hourly: cost.spend.hourly, soFar: cost.spend.soFar, currency: cost.spend.currency },
   };
   return { lines, summary };
 }
@@ -132,7 +156,8 @@ export function stratusCommands_make(context: DomainCommandContext): CommandGrou
     envelope: {
       domain: (args: string[]): Promise<CommandEnvelope> => domain_run(context, args),
       capacity: (args: string[]): Promise<CommandEnvelope> => capacity_run(context, args),
+      spend: (args: string[]): Promise<CommandEnvelope> => spend_run(context, args),
     },
-    help: { domain: DOMAIN_HELP, capacity: CAPACITY_HELP },
+    help: { domain: DOMAIN_HELP, capacity: CAPACITY_HELP, spend: SPEND_HELP },
   };
 }

@@ -153,6 +153,7 @@ describe('domain status', () => {
         name: 'harbor', path: '/net/oci/fnndsc/domains/harbor', cluster: 'harbor.oci.chrisproject.org', lastDone: '09-run',
         steps: expect.arrayContaining([{ folder: '02-cluster', state: 'done' }, { folder: '01-preflight', state: 'unknown' }]),
         resources: { instances: 3, networks: 1, subnets: 3, securitygroups: 2, loadbalancers: 2, volumes: 5, buckets: 1, dns: 1 },
+        cost: { hourly: expect.any(Number), soFar: expect.any(Number), currency: 'USD' },
       }] },
     });
   });
@@ -183,7 +184,7 @@ describe('domain status', () => {
 
   it('is one of the backend\'s two commands, with its help in the Resources category', async () => {
     const group = stratusCommands_make(context_make({}));
-    expect(Object.keys(group.envelope ?? {})).toEqual(['domain', 'capacity']);
+    expect(Object.keys(group.envelope ?? {})).toEqual(['domain', 'capacity', 'spend']);
     expect(group.help?.['domain']).toBe(DOMAIN_HELP);
     expect(DOMAIN_HELP.category).toBe('Resources');
     expect((await group.envelope!['domain']!([])).status).toBe('ok');

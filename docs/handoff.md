@@ -2,9 +2,9 @@
 
 - Last updated: 2026-10-22
 - Last verified against `main`: the merge of #1197, 2026-10-22
-- Working branches: `agent/stratus-no-wrap` (D3 rewritten: harbor-oci is the specification, never run; Terraform through Resource Manager)
+- Working branches: `agent/stratus-no-wrap`, PR #1199 (D3 rewritten: harbor-oci is the specification, never run; Terraform through Resource Manager; the step 4 grill and the controller's mockup grill recorded)
 - Current milestone: steps 1 to 3 of the order of work in [stratus.adoc](stratus.adoc#order) are on `main`, all unpublished beyond @fnndsc/stratus 0.1.0 until the next `make publish` (the operator's word). Follow-ups 1 to 3 merged (#1190, #1191, #1192), and the four defects found along the way (#1194, #1195)
-- Next action: the grill for step 4 (the runner and the `tasks` tier, #986) with the operator, under the D3 settled 2026-10-22. Follow-up 4 (the epic's status comment) is still unasked
+- Next action: the operator's word on #1199; then step 4a (the runner and the tier, on fakes) as stratus.adoc's order of work lists it. The TD controller's mockup is grilled (v2, https://claude.ai/artifact/L4nAHMfFqmHYytnnUReuo2, private to the operator) and is built after 4a to 4d. Follow-up 4 (the epic's status comment) is still unasked
 
 This file is the handoff between sessions and between models. It says where the work stands and what to do next, with the facts a fresh context needs to do it without rediscovery. The design itself is [stratus.adoc](stratus.adoc); the bastions are [bastion.adoc](bastion.adoc) and [dev-bastion.adoc](dev-bastion.adoc); what Red Hat ships against the primitive is [redhat-fl.adoc](redhat-fl.adoc); the metaphor every figure is drawn in is [linux-metaphor.adoc](linux-metaphor.adoc).
 
@@ -80,13 +80,10 @@ The epic body still says "no code yet". Post a status comment pointing at this f
 
 ## Steps 4 and on
 
-As the order of work lists them: the runner and the `tasks` tier (#986) with `domain plan` and `domain build` as the driver's own steps (Terraform through OCI Resource Manager, the live domain adopted) and the STEPS tile; the cluster in the tree over a domain's kubeconfig; the TD controller (mockup and grill first, D13); data writes; teardown (designed on its own); the handoff to the domain session and the TD brand on it. Each is its own grill with the operator before code; do not start one unasked.
+Settled 2026-10-22 and written into stratus.adoc (D3, D4, D6, D7, D8, D10, D11, D13, order of work): harbor-oci is never run; three driver kinds (cloud, installer, cluster) with the steps written once in `domain/steps.ts`; Terraform through OCI Resource Manager; brasa core's runner with `kill` and `wait`; the `tasks` tier as a launch-time gate, and without it nothing changes outside the host; domain state under `$XDG_STATE_HOME/stratus/domains/<name>/` with the stack tagged for rediscovery; the live domain adopted for plans only; verify in two modes; teardown's first form, which removes the domain's tagged CSI volumes and is confirmed by typing the name. The order: 4a runner and tier on fakes, 4b adoption (plan only), 4c verify and spend, 4d a real build in a scratch compartment on the operator's word; then the cluster in the tree, then the controller against its mockup. Each is its own PR; do not start one unasked.
 
 ## Open questions, for the operator
 
-- Settled 2026-10-22: `harbor-oci` is never run by stratus (D3). `domain verify` and `spend` are ported into the driver: verify's `oc` checks through the cluster driver, `dig` as `node:dns`; `spend` needs block-volume and load-balancer prices beside the shape prices. Today `domain verify` is refused by name and `spend` is not registered.
-- The words on the DOMAINS and CAPACITY tiles (`apps/argus/src/features/launcher/about.ts`): drafted 2026-10-21, awaiting the operator's approval as that file's rule asks.
-- Whether DOMAINS should carry an hourly cost (D11) before `spend` is settled.
 - Who runs the sealed job in a spoke bastion: the same container with the mount hidden from the shell, or a job the session launches (dev-bastion.adoc, open).
 - How source crosses the wire from the Hub dev bastion to a spoke bastion, and what the gate is.
 - The Hub bastion as a pod on the Hub cluster: entrypoint, mounted Secrets, who may reach its porter.

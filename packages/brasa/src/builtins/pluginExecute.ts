@@ -14,7 +14,7 @@ import chalk from 'chalk';
 import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { newFeed_cacheAdd, run_follow } from './feedCreation.js';
-import { runs_awaitSettled, settlement_render, type RunSettlement } from './res/runWait.js';
+import { runs_awaitSettled, settlement_render, settlementStatus_of, type RunSettlement } from './res/runWait.js';
 import { recentFeed_note, recentRunPlace_note, recentRuns_note } from '../session/recent.js';
 import { executableArguments_parse } from './argumentTokens.js';
 import { pluginSelector_normalize } from './pluginSelector.js';
@@ -177,10 +177,12 @@ export async function builtin_executePlugin(
     // the next line of a script would work on output that does not exist.
     // The wait holds this LINE, never the session — progress goes out while
     // it waits, and Esc detaches, which is what `--detach` asks for up front.
+    let status: string = 'detached';
     if (!detach) {
       const settlement: RunSettlement = await runs_awaitSettled([result.pluginInstanceID], pluginName);
       sink_dataLine(settlement_render(settlement, pluginName));
       if (settlement.outcome === 'settled' && settlement.failed > 0) process.exitCode = 1;
+      status = settlementStatus_of(settlement, result.pluginInstanceID);
     }
     // The run as a model, so a surface can point at what it started — the
     // feed it landed in and the instance it is — rather than parse the lines.
@@ -194,6 +196,7 @@ export async function builtin_executePlugin(
         feedId: feedID,
         newFeed: result.feedID !== undefined,
         outputPath: result.outputPath,
+        status,
       },
     });
   } catch (error: unknown) {

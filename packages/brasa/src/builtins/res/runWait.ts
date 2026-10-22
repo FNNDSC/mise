@@ -48,6 +48,20 @@ export interface RunSettlement {
   elapsedMs: number;
 }
 
+/**
+ * How one run settled, as a model carries it: CUBE's word when the wait saw
+ * it end, `detached` when Esc let the line go first, and the last word seen
+ * when CUBE stopped answering.
+ *
+ * @param settlement - What the wait found out.
+ * @param instanceID - The run.
+ * @returns Its status.
+ */
+export function settlementStatus_of(settlement: RunSettlement, instanceID: number): string {
+  if (settlement.outcome === 'detached') return 'detached';
+  return settlement.statuses.get(instanceID) ?? 'unknown';
+}
+
 /** First seconds are polled briskly; a long run is not worth the traffic. */
 const POLL_FAST_MS: number = 2000;
 /** What the interval settles to once the work is clearly not instant. */

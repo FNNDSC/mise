@@ -10,6 +10,7 @@
 import path from 'path';
 import { patientAddress_of, type PacsQueryModel, type PacsSeries, type PacsStudy } from '@fnndsc/menu';
 import { AnswerRow, answerAdapter_register, answerFilter_register } from './answer.js';
+import { answerOperands_register } from '../core/variables.js';
 
 /** One target's listing, as `fs.listing` carries it. */
 interface FsListing {
@@ -21,6 +22,17 @@ interface FsListing {
  * Registers the adapters. Called once, when the engine is created.
  */
 export function answerAdapters_register(): void {
+  // A scheduled pipeline is one record, not a listing to number; bare, a
+  // variable holding one is its nodes' instance ids.
+  answerOperands_register('pipeline.scheduled', (data: unknown): string[] | null => {
+    const instances: unknown = (data as { instances?: unknown } | null)?.instances;
+    if (!Array.isArray(instances)) return null;
+    return instances
+      .map((node: unknown): unknown => (node as { instanceId?: unknown } | null)?.instanceId)
+      .filter((id: unknown): id is number => typeof id === 'number')
+      .map((id: number): string => String(id));
+  });
+
   // A file listing's rows are paths, in the order the listing rendered them,
   // flattened across targets the way `ls a b` prints them.
   answerAdapter_register('fs.listing', (data: unknown): AnswerRow[] | null => {

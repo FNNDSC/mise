@@ -90,6 +90,7 @@ export class RemoteEngine implements BrasaEngine {
   public daemonStale: boolean = false;
   private latestPrompt: string = '';
   private stackReport: DaemonStack | undefined;
+  private backendId: string | undefined;
   /** Calypso's declared host-control tiers (empty when off). */
   public hostControl: string[] = [];
   private nextId: number = 0;
@@ -167,6 +168,7 @@ export class RemoteEngine implements BrasaEngine {
           engine.stackReport = message.stack;
           engine.daemonStale = message.stale === true;
           engine.hostControl = message.hostControl ?? [];
+          engine.backendId = message.backend;
           ws.on('message', (payload: Buffer) => engine.message_handle(payload));
           if (options.onClose) {
             ws.on('close', () => options.onClose?.());
@@ -510,6 +512,16 @@ export class RemoteEngine implements BrasaEngine {
    */
   public daemonStack(): DaemonStack | undefined {
     return this.stackReport;
+  }
+
+  /**
+   * The backend the daemon's session runs over, from its attach answer.
+   *
+   * @returns The backend id (`chris`, `stratus`, `null`), or undefined when
+   *   the daemon predates the field.
+   */
+  public backend_get(): string | undefined {
+    return this.backendId;
   }
 
   /**

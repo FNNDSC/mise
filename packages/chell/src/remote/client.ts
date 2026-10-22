@@ -25,6 +25,7 @@ import { buildMismatch_line, closingLine_of, staleLines_of, surfaceNews_read } f
 import type { ClosingCause } from '@fnndsc/menu';
 import { LocalBerthResolver, type Berth } from '@fnndsc/calypso';
 import { berthIdentities_of } from './berthTarget.js';
+import { splashLines_of } from './splash.js';
 import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, stackBanner_rows, stackBannerRow_paint, buildHash_get } from '@fnndsc/brasa';
 import { cliSurface_create } from '../core/cliSurface.js';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
@@ -235,13 +236,15 @@ async function segments_execute(engine: RemoteEngine, line: string): Promise<Com
  *   it and detach without creating an interactive REPL.
  * @param attach - An explicit daemon address, for a daemon on another machine
  *   that this host's berth directory cannot know about. Bypasses discovery.
+ * @param options - `stopOnError` for a one-shot line; `splash` to draw the
+ *   session's art once the attach answer names its backend.
  * @returns A promise that resolves when the client session ends.
  */
 export async function remote_run(
   identity?: string,
   commandToExecute?: string,
   attach?: { address: string; token?: string; headers?: Record<string, string> },
-  options: { stopOnError?: boolean } = {},
+  options: { stopOnError?: boolean; splash?: { colorize: boolean } } = {},
 ): Promise<void> {
   // Through a door there is no token to carry: the cookie in the headers is
   // the credential, and the door puts the token on the daemon's side.
@@ -344,6 +347,16 @@ export async function remote_run(
       engine.close();
     }
     return;
+  }
+
+  // The splash is the session's composition, known only now: the brain for
+  // ChRIS, the Trusted Domain mark for stratus, nothing for another backend.
+  if (options.splash !== undefined) {
+    const art: string[] = splashLines_of(engine.backend_get(), options.splash.colorize);
+    if (art.length > 0) {
+      for (const line of art) console.log(line);
+      console.log('');
+    }
   }
 
   // Greet with the daemon's own reported versions and build hash; a daemon

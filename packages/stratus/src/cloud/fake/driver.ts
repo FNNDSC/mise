@@ -7,7 +7,24 @@
  *
  * @module
  */
-import type { CloudAvailability, CloudContainer, CloudDriver, CloudIdentity, CloudLimit, CloudPrice, CloudShape, CloudZone } from '../driver.js';
+import type {
+  CloudAvailability, CloudBucket, CloudContainer, CloudDnsZone, CloudDriver, CloudIdentity, CloudInstance, CloudLimit, CloudLink, CloudLoadBalancer,
+  CloudNetwork, CloudObject, CloudPrice, CloudRecord, CloudResource, CloudSecurityGroup, CloudShape, CloudSubnet, CloudVolume, CloudZone, ResourceCounts, ResourceKind,
+} from '../driver.js';
+
+/** A resource in the fake cloud: its kind, the container holding it, and its record. */
+export type FakeResource =
+  | { readonly kind: 'instances'; readonly containerId: string; readonly record: CloudInstance }
+  | { readonly kind: 'networks'; readonly containerId: string; readonly record: CloudNetwork }
+  | { readonly kind: 'subnets'; readonly containerId: string; readonly record: CloudSubnet }
+  | { readonly kind: 'securitygroups'; readonly containerId: string; readonly record: CloudSecurityGroup }
+  | { readonly kind: 'loadbalancers'; readonly containerId: string; readonly record: CloudLoadBalancer }
+  | { readonly kind: 'volumes'; readonly containerId: string; readonly record: CloudVolume }
+  | { readonly kind: 'buckets'; readonly containerId: string; readonly record: CloudBucket }
+  | { readonly kind: 'dns'; readonly containerId: string; readonly record: CloudDnsZone };
+
+/** The states a search leaves out: what is gone. */
+const GONE_STATES: ReadonlyArray<string> = ['terminated', 'deleted'];
 
 /** What a fake cloud holds. */
 export interface FakeCloud {
@@ -24,6 +41,16 @@ export interface FakeCloud {
   /** Shapes by region. */
   readonly shapes: Readonly<Record<string, ReadonlyArray<CloudShape>>>;
   readonly prices: ReadonlyArray<CloudPrice>;
+  /** Every resource, in any container and region. */
+  readonly resources: ReadonlyArray<FakeResource>;
+  /** Objects by bucket name. */
+  readonly objects: Readonly<Record<string, ReadonlyArray<CloudObject>>>;
+  /** Object bytes by `bucket/object`. */
+  readonly objectBytes: Readonly<Record<string, string>>;
+  /** Pre-authenticated links by bucket name. */
+  readonly links: Readonly<Record<string, ReadonlyArray<CloudLink>>>;
+  /** Records by zone id. */
+  readonly records: Readonly<Record<string, ReadonlyArray<CloudRecord>>>;
 }
 
 /** The key an availability is kept under. */
@@ -101,6 +128,80 @@ export class FakeDriver implements CloudDriver {
     this.call_count('prices_list');
     return [...this.cloudData.prices];
   }
+
+  /** The records of one kind in a container and region, sorted by name; DNS is global. */
+  private resources_of<T extends CloudResource>(kind: ResourceKind, containerId: string, region: string): T[] {
+    this.call_count(`${kind}_list`);
+    return this.cloudData.resources
+      .filter((entry: FakeResource): boolean => entry.kind === kind && entry.containerId === containerId && (kind === 'dns' || entry.record.region === region))
+      .map((entry: FakeResource): T => entry.record as T)
+      .sort((a: T, b: T): number => a.name.localeCompare(b.name));
+  }
+
+  async instances_list(containerId: string, region: string): Promise<CloudInstance[]> {
+    return this.resources_of<CloudInstance>('instances', containerId, region);
+  }
+
+  async networks_list(containerId: string, region: string): Promise<CloudNetwork[]> {
+    return this.resources_of<CloudNetwork>('networks', containerId, region);
+  }
+
+  async subnets_list(containerId: string, region: string): Promise<CloudSubnet[]> {
+    return this.resources_of<CloudSubnet>('subnets', containerId, region);
+  }
+
+  async securitygroups_list(containerId: string, region: string): Promise<CloudSecurityGroup[]> {
+    return this.resources_of<CloudSecurityGroup>('securitygroups', containerId, region);
+  }
+
+  async loadbalancers_list(containerId: string, region: string): Promise<CloudLoadBalancer[]> {
+    return this.resources_of<CloudLoadBalancer>('loadbalancers', containerId, region);
+  }
+
+  async volumes_list(containerId: string, region: string): Promise<CloudVolume[]> {
+    return this.resources_of<CloudVolume>('volumes', containerId, region);
+  }
+
+  async buckets_list(containerId: string, region: string): Promise<CloudBucket[]> {
+    return this.resources_of<CloudBucket>('buckets', containerId, region);
+  }
+
+  async dns_list(containerId: string, region: string): Promise<CloudDnsZone[]> {
+    return this.resources_of<CloudDnsZone>('dns', containerId, region);
+  }
+
+  async objects_list(bucket: string): Promise<CloudObject[]> {
+    this.call_count('objects_list');
+    return [...(this.cloudData.objects[bucket] ?? [])];
+  }
+
+  async links_list(bucket: string): Promise<CloudLink[]> {
+    this.call_count('links_list');
+    return [...(this.cloudData.links[bucket] ?? [])];
+  }
+
+  async object_read(bucket: string, object: string): Promise<Buffer> {
+    this.call_count('object_read');
+    const text: string | undefined = this.cloudData.objectBytes[`${bucket}/${object}`];
+    if (text === undefined) throw new Error(`fake cloud: no object ${bucket}/${object}`);
+    return Buffer.from(text, 'utf-8');
+  }
+
+  async records_list(zoneId: string): Promise<CloudRecord[]> {
+    this.call_count('records_list');
+    return [...(this.cloudData.records[zoneId] ?? [])];
+  }
+
+  async resources_search(containerId: string, region: string): Promise<ResourceCounts> {
+    this.call_count('resources_search');
+    const counts: Partial<Record<ResourceKind, number>> = {};
+    for (const entry of this.cloudData.resources) {
+      if (entry.containerId !== containerId || GONE_STATES.includes(entry.record.state)) continue;
+      if (entry.kind !== 'dns' && entry.record.region !== region) continue;
+      counts[entry.kind] = (counts[entry.kind] ?? 0) + 1;
+    }
+    return counts;
+  }
 }
 
 /**
@@ -152,5 +253,57 @@ export function fakeCloud_sample(tenancy: string = 'fnndsc'): FakeCloud {
       { shape: 'VM.Standard.E5.Flex', vcpuHour: 0.015, gibHour: 0.002, currency: 'USD' },
       { shape: 'VM.Standard.A2.Flex', vcpuHour: 0.007, gibHour: 0.002, currency: 'USD' },
     ],
+    ...fakeResources_sample(region, 'ocid1.compartment.oc1..harbor'),
+  };
+}
+
+/**
+ * The resources of a small Trusted Domain in one compartment: three nodes, a
+ * network with subnets and security groups, two load balancers, their
+ * volumes, a bucket holding an image, and a DNS zone.
+ *
+ * @param region - The region they live in.
+ * @param containerId - The compartment holding them.
+ * @returns The resource part of a fake cloud.
+ */
+export function fakeResources_sample(region: string, containerId: string): Pick<FakeCloud, 'resources' | 'objects' | 'objectBytes' | 'links' | 'records'> {
+  const tags: Record<string, string> = { 'openshift-tags.openshift-resource': 'harbor' };
+  const base = (name: string, id: string, state: string): CloudResource => ({
+    name, id, state, region, created: '2026-10-06T14:00:00.000Z', tags, raw: { id, displayName: name, lifecycleState: state.toUpperCase() },
+  });
+  const vcn: string = 'ocid1.vcn.oc1.iad.harbor';
+  const resources: FakeResource[] = [
+    ...[0, 1, 2].map((n: number): FakeResource => ({
+      kind: 'instances', containerId,
+      record: { ...base(`node-${n}`, `ocid1.instance.oc1.iad.node0${n}`, 'running'), shape: 'VM.Standard.E5.Flex', zone: `Uocm:US-ASHBURN-AD-${n + 1}`, ips: [`10.0.16.${10 + n}`] },
+    })),
+    { kind: 'instances', containerId, record: { ...base('bootstrap', 'ocid1.instance.oc1.iad.boot00', 'terminated'), shape: 'VM.Standard.E5.Flex', zone: 'Uocm:US-ASHBURN-AD-1', ips: [] } },
+    { kind: 'networks', containerId, record: base('harbor-vcn', vcn, 'available') },
+    ...['control', 'compute', 'lb'].map((name: string, n: number): FakeResource => ({ kind: 'subnets', containerId, record: { ...base(name, `ocid1.subnet.oc1.iad.sub00${n}`, 'available'), networkId: vcn } })),
+    ...['cluster', 'api'].map((name: string, n: number): FakeResource => ({ kind: 'securitygroups', containerId, record: { ...base(name, `ocid1.networksecuritygroup.oc1.iad.nsg00${n}`, 'available'), networkId: vcn } })),
+    { kind: 'loadbalancers', containerId, record: { ...base('api', 'ocid1.loadbalancer.oc1.iad.lbapi0', 'active'), ips: ['129.0.0.10', '10.0.32.5'], shape: 'flexible' } },
+    { kind: 'loadbalancers', containerId, record: { ...base('apps', 'ocid1.loadbalancer.oc1.iad.lbapp0', 'active'), ips: ['129.0.0.11'], shape: 'flexible' } },
+    ...[0, 1, 2].map((n: number): FakeResource => ({
+      kind: 'volumes', containerId,
+      record: { ...base(`node-${n} (Boot Volume)`, `ocid1.bootvolume.oc1.iad.boot0${n}`, 'available'), sizeGib: 120, attachedTo: `ocid1.instance.oc1.iad.node0${n}`, boot: true },
+    })),
+    { kind: 'volumes', containerId, record: { ...base('etcd-0', 'ocid1.volume.oc1.iad.etcd00', 'available'), sizeGib: 50, attachedTo: 'ocid1.instance.oc1.iad.node00', boot: false } },
+    { kind: 'volumes', containerId, record: { ...base('spare', 'ocid1.volume.oc1.iad.spare0', 'available'), sizeGib: 50, attachedTo: null, boot: false } },
+    { kind: 'buckets', containerId, record: base('iso', 'ocid1.bucket.oc1.iad.iso000', 'active') },
+    { kind: 'dns', containerId, record: base('harbor.fnndsc.org', 'ocid1.dns-zone.oc1..harbor', 'active') },
+  ];
+  return {
+    resources,
+    objects: { iso: [{ name: 'agent.x86_64.iso', size: 1_181_745_152, modified: '2026-10-06T14:10:00.000Z' }, { name: 'README', size: 30, modified: '2026-10-06T14:00:00.000Z' }] },
+    objectBytes: { 'iso/README': 'the agent ISO the nodes boot.\n' },
+    links: { iso: [{ object: 'agent.x86_64.iso', name: 'agent-iso-read', access: 'ObjectRead', expires: '2026-11-06T14:10:00.000Z' }] },
+    records: {
+      'ocid1.dns-zone.oc1..harbor': [
+        { domain: 'harbor.fnndsc.org', type: 'SOA', ttl: 300, data: 'ns1.p201.dns.oraclecloud.net. hostmaster.oracle.com. 2 3600 3600 3600 300' },
+        { domain: 'api.harbor.fnndsc.org', type: 'A', ttl: 300, data: '129.0.0.10' },
+        { domain: 'api-int.harbor.fnndsc.org', type: 'A', ttl: 300, data: '10.0.32.5' },
+        { domain: '*.apps.harbor.fnndsc.org', type: 'A', ttl: 300, data: '129.0.0.11' },
+      ],
+    },
   };
 }

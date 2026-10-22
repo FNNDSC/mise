@@ -10,6 +10,7 @@ import { AnswerCache } from '../src/cache.js';
 import type { CloudContainer, CloudDriver } from '../src/cloud/driver.js';
 
 const T = '/net/oci/fnndsc';
+const KINDS = ['instances', 'networks', 'loadbalancers', 'volumes', 'buckets', 'dns'];
 const R = `${T}/regions/us-ashburn-1`;
 
 /** The sample cloud with a twin of `sandbox` and a compartment named like a reserved folder. */
@@ -45,9 +46,9 @@ describe('the tenancy tree', () => {
     expect(await listed(tree, '/net/oci/')).toHaveLength(1);
   });
 
-  it('lists a tenancy as its compartments, regions, domains and info.json; duplicates and reserved names wear the suffix', async () => {
+  it('lists a tenancy as its compartments, kind folders, regions, domains and info.json; duplicates and reserved names wear the suffix', async () => {
     const items = await listed(tree, T);
-    expect(names(items)).toEqual(['harbor-oci', 'regions~region', 'sandbox~andbox', 'sandbox~twin00', 'regions', 'domains', 'info.json']);
+    expect(names(items)).toEqual(['harbor-oci', 'regions~region', 'sandbox~andbox', 'sandbox~twin00', ...KINDS, 'regions', 'domains', 'info.json']);
     const harbor = items[0];
     expect(harbor).toMatchObject({ type: 'compartment', owner: 'rudolph', status: 'active', title: 'Trusted Domain builds', tags: ['openshift-tags.openshift-resource=harbor'], date: '2026-08-27T12:00:00.000Z' });
     expect(items.find((item) => item.name === 'info.json')).toMatchObject({ type: 'file' });
@@ -57,10 +58,10 @@ describe('the tenancy tree', () => {
   it('refuses the plain name of a duplicate, naming both, and enters the suffixed one', async () => {
     expect((await tree.list(`${T}/sandbox`)).ok).toBe(false);
     expect(errorStack_getAllOfType('error').join('\n')).toContain('sandbox: ambiguous: sandbox~andbox, sandbox~twin00');
-    expect(names(await listed(tree, `${T}/sandbox~andbox`))).toEqual(['scratch-a', 'info.json']);
-    expect(names(await listed(tree, `${T}/sandbox~twin00`))).toEqual(['info.json']);
-    expect(names(await listed(tree, `${T}/sandbox~andbox/scratch-a`))).toEqual(['info.json']);
-    expect(names(await listed(tree, `${T}/regions~region`))).toEqual(['info.json']);
+    expect(names(await listed(tree, `${T}/sandbox~andbox`))).toEqual(['scratch-a', ...KINDS, 'info.json']);
+    expect(names(await listed(tree, `${T}/sandbox~twin00`))).toEqual([...KINDS, 'info.json']);
+    expect(names(await listed(tree, `${T}/sandbox~andbox/scratch-a`))).toEqual([...KINDS, 'info.json']);
+    expect(names(await listed(tree, `${T}/regions~region`))).toEqual([...KINDS, 'info.json']);
   });
 
   it('reads info.json of the tenancy and of a nested compartment', async () => {

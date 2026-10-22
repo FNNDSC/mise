@@ -13,6 +13,7 @@ import * as common from 'oci-common';
 import * as identity from 'oci-identity';
 import * as limits from 'oci-limits';
 import * as core from 'oci-core';
+import { ociResourceApi_make, type OciResourceApi } from './resourceApi.js';
 
 /** What the SDK says about the credential's tenancy. */
 export interface OciTenancyRecord {
@@ -58,8 +59,8 @@ export interface OciShapeRecord {
   readonly raw: unknown;
 }
 
-/** The calls the driver makes. */
-export interface OciApi {
+/** The calls the driver makes: the tenancy's facts here, its resources in `resourceApi.ts`. */
+export interface OciApi extends OciResourceApi {
   /** The credential's tenancy id, user id and home region, read from the profile without a call. */
   credential_get(): { tenancyId: string; userId: string; region: string };
   tenancy_get(tenancyId: string): Promise<OciTenancyRecord>;
@@ -151,6 +152,7 @@ export function ociApi_make(options: OciApiOptions = {}): OciApi {
   const homeRegion: string = provider.getRegion().regionId;
 
   return {
+    ...ociResourceApi_make(provider),
     credential_get: (): { tenancyId: string; userId: string; region: string } => ({
       tenancyId: provider.getTenantId(),
       userId: provider.getUser(),

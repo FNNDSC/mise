@@ -162,8 +162,8 @@ Precedent: `/net/pacs/queries/…` is a remote server and then what it holds. A 
 │           │   ├── networks/vcn/      subnets/<subnet>/  securitygroups/<group>/  info.json
 │           │   ├── loadbalancers/api/ … ip shape
 │           │   ├── volumes/node-0/    … size attached
-│           │   ├── buckets/iso/       its objects are files; an object has a field `link` (its PAR)
-│           │   └── dns/<zone>/        its records are files
+│           │   ├── buckets/iso/       … links   objects/<object>: its objects are files (a `/` is a folder)
+│           │   └── dns/<zone>/        records/<name>: a file per record name, the apex as `@`
 │           ├── regions/us-ashburn-1/
 │           │   ├── zones/<zone>/              OCI: an availability domain
 │           │   ├── limits/<service>/<limit>   value used available
@@ -201,7 +201,7 @@ The path carries names only; the container noun (compartment, account, project, 
 * *Everything under the tenancy.* Limits are per tenancy per region; a domain is built in one tenancy. So `regions/` and `domains/` sit inside `/net/oci/<tenancy>/`, one rule, rather than beside it. Shapes and prices repeat per tenancy, harmless with one.
 * *Compartments beside kind folders.* `/net/oci/fnndsc/` holds child compartments and the kind folders at one level, as OCI's own compartment view does; `ls -l`'s type column (`compartment` against `instance`) tells them apart. The kind folders are reserved names: a compartment called `instances` shows as `instances~<last six of its OCID>`.
 * *Kinds in the tree, first:* `instances networks loadbalancers volumes buckets dns`; subnets and security groups nest under their network. Images, policies, dynamic groups and tag namespaces stay out until a verb wants them; they appear in a parent's `info.json` where OCI returns them.
-* *Field files.* Every kind: `name id state region created tags info.json`. Per kind on top: an instance `shape zone ips`, a volume `size attached`, a load balancer `ip shape`. The rule `/proc/jobs` follows: a field is a file when a shell line wants it (`cat state`, `grep running`); everything else is in `info.json` only.
+* *Field files.* Every kind: `name id state region created tags info.json`. Per kind on top: an instance `shape zone ips`, a volume `size attached`, a load balancer `ip shape`, a bucket `links` (its pre-authenticated requests, one per line: object, name, access, expiry; OCI returns a link's URL only when it is made). What a resource holds sits in a folder beside its fields, so no name it holds can collide with a field: a network's `subnets/` and `securitygroups/`, a bucket's `objects/`, a zone's `records/`. The rule `/proc/jobs` follows: a field is a file when a shell line wants it (`cat state`, `grep running`); everything else is in `info.json` only.
 * *Names, not OCIDs, in paths.* The OCID is the field `id`. OCI allows two resources in one compartment to share a display name, so a duplicate shows as `name~<last six of its OCID>` and the plain name refuses ("ambiguous: name~1a2b3c, name~9f8e7d"), never picks one. The rule holds wherever a path is resolved: `cd`, completion, globbing and `@N` expansion.
 * *Structural paths* (`cd` without a lookup, as `CHRIS_STRUCTURAL_PATHS`): `/net`, `/net/oci`, `/net/oci/<tenancy>`, each kind folder, `regions`, `domains`.
 * *The cluster is under its domain*, not a root of its own: built in that tenancy by that domain's steps, reached with that domain's kubeconfig. The Kubernetes driver that serves it is the same on every cloud, so it is a second driver kind (`cluster/`) beside `cloud/`, never inside a cloud driver. The linux-metaphor note already drew it ("projects as folders; deployments, pods and routes as entries in them"). Read-only in the tree; `oc` and `helm` under the `tasks` tier are the write path. This closes the first draft's open question of `oc` against a Kubernetes provider: both, each for what it is good at.

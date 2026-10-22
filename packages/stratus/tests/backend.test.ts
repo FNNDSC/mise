@@ -23,6 +23,11 @@ describe('stratusBackend_make', () => {
     expect(await made.backend.session.identity_get()).toEqual({ user: 'rudolph', where: 'fnndsc', connected: true });
     const tenancy = await made.backend.vfs!.dispatcher.list('/net/oci/fnndsc');
     expect(tenancy.ok && tenancy.value.map((item) => item.name)).toContain('harbor-oci');
+    // Once the tenancy is known, it and its fixed folders are entered without asking.
+    expect(made.backend.vfs?.structural).toEqual([
+      '/', '/net', '/net/oci', '/net/oci/fnndsc', '/net/oci/fnndsc/regions', '/net/oci/fnndsc/domains',
+      ...['instances', 'networks', 'loadbalancers', 'volumes', 'buckets', 'dns'].map((kind) => `/net/oci/fnndsc/${kind}`),
+    ]);
   });
 
   it('prompts with the user, the tenancy, the working directory or home, and the last command', async () => {
@@ -52,7 +57,17 @@ describe('the stratus look', () => {
     for (const type of CONTAINER_TYPES) expect(STRATUS_ITEM_KINDS.find((kind) => kind.type === type)).toMatchObject({ mark: 'c', container: true });
     expect(STRATUS_ITEM_KINDS.find((kind) => kind.type === 'shape')).toMatchObject({ container: true });
     const sizeColumn = STRATUS_ITEM_KINDS.find((kind) => kind.type === 'compartment')!.sizeColumn!;
-    expect(sizeColumn({ name: 'a', type: 'compartment', size: 0, owner: 'o', date: '', status: 'active' })).toBe('active');
+    const plainColumn = (text: string | null): string | null => (text === null ? null : text.replace(/\x1b\[[0-9;]*m/g, ''));
+    expect(plainColumn(sizeColumn({ name: 'a', type: 'compartment', size: 0, owner: 'o', date: '', status: 'active' }))).toBe('active      ');
+    expect(plainColumn(sizeColumn({ name: 'a', type: 'compartment', size: 0, owner: 'o', date: '', status: 'odd' }))).toBe('odd         ');
+    for (const type of ['instance', 'network', 'subnet', 'securitygroup', 'loadbalancer', 'volume', 'bucket', 'dnszone', 'kind']) {
+      expect(STRATUS_ITEM_KINDS.find((kind) => kind.type === type)).toMatchObject({ container: true });
+    }
+    expect(STRATUS_ITEM_KINDS.find((kind) => kind.type === 'object')?.container).toBeUndefined();
+    const count = STRATUS_ITEM_KINDS.find((kind) => kind.type === 'kind')!.sizeColumn!;
+    expect(count({ name: 'instances', type: 'kind', size: 3, owner: 'o', date: '' })).toBeNull();
+    expect(count({ name: 'instances', type: 'kind', size: 0, owner: 'o', date: '', status: 'uncounted' })).toBe('-       ');
+    expect(stratusName_colorize('instances', 'kind').replace(/\x1b\[[0-9;]*m/g, '')).toBe('instances');
     expect(sizeColumn({ name: 'a', type: 'compartment', size: 0, owner: 'o', date: '' })).toBeNull();
     const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
     for (const [type, status] of [['compartment', 'active'], ['instance', 'stopped'], ['instance', 'PROVISIONING'], ['instance', 'failed'], ['compartment', undefined], ['region', undefined], ['domain', undefined], ['shape', undefined], ['file', undefined], ['instance', 'odd']] as const) {

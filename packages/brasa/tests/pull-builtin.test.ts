@@ -419,41 +419,11 @@ describe('builtin_pull engine consumption', () => {
     expect(mockFeedCreate).toHaveBeenCalledWith(['/SERVICES/PACS/A/from-engine'], { title: 'Brain MRI' });
   });
 
-  it('attaches a pipeline to the new root with forwarded invocation tokens', async () => {
+  it('refuses the retired attachments before it fires anything', async () => {
     fireOutcome_set('pulled', true, '/SERVICES/PACS/A/series-1');
-    const result = await builtin_pull([
-      QUERY_PATH, '--new-feed', 'Brain MRI', '--pipeline', 'brain-preprocessing', '--',
-      '--segmentation.threshold', '0.6',
-    ]);
-    expect(mockPipelineBuiltin).toHaveBeenCalledWith([
-      'run', 'brain-preprocessing', '--previous', '400', '--segmentation.threshold', '0.6',
-    ]);
-    expect(sinkData).toContain('Pipeline attached: brain-preprocessing');
-    expect(result.status).toBe('ok');
-  });
-
-  it('attaches a versioned plugin to the new root with forwarded parameters', async () => {
-    fireOutcome_set('pulled', true, '/SERVICES/PACS/A/series-1');
-    const result = await builtin_pull([
-      QUERY_PATH, '--new-feed', 'Brain MRI', '--plugin', 'pl-dcm2niix-v1.2.0', '--',
-      '--outputdir', 'NIfTI files',
-    ]);
-    expect(mockPluginRun).toHaveBeenCalledWith(
-      'name_exact:pl-dcm2niix,version:1.2.0',
-      { outputdir: 'NIfTI files', previous_id: 400 },
-    );
-    expect(result.status).toBe('ok');
-  });
-
-  it('retains and reports the Feed when pipeline attachment fails', async () => {
-    fireOutcome_set('pulled', true, '/SERVICES/PACS/A/series-1');
-    mockPipelineBuiltin.mockResolvedValue({ status: 'error', rendered: '' });
-    const result = await builtin_pull([
-      QUERY_PATH, '--new-feed', 'Brain MRI', '--pipeline', 'broken-pipeline',
-    ]);
-    expect(sinkData).toContain('Feed created: 300');
-    expect(sinkErr).toContain('Feed 300 and root 400 were retained');
+    const result = await builtin_pull([QUERY_PATH, '--new-feed', 'Brain MRI', '--pipeline', 'brain-preprocessing']);
     expect(result.status).toBe('error');
+    expect(mockFeedCreate).not.toHaveBeenCalled();
   });
 
   it('does not create a requested feed after a partial pull', async () => {

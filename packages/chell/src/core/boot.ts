@@ -13,7 +13,8 @@
  */
 import * as readline from 'readline';
 import * as os from 'os';
-import { readFileSync, existsSync } from 'fs';
+import { existsSync } from 'fs';
+import path from 'path';
 import { Writable } from 'stream';
 import chalk from 'chalk';
 import { REPL } from './repl.js';
@@ -177,68 +178,26 @@ function localTime_withOffset(): string {
 }
 
 /**
- * Executes a chell script file.
- * Reads the file line by line, ignoring comments and blank lines.
- * Supports shebang (#!) on first line.
+ * Runs a chell script file: as a manifest, through `play`. A script and a
+ * manifest are one format (kernel lines, `#` comments, an optional `@`
+ * header) with one runner, so a script stops at its first refused line as a
+ * manifest does, says which, and exits non-zero. `-e` asked for exactly
+ * that and is still accepted. A shebang first line is a comment.
  *
- * @param engine - The engine that executes each line.
- * @param scriptPath - Path to the script file.
- * @param stopOnError - Whether to stop execution on first error (default: false).
- * @returns A Promise that resolves when script execution completes.
+ * The path is the host's: it is made absolute here, so `play` finds the file
+ * beside the engine rather than a CFS file that happens to share its name.
  *
- * @example
- * ```typescript
- * await script_execute(engine, '/path/to/script.chell', false);
- * ```
+ * @param engine - The engine that runs the play.
+ * @param scriptPath - Path to the script file, on this host.
+ * @returns A Promise that resolves when the play ends.
  */
-async function script_execute(engine: BrasaEngine, scriptPath: string, stopOnError: boolean = false): Promise<void> {
+async function script_execute(engine: BrasaEngine, scriptPath: string): Promise<void> {
   if (!existsSync(scriptPath)) {
     console.error(chalk.red(`Error: Script file not found: ${scriptPath}`));
     process.exit(1);
   }
-
-  // Set global stop-on-error flag
-  stopOnError_set(stopOnError);
-
-  const scriptContent: string = readFileSync(scriptPath, 'utf8');
-  const lines: string[] = scriptContent.split('\n');
-
-  for (let i: number = 0; i < lines.length; i++) {
-    let line: string = lines[i].trim();
-
-    // Skip shebang on first line
-    if (i === 0 && line.startsWith('#!')) {
-      continue;
-    }
-
-    // Skip comment lines and blank lines
-    if (line.startsWith('#') || line === '') {
-      continue;
-    }
-
-    // Execute the line
-    try {
-      await surfaceLine_execute(engine, line);
-    } catch (error: unknown) {
-      const msg: string = error instanceof Error ? error.message : String(error);
-      console.error(chalk.red(`Error on line ${i + 1}: ${msg}`));
-
-      if (stopOnError) {
-        console.error(chalk.red('Stopping execution due to error (use without -e to continue on error)'));
-        process.exit(1);
-      }
-      // Otherwise continue to next line
-    }
-
-    // Builtins report failure through process.exitCode rather than throwing.
-    if (stopOnError && process.exitCode) {
-      console.error(chalk.red(`Stopping execution: command on line ${i + 1} failed (use without -e to continue on error)`));
-      process.exit(1);
-    }
-  }
-
-  // Reset flag; a failed command's exit code survives to process exit.
-  stopOnError_set(false);
+  const absolute: string = path.resolve(scriptPath);
+  await surfaceLine_execute(engine, `play '${absolute.replace(/'/g, `'\\''`)}'`);
 }
 
 type BootLogger = ReturnType<typeof bootLogger_create>;
@@ -740,9 +699,9 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
 
   if (config.mode === 'script' && config.scriptFile) {
     await queryCheckpoint_prime(currentContext.user ?? undefined);
-    await script_execute(engine, config.scriptFile, config.stopOnError || false);
+    await script_execute(engine, config.scriptFile);
     await queryCheckpoint_flush();
-    process.exit(0);
+    process.exit(process.exitCode || 0);
   }
 
   // --- Interactive Mode ---

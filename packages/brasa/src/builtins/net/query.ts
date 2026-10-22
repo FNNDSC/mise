@@ -10,7 +10,6 @@
  */
 
 import chalk from 'chalk';
-import { recentQuery_note } from '../../session/recent.js';
 import { chrisContext, Context, pacsQuery_get, pacsQuery_resultDecode, pacsQueries_create, pacsServers_list, PACSQueryCreateData, PACSQueryDecodedResult, PACSQueryRecord, listCache_get, queryIndex_get, seriesStorage_resolveMany, type SeriesStorageFilter } from '@fnndsc/cumin';
 import { queryFolderName_build, answer_standIn, criteria_standIn } from '@fnndsc/salsa';
 import { PACS_QUERY_MODEL_KIND, type PacsPatient, type PacsProvenance, type PacsQueryModel, type PacsStudy, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
@@ -140,8 +139,6 @@ export async function pacsQuery_createAndWait(
     (typeof createResult.value.owner_username === 'string' ? createResult.value.owner_username : undefined)
     ?? (await askingIdentity_get()) ?? undefined;
   const vfsPath: string = queryVfsPath_build(queryId, queryObj, ownerUsername);
-  // What `${query}` refers to in a manifest: the answer this session just asked for.
-  recentQuery_note(vfsPath);
   const deadline: number = Date.now() + QUERY_TIMEOUT_MS;
 
   const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));

@@ -44,7 +44,7 @@ export type ShellArguments = string[] & {
 /**
  * What a reference looks like: `${name}` or a bare `$NAME`.
  *
- * A braced name may carry dots, which is how a session pronoun names part
+ * A braced name may carry dots, which is how a variable names a field
  * of what it refers to (`${gather.series.folderPath}`); a bare one may not, so
  * `$HOME.txt` keeps its extension.
  */

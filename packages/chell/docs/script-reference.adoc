@@ -22,8 +22,8 @@ All resource commands follow `<object> <verb>` order — never `<verb> <object>`
 | `feed list`
 | `list feed`
 
-| `plugin run pl-dircopy`
-| `run plugin pl-dircopy`
+| `plugin info pl-dircopy-v2.1.1`
+| `info plugin pl-dircopy-v2.1.1`
 
 | `feeds list --all`
 | `list feeds --all`
@@ -63,6 +63,8 @@ chell workflow.chell
 
 === Script file format
 
+A script and a manifest (`docs/manifest.adoc`) are one format with one runner: `chell -f f` and `chell f` play the file, as `play f` does. It may carry a manifest's `@` header (`@param`, `@answers`), each line is shown as it runs, and the script stops at its first refused line and exits non-zero.
+
 [source,bash]
 ----
 #!/usr/bin/env chell
@@ -75,9 +77,11 @@ upload ~/local_data .
 
 === Stop-on-error flag
 
+A script always stops at its first refused line; `-e` is accepted and changes nothing for it. For a `-c` batch, `-e` stops at the first failing command:
+
 [source,bash]
 ----
-chell -e -f workflow.chell   # exit on first error
+chell -e -c "cd /nowhere; ls"   # stops after the cd
 ----
 
 == Connection
@@ -503,30 +507,18 @@ cd /proc/jobs/feed_123/pl-dircopy_456
 pl-segmentation-v1.0.0 --threshold 0.5
 ----
 
-=== plugin run (explicit form)
+=== Naming the run
+
+A plugin runs by its name, where the session stands: in a plain folder it makes a feed rooted on that folder; inside a feed node it continues off that node. To run off another node, `cd` to it first. A capture names the run, so later lines say which run they mean:
 
 [source,bash]
 ----
-plugin run <searchable> [--previous_id <id>] [plugin_params...]
+A=$(pl-dircopy-v2.1.1 --dir .)
+cd ${A.outputPath}
+expect run ${A.instanceId} status eq finishedSuccessfully
 ----
 
-`searchable` formats:
-
-[cols="1,2"]
-|===
-| Format | Example
-
-| `name:value`         | `name:pl-dircopy`
-| `name_exact:value`   | `name_exact:pl-dircopy`
-| `id:value`           | `id:42`
-| versioned name       | `pl-dircopy-v2.1.1`
-|===
-
-[source,bash]
-----
-plugin run pl-dircopy-v2.1.1 --previous_id 14 --dir .
-plugin run name_exact:pl-fshack,version:1.2.0 --previous_id 14 --inputFile brain.mgz
-----
+The answer is a `run.scheduled` model: `pluginName`, `instanceId`, `feedId`, `newFeed`, `outputPath`, `status`. `set A` shows it whole. See `help variables` and `docs/manifest.adoc`.
 
 == Pipeline Execution
 
@@ -635,7 +627,6 @@ feed comment delete <id> <comment_id>   # delete comment
 plugins list [--all] [--search name:pl-dircopy]
 plugins list --fields name,version,category
 
-plugin run <searchable> [params...]    # run a plugin
 plugin readme <id>                     # show README
 plugin search <searchable>             # resolve to IDs
 ----

@@ -30,15 +30,11 @@ export const RESOURCE_LIST_OPTIONS: string[] = [
 ];
 
 /** The help for each ChRIS command, by name. */
-/** The pronouns the ChRIS session answers, for `help pronouns`. */
-export const CHRIS_PRONOUN_LINES: ReadonlyArray<string> = [
+/** The built-in names the ChRIS session answers, for `help variables`. */
+export const CHRIS_BUILTIN_LINES: ReadonlyArray<string> = [
   '  ${gather}        every gathered member, as operands (where it was gathered FROM); read live',
   '  ${gather.series.folderPath}  the same members, where they LANDED in CUBE',
   '  ${gather.name}  ${gather.feed.id}  any field of the cohort, as `gather` answers it',
-  '  ${feed}          the feed this session most recently worked in',
-  '  ${run}           the run it most recently scheduled',
-  '  ${run.place}     where that run writes — what the next act in a chain takes',
-  '  ${query}         where its most recent PACS answer lives',
 ];
 
 export const chrisHelp: Record<string, CommandHelp> = {
@@ -225,17 +221,16 @@ export const chrisHelp: Record<string, CommandHelp> = {
   plugin: {
     category: 'Resources',
     usage: 'plugin <subcommand> [options]',
-    description: 'Work with a single ChRIS plugin - run, search, view documentation',
+    description: 'Work with a single ChRIS plugin - search, view documentation',
     options: [
       '',
       'DESCRIPTION:',
       '  Plugins are computational units in ChRIS that process data. The "plugin"',
-      '  command operates on individual plugins - running them, searching for specific',
-      '  plugins, or viewing their documentation.',
+      '  command operates on individual plugins - searching for specific plugins, or',
+      '  viewing their documentation. A plugin RUNS by its name, as a line of its own,',
+      '  where the session stands: pl-dcm2niix-v1.0.2 … (A=$(…) names the run).',
       '',
       'SUBCOMMANDS:',
-      '  run [--detach] <searchable> [params]  Run a plugin and wait for it to finish',
-      '                               (--detach returns the instance id at once)',
       '  info <name>-v<version>       Show one plugin whole: facts and every parameter',
       '  search <searchable>          Resolve a searchable to plugin IDs',
       '  readme <pluginId>            Display plugin README documentation',
@@ -246,11 +241,9 @@ export const chrisHelp: Record<string, CommandHelp> = {
       '  ID-based:   id:42',
       '  Batch:      id:77++id:33  (multiple plugins)',
       '',
-      'PLUGIN RUN PARAMETERS:',
-      '  Plugin-specific parameters use CLI flag format:',
-      '    --param value              Single parameter',
-      '    --flag                     Boolean flag',
-      '    --param1 val1 --param2 val2   Multiple parameters',
+      'RUNNING A PLUGIN:',
+      '  pl-dcm2niix-v1.0.2 --param value -- feed_title="T"   run where you stand',
+      '  A=$(pl-dcm2niix-v1.0.2 …)                         and name the run',
       '',
       '  Run "parametersofplugin <name>" to see available parameters for a plugin.',
     ],
@@ -268,18 +261,9 @@ export const chrisHelp: Record<string, CommandHelp> = {
       'plugin readme 42',
       'plugin readme pl-dircopy',
       '',
-      '# Run a plugin (simple)',
-      'plugin run pl-dircopy',
-      '',
-      '# Run plugin with parameters',
-      'plugin run pl-dircopy --dir /incoming',
-      'plugin run name:pl-dcm2niix,version:1.0.2 --outputdir /results',
-      '',
-      '# Run with multiple parameters',
-      'plugin run pl-segmentation --threshold 0.5 --method watershed',
-      '',
-      '# Run with specific version',
-      'plugin run name:pl-dircopy,version:2.1.1 --dir /data',
+      '# Run a plugin where you stand, and name the run',
+      'A=$(pl-dcm2niix-v1.0.2)',
+      'cd ${A.outputPath}',
     ],
   },
   plugins: {
@@ -560,17 +544,13 @@ export const chrisHelp: Record<string, CommandHelp> = {
     ],
   },
   'pacs pull': {
-    usage: 'pacs pull [--nowait] [--retry N] [--new-feed <title> [--plugin <selector>|--pipeline <selector>] [-- <args...>]] <vfs-path|query-expr> [...]',
+    usage: 'pacs pull [--nowait] [--retry N] [--new-feed <title>] <vfs-path|query-expr> [...]',
     description: 'Pull PACS series into ChRIS storage (blocking, with LONK progress)',
     options: [
       '--detach      Fire retrieves and return the handles at once; prints <seriesUID> <retrieveId> per line',
       '              (--nowait is the older spelling of the same flag)',
       '--retry N     Re-fire retrieves for [NO LONK] series up to N additional times',
       '--new-feed <title>  Create one named feed from the complete retrieved selection',
-      '--plugin <selector> Attach one plugin to the new Feed root',
-      '--pipeline <selector> Attach one pipeline to the new Feed root',
-      '-- <args...>        Forward remaining tokens to the selected analysis',
-      '                    (cannot be combined with --detach)',
       '--help        Show this help',
     ],
     examples: [
@@ -963,9 +943,10 @@ export const chrisHelp: Record<string, CommandHelp> = {
       '  @description  one line about it',
       '  @param        MRN            a parameter it needs',
       '  @param        LABEL = draft  one with a default',
-      '  <any kernel line>',
+      '  @answers      C              the variable X=$(play f) holds',
+      '  <any kernel line>             C=$(pl-x) names what a line made',
       '',
-      'PRONOUNS a line may use (${feed}, ${run}, ${gather}, ${query}, ${cwd} …): see help pronouns',
+      'VARIABLES a line may use (${C.outputPath}, ${gather}, ${cwd} …): see help variables',
     ],
     examples: [
       'play ~/flows/sag-cohort.mise --param MRN=1234567',
@@ -1259,17 +1240,13 @@ export const chrisHelp: Record<string, CommandHelp> = {
   },
   pull: {
     category: 'PACS',
-    usage: 'pull [--detach] [--retry N] [--new-feed <title> [--plugin <selector>|--pipeline <selector>] [-- <args...>]] <vfs-path|query-expr> [...]',
+    usage: 'pull [--detach] [--retry N] [--new-feed <title>] <vfs-path|query-expr> [...]',
     description: 'Pull PACS series into ChRIS storage; accepts VFS paths or query expressions (blocking)',
     options: [
       '--detach      Fire retrieves and return the handles at once; prints <seriesUID> <retrieveId> per line',
       '              (--nowait is the older spelling of the same flag)',
       '--retry N     Re-fire retrieves for [NO LONK] series up to N additional times',
       '--new-feed <title>  Create one named feed from the complete retrieved selection',
-      '--plugin <selector> Attach one plugin to the new Feed root',
-      '--pipeline <selector> Attach one pipeline to the new Feed root',
-      '-- <args...>        Forward remaining tokens to the selected analysis',
-      '                    (cannot be combined with --detach)',
       '--help        Show this help',
     ],
     examples: [

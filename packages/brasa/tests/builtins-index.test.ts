@@ -1103,22 +1103,11 @@ describe('Builtins - Core Functions', () => {
       expect(envelope.rendered).toContain('Plugin list');
     });
 
-    it('should run a plugin', async () => {
-      mockPluginExecute.mockResolvedValue({ id: 123 });
-      mockPluginRunRender.mockReturnValue('Plugin running');
-
+    it('should refuse the retired run', async () => {
       const envelope = await builtin_plugin(['run', 'pl-dircopy', '--arg', 'value']);
 
-      expect(mockPluginExecute).toHaveBeenCalledWith('pl-dircopy', '--arg value');
-      expect(envelope.rendered).toContain('Plugin running');
-    });
-
-    it('should error when plugin execution fails', async () => {
-      mockPluginExecute.mockResolvedValue(null);
-
-      const envelope = await builtin_plugin(['run', 'pl-dircopy']);
-
-      expect(envelope.renderedErr).toContain('execution failed');
+      expect(mockPluginExecute).not.toHaveBeenCalled();
+      expect(envelope.renderedErr).toContain('plugin run is retired');
     });
 
     it('should return an error envelope for unknown subcommands', async () => {

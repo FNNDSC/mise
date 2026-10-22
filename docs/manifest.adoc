@@ -85,24 +85,32 @@ A row of the last answer is named by its handle, which says WHAT it counts: `@SE
 
 What a row hands over differs by kind: a series its path; a file or folder its path; a STUDY its series, which is what the surface's GATHER on a study hands over, so `gather add @STD001` and `pull @STD001` act on the whole study. A verb refuses a kind it does not take, by name and at expansion: `image @STD001` says "image takes a series or a folder or a file; STD001 is a study" rather than resolving to a path and failing three steps later for a reason that names nothing typed.
 
-Three sources answer, in order: the session's *built-ins* (its reserved names, read-only), then *variables* (what a line set with `NAME=$(command)` or `NAME=word`, and inside a play the manifest's parameters, read-only), then the *environment*. A variable holds the command's answer, its model, not its printed text: `${A.instanceId}` is a field of that model by the name the model gives it, a field holding a list reaches through it one operand per element, and a bare `${A}` is its rows or refuses by name when the answer is one thing with several fields (issue #1208). A manifest that declares a `@param` with a reserved name is refused when the file is read, because `${feed}` meaning two things is a language with a hole in it.
+Three sources answer, in order: the session's *built-ins* (its reserved names, read-only), then *variables* (what a line set with `NAME=$(command)` or `NAME=word`, and inside a play the manifest's parameters, read-only), then the *environment*. A variable holds the command's answer, its model, not its printed text: `${A.instanceId}` is a field of that model by the name the model gives it, a field holding a list reaches through it one operand per element, and a bare `${A}` is its rows or refuses by name when the answer is one thing with several fields (issue #1208). A manifest that declares a `@param` with a reserved name is refused when the file is read, because `${gather}` meaning two things is a language with a hole in it.
 
 A reference nothing answers *refuses the line* — it does not expand to nothing and does not stand as text. `rm -rf ${DIR}/scratch` with `DIR` unset is how a script deletes the wrong thing. The refusal names the reference and where it looked. The single exception is a dry run, which has run nothing and so leaves a reference to what a later line would produce standing as written.
 
-`${NAME}` expands a parameter. Beyond parameters, a manifest reaches session truth through a small closed set of *pronouns*, which are not variables and are not stored by the runner — each is a thing the kernel already knows:
+A manifest names what its own lines made: `A=$(pl-dcm2niix-v1.0.2)` holds that run's answer (`instanceId`, `feedId`, `newFeed`, `outputPath`, `status`), and `${A.outputPath}` is where it wrote. A failed command fails its line and leaves the name as it was, so the play stops there. `@answers NAME` declares what the manifest hands back: `X=$(play f)` holds that variable's model, and a play that ends without setting it is refused. Beyond what it names itself, a manifest reads session truth through a few *built-ins*, read-only, each a thing the kernel already holds:
 
 [cols="1,3"]
 |===
 | `${gather}` | The cohort, as an operand list, each member at the address it was GATHERED FROM — what `pull` takes.
 | `${gather.series.folderPath}` | Where each member LANDED in CUBE — what `image` and a run take. A member has two addresses and the difference is load-bearing; this refuses by name when a member is not in CUBE yet.
 | `${gather.name}` | Any field of the cohort as `gather` answers it, by the field rule every variable follows: `${gather.feed.id}`, `${gather.series.modality}`. `${gather}` is read live on every use. One member is named by an `@` handle, never by an index.
-| `${feed}` | The feed most recently created in this session.
-| `${run}` | The run most recently scheduled; `${run.place}` is where it writes, which is what the next act in a chain works on.
-| `${query}` | The PACS query most recently answered.
+| `${listing}` | The held listing's rows as it stands.
 | `${cwd}` | The session's working directory.
 |===
 
-Deliberately absent: general capture (`x = $(...)`). A manifest that assigns is a program, and a program wants control flow, and control flow wants a debugger. The pronouns cover the workflows; when one does not, the honest answer is a plugin, not a language feature.
+The pronouns that came before variables (`${feed}`, `${run}`, `${run.place}`, `${query}`) were filled behind the line by whatever ran last, so one name meant one run on one line and another four lines later, and a path that forgot to fill one left it stale (#1207). They are gone; a line names what it means.
+
+=== A decision is a data state, never a branch
+
+A manifest is a straight line of kernel lines. It has no `if`, `for`, `while` or `case`, no `&&` or `||`, no `test`, arithmetic or string slicing. This is the ChRIS feed's own design: a feed has no conditional edges; a decision is a node whose output is the chosen data, and what runs downstream works on what came out. In a manifest the same parts are selection (`grep` on a listing, `gather add`: a step whose answer is the decision), assertion (`expect`, whose only outcomes are go on or stop), and verbs that take many operands (the iteration lives in the verb, as in `gather process`). A capture names a node's state, and holding it as a snapshot matches a finished node's immutability.
+
+What this keeps: `--dry-run` shows every line that will run; `record` can produce any manifest; a shared manifest reads top to bottom.
+
+What it rules out includes the small steps that look harmless: `X=$(…) || Y=$(…)`, `$(…)` as an operand, a predicate inside the dots (`${G.series[modality=MR]}`), `expect --else`. A need that wants one becomes a verb or a node whose output encodes the decision (a filter on the verb, a filter plugin), or a program against the typed chell API. A program is not a manifest.
+
+The analogy has a limit. A feed is run by CUBE and pfcon: in parallel, scheduled, persisted, with provenance. A manifest is run by the kernel: in one session, in one total order, with variables that end with the process, and with steps that are not data (`cd`, `gather add`, `pull`, `feed rm`, `expect`). A manifest does not compile to a pipeline.
 
 === expect
 
@@ -123,7 +131,7 @@ Subjects are the kernel's own. Predicates are `eq`, `ne`, `gt`, `gte`, `lt`, `lt
 | `path <p> tags <TagName>` | What a DICOM header says, looking beneath the path when the folder itself holds none. A tag that VARIES across the folder answers with every value it takes, so a claim about "the" value cannot pass by reading only the first file — which is what makes this the honest check on an anonymization.
 |===
 
-The subject a manifest most wants — `pacs`, for "the query answered something" — waits for the pronouns in the next slice, because what it asks about is the query this session last ran. Until then a query's answer is asserted through the path it wrote.
+The subject a manifest most wants — `pacs`, for "the query answered something" — is not built: a query's answer is asserted through the path it wrote, or captured (`Q=$(pacs query …)`) and read by its fields.
 
 A satisfied expectation prints one confirming line. A failed one prints what it wanted, what it got, and where it was standing, then refuses: play stops at the first refusal (a manifest is a workflow, and the second half of a workflow whose first half failed is noise), and the process exits non-zero.
 
@@ -148,7 +156,7 @@ play <manifest> [--param K=V]… [--pace <duration>] [--step] [--dry-run]
 
 `play` reads the file through the VFS and runs its lines in order against the current session. Nothing is special about the execution: each line goes through the same path a typed line goes through, so every attached surface renders each step as it lands.
 
-`--pace` puts a delay between lines, for watching. `--dry-run` expands parameters and pronouns and prints the lines it would run without running them — the manifest's `--help`; a pronoun that refers to what an earlier line WOULD have produced stands as written, since nothing has run to give it a value. `--step` is refused by name: a keypress needs a terminal and a daemon has none, so at a surface the answer is `--pace`.
+`--pace` puts a delay between lines, for watching. `--dry-run` expands parameters and variables and prints the lines it would run without running them — the manifest's `--help`; a variable an earlier line WOULD have set stands as written, since nothing has run to give it a value, and `@answers` is shown as written. `--step` is refused by name: a keypress needs a terminal and a daemon has none, so at a surface the answer is `--pace`.
 
 A manifest is read from the ChRIS filesystem — that is what makes one shareable, and sharing it is `setfacl`, like any other file. A path that names no CFS file is then looked for on the disk the ENGINE runs on, which is how a repository's battery runs without uploading itself first; in a daemon that disk is the daemon's, never the surface's, which is why CFS is asked first.
 
@@ -202,12 +210,12 @@ expect gather unpulled eq 0
 # Look at one before committing the group to compute.
 image @SER1
 
-# Process the cohort as a group: one feed, one node per member.
-gather process --pipeline pl-dcm2niix --name "${LABEL}"
-expect feed status eq finishedSuccessfully --within 20m
+# Process the cohort as a group: one feed whose root holds every member, one run over it.
+R=$(gather process pl-dcm2niix-v1.0.2 --title "${LABEL}")
+expect run ${R.instanceId} status eq finishedSuccessfully --within 20m
 ----
 
-NOTE: The examples are written in the finished language. Until the pronoun slice lands, `${feed}` and `${gather.first}` are not yet substituted and `expect` names a feed or an instance by its id.
+NOTE: The examples are written in the finished language. `pacs filter`, `gather add --shown`, `gather process`, and the `pacs` and `gather unpulled` subjects of `expect` are not built yet.
 
 Played in ARGUS, an observer sees: the PACS pane fill; the filter narrow it; the header band's `01-GATHER` face count up; the badges turn as the retrieve lands; a viewer open on the first series; the catalogue compose the run; and `RUNS-02` take the new feed. Played headlessly, the same file prints envelopes and exits 0 or non-zero. Neither run knows which it is.
 
@@ -230,26 +238,28 @@ gather clear
 gather add --shown
 expect gather size gt 0
 
-pull ${gather} --new-feed "${LABEL} · raw"
-expect feed status eq finishedSuccessfully --within 30m
+pull ${gather}
+expect gather unpulled eq 0
 
 # Strip the identifying elements. The tag list is named here because a
-# manifest that anonymizes should say what it changed.
-pl-pfdicom_tagSub-v3.3.4 --fileFilter dcm \
-    --tagInfo 'PatientName,${SUBJECT}++PatientID,${SUBJECT}++AccessionNumber,anon++PatientBirthDate,19000101'
-expect run ${run} status eq finishedSuccessfully --within 20m
+# manifest that anonymizes should say what it changed. DOUBLE quotes: a
+# reference inside single quotes is text, as in any shell.
+cd ${gather.series.folderPath}
+A=$(pl-pfdicom_tagSub-v3.3.4 --fileFilter dcm --tagInfo "PatientName,${SUBJECT}++PatientID,${SUBJECT}++AccessionNumber,anon++PatientBirthDate,19000101" -- feed_title="${LABEL}")
+expect run ${A.instanceId} status eq finishedSuccessfully
 
 # Prove it, on the data, not on the plugin's word.
-expect path ${feed}/pl-pfdicom_tagSub/data tags PatientID eq ${SUBJECT}
-expect path ${feed}/pl-pfdicom_tagSub/data tags PatientName notContains ${ACC}
+expect path ${A.outputPath} tags PatientID eq ${SUBJECT}
+expect path ${A.outputPath} tags PatientName notContains ${ACC}
 
 # Convert the anonymized output, never the input.
-run pl-dcm2niix ${feed}/pl-pfdicom_tagSub
-expect run status eq finishedSuccessfully --within 20m
-expect path ${feed}/pl-dcm2niix/data count matches '*.nii*' gt 0
+cd ${A.outputPath}
+C=$(pl-dcm2niix-v1.0.2)
+expect run ${C.instanceId} status eq finishedSuccessfully
+expect path ${C.outputPath} count --matching "*.nii*" --deep gt 0
 
 # Look at what came out, and keep it.
-image ${feed}/pl-dcm2niix/data
+image ${C.outputPath}
 ----
 
 Two things are deliberate. The conversion runs on the anonymization's output node, not on the feed root, so the manifest cannot silently convert identified data. And the anonymization is asserted by reading tags back off the produced files — the one check that survives a plugin changing behind you.
@@ -307,7 +317,7 @@ Each slice is shippable and verifiable on its own.
 . *`gather` as a kernel subject.* `gather list|add|remove|clear|name` over the session file the surface writes today, path-identified. No manifest yet — this alone makes the cohort scriptable. `gather process` waits for a `run` that blocks (slices 2 and 3), because a process verb that returns before its feed exists cannot be asserted on; the `gather.changed` annunciation and the header band's subscription follow in a slice of their own, so the surface changes hands only once the kernel's cohort is proven.
 . *Blocking verbs.* `pull` and `run` block their own line with progress on the progress channel, `--detach` restores today's behaviour, Esc detaches live. The law about the lane gets its enforcement.
 . *`expect`.* The subject/property/predicate grammar, `--within`, the failure readout, the exit status.
-. *`play`.* Header parsing, parameters, pronouns, `--pace`, `--step`, `--dry-run`, refusal on a missing parameter, one level of nesting.
+. *`play`.* Header parsing, parameters, variables (#1208), `--pace`, `--step`, `--dry-run`, refusal on a missing parameter, one level of nesting.
 . *`record`.* Capture of typed and minted lines, parameter offering, write to CFS.
 . *The first battery.* Built, as `packages/chell/exemplars/flows/`: `00_session.mise`, `10_anonymize_nii.mise` (anonymize, prove it on the produced files, convert, remove the feed) and `battery.mise`, whose exit status is the gate. The exemplars README's standing caveat — "static scripts cannot capture ids between commands, so the full feed+dcm2niix workflow is TS-only" — no longer holds.
 

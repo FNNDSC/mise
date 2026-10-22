@@ -95,8 +95,6 @@ jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({
 }));
 
 const { builtin_play, manifest_parse, line_expand, playArgs_parse } = await import('../src/builtins/res/play.js');
-const { recentFeed_note, recentQuery_note, recentRunPlace_note, recentRuns_note, recent_forget } =
-  await import('../src/session/recent.js');
 
 beforeEach(() => {
   ran.length = 0;
@@ -108,7 +106,6 @@ beforeEach(() => {
   scopes.length = 0;
   variables.clear();
   scope = new Map();
-  recent_forget();
   process.exitCode = 0;
 });
 
@@ -222,13 +219,13 @@ describe('play', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('leaves a pronoun a dry run cannot know as it was written', async () => {
-    // Nothing has run, so ${feed} has no value — refusing there would make
-    // --dry-run useless for exactly the manifests that chain.
-    stored = ['pwd', 'expect feed ${feed} status eq finishedSuccessfully'].join('\n');
+  it('leaves a variable a dry run cannot know as it was written', async () => {
+    // Nothing has run, so ${A.feedId} has no value — refusing there would
+    // make --dry-run useless for exactly the manifests that chain.
+    stored = ['pwd', 'expect feed ${A.feedId} status eq finishedSuccessfully'].join('\n');
     const envelope = await builtin_play(['f.mise', '--dry-run']);
     expect(envelope.status).toBe('ok');
-    expect(output.some((line: string): boolean => line.includes('expect feed ${feed} status'))).toBe(true);
+    expect(output.some((line: string): boolean => line.includes('expect feed ${A.feedId} status'))).toBe(true);
   });
 
   it('shows a dry run without running anything', async () => {

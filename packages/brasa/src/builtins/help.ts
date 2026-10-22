@@ -5,7 +5,7 @@
  *
  * @module
  */
-import { pronounsPage_render } from './pronouns.js';
+import { variablesPage_render } from './variablesPage.js';
 import { HELP_SECTIONS, helpPosix_render, helpSection_render, helpToc_render, section_find, shellTopic_render, type HelpLookup, type HelpSection } from './helpSections.js';
 import { gamesShelf_render, gamesShelf_names } from './games/shelf.js';
 import chalk from 'chalk';
@@ -1062,10 +1062,10 @@ export function args_checkHasHelpFlag(args: string[], command?: string): boolean
 export async function builtin_help(args: string[]): Promise<CommandEnvelope> {
   const commandName: string | undefined = args.length > 0 ? args.join(' ') : undefined;
 
-  // The pronouns: the core's page, with whatever the backend answers too.
-  if (commandName === 'pronouns') {
-    const backendPage: string | null = (await backendInstalled_get()?.fallback?.help?.('pronouns')) ?? null;
-    return { status: 'ok', rendered: backendPage ?? pronounsPage_render([]) };
+  // The variables: the core's page, with whatever the backend keeps too.
+  if (commandName === 'variables') {
+    const backendPage: string | null = (await backendInstalled_get()?.fallback?.help?.('variables')) ?? null;
+    return { status: 'ok', rendered: backendPage ?? variablesPage_render([]) };
   }
   // The shelf: its own page, in the style of this one.
   if (commandName === 'games') {

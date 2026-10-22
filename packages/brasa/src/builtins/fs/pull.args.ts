@@ -15,17 +15,6 @@ export interface PullArgs {
   newFeedTitle: string | null;
   parseError: string | null;
   paths: string[];
-  attachment?: PullAttachment;
-}
-
-/** One plugin or pipeline requested after successful PACS Feed creation. */
-export interface PullAttachment {
-  /** Selected executable kind. */
-  kind: 'plugin' | 'pipeline';
-  /** Plugin or Pipeline selector supplied by the user. */
-  selector: string;
-  /** Already-tokenized payload supplied after `--`. */
-  args: string[];
 }
 
 /**
@@ -36,9 +25,7 @@ export interface PullAttachment {
  * @returns The parsed flags and paths.
  */
 export function pullArgs_parse(args: string[]): PullArgs {
-  const delimiterIndex: number = args.indexOf('--');
-  const commandArgs: string[] = delimiterIndex === -1 ? args : args.slice(0, delimiterIndex);
-  const forwardedArgs: string[] = delimiterIndex === -1 ? [] : args.slice(delimiterIndex + 1);
+  const commandArgs: string[] = args;
   // `--detach` is the language's word for it; `--nowait` is what pull
   // called it first and still answers to.
   const nowait: boolean = commandArgs.includes('--nowait') || commandArgs.includes('--detach');
@@ -46,7 +33,6 @@ export function pullArgs_parse(args: string[]): PullArgs {
   let newFeedTitle: string | null = null;
   let parseError: string | null = null;
   const paths: string[] = [];
-  let attachment: PullAttachment | undefined;
 
   for (let i: number = 0; i < commandArgs.length; i++) {
     if (commandArgs[i] === '--nowait' || commandArgs[i] === '--detach') {
@@ -76,20 +62,9 @@ export function pullArgs_parse(args: string[]): PullArgs {
         i++;
       }
     } else if (commandArgs[i] === '--plugin' || commandArgs[i] === '--pipeline') {
-      const flag: '--plugin' | '--pipeline' = commandArgs[i] as '--plugin' | '--pipeline';
-      const selector: string | undefined = commandArgs[i + 1];
-      if (attachment !== undefined) {
-        parseError = '--plugin and --pipeline are mutually exclusive';
-      } else if (selector === undefined || selector.startsWith('--')) {
-        parseError ??= `${flag} requires a selector`;
-      } else {
-        attachment = {
-          kind: flag === '--plugin' ? 'plugin' : 'pipeline',
-          selector,
-          args: forwardedArgs,
-        };
-        i++;
-      }
+      // Pulling lands data; running over it is `gather process`, or a run
+      // by name where the pull's feed stands.
+      parseError ??= `${commandArgs[i]} is retired: pull lands the data; run over it with gather process <name>, or cd into the feed and run by name`;
     } else if (commandArgs[i].startsWith('--')) {
       parseError ??= `unsupported option: ${commandArgs[i]}`;
     } else {
@@ -97,13 +72,5 @@ export function pullArgs_parse(args: string[]): PullArgs {
     }
   }
 
-  if (attachment !== undefined && newFeedTitle === null) {
-    parseError ??= `--${attachment.kind} requires --new-feed`;
-  }
-  if (attachment === undefined && forwardedArgs.length > 0) {
-    parseError ??= 'arguments after -- require --plugin or --pipeline';
-  }
-  const parsed: PullArgs = { nowait, retryMax, newFeedTitle, parseError, paths };
-  if (attachment !== undefined) parsed.attachment = attachment;
-  return parsed;
+  return { nowait, retryMax, newFeedTitle, parseError, paths };
 }

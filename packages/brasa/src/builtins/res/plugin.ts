@@ -13,14 +13,11 @@
  */
 import chalk from 'chalk';
 import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
-import { runs_awaitSettled, settlement_render, type RunSettlement } from './runWait.js';
 import { plugins_fetchList } from '@fnndsc/chili/commands/plugins/list.js';
 import { pluginFields_fetch } from '@fnndsc/chili/commands/plugins/fields.js';
-import { plugin_execute } from '@fnndsc/chili/commands/plugin/run.js';
 import { plugin_add, PluginAddOutcome } from '@fnndsc/chili/commands/plugins/add.js';
-import { pluginList_render, pluginRun_render } from '@fnndsc/chili/views/plugin.js';
+import { pluginList_render } from '@fnndsc/chili/views/plugin.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
-import { PluginInstance } from '@fnndsc/chili/models/plugin.js';
 import { spinner } from '../../lib/spinner.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { chili_capture, type ChiliCaptured } from '@fnndsc/chili/screen/output.js';
@@ -54,7 +51,7 @@ export async function builtin_plugin(args: string[]): Promise<CommandEnvelope> {
   const subcommand: string = parsed._[0];
 
   if (!subcommand) {
-     return envelope_ok(`${chalk.red("Usage: plugin <list|run|add> ...")}\n`);
+     return envelope_ok(`${chalk.red("Usage: plugin <list|add|info|inspect|search> ...")}\n`);
   }
 
   try {
@@ -66,30 +63,12 @@ export async function builtin_plugin(args: string[]): Promise<CommandEnvelope> {
        }
        return envelope_ok(rendered);
     } else if (subcommand === 'run') {
-       // `--detach` is ours, not the plugin's, and it is taken out before
-       // anything else reads the line: left in, the generic parser treats it
-       // as an option carrying the plugin's name as its value, and the run
-       // refuses with a usage message naming no plugin.
-       const detach: boolean = args.includes('--detach');
-       const clean: string[] = args.filter((arg: string): boolean => arg !== '--detach');
-       const searchable: string = clean[1];
-       if (!searchable) {
-          return envelope_ok(`${chalk.red("Usage: plugin run [--detach] <plugin> [args...]")}\n`);
-       }
-       const params: string = clean.slice(2).join(' ');
-       const instance: PluginInstance | null = await plugin_execute(searchable, params);
-       if (!instance) {
-          process.exitCode = 1;
-          return envelope_error('', undefined, `${chalk.red("Plugin execution failed.")}\n`);
-       }
-       if (detach) {
-          return envelope_ok(`${pluginRun_render(instance)}\n`);
-       }
-       // A run that returns before its output exists reads as done and is
-       // not: the wait holds this line, never the session, and Esc detaches.
-       const settlement: RunSettlement = await runs_awaitSettled([instance.id], searchable);
-       if (settlement.outcome === 'settled' && settlement.failed > 0) process.exitCode = 1;
-       return envelope_ok(`${pluginRun_render(instance)}\n${settlement_render(settlement, searchable)}\n`);
+       // A plugin runs by its name, as a line of its own: `pl-dcm2niix …`
+       // runs where the session stands, makes or joins the feed, and answers
+       // the run as a model. `plugin run` was a thin pass to CUBE that did
+       // none of that.
+       process.exitCode = 1;
+       return envelope_error('', undefined, `${chalk.red('plugin run is retired: run a plugin by its name, where you stand — pl-dcm2niix-v1.0.2 …, or A=$(pl-dcm2niix-v1.0.2 …) to name the run.')}\n`);
     } else if (subcommand === 'add') {
        return await plugin_addInteractive(parsed);
     } else if (subcommand === 'inspect') {
@@ -105,7 +84,7 @@ export async function builtin_plugin(args: string[]): Promise<CommandEnvelope> {
        return await builtin_plugin(['list', `--search`, query]);
     }
     process.exitCode = 1;
-    return envelope_error('', undefined, `${chalk.yellow(`Unknown subcommand: ${subcommand}. Usage: plugin <list|run|add|info|inspect|search>`)}\n`);
+    return envelope_error('', undefined, `${chalk.yellow(`Unknown subcommand: ${subcommand}. Usage: plugin <list|add|info|inspect|search>`)}\n`);
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
     process.exitCode = 1;

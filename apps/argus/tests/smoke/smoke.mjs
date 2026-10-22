@@ -388,12 +388,19 @@ try {
     for (let i = 0; i < 60 && document.querySelectorAll('.launcher-tile').length === 0; i++) await sleep(250);
     const shown = (id) => { const e = document.getElementById(id); if (e === null || e.offsetParent === null) return false; const r = e.getBoundingClientRect(); return r.height > 0 && r.width > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight; };
     const seen = { zoom: document.body.dataset.zoom ?? null, tiles: document.querySelectorAll('.launcher-tile').length, drawer: shown('drawer'), gutter: shown('gutter-files'), composition: document.body.dataset.composition ?? null };
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    if (seen.zoom === 'launcher') window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await sleep(400);
     return { ...seen, after: document.body.dataset.zoom ?? null };`);
-  check('a fresh browser lands on the dashboard alone: zoomed, no console, no gutter; Esc gives the full surface',
-    // ChRIS's dashboard holds eight tiles; the frame alone its own five.
-    landing.zoom === 'launcher' && landing.tiles >= (landing.composition === 'chris' ? 7 : 5) && !landing.drawer && !landing.gutter && landing.after === null, JSON.stringify(landing));
+  if (landing.composition === 'chris') {
+    check('a fresh browser lands on the dashboard alone: zoomed, no console, no gutter; Esc gives the full surface',
+      // ChRIS's dashboard holds eight tiles.
+      landing.zoom === 'launcher' && landing.tiles >= 7 && !landing.drawer && !landing.gutter && landing.after === null, JSON.stringify(landing));
+  } else {
+    // A frame-alone daemon serves on a fresh port each start, so every boot
+    // is a first visit: the dashboard stands on stage inside the whole frame.
+    check('a frame-alone session lands on the dashboard inside the frame: not zoomed, console and gutter on stage',
+      landing.zoom === null && landing.tiles >= 5 && landing.drawer && landing.gutter, JSON.stringify(landing));
+  }
   // The baseline is home, not whatever cwd the session kept from before
   // the suite: a session left in a since-removed directory made every
   // scenario read as a leak and every repair cd into nothing.
@@ -3332,6 +3339,11 @@ try {
     // what the composition decides is whether its own rule hides it.
     const ruled = (id) => { const e = document.getElementById(id); return e !== null && getComputedStyle(e).display !== 'none'; };
     const marks = { runs: shown('gutter-runs'), pacs: shown('gutter-tools'), gather: shown('header-gather-pill'), index: ruled('index-instrument') };
+    // The frame's own posture before Esc: the header's brand and the console
+    // drawer on stage, whatever the composition (the ChRIS landing zooms only
+    // on its first visit, which the boot stage stepped out of).
+    const onStage = (sel) => { const e = document.querySelector(sel); if (e === null) return false; const r = e.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < innerHeight; };
+    const posture = { brand: onStage('.wrap:not(#gap) .brand-label'), drawer: onStage('#drawer'), zoom: document.body.dataset.zoom ?? null, tdMark: onStage('.brand-mark-td') };
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400);
     const input = console_input();
     input.value = 'view runs'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -3339,13 +3351,15 @@ try {
     for (let i = 0; i < 20 && !/view: unknown given/.test(output()); i++) await sleep(250);
     const said = (output().match(/view: unknown given[^\\n]*/) ?? [''])[0];
     document.getElementById('gutter-files').click(); await sleep(400);
-    return { composition: document.body.dataset.composition ?? null, tiles, marks, viewRuns: said };`);
+    return { composition: document.body.dataset.composition ?? null, tiles, marks, posture, viewRuns: said };`);
   if (alone.composition === 'chris') {
     check('under ChRIS the page draws ChRIS: RUNS and PACS in the gutter, its tiles, its index instrument',
       alone.marks.runs && alone.marks.pacs && alone.marks.index && alone.tiles.includes('ANALYSES'), JSON.stringify(alone));
   } else {
     check('a session with no composition of its own has the frame alone: its five tiles, no RUNS, PACS, GATHER or index instrument',
       JSON.stringify(alone.tiles) === JSON.stringify(['FILES', 'PANES', 'KEYS', "WHAT'S NEW", 'CONSOLE']) && !alone.marks.runs && !alone.marks.pacs && !alone.marks.gather && !alone.marks.index, JSON.stringify(alone));
+    check('a frame-alone session keeps its header brand and console drawer on stage at the dashboard',
+      alone.posture.brand && alone.posture.drawer && alone.posture.zoom === null && (alone.composition !== 'stratus' || alone.posture.tdMark), JSON.stringify(alone.posture));
     check('the frame alone speaks no ChRIS word: view runs is refused by name', /view: unknown given 'runs' \(files\)/.test(alone.viewRuns), JSON.stringify(alone.viewRuns.slice(0, 200)));
   }
   }

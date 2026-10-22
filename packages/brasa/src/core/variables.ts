@@ -141,6 +141,25 @@ export function variables_list(): Array<{ name: string } & Variable> {
     .sort((left: { name: string }, right: { name: string }): number => left.name.localeCompare(right.name));
 }
 
+/** What a bare name of one kind is, when the kind is a record that still has one obvious operand list. */
+export type AnswerOperands = (data: unknown) => string[] | null;
+
+/** Kind to its bare operands, for records that are not listings. */
+const operandReaders: Map<string, AnswerOperands> = new Map();
+
+/**
+ * Says what a bare `${NAME}` holding a record of this kind expands to. A
+ * listing's rows need no reader (its answer adapter numbers them); this is
+ * for a record that is not a listing and must not become the held one, as a
+ * scheduled pipeline's nodes are not rows to number.
+ *
+ * @param kind - The model kind.
+ * @param reader - Reads the operands out of that model.
+ */
+export function answerOperands_register(kind: string, reader: AnswerOperands): void {
+  operandReaders.set(kind, reader);
+}
+
 /** What reading a variable gave: operands, or a refusal an operator can act on. */
 export type FieldReading = { values: string[] } | { refused: string };
 
@@ -245,6 +264,8 @@ export function answer_read(answer: SessionAnswer, name: string, fields: Readonl
     const values: string[] = rows.flatMap((row: AnswerRow): string[] => row.values);
     return values.length === 0 ? { refused: `${name} is empty` } : { values };
   }
+  const operands: string[] | null = operandReaders.get(answer.kind)?.(answer.data) ?? null;
+  if (operands !== null) return operands.length === 0 ? { refused: `${name} is empty` } : { values: operands };
   return leaf_read(answer.data, name, answer.kind);
 }
 

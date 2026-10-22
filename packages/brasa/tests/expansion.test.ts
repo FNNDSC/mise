@@ -223,6 +223,8 @@ describe('a variable holds an answer, and a dot is a field of it', () => {
     variable_set('P', PIPELINE);
     expect(await line_words('ls ${P.instances.outputPath}')).toEqual(['ls', '/o/1', '/o/2']);
     expect(await line_words('echo ${P.tags}')).toEqual(['echo', 'a', 'b']);
+    // Bare, a scheduled pipeline is its nodes.
+    expect(await line_words('expect run ${P} status eq x')).toEqual(['expect', 'run', '1', '2', 'status', 'eq', 'x']);
     expect(await line_words('echo ${P.instances}')).toEqual({ missing: 'P.instances' });
     expect(reference_refusal('P.instances')).toBe('${P.instances}: P.instances holds records; name a field: instanceId, outputPath.');
   });

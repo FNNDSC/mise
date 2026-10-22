@@ -1224,8 +1224,10 @@ async function surface_start(token: string): Promise<void> {
     if (outcome.envelopes.some((envelope): boolean => envelope.model?.kind === 'fs.cwd')) {
       void client.line_execute('ls', { silent: true });
     }
+    // A plugin answers run.scheduled, a pipeline pipeline.scheduled; both say
+    // which feed the work landed in, and the surface lights that feed.
     const scheduled: WireEnvelope | undefined = outcome.envelopes.find(
-      (envelope: WireEnvelope): boolean => envelope.model?.kind === 'run.scheduled',
+      (envelope: WireEnvelope): boolean => envelope.model?.kind === 'run.scheduled' || envelope.model?.kind === 'pipeline.scheduled',
     );
     const data: { feedId?: unknown } | undefined = scheduled?.model?.data as { feedId?: unknown } | undefined;
     if (typeof data?.feedId === 'number') {

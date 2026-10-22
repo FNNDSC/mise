@@ -195,6 +195,33 @@ describe('builtin_pipeline', () => {
     expect(mockProcRefresh).toHaveBeenCalledWith(77);
   });
 
+  it('answers every node it made, with where each writes and the nodes nothing runs off', async () => {
+    mockPluginGet.mockResolvedValue('5');
+    mockResolve.mockResolvedValue(ok({ name: 'MyPipe' }));
+    mockRun.mockResolvedValue(ok({ workflowId: 99, pluginInstanceIds: [1, 2, 3] }));
+    const nodes: Record<number, unknown> = {
+      5: { feedID: 77 },
+      1: { feedID: 77, pluginName: 'pl-a', parentID: 5, outputPath: '/o/1' },
+      2: { feedID: 77, pluginName: 'pl-b', parentID: 1, outputPath: '/o/2' },
+      3: { feedID: 77, pluginName: 'pl-c', parentID: 1 },
+    };
+    mockInstanceGet.mockImplementation((id: unknown) => nodes[id as number]);
+    const env = await builtin_pipeline(['run', 'MyPipe', '--detach']);
+    expect(env.model).toEqual({
+      kind: 'pipeline.scheduled',
+      data: {
+        pipelineName: 'MyPipe', workflowId: 99, feedId: 77, newFeed: false,
+        instances: [
+          { instanceId: 1, pluginName: 'pl-a', outputPath: '/o/1', status: 'detached' },
+          { instanceId: 2, pluginName: 'pl-b', outputPath: '/o/2', status: 'detached' },
+          { instanceId: 3, pluginName: 'pl-c', outputPath: null, status: 'detached' },
+        ],
+        leaves: [2, 3],
+      },
+    });
+    mockInstanceGet.mockReset();
+  });
+
   it('refuses to run without a context node', async () => {
     mockPluginGet.mockResolvedValue(null);
     await builtin_pipeline(['run', 'MyPipe']);

@@ -44,6 +44,8 @@ export interface CwdModel {
  * @property newFeed - True when this run created the feed (a dircopy root
  *   stands above it); false when it was appended to an existing node.
  * @property outputPath - Where the instance's output will land.
+ * @property status - How the run settled, in CUBE's word
+ *   (`finishedSuccessfully`), or `detached` when the line did not wait for it.
  */
 export interface RunScheduled {
   pluginName: string;
@@ -51,6 +53,42 @@ export interface RunScheduled {
   feedId: number;
   newFeed: boolean;
   outputPath: string;
+  status: string;
+}
+
+/**
+ * One node of a scheduled pipeline.
+ *
+ * @property instanceId - The plugin instance CUBE scheduled for it.
+ * @property pluginName - Its plugin.
+ * @property outputPath - Where its output lands, or null when CUBE has not said.
+ * @property status - How it settled, or `detached`.
+ */
+export interface PipelineNode {
+  instanceId: number;
+  pluginName: string;
+  outputPath: string | null;
+  status: string;
+}
+
+/**
+ * A pipeline the kernel has scheduled: every node it made, not one of them
+ * standing for all.
+ *
+ * @property pipelineName - The pipeline, by name.
+ * @property workflowId - The workflow CUBE made for it.
+ * @property feedId - The feed its nodes joined.
+ * @property newFeed - Always false today: a pipeline runs off an existing node.
+ * @property instances - Every node, in the order CUBE scheduled them.
+ * @property leaves - The nodes no other node in it runs off: where the work ends.
+ */
+export interface PipelineScheduled {
+  pipelineName: string;
+  workflowId: number;
+  feedId: number;
+  newFeed: boolean;
+  instances: PipelineNode[];
+  leaves: number[];
 }
 
 /**
@@ -102,6 +140,7 @@ export interface FsModelMap {
   'fs.cwd': CwdModel;
   'net.stats': NetStatsModel;
   'run.scheduled': RunScheduled;
+  'pipeline.scheduled': PipelineScheduled;
   'plugininstance.list': PluginInstanceRow[];
   'fs.mkdir': MkdirOutcome[];
   'fs.touch': TouchOutcome[];

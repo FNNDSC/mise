@@ -36,7 +36,8 @@ import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { pipelineRunArgs_parse, type PipelineRunOverrides } from './pipeline.args.js';
-import { runs_awaitSettled, settlement_render, type RunSettlement } from './runWait.js';
+import { runs_awaitSettled, settlement_render, settlementStatus_of, type RunSettlement } from './runWait.js';
+import type { PipelineNode, PipelineScheduled } from '../../api/models.js';
 import { recentFeed_note, recentRuns_note } from '../../session/recent.js';
 import { pipelineDiagram_handle, type PipelineDiagramMode } from './pipeline.diagram.js';
 import { pipelineManifest_render, pipelineParameters_render } from './pipeline.manifest.js';
@@ -232,8 +233,9 @@ async function pipelineRun_handle(args: string[]): Promise<CommandEnvelope> {
   // A workflow that returns when CUBE accepts it reads as finished and is
   // not: the wait holds this line, never the session, and Esc detaches it.
   // `--detach` asks for the handle up front instead.
+  let settlement: RunSettlement | null = null;
   if (!parsed.detach) {
-    const settlement: RunSettlement = await runs_awaitSettled(pluginInstanceIds, pipelineResult.value.name);
+    settlement = await runs_awaitSettled(pluginInstanceIds, pipelineResult.value.name);
     sink_dataLine(settlement_render(settlement, pipelineResult.value.name));
     if (settlement.outcome === 'settled' && settlement.failed > 0) process.exitCode = 1;
     if (feedID !== undefined) {
@@ -245,14 +247,51 @@ async function pipelineRun_handle(args: string[]): Promise<CommandEnvelope> {
     }
   }
 
-  // A scheduled run is a model, as a plugin's is: a surface lights the feed
-  // it landed in rather than reading the id out of the text.
-  const firstInstance: number | undefined = pluginInstanceIds[0];
-  if (feedID === undefined || firstInstance === undefined) return envelope_ok('');
+  // A scheduled pipeline is a model, as a plugin's run is: a surface lights
+  // the feed it landed in, and a capture holds every node it made.
+  if (feedID === undefined || pluginInstanceIds.length === 0) return envelope_ok('');
   return envelope_ok('', {
-    kind: 'run.scheduled',
-    data: { pluginName: pipelineResult.value.name, instanceId: firstInstance, feedId: feedID, newFeed: false, outputPath: '' },
+    kind: PIPELINE_SCHEDULED_KIND,
+    data: pipelineScheduled_make(pipelineResult.value.name, workflowId, feedID, pluginInstanceIds, settlement),
   });
+}
+
+/** The model kind a scheduled pipeline travels under. */
+export const PIPELINE_SCHEDULED_KIND: string = 'pipeline.scheduled';
+
+/**
+ * A scheduled pipeline as a model: every node, as the process cache knows it
+ * once the feed was refreshed, and the nodes nothing in it runs off.
+ *
+ * @param pipelineName - The pipeline.
+ * @param workflowId - The workflow CUBE made.
+ * @param feedId - The feed its nodes joined.
+ * @param instanceIds - The nodes, in the order CUBE scheduled them.
+ * @param settlement - How the wait ended, or null when the line did not wait.
+ * @returns The model.
+ */
+export function pipelineScheduled_make(
+  pipelineName: string,
+  workflowId: number,
+  feedId: number,
+  instanceIds: ReadonlyArray<number>,
+  settlement: RunSettlement | null,
+): PipelineScheduled {
+  const cache = procCache_get();
+  const instances: PipelineNode[] = instanceIds.map((instanceId: number): PipelineNode => {
+    const known = cache.instance_get(instanceId);
+    return {
+      instanceId,
+      pluginName: known?.pluginName ?? 'unknown',
+      outputPath: known?.outputPath ?? null,
+      status: settlement === null ? 'detached' : settlementStatus_of(settlement, instanceId),
+    };
+  });
+  const parents: Set<number> = new Set(instanceIds
+    .map((instanceId: number): number | null | undefined => cache.instance_get(instanceId)?.parentID)
+    .filter((parent: number | null | undefined): parent is number => typeof parent === 'number'));
+  const leaves: number[] = instanceIds.filter((instanceId: number): boolean => !parents.has(instanceId));
+  return { pipelineName, workflowId, feedId, newFeed: false, instances, leaves };
 }
 
 /**

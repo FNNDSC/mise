@@ -122,14 +122,35 @@ export class OciBuilder implements CloudBuilder {
         await rm.job_cancel(job.id);
       }
       job = await rm.job_get(job.id);
-      const lines: string[] = await rm.jobLog_read(job.id);
-      for (const line of lines.slice(shown)) call.log(line);
-      shown = lines.length;
+      shown = await this.log_follow(rm, job.id, shown, call);
       if (JOB_OVER.includes(job.state)) break;
       await poll_wait(this.options.pollMs ?? 10_000, call.signal);
     }
     if (job.state !== 'SUCCEEDED') throw new Error(`Resource Manager ${operation.kind} job ${job.id}: ${job.state}${job.failure !== undefined ? `: ${job.failure}` : ''}`);
     return job;
+  }
+
+  /**
+   * Passes on the lines of a job's log not yet shown. A log read while the
+   * job writes it can fail (Resource Manager pages a log that grows); the
+   * log is only ever shown, so a failed read is skipped and read again on
+   * the next poll, never the job's failure.
+   *
+   * @param rm - Resource Manager.
+   * @param jobId - The job.
+   * @param shown - How many lines were passed on already.
+   * @param call - The step's log.
+   * @returns How many lines have been passed on now.
+   */
+  private async log_follow(rm: RmApi, jobId: string, shown: number, call: BuildCall): Promise<number> {
+    let lines: string[];
+    try {
+      lines = await rm.jobLog_read(jobId);
+    } catch {
+      return shown;
+    }
+    for (const line of lines.slice(shown)) call.log(line);
+    return Math.max(shown, lines.length);
   }
 
   /**
@@ -144,6 +165,13 @@ export class OciBuilder implements CloudBuilder {
     // The state was written by that release's Terraform; another release would plan changes that are not there.
     if (request.stackVersion !== STACK_RELEASE.version) throw new Error(`the domain was built with oci-openshift ${request.stackVersion || '(unpinned)'}; stratus builds with ${STACK_RELEASE.version}`);
     const rm: RmApi = this.options.rm(request.region);
+    // A stack already tagged with the domain is the one an earlier adoption made: its state is in, nothing to repeat.
+    const found = (await rm.stacks_tagged(request.compartmentId, DOMAIN_TAG)).filter((stack): boolean => stack.tagValue === request.domain && stack.state === 'ACTIVE');
+    if (found.length > 1) throw new Error(`${found.length} stacks in ${request.compartmentId} are tagged ${DOMAIN_TAG}=${request.domain}: ${found.map((stack) => stack.id).join(', ')}`);
+    if (found.length === 1) {
+      call.log(`stack ${found[0]!.id} is already tagged ${DOMAIN_TAG}=${request.domain}: taken as this domain's, its state already in`);
+      return found[0]!.id;
+    }
     const zip: Buffer = await this.zip_get();
     const stack = await rm.stack_create({
       compartmentId: request.compartmentId,

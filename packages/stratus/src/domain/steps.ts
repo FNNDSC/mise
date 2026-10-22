@@ -18,7 +18,7 @@
  * @module
  */
 import type { JobContext, JobRun } from '@fnndsc/brasa/core';
-import { planCounts_of, type BuildCall, type CloudBuilder, type InfraOutputs, type InfraPlan, type PreflightCheck } from '../cloud/builder.js';
+import { planCounts_alter, planCounts_of, planCounts_words, type BuildCall, type CloudBuilder, type InfraOutputs, type InfraPlan, type PreflightCheck } from '../cloud/builder.js';
 import type { Installer, InstallerHost, InstallStatus } from '../installer/installer.js';
 import { specNodes_of, type DomainSpec, type SpecNode } from './spec.js';
 import type { DomainRecord, DomainStore, StepRecord } from './state.js';
@@ -144,8 +144,8 @@ const STEP_WORK: Readonly<Record<string, (call: StepCall) => Promise<string>>> =
     const counts = planCounts_of(plan);
     call.deps.store.file_write(call.name, 'plan.json', `${JSON.stringify(plan, null, 2)}\n`);
     call.remember({ planRef: plan.ref });
-    if (counts.change > 0 || counts.destroy > 0) throw new Error(`the plan alters ${counts.change} and destroys ${counts.destroy} existing resources: refused`);
-    return `${counts.create} to create, ${counts.change} to change${counts.drift > 0 ? ` (and ${counts.drift} tag drift)` : ''}, ${counts.destroy} to destroy`;
+    if (planCounts_alter(counts)) throw new Error(`the plan touches what exists (${planCounts_words(counts)}): refused`);
+    return planCounts_words(counts);
   },
   'infra-apply': async (call: StepCall): Promise<string> => {
     const record: DomainRecord = call.record();
@@ -304,6 +304,6 @@ export function planRun_make(name: string, builder: CloudBuilder, store: DomainS
     if (context.signal.aborted) return;
     store.file_write(name, 'plan.json', `${JSON.stringify(plan, null, 2)}\n`);
     const counts = planCounts_of(plan);
-    context.log_write(`plan: ${counts.create} to create, ${counts.change} to change${counts.drift > 0 ? ` and ${counts.drift} Oracle-Tags drift` : ''}, ${counts.destroy} to destroy`);
+    context.log_write(`plan: ${planCounts_words(counts)}`);
   };
 }

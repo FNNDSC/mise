@@ -4,7 +4,7 @@
 - Last verified against `main`: the merge of #1197, 2026-10-22
 - Working branches: `agent/stratus-runner` (PR #1200, 4a.1), `agent/stratus-steps` (PR #1201, 4a.2, on #1200), `agent/stratus-adopt` (4b code, on #1201); none merged
 - Current milestone: steps 1 to 3 of the order of work in [stratus.adoc](stratus.adoc#order) are on `main`, all unpublished beyond @fnndsc/stratus 0.1.0 until the next `make publish` (the operator's word). Follow-ups 1 to 3 merged (#1190, #1191, #1192), and the four defects found along the way (#1194, #1195)
-- Next action: the operator's word on #1200, #1201 and the 4b PR; then 4b's live run (adopt harbor with the tier: a stack plus an import job, then a plan job), which waits on the operator's word and on which compartment the stack goes in. The Assisted Installer driver moved to 4c/4d: adoption reads its ids from the checkout and needs no call to Red Hat
+- Next action: the operator's word on #1200, #1201 and #1202. 4b ran live 2026-10-22: harbor's Resource Manager stack (tagged mise-domain=harbor, in its own compartment by the operator's exception) holds the imported state; the operator's daemon finds it by tag on `domain adopt harbor --from ~/src/harbor-oci`. Then 4c (verify and spend)
 
 This file is the handoff between sessions and between models. It says where the work stands and what to do next, with the facts a fresh context needs to do it without rediscovery. The design itself is [stratus.adoc](stratus.adoc); the bastions are [bastion.adoc](bastion.adoc) and [dev-bastion.adoc](dev-bastion.adoc); what Red Hat ships against the primitive is [redhat-fl.adoc](redhat-fl.adoc); the metaphor every figure is drawn in is [linux-metaphor.adoc](linux-metaphor.adoc).
 

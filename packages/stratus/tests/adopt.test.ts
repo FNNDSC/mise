@@ -72,7 +72,8 @@ class RecordedRm implements RmApi {
   }
   async stack_update(): Promise<void> { this.calls.push('stack_update'); }
   async stack_get(stackId: string) { return { id: stackId, displayName: 's', state: 'ACTIVE', compartmentId: 'c' }; }
-  async stacks_tagged() { return []; }
+  tagged: Array<{ id: string; displayName: string; state: string; compartmentId: string; tagValue: string }> = [];
+  async stacks_tagged() { return this.tagged; }
   async job_create(stackId: string, operation: RmOperation): Promise<RmJobRecord> {
     this.calls.push(`job_create ${stackId} ${operation.kind}`);
     return { id: `job-${operation.kind}`, state: 'ACCEPTED' };
@@ -112,6 +113,15 @@ describe('the OCI builder over Resource Manager', () => {
     await expect(builder.stack_adopt({ domain: 'h', region: 'r', compartmentId: 'c', variables: {}, state: Buffer.from(''), stackVersion: 'v1.5.0' }, call())).rejects.toThrow('built with oci-openshift v1.5.0; stratus builds with v1.6.1');
   });
 
+  it('takes a stack already tagged with the domain as its own, and refuses two', async () => {
+    rm.tagged = [{ id: 'ocid1.ormstack.old', displayName: 'h', state: 'ACTIVE', compartmentId: 'c', tagValue: 'harbor' }, { id: 'ocid1.ormstack.other', displayName: 'o', state: 'ACTIVE', compartmentId: 'c', tagValue: 'other' }];
+    const request = { domain: 'harbor', region: 'r', compartmentId: 'c', variables: {}, state: Buffer.from('{}'), stackVersion: 'v1.6.1' };
+    expect(await builder.stack_adopt(request, call())).toBe('ocid1.ormstack.old');
+    expect(rm.calls).toEqual([]);
+    rm.tagged.push({ id: 'ocid1.ormstack.twin', displayName: 'h', state: 'ACTIVE', compartmentId: 'c', tagValue: 'harbor' });
+    await expect(builder.stack_adopt(request, call())).rejects.toThrow('2 stacks in c are tagged mise-domain=harbor');
+  });
+
   it('plans against a stack and reads the plan back; refuses a new stack until 4d', async () => {
     rm.plan = { resource_changes: [{ address: 'x', type: 'oci_core_instance', change: { actions: ['create'] } }] };
     const plan = await builder.infra_plan({ domain: 'h', spec: SPEC_DEFAULT, region: 'r', isoObject: '', stackRef: 'ocid1.ormstack.1' }, call());
@@ -120,6 +130,15 @@ describe('the OCI builder over Resource Manager', () => {
     for (const refused of [builder.preflight({ domain: 'h', spec: SPEC_DEFAULT, region: 'r', baseDomain: 'b' }, call()), builder.iso_store({ domain: 'h', url: 'u', region: 'r' }, call()), builder.infra_apply({ domain: 'h', plan, region: 'r' }, call()), builder.dns_upsert({ domain: 'h', baseDomain: 'b', outputs: { apiIp: '', apiIntIp: '', appsIp: '', stackRef: '' } }, call()), builder.manifests_of()]) {
       await expect(refused).rejects.toThrow('step 4d');
     }
+  });
+
+  it('never fails a job for a log read that failed while the job wrote it', async () => {
+    let reads: number = 0;
+    rm.jobLog_read = async (): Promise<string[]> => { reads++; if (reads === 1) throw new Error('invalid pagination token'); return ['line one', 'line two']; };
+    rm.states = ['IN_PROGRESS', 'SUCCEEDED'];
+    const plan = await builder.infra_plan({ domain: 'h', spec: SPEC_DEFAULT, region: 'r', isoObject: '', stackRef: 's' }, call());
+    expect(plan.ref).toBe('job-plan');
+    expect(logged.filter((line: string): boolean => line.startsWith('line'))).toEqual(['line one', 'line two']);
   });
 
   it('says how a job failed, and passes a stop on as a cancel never forced', async () => {

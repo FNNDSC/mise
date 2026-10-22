@@ -140,6 +140,6 @@ export function adoptRun_make(store: DomainStore, builder: CloudBuilder, name: s
     );
     if (context.signal.aborted) return;
     store.record_update(name, (current: DomainRecord): void => { current.ids['stackRef'] = stackRef; });
-    context.log_write(`adopted: stack ${stackRef}, its state imported`);
+    context.log_write(`adopted: stack ${stackRef}`);
   };
 }

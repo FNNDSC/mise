@@ -20,7 +20,7 @@ import {
   type JobRecord, type JobRunner,
 } from '@fnndsc/brasa/core';
 import type { CloudDriver, CloudPrice, CloudShape } from '../cloud/driver.js';
-import { planCounts_of, type CloudBuilder, type InfraPlan } from '../cloud/builder.js';
+import { planCounts_alter, planCounts_of, planCounts_words, type CloudBuilder, type InfraPlan } from '../cloud/builder.js';
 import { adoption_keep, adoptRun_make, checkout_read, type CheckoutRead } from '../domain/adopt.js';
 import type { HarborDomain } from '../domains/harborOci.js';
 import type { DomainTree } from '../vfs/domains.js';
@@ -186,7 +186,7 @@ export async function domainPlan_run(context: BuildCommandContext, args: Readonl
   const planText: string | null = context.store.file_read(domain.name, 'plan.json');
   if (planText !== null) {
     const counts = planCounts_of(JSON.parse(planText) as InfraPlan);
-    lines.push(`plan  ${counts.create} to create, ${counts.change} to change${counts.drift > 0 ? ` and ${counts.drift} Oracle-Tags drift` : ''}, ${counts.destroy} to destroy${counts.change > 0 || counts.destroy > 0 ? chalk.red(' · an apply would alter what exists: refused unless allowed by name') : ''}`);
+    lines.push(`plan  ${planCounts_words(counts)}${planCounts_alter(counts) ? chalk.red(' · an apply would touch what exists: refused unless allowed by name') : ''}`);
     if (record.adopted !== undefined) lines.push(chalk.gray(`      adopted from ${record.adopted.from}: planned against, never built on`));
   } else if (!tasks_granted() && record.adopted === undefined) {
     lines.push(chalk.gray('plan  the infrastructure plan needs the tasks tier (stratus --host-control tasks): without it, nothing outside this host changes'));

@@ -7,7 +7,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { FakeDriver, fakeCloud_sample } from '../src/cloud/fake/driver.js';
 import { stratusBackend_make } from '../src/backend.js';
-import { STRATUS_ITEM_KINDS, stratusName_colorize, CONTAINER_TYPES } from '../src/vfs/look.js';
+import { STRATUS_ITEM_KINDS, stratusName_colorize, CONTAINER_TYPES, stateTone_paint } from '../src/vfs/look.js';
+import { envelopeHandler_get } from '@fnndsc/brasa/core';
+import { harborCheckout_make } from './support/harborCheckout.js';
 
 describe('stratusBackend_make', () => {
   it('is the stratus backend over the driver, with the tenancy mounted and the look installed', async () => {
@@ -52,6 +54,19 @@ describe('stratusBackend_make', () => {
   });
 });
 
+describe('the backend\'s domains', () => {
+  it('shows the daemon\'s domains under the tenancy and registers domain', async () => {
+    const root = harborCheckout_make();
+    const made = stratusBackend_make({ driver: new FakeDriver(fakeCloud_sample()), configDir: mkdtempSync(path.join(tmpdir(), 'stratus-backend-')), domains: [{ name: 'harbor', root }] });
+    await made.backend.session.init();
+    const listing = await made.backend.vfs!.dispatcher.list('/net/oci/fnndsc/domains');
+    expect(listing.ok && listing.value.map((item) => [item.name, item.owner])).toEqual([['harbor', 'rudolph']]);
+    expect(made.domains.domain_read('harbor')?.cluster).toBe('harbor.oci.chrisproject.org');
+    const answer = await envelopeHandler_get('domain')!(['status']);
+    expect(answer.rendered).toContain('harbor.oci.chrisproject.org');
+  });
+});
+
 describe('the stratus look', () => {
   it('marks containers, regions, zones, domains as containers and colours by state first', () => {
     for (const type of CONTAINER_TYPES) expect(STRATUS_ITEM_KINDS.find((kind) => kind.type === type)).toMatchObject({ mark: 'c', container: true });
@@ -64,6 +79,9 @@ describe('the stratus look', () => {
       expect(STRATUS_ITEM_KINDS.find((kind) => kind.type === type)).toMatchObject({ container: true });
     }
     expect(STRATUS_ITEM_KINDS.find((kind) => kind.type === 'object')?.container).toBeUndefined();
+    expect(STRATUS_ITEM_KINDS.find((kind) => kind.type === 'step')).toMatchObject({ mark: 'S', container: true });
+    expect(STRATUS_ITEM_KINDS.find((kind) => kind.type === 'secret')).toMatchObject({ mark: '!' });
+    for (const state of ['done', 'unknown', 'expired', 'not done']) expect(stateTone_paint(state, state).replace(/\x1b\[[0-9;]*m/g, '')).toBe(state);
     const count = STRATUS_ITEM_KINDS.find((kind) => kind.type === 'kind')!.sizeColumn!;
     expect(count({ name: 'instances', type: 'kind', size: 3, owner: 'o', date: '' })).toBeNull();
     expect(count({ name: 'instances', type: 'kind', size: 0, owner: 'o', date: '', status: 'uncounted' })).toBe('-       ');

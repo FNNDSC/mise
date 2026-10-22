@@ -23,6 +23,7 @@ import type { CloudAvailability, CloudContainer, CloudDriver, CloudIdentity, Clo
 import { AnswerCache } from '../cache.js';
 import { ambiguity_words, idSuffix_of, segment_resolve, segments_assign, type Segment, type SegmentMatch } from '../names.js';
 import { KIND_FOLDERS, kindFolder_is, ResourceTree, type ResourceNode } from './resources.js';
+import { DomainTree } from './domains.js';
 
 /** The folders a tenancy level reserves beside its containers. */
 export const TENANCY_RESERVED: ReadonlyArray<string> = ['regions', 'domains', 'info.json', ...KIND_FOLDERS];
@@ -45,7 +46,6 @@ type Node =
   | { readonly kind: 'mount' }
   | { readonly kind: 'tenancy'; readonly identity: CloudIdentity; readonly root: CloudContainer }
   | { readonly kind: 'container'; readonly identity: CloudIdentity; readonly container: CloudContainer }
-  | { readonly kind: 'domains' }
   | { readonly kind: 'regions' }
   | { readonly kind: 'region'; readonly region: string }
   | { readonly kind: 'zones'; readonly region: string }
@@ -61,7 +61,7 @@ type Node =
   | { readonly kind: 'file'; readonly text: string }
   | { readonly kind: 'listing'; readonly list: () => Promise<VFSItem[]> }
   | { readonly kind: 'bytes'; readonly size: number; readonly read: () => Promise<Buffer> }
-  | { readonly kind: 'refused'; readonly reason: string }
+  | { readonly kind: 'refused'; readonly reason: string; readonly errno?: 'EPERM' | 'EACCES' }
   | { readonly kind: 'missing'; readonly reason?: string };
 
 /** How the provider is made. */
@@ -73,6 +73,8 @@ export interface TenancyProviderOptions {
   readonly now?: () => string;
   /** The session's region, whose resources the kind folders list; the credential's home region when absent or null. */
   readonly region?: () => string | null;
+  /** The domains the daemon was given; `domains/` lists empty without them. */
+  readonly domains?: DomainTree;
 }
 
 /** The tenancy as a tree under `/net/<cloud>`. */
@@ -83,6 +85,7 @@ export class TenancyProvider implements VFSProvider {
   private readonly now: () => string;
   private readonly region: () => string | null;
   private readonly resources: ResourceTree;
+  private readonly domains: DomainTree | null;
 
   constructor(options: TenancyProviderOptions) {
     this.driver = options.driver;
@@ -91,6 +94,7 @@ export class TenancyProvider implements VFSProvider {
     this.now = options.now ?? ((): string => new Date().toISOString());
     this.region = options.region ?? ((): null => null);
     this.resources = new ResourceTree({ driver: this.driver, cache: this.cache, now: this.now });
+    this.domains = options.domains ?? null;
   }
 
   /** The region the kind folders list. */
@@ -200,7 +204,10 @@ export class TenancyProvider implements VFSProvider {
     if (tenancy !== identity.tenancy) return { kind: 'missing' };
     if (rest.length === 0) return { kind: 'tenancy', identity, root };
     if (rest[0] === 'regions') return this.regionNode_resolve(rest.slice(1));
-    if (rest[0] === 'domains') return rest.length === 1 ? { kind: 'domains' } : { kind: 'missing' };
+    if (rest[0] === 'domains') {
+      if (this.domains === null) return rest.length === 1 ? { kind: 'listing', list: async (): Promise<VFSItem[]> => [] } : { kind: 'missing' };
+      return this.domains.node_resolve(rest.slice(1));
+    }
     if (rest[0] === 'info.json') return rest.length === 1 ? { kind: 'file', text: json_text(root.raw) } : { kind: 'missing' };
     if (kindFolder_is(rest[0])) return this.resourceNode_resolve(identity, root, rest);
     return this.containerNode_resolve(identity, root, rest, TENANCY_RESERVED);
@@ -350,8 +357,6 @@ export class TenancyProvider implements VFSProvider {
         return Ok(await this.containerLevel_list(node.identity, node.root, TENANCY_RESERVED, ['regions', 'domains']));
       case 'container':
         return Ok(await this.containerLevel_list(node.identity, node.container, CONTAINER_RESERVED, []));
-      case 'domains':
-        return Ok([]);
       case 'regions':
         return Ok((await this.regions_list()).map((region: string): VFSItem => this.folder_item(region, 'region')));
       case 'region':
@@ -416,7 +421,7 @@ export class TenancyProvider implements VFSProvider {
   async readBinary(pathStr: string): Promise<VfsOutcome<Buffer>> {
     const node: Node = await this.node_resolve(pathStr);
     if (node.kind === 'missing') return vfs_fail('ENOENT', node.reason);
-    if (node.kind === 'refused') return vfs_fail('EPERM', node.reason);
+    if (node.kind === 'refused') return vfs_fail(node.errno ?? 'EPERM', node.reason);
     if (node.kind === 'file') return vfs_ok(Buffer.from(node.text, 'utf-8'));
     if (node.kind === 'bytes') {
       try {

@@ -88,13 +88,4 @@ documentation; for using the shell and the packages, see the per-package READMEs
   SignalFlow YAML emission, dynamic `/bin` pipeline aliases, and the forward
   contract for per-node pipeline parameter bindings and serializable overlays.
 
-- **[handoff.md](handoff.md)** — the concise active project state: current
-  milestone, release state, known risks, and next action. Architectural,
-  release, and project-state PRs keep it current; completed campaign detail is
-  retained under `history/`.
-
-The name **CALYPSO** (_CALYPSO Accepts Language, Yielding Permitted Shell
-Operations_) is a harbor reference: in the _Odyssey_, Calypso keeps the island where
-the voyager finds haven, and the name is the Greek word for "to conceal." HARBOR is
-that haven for the ChRIS operator; CALYPSO keeps its edge, concealing the friction
-and never the outcome. See calypso.adoc for the full grounding.
+- **[handoff.md](handoff.md)** — the active handoff between sessions and models: where the stratus epic and the bastion work stand, the house rules with pointers, the recipes (private fake daemon, pty chell, CDP screenshots), the follow-ups, and the plan for the next steps with files, tests and acceptance. Read first; updated at the end of every slice.

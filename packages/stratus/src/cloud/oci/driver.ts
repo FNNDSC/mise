@@ -15,12 +15,12 @@
  */
 import type {
   CloudAvailability, CloudBucket, CloudContainer, CloudDnsZone, CloudDriver, CloudIdentity, CloudInstance, CloudLimit, CloudLink, CloudLoadBalancer,
-  CloudNetwork, CloudObject, CloudPrice, CloudRecord, CloudSecurityGroup, CloudShape, CloudSubnet, CloudVolume, CloudZone, ResourceCounts,
+  CloudNetwork, CloudObject, CloudPrice, ServicePrices, CloudRecord, CloudSecurityGroup, CloudShape, CloudSubnet, CloudVolume, CloudZone, ResourceCounts,
 } from '../driver.js';
 import type { OciApi, OciCompartmentRecord, OciLimitValueRecord, OciShapeRecord, OciTenancyRecord } from './api.js';
 import type { OciAttachmentRecord, OciInstanceRecord, OciResourceRecord, OciVnicAttachmentRecord, OciVnicRecord, OciVolumeRecord } from './resourceApi.js';
 import { byName_sort, resource_ofRecord, searchCounts_of, searchQuery_of } from './resourceMap.js';
-import { ociPrices_read, shapeTerms_get, type JsonFetch } from './prices.js';
+import { ociPrices_read, ociServicePrices_read, shapeTerms_get, type JsonFetch } from './prices.js';
 
 /** How the driver is made. */
 export interface OciDriverOptions {
@@ -185,6 +185,10 @@ export class OciDriver implements CloudDriver {
     return ociPrices_read(this.fetchJson);
   }
 
+  async servicePrices_get(): Promise<ServicePrices | null> {
+    return ociServicePrices_read(this.fetchJson);
+  }
+
   async instances_list(containerId: string, region: string): Promise<CloudInstance[]> {
     const [records, attachments]: [OciInstanceRecord[], OciVnicAttachmentRecord[]] = await Promise.all([
       this.api.instances_list(region, containerId),
@@ -202,6 +206,8 @@ export class OciDriver implements CloudDriver {
     });
     return byName_sort(records.map((record: OciInstanceRecord): CloudInstance => ({
       ...resource_ofRecord(record, region), shape: record.shape, zone: record.availabilityDomain, ips: ipsByInstance.get(record.id) ?? [],
+      ...(record.ocpus !== undefined ? { vcpus: record.ocpus * shapeTerms_get(record.shape).vcpuPerOcpu } : {}),
+      ...(record.memoryInGBs !== undefined ? { memoryGib: record.memoryInGBs } : {}),
     })));
   }
 
@@ -218,7 +224,7 @@ export class OciDriver implements CloudDriver {
   }
 
   async loadbalancers_list(containerId: string, region: string): Promise<CloudLoadBalancer[]> {
-    return byName_sort((await this.api.loadBalancers_list(region, containerId)).map((record) => ({ ...resource_ofRecord(record, region), ips: record.ipAddresses, shape: record.shapeName })));
+    return byName_sort((await this.api.loadBalancers_list(region, containerId)).map((record) => ({ ...resource_ofRecord(record, region), ips: record.ipAddresses, shape: record.shapeName, ...(record.minimumMbps !== undefined ? { minimumMbps: record.minimumMbps } : {}) })));
   }
 
   async volumes_list(containerId: string, region: string): Promise<CloudVolume[]> {
@@ -235,6 +241,7 @@ export class OciDriver implements CloudDriver {
     }
     const volume_of = (record: OciVolumeRecord, boot: boolean): CloudVolume => ({
       ...resource_ofRecord(record, region), sizeGib: record.sizeInGBs, attachedTo: attachedTo.get(record.id) ?? null, boot,
+      ...(record.vpusPerGB !== undefined ? { vpusPerGib: record.vpusPerGB } : {}),
     });
     return byName_sort([
       ...blocks.map((record: OciVolumeRecord): CloudVolume => volume_of(record, false)),

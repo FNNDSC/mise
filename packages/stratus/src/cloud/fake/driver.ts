@@ -9,7 +9,7 @@
  */
 import type {
   CloudAvailability, CloudBucket, CloudContainer, CloudDnsZone, CloudDriver, CloudIdentity, CloudInstance, CloudLimit, CloudLink, CloudLoadBalancer,
-  CloudNetwork, CloudObject, CloudPrice, CloudRecord, CloudResource, CloudSecurityGroup, CloudShape, CloudSubnet, CloudVolume, CloudZone, ResourceCounts, ResourceKind,
+  CloudNetwork, CloudObject, CloudPrice, ServicePrices, CloudRecord, CloudResource, CloudSecurityGroup, CloudShape, CloudSubnet, CloudVolume, CloudZone, ResourceCounts, ResourceKind,
 } from '../driver.js';
 
 /** A resource in the fake cloud: its kind, the container holding it, and its record. */
@@ -41,6 +41,8 @@ export interface FakeCloud {
   /** Shapes by region. */
   readonly shapes: Readonly<Record<string, ReadonlyArray<CloudShape>>>;
   readonly prices: ReadonlyArray<CloudPrice>;
+  /** Storage and load-balancing prices; null when the list lacks them. */
+  readonly servicePrices?: ServicePrices | null;
   /** Every resource, in any container and region. */
   readonly resources: ReadonlyArray<FakeResource>;
   /** Objects by bucket name. */
@@ -127,6 +129,11 @@ export class FakeDriver implements CloudDriver {
   async prices_list(): Promise<CloudPrice[]> {
     this.call_count('prices_list');
     return [...this.cloudData.prices];
+  }
+
+  async servicePrices_get(): Promise<ServicePrices | null> {
+    this.call_count('servicePrices_get');
+    return this.cloudData.servicePrices ?? null;
   }
 
   /** The records of one kind in a container and region, sorted by name; DNS is global. */
@@ -254,6 +261,7 @@ export function fakeCloud_sample(tenancy: string = 'fnndsc'): FakeCloud {
       { shape: 'VM.Standard.E5.Flex', vcpuHour: 0.015, gibHour: 0.002, currency: 'USD' },
       { shape: 'VM.Standard.A2.Flex', vcpuHour: 0.007, gibHour: 0.002, currency: 'USD' },
     ],
+    servicePrices: { volumeGibMonth: 0.0255, vpuGibMonth: 0.0017, balancerHour: 0.0113, balancerMbpsHour: 0.0001, currency: 'USD' },
     ...fakeResources_sample(region, 'ocid1.compartment.oc1..harbor'),
   };
 }
@@ -276,17 +284,17 @@ export function fakeResources_sample(region: string, containerId: string): Pick<
   const resources: FakeResource[] = [
     ...[0, 1, 2].map((n: number): FakeResource => ({
       kind: 'instances', containerId,
-      record: { ...base(`node-${n}`, `ocid1.instance.oc1.iad.node0${n}`, 'running'), shape: 'VM.Standard.E5.Flex', zone: `Uocm:US-ASHBURN-AD-${n + 1}`, ips: [`10.0.16.${10 + n}`] },
+      record: { ...base(`node-${n}`, `ocid1.instance.oc1.iad.node0${n}`, 'running'), shape: 'VM.Standard.E5.Flex', zone: `Uocm:US-ASHBURN-AD-${n + 1}`, ips: [`10.0.16.${10 + n}`], vcpus: 8, memoryGib: 24 },
     })),
     { kind: 'instances', containerId, record: { ...base('bootstrap', 'ocid1.instance.oc1.iad.boot00', 'terminated'), shape: 'VM.Standard.E5.Flex', zone: 'Uocm:US-ASHBURN-AD-1', ips: [] } },
     { kind: 'networks', containerId, record: base('harbor-vcn', vcn, 'available') },
     ...['control', 'compute', 'lb'].map((name: string, n: number): FakeResource => ({ kind: 'subnets', containerId, record: { ...base(name, `ocid1.subnet.oc1.iad.sub00${n}`, 'available'), networkId: vcn } })),
     ...['cluster', 'api'].map((name: string, n: number): FakeResource => ({ kind: 'securitygroups', containerId, record: { ...base(name, `ocid1.networksecuritygroup.oc1.iad.nsg00${n}`, 'available'), networkId: vcn } })),
-    { kind: 'loadbalancers', containerId, record: { ...base('api', 'ocid1.loadbalancer.oc1.iad.lbapi0', 'active'), ips: ['129.0.0.10', '10.0.32.5'], shape: 'flexible' } },
-    { kind: 'loadbalancers', containerId, record: { ...base('apps', 'ocid1.loadbalancer.oc1.iad.lbapp0', 'active'), ips: ['129.0.0.11'], shape: 'flexible' } },
+    { kind: 'loadbalancers', containerId, record: { ...base('api', 'ocid1.loadbalancer.oc1.iad.lbapi0', 'active'), ips: ['129.0.0.10', '10.0.32.5'], shape: 'flexible', minimumMbps: 10 } },
+    { kind: 'loadbalancers', containerId, record: { ...base('apps', 'ocid1.loadbalancer.oc1.iad.lbapp0', 'active'), ips: ['129.0.0.11'], shape: 'flexible', minimumMbps: 10 } },
     ...[0, 1, 2].map((n: number): FakeResource => ({
       kind: 'volumes', containerId,
-      record: { ...base(`node-${n} (Boot Volume)`, `ocid1.bootvolume.oc1.iad.boot0${n}`, 'available'), sizeGib: 120, attachedTo: `ocid1.instance.oc1.iad.node0${n}`, boot: true },
+      record: { ...base(`node-${n} (Boot Volume)`, `ocid1.bootvolume.oc1.iad.boot0${n}`, 'available'), sizeGib: 120, attachedTo: `ocid1.instance.oc1.iad.node0${n}`, boot: true, vpusPerGib: 10 },
     })),
     { kind: 'volumes', containerId, record: { ...base('etcd-0', 'ocid1.volume.oc1.iad.etcd00', 'available'), sizeGib: 50, attachedTo: 'ocid1.instance.oc1.iad.node00', boot: false } },
     { kind: 'volumes', containerId, record: { ...base('spare', 'ocid1.volume.oc1.iad.spare0', 'available'), sizeGib: 50, attachedTo: null, boot: false } },

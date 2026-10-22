@@ -10,7 +10,7 @@
  *
  * @module
  */
-import type { CloudPrice } from '../driver.js';
+import type { CloudPrice, ServicePrices } from '../driver.js';
 
 /** Where Oracle publishes its prices. */
 export const PRICE_LIST_URL: string = 'https://apexapps.oracle.com/pls/apex/cetools/api/v1/products/';
@@ -125,6 +125,42 @@ export const jsonFetch_default: JsonFetch = async (url: string): Promise<unknown
   if (!response.ok) throw new Error(`price list: ${response.status} ${response.statusText}`);
   return response.json();
 };
+
+/** The price list's parts for storage and load balancing, as `harbor-oci` reads them. */
+export const SERVICE_PARTS = {
+  volumeGibMonth: 'B91961',
+  vpuGibMonth: 'B91962',
+  balancerHour: 'B93030',
+  balancerMbpsHour: 'B93031',
+} as const;
+
+/**
+ * Storage and load-balancing prices from part prices.
+ *
+ * @param parts - Price per part number.
+ * @returns The prices, or null when a part is missing.
+ */
+export function servicePrices_map(parts: ReadonlyMap<string, number>): ServicePrices | null {
+  const volumeGibMonth: number | undefined = parts.get(SERVICE_PARTS.volumeGibMonth);
+  const vpuGibMonth: number | undefined = parts.get(SERVICE_PARTS.vpuGibMonth);
+  const balancerHour: number | undefined = parts.get(SERVICE_PARTS.balancerHour);
+  const balancerMbpsHour: number | undefined = parts.get(SERVICE_PARTS.balancerMbpsHour);
+  if (volumeGibMonth === undefined || vpuGibMonth === undefined || balancerHour === undefined || balancerMbpsHour === undefined) return null;
+  return { volumeGibMonth, vpuGibMonth, balancerHour, balancerMbpsHour, currency: PRICE_CURRENCY };
+}
+
+/**
+ * Oracle's list prices for storage and load balancing.
+ *
+ * @param fetchJson - How the list is fetched.
+ * @returns The prices, or null when the list lacks a part.
+ */
+export async function ociServicePrices_read(fetchJson: JsonFetch = jsonFetch_default): Promise<ServicePrices | null> {
+  const reply: unknown = await fetchJson(PRICE_LIST_URL);
+  const items: unknown = typeof reply === 'object' && reply !== null ? (reply as { items?: unknown }).items : undefined;
+  if (!Array.isArray(items)) throw new Error('price list: no items in the reply');
+  return servicePrices_map(partPrices_index(items as PriceListItem[]));
+}
 
 /**
  * Oracle's list prices for the flexible shapes, per hour.

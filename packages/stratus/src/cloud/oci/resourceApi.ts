@@ -37,6 +37,9 @@ export interface OciResourceRecord extends OciTags {
 export interface OciInstanceRecord extends OciResourceRecord {
   readonly shape: string;
   readonly availabilityDomain: string;
+  /** Its OCPUs and memory, when the cloud says (a flexible shape's choice). */
+  readonly ocpus?: number;
+  readonly memoryInGBs?: number;
 }
 
 /** A VNIC attached to an instance. */
@@ -61,12 +64,16 @@ export interface OciVcnMemberRecord extends OciResourceRecord {
 export interface OciLoadBalancerRecord extends OciResourceRecord {
   readonly ipAddresses: ReadonlyArray<string>;
   readonly shapeName: string;
+  /** A flexible shape's minimum bandwidth, what it bills by. */
+  readonly minimumMbps?: number;
 }
 
 /** A block or boot volume. */
 export interface OciVolumeRecord extends OciResourceRecord {
   readonly sizeInGBs: number;
   readonly availabilityDomain: string;
+  /** Its performance, in volume performance units per GB. */
+  readonly vpusPerGB?: number;
 }
 
 /** A volume's attachment to an instance. */
@@ -250,7 +257,11 @@ export function ociResourceApi_make(provider: common.AuthenticationDetailsProvid
         const answer: core.responses.ListInstancesResponse = await clients.compute(region).listInstances({ compartmentId, ...page_arg(page) });
         return { items: answer.items, next: answer.opcNextPage };
       });
-      return items.map((instance: core.models.Instance): OciInstanceRecord => ({ ...resource_of(instance), shape: instance.shape, availabilityDomain: instance.availabilityDomain }));
+      return items.map((instance: core.models.Instance): OciInstanceRecord => ({
+        ...resource_of(instance), shape: instance.shape, availabilityDomain: instance.availabilityDomain,
+        ...(instance.shapeConfig?.ocpus !== undefined ? { ocpus: instance.shapeConfig.ocpus } : {}),
+        ...(instance.shapeConfig?.memoryInGBs !== undefined ? { memoryInGBs: instance.shapeConfig.memoryInGBs } : {}),
+      }));
     },
     async vnicAttachments_list(region: string, compartmentId: string): Promise<OciVnicAttachmentRecord[]> {
       const items: core.models.VnicAttachment[] = await pages_drain(async (page) => {
@@ -295,6 +306,7 @@ export function ociResourceApi_make(provider: common.AuthenticationDetailsProvid
         ...resource_of(balancer),
         ipAddresses: (balancer.ipAddresses ?? []).map((address: loadbalancer.models.IpAddress): string => address.ipAddress),
         shapeName: balancer.shapeName,
+        ...(balancer.shapeDetails?.minimumBandwidthInMbps !== undefined ? { minimumMbps: balancer.shapeDetails.minimumBandwidthInMbps } : {}),
       }));
     },
     async volumes_list(region: string, compartmentId: string): Promise<OciVolumeRecord[]> {
@@ -302,14 +314,14 @@ export function ociResourceApi_make(provider: common.AuthenticationDetailsProvid
         const answer: core.responses.ListVolumesResponse = await clients.storage(region).listVolumes({ compartmentId, ...page_arg(page) });
         return { items: answer.items, next: answer.opcNextPage };
       });
-      return items.map((volume: core.models.Volume): OciVolumeRecord => ({ ...resource_of(volume), sizeInGBs: volume.sizeInGBs ?? 0, availabilityDomain: volume.availabilityDomain ?? '' }));
+      return items.map((volume: core.models.Volume): OciVolumeRecord => ({ ...resource_of(volume), sizeInGBs: volume.sizeInGBs ?? 0, availabilityDomain: volume.availabilityDomain ?? '', ...(volume.vpusPerGB !== undefined ? { vpusPerGB: volume.vpusPerGB } : {}) }));
     },
     async bootVolumes_list(region: string, compartmentId: string, availabilityDomain: string): Promise<OciVolumeRecord[]> {
       const items: core.models.BootVolume[] = await pages_drain(async (page) => {
         const answer: core.responses.ListBootVolumesResponse = await clients.storage(region).listBootVolumes({ compartmentId, availabilityDomain, ...page_arg(page) });
         return { items: answer.items, next: answer.opcNextPage };
       });
-      return items.map((volume: core.models.BootVolume): OciVolumeRecord => ({ ...resource_of(volume), sizeInGBs: volume.sizeInGBs ?? 0, availabilityDomain: volume.availabilityDomain ?? '' }));
+      return items.map((volume: core.models.BootVolume): OciVolumeRecord => ({ ...resource_of(volume), sizeInGBs: volume.sizeInGBs ?? 0, availabilityDomain: volume.availabilityDomain ?? '', ...(volume.vpusPerGB !== undefined ? { vpusPerGB: volume.vpusPerGB } : {}) }));
     },
     async volumeAttachments_list(region: string, compartmentId: string): Promise<OciAttachmentRecord[]> {
       const items: core.models.VolumeAttachment[] = await pages_drain(async (page) => {

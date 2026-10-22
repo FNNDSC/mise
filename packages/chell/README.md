@@ -34,12 +34,9 @@ pacs pull /net/pacs/queries/.../Study_... --new-feed "Brain MRI"
 at `pl-dircopy`, and prints the feed ID, root job ID, and feed path. Without the
 flag, `pacs pull` only retrieves data into CUBE storage.
 
-Optional analysis attachment is available with `--plugin <selector>` or
-`--pipeline <selector>`. Both require `--new-feed`, attach to that new root, and
-forward arguments after `--` through the selected command's existing invocation
-semantics. See
-[PACS Query / Retrieve / Resolve](docs/pacsqr.adoc#planned-analysis-attachment)
-for the complete behavioral contract.
+Running over what was pulled is a line of its own: `gather process <plugin|pipeline>`
+runs once over the whole cohort, off its feed's root. See
+[PACS Query / Retrieve / Resolve](docs/pacsqr.adoc#planned-analysis-attachment).
 
 ---
 
@@ -397,11 +394,11 @@ ChELL is the presentation layer of the "Sandwich Model":
 | Document | Topic |
 |----------|-------|
 | [docs/vfs.adoc](docs/vfs.adoc) | VFS architecture — providers, dispatch, path resolution |
-| [docs/pluginrun.adoc](docs/pluginrun.adoc) | Plugin execution in depth — new feed vs continue feed |
-| [docs/plugin-run-summary.md](docs/plugin-run-summary.md) | Quick-reference summary of plugin run modes |
+| [docs/pluginrun.adoc](docs/pluginrun.adoc) | Running a plugin — new feed vs continue feed, the wait, naming the run |
 | [docs/store.adoc](docs/store.adoc) | Store install — three-phase resolution, admin escalation |
 | [docs/login.adoc](docs/login.adoc) | Connection and authentication options |
-| [docs/execution.adoc](docs/execution.adoc) | Command execution, scripting, and pipeline mode |
+| [docs/execution.adoc](docs/execution.adoc) | How chell is invoked: REPL, `-c`, scripts, flags |
+| [../../docs/manifest.adoc](../../docs/manifest.adoc) | The script and manifest language: `@param`, variables, `expect`, `play` |
 | [docs/commands.adoc](docs/commands.adoc) | Full command reference |
 | [docs/pacsqr.adoc](docs/pacsqr.adoc) | PACS query and retrieve |
 | [docs/physicalMode.adoc](docs/physicalMode.adoc) | Physical vs logical filesystem mode |

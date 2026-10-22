@@ -488,8 +488,7 @@ A query expression is also accepted as query-then-pull shorthand.
 
 **Syntax:**
 ```bash
-pacs pull [--nowait] [--retry N] [--new-feed <title>
-          [--plugin <selector>|--pipeline <selector>] [-- <args...>]]
+pacs pull [--nowait] [--retry N] [--new-feed <title>]
           <vfs-path|query-expr> [...]
 ```
 
@@ -498,8 +497,6 @@ pacs pull [--nowait] [--retry N] [--new-feed <title>
 pacs pull /net/pacs/queries/.../Study_.../Series_...
 pacs pull AccessionNumber:12345678
 pacs pull /net/pacs/queries/.../Study_... --new-feed "Brain MRI"
-pacs pull /net/pacs/queries/.../Study_... --new-feed "Brain MRI" \
-  --pipeline brain-preprocessing -- --segmentation.threshold 0.5
 ```
 
 Without `--new-feed`, `pacs pull` materializes the selected series under
@@ -512,12 +509,7 @@ Feed creation is all-or-nothing. An invalid or empty operand, partial retrieval,
 or unresolved CUBE directory prevents Feed creation while leaving any retrieved
 files in storage. `--new-feed` cannot be combined with `--nowait`.
 
-`--plugin` and `--pipeline` optionally attach one analysis to the new root and
-are mutually exclusive. Arguments after `--` retain the selected executable's
-normal grammar. Attachment failure returns nonzero but preserves and reports the
-valid Feed and root. See
-link:pacsqr.adoc#planned-analysis-attachment[PACS Query / Retrieve / Resolve]
-for the complete behavior.
+Pulling lands data; running over it is a separate line. `gather process <plugin|pipeline>` runs once over the whole cohort, off its feed's root (`help gather`); a run by name inside the feed's root folder continues off that node. `pull` once took `--plugin` and `--pipeline` to do both in one line; they are retired and refuse by name.
 
 == ChEFS Commands
 

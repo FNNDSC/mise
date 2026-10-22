@@ -74,14 +74,13 @@ remain durable if a later resolution or creation step fails, but no partial
 Feed is created. `--new-feed` cannot be combined with `--nowait` because the
 root input paths must exist before `pl-dircopy` is created.
 
-## PACS Analysis Attachment
+## Cohort Process
 
-A PACS Analysis Attachment is the optional step after a PACS Selection has
-produced a new Feed. `--plugin <selector>` or `--pipeline <selector>` will
-attach exactly one analysis to the new `pl-dircopy` root. The flags are mutually
-exclusive, require `--new-feed`, and never create a Feed implicitly. Arguments
-after `--` preserve the selected plugin or pipeline's existing invocation
-semantics.
+A Cohort Process is one run over a whole gathered cohort: `gather process
+<plugin|pipeline>` makes one Feed whose `pl-dircopy` root holds every member
+(the cohort's own Feed when it has one) and runs the plugin or pipeline once
+off that root. Arguments after `--` keep the run's own grammar. It replaced the
+PACS Analysis Attachment (`pull --plugin|--pipeline`), retired in #1208.
 
 The attachment is not transactional with Feed creation. If retrieval,
 resolution, or Feed creation fails, attachment does not run. If attachment
@@ -141,7 +140,7 @@ All chell commands follow `<object> <verb>` order — the same RPN (Reverse Poli
 ```
 plugins list        ✓
 plugins inspect     ✓
-plugin run          ✓
+plugin info         ✓
 list plugins        ✗  (wrong order)
 ```
 

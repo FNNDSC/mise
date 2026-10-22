@@ -144,10 +144,13 @@ execution.
 ChELL is a domain shell and a Unix-composable command surface over ChRIS. It is not a
 second general-purpose shell language. It owns the grammar and execution of ChRIS intents:
 VFS navigation, plugin and pipeline invocation, resource operations, command sequencing,
-pipes, redirection, wildcard expansion, and environment substitution. A `.chell` script
-is consequently useful as a linear, reproducible sequence of those intents.
+pipes, redirection, wildcard expansion, environment substitution, and variables that name
+what a command answered (`A=$(cmd)`, `${A.field}`). A `.chell` script is a manifest
+(`docs/manifest.adoc`): a linear, reproducible sequence of those intents, played by `play`,
+stopping at its first refused line.
 
-General programming stays above that boundary. Iteration, conditionals, functions,
+General programming stays above that boundary (the manifest's law: a decision is a data
+state, never a branch). Iteration, conditionals, functions,
 arithmetic, process concurrency, and policy about whether to retry or branch belong to
 Bash, another shell, Python, or a program embedding Brasa. ChELL must not acquire `for`,
 `if`/`then`/`else`, or domain-specific repetition flags merely because one use case happens

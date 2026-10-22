@@ -29,7 +29,7 @@ You are writing a program, a script, a bot, an analysis pipeline driver. You wan
 
 === The chell vocabulary
 
-You think in operator actions: paths, `ls`, `cp`, `pacs pull`, the `/proc` tree. The shell's projection is itself a development surface, scriptable as `.chell` files and drivable line-by-line from TypeScript with typed envelopes coming back. Start with the link:guide-chell.html[`chell` vocabulary guide].
+You think in operator actions: paths, `ls`, `cp`, `pacs pull`, the `/proc` tree. The shell's projection is itself a development surface, scriptable as `.chell` files (which are manifests: kernel lines, variables, `expect`) and drivable line-by-line from TypeScript with typed envelopes coming back. Start with the link:guide-chell.html[`chell` vocabulary guide].
 
 === The session API
 

@@ -67,19 +67,20 @@ connect once, then run against the established session:
 ```
 . exemplars/e2e-env.sh          # exports exemplars/e2e.config.json
 chell "$CUBE_USER@$CUBE_URL" -p "$CUBE_PASSWORD" -c version
-chell -e -f exemplars/chell/10_fs_roundtrip.chell
-chell -e -f exemplars/chell/20_pacs_qr.chell
-chell -e -f exemplars/chell/30_feed_tour.chell
+chell -f exemplars/chell/10_fs_roundtrip.chell
+chell -f exemplars/chell/20_pacs_qr.chell
+chell -f exemplars/chell/30_feed_tour.chell
 ```
 
-`-e` (stop on error) makes script completion itself the assertion. Caveats:
+A script is played as a manifest: it stops at its first refused line and
+exits non-zero, so script completion itself is the assertion (`-e` is
+accepted and changes nothing). Caveats:
 
 - **20** leaves pulled PACS files behind — chell has no admin credentials.
   Follow with the cleanup phase of TS exemplar 04, or delete the series
   folder as the CUBE admin.
-- Static scripts cannot capture ids between commands, so the full
-  feed+dcm2niix workflow is TS-only (03); script 30 is a read-only tour.
-  **Manifests lift this** — see below.
+- Script 30 is a read-only tour. A workflow that carries ids between
+  commands names them with `A=$(…)`: see the manifests below.
 
 ## Bugs found by these exemplars (all fixed)
 

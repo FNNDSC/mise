@@ -175,7 +175,7 @@ the fastest path and pays no cost for a boundary it does not need.
 ----
 chell chris@https://cube.chrisproject.org/api/v1/    # connect + interactive REPL, engine in-process
 chell -c "ls /bin"                                   # run one command and exit
-chell script.chell                                   # run a script file
+chell script.chell                                   # play a script file (docs/manifest.adoc)
 ----
 
 NOTE: To embed the engine in *your own* program rather than run chell, import

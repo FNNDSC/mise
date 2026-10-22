@@ -88,6 +88,14 @@ describe('cliConfig_fromArgs', () => {
     expect(c.connectConfig).toEqual({ user: 'chris', password: undefined, url: 'https://cube.example.org/api/v1/' });
   });
 
+  it('keeps a remote target exactly as typed for berth lookup', () => {
+    expect(cliConfig_fromArgs('rudolph@fnndsc', { remote: true }, noFile, noDoor).remoteTarget).toBe('rudolph@fnndsc');
+    expect(cliConfig_fromArgs('rudolph.pienaar@childrens.harvard.edu@fnndsc-bch', { remote: true }, noFile, noDoor).remoteTarget)
+      .toBe('rudolph.pienaar@childrens.harvard.edu@fnndsc-bch');
+    expect(cliConfig_fromArgs('cube.example.org', { remote: true, user: 'chris' }, noFile, noDoor).remoteTarget).toBe('chris@http://cube.example.org');
+    expect(cliConfig_fromArgs(undefined, { remote: true }, noFile, noDoor).remoteTarget).toBeUndefined();
+  });
+
   it('retains a one-shot command in remote mode', () => {
     const c = cliConfig_fromArgs(
       'chris@https://cube.example.org/api/v1/',

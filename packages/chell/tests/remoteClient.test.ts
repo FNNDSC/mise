@@ -62,6 +62,7 @@ class MockRepl {
 
 jest.unstable_mockModule('@fnndsc/calypso', () => ({
   LocalBerthResolver: MockLocalBerthResolver,
+  identity_normalise: (user: string, url: string): string => `${user}@${url}`,
 }));
 jest.unstable_mockModule('@fnndsc/brasa', () => ({
   sink_set: sinkSet_mock,
@@ -181,6 +182,13 @@ describe('remote_run', () => {
     expect(sinkSet_mock).toHaveBeenCalledTimes(1);
     expect(surfaceSet_mock).toHaveBeenCalledTimes(1);
     expect(process.exitCode).toBe(0);
+  });
+
+  it('looks a tenancy berth up by the identity as typed', async () => {
+    await remote_run('rudolph@fnndsc', 'pwd');
+
+    expect(resolverResolve_mock.mock.calls[0]?.[0]).toBe('rudolph@fnndsc');
+    expect(remoteConnect_mock).toHaveBeenCalledWith(expect.objectContaining({ url: berth.url }));
   });
 
   it('uses the sole live berth when no identity is specified', async () => {

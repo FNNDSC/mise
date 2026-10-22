@@ -43,6 +43,12 @@ export interface ChellCLIConfig {
   /** The attach token, when the {@link attach} URL does not carry one. */
   attachToken?: string;
   /**
+   * `--remote <user>@<where>`: the target exactly as typed, so a berth keyed
+   * by a cloud identity (`rudolph@fnndsc`, or two `@` when the user is an
+   * e-mail address) is found by its own string before any URL reading.
+   */
+  remoteTarget?: string;
+  /**
    * `--door <url>`: come through a porter — log in there with a password,
    * follow the boot, attach to the session it mounts. No token reaches the
    * terminal; the door's cookie does.
@@ -139,6 +145,11 @@ export function cliConfig_fromArgs(
     // connection, or CUBE credentials — but a `<user>@<url>` target names which
     // identity's daemon to attach to when several run on this machine.
     config = { mode: 'remote', connectConfig };
+    if (target !== undefined && target.includes('@')) {
+      config.remoteTarget = target;
+    } else if (user !== undefined && url !== undefined) {
+      config.remoteTarget = `${user}@${url}`;
+    }
     // Berth discovery reads this machine's runtime directory, so it cannot see
     // a daemon on another host. An explicit address is how a surface elsewhere
     // attaches, and it bypasses discovery entirely.

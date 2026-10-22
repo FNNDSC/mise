@@ -30,6 +30,7 @@ export async function domainTeardown_run(context: BuildCommandContext, args: Rea
   if (domain.origin !== 'built' || record === null) return envelope_error('', undefined, `domain teardown: ${name}: Operation not permitted: read from a harbor-oci checkout, not built here\n`);
   if (record.adopted !== undefined) return envelope_error('', undefined, `domain teardown: ${name}: Operation not permitted: adopted, not built here\n`);
   if (record.gone !== undefined) return envelope_ok(`${name}: already torn down (${record.gone.slice(0, 16)})\n`);
+  if (record.protected !== false) return envelope_error('', undefined, `domain teardown: ${name}: Operation not permitted: protected (domain protect ${name} off lifts it, as its own line)\n`);
   const builder = context.builder;
   if (builder === null || builder.teardown_run === undefined) return envelope_error('', undefined, 'domain teardown: this cloud cannot tear a domain down yet\n');
   if (surface_get().capabilities.tasks !== true) return envelope_error('', undefined, `domain teardown: ${name}: Operation not permitted: tearing down needs the tasks tier\n`);

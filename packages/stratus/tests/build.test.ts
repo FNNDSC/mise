@@ -143,7 +143,7 @@ describe('building a domain over the fakes', () => {
     const { finished } = runner.job_start(STEPS_SOURCE, 'slow', 'slow', buildRun_make('slow', undefined, slow));
     setTimeout(() => runner.job_stop(STEPS_SOURCE, 'slow'), 10);
     expect((await finished).state).toBe('cancelled');
-    expect(store.record_read('slow')?.steps['preflight']).toMatchObject({ state: 'not done', note: 'stopped when asked' });
+    expect(store.record_read('slow')?.steps['compartment']).toMatchObject({ state: 'not done', note: 'stopped when asked' });
   });
 
   it('times a host wait and an install out', async () => {
@@ -161,8 +161,8 @@ describe('building a domain over the fakes', () => {
     record_new('trial');
     const view = builtDomain_read(store, 'trial');
     expect(view).toMatchObject({ name: 'trial', origin: 'built', cluster: 'trial.fake.example', settings: { CLUSTER_NAME: 'trial', BASE_DOMAIN: 'fake.example' } });
-    expect(view?.steps[0]).toEqual({ folder: '01-preflight', name: 'preflight', state: 'not done', evidence: 'not run yet' });
-    expect(view?.steps[9]?.evidence).toBe('not a step this session has yet');
+    expect(view?.steps[0]).toEqual({ folder: '01-compartment', name: 'compartment', state: 'not done', evidence: 'not run yet' });
+    expect(view?.steps[10]?.evidence).toBe('not a step this session has yet');
     expect(builtDomain_read(store, 'nope')).toBeNull();
   });
 
@@ -203,7 +203,7 @@ describe('building a domain over the fakes', () => {
     const plan: string = plain((await domain_run(context, ['plan', 'trial'])).rendered);
     expect(plan).toContain('fit, E5 per availability domain (us-ashburn-1):');
     expect(plan).toContain('$0.50 an hour');
-    expect(plan).toContain('steps next: preflight');
+    expect(plan).toContain('steps next: compartment');
     expect(plan).toContain('the infrastructure plan needs the tasks tier');
     surface_set(surface);
     expect(plain((await domain_run(context, ['plan'])).rendered)).toContain('domain build trial --through infra-plan makes it');
@@ -249,5 +249,24 @@ describe('building a domain over the fakes', () => {
     const checkout: DomainTree = new DomainTree({ sources: [{ name: 'harbor', root: join(root, 'missing') }], owner: (): string => 'r', now: (): Date => new Date(), store });
     const ctx: DomainCommandContext = { ...context, domains: checkout, build: { ...context.build!, domains: checkout } };
     expect((await domain_run(ctx, ['build', 'harbor'])).renderedErr).toBe('domain build: harbor: read from a harbor-oci checkout, not built here; adopting it comes with domain adopt\n');
+  });
+});
+
+describe("the installer's account", () => {
+  let root: string;
+  beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'stratus-account-')); });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it('is kept on the host, mode 600, and never replaced from a question', async () => {
+    const { fileAccount_make } = await import('../src/installer/account.js');
+    const { serviceAccount_read } = await import('../src/installer/assisted.js');
+    const { readFileSync } = await import('node:fs');
+    const account = fileAccount_make(join(root, 'ocm', 'service-account.env'));
+    expect(account.present()).toBe(false);
+    account.keep('abc', 's3');
+    expect(account.present()).toBe(true);
+    expect(statSync(account.path).mode & 0o777).toBe(0o600);
+    expect(serviceAccount_read(readFileSync(account.path, 'utf-8'))).toEqual({ clientId: 'abc', clientSecret: 's3' });
+    expect(() => account.keep('x', 'y')).toThrow('is there already');
   });
 });

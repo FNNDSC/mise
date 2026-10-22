@@ -18,6 +18,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { engine_create, type BrasaEngine } from '@fnndsc/brasa/core';
 import { daemon_launch, daemonConsole_run, hostControl_parseArgv, packageWebRoot_find, type DaemonLaunchInfo, type HostControlPolicy } from '@fnndsc/calypso';
+import { fileAccount_make } from './installer/account.js';
 import { stratusBackend_make, type StratusBackend, type StratusBackendOptions } from './backend.js';
 import type { CloudDriver } from './cloud/driver.js';
 import { FakeDriver, fakeCloud_sample } from './cloud/fake/driver.js';
@@ -75,7 +76,7 @@ function home_expand(file: string): string {
  * @param args - The launch's arguments.
  * @returns The builder and installer.
  */
-function oci_buildParts(driver: CloudDriver, args: StratusArgs): Pick<StratusBackendOptions, 'builder' | 'installer'> {
+function oci_buildParts(driver: CloudDriver, args: StratusArgs): Pick<StratusBackendOptions, 'builder' | 'installer' | 'account'> {
   const sshKeyFile: string = home_expand(args.sshKey ?? '~/.ssh/id_ed25519.pub');
   const accountFile: string = home_expand(args.redhatAccount ?? '~/.config/ocm/service-account.env');
   const sshPublicKey = (): string | null => (existsSync(sshKeyFile) ? readFileSync(sshKeyFile, 'utf-8') : null);
@@ -89,6 +90,7 @@ function oci_buildParts(driver: CloudDriver, args: StratusArgs): Pick<StratusBac
       sshPublicKey,
       nameservers_resolve: (zone: string): Promise<string[]> => resolver.resolveNs(zone),
     }),
+    account: fileAccount_make(accountFile),
     installer: new AssistedInstaller({
       account: () => serviceAccount_read(readFileSync(accountFile, 'utf-8')),
       sshPublicKey: (): string => { const key: string | null = sshPublicKey(); if (key === null) throw new Error(`${sshKeyFile}: no SSH public key`); return key; },

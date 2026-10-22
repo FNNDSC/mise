@@ -25,6 +25,7 @@ import { stratusListingLook } from './vfs/look.js';
 import { stratusSegments_build } from './prompt.js';
 import type { CloudBuilder } from './cloud/builder.js';
 import type { Installer } from './installer/installer.js';
+import type { InstallerAccountKeeper } from './installer/account.js';
 import type { VerifyReach } from './commands/verify.js';
 import { DomainStore, domainsRoot_of } from './domain/state.js';
 import { domainExpectSubject_make } from './domain/expect.js';
@@ -48,6 +49,8 @@ export interface StratusBackendOptions {
   readonly builder?: CloudBuilder;
   /** The installer the build's steps call. */
   readonly installer?: Installer;
+  /** Where the installer's account is kept, so `domain build` can ask for it when it is missing. */
+  readonly account?: InstallerAccountKeeper;
   /** The DNS zone a new domain's names live under when `domain new` is not told. */
   readonly baseDomain?: string;
   /** How `domain verify` reaches a cluster; the network when absent. */
@@ -102,7 +105,7 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
   const region = (): string | null => session.region;
   commands_register(stratusCommands_make({
     domains, driver: options.driver, region, domainsPath: (): string => `${session.tenancyPath}/domains`,
-    build: { domains, store, driver: options.driver, region, deps, builder: options.builder ?? null, baseDomain: options.baseDomain ?? null, ...(options.verifyReach !== undefined ? { verifyReach: options.verifyReach } : {}) },
+    build: { domains, store, driver: options.driver, region, deps, builder: options.builder ?? null, baseDomain: options.baseDomain ?? null, ...(options.account !== undefined ? { account: options.account } : {}), ...(options.verifyReach !== undefined ? { verifyReach: options.verifyReach } : {}) },
   }), 'backend');
   const dispatcher: VFSDispatcher = new VFSDispatcher();
   dispatcher.provider_register(tenancy);

@@ -137,6 +137,13 @@ export interface TeardownRequest {
 export interface CloudBuilder {
   /** Its id (`oci`, `fake`). */
   readonly id: string;
+  /**
+   * The domain's own compartment, `domains/<name>` under the tenancy, tagged
+   * `mise-domain=<name>`, made with its `domains` parent when either is
+   * missing and waited on until it is active. Answers the compartment's id,
+   * and whether this call made it.
+   */
+  compartment_ensure?(request: { domain: string; region: string }, call: BuildCall): Promise<{ id: string; made: boolean }>;
   /** Checks the tenancy can take the domain: keys, limits, the tag namespace, the zone. */
   preflight(request: { domain: string; spec: DomainSpec; region: string; baseDomain: string; compartmentId: string }, call: BuildCall): Promise<PreflightCheck[]>;
   /** Puts the discovery image where the machines boot from: its object, a link to it (a secret) and the link's end. */

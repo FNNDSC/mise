@@ -254,7 +254,7 @@ Core commands (`ls`, `cd`, `cat`, `cp`, `find`, `grep`, `wc`, `head`, `sort`, �
 [cols="1,3",options="header"]
 |===
 | Command | What it does
-| `domain new <name> [--spec file]` | Creates `domains/<name>` with a spec (from `suggest`, a file, or the defaults).
+| `domain new <name> [--family F] [--plane 3xV/G] [--workers NxV/G] [--data G] [--base-domain zone]` | Writes `domains/<name>`'s spec on the host and nothing else: `harbor-oci`'s compact cluster, sized by the options.
 | `domain plan [<name>]` | Preflight and the infrastructure plan; prints the changes and the hourly cost; names tag drift.
 | `domain build [<name>] [--through <step>]` | Runs the build's steps in order as tasks, from the first not done; stops after `--through`.
 | `domain status` | Where each step stands, and the evidence.
@@ -359,7 +359,7 @@ Each step is one change or a short series, released on its own; nothing changes 
 . *Resources.* Instances, networks, load balancers, volumes, buckets and DNS in the tree, through Resource Search and the service clients; `ls -l` types and states; cloud tags in `tags`.
 . *Domains, read.* `domains/` over an existing `harbor-oci` state folder — the live compact cluster as the first domain — with `domain status`, `domain verify` and `spend`; the DOMAINS and CAPACITY tiles.
 . *The engine's build,* after the controller's mockup is grilled (done 2026-10-22), four changes, engine only; the state event's fields come from the mockup:
-.. *4a, the runner and the tier, on fakes:* brasa's `core/runner.ts`, job records and logs, `kill` and `wait`, the `tasks` tier in calypso with its launch flag; `domain/steps.ts` over a fake cloud and a fake installer, so `domain build` runs end to end under `stratus --fake`; the state folder; `domain plan` in its tierless form.
+.. *4a, the runner and the tier, on fakes* (built 2026-10-22, #1200 and its follower): brasa's `core/runner.ts`, job records and logs, `kill` and `wait`, the `tasks` tier in calypso with its launch flag; `domain/steps.ts` over a fake cloud and a fake installer, so `domain build` runs end to end under `stratus --fake`; the state folder; `domain plan` in its tierless form.
 .. *4b, adoption, live, plan only:* Resource Manager in the cloud driver, a read-first Assisted Installer driver, `domain adopt`, and `domain plan` with the tier against the live domain (no creations, drift only). Nothing applied; the checkout reader retires.
 .. *4c, `verify` and `spend`:* the least of the cluster driver verify needs, over the adopted kubeconfig; `dig` as `node:dns`; block-volume and load-balancer prices; the hourly cost on DOMAINS. Live against the running cluster, reads only.
 .. *4d, a real build in a scratch compartment,* on the operator's word on the day: every step's writes, the question before billing, then teardown's first form (<<writes>>).

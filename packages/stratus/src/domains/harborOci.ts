@@ -64,6 +64,8 @@ export interface HarborDomain {
   readonly secrets: ReadonlyArray<DomainSecret>;
   /** The cluster's DNS name, `<CLUSTER_NAME>.<BASE_DOMAIN>`, or null. */
   readonly cluster: string | null;
+  /** Where it comes from: a `harbor-oci` checkout read, or built by this daemon (absent: a checkout). */
+  readonly origin?: 'checkout' | 'built';
 }
 
 /** Where a domain is read from: its name and its checkout. */

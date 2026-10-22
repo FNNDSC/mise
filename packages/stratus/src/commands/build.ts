@@ -1,0 +1,267 @@
+/**
+ * @file `domain new`, `domain plan` and `domain build`: making a domain's
+ * spec, saying what it would take and cost, and building it (docs/stratus.adoc,
+ * D6, D7, D10).
+ *
+ * `domain new` writes the spec and nothing else. `domain plan` reads only,
+ * without the `tasks` tier: the fit per availability domain, the hourly cost
+ * from the price list, where the steps stand; it says by name that the
+ * infrastructure plan needs the tier. `domain build` starts the domain's run
+ * in the core's runner and follows it; the run stops before the first step
+ * that bills, and the command asks the operator, with the plan's counts and
+ * the cost, before it goes on. Ctrl-C stops following, not the build.
+ *
+ * @module
+ */
+import chalk from 'chalk';
+import { envelope_error, envelope_ok, taskState_isOver, type CommandEnvelope } from '@fnndsc/menu';
+import {
+  commandCancellation_enable, commandCancellation_signalGet, JobRefusal, repl_confirm, runner_get, sink_dataLine, surface_get,
+  type JobRecord, type JobRunner,
+} from '@fnndsc/brasa/core';
+import type { CloudDriver, CloudPrice, CloudShape } from '../cloud/driver.js';
+import { planCounts_of, type InfraPlan } from '../cloud/builder.js';
+import type { HarborDomain } from '../domains/harborOci.js';
+import type { DomainTree } from '../vfs/domains.js';
+import { DOMAIN_NAME, type DomainRecord, type DomainStore } from '../domain/state.js';
+import { SPEC_DEFAULT, specOptions_apply, type DomainSpec } from '../domain/spec.js';
+import { cost_words, familyShape_find, specCost_of, specFit_read, type SpecCost, type ZoneFit } from '../domain/sizing.js';
+import { BUILD_STEPS, buildJob_id, buildRun_make, FIRST_BILLING_STEP, stepNext_of, STEPS_SOURCE, STEPS_WRITTEN, type BuildDeps } from '../domain/steps.js';
+
+/** What the build verbs read from the session. */
+export interface BuildCommandContext {
+  readonly domains: DomainTree;
+  readonly store: DomainStore;
+  readonly driver: CloudDriver;
+  /** The session's region, or null when not connected. */
+  readonly region: () => string | null;
+  /** What the steps run over, or null when this cloud cannot build yet. */
+  readonly deps: BuildDeps | null;
+  /** The DNS zone a new domain's names live under when `--base-domain` is not given. */
+  readonly baseDomain: string | null;
+}
+
+/** The options `domain new` takes, each with a value. */
+const NEW_OPTIONS: ReadonlyArray<string> = ['--family', '--plane', '--workers', '--data', '--database', '--queue', '--base-domain'];
+
+/**
+ * Reads `--name value` and `--name=value` pairs.
+ *
+ * @param words - The words.
+ * @param known - The options taken.
+ * @returns The options and the other words, or the word refused.
+ */
+export function options_read(words: ReadonlyArray<string>, known: ReadonlyArray<string>): { options: Map<string, string>; rest: string[] } | { error: string } {
+  const options: Map<string, string> = new Map();
+  const rest: string[] = [];
+  for (let i: number = 0; i < words.length; i++) {
+    const word: string = words[i] as string;
+    if (!word.startsWith('-')) { rest.push(word); continue; }
+    const name: string = word.includes('=') ? word.slice(0, word.indexOf('=')) : word;
+    if (!known.includes(name)) return { error: `${name}: unknown option` };
+    const value: string | undefined = word.includes('=') ? word.slice(word.indexOf('=') + 1) : words[++i];
+    if (value === undefined || value === '') return { error: `${name} takes a value` };
+    options.set(name, value);
+  }
+  return { options, rest };
+}
+
+/**
+ * A spec in a line.
+ *
+ * @param spec - The spec.
+ * @returns `E5 · plane 3 × 8 vCPU 24 GiB · …`.
+ */
+export function spec_line(spec: DomainSpec): string {
+  const workers: string = spec.workers.count === 0 ? 'workers 0 (compact)' : `workers ${spec.workers.count} × ${spec.workers.vcpu} vCPU ${spec.workers.ramGib} GiB`;
+  return `${spec.family} · plane ${spec.controlPlane.count} × ${spec.controlPlane.vcpu} vCPU ${spec.controlPlane.ramGib} GiB · ${workers} · ChRIS data ${spec.chris.dataGib} GiB`;
+}
+
+/**
+ * `domain new <name> [options]`.
+ *
+ * @param context - The session.
+ * @param args - The words after `new`.
+ * @returns The envelope.
+ */
+export async function domainNew_run(context: BuildCommandContext, args: ReadonlyArray<string>): Promise<CommandEnvelope> {
+  const read = options_read(args, NEW_OPTIONS);
+  if ('error' in read) return envelope_error('', undefined, `domain new: ${read.error} (${NEW_OPTIONS.join(', ')})\n`);
+  const [name, ...extra] = read.rest;
+  if (name === undefined || extra.length > 0) return envelope_error('', undefined, 'domain new: usage: domain new <name> [--family E5] [--plane 3x8/24] [--workers 2x8/32] [--data GiB] [--base-domain zone]\n');
+  if (!DOMAIN_NAME.test(name)) return envelope_error('', undefined, `domain new: ${name}: a domain's name is a DNS label: lower-case letters, digits and '-', starting with a letter, at most 54\n`);
+  if (context.domains.domain_read(name) !== null) return envelope_error('', undefined, `domain new: ${name}: File exists\n`);
+  const region: string | null = context.region();
+  if (region === null) return envelope_error('', undefined, 'domain new: not connected\n');
+  const baseDomain: string | null = read.options.get('--base-domain') ?? context.baseDomain;
+  if (baseDomain === null) return envelope_error('', undefined, 'domain new: --base-domain <zone> is needed: the DNS zone the cluster\'s names live under\n');
+  const sized = specOptions_apply(SPEC_DEFAULT, new Map([...read.options].filter(([option]: [string, string]): boolean => option !== '--base-domain')));
+  if ('error' in sized) return envelope_error('', undefined, `domain new: ${sized.error}\n`);
+  const record: DomainRecord = { name, created: new Date().toISOString(), region, baseDomain, steps: {}, ids: {} };
+  context.store.create(record, sized.spec);
+  const lines: string[] = [
+    `${chalk.bold(name)}  ${name}.${baseDomain}  spec written: ${context.store.folder_of(name)}/spec.yaml`,
+    `  ${spec_line(sized.spec)}`,
+    chalk.gray(`Nothing is made in the tenancy until domain build ${name}; domain plan ${name} says what it takes and costs.`),
+  ];
+  return envelope_ok(`${lines.join('\n')}\n`);
+}
+
+/**
+ * A built domain and its spec, or why the verb refuses it.
+ *
+ * @param context - The session.
+ * @param verb - The verb, for the refusal.
+ * @param name - The domain's name, or undefined for the only one.
+ * @returns The domain, its record and its spec, or the refusal.
+ */
+function builtDomain_need(context: BuildCommandContext, verb: string, name: string | undefined): { domain: HarborDomain; record: DomainRecord; spec: DomainSpec } | { error: string } {
+  const built: string[] = context.store.names_list();
+  const chosen: string | undefined = name ?? (built.length === 1 ? built[0] : undefined);
+  if (chosen === undefined) return { error: `domain ${verb}: which domain? (${built.join(', ') || 'none built here; domain new <name>'})` };
+  const domain: HarborDomain | null = context.domains.domain_read(chosen);
+  if (domain === null) return { error: `domain ${verb}: ${chosen}: no such domain` };
+  if (domain.origin !== 'built') return { error: `domain ${verb}: ${chosen}: read from a harbor-oci checkout, not built here; adopting it comes with domain adopt` };
+  const record: DomainRecord | null = context.store.record_read(chosen);
+  const spec = context.store.spec_read(chosen);
+  if (record === null || spec === null || spec.spec === null) return { error: `domain ${verb}: ${chosen}: its spec.yaml does not read${spec?.error !== undefined ? ` (${spec.error})` : ''}` };
+  return { domain, record, spec: spec.spec };
+}
+
+/**
+ * What a spec costs in this region, read now.
+ *
+ * @param context - The session.
+ * @param region - The region.
+ * @param spec - The spec.
+ * @returns The cost, or null when the family is not priced.
+ */
+async function cost_read(context: BuildCommandContext, region: string, spec: DomainSpec): Promise<SpecCost | null> {
+  const shape: CloudShape | undefined = familyShape_find(await context.driver.shapes_list(region), spec.family);
+  const prices: CloudPrice[] = await context.driver.prices_list();
+  return specCost_of(spec, shape, prices);
+}
+
+/**
+ * Whether the session may start jobs: the `tasks` tier.
+ *
+ * @returns True when granted.
+ */
+function tasks_granted(): boolean {
+  return surface_get().capabilities.tasks === true;
+}
+
+/**
+ * `domain plan [<name>]`: the fit, the cost and the steps, read; the plan itself with the tier.
+ *
+ * @param context - The session.
+ * @param args - The words after `plan`.
+ * @returns The envelope.
+ */
+export async function domainPlan_run(context: BuildCommandContext, args: ReadonlyArray<string>): Promise<CommandEnvelope> {
+  if (args.length > 1 || args.some((word: string): boolean => word.startsWith('-'))) return envelope_error('', undefined, 'domain plan: usage: domain plan [<name>]\n');
+  const need = builtDomain_need(context, 'plan', args[0]);
+  if ('error' in need) return envelope_error('', undefined, `${need.error}\n`);
+  const { domain, record, spec } = need;
+  const fits: ZoneFit[] = await specFit_read(context.driver, record.region, domain.name, spec);
+  const cost: SpecCost | null = await cost_read(context, record.region, spec);
+  const lines: string[] = [`${chalk.bold(domain.name)}  ${domain.cluster ?? ''}`, `  ${spec_line(spec)}`, `fit, ${spec.family} per availability domain (${record.region}):`];
+  for (const fit of fits) {
+    const room = (needed: number, free: number | null, unit: string): string => `${needed} of ${free ?? '?'} ${unit}`;
+    const verdict: string = fit.fits === null ? chalk.gray('not said') : fit.fits ? chalk.cyan('fits') : chalk.red('does not fit');
+    lines.push(`  ${fit.zone.padEnd(24)} ${fit.nodes.join(' ').padEnd(28)} ${room(fit.coresNeeded, fit.coresFree, 'cores')}, ${room(fit.memoryNeeded, fit.memoryFree, 'GiB')}  ${verdict}`);
+  }
+  lines.push(`cost  ${cost === null ? chalk.gray(`${spec.family} is not in the price list`) : chalk.yellow(cost_words(cost))}`);
+  const next: string | null = stepNext_of(record);
+  lines.push(`steps ${next === null ? 'every step done' : `next: ${next}`}`);
+  const planText: string | null = context.store.file_read(domain.name, 'plan.json');
+  if (planText !== null) {
+    const counts = planCounts_of(JSON.parse(planText) as InfraPlan);
+    lines.push(`plan  ${counts.create} to create, ${counts.change} to change${counts.drift > 0 ? `, ${counts.drift} of them Oracle-Tags drift` : ''}, ${counts.destroy} to destroy (recorded by infra-plan)`);
+  } else if (!tasks_granted()) {
+    lines.push(chalk.gray('plan  the infrastructure plan needs the tasks tier (stratus --host-control tasks): without it, nothing outside this host changes'));
+  } else {
+    lines.push(chalk.gray(`plan  not made yet: domain build ${domain.name} --through infra-plan makes it, and nothing it makes bills`));
+  }
+  return envelope_ok(`${lines.join('\n')}\n`);
+}
+
+/**
+ * Follows a run to its end, or until the operator stops following.
+ *
+ * @param runner - The runner.
+ * @param id - The run's job id.
+ * @returns Its record then.
+ */
+async function run_follow(runner: JobRunner, id: string): Promise<JobRecord | undefined> {
+  commandCancellation_enable();
+  const signal: AbortSignal | undefined = commandCancellation_signalGet();
+  return runner.job_follow(STEPS_SOURCE, id, (line: string): void => sink_dataLine(line), signal);
+}
+
+/**
+ * The question before the first billing step.
+ *
+ * @param context - The session.
+ * @param name - The domain.
+ * @param record - Its state.
+ * @param spec - Its spec.
+ * @returns The question.
+ */
+async function billing_question(context: BuildCommandContext, name: string, record: DomainRecord, spec: DomainSpec): Promise<string> {
+  const planText: string | null = context.store.file_read(name, 'plan.json');
+  const created: number = planText === null ? 0 : planCounts_of(JSON.parse(planText) as InfraPlan).create;
+  const cost: SpecCost | null = await cost_read(context, record.region, spec);
+  return `${FIRST_BILLING_STEP} creates ${created} resources. Billing starts at ${cost === null ? 'an unpriced rate' : cost_words(cost)}. Continue? [y/N]`;
+}
+
+/**
+ * `domain build [<name>] [--through <step>]`.
+ *
+ * @param context - The session.
+ * @param args - The words after `build`.
+ * @returns The envelope.
+ */
+export async function domainBuild_run(context: BuildCommandContext, args: ReadonlyArray<string>): Promise<CommandEnvelope> {
+  const read = options_read(args, ['--through']);
+  if ('error' in read) return envelope_error('', undefined, `domain build: ${read.error} (--through)\n`);
+  if (read.rest.length > 1) return envelope_error('', undefined, 'domain build: usage: domain build [<name>] [--through <step>]\n');
+  const through: string | undefined = read.options.get('--through');
+  if (through !== undefined && !BUILD_STEPS.includes(through)) return envelope_error('', undefined, `domain build: --through ${through}: no such step (${BUILD_STEPS.join(' ')})\n`);
+  const need = builtDomain_need(context, 'build', read.rest[0]);
+  if ('error' in need) return envelope_error('', undefined, `${need.error}\n`);
+  if (context.deps === null) return envelope_error('', undefined, 'domain build: this cloud\'s build steps are not written yet; stratus --fake builds over the fake cloud\n');
+  const runner: JobRunner | null = runner_get();
+  if (runner === null) return envelope_error('', undefined, 'domain build: this session runs no tasks\n');
+  const name: string = need.domain.name;
+  const id: string = buildJob_id(name);
+  for (;;) {
+    const running: JobRecord | undefined = runner.job_get(STEPS_SOURCE, id);
+    if (running === undefined || taskState_isOver(running.state)) {
+      try {
+        runner.job_start(STEPS_SOURCE, id, `build ${name}`, buildRun_make(name, through, context.deps), { domain: name, ...(through !== undefined ? { through } : {}) });
+      } catch (error: unknown) {
+        return envelope_error('', undefined, `domain build: ${error instanceof JobRefusal ? error.message : String(error)}\n`);
+      }
+    }
+    sink_dataLine(chalk.gray(`following /proc/${STEPS_SOURCE}/${id}; Ctrl-C stops following, not the build (wait ${id} follows it again)`));
+    const ended: JobRecord | undefined = await run_follow(runner, id);
+    if (ended === undefined) return envelope_error('', undefined, `domain build: /proc/${STEPS_SOURCE}/${id}: gone\n`);
+    if (!taskState_isOver(ended.state)) return envelope_ok(`${chalk.gray(`stopped following; the build goes on (wait ${id})`)}\n`);
+    if (ended.state !== 'done') return envelope_error('', undefined, `domain build: ${name}: ${ended.state}${ended.outcome !== undefined ? `: ${ended.outcome}` : ''}\n`);
+    const stoppedBefore: string | undefined = ended.data['stoppedBefore'] as string | undefined;
+    const record: DomainRecord = context.store.record_read(name) as DomainRecord;
+    if (stoppedBefore === FIRST_BILLING_STEP && record.billingAccepted === undefined && (through === undefined || BUILD_STEPS.indexOf(through) >= BUILD_STEPS.indexOf(FIRST_BILLING_STEP))) {
+      const yes: boolean = await repl_confirm(await billing_question(context, name, record, need.spec));
+      if (!yes) return envelope_ok(`${chalk.gray(`stopped before ${FIRST_BILLING_STEP}; nothing bills (domain build ${name} asks again)`)}\n`);
+      context.store.record_update(name, (current: DomainRecord): void => { current.billingAccepted = new Date().toISOString(); });
+      continue;
+    }
+    const next: string | null = stepNext_of(record);
+    const summary: string = next === null
+      ? `${name}: every step done`
+      : !STEPS_WRITTEN.includes(next) ? `${name}: built through ${BUILD_STEPS[BUILD_STEPS.indexOf(next) - 1] ?? ''}; ${next} and after are not steps this session has yet`
+        : `${name}: done through ${BUILD_STEPS[BUILD_STEPS.indexOf(next) - 1] ?? ''}; next: ${next}`;
+    return envelope_ok(`${summary}\n`);
+  }
+}

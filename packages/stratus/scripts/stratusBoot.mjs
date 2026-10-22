@@ -20,7 +20,7 @@ process.env.CORE_BOOT_LOADS = join(scratch, 'chris-loads.txt');
 register(new URL('./stratusBoot.hook.mjs', import.meta.url));
 
 const { engine_create } = await import('@fnndsc/brasa/core');
-const { stratusBackend_make, FakeDriver, fakeCloud_sample } = await import('../dist/index.js');
+const { stratusBackend_make, FakeDriver, fakeCloud_sample, DomainStore } = await import('../dist/index.js');
 
 const cloud = fakeCloud_sample('fnndsc');
 // A second compartment named like the first, so the duplicate rule is exercised.
@@ -28,6 +28,7 @@ const twin = { ...cloud.containers[2], id: 'ocid1.compartment.oc1..twin00', desc
 const made = stratusBackend_make({
   driver: new FakeDriver({ ...cloud, containers: [...cloud.containers, twin] }),
   configDir: join(scratch, 'config'),
+  store: new DomainStore(join(scratch, 'domains')),
 });
 const engine = await engine_create(made.backend);
 engine.sink_install({ data_write: () => undefined, err_write: () => undefined, progress_write: () => undefined });
@@ -67,6 +68,12 @@ const CHECKS = [
   { line: 'ls ../regions/eu-nowhere-1', ok: false, has: ['No such file or directory'] },
   { line: 'cat ../regions', ok: false, has: ['Is a directory'] },
   { line: 'touch ../regions/x', ok: false },
+  { line: 'domain new trial --base-domain fake.example --workers 2x8/32', ok: true, has: ['spec written', 'workers 2 × 8 vCPU 32 GiB'] },
+  { line: 'ls ~/trial', ok: true, has: ['spec.yaml', 'state.json', 'steps', 'auth'] },
+  { line: 'domain plan trial', ok: true, has: ['8 of 9238 cores', 'an hour', 'needs the tasks tier'] },
+  { line: 'domain build trial', ok: false, has: ['build steps are not written yet'] },
+  { line: 'kill trial-build', ok: false, has: ['no such task'] },
+  { line: 'ls /proc/steps', ok: true },
   { line: 'ls /usr/bin', ok: true, has: ['ls', 'cat'], hasNot: ['feed', 'plugin', 'pacs'] },
   { line: 'help', ok: true, has: ['ls', 'cat'], hasNot: ['feed', 'plugin', 'pacs'] },
   { line: 'nosuch', ok: false, has: ['command not found: nosuch'] },

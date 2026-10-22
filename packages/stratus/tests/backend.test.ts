@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { FakeDriver, fakeCloud_sample } from '../src/cloud/fake/driver.js';
 import { stratusBackend_make } from '../src/backend.js';
+import { DomainStore } from '../src/domain/state.js';
 import { STRATUS_ITEM_KINDS, stratusName_colorize, CONTAINER_TYPES, stateTone_paint } from '../src/vfs/look.js';
 import { envelopeHandler_get } from '@fnndsc/brasa/core';
 import { harborCheckout_make } from './support/harborCheckout.js';
@@ -14,7 +15,7 @@ import { harborCheckout_make } from './support/harborCheckout.js';
 describe('stratusBackend_make', () => {
   it('is the stratus backend over the driver, with the tenancy mounted and the look installed', async () => {
     const configDir = mkdtempSync(path.join(tmpdir(), 'stratus-backend-'));
-    const made = stratusBackend_make({ driver: new FakeDriver(fakeCloud_sample()), configDir, cacheLifeMs: 1000 });
+    const made = stratusBackend_make({ driver: new FakeDriver(fakeCloud_sample()), configDir, cacheLifeMs: 1000, store: new DomainStore(path.join(configDir, 'domains')) });
     expect(made.backend.id).toBe('stratus');
     expect(made.backend.vfs?.structural).toEqual(['/', '/net', '/net/oci']);
     expect(made.backend.completion?.rootWords).toEqual(['net']);
@@ -34,7 +35,7 @@ describe('stratusBackend_make', () => {
 
   it('prompts with the user, the tenancy, the working directory or home, and the last command', async () => {
     const configDir = mkdtempSync(path.join(tmpdir(), 'stratus-backend-'));
-    const made = stratusBackend_make({ driver: new FakeDriver(fakeCloud_sample()), configDir });
+    const made = stratusBackend_make({ driver: new FakeDriver(fakeCloud_sample()), configDir, store: new DomainStore(path.join(configDir, 'domains')) });
     await made.backend.session.init();
     expect(await made.backend.prompt!()).toEqual({
       user: 'rudolph', uri: 'fnndsc', cwd: '/net/oci/fnndsc/domains', pacsserver: null, physicalMode: false, lastExitCode: 0, lastCommandDurationMs: 0,
@@ -48,7 +49,7 @@ describe('stratusBackend_make', () => {
     const broken = new (class extends FakeDriver {
       override async identity_get(): Promise<never> { throw new Error('no key'); }
     })(fakeCloud_sample());
-    const made = stratusBackend_make({ driver: broken, configDir: mkdtempSync(path.join(tmpdir(), 'stratus-backend-')) });
+    const made = stratusBackend_make({ driver: broken, configDir: mkdtempSync(path.join(tmpdir(), 'stratus-backend-')), store: new DomainStore(mkdtempSync(path.join(tmpdir(), 'stratus-domains-'))) });
     await made.backend.session.init();
     expect(await made.backend.prompt!()).toMatchObject({ user: 'disconnected', uri: '', cwd: '/net/oci', segments: [{ key: 'cloud', value: 'OCI ✗', tone: 'alert' }, { key: 'cwd', value: '/net/oci' }] });
   });
@@ -57,7 +58,7 @@ describe('stratusBackend_make', () => {
 describe('the backend\'s domains', () => {
   it('shows the daemon\'s domains under the tenancy and registers domain', async () => {
     const root = harborCheckout_make();
-    const made = stratusBackend_make({ driver: new FakeDriver(fakeCloud_sample()), configDir: mkdtempSync(path.join(tmpdir(), 'stratus-backend-')), domains: [{ name: 'harbor', root }] });
+    const made = stratusBackend_make({ driver: new FakeDriver(fakeCloud_sample()), configDir: mkdtempSync(path.join(tmpdir(), 'stratus-backend-')), domains: [{ name: 'harbor', root }], store: new DomainStore(mkdtempSync(path.join(tmpdir(), 'stratus-domains-'))) });
     await made.backend.session.init();
     const listing = await made.backend.vfs!.dispatcher.list('/net/oci/fnndsc/domains');
     expect(listing.ok && listing.value.map((item) => [item.name, item.owner])).toEqual([['harbor', 'rudolph']]);

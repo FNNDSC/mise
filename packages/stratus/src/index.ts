@@ -14,6 +14,12 @@ export { TenancyProvider, TENANCY_RESERVED, CONTAINER_RESERVED, READ_ONLY_REASON
 export { stratusListingLook, stratusName_colorize, STRATUS_ITEM_KINDS, CONTAINER_TYPES } from './vfs/look.js';
 export { StratusSession, configDir_default, type StratusSessionOptions } from './session.js';
 export { stratusBackend_make, type StratusBackend, type StratusBackendOptions } from './backend.js';
+export { DomainStore, domainsRoot_of, DOMAIN_NAME, type DomainRecord, type StepRecord, type BuiltStepState } from './domain/state.js';
+export { SPEC_DEFAULT, specYaml_parse, specYaml_render, specOptions_apply, specNodes_of, type DomainSpec, type NodePool, type ChrisSizing, type SpecNode } from './domain/spec.js';
+export { BUILD_STEPS, STEPS_WRITTEN, FIRST_BILLING_STEP, STEPS_SOURCE, BUILD_WAITS, buildRun_make, buildJob_id, stepNext_of, type BuildDeps } from './domain/steps.js';
+export { planCounts_of, type CloudBuilder, type InfraPlan, type PlanRow, type PreflightCheck, type InfraOutputs, type BuildCall } from './cloud/builder.js';
+export { FakeBuildWorld, FakeCloudBuilder, FakeInstaller } from './cloud/fake/builder.js';
+export type { Installer, InstallerHost, InstallStatus, PlatformManifest } from './installer/installer.js';
 export { AnswerCache } from './cache.js';
 export { segments_assign, segment_resolve, idSuffix_of, ambiguity_words, type Named, type Segment, type SegmentMatch } from './names.js';
 export { stratusArgs_parse, type StratusArgs } from './args.js';

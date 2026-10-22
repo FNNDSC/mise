@@ -370,7 +370,8 @@ export class JobRunner {
   }
 
   /**
-   * Follows a job: each new log line, then its end.
+   * Follows a job, as `tail -f` does: its last lines kept in memory first,
+   * then each new one, then its end.
    *
    * @param source - Its source.
    * @param id - Its id.
@@ -382,6 +383,7 @@ export class JobRunner {
     const key: string = this.key_of(source, id);
     const entry: JobEntry | undefined = this.entries.get(key);
     if (entry === undefined) return Promise.resolve(undefined);
+    for (const line of entry.tail) onLine(line);
     if (taskState_isOver(entry.record.state)) return Promise.resolve({ ...entry.record });
     return new Promise((resolve: (record: JobRecord) => void): void => {
       const line_hear = (line: string): void => onLine(line);

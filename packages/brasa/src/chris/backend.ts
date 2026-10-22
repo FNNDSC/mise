@@ -18,6 +18,7 @@ import { runtimeOutput_set } from '@fnndsc/cumin/runtime-output';
 import { sink_get } from '../core/sink.js';
 import { procIndex_snapshot, sessionPromptContext_build } from './promptContext.js';
 import { chrisAnswerKinds, chrisReferences, chrisVerbTakes } from './references.js';
+import { chrisExpectSubjects } from './expectSubjects.js';
 import { chrisFallback } from './commandFallback.js';
 import { chrisFiles } from './files.js';
 import { elevation_run } from '@fnndsc/chili/commands/connect/elevation.js';
@@ -99,6 +100,7 @@ export const chrisBackend: Backend = {
   prompt: sessionPromptContext_build,
   telemetry: procIndex_snapshot,
   references: chrisReferences,
+  expectSubjects: chrisExpectSubjects,
   answerKinds: chrisAnswerKinds,
   verbTakes: chrisVerbTakes,
   fallback: chrisFallback,

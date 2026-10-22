@@ -80,6 +80,45 @@ export interface ReferenceSource {
   readonly resolve: (name: string) => Promise<ReferenceValue | undefined>;
 }
 
+/** What a claim's subject answered: the value, or why it could not say. */
+export interface ExpectReading {
+  /** The value read, as text; null when it could not be read. */
+  readonly got: string | null;
+  /** Why it could not be read, or why the claim cannot be made. */
+  readonly refusal?: string;
+}
+
+/** One `expect` claim, as its subject is asked it. */
+export interface ExpectAsk {
+  /** Which one, for a subject that names one (`feed 4599`); absent for one that does not (`gather`). */
+  readonly target?: string;
+  /** What about it (`status`, `count`). */
+  readonly property: string;
+  /** The words a property takes before the comparison (`tags PatientID`: `['PatientID']`). */
+  readonly words: ReadonlyArray<string>;
+  /** A glob narrowing a count (`--matching`). */
+  readonly matching?: string;
+  /** Look beneath, not only in (`--deep`). */
+  readonly deep: boolean;
+}
+
+/**
+ * Something `expect` can make claims about. The core answers `path` (`exists`,
+ * `count`); a backend registers its own world (ChRIS: `gather`, `feed`, `run`,
+ * and `tags` on `path`; stratus: `domain`). Two subjects of one name are one
+ * subject whose properties are both of theirs: each answers its own.
+ */
+export interface ExpectSubject {
+  /** The word a claim begins with. */
+  readonly name: string;
+  /** Whether a claim names one (`feed 4599 status`) or the subject is one thing (`gather size`). */
+  readonly named: boolean;
+  /** The properties it answers, each with how many words it takes before the comparison. */
+  readonly properties: Readonly<Record<string, number>>;
+  /** Reads one property; asked only for a property it lists. */
+  readonly read: (ask: ExpectAsk) => Promise<ExpectReading>;
+}
+
 /** A kind of row a listing numbers, as an index writes it: `@SER3` is the third series. */
 export interface AnswerKindLook {
   /** Three capital letters. */
@@ -242,6 +281,8 @@ export interface Backend {
   readonly answerKinds?: ReadonlyArray<AnswerKindLook>;
   /** The kinds its verbs take by index, and those it adds to the core's verbs. */
   readonly verbTakes?: ReadonlyArray<VerbTakes>;
+  /** What `expect` can make claims about in this backend's world, beside the core's `path`. */
+  readonly expectSubjects?: ReadonlyArray<ExpectSubject>;
   /** What it does with words the registry does not answer. */
   readonly fallback?: BackendFallback;
   /** Runs one command with administrator rights (`sudo`); absent, `sudo` is refused. */

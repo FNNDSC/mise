@@ -1,5 +1,14 @@
 # @fnndsc/brasa
 
+## 0.46.0
+
+### Minor Changes
+
+- f2180c1: Variables: `A=$(cmd)` holds what a command answered and `${A.field}` reads it, so a manifest chains runs by name. `NAME=word` holds one word; a command with no model is held as its text, one operand per line; a failed command leaves the name unchanged and fails the line. `set` lists the variables and `set A` shows one whole; `unset` removes them. A play gets its own scope, its parameters read-only, and `@answers NAME` makes `X=$(play f)` hold that variable's model. `${gather}` is read live by the same field rule (`${gather.series.folderPath}`, `${gather.name}`); `.first`, `.last`, `.size`, `.N` and `.place` are gone (#1208).
+- c90b8a2: One line runs a plugin or pipeline over the whole cohort, and `expect gather unpulled eq 0` says every member landed. `gather process` makes one feed whose root holds every member's landed folder (the cohort's own feed when it has one) and runs off that root; the name resolves as `/bin` resolves it, a series not pulled yet refuses by name, and it answers what the bare run would, so `R=$(gather process pl-dcm2niix-v1.0.2)` then `${R.outputPath}` (#1208).
+- 243aafa: The recent-state pronouns are gone: a line names what it made with `A=$(…)`, never `${feed}`, `${run}` or `${query}`. `${feed}`, `${run}`, `${run.place}` and `${query}` were filled behind the line by whatever ran last, so one name meant different runs on different lines and a path that forgot to fill one left it stale (#1207); they and `session/recent.ts` are removed. `plugin run` is retired (a plugin runs by its name, where the session stands), and so are `pull --plugin` and `--pipeline` (pull lands data; a run goes over it). `chell -f` and `chell file` play the script as a manifest: each line shown, the first refused line stops it, and the exit is non-zero; `-e` changes nothing for a script. `help pronouns` is now `help variables` (#1208).
+- 0a52833: A pipeline run answers every node it made, and a run's model says how it settled. `pipeline.scheduled` carries each node's instance, plugin, output folder and status, with the leaves nothing runs off, so `${P.instances.outputPath}` reaches every node and bare `${P}` is the nodes' ids; before, a pipeline passed as one plugin's run with the first id and an empty output path. `run.scheduled` gains `status`, CUBE's word as the run settled or `detached`. ARGUS lights a pipeline's feed as it lights a plugin's (#1208).
+
 ## 0.45.0
 
 ### Minor Changes

@@ -1,5 +1,22 @@
 # @fnndsc/chell
 
+## 5.18.0
+
+### Minor Changes
+
+- 243aafa: The recent-state pronouns are gone: a line names what it made with `A=$(…)`, never `${feed}`, `${run}` or `${query}`. `${feed}`, `${run}`, `${run.place}` and `${query}` were filled behind the line by whatever ran last, so one name meant different runs on different lines and a path that forgot to fill one left it stale (#1207); they and `session/recent.ts` are removed. `plugin run` is retired (a plugin runs by its name, where the session stands), and so are `pull --plugin` and `--pipeline` (pull lands data; a run goes over it). `chell -f` and `chell file` play the script as a manifest: each line shown, the first refused line stops it, and the exit is non-zero; `-e` changes nothing for a script. `help pronouns` is now `help variables` (#1208).
+
+### Patch Changes
+
+- 38fbdc9: The docs say one thing about scripts: a script is a manifest, played by `play`, stopping at its first refused line. `execution.adoc` is now about invoking chell and points at `docs/manifest.adoc` for the language; the retired `pull --plugin`/`--pipeline` and `plugin run` are gone from the README, glossary, command reference and PACS design, which point at `gather process`; `pluginrun.adoc` says a run waits, how to name it with `A=$(…)`, and absorbs the old implementation summary; `posix.adoc` describes variables, the unified expander and what stays non-POSIX (#1208).
+- Updated dependencies [f2180c1]
+- Updated dependencies [c90b8a2]
+- Updated dependencies [243aafa]
+- Updated dependencies [0a52833]
+  - @fnndsc/brasa@0.46.0
+  - @fnndsc/argus@0.37.1
+  - @fnndsc/calypso@0.26.1
+
 ## 5.17.0
 
 ### Minor Changes

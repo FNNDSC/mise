@@ -1,5 +1,16 @@
 # @fnndsc/stratus
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [f2180c1]
+- Updated dependencies [c90b8a2]
+- Updated dependencies [243aafa]
+- Updated dependencies [0a52833]
+  - @fnndsc/brasa@0.46.0
+  - @fnndsc/calypso@0.26.1
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,9 +1,10 @@
 # Active project handoff: stratus (epic #1056)
 
 - Last updated: 2026-10-22
-- Last verified against `main`: the merge of #1205, 2026-10-22
+- Last verified against `main`: the Version Packages merge #1213, 2026-10-22
 - Working branches: none; `main` is clean
-- Current milestone: steps 1 to 4 of the order of work in [stratus.adoc](stratus.adoc#order) are on `main` (step 4 as #1200 to #1205), all unpublished beyond @fnndsc/stratus 0.1.0 until the next `make publish` (the operator's word)
+- Epic status: comment posted on #1056, 2026-10-22 (follow-up 4 closed)
+- Current milestone: steps 1 to 4 of the order of work in [stratus.adoc](stratus.adoc#order) are on `main` (step 4 as #1200 to #1205) and published (@fnndsc/stratus 0.2.1, deployed on pangea 2026-10-22; titan carries no stratus). The live domain `harbor` is adopted into the operator's own state (`~/.local/state/stratus/domains/harbor`, reusing the stack tagged `mise-domain=harbor`), and `domain verify harbor` passes 10 of 10 there, the block-volume probe included (its 50 GiB claim made, read back and released, the compartment back to six volumes)
 - Next action: 4d's live build, on the operator's word on the day and a scratch compartment's id (one holding the `openshift-tags` namespace): a compact domain, billing about $0.71 an hour, built through `run`, verified, then `domain teardown`. Preflight and the installer are proven live, reading only. After it: step 5 (the cluster in the tree, the ChRIS half), then the TD controller against its mockup
 
 This file is the handoff between sessions and between models. It says where the work stands and what to do next, with the facts a fresh context needs to do it without rediscovery. The design itself is [stratus.adoc](stratus.adoc); the bastions are [bastion.adoc](bastion.adoc) and [dev-bastion.adoc](dev-bastion.adoc); what Red Hat ships against the primitive is [redhat-fl.adoc](redhat-fl.adoc); the metaphor every figure is drawn in is [linux-metaphor.adoc](linux-metaphor.adoc).
@@ -37,7 +38,7 @@ These are enforced by the operator in review and most by lint. Read the pointed 
 
 | Piece | State | Where |
 |---|---|---|
-| `@fnndsc/stratus` 0.1.0 | published through OIDC with provenance; trusted publisher configured | `packages/stratus`; npm page `@fnndsc/stratus` |
+| `@fnndsc/stratus` 0.2.1 | published through OIDC with provenance; trusted publisher configured; on pangea at `~/.local/share/porter-published/node_modules/.bin/stratus` | `packages/stratus`; npm page `@fnndsc/stratus` |
 | Step 1a: read the tenancy | on `main` (#1181): descriptor, `CloudDriver`, fake driver and contract suite, OCI identity and compartments, `/net/oci/<tenancy>/` and `regions/`, launcher, stratus boot, `lint:stratus-deps` | `packages/stratus/src/{backend,session,cache,names,args,stratus}.ts`, `cloud/{driver.ts,fake/,oci/}`, `vfs/{tenancy,look}.ts`, `tests/` |
 | Step 1b: prompt segments and the ARGUS composition | on `main` (#1187) | `packages/menu/src/messages.ts` (`promptSegmentSchema`, `segments`), `packages/menu/src/logo/tdMark.ts`, `packages/stratus/src/prompt.ts`, `packages/chell/src/core/prompt/`, `apps/argus/src/console/promptBar.ts`, `apps/argus/src/app/main.ts`, `assets/brand/td-oci.svg`, `scripts/prompt-parity.mjs` |
 | Follow-ups 1 to 3 | on `main`: `chell --remote <berth>` by the exact identity, two-@ too (#1190, `packages/chell/src/remote/berthTarget.ts`); a frame-alone session boots unzoomed (#1191); the attach splash follows the backend, the TD mark for stratus (#1192, `packages/chell/src/remote/splash.ts`) | |
@@ -73,11 +74,17 @@ grep -o 'http://127.0.0.1:[0-9]*/?token=[0-9a-f]*' $S/daemon.log
 
 **Figure re-export**: strip the Design wrapper (`support.js` line, `<x-dc>`, `<helmet>`, the `text/x-dc` script), screenshot with the 1080 chromium at `--force-device-scale-factor=2 --window-size=1680,<h+80>`, crop to the board size, save under `docs/images/`.
 
-## Follow-up still open
+## Running a session against the live tenancy
 
-### Follow-up 4: epic #1056's body
+Porter serves ChRIS sessions only; a stratus session is its own daemon. On pangea, as the operator, with the real `HOME` (its `~/.oci/config`):
 
-The epic body still says "no code yet". Post a status comment pointing at this file and the merged PRs; do not rewrite the operator's body.
+```
+~/.local/share/porter-published/node_modules/.bin/stratus --domain harbor=$HOME/src/harbor-oci
+```
+
+It prints a `http://127.0.0.1:<port>/?token=…` URL for ARGUS (the DOMAINS and CAPACITY tiles and a terminal console) and a berth for `chell --remote <identity>`. Without `--host-control=tasks` nothing it does changes the cloud; with it, `domain build`, `teardown`, `adopt`'s state import and verify's probe may. A daemon started for one task with `tasks` is stopped by its PID when the task is done.
+
+The tag sweep is not a pending task: it is the design item in stratus.adoc's order of work, designed when it is reached and first run in a scratch compartment.
 
 ## Steps 4 and on
 

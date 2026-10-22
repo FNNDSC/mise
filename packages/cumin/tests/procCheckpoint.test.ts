@@ -128,6 +128,32 @@ it('leaves out a torn shard, names it, and restores the rest — one bad file co
   expect(procCache_get().instance_get?.(10) ?? undefined).toBeUndefined();
 });
 
+it('leaves out a shard it cannot read or parse, names why, and restores the rest', async () => {
+  await mkdir(dir, { recursive: true });
+  const writtenAt: string = '2026-07-16T12:00:00.000Z';
+  await writeFile(join(dir, 'roster.json'), JSON.stringify({
+    schemaVersion: 3, identity, writtenAt, feeds: [feed_create(5), feed_create(6), feed_create(7)],
+  }));
+  // A read that fails outright (pangea: EIO on a bad sector). A directory in
+  // the shard's place fails the read the same way, with no disk to break.
+  await mkdir(join(dir, 'feed-5.json'));
+  // A shard cut short mid-write.
+  await writeFile(join(dir, 'feed-6.json'), '{"schemaVersion":3,"identity":');
+  await writeFile(join(dir, 'feed-7.json'), JSON.stringify({
+    schemaVersion: 3, identity, writtenAt, feedID: 7, loaded: true,
+    instances: [{ id: 70, feedID: 7, parentID: null, pluginName: 'pl-root', params: null, status: 'finishedSuccessfully' }],
+  }));
+
+  const outcome = await procCheckpoint_restore(identity, root);
+  expect(outcome).toMatchObject({ restored: true, count: 1, writtenAt });
+  // Shards are read in directory order, which the filesystem chooses.
+  expect([...(outcome.torn ?? [])].sort()).toEqual(['feed 5: unreadable (EISDIR)', 'feed 6: unreadable (not JSON)']);
+  expect(procCache_get().topologyLoaded_has(5)).toBe(false);
+  expect(procCache_get().topologyLoaded_has(6)).toBe(false);
+  expect(procCache_get().topologyLoaded_has(7)).toBe(true);
+  expect(procCache_get().feed_get(5)?.title).toBe('feed 5');
+});
+
 it('a torn shard is one whose graph does not stand on its own: a cycle, a twin, a stray, a missing join parent', async () => {
   await mkdir(dir, { recursive: true });
   const writtenAt: string = '2026-07-16T12:00:00.000Z';

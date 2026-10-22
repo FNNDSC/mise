@@ -335,6 +335,20 @@ async function json_read(path: string): Promise<unknown> {
   }
 }
 
+/**
+ * Names why a shard could not be read: the system's error code (`EIO` from
+ * a bad sector, `EACCES`), or `not JSON` for a file cut short by a crash.
+ *
+ * @param error - What reading the shard threw.
+ * @returns The fault's name.
+ */
+function shardReadFault_name(error: unknown): string {
+  if (error instanceof SyntaxError) return 'not JSON';
+  const code: unknown = (error as NodeJS.ErrnoException | null)?.code;
+  if (typeof code === 'string') return code;
+  return error instanceof Error ? error.message : String(error);
+}
+
 /** Writes one mode-0600 JSON file through a same-directory atomic rename. */
 async function json_write(path: string, value: unknown): Promise<void> {
   const temporaryPath: string = `${path}.${process.pid}-${randomUUID()}.tmp`;
@@ -356,9 +370,11 @@ async function dir_ensure(dir: string): Promise<void> {
  * written) and are skipped; a shard that fails its own header check is
  * skipped too; a shard whose graph does not stand on its own (see
  * {@link shardGraph_fault}) is left out and named, and its feed stays in
- * the roster with no topology, to be walked again. One bad file costs one
+ * the roster with no topology, to be walked again. A shard that cannot be
+ * read or parsed is left out and named the same way. One bad file costs one
  * feed, not the checkpoint: on titan a single torn shard once refused
- * 210,010 instances and a restart booted cold.
+ * 210,010 instances and a restart booted cold, and on pangea one shard on a
+ * failing disk sector (EIO) did the same to 738 good ones.
  *
  * @param dir - The checkpoint directory.
  * @param identity - Canonical ChRIS identity string.
@@ -384,7 +400,13 @@ async function shards_assemble(
     if (!match) continue;
     const feedID: number = Number(match[1]);
     if (!feedIDs.has(feedID)) { skipped++; continue; }
-    const shard: unknown = await json_read(join(dir, name));
+    let shard: unknown;
+    try {
+      shard = await json_read(join(dir, name));
+    } catch (error: unknown) {
+      torn.push(`feed ${feedID}: unreadable (${shardReadFault_name(error)})`);
+      continue;
+    }
     if (!shardFile_check(shard, identity) || shard.feedID !== feedID) { skipped++; continue; }
     const fault: string | null = shardGraph_fault(feedID, shard.instances);
     if (fault !== null) { torn.push(`feed ${feedID}: ${fault}`); continue; }

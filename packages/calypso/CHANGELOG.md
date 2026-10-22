@@ -1,5 +1,29 @@
 # @fnndsc/calypso
 
+## 0.26.0
+
+### Minor Changes
+
+- 49501d4: A daemon can now be allowed to start jobs that change a cloud and bill, with --host-control tasks; bare and all never grant it. The tier is named on its own because it reaches beyond this host into money. The daemon's surface declares it to the engine, jobs left running by the last launch are picked up again after the surface is installed, and the launch says how many. On a non-loopback bind the guard names spending rather than a shell when `tasks` is the only tier.
+
+### Patch Changes
+
+- 0388f12: A stratus or null session greets cleanly: no red `motd` refusal on attach, and no ChRIS packages in its banner.
+
+  The greeting asks `motd` with its output scoped away and prints only what `motd` answered, so a backend without one says nothing. A remote line's live output now goes to the sink it was sent from, not whichever is active when it arrives. The daemon's banner and attach answer name chili, salsa and cumin only for a ChRIS session (`versionsForBackend_of`).
+
+- Updated dependencies [0388f12]
+- Updated dependencies [01fcb59]
+- Updated dependencies [49ccdfd]
+- Updated dependencies [49501d4]
+- Updated dependencies [49501d4]
+- Updated dependencies [14f8fc1]
+- Updated dependencies [2a5a921]
+- Updated dependencies [dcdc6cd]
+  - @fnndsc/brasa@0.45.0
+  - @fnndsc/menu@0.28.0
+  - @fnndsc/cumin@3.28.4
+
 ## 0.25.0
 
 ### Minor Changes

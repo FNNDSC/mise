@@ -1,5 +1,21 @@
 # @fnndsc/menu
 
+## 0.28.0
+
+### Minor Changes
+
+- 49ccdfd: The prompt context gains backend-neutral segments a backend fills in order and a surface draws in order.
+
+  Each segment is a key, a label, a value and a tone.
+
+  A ChRIS daemon sends none and its prompt is unchanged; an older surface ignores them. The tones are leader, place, identity, path, work, note and alert; a surface maps each to its own palette, so no colour crosses the wire (docs/stratus.adoc, D9). Beside the brain, `@fnndsc/menu/logo/td` renders the Trusted Domain mark, the blue North Star in the driver's ring, for the stratus composition's splash.
+
+- 49501d4: A surface can now say whether the session may start jobs that bill, with the optional tasks capability.
+- 14f8fc1: A domain's summary can now carry what it costs an hour and so far, at list price, in the optional cost field.
+- dcdc6cd: A stratus dashboard shows DOMAINS (each domain's last build step) and CAPACITY (what each zone has free).
+
+  DOMAINS reads `domain status` and CAPACITY reads the new `capacity` command, through the wire's new `stratus.domains` and `stratus.capacity` models (menu). `capacity [<family>…]` lists, for the shape families named or those the domains' specs name, each limit their shapes draw on per zone, permitted and free; a shape now names its limit service. A domain with a step gone wrong shows in red.
+
 ## 0.27.0
 
 ### Minor Changes

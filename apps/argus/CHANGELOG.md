@@ -1,5 +1,34 @@
 # @fnndsc/argus
 
+## 0.37.0
+
+### Minor Changes
+
+- 49ccdfd: The console's prompt bar draws a backend's segments, and a session over stratus wears the Trusted Domain's brand.
+
+  The brand: the North Star in the driver's ring in the header and the tab, the mark as the splash, and the credit line "a Trusted Domain console".
+
+  The prompt bar is drawn from the daemon's segments in the daemon's order when it sends them, a glyph by key and a colour by tone, with a long identity cut from the left and whole on hover; a ChRIS daemon's bar is unchanged. What the stratus composition owns in the page's markup carries `data-composition="stratus"` and stands only under it (docs/stratus.adoc, D11; tiles and panes follow in later slices).
+
+- dcdc6cd: A stratus dashboard shows DOMAINS (each domain's last build step) and CAPACITY (what each zone has free).
+
+  DOMAINS reads `domain status` and CAPACITY reads the new `capacity` command, through the wire's new `stratus.domains` and `stratus.capacity` models (menu). `capacity [<family>…]` lists, for the shape families named or those the domains' specs name, each limit their shapes draw on per zone, permitted and free; a shape now names its limit service. A domain with a step gone wrong shows in red.
+
+### Patch Changes
+
+- 9b0aabe: The DOMAINS tile's explanation says a domain holds its spec, state and steps. These are the words the operator approved.
+- 7c65644: A stratus or null session opens with the header and console on stage around the dashboard, not zoomed alone.
+
+  A frame-alone daemon serves on a fresh port each start, so every boot was a first visit and hid the identity and the prompt behind the landing zoom. The DASHBOARD gutter still zooms the dashboard; a ChRIS session is unchanged.
+
+- 49501d4: The HOST lamp's title says what each tier hands the daemon. A tasks-only daemon is no longer said to run `!`.
+- 14f8fc1: The DOMAINS tile now shows what each domain costs an hour, and the total across them, when the daemon priced them.
+- Updated dependencies [49ccdfd]
+- Updated dependencies [49501d4]
+- Updated dependencies [14f8fc1]
+- Updated dependencies [dcdc6cd]
+  - @fnndsc/menu@0.28.0
+
 ## 0.36.2
 
 ### Patch Changes

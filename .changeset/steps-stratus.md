@@ -1,5 +1,0 @@
----
-"@fnndsc/stratus": minor
----
-
-A Trusted Domain can now be made, priced and built from the session, over the fake cloud for now. `domain new <name>` writes a spec in `harbor-oci`'s shape and nothing else, kept with the domain's state under `$XDG_STATE_HOME/stratus/domains/<name>/`. `domain plan` reads only: the fit per availability domain, the hourly cost of compute and memory, where the steps stand; the infrastructure plan itself needs the `tasks` tier. `domain build` runs the steps (preflight to run) as a task, `/proc/steps/<name>-build`, written once over the cloud's build half and the installer; it stops before the first step that bills and asks, with the plan's counts and the cost, and refuses a plan that alters what exists. The build outlives every surface and a daemon restart, which picks it up from its first step not done. A built domain shows under `~` and in `domain status` beside those read from checkouts. A real cloud's build half comes with step 4b; `stratus --fake` builds over a fake cloud and installer on a clock.

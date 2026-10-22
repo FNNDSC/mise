@@ -1,5 +1,52 @@
 # @fnndsc/chell
 
+## 5.17.0
+
+### Minor Changes
+
+- 49ccdfd: The prompt draws a backend's segments in the backend's order, and a long identity yields columns before the path does.
+
+  A stratus session's prompt reads `OCI │ tenancy │ region │ user │ domain │ working directory`, in both themes, with the theme's own time, duration, status and question segments trailing. The user is the cloud's name for the identity in full, an e-mail address on a tenancy that names users so; when the line is tight it is truncated from the left, keeping its ending, so `whoami` and the prompt never disagree. A ChRIS prompt is unchanged.
+
+### Patch Changes
+
+- 0388f12: A stratus or null session greets cleanly: no red `motd` refusal on attach, and no ChRIS packages in its banner.
+
+  The greeting asks `motd` with its output scoped away and prints only what `motd` answered, so a backend without one says nothing. A remote line's live output now goes to the sink it was sent from, not whichever is active when it arrives. The daemon's banner and attach answer name chili, salsa and cumin only for a ChRIS session (`versionsForBackend_of`).
+
+- ca1ba5b: A terminal attaches to a stratus daemon by its identity (`chell --remote rudolph@fnndsc`), two-@ users included.
+
+  The target is tried as typed before it is read as a CUBE URL, so a berth keyed by a cloud identity (`user@tenancy`) matches, and a user that is an e-mail address splits on the last `@`. `chris@cube.example.org` still finds the normalised `chris@http://cube.example.org` berth.
+
+- 49501d4: The --host-control help now lists the tasks tier and says that a bare flag grants shell, files and pipes only.
+
+  The attach banner now says what each tier hands the daemon, in the order the daemon gave them, so a daemon granted only `tasks` reads "jobs may change the cloud and bill" rather than claiming `!` and pipes run on its host.
+
+- 540b477: A terminal attached to a stratus session greets with the Trusted Domain mark; the brain stays for ChRIS.
+
+  `chell --remote` now draws its art after the attach answer, which names the session's backend: the brain for `chris` (and for a daemon that names none), the TD mark in its ring for `stratus`, nothing for another backend. The daemon console a stratus or calypso daemon opens on its own terminal is this same surface, so it greets the same way.
+
+- Updated dependencies [9b0aabe]
+- Updated dependencies [7c65644]
+- Updated dependencies [0388f12]
+- Updated dependencies [01fcb59]
+- Updated dependencies [49ccdfd]
+- Updated dependencies [49501d4]
+- Updated dependencies [49501d4]
+- Updated dependencies [49501d4]
+- Updated dependencies [49501d4]
+- Updated dependencies [14f8fc1]
+- Updated dependencies [14f8fc1]
+- Updated dependencies [2a5a921]
+- Updated dependencies [49ccdfd]
+- Updated dependencies [dcdc6cd]
+  - @fnndsc/argus@0.37.0
+  - @fnndsc/calypso@0.26.0
+  - @fnndsc/brasa@0.45.0
+  - @fnndsc/menu@0.28.0
+  - @fnndsc/chili@3.7.15
+  - @fnndsc/cumin@3.28.4
+
 ## 5.16.7
 
 ### Patch Changes

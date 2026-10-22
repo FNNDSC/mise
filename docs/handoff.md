@@ -2,9 +2,9 @@
 
 - Last updated: 2026-10-22
 - Last verified against `main`: the merge of #1197, 2026-10-22
-- Working branches: none; `main` is clean
+- Working branches: `agent/stratus-no-wrap` (D3 rewritten: harbor-oci is the specification, never run; Terraform through Resource Manager)
 - Current milestone: steps 1 to 3 of the order of work in [stratus.adoc](stratus.adoc#order) are on `main`, all unpublished beyond @fnndsc/stratus 0.1.0 until the next `make publish` (the operator's word). Follow-ups 1 to 3 merged (#1190, #1191, #1192), and the four defects found along the way (#1194, #1195)
-- Next action: the grill for step 4 (the supervised runner and the `tasks` tier, #986) with the operator; the three answers below under "Open questions" first. Follow-up 4 (the epic's status comment) is still unasked
+- Next action: the grill for step 4 (the runner and the `tasks` tier, #986) with the operator, under the D3 settled 2026-10-22. Follow-up 4 (the epic's status comment) is still unasked
 
 This file is the handoff between sessions and between models. It says where the work stands and what to do next, with the facts a fresh context needs to do it without rediscovery. The design itself is [stratus.adoc](stratus.adoc); the bastions are [bastion.adoc](bastion.adoc) and [dev-bastion.adoc](dev-bastion.adoc); what Red Hat ships against the primitive is [redhat-fl.adoc](redhat-fl.adoc); the metaphor every figure is drawn in is [linux-metaphor.adoc](linux-metaphor.adoc).
 
@@ -27,7 +27,7 @@ These are enforced by the operator in review and most by lint. Read the pointed 
 
 ## Decisions settled this week (do not reopen)
 
-- **Three bastions, one shape, disjoint key rings.** The Hub cloud controller holds cloud keys and builds TDs, outside every tenancy it builds (no instance principal). The Hub dev bastion holds a porter door token per spoke bastion and no cloud key. A spoke bastion holds that TD's CUBE token only: no `oc`, no kubeconfig, no registry. The host shell is reached one way: chell, through porter, to calypso, and `!` under the `tasks` tier. No ssh, no `oc rsh`, no other door is part of the design.
+- **Three bastions, one shape, disjoint key rings.** The Hub cloud controller holds cloud keys and builds TDs, outside every tenancy it builds (no instance principal). The Hub dev bastion holds a porter door token per spoke bastion and no cloud key. A spoke bastion holds that TD's CUBE token only: no `oc`, no kubeconfig, no registry. The host shell is reached one way: chell, through porter, to calypso, and `!` under the `shell` tier. No ssh, no `oc rsh`, no other door is part of the design.
 - **The dev bastion is a shell over a cohort.** A project directory with `/incoming` and `/outgoing` mounted under a policy set when the host is made (open: data readable in the shell; sealed: `/incoming` is a listing, only gated code runs against the files as a job, `/outgoing` shown per policy). Common case: code is written at the Hub and shipped as source to each spoke bastion; the exception is a developer inside under the open policy. Packaging as a plugin is an optional later exit, never the model.
 - **The berth** is one string everywhere, `user@tenancy` exactly as the cloud writes it (two `@` when the user is an e-mail). The prompt shows it in full and truncates from the left when tight. `whoami` and the prompt agree.
 - **Figure colours**: blue mise, green Linux, white ChRIS, red Red Hat only, orange Oracle Cloud Infrastructure, pale tints for machine boxes, amber for key files. Wordmarks as text, no logo art.
@@ -80,11 +80,11 @@ The epic body still says "no code yet". Post a status comment pointing at this f
 
 ## Steps 4 and on
 
-As the order of work lists them: the supervised runner and the `tasks` tier (#986) with `domain plan` and `domain build` running `harboroci` steps as tasks and the STEPS tile; the cluster in the tree over a domain's kubeconfig; the TD controller (mockup and grill first, D13); data writes; teardown (designed on its own); the handoff to the domain session and the TD brand on it; porting until harbor-oci retires. Each is its own grill with the operator before code; do not start one unasked.
+As the order of work lists them: the runner and the `tasks` tier (#986) with `domain plan` and `domain build` as the driver's own steps (Terraform through OCI Resource Manager, the live domain adopted) and the STEPS tile; the cluster in the tree over a domain's kubeconfig; the TD controller (mockup and grill first, D13); data writes; teardown (designed on its own); the handoff to the domain session and the TD brand on it. Each is its own grill with the operator before code; do not start one unasked.
 
 ## Open questions, for the operator
 
-- How `domain verify` and `spend` run: they would start host programs (`harboroci verify` runs `oc` and `dig`; `burn` is the Python CLI), which D10 puts under the `tasks` tier. Run them under today's `shell` tier, wait for the `tasks` tier, or port them into the driver (`spend` then needs block-volume and load-balancer prices beside the shape prices). Today `domain verify` is refused by name and `spend` is not registered.
+- Settled 2026-10-22: `harbor-oci` is never run by stratus (D3). `domain verify` and `spend` are ported into the driver: verify's `oc` checks through the cluster driver, `dig` as `node:dns`; `spend` needs block-volume and load-balancer prices beside the shape prices. Today `domain verify` is refused by name and `spend` is not registered.
 - The words on the DOMAINS and CAPACITY tiles (`apps/argus/src/features/launcher/about.ts`): drafted 2026-10-21, awaiting the operator's approval as that file's rule asks.
 - Whether DOMAINS should carry an hourly cost (D11) before `spend` is settled.
 - Who runs the sealed job in a spoke bastion: the same container with the mount hidden from the shell, or a job the session launches (dev-bastion.adoc, open).

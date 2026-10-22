@@ -78,6 +78,8 @@ Read-only verbs beside the build: `status`, `deployed`, `burn` (spend so far), `
 * *Authentication* is an API-key profile in `~/.oci/config`; the region is forced from settings. Settings come from the environment over `config.local.env` over `config.env` (`OCI_REGION`, `OCI_PROFILE`, `OCI_COMPARTMENT_OCID`, `BASE_DOMAIN`, `CLUSTER_NAME`, the Red Hat credentials, pinned versions).
 * *State* is `state/harbor.json` (cluster and infra-env ids, the ISO object and its link; mode 600, written atomically), Terraform's state in the staged stack, and credentials in `state/auth/`.
 * *One region, one domain:* `us-ashburn-1`, base domain `oci.chrisproject.org`, cluster `harbor`. Nodes spread one per availability domain.
+
+`harbor-oci` was a test harness: it proved the build once, live. It is the specification stratus's steps are ported from and checked against, never a dependency stratus runs (<<port>>).
 * *The cloud seam already exists there:* `TenancyProvider` (`capacity.py`) and `PriceProvider` (`pricing.py`) with OCI subclasses, and a spec in vCPU and GiB. Its own analysis: "Roughly 70 percent of the code is bound to OCI" and "The install path makes no attempt at a cloud abstraction. The tenancy tools do" (`docs/overview.adoc`).
 * *Known open problems:* OCI's automatic `Oracle-Tags` make a re-plan want to alter 24 resources, so `infra-apply` refuses alterations and clean re-plans are undecided; `teardown` has never been run, and the compact cluster has billed about $0.71 an hour since 2026-10-07 (`docs/status.adoc`).
 
@@ -124,13 +126,13 @@ packages/stratus/
 │   │   ├── contract.test.ts  the driver contract suite
 │   │   ├── fake/             the in-memory driver
 │   │   └── oci/              the OCI driver: identity, compartments, limits, shapes, prices,
-│   │                         search, storage, dns, compute, network, infra (the Terraform stack)
+│   │                         search, storage, dns, compute, network, infra (the Terraform stack, through Resource Manager)
 │   ├── cluster/              the Kubernetes driver: one on every cloud, over a domain's kubeconfig:
 │   │                         projects, deployments, pods, services, routes, pvcs, nodes, operators
 │   ├── vfs/                  fond providers over the drivers: tenancy, regions, domains, cluster, look
 │   ├── domain/               spec, sizing, state, steps (harbor-oci's neutral pieces, ported)
 │   ├── commands/             domain, limits, capacity, shapes, prices, spend, suggest, region
-│   ├── tasks/                the step task source; the supervised runner's client
+│   ├── tasks/                the step task source and the runner
 │   └── help.ts               help pages and categories
 ├── scripts/stratusBoot.mjs   CI: refuse cumin, salsa, chili
 └── tests/
@@ -139,11 +141,15 @@ packages/stratus/
 *How calypso hosts it.* Four ways were weighed: calypso depending on stratus (every ChRIS install would pull the OCI SDK: wrong direction); calypso importing `@fnndsc/<id>` by flag (an allowlist and a version-skew problem); a config file mapping ids to modules (the same, with more machinery); and *stratus shipping its own launcher*. The last is chosen for now: the `stratus` command imports calypso's `daemon_launch`, creates the engine with `engine_create(stratusBackend_make(...))`, and hosts it. Nothing in calypso changes, the dependency arrow points from stratus to calypso, and #977's picture already drew it ("chell, porter and the calypso launcher each compose the engine with exactly one backend"). A substrate daemon is started by hand on the host that holds the cloud credential. porter starting one is deferred with porter's second tier, and brings its own question: a substrate session has no CUBE password, so its door is a different thing.
 
 [[port]]
-=== D3. Read in TypeScript first; wrap the build, port it step by step
+=== D3. Everything in TypeScript; harbor-oci is the specification, not a dependency
 
-* *Everything that reads* — the tree (<<tree>>), limits, capacity, shapes, prices, spend — is written in stratus against the SDK from the start. It is where a session spends most of its time, and it is safe.
-* *The build steps* first run as `harboroci <step>` under the supervised runner (<<tasks>>): proven code keeps doing the work while the session gives it a console, a log, progress and a place in ARGUS. Each step is ported into the driver when it is next changed, and the harness retires when the last one goes.
-* *Terraform, `oc` and `helm` stay external tools*, always run by the supervised runner, never reimplemented.
+Decided 2026-10-22, replacing "wrap the build, port it step by step". Under that frame every build step would have run chell → brasa → stratus → runner → `uv` → Python → SDK or Terraform: a Python runtime on the bastion, a second state file (`harbor.json`) for stratus to parse, progress only as text, and steps that never become driver methods a second cloud's driver also implements. `harbor-oci`'s Python is orchestration over calls stratus can make itself.
+
+* *Everything that reads* — the tree (<<tree>>), limits, capacity, shapes, prices, spend — is written in stratus against the SDK.
+* *The build steps are the driver's own code from the first.* The Red Hat Assisted Installer and the OCM token over `fetch`; Object Storage, DNS and the rest through the SDK clients. What `harbor-oci` proved transfers as the specification: the order of the steps, the refusal of a plan that alters existing resources, `Oracle-Tags` drift, one node per availability domain, the ISO and its link, the custom manifests, the waits (45 minutes for hosts, 120 for the install).
+* *Terraform runs in OCI Resource Manager, not on the bastion.* The `oci-openshift` stack is a Resource Manager stack (its `schema.yaml` is the Resource Manager form). The driver creates the stack from the pinned release, runs a plan job, reads the plan as JSON (`getJobTfPlan`, format `JSON`) for the alteration check, runs an apply job, and reads the job's log and outputs. Terraform's state stays in Resource Manager. There is no `terraform` binary on the bastion.
+* *`verify` without host tools:* `oc`'s checks become Kubernetes API calls through the cluster driver (<<tree>>); `dig` becomes `node:dns` against the zone's own name servers and a public resolver.
+* *Helm is the one host program the build may still need,* for the ChRIS half (step 5); decided when that step is reached (<<open>>).
 
 [[tree]]
 === D4. The tree: a tenancy is a mount under `/net`
@@ -206,7 +212,7 @@ The path carries names only; the container noun (compartment, account, project, 
 * *Names, not OCIDs, in paths.* The OCID is the field `id`. OCI allows two resources in one compartment to share a display name, so a duplicate shows as `name~<last six of its OCID>` and the plain name refuses ("ambiguous: name~1a2b3c, name~9f8e7d"), never picks one. The rule holds wherever a path is resolved: `cd`, completion, globbing and `@N` expansion.
 * *Structural paths* (`cd` without a lookup, as `CHRIS_STRUCTURAL_PATHS`): `/net`, `/net/oci`, `/net/oci/<tenancy>`, each kind folder, `regions`, `domains`.
 * *The cluster is under its domain*, not a root of its own: built in that tenancy by that domain's steps, reached with that domain's kubeconfig. The Kubernetes driver that serves it is the same on every cloud, so it is a second driver kind (`cluster/`) beside `cloud/`, never inside a cloud driver. The linux-metaphor note already drew it ("projects as folders; deployments, pods and routes as entries in them"). Read-only in the tree; `oc` and `helm` under the `tasks` tier are the write path. This closes the first draft's open question of `oc` against a Kubernetes provider: both, each for what it is good at.
-* *A domain read from a `harbor-oci` checkout* (`stratus --domain harbor=~/src/harbor-oci`): `harbor-oci` keeps no history of its steps, only what each leaves for the next (the Assisted Installer ids, the ISO link, the staged stack and its Terraform state, the kubeconfig). A step's `state` is read from that evidence and its `evidence` file says what it rests on: `done`, `not done`, `expired` (the ISO link), or `unknown` for a step whose result the host does not keep (preflight, dns, manifests, hosts, verify). `settings` shows only the cluster's name, base domain, region, compartment and pinned versions from `config.env` and `config.local.env`; `state.json` withholds the ISO link's URL; the Terraform state is counted, never shown.
+* *A domain read from a `harbor-oci` checkout* (`stratus --domain harbor=~/src/harbor-oci`): `harbor-oci` keeps no history of its steps, only what each leaves for the next (the Assisted Installer ids, the ISO link, the staged stack and its Terraform state, the kubeconfig). A step's `state` is read from that evidence and its `evidence` file says what it rests on: `done`, `not done`, `expired` (the ISO link), or `unknown` for a step whose result the host does not keep (preflight, dns, manifests, hosts, verify). `settings` shows only the cluster's name, base domain, region, compartment and pinned versions from `config.env` and `config.local.env`; `state.json` withholds the ISO link's URL; the Terraform state is counted, never shown. This is the first half of *adopting* a domain `harbor-oci` built: the build steps (<<order>>, step 4) import its Assisted Installer ids and its Terraform state (a Resource Manager `ImportTfState` job) once, and from then on the domain's state is stratus's own and the checkout is no longer read.
 * *Home is the tenancy's `domains/`*, because building and running domains is the session's purpose; the prompt shows it as `~`. `/home/<user>` is the core's and holds the operator's own files.
 * *Listings walk.* A compartment can hold thousands of objects; the tree follows the house rule that an unbounded ask walks and a bounded one says what it shows. Listings cache with a short life, refresh in the background, say when they serve a cached answer, and `--fresh` forces, as ChRIS listings do.
 * *As read live on 2026-10-20* (slice 1a, read-only): the tenancy `fnndsc-bch`, one compartment `harbor-oci`, one region, three availability domains named `<prefix>:US-ASHBURN-AD-n`, 128 services with limits, 830 compute limits (zone and region scoped), 68 shapes, 15 priced; the whole walk in about six seconds, each answer then cached for a minute.
@@ -255,7 +261,7 @@ Core commands (`ls`, `cd`, `cat`, `cp`, `find`, `grep`, `wc`, `head`, `sort`, �
 | `oc`, `helm` | Run against the domain the working directory is in, with its kubeconfig, under the `tasks` tier.
 |===
 
-There is no `terraform` command: Terraform runs only inside `domain` steps, where its plan is checked. The `oci` command-line tool is reachable only through the `!` shell tier, like any host program; since #1096 `!` runs in the terminal's pty, so `oci` and `oc` are interactive there.
+There is no `terraform` command: Terraform runs only inside `domain` steps, in Resource Manager, where its plan is checked. The `oci` command-line tool is reachable only through the `!` shell tier, like any host program; since #1096 `!` runs in the terminal's pty, so `oci` and `oc` are interactive there.
 
 [[identity]]
 === D8. Identity and credentials stay on the daemon's host
@@ -286,9 +292,9 @@ The domain segment appears when the working directory is inside a domain or one 
 #977 deferred the supervised runner and its `tasks` tier (#986) "until the second backend actually starts". This is that start:
 
 * Each build step is a task in stratus's task source, under `/proc/steps` and in the domain's `steps/` folder: state, structured progress, log tail, start and end.
-* The runner starts the host process (`harboroci <step>` first, the driver's own code later, `terraform`, `oc`, `helm`), keeps its full log on the host, survives a closed browser, and reattaches. It is *not* the terminal's `!` path (#1096): that runs a child of one chell under one pty and dies with it; a step outlives any surface.
+* *The runner is in the daemon, and a step is the driver's own code,* not a host process (<<port>>): requests, Resource Manager jobs and polls. The runner keeps a step's full log on the host, survives a closed browser and a closed chell, and reattaches. A step whose work runs in the cloud (a Resource Manager job, the Assisted Installer's install) survives a daemon restart as well: the runner finds it again by the id the step recorded and resumes polling. It is *not* the terminal's `!` path (#1096): that runs a child of one chell under one pty and dies with it; a step outlives any surface.
 * A step's live state travels as the wire's `event` message (kind `stratus.step`, added by #1157 for trek) when a pane wants more than the progress schema carries; the progress schema carries what the prompt and the STEPS tile need. Decided when the first pane is drawn.
-* *Cancelling is gentle.* Terraform interrupted mid-apply can leave state locked or half-written: cancel sends one interrupt and waits for Terraform to finish its current operation; it never kills hard. A second cancel says so instead of escalating.
+* *Cancelling is gentle.* Terraform interrupted mid-apply can leave state locked or half-written: cancel asks Resource Manager to cancel the job without forcing it, and Terraform finishes its current operation; a second cancel says so instead of escalating.
 * The `tasks` tier is off by default, separate from `shell` (the tiers today: `shell`, `files`, `pipes`), so a session can run build steps without allowing arbitrary `!` commands. A ChRIS session never enables it.
 
 [[argus]]
@@ -326,13 +332,12 @@ Each step is one change or a short series, released on its own; nothing changes 
 . *Read the tenancy.* (a, built 2026-10-20) `packages/stratus` with the descriptor, the driver interface, the fake driver and the contract suite, the OCI driver's identity and compartments, the tree for `/net/oci/<tenancy>/` (compartments) and `regions/` (availability domains, limits, shapes, prices), the `stratus` launcher, the stratus boot and `lint:stratus-deps` in CI. (b) the prompt segments on the wire, and ARGUS's `stratus` composition with its brand and prompt only. AEGIS rows with (b).
 . *Resources.* Instances, networks, load balancers, volumes, buckets and DNS in the tree, through Resource Search and the service clients; `ls -l` types and states; cloud tags in `tags`.
 . *Domains, read.* `domains/` over an existing `harbor-oci` state folder — the live compact cluster as the first domain — with `domain status`, `domain verify` and `spend`; the DOMAINS and CAPACITY tiles.
-. *The supervised runner and the `tasks` tier* (#986), shaped by the build's real steps; `domain plan` and `domain build` run `harboroci` steps as tasks; the plan-row answer kind; STEPS tile and domain pane.
+. *The runner and the `tasks` tier* (#986); `domain plan` and `domain build` as the driver's steps, ported from `harbor-oci`'s proven sequence, Terraform through Resource Manager; the live domain adopted (its ids and Terraform state imported); `domain verify` and `spend` in the driver; the plan-row answer kind; STEPS tile and domain pane.
 . *The cluster in the tree.* The Kubernetes driver over a domain's kubeconfig; `cluster/` fills in; the CLUSTER and CHRIS halves of the spec; `chris-deploy`, `chris-seed` and `smoke` as steps.
 . *The TD controller* (<<controller>>): the state event, the takeover, the views; mockup and grill first.
 . *Data writes.* Bucket objects and a domain's DNS records through the core file verbs.
-. *Teardown,* designed on its own when it is reached: `harbor-oci`'s placeholder becomes an attribution-scoped plan. It must first be run once by hand there, as every harbor-oci step was.
+. *Teardown,* designed on its own when it is reached: `harbor-oci`'s placeholder becomes an attribution-scoped plan. It is first run live in a scratch compartment, never against a domain.
 . *The handoff* to the domain session, and the TD brand on it.
-. *Porting,* step by step into the OCI driver, until `harbor-oci` retires.
 
 [[tests]]
 == Test strategy
@@ -347,7 +352,7 @@ Each step is one change or a short series, released on its own; nothing changes 
 == Security
 
 * *The creator posture* (cloud API key, Red Hat account, cluster admin) lives only in a substrate daemon; the research posture only in a domain daemon (<<two-sessions>>).
-* *Host control stays per daemon and off by default:* the `tasks` tier for build steps, `shell` for `!`; the guard refusing a non-loopback bind with any tier on, unless `--expose-host-control` is given, applies unchanged.
+* *Spending and host control stay per daemon and off by default:* the `tasks` tier for build steps, which change the cloud and bill, `shell` for `!`; the guard refusing a non-loopback bind with any tier on, unless `--expose-host-control` is given, applies unchanged.
 * *Secrets never cross `/vfs`* (<<identity>>).
 * *Spending asks first:* a step that starts billing shows the hourly cost and asks, and a plan that alters existing resources refuses unless asked for by name (<<writes>>).
 * *A browser that reaches the bastion's daemon can spend money,* because its console is a chell on the bastion (<<bastion>>). That is the same power `!` has, gated the same way: the `tasks` tier is chosen at launch, and a non-loopback bind with it on refuses without `--expose-host-control` and a porter door.
@@ -380,7 +385,7 @@ Sources: https://www.redhat.com/en/technologies/management/advanced-cluster-mana
 [[open]]
 == Open, decided later
 
-* Whether `harbor-oci`'s Python moves into this repository while it is wrapped, or is installed beside it.
+* Whether ChRIS's chart goes on with `helm` as a host program under the `tasks` tier, or through the Kubernetes API from the driver.
 * How the console password reaches an operator (shown once on the terminal; a host command); never through the browser.
 * Whether one session may mount two tenancies from one key file.
 * Domains spanning regions, and a second cloud.

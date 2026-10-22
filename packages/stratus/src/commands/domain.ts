@@ -4,9 +4,9 @@
  * `domain status [<name>]` prints, per domain, its cluster, its checkout,
  * each step with its state and the evidence for it, and how many live
  * resources its compartment holds in the session's region. A bare `domain`
- * is `domain status` for every domain. A verb that starts a host program
- * (`verify`, `plan`, `build`) belongs to the `tasks` tier (D10), which this
- * backend does not have; such a verb is refused by name.
+ * is `domain status` for every domain. The verbs that check or build
+ * (`verify`, `plan`, `build`) are the driver's steps (D3, D10), not yet
+ * written; each is refused by name.
  *
  * @module
  */
@@ -90,7 +90,7 @@ export async function domainStatus_read(context: DomainCommandContext, domain: H
  */
 export async function domain_run(context: DomainCommandContext, args: ReadonlyArray<string>): Promise<CommandEnvelope> {
   const [verb = 'status', ...rest] = args;
-  if (verb !== 'status') return envelope_error('', undefined, `domain: ${verb}: not a verb this session has: it would start a host program, which only the tasks tier may (domain status)\n`);
+  if (verb !== 'status') return envelope_error('', undefined, `domain: ${verb}: not a verb this session has yet (domain status)\n`);
   const all: HarborDomain[] = context.domains.domains_read();
   if (all.length === 0) return envelope_ok('no domains: start stratus with --domain <name>=<harbor-oci checkout>\n', { kind: STRATUS_DOMAINS_MODEL_KIND, data: { domains: [] } });
   const chosen: HarborDomain[] = rest.length === 0 ? all : all.filter((domain: HarborDomain): boolean => rest.includes(domain.name));

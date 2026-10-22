@@ -10,7 +10,7 @@
  *
  * @module
  */
-import type { Backend, PromptLastCommand } from '@fnndsc/brasa/core';
+import { commands_register, type Backend, type PromptLastCommand } from '@fnndsc/brasa/core';
 import { VFSDispatcher } from '@fnndsc/fond';
 import type { PromptContext } from '@fnndsc/menu';
 import type { CloudDriver } from './cloud/driver.js';
@@ -18,6 +18,9 @@ import { AnswerCache } from './cache.js';
 import { StratusSession } from './session.js';
 import { TenancyProvider } from './vfs/tenancy.js';
 import { KIND_FOLDERS } from './vfs/resources.js';
+import { DomainTree } from './vfs/domains.js';
+import type { DomainSource } from './domains/harborOci.js';
+import { stratusCommands_make } from './commands/domain.js';
 import { stratusListingLook } from './vfs/look.js';
 import { stratusSegments_build } from './prompt.js';
 
@@ -31,6 +34,8 @@ export interface StratusBackendOptions {
   readonly configDir?: string;
   /** How long the tree keeps a cloud answer, in milliseconds. */
   readonly cacheLifeMs?: number;
+  /** The Trusted Domains this daemon knows, each a `harbor-oci` checkout. */
+  readonly domains?: ReadonlyArray<DomainSource>;
 }
 
 /** The backend and the pieces a host may reach into. */
@@ -38,6 +43,7 @@ export interface StratusBackend {
   readonly backend: Backend;
   readonly session: StratusSession;
   readonly tenancy: TenancyProvider;
+  readonly domains: DomainTree;
 }
 
 /**
@@ -62,7 +68,13 @@ export function structuralPaths_of(session: StratusSession): string[] {
  */
 export function stratusBackend_make(options: StratusBackendOptions): StratusBackend {
   const session: StratusSession = new StratusSession({ driver: options.driver, region: options.region, configDir: options.configDir });
-  const tenancy: TenancyProvider = new TenancyProvider({ driver: options.driver, cache: new AnswerCache(options.cacheLifeMs), region: (): string | null => session.region });
+  const domains: DomainTree = new DomainTree({
+    sources: options.domains ?? [],
+    owner: (): string => session.identity?.user ?? 'disconnected',
+    now: (): Date => new Date(),
+  });
+  const tenancy: TenancyProvider = new TenancyProvider({ driver: options.driver, cache: new AnswerCache(options.cacheLifeMs), region: (): string | null => session.region, domains });
+  commands_register(stratusCommands_make({ domains, driver: options.driver, region: (): string | null => session.region }), 'backend');
   const dispatcher: VFSDispatcher = new VFSDispatcher();
   dispatcher.provider_register(tenancy);
   const backend: Backend = {
@@ -92,5 +104,5 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
       };
     },
   };
-  return { backend, session, tenancy };
+  return { backend, session, tenancy, domains };
 }

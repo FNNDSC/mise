@@ -35,6 +35,8 @@ export const STRATUS_ITEM_KINDS: ReadonlyArray<ItemKindLook> = [
   { type: 'volume', mark: 'V', container: true, sizeColumn: state_column },
   { type: 'bucket', mark: 'B', container: true, sizeColumn: state_column },
   { type: 'dnszone', mark: 'Z', container: true, sizeColumn: state_column },
+  { type: 'step', mark: 'S', container: true, sizeColumn: state_column },
+  { type: 'secret', mark: '!' },
   { type: 'object', mark: 'o' },
   { type: 'record', mark: 'R' },
 ];
@@ -71,9 +73,9 @@ export function stateTone_paint(state: string, text: string): string {
 /** States and the tone each is drawn in. */
 const STATE_TONES: ReadonlyArray<{ readonly matches: RegExp; readonly paint: (text: string) => string }> = [
   { matches: /^(running|active|available|attached|ready|done)$/, paint: chalk.green },
-  { matches: /^(stopped|inactive|terminated|deleted|detached)$/, paint: chalk.dim },
+  { matches: /^(stopped|inactive|terminated|deleted|detached|unknown|empty)$/, paint: chalk.dim },
   { matches: /^(provisioning|creating|starting|stopping|updating|deleting|terminating|moving|queued|pending)$/, paint: chalk.yellow },
-  { matches: /^(failed|faulted|error|unknown_value)$/, paint: chalk.red },
+  { matches: /^(failed|faulted|error|unknown_value|expired)$/, paint: chalk.red },
 ];
 
 /** Colours a name by the item's kind and state. */

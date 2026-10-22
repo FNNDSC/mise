@@ -61,7 +61,7 @@ export type ResourceNode =
   | { readonly kind: 'listing'; readonly list: () => Promise<VFSItem[]> }
   | { readonly kind: 'file'; readonly text: string }
   | { readonly kind: 'bytes'; readonly size: number; readonly read: () => Promise<Buffer> }
-  | { readonly kind: 'refused'; readonly reason: string }
+  | { readonly kind: 'refused'; readonly reason: string; readonly errno?: 'EPERM' | 'EACCES' }
   | { readonly kind: 'missing'; readonly reason?: string };
 
 /** How the resource tree is made. */

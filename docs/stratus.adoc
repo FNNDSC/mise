@@ -171,8 +171,9 @@ Precedent: `/net/pacs/queries/…` is a remote server and then what it holds. A 
 │           │   └── prices/<shape>
 │           └── domains/               the Trusted Domains built in this tenancy: the session's home
 │               └── harbor/
-│                   ├── spec.yaml  state.json
-│                   ├── steps/01-preflight/   state log started ended
+│                   ├── spec.yaml  settings  state.json   the build's spec, its non-secret settings, its state with secrets withheld
+│                   ├── steps/01-preflight/   state evidence; log started ended for a step the runner ran (D10)
+│                   ├── auth/                 the credential files by name; reading one is refused with its host path (D8)
 │                   ├── cluster/              api console version   the cluster, through the Kubernetes driver
 │                   │   ├── nodes/<node>/     state roles zone cpu memory
 │                   │   ├── operators/<op>/   state version
@@ -205,6 +206,7 @@ The path carries names only; the container noun (compartment, account, project, 
 * *Names, not OCIDs, in paths.* The OCID is the field `id`. OCI allows two resources in one compartment to share a display name, so a duplicate shows as `name~<last six of its OCID>` and the plain name refuses ("ambiguous: name~1a2b3c, name~9f8e7d"), never picks one. The rule holds wherever a path is resolved: `cd`, completion, globbing and `@N` expansion.
 * *Structural paths* (`cd` without a lookup, as `CHRIS_STRUCTURAL_PATHS`): `/net`, `/net/oci`, `/net/oci/<tenancy>`, each kind folder, `regions`, `domains`.
 * *The cluster is under its domain*, not a root of its own: built in that tenancy by that domain's steps, reached with that domain's kubeconfig. The Kubernetes driver that serves it is the same on every cloud, so it is a second driver kind (`cluster/`) beside `cloud/`, never inside a cloud driver. The linux-metaphor note already drew it ("projects as folders; deployments, pods and routes as entries in them"). Read-only in the tree; `oc` and `helm` under the `tasks` tier are the write path. This closes the first draft's open question of `oc` against a Kubernetes provider: both, each for what it is good at.
+* *A domain read from a `harbor-oci` checkout* (`stratus --domain harbor=~/src/harbor-oci`): `harbor-oci` keeps no history of its steps, only what each leaves for the next (the Assisted Installer ids, the ISO link, the staged stack and its Terraform state, the kubeconfig). A step's `state` is read from that evidence and its `evidence` file says what it rests on: `done`, `not done`, `expired` (the ISO link), or `unknown` for a step whose result the host does not keep (preflight, dns, manifests, hosts, verify). `settings` shows only the cluster's name, base domain, region, compartment and pinned versions from `config.env` and `config.local.env`; `state.json` withholds the ISO link's URL; the Terraform state is counted, never shown.
 * *Home is the tenancy's `domains/`*, because building and running domains is the session's purpose; the prompt shows it as `~`. `/home/<user>` is the core's and holds the operator's own files.
 * *Listings walk.* A compartment can hold thousands of objects; the tree follows the house rule that an unbounded ask walks and a bounded one says what it shows. Listings cache with a short life, refresh in the background, say when they serve a cached answer, and `--fresh` forces, as ChRIS listings do.
 * *As read live on 2026-10-20* (slice 1a, read-only): the tenancy `fnndsc-bch`, one compartment `harbor-oci`, one region, three availability domains named `<prefix>:US-ASHBURN-AD-n`, 128 services with limits, 830 compute limits (zone and region scoped), 68 shapes, 15 priced; the whole walk in about six seconds, each answer then cached for a minute.

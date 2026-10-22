@@ -29,12 +29,15 @@ const USAGE: string = [
   'stratus: a mise session over the cloud substrate a Trusted Domain runs on.',
   '',
   'Usage: stratus [--profile NAME] [--config FILE] [--region REGION]',
-  '               [--host-control[=shell,files,pipes]] [--expose-host-control]',
+  '               [--domain NAME=CHECKOUT]… [--host-control[=shell,files,pipes]] [--expose-host-control]',
   '       stratus --fake',
   '',
   '  --profile NAME   the ~/.oci/config profile (DEFAULT)',
   '  --config FILE    the OCI configuration file (~/.oci/config)',
   '  --region REGION  the region the session works in (the profile\'s)',
+  '  --domain NAME=CHECKOUT',
+  '                   a Trusted Domain built by the harbor-oci checkout at CHECKOUT,',
+  '                   shown under ~ (domains/NAME); repeat for each',
   '  --fake           host a session over the fake cloud, for tests',
 ].join('\n');
 
@@ -54,7 +57,7 @@ async function stratus_start(): Promise<void> {
   const driver: CloudDriver = parsed.args.fake
     ? new FakeDriver(fakeCloud_sample())
     : new OciDriver({ api: ociApi_make({ configFile: parsed.args.configFile, profile: parsed.args.profile }) });
-  const made: StratusBackend = stratusBackend_make({ driver, region: parsed.args.region });
+  const made: StratusBackend = stratusBackend_make({ driver, region: parsed.args.region, domains: parsed.args.domains });
   const engine: BrasaEngine = await engine_create(made.backend);
   if (made.session.identity === null) {
     console.error(`[!] Not connected to ${driver.cloud}: ${made.session.disconnectedReason ?? 'no credential'}; hosting offline.`);

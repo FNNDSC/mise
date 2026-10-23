@@ -262,7 +262,7 @@ describe('building a domain over the fakes', () => {
     expect(asking?.data.asking).toContain('infra-apply creates 17 resources');
     expect(asking?.data.path).toBe('/net/oci/fnndsc/domains/trial');
     const last: DomainSummary = (shown.at(-1) as { data: DomainSummary }).data;
-    expect(last.condition).toBe('SIZING');
+    expect(last.condition).toBe('STOPPED');
     expect(last.asking).toBeNull();
     expect(last.next).toBe('infra-apply');
     expect(last.steps.find((step) => step.name === 'infra-plan')).toMatchObject({ state: 'done', started: expect.any(String), ended: expect.any(String) });
@@ -350,6 +350,7 @@ describe('the controller readout', () => {
   it('says where a domain stands in one word', () => {
     expect(condition_of(domain_with({ run: 'not done' }), record_of(), false, false)).toBe('SIZING');
     expect(condition_of(domain_with({ run: 'done' }), record_of(), false, false)).toBe('UP');
+    expect(condition_of(domain_with({ 'infra-plan': 'done', run: 'not done' }), record_of(), false, false)).toBe('STOPPED');
     expect(condition_of(domain_with({ run: 'done', smoke: 'done' }), record_of(), false, false)).toBe('SERVING');
     expect(condition_of(domain_with({ run: 'failed' }), record_of(), false, false)).toBe('FAILED');
     expect(condition_of(domain_with({ run: 'running' }), record_of(), false, false)).toBe('BUILDING');

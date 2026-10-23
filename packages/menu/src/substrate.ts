@@ -28,8 +28,9 @@ export const domainStepSchema = z.object({
 /**
  * Where a domain stands, in one word: the TD controller's CONDITION
  * (docs/stratus.adoc, D13). Billing is not a condition; it is said apart.
+ * STOPPED is a build left part way: steps done, none running, not up.
  */
-export const DOMAIN_CONDITIONS = ['SIZING', 'ASKING', 'BUILDING', 'UP', 'SERVING', 'FAILED', 'GONE'] as const;
+export const DOMAIN_CONDITIONS = ['SIZING', 'STOPPED', 'ASKING', 'BUILDING', 'UP', 'SERVING', 'FAILED', 'GONE'] as const;
 
 /** One pool of nodes in a spec. */
 export const nodePoolSchema = z.object({

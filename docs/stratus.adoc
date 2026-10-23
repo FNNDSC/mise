@@ -334,7 +334,7 @@ The domain segment appears when the working directory is inside a domain or one 
 Settled on the mockup, 2026-10-22:
 
 * *The header,* on every view: CONDITION, DOMAIN (tenancy, region and compartment, address), COST (per hour, so far, the month), BUILD or STEP (last done, running, last plan), and SINCE LAST COMMAND (the diff).
-* *Seven conditions:* SIZING, ASKING, BUILDING, UP, SERVING, FAILED, GONE. Billing is not a condition: it is an orange line under the pill whenever money runs. Orange means billing everywhere on the screen; red means destroying.
+* *Eight conditions:* SIZING, STOPPED, ASKING, BUILDING, UP, SERVING, FAILED, GONE. STOPPED is a build left part way (steps done, none running, not up); its line says PLANNED when the next step is the first that bills. Billing is not a condition: it is an orange line under the pill whenever money runs. Orange means billing everywhere on the screen; red means destroying.
 * *Domains as pills* under the backend's block in the upper gutter, one per domain and a NEW; a pill sends `domain <name>`.
 * *A prompt at the foot,* under the session's log: the one departure from trek, whose ship's log is read-only. Any session line may be typed there, as at the console (`ls cluster/`, `oc get pods` under `tasks`, `domain plan`); its output joins the log and the board redraws from the state event as always. The controls send the same lines.
 * *Steps* are a grid with each step's evidence on OVERVIEW and a rail beside the running step on BUILD; a step pressed on OVERVIEW opens BUILD on it. A line marks where billing starts.

@@ -1,6 +1,7 @@
 /**
  * @file The stratus composition's dashboard tiles: DOMAINS (each Trusted
- * Domain, its last step, a step gone wrong in red) and CAPACITY (what the
+ * Domain, its last step, a step gone wrong in red; a row opens the TD
+ * controller on it) and CAPACITY (what the
  * region has free for the shape families the domains' specs name)
  * (docs/stratus.adoc, D11).
  *
@@ -22,8 +23,8 @@ import type { TileContribution } from '../../app/dashboardTiles.js';
 export interface StratusTileHooks {
   /** Asks the session a line, quietly. */
   ask: (line: string) => Promise<ExecuteOutcome>;
-  /** Opens home and moves the session into a folder. */
-  home_cd: (path: string) => void;
+  /** Opens the TD controller on a domain: the line `domain <name>`. */
+  domain_open: (name: string) => void;
   /** Opens home. */
   home_open: () => void;
   /** Runs a line in the console, where its answer is read whole. */
@@ -110,7 +111,8 @@ export function stratusTiles_make(hooks: StratusTileHooks): () => Promise<TileCo
         // The rate before the cluster's long name, so a narrow tile cuts the name, not the money.
         text: `${domain.name}  ${domain.lastDone ?? 'NOTHING DONE'}${domain.cost !== undefined && domain.cost !== null ? `  ${money_text(domain.cost.hourly, domain.cost.currency)}/h` : ''}  ${domain.cluster ?? ''}`.trimEnd(),
         errored: wrong(domain),
-        open: (): void => hooks.home_cd(domain.path),
+        // A row is that domain's line: the TD controller opens on it (docs/stratus.adoc, D13).
+        open: (): void => hooks.domain_open(domain.name),
       })),
       verb: 'OPEN THE DOMAINS',
       about: TILE_ABOUT['domains'],

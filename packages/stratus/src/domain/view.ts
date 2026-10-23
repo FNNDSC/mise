@@ -9,6 +9,9 @@ import type { HarborDomain, StepState } from '../domains/harborOci.js';
 import { BUILD_STEPS, STEPS_WRITTEN } from './steps.js';
 import type { DomainRecord, DomainStore, StepRecord } from './state.js';
 
+/** The compartment step of a domain adopted in a compartment of its own. */
+export const ADOPTED_COMPARTMENT: StepRecord = { state: 'done', note: 'its own compartment, made before adoption' };
+
 /**
  * A built domain's steps, numbered in build order.
  *
@@ -17,7 +20,8 @@ import type { DomainRecord, DomainStore, StepRecord } from './state.js';
  */
 export function builtSteps_of(record: DomainRecord): StepState[] {
   return BUILD_STEPS.map((step: string, index: number): StepState => {
-    const kept: StepRecord | undefined = record.steps[step];
+    // An adopted domain came with its compartment; one adopted before that step existed keeps no record of it.
+    const kept: StepRecord | undefined = record.steps[step] ?? (step === 'compartment' && record.adopted !== undefined ? ADOPTED_COMPARTMENT : undefined);
     const evidence: string = kept?.note ?? (STEPS_WRITTEN.includes(step) ? 'not run yet' : 'not a step this session has yet');
     return { folder: `${String(index + 1).padStart(2, '0')}-${step}`, name: step, state: kept?.state ?? 'not done', evidence };
   });

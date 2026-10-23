@@ -3394,6 +3394,47 @@ try {
   }
   }
 
+  if (await stage('td-controller')) {
+  // The TD controller (features/controller/, docs/stratus.adoc D13): under
+  // stratus, `domain` takes the screen with its views, its domains' pills and
+  // its condition in the tab's title, and Esc gives the page back. A screen
+  // narrower than the controller's least refuses by name and the console says
+  // so. Under any other composition `domain` is the session's own.
+  const td = await evalIn(`
+    await console_idle();
+    if (document.body.dataset.composition !== 'stratus') return { composition: document.body.dataset.composition ?? null };
+    const titleBefore = document.title;
+    const input = console_input();
+    input.value = 'domain'; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    for (let i = 0; i < 40 && document.body.dataset.takeover !== 'controller' && !/needs a screen/.test(console_text()); i++) await sleep(250);
+    const opened = document.body.dataset.takeover === 'controller';
+    if (!opened) {
+      for (let i = 0; i < 40 && !/no domains|domain status prints|built here|checkout|adopted/.test(console_text()); i++) await sleep(250);
+      return { composition: 'stratus', opened, narrow: innerWidth < 1250, said: (console_text().match(/domain: the TD controller needs[^\\n]*/) ?? [''])[0], text: /no domains|built here|checkout|adopted/.test(console_text()) };
+    }
+    for (let i = 0; i < 60 && (window.__argusController?.heard().reads ?? 0) === 0; i++) await sleep(250);
+    const views = [];
+    for (const view of ['overview', 'size', 'build', 'cluster', 'chris', 'teardown']) {
+      document.querySelector('.tdc-view-' + view)?.click(); await sleep(300);
+      views.push({ view: window.__argusController?.view() ?? null, sections: document.querySelectorAll('.tdc-body > section, .tdc-body > div').length });
+    }
+    const pills = [...document.querySelectorAll('.tdc-domain')].map((pill) => pill.textContent);
+    const hidden = [...document.body.children].filter((node) => node.id !== 'td-controller' && getComputedStyle(node).visibility !== 'hidden' && node.offsetParent !== null).length;
+    const title = document.title;
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(400);
+    return { composition: 'stratus', opened, views, pills, hidden, title, titleBack: document.title === titleBefore, after: document.body.dataset.takeover ?? null, left: document.getElementById('td-controller') !== null };`);
+  if (td.composition !== 'stratus') {
+    check('under any other composition domain opens no controller', true, JSON.stringify(td));
+  } else if (!td.opened) {
+    check('a screen narrower than the controller\'s least refuses by name, and the line runs as text', td.narrow && /needs a screen at least 1250 px wide/.test(td.said) && td.text, JSON.stringify(td));
+  } else {
+    check('domain takes the screen as the TD controller: six views, a pill per domain and NEW, the condition in the title, the page hidden behind it',
+      JSON.stringify(td.views.map((v) => v.view)) === JSON.stringify(['overview', 'size', 'build', 'cluster', 'chris', 'teardown']) && td.views.every((v) => v.sections > 0)
+        && td.pills.at(-1) === '+ NEW' && / · /.test(td.title) && td.hidden === 0, JSON.stringify(td));
+    check('Esc gives the controller\'s screen back: no takeover, no controller, the tab\'s title as it was', td.after === null && !td.left && td.titleBack, JSON.stringify(td));
+  }
+  }
+
   if (await stage('feed-one-view')) {
   // A feed is one view, whichever door opens it (law a-feed-has-one-view):
   // entered from the universe and opened from RUNS, the same feed stands as

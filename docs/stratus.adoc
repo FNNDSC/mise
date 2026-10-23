@@ -345,6 +345,8 @@ Settled on the mockup, 2026-10-22:
 * *Desktop only, for now:* under about 1250 px the controller does not take the screen and says so; the line runs as text. A narrow design is its own round.
 * *CHRIS* carries SMOKE AGAIN only; a chart upgrade and seeding users are their own grills.
 
+Built 2026-10-23 (the readouts #1224, the screen after it): `domain` and `domain <name>` are claimed by ARGUS under stratus (every other `domain` line stays the session's); the controller reads `domain status` on opening and after each line, and the build's `stratus.domain.state` events between; SIZE reads `domain size` once and redraws fit and cost as presentation; CLUSTER shows verify's checks and the compartment's counts, and its nodes and projects wait on the cluster in the tree, as CHRIS's SMOKE AGAIN and ATTACH do.
+
 [[handoff]]
 === D12. From building a domain to working in it
 

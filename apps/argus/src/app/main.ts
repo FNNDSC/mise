@@ -60,6 +60,7 @@ import { chrisDicom_make, type ChrisDicom } from '../compositions/chris/dicom.js
 import { chrisStage_make, type ChrisStage } from '../compositions/chris/stage.js';
 import { chrisTiles_make } from '../compositions/chris/tiles.js';
 import { stratusTiles_make } from '../compositions/stratus/tiles.js';
+import { domainClaims_set, stratusLanguage, type StratusLangHost } from '../compositions/stratus/lang.js';
 import { chrisSignals_make, type ChrisSignals } from '../compositions/chris/signals.js';
 import { ViewerPanel } from '../features/view/panel.js';
 import { ImagePanel, type SeriesChoice } from '../features/image/panel.js';
@@ -103,6 +104,7 @@ import { feedRowHandlers_make, feedVerbs_wire, type FeedVerbs } from './feedRows
 import { helpPane_wire, type HelpPaneHooks, type HelpPaneModule } from './helpPane.js';
 import { gamesPane_wire, type GamesPaneModule } from './gamesPane.js';
 import { trekBridge_wire, type TrekBridgeModule } from './trekBridge.js';
+import { tdController_wire, type TdControllerModule } from './tdController.js';
 import { synthVoice } from '../lcars/synth.js';
 import { notesPane_wire, type NotesPaneModule } from './notesPane.js';
 import { asks_wire, type Asks } from './asks.js';
@@ -125,6 +127,7 @@ import { greeting_ask } from './greeting.js';
 // not, the type falls back and the frame is unchanged.
 import '../lcars/argus.css';
 import '../features/trek/trek.css';
+import '../features/controller/controller.css';
 import { consoleMode_wire, type ConsoleModeControl } from './consoleMode.js';
 import { consoleStop_wire } from './consoleStop.js';
 import type { TerminalScreen } from '../console/terminalScreen.js';
@@ -974,6 +977,8 @@ async function surface_start(token: string): Promise<void> {
   // The composition's words in the language (compositions/chris/lang.ts):
   // installed before any pane's chrome reads the chords.
   if (chris) language_extend(chrisLanguage((): ChrisLangHost => argusHost));
+  // `domain` takes the screen as the TD controller (compositions/stratus/lang.ts).
+  if (backend === 'stratus') language_extend(stratusLanguage((): StratusLangHost => ({ ...argusHost, controller_open: (name: string): Promise<string> => tdController.open(name) })));
 
   // The subject bus: pane linkage as hub-and-spoke subjects. Every regard
   // write also flows to the daemon as session truth (the two-layer model).
@@ -1696,7 +1701,7 @@ async function surface_start(token: string): Promise<void> {
     // DOMAINS and CAPACITY: the stratus composition's tiles (compositions/stratus/tiles.ts).
     ...(backend !== 'stratus' ? {} : { contribution: stratusTiles_make({
       ask: (line: string): Promise<ExecuteOutcome> => client.line_execute(line, { silent: true, observe: false }),
-      home_cd: (path: string): void => { dagShown = false; home_apply(); terminal.line_run(`cd "${path}"`); },
+      domain_open: (name: string): void => { void tdController.open(name); },
       home_open: (): void => { dagShown = false; home_apply(); layout.focus_set('files'); },
       line_run: (line: string): void => { element_require('gutter-console').click(); terminal.line_run(line); },
     }) }),
@@ -1952,6 +1957,11 @@ async function surface_start(token: string): Promise<void> {
   const gamesPane: GamesPaneModule = gamesPane_wire(context, paneHooks);
   // trek takes the screen: a program over ARGUS, given back when the game ends.
   const trekBridge: TrekBridgeModule = trekBridge_wire(context);
+  // `domain` in a stratus session takes the screen as the TD controller, given back on LEAVE (app/tdController.ts).
+  // The domains each read finds are claimed, so `domain <name>` opens on one; the daemon is told the claims again.
+  const tdController: TdControllerModule = tdController_wire(context, (names: string[]): void => {
+    if (domainClaims_set(names)) context.client.claims_send(claims_list());
+  });
   const notesPane: NotesPaneModule = notesPane_wire(context, { ...paneHooks, ask: (line: string): Promise<ExecuteOutcome> => client.line_execute(line, { silent: true }) });
   const editorModule: EditorModule = editor_wire(context, { ...paneHooks, replayPlace_get: desktop.replayPlace_get, errandHost_find, saved: (): void => { for (const dag of panels.values('dag')) dag.marks_refresh(); } });
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
@@ -2203,7 +2213,7 @@ async function surface_start(token: string): Promise<void> {
       const line: string = paletteInput.value.trim();
       if (line.length === 0) { palette_close(); return; }
       void argusLine_run(argusHost, line).then((result: string | null): void => {
-        if (result !== null && trekBridge.active_is()) {
+        if (result !== null && (trekBridge.active_is() || tdController.active_is())) {
           // The sentence gave the screen to a program (trek's bridge): the command line
           // stands down, or its Esc would take the one meant for the bridge.
           terminal.output_write('data', `: ${line}\n${result}\n`);
@@ -2341,8 +2351,12 @@ async function surface_start(token: string): Promise<void> {
       output_receive: (channel: OutputChannel, chunk: string): void => {
         terminal.output_write(channel, chunk);
         if (channel === 'data' && trekBridge.active_is()) trekBridge.output_take(chunk);
+        if (channel !== 'status' && tdController.running_is()) tdController.output_take(chunk);
       },
-      event_receive: (_id: string, kind: string, data: unknown): void => { if (trekBridge.active_is()) trekBridge.event_take(kind, data); },
+      event_receive: (_id: string, kind: string, data: unknown): void => {
+        if (trekBridge.active_is()) trekBridge.event_take(kind, data);
+        tdController.event_take(kind, data);
+      },
       terminalOpened_receive: (terminalId: string, replay: string, refused: string | undefined): void => consoleScreen?.opened(terminalId, replay, refused),
       terminalData_receive: (terminalId: string, data: string): void => consoleScreen?.data(terminalId, data),
       terminalExit_receive: (terminalId: string, code: number): void => consoleScreen?.exited(terminalId, code),
@@ -2364,6 +2378,8 @@ async function surface_start(token: string): Promise<void> {
       ask_receive: async (request: SurfaceAsk): Promise<string | null> => {
         // The bridge owns the screen and the running command: its game's questions are answered there.
         if (trekBridge.active_is()) return trekBridge.ask(request);
+        // The controller's own lines ask on its strip: a build's question before billing, teardown's name typed back.
+        if (tdController.running_is()) return tdController.ask(request);
         if (request.kind !== 'path') {
           // A question a PRESSED VERB provoked stands on the pane that was
           // pressed: `rm -i` asks before it removes, and the operator is

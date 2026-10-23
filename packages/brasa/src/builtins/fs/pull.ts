@@ -42,6 +42,7 @@ import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { repl_confirm } from '../../core/question.js';
 import type { ProgressStatus } from '../../core/progress.js';
 import { newFeed_cacheAdd, run_follow } from '../feedCreation.js';
+import { cohortFolders_note } from '../res/gather.store.js';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 interface PullPathResolution {
@@ -99,6 +100,21 @@ async function pulledFolders_announce(allTasks: RetrieveTask[]): Promise<void> {
     }
     pullProgress_emit(task, 'done');
   }));
+}
+
+/**
+ * Notes on the cohort where each series this pull holds landed, so a cohort
+ * pulled from a script reads as home (`expect gather unpulled`, `gather
+ * process`) without a surface to tell it.
+ *
+ * @param allTasks - Every task this pull covered.
+ */
+async function cohortFolders_noteFromTasks(allTasks: RetrieveTask[]): Promise<void> {
+  const landed: Map<string, string> = new Map();
+  for (const task of allTasks) {
+    if (task.status === 'pulled' && task.cubePathDir !== null) landed.set(task.seriesUID, task.cubePathDir);
+  }
+  await cohortFolders_note(landed);
 }
 
 /**
@@ -467,6 +483,7 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
   // Where each series landed, before the channel closes: a surface can offer
   // the image the moment the pull says it is home.
   await pulledFolders_announce(allTasks);
+  await cohortFolders_noteFromTasks(allTasks);
   pullSummary_print(allTasks, totalFiringErrors);
 
   // Report CUBE paths via cubepath; --retry handles pacsseries DB lag post-pull

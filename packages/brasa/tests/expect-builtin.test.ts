@@ -21,7 +21,11 @@ let statusAsks: number = 0;
 /** What a listing answers for a path. */
 let listings: Map<string, Array<{ name: string; type?: string }>> = new Map();
 
+/** Where CUBE says each series landed, by series UID. */
+let storage: Map<string, { fileCount: number; folderPath: string | null }> = new Map();
+
 cuminMock_install(() => ({
+  seriesStorage_resolveMany: async () => ({ ok: true, value: storage }),
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
   procCache_get: () => ({
@@ -101,6 +105,7 @@ const { chrisExpectSubjects } = await import('../src/chris/expectSubjects.js');
 
 beforeEach(() => {
   cohort = { version: 1, name: null, feed: null, series: [] };
+  storage = new Map();
   statusAnswers = [];
   statusAsks = 0;
   listings = new Map();
@@ -140,6 +145,13 @@ describe('expect', () => {
     expect((await builtin_expect(['gather', 'unpulled', 'eq', '1'])).status).toBe('ok');
     cohort.series = [member('/a', true)];
     expect((await builtin_expect(['gather', 'unpulled', 'eq', '0'])).status).toBe('ok');
+  });
+
+  it('asks CUBE where a series not yet noted on the cohort landed, by the UID its path names', async () => {
+    cohort.series = [{ vfsPath: '/net/pacs/queries/q/Study_1.9_MRI/Series_1.2.3_SAG_T1', kind: 'series' }, member('/b', false)];
+    storage = new Map([['1.2.3', { fileCount: 0, folderPath: '/home/chris/SERVICES/PACS/x/series' }]]);
+    expect((await builtin_expect(['gather', 'unpulled', 'eq', '1'])).status).toBe('ok');
+    expect((await builtin_expect(['gather', 'pulled', 'eq', '1'])).status).toBe('ok');
   });
 
   it('reads a feed status out of the session index', async () => {

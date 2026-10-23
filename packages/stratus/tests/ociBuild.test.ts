@@ -173,6 +173,19 @@ describe('the OCI builder\'s build and teardown', () => {
     expect(none['compartment']?.note).toBe('none chosen: domain new --compartment <ocid>');
   });
 
+  it('copies the image again while a bucket just made answers not found', async () => {
+    const put = api.object_put.bind(api);
+    let refusals: number = 1;
+    api.object_put = async (bucket: string, object: string, body: Readable | Buffer, length?: number) => {
+      if (refusals-- > 0) throw Object.assign(new Error("Either the bucket named 'stratus-iso' does not exist"), { statusCode: 404 });
+      await put(bucket, object, body, length);
+    };
+    await builder.iso_store({ domain: 'trial', url: 'https://img', region: 'r', compartmentId: 'c' }, call());
+    expect(api.calls).toEqual(['bucket stratus-iso', 'put stratus-iso/trial-discovery.iso 3', 'link stratus-iso/trial-discovery.iso']);
+    expect(logged.filter((line: string): boolean => line.startsWith('copying the discovery image'))).toHaveLength(2);
+    expect(logged).toContain('stratus-iso is not yet usable; waiting');
+  });
+
   it('copies the image into a private bucket and links it, makes a stack from the spec, plans, applies and writes the records', async () => {
     const stored = await builder.iso_store({ domain: 'trial', url: 'https://img', region: 'r', compartmentId: 'c' }, call());
     expect(stored).toMatchObject({ object: 'trial-discovery.iso', link: 'https://objectstorage/p/SECRET/o/x.iso', linkId: 'par-1' });

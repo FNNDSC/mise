@@ -172,7 +172,9 @@ export async function gather_process(words: ReadonlyArray<string>): Promise<Comm
 
   const detach: string[] = parsed.detach ? ['--detach'] : [];
   const envelope: CommandEnvelope = matches.pipeline !== undefined
-    ? await builtin_pipeline(['run', name, '--previous', String(feed.rootInstanceId), ...detach, ...parsed.forwarded])
+    // By its /bin name, which names the id: a pipeline found by its CUBE
+    // name runs as exactly that one.
+    ? await builtin_pipeline(['run', matches.pipeline.name, '--previous', String(feed.rootInstanceId), ...detach, ...parsed.forwarded])
     : await builtin_executePlugin(name, [...detach, ...parsed.forwarded], feed.path);
   // The run went off a root, so it reads as continuing a feed; when that
   // feed was made by this line, the answer says so, as a bare run's would.

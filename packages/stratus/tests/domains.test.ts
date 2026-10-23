@@ -182,6 +182,8 @@ describe('domain status', () => {
     expect(none.model).toEqual({ kind: 'stratus.domains', data: { domains: [] } });
     const context = context_make({ harbor: harborCheckout_make() });
     expect((await domain_run(context, ['status', 'nope'])).renderedErr).toBe('domain: nope: no such domain (harbor)\n');
+    expect((await domain_run(context, ['harbor'])).rendered).toBe((await domain_run(context, ['status', 'harbor'])).rendered);
+    expect((await domain_run(context, ['harbor', 'x'])).renderedErr).toContain('domain: harbor: not a verb');
     expect((await domain_run(context, ['rename'])).renderedErr).toBe('domain: rename: not a verb this session has yet (domain status, new, size, plan, build, adopt, verify, protect, teardown)\n');
   });
 

@@ -309,8 +309,8 @@ export async function domainBuild_run(context: BuildCommandContext, args: Readon
     }
     sink_dataLine(chalk.gray(`following /proc/${STEPS_SOURCE}/${id}; Ctrl-C stops following, not the build (wait ${id} follows it again)`));
     domainState_show(context, name);
+    // Shown again after each line; at the end, by the question that follows or by the next read.
     const ended: JobRecord | undefined = await run_follow(runner, id, (): void => domainState_show(context, name));
-    domainState_show(context, name);
     if (ended === undefined) return envelope_error('', undefined, `domain build: /proc/${STEPS_SOURCE}/${id}: gone\n`);
     if (!taskState_isOver(ended.state)) return envelope_ok(`${chalk.gray(`stopped following; the build goes on (wait ${id})`)}\n`);
     if (ended.state !== 'done') return envelope_error('', undefined, `domain build: ${name}: ${ended.state}${ended.outcome !== undefined ? `: ${ended.outcome}` : ''}\n`);

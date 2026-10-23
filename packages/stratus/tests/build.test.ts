@@ -17,7 +17,7 @@ import { SPEC_DEFAULT, specOptions_apply, type DomainSpec } from '../src/domain/
 import { buildJob_id, buildRun_make, stepNext_of, STEPS_SOURCE, type BuildDeps } from '../src/domain/steps.js';
 import { cost_words, familyShape_find, specCost_of, specFit_read } from '../src/domain/sizing.js';
 import { builtDomain_read } from '../src/domain/view.js';
-import { condition_of, planSummary_of, refusals_of } from '../src/domain/readout.js';
+import { condition_of, domainReadout_of, planSummary_of, refusals_of } from '../src/domain/readout.js';
 import type { HarborDomain } from '../src/domains/harborOci.js';
 import { DomainTree } from '../src/vfs/domains.js';
 import { domain_run, type DomainCommandContext } from '../src/commands/domain.js';
@@ -348,6 +348,16 @@ describe('the controller readout', () => {
     expect(refusals_of(domain_with({}), record_of({ adopted: { from: '~/h', at: '' } }))).toEqual({ build: 'adopted from ~/h', teardown: 'adopted, not built here' });
     expect(refusals_of(domain_with({}), record_of({ gone: 'x' }))).toEqual({ build: 'torn down', teardown: 'already torn down' });
     expect(refusals_of(domain_with({}), record_of({ protected: false }))).toEqual({});
+  });
+
+  it('names no next step on a domain not built on here', () => {
+    const root: string = mkdtempSync(join(tmpdir(), 'stratus-readout-'));
+    const store: DomainStore = new DomainStore(root);
+    store.create(record_of({ adopted: { from: '~/h', at: '' } }), SPEC_DEFAULT);
+    expect(domainReadout_of(domain_with({ run: 'done' }), store, undefined).next).toBeNull();
+    store.record_update('d', (record: DomainRecord): void => { delete record.adopted; });
+    expect(domainReadout_of(domain_with({ run: 'done' }), store, undefined).next).toBe('compartment');
+    rmSync(root, { recursive: true, force: true });
   });
 
   it('groups a plan by action and kind, a replacement once, drift apart', () => {

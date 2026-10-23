@@ -142,7 +142,7 @@ export function domainReadout_of(domain: HarborDomain, store: DomainStore | null
     compartment: record?.compartmentId ?? domain.settings['OCI_COMPARTMENT_OCID'] ?? null,
     gone: record?.gone ?? null,
     spec: store?.spec_read(domain.name)?.spec ?? null,
-    next: record === null ? null : stepNext_of(record),
+    next: record === null || record.adopted !== undefined || record.gone !== undefined ? null : stepNext_of(record),
     billingStep: FIRST_BILLING_STEP,
     running: running ? { job: (job as JobRecord).id, step: runningStep, since: record?.steps[runningStep ?? '']?.started ?? (job as JobRecord).started } : null,
     plan: planText === null || store === null ? null : planSummary_of(JSON.parse(planText) as InfraPlan, fileTime_of(store, domain.name, 'plan.json')),

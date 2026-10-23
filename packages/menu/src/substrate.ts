@@ -110,7 +110,7 @@ export const domainSummarySchema = z.object({
   /** When its teardown removed what it built, or null. */
   gone: z.string().nullable().optional(),
   spec: domainSpecSchema.nullable().optional(),
-  /** The first step not done, or null when every step is. */
+  /** The first step not done, or null when every step is, or when the domain is not built on here (adopted, torn down, read from a checkout). */
   next: z.string().nullable().optional(),
   /** The step from which billing starts. */
   billingStep: z.string().optional(),

@@ -124,6 +124,9 @@ jest.unstable_mockModule('../src/lib/spinner.js', () => ({
 }));
 
 const { sink_set, StdoutSink } = await import('../src/core/sink.js');
+const mockCohortFoldersNote = jest.fn(async (): Promise<number> => 0);
+jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({ cohortFolders_note: mockCohortFoldersNote }));
+
 const { builtin_pull } = await import('../src/builtins/fs/pull.js');
 
 const QUERY_PATH: string = '/net/pacs/queries/q_qid:1';
@@ -307,6 +310,11 @@ describe('builtin_pull engine consumption', () => {
     const closed: number = progressEvents.findIndex((e: ProgressEvent) => e.phase === 'complete');
     expect(said).toBeGreaterThanOrEqual(0);
     expect(said).toBeLessThan(closed);
+  });
+
+  it('notes on the cohort where each landed series was filed', async () => {
+    await builtin_pull([QUERY_PATH]);
+    expect(mockCohortFoldersNote).toHaveBeenCalledWith(new Map([['1.2.3', '/SERVICES/PACS/A/series-1']]));
   });
 
   it('leaves a folder CUBE cannot yet name for the next query', async () => {

@@ -22,8 +22,8 @@
  * @module
  */
 import path from 'path';
-import { listCache_get } from '@fnndsc/cumin';
-import type { ListCache } from '@fnndsc/cumin';
+import { listCache_get, seriesStorage_resolveMany } from '@fnndsc/cumin';
+import type { ListCache, SeriesStorageFilter, SeriesStorageState } from '@fnndsc/cumin';
 import { fileContent_get, files_path_isDirectory } from '@fnndsc/salsa';
 import { files_touch as chefs_touch_cmd } from '@fnndsc/chili/commands/fs/touch.js';
 import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
@@ -225,12 +225,96 @@ async function folderEntries_list(folder: string): Promise<Result<string[]>> {
 /**
  * The series UID a PACS projection path names, when it names one.
  *
+ * A query's answer names a series `Series_<uid>_<description>`; a path may
+ * also end in the bare UID.
+ *
  * @param address - A resolved VFS path.
  * @returns The UID, or undefined when the path is not a series projection.
  */
 export function seriesUID_ofPath(address: string): string | undefined {
   const leaf: string = path.posix.basename(address);
-  return /^[0-9]+(\.[0-9]+)+$/.test(leaf) ? leaf : undefined;
+  if (/^[0-9]+(\.[0-9]+)+$/.test(leaf)) return leaf;
+  const named: RegExpMatchArray | null = leaf.match(/^Series_([0-9]+(?:\.[0-9]+)+)(?:_|$)/);
+  return named === null ? undefined : named[1];
+}
+
+/**
+ * The series UID a member stands for, when it is a series.
+ *
+ * @param member - A cohort member.
+ * @returns The UID it carries, else the one its path names.
+ */
+function memberSeriesUID_get(member: GatherMember): string | undefined {
+  if (member.kind !== 'series') return undefined;
+  return typeof member.seriesUID === 'string' && member.seriesUID.length > 0
+    ? member.seriesUID
+    : seriesUID_ofPath(member.vfsPath);
+}
+
+/**
+ * Writes where series landed onto the members that stand for them.
+ *
+ * @param state - The cohort, changed in place.
+ * @param landed - Series UID to the CUBE folder it landed in.
+ * @returns How many members changed.
+ */
+function memberFolders_apply(state: GatherState, landed: ReadonlyMap<string, string>): number {
+  let changed: number = 0;
+  for (const member of state.series) {
+    const uid: string | undefined = memberSeriesUID_get(member);
+    if (uid === undefined) continue;
+    const folder: string | undefined = landed.get(uid);
+    if (folder === undefined || member.folderPath === folder) continue;
+    member.seriesUID = uid;
+    member.folderPath = folder;
+    changed += 1;
+  }
+  return changed;
+}
+
+/**
+ * Notes on the cohort where the series a pull fetched landed.
+ *
+ * The pull knows each folder the moment CUBE files it; a member that stands
+ * for one of those series takes the folder, so the cohort reads as home
+ * without asking CUBE again.
+ *
+ * @param landed - Series UID to the CUBE folder it landed in.
+ * @returns How many members changed.
+ */
+export async function cohortFolders_note(landed: ReadonlyMap<string, string>): Promise<number> {
+  if (landed.size === 0) return 0;
+  const state: GatherState = await cohort_read();
+  const changed: number = memberFolders_apply(state, landed);
+  if (changed > 0) await cohort_write(state);
+  return changed;
+}
+
+/**
+ * Asks CUBE where any series member not yet known to be home landed.
+ *
+ * CUBE is the truth and the cohort file a cache of it: a series pulled
+ * earlier, by a surface or in another session, or a folder a surface's
+ * rewrite dropped, is found again here rather than read as never pulled.
+ *
+ * @param state - The cohort, changed in place.
+ * @returns The cohort, with every folder CUBE could name; written back when it changed.
+ */
+export async function cohortFolders_resolve(state: GatherState): Promise<GatherState> {
+  const uids: string[] = [...new Set(state.series
+    .filter((member: GatherMember): boolean => typeof member.folderPath !== 'string' || member.folderPath.length === 0)
+    .map(memberSeriesUID_get)
+    .filter((uid: string | undefined): uid is string => uid !== undefined))];
+  if (uids.length === 0) return state;
+  const filters: SeriesStorageFilter[] = uids.map((uid: string): SeriesStorageFilter => ({ SeriesInstanceUID: uid }));
+  const found: Result<Map<string, SeriesStorageState>> = await seriesStorage_resolveMany(filters, { counts: false });
+  if (!found.ok) return state;
+  const landed: Map<string, string> = new Map();
+  for (const [uid, storage] of found.value) {
+    if (storage.folderPath !== null) landed.set(uid, storage.folderPath);
+  }
+  if (memberFolders_apply(state, landed) > 0) await cohort_write(state);
+  return state;
 }
 
 /**

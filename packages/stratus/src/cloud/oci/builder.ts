@@ -367,9 +367,12 @@ export class OciBuilder implements CloudBuilder {
     const bucket: string = this.options.bucket ?? ISO_BUCKET;
     const object: string = `${request.domain}-discovery.iso`;
     await api.bucket_ensure(bucket, request.compartmentId);
-    const image = await (this.options.iso_fetch ?? iso_fetch)(request.url);
-    call.log(`copying the discovery image into ${bucket}/${object}${image.length !== undefined ? ` (${Math.round(image.length / 1_048_576)} MiB)` : ''}`);
-    await api.object_put(bucket, object, image.body, image.length);
+    // A bucket just made may refuse an object as not found for a while; the image is a stream, so each try fetches it again.
+    await this.notFound_outwait(async (): Promise<void> => {
+      const image = await (this.options.iso_fetch ?? iso_fetch)(request.url);
+      call.log(`copying the discovery image into ${bucket}/${object}${image.length !== undefined ? ` (${Math.round(image.length / 1_048_576)} MiB)` : ''}`);
+      await api.object_put(bucket, object, image.body, image.length);
+    }, `${bucket} is not yet usable`, call);
     const expires: Date = new Date(Date.now() + (this.options.linkDays ?? 7) * 24 * 3600 * 1000);
     const link = await api.link_create(bucket, object, `${object}-link`, expires);
     call.log(`linked until ${expires.toISOString().slice(0, 10)}`);

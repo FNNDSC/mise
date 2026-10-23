@@ -15,6 +15,52 @@ import type { Berth } from '@fnndsc/calypso/berth';
 
 export type { Berth };
 
+/** How a person's stratus session is named, beside their ChRIS one. */
+const STRATUS_PREFIX: string = 'stratus:oci@';
+
+/**
+ * The identity of a person's stratus session: theirs, marked for the cloud.
+ * Its directories and its key follow from it as any session's do.
+ *
+ * @param owner - The person's ChRIS identity (`<user>@<cube url>`).
+ * @returns `stratus:oci@<user>@<cube url>`.
+ */
+export function stratusIdentity_of(owner: string): string {
+  return `${STRATUS_PREFIX}${owner}`;
+}
+
+/**
+ * The ChRIS identity a session belongs to: itself for a ChRIS session, its
+ * owner's for a stratus one.
+ *
+ * @param identity - A session's identity.
+ * @returns The person's ChRIS identity.
+ */
+export function owner_of(identity: string): string {
+  return identity.startsWith(STRATUS_PREFIX) ? identity.slice(STRATUS_PREFIX.length) : identity;
+}
+
+/**
+ * Whether a session is a stratus one.
+ *
+ * @param identity - A session's identity.
+ * @returns True for `stratus:oci@…`.
+ */
+export function identity_isStratus(identity: string): boolean {
+  return identity.startsWith(STRATUS_PREFIX);
+}
+
+/**
+ * The CUBE username a session belongs to.
+ *
+ * @param identity - A session's identity.
+ * @returns The user.
+ */
+export function user_of(identity: string): string {
+  const owner: string = owner_of(identity);
+  return owner.slice(0, owner.indexOf('@'));
+}
+
 /** One line of a session's boot, as the host saw it. */
 export interface BootLine {
   /** Which stream it came off. */
@@ -109,6 +155,24 @@ export interface SessionHost {
    *   the boot ends or when the returned function is called.
    */
   boot_follow(identity: string, listener: BootListener): { report: BootReport; release: () => void } | null;
+  /**
+   * Starts a stratus session for a person, or joins one starting; on the
+   * other tier than the one running, ends it and starts it again. Returns
+   * at once: the boot is followed through {@link boot_follow}.
+   *
+   * @param identity - The session's own identity (`stratus:oci@<chris identity>`).
+   * @param configPath - The person's stored OCI config, on this host.
+   * @param spend - Whether it may change the cloud and bill (the tasks tier).
+   * @param replace - Whether a daemon up for it is ended first (to change its tier).
+   */
+  stratus_begin(identity: string, configPath: string, spend: boolean, replace: boolean): void;
+  /**
+   * Whether a stratus session this porter started has the tasks tier.
+   *
+   * @param identity - The session's identity.
+   * @returns True or false, or null when this porter did not start it.
+   */
+  stratus_armed(identity: string): boolean | null;
 
   /**
    * Ends an identity's session, leaving the daemon the reason so it can tell

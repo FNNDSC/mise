@@ -8,6 +8,7 @@
  * A module of the host: the host hands in its verbs and opens as hooks;
  * the module builds the `ArgusHost` the language reads.
  */
+import { session_switch } from './sessionSwitch.js';
 import { feedModes_hold } from '../features/feed/view.js';
 import type { DicomSeriesModel } from '@fnndsc/menu';
 import type { ExecuteOutcome } from '../calypso/client.js';
@@ -257,6 +258,8 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
     consoleZoom_toggle: hooks.consoleZoom_toggle,
     launcher_enter: hooks.launcher_enter,
     trek_open: hooks.trek_open,
+    // The door's, not the session's: the page asks the porter it came through.
+    session_switch: session_switch,
     stage_keep: hooks.stage_keep,
     viewModes_hold: feedModes_hold,
     // The prompt already says who and where; `attach` repeats it rather

@@ -65,6 +65,8 @@ export interface ArgusHost {
   launcher_enter(): void;
   /** Opens the trek bridge over the surface with a `trek` line; answers what happened, for the console. */
   trek_open(line: string): string;
+  /** Asks the door to switch this page to another of the person's sessions, and goes there. */
+  session_switch(to: 'stratus' | 'chris', spend: boolean): Promise<string>;
   /** Who this session belongs to, as the prompt names them; null before the first prompt. */
   identity_get(): string | null;
   /** The serialized desktop of the current composition. */
@@ -85,6 +87,7 @@ interface Sentence {
 /** Subjects this language owns; all other lines belong to the session. */
 const SUBJECTS: Set<string> = new Set([
   'pane', 'view', 'file', 'header', 'console', 'back', 'desktop', 'dashboard', 'help', 'notes', 'launcher', 'attach', 'argus', 'trek',
+  'stratus', 'chris',
 ]);
 
 /** The frame's own subjects, which no composition answers for. */
@@ -377,6 +380,8 @@ const FRAME_TAIL_LINES: ReadonlyArray<string> = [
   'back                        (contextual back — exactly Esc)',
   'desktop save|load|show|list|delete [name] · load <ChRIS file> · clear · share',
   'attach [--reveal]           (how to reach THIS session from a terminal or another browser)',
+  'stratus oci [--spend|--read] (through a porter: your cloud session, on your filed credentials)',
+  'chris                       (through a porter: back to your ChRIS session)',
   'argus verbs                 (this table; the long form is docs/argus-lang.adoc)',
   'argus keys                  (the prefix chords: one key, one drawer verb)',
   'help pane|keys|verbs        (the KEYS pane on the stage; keys and verbs print the tables here; bare help is the session\'s)',
@@ -506,6 +511,21 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     // The surface claims only a game: `trek --credits` and its kin answer at once in the session, as they always did.
     if (!trekLine_isGame(['trek', ...words].join(' '))) return null;
     return host.trek_open(['trek', ...words].join(' '));
+  }
+
+  if (subject === 'stratus' || subject === 'chris') {
+    // The switch between a person's sessions is the door's: the page asks
+    // the porter it came through, and follows (docs/stratus.adoc, D14).
+    if (subject === 'chris') return words.length === 0 ? await host.session_switch('chris', false) : 'chris: takes no words (it returns to your ChRIS session)';
+    const cloud: string = (words[0] ?? 'oci').toLowerCase();
+    if (cloud !== 'oci') return `stratus: ${cloud}: the only cloud is oci`;
+    const flags: string[] = words.slice(1).map((word: string): string => word.toLowerCase());
+    const unknown: string | undefined = flags.find((flag: string): boolean => flag !== '--spend' && flag !== '--read');
+    if (unknown !== undefined) return `stratus oci: ${unknown}: unknown option (--spend asks for the tasks tier, --read for read-only)`;
+    if (flags.includes('--spend') && flags.includes('--read')) return 'stratus oci: --spend and --read ask opposite things';
+    // Arming is typed, never clicked through: a session that may spend is asked for in words.
+    if (flags.includes('--spend') && (window.prompt('This stratus session may change the cloud and bill. Type spend to arm it:') ?? '').trim() !== 'spend') return 'stratus oci: not armed; nothing changed';
+    return await host.session_switch('stratus', flags.includes('--spend'));
   }
 
   if (subject === 'attach') {

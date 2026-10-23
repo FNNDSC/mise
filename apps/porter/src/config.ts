@@ -12,7 +12,7 @@
 import { createRequire } from 'node:module';
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 /** Everything a porter needs to know, resolved. */
 export interface PorterConfig {
@@ -105,6 +105,22 @@ export const PORTER_DEFAULT_TOKEN_DAYS: number = 30;
 export function chellEntry_locate(): string {
   const require: NodeRequire = createRequire(import.meta.url);
   return require.resolve('@fnndsc/chell');
+}
+
+/**
+ * The stratus daemon's entry beside this porter, when stratus is installed:
+ * what `:stratus oci` starts.
+ *
+ * @returns Its path, or null when this porter carries no stratus.
+ */
+export function stratusEntry_locate(): string | null {
+  const require: NodeRequire = createRequire(import.meta.url);
+  try {
+    const manifest: string = require.resolve('@fnndsc/stratus/package.json');
+    return join(dirname(manifest), 'dist', 'stratus.js');
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -8,7 +8,8 @@
  *
  * @module
  */
-import { porterConfig_resolve, porterStateDir_resolve, porterTokensFile_resolve, chellEntry_locate, PORTER_DEFAULT_TOKEN_DAYS, type PorterConfig } from './config.js';
+import { CredentialStore } from './creds.js';
+import { porterConfig_resolve, porterStateDir_resolve, porterTokensFile_resolve, chellEntry_locate, stratusEntry_locate, PORTER_DEFAULT_TOKEN_DAYS, type PorterConfig } from './config.js';
 import { TokenStore, type DoorToken } from './tokens.js';
 import { identity_normalise } from '@fnndsc/calypso/berth';
 import { ProcessHost } from './host/processHost.js';
@@ -163,6 +164,7 @@ export type PorterAsk =
   | { mode: 'tokens' }
   | { mode: 'revoke'; user: string; name?: string }
   | { mode: 'mint'; user: string; name: string }
+  | { mode: 'creds'; user: string; config: string; profile?: string }
   | { mode: 'help' }
   | { mode: 'version' };
 
@@ -174,6 +176,7 @@ export const PORTER_USAGE: string = [
   'porter --tokens             the door tokens the store holds: user, name, minted, dies, last used',
   'porter --revoke <user> [<name>]   revoke one door token by name, or every one of the user\'s',
   'porter --mint <user> --name <name>   mint a door token by hand (PORTER_CUBE_URL names the CUBE); shown once',
+  'porter --creds <user> --oci <config> [--profile <name>]   file a user\'s OCI key under their ChRIS identity, for :stratus oci',
   'porter --version            the door\'s version and the session code it serves (-V)',
   'porter --help               this',
 ].join('\n');
@@ -219,7 +222,41 @@ export function porterArgs_parse(argv: ReadonlyArray<string>): PorterAsk | { ref
     if (rest.length > 3) return { refusal: `--mint takes a user and a name ('${rest[3] ?? ''}' is extra)` };
     return { mode: 'mint', user, name: rest[2] };
   }
+  if (word === '--creds') {
+    const user: string | undefined = rest[0];
+    if (user === undefined || user.startsWith('--')) return { refusal: '--creds wants <user> --oci <config> [--profile <name>]' };
+    if (rest[1] !== '--oci' || rest[2] === undefined || rest[2].startsWith('--')) return { refusal: '--creds wants --oci <config> after the user: the OCI config whose key to file' };
+    if (rest.length === 3) return { mode: 'creds', user, config: rest[2] };
+    if (rest[3] === '--profile' && rest[4] !== undefined && rest.length === 5) return { mode: 'creds', user, config: rest[2], profile: rest[4] };
+    return { refusal: `--creds takes a user, --oci <config> and at most --profile <name> ('${rest[3] ?? ''}' is not that)` };
+  }
   return { refusal: `unknown word '${word ?? ''}'` };
+}
+
+/**
+ * Files a user's existing OCI key under their ChRIS identity, by the
+ * operator's hand on this host: the key copied into porter's state, mode
+ * 600, beside a config naming the copy. Nothing crosses the wire.
+ *
+ * @param env - The environment: `PORTER_CUBE_URL` names the identity.
+ * @param user - The CUBE username.
+ * @param config - The OCI config to take the profile from.
+ * @param profile - Which profile.
+ */
+function creds_import(env: NodeJS.ProcessEnv, user: string, config: string, profile: string | undefined): void {
+  const cubeUrl: string | undefined = env['PORTER_CUBE_URL'];
+  if (cubeUrl === undefined || cubeUrl.length === 0) {
+    console.error('[!] --creds needs PORTER_CUBE_URL: credentials are filed under an identity at one CUBE');
+    process.exit(1);
+  }
+  const identity: string = identity_normalise(user, cubeUrl.endsWith('/') ? cubeUrl : `${cubeUrl}/`);
+  const kept = new CredentialStore(porterStateDir_resolve(env)).oci_import(identity, config, profile);
+  if ('error' in kept) {
+    console.error(`[!] --creds: ${kept.error}; nothing filed`);
+    process.exit(1);
+  }
+  console.log(`filed ${user}'s OCI key under ${identity}: ${kept.config} (mode 600)`);
+  console.log(`  the key acts as ${kept.user} in ${kept.tenancy}; :stratus oci in ${user}'s ChRIS session starts on it`);
 }
 
 async function porter_start(): Promise<void> {
@@ -235,6 +272,7 @@ async function porter_start(): Promise<void> {
   if (ask.mode === 'tokens') { tokens_print(porterTokensFile_resolve(process.env)); return; }
   if (ask.mode === 'revoke') { token_revoke(porterTokensFile_resolve(process.env), ask.user, ask.name); return; }
   if (ask.mode === 'mint') { token_mint(process.env, ask.user, ask.name); return; }
+  if (ask.mode === 'creds') { creds_import(process.env, ask.user, ask.config, ask.profile); return; }
   let config: PorterConfig;
   try {
     config = porterConfig_resolve(process.env);
@@ -242,7 +280,7 @@ async function porter_start(): Promise<void> {
     console.error(`[!] ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   }
-  const host: ProcessHost = new ProcessHost({ stateDir: config.stateDir, chellEntry: config.chellEntry });
+  const host: ProcessHost = new ProcessHost({ stateDir: config.stateDir, chellEntry: config.chellEntry, stratusEntry: stratusEntry_locate() });
   const sweepText: string | undefined = process.env['PORTER_SWEEP_SECONDS'];
   const built: PorterApp = await porterApp_build({
     config,

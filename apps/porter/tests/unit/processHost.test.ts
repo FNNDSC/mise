@@ -303,3 +303,43 @@ describe('ProcessHost restart', () => {
     expect(left.cause).toBe('end');
   });
 });
+
+describe('a stratus session', () => {
+  const STRATUS: string = `stratus:oci@${IDENTITY}`;
+
+  it('starts stratus on the person\'s config, read-only unless asked, in a home and state of its own', async () => {
+    const host: ProcessHost = new ProcessHost({ stateDir, chellEntry: '/opt/chell/dist/index.js', stratusEntry: '/opt/stratus/dist/stratus.js', spawn, alive: async (): Promise<boolean> => alive, bootTimeoutMs: 2_000, pollMs: 20 });
+    host.stratus_begin(STRATUS, '/creds/oci/config', false, false);
+    // The daemon names its berth by its cloud identity; the one in the session's directory is the session's.
+    const runtime: string = host.dirs_of(STRATUS).runtime;
+    mkdirSync(join(runtime, 'calypso'), { recursive: true });
+    writeFileSync(berth_pathIn(runtime, 'me@fnndsc-bch'), JSON.stringify({ identity: 'me@fnndsc-bch', url: 'ws://127.0.0.1:5555', token: 'T' }));
+    for (let i = 0; i < 20 && (await host.find(STRATUS)) === null; i++) await new Promise((r) => setTimeout(r, 20));
+    expect(await host.find(STRATUS)).toMatchObject({ url: 'ws://127.0.0.1:5555' });
+    expect(spawnCalls[0]?.args).toEqual(['/opt/stratus/dist/stratus.js', '--config', '/creds/oci/config']);
+    expect(spawnCalls[0]?.env['XDG_STATE_HOME']).toMatch(/\/state$/);
+    expect(spawnCalls[0]?.env['HOME']).toMatch(/\/home$/);
+    expect(host.stratus_armed(STRATUS)).toBe(false);
+    // A porter restarted adopts it under the session's identity, not the cloud's.
+    const again: ProcessHost = new ProcessHost({ stateDir, chellEntry: '/opt/chell/dist/index.js', alive: async (): Promise<boolean> => true });
+    expect((await again.sessions_adopt()).map((sighting) => sighting.identity)).toContain(STRATUS);
+  });
+
+  it('refuses to start when this porter carries no stratus', async () => {
+    const host: ProcessHost = host_make();
+    host.stratus_begin(STRATUS, '/creds/oci/config', true, false);
+    for (let i = 0; i < 20 && host.boot_follow(STRATUS, { line: () => undefined, done: () => undefined })?.report.state === 'booting'; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(host.boot_follow(STRATUS, { line: () => undefined, done: () => undefined })?.report).toMatchObject({ state: 'failed', reason: 'this porter has no stratus to start' });
+  });
+});
+
+describe('the boot lines a greeter is shown', () => {
+  it('never carry the attach token: the porter holds it', async () => {
+    const { bootLine_redact } = await import('../../src/host/processHost.js');
+    const token: string = '8dfe664ed7b943d5cad82efd59b9a2729999abe456b7a0ee8c8a4bd7dae0c0c3';
+    expect(bootLine_redact(`    token:     ${token}`)).toBe('    token:     (held by the porter)');
+    expect(bootLine_redact(`[+] ARGUS web surface at http://127.0.0.1:4000/?token=${token}`)).toBe('[+] ARGUS web surface at http://127.0.0.1:4000/?token=…');
+    expect(bootLine_redact(`    from another machine:   chell --remote --attach ws://h:1 --token ${token}`)).toBe('    from another machine:   chell --remote --attach ws://h:1 --token …');
+    expect(bootLine_redact('[ OK ] Feeds')).toBe('[ OK ] Feeds');
+  });
+});

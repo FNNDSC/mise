@@ -57,6 +57,7 @@ export function condition_of(domain: HarborDomain, record: DomainRecord | null, 
   if (domain.steps.some((step: StepState): boolean => step.state === 'failed')) return 'FAILED';
   if (stepState_of(domain, 'smoke') === 'done') return 'SERVING';
   if (stepState_of(domain, 'run') === 'done') return 'UP';
+  if (domain.steps.some((step: StepState): boolean => step.state === 'done')) return 'STOPPED';
   return 'SIZING';
 }
 

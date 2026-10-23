@@ -76,6 +76,7 @@ body[data-takeover='controller'] > *:not(#td-controller) { visibility: hidden; }
 .tdc-condition[data-condition='FAILED'] { background: var(--tdc-destroy); }
 .tdc-condition[data-condition='GONE'] { background: var(--october-sunset); }
 .tdc-condition[data-condition='SIZING'] { background: var(--honey); }
+.tdc-condition[data-condition='STOPPED'] { background: var(--honey); }
 .tdc-condition-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.2em; }
 .tdc-condition-name { font-size: 2rem; font-weight: 700; letter-spacing: 0.22em; line-height: 1; }
 .tdc-condition-why { font-size: 0.75rem; letter-spacing: 0.06em; text-align: center; color: var(--honey); }

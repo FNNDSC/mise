@@ -95,7 +95,8 @@ export function classBadge_of(domain: DomainSummary): string {
 export function conditionWhy_of(domain: DomainSummary): { text: string; billing: boolean } {
   const billing: boolean = domain.billing === true;
   const why: string = domain.origin === 'adopted' ? 'ADOPTED' : domain.origin === 'checkout' ? 'READ FROM A CHECKOUT'
-    : domain.condition === 'GONE' ? 'TORN DOWN' : domain.condition === 'SIZING' ? (billing ? 'NOT FINISHED' : 'NOTHING BUILT') : domain.condition ?? '';
+    : domain.condition === 'GONE' ? 'TORN DOWN' : domain.condition === 'SIZING' ? 'NOTHING BUILT'
+    : domain.condition === 'STOPPED' ? (!billing && domain.next === domain.billingStep ? 'PLANNED' : 'NOT FINISHED') : domain.condition ?? '';
   return billing ? { text: `BILLING · ${why}`, billing } : { text: `${why} · NOTHING BILLED`, billing };
 }
 

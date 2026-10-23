@@ -28,7 +28,7 @@ import { binExecutableMatches_get, type BinExecutableMatches } from '../../chris
 import { builtin_executePlugin } from '../pluginExecute.js';
 import { builtin_pipeline } from './pipeline.js';
 import { newFeed_cacheAdd, run_follow } from '../feedCreation.js';
-import { cohort_read, cohort_write, type GatherFeed, type GatherMember, type GatherState } from './gather.store.js';
+import { cohort_read, cohort_write, cohortFolders_resolve, type GatherFeed, type GatherMember, type GatherState } from './gather.store.js';
 
 /** How `gather process` was asked for. */
 export interface GatherProcessArgs {
@@ -148,7 +148,9 @@ export async function gather_process(words: ReadonlyArray<string>): Promise<Comm
   if (parsed.error !== null || parsed.name === null) return process_refuse(parsed.error ?? USAGE);
   const name: string = parsed.name;
 
-  const state: GatherState = await cohort_read();
+  // A series pulled but not yet noted on the cohort is found in CUBE, not
+  // refused as never pulled.
+  const state: GatherState = await cohortFolders_resolve(await cohort_read());
   if (state.series.length === 0) return process_refuse('the cohort is empty; gather add something first');
   const waiting: GatherMember[] = state.series.filter((member: GatherMember): boolean => member_place(member) === null);
   if (waiting.length > 0) {

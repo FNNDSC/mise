@@ -41,6 +41,7 @@ class RecordedApi implements OciBuildApi {
   tagHome: string | null = 'ocid1.compartment.oc1..harbor-oci';
   children: Map<string, string> = new Map();
   async zoneCompartment_find() { return this.zoneHome; }
+  async zoneNames_list() { return ['oci.chrisproject.org']; }
   async tagNamespaceCompartment_find() { return this.tagHome; }
   async compartmentChild_ensure(parentId: string, name: string, _description: string, tags: Record<string, string>) {
     const key: string = `${parentId}/${name}`;

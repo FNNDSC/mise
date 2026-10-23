@@ -311,10 +311,12 @@ export function sizeCost_of(size: DomainSizeModel, spec: DomainSpecModel): { row
  * @param name - The new domain's name.
  * @param spec - The spec as the levers stand.
  * @param start - The spec a new domain starts from.
+ * @param zone - The DNS zone to name, when it is not the session's default.
  * @returns The line.
  */
-export function newLine_of(name: string, spec: DomainSpecModel, start: DomainSpecModel): string {
+export function newLine_of(name: string, spec: DomainSpecModel, start: DomainSpecModel, zone: string | null = null): string {
   const words: string[] = ['domain', 'new', name];
+  if (zone !== null) words.push('--base-domain', zone);
   const pool = (one: DomainSpecModel['controlPlane']): string => `${one.count}x${one.vcpu}/${one.ramGib}`;
   if (spec.family !== start.family) words.push('--family', spec.family);
   if (pool(spec.controlPlane) !== pool(start.controlPlane)) words.push('--plane', pool(spec.controlPlane));

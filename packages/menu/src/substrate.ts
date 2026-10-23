@@ -159,8 +159,10 @@ export const domainSizeModelSchema = z.object({
   services: z.object({ volumeGibMonth: z.number(), vpuGibMonth: z.number(), balancerHour: z.number(), balancerMbpsHour: z.number() }).nullable(),
   /** The spec a new domain starts from. */
   start: domainSpecSchema,
-  /** The DNS zone a new domain's names live under, or null when none is set. */
+  /** The DNS zone a new domain's names live under unless another is named: the session's, else the tenancy's only one; null when there is none to default to. */
   baseDomain: z.string().nullable(),
+  /** The DNS zones the tenancy holds, by name; absent when the cloud cannot say. */
+  dnsZones: z.array(z.string()).optional(),
 });
 
 /** The model kind `capacity` carries. */

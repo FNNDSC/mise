@@ -105,6 +105,35 @@ export function spec_line(spec: DomainSpec): string {
 }
 
 /**
+ * The DNS zones the tenancy holds, by name; none when the cloud cannot say.
+ *
+ * @param context - The session.
+ * @param region - The region the calls go through.
+ * @returns The zones' names.
+ */
+export async function dnsZones_read(context: BuildCommandContext, region: string): Promise<string[]> {
+  if (context.builder?.zones_list === undefined) return [];
+  try {
+    return await context.builder.zones_list(region);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The zone a new domain's names live under when none is named: the session's,
+ * else the tenancy's only one; null when there is none, or several to choose
+ * between.
+ *
+ * @param context - The session.
+ * @param zones - The tenancy's zones.
+ * @returns The zone, or null.
+ */
+export function baseDomain_default(context: BuildCommandContext, zones: ReadonlyArray<string>): string | null {
+  return context.baseDomain ?? (zones.length === 1 ? zones[0] as string : null);
+}
+
+/**
  * `domain new <name> [options]`.
  *
  * @param context - The session.
@@ -120,8 +149,15 @@ export async function domainNew_run(context: BuildCommandContext, args: Readonly
   if (context.domains.domain_read(name) !== null) return envelope_error('', undefined, `domain new: ${name}: File exists\n`);
   const region: string | null = context.region();
   if (region === null) return envelope_error('', undefined, 'domain new: not connected\n');
-  const baseDomain: string | null = read.options.get('--base-domain') ?? context.baseDomain;
-  if (baseDomain === null) return envelope_error('', undefined, 'domain new: --base-domain <zone> is needed: the DNS zone the cluster\'s names live under\n');
+  // The zone is found where it lives (D14): named, it must be one the tenancy holds; unnamed, the tenancy's only one.
+  const zones: string[] = await dnsZones_read(context, region);
+  const named: string | undefined = read.options.get('--base-domain');
+  if (named !== undefined && zones.length > 0 && !zones.includes(named)) return envelope_error('', undefined, `domain new: --base-domain ${named}: no such zone in the tenancy (${zones.join(', ')})\n`);
+  const baseDomain: string | null = named ?? baseDomain_default(context, zones);
+  if (baseDomain === null) {
+    const why: string = zones.length === 0 ? 'the tenancy holds no DNS zone to find' : `the tenancy holds ${zones.length}: ${zones.join(', ')}`;
+    return envelope_error('', undefined, `domain new: --base-domain <zone> is needed: the DNS zone the cluster's names live under (${why})\n`);
+  }
   const sized = specOptions_apply(SPEC_DEFAULT, new Map([...read.options].filter(([option]: [string, string]): boolean => option !== '--base-domain' && option !== '--compartment')));
   const compartmentId: string | undefined = read.options.get('--compartment');
   if ('error' in sized) return envelope_error('', undefined, `domain new: ${sized.error}\n`);

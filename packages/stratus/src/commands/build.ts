@@ -55,7 +55,7 @@ export interface BuildCommandContext {
 
 /**
  * Shows a domain as the host knows it, as a `stratus.domain.state` event: at
- * a build's start, on each line it logs, before each question and at its end,
+ * a build's start, on each line it logs and before each question,
  * so a surface watching (the TD controller) redraws without asking.
  *
  * @param context - The session.

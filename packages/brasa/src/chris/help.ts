@@ -948,6 +948,8 @@ export const chrisHelp: Record<string, CommandHelp> = {
       '                           (the cohort\'s own feed when it has one), the run',
       '                           off that root. Refuses while a series is unpulled.',
       '                           Answers as the bare run would: R=$(gather process …)',
+      '                           <name> is the /bin name or the pipeline\'s own',
+      '                           name: gather process "FreeSurfer 8.2.0 mri_convert"',
     ],
     examples: [
       'gather',

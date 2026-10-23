@@ -283,6 +283,8 @@ expect run ${R.instanceId} status eq finishedSuccessfully
 
 The run's arguments follow `--` in the run's own grammar; a pipeline takes `--<node>.<parameter> <value>` compound parameters or `--paramFile <file>`, as specified in link:../../../docs/feed-dag-viewer.adoc#pipeline-parameter-binding[Pipeline invocation as parameter binding]. A series not pulled yet has no folder to copy, and `gather process` refuses it by name.
 
+The run ends when the plugin or pipeline's own nodes finish. A plugin that starts jobs of its own while it runs, such as pl-dymap starting one job per series, finishes once those jobs are submitted: the run reads `finishedSuccessfully` while they are still queued or running, and their ids are not in its answer. Watch them in the feed.
+
 `pull` once took `--plugin <selector>` and `--pipeline <selector>` with `--new-feed` to retrieve and run in one line. They were retired with the session pronouns (issue #1208): two ways to make the same feed is the debt `plugin run` was, and the two-step is what ARGUS's PROCESS presses and what a manifest reads as. They refuse by name.
 
 === Synthetic query pattern

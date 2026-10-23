@@ -948,6 +948,9 @@ export const chrisHelp: Record<string, CommandHelp> = {
       '                           (the cohort\'s own feed when it has one), the run',
       '                           off that root. Refuses while a series is unpulled.',
       '                           Answers as the bare run would: R=$(gather process …)',
+      '                           A plugin that starts jobs of its own (pl-dymap)',
+      '                           finishes once they are submitted; watch them in',
+      '                           the feed.',
     ],
     examples: [
       'gather',

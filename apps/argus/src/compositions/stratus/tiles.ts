@@ -29,6 +29,8 @@ export interface StratusTileHooks {
   home_open: () => void;
   /** Runs a line in the console, where its answer is read whole. */
   line_run: (line: string) => void;
+  /** Told the domains each paint finds, so the language claims `domain <name>` before the controller has read them. */
+  names_seen?: (names: string[]) => void;
 }
 
 /** The step states a tile draws as gone wrong. */
@@ -95,6 +97,7 @@ export function stratusTiles_make(hooks: StratusTileHooks): () => Promise<TileCo
     const [domainsAnswer, capacityAnswer]: [ExecuteOutcome, ExecuteOutcome] = await Promise.all([hooks.ask('domain status'), hooks.ask('capacity')]);
     const domainsModel: DomainsModel | null = model_of(domainsAnswer, STRATUS_DOMAINS_MODEL_KIND, (data) => domainsModelSchema.safeParse(data));
     const domains: DomainSummary[] = domainsModel?.domains ?? [];
+    if (domainsModel !== null) hooks.names_seen?.(domains.map((domain: DomainSummary): string => domain.name));
     const wrong = (domain: DomainSummary): boolean => domain.steps.some((step): boolean => WRONG_STATES.includes(step.state));
     const wrongCount: number = domains.filter(wrong).length;
     // What the domains cost an hour together, at list price, when the daemon priced them.

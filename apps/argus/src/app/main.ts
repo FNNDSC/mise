@@ -1704,6 +1704,7 @@ async function surface_start(token: string): Promise<void> {
       domain_open: (name: string): void => { void tdController.open(name); },
       home_open: (): void => { dagShown = false; home_apply(); layout.focus_set('files'); },
       line_run: (line: string): void => { element_require('gutter-console').click(); terminal.line_run(line); },
+      names_seen: (names: string[]): void => domainNames_seen(names),
     }) }),
   });
 
@@ -1958,10 +1959,11 @@ async function surface_start(token: string): Promise<void> {
   // trek takes the screen: a program over ARGUS, given back when the game ends.
   const trekBridge: TrekBridgeModule = trekBridge_wire(context);
   // `domain` in a stratus session takes the screen as the TD controller, given back on LEAVE (app/tdController.ts).
-  // The domains each read finds are claimed, so `domain <name>` opens on one; the daemon is told the claims again.
-  const tdController: TdControllerModule = tdController_wire(context, (names: string[]): void => {
+  // The domains each read finds (the controller's, or the DOMAINS tile's paint) are claimed, so `domain <name>` opens on one; the daemon is told the claims again.
+  function domainNames_seen(names: string[]): void {
     if (domainClaims_set(names)) context.client.claims_send(claims_list());
-  });
+  }
+  const tdController: TdControllerModule = tdController_wire(context, (names: string[]): void => domainNames_seen(names));
   const notesPane: NotesPaneModule = notesPane_wire(context, { ...paneHooks, ask: (line: string): Promise<ExecuteOutcome> => client.line_execute(line, { silent: true }) });
   const editorModule: EditorModule = editor_wire(context, { ...paneHooks, replayPlace_get: desktop.replayPlace_get, errandHost_find, saved: (): void => { for (const dag of panels.values('dag')) dag.marks_refresh(); } });
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));

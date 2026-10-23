@@ -265,7 +265,7 @@ export class OciBuilder implements CloudBuilder {
     const parent = await api.compartmentChild_ensure(tenancy.id, DOMAINS_COMPARTMENT, 'The Trusted Domains stratus builds, one compartment each', { 'mise-role': 'domains' });
     call.log(parent.made ? `made the compartment ${DOMAINS_COMPARTMENT} under ${tenancy.name}` : `${DOMAINS_COMPARTMENT} is there`);
     await this.compartment_awaitActive(api, parent.id, call);
-    // A compartment just made reads ACTIVE before the identity service will make one inside it: until then it answers not found.
+    // A compartment just made may answer not found for a while, even after it reads ACTIVE.
     const own = await this.notFound_outwait(() => api.compartmentChild_ensure(parent.id, request.domain, `The Trusted Domain ${request.domain}`, { 'mise-domain': request.domain }), `${DOMAINS_COMPARTMENT} is not yet usable`, call);
     call.log(own.made ? `made the compartment ${DOMAINS_COMPARTMENT}/${request.domain}` : `${DOMAINS_COMPARTMENT}/${request.domain} is there`);
     await this.compartment_awaitActive(api, own.id, call);
@@ -304,7 +304,7 @@ export class OciBuilder implements CloudBuilder {
    */
   private async compartment_awaitActive(api: OciBuildApi, id: string, call: BuildCall): Promise<void> {
     for (;;) {
-      const state: string = await api.compartmentState_get(id);
+      const state: string = await this.notFound_outwait(() => api.compartmentState_get(id), `${id} is not yet found`, call);
       if (state === 'ACTIVE') return;
       if (call.signal.aborted) throw new Error(`stopped while ${id} was ${state}`);
       call.log(`compartment ${state.toLowerCase()}; waiting`);

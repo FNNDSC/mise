@@ -34,7 +34,7 @@ const SIZE: DomainSizeModel = {
 };
 
 /** A controller over hooks that record the lines sent. */
-function controller_make(): { controller: TdController; sent: string[]; cues: string[] } {
+function controller_make(): { controller: TdController; sent: string[]; cues: string[]; hooks: ControllerHooks } {
   const sent: string[] = [];
   const cues: string[] = [];
   const hooks: ControllerHooks = {
@@ -46,7 +46,7 @@ function controller_make(): { controller: TdController; sent: string[]; cues: st
   };
   const controller: TdController = new TdController(hooks);
   document.body.append(controller.root);
-  return { controller, sent, cues };
+  return { controller, sent, cues, hooks };
 }
 
 const button_named = (root: HTMLElement, text: string): HTMLButtonElement | undefined =>
@@ -133,9 +133,15 @@ describe('the TD controller screen', () => {
     controller.root.remove();
   });
 
-  it('holds COMMIT until the new name is a free DNS label, then sends domain new', async () => {
-    const { controller, sent } = controller_make();
+  it('holds COMMIT until the new name is a free DNS label, then writes the spec and plays the tenant', async () => {
+    const { controller, sent, hooks } = controller_make();
     controller.domains_take([domain_make('harbor')]);
+    // The session's read after `domain new`: the spec written, quay is kept.
+    const run = hooks.run;
+    hooks.run = async (line: string): Promise<void> => {
+      await run(line);
+      if (line.startsWith('domain new ')) controller.domains_take([domain_make('harbor'), domain_make('quay')]);
+    };
     button_named(controller.root, '+ NEW')?.click();
     await flush();
     expect(controller.view_get()).toBe('size');
@@ -148,10 +154,13 @@ describe('the TD controller screen', () => {
     name.value = 'quay';
     name.dispatchEvent(new Event('input'));
     expect(commit()?.disabled).toBe(false);
-    expect(controller.root.querySelector('.tdc-commit-line')?.textContent).toBe('domain new quay');
+    expect([...controller.root.querySelectorAll('.tdc-commit-line')].map((line) => line.textContent)).toEqual(['domain new quay', 'play ~/tenant.mise --param NAME=quay']);
     commit()?.click();
     await flush();
-    expect(sent).toEqual(['domain new quay']);
+    await flush();
+    expect(sent).toEqual(['domain new quay', 'play ~/tenant.mise --param NAME=quay']);
+    expect(controller.domain_get()?.name).toBe('quay');
+    expect(controller.view_get()).toBe('build');
     controller.dispose();
     controller.root.remove();
   });

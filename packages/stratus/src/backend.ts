@@ -10,15 +10,16 @@
  *
  * @module
  */
-import { commands_register, type Backend, type JobRecord, type JobRun, type PromptLastCommand } from '@fnndsc/brasa/core';
-import { VFSDispatcher } from '@fnndsc/fond';
+import { commands_register, FileReadRefusal, type Backend, type JobRecord, type JobRun, type PromptLastCommand } from '@fnndsc/brasa/core';
+import { VFSDispatcher, type VfsOutcome } from '@fnndsc/fond';
 import type { PromptContext } from '@fnndsc/menu';
 import type { CloudDriver } from './cloud/driver.js';
 import { AnswerCache } from './cache.js';
 import { StratusSession } from './session.js';
-import { TenancyProvider } from './vfs/tenancy.js';
+import { READ_ONLY_REASON, TenancyProvider } from './vfs/tenancy.js';
 import { KIND_FOLDERS } from './vfs/resources.js';
 import { DomainTree } from './vfs/domains.js';
+import { shippedManifests_read } from './domain/manifests.js';
 import type { DomainSource } from './domains/harborOci.js';
 import { stratusCommands_make } from './commands/domain.js';
 import { stratusListingLook } from './vfs/look.js';
@@ -100,6 +101,7 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
     sources: options.domains ?? [],
     owner: (): string => session.identity?.user ?? 'disconnected',
     now: (): Date => new Date(),
+    manifests: shippedManifests_read(),
   });
   const tenancy: TenancyProvider = new TenancyProvider({ driver: options.driver, cache: new AnswerCache(options.cacheLifeMs), region: (): string | null => session.region, domains });
   const region = (): string | null => session.region;
@@ -118,6 +120,17 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
       // the session knows its tenancy (docs/stratus.adoc, D4).
       get structural(): ReadonlyArray<string> {
         return structuralPaths_of(session);
+      },
+    },
+    // One file's bytes for `play` and a surface; the tree is read-only, so a write is refused.
+    files: {
+      read: async (path: string): Promise<Buffer> => {
+        const bytes: VfsOutcome<Buffer> = await dispatcher.readBinary(path);
+        if (!bytes.ok) throw new FileReadRefusal(path, bytes.errno === 'ENOENT' ? 404 : 403, bytes.reason ?? bytes.errno);
+        return bytes.value;
+      },
+      write: async (path: string): Promise<void> => {
+        throw new Error(`cannot write ${path}: ${READ_ONLY_REASON}`);
       },
     },
     completion: { rootWords: ['net'] },

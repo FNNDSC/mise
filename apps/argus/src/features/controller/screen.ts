@@ -383,7 +383,7 @@ export class TdController {
     header.append(this.condition_make(domain));
     if (domain === null) {
       header.append(
-        this.headSection_make('DOMAIN', [['NAME', this.newName === '' ? '[NAME IT ON SIZE]' : this.newName], ['REGION', this.size?.region ?? '…'], ['ADDRESS', this.newName !== '' && this.size?.baseDomain ? `${this.newName}.${this.size.baseDomain}` : '…']]),
+        this.headSection_make('DOMAIN', [['NAME', this.newName === '' ? '[NAME IT ON SIZE]' : this.newName], ['REGION', this.size?.region ?? '…'], ['ADDRESS', this.size === null ? '…' : this.size.baseDomain === null ? 'NO ZONE SET · --base-domain' : `${this.newName || '<name>'}.${this.size.baseDomain}`]]),
         this.headSection_make('COST · AS SIZED', this.sizedCost_rows()),
         this.headSection_make('FIT', this.fit_rows()),
         this.headSection_make('SINCE LAST CHANGE', [['', 'NOTHING WRITTEN YET']]),
@@ -615,12 +615,23 @@ export class TdController {
     steps.append(commands);
 
     const cluster: HTMLElement = this.section_make('THE CLUSTER AT A GLANCE', 'tdc-col-glance');
-    const verify: string = domain.verify === null || domain.verify === undefined ? 'NOT RUN HERE' : `${verifyWords_of(domain.verify.checks)} · ${(domain.verify.at ?? '').slice(0, 16).replace('T', ' ')}`;
+    const verify: string = domain.verify === null || domain.verify === undefined ? this.verifyUnkept_of(domain) : `${verifyWords_of(domain.verify.checks)} · ${(domain.verify.at ?? '').slice(0, 16).replace('T', ' ')}`;
     cluster.append(this.pairs_make([['ADDRESS', domain.cluster ?? '?'], ['VERIFY', verify], ['RUNNING', domain.running === null || domain.running === undefined ? 'nothing' : domain.running.step ?? 'between steps']]));
     cluster.append(el('span', 'tdc-section-title tdc-gap', 'IN ITS COMPARTMENT'));
     cluster.append(this.resources_make(domain));
     cluster.append(el('p', 'tdc-prose tdc-quiet', 'Nodes per zone and projects come with the cluster in the tree (cluster/).'));
     return [spec, steps, cluster];
+  }
+
+  /**
+   * What verify says when no checks are kept: the step's own line, or that it has not run.
+   *
+   * @param domain - The domain.
+   * @returns The words.
+   */
+  private verifyUnkept_of(domain: DomainSummary): string {
+    const step = domain.steps.find((one): boolean => one.name === 'verify');
+    return step !== undefined && step.state !== 'not done' ? `${(step.evidence ?? step.state).toUpperCase()} · CHECKS NOT KEPT` : 'NOT RUN';
   }
 
   private resources_make(domain: DomainSummary): HTMLElement {
@@ -700,7 +711,7 @@ export class TdController {
   private cluster_make(domain: DomainSummary): HTMLElement[] {
     const checks: HTMLElement = this.section_make('VERIFY · TEN CHECKS', 'tdc-col-wide', domain.verify?.at ? `LAST RUN ${domain.verify.at.slice(0, 16).replace('T', ' ')}` : 'NOT RUN HERE');
     if (domain.verify === null || domain.verify === undefined) {
-      checks.append(el('p', 'tdc-prose', 'No checks kept. VERIFY runs them through the cluster\'s kubeconfig, which stays on the host.'));
+      checks.append(el('p', 'tdc-prose', `${this.verifyUnkept_of(domain)}. VERIFY runs the checks through the cluster's kubeconfig, which stays on the host, and keeps them.`));
     } else {
       const grid: HTMLElement = el('div', 'tdc-checks');
       for (const check of domain.verify.checks) {

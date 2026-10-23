@@ -32,7 +32,7 @@ import { AssistedInstaller, serviceAccount_read } from './installer/assisted.js'
 import { promises as dnsPromises } from 'node:dns';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { fakeVerifyReach } from './cluster/fakeKube.js';
+import { fakeChrisWork, fakeVerifyReach } from './cluster/fakeKube.js';
 import { rmApi_make } from './cloud/oci/rmApi.js';
 
 const USAGE: string = [
@@ -123,7 +123,8 @@ async function stratus_start(): Promise<void> {
     domains: parsed.args.domains,
     ...(parsed.args.fake
       ? {
-        builder: new FakeCloudBuilder(world), installer: new FakeInstaller(world), baseDomain: 'fake.example', waits: { pollMs: tickMs, hostsWaitMs: tickMs * 60, installWaitMs: tickMs * 120 },
+        builder: new FakeCloudBuilder(world), installer: new FakeInstaller(world), baseDomain: 'fake.example', waits: { pollMs: tickMs, hostsWaitMs: tickMs * 60, installWaitMs: tickMs * 120, verifyWaitMs: tickMs * 30, chrisWaits: { pollMs: 0, mirrorReactMs: 0, mirrorWaitMs: 0, rolloutWaitMs: 0, seedWaitMs: 0 } },
+        chris: fakeChrisWork,
         // The fake cluster a fake build made answers verify: its hosts, healthy.
         verifyReach: fakeVerifyReach((kubeconfig: string) => world.hosts_now(/cluster-([a-z0-9-]+)/.exec(kubeconfig)?.[1] ?? '').map((host) => ({ name: host.name, zone: host.zone, shape: 'VM.Standard.E5.Flex' }))),
       }

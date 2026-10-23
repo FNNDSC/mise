@@ -11,6 +11,26 @@ import { KubeError, type KubeAccess, type KubeApi } from './kube.js';
 /** How long one call may take, in milliseconds. */
 const KUBE_TIMEOUT_MS: number = 30_000;
 
+/** How many times a call answered 429 is made, in all. */
+const BUSY_TRIES: number = 10;
+
+/**
+ * How long a 429 asks to be waited, from its Status (`details.retryAfterSeconds`), within one to ten seconds.
+ *
+ * @param text - The answer's body.
+ * @returns Milliseconds.
+ */
+export function busyWait_of(text: string): number {
+  let seconds: number = 2;
+  try {
+    const asked: unknown = (JSON.parse(text) as { details?: { retryAfterSeconds?: unknown } }).details?.retryAfterSeconds;
+    if (typeof asked === 'number') seconds = asked;
+  } catch {
+    // Not a Status: the default.
+  }
+  return Math.min(10, Math.max(1, seconds)) * 1000;
+}
+
 /**
  * One HTTPS call.
  *
@@ -55,7 +75,12 @@ function call(access: KubeAccess, method: string, path: string, body?: unknown):
  */
 export function kubeApi_make(access: KubeAccess): KubeApi {
   const ok = async (method: string, path: string, body?: unknown): Promise<string> => {
-    const answer = await call(access, method, path, body);
+    let answer = await call(access, method, path, body);
+    // A server still settling answers 429 with how long to wait; it is waited out, briefly.
+    for (let tries: number = 1; answer.status === 429 && tries < BUSY_TRIES; tries++) {
+      await new Promise((resolve): void => { setTimeout(resolve, busyWait_of(answer.text)); });
+      answer = await call(access, method, path, body);
+    }
     if (answer.status < 200 || answer.status >= 300) throw new KubeError(answer.status, `${method} ${path}: HTTP ${answer.status} ${answer.text.slice(0, 200)}`);
     return answer.text;
   };

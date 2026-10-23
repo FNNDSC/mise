@@ -1,5 +1,5 @@
 # A tenant: a Trusted Domain built from its written spec to a verified
-# cluster (docs/stratus.adoc, D14).
+# cluster with ChRIS on it, smoked (docs/stratus.adoc, D14).
 #
 # The size is the spec's, written before this plays by `domain new` (or the
 # controller's SIZE and COMMIT, which send that line and then this play).
@@ -8,22 +8,20 @@
 #
 # The build asks before the first step that bills. A NO there, or Ctrl-C,
 # leaves the build where it stands, and the play stops at the claim that the
-# cluster is installed; `play ~/tenant.mise --param NAME=…` again goes on
-# from the first step not done.
+# build is done; `play ~/tenant.mise --param NAME=…` again goes on from the
+# first step not done.
 @name         tenant
-@description  Build a Trusted Domain from its spec through the cluster's install, verify it, and answer its status.
+@description  Build a Trusted Domain from its spec through ChRIS's smoke journey, and answer its status.
 @param        NAME
 @answers      TENANT
 
 # Only a domain built here is built on; an adopted one is planned against.
 expect domain ${NAME} class eq built
-domain build ${NAME} --through run
-expect domain ${NAME} step run eq done
+domain build ${NAME}
+expect domain ${NAME} step smoke eq done
 
-# Ten checks against the cluster through its kubeconfig, which stays on the
-# host; the block-volume probe is one of them, so this needs the tasks tier,
-# as the build did.
-domain verify ${NAME}
+# The build's verify step ran the ten checks against the cluster through its
+# kubeconfig, which stays on the host, until the new cluster settled.
 expect domain ${NAME} verify eq 10
 
 TENANT=$(domain ${NAME})

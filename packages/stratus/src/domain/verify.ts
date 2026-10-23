@@ -11,7 +11,18 @@
  *
  * @module
  */
+import type { VerifyCheckModel } from '@fnndsc/menu';
 import type { KubeApi } from '../cluster/kube.js';
+import type { DomainRecord, DomainStore } from './state.js';
+
+/** The file `verify` keeps its checks in, beside `plan.json`. */
+export const VERIFY_FILE: string = 'verify.json';
+
+/** What `verify.json` holds. */
+export interface VerifyKept {
+  at: string;
+  checks: VerifyCheckModel[];
+}
 
 /** The storage class ChRIS's claims use. */
 export const STORAGE_CLASS: string = 'oci-bv';
@@ -107,6 +118,38 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** A node's unrequested CPU. */
+export interface NodeCpu {
+  readonly name: string;
+  /** Its `kubernetes.io/hostname` label, what a pod is pinned by. */
+  readonly hostname: string;
+  readonly cores: number;
+}
+
+/**
+ * Each node's allocatable cores less what its running pods request.
+ *
+ * @param kube - The cluster.
+ * @returns By node, in the cluster's order.
+ */
+export async function cpuFree_read(kube: KubeApi): Promise<NodeCpu[]> {
+  const nodes: KubeNode[] = (await kube.json_get('/api/v1/nodes') as KubeList<KubeNode>).items ?? [];
+  const pods: KubePod[] = (await kube.json_get('/api/v1/pods') as KubeList<KubePod>).items ?? [];
+  const requested: Map<string, number> = new Map();
+  for (const pod of pods) {
+    if (pod.status?.phase === 'Succeeded' || pod.status?.phase === 'Failed' || pod.spec?.nodeName === undefined) continue;
+    for (const container of pod.spec.containers ?? []) {
+      const cpu: string | undefined = container.resources?.requests?.cpu;
+      if (cpu !== undefined) requested.set(pod.spec.nodeName, (requested.get(pod.spec.nodeName) ?? 0) + cpuQuantity_parse(cpu));
+    }
+  }
+  return nodes.map((node: KubeNode): NodeCpu => ({
+    name: node.metadata.name,
+    hostname: node.metadata.labels?.['kubernetes.io/hostname'] ?? node.metadata.name,
+    cores: cpuQuantity_parse(node.status?.allocatable?.cpu ?? '0') - (requested.get(node.metadata.name) ?? 0),
+  }));
+}
+
 /** The checks, in `harbor-oci`'s order. */
 const CHECKS: ReadonlyArray<{ name: string; how: 'reads' | 'writes'; run: (context: VerifyContext) => Promise<{ ok: boolean | null; detail: string }> }> = [
   {
@@ -197,17 +240,7 @@ const CHECKS: ReadonlyArray<{ name: string; how: 'reads' | 'writes'; run: (conte
   {
     name: 'CPU headroom', how: 'reads',
     run: async (context) => {
-      const nodes: KubeNode[] = (await context.kube.json_get('/api/v1/nodes') as KubeList<KubeNode>).items ?? [];
-      const pods: KubePod[] = (await context.kube.json_get('/api/v1/pods') as KubeList<KubePod>).items ?? [];
-      const requested: Map<string, number> = new Map();
-      for (const pod of pods) {
-        if (pod.status?.phase === 'Succeeded' || pod.status?.phase === 'Failed' || pod.spec?.nodeName === undefined) continue;
-        for (const container of pod.spec.containers ?? []) {
-          const cpu: string | undefined = container.resources?.requests?.cpu;
-          if (cpu !== undefined) requested.set(pod.spec.nodeName, (requested.get(pod.spec.nodeName) ?? 0) + cpuQuantity_parse(cpu));
-        }
-      }
-      const free: number[] = nodes.map((node: KubeNode): number => cpuQuantity_parse(node.status?.allocatable?.cpu ?? '0') - (requested.get(node.metadata.name) ?? 0));
+      const free: number[] = (await cpuFree_read(context.kube)).map((node: NodeCpu): number => node.cores);
       return { ok: Math.max(0, ...free) >= PLUGIN_CPU_CORES, detail: `unrequested cores: ${free.map((cores: number): string => cores.toFixed(1)).join(' / ')} (a plugin job asks ${PLUGIN_CPU_CORES})` };
     },
   },
@@ -267,4 +300,38 @@ export async function verify_run(context: VerifyContext): Promise<VerifyCheck[]>
     }
   }
   return results;
+}
+
+/**
+ * The checks in a line: how many pass, fail, and were not run.
+ *
+ * @param checks - The checks.
+ * @returns `9 of 10 pass, 1 fail`.
+ */
+export function verifySummary_of(checks: ReadonlyArray<VerifyCheck>): string {
+  const ran: VerifyCheck[] = checks.filter((check: VerifyCheck): boolean => check.ok !== null);
+  const passed: number = ran.filter((check: VerifyCheck): boolean => check.ok === true).length;
+  const failed: number = ran.length - passed;
+  const skipped: number = checks.length - ran.length;
+  return `${passed} of ${checks.length} pass${failed > 0 ? `, ${failed} fail` : ''}${skipped > 0 ? `, ${skipped} not run (needs the tasks tier)` : ''}`;
+}
+
+/**
+ * Keeps a verify as the domain's verify step and in `verify.json`, so `domain status` and the tiles show it.
+ *
+ * @param store - The domains.
+ * @param name - The domain.
+ * @param checks - The checks.
+ * @returns The summary.
+ */
+export function verifyChecks_keep(store: DomainStore, name: string, checks: ReadonlyArray<VerifyCheck>): string {
+  const summary: string = verifySummary_of(checks);
+  const at: string = new Date().toISOString();
+  const failed: boolean = checks.some((check: VerifyCheck): boolean => check.ok === false);
+  store.record_update(name, (current: DomainRecord): void => {
+    current.steps['verify'] = { state: failed ? 'failed' : 'done', ended: at, note: summary };
+  });
+  const kept: VerifyKept = { at, checks: checks.map((check: VerifyCheck) => ({ name: check.name, ok: check.ok, detail: check.detail, how: check.how })) };
+  store.file_write(name, VERIFY_FILE, `${JSON.stringify(kept, null, 2)}\n`);
+  return summary;
 }

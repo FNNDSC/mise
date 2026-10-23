@@ -744,12 +744,11 @@ export class TdController {
       row.append(head, el('span', 'tdc-prose', look.note === '' ? '—' : look.note));
       steps.append(row);
     }
-    const unwritten: boolean = domain.steps.some((step): boolean => step.name === 'smoke' && (step.evidence ?? '').includes('not a step this session has yet'));
     const commands: HTMLElement = el('div', 'tdc-commands');
-    const smoke: HTMLButtonElement = el('button', 'tdc-pill tdc-pill-plain', unwritten ? 'SMOKE AGAIN · NOT A STEP YET' : 'SMOKE AGAIN');
+    const smoke: HTMLButtonElement = el('button', 'tdc-pill tdc-pill-plain', 'SMOKE AGAIN · LATER');
     smoke.type = 'button';
     smoke.disabled = true;
-    smoke.title = 'smoke is a step of the cluster in the tree; not written yet';
+    smoke.title = 'the build runs the smoke journey once, as its last step; running it again is a line of its own, not written yet';
     commands.append(smoke);
     steps.append(commands);
     const cube: HTMLElement = this.section_make('THE CUBE', 'tdc-col-glance');

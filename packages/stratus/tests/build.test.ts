@@ -20,6 +20,8 @@ import { builtDomain_read } from '../src/domain/view.js';
 import { condition_of, domainReadout_of, planSummary_of, refusals_of } from '../src/domain/readout.js';
 import type { HarborDomain } from '../src/domains/harborOci.js';
 import { DomainTree } from '../src/vfs/domains.js';
+import { FakeKube, fakeChrisWork, fakeVerifyReach } from '../src/cluster/fakeKube.js';
+import type { KubeApi } from '../src/cluster/kube.js';
 import { domain_run, type DomainCommandContext } from '../src/commands/domain.js';
 import { options_read, spec_line, type BuildCommandContext } from '../src/commands/build.js';
 import { STRATUS_DOMAIN_SIZE_MODEL_KIND, STRATUS_DOMAIN_STATE_EVENT, type DomainSizeModel, type DomainSummary, type DomainsModel } from '@fnndsc/menu';
@@ -57,7 +59,11 @@ describe('building a domain over the fakes', () => {
     root = mkdtempSync(join(tmpdir(), 'stratus-build-'));
     store = new DomainStore(join(root, 'domains'));
     const world: FakeBuildWorld = new FakeBuildWorld(0);
-    deps = { store, builder: new FakeCloudBuilder(world), installer: new FakeInstaller(world), zones: 3, version: '4.22', pollMs: 0, hostsWaitMs: 1000, installWaitMs: 1000 };
+    deps = {
+      store, builder: new FakeCloudBuilder(world), installer: new FakeInstaller(world), zones: 3, version: '4.22', pollMs: 0, hostsWaitMs: 1000, installWaitMs: 1000, verifyWaitMs: 0,
+      reach: fakeVerifyReach((kubeconfig: string) => world.hosts_now(/cluster-([a-z0-9-]+)/.exec(kubeconfig)?.[1] ?? '').map((host) => ({ name: host.name, zone: host.zone, shape: 'VM.Standard.E5.Flex' }))),
+      chris: fakeChrisWork,
+    };
     surface = new GrantedSurface(true);
     surface_set(surface);
     runner = new JobRunner(join(root, 'jobs'), [{ id: STEPS_SOURCE, label: 'build steps' }]);
@@ -99,12 +105,47 @@ describe('building a domain over the fakes', () => {
     expect(planCounts_of(planned)).toEqual({ create: 17, replace: 0, change: 0, drift: 0, destroy: 0, replacedKinds: [] });
     store.record_update('trial', (record: DomainRecord): void => { record.billingAccepted = 'now'; });
     const second: JobRecord = await runner.job_start(STEPS_SOURCE, buildJob_id('trial'), 'build trial', buildRun_make('trial', undefined, deps)).finished;
-    expect(second.data['stoppedBefore']).toBe('postinstall');
+    expect(second.data['stoppedBefore']).toBeUndefined();
     const record: DomainRecord = store.record_read('trial') as DomainRecord;
+    expect(stepNext_of(record)).toBeNull();
+    expect(record.steps['verify']).toMatchObject({ state: 'done', note: '10 of 10 pass' });
+    expect(record.steps['chris-deploy']?.note).toContain('fnndsc/chris 1.0.8 at https://cube.apps.trial.fake.example/api/v1/');
+    expect(record.ids['cubeUrl']).toBe('https://cube.apps.trial.fake.example/api/v1/');
+    expect(record.steps['smoke']).toMatchObject({ state: 'done', note: 'the smoke journey passes as smoke (fake)' });
     expect(record.steps['run']).toMatchObject({ state: 'done', note: "installed; the kubeconfig and the administrator's password are on the host" });
     expect(record.ids).toMatchObject({ clusterId: 'cluster-trial', infraEnvId: 'infraenv-trial', isoObject: 'trial-discovery.iso' });
-    expect(store.secrets_list('trial').map((secret) => secret.name)).toEqual(['iso-link', 'kubeadmin-password', 'kubeconfig']);
+    expect(store.secrets_list('trial').map((secret) => secret.name)).toEqual(['chris-test-password', 'iso-link', 'kubeadmin-password', 'kubeconfig']);
     expect(runner.log_read(STEPS_SOURCE, buildJob_id('trial'))).toContain('trial-cp-2 registered');
+  });
+
+  it('verifies a new cluster until it settles, and fails it when it never does', async () => {
+    record_new('trial');
+    store.record_update('trial', (record: DomainRecord): void => { record.billingAccepted = 'now'; });
+    const reach = deps.reach as NonNullable<BuildDeps['reach']>;
+    const nodes = [0, 1, 2].map((index: number) => ({ name: `trial-cp-${index}`, zone: `AD-${index + 1}`, shape: 'VM.Standard.E5.Flex' }));
+    // The operators are still rolling at the first ask, settled at the second.
+    let asks: number = 0;
+    const settling = (): KubeApi => {
+      const degraded: FakeKube = new FakeKube({ nodes, degraded: ['kube-apiserver'] });
+      const healthy: FakeKube = new FakeKube({ nodes });
+      return {
+        json_get: (path: string) => (path.endsWith('/clusteroperators') && ++asks <= 1 ? degraded : healthy).json_get(path),
+        text_get: (path: string) => healthy.text_get(path),
+        json_post: (path: string, body: unknown) => healthy.json_post(path, body),
+        delete: (path: string) => healthy.delete(path),
+      };
+    };
+    const settles: BuildDeps = { ...deps, verifyWaitMs: 60_000, reach: { ...reach, kube_make: settling } };
+    const job: JobRecord = await runner.job_start(STEPS_SOURCE, buildJob_id('trial'), 'build trial', buildRun_make('trial', 'verify', settles)).finished;
+    expect(job.state).toBe('done');
+    expect(store.record_read('trial')?.steps['verify']).toMatchObject({ state: 'done', note: '10 of 10 pass' });
+    expect(runner.log_read(STEPS_SOURCE, buildJob_id('trial'))).toContain('verify: 9 of 10 pass, 1 fail; the cluster may still be settling, asking again: operators: 5 operators, not settled: kube-apiserver');
+    // A cluster that never settles fails the step when its time is up.
+    store.record_update('trial', (record: DomainRecord): void => { record.steps['verify'] = { state: 'not done' }; });
+    const never: BuildDeps = { ...deps, verifyWaitMs: 0, reach: { ...reach, kube_make: (): KubeApi => new FakeKube({ nodes, degraded: ['etcd'] }) } };
+    const failed: JobRecord = await runner.job_start(STEPS_SOURCE, buildJob_id('trial'), 'build trial', buildRun_make('trial', 'verify', never)).finished;
+    expect(failed.state).toBe('failed');
+    expect(store.record_read('trial')?.steps['verify']).toMatchObject({ state: 'failed', note: '9 of 10 pass, 1 fail after 0 minutes: operators: 5 operators, not settled: etcd' });
   });
 
   it('stops where it was asked to, and a step already done repeats nothing', async () => {
@@ -165,7 +206,7 @@ describe('building a domain over the fakes', () => {
     const view = builtDomain_read(store, 'trial');
     expect(view).toMatchObject({ name: 'trial', origin: 'built', cluster: 'trial.fake.example', settings: { CLUSTER_NAME: 'trial', BASE_DOMAIN: 'fake.example' } });
     expect(view?.steps[0]).toEqual({ folder: '01-compartment', name: 'compartment', state: 'not done', evidence: 'not run yet' });
-    expect(view?.steps[10]?.evidence).toBe('not a step this session has yet');
+    expect(view?.steps[10]?.evidence).toBe('not run yet');
     expect(builtDomain_read(store, 'nope')).toBeNull();
   });
 
@@ -243,7 +284,7 @@ describe('building a domain over the fakes', () => {
     expect(sink.text_get()).toContain('infra-plan: done');
     surface.answers = ['y'];
     const built: CommandEnvelope = await domain_run(context, ['build', 'trial']);
-    expect(plain(built.rendered)).toBe('trial: built through run; postinstall and after are not steps this session has yet\n');
+    expect(plain(built.rendered)).toBe('trial: every step done\n');
     expect(store.record_read('trial')?.billingAccepted).toBeDefined();
     expect(plain((await domain_run(context, ['status', 'trial'])).rendered)).toContain('built here');
   });
@@ -279,7 +320,7 @@ describe('building a domain over the fakes', () => {
     await domain_run(context, ['build', 'trial']);
     store.file_write('trial', 'verify.json', JSON.stringify({ at: '2026-10-23T00:00:00.000Z', checks: [{ name: 'API', ok: true, detail: '/readyz ok', how: 'reads' }] }));
     const after: DomainSummary = ((await domain_run(context, ['status', 'trial'])).model?.data as DomainsModel).domains[0] as DomainSummary;
-    expect(after).toMatchObject({ condition: 'UP', billing: true, next: 'postinstall' });
+    expect(after).toMatchObject({ condition: 'SERVING', billing: true, next: null });
     expect(after.plan).toMatchObject({ create: 17, change: 0, drift: 0, destroy: 0, at: expect.any(String) });
     expect(after.verify?.checks).toEqual([{ name: 'API', ok: true, detail: '/readyz ok', how: 'reads' }]);
   });

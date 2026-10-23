@@ -1,0 +1,59 @@
+# The OpenShift values stratus installs the fnndsc/chris chart with
+# (docs/stratus.adoc, D14). Origin: harbor-oci chris/values-openshift.yaml,
+# itself FNNDSC/miniChRIS-OKD chris/values-okd.yaml at 6124dfe.
+#
+# Host-agnostic on purpose: what belongs to one domain is set by the
+# chris-deploy step at install time:
+#   route.host                        cube.apps.<cluster domain>
+#   pfcon.nodeSelector                kubernetes.io/hostname=<the pinned node>
+#   pfcon.pman.extraEnv.NODE_SELECTOR (the same node: the volume is ReadWriteOnce)
+#   pfcon.storage.size, postgresql.primary.persistence.size,
+#   rabbitmq.persistence.size         the spec's chris sizes
+#
+# The chart's Bitnami subcharts pin docker.io/bitnami tags that now live only
+# under docker.io/bitnamilegacy; one is hard-coded in the heart pod's init
+# container, so values cannot fix it. chris-deploy applies a cluster-wide
+# ImageTagMirrorSet instead.
+
+global:
+  # Bitnami subcharts (postgresql, rabbitmq, nats): drop the charts' fixed
+  # UIDs and fsGroups so OpenShift's SCCs assign them (restricted-v2).
+  compatibility:
+    openshift:
+      adaptSecurityContext: auto
+
+# The ChRIS API behind an OpenShift Route, TLS ended at the router and HTTP
+# redirected to HTTPS.
+route:
+  enabled: true
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+cube:
+  config:
+    # CUBE sits behind the router's TLS: trust the forwarded headers so the
+    # absolute URLs it makes come out https://.
+    DJANGO_SECURE_PROXY_SSL_HEADER: "HTTP_X_FORWARDED_PROTO,https"
+    DJANGO_USE_X_FORWARDED_HOST: "true"
+    # chrisomatic makes the smoke user through the public registration
+    # endpoint, which this switch would remove (405 even for the superuser).
+    DISABLE_USER_ACCOUNT_CREATION: "false"
+
+  # Block volumes are ReadWriteOnce: every pod that mounts the shared
+  # storebase volume stays on the node that holds it.
+  enablePodAffinityWorkaround: true
+
+postgresql:
+  primary:
+    persistence:
+      size: 5Gi
+
+rabbitmq:
+  persistence:
+    size: 1Gi
+
+pfcon:
+  # The shared CUBE and pfcon file store (PVC <release>-storebase).
+  storage:
+    size: 20Gi

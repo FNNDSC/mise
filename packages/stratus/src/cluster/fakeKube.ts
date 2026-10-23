@@ -8,6 +8,7 @@
 import type { KubeApi } from './kube.js';
 import { KubeError } from './kube.js';
 import type { VerifyReach } from '../commands/verify.js';
+import { TEST_PASSWORD_FILE, type ChrisCall, type ChrisWork } from './chris.js';
 
 /** One fake node. */
 export interface FakeNode {
@@ -107,3 +108,22 @@ export function fakeVerifyReach(nodes_of: (kubeconfig: string) => FakeNode[]): V
     pollMs: 0,
   };
 }
+
+/**
+ * ChRIS in the fake world: each step says what the real one would have done
+ * and keeps what the next reads, so a fake build runs through `smoke`.
+ */
+export const fakeChrisWork: ChrisWork = {
+  async deploy(call: ChrisCall): Promise<string> {
+    call.log(`release ${call.release.release}: fnndsc/chris ${call.release.chartVersion} (fake)`);
+    return `fnndsc/chris ${call.release.chartVersion} at https://${call.cubeHost}/api/v1/ (fake)`;
+  },
+  async seed(call: ChrisCall): Promise<string> {
+    if (call.secret_read(TEST_PASSWORD_FILE) === null) call.secret_write(TEST_PASSWORD_FILE, 'fake\n');
+    return `test user ${call.release.testUser} (fake)`;
+  },
+  async smoke(call: ChrisCall): Promise<string> {
+    if (call.secret_read(TEST_PASSWORD_FILE) === null) throw new Error('no test user yet: chris-seed has not been done');
+    return `the smoke journey passes as ${call.release.testUser} (fake)`;
+  },
+};

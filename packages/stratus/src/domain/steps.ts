@@ -17,11 +17,15 @@
  *
  * @module
  */
+import { join } from 'node:path';
 import type { JobContext, JobRun } from '@fnndsc/brasa/core';
+import { CHRIS_RELEASE, CHRIS_WAITS, chrisWork_cluster, hostRun_spawn, type ChrisCall, type ChrisWaits, type ChrisWork, type HostRun } from '../cluster/chris.js';
+import type { VerifyReach } from '../commands/verify.js';
 import { planCounts_alter, planCounts_of, planCounts_words, type BuildCall, type CloudBuilder, type InfraOutputs, type InfraPlan, type PreflightCheck } from '../cloud/builder.js';
 import type { Installer, InstallerHost, InstallerIds, InstallStatus, PlatformManifest } from '../installer/installer.js';
 import { specNodes_of, type DomainSpec, type SpecNode } from './spec.js';
 import type { DomainRecord, DomainStore, StepRecord } from './state.js';
+import { verify_run, verifyChecks_keep, type VerifyCheck } from './verify.js';
 
 /** The build's steps, in order: the machine, then ChRIS on it. */
 export const BUILD_STEPS: ReadonlyArray<string> = ['compartment', 'preflight', 'cluster', 'iso', 'infra-plan', 'infra-apply', 'dns', 'manifests', 'hosts', 'run', 'postinstall', 'verify', 'chris-deploy', 'chris-seed', 'smoke'];
@@ -29,8 +33,11 @@ export const BUILD_STEPS: ReadonlyArray<string> = ['compartment', 'preflight', '
 /** The first step that bills: the run stops before it until the cost is accepted. */
 export const FIRST_BILLING_STEP: string = 'infra-apply';
 
+/** The machine's steps, through the install: what an adopted checkout already did. */
+export const MACHINE_STEPS: ReadonlyArray<string> = BUILD_STEPS.slice(0, BUILD_STEPS.indexOf('run') + 1);
+
 /** The steps this session has; the run stops before any other. */
-export const STEPS_WRITTEN: ReadonlyArray<string> = ['compartment', 'preflight', 'cluster', 'iso', 'infra-plan', 'infra-apply', 'dns', 'manifests', 'hosts', 'run'];
+export const STEPS_WRITTEN: ReadonlyArray<string> = BUILD_STEPS;
 
 /** The task source the runs are kept in. */
 export const STEPS_SOURCE: string = 'steps';
@@ -50,7 +57,21 @@ export interface BuildDeps {
   readonly hostsWaitMs: number;
   /** How long the install has, in milliseconds. */
   readonly installWaitMs: number;
+  /** How the steps after `run` reach the installed cluster: verify's reach. */
+  readonly reach?: VerifyReach;
+  /** ChRIS on the cluster; the real cluster's unless a test or the fake world hands its own. */
+  readonly chris?: ChrisWork;
+  /** How `helm` and `uv` run on the host. */
+  readonly host?: HostRun;
+  /** The shape a family's nodes are, which verify checks them against. */
+  readonly shape_find?: (region: string, family: string) => Promise<string | null>;
+  /** How long a freshly installed cluster has to pass verify, in milliseconds. */
+  readonly verifyWaitMs?: number;
+  readonly chrisWaits?: ChrisWaits;
 }
+
+/** How long a new cluster has to settle until verify passes: its operators go on rolling after the install says done. */
+export const VERIFY_WAIT_MS: number = 30 * 60_000;
 
 /** The waits `harbor-oci` proved, polled each minute. */
 export const BUILD_WAITS: Pick<BuildDeps, 'pollMs' | 'hostsWaitMs' | 'installWaitMs'> = { pollMs: 60_000, hostsWaitMs: 45 * 60_000, installWaitMs: 120 * 60_000 };
@@ -122,6 +143,44 @@ function id_need(record: DomainRecord, key: string, step: string): string {
  */
 function ids_need(record: DomainRecord): InstallerIds {
   return { clusterId: id_need(record, 'clusterId', 'cluster'), infraEnvId: id_need(record, 'infraEnvId', 'cluster') };
+}
+
+/**
+ * The installed cluster's kubeconfig, or why there is none.
+ *
+ * @param call - The step.
+ * @returns Its text.
+ */
+function kubeconfig_need(call: StepCall): string {
+  const text: string | null = call.deps.store.secret_read(call.name, 'kubeconfig');
+  if (text === null) throw new Error('no kubeconfig kept: run has not been done');
+  return text;
+}
+
+/**
+ * What a ChRIS step is handed, from the build's step.
+ *
+ * @param call - The step.
+ * @returns The ChRIS call.
+ */
+function chrisCall_of(call: StepCall): ChrisCall {
+  if (call.deps.reach === undefined) throw new Error('this session cannot reach a cluster');
+  const folder: string = call.deps.store.folder_of(call.name);
+  return {
+    kube: call.deps.reach.kube_make(kubeconfig_need(call)),
+    host: call.deps.host ?? hostRun_spawn,
+    kubeconfigPath: join(folder, 'auth', 'kubeconfig'),
+    folder,
+    cubeHost: `cube.apps.${call.name}.${call.record().baseDomain}`,
+    spec: call.spec,
+    release: CHRIS_RELEASE,
+    waits: call.deps.chrisWaits ?? CHRIS_WAITS,
+    secret_read: (file: string): string | null => call.deps.store.secret_read(call.name, file),
+    secret_write: (file: string, text: string): void => call.deps.store.secret_write(call.name, file, text),
+    secret_path: (file: string): string => join(folder, 'auth', file),
+    log: call.log,
+    signal: call.signal,
+  };
 }
 
 /** Each step's work. */
@@ -247,6 +306,40 @@ const STEP_WORK: Readonly<Record<string, (call: StepCall) => Promise<string>>> =
     }
     return 'stopped while installing';
   },
+  postinstall: async (): Promise<string> => 'nothing to do after the install on this cloud',
+  verify: async (call: StepCall): Promise<string> => {
+    if (call.deps.reach === undefined) throw new Error('this session cannot reach a cluster');
+    const reach: VerifyReach = call.deps.reach;
+    const record: DomainRecord = call.record();
+    const kube = reach.kube_make(kubeconfig_need(call));
+    const shape: string | null = call.deps.shape_find === undefined ? null : await call.deps.shape_find(record.region, call.spec.family).catch((): null => null);
+    const deadline: number = Date.now() + (call.deps.verifyWaitMs ?? VERIFY_WAIT_MS);
+    while (!call.signal.aborted) {
+      const checks: VerifyCheck[] = await verify_run({
+        kube, resolve: reach.resolve, https_status: reach.https_status, domain: call.name, baseDomain: record.baseDomain, shape,
+        expectedNodes: call.spec.controlPlane.count + call.spec.workers.count,
+        addresses: { api: record.ids['apiIp'], apiInt: record.ids['apiIntIp'], apps: record.ids['appsIp'] },
+        // The build runs under the tasks tier, so the volume probe may write.
+        probe: true, probeTimeoutMs: reach.probeTimeoutMs, pollMs: reach.pollMs, signal: call.signal,
+      });
+      const summary: string = verifyChecks_keep(call.deps.store, call.name, checks);
+      const failed: VerifyCheck[] = checks.filter((check: VerifyCheck): boolean => check.ok === false);
+      if (failed.length === 0) return summary;
+      const why: string = failed.map((check: VerifyCheck): string => `${check.name}: ${check.detail}`).join('; ');
+      if (Date.now() >= deadline) throw new Error(`${summary} after ${Math.round((call.deps.verifyWaitMs ?? VERIFY_WAIT_MS) / 60_000)} minutes: ${why}`);
+      call.log(`${summary}; the cluster may still be settling, asking again: ${why}`);
+      await poll_wait(call.deps.pollMs, call.signal);
+    }
+    return 'stopped while verifying';
+  },
+  'chris-deploy': async (call: StepCall): Promise<string> => {
+    const chris: ChrisCall = chrisCall_of(call);
+    const note: string = await (call.deps.chris ?? chrisWork_cluster).deploy(chris);
+    call.remember({ cubeUrl: `https://${chris.cubeHost}/api/v1/` });
+    return note;
+  },
+  'chris-seed': async (call: StepCall): Promise<string> => (call.deps.chris ?? chrisWork_cluster).seed(chrisCall_of(call)),
+  smoke: async (call: StepCall): Promise<string> => (call.deps.chris ?? chrisWork_cluster).smoke(chrisCall_of(call)),
 };
 
 /**

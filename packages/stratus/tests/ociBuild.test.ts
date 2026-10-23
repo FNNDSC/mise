@@ -142,8 +142,15 @@ describe('the OCI builder\'s build and teardown', () => {
       if (name === 'quay' && refusals-- > 0) throw Object.assign(new Error('Authorization failed or requested resource not found.'), { statusCode: 404 });
       return await ensure(parentId, name, description, tags);
     };
+    let unseen: number = 2;
+    const state = api.compartmentState_get.bind(api);
+    api.compartmentState_get = async (id: string) => {
+      if (id === 'ocid1.compartment.oc1..quay' && unseen-- > 0) throw Object.assign(new Error('Authorization failed or requested resource not found.'), { statusCode: 404 });
+      return await state(id);
+    };
     expect(await builder.compartment_ensure({ domain: 'quay', region: 'r' }, call())).toEqual({ id: 'ocid1.compartment.oc1..quay', made: true });
     expect(logged.filter((line: string): boolean => line === 'domains is not yet usable; waiting')).toHaveLength(2);
+    expect(logged.filter((line: string): boolean => line === 'ocid1.compartment.oc1..quay is not yet found; waiting')).toHaveLength(2);
     refusals = Infinity;
     api.children.clear();
     const impatient: OciBuilder = builder_make(0);

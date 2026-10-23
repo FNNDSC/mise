@@ -26,6 +26,7 @@ import type { BuildCall, CloudBuilder, InfraOutputs, InfraPlan, PreflightCheck, 
 import { Readable } from 'node:stream';
 import { planRows_read } from './planRead.js';
 import type { OciBuildApi } from './buildApi.js';
+import { notFound } from './errors.js';
 import { familyShape_of, stackVariables_build } from './stackVars.js';
 import type { CloudDriver } from '../driver.js';
 import { specFit_read } from '../../domain/sizing.js';
@@ -52,6 +53,8 @@ export interface OciBuilderOptions {
   readonly zip_fetch?: () => Promise<Buffer>;
   /** How often a job is asked again, in milliseconds. */
   readonly pollMs?: number;
+  /** How long a call may answer not found for something just made before the step fails; ten minutes when absent. */
+  readonly visibleWaitMs?: number;
   /** The build's other OCI calls in a region; absent, only adoption and re-plans work. */
   readonly api?: (region: string) => OciBuildApi;
   /** The read driver, for the fit per availability domain. */
@@ -262,10 +265,34 @@ export class OciBuilder implements CloudBuilder {
     const parent = await api.compartmentChild_ensure(tenancy.id, DOMAINS_COMPARTMENT, 'The Trusted Domains stratus builds, one compartment each', { 'mise-role': 'domains' });
     call.log(parent.made ? `made the compartment ${DOMAINS_COMPARTMENT} under ${tenancy.name}` : `${DOMAINS_COMPARTMENT} is there`);
     await this.compartment_awaitActive(api, parent.id, call);
-    const own = await api.compartmentChild_ensure(parent.id, request.domain, `The Trusted Domain ${request.domain}`, { 'mise-domain': request.domain });
+    // A compartment just made reads ACTIVE before the identity service will make one inside it: until then it answers not found.
+    const own = await this.notFound_outwait(() => api.compartmentChild_ensure(parent.id, request.domain, `The Trusted Domain ${request.domain}`, { 'mise-domain': request.domain }), `${DOMAINS_COMPARTMENT} is not yet usable`, call);
     call.log(own.made ? `made the compartment ${DOMAINS_COMPARTMENT}/${request.domain}` : `${DOMAINS_COMPARTMENT}/${request.domain} is there`);
     await this.compartment_awaitActive(api, own.id, call);
     return own;
+  }
+
+  /**
+   * Runs a call again while the cloud answers not found, for a bounded time:
+   * what was just made is not at once visible everywhere.
+   *
+   * @param run - The call.
+   * @param waiting - What the log says while it waits.
+   * @param call - The step's log and stop.
+   * @returns What the call answered.
+   */
+  private async notFound_outwait<T>(run: () => Promise<T>, waiting: string, call: BuildCall): Promise<T> {
+    const pollMs: number = this.options.pollMs ?? 10_000;
+    const until: number = Date.now() + (this.options.visibleWaitMs ?? 600_000);
+    for (;;) {
+      try {
+        return await run();
+      } catch (error: unknown) {
+        if (!notFound(error) || Date.now() >= until || call.signal.aborted) throw error;
+        call.log(`${waiting}; waiting`);
+        await poll_wait(pollMs, call.signal);
+      }
+    }
   }
 
   /**

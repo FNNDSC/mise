@@ -245,6 +245,23 @@ function definedValue_getFirst(...values: unknown[]): unknown {
   return values.find((value: unknown): boolean => value !== undefined);
 }
 
+/**
+ * Picks the compute a node runs on when the run names none.
+ *
+ * `host` is what a stock ChRIS calls its compute, so it stays the choice
+ * wherever the plugin is registered there, or where the plugin's computes
+ * were not read. A CUBE that names its computes otherwise (ekanite's
+ * `argentum`) would refuse every node on `host`, so the plugin's first
+ * registered compute is taken instead.
+ *
+ * @param computeResources - The computes the plugin is registered on, when read.
+ * @returns The compute's name.
+ */
+export function computeResourceName_choose(computeResources: ReadonlyArray<string> | undefined): string {
+  if (computeResources === undefined || computeResources.length === 0 || computeResources.includes('host')) return 'host';
+  return computeResources[0] as string;
+}
+
 async function pipelineManifest_project(
   pipelineRecord: PipelineRecord,
   pipeline: PipelineHandle,
@@ -284,7 +301,7 @@ async function pipelineManifest_project(
         pluginName: piping.plugin_name ?? '?',
         pluginVersion: piping.plugin_version ?? '',
         parentID: piping.previous_id ?? null,
-        computeResourceName: 'host',
+        computeResourceName: computeResourceName_choose(computeResources),
         cpuLimit: definedValue_getFirst(resource?.plugin_piping_cpu_limit, piping.cpu_limit),
         memoryLimit: definedValue_getFirst(resource?.plugin_piping_memory_limit, piping.memory_limit),
         gpuLimit: definedValue_getFirst(resource?.plugin_piping_gpu_limit, piping.gpu_limit),

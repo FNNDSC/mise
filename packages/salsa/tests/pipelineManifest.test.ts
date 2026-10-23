@@ -26,6 +26,7 @@ jest.mock('@fnndsc/cumin', () => ({
 }));
 
 import {
+  computeResourceName_choose,
   pipelineManifest_get,
   pipelineManifestForPipeline_get,
 } from '../src/pipelines/manifest';
@@ -599,6 +600,21 @@ describe('pipelineManifest_get', () => {
       getPipelineSourceFiles: async () => ({ getItems: () => [] }),
     });
     expect((await pipeline_sourceGet('brain')).ok).toBe(false);
+  });
+
+  describe('computeResourceName_choose', () => {
+    it('keeps host where the plugin is registered there', () => {
+      expect(computeResourceName_choose(['gpu', 'host'])).toBe('host');
+    });
+
+    it('keeps host where the computes were not read', () => {
+      expect(computeResourceName_choose(undefined)).toBe('host');
+      expect(computeResourceName_choose([])).toBe('host');
+    });
+
+    it('takes the first registered compute on a CUBE with no host', () => {
+      expect(computeResourceName_choose(['argentum', 'argentum-avx', 'ares'])).toBe('argentum');
+    });
   });
 
 });

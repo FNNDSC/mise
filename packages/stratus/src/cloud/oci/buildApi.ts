@@ -30,6 +30,8 @@ export interface OciBuildApi {
   compartmentState_get(compartmentId: string): Promise<string>;
   /** The compartment a DNS zone of a name lives in, anywhere in the tenancy, or null. */
   zoneCompartment_find(zone: string): Promise<string | null>;
+  /** The names of the DNS zones anywhere in the tenancy, sorted. */
+  zoneNames_list(): Promise<string[]>;
   /** The compartment a tag namespace of a name lives in, anywhere in the tenancy, or null. Its name is the tenancy's, not a compartment's. */
   tagNamespaceCompartment_find(namespace: string): Promise<string | null>;
   /** An active compartment of a name directly under a parent, made (with the tags given) when there is none; its id. */
@@ -115,6 +117,13 @@ export function ociBuildApi_make(options: OciBuildApiOptions): OciBuildApi {
         if (zones.length > 0) return compartmentId;
       }
       return null;
+    },
+    async zoneNames_list() {
+      const names: Set<string> = new Set();
+      for (const compartmentId of await compartments_all()) {
+        for (const zone of (await dnsClient.listZones({ compartmentId })).items) if (typeof zone.name === 'string') names.add(zone.name);
+      }
+      return [...names].sort();
     },
     async tagNamespaceCompartment_find(namespaceName) {
       for (const compartmentId of await compartments_all()) {

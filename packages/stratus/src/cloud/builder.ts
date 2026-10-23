@@ -137,6 +137,8 @@ export interface TeardownRequest {
 export interface CloudBuilder {
   /** Its id (`oci`, `fake`). */
   readonly id: string;
+  /** The DNS zones the tenancy holds, by name: where a new domain's names may live. */
+  zones_list?(region: string): Promise<string[]>;
   /**
    * The domain's own compartment, `domains/<name>` under the tenancy, tagged
    * `mise-domain=<name>`, made with its `domains` parent when either is

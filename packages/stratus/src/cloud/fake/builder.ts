@@ -32,6 +32,8 @@ export class FakeBuildWorld {
   private readonly clusters: Map<string, FakeCluster> = new Map();
   /** The compartments made, by domain. */
   readonly compartments: Map<string, string> = new Map();
+  /** The DNS zones the tenancy holds. */
+  readonly zones: string[] = ['fake.example'];
   private serial: number = 0;
 
   constructor(readonly tickMs: number = 0) {}
@@ -103,6 +105,10 @@ export class FakeCloudBuilder implements CloudBuilder {
   readonly id: string = 'fake';
 
   constructor(private readonly world: FakeBuildWorld) {}
+
+  async zones_list(_region: string): Promise<string[]> {
+    return [...this.world.zones];
+  }
 
   async compartment_ensure(request: { domain: string; region: string }, call: BuildCall): Promise<{ id: string; made: boolean }> {
     await this.world.tick(1, call.signal);

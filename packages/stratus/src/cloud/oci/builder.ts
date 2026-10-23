@@ -243,6 +243,10 @@ export class OciBuilder implements CloudBuilder {
     return this.options.api(region);
   }
 
+  async zones_list(region: string): Promise<string[]> {
+    return await this.api_in(region).zoneNames_list();
+  }
+
   /**
    * The domain's compartment, `domains/<name>` under the tenancy root.
    * Compartments are free; making one is still a change to the tenancy, so

@@ -193,11 +193,27 @@ describe('building a domain over the fakes', () => {
     expect((await domain_run(context, ['new', 'x', '--workers'])).renderedErr).toContain('--workers takes a value');
     expect((await domain_run(context, ['new', 'x', '--plane', '2x8/24'])).renderedErr).toContain('the control plane is three nodes');
     const unanchored: DomainCommandContext = { ...context, build: { ...context.build!, baseDomain: null } };
-    expect((await domain_run(unanchored, ['new', 'y'])).renderedErr).toContain('--base-domain <zone> is needed');
+    expect((await domain_run(unanchored, ['new', 'y'])).renderedErr).toContain('--base-domain <zone> is needed: the DNS zone the cluster\'s names live under (the tenancy holds no DNS zone to find)');
     const offline: DomainCommandContext = { ...context, build: { ...context.build!, region: (): null => null } };
     expect((await domain_run(offline, ['new', 'y'])).renderedErr).toBe('domain new: not connected\n');
     expect(options_read(['a', '--x=1'], ['--x'])).toEqual({ options: new Map([['--x', '1']]), rest: ['a'] });
     expect(spec_line(SPEC_DEFAULT)).toBe('E5 · plane 3 × 8 vCPU 24 GiB · workers 0 (compact) · ChRIS data 20 GiB');
+  });
+
+  it('domain new and domain size find the zone where it lives: the tenancy\'s only one, else one named', async () => {
+    const world: FakeBuildWorld = new FakeBuildWorld(0);
+    world.zones.splice(0, world.zones.length, 'oci.example.org');
+    const zoned: DomainCommandContext = { ...context, build: { ...context.build!, baseDomain: null, builder: new FakeCloudBuilder(world) } };
+    expect(plain((await domain_run(zoned, ['new', 'quay'])).rendered)).toContain('quay  quay.oci.example.org  spec written');
+    expect(store.record_read('quay')?.baseDomain).toBe('oci.example.org');
+    const sized: DomainSizeModel = (await domain_run(zoned, ['size'])).model?.data as DomainSizeModel;
+    expect(sized).toMatchObject({ baseDomain: 'oci.example.org', dnsZones: ['oci.example.org'] });
+    expect((await domain_run(zoned, ['new', 'pier', '--base-domain', 'elsewhere.org'])).renderedErr).toBe('domain new: --base-domain elsewhere.org: no such zone in the tenancy (oci.example.org)\n');
+    world.zones.push('lab.example.org');
+    expect((await domain_run(zoned, ['new', 'pier'])).renderedErr).toContain('(the tenancy holds 2: oci.example.org, lab.example.org)');
+    expect((await domain_run(zoned, ['size'])).model?.data).toMatchObject({ baseDomain: null, dnsZones: ['oci.example.org', 'lab.example.org'] });
+    expect(plain((await domain_run(zoned, ['size'])).rendered)).toContain('names under: none chosen; domain new --base-domain names one (oci.example.org, lab.example.org)');
+    expect(plain((await domain_run(zoned, ['new', 'pier', '--base-domain', 'lab.example.org'])).rendered)).toContain('pier.lab.example.org');
   });
 
   it('domain plan reads only, and says the plan itself needs the tier', async () => {

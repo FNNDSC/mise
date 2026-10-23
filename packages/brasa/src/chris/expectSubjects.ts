@@ -40,8 +40,11 @@ function cohortPulled_count(state: GatherState): number {
 async function gather_read(property: string): Promise<ExpectReading> {
   // Loaded on demand, as the cohort's reference loads it: the backend's
   // description is read at install, long before a claim is made.
-  const { cohort_read } = await import('../builtins/res/gather.store.js');
-  const state: GatherState = await cohort_read();
+  const { cohort_read, cohortFolders_resolve } = await import('../builtins/res/gather.store.js');
+  const read: GatherState = await cohort_read();
+  // Whether a series is home is CUBE's to say: a folder the cohort has not
+  // noted yet is asked for before the claim is read.
+  const state: GatherState = property === 'pulled' || property === 'unpulled' ? await cohortFolders_resolve(read) : read;
   if (property === 'size') return { got: `${state.series.length}` };
   if (property === 'pulled') return { got: `${cohortPulled_count(state)}` };
   // "Every member landed" said directly: no arithmetic between two readings.

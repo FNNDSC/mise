@@ -10,6 +10,9 @@
  * read them, saying where they are on the host (D8). The domains are the
  * daemon's to know (`stratus --domain <name>=<checkout>`); each is read
  * from the host when it is asked for, so what is listed is what is there.
+ * Beside them stand the manifests the engine ships (`tenant.mise`), files
+ * whose names a domain's DNS label can never take, so `play ~/tenant.mise`
+ * finds one in the home.
  *
  * @module
  */
@@ -18,6 +21,7 @@ import { harborDomain_read, lastDone_of, type DomainSecret, type DomainSource, t
 import type { ResourceNode } from './resources.js';
 import type { DomainStore } from '../domain/state.js';
 import { builtDomain_read } from '../domain/view.js';
+import type { ShippedManifest } from '../domain/manifests.js';
 
 /** What a domain folder holds, in listing order. */
 export const DOMAIN_ENTRIES: ReadonlyArray<string> = ['spec.yaml', 'settings', 'state.json', 'steps', 'auth'];
@@ -32,6 +36,8 @@ export interface DomainTreeOptions {
   readonly now: () => Date;
   /** The domains this daemon builds, kept on its host. */
   readonly store?: DomainStore;
+  /** The manifests shown beside the domains. */
+  readonly manifests?: ReadonlyArray<ShippedManifest>;
 }
 
 /** The domains a tenancy holds, as folders. */
@@ -71,8 +77,16 @@ export class DomainTree {
    * @returns The node.
    */
   node_resolve(segments: ReadonlyArray<string>): ResourceNode {
-    if (segments.length === 0) return { kind: 'listing', list: async (): Promise<VFSItem[]> => this.domains_read().map((domain: HarborDomain): VFSItem => this.domain_item(domain)) };
+    const manifests: ReadonlyArray<ShippedManifest> = this.options.manifests ?? [];
+    if (segments.length === 0) {
+      return { kind: 'listing', list: async (): Promise<VFSItem[]> => [
+        ...this.domains_read().map((domain: HarborDomain): VFSItem => this.domain_item(domain)),
+        ...manifests.map((manifest: ShippedManifest): VFSItem => this.file_item(manifest.name, manifest.text)),
+      ] };
+    }
     const [name, entry, ...rest] = segments;
+    const manifest: ShippedManifest | undefined = manifests.find((shipped: ShippedManifest): boolean => shipped.name === name);
+    if (manifest !== undefined) return rest.length > 0 || entry !== undefined ? { kind: 'missing' } : { kind: 'file', text: manifest.text };
     const domain: HarborDomain | null = this.domain_read(name as string);
     if (domain === null) return { kind: 'missing' };
     if (entry === undefined) return { kind: 'listing', list: async (): Promise<VFSItem[]> => this.domainEntries_items(domain) };

@@ -1,11 +1,11 @@
 # Active project handoff: stratus (epic #1056)
 
-- Last updated: 2026-10-22
+- Last updated: 2026-10-23
 - Last verified against `main`: the Version Packages merge #1213, 2026-10-22
 - Working branches: none; `main` is clean
 - Epic status: comment posted on #1056, 2026-10-22 (follow-up 4 closed)
 - Current milestone: steps 1 to 4 of the order of work in [stratus.adoc](stratus.adoc#order) are on `main` (step 4 as #1200 to #1205) and published (@fnndsc/stratus 0.2.1, deployed on pangea 2026-10-22; titan carries no stratus). The live domain `harbor` is adopted into the operator's own state (`~/.local/state/stratus/domains/harbor`, reusing the stack tagged `mise-domain=harbor`), and `domain verify harbor` passes 10 of 10 there, the block-volume probe included (its 50 GiB claim made, read back and released, the compartment back to six volumes)
-- Next action: the second tenant, `quay` ([stratus.adoc D14](stratus.adoc#d14), settled 2026-10-22). Its first change is claims across backends: `expect`'s subject registry and `play` back in core, stratus registering `domain`. Then domain lifecycle, porter's stratus door and switch, the whole controller, `tenant.mise`, and quay's build played from the controller with screenshots; then step 5 on quay
+- Next action: the second tenant, `quay` ([stratus.adoc D14](stratus.adoc#d14), settled 2026-10-22). Claims (#1220), domain lifecycle (#1222), porter's stratus door (#1223), the readouts (#1224) and the TD controller (#1225) are merged, unpublished. `tenant.mise` ships with stratus and stands at `~/tenant.mise`; COMMIT writes the spec and plays it (proven over `stratus --fake` from SIZE to UP, verify 10 of 10). Next: quay's live build played from the controller with screenshots, on the operator's word; then step 5 on quay. The OCI bootstrap is still owed (D14, Bootstrap)
 
 This file is the handoff between sessions and between models. It says where the work stands and what to do next, with the facts a fresh context needs to do it without rediscovery. The design itself is [stratus.adoc](stratus.adoc); the bastions are [bastion.adoc](bastion.adoc) and [dev-bastion.adoc](dev-bastion.adoc); what Red Hat ships against the primitive is [redhat-fl.adoc](redhat-fl.adoc); the metaphor every figure is drawn in is [linux-metaphor.adoc](linux-metaphor.adoc).
 

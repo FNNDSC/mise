@@ -22,6 +22,7 @@ import { envFile_parse, harborDomain_read, type HarborDomain } from '../domains/
 import type { CloudBuilder } from '../cloud/builder.js';
 import { specYaml_parse, SPEC_DEFAULT, type DomainSpec } from './spec.js';
 import { STEPS_WRITTEN } from './steps.js';
+import { ADOPTED_COMPARTMENT } from './view.js';
 import type { DomainRecord, DomainStore, StepRecord } from './state.js';
 
 /** What adoption reads from a checkout. */
@@ -89,6 +90,7 @@ export function checkout_read(name: string, root: string, now: Date): CheckoutRe
     // The cluster runs, so every step through run happened, whatever the host kept to show it.
     if (STEPS_WRITTEN.includes(step.name)) steps[step.name] = { state: 'done', note: `done before adoption (harbor-oci: ${step.state}, ${step.evidence})` };
   }
+  steps['compartment'] = { ...ADOPTED_COMPARTMENT };
   const ids: Record<string, string> = {};
   for (const [key, field] of [['clusterId', 'assistedClusterId'], ['infraEnvId', 'assistedInfraEnvId'], ['isoObject', 'isoObjectName']] as const) {
     if (typeof harbor[field] === 'string') ids[key] = harbor[field] as string;

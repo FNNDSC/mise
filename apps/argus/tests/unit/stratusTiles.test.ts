@@ -35,7 +35,7 @@ function hooks_make(answers: Record<string, unknown>, seen: string[]): StratusTi
         ? { envelopes: [{ status: 'error', rendered: '', renderedErr: `${line}: refused\n` }] }
         : { envelopes: [{ status: 'ok', rendered: '', model: { kind, data } }] }) as unknown as ExecuteOutcome;
     },
-    home_cd: (path: string): void => { seen.push(`cd ${path}`); },
+    domain_open: (name: string): void => { seen.push(`domain ${name}`); },
     home_open: (): void => { seen.push('home'); },
     line_run: (line: string): void => { seen.push(`run ${line}`); },
   };
@@ -52,7 +52,7 @@ describe('the stratus tiles', () => {
     expect(money_text(1, 'EUR')).toBe('EUR 1.00');
     domains.rows[0]!.open!();
     domains.enter();
-    expect(seen).toEqual(['cd /net/oci/t/domains/harbor', 'home']);
+    expect(seen).toEqual(['domain harbor', 'home']);
     expect(tiles.about?.['files']?.text).toContain('Trusted Domains');
   });
 

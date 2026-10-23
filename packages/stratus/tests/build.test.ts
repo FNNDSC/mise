@@ -17,9 +17,12 @@ import { SPEC_DEFAULT, specOptions_apply, type DomainSpec } from '../src/domain/
 import { buildJob_id, buildRun_make, stepNext_of, STEPS_SOURCE, type BuildDeps } from '../src/domain/steps.js';
 import { cost_words, familyShape_find, specCost_of, specFit_read } from '../src/domain/sizing.js';
 import { builtDomain_read } from '../src/domain/view.js';
+import { condition_of, domainReadout_of, planSummary_of, refusals_of } from '../src/domain/readout.js';
+import type { HarborDomain } from '../src/domains/harborOci.js';
 import { DomainTree } from '../src/vfs/domains.js';
 import { domain_run, type DomainCommandContext } from '../src/commands/domain.js';
 import { options_read, spec_line, type BuildCommandContext } from '../src/commands/build.js';
+import { STRATUS_DOMAIN_SIZE_MODEL_KIND, STRATUS_DOMAIN_STATE_EVENT, type DomainSizeModel, type DomainSummary, type DomainsModel } from '@fnndsc/menu';
 
 const plain = (text: string | undefined): string => (text ?? '').replace(/\x1b\[[0-9;]*m/g, '');
 
@@ -229,6 +232,56 @@ describe('building a domain over the fakes', () => {
     expect(plain((await domain_run(context, ['status', 'trial'])).rendered)).toContain('built here');
   });
 
+  it('domain build shows its domain as a state event at each line and before it asks', async () => {
+    record_new('trial');
+    const shown: Array<{ kind: string; data: DomainSummary }> = [];
+    sink.event_write = (kind: string, data: unknown): void => { shown.push({ kind, data: data as DomainSummary }); };
+    context = { ...context, build: { ...context.build!, domainsPath: (): string => '/net/oci/fnndsc/domains' } };
+    surface.answers = ['n'];
+    await domain_run(context, ['build', 'trial']);
+    expect(shown.length).toBeGreaterThan(3);
+    expect(shown.every((event) => event.kind === STRATUS_DOMAIN_STATE_EVENT && event.data.name === 'trial' && event.data.resources === null && event.data.cost === undefined)).toBe(true);
+    expect(shown.some((event) => event.data.condition === 'BUILDING' && event.data.running?.job === 'trial-build')).toBe(true);
+    const asking = shown.find((event) => event.data.condition === 'ASKING');
+    expect(asking?.data.asking).toContain('infra-apply creates 17 resources');
+    expect(asking?.data.path).toBe('/net/oci/fnndsc/domains/trial');
+    const last: DomainSummary = (shown.at(-1) as { data: DomainSummary }).data;
+    expect(last.condition).toBe('SIZING');
+    expect(last.asking).toBeNull();
+    expect(last.next).toBe('infra-apply');
+    expect(last.steps.find((step) => step.name === 'infra-plan')).toMatchObject({ state: 'done', started: expect.any(String), ended: expect.any(String) });
+  });
+
+  it('domain status carries what the controller draws', async () => {
+    record_new('trial');
+    const before: DomainSummary = ((await domain_run(context, ['status', 'trial'])).model?.data as DomainsModel).domains[0] as DomainSummary;
+    expect(before).toMatchObject({ condition: 'SIZING', billing: false, origin: 'built', protected: true, gone: null, region: 'us-ashburn-1', next: 'compartment', billingStep: 'infra-apply', running: null, plan: null, verify: null, asking: null });
+    expect(before.refused).toEqual({ teardown: 'protected (domain protect trial off lifts it)' });
+    expect(before.spec).toEqual(SPEC_DEFAULT);
+    expect(before.steps[0]).toEqual({ folder: '01-compartment', state: 'not done', name: 'compartment', evidence: 'not run yet', started: null, ended: null });
+    surface.answers = ['y'];
+    await domain_run(context, ['build', 'trial']);
+    store.file_write('trial', 'verify.json', JSON.stringify({ at: '2026-10-23T00:00:00.000Z', checks: [{ name: 'API', ok: true, detail: '/readyz ok', how: 'reads' }] }));
+    const after: DomainSummary = ((await domain_run(context, ['status', 'trial'])).model?.data as DomainsModel).domains[0] as DomainSummary;
+    expect(after).toMatchObject({ condition: 'UP', billing: true, next: 'postinstall' });
+    expect(after.plan).toMatchObject({ create: 17, change: 0, drift: 0, destroy: 0, at: expect.any(String) });
+    expect(after.verify?.checks).toEqual([{ name: 'API', ok: true, detail: '/readyz ok', how: 'reads' }]);
+  });
+
+  it('domain size reads what a new domain is sized against, and refuses what it cannot', async () => {
+    const sized = await domain_run(context, ['size']);
+    const model: DomainSizeModel = sized.model?.data as DomainSizeModel;
+    expect(sized.model?.kind).toBe(STRATUS_DOMAIN_SIZE_MODEL_KIND);
+    expect(model).toMatchObject({ region: 'us-ashburn-1', family: 'E5', baseDomain: 'fake.example', start: SPEC_DEFAULT });
+    expect(model.families).toContain('E5');
+    expect(model.zones).toHaveLength(3);
+    expect(model.price).toMatchObject({ currency: 'USD' });
+    expect(plain(sized.rendered)).toContain('starts from: E5');
+    expect((await domain_run(context, ['size', '--family', 'Z9'])).renderedErr).toContain('Z9: no such family');
+    expect((await domain_run(context, ['size', 'x'])).renderedErr).toBe('domain size: usage: domain size [--family <family>]\n');
+    expect((await domain_run({ ...context, build: { ...context.build!, region: (): null => null } }, ['size'])).renderedErr).toBe('domain size: not connected\n');
+  });
+
   it('domain build stops where asked, and refuses what it cannot do', async () => {
     record_new('trial');
     expect(plain((await domain_run(context, ['build', 'trial', '--through', 'cluster'])).rendered)).toBe('trial: done through cluster; next: iso\n');
@@ -268,5 +321,61 @@ describe("the installer's account", () => {
     expect(statSync(account.path).mode & 0o777).toBe(0o600);
     expect(serviceAccount_read(readFileSync(account.path, 'utf-8'))).toEqual({ clientId: 'abc', clientSecret: 's3' });
     expect(() => account.keep('x', 'y')).toThrow('is there already');
+  });
+});
+
+describe('the controller readout', () => {
+  const domain_with = (states: Record<string, string>, origin: 'built' | 'checkout' = 'built'): HarborDomain => ({
+    name: 'd', root: '/r', spec: null, settings: {}, state: null, secrets: [], cluster: 'd.example', origin,
+    steps: Object.entries(states).map(([name, state], index) => ({ folder: `${index}-${name}`, name, state, evidence: '' })),
+  });
+  const record_of = (extra: Partial<DomainRecord> = {}): DomainRecord => ({ name: 'd', created: '', region: 'r', baseDomain: 'example', steps: {}, ids: {}, ...extra });
+
+  it('says where a domain stands in one word', () => {
+    expect(condition_of(domain_with({ run: 'not done' }), record_of(), false, false)).toBe('SIZING');
+    expect(condition_of(domain_with({ run: 'done' }), record_of(), false, false)).toBe('UP');
+    expect(condition_of(domain_with({ run: 'done', smoke: 'done' }), record_of(), false, false)).toBe('SERVING');
+    expect(condition_of(domain_with({ run: 'failed' }), record_of(), false, false)).toBe('FAILED');
+    expect(condition_of(domain_with({ run: 'running' }), record_of(), false, false)).toBe('BUILDING');
+    expect(condition_of(domain_with({ run: 'failed' }), record_of(), true, false)).toBe('BUILDING');
+    expect(condition_of(domain_with({ run: 'done' }), record_of(), true, true)).toBe('ASKING');
+    expect(condition_of(domain_with({ run: 'done' }), record_of({ gone: 'x' }), false, true)).toBe('GONE');
+    expect(condition_of(domain_with({ run: 'done' }, 'checkout'), null, false, false)).toBe('UP');
+  });
+
+  it('names what is refused on each kind of domain', () => {
+    expect(refusals_of(domain_with({}, 'checkout'), null)).toEqual({ build: 'read from a harbor-oci checkout, not built here', teardown: 'read from a harbor-oci checkout, not built here' });
+    expect(refusals_of(domain_with({}), record_of({ adopted: { from: '~/h', at: '' } }))).toEqual({ build: 'adopted from ~/h', teardown: 'adopted, not built here' });
+    expect(refusals_of(domain_with({}), record_of({ gone: 'x' }))).toEqual({ build: 'torn down', teardown: 'already torn down' });
+    expect(refusals_of(domain_with({}), record_of({ protected: false }))).toEqual({});
+  });
+
+  it('names no next step on a domain not built on here', () => {
+    const root: string = mkdtempSync(join(tmpdir(), 'stratus-readout-'));
+    const store: DomainStore = new DomainStore(root);
+    store.create(record_of({ adopted: { from: '~/h', at: '' } }), SPEC_DEFAULT);
+    expect(domainReadout_of(domain_with({ run: 'done' }), store, undefined).next).toBeNull();
+    store.record_update('d', (record: DomainRecord): void => { delete record.adopted; });
+    expect(domainReadout_of(domain_with({ run: 'done' }), store, undefined).next).toBe('compartment');
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('groups a plan by action and kind, a replacement once, drift apart', () => {
+    const summary = planSummary_of({ ref: 'p', rows: [
+      { action: 'create', kind: 'instances', name: 'a' },
+      { action: 'create', kind: 'loadbalancers', name: 'lb' },
+      { action: 'destroy', kind: 'loadbalancers', name: 'lb' },
+      { action: 'change', kind: 'instances', name: 'b', drift: true },
+      { action: 'change', kind: 'instances', name: 'c' },
+      { action: 'destroy', kind: 'volumes', name: 'v' },
+    ] }, null);
+    expect(summary).toMatchObject({ create: 1, replace: 1, change: 1, drift: 1, destroy: 1, at: null });
+    expect(summary.groups).toEqual([
+      { action: 'create', kind: 'instances', count: 1, names: ['a'] },
+      { action: 'replace', kind: 'loadbalancers', count: 1, names: ['lb'] },
+      { action: 'drift', kind: 'instances', count: 1, names: ['b'] },
+      { action: 'change', kind: 'instances', count: 1, names: ['c'] },
+      { action: 'destroy', kind: 'volumes', count: 1, names: ['v'] },
+    ]);
   });
 });

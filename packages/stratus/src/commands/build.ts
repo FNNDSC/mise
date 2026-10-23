@@ -14,9 +14,9 @@
  * @module
  */
 import chalk from 'chalk';
-import { envelope_error, envelope_ok, taskState_isOver, type CommandEnvelope } from '@fnndsc/menu';
+import { envelope_error, envelope_ok, STRATUS_DOMAIN_STATE_EVENT, taskState_isOver, type CommandEnvelope } from '@fnndsc/menu';
 import {
-  commandCancellation_enable, commandCancellation_signalGet, JobRefusal, repl_confirm, repl_question, repl_questionHidden, runner_get, sink_dataLine, surface_get,
+  commandCancellation_enable, commandCancellation_signalGet, JobRefusal, repl_confirm, repl_question, repl_questionHidden, runner_get, sink_dataLine, sink_get, surface_get,
   type JobRecord, type JobRunner,
 } from '@fnndsc/brasa/core';
 import type { CloudDriver, CloudPrice, CloudShape } from '../cloud/driver.js';
@@ -29,6 +29,7 @@ import type { DomainTree } from '../vfs/domains.js';
 import { DOMAIN_NAME, type DomainRecord, type DomainStore } from '../domain/state.js';
 import { SPEC_DEFAULT, specOptions_apply, type DomainSpec } from '../domain/spec.js';
 import { cost_words, familyShape_find, specCost_of, specFit_read, type SpecCost, type ZoneFit } from '../domain/sizing.js';
+import { domainSummary_read } from '../domain/readout.js';
 import { BUILD_STEPS, buildJob_id, buildRun_make, FIRST_BILLING_STEP, planRun_make, stepNext_of, STEPS_SOURCE, STEPS_WRITTEN, type BuildDeps } from '../domain/steps.js';
 
 /** What the build verbs read from the session. */
@@ -48,6 +49,23 @@ export interface BuildCommandContext {
   readonly baseDomain: string | null;
   /** Where the installer's account is kept; a build asks for it when it is missing. */
   readonly account?: InstallerAccountKeeper;
+  /** The folder the domains stand in (`/net/oci/<tenancy>/domains`), for the state event's paths. */
+  readonly domainsPath?: () => string;
+}
+
+/**
+ * Shows a domain as the host knows it, as a `stratus.domain.state` event: at
+ * a build's start, on each line it logs and before each question,
+ * so a surface watching (the TD controller) redraws without asking.
+ *
+ * @param context - The session.
+ * @param name - The domain.
+ * @param asking - The question about to be put, or null.
+ */
+export function domainState_show(context: BuildCommandContext, name: string, asking: string | null = null): void {
+  const domain: HarborDomain | null = context.domains.domain_read(name);
+  if (domain === null) return;
+  sink_get().event_write?.(STRATUS_DOMAIN_STATE_EVENT, domainSummary_read(context.store, context.domainsPath?.() ?? '', domain, asking));
 }
 
 /** The options `domain new` takes, each with a value. */
@@ -208,12 +226,13 @@ export async function domainPlan_run(context: BuildCommandContext, args: Readonl
  *
  * @param runner - The runner.
  * @param id - The run's job id.
+ * @param shown - Called after each line, to show the domain again.
  * @returns Its record then.
  */
-async function run_follow(runner: JobRunner, id: string): Promise<JobRecord | undefined> {
+async function run_follow(runner: JobRunner, id: string, shown?: () => void): Promise<JobRecord | undefined> {
   commandCancellation_enable();
   const signal: AbortSignal | undefined = commandCancellation_signalGet();
-  return runner.job_follow(STEPS_SOURCE, id, (line: string): void => sink_dataLine(line), signal);
+  return runner.job_follow(STEPS_SOURCE, id, (line: string): void => { sink_dataLine(line); shown?.(); }, signal);
 }
 
 /**
@@ -289,14 +308,19 @@ export async function domainBuild_run(context: BuildCommandContext, args: Readon
       }
     }
     sink_dataLine(chalk.gray(`following /proc/${STEPS_SOURCE}/${id}; Ctrl-C stops following, not the build (wait ${id} follows it again)`));
-    const ended: JobRecord | undefined = await run_follow(runner, id);
+    domainState_show(context, name);
+    // Shown again after each line; at the end, by the question that follows or by the next read.
+    const ended: JobRecord | undefined = await run_follow(runner, id, (): void => domainState_show(context, name));
     if (ended === undefined) return envelope_error('', undefined, `domain build: /proc/${STEPS_SOURCE}/${id}: gone\n`);
     if (!taskState_isOver(ended.state)) return envelope_ok(`${chalk.gray(`stopped following; the build goes on (wait ${id})`)}\n`);
     if (ended.state !== 'done') return envelope_error('', undefined, `domain build: ${name}: ${ended.state}${ended.outcome !== undefined ? `: ${ended.outcome}` : ''}\n`);
     const stoppedBefore: string | undefined = ended.data['stoppedBefore'] as string | undefined;
     const record: DomainRecord = context.store.record_read(name) as DomainRecord;
     if (stoppedBefore === FIRST_BILLING_STEP && record.billingAccepted === undefined && (through === undefined || BUILD_STEPS.indexOf(through) >= BUILD_STEPS.indexOf(FIRST_BILLING_STEP))) {
-      const yes: boolean = await repl_confirm(await billing_question(context, name, record, need.spec));
+      const question: string = await billing_question(context, name, record, need.spec);
+      domainState_show(context, name, question);
+      const yes: boolean = await repl_confirm(question);
+      domainState_show(context, name);
       if (!yes) return envelope_ok(`${chalk.gray(`stopped before ${FIRST_BILLING_STEP}; nothing bills (domain build ${name} asks again)`)}\n`);
       context.store.record_update(name, (current: DomainRecord): void => { current.billingAccepted = new Date().toISOString(); });
       continue;
@@ -327,6 +351,7 @@ async function account_askWhenMissing(context: BuildCommandContext, record: Doma
     && (through === undefined || BUILD_STEPS.indexOf(through) >= BUILD_STEPS.indexOf('cluster'));
   if (!needs) return null;
   sink_dataLine(chalk.yellow(`The build needs Red Hat's service account (console.redhat.com, Service Accounts); none is kept in ${account.path}.`));
+  domainState_show(context, record.name, 'Red Hat service account client id:');
   const clientId: string = (await repl_question('Red Hat service account client id:')).trim();
   if (clientId === '') return 'no client id given; nothing kept, nothing started';
   const secret: string = (await repl_questionHidden('Its client secret:')).trim();

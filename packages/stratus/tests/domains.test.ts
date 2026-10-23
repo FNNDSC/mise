@@ -151,9 +151,12 @@ describe('domain status', () => {
       kind: 'stratus.domains',
       data: { domains: [{
         name: 'harbor', path: '/net/oci/fnndsc/domains/harbor', cluster: 'harbor.oci.chrisproject.org', lastDone: '09-run',
-        steps: expect.arrayContaining([{ folder: '02-cluster', state: 'done' }, { folder: '01-preflight', state: 'unknown' }]),
+        steps: expect.arrayContaining([expect.objectContaining({ folder: '02-cluster', name: 'cluster', state: 'done', started: null, ended: null }), expect.objectContaining({ folder: '01-preflight', state: 'unknown' })]),
         resources: { instances: 3, networks: 1, subnets: 3, securitygroups: 2, loadbalancers: 2, volumes: 5, buckets: 1, dns: 1 },
         cost: { hourly: expect.any(Number), soFar: expect.any(Number), currency: 'USD' },
+        condition: 'UP', billing: true, origin: 'checkout', protected: true, gone: null, spec: null, next: null, billingStep: 'infra-apply', running: null, plan: null, verify: null, asking: null,
+        refused: { build: 'read from a harbor-oci checkout, not built here', teardown: 'read from a harbor-oci checkout, not built here' },
+        region: 'us-ashburn-1', compartment: 'ocid1.compartment.oc1..harbor',
       }] },
     });
   });
@@ -179,7 +182,9 @@ describe('domain status', () => {
     expect(none.model).toEqual({ kind: 'stratus.domains', data: { domains: [] } });
     const context = context_make({ harbor: harborCheckout_make() });
     expect((await domain_run(context, ['status', 'nope'])).renderedErr).toBe('domain: nope: no such domain (harbor)\n');
-    expect((await domain_run(context, ['rename'])).renderedErr).toBe('domain: rename: not a verb this session has yet (domain status, new, plan, build, adopt, verify, protect, teardown)\n');
+    expect((await domain_run(context, ['harbor'])).rendered).toBe((await domain_run(context, ['status', 'harbor'])).rendered);
+    expect((await domain_run(context, ['harbor', 'x'])).renderedErr).toContain('domain: harbor: not a verb');
+    expect((await domain_run(context, ['rename'])).renderedErr).toBe('domain: rename: not a verb this session has yet (domain status, new, size, plan, build, adopt, verify, protect, teardown)\n');
   });
 
   it('is one of the backend\'s two commands, with its help in the Resources category', async () => {

@@ -105,7 +105,7 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
   const region = (): string | null => session.region;
   commands_register(stratusCommands_make({
     domains, driver: options.driver, region, domainsPath: (): string => `${session.tenancyPath}/domains`,
-    build: { domains, store, driver: options.driver, region, deps, builder: options.builder ?? null, baseDomain: options.baseDomain ?? null, ...(options.account !== undefined ? { account: options.account } : {}), ...(options.verifyReach !== undefined ? { verifyReach: options.verifyReach } : {}) },
+    build: { domains, store, driver: options.driver, region, deps, domainsPath: (): string => `${session.tenancyPath}/domains`, builder: options.builder ?? null, baseDomain: options.baseDomain ?? null, ...(options.account !== undefined ? { account: options.account } : {}), ...(options.verifyReach !== undefined ? { verifyReach: options.verifyReach } : {}) },
   }), 'backend');
   const dispatcher: VFSDispatcher = new VFSDispatcher();
   dispatcher.provider_register(tenancy);

@@ -15,6 +15,7 @@ import { kubeconfig_read, type KubeApi } from '../cluster/kube.js';
 import { httpsStatus_get, kubeApi_make } from '../cluster/kubeHttp.js';
 import type { HarborDomain } from '../domains/harborOci.js';
 import type { DomainRecord } from '../domain/state.js';
+import { VERIFY_FILE, type VerifyKept } from '../domain/readout.js';
 import { familyShape_find } from '../domain/sizing.js';
 import { verify_run, type VerifyCheck } from '../domain/verify.js';
 import type { BuildCommandContext } from './build.js';
@@ -100,9 +101,12 @@ export async function domainVerify_run(context: BuildCommandContext, reach: Veri
   const failed: number = ran.length - passed;
   const skipped: number = checks.length - ran.length;
   const summary: string = `${passed} of ${checks.length} pass${failed > 0 ? `, ${failed} fail` : ''}${skipped > 0 ? `, ${skipped} not run (needs the tasks tier)` : ''}`;
+  const at: string = new Date().toISOString();
   context.store.record_update(name, (current: DomainRecord): void => {
-    current.steps['verify'] = { state: failed > 0 ? 'failed' : 'done', ended: new Date().toISOString(), note: summary };
+    current.steps['verify'] = { state: failed > 0 ? 'failed' : 'done', ended: at, note: summary };
   });
+  const verified: VerifyKept = { at, checks: checks.map((check: VerifyCheck) => ({ name: check.name, ok: check.ok, detail: check.detail, how: check.how })) };
+  context.store.file_write(name, VERIFY_FILE, `${JSON.stringify(verified, null, 2)}\n`);
   const text: string = [`${chalk.bold(name)}  ${name}.${record.baseDomain}`, ...checks.map(check_line), `verify: ${summary}`].join('\n');
   return failed > 0 ? { ...envelope_error(`${text}\n`), renderedErr: '' } : envelope_ok(`${text}\n`);
 }

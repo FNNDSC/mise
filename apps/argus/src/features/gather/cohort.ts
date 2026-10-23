@@ -1,12 +1,14 @@
 /**
  * @file The cohort the session is working on: one truth, many reflections.
  *
- * A cohort is the session's, not a pane's. It is read in the header band,
- * and — when it grows past what a band can show — in a pane on the main
- * panel at the same time. Those are two views of ONE set, so the set does
- * not live in either of them: a panel that owned its own members would
- * make the second view a copy, and a copy drifts. The panels render this
- * and mutate this; it tells them when it changed.
+ * A cohort is the session's, not a pane's — and not the surface's either:
+ * the kernel holds it, and every `gather` verb answers with the whole of it
+ * (`gather.cohort`). This is the surface's reflection of that answer. It is
+ * read in the header band and, when it grows past what a band can show, in
+ * a pane on the main panel at the same time; both views read this one
+ * reflection, and it changes only when the kernel says the cohort did.
+ * A press does not touch it: the press sends a verb, and the verb's answer
+ * comes back here.
  *
  * @module
  */
@@ -26,9 +28,9 @@ export interface CohortMember {
 /**
  * The session's cohort.
  *
- * Membership is a map keyed by the series UID, which is what makes
- * gathering idempotent: taking the same series twice merges what the
- * second sighting knows rather than holding it twice.
+ * Membership is a map keyed by the series UID (a place's path for a
+ * member that is not a series), which is how a PACS row asks whether its
+ * series is gathered.
  */
 export class Cohort<T extends CohortMember> {
   private readonly members: Map<string, T> = new Map();
@@ -68,32 +70,25 @@ export class Cohort<T extends CohortMember> {
   }
 
   /**
-   * Takes one in, merging what a later sighting knows.
+   * Takes the kernel's cohort as the one to show.
    *
-   * @param member - The thing gathered.
-   */
-  public take(member: T): void {
-    const held: T | undefined = this.members.get(member.seriesUID);
-    this.members.set(member.seriesUID, held === undefined ? member : { ...held, ...member });
-    this.changed();
-  }
-
-  /**
-   * Takes one out.
+   * Watchers hear only of a real change: the same answer arrives twice
+   * (the verb's own result, and the session's broadcast of it), and a view
+   * that repainted — or marked itself unsaved — on the echo would be
+   * reacting to nothing.
    *
-   * @param seriesUID - Which.
-   * @returns Whether it was there.
+   * @param members - The members, in gather order.
+   * @param name - The cohort's name, or null.
+   * @param feed - The feed it was rooted in, or null.
    */
-  public drop(seriesUID: string): boolean {
-    const had: boolean = this.members.delete(seriesUID);
-    if (had) this.changed();
-    return had;
-  }
-
-  /** Takes them all out, leaving the cohort standing and empty. */
-  public clear(): void {
-    if (this.members.size === 0) return;
+  public state_adopt(members: ReadonlyArray<T>, name: string | null, feed: CohortFeed | null): void {
+    const next: string = JSON.stringify({ members, name, feed });
+    const held: string = JSON.stringify({ members: [...this.members.values()], name: this.title, feed: this.landed });
+    if (next === held) return;
     this.members.clear();
+    for (const member of members) this.members.set(member.seriesUID, member);
+    this.title = name;
+    this.landed = feed;
     this.changed();
   }
 
@@ -102,28 +97,8 @@ export class Cohort<T extends CohortMember> {
     return this.title;
   }
 
-  /**
-   * Names the cohort.
-   *
-   * @param name - What it is called.
-   */
-  public name_set(name: string): void {
-    this.title = name;
-    this.changed();
-  }
-
   /** The feed rooted on the cohort, when one was. */
   public feed_get(): CohortFeed | null {
     return this.landed;
-  }
-
-  /**
-   * Records the feed the cohort was rooted in.
-   *
-   * @param feed - The feed.
-   */
-  public feed_set(feed: CohortFeed): void {
-    this.landed = feed;
-    this.changed();
   }
 }

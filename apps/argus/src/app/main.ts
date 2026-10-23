@@ -1299,7 +1299,6 @@ async function surface_start(token: string): Promise<void> {
     stage_relight: (): void => pacsStage_relight(),
     home_apply: (): void => home_apply(),
     orphans_dispose: (): void => orphans_dispose(),
-    fileText_fetch,
     template_stamp,
     pane_find,
     element_require,
@@ -2504,6 +2503,9 @@ async function surface_start(token: string): Promise<void> {
             }
           }
         }
+        // Any line's cohort — a press here, a line at a chell — is the
+        // kernel's word on it, and the band and the GATHER pane redraw.
+        cohortModule.envelope_observe(envelope);
         cycler.envelope_observe(envelope);
       },
       close_handle: (): void => {

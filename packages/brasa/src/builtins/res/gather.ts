@@ -1,7 +1,7 @@
 /**
  * @file Builtin gather command: the session's cohort as a kernel subject.
  *
- * Subcommands: list (the default), add, remove, clear, name.
+ * Subcommands: list (the default), add, remove, clear, name, feed, process.
  *
  * Gathering was a surface gesture before it was a verb, which meant the set
  * a session was working on could only be built by pressing on it. As a
@@ -23,13 +23,15 @@ import {
   GatherState,
   cohort_read,
   cohort_write,
+  cohortModel_of,
   member_key,
   members_drop,
   members_merge,
   pathKind_determine,
   seriesUID_ofPath,
 } from './gather.store.js';
-import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { placeImagery_is, seriesFacts_fill } from './gather.facts.js';
+import { CommandEnvelope, envelope_ok, envelope_error, type EnvelopeModel } from '@fnndsc/menu';
 
 import { GATHER_MODEL_KIND } from './gather.kind.js';
 export { GATHER_MODEL_KIND };
@@ -79,7 +81,7 @@ function member_state(member: GatherMember): string {
  * @returns A success envelope carrying the rendered table and the model.
  */
 function cohort_render(state: GatherState): CommandEnvelope {
-  const model = { kind: GATHER_MODEL_KIND, data: state };
+  const model: EnvelopeModel = cohortModel_of(state);
   if (state.series.length === 0) {
     return envelope_ok(`${chalk.gray('The cohort is empty. Gather something with `gather add <path>`.')}\n`, model);
   }
@@ -140,9 +142,12 @@ async function gather_add(operands: string[]): Promise<CommandEnvelope> {
       const uid: string | undefined = seriesUID_ofPath(resolved);
       if (uid !== undefined) member.seriesUID = uid;
       member.imagery = true;
+    } else if (placeImagery_is(member)) {
+      member.imagery = true;
     }
     incoming.push(member);
   }
+  await seriesFacts_fill(incoming);
 
   const state: GatherState = await cohort_read();
   const { members, added, merged } = members_merge(state.series, incoming);
@@ -221,7 +226,27 @@ async function gather_name(operands: string[]): Promise<CommandEnvelope> {
   }
   state.name = operands.join(' ');
   await cohort_write(state);
-  return envelope_ok(`${chalk.green(`gather: the cohort is "${state.name}".`)}\n`);
+  // The cohort travels with the answer, as every changing verb's does, so
+  // a surface showing it takes the name from here.
+  return envelope_ok(`${chalk.green(`gather: the cohort is "${state.name}".`)}\n`, cohortModel_of(state));
+}
+
+/**
+ * Makes the cohort's feed, or names the one it has.
+ *
+ * @param words - The words after `gather feed`, raw.
+ * @returns The cohort, with its feed.
+ */
+async function gather_feed(words: ReadonlyArray<string>): Promise<CommandEnvelope> {
+  // Loaded on demand, as `process` is: making a feed carries the pull and
+  // feed machinery, which the cohort's own verbs never need.
+  const { cohortFeed_make } = await import('./gather.process.js');
+  const made: { state: GatherState; made: boolean } | string = await cohortFeed_make(words);
+  if (typeof made === 'string') return gather_error(`gather feed: ${made}`);
+  const feedId: number | undefined = made.state.feed?.feedId;
+  const said: string = made.made ? `gather: the cohort's feed is ${feedId}, made now.` : `gather: the cohort's feed is ${feedId}.`;
+  const envelope: CommandEnvelope = cohort_render(made.state);
+  return envelope_ok(`${chalk.green(said)}\n${envelope.rendered}`, envelope.model);
 }
 
 /**
@@ -262,9 +287,10 @@ export async function builtin_gather(args: string[]): Promise<CommandEnvelope> {
       return await gather_process(args.slice(args.indexOf('process') + 1));
     }
     if (subcommand === 'name') return await gather_name(operands);
+    if (subcommand === 'feed') return await gather_feed(args.slice(args.indexOf('feed') + 1));
   } catch (e: unknown) {
     return gather_error(`gather: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  return gather_error(`Unknown subcommand: ${subcommand}. Usage: gather <list|add|remove|clear|name|process>`);
+  return gather_error(`Unknown subcommand: ${subcommand}. Usage: gather <list|add|remove|clear|name|feed|process>`);
 }

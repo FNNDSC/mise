@@ -331,3 +331,4 @@ export {
   type CapacityRow,
   type CapacityModel,
 } from './substrate.js';
+export { SERIES_FOLDER_PATTERN, PACS_TREE_ROOT, seriesFolder_is } from './seriesFolder.js';

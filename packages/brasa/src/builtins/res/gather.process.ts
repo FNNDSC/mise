@@ -7,8 +7,8 @@
  * is in the data the plugin reads. This is the shape ARGUS's PROCESS builds
  * from a press (#597), so a manifest and a press make the same feed.
  *
- * When the cohort already has a feed (a `pull --new-feed`, or ARGUS's
- * CREATE FEED, noted it on the cohort), the run goes off that feed's root and
+ * When the cohort already has a feed (`gather feed`, which ARGUS's CREATE
+ * FEED sends, noted it on the cohort), the run goes off that feed's root and
  * nothing is copied twice; otherwise the feed is made here and noted on the
  * cohort for the next run. The name resolves as a bare line resolves it in
  * `/bin`. A series not pulled yet has no folder to copy, and the verb refuses
@@ -134,6 +134,55 @@ async function cohortFeed_ensure(state: GatherState, places: string[], title: st
   await cohort_write({ ...state, feed: made });
   sink_dataLine(chalk.green(`Feed created: ${feedId} (${places.length} member${places.length === 1 ? '' : 's'} in its root, ${rootInstanceId})`));
   return { feed: made, made: true };
+}
+
+/**
+ * `gather feed [--title T]`: the cohort's feed, made now when it has none.
+ *
+ * The feed is rooted on every member's place, so a series still at the
+ * PACS is pulled first (one `pull` over all of them); a folder or a file is
+ * already in CUBE and goes into the root as it is. The feed is noted on the
+ * cohort, which is what a later `gather process` runs off and what a
+ * surface reads it from.
+ *
+ * @param words - The words after `gather feed`, raw.
+ * @returns The cohort with its feed, and whether the feed was made now; or a refusal.
+ */
+export async function cohortFeed_make(words: ReadonlyArray<string>): Promise<{ state: GatherState; made: boolean } | string> {
+  let title: string | null = null;
+  for (let at: number = 0; at < words.length; at++) {
+    const word: string = words[at] as string;
+    if (word === '--title') {
+      const given: string | undefined = words[at + 1];
+      if (given === undefined || given.startsWith('--') || given.trim() === '') return '--title needs a title';
+      title = given.trim();
+      at++;
+      continue;
+    }
+    return `${word}: not understood. Usage: gather feed [--title T]`;
+  }
+
+  let state: GatherState = await cohortFolders_resolve(await cohort_read());
+  if (state.series.length === 0) return 'the cohort is empty; gather add something first';
+  if (state.feed !== null) return { state, made: false };
+
+  const away: GatherMember[] = state.series.filter((member: GatherMember): boolean => member_place(member) === null);
+  if (away.length > 0) {
+    // Loaded on demand: only a cohort with series still at the PACS pulls.
+    const { builtin_pull } = await import('../fs/pull.js');
+    await builtin_pull(away.map((member: GatherMember): string => member.vfsPath));
+    state = await cohortFolders_resolve(await cohort_read());
+    const waiting: GatherMember[] = state.series.filter((member: GatherMember): boolean => member_place(member) === null);
+    if (waiting.length > 0) {
+      const named: string = waiting.slice(0, 5).map(member_word).join(', ') + (waiting.length > 5 ? `, and ${waiting.length - 5} more` : '');
+      return `${waiting.length} series did not land (${named}); no feed was made`;
+    }
+  }
+
+  const places: string[] = state.series.map((member: GatherMember): string => member_place(member) as string);
+  const ensured: { feed: GatherFeed; made: boolean } | string = await cohortFeed_ensure(state, places, title ?? state.name ?? 'cohort');
+  if (typeof ensured === 'string') return ensured;
+  return { state: { ...state, feed: ensured.feed }, made: ensured.made };
 }
 
 /**

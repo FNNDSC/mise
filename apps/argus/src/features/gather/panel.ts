@@ -19,6 +19,7 @@
  */
 import type { PacsSeries } from '@fnndsc/menu';
 import { Cohort } from './cohort.js';
+import { word_quote } from '../edit/line.js';
 import { seriesBadge_build, seriesTraits_build } from '../pacs/panel.js';
 import { Listing, listingChild_declare, type ListingStateParts } from '../roster/listing.js';
 import type { ListingAction, ListingTrait } from '../roster/row.js';
@@ -106,15 +107,14 @@ export interface GatherPanelHandlers {
   name_ask: (suggest: string) => Promise<string | null>;
   /** Asks a yes-or-no on the band: 'y', 'n', or null when abandoned. */
   confirm_ask: (message: string) => Promise<'y' | 'n' | null>;
-  /** Membership changed: the host re-lights what depends on it (the PACS rows' GATHER). */
-  changed: () => void;
+  /**
+   * Sends a `gather` verb the operator could have typed: echoed, run, and
+   * settled once the kernel's answer has redrawn the cohort. Refusals are
+   * written either way; `answered` writes the whole answer too.
+   */
+  verb_send: (line: string, answered?: boolean) => Promise<void>;
   /** DISMISS: forget the cohort on the surface — the host closes the pane. */
   dismiss: () => void;
-  /**
-   * Runs a feed-creating line the operator could have typed (echoed, run,
-   * its answer written) and reads the feed it made; null when it made none.
-   */
-  feed_create: (line: string) => Promise<GatherFeed | null>;
   /** PROCESS on a cohort with a feed: a catalogue bound to the feed's root, so a run appends to it. */
   cohort_process: (binding: { input: string; feed: number; node: number }) => void;
   /** Opens the cohort's feed as a graph beside the pane. */
@@ -198,9 +198,9 @@ export class GatherPanel {
   constructor(root: HTMLElement, mount: HTMLElement, handlers: GatherPanelHandlers, cohort: Cohort<GatherSeries>) {
     this.handlers = handlers;
     this.cohort = cohort;
-    // A view repaints when the set changes, whoever changed it — the band
-    // and a pane showing the same cohort stay in step without either one
-    // telling the other.
+    // A view repaints when the kernel's cohort changes, whoever changed it
+    // — a press here, a line at a chell — so the band and a pane showing
+    // the same cohort stay in step without either one telling the other.
     cohort.watch((): void => {
       // Anything the cohort does after a SAVE is unsaved again; CLEAR
       // asks before it throws that away.
@@ -284,26 +284,14 @@ export class GatherPanel {
   /** The frame's PROCESS block: the whole cohort. */
   private readonly processBlock: HTMLButtonElement | null = null;
 
-  /** Takes every member out, leaving the pane standing and empty. */
-  private cohort_empty(): void {
-    if (this.cohort.size() === 0) return;
-    this.cohort.clear();
-    this.handlers.changed();
-    this.render();
-  }
-
   /**
    * CLEAR: empties the cohort as one visible line — `gather clear`, the
-   * kernel's own verb — and the surface's copy with it.
+   * kernel's own verb; the pane empties when the answer comes back.
    *
    * Once cleared it is gone, so a cohort that has changed since it was last
    * SAVEd is asked about first: YES saves it (and a name abandoned there
    * abandons the clear too — nothing is thrown away on the way to a save
    * that did not happen), NO clears, Esc leaves everything standing.
-   *
-   * Two owners of one file, for one more slice: the kernel writes the file
-   * empty, and the surface's in-memory cohort must be emptied too, or its
-   * next debounced write would put every member back.
    */
   private async cohort_clear(): Promise<void> {
     if (this.cohort.size() === 0) return;
@@ -314,8 +302,7 @@ export class GatherPanel {
       if (answer === null) return;
       if (answer === 'y' && !await this.manifest_save()) return;
     }
-    this.handlers.command_show('gather clear');
-    this.cohort_empty();
+    await this.handlers.verb_send('gather clear');
   }
 
   /** The cohort's members CUBE does not hold yet. */
@@ -359,48 +346,23 @@ export class GatherPanel {
   }
 
   /**
-   * Records the cohort's feed (made here, or restored by a desktop): the
-   * cohort row lights FEED N, and PROCESS appends from now on.
-   *
-   * @param feed - The feed, or null for none.
-   */
-  public feed_set(feed: GatherFeed | null): void {
-    if (feed !== null) this.cohort.feed_set(feed);
-    this.render();
-  }
-
-  /**
-   * Names the cohort without asking (a desktop restoring what was named).
+   * Names the cohort without asking (a desktop restoring what was named):
+   * `gather name`, so the kernel's cohort carries it.
    *
    * @param name - The name, or null for unnamed.
    */
-  public name_set(name: string | null): void {
-    if (name !== null) this.cohort.name_set(name);
-    this.render();
+  public async name_set(name: string | null): Promise<void> {
+    if (name === null || name === this.cohort.name_get()) return;
+    await this.handlers.verb_send(`gather name ${word_quote(name)}`);
   }
 
   /**
-   * Adds a series to the cohort; one already there is left as it was.
+   * Takes a member out of the cohort: `gather remove` on its path.
    *
-   * @param entry - The series.
+   * @param entry - The member.
    */
-  public series_add(entry: GatherSeries): void {
-
-    // A later hand-over may know the folder the first did not.
-    this.cohort.take(entry);
-    this.render();
-    this.handlers.changed();
-  }
-
-  /**
-   * Takes a series out of the cohort.
-   *
-   * @param seriesUID - The series.
-   */
-  public series_remove(seriesUID: string): void {
-    if (!this.cohort.drop(seriesUID)) return;
-    this.render();
-    this.handlers.changed();
+  private member_remove(entry: GatherSeries): void {
+    void this.handlers.verb_send(`gather remove ${word_quote(entry.vfsPath)}`);
   }
 
   /** Paints the cohort as one block, its series open beneath it. */
@@ -591,7 +553,7 @@ export class GatherPanel {
         && row.entry.vfsPath !== '',
     });
     const runs: Record<string, (row: SeriesRow) => void> = {
-      remove: (row: SeriesRow): void => this.series_remove(row.entry.seriesUID),
+      remove: (row: SeriesRow): void => this.member_remove(row.entry),
       pull: (row: SeriesRow): void => this.handlers.command_show(`pull "${row.entry.vfsPath}"`),
       image: (row: SeriesRow): void => {
         const place: string | undefined = row.entry.folderPath ?? placeOf_member(row.entry);
@@ -667,8 +629,7 @@ export class GatherPanel {
     const answered: string | null = await this.handlers.name_ask(`gather-${new Date().toISOString().slice(0, 10)}`);
     const wanted: string = (answered ?? '').trim();
     if (wanted === '') return null;
-    this.cohort.name_set(wanted);
-    this.render();
+    await this.handlers.verb_send(`gather name ${word_quote(wanted)}`);
     return wanted;
   }
 
@@ -713,9 +674,11 @@ export class GatherPanel {
   }
 
   /**
-   * The cohort's feed: the one it has, else one rooted on it now by one
-   * visible, auditable command (pull is idempotent, so series already home
-   * confirm rather than re-fetch), named at the ask if it was not yet.
+   * The cohort's feed: the one it has, else one made now by one visible,
+   * auditable command — `gather feed`, which pulls any series still at the
+   * PACS and roots one feed on every member, places included — named at
+   * the ask if it was not yet. The kernel notes the feed on the cohort, and
+   * its answer is where this reads it from.
    *
    * @returns The feed, or null when none was made.
    */
@@ -723,32 +686,10 @@ export class GatherPanel {
     const standing: GatherFeed | null = this.cohort.feed_get();
     if (standing !== null) return standing;
     if (this.cohort.size() === 0) return null;
-    // A feed is rooted on a PULL of the cohort's members, and a place is
-    // not pulled: it is already in ChRIS. CUBE CAN root a feed on several
-    // places at once — `pl-dircopy`'s `--dir` is a comma-separated list of
-    // paths, files included, each landing as a link at the root (proved
-    // live) — but the kernel has no verb for it yet: `pull --new-feed`
-    // pulls, and the /bin executable roots on the cwd. Until `gather
-    // process` lands in the kernel this refuses BY NAME rather than rooting
-    // a feed on the series and quietly leaving the places out of it.
-    const places: ReadonlyArray<GatherSeries> = this.cohort.members_get().filter(
-      (entry: GatherSeries): boolean => (entry.kind ?? 'series') !== 'series',
-    );
-    if (places.length > 0) {
-      this.handlers.note(
-        `gather: this cohort holds ${places.length} ${places.length === 1 ? 'place' : 'places'} as well as series, `
-        + 'and a feed is rooted by pulling its members — a place is already in ChRIS. '
-        + 'PROCESS one place from its own row, or remove them to make a feed of the series. '
-        + '(Rooting a feed on the whole cohort, places included, is coming: CUBE takes the list.)',
-      );
-      return null;
-    }
     const name: string | null = await this.name_ensure();
     if (name === null) return null;
-    const paths: string = [...this.cohort.members_get()].map((entry: GatherSeries): string => entry.vfsPath).join(' ');
-    const made: GatherFeed | null = await this.handlers.feed_create(`pull --new-feed "${name}" ${paths}`);
-    if (made !== null) this.feed_set(made);
-    return made;
+    await this.handlers.verb_send('gather feed', true);
+    return this.cohort.feed_get();
   }
 
   /**

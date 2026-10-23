@@ -17,7 +17,7 @@
  * @module
  */
 import { spawn as childSpawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, readFileSync, readdirSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { berthKey_compute, berth_pathIn, berthUrl_isAlive, closing_write } from '@fnndsc/calypso/berth';
 import { restartLine_of, type Berth, type BootLine, type BootListener, type BootReport, type RestartWhy, type SessionHost, type SessionSighting } from './sessionHost.js';
@@ -61,6 +61,8 @@ export interface ProcessHostOptions {
   stateDir: string;
   /** The chell entry to run. */
   chellEntry: string;
+  /** The stratus entry, when this porter can start a stratus session (`:stratus oci`). */
+  stratusEntry?: string | null;
   /** The spawner; `child_process.spawn` by default. */
   spawn?: SessionSpawn;
   /** The liveness probe; a TCP connect to the berth by default. */
@@ -74,6 +76,14 @@ export interface ProcessHostOptions {
 }
 
 /** One session this host knows about. */
+/**
+ * What a session is started as: a chell daemon for a ChRIS login, or a
+ * stratus daemon for the same person's cloud.
+ */
+export type SessionLaunch =
+  | { kind: 'chris'; user: string; cubeUrl: string; token: string | null }
+  | { kind: 'stratus'; configPath: string; spend: boolean };
+
 interface SessionRecord {
   identity: string;
   child: SpawnedSession | null;
@@ -116,6 +126,23 @@ export function bootRow_parse(text: string): BootRow | null {
   return { label: match[2] as string, open: tag === 'PENDING' || tag === 'RETRY' };
 }
 
+/**
+ * A boot line with the attach token taken out. A daemon prints its token
+ * (`token:`, an ARGUS `?token=` address, an attach line's `--token`) for a
+ * terminal; under porter the lines go to a browser's greeter, and the
+ * browser never holds the token: the porter does, and adds it on the way
+ * to the daemon.
+ *
+ * @param text - The line, ANSI and all.
+ * @returns The line without the token.
+ */
+export function bootLine_redact(text: string): string {
+  return text
+    .replace(/(token:\s+)[0-9a-f]{16,}/g, '$1(held by the porter)')
+    .replace(/([?&]token=)[0-9a-f]{16,}/g, '$1…')
+    .replace(/(--token\s+)[0-9a-f]{16,}/g, '$1…');
+}
+
 /** Default spawner: a real child with piped streams. */
 const spawn_real: SessionSpawn = (command: string, args: string[], options: { env: NodeJS.ProcessEnv; stdio: ['pipe', 'pipe', 'pipe'] }): SpawnedSession => {
   const child: ChildProcess = childSpawn(command, args, { env: options.env, stdio: options.stdio });
@@ -150,7 +177,10 @@ function stream_lines(stream: NodeJS.ReadableStream | null, onLine: (line: strin
 export class ProcessHost implements SessionHost {
   private readonly stateDir: string;
   private readonly chellEntry: string;
+  private readonly stratusEntry: string | null;
   private readonly spawner: SessionSpawn;
+  /** Whether each stratus session was started with the tasks tier. */
+  private readonly armed: Map<string, boolean> = new Map();
   private readonly alive: LivenessProbe;
   private readonly bootTimeoutMs: number;
   private readonly pollMs: number;
@@ -160,6 +190,7 @@ export class ProcessHost implements SessionHost {
   constructor(options: ProcessHostOptions) {
     this.stateDir = options.stateDir;
     this.chellEntry = options.chellEntry;
+    this.stratusEntry = options.stratusEntry ?? null;
     this.spawner = options.spawn ?? spawn_real;
     this.alive = options.alive ?? ((url: string): Promise<boolean> => berthUrl_isAlive(url));
     this.bootTimeoutMs = options.bootTimeoutMs ?? 120_000;
@@ -205,9 +236,21 @@ export class ProcessHost implements SessionHost {
     return null;
   }
 
-  /** Reads an identity's berth from its own runtime directory, if written. */
+  /**
+   * Reads an identity's berth from its own runtime directory, if written. A
+   * chell daemon writes it under the identity porter knows it by; a stratus
+   * daemon names itself by its cloud identity (`<user>@<tenancy>`), which
+   * porter learns only from the key, so the one berth in a session's own
+   * runtime directory is that session's.
+   */
   private berth_read(identity: string): Berth | null {
-    return this.berthFile_read(berth_pathIn(this.dirs_of(identity).runtime, identity));
+    const runtime: string = this.dirs_of(identity).runtime;
+    const exact: Berth | null = this.berthFile_read(berth_pathIn(runtime, identity));
+    if (exact !== null) return exact;
+    const calypso: string = join(runtime, 'calypso');
+    if (!existsSync(calypso)) return null;
+    const berths: string[] = readdirSync(calypso).filter((name: string): boolean => name.startsWith('berth-') && name.endsWith('.json'));
+    return berths.length === 1 ? this.berthFile_read(join(calypso, berths[0] as string)) : null;
   }
 
   /** @inheritdoc */
@@ -223,10 +266,13 @@ export class ProcessHost implements SessionHost {
         const berth: Berth | null = this.berthFile_read(join(berthDir, name));
         if (berth === null) continue;
         const alive: boolean = await this.alive(berth.url);
-        sightings.push({ identity: berth.identity, berth, alive });
-        if (alive && !this.sessions.has(berth.identity)) {
-          this.sessions.set(berth.identity, {
-            identity: berth.identity,
+        // A stratus session's own identity is kept beside its berth.
+        const marker: string = join(this.stateDir, entry.name, 'identity');
+        const identity: string = existsSync(marker) ? readFileSync(marker, 'utf-8').trim() : berth.identity;
+        sightings.push({ identity, berth, alive });
+        if (alive && !this.sessions.has(identity)) {
+          this.sessions.set(identity, {
+            identity,
             child: null,
             adoptedPid: berth.pid ?? null,
             lines: [],
@@ -265,8 +311,35 @@ export class ProcessHost implements SessionHost {
       starting: null,
     };
     this.sessions.set(identity, record);
-    record.starting = this.boot_run(record, user, cubeUrl, token).finally((): void => { record.starting = null; });
+    record.starting = this.boot_run(record, { kind: 'chris', user, cubeUrl, token }).finally((): void => { record.starting = null; });
     return record.starting;
+  }
+
+  /** @inheritdoc */
+  public stratus_armed(identity: string): boolean | null {
+    return this.armed.get(identity) ?? null;
+  }
+
+  /** @inheritdoc */
+  public stratus_begin(identity: string, configPath: string, spend: boolean, replace: boolean): void {
+    const existing: SessionRecord | undefined = this.sessions.get(identity);
+    if (existing?.starting) return;
+    const launch: SessionLaunch = { kind: 'stratus', configPath, spend };
+    // A session already up is ended first: the tier is chosen when a daemon
+    // starts, never changed under it.
+    if (replace) {
+      this.relaunch_begin(identity, launch, spend ? 'Restarting with the tasks tier: this session may change the cloud and bill' : 'Restarting read-only: this session changes nothing in the cloud');
+      return;
+    }
+    const record: SessionRecord = this.record_new(identity);
+    this.sessions.set(identity, record);
+    record.starting = this.boot_run(record, launch).finally((): void => { record.starting = null; });
+    void record.starting.catch((): void => undefined);
+  }
+
+  /** A fresh boot record. */
+  private record_new(identity: string): SessionRecord {
+    return { identity, child: null, adoptedPid: null, lines: [], serial: 0, open: new Map(), state: 'booting', listeners: new Set(), starting: null };
   }
 
   /** @inheritdoc */
@@ -283,9 +356,21 @@ export class ProcessHost implements SessionHost {
    *   boots on the token the session saved (`--saved-token`), which refuses
    *   rather than come up offline.
    */
-  private async boot_run(record: SessionRecord, user: string, cubeUrl: string, token: string | null): Promise<Berth> {
+  private async boot_run(record: SessionRecord, launch: SessionLaunch): Promise<Berth> {
     const dirs: SessionDirs = this.dirs_of(record.identity);
     for (const dir of Object.values(dirs)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // A stratus session keeps its domains and its home beside its other
+    // directories: never porter's own, which every session it starts shares.
+    const own: Record<string, string> = {};
+    if (launch.kind === 'stratus') {
+      const root: string = join(this.stateDir, berthKey_compute(record.identity));
+      own['XDG_STATE_HOME'] = join(root, 'state');
+      own['HOME'] = join(root, 'home');
+      for (const dir of Object.values(own)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+      // The daemon's berth names its cloud identity; this names the session's,
+      // so a porter restarted adopts it under the key its cookie holds.
+      writeFileSync(join(root, 'identity'), `${record.identity}\n`, { encoding: 'utf-8', mode: 0o600 });
+    }
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       XDG_CONFIG_HOME: dirs.config,
@@ -295,13 +380,26 @@ export class ProcessHost implements SessionHost {
       // The boot rows are for a greeter that renders them as a terminal
       // would; chalk sees no TTY here and would strip the colour.
       FORCE_COLOR: '3',
+      // Last, so the session's own HOME and state win over porter's.
+      ...own,
     };
     // The greeter draws the brain itself, from the same frames; the boot's
     // own copy on stdout would stand a second, still brain under the rows.
-    const login: string = token !== null ? '--auth-token-stdin' : '--saved-token';
-    const child: SpawnedSession = this.spawner(process.execPath, [this.chellEntry, `${user}@${cubeUrl}`, '--daemon', login, '--no-logo'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    let argv: string[];
+    let stdin: string = '';
+    if (launch.kind === 'chris') {
+      const login: string = launch.token !== null ? '--auth-token-stdin' : '--saved-token';
+      argv = [this.chellEntry, `${launch.user}@${launch.cubeUrl}`, '--daemon', login, '--no-logo'];
+      stdin = launch.token !== null ? `${launch.token}\n` : '';
+    } else {
+      if (this.stratusEntry === null) return this.boot_end(record, 'failed', 'this porter has no stratus to start');
+      argv = [this.stratusEntry, '--config', launch.configPath, ...(launch.spend ? ['--host-control=tasks'] : [])];
+      this.armed.set(record.identity, launch.spend);
+    }
+    const child: SpawnedSession = this.spawner(process.execPath, argv, { env, stdio: ['pipe', 'pipe', 'pipe'] });
     record.child = child;
-    const line_note = (channel: 'out' | 'err', text: string): void => {
+    const line_note = (channel: 'out' | 'err', raw: string): void => {
+      const text: string = bootLine_redact(raw);
       const row: BootRow | null = bootRow_parse(text);
       const held: number | undefined = row === null ? undefined : record.open.get(row.label);
       if (row !== null && held !== undefined) {
@@ -326,7 +424,7 @@ export class ProcessHost implements SessionHost {
     };
     stream_lines(child.stdout, (text: string): void => line_note('out', text));
     stream_lines(child.stderr, (text: string): void => line_note('err', text));
-    child.stdin?.end(token !== null ? `${token}\n` : '');
+    child.stdin?.end(stdin);
     let exited: number | null = null;
     child.once('exit', (code: number | null): void => { exited = code ?? 0; });
 
@@ -403,9 +501,31 @@ export class ProcessHost implements SessionHost {
         return this.boot_end(record, 'failed', 'the old calypso daemon did not stop');
       }
       if (why.kind !== 'saved-login') say('Starting a fresh calypso daemon on the saved login');
-      return this.boot_run(record, user, cubeUrl, null);
+      return this.boot_run(record, { kind: 'chris', user, cubeUrl, token: null });
     })().finally((): void => { record.starting = null; });
     // The failure is already on the boot record for whoever follows it.
+    void record.starting.catch((): void => undefined);
+  }
+
+  /**
+   * Ends a session's daemon and boots it again on another launch, as one
+   * boot a greeter follows from the first word.
+   *
+   * @param identity - The session.
+   * @param launch - What to start in its place.
+   * @param first - The first line the greeter shows.
+   */
+  private relaunch_begin(identity: string, launch: SessionLaunch, first: string): void {
+    const old: SessionRecord | undefined = this.sessions.get(identity);
+    const record: SessionRecord = this.record_new(identity);
+    this.sessions.set(identity, record);
+    const line: BootLine = { channel: 'out', text: first, id: record.serial++ };
+    record.lines.push(line);
+    record.starting = (async (): Promise<Berth> => {
+      const ended: SpawnedSession | number | null = await this.process_signal(identity, old, 'restart');
+      if (ended !== null && !(await this.gone_wait(identity, ended))) return this.boot_end(record, 'failed', 'the old calypso daemon did not stop');
+      return this.boot_run(record, launch);
+    })().finally((): void => { record.starting = null; });
     void record.starting.catch((): void => undefined);
   }
 

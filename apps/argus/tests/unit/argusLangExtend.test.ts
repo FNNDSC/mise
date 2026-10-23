@@ -24,7 +24,7 @@ describe('the ARGUS language', () => {
   });
 });
 
-/** The verb table as it stood before the language was split (#985). */
+/** The verb table as it stood before the language was split (#985), with the door's switch (D14). */
 const LINES: string[] = [
   "pane [@id|%n] split left|right|above|below · zoom · close · close all · bind unlinked|fs|viewer",
   "pane [@id|%n] claim files|runs|pacs · focus left|right|up|down|@id|last · flip · resize left|right|up|down [percent]",
@@ -41,6 +41,8 @@ const LINES: string[] = [
   "back                        (contextual back — exactly Esc)",
   "desktop save|load|show|list|delete [name] · load <ChRIS file> · clear · share",
   "attach [--reveal]           (how to reach THIS session from a terminal or another browser)",
+  'stratus oci [--spend|--read] (through a porter: your cloud session, on your filed credentials)',
+  'chris                       (through a porter: back to your ChRIS session)',
   "argus verbs                 (this table; the long form is docs/argus-lang.adoc)",
   "argus keys                  (the prefix chords: one key, one drawer verb)",
   "help pane|keys|verbs        (the KEYS pane on the stage; keys and verbs print the tables here; bare help is the session's)",

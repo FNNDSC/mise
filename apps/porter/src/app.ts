@@ -58,7 +58,8 @@ import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { identity_normalise } from '@fnndsc/calypso/berth';
 import type { PorterConfig } from './config.js';
-import type { SessionHost, Berth, BootLine } from './host/sessionHost.js';
+import { identity_isStratus, owner_of, stratusIdentity_of, user_of, type SessionHost, type Berth, type BootLine } from './host/sessionHost.js';
+import { CredentialStore } from './creds.js';
 import { SessionRegistry, type SessionEntry } from './registry.js';
 import { cubeToken_mint, type TokenMint } from './cube/auth.js';
 import { readFileSync } from 'node:fs';
@@ -251,6 +252,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   const installed: Record<string, string> = options.installed ?? installed_read();
   const mint = options.mint ?? cubeToken_mint;
   const registry: SessionRegistry = new SessionRegistry();
+  const creds: CredentialStore = new CredentialStore(config.stateDir);
   const tokens: TokenStore = options.tokens ?? new TokenStore(config.tokensFile, config.tokenDays);
   tokens.load();
   const codes: DeviceCodes = options.codes ?? new DeviceCodes();
@@ -264,7 +266,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   const adopt = async (): Promise<void> => {
     for (const sighting of await host.sessions_adopt()) {
       if (!sighting.alive) continue;
-      const user: string = sighting.identity.slice(0, sighting.identity.indexOf('@'));
+      const user: string = user_of(sighting.identity);
       registry.note(sighting.identity, user, sighting.berth);
       options.log?.(`adopted ${user}'s session at ${sighting.berth.url}`);
     }
@@ -564,9 +566,63 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     // Pending from here: the mount refuses until the fresh berth answers,
     // rather than proxying to a daemon on its way out.
     registry.pending_note(entry.identity, entry.user);
+    if (identity_isStratus(entry.identity)) {
+      // A stratus session restarts on its owner's credentials, on the tier it had.
+      const configPath: string | null = creds.ociConfig_of(owner_of(entry.identity));
+      if (configPath === null) return wantsJson ? reply.code(404).send({ error: 'no OCI credentials are filed for this session any more' }) : reply.redirect('/login', 303);
+      host.stratus_begin(entry.identity, configPath, host.stratus_armed(entry.identity) === true, true);
+      options.log?.(`restarting ${entry.user}'s stratus session, asked from their browser`);
+      return wantsJson ? { key, greet: `/greet/${key}`, state: 'restarting' } : reply.redirect(`/greet/${key}`, 303);
+    }
     host.restart_begin(entry.identity, entry.user, config.cubeUrl, { kind: 'asked' });
     options.log?.(`restarting ${entry.user}'s session, asked from their browser`);
     return wantsJson ? { key, greet: `/greet/${key}`, state: 'restarting' } : reply.redirect(`/greet/${key}`, 303);
+  });
+
+  // The switch between a person's sessions: their ChRIS one, which the
+  // login made, and their stratus one, started on the credentials filed
+  // under their ChRIS identity (docs/stratus.adoc, D14). One cookie, one
+  // person: the cookie moves to the session switched to, and nothing here
+  // lets one person reach another's.
+  const switchSchema = z.object({ to: z.enum(['stratus', 'chris']), cloud: z.literal('oci').optional(), spend: z.boolean().optional() });
+  app.post('/switch', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    const key: string | null = key_ofRequest(request);
+    const identity: string | null = key !== null ? registry.identity_of(key) : null;
+    if (key === null || identity === null) return reply.code(401).send({ error: 'this browser holds no session: log in first' });
+    const parsed = switchSchema.safeParse(request.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: 'switch wants {to: "stratus" | "chris", cloud?: "oci", spend?: boolean}' });
+    const owner: string = owner_of(identity);
+    const user: string = user_of(identity);
+    const cookie = (to: string): void => { void reply.setCookie(DOOR_COOKIE, to, doorCookie_options(config.cookieHours, request.protocol === 'https')); };
+    if (parsed.data.to === 'chris') {
+      const found: Berth | null = await host.find(owner);
+      if (found === null) return reply.code(409).send({ error: `${user}'s ChRIS session is not running: log in again` });
+      const back: string = registry.key_of(owner);
+      registry.note(owner, user, found);
+      cookie(back);
+      return { key: back, mount: `/s/${back}/`, state: 'attached' };
+    }
+    const configPath: string | null = creds.ociConfig_of(owner);
+    if (configPath === null) {
+      return reply.code(404).send({ error: `no OCI credentials are filed for ${user} on this host. The host's operator files an existing key with porter --creds ${user} --oci <config>; connecting a new key from here is not built yet` });
+    }
+    const session: string = stratusIdentity_of(owner);
+    const to: string = registry.key_of(session);
+    const spend: boolean = parsed.data.spend === true;
+    const found: Berth | null = await host.find(session);
+    const armed: boolean | null = host.stratus_armed(session);
+    cookie(to);
+    // A session up on the tier asked for is joined; one asked to change tier
+    // is ended and started again. One whose tier this porter never knew (it
+    // was adopted) is joined read-only and restarted only when spending is asked.
+    if (found !== null && (armed === spend || (armed === null && !spend))) {
+      registry.note(session, user, found);
+      return { key: to, mount: `/s/${to}/`, state: 'attached' };
+    }
+    registry.pending_note(session, user);
+    host.stratus_begin(session, configPath, spend, found !== null);
+    options.log?.(`starting ${user}'s stratus session${spend ? ' with the tasks tier' : ', read-only'}`);
+    return { key: to, mount: `/s/${to}/`, greet: `/greet/${to}`, state: 'starting' };
   });
 
   app.post('/logout', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {

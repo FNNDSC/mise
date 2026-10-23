@@ -20,6 +20,10 @@ describe('porterArgs_parse', () => {
     expect(porterArgs_parse(['--revoke', 'chris'])).toEqual({ mode: 'revoke', user: 'chris' });
     expect(porterArgs_parse(['--revoke', 'chris', 'cron@titan'])).toEqual({ mode: 'revoke', user: 'chris', name: 'cron@titan' });
     expect(porterArgs_parse(['--mint', 'mise-e2e', '--name', 'nightly'])).toEqual({ mode: 'mint', user: 'mise-e2e', name: 'nightly' });
+    expect(porterArgs_parse(['--creds', 'rudolph', '--oci', '~/.oci/config'])).toEqual({ mode: 'creds', user: 'rudolph', config: '~/.oci/config' });
+    expect(porterArgs_parse(['--creds', 'rudolph', '--oci', '~/.oci/config', '--profile', 'BCH'])).toEqual({ mode: 'creds', user: 'rudolph', config: '~/.oci/config', profile: 'BCH' });
+    expect(porterArgs_parse(['--creds', 'rudolph'])).toMatchObject({ refusal: expect.stringContaining('--oci <config>') });
+    expect(porterArgs_parse(['--creds', 'rudolph', '--oci', 'c', 'x'])).toMatchObject({ refusal: expect.stringContaining('--profile') });
   });
 
   it('refuses an unknown word, a missing name and an extra one, by name', () => {

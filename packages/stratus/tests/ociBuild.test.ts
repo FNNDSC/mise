@@ -110,16 +110,18 @@ describe('the OCI builder\'s build and teardown', () => {
   let builder: OciBuilder;
   let logged: string[];
   const call = (): BuildCall => ({ log: (line: string): void => { logged.push(line); }, signal: new AbortController().signal });
+  const builder_make = (visibleWaitMs?: number): OciBuilder => new OciBuilder({
+    rm: () => rm, api: () => api, driver: new FakeDriver(fakeCloud_sample()), sshPublicKey: () => 'ssh-ed25519 k\n',
+    nameservers_resolve: async () => ['ns2.p68.dns.oraclecloud.net.', 'ns1.p68.dns.oraclecloud.net.'],
+    iso_fetch: async () => ({ body: Readable.from(['iso']), length: 3 }), zip_fetch: async () => Buffer.from('zip'), pollMs: 0,
+    ...(visibleWaitMs !== undefined ? { visibleWaitMs } : {}),
+  });
 
   beforeEach(() => {
     api = new RecordedApi();
     rm = new OkRm();
     logged = [];
-    builder = new OciBuilder({
-      rm: () => rm, api: () => api, driver: new FakeDriver(fakeCloud_sample()), sshPublicKey: () => 'ssh-ed25519 k\n',
-      nameservers_resolve: async () => ['ns2.p68.dns.oraclecloud.net.', 'ns1.p68.dns.oraclecloud.net.'],
-      iso_fetch: async () => ({ body: Readable.from(['iso']), length: 3 }), zip_fetch: async () => Buffer.from('zip'), pollMs: 0,
-    });
+    builder = builder_make();
   });
 
   it("makes the domain's compartment under domains, once, tagged with its name", async () => {
@@ -131,6 +133,21 @@ describe('the OCI builder\'s build and teardown', () => {
     ]);
     expect(await builder.compartment_ensure({ domain: 'quay', region: 'r' }, call())).toEqual({ id: 'ocid1.compartment.oc1..quay', made: false });
     expect(api.calls).toHaveLength(2);
+  });
+
+  it('waits out a parent just made that the identity service does not yet find, and gives up when told', async () => {
+    const ensure = api.compartmentChild_ensure.bind(api);
+    let refusals: number = 2;
+    api.compartmentChild_ensure = async (parentId: string, name: string, description: string, tags: Record<string, string>) => {
+      if (name === 'quay' && refusals-- > 0) throw Object.assign(new Error('Authorization failed or requested resource not found.'), { statusCode: 404 });
+      return await ensure(parentId, name, description, tags);
+    };
+    expect(await builder.compartment_ensure({ domain: 'quay', region: 'r' }, call())).toEqual({ id: 'ocid1.compartment.oc1..quay', made: true });
+    expect(logged.filter((line: string): boolean => line === 'domains is not yet usable; waiting')).toHaveLength(2);
+    refusals = Infinity;
+    api.children.clear();
+    const impatient: OciBuilder = builder_make(0);
+    await expect(impatient.compartment_ensure({ domain: 'quay', region: 'r' }, call())).rejects.toThrow('not found');
   });
 
   it('preflight checks what harbor-oci checked, each on its own', async () => {

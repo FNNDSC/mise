@@ -14,6 +14,7 @@ import * as dns from 'oci-dns';
 import * as identity from 'oci-identity';
 import * as limits from 'oci-limits';
 import * as objectstorage from 'oci-objectstorage';
+import { notFound } from './errors.js';
 
 /** A pre-authenticated link to an object. */
 export interface OciLink {
@@ -67,15 +68,6 @@ export interface OciBuildApiOptions {
   readonly region: string;
 }
 
-/**
- * Whether an SDK error is a not-found.
- *
- * @param error - The error.
- * @returns True for a 404.
- */
-function notFound(error: unknown): boolean {
-  return (error as { statusCode?: number }).statusCode === 404;
-}
 
 /**
  * The build's calls over the SDK.

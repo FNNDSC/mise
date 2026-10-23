@@ -298,7 +298,7 @@ export class TdController {
     this.before = this.domain_get();
     this.busy = line;
     this.log_add(`stratus> ${line}`, 'sent');
-    if (/^domain (build|plan) /.test(line)) { this.stepLog = []; this.stepLogLine = line; }
+    if (/^(domain (build|plan)|play) /.test(line)) { this.stepLog = []; this.stepLogLine = line; }
     this.draw();
     try {
       await this.hooks.run(line);
@@ -943,8 +943,9 @@ export class TdController {
     commit.replaceChildren();
     const refusal: string | null = nameRefusal_of(this.newName, this.names_get());
     const line: string = newLine_of(this.newName || '<name>', this.levers, this.size.start);
-    commit.append(el('span', 'tdc-section-title', 'THE LINE COMMIT SENDS'), el('div', 'tdc-mono tdc-commit-line', line),
-      el('p', 'tdc-prose tdc-quiet', 'Writes the spec only. Nothing is made in the tenancy until BUILD, and BUILD asks before billing.'));
+    const tenant: string = LINES.tenant(this.newName || '<name>');
+    commit.append(el('span', 'tdc-section-title', 'THE LINES COMMIT SENDS'), el('div', 'tdc-mono tdc-commit-line', line), el('div', 'tdc-mono tdc-commit-line', tenant),
+      el('p', 'tdc-prose tdc-quiet', 'The first writes the spec. The second plays the tenant: the build through the install, which asks before billing, then verify. A NO leaves the spec written and nothing made.'));
     const pills: HTMLElement = el('div', 'tdc-commands');
     const button: HTMLButtonElement = el('button', 'tdc-pill tdc-pill-plain', refusal === null ? 'COMMIT' : `COMMIT · ${refusal}`);
     button.type = 'button';
@@ -952,7 +953,15 @@ export class TdController {
     button.addEventListener('click', (): void => {
       this.hooks.voice.pill('COMMIT');
       const name: string = this.newName;
-      void this.line_send(line).then((): void => { if (this.domains.has(name)) { this.current = name; this.newName = ''; this.view = 'overview'; this.draw(); } });
+      void this.line_send(line).then(async (): Promise<void> => {
+        // The spec written, the tenant plays on BUILD; a refused spec leaves SIZE as it was.
+        if (!this.domains.has(name)) return;
+        this.current = name;
+        this.newName = '';
+        this.view = 'build';
+        this.draw();
+        await this.line_send(LINES.tenant(name));
+      });
     });
     const reset: HTMLButtonElement = el('button', 'tdc-pill tdc-pill-quiet', 'RESET');
     reset.type = 'button';

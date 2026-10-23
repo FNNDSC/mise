@@ -19,7 +19,8 @@
     "stratus": "dist/stratus.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "manifests"
   ],
   "exports": {
     ".": {

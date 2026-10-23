@@ -61,7 +61,11 @@ describe('the backend\'s domains', () => {
     const made = stratusBackend_make({ driver: new FakeDriver(fakeCloud_sample()), configDir: mkdtempSync(path.join(tmpdir(), 'stratus-backend-')), domains: [{ name: 'harbor', root }], store: new DomainStore(mkdtempSync(path.join(tmpdir(), 'stratus-domains-'))) });
     await made.backend.session.init();
     const listing = await made.backend.vfs!.dispatcher.list('/net/oci/fnndsc/domains');
-    expect(listing.ok && listing.value.map((item) => [item.name, item.owner])).toEqual([['harbor', 'rudolph']]);
+    expect(listing.ok && listing.value.map((item) => [item.name, item.owner])).toEqual([['harbor', 'rudolph'], ['tenant.mise', 'rudolph']]);
+    // The shipped manifest reads as a file, so `play ~/tenant.mise` finds it; the tree refuses a write.
+    expect((await made.backend.files!.read('/net/oci/fnndsc/domains/tenant.mise')).toString()).toContain('@param        NAME');
+    await expect(made.backend.files!.read('/net/oci/fnndsc/domains/nothing.mise')).rejects.toThrow('cannot read');
+    await expect(made.backend.files!.write('/net/oci/fnndsc/domains/x', Buffer.from(''))).rejects.toThrow('read-only');
     expect(made.domains.domain_read('harbor')?.cluster).toBe('harbor.oci.chrisproject.org');
     const answer = await envelopeHandler_get('domain')!(['status']);
     expect(answer.rendered).toContain('harbor.oci.chrisproject.org');

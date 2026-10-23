@@ -364,6 +364,7 @@ export const LINES = {
   protect: (name: string, on: boolean): string => `domain protect ${name} ${on ? 'on' : 'off'}`,
   teardown: (name: string): string => `domain teardown ${name}`,
   size: (family?: string): string => family === undefined ? 'domain size' : `domain size --family ${family}`,
+  tenant: (name: string): string => `play ~/tenant.mise --param NAME=${name}`,
 } as const;
 
 /**

@@ -163,6 +163,18 @@ describe('gather', () => {
     expect(answerReads).toEqual([7]);
   });
 
+  it('knows a gathered series CUBE already holds by its folder, from the gather on', async () => {
+    storage = new Map([['1.2.3', { fileCount: 176, folderPath: '/SERVICES/PACS/orthanc/p/s/1-SAG_T1-abcdef0' }]]);
+    const study: string = '/net/pacs/queries/MRN_4455667_qid:7/Study_1.2_MR_Brain';
+    const answered = await builtin_gather(['add', `${study}/Series_1.2.3_SAG_T1`, `${study}/Series_1.2.4_AX_FLAIR`]);
+    const held = cohort_held();
+    expect(held.series[0].folderPath).toBe('/SERVICES/PACS/orthanc/p/s/1-SAG_T1-abcdef0');
+    expect(held.series[1].folderPath).toBeUndefined();
+    // The answer a surface redraws from carries it too.
+    expect((answered.model?.data as { series: Array<{ folderPath?: string }> }).series[0].folderPath).toBe('/SERVICES/PACS/orthanc/p/s/1-SAG_T1-abcdef0');
+    storage = new Map();
+  });
+
   it('gathers a series bare when its answer cannot be read', async () => {
     const envelope = await builtin_gather(['add', '/net/pacs/queries/X_qid:99/Study_9_a/Series_9.9_b']);
     expect(envelope.status).toBe('ok');

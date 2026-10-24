@@ -5,7 +5,7 @@
  * Aliases: workflow / workflows
  */
 import chalk from 'chalk';
-import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_from, resourceListOptions_refusal, resourceSearchTerm_refusal, resourceSearch_args } from '../utils.js';
 import { workflows_fetchList, WorkflowListResult } from '@fnndsc/chili/commands/workflows/list.js';
 import { workflowFields_fetch } from '@fnndsc/chili/commands/workflows/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
@@ -22,6 +22,11 @@ export async function builtin_workflow(args: string[]): Promise<CommandEnvelope>
   const subcommand: string | undefined = parsed._[0];
 
   if (!subcommand || subcommand === 'list') {
+    const refusal: string | null = resourceListOptions_refusal('workflow', parsed);
+    if (refusal !== null) {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
+    }
     try {
       const { workflows, selectedFields, totalCount }: WorkflowListResult = await workflows_fetchList(cliOptions_from(parsed));
       if (workflows.length === 0) { return envelope_ok(`${chalk.gray('No workflows found.')}\n`); }
@@ -33,8 +38,12 @@ export async function builtin_workflow(args: string[]): Promise<CommandEnvelope>
   }
 
   if (subcommand === 'search') {
-    const query: string = parsed._[1] ?? '';
-    return builtin_workflow([...args.filter((a: string) => a !== subcommand), `--search`, query]);
+    const refusal: string | null = resourceSearchTerm_refusal('workflow', parsed);
+    if (refusal !== null) {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
+    }
+    return builtin_workflow(resourceSearch_args(parsed));
   }
 
   if (subcommand === 'inspect') {

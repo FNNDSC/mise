@@ -6,7 +6,7 @@
  * Singular/plural aliases: group / groups
  */
 import chalk from 'chalk';
-import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_from, resourceListOptions_refusal, resourceSearchTerm_refusal, resourceSearch_args } from '../utils.js';
 import { groups_fetchList, GroupListResult } from '@fnndsc/chili/commands/groups/list.js';
 import { groupFields_fetch } from '@fnndsc/chili/commands/groups/fields.js';
 import {
@@ -144,6 +144,11 @@ export async function builtin_group(args: string[]): Promise<CommandEnvelope> {
   const subcommand: string | undefined = parsed._[0];
 
   if (!subcommand || subcommand === 'list') {
+    const refusal: string | null = resourceListOptions_refusal('group', parsed);
+    if (refusal !== null) {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
+    }
     try {
       const { groups, selectedFields, totalCount }: GroupListResult = await groups_fetchList(cliOptions_from(parsed));
       if (groups.length === 0) { return envelope_ok(`${chalk.gray('No groups found.')}\n`); }
@@ -155,9 +160,14 @@ export async function builtin_group(args: string[]): Promise<CommandEnvelope> {
   }
 
   if (subcommand === 'search') {
-    const query: string = parsed._[1] ?? '';
+    const refusal: string | null = resourceSearchTerm_refusal('group', parsed);
+    if (refusal !== null) {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
+    }
+    const query: string = String(parsed._[1]);
     const search: string = query.includes(':') ? query : `name_icontains:${query}`;
-    return builtin_group(['--search', search]);
+    return builtin_group(resourceSearch_args(parsed, search));
   }
 
   if (subcommand === 'inspect') {

@@ -24,6 +24,7 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { answerRows_of, type AnswerRow, type SessionAnswer } from '../session/answer.js';
+import { rowsOperands_of } from './listing.js';
 
 /** The kind a variable holding text has: a literal, a parameter, or a command with no model. */
 export const TEXT_KIND: string = 'text';
@@ -244,8 +245,9 @@ function lines_of(text: string): string[] {
 }
 
 /**
- * Reads an answer by a dotted name: bare, its rows (or its lines, or its
- * one value); with fields, the fields as the model names them.
+ * Reads an answer by a dotted name: bare, the operands its rows hand on
+ * (or its lines, or its one value); with fields, the fields as the model
+ * names them.
  *
  * @param answer - What the variable holds.
  * @param name - The variable's name, for a refusal.
@@ -261,7 +263,9 @@ export function answer_read(answer: SessionAnswer, name: string, fields: Readonl
   if (fields.length > 0) return fields_walk(answer.data, fields, name, answer.kind);
   const rows: AnswerRow[] | null = answerRows_of(answer.kind, answer.data);
   if (rows !== null) {
-    const values: string[] = rows.flatMap((row: AnswerRow): string[] => row.values);
+    // The operands a pipe would hand on: a group's row (a patient, a study)
+    // is context a filter kept, not a pick, and each value counts once.
+    const values: string[] = rowsOperands_of(rows);
     return values.length === 0 ? { refused: `${name} is empty` } : { values };
   }
   const operands: string[] | null = operandReaders.get(answer.kind)?.(answer.data) ?? null;

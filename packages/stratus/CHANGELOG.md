@@ -1,5 +1,53 @@
 # @fnndsc/stratus
 
+## 0.4.0
+
+### Minor Changes
+
+- f27596d: A domain's build now puts ChRIS on its cluster and checks it end to end, once the cluster has settled.
+
+  The steps after the install are no longer placeholders. `verify` runs the ten checks and asks again each minute, for up to 30, while a new cluster's operators settle. `chris-deploy` installs the fnndsc/chris chart with `helm`, pinned to one node. `chris-seed` makes the test user and the smoke plugins through chrisomatic. `smoke` runs miniChRIS-OKD's journey against the public Route. BUILD and `tenant.mise` now build all the way through `smoke`, and the Kubernetes client waits out the 429 a settling API answers.
+
+- fd1711f: A domain whose build stopped part way reads STOPPED, not SIZING · NOTHING BUILT.
+
+  The new condition covers steps done with none running and the domain not up. The line under it reads PLANNED · NOTHING BILLED when the next step is the first that bills, as after NO at the billing question, and NOT FINISHED otherwise.
+
+- 02c20bf: Every function name now says what it does: the 462 that put a preposition where the verb goes are renamed (#1227).
+
+  The style guide names a function `<subject>[Qualifier]_<verb>[Adverb]`. Names such as `answerRows_of`, `seriesUID_ofPath`, `options_toParams` and `ask_onPane` put a preposition in the verb's place, which names the result without saying whether the function derives, parses, builds or renders it. They are now `answerRows_derive`, `seriesUID_parse`, `options_convertToParams` and `askOnPane_await`. A preposition may still qualify the verb (`x_readFromCache`) or the object (`askOnPane_await`); it may not start the method.
+
+  `npm run lint:rpn` (`scripts/rpn-prepositions.mjs`) refuses a function, `const` function or underscored method whose method is, or starts with, `of`, `to`, `with`, `from`, `for`, `by`, `as`, `in`, `on` or `at`, and CI runs it. The exported names change with no aliases kept: nothing outside this repository imports them.
+
+- 55e2041: A new domain finds its DNS zone in the tenancy: the only one by default, else one chosen on SIZE or named.
+
+  `domain new` and `domain size` read the tenancy's DNS zones; a named `--base-domain` must be one of them, and with several and none named `domain new` refuses, listing them. The size model carries `dnsZones`. In ARGUS, SIZE shows a ZONE choice and COMMIT stays dark until a zone is set.
+
+### Patch Changes
+
+- a61f844: The `compartment` step waits out a just-made `domains` compartment that OCI does not yet find, instead of failing.
+
+  Found live building quay: the parent read ACTIVE while creating a compartment inside it answered not found. The step now retries a not-found, making the compartment inside it or reading a new one's state, for up to ten minutes, logging that it waits; the `iso` step does the same for an image copied into a bucket just made.
+
+- 68d496d: Pressing the DOMAINS tile now opens the TD controller, and an adopted domain shows the ChRIS steps it already did.
+
+  Before, the tile opened the files listing, so the controller could only be reached by typing `domain`. An adopted domain read as unfinished because adoption carried only the machine's steps. Adopting a domain again catches it up from its checkout.
+
+- 4bc9d87: The dashboard and every other line keep working while a long build is being followed.
+
+  Following a task (`domain build`, `wait`) steps out of the session's turn between the task's lines, as a question already did, so a pane's reads run meanwhile; STOP still reaches the follow. A line whose browser has closed can now be stopped from any surface. A line typed in one browser never opens on another.
+
+- 5731276: A built domain's last check now reads as a short verdict, such as "pass · 7 steps · 17 s", instead of raw output.
+- Updated dependencies [fd1711f]
+- Updated dependencies [4bc9d87]
+- Updated dependencies [5602a4f]
+- Updated dependencies [c58c3a6]
+- Updated dependencies [02c20bf]
+- Updated dependencies [55e2041]
+  - @fnndsc/menu@0.30.0
+  - @fnndsc/brasa@0.48.0
+  - @fnndsc/calypso@0.27.0
+  - @fnndsc/fond@0.6.0
+
 ## 0.3.0
 
 ### Minor Changes

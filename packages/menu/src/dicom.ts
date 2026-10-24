@@ -30,7 +30,7 @@ export interface DicomTag {
   items?: DicomTag[][];
 }
 
-export const dicomTagSchema: z.ZodType<DicomTag, z.ZodTypeDef, unknown> = z.lazy(() =>
+export const dicomTagSchema: z.ZodType<DicomTag, unknown> = z.lazy(() =>
   z.object({
     /** `(gggg,eeee)`, upper-case hex. */
     tag: z.string(),

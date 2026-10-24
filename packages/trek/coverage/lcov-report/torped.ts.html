@@ -296,7 +296,25 @@
 <a name='L231'></a><a href='#L231'>231</a>
 <a name='L232'></a><a href='#L232'>232</a>
 <a name='L233'></a><a href='#L233'>233</a>
-<a name='L234'></a><a href='#L234'>234</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L234'></a><a href='#L234'>234</a>
+<a name='L235'></a><a href='#L235'>235</a>
+<a name='L236'></a><a href='#L236'>236</a>
+<a name='L237'></a><a href='#L237'>237</a>
+<a name='L238'></a><a href='#L238'>238</a>
+<a name='L239'></a><a href='#L239'>239</a>
+<a name='L240'></a><a href='#L240'>240</a>
+<a name='L241'></a><a href='#L241'>241</a>
+<a name='L242'></a><a href='#L242'>242</a>
+<a name='L243'></a><a href='#L243'>243</a>
+<a name='L244'></a><a href='#L244'>244</a>
+<a name='L245'></a><a href='#L245'>245</a>
+<a name='L246'></a><a href='#L246'>246</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -507,6 +525,12 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">110x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -576,29 +600,35 @@ import { getintpar, getynpar, testnl } from './getpar.js';
 import { killb, killk, kills } from './kill.js';
 import { nova } from './nova.js';
 import { franf, ranf } from './rand.js';
+import type { TrekState } from './state.js';
 &nbsp;
-/*
-**  PHOTON TORPEDO CONTROL
-**
-**	Either one or three photon torpedoes are fired.  If three
-**	are fired, it is called a "burst" and you also specify
-**	a spread angle.
-**
-**	Torpedoes are never 100% accurate.  There is always a random
-**	cludge factor in their course which is increased if you have
-**	your shields up.  Hence, you will find that they are more
-**	accurate at close range.  However, they have the advantage that
-**	at long range they don't lose any of their power as phasers
-**	do, i.e., a hit is a hit is a hit, by any other name.
-**
-**	When the course spreads too much, you get a misfire, and the
-**	course is randomized even more.  You also have the chance that
-**	the misfire damages your torpedo tubes.
-*/
-&nbsp;
-/** Photon torpedo control. */
+/**
+ * Fires one photon torpedo, or a burst of three.
+ *
+ * PHOTON TORPEDO CONTROL
+ *
+ * Either one or three photon torpedoes are fired.  If three
+ * are fired, it is called a "burst" and you also specify
+ * a spread angle.
+ *
+ * Torpedoes are never 100% accurate.  There is always a random
+ * cludge factor in their course which is increased if you have
+ * your shields up.  Hence, you will find that they are more
+ * accurate at close range.  However, they have the advantage that
+ * at long range they don't lose any of their power as phasers
+ * do, i.e., a hit is a hit is a hit, by any other name.
+ *
+ * When the course spreads too much, you get a misfire, and the
+ * course is randomized even more.  You also have the chance that
+ * the misfire damages your torpedo tubes.
+ *
+ * C: `torped()` in torped.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table's value (unused).
+ */
 export async function torped(t: Trek, _v: number): Promise&lt;void&gt; {
-  const { Ship, Etc, Sect, Game, Move } = t.s;
+  const { Ship, Etc, Sect, Game, Move }: TrekState = t.s;
   let ix: number;
   let iy: number;
   let x: number;
@@ -730,17 +760,23 @@ export async function torped(t: Trek, _v: number): Promise&lt;void&gt; {
   Move.free = 0;
 }
 &nbsp;
-/*
-**  RANDOMIZE COURSE
-**
-**	This routine randomizes the course for torpedo number 'n'.
-**	Other things handled by this routine are misfires, damages
-**	to the tubes, etc.
-*/
-&nbsp;
-/** Randomize the course for torpedo number n. */
+/**
+ * Randomize the course for torpedo number n.
+ *
+ * RANDOMIZE COURSE
+ *
+ * This routine randomizes the course for torpedo number 'n'.
+ * Other things handled by this routine are misfires, damages
+ * to the tubes, etc.
+ *
+ * C: `randcourse()` in torped.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param n - The torpedo's number in a burst (1 .. 3), or -1 for a single torpedo.
+ * @returns The course error, in degrees.
+ */
 async function randcourse(t: Trek, n: number): Promise&lt;number&gt; {
-  const { Ship, Param } = t.s;
+  const { Ship, Param }: TrekState = t.s;
   let r: number;
   let d: number;
 &nbsp;
@@ -769,7 +805,7 @@ async function randcourse(t: Trek, n: number): Promise&lt;number&gt; {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-10-18T12:52:14.718Z
+                at 2026-10-24T00:12:13.284Z
             </div>
         <script src="prettify.js"></script>
         <script>

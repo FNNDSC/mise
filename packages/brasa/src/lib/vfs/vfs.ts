@@ -66,10 +66,14 @@ export class VFS {
     const inflight: Promise<void> | undefined = this.revalidating.get(effectivePath);
     if (inflight) return inflight;
     const run: Promise<void> = (async (): Promise<void> => {
+      // A change while this read is out (an rm, an upload) makes what it
+      // brings back the folder as it was: the cache does not keep it.
+      const since: number | undefined = listingCache_get().stamp_take?.();
       const fetched = await vfsDispatcher_get().list(effectivePath, {});
       if (!fetched.ok) return;
       const items: ListingItem[] = listingItemsFromVfs_make(fetched.value);
-      listingCache_get().cache_set(effectivePath, items);
+      if (since === undefined) listingCache_get().cache_set(effectivePath, items);
+      else listingCache_get().cache_set(effectivePath, items, { since });
       ambient_publish({
         kind: 'envelope',
         envelope: { status: 'ok', rendered: '', model: { kind: 'fs.listing', data: [{ path: effectivePath, items, fresh: true }] } },
@@ -132,13 +136,16 @@ export class VFS {
 
       // Delegate path queries to the unified vfsDispatcher (which handles both virtual and native paths)
       const beforeList: number = errorStack.checkpoint_mark();
+      const since: number | undefined = listCache.stamp_take?.();
       const vfsResult = await vfsDispatcher_get().list(effectivePath, options);
       if (vfsResult.ok) {
         const items: ListingItem[] = listingItemsFromVfs_make(vfsResult.value);
 
-        // Cache the results, where the backend lets them be kept
+        // Cache the results, where the backend lets them be kept, unless a
+        // change to the folder landed while they were being read.
         if (cacheable) {
-          listCache.cache_set(effectivePath, items);
+          if (since === undefined) listCache.cache_set(effectivePath, items);
+          else listCache.cache_set(effectivePath, items, { since });
         }
 
         return Ok({ path: effectivePath, items, fresh: true });

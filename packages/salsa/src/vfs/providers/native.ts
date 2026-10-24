@@ -27,6 +27,12 @@ import {
 } from "../../files/index.js";
 import path from "path";
 
+/** How long `rm -r` waits for CUBE to finish removing a folder it accepted the removal of. */
+const FOLDER_GONE_WAIT_MS: number = 15_000;
+
+/** How often it asks. */
+const FOLDER_GONE_POLL_MS: number = 400;
+
 /**
  * Shape of raw file browser items returned by the ChRIS API.
  */
@@ -354,7 +360,8 @@ export class NativeVfsProvider implements VFSProvider {
     const held: Result<VFSItem[]> = await this.list(target);
     if (!held.ok) return vfs_failFromStack('EIO');
     if (held.value.length > 0) return vfs_fail('ENOTEMPTY');
-    return vfsOutcome_convertFromBoolean(await files_delete(there.value.id, 'dirs', path.posix.dirname(target)), 'EIO');
+    if (!await files_delete(there.value.id, 'dirs', path.posix.dirname(target))) return vfs_failFromStack('EIO');
+    return await this.folderGone_await(target);
   }
 
   /** @inheritdoc */
@@ -392,7 +399,39 @@ export class NativeVfsProvider implements VFSProvider {
     const there: VfsOutcome<{ type: 'dir' | 'file' | 'link'; id: number }> = await this.removable_find(target);
     if (!there.ok) return there;
     if (there.value.type !== 'dir') return vfs_fail('ENOTDIR');
-    return vfsOutcome_convertFromBoolean(await files_delete(there.value.id, 'dirs', path.posix.dirname(target)), 'EIO');
+    if (!await files_delete(there.value.id, 'dirs', path.posix.dirname(target))) return vfs_failFromStack('EIO');
+    return await this.folderGone_await(target);
+  }
+
+  /**
+   * Waits for a folder CUBE has accepted the removal of to be gone.
+   *
+   * CUBE answers a folder's DELETE with 202: queued, not done. Its parent
+   * goes on listing the folder for a moment, and a listing read then (an
+   * `ls`, a pane's refresh) is the folder as it was, kept as current. An
+   * `rm` that returns before the folder is gone has not removed it yet, so
+   * it waits, a few seconds at most, for the parent to stop naming it.
+   *
+   * @param target - The folder removed.
+   * @param timeoutMs - How long to wait.
+   * @returns Done when the parent no longer names it; a failure in words when it still does.
+   */
+  private async folderGone_await(target: string, timeoutMs: number = FOLDER_GONE_WAIT_MS): Promise<VfsOutcome> {
+    const parent: string = path.posix.dirname(target);
+    const name: string = path.posix.basename(target);
+    const deadline: number = Date.now() + timeoutMs;
+    for (;;) {
+      const mark: number = errorStack.checkpoint_mark();
+      const outcome: ListingOutcome = await files_listOutcome({ limit: 1000, offset: 0 }, 'dirs', parent);
+      errorStack.checkpoint_drain(mark);
+      const named: boolean = outcome.kind === 'listing' && ((outcome.data.tableData ?? []) as ChrisFileOrDirRaw[])
+        .some((row: ChrisFileOrDirRaw): boolean => chrisRow_convertToItem(row, 'dir').name === name);
+      if (!named) return vfs_ok(true);
+      if (Date.now() >= deadline) {
+        return vfs_fail('EIO', `CUBE accepted the removal of ${target} but still lists it after ${Math.round(timeoutMs / 1000)}s`);
+      }
+      await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, FOLDER_GONE_POLL_MS); });
+    }
   }
 
   /**

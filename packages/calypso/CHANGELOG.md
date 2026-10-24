@@ -1,5 +1,31 @@
 # @fnndsc/calypso
 
+## 0.27.0
+
+### Minor Changes
+
+- 4bc9d87: The dashboard and every other line keep working while a long build is being followed.
+
+  Following a task (`domain build`, `wait`) steps out of the session's turn between the task's lines, as a question already did, so a pane's reads run meanwhile; STOP still reaches the follow. A line whose browser has closed can now be stopped from any surface. A line typed in one browser never opens on another.
+
+- 02c20bf: Every function name now says what it does: the 462 that put a preposition where the verb goes are renamed (#1227).
+
+  The style guide names a function `<subject>[Qualifier]_<verb>[Adverb]`. Names such as `answerRows_of`, `seriesUID_ofPath`, `options_toParams` and `ask_onPane` put a preposition in the verb's place, which names the result without saying whether the function derives, parses, builds or renders it. They are now `answerRows_derive`, `seriesUID_parse`, `options_convertToParams` and `askOnPane_await`. A preposition may still qualify the verb (`x_readFromCache`) or the object (`askOnPane_await`); it may not start the method.
+
+  `npm run lint:rpn` (`scripts/rpn-prepositions.mjs`) refuses a function, `const` function or underscored method whose method is, or starts with, `of`, `to`, `with`, `from`, `for`, `by`, `as`, `in`, `on` or `at`, and CI runs it. The exported names change with no aliases kept: nothing outside this repository imports them.
+
+### Patch Changes
+
+- Updated dependencies [fd1711f]
+- Updated dependencies [4bc9d87]
+- Updated dependencies [5602a4f]
+- Updated dependencies [c58c3a6]
+- Updated dependencies [02c20bf]
+- Updated dependencies [55e2041]
+  - @fnndsc/menu@0.30.0
+  - @fnndsc/brasa@0.48.0
+  - @fnndsc/cumin@3.29.0
+
 ## 0.26.2
 
 ### Patch Changes

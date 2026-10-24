@@ -1,5 +1,43 @@
 # @fnndsc/argus
 
+## 0.39.0
+
+### Minor Changes
+
+- f27596d: A domain's build now puts ChRIS on its cluster and checks it end to end, once the cluster has settled.
+
+  The steps after the install are no longer placeholders. `verify` runs the ten checks and asks again each minute, for up to 30, while a new cluster's operators settle. `chris-deploy` installs the fnndsc/chris chart with `helm`, pinned to one node. `chris-seed` makes the test user and the smoke plugins through chrisomatic. `smoke` runs miniChRIS-OKD's journey against the public Route. BUILD and `tenant.mise` now build all the way through `smoke`, and the Kubernetes client waits out the 429 a settling API answers.
+
+- fd1711f: A domain whose build stopped part way reads STOPPED, not SIZING · NOTHING BUILT.
+
+  The new condition covers steps done with none running and the domain not up. The line under it reads PLANNED · NOTHING BILLED when the next step is the first that bills, as after NO at the billing question, and NOT FINISHED otherwise.
+
+- 02c20bf: Every function name now says what it does: the 462 that put a preposition where the verb goes are renamed (#1227).
+
+  The style guide names a function `<subject>[Qualifier]_<verb>[Adverb]`. Names such as `answerRows_of`, `seriesUID_ofPath`, `options_toParams` and `ask_onPane` put a preposition in the verb's place, which names the result without saying whether the function derives, parses, builds or renders it. They are now `answerRows_derive`, `seriesUID_parse`, `options_convertToParams` and `askOnPane_await`. A preposition may still qualify the verb (`x_readFromCache`) or the object (`askOnPane_await`); it may not start the method.
+
+  `npm run lint:rpn` (`scripts/rpn-prepositions.mjs`) refuses a function, `const` function or underscored method whose method is, or starts with, `of`, `to`, `with`, `from`, `for`, `by`, `as`, `in`, `on` or `at`, and CI runs it. The exported names change with no aliases kept: nothing outside this repository imports them.
+
+- 55e2041: A new domain finds its DNS zone in the tenancy: the only one by default, else one chosen on SIZE or named.
+
+  `domain new` and `domain size` read the tenancy's DNS zones; a named `--base-domain` must be one of them, and with several and none named `domain new` refuses, listing them. The size model carries `dnsZones`. In ARGUS, SIZE shows a ZONE choice and COMMIT stays dark until a zone is set.
+
+### Patch Changes
+
+- 60c3017: Typing a domain's name opens the TD controller from the first paint, before the controller has read the domains.
+
+  The DOMAINS tile's read now tells the language the domains' names, so a freshly opened stratus session claims `domain quay` at once.
+
+- 68d496d: Pressing the DOMAINS tile now opens the TD controller, and an adopted domain shows the ChRIS steps it already did.
+
+  Before, the tile opened the files listing, so the controller could only be reached by typing `domain`. An adopted domain read as unfinished because adoption carried only the machine's steps. Adopting a domain again catches it up from its checkout.
+
+- Updated dependencies [fd1711f]
+- Updated dependencies [4bc9d87]
+- Updated dependencies [02c20bf]
+- Updated dependencies [55e2041]
+  - @fnndsc/menu@0.30.0
+
 ## 0.38.0
 
 ### Minor Changes

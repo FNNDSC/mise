@@ -1,5 +1,34 @@
 # @fnndsc/chell
 
+## 5.19.0
+
+### Minor Changes
+
+- 02c20bf: Every function name now says what it does: the 462 that put a preposition where the verb goes are renamed (#1227).
+
+  The style guide names a function `<subject>[Qualifier]_<verb>[Adverb]`. Names such as `answerRows_of`, `seriesUID_ofPath`, `options_toParams` and `ask_onPane` put a preposition in the verb's place, which names the result without saying whether the function derives, parses, builds or renders it. They are now `answerRows_derive`, `seriesUID_parse`, `options_convertToParams` and `askOnPane_await`. A preposition may still qualify the verb (`x_readFromCache`) or the object (`askOnPane_await`); it may not start the method.
+
+  `npm run lint:rpn` (`scripts/rpn-prepositions.mjs`) refuses a function, `const` function or underscored method whose method is, or starts with, `of`, `to`, `with`, `from`, `for`, `by`, `as`, `in`, `on` or `at`, and CI runs it. The exported names change with no aliases kept: nothing outside this repository imports them.
+
+### Patch Changes
+
+- Updated dependencies [f27596d]
+- Updated dependencies [60c3017]
+- Updated dependencies [fd1711f]
+- Updated dependencies [68d496d]
+- Updated dependencies [4bc9d87]
+- Updated dependencies [5602a4f]
+- Updated dependencies [c58c3a6]
+- Updated dependencies [02c20bf]
+- Updated dependencies [55e2041]
+  - @fnndsc/argus@0.39.0
+  - @fnndsc/menu@0.30.0
+  - @fnndsc/brasa@0.48.0
+  - @fnndsc/calypso@0.27.0
+  - @fnndsc/chili@3.8.0
+  - @fnndsc/cumin@3.29.0
+  - @fnndsc/salsa@4.4.0
+
 ## 5.18.1
 
 ### Patch Changes

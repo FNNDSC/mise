@@ -1,5 +1,42 @@
 # @fnndsc/brasa
 
+## 0.48.0
+
+### Minor Changes
+
+- 4bc9d87: The dashboard and every other line keep working while a long build is being followed.
+
+  Following a task (`domain build`, `wait`) steps out of the session's turn between the task's lines, as a question already did, so a pane's reads run meanwhile; STOP still reaches the follow. A line whose browser has closed can now be stopped from any surface. A line typed in one browser never opens on another.
+
+- 02c20bf: Every function name now says what it does: the 462 that put a preposition where the verb goes are renamed (#1227).
+
+  The style guide names a function `<subject>[Qualifier]_<verb>[Adverb]`. Names such as `answerRows_of`, `seriesUID_ofPath`, `options_toParams` and `ask_onPane` put a preposition in the verb's place, which names the result without saying whether the function derives, parses, builds or renders it. They are now `answerRows_derive`, `seriesUID_parse`, `options_convertToParams` and `askOnPane_await`. A preposition may still qualify the verb (`x_readFromCache`) or the object (`askOnPane_await`); it may not start the method.
+
+  `npm run lint:rpn` (`scripts/rpn-prepositions.mjs`) refuses a function, `const` function or underscored method whose method is, or starts with, `of`, `to`, `with`, `from`, `for`, `by`, `as`, `in`, `on` or `at`, and CI runs it. The exported names change with no aliases kept: nothing outside this repository imports them.
+
+### Patch Changes
+
+- 5602a4f: A dry run of a manifest now previews the lines the play would run (#1241). A capture `R=$(gather process … --title "${LABEL}")` is shown around the command it holds, where the preview used to split it as plain words and put the closing `)` inside the title.
+
+  A reference the manifest itself changes before it is used stands as written instead of being filled from the session as it was before the play: `${gather}` after a `gather` or `pull` line, `${cwd}` after a `cd`, an `@` index or `${listing}` after any line, a variable the manifest assigns, and anything after a nested `play`. The preview used to name the cohort the session held before the manifest's own `gather clear`, so `pull ${gather}` showed folders the play would never fetch. A `ReferenceSource` says which verbs change it with `changedBy`; one that does not is held after any line. An `@` index that stands in a preview stands as `@SER3`, not `${@SER3}`.
+
+- c58c3a6: Searching tags, groups, workflows, plugin metas or jobs by a term works again (#1237). `<resource> search <term>` used to read the term as a subcommand and refuse it (`Unknown subcommand: feed_id:5536`). The other options on the line now carry into the listing, and a search with no term or more than one is refused by name.
+
+  A resource `list` refuses an option it does not read instead of printing the unfiltered first page: `jobs list --feed 5536` answers `jobs list: unrecognized option '--feed'; filter with --search <field>:<value>`. The options it reads are the standard ones its help lists (`--all`, `--limit`, `--fields`, `--sort`, `--reverse`, `--search`, `--table`, `--csv`, plus `--page` and `--offset`).
+
+  The help for `plugininstance` (and `job`, `jobs`, `instance`, `instances`) no longer lists `cancel`, `delete`, `output` and `parameters`, which were never implemented. A job is worked in `/proc/jobs`: `proc find <id>` names its path, `rm` on it cancels or removes it, and its `params`, `log` and `data` live under it. Typing one of the old verbs says so.
+
+- Updated dependencies [fd1711f]
+- Updated dependencies [4bc9d87]
+- Updated dependencies [02c20bf]
+- Updated dependencies [55e2041]
+  - @fnndsc/menu@0.30.0
+  - @fnndsc/chili@3.8.0
+  - @fnndsc/cumin@3.29.0
+  - @fnndsc/fond@0.6.0
+  - @fnndsc/orrery@0.7.0
+  - @fnndsc/salsa@4.4.0
+
 ## 0.47.0
 
 ### Minor Changes

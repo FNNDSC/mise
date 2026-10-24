@@ -1,5 +1,33 @@
 # @fnndsc/brasa
 
+## 0.47.0
+
+### Minor Changes
+
+- e1d052d: ARGUS shows the kernel's cohort instead of keeping its own copy. Its GATHER, REMOVE, CLEAR, name and CREATE FEED presses send `gather add|remove|clear|name|feed`, and the band and the GATHER pane redraw from the `gather.cohort` model those verbs answer with, including a line typed at any chell on the session. ARGUS no longer writes `~/gather/current.json`.
+
+  The kernel now fills in what the surface used to supply. `gather add` on a PACS path takes the series' description, modality, file count, patient and study from the query answer the path names (from the PACS mount's cache, so at most one CUBE read per query). A gathered folder is imagery when its name or place says it is a series, by the rule ARGUS's viewer uses, which now lives in `@fnndsc/menu` as `seriesFolder_is`. `gather feed [--title T]` makes the cohort's feed: series still at the PACS are pulled first, then one feed is rooted on every member, folders included. `gather name` answers with the cohort, and so does a `pull` that noted landed folders on it.
+
+  `PacsVfsProvider.queryResult_fetch` is public, and `vfsDispatcher.pacs` names the PACS mount. `pacsQueryModel_build` moved to `builtins/net/query.model.ts` and is still exported from `query.ts`.
+
+- b4cd618: Every session can play a manifest and make claims again: each backend registers what can be claimed about its world. `expect` keeps its grammar, `--within` and `path exists|count` in the core; ChRIS registers `gather`, `feed`, `run` and `path … tags`, and stratus registers `domain` (`step <name>`, `verify`, `class`, `cost`), so a tenant's manifest can assert its domain. `play` reads a manifest through the backend's files, then the engine's disk. A play no longer stops at its first line when an earlier command in the session had failed: each line is judged on its own status (#1056, stratus.adoc D14).
+- caff86a: A variable can head a pipe and hand on what it holds: `${T1} | grep -i sag | gather add` re-filters a stored answer. Written as an argument a variable still becomes words; at the head of a pipe it hands its model to a builtin that reads one, and its operands as text to anything else (#1226).
+
+### Patch Changes
+
+- 6a766d2: A cohort gathered and pulled from a script reads as home: `expect gather unpulled eq 0` holds and `gather process` runs. Nothing in the kernel recorded where a pulled series landed, so only a cohort built in ARGUS could be processed. `pull` now notes each landed folder on the cohort, and `gather process` and `expect gather pulled|unpulled` ask CUBE for any series member not yet noted. A series gathered from a query's answer (`Series_<uid>_<description>`) now carries its UID (#1226).
+- 52b9691: Help and docs now say three things that surprised in use. A fan-out plugin's run ends once its jobs are submitted. A pattern given to grep matches a study's own text too, keeping that whole study. With a default door, `chell -c` and `-f` run in your shared session (#1228).
+- 9c9ec38: A pipeline can be named by its own name, not only its `/bin` name, in `gather process` and at the prompt. The `/bin` name carries the CUBE id (`…_id291`), so a manifest that used it ran on one CUBE only; `gather process "FreeSurfer 8.2.0 mri_convert per series, DICOM"` now runs on any CUBE that has the pipeline (#1226).
+- d6cdb13: A variable holding a listing expands as a pipe hands it on: `gather add ${T1}` gets the series a grep kept. It used to add every patient and study row the grep kept as context, so `gather add` and `pull` took whole studies the grep had removed (#1226).
+- Updated dependencies [e1d052d]
+- Updated dependencies [a0fa450]
+- Updated dependencies [05ec948]
+- Updated dependencies [46bc80d]
+  - @fnndsc/menu@0.29.0
+  - @fnndsc/salsa@4.3.0
+  - @fnndsc/chili@3.7.16
+  - @fnndsc/cumin@3.28.6
+
 ## 0.46.0
 
 ### Minor Changes

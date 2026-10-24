@@ -1,5 +1,23 @@
 # @fnndsc/calypso
 
+## 0.26.2
+
+### Patch Changes
+
+- 46bc80d: Zod moves to 4.6.7: zod 3 carries a high-severity advisory with no 3.x fix, which failed every build's audit. The advisory is GHSA-mrhx-c7xc-m3w5, memory exhaustion while validating oversized constrained collections. The wire schemas read as before: `.catch` fallbacks, `.default` values, `.passthrough()` and the recursive DICOM tag parse were checked against zod 4. `dicomTagSchema` is typed `z.ZodType<DicomTag, unknown>`; schemas exported from `@fnndsc/menu` are zod 4 schemas, so code that names zod 3's types against them (`ZodTypeDef`, `SafeParseReturnType`) has to move too. A boundary reason now renders a symbol in a path instead of throwing. salsa's nested lockfile, which only the audit reads, overrides zod until a `@fnndsc/menu` built on zod 4 is published, and is back in step with salsa's `package.json`.
+- Updated dependencies [e1d052d]
+- Updated dependencies [b4cd618]
+- Updated dependencies [6a766d2]
+- Updated dependencies [52b9691]
+- Updated dependencies [9c9ec38]
+- Updated dependencies [05ec948]
+- Updated dependencies [d6cdb13]
+- Updated dependencies [caff86a]
+- Updated dependencies [46bc80d]
+  - @fnndsc/brasa@0.47.0
+  - @fnndsc/menu@0.29.0
+  - @fnndsc/cumin@3.28.6
+
 ## 0.26.1
 
 ### Patch Changes

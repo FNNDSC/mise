@@ -224,7 +224,7 @@ async function host_need(call: ChrisCall, command: string, args: ReadonlyArray<s
 }
 
 /** A resource's conditions, by type. */
-function conditions_of(conditions: Array<{ type: string; status: string }> | undefined): Record<string, string> {
+function conditions_map(conditions: Array<{ type: string; status: string }> | undefined): Record<string, string> {
   return Object.fromEntries((conditions ?? []).map((condition): [string, string] => [condition.type, condition.status]));
 }
 
@@ -248,7 +248,7 @@ async function mirror_ensure(call: ChrisCall): Promise<void> {
   const started: number = Date.now();
   let updating: boolean = false;
   while (!call.signal.aborted && Date.now() - started < call.waits.mirrorWaitMs) {
-    const state: string | undefined = conditions_of((await call.kube.json_get(pool) as { status?: { conditions?: Array<{ type: string; status: string }> } }).status?.conditions)['Updating'];
+    const state: string | undefined = conditions_map((await call.kube.json_get(pool) as { status?: { conditions?: Array<{ type: string; status: string }> } }).status?.conditions)['Updating'];
     if (state === 'True' && !updating) { updating = true; call.log('the nodes are taking the mirror, one at a time'); }
     if (updating && state === 'False') { call.log(`the nodes took the mirror in ${Math.round((Date.now() - started) / 1000)}s`); return; }
     if (!updating && Date.now() - started >= call.waits.mirrorReactMs) return;
@@ -424,7 +424,7 @@ export function chrisomaticConfig_render(values: { cubeUrl: string; superuserPas
  * @param timeoutSeconds - Its deadline.
  * @returns The Job.
  */
-export function seedJob_of(release: ChrisRelease, timeoutSeconds: number): unknown {
+export function seedJob_build(release: ChrisRelease, timeoutSeconds: number): unknown {
   const labels: Record<string, string> = { 'app.kubernetes.io/name': 'chrisomatic', 'app.kubernetes.io/instance': release.release };
   return {
     apiVersion: 'batch/v1', kind: 'Job',
@@ -521,7 +521,7 @@ export const chrisWork_cluster: ChrisWork = {
       if (Date.now() >= goneBy) throw new Error(`the last seed job ${release}-seed is still there after two minutes`);
       await wait(call.waits.pollMs, call.signal);
     }
-    await call.kube.json_post(jobs, seedJob_of(call.release, Math.round(call.waits.seedWaitMs / 1000)));
+    await call.kube.json_post(jobs, seedJob_build(call.release, Math.round(call.waits.seedWaitMs / 1000)));
     call.log('seed job started: chrisomatic makes the test user, the compute resource and the smoke plugins');
     const deadline: number = Date.now() + call.waits.seedWaitMs;
     let status: { succeeded?: number; failed?: number } = {};

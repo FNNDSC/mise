@@ -323,10 +323,10 @@ describe('a feed\'s data facts', () => {
     await procCheckpoint_save(identity, root);
     expect(await shardNames()).toEqual(['feed-5.json', 'feed-6.json']);
     procCache_get().cache_clear();
-    expect(procCache_get().dataFacts_of(5)).toBeUndefined();
+    expect(procCache_get().dataFacts_read(5)).toBeUndefined();
     expect((await procCheckpoint_restore(identity, root)).restored).toBe(true);
-    expect(procCache_get().dataFacts_of(5)).toEqual({ format: 'dicom', modality: 'MR', seriesDescription: 'SAG MPRAGE' });
-    expect(procCache_get().dataFacts_of(6)).toEqual({ format: 'nifti' });
+    expect(procCache_get().dataFacts_read(5)).toEqual({ format: 'dicom', modality: 'MR', seriesDescription: 'SAG MPRAGE' });
+    expect(procCache_get().dataFacts_read(6)).toEqual({ format: 'nifti' });
   });
 
   it('are absent from a shard written before they existed, and the shard restores all the same', async () => {
@@ -339,7 +339,7 @@ describe('a feed\'s data facts', () => {
     procCache_get().cache_clear();
     expect((await procCheckpoint_restore(identity, root)).restored).toBe(true);
     expect(procCache_get().topologyLoaded_has(5)).toBe(true);
-    expect(procCache_get().dataFacts_of(5)).toBeUndefined();
+    expect(procCache_get().dataFacts_read(5)).toBeUndefined();
   });
 
   it('are dropped when malformed, and the feed\'s topology kept', async () => {
@@ -355,17 +355,17 @@ describe('a feed\'s data facts', () => {
     procCache_get().cache_clear();
     expect((await procCheckpoint_restore(identity, root)).restored).toBe(true);
     expect(procCache_get().topologyLoaded_has(5)).toBe(true);
-    expect(procCache_get().dataFacts_of(5)).toBeUndefined();
+    expect(procCache_get().dataFacts_read(5)).toBeUndefined();
   });
 
   it('outlive a re-walk of the feed\'s graph and leave with the feed', () => {
     procCache_get().feed_add(feed_create(5));
     procCache_get().dataFacts_set(5, { format: 'png' });
     procCache_get().feedTopology_evict(5);
-    expect(procCache_get().dataFacts_of(5)).toEqual({ format: 'png' });
+    expect(procCache_get().dataFacts_read(5)).toEqual({ format: 'png' });
     procCache_get().feed_remove(5);
-    expect(procCache_get().dataFacts_of(5)).toBeUndefined();
+    expect(procCache_get().dataFacts_read(5)).toBeUndefined();
     procCache_get().dataFacts_set(7, { format: 'png' });
-    expect(procCache_get().dataFacts_of(7)).toBeUndefined();
+    expect(procCache_get().dataFacts_read(7)).toBeUndefined();
   });
 });

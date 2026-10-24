@@ -18,7 +18,7 @@ import {
   listingNumbering_set,
   listingChild_declare,
   listingState_compose,
-  listingTemplate_of,
+  listingTemplate_build,
   type ListingBlock,
   type ListingDeclaration,
   type ListingStateParts,
@@ -188,31 +188,31 @@ function zoneVerbs_of(zone: HTMLElement): string[] {
 const OPEN_FILES: (entry: Entry) => ReadonlyArray<{ label: string; run: (entry: Entry) => void }> =
   (entry: Entry) => (entry.kind === 'file' ? [{ label: 'OPEN', run: (): void => {} }] : []);
 
-describe('listingTemplate_of', () => {
+describe('listingTemplate_build', () => {
   it('lists every trait track, then the action track', () => {
-    expect(listingTemplate_of(ENTRY_TRAITS, { width: '21em', of: (): [] => [] })).toBe('1.4em 1fr 6em 21em');
-    expect(listingTemplate_of(ENTRY_TRAITS)).toBe('1.4em 1fr 6em');
+    expect(listingTemplate_build(ENTRY_TRAITS, { width: '21em', of: (): [] => [] })).toBe('1.4em 1fr 6em 21em');
+    expect(listingTemplate_build(ENTRY_TRAITS)).toBe('1.4em 1fr 6em');
   });
 
   it('refuses a trait without a width', () => {
     const traits: ReadonlyArray<ListingTrait<Entry>> = [{ key: 'x', label: 'X', className: 'x', cell: (): string => '' }];
-    expect((): string => listingTemplate_of(traits)).toThrow(/declares no width/);
+    expect((): string => listingTemplate_build(traits)).toThrow(/declares no width/);
   });
 
   it('refuses a content-sized track, and accepts a fixed one, a share, or a minmax with a fixed minimum', () => {
     const named = (width: string): ReadonlyArray<ListingTrait<Entry>> =>
       [{ key: 'w', label: 'W', className: 'w', width, cell: (): string => '' }];
     for (const bad of ['auto', 'min-content', 'max-content', 'fit-content(10em)', 'minmax(0, 13em)', 'minmax(0px, 1fr)']) {
-      expect((): string => listingTemplate_of(named(bad))).toThrow(/content-sized/);
+      expect((): string => listingTemplate_build(named(bad))).toThrow(/content-sized/);
     }
     for (const good of ['13em', '1fr', '7.5em', 'minmax(5em, 1fr)', 'minmax(4em, 12em)', '120px', '0.5fr']) {
-      expect(listingTemplate_of(named(good))).toBe(good);
+      expect(listingTemplate_build(named(good))).toBe(good);
     }
-    expect((): string => listingTemplate_of(ENTRY_TRAITS, { width: 'auto', of: (): [] => [] })).toThrow(/content-sized/);
+    expect((): string => listingTemplate_build(ENTRY_TRAITS, { width: 'auto', of: (): [] => [] })).toThrow(/content-sized/);
   });
 
   it('refuses actions on the row that declare no track', () => {
-    expect((): string => listingTemplate_of(ENTRY_TRAITS, { of: (): [] => [] })).toThrow(/declare no track/);
+    expect((): string => listingTemplate_build(ENTRY_TRAITS, { of: (): [] => [] })).toThrow(/declare no track/);
   });
 
   it('refuses an uncapped trait that does not lead', () => {
@@ -220,7 +220,7 @@ describe('listingTemplate_of', () => {
       { key: 'a', label: 'A', className: 'a', width: '1fr', cell: (): string => '' },
       { key: 'b', label: '', className: 'b', width: '1em', capped: false, cell: (): string => '' },
     ];
-    expect((): string => listingTemplate_of(traits)).toThrow(/must lead/);
+    expect((): string => listingTemplate_build(traits)).toThrow(/must lead/);
   });
 });
 

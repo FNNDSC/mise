@@ -29,8 +29,8 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
   },
 }));
 
-const { sessionConnect_fromSaved,
-  SAVED_TOKEN_RETRY_MS, sessionConnect_withToken } = await import('../src/chris/connect.js');
+const { sessionFromSaved_connect,
+  SAVED_TOKEN_RETRY_MS, sessionWithToken_connect } = await import('../src/chris/connect.js');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -38,11 +38,11 @@ beforeEach(() => {
   mockGetSingle.mockResolvedValue({ user: 'chris', URL: 'https://cube/api/v1/', folder: '/home/chris' });
 });
 
-describe('sessionConnect_fromSaved', () => {
+describe('sessionFromSaved_connect', () => {
   it('restores when the saved token is accepted by the server', async () => {
     mockAuthTokenGet.mockResolvedValue('SAVED');
     mockClientGet.mockResolvedValue({ getUser: jest.fn(async () => ({ username: 'chris' })) });
-    const result = await sessionConnect_fromSaved();
+    const result = await sessionFromSaved_connect();
     expect(result.status).toBe('restored');
     expect(sessionState.offline).toBe(false);
     expect(mockAuthTokenGet).toHaveBeenCalledWith(true);
@@ -50,27 +50,27 @@ describe('sessionConnect_fromSaved', () => {
 
   it('reports no context when nothing was saved', async () => {
     mockGetSingle.mockResolvedValue({ user: '', URL: '', folder: '' });
-    await expect(sessionConnect_fromSaved()).resolves.toMatchObject({ status: 'no-context' });
+    await expect(sessionFromSaved_connect()).resolves.toMatchObject({ status: 'no-context' });
     expect(mockAuthTokenGet).not.toHaveBeenCalled();
   });
 
   it('goes offline when the context has no token', async () => {
     mockAuthTokenGet.mockResolvedValue(null);
-    await expect(sessionConnect_fromSaved()).resolves.toMatchObject({ status: 'no-token' });
+    await expect(sessionFromSaved_connect()).resolves.toMatchObject({ status: 'no-token' });
     expect(sessionState.offline).toBe(true);
   });
 
   it('goes offline when no client can be made', async () => {
     mockAuthTokenGet.mockResolvedValue('SAVED');
     mockClientGet.mockResolvedValue(null);
-    await expect(sessionConnect_fromSaved()).resolves.toMatchObject({ status: 'no-client' });
+    await expect(sessionFromSaved_connect()).resolves.toMatchObject({ status: 'no-client' });
     expect(sessionState.offline).toBe(true);
   });
 
   it('goes offline with the server\'s reason when the token is rejected', async () => {
     mockAuthTokenGet.mockResolvedValue('STALE');
     mockClientGet.mockResolvedValue({ getUser: jest.fn(async () => { throw new Error('401'); }) });
-    const result = await sessionConnect_fromSaved();
+    const result = await sessionFromSaved_connect();
     expect(result.status).toBe('invalid-token');
     expect(result.error).toBe('401');
     expect(sessionState.offline).toBe(true);
@@ -83,7 +83,7 @@ describe('sessionConnect_fromSaved', () => {
       .mockRejectedValueOnce(new Error('No server response!'))
       .mockResolvedValueOnce({ username: 'chris' });
     mockClientGet.mockResolvedValue({ getUser });
-    const pending = sessionConnect_fromSaved();
+    const pending = sessionFromSaved_connect();
     await jest.advanceTimersByTimeAsync(SAVED_TOKEN_RETRY_MS);
     await expect(pending).resolves.toMatchObject({ status: 'restored' });
     expect(getUser).toHaveBeenCalledTimes(2);
@@ -94,7 +94,7 @@ describe('sessionConnect_fromSaved', () => {
     jest.useFakeTimers();
     mockAuthTokenGet.mockResolvedValue('SAVED');
     mockClientGet.mockResolvedValue({ getUser: jest.fn(async () => { throw new Error('No server response!'); }) });
-    const pending = sessionConnect_fromSaved();
+    const pending = sessionFromSaved_connect();
     await jest.advanceTimersByTimeAsync(SAVED_TOKEN_RETRY_MS);
     const result = await pending;
     expect(result.status).toBe('unreachable');
@@ -103,10 +103,10 @@ describe('sessionConnect_fromSaved', () => {
   });
 });
 
-describe('sessionConnect_withToken', () => {
+describe('sessionWithToken_connect', () => {
   it('connects, comes online, and sets the identity without touching the working directory', async () => {
     mockConnectWithToken.mockResolvedValue({ connected: true });
-    const result = await sessionConnect_withToken('chris', 'https://cube/api/v1/', 'MINTED');
+    const result = await sessionWithToken_connect('chris', 'https://cube/api/v1/', 'MINTED');
     expect(result.status).toBe('connected');
     expect(result.context.user).toBe('chris');
     expect(sessionState.offline).toBe(false);
@@ -117,7 +117,7 @@ describe('sessionConnect_withToken', () => {
 
   it('stays offline on a refusal and carries the reason', async () => {
     mockConnectWithToken.mockResolvedValue({ connected: false, reason: 'the server said no' });
-    const result = await sessionConnect_withToken('chris', 'https://cube/api/v1/', 'STALE');
+    const result = await sessionWithToken_connect('chris', 'https://cube/api/v1/', 'STALE');
     expect(result.status).toBe('refused');
     expect(result.error).toBe('the server said no');
     expect(sessionState.offline).toBe(true);

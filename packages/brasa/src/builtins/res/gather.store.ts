@@ -109,7 +109,7 @@ export function cohortState_empty(): GatherState {
  * @param state - The cohort.
  * @returns The `gather.cohort` model.
  */
-export function cohortModel_of(state: GatherState): EnvelopeModel {
+export function cohortModel_wrap(state: GatherState): EnvelopeModel {
   return { kind: GATHER_MODEL_KIND, data: state };
 }
 
@@ -246,7 +246,7 @@ async function folderEntries_list(folder: string): Promise<Result<string[]>> {
  * @param address - A resolved VFS path.
  * @returns The UID, or undefined when the path is not a series projection.
  */
-export function seriesUID_ofPath(address: string): string | undefined {
+export function seriesUID_parse(address: string): string | undefined {
   const leaf: string = path.posix.basename(address);
   if (/^[0-9]+(\.[0-9]+)+$/.test(leaf)) return leaf;
   const named: RegExpMatchArray | null = leaf.match(/^Series_([0-9]+(?:\.[0-9]+)+)(?:_|$)/);
@@ -263,7 +263,7 @@ function memberSeriesUID_get(member: GatherMember): string | undefined {
   if (member.kind !== 'series') return undefined;
   return typeof member.seriesUID === 'string' && member.seriesUID.length > 0
     ? member.seriesUID
-    : seriesUID_ofPath(member.vfsPath);
+    : seriesUID_parse(member.vfsPath);
 }
 
 /**

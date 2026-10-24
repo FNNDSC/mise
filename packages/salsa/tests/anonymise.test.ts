@@ -12,25 +12,25 @@ import { describe, it, expect } from '@jest/globals';
 import {
   STOOD_IN_FIELDS,
   answer_standIn,
-  birthDate_toYear,
+  birthDate_convertToYear,
   criteria_standIn,
-  date_toMonth,
+  date_convertToMonth,
   field_standIn,
-  nameStandIn_of,
-  token_of,
+  nameStandIn_derive,
+  token_derive,
 } from '../src/pacs/anonymise.js';
 
 describe('a stand-in token', () => {
   it('is the same for the same value, so one patient reads as one patient', () => {
-    expect(token_of('1279049')).toBe(token_of('1279049'));
+    expect(token_derive('1279049')).toBe(token_derive('1279049'));
   });
 
   it('differs for different values', () => {
-    expect(token_of('1279049')).not.toBe(token_of('1279050'));
+    expect(token_derive('1279049')).not.toBe(token_derive('1279050'));
   });
 
   it('carries none of the original', () => {
-    expect(token_of('1279049')).not.toContain('1279049');
+    expect(token_derive('1279049')).not.toContain('1279049');
   });
 
   it('is not the bare digest of the value, which a seven-digit space makes reversible', () => {
@@ -38,25 +38,25 @@ describe('a stand-in token', () => {
     // an unsalted token is a lookup away from the value behind it. This is
     // the property the salt exists for; without it this assertion fails.
     const bare: string = require('crypto').createHash('sha256').update('1279049').digest('hex').slice(0, 8);
-    expect(token_of('1279049')).not.toBe(bare);
+    expect(token_derive('1279049')).not.toBe(bare);
   });
 
   it('says nothing for nothing, rather than tokenising an empty field', () => {
-    expect(token_of('')).toBe('');
+    expect(token_derive('')).toBe('');
   });
 });
 
 describe('a stand-in name', () => {
   it('reads as a name, in the form DICOM writes one', () => {
-    expect(nameStandIn_of('PIENAAR^CHLOE')).toMatch(/^[A-Z]+\^[A-Z]+$/);
+    expect(nameStandIn_derive('PIENAAR^CHLOE')).toMatch(/^[A-Z]+\^[A-Z]+$/);
   });
 
   it('is stable, so the same person reads the same way across an answer', () => {
-    expect(nameStandIn_of('PIENAAR^CHLOE')).toBe(nameStandIn_of('PIENAAR^CHLOE'));
+    expect(nameStandIn_derive('PIENAAR^CHLOE')).toBe(nameStandIn_derive('PIENAAR^CHLOE'));
   });
 
   it('carries none of the original name', () => {
-    const stoodIn: string = nameStandIn_of('PIENAAR^CHLOE');
+    const stoodIn: string = nameStandIn_derive('PIENAAR^CHLOE');
     expect(stoodIn).not.toContain('PIENAAR');
     expect(stoodIn).not.toContain('CHLOE');
   });
@@ -64,16 +64,16 @@ describe('a stand-in name', () => {
 
 describe('dates', () => {
   it('coarsens a study date to the month it fell in', () => {
-    expect(date_toMonth('20260910')).toBe('20260901');
+    expect(date_convertToMonth('20260910')).toBe('20260901');
   });
 
   it('coarsens a birth date all the way to its year, since an age identifies', () => {
-    expect(birthDate_toYear('19971013')).toBe('19970101');
+    expect(birthDate_convertToYear('19971013')).toBe('19970101');
   });
 
   it('leaves something that is not a date alone', () => {
-    expect(date_toMonth('')).toBe('');
-    expect(date_toMonth('unknown')).toBe('unknown');
+    expect(date_convertToMonth('')).toBe('');
+    expect(date_convertToMonth('unknown')).toBe('unknown');
   });
 });
 
@@ -145,7 +145,7 @@ describe('the question itself', () => {
   });
 
   it('names the same token the rows do, so the line and the answer agree', () => {
-    expect(criteria_standIn({ PatientID: '1279049' }).PatientID).toBe(token_of('1279049'));
+    expect(criteria_standIn({ PatientID: '1279049' }).PatientID).toBe(token_derive('1279049'));
   });
 
   it('leaves a term that names nobody, so the question still reads', () => {

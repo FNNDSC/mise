@@ -2,7 +2,7 @@
  * @file Names in paths: duplicates wear a suffix, the plain name refuses.
  */
 import { describe, it, expect } from '@jest/globals';
-import { segments_assign, segment_resolve, idSuffix_of, ambiguity_words } from '../src/names.js';
+import { segments_assign, segment_resolve, idSuffix_extract, ambiguity_words } from '../src/names.js';
 
 const items = [
   { name: 'node', id: 'ocid1.instance.oc1..aaa111' },
@@ -12,7 +12,7 @@ const items = [
 
 describe('segments_assign', () => {
   it('gives a unique name plainly and a shared one with the last six of its id', () => {
-    expect(idSuffix_of('ocid1.instance.oc1..aaa111')).toBe('aaa111');
+    expect(idSuffix_extract('ocid1.instance.oc1..aaa111')).toBe('aaa111');
     expect(segments_assign(items).map((entry) => entry.segment)).toEqual(['node~aaa111', 'node~bbb222', 'api']);
   });
 });

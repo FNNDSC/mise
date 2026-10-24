@@ -19,7 +19,7 @@ import type {
 } from '../driver.js';
 import type { OciApi, OciCompartmentRecord, OciLimitValueRecord, OciShapeRecord, OciTenancyRecord } from './api.js';
 import type { OciAttachmentRecord, OciInstanceRecord, OciResourceRecord, OciVnicAttachmentRecord, OciVnicRecord, OciVolumeRecord } from './resourceApi.js';
-import { byName_sort, resource_ofRecord, searchCounts_of, searchQuery_of } from './resourceMap.js';
+import { byName_sort, resource_convert, searchHits_count, searchQuery_format } from './resourceMap.js';
 import { ociPrices_read, ociServicePrices_read, shapeTerms_get, type JsonFetch } from './prices.js';
 
 /** How the driver is made. */
@@ -41,7 +41,7 @@ export function ociTags_flatten(freeform: Readonly<Record<string, string>>, defi
 }
 
 /** A compartment record as a container. */
-function container_ofCompartment(record: OciCompartmentRecord): CloudContainer {
+function container_convertFromCompartment(record: OciCompartmentRecord): CloudContainer {
   return {
     name: record.name,
     id: record.id,
@@ -56,7 +56,7 @@ function container_ofCompartment(record: OciCompartmentRecord): CloudContainer {
 }
 
 /** The tenancy as the root container. */
-function container_ofTenancy(record: OciTenancyRecord): CloudContainer {
+function container_convertFromTenancy(record: OciTenancyRecord): CloudContainer {
   return {
     name: record.name,
     id: record.id,
@@ -71,7 +71,7 @@ function container_ofTenancy(record: OciTenancyRecord): CloudContainer {
 }
 
 /** A limit value as a limit at its scope. */
-function limit_ofValue(service: string, record: OciLimitValueRecord): CloudLimit {
+function limit_convert(service: string, record: OciLimitValueRecord): CloudLimit {
   const scope: string = record.scopeType.toUpperCase();
   if (scope === 'AD' && record.availabilityDomain !== null) {
     return { service, name: record.name, scope: 'zone', zone: record.availabilityDomain, value: record.value };
@@ -80,7 +80,7 @@ function limit_ofValue(service: string, record: OciLimitValueRecord): CloudLimit
 }
 
 /** A shape record as a shape. */
-export function shape_ofRecord(record: OciShapeRecord): CloudShape {
+export function shape_convert(record: OciShapeRecord): CloudShape {
   const terms = shapeTerms_get(record.shape);
   const cores: { min: number; max: number } = record.isFlexible && record.ocpuOptions !== null
     ? { min: record.ocpuOptions.min * terms.vcpuPerOcpu, max: record.ocpuOptions.max * terms.vcpuPerOcpu }
@@ -136,14 +136,14 @@ export class OciDriver implements CloudDriver {
   }
 
   async root_get(): Promise<CloudContainer> {
-    return container_ofTenancy(await this.api.tenancy_get(this.api.credential_get().tenancyId));
+    return container_convertFromTenancy(await this.api.tenancy_get(this.api.credential_get().tenancyId));
   }
 
   async containers_list(parentId: string): Promise<CloudContainer[]> {
     const records: OciCompartmentRecord[] = await this.api.compartments_list(parentId);
     return records
       .filter((record: OciCompartmentRecord): boolean => record.lifecycleState.toUpperCase() !== 'DELETED')
-      .map(container_ofCompartment)
+      .map(container_convertFromCompartment)
       .sort((a: CloudContainer, b: CloudContainer): number => a.name.localeCompare(b.name));
   }
 
@@ -162,7 +162,7 @@ export class OciDriver implements CloudDriver {
 
   async limits_list(region: string, service: string): Promise<CloudLimit[]> {
     const records: OciLimitValueRecord[] = await this.api.limitValues_list(region, this.api.credential_get().tenancyId, service);
-    return records.map((record: OciLimitValueRecord): CloudLimit => limit_ofValue(service, record));
+    return records.map((record: OciLimitValueRecord): CloudLimit => limit_convert(service, record));
   }
 
   async limitAvailability_get(region: string, service: string, name: string, zone?: string): Promise<CloudAvailability | null> {
@@ -176,7 +176,7 @@ export class OciDriver implements CloudDriver {
     for (const record of records) {
       if (seen.has(record.shape)) continue;
       seen.add(record.shape);
-      shapes.push(shape_ofRecord(record));
+      shapes.push(shape_convert(record));
     }
     return shapes.sort((a: CloudShape, b: CloudShape): number => a.name.localeCompare(b.name));
   }
@@ -205,26 +205,26 @@ export class OciDriver implements CloudDriver {
       ipsByInstance.set(attachment.instanceId, ips);
     });
     return byName_sort(records.map((record: OciInstanceRecord): CloudInstance => ({
-      ...resource_ofRecord(record, region), shape: record.shape, zone: record.availabilityDomain, ips: ipsByInstance.get(record.id) ?? [],
+      ...resource_convert(record, region), shape: record.shape, zone: record.availabilityDomain, ips: ipsByInstance.get(record.id) ?? [],
       ...(record.ocpus !== undefined ? { vcpus: record.ocpus * shapeTerms_get(record.shape).vcpuPerOcpu } : {}),
       ...(record.memoryInGBs !== undefined ? { memoryGib: record.memoryInGBs } : {}),
     })));
   }
 
   async networks_list(containerId: string, region: string): Promise<CloudNetwork[]> {
-    return byName_sort((await this.api.vcns_list(region, containerId)).map((record: OciResourceRecord): CloudNetwork => resource_ofRecord(record, region)));
+    return byName_sort((await this.api.vcns_list(region, containerId)).map((record: OciResourceRecord): CloudNetwork => resource_convert(record, region)));
   }
 
   async subnets_list(containerId: string, region: string): Promise<CloudSubnet[]> {
-    return byName_sort((await this.api.subnets_list(region, containerId)).map((record) => ({ ...resource_ofRecord(record, region), networkId: record.vcnId })));
+    return byName_sort((await this.api.subnets_list(region, containerId)).map((record) => ({ ...resource_convert(record, region), networkId: record.vcnId })));
   }
 
   async securitygroups_list(containerId: string, region: string): Promise<CloudSecurityGroup[]> {
-    return byName_sort((await this.api.nsgs_list(region, containerId)).map((record) => ({ ...resource_ofRecord(record, region), networkId: record.vcnId })));
+    return byName_sort((await this.api.nsgs_list(region, containerId)).map((record) => ({ ...resource_convert(record, region), networkId: record.vcnId })));
   }
 
   async loadbalancers_list(containerId: string, region: string): Promise<CloudLoadBalancer[]> {
-    return byName_sort((await this.api.loadBalancers_list(region, containerId)).map((record) => ({ ...resource_ofRecord(record, region), ips: record.ipAddresses, shape: record.shapeName, ...(record.minimumMbps !== undefined ? { minimumMbps: record.minimumMbps } : {}) })));
+    return byName_sort((await this.api.loadBalancers_list(region, containerId)).map((record) => ({ ...resource_convert(record, region), ips: record.ipAddresses, shape: record.shapeName, ...(record.minimumMbps !== undefined ? { minimumMbps: record.minimumMbps } : {}) })));
   }
 
   async volumes_list(containerId: string, region: string): Promise<CloudVolume[]> {
@@ -239,19 +239,19 @@ export class OciDriver implements CloudDriver {
     for (const attachment of [...attachments, ...bootAttachments.flat()]) {
       if (['ATTACHED', 'ATTACHING'].includes(attachment.lifecycleState.toUpperCase())) attachedTo.set(attachment.volumeId, attachment.instanceId);
     }
-    const volume_of = (record: OciVolumeRecord, boot: boolean): CloudVolume => ({
-      ...resource_ofRecord(record, region), sizeGib: record.sizeInGBs, attachedTo: attachedTo.get(record.id) ?? null, boot,
+    const volume_convert = (record: OciVolumeRecord, boot: boolean): CloudVolume => ({
+      ...resource_convert(record, region), sizeGib: record.sizeInGBs, attachedTo: attachedTo.get(record.id) ?? null, boot,
       ...(record.vpusPerGB !== undefined ? { vpusPerGib: record.vpusPerGB } : {}),
     });
     return byName_sort([
-      ...blocks.map((record: OciVolumeRecord): CloudVolume => volume_of(record, false)),
-      ...boots.flat().map((record: OciVolumeRecord): CloudVolume => volume_of(record, true)),
+      ...blocks.map((record: OciVolumeRecord): CloudVolume => volume_convert(record, false)),
+      ...boots.flat().map((record: OciVolumeRecord): CloudVolume => volume_convert(record, true)),
     ]);
   }
 
   async buckets_list(containerId: string, region: string): Promise<CloudBucket[]> {
     const namespace: string = await this.namespace_get(region);
-    return byName_sort((await this.api.buckets_list(region, namespace, containerId)).map((record: OciResourceRecord): CloudBucket => resource_ofRecord(record, region)));
+    return byName_sort((await this.api.buckets_list(region, namespace, containerId)).map((record: OciResourceRecord): CloudBucket => resource_convert(record, region)));
   }
 
   async dns_list(containerId: string, region: string): Promise<CloudDnsZone[]> {
@@ -260,7 +260,7 @@ export class OciDriver implements CloudDriver {
     for (const record of await this.api.zones_list(region, containerId)) {
       if (seen.has(record.id)) continue;
       seen.add(record.id);
-      zones.push(resource_ofRecord(record, region));
+      zones.push(resource_convert(record, region));
     }
     return byName_sort(zones);
   }
@@ -285,6 +285,6 @@ export class OciDriver implements CloudDriver {
   }
 
   async resources_search(containerId: string, region: string): Promise<ResourceCounts> {
-    return searchCounts_of(await this.api.search_list(region, searchQuery_of(containerId)));
+    return searchHits_count(await this.api.search_list(region, searchQuery_format(containerId)));
   }
 }

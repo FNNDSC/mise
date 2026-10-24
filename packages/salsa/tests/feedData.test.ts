@@ -6,7 +6,7 @@
  * a fake IO.
  */
 import { procCache_get, type ProcCache, type ProcFeed, type ProcInstance } from '@fnndsc/cumin';
-import { feedDataFacts_read, procDataFacts_sweep, procDataFacts_feed, procDataFacts_settled, dataFormat_ofName, sourceFeed_of, DATA_FACTS_READER, DATA_FACTS_FEED_MS, type DataFactsIO } from '../src/dag/feedData';
+import { feedDataFacts_read, procDataFacts_sweep, procDataFacts_feed, procDataFacts_settled, dataFormat_deriveFromName, sourceFeed_parse, DATA_FACTS_READER, DATA_FACTS_FEED_MS, type DataFactsIO } from '../src/dag/feedData';
 import type { VFSItem } from '../src/vfs/provider';
 import type { DicomTagSet } from '../src/dicom/tags';
 
@@ -46,9 +46,9 @@ function io_of(tree: Record<string, VFSItem[] | 'refused'>, headers: Record<stri
 
 beforeEach(() => cache.cache_clear());
 
-describe('dataFormat_ofName', () => {
+describe('dataFormat_deriveFromName', () => {
   it('names the formats the index knows by their extensions', () => {
-    expect(['a.dcm', 'b.IMA', 'c.nii', 'd.nii.gz', 'e.mgz', 'f.JPG', 'g.jpeg', 'h.png', 'i'].map(dataFormat_ofName))
+    expect(['a.dcm', 'b.IMA', 'c.nii', 'd.nii.gz', 'e.mgz', 'f.JPG', 'g.jpeg', 'h.png', 'i'].map(dataFormat_deriveFromName))
       .toEqual(['dicom', 'dicom', 'nifti', 'nifti', 'mgz', 'jpeg', 'jpeg', 'png', null]);
   });
 });
@@ -170,9 +170,9 @@ describe('what CUBE records, and whose work a feed began from', () => {
   });
 
   it('names the feed whose output a feed\'s data is: its lineage, never itself', async () => {
-    expect(sourceFeed_of('/home/u/feeds/feed_12/pl-dcm2niix_40/data/brain.nii', 1)).toBe(12);
-    expect(sourceFeed_of('/home/u/feeds/feed_1/pl-x/data/a', 1)).toBeUndefined();
-    expect(sourceFeed_of('/home/u/uploads/feed_12/a', 1)).toBeUndefined();
+    expect(sourceFeed_parse('/home/u/feeds/feed_12/pl-dcm2niix_40/data/brain.nii', 1)).toBe(12);
+    expect(sourceFeed_parse('/home/u/feeds/feed_1/pl-x/data/a', 1)).toBeUndefined();
+    expect(sourceFeed_parse('/home/u/uploads/feed_12/a', 1)).toBeUndefined();
     feed_add(1);
     feed_add(2);
     const fromFeed = { ...item('home_u_feeds_feed_12_out', 'link'), target: '/home/u/feeds/feed_12/pl-dcm2niix_40/data' } as VFSItem;
@@ -191,16 +191,16 @@ describe('the sweep', () => {
     cache.dataFacts_set(2, { format: 'png', reader: DATA_FACTS_READER });
     const io = io_of({ '/out/10': [item('x.mgz')], '/out/20': [item('y.nii')] });
     expect(await procDataFacts_sweep(io, 0)).toBe(1);
-    expect(cache.dataFacts_of(1)).toEqual({ format: 'mgz', reader: DATA_FACTS_READER });
-    expect(cache.dataFacts_of(2)).toEqual({ format: 'png', reader: DATA_FACTS_READER });
-    expect(cache.dataFacts_of(3)).toBeUndefined();
+    expect(cache.dataFacts_read(1)).toEqual({ format: 'mgz', reader: DATA_FACTS_READER });
+    expect(cache.dataFacts_read(2)).toEqual({ format: 'png', reader: DATA_FACTS_READER });
+    expect(cache.dataFacts_read(3)).toBeUndefined();
   });
 
   it('reads again a feed an older reader answered', async () => {
     feed_add(1);
     cache.dataFacts_set(1, { format: 'unknown', reason: 'its first job left no data files' });
     expect(await procDataFacts_sweep(io_of({ '/out/10': [item('x.png')] }), 0)).toBe(1);
-    expect(cache.dataFacts_of(1)).toEqual({ format: 'png', reader: DATA_FACTS_READER });
+    expect(cache.dataFacts_read(1)).toEqual({ format: 'png', reader: DATA_FACTS_READER });
   });
 
   it('reads one feed as its topology loads, and never twice', async () => {
@@ -224,8 +224,8 @@ describe('the sweep', () => {
       // Every round gives the hung read its time, and gives up on it again.
       await jest.advanceTimersByTimeAsync(3 * (DATA_FACTS_FEED_MS + 1));
       expect(await sweep).toBe(1);
-      expect(cache.dataFacts_of(1)?.format).toBe('png');
-      expect(cache.dataFacts_of(2)).toBeUndefined();
+      expect(cache.dataFacts_read(1)?.format).toBe('png');
+      expect(cache.dataFacts_read(2)).toBeUndefined();
     } finally {
       jest.useRealTimers();
     }
@@ -241,8 +241,8 @@ describe('the sweep', () => {
       list: async (path: string) => (path === '/out/10' ? (++listings >= 2 ? [item('x.png')] : null) : path === '/out/20' ? [item('a.dcm')] : null),
     };
     expect(await procDataFacts_sweep(io, 0)).toBe(2);
-    expect(cache.dataFacts_of(1)?.format).toBe('png');
-    expect(cache.dataFacts_of(2)).toEqual({ format: 'dicom', reason: 'the header of its first file, a.dcm, could not be read', reader: DATA_FACTS_READER });
+    expect(cache.dataFacts_read(1)?.format).toBe('png');
+    expect(cache.dataFacts_read(2)).toEqual({ format: 'dicom', reason: 'the header of its first file, a.dcm, could not be read', reader: DATA_FACTS_READER });
   });
 
   it('stops when rounds record nothing and nothing is left to try', async () => {
@@ -250,7 +250,7 @@ describe('the sweep', () => {
     let asked: number = 0;
     const io: DataFactsIO = { outputPath: async () => { asked += 1; return null; }, list: async () => null, header: async () => null };
     expect(await procDataFacts_sweep(io, 0)).toBe(0);
-    expect(cache.dataFacts_of(1)).toBeUndefined();
+    expect(cache.dataFacts_read(1)).toBeUndefined();
     expect(asked).toBe(0);
   });
 
@@ -266,6 +266,6 @@ describe('the sweep', () => {
     feed_add(1);
     const io: DataFactsIO = { outputPath: async () => { throw new Error('network'); }, list: async () => null, header: async () => null };
     expect(await procDataFacts_sweep(io, 0)).toBe(0);
-    expect(cache.dataFacts_of(1)).toBeUndefined();
+    expect(cache.dataFacts_read(1)).toBeUndefined();
   });
 });

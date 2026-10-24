@@ -29,7 +29,7 @@ import { rankedLayout_compute, type RankedLayout } from '@fnndsc/orrery/layout';
 import { Listing, type ListingBlock, type ListingStateParts } from '../roster/listing.js';
 import { csvTable_read, type CsvTable } from './csv.js';
 import { JSON_FILE_PATTERN, jsonPretty_build } from './json.js';
-import { listing_isAnswered, refusalWords_of } from './answer.js';
+import { listing_isAnswered, refusalWords_extract } from './answer.js';
 import { more_wire } from '../roster/more.js';
 import type { ListingAction, ListingTrait } from '../roster/row.js';
 import { barState_set, barState_toggle } from '../roster/bar.js';
@@ -51,7 +51,7 @@ import { linkLine_build, linkLine_copy, linkLine_set } from '../../app/link.js';
  * @param name - The executable's name as `/bin` lists it.
  * @returns The version.
  */
-export function executableVersion_of(name: string): string {
+export function executableVersion_parse(name: string): string {
   return /-v(\d+(?:\.\d+)*)$/.exec(name)?.[1] ?? '';
 }
 
@@ -197,11 +197,11 @@ const PREVIEW_CACHE_MAX: number = 400;
  * @returns True for image extensions.
  */
 export function extension_isImage(filePath: string): boolean {
-  return IMAGE_EXTENSIONS.has(extension_of(filePath));
+  return IMAGE_EXTENSIONS.has(extension_parse(filePath));
 }
 
 /** The lower-cased extension of a path, or '' when it has none. */
-function extension_of(filePath: string): string {
+function extension_parse(filePath: string): string {
   const name: string = filePath.split('/').pop() ?? '';
   const dot: number = name.lastIndexOf('.');
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
@@ -349,7 +349,7 @@ export interface FileAction {
  * @param entry - The entry.
  * @returns The action kind, or null.
  */
-function actionKind_of(entry: FsListingEntry): FileAction['kind'] | null {
+function actionKind_derive(entry: FsListingEntry): FileAction['kind'] | null {
   if (entry.type === 'dir' || entry.type === 'vfs' || entry.type === 'link' || entry.type === 'job') return 'dir';
   if (entry.type === 'file') return 'file';
   if (entry.type === 'plugin' || entry.type === 'pipeline') return entry.type;
@@ -461,7 +461,7 @@ export class FilesPanel {
       chrome: paneRoot === null ? undefined : { root: paneRoot, prefix: 'files' },
       control: 'control',
       activate: (row: FileRow): void => this.row_activate(row),
-      activatable: (row: FileRow): boolean => row.updir || actionKind_of(row.entry) !== null,
+      activatable: (row: FileRow): boolean => row.updir || actionKind_derive(row.entry) !== null,
       indicated: (row: FileRow): void => this.indicate?.(row.entry, row.path),
       row: {
         className: (row: FileRow): string =>
@@ -520,7 +520,7 @@ export class FilesPanel {
         cell: (row: FileRow): HTMLElement => {
           const cell: HTMLSpanElement = document.createElement('span');
           const kind: FsListingEntry['type'] = row.updir ? 'dir' : row.entry.type;
-          const opens: boolean = row.updir || actionKind_of(row.entry) !== null;
+          const opens: boolean = row.updir || actionKind_derive(row.entry) !== null;
           cell.className = `files-control files-glyph files-glyph-${kind}${opens ? ' files-capsule' : ''}`;
           cell.textContent = row.home === true ? HOME_GLYPH : !row.updir && this.denied.has(row.path) ? '⃠' : TYPE_GLYPHS[kind];
           return cell;
@@ -608,7 +608,7 @@ export class FilesPanel {
       this.activate({ kind: 'dir', path: row.path });
       return;
     }
-    const kind: FileAction['kind'] | null = actionKind_of(row.entry);
+    const kind: FileAction['kind'] | null = actionKind_derive(row.entry);
     if (kind === null) return;
     this.activate({ kind, path: row.path });
   }
@@ -636,7 +636,7 @@ export class FilesPanel {
   public envelope_observe(envelope: WireEnvelope): void {
     // A drawn listing answers the press even when marked an error (answer.ts).
     if (envelope.status === 'error' && !listing_isAnswered(envelope)) {
-      this.listing.activation_refuse(refusalWords_of(envelope));
+      this.listing.activation_refuse(refusalWords_extract(envelope));
       return;
     }
     if (envelope.model?.kind !== 'fs.listing') {
@@ -1012,8 +1012,8 @@ export class FilesPanel {
         label: 'VERSION',
         className: 'files-version',
         width: '7em',
-        cell: (row: FileRow): string => (row.updir ? '' : executableVersion_of(row.entry.name)),
-        compare: (row: FileRow): string => executableVersion_of(row.entry.name),
+        cell: (row: FileRow): string => (row.updir ? '' : executableVersion_parse(row.entry.name)),
+        compare: (row: FileRow): string => executableVersion_parse(row.entry.name),
       },
     ];
   }
@@ -1293,12 +1293,12 @@ export class FilesPanel {
     this.stale = listings.some((listing: FsListing): boolean => listing.fresh === false);
     barState_toggle(this.stateSpan, 'stale', this.stale);
     this.listing.painter_set(this.viewMode === 'list' ? null : (block: ListingBlock<FileRow>, into: HTMLElement): void => this.cards_paint(block, into));
-    const blocks: ListingBlock<FileRow>[] = listings.map((listing: FsListing): ListingBlock<FileRow> => this.block_of(listing));
+    const blocks: ListingBlock<FileRow>[] = listings.map((listing: FsListing): ListingBlock<FileRow> => this.block_build(listing));
     // A catalogue leads with what ran lately: the same rows /bin holds,
     // in the order they were last run, under their own header.
     const bin: FsListing | undefined = listings.find((listing: FsListing): boolean => listing.path === BIN_PATH);
     if (this.recent !== null && this.recent.length > 0 && bin !== undefined) {
-      const recent: ListingBlock<FileRow> | null = this.recentBlock_of(bin);
+      const recent: ListingBlock<FileRow> | null = this.recentBlock_build(bin);
       if (recent !== null) blocks.unshift(recent);
     }
     this.listing.rows_set(blocks, {
@@ -1368,7 +1368,7 @@ export class FilesPanel {
    * @returns Whether the browser took it; null when no line holds it.
    */
   public link_copy(path: string): Promise<boolean> | null {
-    const parent: string = parentPath_of(path);
+    const parent: string = parentPath_derive(path);
     const lines: HTMLElement[] = [...this.container.querySelectorAll<HTMLElement>('.files-crumbs')]
       .filter((header: HTMLElement): boolean => header.querySelector<HTMLElement>('.files-crumb-here')?.dataset['path'] === parent || header.querySelector<HTMLElement>('.files-crumb-here')?.dataset['path'] === path)
       .map((header: HTMLElement): HTMLElement | null => header.querySelector<HTMLElement>('.link-line'))
@@ -1411,7 +1411,7 @@ export class FilesPanel {
    * @param listing - The listed directory.
    * @returns The block.
    */
-  private block_of(listing: FsListing): ListingBlock<FileRow> {
+  private block_build(listing: FsListing): ListingBlock<FileRow> {
     const header: HTMLElement = this.crumbs_build(listing.path);
     const rows: FileRow[] = listing.items.map((entry: FsListingEntry): FileRow => ({
       entry,
@@ -1430,7 +1430,7 @@ export class FilesPanel {
     if (listing.path !== '/') {
       // At a ceiling the way up is the way out, and says so (EXIT NODE).
       const word: string = this.ceiling !== null && this.ceiling.path === listing.path ? this.ceiling.word : '..';
-      lead.push({ entry: { name: word, type: 'dir', size: 0, owner: '', date: '' }, path: parentPath_of(listing.path), updir: true });
+      lead.push({ entry: { name: word, type: 'dir', size: 0, owner: '', date: '' }, path: parentPath_derive(listing.path), updir: true });
     }
     return { key: listing.path, header, lead, rows };
   }
@@ -1443,7 +1443,7 @@ export class FilesPanel {
    * @param bin - The /bin listing on stage.
    * @returns The block, or null when none of the recent names is listed.
    */
-  private recentBlock_of(bin: FsListing): ListingBlock<FileRow> | null {
+  private recentBlock_build(bin: FsListing): ListingBlock<FileRow> | null {
     const byName: Map<string, FsListingEntry> = new Map(bin.items.map((entry: FsListingEntry): [string, FsListingEntry] => [entry.name, entry]));
     const rows: FileRow[] = [];
     for (const name of this.recent ?? []) {
@@ -1650,7 +1650,7 @@ export class FilesPanel {
       card.appendChild(target);
     }
     const path: string = path_join(parentPath, item.name);
-    const kind: FileAction['kind'] | null = actionKind_of(item);
+    const kind: FileAction['kind'] | null = actionKind_derive(item);
     if (kind !== null) {
       card.classList.add('files-activatable');
       card.addEventListener('click', (): void => this.activate({ kind, path }));
@@ -1730,7 +1730,7 @@ export class FilesPanel {
     const isImage: boolean = extension_isImage(path) && item.size <= PREVIEW_IMAGE_MAX_BYTES;
     // A file with no extension (a node's log, params, status) is read as
     // text until its head proves otherwise.
-    const extension: string = extension_of(path);
+    const extension: string = extension_parse(path);
     const isText: boolean = (extension === '' || TEXT_EXTENSIONS.has(extension)) && item.size <= PREVIEW_TEXT_MAX_BYTES;
     if (!isImage && !isText) {
       glyph();
@@ -1826,7 +1826,7 @@ function path_join(parentPath: string, name: string): string {
  * @param path - The path whose parent is wanted.
  * @returns The parent path; `/` is its own parent.
  */
-function parentPath_of(path: string): string {
+function parentPath_derive(path: string): string {
   const trimmed: string = path.endsWith('/') ? path.slice(0, -1) : path;
   const cut: number = trimmed.lastIndexOf('/');
   return cut <= 0 ? '/' : trimmed.slice(0, cut);

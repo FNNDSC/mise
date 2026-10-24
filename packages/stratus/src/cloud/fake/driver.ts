@@ -137,7 +137,7 @@ export class FakeDriver implements CloudDriver {
   }
 
   /** The records of one kind in a container and region, sorted by name; DNS is global. */
-  private resources_of<T extends CloudResource>(kind: ResourceKind, containerId: string, region: string): T[] {
+  private resources_list<T extends CloudResource>(kind: ResourceKind, containerId: string, region: string): T[] {
     this.call_count(`${kind}_list`);
     return this.cloudData.resources
       .filter((entry: FakeResource): boolean => entry.kind === kind && entry.containerId === containerId && (kind === 'dns' || entry.record.region === region))
@@ -146,35 +146,35 @@ export class FakeDriver implements CloudDriver {
   }
 
   async instances_list(containerId: string, region: string): Promise<CloudInstance[]> {
-    return this.resources_of<CloudInstance>('instances', containerId, region);
+    return this.resources_list<CloudInstance>('instances', containerId, region);
   }
 
   async networks_list(containerId: string, region: string): Promise<CloudNetwork[]> {
-    return this.resources_of<CloudNetwork>('networks', containerId, region);
+    return this.resources_list<CloudNetwork>('networks', containerId, region);
   }
 
   async subnets_list(containerId: string, region: string): Promise<CloudSubnet[]> {
-    return this.resources_of<CloudSubnet>('subnets', containerId, region);
+    return this.resources_list<CloudSubnet>('subnets', containerId, region);
   }
 
   async securitygroups_list(containerId: string, region: string): Promise<CloudSecurityGroup[]> {
-    return this.resources_of<CloudSecurityGroup>('securitygroups', containerId, region);
+    return this.resources_list<CloudSecurityGroup>('securitygroups', containerId, region);
   }
 
   async loadbalancers_list(containerId: string, region: string): Promise<CloudLoadBalancer[]> {
-    return this.resources_of<CloudLoadBalancer>('loadbalancers', containerId, region);
+    return this.resources_list<CloudLoadBalancer>('loadbalancers', containerId, region);
   }
 
   async volumes_list(containerId: string, region: string): Promise<CloudVolume[]> {
-    return this.resources_of<CloudVolume>('volumes', containerId, region);
+    return this.resources_list<CloudVolume>('volumes', containerId, region);
   }
 
   async buckets_list(containerId: string, region: string): Promise<CloudBucket[]> {
-    return this.resources_of<CloudBucket>('buckets', containerId, region);
+    return this.resources_list<CloudBucket>('buckets', containerId, region);
   }
 
   async dns_list(containerId: string, region: string): Promise<CloudDnsZone[]> {
-    return this.resources_of<CloudDnsZone>('dns', containerId, region);
+    return this.resources_list<CloudDnsZone>('dns', containerId, region);
   }
 
   async objects_list(bucket: string): Promise<CloudObject[]> {

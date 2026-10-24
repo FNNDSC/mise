@@ -53,31 +53,31 @@ export type SummaryLookup = (command: string) => string | undefined;
 /**
  * The commands on the shelf that exist: those with a help entry.
  *
- * @param summary_of - The help lookup.
+ * @param variableSummary_render - The help lookup.
  * @returns The names, shelf order.
  */
-export function gamesShelf_names(summary_of: SummaryLookup): string[] {
+export function gamesShelf_names(variableSummary_render: SummaryLookup): string[] {
   return GAMES_SHELF.flatMap((category: GamesCategory): string[] =>
-    category.commands.filter((command: string): boolean => summary_of(command) !== undefined));
+    category.commands.filter((command: string): boolean => variableSummary_render(command) !== undefined));
 }
 
 /**
  * Renders `help games`: the shelf by category, in the style of bare `help`.
  *
- * @param summary_of - The help lookup; a command without one is left off.
+ * @param variableSummary_render - The help lookup; a command without one is left off.
  * @returns The page.
  */
-export function gamesShelf_render(summary_of: SummaryLookup): string {
+export function gamesShelf_render(variableSummary_render: SummaryLookup): string {
   let out: string = '\n';
   out += `${chalk.bold.cyan('/usr/games — the shelf')}\n`;
   out += `${chalk.gray('─'.repeat(60))}\n`;
   out += `${chalk.gray('Small pleasures, kept apart from the tools as BSD kept them. Every one is built in: no host binary, same words in chell and ARGUS.')}\n\n`;
   for (const category of GAMES_SHELF) {
-    const present: string[] = category.commands.filter((command: string): boolean => summary_of(command) !== undefined);
+    const present: string[] = category.commands.filter((command: string): boolean => variableSummary_render(command) !== undefined);
     if (present.length === 0) continue;
     out += `${chalk.bold.yellow(category.title)}  ${chalk.gray(category.note)}\n`;
     for (const command of present) {
-      out += `  ${chalk.cyan(command.padEnd(20))} ${chalk.gray(summary_of(command) ?? '')}\n`;
+      out += `  ${chalk.cyan(command.padEnd(20))} ${chalk.gray(variableSummary_render(command) ?? '')}\n`;
     }
     out += '\n';
   }

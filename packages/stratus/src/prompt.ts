@@ -24,7 +24,7 @@ export const STRATUS_SEGMENT_KEYS = ['cloud', 'tenancy', 'region', 'user', 'doma
  * @param tenancyPath - The tenancy's folder, `/net/oci/<tenancy>`.
  * @returns The domain's name, or null when the path is not under `domains/<name>`.
  */
-export function domain_ofPath(cwd: string, tenancyPath: string): string | null {
+export function domain_parse(cwd: string, tenancyPath: string): string | null {
   const prefix: string = `${tenancyPath}/domains/`;
   if (!cwd.startsWith(prefix)) return null;
   const name: string = cwd.slice(prefix.length).split('/')[0] ?? '';
@@ -53,7 +53,7 @@ export function stratusSegments_build(session: StratusSession, cwd: string): Pro
   const region: string | null = session.region;
   if (region !== null) segments.push({ key: 'region', label: 'region', value: region, tone: 'place' });
   segments.push({ key: 'user', label: 'user', value: session.identity.user, tone: 'identity' });
-  const domain: string | null = domain_ofPath(cwd, session.tenancyPath);
+  const domain: string | null = domain_parse(cwd, session.tenancyPath);
   if (domain !== null) segments.push({ key: 'domain', label: 'domain', value: domain, tone: 'work' });
   segments.push({ key: 'cwd', label: 'working directory', value: cwd, tone: 'path' });
   return segments;

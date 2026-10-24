@@ -28,7 +28,7 @@ function host_make(shown: string[], tree: LayoutNode | null, groups: Record<stri
     layout,
     panels,
     paneInstance_get: (id: string): PaneInstance | undefined => (kinds[id] === undefined ? undefined : { id, kind: kinds[id], mount: document.createElement('div') } as PaneInstance),
-    subjects: { group_of: (id: string): string => groups[id] ?? id, regard_get: (): null => null },
+    subjects: { group_resolve: (id: string): string => groups[id] ?? id, regard_get: (): null => null },
     terminal: { line_run: (line: string): void => { lines.push(line); } },
     client: {},
     sound: (): void => {},

@@ -4,17 +4,17 @@
  */
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { channel } from 'node:diagnostics_channel';
-import { requestFamily_of, requestLedger_start, requestLedger_reset, requestLedger_snapshot, ledger_requestStart, ledger_requestEnd, LEDGER_KEPT } from '../src/net/requestLedger';
+import { requestFamily_derive, requestLedger_start, requestLedger_reset, requestLedger_snapshot, ledger_requestStart, ledger_requestEnd, LEDGER_KEPT } from '../src/net/requestLedger';
 
-describe('requestFamily_of', () => {
+describe('requestFamily_derive', () => {
   it('names the endpoint below /api/v1 with ids and the query dropped', () => {
-    expect(requestFamily_of('/api/v1/filebrowser/search/?path=%2Fhome')).toBe('filebrowser/search');
-    expect(requestFamily_of('/api/v1/filebrowser/1805753/children/?limit=100&offset=0')).toBe('filebrowser/:id/children');
-    expect(requestFamily_of('/api/v1/plugins/?limit=100&offset=200')).toBe('plugins');
-    expect(requestFamily_of('/api/v1/pipelines/sourcefiles/')).toBe('pipelines/sourcefiles');
-    expect(requestFamily_of('/api/v1/users/3/')).toBe('users/:id');
-    expect(requestFamily_of('/api/v1/')).toBe('root');
-    expect(requestFamily_of('http://cube/api/v1/feeds/4599/')).toBe('feeds/:id');
+    expect(requestFamily_derive('/api/v1/filebrowser/search/?path=%2Fhome')).toBe('filebrowser/search');
+    expect(requestFamily_derive('/api/v1/filebrowser/1805753/children/?limit=100&offset=0')).toBe('filebrowser/:id/children');
+    expect(requestFamily_derive('/api/v1/plugins/?limit=100&offset=200')).toBe('plugins');
+    expect(requestFamily_derive('/api/v1/pipelines/sourcefiles/')).toBe('pipelines/sourcefiles');
+    expect(requestFamily_derive('/api/v1/users/3/')).toBe('users/:id');
+    expect(requestFamily_derive('/api/v1/')).toBe('root');
+    expect(requestFamily_derive('http://cube/api/v1/feeds/4599/')).toBe('feeds/:id');
   });
 });
 

@@ -101,7 +101,7 @@ export const DISCONNECTED_IDENTITY: string = 'disconnected@no-cube';
  * @param cubeUrl - The connected CUBE URL, or null/undefined when disconnected.
  * @returns The normalised identity, or {@link DISCONNECTED_IDENTITY}.
  */
-export function identity_forSession(user: string | null | undefined, cubeUrl: string | null | undefined): string {
+export function identity_deriveForSession(user: string | null | undefined, cubeUrl: string | null | undefined): string {
   return user && cubeUrl ? identity_normalise(user, cubeUrl) : DISCONNECTED_IDENTITY;
 }
 
@@ -198,7 +198,7 @@ export function berth_read(identity: string): Berth | null {
   // This runtime's own berth first; then a porter's session for the same
   // identity, which keeps its berth under the porter's state (a session a
   // browser login started is attached to as any other).
-  for (const path of berthPaths_of(identity)) {
+  for (const path of berthPaths_list(identity)) {
     const berth: Berth | null = berthFile_read(path, identity);
     if (berth !== null) return berth;
   }
@@ -239,7 +239,7 @@ export function porterStateRoots_get(): string[] {
  * @param identity - A normalised identity.
  * @returns The candidate paths.
  */
-export function berthPaths_of(identity: string): string[] {
+export function berthPaths_list(identity: string): string[] {
   return [
     berth_path(identity),
     ...porterStateRoots_get().map((root: string): string => berth_pathIn(join(root, berthKey_compute(identity), 'run'), identity)),

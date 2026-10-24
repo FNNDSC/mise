@@ -8,7 +8,7 @@
  * @module
  */
 import path from 'path';
-import { patientAddress_of, type PacsQueryModel, type PacsSeries, type PacsStudy } from '@fnndsc/menu';
+import { patientAddress_format, type PacsQueryModel, type PacsSeries, type PacsStudy } from '@fnndsc/menu';
 import { AnswerRow, answerAdapter_register, answerFilter_register } from './answer.js';
 import { answerOperands_register } from '../core/variables.js';
 
@@ -83,14 +83,14 @@ export function answerAdapters_register(): void {
         .map((one: PacsSeries): string | undefined => one.vfsPath)
         .filter((one: string | undefined): one is string => typeof one === 'string');
       if (seriesPaths.length === 0) continue;
-      rows.push({ kind: 'PAT', address: patientAddress_of(patient), values: seriesPaths, label: patient.patientName || patient.patientId, text: `${patient.patientName ?? ''} (ID: ${patient.patientId})` });
+      rows.push({ kind: 'PAT', address: patientAddress_format(patient), values: seriesPaths, label: patient.patientName || patient.patientId, text: `${patient.patientName ?? ''} (ID: ${patient.patientId})` });
     }
     // A study's patient, by the same match the patients were found with: the
     // parent a filter keeps a study with.
     const patientOf = (study: PacsStudy): string | undefined => {
       const owner = patients.find((patient): boolean =>
         patient.patientId === study.patientId && (patient.server === undefined || study.server === undefined || study.server === patient.server));
-      return owner === undefined ? undefined : `PAT:${patientAddress_of(owner)}`;
+      return owner === undefined ? undefined : `PAT:${patientAddress_format(owner)}`;
     };
     for (const study of model.studies as PacsStudy[]) {
       const series: PacsSeries[] = Array.isArray(study.series) ? study.series : [];
@@ -150,7 +150,7 @@ export function answerAdapters_register(): void {
     const studies: PacsStudy[] = (model.studies as PacsStudy[])
       .filter((study: PacsStudy): boolean => typeof study.vfsPath === 'string' && keep.has(`STD:${study.vfsPath}`))
       .map((study: PacsStudy): PacsStudy => ({ ...study, series: study.series.filter((one: PacsSeries): boolean => typeof one.vfsPath === 'string' && keep.has(`SER:${one.vfsPath}`)) }));
-    const patients = Array.isArray(model.patients) ? model.patients.filter((patient): boolean => keep.has(`PAT:${patientAddress_of(patient)}`)) : undefined;
+    const patients = Array.isArray(model.patients) ? model.patients.filter((patient): boolean => keep.has(`PAT:${patientAddress_format(patient)}`)) : undefined;
     return { ...model, studies, ...(patients !== undefined ? { patients } : {}) };
   });
   answerFilter_register('gather.cohort', (data: unknown, keep: ReadonlySet<string>): unknown => {

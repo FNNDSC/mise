@@ -23,8 +23,8 @@
  * @module
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { answerRows_of, type AnswerRow, type SessionAnswer } from '../session/answer.js';
-import { rowsOperands_of } from './listing.js';
+import { answerRows_derive, type AnswerRow, type SessionAnswer } from '../session/answer.js';
+import { rowOperands_extract } from './listing.js';
 
 /** The kind a variable holding text has: a literal, a parameter, or a command with no model. */
 export const TEXT_KIND: string = 'text';
@@ -170,7 +170,7 @@ export type FieldReading = { values: string[] } | { refused: string };
  * @param value - An object.
  * @returns Its keys.
  */
-function fields_of(value: object): string {
+function fields_format(value: object): string {
   return Object.keys(value).join(', ');
 }
 
@@ -199,9 +199,9 @@ function leaf_read(value: unknown, trail: string, kind: string | null): FieldRea
     if (value.length === 0) return { refused: `${trail} is empty` };
     if (value.every(scalar_is)) return { values: value.map((element: string | number | boolean): string => String(element)) };
     const first: unknown = value.find((element: unknown): boolean => element !== null && typeof element === 'object');
-    return { refused: `${trail} holds records; name a field: ${first === undefined ? '' : fields_of(first as object)}` };
+    return { refused: `${trail} holds records; name a field: ${first === undefined ? '' : fields_format(first as object)}` };
   }
-  return { refused: `${trail} is ${kind === null ? 'a record' : `a ${kind}`}; name a field: ${fields_of(value)}` };
+  return { refused: `${trail} is ${kind === null ? 'a record' : `a ${kind}`}; name a field: ${fields_format(value)}` };
 }
 
 /**
@@ -228,7 +228,7 @@ function fields_walk(value: unknown, fields: ReadonlyArray<string>, trail: strin
     return { values };
   }
   if (value === null || typeof value !== 'object') return { refused: `${trail} is a value; it has no field ${field}` };
-  if (!(field in value)) return { refused: `${trail} has no field ${field}; it has ${fields_of(value)}` };
+  if (!(field in value)) return { refused: `${trail} has no field ${field}; it has ${fields_format(value)}` };
   return fields_walk((value as Record<string, unknown>)[field], rest, `${trail}.${field}`, null);
 }
 
@@ -238,7 +238,7 @@ function fields_walk(value: unknown, fields: ReadonlyArray<string>, trail: strin
  * @param text - The text.
  * @returns One string per line.
  */
-function lines_of(text: string): string[] {
+function lines_split(text: string): string[] {
   const lines: string[] = text.split('\n');
   if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
   return lines;
@@ -257,15 +257,15 @@ function lines_of(text: string): string[] {
 export function answer_read(answer: SessionAnswer, name: string, fields: ReadonlyArray<string>): FieldReading {
   if (answer.kind === TEXT_KIND) {
     if (fields.length > 0) return { refused: `${name} is text; it has no field ${fields[0]}` };
-    const lines: string[] = lines_of(typeof answer.data === 'string' ? answer.data : '');
+    const lines: string[] = lines_split(typeof answer.data === 'string' ? answer.data : '');
     return lines.length === 0 ? { refused: `${name} is empty` } : { values: lines };
   }
   if (fields.length > 0) return fields_walk(answer.data, fields, name, answer.kind);
-  const rows: AnswerRow[] | null = answerRows_of(answer.kind, answer.data);
+  const rows: AnswerRow[] | null = answerRows_derive(answer.kind, answer.data);
   if (rows !== null) {
     // The operands a pipe would hand on: a group's row (a patient, a study)
     // is context a filter kept, not a pick, and each value counts once.
-    const values: string[] = rowsOperands_of(rows);
+    const values: string[] = rowOperands_extract(rows);
     return values.length === 0 ? { refused: `${name} is empty` } : { values };
   }
   const operands: string[] | null = operandReaders.get(answer.kind)?.(answer.data) ?? null;

@@ -52,7 +52,7 @@ function filesystem_reset(oneStep: boolean = true): void {
 }
 
 /** What a folder lists, as `name:type`. */
-async function names_of(folder: string): Promise<string[]> {
+async function itemNames_list(folder: string): Promise<string[]> {
   const listed = await state.dispatcher.list(folder);
   return listed.ok ? listed.value.map((item) => `${item.name}:${item.type}`).sort() : [];
 }
@@ -76,7 +76,7 @@ describe('mkdir', () => {
     expect(envelope.status).toBe('ok');
     expect(envelope.rendered).toContain('/home/chris/newdir');
     expect(envelope.model?.kind).toBe('fs.mkdir');
-    expect(await names_of('/home/chris')).toContain('newdir:dir');
+    expect(await itemNames_list('/home/chris')).toContain('newdir:dir');
     expect(mockInvalidate).toHaveBeenCalledWith('/home/chris');
   });
 
@@ -92,7 +92,7 @@ describe('mkdir', () => {
     const envelope: CommandEnvelope = await builtin_mkdir(['-v', 'x']);
     expect(envelope.renderedErr).toContain("mkdir: invalid option -- 'v'");
     expect((await builtin_mkdir(['--mode=700', 'x'])).renderedErr).toContain("mkdir: unrecognized option '--mode=700'");
-    expect(await names_of('/home/chris')).not.toContain('x:dir');
+    expect(await itemNames_list('/home/chris')).not.toContain('x:dir');
   });
 
   it('never takes -p for a folder name', () => {
@@ -111,7 +111,7 @@ describe('mkdir', () => {
     filesystem_reset(oneStep);
     const envelope: CommandEnvelope = await builtin_mkdir(['-p', 'a/b/c']);
     expect(envelope.status).toBe('ok');
-    expect(await names_of('/home/chris/a/b')).toEqual(['c:dir']);
+    expect(await itemNames_list('/home/chris/a/b')).toEqual(['c:dir']);
   });
 
   it('without -p, an existing folder is File exists; with -p it is done', async () => {
@@ -135,15 +135,15 @@ describe('mkdir', () => {
       expect(beneath.status).toBe('error');
       expect(beneath.renderedErr).toContain(`mkdir: cannot create directory '${args[args.length - 1]}': Not a directory`);
     }
-    expect(await names_of('/home/chris')).toContain('a.txt:file');
-    expect(await names_of('/home/chris')).not.toContain('a.txt:dir');
+    expect(await itemNames_list('/home/chris')).toContain('a.txt:file');
+    expect(await itemNames_list('/home/chris')).not.toContain('a.txt:dir');
   });
 
   it('says each path\'s refusal without abandoning the rest', async () => {
     const envelope: CommandEnvelope = await builtin_mkdir(['a.txt', 'b']);
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('File exists');
-    expect(await names_of('/home/chris')).toContain('b:dir');
+    expect(await itemNames_list('/home/chris')).toContain('b:dir');
   });
 });
 
@@ -151,8 +151,8 @@ describe('mkdir inside a projection (/proc/tags)', () => {
   it('makes a folder through the projection, never the store', async () => {
     const envelope: CommandEnvelope = await builtin_mkdir(['/proc/tags/new']);
     expect(envelope.status).toBe('ok');
-    expect(await names_of('/proc/tags')).toContain('new:dir');
-    expect(await names_of('/')).not.toContain('proc:dir');
+    expect(await itemNames_list('/proc/tags')).toContain('new:dir');
+    expect(await itemNames_list('/')).not.toContain('proc:dir');
   });
 
   it("says the projection's refusal in mkdir's words, and takes an existing folder as done under -p", async () => {

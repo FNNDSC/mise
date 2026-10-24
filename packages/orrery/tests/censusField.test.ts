@@ -6,7 +6,7 @@
  */
 import { beforeAll, describe, it, expect } from '@jest/globals';
 import * as THREE from 'three';
-import { CensusField, censusDetail_of, type CensusNode } from '../src/draw/censusField.js';
+import { CensusField, censusDetail_derive, type CensusNode } from '../src/draw/censusField.js';
 import { StarField } from '../src/draw/starField.js';
 import { TubeField } from '../src/draw/tubeField.js';
 import type { Palette } from '../src/draw/palette.js';
@@ -97,12 +97,12 @@ describe('CensusField', () => {
   });
 });
 
-describe('censusDetail_of', () => {
+describe('censusDetail_derive', () => {
   it('cuts a small census smooth and a crowd coarse', () => {
-    expect(censusDetail_of(14)).toBe(6);
-    expect(censusDetail_of(2_000)).toBe(6);
-    expect(censusDetail_of(2_001)).toBe(3);
-    expect(censusDetail_of(20_001)).toBe(1);
+    expect(censusDetail_derive(14)).toBe(6);
+    expect(censusDetail_derive(2_000)).toBe(6);
+    expect(censusDetail_derive(2_001)).toBe(3);
+    expect(censusDetail_derive(20_001)).toBe(1);
   });
 });
 

@@ -167,7 +167,7 @@ export async function client_adminRequest(
     body: JSON.stringify(template),
   });
   const text: string = await response.text();
-  if (!response.ok) throw new Error(`CUBE refused POST ${url} (HTTP ${response.status}): ${refusalReason_of(text)}`);
+  if (!response.ok) throw new Error(`CUBE refused POST ${url} (HTTP ${response.status}): ${refusalReason_extract(text)}`);
   try {
     return JSON.parse(text) as unknown;
   } catch {
@@ -183,7 +183,7 @@ export async function client_adminRequest(
  * @param body - The response body, as text.
  * @returns The reason, one line.
  */
-export function refusalReason_of(body: string): string {
+export function refusalReason_extract(body: string): string {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
@@ -200,7 +200,7 @@ export function refusalReason_of(body: string): string {
   }
   const record: Record<string, unknown> = (parsed && typeof parsed === 'object' ? parsed : {}) as Record<string, unknown>;
   const collection: { error?: { message?: unknown } } | undefined = record['collection'] as { error?: { message?: unknown } } | undefined;
-  if (collection?.error?.message !== undefined) return refusalReason_of(String(collection.error.message));
+  if (collection?.error?.message !== undefined) return refusalReason_extract(String(collection.error.message));
   if (typeof record['detail'] === 'string') return record['detail'];
   const parts: string[] = Object.entries(record).map(([field, value]): string =>
     `${field}: ${Array.isArray(value) ? value.map(String).join(' ') : String(value)}`);

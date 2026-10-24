@@ -90,7 +90,7 @@ function host_make(stage: Stage, place: { dir: 'row' | 'col'; before: boolean } 
     image_open: async (): Promise<string> => '',
     process_open: (): void => {},
     feed_open: (): void => {},
-    ask_onPane: async (): Promise<string | null> => null,
+    askOnPane_await: async (): Promise<string | null> => null,
     errandHost_find: (): string | null => 'files',
     instance_spawn: (): PaneInstance => {
       // The host's spawn builds the pane and files its panel, as the real one does.

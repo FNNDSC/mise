@@ -63,7 +63,7 @@ export interface ListingTrait<T> {
 }
 
 /** The caps a set of traits declares, in order. */
-export function traitColumns_of<T>(
+export function traitColumns_map<T>(
   traits: ReadonlyArray<ListingTrait<T>>,
 ): Array<{ key: string; label: string }> {
   return traits.map((trait: ListingTrait<T>): { key: string; label: string } => ({
@@ -79,7 +79,7 @@ export function traitColumns_of<T>(
  * @returns A `value_of` for `RosterOrder`, falling back to the cell's own
  *   text when a trait declares no separate ordering.
  */
-export function traitValue_of<T>(
+export function traitValue_make<T>(
   traits: ReadonlyArray<ListingTrait<T>>,
 ): (row: T, key: string) => string | number {
   const byKey: Map<string, ListingTrait<T>> = new Map(
@@ -341,7 +341,7 @@ export function track_isFixed(track: string): boolean {
 }
 
 /** The count of leading uncapped traits: the cells the caps row blanks. */
-export function leadingCells_of<T>(traits: ReadonlyArray<ListingTrait<T>>): number {
+export function leadingCells_count<T>(traits: ReadonlyArray<ListingTrait<T>>): number {
   let count: number = 0;
   for (const trait of traits) {
     if (trait.capped !== false) break;

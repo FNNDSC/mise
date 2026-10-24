@@ -260,7 +260,7 @@ describe('field selection and dictionary conversion', () => {
       href: 'https://cube/api/v1/things/1/',
       links: [],
     }];
-    const dicts: Dictionary[] = resource.resourceItems_toDicts(items);
+    const dicts: Dictionary[] = resource.resourceItems_mapToDicts(items);
     expect(dicts).toEqual([{ id: 1, name: 'x' }]);
   });
 

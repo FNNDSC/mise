@@ -5,7 +5,7 @@
  * Aliases: pluginmeta / pluginmetas / meta / metas
  */
 import chalk from 'chalk';
-import { commandArgs_process, ParsedArgs, cliOptions_from, resourceListOptions_refusal, resourceSearchTerm_refusal, resourceSearch_args } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_extract, resourceListOptions_refusal, resourceSearchTerm_refusal, resourceSearch_args } from '../utils.js';
 import { pluginMetas_fetchList, PluginMetaListResult } from '@fnndsc/chili/commands/pluginmetas/list.js';
 import { pluginMetaFields_fetch } from '@fnndsc/chili/commands/pluginmetas/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
@@ -28,7 +28,7 @@ export async function builtin_pluginmeta(args: string[]): Promise<CommandEnvelop
       return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
     }
     try {
-      const { pluginMetas, selectedFields, totalCount }: PluginMetaListResult = await pluginMetas_fetchList(cliOptions_from(parsed));
+      const { pluginMetas, selectedFields, totalCount }: PluginMetaListResult = await pluginMetas_fetchList(cliOptions_extract(parsed));
       if (pluginMetas.length === 0) { return envelope_ok(`${chalk.gray('No plugin metas found.')}\n`); }
       return envelope_ok(table_render(pluginMetas, selectedFields, { title: { title: 'Plugin Metas', justification: 'center' }, pagination: totalCount !== undefined ? { shown: pluginMetas.length, total: totalCount } : undefined }));
     } catch (e: unknown) {

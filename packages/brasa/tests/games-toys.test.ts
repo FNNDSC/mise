@@ -9,7 +9,7 @@ cuminMock_install(() => ({
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
 }));
 const { text_rev, text_tac, text_rot13, seq_numbers, lines_shuffle, builtin_yes, builtin_seq, builtin_rev, builtin_tac, builtin_shuf, builtin_rot13, YES_DEFAULT } = await import('../src/builtins/games/text.js');
-const { factors_of, primes_between, dice_roll, calc_evaluate, units_convert, builtin_units, builtin_roll, builtin_factor, builtin_primes, builtin_calc } = await import('../src/builtins/games/numbers.js');
+const { factors_compute, primes_between, dice_roll, calc_evaluate, units_convert, builtin_units, builtin_roll, builtin_factor, builtin_primes, builtin_calc } = await import('../src/builtins/games/numbers.js');
 const { cowsay_render, text_wrap, bubble_draw, BRAIN, builtin_cowsay } = await import('../src/builtins/games/cowsay.js');
 const { figlet_render, FACE_ROWS, builtin_figlet, builtin_banner } = await import('../src/builtins/games/figlet.js');
 const { lolcat_paint, rainbow_rgb, builtin_lolcat } = await import('../src/builtins/games/lolcat.js');
@@ -68,8 +68,8 @@ describe('rev, tac, rot13, seq, shuf, yes', () => {
 
 describe('factor, primes, roll, calc, units', () => {
   it('factors and lists primes', () => {
-    expect(factors_of(360)).toEqual([2, 2, 2, 3, 3, 5]);
-    expect(factors_of(97)).toEqual([97]);
+    expect(factors_compute(360)).toEqual([2, 2, 2, 3, 3, 5]);
+    expect(factors_compute(97)).toEqual([97]);
     expect(primes_between(2, 20)).toEqual([2, 3, 5, 7, 11, 13, 17, 19]);
     expect(primes_between(90, 100)).toEqual([97]);
   });

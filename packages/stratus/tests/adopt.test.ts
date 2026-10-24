@@ -15,7 +15,7 @@ import { planRows_read, terraformType_kind, update_isDrift } from '../src/cloud/
 import { OciBuilder, STACK_RELEASE, stackZip_check } from '../src/cloud/oci/builder.js';
 import type { RmApi, RmJobRecord, RmOperation } from '../src/cloud/oci/rmApi.js';
 import { checkout_read, variables_stringify } from '../src/domain/adopt.js';
-import { builtSteps_of } from '../src/domain/view.js';
+import { builtSteps_derive } from '../src/domain/view.js';
 import { DomainStore, type DomainRecord } from '../src/domain/state.js';
 import { SPEC_DEFAULT } from '../src/domain/spec.js';
 import { STEPS_SOURCE, type BuildDeps } from '../src/domain/steps.js';
@@ -188,8 +188,8 @@ describe('adopting a domain', () => {
     // It came with its compartment; one adopted before that step existed reads the same.
     expect(read.record.steps['compartment']).toEqual({ state: 'done', note: 'its own compartment, made before adoption' });
     const { compartment: _kept, ...older } = read.record.steps;
-    expect(builtSteps_of({ ...read.record, steps: older })[0]).toEqual({ folder: '01-compartment', name: 'compartment', state: 'done', evidence: 'its own compartment, made before adoption' });
-    expect(builtSteps_of({ ...read.record, steps: older, adopted: undefined })[0]?.state).toBe('not done');
+    expect(builtSteps_derive({ ...read.record, steps: older })[0]).toEqual({ folder: '01-compartment', name: 'compartment', state: 'done', evidence: 'its own compartment, made before adoption' });
+    expect(builtSteps_derive({ ...read.record, steps: older, adopted: undefined })[0]?.state).toBe('not done');
     expect(read.variables).toEqual({ cluster_name: 'harbor', control_plane_count: '3', create_public_dns: 'false' });
     expect(read.stackVersion).toBe('v1.6.1');
     expect(read.secrets.map((secret) => secret.name)).toEqual(['kubeadmin-password', 'kubeconfig']);
@@ -205,7 +205,7 @@ describe('adopting a domain', () => {
     const kept: CommandEnvelope = await domain_run(context, ['adopt', 'harbor', '--from', checkout]);
     expect(plain(kept.rendered)).toContain('adopted from');
     expect(plain(kept.rendered)).toContain('its stack and Terraform state go to Resource Manager with the tasks tier');
-    expect(statSync(join(store.folder_of('harbor'), 'auth', 'kubeconfig')).mode & 0o777).toBe(0o600);
+    expect(statSync(join(store.folder_derive('harbor'), 'auth', 'kubeconfig')).mode & 0o777).toBe(0o600);
     expect(plain((await domain_run(context, ['status', 'harbor'])).rendered)).toContain('adopted');
     expect(plain((await domain_run(context, ['plan', 'harbor'])).rendered)).toContain('is not in Resource Manager yet');
     surface_set(surface_with(true));

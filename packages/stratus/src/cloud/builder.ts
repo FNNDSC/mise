@@ -59,7 +59,7 @@ export interface PlanCounts {
  * @param plan - The plan.
  * @returns Creations, replacements, real changes, drift, destructions.
  */
-export function planCounts_of(plan: InfraPlan): PlanCounts {
+export function plan_count(plan: InfraPlan): PlanCounts {
   const rows: ReadonlyArray<PlanRow> = plan.rows;
   const created: Set<string> = new Set(rows.filter((row: PlanRow): boolean => row.action === 'create').map((row: PlanRow): string => row.name));
   const replaced: PlanRow[] = rows.filter((row: PlanRow): boolean => row.action === 'destroy' && created.has(row.name));

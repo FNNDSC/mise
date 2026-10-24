@@ -41,7 +41,7 @@ const mockListCache = {
 };
 
 cuminMock_install(() => ({
-  feedTags_byFeed: jest.fn(),
+  feedTags_readByFeed: jest.fn(),
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   listCache_get: () => mockListCache,

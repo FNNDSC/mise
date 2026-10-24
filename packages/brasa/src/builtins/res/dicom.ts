@@ -117,8 +117,8 @@ export async function path_physical(input: string): Promise<string> {
       if (!target.ok) return input;
       candidate = `${target.value}${link[2] ?? ''}`;
     }
-    const { logical_toPhysical } = await import('@fnndsc/chili/utils');
-    const physical: Result<string> = await logical_toPhysical(candidate);
+    const { logicalPath_resolve } = await import('@fnndsc/chili/utils');
+    const physical: Result<string> = await logicalPath_resolve(candidate);
     return physical.ok ? physical.value : candidate;
   } catch {
     return input;

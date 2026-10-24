@@ -36,7 +36,7 @@ const SUMMARY_MAX: number = 60;
  * @param variable - It.
  * @returns The summary.
  */
-function summary_of(name: string, variable: Variable): string {
+function variableSummary_render(name: string, variable: Variable): string {
   const reading: FieldReading = answer_read(variable.answer, name, []);
   if ('refused' in reading) return reading.refused.replace(`${name} `, '');
   const shown: string = reading.values.join(' ');
@@ -80,7 +80,7 @@ export async function builtin_set(args: string[]): Promise<CommandEnvelope> {
     kind: variable.answer.kind,
     source: variable.answer.source,
     readOnly: variable.readOnly,
-    summary: summary_of(variable.name, variable),
+    summary: variableSummary_render(variable.name, variable),
   }));
   if (listed.length === 0) return envelope_ok(`${chalk.gray('no variables set; NAME=$(command) or NAME=word sets one')}\n`, { kind: VARIABLES_MODEL_KIND, data: listed });
   const width: number = Math.max(...listed.map((one: VariableListing): number => one.name.length));

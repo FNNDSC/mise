@@ -103,12 +103,12 @@ export function rmApi_make(options: RmApiOptions): RmApi {
   const provider: common.ConfigFileAuthenticationDetailsProvider = new common.ConfigFileAuthenticationDetailsProvider(options.configFile, options.profile);
   const client: resourcemanager.ResourceManagerClient = new resourcemanager.ResourceManagerClient({ authenticationDetailsProvider: provider });
   client.regionId = options.region;
-  const job_of = (job: resourcemanager.models.Job): RmJobRecord => ({
+  const job_convert = (job: resourcemanager.models.Job): RmJobRecord => ({
     id: job.id ?? '',
     state: String(job.lifecycleState ?? 'UNKNOWN'),
     ...(job.failureDetails?.message !== undefined ? { failure: job.failureDetails.message } : {}),
   });
-  const stack_of = (stack: resourcemanager.models.Stack | resourcemanager.models.StackSummary): RmStackRecord => ({
+  const stack_convert = (stack: resourcemanager.models.Stack | resourcemanager.models.StackSummary): RmStackRecord => ({
     id: stack.id ?? '', displayName: stack.displayName ?? '', state: String(stack.lifecycleState ?? 'UNKNOWN'), compartmentId: stack.compartmentId ?? '',
   });
   return {
@@ -124,7 +124,7 @@ export function rmApi_make(options: RmApiOptions): RmApi {
           freeformTags: request.tags,
         },
       });
-      return stack_of(response.stack);
+      return stack_convert(response.stack);
     },
     async stack_update(stackId, request) {
       await client.updateStack({
@@ -136,13 +136,13 @@ export function rmApi_make(options: RmApiOptions): RmApi {
       });
     },
     async stack_get(stackId) {
-      return stack_of((await client.getStack({ stackId })).stack);
+      return stack_convert((await client.getStack({ stackId })).stack);
     },
     async stacks_tagged(compartmentId, tagKey) {
       const found: Array<RmStackRecord & { tagValue: string }> = [];
       for await (const stack of client.listAllStacks({ compartmentId })) {
         const value: string | undefined = stack.freeformTags?.[tagKey];
-        if (value !== undefined) found.push({ ...stack_of(stack), tagValue: value });
+        if (value !== undefined) found.push({ ...stack_convert(stack), tagValue: value });
       }
       return found;
     },
@@ -153,10 +153,10 @@ export function rmApi_make(options: RmApiOptions): RmApi {
             : operation.kind === 'import' ? { operation: 'IMPORT_TF_STATE', tfStateBase64Encoded: operation.stateBase64 } as resourcemanager.models.CreateImportTfStateJobOperationDetails
               : { operation: 'DESTROY', executionPlanStrategy: 'AUTO_APPROVED' } as resourcemanager.models.CreateDestroyJobOperationDetails;
       const response = await client.createJob({ createJobDetails: { stackId, displayName, jobOperationDetails: details } });
-      return job_of(response.job);
+      return job_convert(response.job);
     },
     async job_get(jobId) {
-      return job_of((await client.getJob({ jobId })).job);
+      return job_convert((await client.getJob({ jobId })).job);
     },
     async job_cancel(jobId) {
       await client.cancelJob({ jobId, isForced: false });

@@ -16,7 +16,7 @@ jest.unstable_mockModule('../src/builtins/sys/weather.js', () => ({
   place_find: async (_fetch: unknown, name: string) => (name === 'Nowhere' ? null : { name, region: 'MA', country: 'US', latitude: 42.36, longitude: -71.06, timezone: 'America/New_York' }),
 }));
 
-const { moon_phase, moon_draw, stardate_of, ddate_of, ordinal_of, builtin_pom, builtin_ddate, builtin_sunrise, sun_fetch } = await import('../src/builtins/games/sky.js');
+const { moon_phase, moon_draw, stardate_derive, ddate_derive, ordinal_format, builtin_pom, builtin_ddate, builtin_sunrise, sun_fetch } = await import('../src/builtins/games/sky.js');
 const { chime_set, chimes_list, chimes_cancel, duration_parse, leave_delay, span_words, builtin_timer, builtin_leave, builtin_stopwatch, stopwatch_reset } = await import('../src/builtins/games/chimes.js');
 
 const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
@@ -44,19 +44,19 @@ describe('pom', () => {
 
 describe('stardate and ddate', () => {
   it('reckons the stardate two ways', () => {
-    const sd = stardate_of(new Date('2026-10-05T12:00:00Z'));
+    const sd = stardate_derive(new Date('2026-10-05T12:00:00Z'));
     expect(sd.kelvin).toBe('2026.278');
     expect(Number(sd.tng)).toBeCloseTo(-296239.7, 1);
   });
 
   it('knows the Discordian calendar, its holy days and St. Tib', async () => {
-    const d = ddate_of(new Date(2026, 9, 5));
+    const d = ddate_derive(new Date(2026, 9, 5));
     expect(d).toMatchObject({ yold: 3192, season: 'Bureaucracy', day: 59, weekday: 'Pungenday', holyday: null, tibs: false });
-    expect(ddate_of(new Date(2026, 0, 5)).holyday).toBe('Mungday');
-    expect(ddate_of(new Date(2026, 0, 1))).toMatchObject({ season: 'Chaos', day: 1, weekday: 'Sweetmorn' });
-    expect(ddate_of(new Date(2028, 1, 29)).tibs).toBe(true);
-    expect(ddate_of(new Date(2028, 2, 1))).toMatchObject({ season: 'Chaos', day: 60 });
-    expect(ordinal_of(1)).toBe('1st'); expect(ordinal_of(12)).toBe('12th'); expect(ordinal_of(23)).toBe('23rd'); expect(ordinal_of(57)).toBe('57th');
+    expect(ddate_derive(new Date(2026, 0, 5)).holyday).toBe('Mungday');
+    expect(ddate_derive(new Date(2026, 0, 1))).toMatchObject({ season: 'Chaos', day: 1, weekday: 'Sweetmorn' });
+    expect(ddate_derive(new Date(2028, 1, 29)).tibs).toBe(true);
+    expect(ddate_derive(new Date(2028, 2, 1))).toMatchObject({ season: 'Chaos', day: 60 });
+    expect(ordinal_format(1)).toBe('1st'); expect(ordinal_format(12)).toBe('12th'); expect(ordinal_format(23)).toBe('23rd'); expect(ordinal_format(57)).toBe('57th');
     expect(plain((await builtin_ddate(['2026-10-05T12:00:00'])).rendered)).toBe('Today is Pungenday, the 59th day of Bureaucracy in the YOLD 3192\n');
   });
 });

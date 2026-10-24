@@ -87,9 +87,9 @@ function shell_render(shell: GreeterShell): string {
 </main>
 <script type="module">
 import { logo_frameRender } from '${shell.root}greeter/brain.js';
-import { ansi_toHtml } from '${shell.root}greeter/ansi.js';
+import { ansi_renderHtml } from '${shell.root}greeter/ansi.js';
 const brain = document.getElementById('brain');
-const brain_draw = (frame, resting) => { brain.innerHTML = ansi_toHtml(logo_frameRender(frame, resting).join('\\n')); };
+const brain_draw = (frame, resting) => { brain.innerHTML = ansi_renderHtml(logo_frameRender(frame, resting).join('\\n')); };
 ${shell.script}
 </script>
 </body>
@@ -187,10 +187,10 @@ feed.addEventListener('line', (event) => {
   // where it stands, as the boot would on a terminal, instead of leaving
   // the pending row to linger above a second line.
   const held = line.replaces === undefined ? null : rows.querySelector('[data-row="' + line.replaces + '"]');
-  if (held !== null) { held.innerHTML = ansi_toHtml(line.text); return; }
+  if (held !== null) { held.innerHTML = ansi_renderHtml(line.text); return; }
   const row = document.createElement('span');
   if (line.id !== undefined) row.dataset.row = String(line.id);
-  row.innerHTML = ansi_toHtml(line.text);
+  row.innerHTML = ansi_renderHtml(line.text);
   rows.append(row, '\\n');
   rows.scrollTop = rows.scrollHeight;
 });

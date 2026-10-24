@@ -6,7 +6,7 @@
  * @module
  */
 
-import { vfsOutcome_ofBoolean, vfs_ok, vfs_fail, vfs_failFromStack, type VfsOutcome, type VfsErrno } from '@fnndsc/fond';
+import { vfsOutcome_convertFromBoolean, vfs_ok, vfs_fail, vfs_failFromStack, type VfsOutcome, type VfsErrno } from '@fnndsc/fond';
 import { Result, Ok, Err, errorStack, listCache_get, chrisConnection } from "@fnndsc/cumin";
 import { VFSProvider, VFSItem, CpOptions } from "../provider.js";
 import { vfsItems_sort } from "../sort.js";
@@ -47,7 +47,7 @@ interface ChrisFileOrDirRaw {
  * @param type - What kind of row it is.
  * @returns The item.
  */
-export function chrisRow_toItem(raw: ChrisFileOrDirRaw, type: "dir" | "file" | "link" | "vfs"): VFSItem {
+export function chrisRow_convertToItem(raw: ChrisFileOrDirRaw, type: "dir" | "file" | "link" | "vfs"): VFSItem {
   let name: string = raw.fname || raw.path || "";
   if (name.includes("/")) {
     name = name.split("/").pop() || name;
@@ -161,7 +161,7 @@ export class NativeVfsProvider implements VFSProvider {
 
       const items: VFSItem[] = [];
 
-      const mapToItem = chrisRow_toItem;
+      const mapToItem = chrisRow_convertToItem;
 
       if (dirsResult.status === "fulfilled" && dirsResult.value?.tableData) {
         dirsResult.value.tableData.forEach((d: unknown) =>
@@ -202,7 +202,7 @@ export class NativeVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async cp(src: string, dest: string, options: CpOptions): Promise<VfsOutcome> {
-    return vfsOutcome_ofBoolean(await this.copy_run(src, dest, options), 'EIO');
+    return vfsOutcome_convertFromBoolean(await this.copy_run(src, dest, options), 'EIO');
   }
 
   /**
@@ -247,7 +247,7 @@ export class NativeVfsProvider implements VFSProvider {
       if (outcome.kind === 'missing') errorStack.checkpoint_drain(mark);
       if (outcome.kind !== 'listing') continue;
       const row: ChrisFileOrDirRaw | undefined = ((outcome.data.tableData ?? []) as ChrisFileOrDirRaw[])
-        .find((r: ChrisFileOrDirRaw): boolean => chrisRow_toItem(r, type).name === name && r.id !== undefined);
+        .find((r: ChrisFileOrDirRaw): boolean => chrisRow_convertToItem(r, type).name === name && r.id !== undefined);
       if (row !== undefined) found.push({ type, id: Number(row.id) });
     }
     return Ok(found);
@@ -318,7 +318,7 @@ export class NativeVfsProvider implements VFSProvider {
     if (parent.value === null) return vfs_fail('ENOENT');
     if (parent.value.type !== 'dir') return vfs_fail('ENOTDIR');
     // files_touch replaces: CUBE's upload does not, so a file already there is removed first.
-    return vfsOutcome_ofBoolean(await files_touch(target, content), 'EIO');
+    return vfsOutcome_convertFromBoolean(await files_touch(target, content), 'EIO');
   }
 
   /** @inheritdoc */
@@ -331,7 +331,7 @@ export class NativeVfsProvider implements VFSProvider {
     if (!parent.ok) return vfs_failFromStack('EIO');
     if (parent.value === null) return vfs_fail('ENOENT');
     if (parent.value.type !== 'dir') return vfs_fail('ENOTDIR');
-    return vfsOutcome_ofBoolean(await files_mkdir(target, { cleared: true }), 'EIO');
+    return vfsOutcome_convertFromBoolean(await files_mkdir(target, { cleared: true }), 'EIO');
   }
 
   /** @inheritdoc */
@@ -343,7 +343,7 @@ export class NativeVfsProvider implements VFSProvider {
     if (!first.ok) return vfs_failFromStack('EIO');
     if (first.value?.atTarget === true) return vfs_fail('EEXIST');
     if (first.value !== null && first.value.holder !== 'dir') return vfs_fail('ENOTDIR');
-    return vfsOutcome_ofBoolean(await files_mkdir(target, { cleared: true }), 'EIO');
+    return vfsOutcome_convertFromBoolean(await files_mkdir(target, { cleared: true }), 'EIO');
   }
 
   /** @inheritdoc */
@@ -354,7 +354,7 @@ export class NativeVfsProvider implements VFSProvider {
     const held: Result<VFSItem[]> = await this.list(target);
     if (!held.ok) return vfs_failFromStack('EIO');
     if (held.value.length > 0) return vfs_fail('ENOTEMPTY');
-    return vfsOutcome_ofBoolean(await files_delete(there.value.id, 'dirs', path.posix.dirname(target)), 'EIO');
+    return vfsOutcome_convertFromBoolean(await files_delete(there.value.id, 'dirs', path.posix.dirname(target)), 'EIO');
   }
 
   /** @inheritdoc */
@@ -374,7 +374,7 @@ export class NativeVfsProvider implements VFSProvider {
     if (!parent.ok) return vfs_failFromStack('EIO');
     if (parent.value === null) return vfs_fail('ENOENT');
     if (parent.value.type !== 'dir') return vfs_fail('ENOTDIR');
-    return vfsOutcome_ofBoolean(await files_move(src, dest), 'EIO');
+    return vfsOutcome_convertFromBoolean(await files_move(src, dest), 'EIO');
   }
 
   /** @inheritdoc */
@@ -383,7 +383,7 @@ export class NativeVfsProvider implements VFSProvider {
     if (!there.ok) return there;
     if (there.value.type === 'dir') return vfs_fail('EISDIR');
     const asset: string = there.value.type === 'link' ? 'links' : 'files';
-    return vfsOutcome_ofBoolean(await files_delete(there.value.id, asset, path.posix.dirname(target)), 'EIO');
+    return vfsOutcome_convertFromBoolean(await files_delete(there.value.id, asset, path.posix.dirname(target)), 'EIO');
   }
 
   /** @inheritdoc */
@@ -392,7 +392,7 @@ export class NativeVfsProvider implements VFSProvider {
     const there: VfsOutcome<{ type: 'dir' | 'file' | 'link'; id: number }> = await this.removable_find(target);
     if (!there.ok) return there;
     if (there.value.type !== 'dir') return vfs_fail('ENOTDIR');
-    return vfsOutcome_ofBoolean(await files_delete(there.value.id, 'dirs', path.posix.dirname(target)), 'EIO');
+    return vfsOutcome_convertFromBoolean(await files_delete(there.value.id, 'dirs', path.posix.dirname(target)), 'EIO');
   }
 
   /**

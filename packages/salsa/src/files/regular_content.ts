@@ -6,7 +6,7 @@
 
 import { Result, Ok, Err, chrisIO, errorStack } from "@fnndsc/cumin";
 import { Readable } from "stream";
-import { fileId_atPath_resolve } from './fileLookup.js';
+import { pathFileId_resolve } from './fileLookup.js';
 
 /** The largest file the whole-blob fallback may read into memory after a failed stream. */
 export const BLOB_FALLBACK_MAX_BYTES: number = 256 * 1024 * 1024;
@@ -36,7 +36,7 @@ async function files_view(fileId: number): Promise<Result<Buffer>> {
 export async function fileContent_getRegularStream(
   filePath: string
 ): Promise<Result<{ stream: unknown; size?: number; filename?: string }>> {
-  const idResult: Result<number> = await fileId_atPath_resolve(filePath);
+  const idResult: Result<number> = await pathFileId_resolve(filePath);
   if (!idResult.ok) {
     return Err();
   }
@@ -70,7 +70,7 @@ export async function fileContent_getRegularStream(
  * @returns A Result containing the file content as a string, or an error.
  */
 export async function fileContent_getRegular(filePath: string): Promise<Result<string>> {
-  const idResult: Result<number> = await fileId_atPath_resolve(filePath);
+  const idResult: Result<number> = await pathFileId_resolve(filePath);
   if (!idResult.ok) {
     return Err();
   }
@@ -92,7 +92,7 @@ export async function fileContent_getRegular(filePath: string): Promise<Result<s
  * @returns A Result containing the file content as a Buffer, or an error.
  */
 export async function fileContent_getRegularBinary(filePath: string): Promise<Result<Buffer>> {
-  const idResult: Result<number> = await fileId_atPath_resolve(filePath);
+  const idResult: Result<number> = await pathFileId_resolve(filePath);
   if (!idResult.ok) {
     return Err();
   }

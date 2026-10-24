@@ -4,7 +4,7 @@
  */
 import chalk from 'chalk';
 import { context_getSingle, procCache_refresh, procFeed_ensureLoaded, procFeed_probe, procTarget_locate, type ProcLocation, procFeed_refreshStart, type FeedTopologyReadiness, procRoster_sync, procTopologyCatchup_status, procRoster_syncStart, procTopology_await, procTopology_retry, procTopology_status, procTopology_warmup, jobs_find, type ProcTopologyStatus } from '@fnndsc/salsa';
-import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, feedStatus_ofCounts, procLayout_get, procLayout_set, procLayoutName_check, procLayoutPositions_check, type ProcLayoutRecord, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type SingleContext, feedTags_byFeed } from '@fnndsc/cumin';
+import { path_extractFeedID, path_extractPluginInstanceID, path_isInFeed, procCache_get, feedStatus_deriveFromCounts, procLayout_get, procLayout_set, procLayoutName_check, procLayoutPositions_check, type ProcLayoutRecord, type ProcCacheLifecycle, type ProcFeed, type ProcFeedScopeCounts, type ProcInstance, type ProcWarmupProgress, type SingleContext, feedTags_readByFeed } from '@fnndsc/cumin';
 import { FEED_LIST_MODEL_KIND, PROC_JUMP_MODEL_KIND, type ProcJumpModel, PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, type FeedListModel, type ProcLayoutModel, type ProcUniverseModel, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import { spinner } from '../lib/spinner.js';
 import { universeLayout_underWay, universeLayouts_warm } from '../chris/universeLayout.js';
@@ -91,7 +91,7 @@ async function procWarmup_guard(command: string, force: boolean): Promise<Comman
  * @param cache - The proc cache.
  * @returns One entry per known feed.
  */
-function procEntries_fromCache(cache: ProcCache): ProcJobEntry[] {
+function procEntries_build(cache: ProcCache): ProcJobEntry[] {
   return cache.feedIDs_get().map((feedID: number): ProcJobEntry => {
     const feed: ProcFeed = cache.feed_get(feedID)!;
     const topoLoaded: boolean = cache.topologyLoaded_has(feedID);
@@ -179,7 +179,7 @@ async function jobs_subcmd(args: string[]): Promise<CommandEnvelope> {
   // The roster is index movement: answered from the cache now, walked off the lane.
   procRoster_syncStart();
 
-  let entries: ProcJobEntry[] = procEntries_fromCache(procCache_get());
+  let entries: ProcJobEntry[] = procEntries_build(procCache_get());
   entries = procEntries_filterBySearch(entries, String(parsed['search'] ?? ''));
 
   if (entries.length === 0) {
@@ -495,7 +495,7 @@ function procSeen_handle(args: string[]): Promise<CommandEnvelope> {
  */
 async function feedTags_read(): Promise<Map<number, string[]> | null> {
   const mark: number = errorStack.checkpoint_mark();
-  const read: Result<Map<number, string[]>> = await feedTags_byFeed();
+  const read: Result<Map<number, string[]>> = await feedTags_readByFeed();
   if (read.ok) return read.value;
   errorStack.checkpoint_drain(mark);
   return null;
@@ -631,8 +631,8 @@ export function procUniverseModel_build(): ProcUniverseModel {
     .filter((feedID: number): boolean => cache.topologyLoaded_has(feedID))
     .map((feedID: number): ProcUniverseModel['feeds'][number] => {
       const feed: ProcFeed = cache.feed_get(feedID)!;
-      const data = cache.dataFacts_of(feedID);
-      return { id: feedID, title: feed.title, jobs: cache.instancesForFeed_count(feedID), status: feedStatus_ofCounts(feed), chain: cache.pluginChain_of(feedID), groups: cache.pluginGroups_of(feedID), createdAt: feed.creationDate ?? '', ...(data === undefined ? {} : { data }) };
+      const data = cache.dataFacts_read(feedID);
+      return { id: feedID, title: feed.title, jobs: cache.instancesForFeed_count(feedID), status: feedStatus_deriveFromCounts(feed), chain: cache.pluginChain_derive(feedID), groups: cache.pluginGroups_build(feedID), createdAt: feed.creationDate ?? '', ...(data === undefined ? {} : { data }) };
     });
   const whole: boolean = !cache.warmupProgress_get().active && procTopology_status().state === 'complete';
   return { feeds, whole };

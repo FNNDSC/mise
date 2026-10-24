@@ -5,8 +5,8 @@
 import { describe, it, expect } from '@jest/globals';
 import * as THREE from 'three';
 import { tubeMesh_make, type TubeSpec } from '../src/draw/tubes.js';
-import { starLayer_make, starScale_of, type StarEntry } from '../src/draw/stars.js';
-import { SphereGeometries, fibonacciPoint_make, haloRadius_of } from '../src/draw/geometry.js';
+import { starLayer_make, starScale_compute, type StarEntry } from '../src/draw/stars.js';
+import { SphereGeometries, fibonacciPoint_make, haloRadius_compute } from '../src/draw/geometry.js';
 import { DIM_OPACITY } from '../src/draw/constants.js';
 
 describe('tubes', () => {
@@ -43,7 +43,7 @@ describe('stars', () => {
   });
 
   it('scales to the canvas and the camera', () => {
-    expect(starScale_of(1000, 90)).toBeCloseTo(500, 9);
+    expect(starScale_compute(1000, 90)).toBeCloseTo(500, 9);
   });
 });
 
@@ -56,7 +56,7 @@ describe('shapes', () => {
   });
 
   it('grows a halo with its crowd', () => {
-    expect(haloRadius_of(1)).toBeLessThan(haloRadius_of(100));
+    expect(haloRadius_compute(1)).toBeLessThan(haloRadius_compute(100));
   });
 
   it('spreads a shell of points on its sphere', () => {

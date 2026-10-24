@@ -104,7 +104,7 @@ export class SubjectBus {
    * @param paneId - The pane.
    * @returns The pane's group id.
    */
-  public group_of(paneId: string): string {
+  public group_resolve(paneId: string): string {
     const existing: string | undefined = this.membership.get(paneId);
     if (existing !== undefined) {
       return existing;
@@ -119,7 +119,7 @@ export class SubjectBus {
    * @param paneId - The viewer pane.
    */
   public viewer_mark(paneId: string): void {
-    const group: LinkGroup | undefined = this.groups.get(this.group_of(paneId));
+    const group: LinkGroup | undefined = this.groups.get(this.group_resolve(paneId));
     group?.viewers.add(paneId);
   }
 
@@ -131,7 +131,7 @@ export class SubjectBus {
    * @returns True when a viewer is present in the pane's group.
    */
   public groupHasViewer(paneId: string): boolean {
-    const group: LinkGroup | undefined = this.groups.get(this.group_of(paneId));
+    const group: LinkGroup | undefined = this.groups.get(this.group_resolve(paneId));
     return group !== undefined && group.viewers.size > 0;
   }
 
@@ -143,7 +143,7 @@ export class SubjectBus {
    * @param indication - The indicated address.
    */
   public regard_write(paneId: string, indication: RegardIndication): void {
-    const groupId: string = this.group_of(paneId);
+    const groupId: string = this.group_resolve(paneId);
     const group: LinkGroup = this.groups.get(groupId) as LinkGroup;
     const value: RegardValue = { ...indication, paneId };
     group.value = value;
@@ -162,7 +162,7 @@ export class SubjectBus {
    * @param subscriber - Called on every write, and once now when a value is retained.
    */
   public regard_subscribe(paneId: string, subscriber: RegardSubscriber): void {
-    const group: LinkGroup = this.groups.get(this.group_of(paneId)) as LinkGroup;
+    const group: LinkGroup = this.groups.get(this.group_resolve(paneId)) as LinkGroup;
     group.subscribers.set(paneId, subscriber);
     if (group.value !== null) {
       subscriber(group.value);
@@ -176,6 +176,6 @@ export class SubjectBus {
    * @returns The retained value, or null before the first write.
    */
   public regard_get(paneId: string): RegardValue | null {
-    return this.groups.get(this.group_of(paneId))?.value ?? null;
+    return this.groups.get(this.group_resolve(paneId))?.value ?? null;
   }
 }

@@ -2,11 +2,11 @@
  * @file Builtin mkdir command.
  * Creates directories, reported as a command envelope.
  */
-import { vfsOutcome_toResult, mkdir_render, type VFSDispatcher, type VFSItem, type VfsOutcome } from '@fnndsc/fond';
+import { vfsOutcome_convertToResult, mkdir_render, type VFSDispatcher, type VFSItem, type VfsOutcome } from '@fnndsc/fond';
 import chalk from 'chalk';
 import { path_resolve, error_stripDebugPrefix } from '../utils.js';
 import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
-import { entry_at, entry_isFolder, folderTree_make } from './entries.js';
+import { pathEntry_find, entry_isFolder, folderTree_make } from './entries.js';
 import { errorStack, type Result, type StackMessage } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
@@ -46,7 +46,7 @@ async function virtualFolder_make(targetPath: string, parents: boolean): Promise
       return { path: targetPath, created: false, existed: true };
     }
   }
-  return { path: targetPath, created: vfsOutcome_toResult(await vfsDispatcher_get().mkdir(targetPath), 'mkdir', targetPath).ok };
+  return { path: targetPath, created: vfsOutcome_convertToResult(await vfsDispatcher_get().mkdir(targetPath), 'mkdir', targetPath).ok };
 }
 
 /**
@@ -167,7 +167,7 @@ export async function mkdir_run(options: MkdirOptions): Promise<CommandEnvelope>
         continue;
       }
       if (made.errno === 'EEXIST') {
-        if (parents && entry_isFolder(await entry_at(dispatcher, targetPath))) {
+        if (parents && entry_isFolder(await pathEntry_find(dispatcher, targetPath))) {
           outcomes.push({ path: targetPath, created: false, existed: true });
         } else {
           renderedErr += `${chalk.red(`mkdir: cannot create directory '${pathArg}': File exists`)}\n`;

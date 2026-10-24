@@ -51,7 +51,7 @@ export class TaskSourceVfsProvider implements VFSProvider {
    * @param where - The path.
    * @returns The parts.
    */
-  private parts_of(where: string): string[] {
+  private parts_parse(where: string): string[] {
     return where.slice(this.prefix.length).split('/').filter(Boolean);
   }
 
@@ -66,7 +66,7 @@ export class TaskSourceVfsProvider implements VFSProvider {
   }
 
   async list(where: string): Promise<Result<VFSItem[]>> {
-    const parts: string[] = this.parts_of(where);
+    const parts: string[] = this.parts_parse(where);
     const now: string = new Date().toISOString();
     if (parts.length === 0) {
       return Ok((await this.source.list()).map((task: Task): VFSItem => ({
@@ -84,7 +84,7 @@ export class TaskSourceVfsProvider implements VFSProvider {
   }
 
   async read(where: string): Promise<VfsOutcome<string>> {
-    const parts: string[] = this.parts_of(where);
+    const parts: string[] = this.parts_parse(where);
     if (parts.length < 2) return vfs_fail(parts.length === 0 ? 'EISDIR' : (await this.task_get(parts[0] as string)) ? 'EISDIR' : 'ENOENT');
     const [id, field] = parts as [string, string];
     const task: Task | undefined = await this.task_get(id);

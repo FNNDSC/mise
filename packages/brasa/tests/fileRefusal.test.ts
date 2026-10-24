@@ -17,8 +17,8 @@ describe('fileRefusal_name', () => {
   });
 
   it('reads a file the lookup could not find, or CUBE 404, as no such file', () => {
-    expect(fileRefusal_name('/a', [note('fileId_atPath_resolve', 'File not found: f.dcm in /a')]).status).toBe(404);
-    expect(fileRefusal_name('/a', [note('fileId_atPath_resolve', 'No files found in directory: /a')]).reason).toBe('no such file in CUBE (404)');
+    expect(fileRefusal_name('/a', [note('pathFileId_resolve', 'File not found: f.dcm in /a')]).status).toBe(404);
+    expect(fileRefusal_name('/a', [note('pathFileId_resolve', 'No files found in directory: /a')]).reason).toBe('no such file in CUBE (404)');
     expect(fileRefusal_name('/a', [note('file_download', 'File ID 9 does not exist (404).')]).status).toBe(404);
   });
 

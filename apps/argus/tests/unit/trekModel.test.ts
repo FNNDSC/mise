@@ -10,7 +10,7 @@ import { describe, it, expect, beforeAll } from '@jest/globals';
 import { trek_play } from 'bsd-trek';
 import type { TrekState, TrekTerminal } from 'bsd-trek/host';
 import {
-  BRIDGE_COMMANDS, arrival_of, bearing_of, course_calc, impulseCost_of, phaserEffect_of, question_classify, question_control, range_of, readout_build, readout_diff, repairTimes_of, score_of, warpCost_of,
+  BRIDGE_COMMANDS, arrival_compute, bearing_compute, course_calc, impulseCost_compute, phaserEffect_compute, question_classify, question_control, range_compute, readout_build, readout_diff, repairTimes_compute, score_compute, warpCost_compute,
   type BridgeReadout, type DeviceState, type Place,
 } from '../../src/features/trek/model.js';
 
@@ -86,12 +86,12 @@ describe('the readout of a shown state', () => {
 
 describe('bearings, as the C steers', () => {
   it('0 is up the scan, 90 to the right, clockwise', () => {
-    expect(bearing_of({ x: 4, y: 5 }, { x: 0, y: 5 })).toBeCloseTo(0);
-    expect(bearing_of({ x: 4, y: 5 }, { x: 4, y: 9 })).toBeCloseTo(90);
-    expect(bearing_of({ x: 4, y: 5 }, { x: 9, y: 5 })).toBeCloseTo(180);
-    expect(bearing_of({ x: 4, y: 5 }, { x: 4, y: 0 })).toBeCloseTo(270);
-    expect(bearing_of({ x: 4, y: 5 }, { x: 1, y: 7 })).toBeCloseTo(33.69, 1);
-    expect(range_of({ x: 4, y: 5 }, { x: 1, y: 7 })).toBeCloseTo(3.606, 2);
+    expect(bearing_compute({ x: 4, y: 5 }, { x: 0, y: 5 })).toBeCloseTo(0);
+    expect(bearing_compute({ x: 4, y: 5 }, { x: 4, y: 9 })).toBeCloseTo(90);
+    expect(bearing_compute({ x: 4, y: 5 }, { x: 9, y: 5 })).toBeCloseTo(180);
+    expect(bearing_compute({ x: 4, y: 5 }, { x: 4, y: 0 })).toBeCloseTo(270);
+    expect(bearing_compute({ x: 4, y: 5 }, { x: 1, y: 7 })).toBeCloseTo(33.69, 1);
+    expect(range_compute({ x: 4, y: 5 }, { x: 1, y: 7 })).toBeCloseTo(3.606, 2);
   });
 });
 
@@ -163,7 +163,7 @@ describe("the bridge's arithmetic against the computer's own", () => {
 
   it('scores a fresh game as the C does, item by item', () => {
     const readout: BridgeReadout = readout_build(states[0] as TrekState);
-    const tally = score_of(readout);
+    const tally = score_compute(readout);
     const printed: RegExpMatchArray | null = words.match(/\*\*\*  TOTAL\s+(-?\d+)/);
     expect(printed).not.toBeNull();
     expect(tally.total).toBe(Number(printed?.[1]));
@@ -172,11 +172,11 @@ describe("the bridge's arithmetic against the computer's own", () => {
 
   it('counts a warp move, an impulse move and a phaser shot as the computer prints them', () => {
     const readout: BridgeReadout = readout_build(states[0] as TrekState);
-    const warp = warpCost_of(3, 5, readout.param.warptime);
+    const warp = warpCost_compute(3, 5, readout.param.warptime);
     expect(words).toContain(`Warp 5.00 distance 3.00 cost ${warp.stardates.toFixed(2)} stardates ${warp.units} (${warp.unitsShielded} w/ shlds up) units`);
-    const impulse = impulseCost_of(1.5);
+    const impulse = impulseCost_compute(1.5);
     expect(words).toContain(`Distance 1.50 cost ${impulse.stardates.toFixed(2)} stardates ${impulse.units} units`);
-    expect(words).toContain(`Phasers are ${phaserEffect_of(0.36)}% effective at that range`);
+    expect(words).toContain(`Phasers are ${phaserEffect_compute(0.36)}% effective at that range`);
   });
 
   it('works a course and distance out as kalc does', () => {
@@ -184,7 +184,7 @@ describe("the bridge's arithmetic against the computer's own", () => {
     const calc = course_calc(readout, { quadrant: { x: 3, y: 4 }, sector: { x: 5, y: 6 } });
     expect(words).toContain(`to 3,4/5,6: course ${calc.course}  dist ${calc.distance.toFixed(3)}`);
     // a course of 0 runs up the scan: one sector is a tenth of a quadrant
-    const up: Place = arrival_of(readout, 0, 0.1);
+    const up: Place = arrival_compute(readout, 0, 0.1);
     expect(up.quadrant.x * 10 + up.sector.x).toBe(readout.position.quadrant.x * 10 + readout.position.sector.x - 1);
     expect(up.quadrant.y * 10 + up.sector.y).toBe(readout.position.quadrant.y * 10 + readout.position.sector.y);
   });
@@ -193,9 +193,9 @@ describe("the bridge's arithmetic against the computer's own", () => {
     const readout: BridgeReadout = readout_build(states[0] as TrekState);
     const working = readout.devices.find((device) => device.repairAt === null);
     expect(working).toBeDefined();
-    expect(repairTimes_of(working as DeviceState, readout)).toBeNull();
+    expect(repairTimes_compute(working as DeviceState, readout)).toBeNull();
     const down: DeviceState = { index: 0, name: 'warp drive', person: 'Scott', repairAt: readout.mission.stardate + 2 };
-    const times = repairTimes_of(down, readout);
+    const times = repairTimes_compute(down, readout);
     expect(times?.inFlight).toBeCloseTo(2.005, 3);
     expect(times?.docked).toBeCloseTo(2 * readout.param.dockfac + 0.005, 3);
   });

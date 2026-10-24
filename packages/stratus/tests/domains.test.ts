@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from '@jest/globals';
 import type { VFSItem } from '@fnndsc/fond';
-import { envFile_parse, harborDomain_read, lastDone_of, HARBOR_STEPS } from '../src/domains/harborOci.js';
+import { envFile_parse, harborDomain_read, lastDone_find, HARBOR_STEPS } from '../src/domains/harborOci.js';
 import { DomainTree } from '../src/vfs/domains.js';
 import { TenancyProvider } from '../src/vfs/tenancy.js';
 import { FakeDriver, fakeCloud_sample } from '../src/cloud/fake/driver.js';
@@ -54,7 +54,7 @@ describe('reading a harbor-oci checkout', () => {
     expect(expired.steps.map((step) => step.state).slice(1, 5)).toEqual(['done', 'expired', 'done', 'not done']);
     expect(expired.steps[4]?.evidence).toBe('no Terraform state');
     expect(expired.steps[8]).toMatchObject({ state: 'not done', evidence: 'no kubeconfig saved' });
-    expect(lastDone_of(expired)?.folder).toBe('04-infra-plan');
+    expect(lastDone_find(expired)?.folder).toBe('04-infra-plan');
     const empty = harborDomain_read({ name: 'y', root: harborCheckout_make({ spec: false, state: false, stack: false, kubeconfig: false }) }, NOW);
     expect(empty.spec).toBeNull();
     expect(empty.state).toBeNull();
@@ -62,7 +62,7 @@ describe('reading a harbor-oci checkout', () => {
     expect(empty.steps.filter((step) => step.state === 'done')).toEqual([]);
     expect(empty.steps[2]?.evidence).toBe('no ISO link in state');
     expect(empty.steps[3]?.evidence).toBe('no stack staged');
-    expect(lastDone_of(empty)).toBeNull();
+    expect(lastDone_find(empty)).toBeNull();
   });
 
   it('names the credentials by their host path only', () => {

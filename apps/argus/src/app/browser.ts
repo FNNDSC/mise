@@ -13,11 +13,11 @@
  * browser's binding and history, the preview provider and the readers.
  */
 import { DAG_MODEL_KINDS, EDIT_CONFIRM_BYTES, path_isEditable, pipelineDiagramModelSchema, type PipelineDiagramNode } from '@fnndsc/menu';
-import { editAsk_of, editLine_compose } from '../features/edit/line.js';
+import { editAsk_render, editLine_compose } from '../features/edit/line.js';
 import type { ExecuteOutcome } from '../calypso/client.js';
 import type { PaneAskRequest } from '../features/ask/paneAsk.js';
 import { browserDownload_save, downloadId_make, type DownloadOutcome } from '../features/files/download.js';
-import { refusalWords_of } from '../features/files/answer.js';
+import { refusalWords_extract } from '../features/files/answer.js';
 import { transfer_watch, type TransferRow } from '../features/files/transfer.js';
 import { FilesPanel, extension_isImage, type FileAction, type FsListingEntry, type GlimpseNode, type PreviewProvider } from '../features/files/panel.js';
 import type { GatherSeries } from '../features/gather/panel.js';
@@ -126,10 +126,10 @@ export interface BrowserHooks {
   run_press: (paneId: string, executable: string, kind: 'plugin' | 'pipeline') => void;
   cohort_gather: (entries: ReadonlyArray<GatherSeries>) => void;
   verbLine_run: (paneId: string, line: string) => void;
-  ask_onPane: (paneId: string, request: PaneAskRequest) => Promise<string | null>;
+  askOnPane_await: (paneId: string, request: PaneAskRequest) => Promise<string | null>;
   /** A /bin entry opened as its graph. */
   binEntry_show: (paneId: string, panel: FilesPanel, path: string, kind: 'plugin' | 'pipeline') => void;
-  catalogue_of: (paneId: string) => CatalogueBinding | undefined;
+  catalogue_find: (paneId: string) => CatalogueBinding | undefined;
   /** The session's user, as the prompt last named it; null before the first. */
   promptUser: () => string | null;
   template_stamp: (templateId: string) => HTMLElement;
@@ -166,7 +166,7 @@ export interface Browser {
   /** Stamps a files body (frame members + panel) from the files template. */
   filesBody_stamp: () => HTMLElement;
   /** The verbs a row is offered. */
-  rowVerbs_of: (id: string, entry: FsListingEntry, path: string) => ReadonlyArray<ListingAction<FsListingEntry>>;
+  rowVerbs_build: (id: string, entry: FsListingEntry, path: string) => ReadonlyArray<ListingAction<FsListingEntry>>;
   /** Builds one files pane instance; a catalogue is the same pane wearing catalogue traits. */
   instance_build: (id: string, primary: boolean, catalogue?: boolean) => PaneInstance;
 }
@@ -281,7 +281,7 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
         // The place did not come: the pane says so rather than standing blank.
         if (path !== '~' && panel.path_current() !== path.replace(/\/+$/, '')) {
           const refused = outcome.envelopes.find((envelope): boolean => envelope.status === 'error');
-          const reason: string = refused !== undefined ? refusalWords_of(refused) : 'the session answered no listing';
+          const reason: string = refused !== undefined ? refusalWords_extract(refused) : 'the session answered no listing';
           panel.listing_fail(reason);
           context.terminal.line_note(`files: ${path}: ${reason}`);
         }
@@ -333,7 +333,7 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
   };
 
   const directory_make = (id: string, place: string): void => {
-    void hooks.ask_onPane(id, { message: `New directory in ${place}: `, kind: 'text', commit: 'MAKE IT' })
+    void hooks.askOnPane_await(id, { message: `New directory in ${place}: `, kind: 'text', commit: 'MAKE IT' })
       .then((name: string | null): void => {
         const wanted: string = (name ?? '').trim();
         // An abandoned question makes nothing, and says nothing.
@@ -417,7 +417,7 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
    * confirmation; MOVE and COPY lower to a one-operand `mv` and `cp`, whose
    * missing destination is the ask that opens the errand.
    */
-  const rowVerbs_of = (id: string, entry: FsListingEntry, path: string): ReadonlyArray<ListingAction<FsListingEntry>> => {
+  const rowVerbs_build = (id: string, entry: FsListingEntry, path: string): ReadonlyArray<ListingAction<FsListingEntry>> => {
     const quoted: string = `"${path}"`;
     const directory: boolean = entry.type === 'dir' || entry.type === 'vfs' || entry.type === 'job';
     // Which verbs a row is offered is the roster's to say (features/roster/verbs.ts); what each one does is this pane's.
@@ -430,7 +430,7 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
           : entry.type === 'file' ? 'file' : 'directory',
       feed,
       node: feed === null ? null : nodeOf_path(path),
-      bound: hooks.catalogue_of(id) !== undefined,
+      bound: hooks.catalogue_find(id) !== undefined,
       projection: path_isProjection(path),
       editable: entry.type === 'file' && path_isEditable(path),
     };
@@ -467,9 +467,9 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
       // megabyte or more is asked about first, since the field holds it whole.
       edit: (): void => {
         const line: string = editLine_compose(path);
-        const question: string | null = editAsk_of(entry.name, entry.size, EDIT_CONFIRM_BYTES);
+        const question: string | null = editAsk_render(entry.name, entry.size, EDIT_CONFIRM_BYTES);
         if (question === null) { hooks.verbLine_run(id, line); return; }
-        void hooks.ask_onPane(id, { kind: 'confirm', message: question })
+        void hooks.askOnPane_await(id, { kind: 'confirm', message: question })
           .then((answer: string | null): void => { if (answer === 'y') hooks.verbLine_run(id, line); });
       },
       move: (): void => hooks.verbLine_run(id, `mv ${quoted}`),
@@ -487,7 +487,7 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
    * already takes many operands — so each is ONE line the operator could
    * have typed, not twenty lines they must audit.
    */
-  const selectionVerbs_of = (id: string, rows: ReadonlyArray<[string, FsListingEntry]>): ReadonlyArray<ListingAction<void>> => {
+  const selectionVerbs_build = (id: string, rows: ReadonlyArray<[string, FsListingEntry]>): ReadonlyArray<ListingAction<void>> => {
     const paths: string[] = rows.map(([path]): string => path);
     const quoted: string = paths.map((path: string): string => `"${path}"`).join(' ');
     const feeds: number[] = [];
@@ -518,9 +518,9 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
       previewProvider,
       { catalogue },
     );
-    panel.selectionVerbs_declare((rows) => selectionVerbs_of(id, rows));
+    panel.selectionVerbs_declare((rows) => selectionVerbs_build(id, rows));
     panel.rowVerbs_declare(
-      (entry, path: string) => rowVerbs_of(id, entry, path),
+      (entry, path: string) => rowVerbs_build(id, entry, path),
       (_entry, path: string): void => {
         // Indicating IS the regard: a viewer in the group renders what the
         // operator pointed at, without their having to open it first.
@@ -570,7 +570,7 @@ export function browser_wire(context: Pick<HostContext, 'panels' | 'subjects' | 
     rooted_walk,
     rooted_back,
     filesBody_stamp,
-    rowVerbs_of,
+    rowVerbs_build,
     instance_build,
   };
 }

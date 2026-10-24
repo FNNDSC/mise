@@ -19,7 +19,7 @@ import {
   envelope_ok,
   envelope_error,
 } from "@fnndsc/cumin";
-import { CLIoptions, options_toParams } from "../utils/cli.js";
+import { CLIoptions, options_convertToParams } from "../utils/cli.js";
 import { resourceColumns_removeDuplicates } from "../utils/resourceData.js";
 import { table_display, table_render, border_draw, TableOptions } from "../screen/screen.js";
 import * as util from "util";
@@ -107,7 +107,7 @@ export class BaseGroupHandler {
         options.fields = cleanFields.join(',');
       }
 
-      const params: ListOptions = options_toParams(options);
+      const params: ListOptions = options_convertToParams(options);
       const results: FilteredResourceData | null =
         await this.chrisObjectResolved.asset.resources_listAndFilterByOptions(params);
 
@@ -361,7 +361,7 @@ export class BaseGroupHandler {
    * @returns A Promise resolving to an array of IDs or null if no matches.
    */
   async IDs_getFromSearch(options: CLIoptions): Promise<number[] | null> {
-    const params: ListOptions = options_toParams(options);
+    const params: ListOptions = options_convertToParams(options);
     const searchResults: FilteredResourceData | null =
       await this.chrisObjectResolved.asset.resources_listAndFilterByOptions(params);
     if (!searchResults) {

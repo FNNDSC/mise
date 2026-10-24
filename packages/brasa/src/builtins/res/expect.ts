@@ -151,7 +151,7 @@ export async function folder_walkDeep(root: string, depth: number): Promise<Arra
  * @param pattern - A glob such as `*.nii*`.
  * @returns A regular expression anchored to the whole name.
  */
-function glob_toRegExp(pattern: string): RegExp {
+function glob_convertToRegExp(pattern: string): RegExp {
   const escaped: string = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&')
     .replace(/\*/g, '.*')
     .replace(/\?/g, '.');
@@ -183,13 +183,13 @@ async function path_read(ask: ExpectAsk): Promise<ExpectReading> {
       .map((entry): ListingItem => entry.item)
       .filter((item: ListingItem): boolean => item.type !== 'dir');
     if (ask.matching === undefined) return { got: `${files.length}` };
-    const deepPattern: RegExp = glob_toRegExp(ask.matching);
+    const deepPattern: RegExp = glob_convertToRegExp(ask.matching);
     return { got: `${files.filter((item: ListingItem): boolean => deepPattern.test(item.name)).length}` };
   }
   const listed: Result<ListingItem[]> = await vfs.data_get(resolved);
   if (!listed.ok) return { got: null, refusal: `${resolved} cannot be listed` };
   if (ask.matching === undefined) return { got: `${listed.value.length}` };
-  const pattern: RegExp = glob_toRegExp(ask.matching);
+  const pattern: RegExp = glob_convertToRegExp(ask.matching);
   return { got: `${listed.value.filter((item: ListingItem): boolean => pattern.test(item.name)).length}` };
 }
 

@@ -103,7 +103,7 @@ export class IndexInstrument {
    * @param total - Rows in all.
    * @returns Milliseconds, or null.
    */
-  private eta_of(feedId: number, loaded: number, total: number): number | null {
+  private eta_compute(feedId: number, loaded: number, total: number): number | null {
     const now: number = this.clock();
     const previous = this.walkSamples.get(feedId);
     let rowsPerMs: number | null = previous?.rowsPerMs ?? null;
@@ -219,7 +219,7 @@ export class IndexInstrument {
           degraded: true,
         });
       } else {
-        const eta: number | null = this.eta_of(feed.id, feed.loaded, feed.total);
+        const eta: number | null = this.eta_compute(feed.id, feed.loaded, feed.total);
         rows.push({
           label: `FEED ${feed.id}`,
           bar: { loaded: feed.loaded, total: feed.total, state: 'running' },

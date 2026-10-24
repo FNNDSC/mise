@@ -24,8 +24,8 @@ import { listingIn_take, type ListingModel } from '../../core/listing.js';
 import { answerKinds_get } from '../../core/answerKinds.js';
 import { surface_get } from '../../core/surface.js';
 import {
-  answer_get, answerFilter_apply, answerNumbering_of, answerOrdinals_attach, answerRow_key, answerRows_of,
-  handle_word, numberedFooter_of, type AnswerRow, type NumberedHandle,
+  answer_get, answerFilter_apply, answerNumbering_derive, answerOrdinals_attach, answerRow_key, answerRows_derive,
+  handle_word, numberedFooter_render, type AnswerRow, type NumberedHandle,
 } from '../../session/answer.js';
 
 /** What a grep line asks. */
@@ -115,7 +115,7 @@ export function grepArgs_parse(args: ReadonlyArray<string>): GrepAsk {
  * @param pattern - The BRE.
  * @returns The equivalent JavaScript source.
  */
-function basic_toSource(pattern: string): string {
+function basic_convertToSource(pattern: string): string {
   let out: string = '';
   for (let at: number = 0; at < pattern.length; at++) {
     const char: string = pattern[at] ?? '';
@@ -138,7 +138,7 @@ function basic_toSource(pattern: string): string {
  */
 export function grepMatcher_build(ask: GrepAsk): ((text: string) => boolean) | { refused: string } {
   const sources: string[] = ask.patterns.map((pattern: string): string => {
-    const source: string = ask.fixed ? pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : ask.extended ? pattern : basic_toSource(pattern);
+    const source: string = ask.fixed ? pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : ask.extended ? pattern : basic_convertToSource(pattern);
     return ask.word ? `(?<![\\w])(?:${source})(?![\\w])` : `(?:${source})`;
   });
   try {
@@ -213,8 +213,8 @@ const KIND_PLURALS: Readonly<Record<string, string>> = { SER: 'series', FIL: 'fi
 function listing_grep(listing: ListingModel & { source: string }, ask: GrepAsk, line: string): CommandEnvelope {
   const built = grepMatcher_build(ask);
   if (typeof built !== 'function') return envelope_error('', undefined, `${built.refused}\n`);
-  const rows: AnswerRow[] = answerRows_of(listing.kind, listing.data) ?? [];
-  const numbered: NumberedHandle[] = answerNumbering_of(listing.kind, listing.data) ?? [];
+  const rows: AnswerRow[] = answerRows_derive(listing.kind, listing.data) ?? [];
+  const numbered: NumberedHandle[] = answerNumbering_derive(listing.kind, listing.data) ?? [];
   const kept: AnswerRow[] = listingRows_grep(rows, built, ask.invert);
   const groups: Set<string> = new Set(answerKinds_get().filter((kind): boolean => kind.group === true).map((kind): string => kind.code));
   const leaves = (list: ReadonlyArray<AnswerRow>): AnswerRow[] => list.filter((row: AnswerRow): boolean => !groups.has(row.kind));
@@ -241,7 +241,7 @@ function listing_grep(listing: ListingModel & { source: string }, ask: GrepAsk, 
   const plural: string = leafKinds.length === 1 ? KIND_PLURALS[leafKinds[0] ?? ''] ?? 'rows' : 'rows';
   const what: string = `${LISTING_WORDS[listing.kind] ?? listing.kind}${listing.source !== '' ? `: ${listing.source}` : ''}`;
   const tally: string = `${leaves(kept).length} of ${leaves(rows).length} ${plural} kept (${line}; ${what})`;
-  const footer: string = numberedFooter_of(keptHandles);
+  const footer: string = numberedFooter_render(keptHandles);
   const rendered: string = `${lines.join('\n')}${lines.length > 0 ? '\n' : ''}${chalk.gray(`  ${tally}`)}\n${footer !== '' ? `${chalk.gray(`  ${footer}`)}\n` : ''}`;
   // grep's own status: no match is exit 1, and an empty listing replaces nothing.
   if (leaves(kept).length === 0) process.exitCode = 1;

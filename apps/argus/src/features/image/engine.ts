@@ -54,7 +54,7 @@ export const WINDOW_LEVEL_PRESETS: readonly WindowLevelPreset[] = [
 /** Where an engine's bytes come from: mise, and only mise. */
 export interface ImageSource {
   /** The token-gated URL that serves one CFS path. */
-  url_of(path: string): string;
+  url_resolve(path: string): string;
 }
 
 /**

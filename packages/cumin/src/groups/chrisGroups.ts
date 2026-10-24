@@ -40,7 +40,7 @@ const groupItems: WeakMap<object, Map<number, Group>> = new WeakMap();
  * @param client - The connection's chrisapi client.
  * @returns That client's items by group id.
  */
-function groupItems_for(client: object): Map<number, Group> {
+function groupItems_resolve(client: object): Map<number, Group> {
   const kept: Map<number, Group> | undefined = groupItems.get(client);
   if (kept !== undefined) return kept;
   const made: Map<number, Group> = new Map();
@@ -89,7 +89,7 @@ export class ChRISGroupGroup extends ChRISResourceGroup {
     // The item the groups listing served answers first: chrisapi's getGroup
     // is a list-by-id, and the boot's warm listed every group that way
     // right after listing them all (73 searches on a 73-group CUBE).
-    const listed: Group | undefined = groupItems_for(client).get(groupID);
+    const listed: Group | undefined = groupItems_resolve(client).get(groupID);
     if (listed !== undefined) return listed;
     const group: Group | null = await client.getGroup(groupID);
     if (!group) errorStack.stack_push('error', `Group ${groupID} was not found.`);
@@ -108,7 +108,7 @@ export class ChRISGroupGroup extends ChRISResourceGroup {
         errorStack.stack_push('error', 'Not connected to ChRIS. Please log in.');
         return Err();
       }
-      const items: Map<number, Group> = groupItems_for(client);
+      const items: Map<number, Group> = groupItems_resolve(client);
       const groups: ChrisGroup[] = await listPages_drain(
         async (offset: number, limit: number): Promise<ListPage<ChrisGroup>> => {
           const page: GroupList = await client.getGroups({ limit, offset });

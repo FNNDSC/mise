@@ -72,7 +72,7 @@ jest.unstable_mockModule('@fnndsc/brasa', () => ({
   session: mockSession,
   vfs: { data_get: mockDataGet },
   prefetch_path: mockPrefetchPath,
-  prefetch_withSpinner: mockPrefetchWithSpinner,
+  prefetchWithSpinner_run: mockPrefetchWithSpinner,
   count_noun: (count: number, singular: string, plural: string = `${singular}s`): string =>
     `${count} ${count === 1 ? singular : plural}`,
   repl_question: mockQuestion,
@@ -155,7 +155,7 @@ jest.unstable_mockModule('@fnndsc/calypso', () => ({
   consoleCage_start: jest.fn(),
   consoleCage_stop: jest.fn((): string[] => []),
   identity_normalise: (user: string, url: string): string => `${user}@${url}`,
-  hostControl_fromInputs: (): { policy: { tiers: Set<string>; exposed: boolean } } => ({ policy: { tiers: new Set<string>(), exposed: false } }),
+  hostControl_build: (): { policy: { tiers: Set<string>; exposed: boolean } } => ({ policy: { tiers: new Set<string>(), exposed: false } }),
   hostControl_describe: (): string => '',
   packageWebRoot_find: (name: string): string => `/installed/${name}/dist`,
 }));

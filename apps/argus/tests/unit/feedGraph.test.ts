@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from '@jest/globals';
 import type { FeedDagModel, FeedDagNode } from '@fnndsc/menu';
-import { HUE_UNKNOWN, feedGraph_build, feedMetric_of, hueLegend_build } from '../../src/scene/feedGraph.js';
+import { HUE_UNKNOWN, feedGraph_build, feedMetric_extract, hueLegend_build } from '../../src/scene/feedGraph.js';
 
 function node_make(id: string, extra: Partial<FeedDagNode> = {}): FeedDagNode {
   return { id, label: id, parentIds: [], joinParentIds: [], status: 'finishedSuccessfully', vfsPath: `/f/${id}`, instanceId: 1, ...extra } as FeedDagNode;
@@ -19,12 +19,12 @@ const model: FeedDagModel = {
   ],
 } as unknown as FeedDagModel;
 
-describe('feedMetric_of', () => {
+describe('feedMetric_extract', () => {
   it('reads the metric the mode names, or nothing when the cache lacks it', () => {
     const a: FeedDagNode = model.nodes[0] as FeedDagNode;
-    expect(feedMetric_of(a, 'time')).toBe(12);
-    expect(feedMetric_of(a, 'size')).toBe(400);
-    expect(feedMetric_of(model.nodes[1] as FeedDagNode, 'time')).toBeUndefined();
+    expect(feedMetric_extract(a, 'time')).toBe(12);
+    expect(feedMetric_extract(a, 'size')).toBe(400);
+    expect(feedMetric_extract(model.nodes[1] as FeedDagNode, 'time')).toBeUndefined();
   });
 });
 
@@ -62,7 +62,7 @@ describe('feedGraph_build', () => {
 describe('one reading for both doors', () => {
   it('the descent\'s door scopes the ids and its edges with them; the look is the same as the roster\'s', () => {
     const roster = feedGraph_build(model, { metric: 'time', hue: 'status', legend: new Map() });
-    const descent = feedGraph_build(model, { metric: 'time', hue: 'status', legend: new Map(), id_of: (id: string): string => `inst:7:${id}` });
+    const descent = feedGraph_build(model, { metric: 'time', hue: 'status', legend: new Map(), id_map: (id: string): string => `inst:7:${id}` });
     expect(descent.nodes.map((n) => n.id)).toEqual(['inst:7:a', 'inst:7:b', 'inst:7:c', 'inst:7:d']);
     expect(descent.nodes[3]?.parentIds).toEqual(['inst:7:b']);
     expect(descent.nodes[3]?.joinParentIds).toEqual(['inst:7:a']);

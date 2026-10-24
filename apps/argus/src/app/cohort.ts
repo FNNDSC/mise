@@ -74,7 +74,7 @@ export interface CohortHooks {
   process_open: (fromId: string, binding: CatalogueBinding) => void;
   feed_open: (fromId: string, feedId: number) => void;
   /** A question on a pane, where the press was. */
-  ask_onPane: (id: string, request: PaneAskRequest) => Promise<string | null>;
+  askOnPane_await: (id: string, request: PaneAskRequest) => Promise<string | null>;
   /** A pane on stage where the band's work lands; null when none stands. */
   errandHost_find: () => string | null;
   instance_spawn: (kind: PaneKind, inheritFrom?: string) => PaneInstance;
@@ -269,11 +269,11 @@ export function cohort_wire(context: Pick<HostContext, 'layout' | 'panels' | 'su
   const instance_build = (id: string): PaneInstance => {
     const mount: HTMLElement = hooks.template_stamp('tpl-pane-gather');
     const panel: GatherPanel = new GatherPanel(mount, hooks.pane_find(mount, '.gather-rows'), handlers_make((): string => id, {
-      name_ask: (suggest: string): Promise<string | null> => hooks.ask_onPane(id, { message: 'Cohort name: ', kind: 'text', suggest, commit: 'NAME IT' }),
+      name_ask: (suggest: string): Promise<string | null> => hooks.askOnPane_await(id, { message: 'Cohort name: ', kind: 'text', suggest, commit: 'NAME IT' }),
       // On the pane, where the press was: CLEAR asks before throwing away
       // a cohort that was never saved.
       confirm_ask: async (message: string): Promise<'y' | 'n' | null> => {
-        const answered: string | null = await hooks.ask_onPane(id, { message, kind: 'confirm' });
+        const answered: string | null = await hooks.askOnPane_await(id, { message, kind: 'confirm' });
         return answered === 'y' || answered === 'n' ? answered : null;
       },
     }, {

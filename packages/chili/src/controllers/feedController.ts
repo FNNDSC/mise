@@ -8,7 +8,7 @@ import {
   ChRISFeedGroup,
   ChRISFeed,
   SimpleRecord,
-  listParams_fromOptions,
+  listParams_buildFromOptions,
   ChRISObjectParams,
   errorStack
 } from "@fnndsc/cumin";
@@ -55,7 +55,7 @@ export class FeedController extends BaseController {
     const chrisFeed: ChRISFeed = new ChRISFeed();
     try {
       const dirs: string = options.dirs as string;
-      const feedParams: ChRISObjectParams = listParams_fromOptions({ ...options, returnFilter: "params" }) as ChRISObjectParams;
+      const feedParams: ChRISObjectParams = listParams_buildFromOptions({ ...options, returnFilter: "params" }) as ChRISObjectParams;
       return await chrisFeed.createFromDirs(dirs, feedParams);
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);

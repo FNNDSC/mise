@@ -5,7 +5,7 @@
  * approaches, asks, and either unfolds or stands down when refused.
  */
 import { describe, it, expect } from '@jest/globals';
-import { Flights, UNFOLD_SCATTER, centre_of, type FlightPorts, type Places } from '../src/scene/flights.js';
+import { Flights, UNFOLD_SCATTER, centre_compute, type FlightPorts, type Places } from '../src/scene/flights.js';
 import type { SpaceNode } from '../src/scene/node.js';
 
 function node_make(id: string, ghost: boolean = false): SpaceNode {
@@ -30,12 +30,12 @@ function scene_make(places: Places, alive: boolean = true) {
   return { flights: new Flights<SpaceNode>(ports), log, seeded: () => seeded, graph: () => graph, land: (): void => { landings.shift()?.(); } };
 }
 
-describe('centre_of', () => {
+describe('centre_compute', () => {
   it('takes the first tier with a place, and the origin when none has one', () => {
     const places: Places = { a: [2, 0, 0], b: [4, 0, 0], f: [10, 10, 10] };
-    expect(centre_of(places, [['a', 'b'], ['f']])).toEqual([3, 0, 0]);
-    expect(centre_of(places, [['x', 'y'], ['f']])).toEqual([10, 10, 10]);
-    expect(centre_of(places, [['x'], ['y']])).toEqual([0, 0, 0]);
+    expect(centre_compute(places, [['a', 'b'], ['f']])).toEqual([3, 0, 0]);
+    expect(centre_compute(places, [['x', 'y'], ['f']])).toEqual([10, 10, 10]);
+    expect(centre_compute(places, [['x'], ['y']])).toEqual([0, 0, 0]);
   });
 });
 

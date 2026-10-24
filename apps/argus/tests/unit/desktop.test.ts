@@ -79,7 +79,7 @@ describe('desktop_wire', () => {
       feed_open: (): void => {},
       pillPane_spawn: (): string | null => null,
       pacsQuery_get: (): string | null => null,
-      catalogue_of: (): undefined => undefined,
+      catalogue_find: (): undefined => undefined,
       catalogueIds: (): string[] => [],
       stage_relight: (): void => {},
       ...hooks,

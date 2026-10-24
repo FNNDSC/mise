@@ -8,7 +8,7 @@ import { path_resolve } from '../utils.js';
 import { repl_confirm } from '../../core/question.js';
 import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
 import type { ListingCache } from '../../core/backend.js';
-import { entry_at, entry_isFolder, folderTree_remove } from './entries.js';
+import { pathEntry_find, entry_isFolder, folderTree_remove } from './entries.js';
 import { errno_words, rm_render, vfs_fail, vfs_ok, type VFSDispatcher, type VFSItem, type VfsOutcome } from '@fnndsc/fond';
 import { sink_get } from '../../core/sink.js';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
@@ -168,7 +168,7 @@ async function entry_remove(dispatcher: VFSDispatcher, target: string, recursive
   if (dispatcher.path_isVirtual(target)) {
     return { type: null, outcome: recursive ? await dispatcher.rmTree(target) : await dispatcher.rm(target) };
   }
-  const entry: VFSItem | null = await entry_at(dispatcher, target);
+  const entry: VFSItem | null = await pathEntry_find(dispatcher, target);
   if (entry === null) return { type: null, outcome: force ? vfs_ok(true) : vfs_fail('ENOENT') };
   if (entry_isFolder(entry)) {
     return { type: 'dir', outcome: recursive ? await folderTree_remove(dispatcher, target) : vfs_fail('EISDIR') };

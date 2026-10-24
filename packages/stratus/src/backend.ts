@@ -30,7 +30,7 @@ import type { InstallerAccountKeeper } from './installer/account.js';
 import { verifyReach_default, type VerifyReach } from './commands/verify.js';
 import type { ChrisWork } from './cluster/chris.js';
 import { familyShape_find } from './domain/sizing.js';
-import { DomainStore, domainsRoot_of } from './domain/state.js';
+import { DomainStore, domainsRoot_derive } from './domain/state.js';
 import { domainExpectSubject_make } from './domain/expect.js';
 import { BUILD_WAITS, buildRun_make, STEPS_SOURCE, type BuildDeps } from './domain/steps.js';
 
@@ -80,7 +80,7 @@ export interface StratusBackend {
  * @param session - The session.
  * @returns The structural paths.
  */
-export function structuralPaths_of(session: StratusSession): string[] {
+export function structuralPaths_list(session: StratusSession): string[] {
   const paths: string[] = ['/', '/net', session.mount];
   if (session.identity === null) return paths;
   const tenancy: string = session.tenancyPath;
@@ -95,7 +95,7 @@ export function structuralPaths_of(session: StratusSession): string[] {
  */
 export function stratusBackend_make(options: StratusBackendOptions): StratusBackend {
   const session: StratusSession = new StratusSession({ driver: options.driver, region: options.region, configDir: options.configDir });
-  const store: DomainStore = options.store ?? new DomainStore(domainsRoot_of());
+  const store: DomainStore = options.store ?? new DomainStore(domainsRoot_derive());
   // The steps run over the cloud's build half and the installer; a cloud with neither cannot build yet.
   const deps: BuildDeps | null = options.builder !== undefined && options.installer !== undefined
     ? {
@@ -128,7 +128,7 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
       // The tenancy and its fixed folders are entered without asking once
       // the session knows its tenancy (docs/stratus.adoc, D4).
       get structural(): ReadonlyArray<string> {
-        return structuralPaths_of(session);
+        return structuralPaths_list(session);
       },
     },
     // One file's bytes for `play` and a surface; the tree is read-only, so a write is refused.

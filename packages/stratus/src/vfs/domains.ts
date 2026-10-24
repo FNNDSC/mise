@@ -17,7 +17,7 @@
  * @module
  */
 import type { VFSItem } from '@fnndsc/fond';
-import { harborDomain_read, lastDone_of, type DomainSecret, type DomainSource, type HarborDomain, type StepState } from '../domains/harborOci.js';
+import { harborDomain_read, lastDone_find, type DomainSecret, type DomainSource, type HarborDomain, type StepState } from '../domains/harborOci.js';
 import type { ResourceNode } from './resources.js';
 import type { DomainStore } from '../domain/state.js';
 import { builtDomain_read } from '../domain/view.js';
@@ -120,7 +120,7 @@ export class DomainTree {
   // ---- rows ----
 
   private domain_item(domain: HarborDomain): VFSItem {
-    const last: StepState | null = lastDone_of(domain);
+    const last: StepState | null = lastDone_find(domain);
     return {
       name: domain.name,
       type: 'domain',

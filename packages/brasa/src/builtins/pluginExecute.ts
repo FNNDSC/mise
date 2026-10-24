@@ -14,7 +14,7 @@ import chalk from 'chalk';
 import { session } from '../session/index.js';
 import { vfs } from '../lib/vfs/vfs.js';
 import { newFeed_cacheAdd, run_follow } from './feedCreation.js';
-import { runs_awaitSettled, settlement_render, settlementStatus_of, type RunSettlement } from './res/runWait.js';
+import { runs_awaitSettled, settlement_render, settlementStatus_derive, type RunSettlement } from './res/runWait.js';
 import { executableArguments_parse } from './argumentTokens.js';
 import { pluginSelector_normalize } from './pluginSelector.js';
 import { sink_dataLine, sink_errLine } from '../core/sink.js';
@@ -179,7 +179,7 @@ export async function builtin_executePlugin(
       const settlement: RunSettlement = await runs_awaitSettled([result.pluginInstanceID], pluginName);
       sink_dataLine(settlement_render(settlement, pluginName));
       if (settlement.outcome === 'settled' && settlement.failed > 0) process.exitCode = 1;
-      status = settlementStatus_of(settlement, result.pluginInstanceID);
+      status = settlementStatus_derive(settlement, result.pluginInstanceID);
     }
     // The run as a model, so a surface can point at what it started — the
     // feed it landed in and the instance it is — rather than parse the lines.

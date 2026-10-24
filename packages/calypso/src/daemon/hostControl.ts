@@ -80,7 +80,7 @@ export function hostControlTiers_parse(value: string | boolean | undefined): { t
  * @param inputs - Flag, env, override.
  * @returns The policy, or an error to print and refuse on.
  */
-export function hostControl_fromInputs(inputs: HostControlInputs): { policy: HostControlPolicy } | { error: string } {
+export function hostControl_build(inputs: HostControlInputs): { policy: HostControlPolicy } | { error: string } {
   const source: string | boolean | undefined = inputs.flag !== undefined && inputs.flag !== false ? inputs.flag : inputs.env;
   const parsed = hostControlTiers_parse(source);
   if ('error' in parsed) return parsed;
@@ -105,7 +105,7 @@ export function hostControl_parseArgv(argv: readonly string[], env: NodeJS.Proce
       flag = word.slice('--host-control='.length);
     }
   }
-  return hostControl_fromInputs({ flag, env: env['CALYPSO_HOST_CONTROL'], exposed: argv.includes('--expose-host-control') });
+  return hostControl_build({ flag, env: env['CALYPSO_HOST_CONTROL'], exposed: argv.includes('--expose-host-control') });
 }
 
 /**

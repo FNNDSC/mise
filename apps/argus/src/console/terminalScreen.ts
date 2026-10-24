@@ -74,7 +74,7 @@ const TOUCH_KEYS: ReadonlyArray<{ label: string; data: string | 'ctrl' }> = [
  * @param foreground - The console's text colour.
  * @returns The theme.
  */
-export function terminalTheme_of(foreground: string): ITheme {
+export function terminalTheme_build(foreground: string): ITheme {
   const [black, red, green, yellow, blue, magenta, cyan, white, brightBlack, brightRed, brightGreen, brightYellow, brightBlue, brightMagenta, brightCyan, brightWhite] = ANSI_PALETTE;
   return {
     background: '#000000', foreground, cursor: foreground, cursorAccent: '#000000', selectionBackground: '#44556680',
@@ -138,7 +138,7 @@ export class TerminalScreen {
     this.term = new Terminal({
       fontFamily: CONSOLE_FONT,
       fontSize: Math.max(10, Math.floor(parseFloat(getComputedStyle(mount).fontSize) || 13)),
-      theme: terminalTheme_of(foreground),
+      theme: terminalTheme_build(foreground),
       cursorBlink: true,
       scrollback: 5000,
       allowProposedApi: true,

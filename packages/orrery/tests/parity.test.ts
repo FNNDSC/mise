@@ -8,7 +8,7 @@ import { describe, it, expect } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { hierarchy_layout, type HierarchyNode } from '../src/layout/hierarchy.js';
 import { galaxy_layout } from '../src/layout/galaxy.js';
-import { molecule_prepare, moleculeRadii_of, type MoleculeNode } from '../src/layout/molecule.js';
+import { molecule_prepare, moleculeRadii_compute, type MoleculeNode } from '../src/layout/molecule.js';
 import { ranked_layout } from '../src/layout/ranked.js';
 import type { PhysicsTerms, Vec3 } from '../src/layout/types.js';
 
@@ -29,7 +29,7 @@ function graphs(): Record<string, Fixture[]> {
 }
 
 /** A fixture node as the molecule reads it: joins among its parents, as the scene passes them. */
-function moleculeNode_of(f: Fixture): MoleculeNode {
+function moleculeNode_build(f: Fixture): MoleculeNode {
   const out: MoleculeNode = { id: f.id, parents: [...f.parentIds, ...f.joinParentIds] };
   if (f.metric !== undefined) out.metric = f.metric;
   return out;
@@ -79,7 +79,7 @@ const PHYS: PhysicsTerms = { link: true, charge: true, collide: true, gravity: f
 
 describe('molecule parity', () => {
   for (const [name, fixture] of Object.entries(graphs())) {
-    const nodes: MoleculeNode[] = fixture.map(moleculeNode_of);
+    const nodes: MoleculeNode[] = fixture.map(moleculeNode_build);
     it(`${name}: 3D settle`, () => {
       const settle = molecule_prepare(nodes, 3, new Map(), PHYS, new Set());
       settle.step(settle.total);
@@ -102,7 +102,7 @@ describe('molecule parity', () => {
       expect(asJson(placed.map((p) => [p.id, ...p.position, p.radius]))).toEqual(molecule[`ranked:${name}`]);
     });
     it(`${name}: radii`, () => {
-      expect(asJson([...moleculeRadii_of(nodes)])).toEqual(molecule[`radii:${name}`]);
+      expect(asJson([...moleculeRadii_compute(nodes)])).toEqual(molecule[`radii:${name}`]);
     });
   }
 });

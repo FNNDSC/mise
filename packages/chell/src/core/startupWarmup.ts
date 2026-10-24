@@ -11,7 +11,7 @@
 import {
   error_stripDebugPrefix,
   prefetch_path,
-  prefetch_withSpinner,
+  prefetchWithSpinner_run,
   repl_question,
   session,
   vfs,
@@ -24,7 +24,7 @@ import {
   backend_get,
   type SessionIdentity,
 } from '@fnndsc/brasa';
-import { daemon_launch, identity_normalise, packageWebRoot_find, type DaemonLaunchInfo, hostControl_fromInputs, type HostControlInputs } from '@fnndsc/calypso';
+import { daemon_launch, identity_normalise, packageWebRoot_find, type DaemonLaunchInfo, hostControl_build, type HostControlInputs } from '@fnndsc/calypso';
 import { CHELL_LAUNCH, daemonConsole_run, type DaemonConsoleTarget } from './daemonConsole.js';
 import { logo_animateHalt } from '../lib/logo.js';
 import { sink_set, StdoutSink, count_noun } from '@fnndsc/brasa';
@@ -134,7 +134,7 @@ async function startupPrefetch_retry(
   return startupAttempts_run(
     label,
     reporter,
-    (): Promise<PrefetchResult> => prefetch_withSpinner(label, message, interactive, action, BOOT_TAG_WIDTH),
+    (): Promise<PrefetchResult> => prefetchWithSpinner_run(label, message, interactive, action, BOOT_TAG_WIDTH),
   );
 }
 
@@ -690,7 +690,7 @@ export async function daemonSession_run(
     if (interactive) {
       sink_set(new StdoutSink(new TerminalProgressRenderer()));
     }
-    const parsedPolicy = hostControl_fromInputs(hostControlInputs);
+    const parsedPolicy = hostControl_build(hostControlInputs);
     if ('error' in parsedPolicy) {
       reporter.log('fail', 'Daemon', parsedPolicy.error);
       throw new DaemonWarmupAbortedError();

@@ -264,7 +264,7 @@ describe('client creation', () => {
   });
 });
 
-describe('elevation_withCredentials', () => {
+describe('elevation_runWithCredentials', () => {
   it('scopes an elevated client to one operation without changing stored session state', async () => {
     const store: FakeStore = { files: { '/cfg/token': 'NORMAL' } };
     const conn: ChRISConnection = connection_make(store);
@@ -276,7 +276,7 @@ describe('elevation_withCredentials', () => {
     mockAuthToken.mockResolvedValue('ELEVATED');
     expect(await conn.client_get()).toBe(normalClient);
 
-    await expect(conn.elevation_withCredentials(
+    await expect(conn.elevation_runWithCredentials(
       { username: 'admin', password: 'secret' },
       async (): Promise<object | null> => await conn.client_get(),
     )).resolves.toBe(elevatedClient);
@@ -296,7 +296,7 @@ describe('elevation_withCredentials', () => {
     mockAuthToken.mockResolvedValue('ELEVATED');
     expect(await conn.client_get()).toBe(normalClient);
 
-    await expect(conn.elevation_withCredentials(
+    await expect(conn.elevation_runWithCredentials(
       { username: 'admin', password: 'secret' },
       async (): Promise<void> => { throw new Error('operation failed'); },
     )).rejects.toThrow('operation failed');
@@ -322,7 +322,7 @@ describe('elevation_withCredentials', () => {
     const elevatedStarted: Promise<void> = new Promise<void>((resolve: () => void): void => {
       beginElevatedWork = resolve;
     });
-    const elevatedOperation: Promise<object | null> = conn.elevation_withCredentials(
+    const elevatedOperation: Promise<object | null> = conn.elevation_runWithCredentials(
       { username: 'admin', password: 'secret' },
       async (): Promise<object | null> => {
         beginElevatedWork?.();

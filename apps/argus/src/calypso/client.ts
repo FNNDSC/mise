@@ -20,7 +20,7 @@ import type { SurfaceSeen } from '../app/restart.js';
 import { type LaneTelemetry, type CubeTelemetry, type JobsStateTelemetry,
   CONTRACT_VERSION,
   serverMessage_parse,
-  promptKind_of,
+  promptKind_derive,
   type ServerMessage,
   type PromptContext,
   type PromptKind,
@@ -311,7 +311,7 @@ export class ArgusClient {
         );
       };
       socket.onmessage = (event: MessageEvent): void => {
-        const message: ServerMessage | null = message_fromPayload(String(event.data));
+        const message: ServerMessage | null = message_parse(String(event.data));
         if (!message) {
           reject(new Error('invalid attach response'));
           socket.close();
@@ -550,9 +550,9 @@ export class ArgusClient {
    * @param payload - The raw message text.
    */
   private message_handle(payload: string): void {
-    const message: ServerMessage | null = message_fromPayload(payload);
+    const message: ServerMessage | null = message_parse(payload);
     // A tally of the wire, by message type, with what the contract refused: the smoke suite's only sight of the socket.
-    wire_tally(message?.type ?? `refused:${payloadType_of(payload)}`);
+    wire_tally(message?.type ?? `refused:${payloadType_parse(payload)}`);
     if (!message) {
       return;
     }
@@ -654,7 +654,7 @@ export class ArgusClient {
         const promptId: string = message.promptId;
         void ask({
           message: message.message,
-          kind: promptKind_of(message),
+          kind: promptKind_derive(message),
           ...(message.path?.suggest === undefined ? {} : { suggest: message.path.suggest }),
           ...(message.path === undefined ? {} : { path: message.path }),
           ...(message.commit === undefined ? {} : { commit: message.commit }),
@@ -810,7 +810,7 @@ function wire_tally(type: string): void {
  * @param payload - The raw message text.
  * @returns The claimed type, or `?` when the text is not even JSON with one.
  */
-function payloadType_of(payload: string): string {
+function payloadType_parse(payload: string): string {
   try {
     const type: unknown = (JSON.parse(payload) as { type?: unknown }).type;
     return typeof type === 'string' ? type : '?';
@@ -819,7 +819,7 @@ function payloadType_of(payload: string): string {
   }
 }
 
-function message_fromPayload(payload: string): ServerMessage | null {
+function message_parse(payload: string): ServerMessage | null {
   try {
     const parsed = serverMessage_parse(JSON.parse(payload));
     return parsed.ok && parsed.value !== undefined ? parsed.value : null;

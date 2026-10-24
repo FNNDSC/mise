@@ -61,7 +61,7 @@ describe('ChRISPlugin.pluginIDs_get', () => {
   });
 });
 
-describe('ChRISPlugin.plugin_runOnCUBE and pluginInstance_toDict', () => {
+describe('ChRISPlugin.plugin_runOnCUBE and pluginInstance_convertToDict', () => {
   it('creates a plugin instance with the previous id merged in', async () => {
     const createPluginInstance = jest.fn(async () => ({ ok: true }));
     mockClientGet.mockResolvedValue({ createPluginInstance });
@@ -86,12 +86,12 @@ describe('ChRISPlugin.plugin_runOnCUBE and pluginInstance_toDict', () => {
         }],
       },
     };
-    const dict = new ChRISPlugin().pluginInstance_toDict(instance as never);
+    const dict = new ChRISPlugin().pluginInstance_convertToDict(instance as never);
     expect(dict).toEqual({ id: 33, status: 'started' });
   });
 
   it('returns null for a missing instance', () => {
-    expect(new ChRISPlugin().pluginInstance_toDict(null)).toBeNull();
+    expect(new ChRISPlugin().pluginInstance_convertToDict(null)).toBeNull();
   });
 });
 
@@ -100,7 +100,7 @@ describe('ChRISPlugin.plugin_run', () => {
     const plugin = new ChRISPlugin();
     jest.spyOn(plugin, 'pluginIDs_resolve').mockResolvedValue({ hits: [17] });
     const runOnCube = jest.spyOn(plugin, 'plugin_runOnCUBE').mockResolvedValue({} as never);
-    jest.spyOn(plugin, 'pluginInstance_toDict').mockReturnValue({ id: 33 });
+    jest.spyOn(plugin, 'pluginInstance_convertToDict').mockReturnValue({ id: 33 });
 
     await plugin.plugin_run('pl-x', { previous_id: 4, outputdir: 'NIfTI files' });
 

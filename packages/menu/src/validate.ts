@@ -96,7 +96,7 @@ export function serverMessage_parse(raw: unknown): ParseResult<ServerMessage> {
  * @param json - The raw JSON text received on the socket.
  * @returns The parse result.
  */
-export function clientMessage_fromJson(json: string): ParseResult<ClientMessage> {
+export function clientMessage_parseJson(json: string): ParseResult<ClientMessage> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);

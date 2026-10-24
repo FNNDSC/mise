@@ -111,7 +111,7 @@ export interface PluginReadmeDocument {
  * @param params - Dictionary of parameters.
  * @returns CLI-style string (e.g., "--key1 value1 --key2 value2").
  */
-export function dictionary_toCLI(params: Dictionary): string {
+export function dictionary_formatAsCLI(params: Dictionary): string {
   const parts: string[] = [];
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null) {

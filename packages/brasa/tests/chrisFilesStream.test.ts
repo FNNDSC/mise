@@ -21,7 +21,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 }));
 jest.unstable_mockModule('@fnndsc/chili/utils/cli.js', () => ({ path_resolveChrisFs: async (p: string): Promise<string> => p }));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({ files_catBinary: catBinary_mock }));
-jest.unstable_mockModule('@fnndsc/chili/utils', () => ({ logical_toPhysical: async (p: string) => ({ ok: true, value: p }) }));
+jest.unstable_mockModule('@fnndsc/chili/utils', () => ({ logicalPath_resolve: async (p: string) => ({ ok: true, value: p }) }));
 
 const { chrisFiles } = await import('../src/chris/files.js');
 

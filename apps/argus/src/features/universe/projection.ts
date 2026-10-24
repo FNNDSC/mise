@@ -50,7 +50,7 @@ export function projection_flip(scene: ProjectionScene, inside: ReadonlySet<stri
  * @param inside - Whether a feed is entered.
  * @returns `2D` or `3D`.
  */
-export function projectionWord_of(scene: ProjectionScene, inside: boolean): '2D' | '3D' {
+export function projectionWord_derive(scene: ProjectionScene, inside: boolean): '2D' | '3D' {
   return scene.projection_get() === '2d' || (inside && scene.flat_get()) ? '2D' : '3D';
 }
 
@@ -63,7 +63,7 @@ export function projectionWord_of(scene: ProjectionScene, inside: boolean): '2D'
  */
 export function projection_paint(pane: HTMLElement | null, scene: ProjectionScene, inside: boolean): void {
   const pill: HTMLElement | null | undefined = pane?.querySelector<HTMLElement>('.universe-projection');
-  if (pill !== null && pill !== undefined) pill.textContent = projectionWord_of(scene, inside);
+  if (pill !== null && pill !== undefined) pill.textContent = projectionWord_derive(scene, inside);
 }
 
 /**

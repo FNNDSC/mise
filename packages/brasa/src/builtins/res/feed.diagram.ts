@@ -64,7 +64,7 @@ export async function feedDiagram_handle(feedId: number, dialect: DiagramDialect
  * @returns An `ok` envelope with the `feed.indexing` model.
  */
 export function feedIndexing_envelope(feedId: number, options: { model?: boolean } = {}): CommandEnvelope {
-  const load: ProcFeedLoadProgress | null = procCache_get().feedLoad_of(feedId);
+  const load: ProcFeedLoadProgress | null = procCache_get().feedLoad_read(feedId);
   const model: FeedIndexingModel = {
     feedId,
     loaded: load?.loaded ?? 0,

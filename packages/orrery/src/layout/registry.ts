@@ -17,7 +17,7 @@ import { ranked_layout, type RankedSceneNode } from './ranked.js';
 import type { LayoutEngine, LayoutInput, LayoutNode, LayoutResult, Positions, Vec3 } from './types.js';
 
 /** A layout node as the hierarchy engines read it. */
-function hierarchyNode_of(node: LayoutNode): HierarchyNode {
+function hierarchyNode_build(node: LayoutNode): HierarchyNode {
   const out: HierarchyNode = { id: node.id, parents: node.parents, radius: node.radius, group: node.group };
   if (node.seed !== undefined) out.seed = node.seed;
   if (node.frozen !== undefined) out.frozen = node.frozen;
@@ -25,13 +25,13 @@ function hierarchyNode_of(node: LayoutNode): HierarchyNode {
 }
 
 /** A node's metric, when the surface supplied one. */
-function metric_of(node: LayoutNode): number | undefined {
+function metric_extract(node: LayoutNode): number | undefined {
   const metric: unknown = node.attrs?.['metric'];
   return typeof metric === 'number' ? metric : undefined;
 }
 
 /** Positions from a list of places. */
-function positions_of(places: ReadonlyArray<{ id: string; position: Vec3 }>): Positions {
+function positions_map(places: ReadonlyArray<{ id: string; position: Vec3 }>): Positions {
   const out: Positions = {};
   for (const place of places) out[place.id] = place.position;
   return out;
@@ -43,7 +43,7 @@ const galaxyEngine: LayoutEngine = {
   label: 'GALAXY',
   needs: [],
   run: (input: LayoutInput, progress: (fraction: number) => void): LayoutResult =>
-    ({ positions: galaxy_layout(input.nodes.map(hierarchyNode_of), input.physics, progress) }),
+    ({ positions: galaxy_layout(input.nodes.map(hierarchyNode_build), input.physics, progress) }),
 };
 
 /** Spokes: every molecule a spoke from its anchor, its chain pointing out. */
@@ -52,7 +52,7 @@ const spokesEngine: LayoutEngine = {
   label: 'SPOKES',
   needs: [],
   run: (input: LayoutInput, progress: (fraction: number) => void): LayoutResult =>
-    ({ positions: hierarchy_layout(input.nodes.map(hierarchyNode_of), input.physics, progress, 'spokes') }),
+    ({ positions: hierarchy_layout(input.nodes.map(hierarchyNode_build), input.physics, progress, 'spokes') }),
 };
 
 /** Clumps: the molecules packed round their anchor. */
@@ -61,7 +61,7 @@ const clumpsEngine: LayoutEngine = {
   label: 'CLUMPS',
   needs: [],
   run: (input: LayoutInput, progress: (fraction: number) => void): LayoutResult =>
-    ({ positions: hierarchy_layout(input.nodes.map(hierarchyNode_of), input.physics, progress, 'clumps') }),
+    ({ positions: hierarchy_layout(input.nodes.map(hierarchyNode_build), input.physics, progress, 'clumps') }),
 };
 
 /** Ranked: tiers down the screen, the tree as a schematic. */
@@ -72,11 +72,11 @@ const rankedEngine: LayoutEngine = {
   run: (input: LayoutInput, progress: (fraction: number) => void): LayoutResult => {
     const nodes: RankedSceneNode[] = input.nodes.map((node: LayoutNode): RankedSceneNode => {
       const out: RankedSceneNode = { id: node.id, parentIds: node.parents };
-      const metric: number | undefined = metric_of(node);
+      const metric: number | undefined = metric_extract(node);
       if (metric !== undefined) out.metric = metric;
       return out;
     });
-    const positions: Positions = positions_of(ranked_layout(nodes));
+    const positions: Positions = positions_map(ranked_layout(nodes));
     progress(1);
     return { positions };
   },
@@ -90,7 +90,7 @@ const moleculeEngine: LayoutEngine = {
   run: (input: LayoutInput, progress: (fraction: number) => void): LayoutResult => {
     const nodes: MoleculeNode[] = input.nodes.map((node: LayoutNode): MoleculeNode => {
       const out: MoleculeNode = { id: node.id, parents: node.parents };
-      const metric: number | undefined = metric_of(node);
+      const metric: number | undefined = metric_extract(node);
       if (metric !== undefined) out.metric = metric;
       return out;
     });
@@ -100,7 +100,7 @@ const moleculeEngine: LayoutEngine = {
       if (node.seed !== undefined) seed.set(node.id, node.seed);
       if (node.frozen === true) frozen.add(node.id);
     }
-    const positions: Positions = positions_of(molecule_layout(nodes, 3, seed, input.physics, frozen));
+    const positions: Positions = positions_map(molecule_layout(nodes, 3, seed, input.physics, frozen));
     progress(1);
     return { positions };
   },
@@ -128,7 +128,7 @@ const hubsEngine: LayoutEngine = {
   label: 'HUBS',
   needs: [],
   run: (input: LayoutInput, progress: (fraction: number) => void): LayoutResult =>
-    ({ positions: galaxy_layout(input.nodes.map(hierarchyNode_of), input.physics, progress) }),
+    ({ positions: galaxy_layout(input.nodes.map(hierarchyNode_build), input.physics, progress) }),
 };
 
 /**

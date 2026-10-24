@@ -20,7 +20,7 @@ import type { Palette } from './palette.js';
 import type { StarField } from './starField.js';
 import type { StarEntry } from './stars.js';
 import { WAVE_STEP_MS } from './timing.js';
-import { tubeMode_of, type TubeField } from './tubeField.js';
+import { tubeMode_derive, type TubeField } from './tubeField.js';
 import { CENSUS_TUBE_CAP, type TubeSpec } from './tubes.js';
 
 /** Past this many stages the census blooms none: each glow is a draw of its own. */
@@ -36,7 +36,7 @@ export const CENSUS_GLOW_CAP: number = 400;
  * @param total - The members the census draws.
  * @returns The icosahedron's detail.
  */
-export function censusDetail_of(total: number): number {
+export function censusDetail_derive(total: number): number {
   if (total <= 2_000) return 6;
   if (total <= 20_000) return 3;
   return 1;
@@ -128,7 +128,7 @@ export class CensusField {
   public build(nodes: ReadonlyArray<CensusNode>, starring: boolean, palette: Palette): CensusCloud {
     let total: number = 0;
     for (const node of nodes) if (node.ghost !== true) total += Math.max(1, node.count);
-    const geometry: THREE.IcosahedronGeometry = new THREE.IcosahedronGeometry(1, censusDetail_of(total));
+    const geometry: THREE.IcosahedronGeometry = new THREE.IcosahedronGeometry(1, censusDetail_derive(total));
     const material: THREE.MeshStandardMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5, metalness: 0.1 });
     const starred: StarEntry[] = [];
     const instanced: THREE.InstancedMesh = new THREE.InstancedMesh(geometry, material, starring ? 1 : total);
@@ -186,7 +186,7 @@ export class CensusField {
     // while there are few enough of them to draw; past that, and under
     // stars, by lines that carry the same wave — information still travels
     // down every one of them.
-    const { specs, deepest } = connections_of(nodes, shells, shellRadii, palette);
+    const { specs, deepest } = connections_build(nodes, shells, shellRadii, palette);
     if (!starring && specs.length > 0 && specs.length <= CENSUS_TUBE_CAP) {
       this.host.tubes.census_build(specs, deepest);
     } else if (specs.length > 0) {
@@ -291,7 +291,7 @@ export class CensusField {
  * @param palette - The colours.
  * @returns The connections and the deepest stage a wave reaches.
  */
-export function connections_of(
+export function connections_build(
   nodes: ReadonlyArray<CensusNode>,
   shells: ReadonlyMap<string, THREE.Vector3[]>,
   shellRadii: ReadonlyMap<string, number>,
@@ -299,13 +299,13 @@ export function connections_of(
 ): { specs: TubeSpec[]; deepest: number } {
   const byId: Map<string, CensusNode> = new Map(nodes.map((node: CensusNode): [string, CensusNode] => [node.id, node]));
   const depth: Map<string, number> = new Map();
-  const depth_of = (id: string, seen: Set<string> = new Set()): number => {
+  const depth_compute = (id: string, seen: Set<string> = new Set()): number => {
     const known: number | undefined = depth.get(id);
     if (known !== undefined) return known;
     if (seen.has(id)) return 0;
     seen.add(id);
     const parents: string[] = (byId.get(id)?.parents ?? []).filter((p: string): boolean => byId.has(p));
-    const d: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((p: string): number => depth_of(p, seen)));
+    const d: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((p: string): number => depth_compute(p, seen)));
     depth.set(id, d);
     return d;
   };
@@ -318,13 +318,13 @@ export function connections_of(
       const theirs: THREE.Vector3[] | undefined = shells.get(parentId);
       if (!theirs || theirs.length === 0) continue;
       const width: number = Math.max(0.02, Math.min(shellRadii.get(node.id) ?? 0.1, shellRadii.get(parentId) ?? 0.1) * 0.34);
-      const start: number = depth_of(parentId) * WAVE_STEP_MS;
-      deepest = Math.max(deepest, depth_of(parentId));
+      const start: number = depth_compute(parentId) * WAVE_STEP_MS;
+      deepest = Math.max(deepest, depth_compute(parentId));
       for (let k = 0; k < mine.length; k++) {
         const to: THREE.Vector3 | undefined = mine[k];
         const from: THREE.Vector3 | undefined = theirs.length === mine.length ? theirs[k] : theirs[k % theirs.length];
         if (from === undefined || to === undefined) continue;
-        specs.push({ from, to, width, color: node.state === 'failed' ? palette.error : bright, mode: tubeMode_of(node.state), start });
+        specs.push({ from, to, width, color: node.state === 'failed' ? palette.error : bright, mode: tubeMode_derive(node.state), start });
       }
     }
   }

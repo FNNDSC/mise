@@ -18,7 +18,7 @@ import path from 'path';
 import { Writable } from 'stream';
 import chalk from 'chalk';
 import { REPL } from './repl.js';
-import { session, homePath_of } from '@fnndsc/brasa';
+import { session, homePath_derive } from '@fnndsc/brasa';
 import { Result, Ok, Err, Client, type CommandEnvelope } from '@fnndsc/cumin';
 import { spinner } from '@fnndsc/brasa';
 import { logo_print, logo_animatePulse, logo_animateStop, logo_reviveOnScreen } from '../lib/logo.js';
@@ -35,13 +35,13 @@ import { bootFlags_compute, type BootFlags } from './bootFlags.js';
 import { context_getSingle } from '@fnndsc/salsa';
 import { chrisContext, Context, SingleContext } from '@fnndsc/cumin';
 import { engine_create, stopOnError_set, type BrasaEngine } from '@fnndsc/brasa';
-import { sessionConnect_fromSaved, sessionConnect_withToken, type SavedSessionResult, type TokenSessionResult } from '@fnndsc/brasa';
+import { sessionFromSaved_connect, sessionWithToken_connect, type SavedSessionResult, type TokenSessionResult } from '@fnndsc/brasa';
 import { stdinLine_read } from '../lib/stdinLine.js';
 import type { DaemonConsoleTarget } from './daemonConsole.js';
 import { surface_set } from '@fnndsc/brasa';
 import { cliSurface_create } from './cliSurface.js';
 import { surfaceLine_execute } from './surfaceDispatch.js';
-import { game_play, gameShow_of, gameTerminal_is, type GameShow } from './gamePlayer.js';
+import { game_play, gameShow_find, gameTerminal_is, type GameShow } from './gamePlayer.js';
 import { greeting_print } from './greeting.js';
 import { versionReport_build, infoReport_build, stackInfo_get, welcomeLine_build, type PackageInfo } from '@fnndsc/brasa';
 import {
@@ -117,7 +117,7 @@ function bootPanels_render(
     { label: 'System', value: `${os.platform()} ${os.release()} (${os.arch()})` },
     { label: 'User',   value: `${os.userInfo().username}@${os.hostname()}` },
     ...(localIPv4_get() ? [{ label: 'Local', value: localIPv4_get() as string }] : []),
-    { label: 'Time',   value: localTime_withOffset() },
+    { label: 'Time',   value: localTime_format() },
   ];
 
   const maxItemLen: number = Math.max(30, (process.stdout.columns || 100) - 20);
@@ -163,7 +163,7 @@ function localIPv4_get(): string | null {
 /**
  * Returns the current local date/time as `YYYY-MM-DD HH:MM:SS ±HH:MM`.
  */
-function localTime_withOffset(): string {
+function localTime_format(): string {
   const now: Date = new Date();
   const offsetMinutes: number = now.getTimezoneOffset();
   const sign: string = offsetMinutes <= 0 ? '+' : '-';
@@ -205,7 +205,7 @@ type BootLogger = ReturnType<typeof bootLogger_create>;
 /**
  * Connect using explicit CLI credentials. Returns Err() on unrecoverable failure.
  */
-async function connection_fromArgs(
+async function connectionFromArgs_open(
   config: ChellCLIConfig,
   boot: BootLogger | null,
 ): Promise<Result<SingleContext>> {
@@ -266,7 +266,7 @@ async function connection_fromArgs(
  * identity, the flag beside a password, a stream with no line on it, and
  * a token the server will not have.
  */
-async function connection_fromToken(
+async function connectionFromToken_open(
   config: ChellCLIConfig,
   boot: BootLogger | null,
 ): Promise<Result<SingleContext>> {
@@ -288,7 +288,7 @@ async function connection_fromToken(
   }
 
   spinner.start(`Establishing uplink to ${url}`);
-  const result: TokenSessionResult = await sessionConnect_withToken(user, url, token);
+  const result: TokenSessionResult = await sessionWithToken_connect(user, url, token);
   spinner.stop();
   if (result.status === 'refused') {
     console.error(chalk.red(`[!] Connection refused: ${result.error ?? 'the server did not accept the token'}`));
@@ -310,7 +310,7 @@ async function connection_fromToken(
  * beside another login, no saved token for that identity, and a token the
  * server will not have.
  */
-async function connection_fromSavedToken(
+async function connectionFromSavedToken_open(
   config: ChellCLIConfig,
   boot: BootLogger | null,
 ): Promise<Result<SingleContext>> {
@@ -325,7 +325,7 @@ async function connection_fromSavedToken(
     return Err();
   }
   spinner.start(`Validating the token ${user} saved`);
-  const result: SavedSessionResult = await sessionConnect_fromSaved();
+  const result: SavedSessionResult = await sessionFromSaved_connect();
   spinner.stop();
   const ctx: SingleContext = result.context;
   const theirs: boolean = ctx.user === user && url_sameServer(ctx.URL ?? '', url);
@@ -351,14 +351,14 @@ function url_sameServer(a: string, b: string): boolean {
 /**
  * Restore a saved session from disk. Always succeeds — falls back to offline mode.
  */
-async function connection_fromSavedSession(
+async function connectionFromSavedSession_open(
   config: ChellCLIConfig,
   boot: BootLogger | null,
 ): Promise<SingleContext> {
   const verbose: boolean = config.mode !== 'execute' && config.mode !== 'script';
 
   spinner.start('Validating saved session');
-  const result: SavedSessionResult = await sessionConnect_fromSaved();
+  const result: SavedSessionResult = await sessionFromSaved_connect();
   spinner.stop();
 
   const ctx: SingleContext = result.context;
@@ -419,16 +419,16 @@ async function connection_establish(
   boot: BootLogger | null,
 ): Promise<Result<SingleContext>> {
   if (config.authTokenStdin) {
-    return await connection_fromToken(config, boot);
+    return await connectionFromToken_open(config, boot);
   }
   if (config.savedToken) {
-    return await connection_fromSavedToken(config, boot);
+    return await connectionFromSavedToken_open(config, boot);
   }
   if (config.connectConfig) {
-    return await connection_fromArgs(config, boot);
+    return await connectionFromArgs_open(config, boot);
   }
 
-  const ctx: SingleContext = await connection_fromSavedSession(config, boot);
+  const ctx: SingleContext = await connectionFromSavedSession_open(config, boot);
   if (!ctx.user || !ctx.URL) {
     if (!session.offline) {
       console.log(chalk.yellow('[!] Running in disconnected mode.'));
@@ -616,7 +616,7 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
   if (!ctxResult.ok) process.exit(1);
   let currentContext: SingleContext = ctxResult.value;
   if (!currentContext.folder) {
-    currentContext = { ...currentContext, folder: homePath_of(currentContext.user) };
+    currentContext = { ...currentContext, folder: homePath_derive(currentContext.user) };
   }
 
   // Credentials are good: reset the screen and bring the brain to life above a
@@ -684,7 +684,7 @@ export async function chell_start(argv: string[] = process.argv): Promise<void> 
     await queryCheckpoint_prime(currentContext.user ?? undefined);
     const envelopes: CommandEnvelope[] = await surfaceLine_execute(engine, config.commandToExecute);
     // `chell -c cmatrix` on a terminal plays it, as the shell would.
-    const show: GameShow | null = gameShow_of(envelopes);
+    const show: GameShow | null = gameShow_find(envelopes);
     if (show !== null && gameTerminal_is()) await game_play(show);
     // An error envelope means the command failed, whether or not the builtin
     // set an exit code itself; scripts must never see failure exit 0.

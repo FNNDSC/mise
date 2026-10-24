@@ -8,7 +8,7 @@ const Ok = <T>(value: T): { ok: true; value: T } => ({ ok: true, value });
 const Err = (): { ok: false } => ({ ok: false });
 const mockCheckpointDrain = jest.fn((): { type: string; message: string }[] => []);
 cuminMock_install(() => ({
-  feedStatus_ofCounts: (): string => 'finishedSuccessfully',
+  feedStatus_deriveFromCounts: (): string => 'finishedSuccessfully',
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   Ok,

@@ -3,14 +3,14 @@ import { cuminMock_install } from './support/cuminMock.js';
 import { load as yamlLoad } from 'js-yaml';
 
 const feedGraphData_ensure = jest.fn(async (_id: number): Promise<'ready' | 'pending'> => 'ready');
-const feedLoad_of = jest.fn((_id: number): { feedID: number; loaded: number; total: number; failed?: string } | null => null);
+const feedLoad_read = jest.fn((_id: number): { feedID: number; loaded: number; total: number; failed?: string } | null => null);
 const feedGraph_build = jest.fn();
 
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ feedGraphData_ensure, feedGraph_build }));
 cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _e?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
-  procCache_get: () => ({ feedLoad_of }),
+  procCache_get: () => ({ feedLoad_read }),
 }));
 
 const { feedDiagram_handle, feedDag_handle, feedDagModel_build } = await import('../src/builtins/res/feed.diagram.js');
@@ -28,12 +28,12 @@ function graph_fixture() {
   };
 }
 
-beforeEach(() => { jest.clearAllMocks(); process.exitCode = 0; feedGraph_build.mockReturnValue(graph_fixture()); feedGraphData_ensure.mockResolvedValue('ready'); feedLoad_of.mockReturnValue(null); });
+beforeEach(() => { jest.clearAllMocks(); process.exitCode = 0; feedGraph_build.mockReturnValue(graph_fixture()); feedGraphData_ensure.mockResolvedValue('ready'); feedLoad_read.mockReturnValue(null); });
 
 describe('a cold feed answers at once', () => {
   it('feed diagram returns the feed.indexing model with the walk\'s count, and builds no graph', async () => {
     feedGraphData_ensure.mockResolvedValue('pending');
-    feedLoad_of.mockReturnValue({ feedID: 5, loaded: 6500, total: 58760 });
+    feedLoad_read.mockReturnValue({ feedID: 5, loaded: 6500, total: 58760 });
     const env = await feedDag_handle(5, undefined, 0) as { status: string; rendered: string; model: { kind: string; data: { feedId: number; loaded: number; total: number } } };
     expect(env.status).toBe('ok');
     expect(env.model.kind).toBe('feed.indexing');
@@ -44,7 +44,7 @@ describe('a cold feed answers at once', () => {
 
   it('a failed walk is named, and the line says asking again retries', async () => {
     feedGraphData_ensure.mockResolvedValue('pending');
-    feedLoad_of.mockReturnValue({ feedID: 5, loaded: 6500, total: 58760, failed: 'CUBE 502' });
+    feedLoad_read.mockReturnValue({ feedID: 5, loaded: 6500, total: 58760, failed: 'CUBE 502' });
     const env = await feedDiagram_handle(5, 'signalflow') as { model: { data: { failed?: string } }; rendered: string };
     expect(env.model.data.failed).toBe('CUBE 502');
     expect(strip(env.rendered)).toContain('failed at 6500/58760');

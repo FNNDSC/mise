@@ -220,6 +220,6 @@ export const PACS_QUERY_MODEL_KIND = 'pacs.query' as const;
  * @param patient - The patient, as the answer carries it.
  * @returns A stable string no path could be.
  */
-export function patientAddress_of(patient: { patientId: string; server?: string | undefined }): string {
+export function patientAddress_format(patient: { patientId: string; server?: string | undefined }): string {
   return `pacs:patient:${patient.server ?? '-'}:${patient.patientId}`;
 }

@@ -30,7 +30,7 @@ const memos: WeakMap<object, PipelineMemo> = new WeakMap();
  * @param client - The connection's chrisapi client.
  * @returns That client's memo.
  */
-function memo_for(client: object): PipelineMemo {
+function memo_resolve(client: object): PipelineMemo {
   const kept: PipelineMemo | undefined = memos.get(client);
   if (kept !== undefined) return kept;
   const made: PipelineMemo = { records: new Map(), resources: new Map() };
@@ -46,7 +46,7 @@ function memo_for(client: object): PipelineMemo {
  * @returns The record, or null when this session never resolved it.
  */
 export function pipelineRecord_recall(client: object, specifier: string): PipelineRecord | null {
-  return memo_for(client).records.get(specifier) ?? null;
+  return memo_resolve(client).records.get(specifier) ?? null;
 }
 
 /**
@@ -58,7 +58,7 @@ export function pipelineRecord_recall(client: object, specifier: string): Pipeli
  * @param record - The record it resolved to.
  */
 export function pipelineRecord_keep(client: object, specifier: string, record: PipelineRecord): void {
-  const memo: PipelineMemo = memo_for(client);
+  const memo: PipelineMemo = memo_resolve(client);
   memo.records.set(specifier, record);
   memo.records.set(record.name, record);
   memo.records.set(String(record.id), record);
@@ -72,7 +72,7 @@ export function pipelineRecord_keep(client: object, specifier: string, record: P
  * @returns The item, or null when none was served this session.
  */
 export function pipelineResource_recall(client: object, pipelineID: number): object | null {
-  return memo_for(client).resources.get(pipelineID) ?? null;
+  return memo_resolve(client).resources.get(pipelineID) ?? null;
 }
 
 /**
@@ -83,7 +83,7 @@ export function pipelineResource_recall(client: object, pipelineID: number): obj
  * @param resource - The chrisapi pipeline item.
  */
 export function pipelineResource_keep(client: object, pipelineID: number, resource: object): void {
-  memo_for(client).resources.set(pipelineID, resource);
+  memo_resolve(client).resources.set(pipelineID, resource);
 }
 
 /**
@@ -95,7 +95,7 @@ export function pipelineResource_keep(client: object, pipelineID: number, resour
  * @param pipelineID - The pipeline's id.
  */
 export function pipeline_forget(client: object, pipelineID: number): void {
-  const memo: PipelineMemo = memo_for(client);
+  const memo: PipelineMemo = memo_resolve(client);
   memo.resources.delete(pipelineID);
   for (const [specifier, record] of memo.records) {
     if (record.id === pipelineID) memo.records.delete(specifier);

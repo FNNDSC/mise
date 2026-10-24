@@ -68,8 +68,8 @@ export async function chrisFolder_enter(logicalPath: string, pathArg: string): P
     const { path_resolveLinks } = await import('../builtins/utils.js');
     validationPath = await path_resolveLinks(logicalPath);
   } else {
-    const { logical_toPhysical } = await import('@fnndsc/chili/utils');
-    const physicalResult: Result<string> = await logical_toPhysical(logicalPath);
+    const { logicalPath_resolve } = await import('@fnndsc/chili/utils');
+    const physicalResult: Result<string> = await logicalPath_resolve(logicalPath);
     if (!physicalResult.ok) {
       let renderedErr: string = `${chalk.red(`cd: ${pathArg}: No such file or directory`)}\n`;
       if (debugEnabled) {

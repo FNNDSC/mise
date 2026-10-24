@@ -5,7 +5,7 @@
  * Aliases: plugininstance / plugininstances / instance / instances / job / jobs
  */
 import chalk from 'chalk';
-import { commandArgs_process, ParsedArgs, cliOptions_from, resourceListOptions_refusal, resourceSearchTerm_refusal, resourceSearch_args } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_extract, resourceListOptions_refusal, resourceSearchTerm_refusal, resourceSearch_args } from '../utils.js';
 import { pluginInstances_fetchList, PluginInstanceListResult } from '@fnndsc/chili/commands/plugininstances/list.js';
 import { pluginInstanceFields_fetch } from '@fnndsc/chili/commands/plugininstances/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
@@ -72,7 +72,7 @@ export async function builtin_plugininstance(args: string[]): Promise<CommandEnv
       return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
     }
     try {
-      const { pluginInstances, selectedFields, totalCount }: PluginInstanceListResult = await pluginInstances_fetchList(cliOptions_from(parsed));
+      const { pluginInstances, selectedFields, totalCount }: PluginInstanceListResult = await pluginInstances_fetchList(cliOptions_extract(parsed));
       // The listing is a model as well as a table: the run history a surface
       // reads (a catalogue's RECENT block) rather than scrapes.
       const model = { kind: 'plugininstance.list' as const, data: pluginInstances.map(instanceRow_project) };

@@ -37,7 +37,7 @@ export const STARSHIP: ReadonlyArray<string> = [
 export const MATRIX_GLYPHS: string = 'ﾊﾐﾋｰｳｼﾅﾓﾆｻﾜﾂｵﾘｱﾎﾃﾏｹﾒｴｶｷﾑﾕﾗｾﾈｽﾀﾇﾍ0123456789Z:・.=*+-<>¦|';
 
 /** A still of a show, for a console with no canvas. */
-export function still_of(program: ShowProgram, random: () => number = Math.random): string[] {
+export function still_render(program: ShowProgram, random: () => number = Math.random): string[] {
   const pick = (s: string): string => s[Math.floor(random() * s.length)] as string;
   switch (program) {
     case 'sl': return [...STARSHIP];
@@ -59,7 +59,7 @@ export function still_of(program: ShowProgram, random: () => number = Math.rando
 }
 
 /** What the console says beside a still: how the moving one is played. */
-function note_of(program: ShowProgram, arcade: boolean, pane: boolean): string {
+function note_render(program: ShowProgram, arcade: boolean, pane: boolean): string {
   if (pane) return chalk.gray(`${program}: ARGUS draws it in its GAMES pane${arcade ? ' with the keys live (arrows; Esc gives the keyboard back)' : ''}.`);
   return chalk.gray(`${program}: a terminal plays it in place${arcade ? ' (arrows steer)' : ''}; q, Esc or Ctrl-C leaves. --pane draws it in ARGUS's GAMES pane.`);
 }
@@ -69,8 +69,8 @@ function show_run(program: ShowProgram, args: string[], arcade: boolean): Comman
   if (unknown !== undefined) return envelope_error(`${program}: unknown option '${unknown}' (--pane)\n`);
   const pane: boolean = args.includes('--pane');
   const rest: string[] = args.filter((arg: string): boolean => arg !== '--pane');
-  const still: string[] = still_of(program);
-  return envelope_ok(`${still.join('\n')}\n${note_of(program, arcade, pane)}\n`, { kind: 'games.show', data: { program, args: rest, arcade, pane } });
+  const still: string[] = still_render(program);
+  return envelope_ok(`${still.join('\n')}\n${note_render(program, arcade, pane)}\n`, { kind: 'games.show', data: { program, args: rest, arcade, pane } });
 }
 
 /** `sl`: a starship crosses the screen. */

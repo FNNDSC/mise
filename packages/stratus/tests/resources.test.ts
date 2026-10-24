@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach } from '@jest/globals';
 import { errorStack, errorStack_getAllOfType, type VFSItem } from '@fnndsc/fond';
 import { FakeDriver, fakeCloud_sample, type FakeCloud, type FakeResource } from '../src/cloud/fake/driver.js';
 import { TenancyProvider } from '../src/vfs/tenancy.js';
-import { OBJECT_READ_LIMIT, recordSets_of } from '../src/vfs/resources.js';
+import { OBJECT_READ_LIMIT, recordSets_build } from '../src/vfs/resources.js';
 import type { CloudInstance, ResourceCounts } from '../src/cloud/driver.js';
 
 const H = '/net/oci/fnndsc/harbor-oci';
@@ -173,7 +173,7 @@ describe('a compartment\'s resources', () => {
   });
 
   it('groups records by name, keeping a name outside the zone whole', () => {
-    const sets = recordSets_of([
+    const sets = recordSets_build([
       { domain: 'a.z.org.', type: 'A', ttl: 60, data: '1.1.1.1' },
       { domain: 'a.z.org', type: 'AAAA', ttl: 60, data: '::1' },
       { domain: 'other.net', type: 'A', ttl: 60, data: '2.2.2.2' },

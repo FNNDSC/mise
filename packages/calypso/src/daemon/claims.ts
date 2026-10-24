@@ -50,7 +50,7 @@ export function claim_match(claims: ReadonlyArray<SurfaceClaim>, line: string): 
  * @param linePrefix - The line up to the cursor.
  * @returns The candidates the claims offer for the word being completed.
  */
-export function claimCandidates_of(claims: ReadonlyArray<SurfaceClaim>, linePrefix: string): string[] {
+export function claimCandidates_list(claims: ReadonlyArray<SurfaceClaim>, linePrefix: string): string[] {
   if (COMPOUND.test(linePrefix)) return [];
   const words: string[] = linePrefix.replace(/^\s+/, '').split(/\s+/);
   const offered: Set<string> = new Set();

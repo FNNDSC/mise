@@ -18,7 +18,7 @@ import {
 } from '../layout/index.js';
 import type { Vec3 } from '../types/space.js';
 import type { SpaceNode } from './node.js';
-import { moleculeRadii_of, type PlacedNode } from './settle.js';
+import { moleculeRadii_computeForSpace, type PlacedNode } from './settle.js';
 
 /** How far a hierarchy settle reports: a thousand steps, whatever its ticks. */
 export const HIERARCHY_PROGRESS_TOTAL: number = 1000;
@@ -80,7 +80,7 @@ export class HierarchySettle<N extends SpaceNode> {
    * @param ask - The settle.
    */
   public run(ask: HierarchyAsk<N>): void {
-    const radii: Map<string, number> = moleculeRadii_of(ask.nodes);
+    const radii: Map<string, number> = moleculeRadii_computeForSpace(ask.nodes);
     // Built as a session builds it, so a place the session keeps is a place this settle would find.
     const seeds: Map<string, Vec3> = new Map([...ask.seeds].map(([id, at]): [string, Vec3] => [id, [at.x, at.y, at.z]]));
     const nodes: LayoutNode[] = layoutInput_build(ask.nodes, ask.keyOf, seeds, ask.frozen);

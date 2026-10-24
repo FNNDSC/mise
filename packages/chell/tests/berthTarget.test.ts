@@ -12,31 +12,31 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { berth_write, LocalBerthResolver, type Berth } from '@fnndsc/calypso';
-import { berthIdentities_of } from '../src/remote/berthTarget.js';
+import { berthIdentities_derive } from '../src/remote/berthTarget.js';
 
-describe('berthIdentities_of', () => {
+describe('berthIdentities_derive', () => {
   it('tries a CUBE target as typed, then normalised', () => {
-    expect(berthIdentities_of('chris@cube.example.org')).toEqual(['chris@cube.example.org', 'chris@http://cube.example.org']);
-    expect(berthIdentities_of('chris@https://CUBE.example.org/api/v1/')).toEqual([
+    expect(berthIdentities_derive('chris@cube.example.org')).toEqual(['chris@cube.example.org', 'chris@http://cube.example.org']);
+    expect(berthIdentities_derive('chris@https://CUBE.example.org/api/v1/')).toEqual([
       'chris@https://CUBE.example.org/api/v1/',
       'chris@https://cube.example.org/api/v1/',
     ]);
   });
 
   it('keeps a tenancy identity exactly as typed, first', () => {
-    expect(berthIdentities_of('rudolph@fnndsc')[0]).toBe('rudolph@fnndsc');
+    expect(berthIdentities_derive('rudolph@fnndsc')[0]).toBe('rudolph@fnndsc');
   });
 
   it('splits a two-@ identity on the last @', () => {
-    const candidates: string[] = berthIdentities_of('rudolph.pienaar@childrens.harvard.edu@fnndsc-bch');
+    const candidates: string[] = berthIdentities_derive('rudolph.pienaar@childrens.harvard.edu@fnndsc-bch');
     expect(candidates[0]).toBe('rudolph.pienaar@childrens.harvard.edu@fnndsc-bch');
     expect(candidates[1]).toBe('rudolph.pienaar@childrens.harvard.edu@http://fnndsc-bch');
   });
 
   it('names nothing for a target with no user or no place', () => {
-    expect(berthIdentities_of('fnndsc')).toEqual([]);
-    expect(berthIdentities_of('@fnndsc')).toEqual([]);
-    expect(berthIdentities_of('rudolph@')).toEqual([]);
+    expect(berthIdentities_derive('fnndsc')).toEqual([]);
+    expect(berthIdentities_derive('@fnndsc')).toEqual([]);
+    expect(berthIdentities_derive('rudolph@')).toEqual([]);
   });
 });
 
@@ -58,7 +58,7 @@ describe('resolving written berths by target', () => {
   /** Resolves the first candidate with a berth, the way the client does. */
   async function target_resolve(target: string): Promise<Berth | null> {
     const resolver: LocalBerthResolver = new LocalBerthResolver();
-    for (const identity of berthIdentities_of(target)) {
+    for (const identity of berthIdentities_derive(target)) {
       const berth: Berth | null = await resolver.resolve(identity);
       if (berth) return berth;
     }

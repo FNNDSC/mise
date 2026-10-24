@@ -113,7 +113,7 @@ const TOOL_NAMES: Readonly<Record<ImageTool, string>> = {
  * @param name - The tool's name.
  * @returns Its configuration, or undefined for the library's own.
  */
-function toolConfig_of(name: string): Record<string, unknown> | undefined {
+function toolConfig_derive(name: string): Record<string, unknown> | undefined {
   if (name === TOOL_NAMES.zoom) return { pinchToZoom: false, pan: false };
   return undefined;
 }
@@ -204,8 +204,8 @@ export class CornerstoneEngine implements ImageEngine {
     this.startAt = Math.max(1, Math.min(startAt, series.files.length));
     // One file, many frames: each frame is an image id of its own.
     this.imageIds = series.files.length === 1 && series.frames > 1
-      ? Array.from({ length: series.frames }, (_, frame: number): string => `wadouri:${byteUrl_absolute(host.source.url_of(series.files[0] ?? ''), location.href)}&frame=${frame}`)
-      : series.files.map((path: string): string => `wadouri:${byteUrl_absolute(host.source.url_of(path), location.href)}`);
+      ? Array.from({ length: series.frames }, (_, frame: number): string => `wadouri:${byteUrl_absolute(host.source.url_resolve(series.files[0] ?? ''), location.href)}&frame=${frame}`)
+      : series.files.map((path: string): string => `wadouri:${byteUrl_absolute(host.source.url_resolve(path), location.href)}`);
     this.imageIds.forEach((imageId: string, index: number): void => {
       this.pathByImageId.set(imageId, series.files.length === 1 ? (series.files[0] ?? '') : (series.files[index] ?? ''));
     });
@@ -662,7 +662,7 @@ export class CornerstoneEngine implements ImageEngine {
     const offs: Array<() => void> = [];
     for (const element of elements) {
       const move = (event: MouseEvent): void => {
-        const reading: string | null = this.probeReading_at(core, element, event, unit);
+        const reading: string | null = this.probeReading_read(core, element, event, unit);
         this.host.probe_set(reading);
       };
       const leave = (): void => this.host.probe_set(null);
@@ -686,7 +686,7 @@ export class CornerstoneEngine implements ImageEngine {
    * the plane samples. Either way the answer is position, the plane or
    * slice, and the value in the modality's unit.
    */
-  private probeReading_at(core: Cornerstone, element: HTMLDivElement, event: MouseEvent, unit: string): string | null {
+  private probeReading_read(core: Cornerstone, element: HTMLDivElement, event: MouseEvent, unit: string): string | null {
     const enabled = core.getEnabledElement(element) as { viewport?: unknown } | undefined;
     const viewport = enabled?.viewport as {
       canvasToWorld?: (point: [number, number]) => number[];
@@ -847,7 +847,7 @@ export class CornerstoneEngine implements ImageEngine {
     this.host.note(`image: ${this.imageIds.length} slices, first on screen in ${Math.round(performance.now() - started)} ms`);
     const group = tools.ToolGroupManager.getToolGroup(this.toolGroupId_get()) ?? tools.ToolGroupManager.createToolGroup(this.toolGroupId_get());
     if (group === undefined) return;
-    for (const name of Object.values(TOOL_NAMES)) group.addTool(name, toolConfig_of(name));
+    for (const name of Object.values(TOOL_NAMES)) group.addTool(name, toolConfig_derive(name));
     group.addTool(tools.StackScrollTool.toolName);
     group.addViewport(viewportId, engineId);
     const bindings = tools.Enums.MouseBindings;
@@ -942,7 +942,7 @@ export class CornerstoneEngine implements ImageEngine {
       // each plane IS a slice. Added here so the frame can lend one to the
       // primary drag; before this they were never on the MPR group and the
       // button threw, so measuring and probing an MPR did nothing.
-      for (const name of [TOOL_NAMES.zoom, TOOL_NAMES.pan, TOOL_NAMES.wl, TOOL_NAMES.length, TOOL_NAMES.angle]) group.addTool(name, toolConfig_of(name));
+      for (const name of [TOOL_NAMES.zoom, TOOL_NAMES.pan, TOOL_NAMES.wl, TOOL_NAMES.length, TOOL_NAMES.angle]) group.addTool(name, toolConfig_derive(name));
       this.primary = null;
       group.setToolActive(tools.CrosshairsTool.toolName, { bindings: [{ mouseButton: bindings.Primary }] });
       group.setToolActive(tools.StackScrollTool.toolName, { bindings: [{ mouseButton: bindings.Wheel }, { numTouchPoints: 2 }] });
@@ -961,7 +961,7 @@ export class CornerstoneEngine implements ImageEngine {
       // button threw and only rotate answered — the operator saw exactly
       // that.
       group.addTool(tools.TrackballRotateTool.toolName);
-      group.addTool(TOOL_NAMES.zoom, toolConfig_of(TOOL_NAMES.zoom));
+      group.addTool(TOOL_NAMES.zoom, toolConfig_derive(TOOL_NAMES.zoom));
       group.addTool(TOOL_NAMES.pan);
       this.primary = null;
       this.volumeBindings_apply(group);

@@ -25,7 +25,7 @@ const STRATUS_PREFIX: string = 'stratus:oci@';
  * @param owner - The person's ChRIS identity (`<user>@<cube url>`).
  * @returns `stratus:oci@<user>@<cube url>`.
  */
-export function stratusIdentity_of(owner: string): string {
+export function stratusIdentity_derive(owner: string): string {
   return `${STRATUS_PREFIX}${owner}`;
 }
 
@@ -36,7 +36,7 @@ export function stratusIdentity_of(owner: string): string {
  * @param identity - A session's identity.
  * @returns The person's ChRIS identity.
  */
-export function owner_of(identity: string): string {
+export function owner_extract(identity: string): string {
   return identity.startsWith(STRATUS_PREFIX) ? identity.slice(STRATUS_PREFIX.length) : identity;
 }
 
@@ -56,8 +56,8 @@ export function identity_isStratus(identity: string): boolean {
  * @param identity - A session's identity.
  * @returns The user.
  */
-export function user_of(identity: string): string {
-  const owner: string = owner_of(identity);
+export function user_extract(identity: string): string {
+  const owner: string = owner_extract(identity);
   return owner.slice(0, owner.indexOf('@'));
 }
 
@@ -217,7 +217,7 @@ export type RestartWhy =
  * @param why - Why the session restarts.
  * @returns The line.
  */
-export function restartLine_of(why: RestartWhy): string {
+export function restartLine_render(why: RestartWhy): string {
   switch (why.kind) {
     case 'stale': return why.behind.length > 0 ? `Restarting a stale calypso daemon (${why.behind.join(', ')})` : 'Restarting a stale calypso daemon';
     case 'asked': return 'Restarting the calypso daemon, as asked';

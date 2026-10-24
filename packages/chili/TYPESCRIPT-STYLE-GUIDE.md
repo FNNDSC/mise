@@ -26,6 +26,8 @@ The pattern can be broken down into four optional components:
     -   **verb:** The core action (e.g., `get`, `check`, `calculate`).
     -   **Adverb:** An optional modifier, using PascalCase, that specifies the action (e.g., `check` becomes `checkIsValid`).
 
+The method is always a verb. A preposition in its place (`answerRows_of`, `seriesUID_ofPath`, `x_to`, `y_forKind`) names the result without saying what the function does with its input; say it: `answerRows_derive`, `seriesUID_parse`. A preposition may follow the verb as part of its adverb (`x_readFromCache`), or qualify the object (`dataFromUser_parse`). `npm run lint:rpn` refuses a method that is, or starts with, `of`, `to`, `with`, `from`, `for`, `by`, `as`, `in`, `on` or `at`.
+
 ### Examples
 
 **Standard TypeScript (verb-noun, camelCase):**

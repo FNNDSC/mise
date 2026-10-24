@@ -4,7 +4,7 @@
  */
 import { tags_list as salsaTags_list, tags_listAll as salsaTags_listAll } from '@fnndsc/salsa';
 import { FilteredResourceData } from '@fnndsc/cumin';
-import { CLIoptions, options_toParams } from '../../utils/cli.js';
+import { CLIoptions, options_convertToParams } from '../../utils/cli.js';
 import { list_applySort } from '../../utils/sort.js';
 
 /**
@@ -23,7 +23,7 @@ export interface TagListResult {
  * @returns The tags list result.
  */
 export async function tags_fetchList(options: CLIoptions): Promise<TagListResult> {
-  const params = options_toParams(options);
+  const params = options_convertToParams(options);
   const result: FilteredResourceData | null = options.all
     ? await salsaTags_listAll(params)
     : await salsaTags_list(params);

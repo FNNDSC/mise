@@ -7,7 +7,7 @@
  *
  * @module
  */
-import { vfs_fail, vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
+import { vfs_fail, vfsOutcome_convertFromBoolean, vfsOutcome_convertFromResult, type VfsOutcome } from '@fnndsc/fond';
 import { plugins_listAll, pipelines_getAll, type PipelineRecord } from '@fnndsc/salsa';
 import { Result, Ok, Err, errorStack, vfsItems_sort, type VFSProvider, type VFSItem, type CpOptions } from '@fnndsc/fond';
 import type { PluginInfoModel } from '@fnndsc/menu';
@@ -89,7 +89,7 @@ export class BinVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async cp(src: string, dest: string, options: CpOptions): Promise<VfsOutcome> {
-    return vfsOutcome_ofBoolean(await this.copy_run(src, dest, options), 'EROFS');
+    return vfsOutcome_convertFromBoolean(await this.copy_run(src, dest, options), 'EROFS');
   }
 
   /**
@@ -117,7 +117,7 @@ export class BinVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async read(pathStr: string): Promise<VfsOutcome<string>> {
-    return vfsOutcome_ofResult(await this.text_read(pathStr), 'ENOENT');
+    return vfsOutcome_convertFromResult(await this.text_read(pathStr), 'ENOENT');
   }
 
   /**
@@ -157,7 +157,7 @@ export class BinVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async readBinary(pathStr: string): Promise<VfsOutcome<Buffer>> {
-    return vfsOutcome_ofResult(await this.bytes_read(pathStr), 'ENOENT');
+    return vfsOutcome_convertFromResult(await this.bytes_read(pathStr), 'ENOENT');
   }
 
   /**

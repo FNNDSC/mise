@@ -4,14 +4,14 @@
  * every operator's universe at once.
  */
 import { describe, it, expect } from '@jest/globals';
-import { hash_of, random_seeded, randomFor_key } from '../src/layout/seeded.js';
+import { hash_compute, random_seeded, randomFor_key } from '../src/layout/seeded.js';
 
 describe('seeded chance', () => {
   it('hashes as FNV-1a, stably', () => {
-    expect(hash_of('')).toBe(0x811c9dc5);
-    expect(hash_of('feed:1603')).toBe(hash_of('feed:1603'));
-    expect(hash_of('feed:1603')).not.toBe(hash_of('feed:1604'));
-    expect(hash_of('a')).toBe(0xe40c292c);
+    expect(hash_compute('')).toBe(0x811c9dc5);
+    expect(hash_compute('feed:1603')).toBe(hash_compute('feed:1603'));
+    expect(hash_compute('feed:1603')).not.toBe(hash_compute('feed:1604'));
+    expect(hash_compute('a')).toBe(0xe40c292c);
   });
 
   it('draws the same run from the same seed, within [0, 1)', () => {

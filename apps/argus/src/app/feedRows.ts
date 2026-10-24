@@ -38,7 +38,7 @@ export interface FeedVerbs {
  */
 export function feedVerbs_wire(context: Pick<HostContext, 'terminal' | 'client'>, hooks: AccessHooks): FeedVerbs {
   return {
-    tags: tags_wire(context, { ask_onPane: hooks.ask_onPane, tags_changed: hooks.changed }),
+    tags: tags_wire(context, { askOnPane_await: hooks.askOnPane_await, tags_changed: hooks.changed }),
     access: access_wire(context, hooks),
   };
 }
@@ -60,7 +60,7 @@ export interface FeedRowHandlers {
  * @param outcome - What the command returned.
  * @returns The tag names; empty when none were read.
  */
-export function feedTags_of(outcome: ExecuteOutcome): string[] {
+export function feedTags_extract(outcome: ExecuteOutcome): string[] {
   for (const envelope of outcome.envelopes) {
     if (envelope.model?.kind !== 'fs.xattr') continue;
     const blocks = envelope.model.data as Array<{ tags?: unknown }>;
@@ -106,7 +106,7 @@ export function feedRowHandlers_make(context: Pick<HostContext, 'panels' | 'subj
     // list, so this is the one place it is read) and its tags, quietly.
     feed_entered: (feedId: number): void => {
       const quiet = { silent: true, observe: false };
-      const text_of = (outcome: ExecuteOutcome | null): string | null =>
+      const text_extract = (outcome: ExecuteOutcome | null): string | null =>
         outcome !== null && outcome.envelopes.every((envelope): boolean => envelope.status === 'ok')
           ? outcome.envelopes.map((envelope): string => envelope.rendered).join('').replace(/\x1b\[[0-9;]*m/g, '')
           : null;
@@ -117,9 +117,9 @@ export function feedRowHandlers_make(context: Pick<HostContext, 'panels' | 'subj
       ]).then(([note, held, title]: [ExecuteOutcome | null, ExecuteOutcome | null, ExecuteOutcome | null]): void => {
         // The pane that asked: a RUNS pane, or a universe inside the feed.
         (panels.get('dag', id) ?? panels.get('universe', id))?.feedMarks_show(feedId, {
-          note: text_of(note),
-          tags: held === null ? [] : feedTags_of(held),
-          title: (text_of(title) ?? '').trim(),
+          note: text_extract(note),
+          tags: held === null ? [] : feedTags_extract(held),
+          title: (text_extract(title) ?? '').trim(),
         });
       });
     },

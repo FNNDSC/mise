@@ -124,7 +124,7 @@ export class ConnectionConfig {
     }
     this.userChRISContextDir = path.join(
       this.userContextDir,
-      this.uri_toDir(lastURL)
+      this.uri_convertToDir(lastURL)
     );
     this.tokenFilepath = path.join(this.userChRISContextDir, this.tokenFile);
   }
@@ -146,7 +146,7 @@ export class ConnectionConfig {
    * @param uri - The URI to convert.
    * @returns A string safe for use as a directory name.
    */
-  public uri_toDir(uri: string): string {
+  public uri_convertToDir(uri: string): string {
     return uri
       .replace("://", "___") // Use triple underscore for protocol separator
       .replace(/:/g, "===") // Use triple equals for colon (to handle port numbers)
@@ -161,7 +161,7 @@ export class ConnectionConfig {
    * @returns The reconstructed URI.
    * @throws Error if the directory name format is invalid.
    */
-  public dir_toUri(dir: string): string {
+  public dir_convertToUri(dir: string): string {
     let uri: string = dir
       .replace(/--/g, ".") // Convert double dashes back to dots
       .replace(/___/g, "://") // Convert triple underscore back to protocol separator
@@ -199,7 +199,7 @@ export class ConnectionConfig {
     await this.chrisURL_save(url);
     this.userChRISContextDir = path.join(
       this.userContextDir,
-      this.uri_toDir(url)
+      this.uri_convertToDir(url)
     );
     await this.dir_ensureExists(this.userChRISContextDir);
     this.tokenFilepath = path.join(this.userChRISContextDir, this.tokenFile);
@@ -234,7 +234,7 @@ export class ConnectionConfig {
    */
   public async chrisURL_save(url: string): Promise<boolean> {
     const urlDir = path.dirname(this.chrisURLfilepath);
-    const urlFolderPath = path.join(urlDir, this.uri_toDir(url));
+    const urlFolderPath = path.join(urlDir, this.uri_convertToDir(url));
 
     if (await this.storageProvider.exists(urlFolderPath)) {
       await this.storageProvider.write(this.chrisURLfilepath, url);

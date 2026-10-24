@@ -36,7 +36,7 @@ export interface PaneVerbs {
   /** Moves the boundary beside a pane a step (Ctrl-arrow, `pane resize`). */
   resize: (paneId: string, side: Side, step: number) => string;
   /** The chords a capsule answers to, for its title: `[keys % l]`. */
-  chordKeys_of: (selector: string, move: boolean) => string;
+  chordKeys_format: (selector: string, move: boolean) => string;
 }
 
 /**
@@ -80,11 +80,11 @@ export function paneVerbs_wire(context: Pick<HostContext, 'layout' | 'paneInstan
     if (!context.layout.leaf_resize(paneId, side, step)) return `pane resize ${SIDES[side].focusWord}: no boundary that way`;
     return `resized ${SIDES[side].focusWord}`;
   };
-  const chordKeys_of = (selector: string, move: boolean): string => {
+  const chordKeys_format = (selector: string, move: boolean): string => {
     const keys: string[] = DRAWER_CHORDS
       .filter((chord: DrawerChord): boolean => chord.selector === selector && (chord.move === true) === move)
       .map((chord: DrawerChord): string => chord.key);
     return keys.length === 0 ? '' : ` [keys ${keys.join(' ')}]`;
   };
-  return { bar_note, move, flip, resize, chordKeys_of };
+  return { bar_note, move, flip, resize, chordKeys_format };
 }

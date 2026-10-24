@@ -112,7 +112,7 @@ import { keys_wire } from './keys.js';
 import { paneChrome_wire } from './paneChrome.js';
 import { argusHost_build } from './consoleHost.js';
 import { browser_wire, feedOf_path, imagery_is, TABLE_FILE_PATTERN, type Browser } from './browser.js';
-import { place_of, type Side } from './sides.js';
+import { place_derive, type Side } from './sides.js';
 import { stalePage_watch } from './stalePage.js';
 import { buildMatch_wire, type BuildWatch } from './buildMatch.js';
 import { doorPill_wire } from './door.js';
@@ -1017,7 +1017,7 @@ async function surface_start(token: string): Promise<void> {
    * of it. The catalogue bindings and RUN are its hooks.
    */
   const binView: BinView = binView_wire(context, {
-    catalogue_of: (paneId: string): CatalogueBinding | undefined => catalogueBindings.get(paneId),
+    catalogue_find: (paneId: string): CatalogueBinding | undefined => catalogueBindings.get(paneId),
     run_press: (paneId: string, executable: string, kind: 'plugin' | 'pipeline'): void => { void run_press(paneId, executable, kind); },
   });
   const binEntry_show = binView.entry_show;
@@ -1037,14 +1037,14 @@ async function surface_start(token: string): Promise<void> {
     run_press: (paneId: string, executable: string, kind: 'plugin' | 'pipeline'): void => { void run_press(paneId, executable, kind); },
     cohort_gather: (entries: ReadonlyArray<GatherSeries>): void => cohort_gather(entries),
     verbLine_run: (paneId: string, line: string): void => verbLine_run(paneId, line),
-    ask_onPane: (paneId: string, request: PaneAskRequest): Promise<string | null> => ask_onPane(paneId, request),
+    askOnPane_await: (paneId: string, request: PaneAskRequest): Promise<string | null> => askOnPane_await(paneId, request),
     binEntry_show,
-    catalogue_of: (paneId: string): CatalogueBinding | undefined => catalogueBindings.get(paneId),
+    catalogue_find: (paneId: string): CatalogueBinding | undefined => catalogueBindings.get(paneId),
     promptUser: (): string | null => promptUser,
     template_stamp,
     pane_find,
   });
-  const { previewProvider, fileText_fetch, file_save, rootedListing_show, listing_refresh, directory_make, files_deliver, filesBody_stamp, rowVerbs_of } = browser;
+  const { previewProvider, fileText_fetch, file_save, rootedListing_show, listing_refresh, directory_make, files_deliver, filesBody_stamp, rowVerbs_build } = browser;
   const filesInstance_build = browser.instance_build;
 
   /** The session's user, as the prompt context last named it; null before the first. */
@@ -1064,7 +1064,7 @@ async function surface_start(token: string): Promise<void> {
   // (compositions/chris/dicom.ts), bound to this surface.
   const {
     imageInstance_build, tagsInstance_build, tags_ask, tagsPane_follow, tagsPane_open,
-    series_ask, subfolders_ask, imagePane_for, image_open,
+    series_ask, subfolders_ask, imagePane_resolve, image_open,
   }: ChrisDicom = chrisDicom_make({
     client: (): ArgusClient => client,
     terminal: (): ArgusTerminal => terminal,
@@ -1211,7 +1211,7 @@ async function surface_start(token: string): Promise<void> {
     if (line === '' || runLine_executable(line) !== executable) line = runLine_compose(binding.input, executable);
     if (binding.feed === null && !runLine_hasTitle(line)) {
       const suggested: string = binding.input.split('/').filter(Boolean).pop() ?? 'feed';
-      const title: string | null = await ask_onPane(id, { message: 'Feed title: ', kind: 'text', suggest: suggested, commit: 'RUN' });
+      const title: string | null = await askOnPane_await(id, { message: 'Feed title: ', kind: 'text', suggest: suggested, commit: 'RUN' });
       const wanted: string = (title ?? '').trim();
       if (wanted === '') return;
       line = runLine_titleAppend(line, wanted);
@@ -1291,7 +1291,7 @@ async function surface_start(token: string): Promise<void> {
     image_open: (fromId: string, path: string): Promise<string> => image_open(fromId, path),
     process_open: (fromId: string, binding: CatalogueBinding): void => process_open(fromId, binding),
     feed_open: (fromId: string, feedId: number): void => feed_open(fromId, feedId),
-    ask_onPane: (id: string, request: PaneAskRequest): Promise<string | null> => ask_onPane(id, request),
+    askOnPane_await: (id: string, request: PaneAskRequest): Promise<string | null> => askOnPane_await(id, request),
     errandHost_find: (): string | null => errandHost_find(),
     instance_spawn: (kind: PaneKind, inheritFrom?: string): PaneInstance => instance_spawn(kind, inheritFrom),
     birth_record: (childId: string, parent: string, dir: 'row' | 'col', before: boolean): void => birth_record(childId, parent, dir, before),
@@ -1340,7 +1340,7 @@ async function surface_start(token: string): Promise<void> {
   const nodeOverlay: NodeOverlay = nodeOverlay_wire(context, {
     filesBody_stamp,
     rootedListing_show,
-    rowVerbs_of,
+    rowVerbs_build,
     image_open: (fromId: string, path: string): Promise<string> => image_open(fromId, path),
     imagery_is,
     tableFile_is: (path: string): boolean => TABLE_FILE_PATTERN.test(path),
@@ -1353,7 +1353,7 @@ async function surface_start(token: string): Promise<void> {
 
 
   // A feed's tags, name and access: TAG, RENAME, SHARE and the marks' ×, each a visible line (app/tags.ts, app/access.ts).
-  const feedVerbs: FeedVerbs = feedVerbs_wire(context, { ask_onPane: (paneId, request) => ask_onPane(paneId, request), promptUser: (): string | null => promptUser, changed: (): void => { for (const dag of panels.values('dag')) { dag.roster_ask(); dag.marks_refresh(); dag.indicated_refresh(); } } });
+  const feedVerbs: FeedVerbs = feedVerbs_wire(context, { askOnPane_await: (paneId, request) => askOnPane_await(paneId, request), promptUser: (): string | null => promptUser, changed: (): void => { for (const dag of panels.values('dag')) { dag.roster_ask(); dag.marks_refresh(); dag.indicated_refresh(); } } });
   // The ChRIS composition's own panes: RUNS and the UNIVERSE (compositions/chris/panes.ts).
   const chrisPanes: ChrisPanes = chrisPanes_make({
     client: (): ArgusClient => client,
@@ -1431,7 +1431,7 @@ async function surface_start(token: string): Promise<void> {
     questionSheet_ask: (request: PaneAskRequest): Promise<string | null> | null =>
       consoleMode !== null && consoleMode.terminal_is() ? consoleMode.question_sheet(request) : null,
   });
-  const { errandHost_find, errand_open, verbLine_run, ask_onPane } = asks;
+  const { errandHost_find, errand_open, verbLine_run, askOnPane_await } = asks;
 
   // The PACS workspace scrolls whole when its levels outgrow a short leaf,
   // and says what it holds in rows (#pacs-workspace).
@@ -1605,7 +1605,7 @@ async function surface_start(token: string): Promise<void> {
     edit_open: (path: string): string | null => editorModule.edit_open(path),
     pillPane_spawn,
     pacsQuery_get: (): string | null => pacsPanel.query_get(),
-    catalogue_of: (paneId: string): CatalogueBinding | undefined => catalogueBindings.get(paneId),
+    catalogue_find: (paneId: string): CatalogueBinding | undefined => catalogueBindings.get(paneId),
     catalogueIds: (): string[] => [...catalogueBindings.keys()],
     stage_relight: (): void => pacsStage_relight(),
   });
@@ -1755,7 +1755,7 @@ async function surface_start(token: string): Promise<void> {
     const instance: PaneInstance = paneInstance_create(kind);
     subjects.pane_join(
       instance.id,
-      inheritFrom !== undefined ? subjects.group_of(inheritFrom) : instance.id,
+      inheritFrom !== undefined ? subjects.group_resolve(inheritFrom) : instance.id,
     );
     if (kind === 'tags') {
       subjects.regard_subscribe(instance.id, (value: RegardValue): void => {
@@ -1782,14 +1782,14 @@ async function surface_start(token: string): Promise<void> {
   // kind's semantic children (docs/aegis.adoc).
   /** The timers of controls' answers holding a pane's bar, by bar. */
   // The verbs on a pane as a thing on the stage, wired to this host (app/paneVerbs.ts).
-  const { bar_note: paneBar_note, move: pane_move, flip: pane_flip, resize: pane_resize, chordKeys_of } = paneVerbs_wire(context);
+  const { bar_note: paneBar_note, move: pane_move, flip: pane_flip, resize: pane_resize, chordKeys_format } = paneVerbs_wire(context);
   /**
    * A pane's chrome (app/paneChrome.ts): the drawer behind its handle and
    * the children its kind adds. The pane verbs, the browser, the pill
    * spawn, the opens and the home are its hooks.
    */
   const pane_chrome_wire = paneChrome_wire(context, {
-    verbs: { move: pane_move, chordKeys_of },
+    verbs: { move: pane_move, chordKeys_format },
     browser,
     pillPane_spawn,
     process_open: (fromId: string, binding: CatalogueBinding): void => process_open(fromId, binding),
@@ -1979,7 +1979,7 @@ async function surface_start(token: string): Promise<void> {
       execute: (line: string): Promise<ExecuteOutcome> =>
         client.line_execute(line, { silent: true, observe: false }),
       claim: (kind: PaneKind, envelopes: WireEnvelope[]): void => pane_claim(id, kind, envelopes),
-      claimKind_of: (modelKind: string): PaneKind | undefined => router.claimKind_of(modelKind),
+      claimKind_find: (modelKind: string): PaneKind | undefined => router.claimKind_find(modelKind),
     });
     return { id, kind: 'empty', mount };
   });
@@ -2388,7 +2388,7 @@ async function surface_start(token: string): Promise<void> {
           // transcript still keeps the exchange either way.
           const provoker: string | null = asks.askingPane_take();
           if (provoker !== null && paneInstance_get(provoker) !== undefined) {
-            return ask_onPane(provoker, {
+            return askOnPane_await(provoker, {
               message: request.message,
               kind: request.kind === 'secret' ? 'secret' : request.kind === 'confirm' ? 'confirm' : 'text',
               ...(request.suggest === undefined ? {} : { suggest: request.suggest }),
@@ -2637,7 +2637,7 @@ async function surface_start(token: string): Promise<void> {
     history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     if (landing.kind === 'runs') {
       runs_show();
-      dagPanel.jump_to(landing.target);
+      dagPanel.target_jumpTo(landing.target);
     } else {
       dir_open(landing.path);
     }

@@ -14,7 +14,7 @@ import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 export const PRIMES_MAX: number = 10_000;
 
 /** The prime factors of n, smallest first, with repeats. */
-export function factors_of(n: number): number[] {
+export function factors_compute(n: number): number[] {
   const out: number[] = [];
   let rest: number = n;
   for (let p: number = 2; p * p <= rest; p++) {
@@ -186,7 +186,7 @@ export async function builtin_factor(args: string[]): Promise<CommandEnvelope> {
   for (const word of words) {
     const n: number = Number(word);
     if (!Number.isInteger(n) || n < 1 || n > Number.MAX_SAFE_INTEGER) return envelope_error('', undefined, `factor: '${word}' is not a positive whole number\n`);
-    const factors: number[] = n === 1 ? [] : factors_of(n);
+    const factors: number[] = n === 1 ? [] : factors_compute(n);
     data.push({ n, factors });
     lines.push(`${n}: ${factors.join(' ')}`.trimEnd());
   }

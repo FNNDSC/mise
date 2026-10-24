@@ -11,8 +11,8 @@
  *
  * @module
  */
-import { listingIn_take, listingOperands_of, type ListingModel } from '../../core/listing.js';
-import { answerNumbering_of, handleWords_of, numberedFooter_of, type NumberedHandle } from '../../session/answer.js';
+import { listingIn_take, listingOperands_extract, type ListingModel } from '../../core/listing.js';
+import { answerNumbering_derive, handleWords_map, numberedFooter_render, type NumberedHandle } from '../../session/answer.js';
 import chalk from 'chalk';
 import path from 'path';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
@@ -23,13 +23,13 @@ import {
   GatherState,
   cohort_read,
   cohort_write,
-  cohortModel_of,
+  cohortModel_wrap,
   cohortFolders_resolve,
   member_key,
   members_drop,
   members_merge,
   pathKind_determine,
-  seriesUID_ofPath,
+  seriesUID_parse,
 } from './gather.store.js';
 import { placeImagery_is, seriesFacts_fill } from './gather.facts.js';
 import { CommandEnvelope, envelope_ok, envelope_error, type EnvelopeModel } from '@fnndsc/menu';
@@ -82,15 +82,15 @@ function member_state(member: GatherMember): string {
  * @returns A success envelope carrying the rendered table and the model.
  */
 function cohort_render(state: GatherState): CommandEnvelope {
-  const model: EnvelopeModel = cohortModel_of(state);
+  const model: EnvelopeModel = cohortModel_wrap(state);
   if (state.series.length === 0) {
     return envelope_ok(`${chalk.gray('The cohort is empty. Gather something with `gather add <path>`.')}\n`, model);
   }
 
   // Each member wears the handle an index expands to (#1099): one sequence
   // per kind, as the cohort's numbering counts them.
-  const numbered: NumberedHandle[] = answerNumbering_of(GATHER_MODEL_KIND, state) ?? [];
-  const words: Map<string, string> = handleWords_of(numbered);
+  const numbered: NumberedHandle[] = answerNumbering_derive(GATHER_MODEL_KIND, state) ?? [];
+  const words: Map<string, string> = handleWords_map(numbered);
   const kindCode = (member: GatherMember): string => (member.kind === 'dir' ? 'DIR' : member.kind === 'file' ? 'FIL' : 'SER');
   const rows: Record<string, unknown>[] = state.series.map(
     (member: GatherMember): Record<string, unknown> => ({
@@ -113,7 +113,7 @@ function cohort_render(state: GatherState): CommandEnvelope {
   return envelope_ok(
     `${table_render(rows, ['@', 'kind', 'member', 'state', 'path'], {
       title: { title, justification: 'center' },
-    })}${chalk.gray(parts.join(' · '))}\n${numbered.length > 0 ? `${chalk.gray(numberedFooter_of(numbered))}\n` : ''}`,
+    })}${chalk.gray(parts.join(' · '))}\n${numbered.length > 0 ? `${chalk.gray(numberedFooter_render(numbered))}\n` : ''}`,
     model,
   );
 }
@@ -140,7 +140,7 @@ async function gather_add(operands: string[]): Promise<CommandEnvelope> {
     if (kind === null) return gather_error(`gather: ${resolved}: nothing is there.`);
     const member: GatherMember = { vfsPath: resolved, kind };
     if (member.kind === 'series') {
-      const uid: string | undefined = seriesUID_ofPath(resolved);
+      const uid: string | undefined = seriesUID_parse(resolved);
       if (uid !== undefined) member.seriesUID = uid;
       member.imagery = true;
     } else if (placeImagery_is(member)) {
@@ -233,7 +233,7 @@ async function gather_name(operands: string[]): Promise<CommandEnvelope> {
   await cohort_write(state);
   // The cohort travels with the answer, as every changing verb's does, so
   // a surface showing it takes the name from here.
-  return envelope_ok(`${chalk.green(`gather: the cohort is "${state.name}".`)}\n`, cohortModel_of(state));
+  return envelope_ok(`${chalk.green(`gather: the cohort is "${state.name}".`)}\n`, cohortModel_wrap(state));
 }
 
 /**
@@ -277,7 +277,7 @@ export async function builtin_gather(args: string[]): Promise<CommandEnvelope> {
         if (piped === null) {
           return gather_error(`gather ${subcommand}: what? give paths or handles (@SER3), \${listing}, or pipe a listing in (query … | gather ${subcommand === 'rm' ? 'remove' : subcommand})`);
         }
-        given = listingOperands_of(piped) ?? [];
+        given = listingOperands_extract(piped) ?? [];
         if (given.length === 0) return gather_error(`gather ${subcommand}: the listing piped in has nothing to ${subcommand === 'add' ? 'gather' : 'remove'}.`);
       }
       return subcommand === 'add' ? await gather_add(given) : await gather_remove(given);

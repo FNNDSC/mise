@@ -6,7 +6,7 @@
 
 import { Command } from "commander";
 import { BaseGroupHandler } from "../handlers/baseGroupHandler.js";
-import { CLIoptions, options_toParams } from "../utils/cli.js";
+import { CLIoptions, options_convertToParams } from "../utils/cli.js";
 import { PluginContextController } from "../controllers/pluginContextController.js";
 import { pluginParameters_renderMan, pluginParameters_manRender } from "../views/pluginParameters.js";
 import { FilteredResourceData, ChRISEmbeddedResourceGroup, errorStack, type CommandEnvelope, envelope_ok, envelope_error } from "@fnndsc/cumin";
@@ -89,7 +89,7 @@ export class PluginContextGroupHandler {
          return;
       }
 
-      const params = options_toParams(options);
+      const params = options_convertToParams(options);
       const results: FilteredResourceData | null = await asset.resources_listAndFilterByOptions(params);
 
       if (results) {
@@ -134,7 +134,7 @@ export class PluginContextGroupHandler {
         return envelope_error('', undefined, "Underlying resource does not support listing.\n");
       }
 
-      const params = options_toParams(options);
+      const params = options_convertToParams(options);
       const results: FilteredResourceData | null = await asset.resources_listAndFilterByOptions(params);
 
       if (results) {

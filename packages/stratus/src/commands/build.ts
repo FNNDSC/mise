@@ -20,7 +20,7 @@ import {
   type JobRecord, type JobRunner,
 } from '@fnndsc/brasa/core';
 import type { CloudDriver, CloudPrice, CloudShape } from '../cloud/driver.js';
-import { planCounts_alter, planCounts_of, planCounts_words, type CloudBuilder, type InfraPlan } from '../cloud/builder.js';
+import { planCounts_alter, plan_count, planCounts_words, type CloudBuilder, type InfraPlan } from '../cloud/builder.js';
 import { adoption_keep, adoptRun_make, checkout_read, type CheckoutRead } from '../domain/adopt.js';
 import type { InstallerAccountKeeper } from '../installer/account.js';
 import type { VerifyReach } from './verify.js';
@@ -28,9 +28,9 @@ import type { HarborDomain } from '../domains/harborOci.js';
 import type { DomainTree } from '../vfs/domains.js';
 import { DOMAIN_NAME, type DomainRecord, type DomainStore } from '../domain/state.js';
 import { SPEC_DEFAULT, specOptions_apply, type DomainSpec } from '../domain/spec.js';
-import { cost_words, familyShape_find, specCost_of, specFit_read, type SpecCost, type ZoneFit } from '../domain/sizing.js';
+import { cost_words, familyShape_find, specCost_compute, specFit_read, type SpecCost, type ZoneFit } from '../domain/sizing.js';
 import { domainSummary_read } from '../domain/readout.js';
-import { BUILD_STEPS, buildJob_id, buildRun_make, FIRST_BILLING_STEP, planRun_make, stepNext_of, STEPS_SOURCE, STEPS_WRITTEN, type BuildDeps } from '../domain/steps.js';
+import { BUILD_STEPS, buildJob_id, buildRun_make, FIRST_BILLING_STEP, planRun_make, stepNext_find, STEPS_SOURCE, STEPS_WRITTEN, type BuildDeps } from '../domain/steps.js';
 
 /** What the build verbs read from the session. */
 export interface BuildCommandContext {
@@ -164,7 +164,7 @@ export async function domainNew_run(context: BuildCommandContext, args: Readonly
   const record: DomainRecord = { name, created: new Date().toISOString(), region, baseDomain, steps: {}, ids: {}, protected: true, ...(compartmentId !== undefined ? { compartmentId } : {}) };
   context.store.create(record, sized.spec);
   const lines: string[] = [
-    `${chalk.bold(name)}  ${name}.${baseDomain}  spec written: ${context.store.folder_of(name)}/spec.yaml`,
+    `${chalk.bold(name)}  ${name}.${baseDomain}  spec written: ${context.store.folder_derive(name)}/spec.yaml`,
     `  ${spec_line(sized.spec)}`,
     chalk.gray(`Nothing is made in the tenancy until domain build ${name}; domain plan ${name} says what it takes and costs.`),
   ];
@@ -203,7 +203,7 @@ function builtDomain_need(context: BuildCommandContext, verb: string, name: stri
 async function cost_read(context: BuildCommandContext, region: string, spec: DomainSpec): Promise<SpecCost | null> {
   const shape: CloudShape | undefined = familyShape_find(await context.driver.shapes_list(region), spec.family);
   const prices: CloudPrice[] = await context.driver.prices_list();
-  return specCost_of(spec, shape, prices);
+  return specCost_compute(spec, shape, prices);
 }
 
 /**
@@ -236,7 +236,7 @@ export async function domainPlan_run(context: BuildCommandContext, args: Readonl
     lines.push(`  ${fit.zone.padEnd(24)} ${fit.nodes.join(' ').padEnd(28)} ${room(fit.coresNeeded, fit.coresFree, 'cores')}, ${room(fit.memoryNeeded, fit.memoryFree, 'GiB')}  ${verdict}`);
   }
   lines.push(`cost  ${cost === null ? chalk.gray(`${spec.family} is not in the price list`) : chalk.yellow(cost_words(cost))}`);
-  const next: string | null = stepNext_of(record);
+  const next: string | null = stepNext_find(record);
   lines.push(`steps ${next === null ? 'every step done' : `next: ${next}`}`);
   if (record.ids['stackRef'] !== undefined && tasks_granted() && context.builder !== null) {
     const ran = await job_runFollowed(`${domain.name}-plan`, `plan ${domain.name}`, planRun_make(domain.name, context.builder, context.store));
@@ -246,7 +246,7 @@ export async function domainPlan_run(context: BuildCommandContext, args: Readonl
   }
   const planText: string | null = context.store.file_read(domain.name, 'plan.json');
   if (planText !== null) {
-    const counts = planCounts_of(JSON.parse(planText) as InfraPlan);
+    const counts = plan_count(JSON.parse(planText) as InfraPlan);
     lines.push(`plan  ${planCounts_words(counts)}${planCounts_alter(counts) ? chalk.red(' · an apply would touch what exists: refused unless allowed by name') : ''}`);
     if (record.adopted !== undefined) lines.push(chalk.gray(`      adopted from ${record.adopted.from}: planned against, never built on`));
   } else if (!tasks_granted() && record.adopted === undefined) {
@@ -306,7 +306,7 @@ export async function job_runFollowed(id: string, label: string, run: Parameters
  */
 async function billing_question(context: BuildCommandContext, name: string, record: DomainRecord, spec: DomainSpec): Promise<string> {
   const planText: string | null = context.store.file_read(name, 'plan.json');
-  const created: number = planText === null ? 0 : planCounts_of(JSON.parse(planText) as InfraPlan).create;
+  const created: number = planText === null ? 0 : plan_count(JSON.parse(planText) as InfraPlan).create;
   const cost: SpecCost | null = await cost_read(context, record.region, spec);
   return `${FIRST_BILLING_STEP} creates ${created} resources. Billing starts at ${cost === null ? 'an unpriced rate' : cost_words(cost)}. Continue? [y/N]`;
 }
@@ -361,7 +361,7 @@ export async function domainBuild_run(context: BuildCommandContext, args: Readon
       context.store.record_update(name, (current: DomainRecord): void => { current.billingAccepted = new Date().toISOString(); });
       continue;
     }
-    const next: string | null = stepNext_of(record);
+    const next: string | null = stepNext_find(record);
     const summary: string = next === null
       ? `${name}: every step done`
       : !STEPS_WRITTEN.includes(next) ? `${name}: built through ${BUILD_STEPS[BUILD_STEPS.indexOf(next) - 1] ?? ''}; ${next} and after are not steps this session has yet`
@@ -382,7 +382,7 @@ export async function domainBuild_run(context: BuildCommandContext, args: Readon
 async function account_askWhenMissing(context: BuildCommandContext, record: DomainRecord, through: string | undefined): Promise<string | null> {
   const account: InstallerAccountKeeper | undefined = context.account;
   if (account === undefined || account.present()) return null;
-  const next: string | null = stepNext_of(record);
+  const next: string | null = stepNext_find(record);
   const needs: boolean = next !== null && BUILD_STEPS.indexOf(next) <= BUILD_STEPS.indexOf('cluster')
     && (through === undefined || BUILD_STEPS.indexOf(through) >= BUILD_STEPS.indexOf('cluster'));
   if (!needs) return null;
@@ -418,7 +418,7 @@ export async function domainAdopt_run(context: BuildCommandContext, args: Readon
   if (kept === null) {
     adoption_keep(context.store, checkout);
     lines.push(`${chalk.bold(name)}  ${name}.${checkout.record.baseDomain}  adopted from ${from}`);
-    lines.push(`  kept here: its ids (${Object.keys(checkout.record.ids).join(', ')}), its spec, its settings, its secrets (${checkout.secrets.map((secret) => secret.name).join(', ') || 'none'}) in ${context.store.folder_of(name)}`);
+    lines.push(`  kept here: its ids (${Object.keys(checkout.record.ids).join(', ')}), its spec, its settings, its secrets (${checkout.secrets.map((secret) => secret.name).join(', ') || 'none'}) in ${context.store.folder_derive(name)}`);
   } else if (kept.adopted === undefined) {
     return envelope_error('', undefined, `domain adopt: ${name}: a domain of that name was built here\n`);
   } else {

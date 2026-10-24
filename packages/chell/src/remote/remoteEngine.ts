@@ -19,7 +19,7 @@ import { SERVER_MESSAGE_TYPES, type ClosingCause, type FileDeliverRequest, type 
 import { envelope_deliver, sink_get, sink_set, surface_set, type OutputSink, type Surface } from '@fnndsc/brasa';
 import { promptFromContext_render } from '../core/prompt/session.js';
 import { output_above } from '../core/lineDiscipline.js';
-import { terminalId_of } from '../core/terminalId.js';
+import { terminalId_parse } from '../core/terminalId.js';
 
 /** Options for connecting a remote engine. */
 export interface RemoteEngineOptions {
@@ -150,7 +150,7 @@ export class RemoteEngine implements BrasaEngine {
             localFilesystem: options.onDeliver !== undefined,
             // A browser's terminal names itself, so the daemon knows whose
             // console this chell is (the daemon sets CHELL_TERMINAL).
-            ...(terminalId_of(process.env['CHELL_TERMINAL']) !== null ? { terminal: terminalId_of(process.env['CHELL_TERMINAL']) as string } : {}),
+            ...(terminalId_parse(process.env['CHELL_TERMINAL']) !== null ? { terminal: terminalId_parse(process.env['CHELL_TERMINAL']) as string } : {}),
           },
         }));
         ws.once('message', (data: Buffer) => {
@@ -316,7 +316,7 @@ export class RemoteEngine implements BrasaEngine {
       case 'progress':
         {
           const { type: _type, id: _id, ...event } = message;
-          this.sink_for(_id).progress_write(event);
+          this.sink_resolve(_id).progress_write(event);
         }
         break;
       case 'event':
@@ -493,12 +493,12 @@ export class RemoteEngine implements BrasaEngine {
    * @param chunk - The streamed text.
    */
   /** The sink a line's output goes to: the one it was sent from, else the active one. */
-  private sink_for(id: string | undefined): OutputSink {
+  private sink_resolve(id: string | undefined): OutputSink {
     return (id !== undefined ? this.requestSinks.get(id) : undefined) ?? sink_get();
   }
 
   private output_render(channel: 'data' | 'err' | 'status', chunk: string, id?: string): void {
-    const sink: OutputSink = this.sink_for(id);
+    const sink: OutputSink = this.sink_resolve(id);
     if (channel === 'data') {
       sink.data_write(chunk);
     } else if (channel === 'err') {

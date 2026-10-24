@@ -11,7 +11,7 @@
  * @module
  */
 
-import { vfs_fail, vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
+import { vfs_fail, vfsOutcome_convertFromBoolean, vfsOutcome_convertFromResult, type VfsOutcome } from '@fnndsc/fond';
 import {
   Err,
   Ok,
@@ -51,7 +51,7 @@ function tagPath_parts(pathStr: string): string[] {
  * @param verb - The verb, for the refusal.
  * @returns The name, or null with the refusal stacked.
  */
-function tagName_of(pathStr: string, verb: string): string | null {
+function tagName_parse(pathStr: string, verb: string): string | null {
   const parts: string[] = tagPath_parts(pathStr);
   if (parts.length === 1 && TAG_NAME.test(parts[0])) return parts[0];
   const what: string = parts.length === 0 ? 'the tags folder itself' : 'a feed inside a tag (setfattr tags and untags a feed)';
@@ -99,7 +99,7 @@ export class ProcTagsVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   public async cp(_src: string, _dest: string, _options: CpOptions): Promise<VfsOutcome> {
-    return vfsOutcome_ofBoolean(await this.copy_run(_src, _dest, _options), 'EROFS');
+    return vfsOutcome_convertFromBoolean(await this.copy_run(_src, _dest, _options), 'EROFS');
   }
 
   /** @inheritdoc */
@@ -110,24 +110,24 @@ export class ProcTagsVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   public async mkdir(pathStr: string): Promise<VfsOutcome> {
-    return vfsOutcome_ofBoolean(await this.folder_make(pathStr), 'EIO');
+    return vfsOutcome_convertFromBoolean(await this.folder_make(pathStr), 'EIO');
   }
 
   /** @inheritdoc */
   private async folder_make(pathStr: string): Promise<boolean> {
-    const name: string | null = tagName_of(pathStr, 'mkdir');
+    const name: string | null = tagName_parse(pathStr, 'mkdir');
     if (name === null) return false;
     return (await tag_create(name)).ok;
   }
 
   /** @inheritdoc */
   public async rmdir(pathStr: string): Promise<VfsOutcome> {
-    return vfsOutcome_ofBoolean(await this.folder_remove(pathStr), 'EIO');
+    return vfsOutcome_convertFromBoolean(await this.folder_remove(pathStr), 'EIO');
   }
 
   /** @inheritdoc */
   private async folder_remove(pathStr: string): Promise<boolean> {
-    const name: string | null = tagName_of(pathStr, 'rmdir');
+    const name: string | null = tagName_parse(pathStr, 'rmdir');
     if (name === null) return false;
     return (await tag_delete(name)).ok;
   }
@@ -160,14 +160,14 @@ export class ProcTagsVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   public async rename(src: string, dest: string): Promise<VfsOutcome> {
-    return vfsOutcome_ofBoolean(await this.entry_rename(src, dest), 'EIO');
+    return vfsOutcome_convertFromBoolean(await this.entry_rename(src, dest), 'EIO');
   }
 
   /** @inheritdoc */
   private async entry_rename(src: string, dest: string): Promise<boolean> {
-    const from: string | null = tagName_of(src, 'mv');
+    const from: string | null = tagName_parse(src, 'mv');
     if (from === null) return false;
-    const to: string | null = tagName_of(dest, 'mv');
+    const to: string | null = tagName_parse(dest, 'mv');
     if (to === null) return false;
     return (await tag_rename(from, to)).ok;
   }

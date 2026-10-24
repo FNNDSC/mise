@@ -27,7 +27,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ReferenceValue } from '../lib/parser.js';
 import { session } from '../session/index.js';
-import { answer_get, answerHandles_get, answerKind_count, answerRow_get, handle_word, numberedFooter_of, type AnswerHandle, type AnswerKind, type AnswerRow } from '../session/answer.js';
+import { answer_get, answerHandles_get, answerKind_count, answerRow_get, handle_word, numberedFooter_render, type AnswerHandle, type AnswerKind, type AnswerRow } from '../session/answer.js';
 import { heldListingOperands_get } from './listing.js';
 import { backendInstalled_get, type AnswerKindLook, type ReferenceSource } from './backend.js';
 import { answer_read, variable_get, variableScope_isPlay, type FieldReading, type Variable } from './variables.js';
@@ -290,7 +290,7 @@ export function reference_refusal(name: string): string {
     const count: number = answerKind_count(kind);
     // Says what IS numbered, in the form an index is typed, so the way to the
     // row the operator meant is in the refusal (a later listing replaced it).
-    const held: string = numberedFooter_of(answerHandles_get());
+    const held: string = numberedFooter_render(answerHandles_get());
     return count === 0
       ? `${name}: the held listing (${numbered.source}) has no ${kind_word(kind)} rows; ${held}.`
       : `${name}: the held listing (${numbered.source}) holds ${count} ${kind} row${count === 1 ? '' : 's'}; ${held}.`;

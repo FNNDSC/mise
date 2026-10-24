@@ -3,7 +3,7 @@
  * Manages feeds (list, create, inspect, note, comments).
  */
 import chalk from 'chalk';
-import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_extract } from '../utils.js';
 import { feeds_fetchList, FeedListResult } from '@fnndsc/chili/commands/feeds/list.js';
 import { feedFields_fetch } from '@fnndsc/chili/commands/feeds/fields.js';
 import { feed_create } from '@fnndsc/chili/commands/feed/create.js';
@@ -84,7 +84,7 @@ function feedTreeOptions_parse(parsed: ParsedArgs): FeedTreeOptions {
  * @returns An envelope carrying the rendered feed table.
  */
 async function feedList_handle(parsed: ParsedArgs): Promise<CommandEnvelope> {
-  const { feeds, selectedFields, totalCount }: FeedListResult = await feeds_fetchList(cliOptions_from(parsed));
+  const { feeds, selectedFields, totalCount }: FeedListResult = await feeds_fetchList(cliOptions_extract(parsed));
   let rendered: string = `${feedList_render(feeds, selectedFields, { table: !!parsed.table, csv: !!parsed.csv })}\n`;
   if (totalCount !== undefined && feeds.length < totalCount) {
     rendered += `${chalk.dim(`  ↓ showing ${feeds.length} of ${totalCount}  ·  --all to fetch all  ·  --limit <n> for page size`)}\n`;
@@ -251,7 +251,7 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
     if (subcommand === 'list') {
       return await feedList_handle(parsed);
     } else if (subcommand === 'create') {
-      const feed: Feed | null = await feed_create(cliOptions_from(parsed));
+      const feed: Feed | null = await feed_create(cliOptions_extract(parsed));
       return envelope_ok(feed ? `${feedCreate_render(feed)}\n` : '');
     } else if (subcommand === 'inspect') {
       return await feedInspect_handle();

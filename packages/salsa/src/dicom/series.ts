@@ -219,18 +219,18 @@ export async function dicomSeries_summarize(
   if (!header.ok) return Err();
   const tags: DicomTag[] = header.value.tags;
 
-  const seriesInstanceUID: string | undefined = tagText_of(tags, 'SeriesInstanceUID');
+  const seriesInstanceUID: string | undefined = tagText_find(tags, 'SeriesInstanceUID');
   const summary: DicomSeriesSummary = {
     path: folder,
     ...(seriesInstanceUID !== undefined ? { seriesInstanceUID } : {}),
-    ...(tagText_of(tags, 'StudyInstanceUID') !== undefined ? { studyInstanceUID: tagText_of(tags, 'StudyInstanceUID') } : {}),
-    modality: tagText_of(tags, 'Modality') ?? 'OT',
-    seriesDescription: tagText_of(tags, 'SeriesDescription') ?? '',
-    ...(tagNumber_of(tags, 'SeriesNumber') !== undefined ? { seriesNumber: tagNumber_of(tags, 'SeriesNumber') } : {}),
+    ...(tagText_find(tags, 'StudyInstanceUID') !== undefined ? { studyInstanceUID: tagText_find(tags, 'StudyInstanceUID') } : {}),
+    modality: tagText_find(tags, 'Modality') ?? 'OT',
+    seriesDescription: tagText_find(tags, 'SeriesDescription') ?? '',
+    ...(tagNumber_find(tags, 'SeriesNumber') !== undefined ? { seriesNumber: tagNumber_find(tags, 'SeriesNumber') } : {}),
     instances: files.length,
-    frames: tagNumber_of(tags, 'NumberOfFrames') ?? 1,
+    frames: tagNumber_find(tags, 'NumberOfFrames') ?? 1,
     order: listed.value.order,
-    ...(geometry_of(tags) !== undefined ? { geometry: geometry_of(tags) } : {}),
+    ...(geometry_extract(tags) !== undefined ? { geometry: geometry_extract(tags) } : {}),
     ...(header.value.transferSyntaxUID !== undefined
       ? {
           transferSyntax: {
@@ -268,7 +268,7 @@ export async function dicomSeries_summarize(
 /**
  * A tag's text, or nothing when absent or empty.
  */
-function tagText_of(tags: DicomTag[], name: string): string | undefined {
+function tagText_find(tags: DicomTag[], name: string): string | undefined {
   const tag: DicomTag | undefined = dicomTag_find(tags, name);
   return tag === undefined || tag.value === '' ? undefined : tag.value;
 }
@@ -276,8 +276,8 @@ function tagText_of(tags: DicomTag[], name: string): string | undefined {
 /**
  * A tag's first value as a number, or nothing when absent or not numeric.
  */
-function tagNumber_of(tags: DicomTag[], name: string): number | undefined {
-  const text: string | undefined = tagText_of(tags, name);
+function tagNumber_find(tags: DicomTag[], name: string): number | undefined {
+  const text: string | undefined = tagText_find(tags, name);
   if (text === undefined) return undefined;
   const parsed: number = Number(text.split('\\')[0]);
   return Number.isFinite(parsed) ? parsed : undefined;
@@ -286,19 +286,19 @@ function tagNumber_of(tags: DicomTag[], name: string): number | undefined {
 /**
  * The voxel grid from a header, when it has one.
  */
-function geometry_of(tags: DicomTag[]): DicomGeometry | undefined {
-  const rows: number | undefined = tagNumber_of(tags, 'Rows');
-  const columns: number | undefined = tagNumber_of(tags, 'Columns');
+function geometry_extract(tags: DicomTag[]): DicomGeometry | undefined {
+  const rows: number | undefined = tagNumber_find(tags, 'Rows');
+  const columns: number | undefined = tagNumber_find(tags, 'Columns');
   if (rows === undefined || columns === undefined) return undefined;
   const geometry: DicomGeometry = { rows, columns };
-  const spacing: string | undefined = tagText_of(tags, 'PixelSpacing');
+  const spacing: string | undefined = tagText_find(tags, 'PixelSpacing');
   if (spacing !== undefined) {
     const parts: number[] = spacing.split('\\').map(Number);
     if (parts.length === 2 && parts.every(Number.isFinite)) geometry.pixelSpacing = [parts[0], parts[1]];
   }
-  const thickness: number | undefined = tagNumber_of(tags, 'SliceThickness');
+  const thickness: number | undefined = tagNumber_find(tags, 'SliceThickness');
   if (thickness !== undefined) geometry.sliceThickness = thickness;
-  const between: number | undefined = tagNumber_of(tags, 'SpacingBetweenSlices');
+  const between: number | undefined = tagNumber_find(tags, 'SpacingBetweenSlices');
   if (between !== undefined) geometry.spacingBetweenSlices = between;
   return geometry;
 }

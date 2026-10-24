@@ -31,7 +31,7 @@
  *
  * @module
  */
-import { columnStore_default, columns_read, column_write, floor_of, grips_wire, length_px, track_isExpanse, type ColumnStore } from './columns.js';
+import { columnStore_default, columns_read, column_write, floor_parse, grips_wire, length_px, track_isExpanse, type ColumnStore } from './columns.js';
 import { RosterOrder, type RosterTerm } from './order.js';
 import { barState_clear, barState_set } from './bar.js';
 import { ListingHost } from './host.js';
@@ -39,11 +39,11 @@ import {
   actionCell_build,
   expansion_isOpen,
   expansion_toggle,
-  leadingCells_of,
+  leadingCells_count,
   listingRow_build,
   track_isFixed,
-  traitColumns_of,
-  traitValue_of,
+  traitColumns_map,
+  traitValue_make,
   type Expansion,
   type ListingAction,
   type ListingTrait,
@@ -335,7 +335,7 @@ interface ChildSeat<T> {
   /** Closes every row at every depth beneath. */
   open_clear(): void;
   /** The template at a depth beneath this seat's level. */
-  template_at(depth: number): string;
+  template_select(depth: number): string;
 }
 
 /** What a level asks of the listing that holds it. */
@@ -400,7 +400,7 @@ type LevelSelect<T> = ((key: string, row: T) => boolean) | null;
  *   follows a capped one, or actions on the row declare no track — each
  *   a declaration error that would otherwise surface as a shifted row.
  */
-export function listingTemplate_of<T>(
+export function listingTemplate_build<T>(
   traits: ReadonlyArray<ListingTrait<T>>,
   actions?: ListingActions<T>,
   sized?: ReadonlyMap<string, number>,
@@ -621,16 +621,16 @@ class Level<T> {
     this.host = host;
     this.select = select;
     this.depth = depth;
-    this.template = listingTemplate_of(declaration.traits, this.trackActions_get(), this.sized);
+    this.template = listingTemplate_build(declaration.traits, this.trackActions_get(), this.sized);
     const capped: ReadonlyArray<ListingTrait<T>> = declaration.traits.filter(
       (trait: ListingTrait<T>): boolean => trait.capped !== false,
     );
     this.order = new RosterOrder<T>(
-      traitColumns_of(capped),
-      traitValue_of(declaration.traits),
+      traitColumns_map(capped),
+      traitValue_make(declaration.traits),
       (): void => this.host.repaint(),
       declaration.defaultSort,
-      leadingCells_of(declaration.traits),
+      leadingCells_count(declaration.traits),
       capsInRoot,
       declaration.terms ?? [],
     );
@@ -663,7 +663,7 @@ class Level<T> {
         forget: (): void => level.forget(),
         open_set: (depth: number, keys: ReadonlyArray<string>): void => level.open_set(depth, keys),
         open_clear: (): void => level.open_clear(),
-        template_at: (depth: number): string => level.template_at(depth),
+        template_select: (depth: number): string => level.template_select(depth),
       };
     });
   }
@@ -679,7 +679,7 @@ class Level<T> {
    */
   public actions_set(actions: ListingActions<T> | null): void {
     this.declaration = { ...this.declaration, ...(actions === null ? { actions: undefined } : { actions }) };
-    this.template = listingTemplate_of(this.traits_shown(), this.trackActions_get(), this.sized);
+    this.template = listingTemplate_build(this.traits_shown(), this.trackActions_get(), this.sized);
   }
 
   /** The columns standing aside because the pane is too narrow (their keys). */
@@ -698,7 +698,7 @@ class Level<T> {
   public shed_set(keys: ReadonlyArray<string>): void {
     this.shed.clear();
     for (const key of keys) this.shed.add(key);
-    this.template = listingTemplate_of(this.traits_shown(), this.trackActions_get(), this.sized);
+    this.template = listingTemplate_build(this.traits_shown(), this.trackActions_get(), this.sized);
   }
 
   /** The keys that may stand aside, in the order they give way (rank 1 first). */
@@ -710,7 +710,7 @@ class Level<T> {
   }
 
   /** A trait's cap label, for naming what stood aside. */
-  public label_of(key: string): string {
+  public label_find(key: string): string {
     return this.declaration.traits.find((trait: ListingTrait<T>): boolean => trait.key === key)?.label ?? key;
   }
 
@@ -720,11 +720,11 @@ class Level<T> {
   /** Sizes one column (null gives it back to its declaration) and rewrites the template. */
   public column_size(key: string, px: number | null): void {
     if (px === null) this.sized.delete(key); else this.sized.set(key, px);
-    this.template = listingTemplate_of(this.traits_shown(), this.trackActions_get(), this.sized);
+    this.template = listingTemplate_build(this.traits_shown(), this.trackActions_get(), this.sized);
   }
 
   /** The declared track of a trait, for its floor. */
-  public track_of(key: string): string | null {
+  public track_find(key: string): string | null {
     return this.declaration.traits.find((trait: ListingTrait<T>): boolean => trait.key === key)?.width ?? null;
   }
 
@@ -734,7 +734,7 @@ class Level<T> {
   }
 
   /** The expanse trait's key and track, when the level declares one. */
-  public expanse_of(): { key: string; width: string } | null {
+  public expanse_find(): { key: string; width: string } | null {
     const expanse: ListingTrait<T> | undefined = this.declaration.traits.find((trait: ListingTrait<T>): boolean => track_isExpanse(trait.width ?? ''));
     return expanse === undefined ? null : { key: expanse.key, width: expanse.width ?? '' };
   }
@@ -787,10 +787,10 @@ class Level<T> {
    * @returns The template.
    * @throws {Error} When no level exists at that depth.
    */
-  public template_at(depth: number): string {
+  public template_select(depth: number): string {
     if (depth === 0) return this.template;
     if (this.child === null) throw new Error(`no listing level at depth ${this.depth + depth}`);
-    return this.child.template_at(depth - 1);
+    return this.child.template_select(depth - 1);
   }
 
   /** Whether any row of a set survives the filter, at this level or beneath. */
@@ -933,7 +933,7 @@ class Level<T> {
     // With a control declared, the two intents are kept apart on the row
     // itself: the control's cell activates (folds, enters, opens) and
     // nothing else; the rest of the row indicates and does not activate.
-    const controlCell: HTMLElement | null = this.controlCell_of(element);
+    const controlCell: HTMLElement | null = this.controlCell_find(element);
     element.addEventListener('click', (event: Event): void => {
       if (!lead && this.select !== null && this.select(key, row)) return;
       if (controlCell !== null && event.target instanceof Node && controlCell.contains(event.target)) {
@@ -971,7 +971,7 @@ class Level<T> {
    * @param element - The row, its cells in trait order.
    * @returns The control cell, or null.
    */
-  private controlCell_of(element: HTMLElement): HTMLElement | null {
+  private controlCell_find(element: HTMLElement): HTMLElement | null {
     const controlKey: string | undefined = this.declaration.control;
     if (controlKey === undefined) return null;
     const index: number = this.declaration.traits.findIndex((trait: ListingTrait<T>): boolean => trait.key === controlKey);
@@ -997,7 +997,7 @@ class Level<T> {
     // flight is absorbed (the double-press of impatience is not two
     // navigations); a press on another row replaces the intent.
     if (this.host.activating_is(key)) return;
-    this.host.activation_begin(key, this.rowsByKey.get(key) ?? null, rowName_of(key));
+    this.host.activation_begin(key, this.rowsByKey.get(key) ?? null, rowName_derive(key));
     this.declaration.activate?.(row);
   }
 
@@ -1092,7 +1092,7 @@ class Level<T> {
   }
 
   /** The keys of the governed rows on stage. */
-  public keys_onStage(): string[] {
+  public keysOnStage_list(): string[] {
     return [...this.rowsByKey.keys()].filter((key: string): boolean => !this.leadKeys.has(key));
   }
 }
@@ -1471,7 +1471,7 @@ export class Listing<T> {
    * @returns The template.
    */
   public template_get(depth: number = 0): string {
-    return this.level.template_at(depth);
+    return this.level.template_select(depth);
   }
 
   /** The field on stage, or null before the first render — for a pane that seats a wait in it. */
@@ -1557,13 +1557,13 @@ export class Listing<T> {
     if (caps === null) return;
     const store: ColumnStore | null = columnStore_default();
     grips_wire(caps, {
-      key_of: (cap: HTMLElement): string | null => cap.dataset['key'] ?? null,
-      expanse_is: (key: string): boolean => track_isExpanse(this.level.track_of(key) ?? ''),
-      floor_of: (key: string): number => length_px(floor_of(this.level.track_of(key) ?? '3em'), caps),
+      key_read: (cap: HTMLElement): string | null => cap.dataset['key'] ?? null,
+      expanse_is: (key: string): boolean => track_isExpanse(this.level.track_find(key) ?? ''),
+      floor_measure: (key: string): number => length_px(floor_parse(this.level.track_find(key) ?? '3em'), caps),
       expanseSlack: (): number => {
-        const expanse: { key: string; width: string } | null = this.level.expanse_of();
+        const expanse: { key: string; width: string } | null = this.level.expanse_find();
         const cap: HTMLElement | null = expanse === null ? null : caps.querySelector<HTMLElement>(`.roster-cap[data-key="${expanse.key}"]`);
-        return cap === null || expanse === null ? 0 : Math.max(0, cap.getBoundingClientRect().width - length_px(floor_of(expanse.width), caps));
+        return cap === null || expanse === null ? 0 : Math.max(0, cap.getBoundingClientRect().width - length_px(floor_parse(expanse.width), caps));
       },
       size: (key: string, px: number): void => this.column_size(key, px, store),
       reset: (key: string): void => this.column_size(key, null, store),
@@ -1591,7 +1591,7 @@ export class Listing<T> {
   private columnsBlock_paint(): void {
     if (this.columnsBlock === null) return;
     const sized: boolean = this.level.sized.size > 0;
-    const shed: string[] = [...this.level.shed].map((key: string): string => this.level.label_of(key));
+    const shed: string[] = [...this.level.shed].map((key: string): string => this.level.label_find(key));
     this.columnsBlock.textContent = `COLUMNS${sized ? ' · SIZED' : ''}${shed.length > 0 ? ` · ${shed.length} HIDDEN` : ''}`;
     this.columnsBlock.classList.toggle('rail-off', !sized && shed.length === 0);
     this.columnsBlock.title = `${sized ? 'columns sized by hand; press to give them all back' : 'drag a cap\'s edge to size its column; a double-press gives one back'}${shed.length > 0 ? `. Hidden for want of room: ${shed.join(', ')} (a wider pane brings them back)` : ''}`;
@@ -1683,7 +1683,7 @@ export class Listing<T> {
 
   /** Paints the selection: the marked rows, and the zone's verbs. */
   private selection_render(): void {
-    for (const key of this.level.keys_onStage()) {
+    for (const key of this.level.keysOnStage_list()) {
       this.level.row_element(key)?.classList.toggle('listing-selected', this.selection.has(key));
     }
     if (this.zone === null) return;
@@ -1845,7 +1845,7 @@ function zone_mint(mount: HTMLElement, prefix: string | undefined): HTMLElement 
  * @param key - The row's key.
  * @returns The name.
  */
-export function rowName_of(key: string): string {
+export function rowName_derive(key: string): string {
   return key.split('/').filter((part: string): boolean => part !== '').pop() ?? key;
 }
 

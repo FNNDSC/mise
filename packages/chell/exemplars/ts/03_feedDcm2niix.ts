@@ -142,7 +142,7 @@ async function feed_root(cleanup: CleanupPlan, folderPath: string): Promise<Resu
   cleanup.register(`deleted feed ${feedId}`, async () => (await feed_delete(feedId)).ok);
 
   const plugin: ChRISPlugin = new ChRISPlugin();
-  const dircopyDict: Dictionary | null = plugin.pluginInstance_toDict(detail.pluginInstance as PluginInstance);
+  const dircopyDict: Dictionary | null = plugin.pluginInstance_convertToDict(detail.pluginInstance as PluginInstance);
   const dircopyId: number = Number(dircopyDict?.id);
   if (!check('dircopy instance id resolved', Number.isFinite(dircopyId))) return Err();
   return Ok(dircopyId);
@@ -164,7 +164,7 @@ async function analysis_runAndVerify(parentId: number, runId: string): Promise<v
   );
   if (!check('dcm2niix instance created', !!instance) || !instance) return;
 
-  const instanceDict: Dictionary | null = plugin.pluginInstance_toDict(instance);
+  const instanceDict: Dictionary | null = plugin.pluginInstance_convertToDict(instance);
   const instanceId: number = Number(instanceDict?.id);
   const finished: Result<string> = await step('dcm2niix finished successfully', job_awaitSuccess(instanceId));
   if (!finished.ok) return;

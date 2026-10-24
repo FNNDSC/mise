@@ -167,7 +167,7 @@ function data_place(m: Matrix, codewords: number[], mask: number): void {
 }
 
 /** The penalty of a drawn matrix, by the four rules; lower is better. */
-export function penalty_of(dark: boolean[][]): number {
+export function penalty_compute(dark: boolean[][]): number {
   const n: number = dark.length;
   let score: number = 0;
   const run = (line: boolean[]): void => {
@@ -255,7 +255,7 @@ export function qr_encode(text: string, maskForced?: number): { size: number; da
     functions_draw(m, version);
     data_place(m, codewords, mask);
     format_draw(m, mask);
-    const penalty: number = penalty_of(m.dark);
+    const penalty: number = penalty_compute(m.dark);
     if (best === null || penalty < best.penalty) best = { dark: m.dark, mask, penalty };
   }
   return { size, dark: (best as { dark: boolean[][] }).dark, version, mask: (best as { mask: number }).mask };

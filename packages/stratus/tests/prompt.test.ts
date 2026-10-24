@@ -8,7 +8,7 @@ import path from 'node:path';
 import type { PromptSegment } from '@fnndsc/menu';
 import { FakeDriver, fakeCloud_sample } from '../src/cloud/fake/driver.js';
 import { StratusSession } from '../src/session.js';
-import { domain_ofPath, stratusSegments_build, STRATUS_SEGMENT_KEYS } from '../src/prompt.js';
+import { domain_parse, stratusSegments_build, STRATUS_SEGMENT_KEYS } from '../src/prompt.js';
 
 /** A session over the fake cloud, connected, standing at `cwd`. */
 async function session_make(cwd?: string): Promise<StratusSession> {
@@ -18,14 +18,14 @@ async function session_make(cwd?: string): Promise<StratusSession> {
   return session;
 }
 
-describe('domain_ofPath', () => {
+describe('domain_parse', () => {
   it('names the domain a path is inside, and nothing else', () => {
-    expect(domain_ofPath('/net/oci/fnndsc/domains/harbor/steps', '/net/oci/fnndsc')).toBe('harbor');
-    expect(domain_ofPath('/net/oci/fnndsc/domains/harbor', '/net/oci/fnndsc')).toBe('harbor');
-    expect(domain_ofPath('/net/oci/fnndsc/domains', '/net/oci/fnndsc')).toBeNull();
-    expect(domain_ofPath('/net/oci/fnndsc/domains/', '/net/oci/fnndsc')).toBeNull();
-    expect(domain_ofPath('/net/oci/fnndsc/harbor-oci', '/net/oci/fnndsc')).toBeNull();
-    expect(domain_ofPath('/net/oci/other/domains/harbor', '/net/oci/fnndsc')).toBeNull();
+    expect(domain_parse('/net/oci/fnndsc/domains/harbor/steps', '/net/oci/fnndsc')).toBe('harbor');
+    expect(domain_parse('/net/oci/fnndsc/domains/harbor', '/net/oci/fnndsc')).toBe('harbor');
+    expect(domain_parse('/net/oci/fnndsc/domains', '/net/oci/fnndsc')).toBeNull();
+    expect(domain_parse('/net/oci/fnndsc/domains/', '/net/oci/fnndsc')).toBeNull();
+    expect(domain_parse('/net/oci/fnndsc/harbor-oci', '/net/oci/fnndsc')).toBeNull();
+    expect(domain_parse('/net/oci/other/domains/harbor', '/net/oci/fnndsc')).toBeNull();
   });
 });
 

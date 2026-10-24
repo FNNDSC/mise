@@ -16,7 +16,7 @@
  *
  * @module
  */
-import { answerNumbering_of, handleWords_of, numberedFooter_of } from '../../session/answer.js';
+import { answerNumbering_derive, handleWords_map, numberedFooter_render } from '../../session/answer.js';
 import type { PacsPatient, PacsQueryModel, PacsSeries, PacsStudy } from '@fnndsc/menu';
 
 /**
@@ -159,7 +159,7 @@ export function pacsAnswer_rows(model: PacsQueryModel, level: PacsAnswerLevel = 
  * @param level - One row per study (the default), or per series.
  * @returns The CSV text, header row first.
  */
-export function pacsAnswer_toCsv(model: PacsQueryModel, level: PacsAnswerLevel = 'study'): string {
+export function pacsAnswer_renderCsv(model: PacsQueryModel, level: PacsAnswerLevel = 'study'): string {
   const { columns, rows } = pacsAnswer_rows(model, level);
   const lines: string[] = [columns.map(cell_quote).join(',')];
   for (const row of rows) lines.push(row.map(cell_quote).join(','));
@@ -177,12 +177,12 @@ export function pacsAnswer_toCsv(model: PacsQueryModel, level: PacsAnswerLevel =
  * @param level - One row per study (the default), or per series.
  * @returns The table, header and rule first, uncoloured.
  */
-export function pacsAnswer_toTable(model: PacsQueryModel, level: PacsAnswerLevel = 'study'): string {
+export function pacsAnswer_renderTable(model: PacsQueryModel, level: PacsAnswerLevel = 'study'): string {
   const table = pacsAnswer_rows(model, level);
   // The handle each row answers to leads the screen's table (#1099); the
   // CSV, a record of the answer, does not carry it.
-  const numbered = answerNumbering_of('pacs.query', model) ?? [];
-  const words: Map<string, string> = handleWords_of(numbered);
+  const numbered = answerNumbering_derive('pacs.query', model) ?? [];
+  const words: Map<string, string> = handleWords_map(numbered);
   // A column is earned: an answer nothing numbers (no paths yet) keeps the
   // table it always had.
   const lead: boolean = table.keys.some((key: string | null): boolean => key !== null && words.has(key));
@@ -196,7 +196,7 @@ export function pacsAnswer_toTable(model: PacsQueryModel, level: PacsAnswerLevel
   const out: string[] = [line(columns), `  ${widths.map((width: number): string => '─'.repeat(width)).join('  ')}`];
   for (const row of rows) out.push(line(row));
   out.push('', `  ${rows.length} row${rows.length === 1 ? '' : 's'}, one per ${level}`);
-  const footer: string = numberedFooter_of(numbered);
+  const footer: string = numberedFooter_render(numbered);
   if (footer !== '') out.push(`  ${footer}`);
   return `${out.join('\n')}\n`;
 }

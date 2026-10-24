@@ -60,7 +60,7 @@ export async function prefetch_path(target: string): Promise<PrefetchResult> {
  * @param statusWidth  - Width of the host's status-tag column, so a running
  *   row's label lines up with the finished row that replaces it.
  */
-export async function prefetch_withSpinner(
+export async function prefetchWithSpinner_run(
   label: string,
   message: string,
   isInteractive: boolean,

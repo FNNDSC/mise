@@ -88,7 +88,7 @@ export interface Asks {
   /** The pane whose pressed verb is running a line, taken once: a later question never inherits a stale pane. */
   askingPane_take: () => string | null;
   /** Puts a question on the pane that provoked it, or on the console when the pane is not on stage. */
-  ask_onPane: (id: string, request: PaneAskRequest) => Promise<string | null>;
+  askOnPane_await: (id: string, request: PaneAskRequest) => Promise<string | null>;
 }
 
 /**
@@ -227,7 +227,7 @@ export function asks_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
     return provoker;
   };
 
-  const ask_onPane = async (id: string, request: PaneAskRequest): Promise<string | null> => {
+  const askOnPane_await = async (id: string, request: PaneAskRequest): Promise<string | null> => {
     const { terminal } = context;
     const mount: HTMLElement | undefined = paneInstance_get(id)?.mount;
     // A pane that is not on stage cannot carry a question; the console can,
@@ -245,5 +245,5 @@ export function asks_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
     return question_stand(terminal, mount, request);
   };
 
-  return { errandHost_find, errand_open, errand_abandon, verbLine_run, askingPane_take, ask_onPane };
+  return { errandHost_find, errand_open, errand_abandon, verbLine_run, askingPane_take, askOnPane_await };
 }

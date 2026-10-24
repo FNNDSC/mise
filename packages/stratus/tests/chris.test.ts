@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { KubeError, type KubeApi } from '../src/cluster/kube.js';
-import { busyWait_of } from '../src/cluster/kubeHttp.js';
+import { busyWait_parse } from '../src/cluster/kubeHttp.js';
 import { CHRIS_RELEASE, CHRIS_VALUES, chrisomaticConfig_render, smokeVerdict_words, chrisWork_cluster, helmInstall_args, rollout_done, TEST_PASSWORD_FILE, type ChrisCall, type HostResult, type HostRunOptions } from '../src/cluster/chris.js';
 import { SPEC_DEFAULT } from '../src/domain/spec.js';
 
@@ -177,8 +177,8 @@ describe('ChRIS on a cluster', () => {
   });
 
   it('waits as long as a 429 asks, within a second and ten', () => {
-    expect(busyWait_of('{"kind":"Status","code":429,"details":{"retryAfterSeconds":1}}')).toBe(1000);
-    expect(busyWait_of('{"details":{"retryAfterSeconds":60}}')).toBe(10_000);
-    expect(busyWait_of('not json')).toBe(2000);
+    expect(busyWait_parse('{"kind":"Status","code":429,"details":{"retryAfterSeconds":1}}')).toBe(1000);
+    expect(busyWait_parse('{"details":{"retryAfterSeconds":60}}')).toBe(10_000);
+    expect(busyWait_parse('not json')).toBe(2000);
   });
 });

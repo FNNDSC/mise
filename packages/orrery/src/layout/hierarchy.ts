@@ -69,7 +69,7 @@ const TOP_TICKS: number = 60;
  * group and its radius. Feeds of one pipeline share it, and a shape laid
  * out once serves them all.
  */
-function moleculeSignature_of(members: ReadonlyArray<HierarchyNode>): string {
+function moleculeSignature_derive(members: ReadonlyArray<HierarchyNode>): string {
   const index: Map<string, number> = new Map(members.map((member: HierarchyNode, i: number): [string, number] => [member.id, i]));
   return members.map((member: HierarchyNode): string => {
     const parents: string = member.parents.map((parent: string): number => index.get(parent) ?? -1).join('.');
@@ -117,7 +117,7 @@ function vector_turnOnto(v: [number, number, number], from: [number, number, num
  * it, so the spokes grow with the crowd as they did when feeds pushed each
  * other outward.
  */
-function spokeShell_of(hubRadius: number, spokes: ReadonlyArray<{ id: string }>, bodyRadius: ReadonlyMap<string, number>): number {
+function spokeShell_compute(hubRadius: number, spokes: ReadonlyArray<{ id: string }>, bodyRadius: ReadonlyMap<string, number>): number {
   if (spokes.length === 0) return hubRadius;
   let mean: number = 0;
   for (const spoke of spokes) mean += bodyRadius.get(spoke.id.slice('group:'.length)) ?? BODY_MIN_RADIUS;
@@ -187,7 +187,7 @@ export function hierarchy_layout(
     }
     if (members.every((member: HierarchyNode): boolean => member.frozen === true && member.seed !== undefined)) bodyFrozen.add(key);
     const local: Map<string, [number, number, number]> = new Map();
-    const signature: string | null = seeded.length === 0 ? moleculeSignature_of(members) : null;
+    const signature: string | null = seeded.length === 0 ? moleculeSignature_derive(members) : null;
     const known: Array<[number, number, number]> | undefined = signature === null ? undefined : shapes.get(signature);
     if (seeded.length === members.length) {
       // Every sphere stood somewhere: the molecule keeps its shape.
@@ -337,7 +337,7 @@ export function hierarchy_layout(
       if (!body.id.startsWith('group:')) {
         const spokes: SimNode[] = children.get(body.id) ?? [];
         let reach: number = body.r;
-        const shell: number = spokeShell_of(body.r, spokes, bodyRadius);
+        const shell: number = spokeShell_compute(body.r, spokes, bodyRadius);
         for (const spoke of spokes) {
           const key: string = spoke.id.slice('group:'.length);
           const root: [number, number, number] = rootOf(key);
@@ -366,7 +366,7 @@ export function hierarchy_layout(
     for (const body of bodies) {
       if (body.id.startsWith('group:') || !children.has(body.id)) continue;
       const spokes: SimNode[] = children.get(body.id) ?? [];
-      const shell: number = spokeShell_of(body.r, spokes, bodyRadius);
+      const shell: number = spokeShell_compute(body.r, spokes, bodyRadius);
       spokes.forEach((spoke: SimNode, k: number): void => {
         if (spoke.fx !== undefined || bodySeed.has(spoke.id.slice('group:'.length))) return;
         const root: [number, number, number] = rootOf(spoke.id.slice('group:'.length));

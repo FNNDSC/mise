@@ -2,7 +2,7 @@
  * @file Builtin ls command.
  * Lists directory contents.
  */
-import { answerNumbering_of, handle_word, numberedFooter_of, type NumberedHandle } from '../../session/answer.js';
+import { answerNumbering_derive, handle_word, numberedFooter_render, type NumberedHandle } from '../../session/answer.js';
 import chalk from 'chalk';
 import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
 import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
@@ -82,7 +82,7 @@ export async function builtin_ls(args: string[]): Promise<CommandEnvelope> {
  * @returns The listing with handles, or as it was.
  */
 function longHandles_add(rendered: string, listings: ReadonlyArray<LsListing>): string {
-  const handles: NumberedHandle[] = answerNumbering_of('fs.listing', listings) ?? [];
+  const handles: NumberedHandle[] = answerNumbering_derive('fs.listing', listings) ?? [];
   if (handles.length === 0) return rendered;
   const lines: string[] = rendered.split('\n');
   const entry = (line: string): boolean => /^[dl-] /.test(line.replace(/\x1b\[[0-9;]*m/g, ''));
@@ -95,7 +95,7 @@ function longHandles_add(rendered: string, listings: ReadonlyArray<LsListing>): 
     return `${chalk.cyan((handle === undefined ? '' : handle_word(handle)).padEnd(width))}  ${line}`;
   });
   const text: string = out.join('\n');
-  return `${text}${text.endsWith('\n') ? '' : '\n'}${chalk.gray(numberedFooter_of(handles))}\n`;
+  return `${text}${text.endsWith('\n') ? '' : '\n'}${chalk.gray(numberedFooter_render(handles))}\n`;
 }
 
 /**

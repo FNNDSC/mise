@@ -31,7 +31,7 @@ export type FeedHolder = { kind: 'user' | 'group'; name: string } | { kind: 'pub
 
 /** What the access verbs ask of the host. */
 export interface AccessHooks {
-  ask_onPane: (id: string, request: PaneAskRequest) => Promise<string | null>;
+  askOnPane_await: (id: string, request: PaneAskRequest) => Promise<string | null>;
   /** The session's user, for the groups they belong to; null before the prompt names one. */
   promptUser: () => string | null;
   /** A feed's access or name changed: whatever shows it reads it again. */
@@ -56,7 +56,7 @@ export interface AccessVerbs {
  * @param outcome - What the command returned.
  * @returns The holders, or null when the model carried none.
  */
-export function holders_of(outcome: ExecuteOutcome): FeedHolders | null {
+export function holders_extract(outcome: ExecuteOutcome): FeedHolders | null {
   for (const envelope of outcome.envelopes as ReadonlyArray<WireEnvelope>) {
     if (envelope.model?.kind !== 'fs.acl') continue;
     const block = (envelope.model.data as Array<{ usernames?: string[]; groups?: string[]; public?: boolean }>)[0];
@@ -88,7 +88,7 @@ export function groupsOf_user(text: string, user: string): string[] {
  * @param answer - The answer.
  * @returns The entry.
  */
-export function shareEntry_of(answer: string): string {
+export function shareEntry_derive(answer: string): string {
   return /^(u|user|g|group|o|other):/.test(answer) ? answer : `u:${answer}:r`;
 }
 
@@ -100,7 +100,7 @@ export function shareEntry_of(answer: string): string {
  * @param holder - The holder.
  * @returns The line.
  */
-export function holderLine_of(feedId: number, holder: FeedHolder): string {
+export function holderLine_format(feedId: number, holder: FeedHolder): string {
   if (holder.kind === 'public') return `setfacl -m o::- feed_${feedId}`;
   return `setfacl -x ${holder.kind === 'user' ? 'u' : 'g'}:${word_quote(holder.name)} feed_${feedId}`;
 }
@@ -127,7 +127,7 @@ export function access_wire(context: Pick<HostContext, 'terminal' | 'client'>, h
 
   const holders_read = async (feedId: number): Promise<FeedHolders | null> => {
     try {
-      return holders_of(await context.client.line_execute(`getfacl feed_${feedId}`, quiet));
+      return holders_extract(await context.client.line_execute(`getfacl feed_${feedId}`, quiet));
     } catch {
       return null;
     }
@@ -146,9 +146,9 @@ export function access_wire(context: Pick<HostContext, 'terminal' | 'client'>, h
   };
 
   const holder_remove = async (paneId: string, feedId: number, holder: FeedHolder): Promise<void> => {
-    const answer: string | null = await hooks.ask_onPane(paneId, { kind: 'confirm', message: `Stop sharing feed_${feedId} with ${holder_said(holder)}? ` });
+    const answer: string | null = await hooks.askOnPane_await(paneId, { kind: 'confirm', message: `Stop sharing feed_${feedId} with ${holder_said(holder)}? ` });
     if (answer !== 'y') return;
-    if (await lineVisible_run(context, holderLine_of(feedId, holder))) hooks.changed(feedId);
+    if (await lineVisible_run(context, holderLine_format(feedId, holder))) hooks.changed(feedId);
   };
 
   const holders_build = (paneId: string, feedId: number, holders: FeedHolders): HTMLElement => {
@@ -194,7 +194,7 @@ export function access_wire(context: Pick<HostContext, 'terminal' | 'client'>, h
         { value: 'o::r', label: 'EVERYONE', held: held.public },
         ...groups.map((group: string): PaneAskChoice => ({ value: `g:${group}:r`, label: group, held: held.groups.includes(group) })),
       ];
-      const answer: string = ((await hooks.ask_onPane(paneId, {
+      const answer: string = ((await hooks.askOnPane_await(paneId, {
         kind: 'choose',
         message: `Share feed_${feedId} with a group, everyone, or a user: `,
         choices,
@@ -202,13 +202,13 @@ export function access_wire(context: Pick<HostContext, 'terminal' | 'client'>, h
         close: 'DONE',
       })) ?? '').trim();
       if (answer === '') return;
-      if (!(await lineVisible_run(context, `setfacl -m ${shareEntry_of(answer)} feed_${feedId}`))) return;
+      if (!(await lineVisible_run(context, `setfacl -m ${shareEntry_derive(answer)} feed_${feedId}`))) return;
       hooks.changed(feedId);
     }
   };
 
   const rename = async (paneId: string, feedId: number, title: string): Promise<void> => {
-    const answer: string = ((await hooks.ask_onPane(paneId, { kind: 'text', message: `Rename feed_${feedId} to: `, suggest: title, commit: 'RENAME' })) ?? '').trim();
+    const answer: string = ((await hooks.askOnPane_await(paneId, { kind: 'text', message: `Rename feed_${feedId} to: `, suggest: title, commit: 'RENAME' })) ?? '').trim();
     if (answer === '' || answer === title) return;
     if (await lineVisible_run(context, saveLine_compose(`/proc/jobs/feed_${feedId}/title`, answer))) hooks.changed(feedId);
   };

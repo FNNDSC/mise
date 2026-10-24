@@ -18,7 +18,7 @@ jest.unstable_mockModule('@fnndsc/chili/utils/cli.js', () => ({
   path_resolveChrisFs: mockResolveChrisFs,
 }));
 cuminMock_install(() => ({
-  feedTags_byFeed: jest.fn(),
+  feedTags_readByFeed: jest.fn(),
   Err: (): { ok: false } => ({ ok: false }),
   Ok: <T>(value: T): { ok: true; value: T } => ({ ok: true, value }),
   errorStack: { stack_push: jest.fn() },

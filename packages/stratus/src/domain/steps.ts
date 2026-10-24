@@ -21,9 +21,9 @@ import { join } from 'node:path';
 import type { JobContext, JobRun } from '@fnndsc/brasa/core';
 import { CHRIS_RELEASE, CHRIS_WAITS, chrisWork_cluster, hostRun_spawn, type ChrisCall, type ChrisWaits, type ChrisWork, type HostRun } from '../cluster/chris.js';
 import type { VerifyReach } from '../commands/verify.js';
-import { planCounts_alter, planCounts_of, planCounts_words, type BuildCall, type CloudBuilder, type InfraOutputs, type InfraPlan, type PreflightCheck } from '../cloud/builder.js';
+import { planCounts_alter, plan_count, planCounts_words, type BuildCall, type CloudBuilder, type InfraOutputs, type InfraPlan, type PreflightCheck } from '../cloud/builder.js';
 import type { Installer, InstallerHost, InstallerIds, InstallStatus, PlatformManifest } from '../installer/installer.js';
-import { specNodes_of, type DomainSpec, type SpecNode } from './spec.js';
+import { specNodes_build, type DomainSpec, type SpecNode } from './spec.js';
 import type { DomainRecord, DomainStore, StepRecord } from './state.js';
 import { verify_run, verifyChecks_keep, type VerifyCheck } from './verify.js';
 
@@ -92,7 +92,7 @@ export function buildJob_id(domain: string): string {
  * @param record - The domain's state.
  * @returns The step, or null when every step is done.
  */
-export function stepNext_of(record: DomainRecord): string | null {
+export function stepNext_find(record: DomainRecord): string | null {
   return BUILD_STEPS.find((step: string): boolean => record.steps[step]?.state !== 'done') ?? null;
 }
 
@@ -163,9 +163,9 @@ function kubeconfig_need(call: StepCall): string {
  * @param call - The step.
  * @returns The ChRIS call.
  */
-function chrisCall_of(call: StepCall): ChrisCall {
+function chrisCall_build(call: StepCall): ChrisCall {
   if (call.deps.reach === undefined) throw new Error('this session cannot reach a cluster');
-  const folder: string = call.deps.store.folder_of(call.name);
+  const folder: string = call.deps.store.folder_derive(call.name);
   return {
     kube: call.deps.reach.kube_make(kubeconfig_need(call)),
     host: call.deps.host ?? hostRun_spawn,
@@ -225,7 +225,7 @@ const STEP_WORK: Readonly<Record<string, (call: StepCall) => Promise<string>>> =
       ...(record.compartmentId !== undefined ? { compartmentId: record.compartmentId } : {}),
       ...(record.ids['stackRef'] !== undefined ? { stackRef: record.ids['stackRef'] } : {}),
     }, call);
-    const counts = planCounts_of(plan);
+    const counts = plan_count(plan);
     call.deps.store.file_write(call.name, 'plan.json', `${JSON.stringify(plan, null, 2)}\n`);
     call.remember({ planRef: plan.ref, ...(plan.stackRef !== undefined ? { stackRef: plan.stackRef } : {}) });
     if (planCounts_alter(counts)) throw new Error(`the plan touches what exists (${planCounts_words(counts)}): refused`);
@@ -241,7 +241,7 @@ const STEP_WORK: Readonly<Record<string, (call: StepCall) => Promise<string>>> =
     call.remember({ stackRef: outputs.stackRef, apiIp: outputs.apiIp, apiIntIp: outputs.apiIntIp, appsIp: outputs.appsIp, appliedAt: new Date().toISOString() });
     // The manifests the stack made, for the manifests step, kept with the domain.
     call.deps.store.file_write(call.name, 'manifests.json', `${JSON.stringify(outputs.manifests, null, 2)}\n`);
-    return `${planCounts_of(plan).create} created; billing since ${new Date().toISOString().slice(0, 16)}`;
+    return `${plan_count(plan).create} created; billing since ${new Date().toISOString().slice(0, 16)}`;
   },
   dns: async (call: StepCall): Promise<string> => {
     const record: DomainRecord = call.record();
@@ -259,7 +259,7 @@ const STEP_WORK: Readonly<Record<string, (call: StepCall) => Promise<string>>> =
   },
   hosts: async (call: StepCall): Promise<string> => {
     const ids: InstallerIds = ids_need(call.record());
-    const nodes: SpecNode[] = specNodes_of(call.name, call.spec, call.deps.zones);
+    const nodes: SpecNode[] = specNodes_build(call.name, call.spec, call.deps.zones);
     const deadline: number = Date.now() + call.deps.hostsWaitMs;
     const assigned: Set<string> = new Set();
     let seen: number = -1;
@@ -333,13 +333,13 @@ const STEP_WORK: Readonly<Record<string, (call: StepCall) => Promise<string>>> =
     return 'stopped while verifying';
   },
   'chris-deploy': async (call: StepCall): Promise<string> => {
-    const chris: ChrisCall = chrisCall_of(call);
+    const chris: ChrisCall = chrisCall_build(call);
     const note: string = await (call.deps.chris ?? chrisWork_cluster).deploy(chris);
     call.remember({ cubeUrl: `https://${chris.cubeHost}/api/v1/` });
     return note;
   },
-  'chris-seed': async (call: StepCall): Promise<string> => (call.deps.chris ?? chrisWork_cluster).seed(chrisCall_of(call)),
-  smoke: async (call: StepCall): Promise<string> => (call.deps.chris ?? chrisWork_cluster).smoke(chrisCall_of(call)),
+  'chris-seed': async (call: StepCall): Promise<string> => (call.deps.chris ?? chrisWork_cluster).seed(chrisCall_build(call)),
+  smoke: async (call: StepCall): Promise<string> => (call.deps.chris ?? chrisWork_cluster).smoke(chrisCall_build(call)),
 };
 
 /**
@@ -372,7 +372,7 @@ export function buildRun_make(name: string, through: string | undefined, deps: B
       if (context.signal.aborted) return;
       const record: DomainRecord | null = deps.store.record_read(name);
       if (record === null) throw new Error(`${name}: no such domain`);
-      const step: string | null = stepNext_of(record);
+      const step: string | null = stepNext_find(record);
       if (step === null) { context.log_write('every step is done'); return; }
       if (!STEPS_WRITTEN.includes(step)) { context.log_write(`stopping before ${step}: not a step this session has yet`); context.data_set('stoppedBefore', step); return; }
       if (step === FIRST_BILLING_STEP && record.billingAccepted === undefined) {
@@ -405,7 +405,7 @@ export function buildRun_make(name: string, through: string | undefined, deps: B
       }
       step_record(deps.store, name, step, { state: 'done', ended: new Date().toISOString(), note });
       context.log_write(`${step}: done · ${note}`);
-      if (step === through) { context.data_set('stoppedBefore', stepNext_of(deps.store.record_read(name) as DomainRecord) ?? ''); return; }
+      if (step === through) { context.data_set('stoppedBefore', stepNext_find(deps.store.record_read(name) as DomainRecord) ?? ''); return; }
     }
   };
 }
@@ -432,7 +432,7 @@ export function planRun_make(name: string, builder: CloudBuilder, store: DomainS
     );
     if (context.signal.aborted) return;
     store.file_write(name, 'plan.json', `${JSON.stringify(plan, null, 2)}\n`);
-    const counts = planCounts_of(plan);
+    const counts = plan_count(plan);
     context.log_write(`plan: ${planCounts_words(counts)}`);
   };
 }

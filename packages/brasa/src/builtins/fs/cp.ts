@@ -9,7 +9,7 @@ import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
 import type { ListingCache } from '../../core/backend.js';
 import { destination_ask, destination_missing, operands_fix } from './destination.js';
 import { cp_render, vfsRefusal_text, type VFSDispatcher, type VfsOutcome } from '@fnndsc/fond';
-import { entry_at, entry_isFolder } from './entries.js';
+import { pathEntry_find, entry_isFolder } from './entries.js';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 /** Outcome of one copy source, for the envelope model. */
@@ -135,7 +135,7 @@ export async function cp_run(options: CpOptions): Promise<CommandEnvelope> {
 
       // Into a folder the destination names, the copy keeps its name.
       const dispatcher: VFSDispatcher = vfsDispatcher_get();
-      const finalDest: string = entry_isFolder(await entry_at(dispatcher, destPath)) && !dispatcher.path_isVirtual(destPath)
+      const finalDest: string = entry_isFolder(await pathEntry_find(dispatcher, destPath)) && !dispatcher.path_isVirtual(destPath)
         ? path.posix.join(destPath, path.posix.basename(srcPath))
         : destPath;
       const copied: VfsOutcome = await dispatcher.cp(srcPath, finalDest, { recursive });

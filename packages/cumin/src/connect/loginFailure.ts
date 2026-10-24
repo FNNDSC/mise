@@ -69,7 +69,7 @@ const NETWORK_CODES: ReadonlySet<string> = new Set([
 const GENERIC_MESSAGES: ReadonlySet<string> = new Set(['No server response!', 'fetch failed', 'Bad server response!']);
 
 /** The kind a code alone decides, or null. */
-function kind_ofCode(code: string): LoginFailureKind | null {
+function kind_findByCode(code: string): LoginFailureKind | null {
   if (TLS_CODES.has(code)) return 'tls';
   if (NETWORK_CODES.has(code)) return 'network';
   return null;
@@ -93,7 +93,7 @@ export function loginFailure_classify(error: unknown): LoginFailure {
       const node = at as { code?: unknown; status?: unknown; response?: { status?: unknown }; message?: unknown; cause?: unknown };
       const found: unknown = node.response?.status ?? node.status;
       if (status === undefined && typeof found === 'number') status = found;
-      if (code === undefined && typeof node.code === 'string' && kind_ofCode(node.code) !== null) code = node.code;
+      if (code === undefined && typeof node.code === 'string' && kind_findByCode(node.code) !== null) code = node.code;
       if (message === undefined && typeof node.message === 'string' && !GENERIC_MESSAGES.has(node.message)) message = node.message;
       at = node.cause;
     } else {
@@ -103,7 +103,7 @@ export function loginFailure_classify(error: unknown): LoginFailure {
   }
   const said: string = message ?? (error instanceof Error ? error.message : String(error));
   if (status !== undefined && [400, 401, 403].includes(status)) return { kind: 'credentials', status, message: said };
-  if (code !== undefined) return { kind: kind_ofCode(code) ?? 'other', code, message: said };
+  if (code !== undefined) return { kind: kind_findByCode(code) ?? 'other', code, message: said };
   return { kind: 'other', ...(status !== undefined ? { status } : {}), message: said };
 }
 
@@ -144,12 +144,12 @@ export async function loginFailure_diagnose(error: unknown, url: string, probe: 
   const failure: LoginFailure = loginFailure_classify(error);
   if (failure.kind !== 'other' || failure.status !== undefined) return failure;
   const code: string | null = await probe(url);
-  const kind: LoginFailureKind | null = code === null ? null : kind_ofCode(code);
+  const kind: LoginFailureKind | null = code === null ? null : kind_findByCode(code);
   return kind === null ? failure : { kind, code: code as string, message: failure.message };
 }
 
 /** The host of a URL, or the URL when it does not parse. */
-function host_of(url: string): string {
+function urlHost_parse(url: string): string {
   try {
     return new URL(url).host;
   } catch {
@@ -170,7 +170,7 @@ export function loginFailure_lines(failure: LoginFailure, url: string): string[]
   switch (failure.kind) {
     case 'tls':
       return [
-        `Could not log in to ${url}: the TLS certificate of ${host_of(url)} is not trusted (${failure.code}).`,
+        `Could not log in to ${url}: the TLS certificate of ${urlHost_parse(url)} is not trusted (${failure.code}).`,
         'If this CUBE uses a private CA, give Node that CA and try again:',
         '  NODE_EXTRA_CA_CERTS=/path/to/ca.pem',
       ];

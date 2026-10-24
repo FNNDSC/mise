@@ -15,7 +15,7 @@ import { progressCell_build, type ListingProgress, type ListingTrait } from '../
  * @param feed - The roster row.
  * @returns Its progress, or null when the daemon reported no counts.
  */
-export function feedProgress_of(feed: FeedListEntry): ListingProgress | null {
+export function feedProgress_derive(feed: FeedListEntry): ListingProgress | null {
   if (feed.jobsTotal === undefined || feed.jobsDone === undefined) return null;
   const failed: boolean = feed.status === 'finishedWithError' || feed.status === 'cancelled';
   // The nodes that finished cleanly, when the daemon reported the errored
@@ -115,9 +115,9 @@ export const FEED_TRAITS: ReadonlyArray<ListingTrait<FeedListEntry>> = [
     width: 'minmax(8em, 1fr)',
     // A feed with nothing scheduled still gets a track: nothing has
     // happened yet reads differently from there is nothing here.
-    cell: (feed: FeedListEntry): HTMLElement => progressCell_build(feedProgress_of(feed)),
+    cell: (feed: FeedListEntry): HTMLElement => progressCell_build(feedProgress_derive(feed)),
     compare: (feed: FeedListEntry): number => {
-      const progress: ListingProgress | null = feedProgress_of(feed);
+      const progress: ListingProgress | null = feedProgress_derive(feed);
       if (progress === null || progress.total === 0) return -1;
       return progress.done / progress.total;
     },

@@ -4,7 +4,7 @@
  * released, the molecule cools to rest.
  */
 import { describe, it, expect } from '@jest/globals';
-import { PullSimulation, pullMolecule_of, type PullNode } from '../src/layout/pull.js';
+import { PullSimulation, pullMolecule_find, type PullNode } from '../src/layout/pull.js';
 import type { Vec3 } from '../src/types/space.js';
 
 const node = (id: string, position: Vec3, marks: Partial<PullNode> = {}): PullNode => ({ id, position, radius: 0.5, dim: false, halo: false, ...marks });
@@ -28,15 +28,15 @@ const edges = [
   { from: 'a', to: 'ghost' },
 ];
 
-describe('pullMolecule_of', () => {
+describe('pullMolecule_find', () => {
   it('reaches along drawn edges, never through a dimmed node or across a halo', () => {
-    const { ids, links } = pullMolecule_of({ grabbed: 'a', nodes, edges });
+    const { ids, links } = pullMolecule_find({ grabbed: 'a', nodes, edges });
     expect([...ids].sort()).toEqual(['a', 'b', 'c']);
     expect(links).toEqual([{ source: 'a', target: 'b' }, { source: 'b', target: 'c' }]);
   });
 
   it('holds the grabbed node even alone', () => {
-    expect([...pullMolecule_of({ grabbed: 'd', nodes, edges }).ids]).toEqual(['d']);
+    expect([...pullMolecule_find({ grabbed: 'd', nodes, edges }).ids]).toEqual(['d']);
   });
 });
 

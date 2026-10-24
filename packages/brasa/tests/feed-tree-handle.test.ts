@@ -8,7 +8,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({ feedGraphData_ensure, feedGra
 cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
-  procCache_get: () => ({ feedLoad_of: () => null }),
+  procCache_get: () => ({ feedLoad_read: () => null }),
 }));
 
 const { feedTree_handle } = await import('../src/builtins/res/feed.tree.js');

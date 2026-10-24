@@ -1,17 +1,17 @@
 import { files_fetchList } from '../../../src/commands/files/list';
 import * as salsa from '@fnndsc/salsa';
 import * as cumin from '@fnndsc/cumin'; // Still import cumin types if needed
-import * as cliUtils from '../../../src/utils/cli'; // Import cliUtils to mock options_toParams
+import * as cliUtils from '../../../src/utils/cli'; // Import cliUtils to mock options_convertToParams
 
 jest.mock('@fnndsc/salsa');
 jest.mock('@fnndsc/cumin'); // Mock cumin to avoid issues with other imports/logic
-jest.mock('../../../src/utils/cli'); // Mock cliUtils specifically for options_toParams
+jest.mock('../../../src/utils/cli'); // Mock cliUtils specifically for options_convertToParams
 
 describe('commands/files/list', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // Mock options_toParams from cliUtils since it's used internally
-    (cliUtils.options_toParams as jest.Mock).mockImplementation((opts) => ({
+    // Mock options_convertToParams from cliUtils since it's used internally
+    (cliUtils.options_convertToParams as jest.Mock).mockImplementation((opts) => ({
       limit: parseInt(opts.page || '20', 10),
       search: opts.search,
       fields: opts.fields
@@ -28,7 +28,7 @@ describe('commands/files/list', () => {
     const options = { page: '10', search: 'name:test' };
     const result = await files_fetchList(options);
 
-    expect(cliUtils.options_toParams).toHaveBeenCalledWith(options);
+    expect(cliUtils.options_convertToParams).toHaveBeenCalledWith(options);
     expect(salsa.files_list).toHaveBeenCalledWith(expect.objectContaining({
       limit: 10,
       search: 'name:test'
@@ -48,7 +48,7 @@ describe('commands/files/list', () => {
     const path = '/some/path';
     const result = await files_fetchList(options, assetName, path);
 
-    expect(cliUtils.options_toParams).toHaveBeenCalledWith(options); // Ensure it uses the local cliUtils mock
+    expect(cliUtils.options_convertToParams).toHaveBeenCalledWith(options); // Ensure it uses the local cliUtils mock
     expect(salsa.files_list).toHaveBeenCalledWith(expect.objectContaining({ limit: 5 }), assetName, path);
     expect(result).toEqual(mockData);
   });

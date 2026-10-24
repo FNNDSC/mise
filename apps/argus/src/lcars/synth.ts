@@ -164,7 +164,7 @@ export function model_play(context: BaseAudioContext, out: AudioNode, noise: Aud
  * @param label - The pill's label, as drawn.
  * @returns The model file, or null when the bank has no press beep either.
  */
-export function pillFile_of(bank: SynthBank, label: string): string | null {
+export function pillFile_find(bank: SynthBank, label: string): string | null {
   return bank.pills[label] ?? bank.cues['press'] ?? null;
 }
 
@@ -238,7 +238,7 @@ export class SynthVoice {
   public pill_play(label: string): void {
     if (this.muted) return;
     void this.bank_load().then((bank: SynthBank | null): void => {
-      const file: string | null = bank === null ? null : pillFile_of(bank, label);
+      const file: string | null = bank === null ? null : pillFile_find(bank, label);
       if (file !== null) this.file_play(file, {});
     });
   }

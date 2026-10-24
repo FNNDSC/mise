@@ -3,7 +3,7 @@
  * capitalised word, the Shell topics, and apropos ranking.
  */
 import { describe, it, expect } from '@jest/globals';
-import { apropos_search, helpPosix_render, helpSection_render, helpToc_render, section_find, sectionCommands_of, shellTopic_render, HELP_SECTIONS, type HelpLookup } from '../src/builtins/helpSections.js';
+import { apropos_search, helpPosix_render, helpSection_render, helpToc_render, section_find, sectionCommands_list, shellTopic_render, HELP_SECTIONS, type HelpLookup } from '../src/builtins/helpSections.js';
 
 const strip = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
 const summaries: Record<string, string> = { ls: 'List a folder', cd: 'Change folder', query: 'Ask a PACS', gather: 'Hold a cohort', dcm: 'DICOM tags', wtf: 'What an acronym means' };
@@ -43,7 +43,7 @@ describe('a section by its word', () => {
   it('pages a section\'s commands, and the Shell section\'s topics', () => {
     const navigation = HELP_SECTIONS.find((one) => one.name === 'Navigation');
     expect(strip(helpSection_render(navigation as never, lookup(['ls', 'cd', 'query'])))).toMatch(/ls +List a folder/);
-    expect(sectionCommands_of('Games', lookup(['ls']))).toEqual(['wtf']);
+    expect(sectionCommands_list('Games', lookup(['ls']))).toEqual(['wtf']);
     const shell = section_find('Shell', () => false);
     expect(strip(helpSection_render(shell as never, lookup([])))).toMatch(/handles +@SER3/);
     expect(strip(shellTopic_render('pipes') ?? '')).toContain('PIPES');

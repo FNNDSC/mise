@@ -95,7 +95,7 @@ function feedFlatNodes_build(graph: FeedGraph, roots: number[]): DiagramNode[] {
 }
 
 /** Converts one collapsed feed node into the shared diagram model. */
-function collapsedNode_toDiagram(node: CollapsedNode): DiagramNode {
+function collapsedNode_convertToDiagram(node: CollapsedNode): DiagramNode {
   const functionName: string = node.count === 1
     ? `${node.pluginName}_${node.memberIds[0]}`
     : `${node.pluginName}_x${node.count}_${node.memberIds[0]}`;
@@ -109,7 +109,7 @@ function collapsedNode_toDiagram(node: CollapsedNode): DiagramNode {
     hasJoin: node.hasJoin,
     joinParentIDs: node.joinParentIDs,
     arguments: [],
-    children: node.children.map((child: CollapsedNode): DiagramNode => collapsedNode_toDiagram(child)),
+    children: node.children.map((child: CollapsedNode): DiagramNode => collapsedNode_convertToDiagram(child)),
   };
 }
 
@@ -128,7 +128,7 @@ export function feedDiagramNodes_build(
 ): DiagramNode[] {
   return flat
     ? feedFlatNodes_build(graph, roots)
-    : collapse_build(graph, roots).map((node: CollapsedNode): DiagramNode => collapsedNode_toDiagram(node));
+    : collapse_build(graph, roots).map((node: CollapsedNode): DiagramNode => collapsedNode_convertToDiagram(node));
 }
 
 /** Outcome of the pure render: the tree text plus the counts, or a user error. */

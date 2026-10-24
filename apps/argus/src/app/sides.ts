@@ -59,7 +59,7 @@ export function side_is(word: string): word is Side {
  * @param before - Whether the pane takes the first half.
  * @returns The side.
  */
-export function side_of(axis: Axis, before: boolean): Side {
+export function side_derive(axis: Axis, before: boolean): Side {
   return axis === 'row' ? (before ? 'above' : 'below') : (before ? 'left' : 'right');
 }
 
@@ -70,9 +70,9 @@ export function side_of(axis: Axis, before: boolean): Side {
  * @param place - `data-place`: `before` or `after`.
  * @returns The side, or null for anything else.
  */
-export function side_ofPlace(split: string | undefined, place: string | undefined): Side | null {
+export function side_deriveFromPlace(split: string | undefined, place: string | undefined): Side | null {
   if ((split !== 'row' && split !== 'col') || (place !== 'before' && place !== 'after')) return null;
-  return side_of(split, place === 'before');
+  return side_derive(split, place === 'before');
 }
 
 /**
@@ -81,7 +81,7 @@ export function side_ofPlace(split: string | undefined, place: string | undefine
  * @param word - `left`, `right`, `up`, `down`.
  * @returns The side, or null.
  */
-export function side_ofFocusWord(word: string): Side | null {
+export function side_findByFocusWord(word: string): Side | null {
   return SIDE_LIST.find((side: Side): boolean => SIDES[side].focusWord === word) ?? null;
 }
 
@@ -91,7 +91,7 @@ export function side_ofFocusWord(word: string): Side | null {
  * @param key - A KeyboardEvent.key.
  * @returns The side, or null when the key is not an arrow.
  */
-export function side_ofArrow(key: string): Side | null {
+export function side_findByArrow(key: string): Side | null {
   return SIDE_LIST.find((side: Side): boolean => SIDES[side].arrow === key) ?? null;
 }
 
@@ -101,7 +101,7 @@ export function side_ofArrow(key: string): Side | null {
  * @param before - Whether the first half.
  * @returns `before` or `after`.
  */
-export function place_of(before: boolean): Place {
+export function place_derive(before: boolean): Place {
   return before ? 'before' : 'after';
 }
 
@@ -111,6 +111,6 @@ export function place_of(before: boolean): Place {
  * @param side - The side.
  * @returns A selector for the capsule under a drawer.
  */
-export function splitSelector_of(side: Side): string {
+export function splitSelector_format(side: Side): string {
   return `[data-split="${SIDES[side].axis}"][data-place="${SIDES[side].place}"]`;
 }

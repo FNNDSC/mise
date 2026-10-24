@@ -17,7 +17,7 @@ const mockListCache = {
 
 const mockFeedTagsByFeed = jest.fn(async (): Promise<{ ok: boolean; value?: Map<number, string[]> }> => ({ ok: true, value: new Map() }));
 cuminMock_install(() => ({
-  feedTags_byFeed: mockFeedTagsByFeed,
+  feedTags_readByFeed: mockFeedTagsByFeed,
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   listCache_get: () => mockListCache,

@@ -5,7 +5,7 @@
  * builtin knows nothing of processes or terminals — it fetches, hands the
  * content to the surface, and uploads the result.
  */
-import { vfsOutcome_toResult } from '@fnndsc/fond';
+import { vfsOutcome_convertToResult } from '@fnndsc/fond';
 import { writeFileSync, unlinkSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, extname, posix } from 'path';
@@ -59,8 +59,8 @@ export async function builtin_edit(args: string[]): Promise<CommandEnvelope> {
   const { vfsDispatcher } = await import('@fnndsc/salsa');
   if (vfsDispatcher.path_isVirtual(target)) {
     return projectedFile_edit(args[0], target, ext, {
-      read: async (at: string): Promise<Result<string>> => vfsOutcome_toResult(await vfsDispatcher.read(at), 'read', at),
-      write: async (at: string, content: string): Promise<boolean> => vfsOutcome_toResult(await vfsDispatcher.write(at, content), 'write', at).ok,
+      read: async (at: string): Promise<Result<string>> => vfsOutcome_convertToResult(await vfsDispatcher.read(at), 'read', at),
+      write: async (at: string, content: string): Promise<boolean> => vfsOutcome_convertToResult(await vfsDispatcher.write(at, content), 'write', at).ok,
     });
   }
 

@@ -51,15 +51,15 @@ export function backendRequest_parse(argv: ReadonlyArray<string>, env: NodeJS.Pr
  * @param backend - The backend id.
  * @returns The engine.
  */
-async function engine_forBackend(backend: string): Promise<BrasaEngine> {
+async function engine_createForBackend(backend: string): Promise<BrasaEngine> {
   if (backend === 'null') {
     const { engine_create, nullBackend_make } = await import('@fnndsc/brasa/core');
     console.error('[+] Hosting the null backend: no commands of its own, a filesystem in memory.');
     return engine_create(nullBackend_make({ seed: { '/home/user/README': 'A session with no backend of its own.\n' } }));
   }
-  const { engine_create, sessionConnect_fromSaved } = await import('@fnndsc/brasa');
+  const { engine_create, sessionFromSaved_connect } = await import('@fnndsc/brasa');
   const engine: BrasaEngine = await engine_create();
-  const result: SavedSessionResult = await sessionConnect_fromSaved();
+  const result: SavedSessionResult = await sessionFromSaved_connect();
   if (result.status === 'restored') {
     console.error(`[+] Session restored: ${result.context.user}@${result.context.URL}`);
   } else {
@@ -80,7 +80,7 @@ async function calypso_start(): Promise<void> {
     console.error(`[!] ${requested.error}`);
     process.exit(1);
   }
-  const engine: BrasaEngine = await engine_forBackend(requested.backend);
+  const engine: BrasaEngine = await engine_createForBackend(requested.backend);
 
   const parsedPolicy = hostControl_parseArgv(process.argv, process.env);
   if ('error' in parsedPolicy) {

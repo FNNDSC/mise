@@ -77,7 +77,7 @@ interface SimNode {
  * @returns The molecule's ids (the grabbed node always among them) and the
  *   edges inside it.
  */
-export function pullMolecule_of(input: Pick<PullInput, 'grabbed' | 'nodes' | 'edges'>): { ids: Set<string>; links: Array<{ source: string; target: string }> } {
+export function pullMolecule_find(input: Pick<PullInput, 'grabbed' | 'nodes' | 'edges'>): { ids: Set<string>; links: Array<{ source: string; target: string }> } {
   const drawn: Map<string, PullNode> = new Map(input.nodes.map((node: PullNode): [string, PullNode] => [node.id, node]));
   const all: Array<{ source: string; target: string }> = [];
   const around: Map<string, string[]> = new Map();
@@ -120,7 +120,7 @@ export class PullSimulation {
    * @param input - What the pull begins from.
    */
   constructor(input: PullInput) {
-    const { ids, links } = pullMolecule_of(input);
+    const { ids, links } = pullMolecule_find(input);
     const radius: Map<string, number> = new Map(input.nodes.map((node: PullNode): [string, number] => [node.id, node.radius]));
     const radiusOf = (id: string): number => radius.get(id) ?? input.baseRadius;
     const position: Map<string, Vec3> = new Map(input.nodes.map((node: PullNode): [string, Vec3] => [node.id, node.position]));

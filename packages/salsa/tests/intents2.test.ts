@@ -6,7 +6,7 @@
 const mockConn = {
   connection_connect: jest.fn(),
   connection_logout: jest.fn(),
-  elevation_withCredentials: jest.fn(),
+  elevation_runWithCredentials: jest.fn(),
 };
 const mockCtx = {
   fullContext_get: jest.fn(),
@@ -60,14 +60,14 @@ describe('connect intents', () => {
   });
 
   it('elevation_do delegates one scoped operation to Cumin', async () => {
-    mockConn.elevation_withCredentials.mockImplementation(async (
+    mockConn.elevation_runWithCredentials.mockImplementation(async (
       _credentials: unknown,
       operation: () => Promise<string>,
     ): Promise<string> => await operation());
     const operation = jest.fn(async (): Promise<string> => 'done');
 
     await expect(elevation_do({ username: 'admin', password: 'secret' }, operation)).resolves.toBe('done');
-    expect(mockConn.elevation_withCredentials).toHaveBeenCalledWith(
+    expect(mockConn.elevation_runWithCredentials).toHaveBeenCalledWith(
       { username: 'admin', password: 'secret' },
       operation,
     );

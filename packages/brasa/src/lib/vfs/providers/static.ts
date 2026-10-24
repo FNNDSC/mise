@@ -7,7 +7,7 @@
  *
  * @module
  */
-import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
+import { vfsOutcome_convertFromBoolean, vfsOutcome_convertFromResult, type VfsOutcome } from '@fnndsc/fond';
 import type { VFSProvider, VFSItem, CpOptions } from '@fnndsc/fond';
 import { builtinCommands_list, commandSummary_get } from '../../../builtins/help.js';
 import { gamesShelf_names } from '../../../builtins/games/shelf.js';
@@ -107,7 +107,7 @@ export class StaticVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async cp(src: string, dest: string, options: CpOptions): Promise<VfsOutcome> {
-    return vfsOutcome_ofBoolean(await this.copy_run(src, dest, options), 'EROFS');
+    return vfsOutcome_convertFromBoolean(await this.copy_run(src, dest, options), 'EROFS');
   }
 
   /**
@@ -156,7 +156,7 @@ export class StaticVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async read(pathStr: string): Promise<VfsOutcome<string>> {
-    return vfsOutcome_ofResult(await this.text_read(pathStr), 'ENOENT');
+    return vfsOutcome_convertFromResult(await this.text_read(pathStr), 'ENOENT');
   }
 
   /**
@@ -171,7 +171,7 @@ export class StaticVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async readBinary(pathStr: string): Promise<VfsOutcome<Buffer>> {
-    return vfsOutcome_ofResult(await this.bytes_read(pathStr), 'ENOENT');
+    return vfsOutcome_convertFromResult(await this.bytes_read(pathStr), 'ENOENT');
   }
 
   /**

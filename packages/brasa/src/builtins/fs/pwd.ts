@@ -34,7 +34,7 @@ export interface PwdOptions {
 export async function pwd_run(options: PwdOptions = {}): Promise<CommandEnvelope> {
   const showTitles: boolean = options.titles ?? false;
   const cwd: string = await session.getCWD();
-  const shown: string = showTitles ? await path_withTitles(cwd) : cwd;
+  const shown: string = showTitles ? await path_resolveTitles(cwd) : cwd;
   return envelope_ok(`${shown}\n`, { kind: 'fs.cwd', data: { path: cwd, shown } });
 }
 
@@ -45,7 +45,7 @@ export async function pwd_run(options: PwdOptions = {}): Promise<CommandEnvelope
  * @param path - The path to process.
  * @returns The path with titles in place of the segments that have them.
  */
-async function path_withTitles(path: string): Promise<string> {
+async function path_resolveTitles(path: string): Promise<string> {
   const title: ((segment: string) => Promise<string | null>) | undefined = backendInstalled_get()?.vfs?.segment_title;
   if (title === undefined) return path;
   const parts: string[] = path.split('/');

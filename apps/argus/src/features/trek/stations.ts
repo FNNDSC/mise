@@ -14,11 +14,11 @@
  * @module
  */
 import type { OpenQuestion } from './harness.js';
-import { pillLabel_of, type BridgeVoice } from './cues.js';
+import { pillLabel_format, type BridgeVoice } from './cues.js';
 import { CourseWheel, el, pill_make, PillRow, ValueSlider, type WheelMark } from './controls.js';
 import { markIcon_make } from './marks.js';
 import {
-  BRIDGE_COMMANDS, arrival_of, course_calc, impulseCost_of, phaserEffect_of, question_control, readout_diff, repairTimes_of, score_of, warpCost_of,
+  BRIDGE_COMMANDS, arrival_compute, course_calc, impulseCost_compute, phaserEffect_compute, question_control, readout_diff, repairTimes_compute, score_compute, warpCost_compute,
   type BridgeCommand, type BridgeReadout, type ChartCell, type DeviceState, type KlingonSeen, type Place, type QuestionControl, type ScoreItem, type Station, type TrekQuestion,
 } from './model.js';
 
@@ -170,7 +170,7 @@ export function chartCode_make(className: string, cell: ChartCell): HTMLElement 
  * @param cell - The quadrant.
  * @returns The title.
  */
-export function chartTitle_of(cell: ChartCell): string {
+export function chartTitle_format(cell: ChartCell): string {
   return `quadrant ${cell.x},${cell.y}${cell.supernova ? ' · supernova' : cell.code === null ? ' · unscanned' : ''}`;
 }
 
@@ -180,7 +180,7 @@ export function chartTitle_of(cell: ChartCell): string {
  * @param readout - The readout.
  * @returns The marks.
  */
-export function wheelMarks_of(readout: BridgeReadout): WheelMark[] {
+export function wheelMarks_build(readout: BridgeReadout): WheelMark[] {
   const marks: WheelMark[] = readout.klingons.map((k: KlingonSeen): WheelMark => ({ bearing: k.bearing, kind: 'klingon', label: `Klingon at ${k.x},${k.y} · ${k.range.toFixed(1)} · ${Math.round(k.bearing)}°`, variant: k.mark }));
   for (const row of readout.sectors) {
     for (const cell of row) {
@@ -236,7 +236,7 @@ export class HelmStation {
   public state_show(readout: BridgeReadout): void {
     const first: boolean = this.readout === null;
     this.readout = readout;
-    this.wheel.marks_set(wheelMarks_of(readout));
+    this.wheel.marks_set(wheelMarks_build(readout));
     this.warp.range_set(question_control('warp-factor', readout), readout.ship.warp, 'THE SHIP NOW · ABOVE 6 THE ENGINES MAY BURN', 10);
     this.distance.range_set(question_control('distance', readout), first ? 1 : this.distance.value_get(), 'QUADRANTS · 0.1 IS ONE SECTOR', 6);
     this.rest.range_set(question_control('how-long', readout), 0, `STARDATES · ${readout.mission.timeLeft.toFixed(1)} LEFT · REPAIRS RUN WHILE TIME PASSES`, 2);
@@ -261,8 +261,8 @@ export class HelmStation {
   private arrival_note(): void {
     if (this.readout === null) return;
     const distance: number = this.distance.value_get();
-    const at: Place = arrival_of(this.readout, this.wheel.degrees_get(), distance);
-    const cost = warpCost_of(distance, this.readout.ship.warp, this.readout.param.warptime);
+    const at: Place = arrival_compute(this.readout, this.wheel.degrees_get(), distance);
+    const cost = warpCost_compute(distance, this.readout.ship.warp, this.readout.param.warptime);
     this.distance.note_set(`ARRIVES ${at.quadrant.x},${at.quadrant.y} / ${at.sector.x},${at.sector.y} · ${cost.stardates.toFixed(2)} STARDATES AT WARP ${this.readout.ship.warp.toFixed(1)} · ${cost.units} UNITS`);
   }
 }
@@ -298,12 +298,12 @@ export class TacticalStation {
     const controls: HTMLElement = el('div', 'tb-controls');
     this.wheel = new CourseWheel(size, 'firing course wheel', (degrees: number): void => host.answer_send(String(degrees), 'SET COURSE'));
     const rows: HTMLElement = el('div', 'tb-sliders');
-    this.burst = new PillRow('BURST', question_control('burst', null).choices ?? [], (line: string, label: string): void => host.answer_send(line, pillLabel_of(label, 'choice')));
-    this.burstAngle = new PillRow('BURST ANGLE', question_control('burst-angle', null).choices ?? [], (line: string, label: string): void => { this.wheel.wedge_set(Number(line)); host.answer_send(line, pillLabel_of(label, 'choice')); });
-    this.manual = new PillRow('PHASERS', question_control('manual-automatic', null).choices ?? [], (line: string, label: string): void => host.answer_send(line, pillLabel_of(label, 'choice')));
+    this.burst = new PillRow('BURST', question_control('burst', null).choices ?? [], (line: string, label: string): void => host.answer_send(line, pillLabel_format(label, 'choice')));
+    this.burstAngle = new PillRow('BURST ANGLE', question_control('burst-angle', null).choices ?? [], (line: string, label: string): void => { this.wheel.wedge_set(Number(line)); host.answer_send(line, pillLabel_format(label, 'choice')); });
+    this.manual = new PillRow('PHASERS', question_control('manual-automatic', null).choices ?? [], (line: string, label: string): void => host.answer_send(line, pillLabel_format(label, 'choice')));
     this.units = new ValueSlider(`${prefix}-units`, 'UNITS', 0, (value: number): void => host.answer_send(String(Math.round(value)), 'SLIDER SET'));
     this.spread = new ValueSlider(`${prefix}-spread`, 'SPREAD', 2, (value: number): void => host.answer_send(value.toFixed(2), 'SLIDER SET'));
-    this.upDown = new PillRow('SHIELDS', question_control('up-down', null).choices ?? [], (line: string, label: string): void => host.answer_send(line, pillLabel_of(label, 'choice')));
+    this.upDown = new PillRow('SHIELDS', question_control('up-down', null).choices ?? [], (line: string, label: string): void => host.answer_send(line, pillLabel_format(label, 'choice')));
     const fireRow: HTMLElement = el('div', 'tb-fire-row');
     this.fire = pill_make('tb-fire', 'FIRE', (): void => host.answer_send('0', null));
     this.targets = el('div', 'tb-targets');
@@ -320,7 +320,7 @@ export class TacticalStation {
    */
   public state_show(readout: BridgeReadout): void {
     this.readout = readout;
-    this.wheel.marks_set(wheelMarks_of(readout));
+    this.wheel.marks_set(wheelMarks_build(readout));
     this.wheel.wedge_set(null);
     if (readout.klingons[0] !== undefined) this.wheel.degrees_set(readout.klingons[0].bearing);
     this.units.range_set(question_control('units', readout), Math.min(readout.ship.energy, Math.round(readout.ship.energy / 100) * 10), `UP TO THE ${readout.ship.energy} FREE`, 6);
@@ -363,7 +363,7 @@ export class TacticalStation {
     for (const word of ['TARGET', 'RANGE', 'BEARING', 'PHASER HIT']) this.targets.append(el('span', 'tb-target-head', word));
     for (const k of readout.klingons) {
       const row: HTMLButtonElement = targetPill_make(k, (): void => { this.host.voice.cue('scanner'); this.host.course_set(k.bearing, k.range / 10); });
-      this.targets.append(row, el('span', 'tb-target-cell', k.range.toFixed(1)), el('span', 'tb-target-cell', `${Math.round(k.bearing)}°`), el('span', 'tb-target-cell', `${phaserEffect_of(k.range / 10)}%`));
+      this.targets.append(row, el('span', 'tb-target-cell', k.range.toFixed(1)), el('span', 'tb-target-cell', `${Math.round(k.bearing)}°`), el('span', 'tb-target-cell', `${phaserEffect_compute(k.range / 10)}%`));
     }
   }
 }
@@ -451,7 +451,7 @@ export class EngineeringView {
     for (const word of ['DEVICE', '', 'IN FLIGHT', 'DOCKED', '']) this.damage.append(el('span', 'tb-dc-head', word));
     const longest: number = Math.max(1, ...readout.damaged.map((d: DeviceState): number => (d.repairAt ?? 0) - readout.mission.stardate));
     for (const device of readout.devices) {
-      const times = repairTimes_of(device, readout);
+      const times = repairTimes_compute(device, readout);
       const bar: HTMLElement = el('div', 'tb-bar-track');
       const fill: HTMLElement = el('div', `tb-bar-fill${times === null ? ' tb-bar-ok' : ' tb-bar-down'}`);
       fill.style.width = times === null ? '100%' : `${Math.max(4, Math.min(100, Math.round((100 * ((device.repairAt ?? 0) - readout.mission.stardate)) / longest)))}%`;
@@ -493,7 +493,7 @@ export class EngineeringView {
     const span: number = this.rest.value_get();
     this.inThatTime.replaceChildren();
     const repaired: string[] = this.readout.damaged
-      .filter((d: DeviceState): boolean => (repairTimes_of(d, this.readout as BridgeReadout)?.inFlight ?? Infinity) <= span)
+      .filter((d: DeviceState): boolean => (repairTimes_compute(d, this.readout as BridgeReadout)?.inFlight ?? Infinity) <= span)
       .map((d: DeviceState): string => d.name.toUpperCase());
     this.inThatTime.append(el('span', 'tb-head-value tb-good', repaired.length === 0 ? (span > 0 ? 'NO REPAIR COMPLETES' : '—') : `${repaired.join(' · ')} REPAIRED`));
     const klingons: number = this.readout.klingons.length;
@@ -640,11 +640,11 @@ export class ComputerView {
   }
 
   private request_send(request: typeof REQUESTS[number]): void {
-    const plan: Array<[TrekQuestion, string]> = request.asks.map((question: TrekQuestion): [TrekQuestion, string] => [question, this.plannedAnswer_of(question)]);
+    const plan: Array<[TrekQuestion, string]> = request.asks.map((question: TrekQuestion): [TrekQuestion, string] => [question, this.plannedAnswer_derive(question)]);
     if (this.open?.question === 'request') {
       this.host.plan_set(plan);
       this.answer_take(null);
-      this.host.answer_send(request.line, pillLabel_of(request.label, 'computer'));
+      this.host.answer_send(request.line, pillLabel_format(request.label, 'computer'));
       this.host.voice.cue('thinking');
       return;
     }
@@ -653,11 +653,11 @@ export class ComputerView {
     this.host.plan_set([['request', request.line], ...plan]);
     this.answer_take(null);
     // the pill beeps, then the computer is heard thinking as the command goes
-    this.host.voice.pill(pillLabel_of(request.label, 'computer'));
+    this.host.voice.pill(pillLabel_format(request.label, 'computer'));
     this.host.command_send(computer);
   }
 
-  private plannedAnswer_of(question: TrekQuestion): string {
+  private plannedAnswer_derive(question: TrekQuestion): string {
     const target: Place | null = this.target;
     const nearest: KlingonSeen | undefined = this.readout?.klingons[0];
     switch (question) {
@@ -701,7 +701,7 @@ export class ComputerView {
     button.dataset['x'] = String(cell.x);
     button.dataset['y'] = String(cell.y);
     button.append(chartCode_make('tb-cq-code', cell), el('span', 'tb-cq-at', `${cell.x},${cell.y}`));
-    button.title = chartTitle_of(cell);
+    button.title = chartTitle_format(cell);
     return button;
   }
 
@@ -722,8 +722,8 @@ export class ComputerView {
   private costs_note(): void {
     if (this.readout === null) return;
     const distance: number = this.wcDistance.value_get();
-    const warp = warpCost_of(distance, this.wcWarp.value_get(), this.readout.param.warptime);
-    const impulse = impulseCost_of(distance);
+    const warp = warpCost_compute(distance, this.wcWarp.value_get(), this.readout.param.warptime);
+    const impulse = impulseCost_compute(distance);
     this.wcResult.replaceChildren(
       el('span', 'tb-head-label', 'TIME'), el('span', 'tb-head-value', `${warp.stardates.toFixed(2)} STARDATES`),
       el('span', 'tb-head-label', 'ENERGY'), el('span', 'tb-head-value', `${warp.units} UNITS · ${warp.unitsShielded} WITH SHIELDS UP`),
@@ -738,13 +738,13 @@ export class ComputerView {
     for (const k of readout.klingons) {
       this.trajectory.append(
         targetPill_make(k, (): void => { this.host.voice.cue('scanner'); this.host.course_set(k.bearing, k.range / 10); }),
-        el('span', 'tb-target-cell', `${Math.round(k.bearing)}°`), el('span', 'tb-target-cell', k.range.toFixed(1)), el('span', 'tb-target-cell', `${phaserEffect_of(k.range / 10)}%`),
+        el('span', 'tb-target-cell', `${Math.round(k.bearing)}°`), el('span', 'tb-target-cell', k.range.toFixed(1)), el('span', 'tb-target-cell', `${phaserEffect_compute(k.range / 10)}%`),
       );
     }
   }
 
   private score_draw(readout: BridgeReadout): void {
-    const tally = score_of(readout);
+    const tally = score_compute(readout);
     this.score.replaceChildren();
     for (const item of tally.items.filter((i: ScoreItem): boolean => i.points !== 0 || /killed|remaining/.test(i.label))) {
       this.score.append(el('span', 'tb-score-label', item.label.toUpperCase()), el('span', `tb-score-points${item.points < 0 ? ' tb-bad' : ' tb-good'}`, `${item.points > 0 ? '+' : ''}${item.points}`));

@@ -219,7 +219,7 @@ export interface RosterFolders {
  * @param feed - The feed's counts.
  * @returns A DAG status word: `finishedWithError`, `started`, `scheduled`, `created`, `cancelled` or `finishedSuccessfully`.
  */
-export function feedStatus_ofCounts(feed: ProcFeed): string {
+export function feedStatus_deriveFromCounts(feed: ProcFeed): string {
   // The words are a node's own (the DAG status vocabulary), so a feed on
   // a surface wears the hue its jobs would.
   if (feed.erroredJobs > 0) return 'finishedWithError';
@@ -595,7 +595,7 @@ export class ProcCache {
     }
     // Placing a feed needs its row, so resolve the folders before the rows
     // are dropped.
-    const departedFolders: string[] = this.rosterFolders_for(departed);
+    const departedFolders: string[] = this.rosterFolders_list(departed);
     for (const feedID of departed) this.feed_remove(feedID);
     if (departed.length > 0) {
       // A feed that vanished leaves a row behind in its parent listing,
@@ -865,7 +865,7 @@ export class ProcCache {
    * @param feedID - The feed.
    * @returns Its facts, or undefined before they are read.
    */
-  dataFacts_of(feedID: number): ProcFeedDataFacts | undefined {
+  dataFacts_read(feedID: number): ProcFeedDataFacts | undefined {
     const facts: ProcFeedDataFacts | undefined = this.dataFacts.get(feedID);
     return facts === undefined ? undefined : { ...facts };
   }
@@ -999,7 +999,7 @@ export class ProcCache {
    * @param now - The clock (default now), against which a failure expires.
    * @returns The load in flight or lately failed, or null.
    */
-  feedLoad_of(feedID: number, now: number = Date.now()): ProcFeedLoadProgress | null {
+  feedLoad_read(feedID: number, now: number = Date.now()): ProcFeedLoadProgress | null {
     this.feedLoadFailures_expire(now);
     const entry: ProcFeedLoadProgress | undefined = this.feedLoads.get(feedID);
     return entry === undefined ? null : { ...entry };
@@ -1068,7 +1068,7 @@ export class ProcCache {
     // An arrival changes the folder the feed appears in, not anything
     // inside it. A public feed landing on a busy CUBE must not dirty this
     // identity's own feeds folder, which did not change.
-    listingsForRoster_note(feedIDs, this.rosterFolders_for(feedIDs));
+    listingsForRoster_note(feedIDs, this.rosterFolders_list(feedIDs));
   }
 
   /**
@@ -1092,7 +1092,7 @@ export class ProcCache {
    * @returns Its folder, or null when the feed is unknown or its folder
    *   was never declared.
    */
-  private rosterFolder_for(feedID: number): string | null {
+  private rosterFolder_find(feedID: number): string | null {
     const feed: ProcFeed | undefined = this.feeds.get(feedID);
     if (!feed) return null;
     if (feed.public) return this.rosterFolders.public ?? null;
@@ -1108,10 +1108,10 @@ export class ProcCache {
    * @param feedIDs - Feeds that arrived or departed.
    * @returns Folder paths, without repeats.
    */
-  private rosterFolders_for(feedIDs: readonly number[]): string[] {
+  private rosterFolders_list(feedIDs: readonly number[]): string[] {
     const folders: Set<string> = new Set();
     for (const feedID of feedIDs) {
-      const folder: string | null = this.rosterFolder_for(feedID);
+      const folder: string | null = this.rosterFolder_find(feedID);
       if (folder !== null) folders.add(folder);
     }
     return Array.from(folders);
@@ -1143,7 +1143,7 @@ export class ProcCache {
     for (const { feedID } of recent) {
       const feed: ProcFeed | undefined = this.feed_get(feedID);
       if (feed === undefined) continue;
-      landed.push({ id: feedID, title: feed.title, jobs: this.instancesForFeed_count(feedID), status: feedStatus_ofCounts(feed), chain: this.pluginChain_of(feedID), groups: this.pluginGroups_of(feedID) });
+      landed.push({ id: feedID, title: feed.title, jobs: this.instancesForFeed_count(feedID), status: feedStatus_deriveFromCounts(feed), chain: this.pluginChain_derive(feedID), groups: this.pluginGroups_build(feedID) });
     }
     return landed;
   }
@@ -1160,19 +1160,19 @@ export class ProcCache {
    * @param feedID - The feed.
    * @returns The names, in order of the shallowest instance that bore each.
    */
-  pluginChain_of(feedID: number): string[] {
+  pluginChain_derive(feedID: number): string[] {
     const ids: number[] = this.feedInstanceIDs_all(feedID);
-    const depth_of = (id: number, seen: Set<number> = new Set()): number => {
+    const depth_compute = (id: number, seen: Set<number> = new Set()): number => {
       const inst: ProcInstance | undefined = this.instance_get(id);
       if (inst === undefined || inst.parentID === null || seen.has(id)) return 0;
       seen.add(id);
-      return 1 + depth_of(inst.parentID, seen);
+      return 1 + depth_compute(inst.parentID, seen);
     };
     const firstDepth: Map<string, number> = new Map();
     for (const id of ids) {
       const inst: ProcInstance | undefined = this.instance_get(id);
       if (inst === undefined) continue;
-      const depth: number = depth_of(id);
+      const depth: number = depth_compute(id);
       const known: number | undefined = firstDepth.get(inst.pluginName);
       if (known === undefined || depth < known) firstDepth.set(inst.pluginName, depth);
     }
@@ -1187,7 +1187,7 @@ export class ProcCache {
    * @param feedID - The feed.
    * @returns The groups, parents before children, root first.
    */
-  pluginGroups_of(feedID: number): ProcJobGroup[] {
+  pluginGroups_build(feedID: number): ProcJobGroup[] {
     // The roll, not the root walk: an instance whose parent has not landed
     // yet is grouped as a root of its own until it has, so a feed takes a
     // shape from its first instance rather than from its last.
@@ -1204,7 +1204,7 @@ export class ProcCache {
       const rank = (word: string): number => (word === 'finishedWithError' ? 3 : (word === 'started' || word === 'scheduled' || word === 'created' || word === 'waiting' || word === 'registeringFiles') ? 2 : word === 'cancelled' ? 1 : 0);
       return rank(a) >= rank(b) ? a : b;
     };
-    const status_of = (inst: ProcInstance): string => {
+    const status_derive = (inst: ProcInstance): string => {
       const word: string = inst.status ?? 'unknown';
       return word === 'finishedWithError' || word === 'finishedSuccessfully' || word === 'cancelled' ? word : (word === 'unknown' ? 'finishedSuccessfully' : word);
     };
@@ -1220,13 +1220,13 @@ export class ProcCache {
       let index: number | undefined = groupIndexByKey.get(key);
       if (index === undefined) {
         index = groups.length;
-        groups.push({ plugin: inst.pluginName, count: 0, errored: 0, status: status_of(inst), parent: parentGroup });
+        groups.push({ plugin: inst.pluginName, count: 0, errored: 0, status: status_derive(inst), parent: parentGroup });
         groupIndexByKey.set(key, index);
       }
       const group: ProcJobGroup = groups[index] as ProcJobGroup;
       group.count += 1;
-      if (status_of(inst) === 'finishedWithError') group.errored += 1;
-      group.status = worst(group.status, status_of(inst));
+      if (status_derive(inst) === 'finishedWithError') group.errored += 1;
+      group.status = worst(group.status, status_derive(inst));
       groupOfInstance.set(id, index);
       return index;
     };

@@ -108,7 +108,7 @@ jest.unstable_mockModule('../src/core/surfaceDispatch.js', () => ({
   surfaceLine_execute: surfaceLineExecute_mock,
 }));
 
-const { berth_probeLive, remote_run, berth_fromAddress, commands_split } = await import('../src/remote/client.js');
+const { berth_probeLive, remote_run, berth_parse, commands_split } = await import('../src/remote/client.js');
 
 describe('berth_probeLive', () => {
   beforeEach(() => {
@@ -420,11 +420,11 @@ describe('remote_run', () => {
   });
 });
 
-describe('berth_fromAddress', () => {
+describe('berth_parse', () => {
   it('takes the ARGUS link the daemon prints, token and all', () => {
     // One thing to copy: the same URL that opens the web surface also names
     // the wire, because the daemon serves both on one port.
-    const berth = berth_fromAddress('http://pangea:41234/?token=abc123');
+    const berth = berth_parse('http://pangea:41234/?token=abc123');
 
     expect(berth).toEqual({
       identity: 'ws://pangea:41234 (attached by address)',
@@ -434,28 +434,28 @@ describe('berth_fromAddress', () => {
   });
 
   it('takes a bare wire URL with the token beside it', () => {
-    const berth = berth_fromAddress('ws://pangea:41234', 'abc123');
+    const berth = berth_parse('ws://pangea:41234', 'abc123');
 
     expect(berth?.url).toBe('ws://pangea:41234');
     expect(berth?.token).toBe('abc123');
   });
 
   it('prefers an explicit token over one carried in the URL', () => {
-    const berth = berth_fromAddress('http://pangea:41234/?token=stale', 'fresh');
+    const berth = berth_parse('http://pangea:41234/?token=stale', 'fresh');
 
     expect(berth?.token).toBe('fresh');
   });
 
   it('keeps TLS when the address is secure', () => {
-    expect(berth_fromAddress('https://pangea/?token=t')?.url).toBe('wss://pangea');
-    expect(berth_fromAddress('wss://pangea:9/?token=t')?.url).toBe('wss://pangea:9');
+    expect(berth_parse('https://pangea/?token=t')?.url).toBe('wss://pangea');
+    expect(berth_parse('wss://pangea:9/?token=t')?.url).toBe('wss://pangea:9');
   });
 
   it('refuses an address with no token rather than attaching anonymously', () => {
-    expect(berth_fromAddress('ws://pangea:41234')).toBeNull();
+    expect(berth_parse('ws://pangea:41234')).toBeNull();
   });
 
   it('refuses something that is not a URL', () => {
-    expect(berth_fromAddress('pangea:41234', 't')).toBeNull();
+    expect(berth_parse('pangea:41234', 't')).toBeNull();
   });
 });

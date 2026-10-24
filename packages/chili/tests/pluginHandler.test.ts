@@ -122,9 +122,9 @@ describe('PluginMemberHandler', () => {
     expect(await new PluginMemberHandler().plugin_searchableToIDs('pl')).toBeNull();
   });
 
-  it('pluginID_fromSearch delegates to the controller', async () => {
-    jest.spyOn(PluginController.prototype, 'pluginID_fromSearch').mockResolvedValue('7');
-    expect(await new PluginMemberHandler().pluginID_fromSearch({ name: 'pl' })).toBe('7');
+  it('pluginID_findBySearch delegates to the controller', async () => {
+    jest.spyOn(PluginController.prototype, 'pluginID_findBySearch').mockResolvedValue('7');
+    expect(await new PluginMemberHandler().pluginID_findBySearch({ name: 'pl' })).toBe('7');
   });
 
   it('registers member subcommands', () => {
@@ -181,7 +181,7 @@ describe('commander action wiring', () => {
   });
 
   it('plugin readme action resolves via --search when no id is given', async () => {
-    const searchSpy = jest.spyOn(PluginController.prototype, 'pluginID_fromSearch').mockResolvedValue('44');
+    const searchSpy = jest.spyOn(PluginController.prototype, 'pluginID_findBySearch').mockResolvedValue('44');
     mockReadmeFetch.mockResolvedValue({ content: 'R', format: 'markdown', sourceUrl: 'u' });
     await member_parse('plugin', 'readme', '--search', 'name:pl-x');
     expect(searchSpy).toHaveBeenCalled();
@@ -189,7 +189,7 @@ describe('commander action wiring', () => {
   });
 
   it('plugin readme action reports when nothing resolves', async () => {
-    jest.spyOn(PluginController.prototype, 'pluginID_fromSearch').mockResolvedValue(null);
+    jest.spyOn(PluginController.prototype, 'pluginID_findBySearch').mockResolvedValue(null);
     await member_parse('plugin', 'readme', '--search', 'name:nope');
     expect(errSpy).toHaveBeenCalled();
     expect(mockReadmeFetch).not.toHaveBeenCalled();

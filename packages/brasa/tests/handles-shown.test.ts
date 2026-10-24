@@ -4,9 +4,9 @@
  */
 import { describe, it, expect } from '@jest/globals';
 import { answerAdapters_register } from '../src/session/answerAdapters.js';
-import { answerNumbering_of, handle_word, numberedFooter_of } from '../src/session/answer.js';
+import { answerNumbering_derive, handle_word, numberedFooter_render } from '../src/session/answer.js';
 import { pacsAnswer_render } from '../src/builtins/net/query.view.js';
-import { pacsAnswer_toTable } from '../src/builtins/net/query.csv.js';
+import { pacsAnswer_renderTable } from '../src/builtins/net/query.csv.js';
 
 answerAdapters_register();
 
@@ -25,9 +25,9 @@ function model_make(): never {
 
 describe('the numbered footer', () => {
   it('says each kind in the form an index is typed: runs as ranges, gaps with commas', () => {
-    expect(numberedFooter_of([{ kind: 'PAT', ordinal: 1 }, ...[1, 2, 3].map((ordinal) => ({ kind: 'SER', ordinal }))])).toBe('numbered: @PAT1, @SER1-3');
-    expect(numberedFooter_of([1, 3, 41, 42].map((ordinal) => ({ kind: 'SER', ordinal })))).toBe('numbered: @SER1,3,41-42');
-    expect(numberedFooter_of([])).toBe('');
+    expect(numberedFooter_render([{ kind: 'PAT', ordinal: 1 }, ...[1, 2, 3].map((ordinal) => ({ kind: 'SER', ordinal }))])).toBe('numbered: @PAT1, @SER1-3');
+    expect(numberedFooter_render([1, 3, 41, 42].map((ordinal) => ({ kind: 'SER', ordinal })))).toBe('numbered: @SER1,3,41-42');
+    expect(numberedFooter_render([])).toBe('');
     expect(handle_word({ kind: 'STD', ordinal: 12 })).toBe('@STD12');
   });
 });
@@ -36,7 +36,7 @@ describe('a PACS answer with its handles', () => {
   it('prints every patient, study and series with the handle that expands to it, and the footer', () => {
     const model = model_make();
     const text: string = strip(pacsAnswer_render(model) ?? '');
-    const numbered = answerNumbering_of('pacs.query', model) ?? [];
+    const numbered = answerNumbering_derive('pacs.query', model) ?? [];
     expect(numbered.filter((one) => one.kind === 'SER').map((one) => one.address)).toEqual(['/q/st1/se1', '/q/st1/se2', '/q/st2/se9']);
     expect(text).toMatch(/@PAT1 +DOE\^JANE \(ID: 1234\)/);
     expect(text).toMatch(/@STD1 +Brain MRI/);
@@ -46,12 +46,12 @@ describe('a PACS answer with its handles', () => {
   });
 
   it('leads the table with the handle column, and keeps the old table when nothing is numbered', () => {
-    const table: string = pacsAnswer_toTable(model_make(), 'series');
+    const table: string = pacsAnswer_renderTable(model_make(), 'series');
     expect(table.split('\n')[0]).toMatch(/^  @ +MRN/);
     expect(table).toMatch(/\n  @SER3 +1234/);
     expect(table).toContain('numbered: @PAT1, @STD1-2, @SER1-3');
     const bare = { queryId: 1, vfsPath: '/q', pacsName: 'P', expression: 'x', studies: [{ description: 'B', patientName: 'X', patientId: '1', date: '', modalities: '', accession: '', series: [] }] } as never;
-    expect(pacsAnswer_toTable(bare).split('\n')[0]).toMatch(/^  MRN/);
+    expect(pacsAnswer_renderTable(bare).split('\n')[0]).toMatch(/^  MRN/);
   });
 });
 

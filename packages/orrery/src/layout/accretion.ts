@@ -21,7 +21,7 @@
  *
  * @module
  */
-import { pluginWeights_of } from './constellations.js';
+import { pluginWeights_compute } from './constellations.js';
 import { randomFor_key } from './seeded.js';
 import { NODE_RADIUS, type LayoutNode, type PhysicsTerms, type Positions, type Vec3 } from './types.js';
 
@@ -76,7 +76,7 @@ interface Placed {
  * @param weights - How much each plugin says.
  * @returns 0..1.
  */
-export function feedLikeness_of(a: ReadonlySet<string>, b: ReadonlySet<string>, weights: ReadonlyMap<string, number>): number {
+export function feedLikeness_compute(a: ReadonlySet<string>, b: ReadonlySet<string>, weights: ReadonlyMap<string, number>): number {
   let both: number = 0;
   let either: number = 0;
   for (const plugin of new Set([...a, ...b])) {
@@ -99,7 +99,7 @@ const FAN: number = Math.PI / 3;
  * universe's own edge lengths — a force settle sized for the DAG pane unfolded
  * a feed of four stages fourteen units wide and the space into spokes.
  */
-function molecule_of(nodes: ReadonlyArray<LayoutNode>, random: () => number): { local: Map<string, Vec3>; radius: number } {
+function molecule_build(nodes: ReadonlyArray<LayoutNode>, random: () => number): { local: Map<string, Vec3>; radius: number } {
   const local: Map<string, Vec3> = new Map();
   const byId: Map<string, LayoutNode> = new Map(nodes.map((node: LayoutNode): [string, LayoutNode] => [node.id, node]));
   const children: Map<string, LayoutNode[]> = new Map();
@@ -112,7 +112,7 @@ function molecule_of(nodes: ReadonlyArray<LayoutNode>, random: () => number): { 
   const heading: Map<string, Vec3> = new Map();
   const queue: LayoutNode[] = [];
   roots.forEach((root: LayoutNode, index: number): void => {
-    const d: Vec3 = direction_of(random);
+    const d: Vec3 = direction_compute(random);
     const reach: number = index === 0 ? 0 : root.radius * 2 + EDGE_GAP;
     local.set(root.id, [d[0] * reach, d[1] * reach, d[2] * reach]);
     heading.set(root.id, d);
@@ -125,7 +125,7 @@ function molecule_of(nodes: ReadonlyArray<LayoutNode>, random: () => number): { 
       if (local.has(child.id)) continue;
       // A heading within the fan round the parent's: tilted off it, turned about it.
       const tilt: number = random() * FAN;
-      const side: Vec3 = perpendicular_of(ahead, random);
+      const side: Vec3 = perpendicular_compute(ahead, random);
       const d: Vec3 = normalised([
         ahead[0] * Math.cos(tilt) + side[0] * Math.sin(tilt),
         ahead[1] * Math.cos(tilt) + side[1] * Math.sin(tilt),
@@ -158,7 +158,7 @@ function normalised(v: Vec3): Vec3 {
 }
 
 /** A unit vector at right angles to `v`, turned at random about it. */
-function perpendicular_of(v: Vec3, random: () => number): Vec3 {
+function perpendicular_compute(v: Vec3, random: () => number): Vec3 {
   const other: Vec3 = Math.abs(v[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
   const a: Vec3 = normalised([v[1] * other[2] - v[2] * other[1], v[2] * other[0] - v[0] * other[2], v[0] * other[1] - v[1] * other[0]]);
   const b: Vec3 = [v[1] * a[2] - v[2] * a[1], v[2] * a[0] - v[0] * a[2], v[0] * a[1] - v[1] * a[0]];
@@ -167,7 +167,7 @@ function perpendicular_of(v: Vec3, random: () => number): Vec3 {
 }
 
 /** A point on the unit sphere, from the walker's own chance. */
-function direction_of(random: () => number): Vec3 {
+function direction_compute(random: () => number): Vec3 {
   const z: number = random() * 2 - 1;
   const angle: number = random() * Math.PI * 2;
   const ring: number = Math.sqrt(1 - z * z);
@@ -208,7 +208,7 @@ class Grid {
 function restingAgainst(other: Placed, from: Vec3, radius: number, random: () => number): Vec3 {
   let away: Vec3 = [from[0] - other.centre[0], from[1] - other.centre[1], from[2] - other.centre[2]];
   const length: number = Math.hypot(away[0], away[1], away[2]);
-  away = length < 1e-9 ? direction_of(random) : [away[0] / length, away[1] / length, away[2] / length];
+  away = length < 1e-9 ? direction_compute(random) : [away[0] / length, away[1] / length, away[2] / length];
   const reach: number = radius + other.particle.radius + STICK_GAP;
   return [other.centre[0] + away[0] * reach, other.centre[1] + away[1] * reach, other.centre[2] + away[2] * reach];
 }
@@ -269,7 +269,7 @@ export function accretion_layout(
       return { key, nodes: members, plugins, created, local, radius, held: true, centre };
     }
     // Unfolded by its own key, so feeds alike do not stand as clones.
-    const { local, radius } = molecule_of(members, randomFor_key(`turn:${key}`));
+    const { local, radius } = molecule_build(members, randomFor_key(`turn:${key}`));
     return { key, nodes: members, plugins, created, local, radius, held: false };
   });
   // Oldest first; a feed with no time after every timed one, by key.
@@ -277,7 +277,7 @@ export function accretion_layout(
 
   const feedsUsing: Map<string, number> = new Map();
   for (const particle of particles) for (const plugin of particle.plugins) feedsUsing.set(plugin, (feedsUsing.get(plugin) ?? 0) + 1);
-  const weights: Map<string, number> = pluginWeights_of(feedsUsing, particles.length);
+  const weights: Map<string, number> = pluginWeights_compute(feedsUsing, particles.length);
 
   const biggest: number = Math.max(NODE_RADIUS, ...particles.map((particle: Particle): number => particle.radius));
   const grid: Grid = new Grid(2 * biggest + STICK_GAP);
@@ -311,16 +311,16 @@ export function accretion_layout(
       let kin: Placed = placed[placed.length - 1] as Placed;
       let kinLikeness: number = -1;
       for (const other of placed) {
-        const likeness: number = feedLikeness_of(particle.plugins, other.particle.plugins, weights);
+        const likeness: number = feedLikeness_compute(particle.plugins, other.particle.plugins, weights);
         if (likeness >= kinLikeness) { kin = other; kinLikeness = likeness; }
       }
       const launch: number = extent + LAUNCH_MARGIN * particle.radius + biggest;
       const step: number = Math.max(0.5, particle.radius * 0.5);
-      const start: Vec3 = direction_of(random);
+      const start: Vec3 = direction_compute(random);
       let at: Vec3 = [start[0] * launch, start[1] * launch, start[2] * launch];
       let stuck: Vec3 | null = null;
       for (let taken = 0; taken < STEP_BUDGET && stuck === null; taken++) {
-        const wander: Vec3 = direction_of(random);
+        const wander: Vec3 = direction_compute(random);
         const toward: Vec3 = [kin.centre[0] - at[0], kin.centre[1] - at[1], kin.centre[2] - at[2]];
         const distance: number = Math.max(1e-9, Math.hypot(toward[0], toward[1], toward[2]));
         const heading: Vec3 = [
@@ -333,7 +333,7 @@ export function accretion_layout(
         if (touched.length === 0) {
           // Strayed too far: launched again from the sphere.
           if (Math.hypot(next[0], next[1], next[2]) > launch * 2) {
-            const again: Vec3 = direction_of(random);
+            const again: Vec3 = direction_compute(random);
             at = [again[0] * launch, again[1] * launch, again[2] * launch];
           } else {
             at = next;
@@ -344,7 +344,7 @@ export function accretion_layout(
         let best: Placed = touched[0] as Placed;
         let bestLikeness: number = -1;
         for (const other of touched) {
-          const likeness: number = feedLikeness_of(particle.plugins, other.particle.plugins, weights);
+          const likeness: number = feedLikeness_compute(particle.plugins, other.particle.plugins, weights);
           if (likeness > bestLikeness) { best = other; bestLikeness = likeness; }
         }
         if (random() < Math.max(STICK_FLOOR, bestLikeness)) {
@@ -379,13 +379,13 @@ function overlaps(at: Vec3, radius: number, other: Placed): boolean {
 function freeSpot_near(kin: Placed, radius: number, grid: Grid, random: () => number): Vec3 {
   for (let ring = 0; ring < 8; ring++) {
     for (let tries = 0; tries < 24; tries++) {
-      const d: Vec3 = direction_of(random);
+      const d: Vec3 = direction_compute(random);
       const reach: number = radius + kin.particle.radius + STICK_GAP + ring * radius;
       const at: Vec3 = [kin.centre[0] + d[0] * reach, kin.centre[1] + d[1] * reach, kin.centre[2] + d[2] * reach];
       if (!grid.touching(at, radius).some((other: Placed): boolean => overlaps(at, radius, other))) return at;
     }
   }
-  const d: Vec3 = direction_of(random);
+  const d: Vec3 = direction_compute(random);
   const reach: number = radius + kin.particle.radius + STICK_GAP + 8 * radius;
   return [kin.centre[0] + d[0] * reach, kin.centre[1] + d[1] * reach, kin.centre[2] + d[2] * reach];
 }

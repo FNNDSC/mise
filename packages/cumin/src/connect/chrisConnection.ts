@@ -372,7 +372,7 @@ export class ChRISConnection {
    * @returns The operation's result.
    * @throws {Error} When no CUBE URL is available or authentication fails.
    */
-  async elevation_withCredentials<T>(
+  async elevation_runWithCredentials<T>(
     credentials: ElevationCredentials,
     operation: () => Promise<T>,
   ): Promise<T> {

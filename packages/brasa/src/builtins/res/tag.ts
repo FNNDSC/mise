@@ -5,7 +5,7 @@
  * Singular/plural aliases: tag / tags
  */
 import chalk from 'chalk';
-import { commandArgs_process, ParsedArgs, cliOptions_from, resourceListOptions_refusal, resourceSearchTerm_refusal, resourceSearch_args } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_extract, resourceListOptions_refusal, resourceSearchTerm_refusal, resourceSearch_args } from '../utils.js';
 import { tags_fetchList, TagListResult } from '@fnndsc/chili/commands/tags/list.js';
 import { tagFields_fetch } from '@fnndsc/chili/commands/tags/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
@@ -29,7 +29,7 @@ export async function builtin_tag(args: string[]): Promise<CommandEnvelope> {
       return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
     }
     try {
-      const { tags, selectedFields, totalCount }: TagListResult = await tags_fetchList(cliOptions_from(parsed));
+      const { tags, selectedFields, totalCount }: TagListResult = await tags_fetchList(cliOptions_extract(parsed));
       if (tags.length === 0) { return envelope_ok(`${chalk.gray('No tags found.')}\n`); }
       return envelope_ok(table_render(tags, selectedFields, { title: { title: 'Tags', justification: 'center' }, pagination: totalCount !== undefined ? { shown: tags.length, total: totalCount } : undefined }));
     } catch (e: unknown) {

@@ -11,9 +11,9 @@ import { cuminMock_install } from './support/cuminMock.js';
 const Ok = <T>(value: T): { ok: true; value: T } => ({ ok: true, value });
 const Err = (): { ok: false } => ({ ok: false });
 cuminMock_install(() => ({
-  feedTags_byFeed: jest.fn(),
+  feedTags_readByFeed: jest.fn(),
   listCache_get: jest.fn(() => ({ cache_get: (): null => null, cache_set: jest.fn() })),
-  feedStatus_ofCounts: (): string => 'finishedSuccessfully',
+  feedStatus_deriveFromCounts: (): string => 'finishedSuccessfully',
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   Ok,
@@ -166,7 +166,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 const mockCatBinary = jest.fn(async (_path: string): Promise<{ ok: boolean; value?: Buffer }> => ({ ok: false }));
 const mockToPhysical = jest.fn(async (path: string): Promise<{ ok: boolean; value?: string }> => ({ ok: true, value: path }));
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/cat.js', () => ({ files_cat: jest.fn(), files_catBinary: mockCatBinary }));
-jest.unstable_mockModule('@fnndsc/chili/utils', () => ({ logical_toPhysical: mockToPhysical }));
+jest.unstable_mockModule('@fnndsc/chili/utils', () => ({ logicalPath_resolve: mockToPhysical }));
 
 // The path a caller gave, already absolute in these cases.
 jest.unstable_mockModule('../src/builtins/utils.js', () => ({

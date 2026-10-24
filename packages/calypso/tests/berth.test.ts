@@ -11,7 +11,7 @@ import {
   closing_take,
   closing_pathIn,
   identity_normalise,
-  identity_forSession,
+  identity_deriveForSession,
   DISCONNECTED_IDENTITY,
   berthKey_compute,
   berthDir_path,
@@ -19,7 +19,7 @@ import {
   berth_write,
   berth_read,
   berthOwn_read,
-  berthPaths_of,
+  berthPaths_list,
   berth_pathIn,
   berthAll_read,
   berth_remove,
@@ -79,15 +79,15 @@ describe('identity_normalise', () => {
   });
 });
 
-describe('identity_forSession', () => {
+describe('identity_deriveForSession', () => {
   it('normalises when both user and url are present', () => {
-    expect(identity_forSession('u', 'http://h/api/v1/')).toBe('u@http://h/api/v1/');
+    expect(identity_deriveForSession('u', 'http://h/api/v1/')).toBe('u@http://h/api/v1/');
   });
 
   it('falls back to the disconnected identity when either is missing', () => {
-    expect(identity_forSession(null, 'http://h/api/v1/')).toBe(DISCONNECTED_IDENTITY);
-    expect(identity_forSession('u', null)).toBe(DISCONNECTED_IDENTITY);
-    expect(identity_forSession(undefined, undefined)).toBe(DISCONNECTED_IDENTITY);
+    expect(identity_deriveForSession(null, 'http://h/api/v1/')).toBe(DISCONNECTED_IDENTITY);
+    expect(identity_deriveForSession('u', null)).toBe(DISCONNECTED_IDENTITY);
+    expect(identity_deriveForSession(undefined, undefined)).toBe(DISCONNECTED_IDENTITY);
   });
 });
 
@@ -239,7 +239,7 @@ describe('a porter\'s sessions', () => {
     const identity: string = identity_normalise('chris', 'http://cube/api/v1/');
     const root: string = join(runtimeDir, 'state', 'porter');
     const path: string = berth_pathIn(join(root, berthKey_compute(identity), 'run'), identity);
-    expect(berthPaths_of(identity)).toContain(path);
+    expect(berthPaths_list(identity)).toContain(path);
     mkdirSync(join(path, '..'), { recursive: true });
     writeFileSync(path, JSON.stringify(berth_of(identity, 'ws://127.0.0.1:9999')));
     expect(berth_read(identity)?.url).toBe('ws://127.0.0.1:9999');
@@ -255,6 +255,6 @@ describe('a porter\'s sessions', () => {
   it('honours PORTER_STATE_DIR', () => {
     process.env.PORTER_STATE_DIR = join(runtimeDir, 'elsewhere');
     const identity: string = identity_normalise('chris', 'http://cube/api/v1/');
-    expect(berthPaths_of(identity)[1]).toContain(join(runtimeDir, 'elsewhere'));
+    expect(berthPaths_list(identity)[1]).toContain(join(runtimeDir, 'elsewhere'));
   });
 });

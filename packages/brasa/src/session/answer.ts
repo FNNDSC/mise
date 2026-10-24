@@ -267,7 +267,7 @@ function rows_number(rows: ReadonlyArray<AnswerRow>, data?: unknown): NumberedHa
  * @param data - The model.
  * @returns The rows, or null when the model is not a listing.
  */
-export function answerRows_of(kind: string, data: unknown): AnswerRow[] | null {
+export function answerRows_derive(kind: string, data: unknown): AnswerRow[] | null {
   return adapters.get(kind)?.(data) ?? null;
 }
 
@@ -278,7 +278,7 @@ export function answerRows_of(kind: string, data: unknown): AnswerRow[] | null {
  * @param data - The model.
  * @returns The handles, in row order, or null when the model is not a listing.
  */
-export function answerNumbering_of(kind: string, data: unknown): NumberedHandle[] | null {
+export function answerNumbering_derive(kind: string, data: unknown): NumberedHandle[] | null {
   const rows: AnswerRow[] | null = adapters.get(kind)?.(data) ?? null;
   return rows === null ? null : rows_number(rows, data);
 }
@@ -300,7 +300,7 @@ export function handle_word(handle: { kind: AnswerKind; ordinal: number }): stri
  * @param handles - The numbered rows.
  * @returns Kind-and-address to word.
  */
-export function handleWords_of(handles: ReadonlyArray<NumberedHandle>): Map<string, string> {
+export function handleWords_map(handles: ReadonlyArray<NumberedHandle>): Map<string, string> {
   return new Map(handles.map((handle: NumberedHandle): [string, string] => [`${handle.kind}:${handle.address}`, handle_word(handle)]));
 }
 
@@ -312,7 +312,7 @@ export function handleWords_of(handles: ReadonlyArray<NumberedHandle>): Map<stri
  * @param handles - The numbered rows.
  * @returns The footer, or '' when nothing is numbered.
  */
-export function numberedFooter_of(handles: ReadonlyArray<{ kind: AnswerKind; ordinal: number }>): string {
+export function numberedFooter_render(handles: ReadonlyArray<{ kind: AnswerKind; ordinal: number }>): string {
   const byKind: Map<AnswerKind, number[]> = new Map();
   for (const handle of handles) byKind.set(handle.kind, [...(byKind.get(handle.kind) ?? []), handle.ordinal]);
   const parts: string[] = [...byKind].map(([kind, ordinals]: [AnswerKind, number[]]): string => {

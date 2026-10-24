@@ -1,61 +1,61 @@
 import {
-  dictionary_fromCLI,
+  dictionary_parseFromCLI,
   keyPairString_parse,
   keyPairParams_apply,
-  listParams_fromOptions,
+  listParams_buildFromOptions,
   record_extract,
   ChRISElementsGet
 } from '../src/utils/keypair';
 
 describe('Keypair Utilities', () => {
-  describe('dictionary_fromCLI()', () => {
+  describe('dictionary_parseFromCLI()', () => {
     it('should parse simple flag', () => {
-      const result = dictionary_fromCLI('--verbose');
+      const result = dictionary_parseFromCLI('--verbose');
       expect(result).toEqual({ verbose: true });
     });
 
     it('should parse flag with value', () => {
-      const result = dictionary_fromCLI('--user chris');
+      const result = dictionary_parseFromCLI('--user chris');
       expect(result).toEqual({ user: 'chris' });
     });
 
     it('should parse multiple flags', () => {
-      const result = dictionary_fromCLI('--user chris --password secret');
+      const result = dictionary_parseFromCLI('--user chris --password secret');
       expect(result).toEqual({ user: 'chris', password: 'secret' });
     });
 
     it('should parse numeric values', () => {
-      const result = dictionary_fromCLI('--port 8000 --timeout 30');
+      const result = dictionary_parseFromCLI('--port 8000 --timeout 30');
       expect(result).toEqual({ port: 8000, timeout: 30 });
     });
 
     it('should parse quoted strings', () => {
-      const result = dictionary_fromCLI('--message "hello world"');
+      const result = dictionary_parseFromCLI('--message "hello world"');
       expect(result).toEqual({ message: 'hello world' });
     });
 
     it('should parse single-quoted strings', () => {
-      const result = dictionary_fromCLI("--message 'hello world'");
+      const result = dictionary_parseFromCLI("--message 'hello world'");
       expect(result).toEqual({ message: 'hello world' });
     });
 
     it('should handle single dash flags', () => {
-      const result = dictionary_fromCLI('-v -l');
+      const result = dictionary_parseFromCLI('-v -l');
       expect(result).toEqual({ v: true, l: true });
     });
 
     it('should handle mixed single and double dash', () => {
-      const result = dictionary_fromCLI('-v --long');
+      const result = dictionary_parseFromCLI('-v --long');
       expect(result).toEqual({ v: true, long: true });
     });
 
     it('should handle empty string', () => {
-      const result = dictionary_fromCLI('');
+      const result = dictionary_parseFromCLI('');
       expect(result).toEqual({});
     });
 
     it('should handle flag at end without value', () => {
-      const result = dictionary_fromCLI('--user chris --verbose');
+      const result = dictionary_parseFromCLI('--user chris --verbose');
       expect(result).toEqual({ user: 'chris', verbose: true });
     });
   });
@@ -139,36 +139,36 @@ describe('Keypair Utilities', () => {
     });
   });
 
-  describe('listParams_fromOptions()', () => {
+  describe('listParams_buildFromOptions()', () => {
     it('should set default limit and offset', () => {
       const options: ChRISElementsGet = {};
-      const result = listParams_fromOptions(options);
+      const result = listParams_buildFromOptions(options);
       expect(result.limit).toBe(20);
       expect(result.offset).toBe(0);
     });
 
     it('should use page option for limit', () => {
       const options: ChRISElementsGet = { page: '50' };
-      const result = listParams_fromOptions(options);
+      const result = listParams_buildFromOptions(options);
       expect(result.limit).toBe(50);
     });
 
     it('should preserve custom offset', () => {
       const options: ChRISElementsGet = { offset: 100 };
-      const result = listParams_fromOptions(options);
+      const result = listParams_buildFromOptions(options);
       expect(result.offset).toBe(100);
     });
 
     it('should apply search key-pairs', () => {
       const options: ChRISElementsGet = { search: 'name:chris,status:active' };
-      const result = listParams_fromOptions(options);
+      const result = listParams_buildFromOptions(options);
       expect(result.name).toBe('chris');
       expect(result.status).toBe('active');
     });
 
     it('should use custom key-pair field', () => {
       const options: ChRISElementsGet = { params: 'id:123' };
-      const result = listParams_fromOptions(options, 'params');
+      const result = listParams_buildFromOptions(options, 'params');
       expect(result.id).toBe('123');
     });
 
@@ -179,7 +179,7 @@ describe('Keypair Utilities', () => {
         city: 'Boston',
         returnFilter: 'name,age'
       };
-      const result = listParams_fromOptions(options);
+      const result = listParams_buildFromOptions(options);
       expect(result.name).toBe('chris');
       expect(result.age).toBe('30');
       expect(result.city).toBeUndefined();
@@ -192,7 +192,7 @@ describe('Keypair Utilities', () => {
         age: '30',
         returnFilter: 'name, age'
       };
-      const result = listParams_fromOptions(options);
+      const result = listParams_buildFromOptions(options);
       expect(result.name).toBe('chris');
       expect(result.age).toBe('30');
     });
@@ -202,7 +202,7 @@ describe('Keypair Utilities', () => {
         name: 'chris',
         returnFilter: 'name,missing'
       };
-      const result = listParams_fromOptions(options);
+      const result = listParams_buildFromOptions(options);
       expect(result.name).toBe('chris');
       expect(result.missing).toBeUndefined();
     });
@@ -213,7 +213,7 @@ describe('Keypair Utilities', () => {
         offset: 10,
         search: 'status:active'
       };
-      const result = listParams_fromOptions(options);
+      const result = listParams_buildFromOptions(options);
       expect(result.limit).toBe(30);
       expect(result.offset).toBe(10);
       expect(result.status).toBe('active');

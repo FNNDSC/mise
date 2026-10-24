@@ -21,7 +21,7 @@ export const XXD_DEFAULT: number = 256;
 export const STRINGS_DEFAULT: number = 200;
 
 /** What a file is, by its first bytes. */
-export function magic_of(bytes: Buffer, name: string = ''): string {
+export function magic_derive(bytes: Buffer, name: string = ''): string {
   const at = (i: number): number => bytes[i] ?? -1;
   const ascii = (from: number, to: number): string => bytes.subarray(from, to).toString('latin1');
   if (bytes.length === 0) return 'empty';
@@ -128,7 +128,7 @@ export async function builtin_file(args: string[]): Promise<CommandEnvelope> {
   for (const arg of args) {
     const read = await bytes_read(arg, 'file');
     if ('error' in read) return read.error;
-    const kind: string = magic_of(read.bytes, read.path);
+    const kind: string = magic_derive(read.bytes, read.path);
     lines.push(`${arg}: ${kind}${read.bytes.length > 0 ? chalk.gray(`  (${read.bytes.length.toLocaleString('en-US')} bytes)`) : ''}`);
     data.push({ path: read.path, kind, bytes: read.bytes.length });
   }

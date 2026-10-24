@@ -14,7 +14,7 @@ import type { BuildCall } from '../src/cloud/builder.js';
 import type { OciBuildApi, OciLink } from '../src/cloud/oci/buildApi.js';
 import type { RmApi, RmJobRecord, RmOperation } from '../src/cloud/oci/rmApi.js';
 import { OciBuilder } from '../src/cloud/oci/builder.js';
-import { familyShape_of, stackVariables_build } from '../src/cloud/oci/stackVars.js';
+import { familyShape_resolve, stackVariables_build } from '../src/cloud/oci/stackVars.js';
 import { FakeDriver, fakeCloud_sample } from '../src/cloud/fake/driver.js';
 import { FakeBuildWorld, FakeCloudBuilder, FakeInstaller } from '../src/cloud/fake/builder.js';
 import { FakeKube, fakeVerifyReach } from '../src/cluster/fakeKube.js';
@@ -99,8 +99,8 @@ describe('a new stack\'s variables', () => {
     expect(stackVariables_build({ domain: 't', spec: workers, tenancyId: 't', compartmentId: 'c', region: 'r', baseDomain: 'b', isoLink: 'i', sshPublicKey: 'k' })).toMatchObject({ compute_count: '2', compute_ocpu: '4', compute_boot_volume_vpus_per_gb: '10' });
     expect(() => stackVariables_build({ domain: 't', spec: { ...SPEC_DEFAULT, controlPlane: { ...SPEC_DEFAULT.controlPlane, vcpu: 7 } }, tenancyId: 't', compartmentId: 'c', region: 'r', baseDomain: 'b', isoLink: 'i', sshPublicKey: 'k' })).toThrow('7 vCPU is not whole OCPUs');
     expect(() => stackVariables_build({ domain: 't', spec: { ...SPEC_DEFAULT, controlPlane: { ...SPEC_DEFAULT.controlPlane, bootTier: 'gold' } }, tenancyId: 't', compartmentId: 'c', region: 'r', baseDomain: 'b', isoLink: 'i', sshPublicKey: 'k' })).toThrow('boot tier gold');
-    expect(() => familyShape_of('Z9')).toThrow('no flexible shape known');
-    expect(familyShape_of('A1')).toEqual({ shape: 'VM.Standard.A1.Flex', vcpuPerOcpu: 1 });
+    expect(() => familyShape_resolve('Z9')).toThrow('no flexible shape known');
+    expect(familyShape_resolve('A1')).toEqual({ shape: 'VM.Standard.A1.Flex', vcpuPerOcpu: 1 });
   });
 });
 

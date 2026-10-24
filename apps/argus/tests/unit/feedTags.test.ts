@@ -7,8 +7,8 @@
  */
 import { describe, it, expect } from '@jest/globals';
 import type { FeedListEntry } from '@fnndsc/menu';
-import { tagLines_compose, tagNames_of } from '../../src/app/tags.js';
-import { feedTags_of } from '../../src/app/feedRows.js';
+import { tagLines_compose, tagNames_extract } from '../../src/app/tags.js';
+import { feedTags_extract } from '../../src/app/feedRows.js';
 import { feedTitle_build } from '../../src/features/dag/roster.js';
 import { RosterOrder } from '../../src/features/roster/order.js';
 import { paneAsk_open } from '../../src/features/ask/paneAsk.js';
@@ -24,9 +24,9 @@ describe('the lines a tag is hung by', () => {
   });
 
   it('reads the tag names from ls /proc/tags and a feed\'s tags from getfattr', () => {
-    expect(tagNames_of(outcome({ kind: 'fs.listing', data: [{ path: '/proc/tags', items: [{ name: 'urgent' }, { name: 'qc' }] }] }))).toEqual(['urgent', 'qc']);
-    expect(tagNames_of(outcome({ kind: 'fs.cwd', data: {} }))).toEqual([]);
-    expect(feedTags_of(outcome({ kind: 'fs.xattr', data: [{ path: 'feed_12', feedId: 12, tags: ['urgent'] }] }))).toEqual(['urgent']);
+    expect(tagNames_extract(outcome({ kind: 'fs.listing', data: [{ path: '/proc/tags', items: [{ name: 'urgent' }, { name: 'qc' }] }] }))).toEqual(['urgent', 'qc']);
+    expect(tagNames_extract(outcome({ kind: 'fs.cwd', data: {} }))).toEqual([]);
+    expect(feedTags_extract(outcome({ kind: 'fs.xattr', data: [{ path: 'feed_12', feedId: 12, tags: ['urgent'] }] }))).toEqual(['urgent']);
   });
 });
 

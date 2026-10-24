@@ -25,7 +25,7 @@ export interface ParsedArgs {
  * @param parsed - Arguments from `commandArgs_process`.
  * @returns The same flags as a chili CLIoptions object.
  */
-export function cliOptions_from(parsed: ParsedArgs): CLIoptions {
+export function cliOptions_extract(parsed: ParsedArgs): CLIoptions {
   const options: CLIoptions = {};
   for (const [key, value] of Object.entries(parsed)) {
     if (key !== '_') options[key] = value;
@@ -186,12 +186,12 @@ export interface PathContext {
  * @param user - The identity's username, or null when there is none.
  * @returns The home path.
  */
-export function homePath_of(user: string | null | undefined): string {
+export function homePath_derive(user: string | null | undefined): string {
   return user ? `/home/${user}` : '/';
 }
 
 export function path_resolvePure(inputPath: string, context: PathContext): string {
-  return path_resolveFrom(inputPath, homePath_of(context.user), context.cwd);
+  return path_resolveFrom(inputPath, homePath_derive(context.user), context.cwd);
 }
 
 // A path argument as the session means it: `~` and relative paths resolved.

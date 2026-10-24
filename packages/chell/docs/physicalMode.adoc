@@ -234,8 +234,8 @@ if (session.physicalMode_get()) {
   validationPath = logicalPath;
 } else {
   // Logical mode: resolve logical → physical
-  const { logical_toPhysical } = await import('@fnndsc/chili/utils');
-  const physicalResult = await logical_toPhysical(logicalPath);
+  const { logicalPath_resolve } = await import('@fnndsc/chili/utils');
+  const physicalResult = await logicalPath_resolve(logicalPath);
   validationPath = physicalResult.value;
 }
 

@@ -100,12 +100,12 @@ function pluginName_toSearchString(pluginName: string): string {
 
 ### 2. Parameter Format: CLI-Style
 
-cumin's `dictionary_fromCLI()` expects: `--key1 value1 --key2 value2`
+cumin's `dictionary_parseFromCLI()` expects: `--key1 value1 --key2 value2`
 NOT JSON: `{"key1": "value1"}`
 
 **Conversion function** (`salsa/src/plugins/index.ts`):
 ```typescript
-function dictionary_toCLI(params: Dictionary): string {
+function dictionary_formatAsCLI(params: Dictionary): string {
   const parts: string[] = [];
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null) {
@@ -191,7 +191,7 @@ export function path_findLatestDircopy(binListing: string[]): string | null;
 **Change:** Prioritize explicit `previous_id` from params over context.
 
 ```typescript
-const pluginParams: ChRISObjectParams = dictionary_fromCLI(params);
+const pluginParams: ChRISObjectParams = dictionary_parseFromCLI(params);
 
 let previousID: number;
 if (pluginParams.previous_id !== undefined) {

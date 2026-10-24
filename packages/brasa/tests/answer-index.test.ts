@@ -227,9 +227,9 @@ describe('a listing handed on whole (#1103)', () => {
   };
 
   it('gives its leaf rows (the series), never the study or the patient that stand for them', async () => {
-    const { listingOperands_of } = await import('../src/core/listing.js');
-    expect(listingOperands_of({ kind: 'pacs.query', data: pacs })).toEqual(['/q/st1/se1', '/q/st1/se2']);
-    expect(listingOperands_of({ kind: 'no.such.kind', data: {} })).toBeNull();
+    const { listingOperands_extract } = await import('../src/core/listing.js');
+    expect(listingOperands_extract({ kind: 'pacs.query', data: pacs })).toEqual(['/q/st1/se1', '/q/st1/se2']);
+    expect(listingOperands_extract({ kind: 'no.such.kind', data: {} })).toBeNull();
   });
 
   it('is taken once from the pipe', async () => {

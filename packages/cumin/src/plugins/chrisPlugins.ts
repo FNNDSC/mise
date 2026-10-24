@@ -31,10 +31,10 @@ import { ChRISResourceGroup } from "../resources/chrisResourceGroup.js";
 import {
   ChRISElementsGet,
   QueryHits,
-  listParams_fromOptions,
+  listParams_buildFromOptions,
   record_extract,
   ChRISObjectParams,
-  dictionary_fromCLI,
+  dictionary_parseFromCLI,
 } from "../utils/keypair.js";
 import { Searchable } from "../utils/searchable.js";
 import { errorStack } from "../error/errorStack.js";
@@ -147,7 +147,7 @@ function collectionJson_is(data: unknown): data is CollectionJson {
   );
 }
 
-function collectionItem_toData(item: CollectionItem): Record<string, unknown> {
+function collectionItem_convertToData(item: CollectionItem): Record<string, unknown> {
   const data: Record<string, unknown> = {};
   item.data?.forEach((datum: CollectionData) => { data[datum.name] = datum.value; });
   return data;
@@ -162,7 +162,7 @@ function collectionItem_selectBest(
   let targetItem: CollectionItem | null = null;
 
   for (const item of items) {
-    const itemData: Record<string, unknown> = collectionItem_toData(item);
+    const itemData: Record<string, unknown> = collectionItem_convertToData(item);
     if (itemData['name'] === pluginName) {
       exactNameMatches.push(item);
       if (version && itemData['version'] === version) {
@@ -176,15 +176,15 @@ function collectionItem_selectBest(
   if (exactNameMatches.length > 0 && !version) return exactNameMatches[0];
 
   const fallback: CollectionItem = items[0];
-  const fallbackData: Record<string, unknown> = collectionItem_toData(fallback);
+  const fallbackData: Record<string, unknown> = collectionItem_convertToData(fallback);
   if (fallbackData['name'] !== pluginName) {
     errorStack.stack_push('warning', `Peer store search for exact plugin name '${pluginName}' returned '${fallbackData['name']}'. Exact name not found, using first result.`);
   }
   return fallback;
 }
 
-function collectionItem_toPluginData(item: CollectionItem): Record<string, unknown> {
-  const pluginData: Record<string, unknown> = collectionItem_toData(item);
+function collectionItem_convertToPluginData(item: CollectionItem): Record<string, unknown> {
+  const pluginData: Record<string, unknown> = collectionItem_convertToData(item);
   if (item.href) pluginData['url'] = item.href;
   if (item.links) pluginData['links'] = item.links;
   return pluginData;
@@ -281,7 +281,7 @@ export class ChRISPlugin {
     return pluginInstance;
   }
 
-  pluginInstance_toDict(
+  pluginInstance_convertToDict(
     pluginInstance: PluginInstance | undefined | null
   ): Dictionary | null {
     if (!pluginInstance) {
@@ -298,7 +298,7 @@ export class ChRISPlugin {
       );
       return null;
     }
-    const dict: Dictionary = chrisResource.resourceItems_toDicts(items)[0];
+    const dict: Dictionary = chrisResource.resourceItems_mapToDicts(items)[0];
     return dict;
   }
 
@@ -317,7 +317,7 @@ export class ChRISPlugin {
     const pluginID: number = pluginList.hits[0] as number;
 
     // Parse params first to check for explicit previous_id
-    const pluginParams: ChRISObjectParams = typeof params === 'string' ? dictionary_fromCLI(params) : params;
+    const pluginParams: ChRISObjectParams = typeof params === 'string' ? dictionary_parseFromCLI(params) : params;
 
     // Prioritize explicit previous_id from params, fall back to context
     let previousID: number;
@@ -334,7 +334,7 @@ export class ChRISPlugin {
     }
 
     try {
-      const dict: Dictionary | null = this.pluginInstance_toDict(
+      const dict: Dictionary | null = this.pluginInstance_convertToDict(
         await this.plugin_runOnCUBE(pluginID, previousID, pluginParams)
       );
       return dict;
@@ -360,7 +360,7 @@ export class ChRISPlugin {
   ): Promise<QueryHits | null> {
     const chrisPluginGroup: ChRISPluginGroup = new ChRISPluginGroup();
     // We rely on lazy initialization of ChRISResourceGroup
-    const searchParams: ListOptions = listParams_fromOptions(searchOptions);
+    const searchParams: ListOptions = listParams_buildFromOptions(searchOptions);
     const searchResults: FilteredResourceData | null =
       await chrisPluginGroup.asset.resources_listAndFilterByOptions(
         searchParams
@@ -530,7 +530,7 @@ export class ChRISPlugin {
           const items: CollectionItem[] = data.collection.items;
           if (items.length === 0) return null;
           const targetItem: CollectionItem = collectionItem_selectBest(items, pluginName, version);
-          const pluginData: Record<string, unknown> = collectionItem_toPluginData(targetItem);
+          const pluginData: Record<string, unknown> = collectionItem_convertToPluginData(targetItem);
           return { plugin: pluginData, storeUrl: targetItem.href };
         }
 

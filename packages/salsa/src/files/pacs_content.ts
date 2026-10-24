@@ -5,7 +5,7 @@
  */
 
 import { Result, Err, pacsFile_getBlob, pacsFile_getText } from "@fnndsc/cumin";
-import { fileId_atPath_resolve } from './fileLookup.js';
+import { pathFileId_resolve } from './fileLookup.js';
 
 /**
  * Fetches the content of a PACS file (DICOM).
@@ -19,7 +19,7 @@ import { fileId_atPath_resolve } from './fileLookup.js';
  * @returns A Result containing the file content as a string, or an error.
  */
 export async function fileContent_getPACS(filePath: string): Promise<Result<string>> {
-  const idResult: Result<number> = await fileId_atPath_resolve(filePath);
+  const idResult: Result<number> = await pathFileId_resolve(filePath);
   if (!idResult.ok) {
     return Err();
   }
@@ -36,7 +36,7 @@ export async function fileContent_getPACS(filePath: string): Promise<Result<stri
  * @returns A Result containing the file content as a Buffer, or an error.
  */
 export async function fileContent_getPACSBinary(filePath: string): Promise<Result<Buffer>> {
-  const idResult: Result<number> = await fileId_atPath_resolve(filePath);
+  const idResult: Result<number> = await pathFileId_resolve(filePath);
   if (!idResult.ok) {
     return Err();
   }

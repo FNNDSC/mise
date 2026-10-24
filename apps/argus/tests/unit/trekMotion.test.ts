@@ -10,7 +10,7 @@ import { describe, it, expect, beforeAll } from '@jest/globals';
 import { trek_play } from 'bsd-trek';
 import type { TrekState, TrekTerminal } from 'bsd-trek/host';
 import { TrekBridge } from '../../src/features/trek/bridge.js';
-import { course_between, crossing_of, FrameQueue, lineEvent_of } from '../../src/features/trek/motion.js';
+import { course_between, crossing_compute, FrameQueue, lineEvent_parse } from '../../src/features/trek/motion.js';
 
 const shown: TrekState[] = [];
 if (typeof globalThis.structuredClone !== 'function') (globalThis as { structuredClone?: <T>(v: T) => T }).structuredClone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -44,24 +44,24 @@ function sector_kind(bridge: TrekBridge, x: number, y: number): string {
 
 describe('the line parser', () => {
   it('names what a line moves: a track and its points, a kill, a nova, a phaser hit, a hit on the ship, a Klingon\'s move and escape, a supernova', () => {
-    expect(lineEvent_of('Torpedo track:')).toEqual({ kind: 'torpedo-head' });
-    expect(lineEvent_of('Torpedo track, torpedo number 2:')).toEqual({ kind: 'torpedo-head' });
-    expect(lineEvent_of('   9.5\t 1.5')).toEqual({ kind: 'torpedo-point', at: { x: 9.5, y: 1.5 } });
-    expect(lineEvent_of('Torpedo missed')).toEqual({ kind: 'torpedo-end' });
-    expect(lineEvent_of('   *** Klingon at 0,2 destroyed ***')).toEqual({ kind: 'kill', at: { x: 0, y: 2 } });
-    expect(lineEvent_of('Spock: Star at 0,3 gone nova')).toEqual({ kind: 'nova', at: { x: 0, y: 3 } });
-    expect(lineEvent_of('Photon tubes misfire on torpedo 3')).toEqual({ kind: 'misfire' });
-    expect(lineEvent_of('191 unit hit on Klingon at 0,2')).toEqual({ kind: 'phaser', at: { x: 0, y: 2 } });
-    expect(lineEvent_of('HIT: 38 units from 0,2, shields absorb 89%, effective hit 4')).toEqual({ kind: 'incoming', hit: 38, from: { x: 0, y: 2 }, absorb: 89 });
+    expect(lineEvent_parse('Torpedo track:')).toEqual({ kind: 'torpedo-head' });
+    expect(lineEvent_parse('Torpedo track, torpedo number 2:')).toEqual({ kind: 'torpedo-head' });
+    expect(lineEvent_parse('   9.5\t 1.5')).toEqual({ kind: 'torpedo-point', at: { x: 9.5, y: 1.5 } });
+    expect(lineEvent_parse('Torpedo missed')).toEqual({ kind: 'torpedo-end' });
+    expect(lineEvent_parse('   *** Klingon at 0,2 destroyed ***')).toEqual({ kind: 'kill', at: { x: 0, y: 2 } });
+    expect(lineEvent_parse('Spock: Star at 0,3 gone nova')).toEqual({ kind: 'nova', at: { x: 0, y: 3 } });
+    expect(lineEvent_parse('Photon tubes misfire on torpedo 3')).toEqual({ kind: 'misfire' });
+    expect(lineEvent_parse('191 unit hit on Klingon at 0,2')).toEqual({ kind: 'phaser', at: { x: 0, y: 2 } });
+    expect(lineEvent_parse('HIT: 38 units from 0,2, shields absorb 89%, effective hit 4')).toEqual({ kind: 'incoming', hit: 38, from: { x: 0, y: 2 }, absorb: 89 });
     // the sensors damaged: the engine names no sector
-    expect(lineEvent_of('HIT: 38 units, shields absorb 89%, effective hit 4')).toEqual({ kind: 'incoming', hit: 38, from: null, absorb: 89 });
-    expect(lineEvent_of('HIT: 38 units from 0,2')).toEqual({ kind: 'incoming', hit: 38, from: { x: 0, y: 2 }, absorb: 0 });
-    expect(lineEvent_of('Klingon at 0,2 moves to 6,2')).toEqual({ kind: 'klingon-move', from: { x: 0, y: 2 }, to: { x: 6, y: 2 } });
-    expect(lineEvent_of('Klingon at 0,2 escapes to quadrant 6,6')).toEqual({ kind: 'klingon-escape', from: { x: 0, y: 2 }, quadrant: { x: 6, y: 6 } });
-    expect(lineEvent_of('RED ALERT: supernova occurring at 3,4')).toEqual({ kind: 'supernova', at: { x: 3, y: 4 } });
-    expect(lineEvent_of('  in quadrant 2,5.  Caution is advised')).toEqual({ kind: 'supernova-report', quadrant: { x: 2, y: 5 } });
-    expect(lineEvent_of('Stardate 3900.00: Klingon attack:')).toBeNull();
-    expect(lineEvent_of('Spock: Star at 0,3 failed to nova.')).toBeNull();
+    expect(lineEvent_parse('HIT: 38 units, shields absorb 89%, effective hit 4')).toEqual({ kind: 'incoming', hit: 38, from: null, absorb: 89 });
+    expect(lineEvent_parse('HIT: 38 units from 0,2')).toEqual({ kind: 'incoming', hit: 38, from: { x: 0, y: 2 }, absorb: 0 });
+    expect(lineEvent_parse('Klingon at 0,2 moves to 6,2')).toEqual({ kind: 'klingon-move', from: { x: 0, y: 2 }, to: { x: 6, y: 2 } });
+    expect(lineEvent_parse('Klingon at 0,2 escapes to quadrant 6,6')).toEqual({ kind: 'klingon-escape', from: { x: 0, y: 2 }, quadrant: { x: 6, y: 6 } });
+    expect(lineEvent_parse('RED ALERT: supernova occurring at 3,4')).toEqual({ kind: 'supernova', at: { x: 3, y: 4 } });
+    expect(lineEvent_parse('  in quadrant 2,5.  Caution is advised')).toEqual({ kind: 'supernova-report', quadrant: { x: 2, y: 5 } });
+    expect(lineEvent_parse('Stardate 3900.00: Klingon attack:')).toBeNull();
+    expect(lineEvent_parse('Spock: Star at 0,3 failed to nova.')).toBeNull();
   });
 });
 
@@ -108,13 +108,13 @@ describe('the geometry', () => {
     expect(course_between({ x: 0, y: 1 }, { x: 9, y: 1 })).toBe(180);
     expect(course_between({ x: 9, y: 6 }, { x: 9, y: 1 })).toBe(270);
     // quadrant 7,6 sector 9,1 to quadrant 7,5 sector 9,8: straight left, out of column 0, in at column 9
-    const west = crossing_of({ quadrant: { x: 7, y: 6 }, sector: { x: 9, y: 1 } }, { quadrant: { x: 7, y: 5 }, sector: { x: 9, y: 8 } });
+    const west = crossing_compute({ quadrant: { x: 7, y: 6 }, sector: { x: 9, y: 1 } }, { quadrant: { x: 7, y: 5 }, sector: { x: 9, y: 8 } });
     expect(west.exit.x).toBe(9);
     expect(west.exit.y).toBeCloseTo(-0.5 - 0.7, 5);
     expect(west.entry.x).toBe(9);
     expect(west.entry.y).toBeCloseTo(9.5 + 0.7, 5);
     // straight up out of row 0 into row 9 of the quadrant above
-    const north = crossing_of({ quadrant: { x: 7, y: 6 }, sector: { x: 2, y: 4 } }, { quadrant: { x: 6, y: 6 }, sector: { x: 7, y: 4 } });
+    const north = crossing_compute({ quadrant: { x: 7, y: 6 }, sector: { x: 2, y: 4 } }, { quadrant: { x: 6, y: 6 }, sector: { x: 7, y: 4 } });
     expect(north.exit.x).toBeCloseTo(-1.2, 5);
     expect(north.entry.x).toBeCloseTo(10.2, 5);
     expect(north.entry.y).toBe(4);

@@ -5,14 +5,14 @@ import * as cliUtils from '../../../src/utils/cli'; // Import cliUtils for mocki
 jest.mock('@fnndsc/salsa');
 jest.mock('../../../src/utils/cli', () => ({
   ...jest.requireActual('../../../src/utils/cli'), // Keep actual implementations for other cliUtils functions
-  options_toParams: jest.fn(), // Mock options_toParams
+  options_convertToParams: jest.fn(), // Mock options_convertToParams
 }));
 
 describe('commands/feeds/delete', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // Mock options_toParams to return an object that correctly includes the search term
-    (cliUtils.options_toParams as jest.Mock).mockImplementation((options) => {
+    // Mock options_convertToParams to return an object that correctly includes the search term
+    (cliUtils.options_convertToParams as jest.Mock).mockImplementation((options) => {
       const params = { limit: 20, offset: 0 };
       if (options.search) {
         Object.assign(params, { search: options.search });
@@ -28,7 +28,7 @@ describe('commands/feeds/delete', () => {
 
       const result = await feeds_searchByTerm('term');
 
-      expect(cliUtils.options_toParams).toHaveBeenCalledWith({ search: 'term' });
+      expect(cliUtils.options_convertToParams).toHaveBeenCalledWith({ search: 'term' });
       expect(salsa.feeds_list).toHaveBeenCalledWith(expect.objectContaining({ search: 'term' }));
       expect(result).toEqual(mockData.tableData);
     });

@@ -21,18 +21,18 @@ import chalk from 'chalk';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 import { REPL } from '../core/repl.js';
 import { RemoteEngine, type DaemonStack } from './remoteEngine.js';
-import { buildMismatch_line, closingLine_of, staleLines_of, surfaceNews_read } from './buildMatch.js';
+import { buildMismatch_line, closingLine_render, staleLines_render, surfaceNews_read } from './buildMatch.js';
 import type { ClosingCause } from '@fnndsc/menu';
 import { LocalBerthResolver, type Berth } from '@fnndsc/calypso';
-import { berthIdentities_of } from './berthTarget.js';
-import { splashLines_of } from './splash.js';
+import { berthIdentities_derive } from './berthTarget.js';
+import { splashLines_render } from './splash.js';
 import { sink_set, StdoutSink, surface_get, surface_set, welcomeLine_build, welcomeLine_compose, stackBanner_rows, stackBannerRow_paint, buildHash_get } from '@fnndsc/brasa';
 import { cliSurface_create } from '../core/cliSurface.js';
 import type { FileDeliverRequest, FileDeliverResult } from '@fnndsc/menu';
 import { TerminalProgressRenderer } from '../core/progressRenderer.js';
 import { greeting_print } from '../core/greeting.js';
 import { surfaceLine_execute } from '../core/surfaceDispatch.js';
-import { game_play, gameShow_of, gameTerminal_is, type GameShow } from '../core/gamePlayer.js';
+import { game_play, gameShow_find, gameTerminal_is, type GameShow } from '../core/gamePlayer.js';
 import { output_above } from '../core/lineDiscipline.js';
 import { hostControl_phrase } from './hostControl.js';
 
@@ -49,7 +49,7 @@ import { hostControl_phrase } from './hostControl.js';
  * @returns The berth to attach, or null when the address cannot be read (a
  *   message is printed).
  */
-export function berth_fromAddress(address: string, token?: string): Berth | null {
+export function berth_parse(address: string, token?: string): Berth | null {
   let parsed: URL;
   try {
     parsed = new URL(address);
@@ -161,7 +161,7 @@ async function berth_select(target: string | undefined): Promise<Berth | null> {
   const resolver: LocalBerthResolver = new LocalBerthResolver(berth_probeLive);
 
   if (target) {
-    for (const identity of berthIdentities_of(target)) {
+    for (const identity of berthIdentities_derive(target)) {
       const berth: Berth | null = await resolver.resolve(identity);
       if (berth) {
         return berth;
@@ -232,7 +232,7 @@ async function segments_execute(engine: RemoteEngine, line: string): Promise<Com
  * REPL.
  *
  * @param identity - The `<user>@<where>` to attach to, as typed (see
- *   {@link berthIdentities_of}), or undefined to resolve the sole live berth.
+ *   {@link berthIdentities_derive}), or undefined to resolve the sole live berth.
  * @param commandToExecute - An optional one-shot command. When present, execute
  *   it and detach without creating an interactive REPL.
  * @param attach - An explicit daemon address, for a daemon on another machine
@@ -252,7 +252,7 @@ export async function remote_run(
   const addressed: Berth | null = attach
     ? (attach.headers !== undefined
       ? { identity: identity ?? attach.address, url: attach.address, token: '' }
-      : berth_fromAddress(attach.address, attach.token))
+      : berth_parse(attach.address, attach.token))
     : null;
   const headers: Record<string, string> = attach?.headers ?? {};
   // An address names no identity; a caller that knows one (the daemon
@@ -305,12 +305,12 @@ export async function remote_run(
       // The daemon's code moved on disk mid-session: say so where the operator is looking.
       onStale: (stale: boolean): void => {
         if (!stale) return;
-        process.stderr.write(`\n${staleLines_of(surfaceNews_read()).map((line: string): string => chalk.yellow(line)).join('\n')}\n`);
+        process.stderr.write(`\n${staleLines_render(surfaceNews_read()).map((line: string): string => chalk.yellow(line)).join('\n')}\n`);
       },
       onClose: (): void => {
         if (intentionalClose) return;
         // A daemon that said why it went is believed; an unannounced drop is a disconnect.
-        console.error(chalk.yellow(`\n${closing !== null ? closingLine_of(closing) : '[!] Daemon disconnected.'}`));
+        console.error(chalk.yellow(`\n${closing !== null ? closingLine_render(closing) : '[!] Daemon disconnected.'}`));
         process.exit(0);
       },
     });
@@ -334,7 +334,7 @@ export async function remote_run(
         : await surfaceLine_execute(engine, commandToExecute);
       process.exitCode = envelopes.some((envelope: CommandEnvelope): boolean => envelope.status === 'error') ? 1 : 0;
       // `chell --remote -c cmatrix` on a terminal plays it here.
-      const show: GameShow | null = gameShow_of(envelopes);
+      const show: GameShow | null = gameShow_find(envelopes);
       if (show !== null && gameTerminal_is()) await game_play(show);
     } catch (error: unknown) {
       const message: string = error instanceof Error ? error.message : String(error);
@@ -353,7 +353,7 @@ export async function remote_run(
   // The splash is the session's composition, known only now: the brain for
   // ChRIS, the Trusted Domain mark for stratus, nothing for another backend.
   if (options.splash !== undefined) {
-    const art: string[] = splashLines_of(engine.backend_get(), options.splash.colorize);
+    const art: string[] = splashLines_render(engine.backend_get(), options.splash.colorize);
     if (art.length > 0) {
       for (const line of art) console.log(line);
       console.log('');
@@ -383,7 +383,7 @@ export async function remote_run(
   const buildWarning: string | null = stack !== undefined ? buildMismatch_line(buildHash_get(), stack.build) : null;
   if (buildWarning !== null) console.log(chalk.yellow(buildWarning));
   // The daemon's own word on itself: its disk code moved since it started.
-  if (engine.daemonStale) for (const line of staleLines_of(surfaceNews_read())) console.log(chalk.yellow(line));
+  if (engine.daemonStale) for (const line of staleLines_render(surfaceNews_read())) console.log(chalk.yellow(line));
   const hostControl: string[] = engine.hostControl ?? [];
   if (hostControl.length > 0) {
     // The daemon acts on its own host: `!`, pipes, and the disk are the

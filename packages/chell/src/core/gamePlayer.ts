@@ -39,7 +39,7 @@ const KEY_NAMES: Readonly<Record<string, string>> = { up: 'ArrowUp', down: 'Arro
  * @param envelopes - The command's envelopes.
  * @returns The show, or null when none (or one marked for ARGUS's pane).
  */
-export function gameShow_of(envelopes: ReadonlyArray<CommandEnvelope>): GameShow | null {
+export function gameShow_find(envelopes: ReadonlyArray<CommandEnvelope>): GameShow | null {
   for (const envelope of envelopes) {
     if (envelope.model?.kind !== 'games.show') continue;
     const data = envelope.model.data as { program?: unknown; pane?: unknown } | undefined;

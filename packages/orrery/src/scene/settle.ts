@@ -10,7 +10,7 @@ import {
   NODE_RADIUS,
   PHYSICS_DEFAULT,
   molecule_prepare,
-  moleculeRadii_of as orreryRadii_of,
+  moleculeRadii_compute as orreryRadii_compute,
   ranked_layout,
   type MoleculeNode,
   type MoleculeSettle as OrreryMoleculeSettle,
@@ -49,7 +49,7 @@ export const SLICE_BUDGET_MS: number = 12;
  * @param node - The scene node.
  * @returns The molecule node.
  */
-function moleculeNode_of(node: SpaceNode): MoleculeNode {
+function moleculeNode_build(node: SpaceNode): MoleculeNode {
   const out: MoleculeNode = { id: node.id, parents: [...node.parentIds, ...node.joinParentIds] };
   if (node.metric !== undefined) out.metric = node.metric;
   return out;
@@ -82,8 +82,8 @@ export function layout_ranked(nodes: SpaceNode[]): PlacedNode[] {
  * @param nodes - The graph's nodes.
  * @returns Radius by id.
  */
-export function moleculeRadii_of(nodes: ReadonlyArray<SpaceNode>): Map<string, number> {
-  return orreryRadii_of(nodes.map(moleculeNode_of));
+export function moleculeRadii_computeForSpace(nodes: ReadonlyArray<SpaceNode>): Map<string, number> {
+  return orreryRadii_compute(nodes.map(moleculeNode_build));
 }
 
 /**
@@ -104,7 +104,7 @@ export function moleculeScene_prepare(
   frozen: ReadonlySet<string> = new Set(),
 ): MoleculeSettle {
   const seeds: Map<string, Vec3> = new Map([...seed].map(([id, at]: [string, THREE.Vector3]): [string, Vec3] => [id, [at.x, at.y, at.z]]));
-  const settle: OrreryMoleculeSettle = molecule_prepare(nodes.map(moleculeNode_of), dimensions, seeds, physics, frozen);
+  const settle: OrreryMoleculeSettle = molecule_prepare(nodes.map(moleculeNode_build), dimensions, seeds, physics, frozen);
   return {
     total: settle.total,
     moving: settle.moving,

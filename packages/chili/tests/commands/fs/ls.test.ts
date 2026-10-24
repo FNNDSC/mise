@@ -9,7 +9,7 @@ jest.mock('@fnndsc/cumin', () => {
   return {
     ...actual,
     chrisContext: { current_get: jest.fn() },
-    listParams_fromOptions: jest.fn(actual.listParams_fromOptions),
+    listParams_buildFromOptions: jest.fn(actual.listParams_buildFromOptions),
   };
 });
 
@@ -38,8 +38,8 @@ describe('files_list', () => {
       return { tableData: [], selectedFields: [] };
     });
 
-    // Mock listParams_fromOptions directly since it's used in files_list implementation
-    (cumin.listParams_fromOptions as jest.Mock).mockReturnValue({ limit: 100, offset: 0 });
+    // Mock listParams_buildFromOptions directly since it's used in files_list implementation
+    (cumin.listParams_buildFromOptions as jest.Mock).mockReturnValue({ limit: 100, offset: 0 });
   });
 
   it('should return a sorted list of ResourceItems for dirs, files, and links', async () => {

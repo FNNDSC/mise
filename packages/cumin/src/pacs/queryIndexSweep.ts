@@ -78,7 +78,7 @@ export interface QuerySweepResult {
  * @param row - A row of the `pacs/queries` collection.
  * @returns The entry, or null when the row carries no usable criteria.
  */
-export function queryRow_toEntry(row: Record<string, unknown>): QueryIndexEntry | null {
+export function queryRow_convertToEntry(row: Record<string, unknown>): QueryIndexEntry | null {
   const criteria: Record<string, string> | null = queryCriteria_parse(row.query);
   if (criteria === null || Object.keys(criteria).length === 0) return null;
   const queryId: number = Number(row.id);
@@ -106,7 +106,7 @@ export function queryRow_toEntry(row: Record<string, unknown>): QueryIndexEntry 
  * @param row - The query record as CUBE returned it.
  */
 export function queryIndex_note(row: Record<string, unknown>): void {
-  const entry: QueryIndexEntry | null = queryRow_toEntry(row);
+  const entry: QueryIndexEntry | null = queryRow_convertToEntry(row);
   if (entry === null) return;
   queryIndex_get().entry_note(entry);
 }
@@ -151,7 +151,7 @@ export async function queryIndex_sweep(
     const rows: Record<string, unknown>[] = page.value?.tableData ?? [];
     pages += 1;
     for (const row of rows) {
-      const entry: QueryIndexEntry | null = queryRow_toEntry(row);
+      const entry: QueryIndexEntry | null = queryRow_convertToEntry(row);
       if (entry === null) continue;
       // The resume filter is inclusive, so the newest record the index
       // already holds comes back on the first page. Note it — it may carry a

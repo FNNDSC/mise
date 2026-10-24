@@ -48,13 +48,13 @@ export class SessionRegistry {
    * @param identity - The normalised identity.
    * @returns Sixteen hex characters, stable for the identity.
    */
-  public key_of(identity: string): string {
+  public key_derive(identity: string): string {
     return berthKey_compute(identity);
   }
 
   /** Records an identity and the berth it answers at; a known one keeps its wires. */
   public note(identity: string, user: string, berth: Berth): SessionEntry {
-    const key: string = this.key_of(identity);
+    const key: string = this.key_derive(identity);
     const known: SessionEntry | undefined = this.byKey.get(key);
     const entry: SessionEntry = { key, identity, user, berth, activeAt: this.clock(), wires: known?.wires ?? 0 };
     this.byKey.set(key, entry);
@@ -95,13 +95,13 @@ export class SessionRegistry {
    * one's port.
    */
   public pending_note(identity: string, user: string): void {
-    const key: string = this.key_of(identity);
+    const key: string = this.key_derive(identity);
     this.byKey.delete(key);
     this.pending.set(key, { key, identity, user });
   }
 
   /** The identity behind a key, admitted or still booting. */
-  public identity_of(key: string): string | null {
+  public identity_find(key: string): string | null {
     return this.byKey.get(key)?.identity ?? this.pending.get(key)?.identity ?? null;
   }
 
@@ -113,7 +113,7 @@ export class SessionRegistry {
    * @returns The entry, or null when the boot ended without a berth.
    */
   public async settle(identity: string, host: Pick<SessionHost, 'find'>): Promise<SessionEntry | null> {
-    const key: string = this.key_of(identity);
+    const key: string = this.key_derive(identity);
     const waiting: PendingEntry | undefined = this.pending.get(key);
     if (waiting === undefined) return this.byKey.get(key) ?? null;
     const berth: Berth | null = await host.find(identity);

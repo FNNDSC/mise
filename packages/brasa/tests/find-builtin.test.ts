@@ -49,7 +49,7 @@ const mockSubtree = jest.fn(async (root: string) => root !== '/proc/jobs' ? null
 jest.unstable_mockModule('../src/core/filesystem.js', () => ({ vfsDispatcher_get: () => ({ subtree: mockSubtree }) }));
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({ spinner: { start: jest.fn(), stop: jest.fn(), updateMessage: jest.fn() } }));
 
-const { builtin_find, find_parse, pattern_toRegExp } = await import('../src/builtins/fs/find.js');
+const { builtin_find, find_parse, pattern_convertToRegExp } = await import('../src/builtins/fs/find.js');
 const { commandCancellation_run, commandCancellation_abort } = await import('../src/core/cancellation.js');
 
 beforeEach(() => { listed.length = 0; process.exitCode = 0; });
@@ -129,11 +129,11 @@ describe('find', () => {
   });
 
   it('matches shell patterns: * crosses /, ? one character, [..] a class, \\ escapes', () => {
-    expect(pattern_toRegExp('*.nii').test('a/b.nii')).toBe(true);
-    expect(pattern_toRegExp('?.nii').test('ab.nii')).toBe(false);
-    expect(pattern_toRegExp('[ab].nii').test('b.nii')).toBe(true);
-    expect(pattern_toRegExp('[!ab].nii').test('b.nii')).toBe(false);
-    expect(pattern_toRegExp('\\*').test('*')).toBe(true);
-    expect(pattern_toRegExp('A*', true).test('abc')).toBe(true);
+    expect(pattern_convertToRegExp('*.nii').test('a/b.nii')).toBe(true);
+    expect(pattern_convertToRegExp('?.nii').test('ab.nii')).toBe(false);
+    expect(pattern_convertToRegExp('[ab].nii').test('b.nii')).toBe(true);
+    expect(pattern_convertToRegExp('[!ab].nii').test('b.nii')).toBe(false);
+    expect(pattern_convertToRegExp('\\*').test('*')).toBe(true);
+    expect(pattern_convertToRegExp('A*', true).test('abc')).toBe(true);
   });
 });

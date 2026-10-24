@@ -6,7 +6,7 @@ import { chmod, mkdtemp, rm, stat, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  doorsDir_get, doorHost_of, doorFile_path, doorFile_write, doorFile_read, doorFile_remove, doorFiles_list,
+  doorsDir_get, doorHost_derive, doorFile_path, doorFile_write, doorFile_read, doorFile_remove, doorFiles_list,
   doorDefault_read, doorDefault_write, doorDefault_clear, doorCredential_resolve, door_carriesTokens, days_until, type DoorFile,
 } from '../src/remote/doorFile.js';
 
@@ -23,8 +23,8 @@ afterEach(async () => { await rm(home, { recursive: true, force: true }); });
 describe('the door file', () => {
   it('lives under the user\'s config dir, named by the door\'s host, written 0600 in a 0700 dir', async () => {
     expect(doorsDir_get(env)).toBe(join(home, 'chell', 'doors'));
-    expect(doorHost_of('https://titan.tch.harvard.edu/')).toBe('titan.tch.harvard.edu');
-    expect(doorHost_of('http://pangea.tch.harvard.edu:4180/')).toBe('pangea.tch.harvard.edu_4180');
+    expect(doorHost_derive('https://titan.tch.harvard.edu/')).toBe('titan.tch.harvard.edu');
+    expect(doorHost_derive('http://pangea.tch.harvard.edu:4180/')).toBe('pangea.tch.harvard.edu_4180');
     const path: string = doorFile_write(file, env);
     expect(path).toBe(doorFile_path(file.door, env));
     expect((await stat(path)).mode & 0o777).toBe(0o600);

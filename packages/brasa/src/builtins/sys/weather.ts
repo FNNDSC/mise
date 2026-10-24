@@ -165,7 +165,7 @@ interface WeatherArgs {
  * @param code - The code Open-Meteo reported.
  * @returns The condition in words; an unknown code says so with its number.
  */
-export function condition_ofCode(code: number): string {
+export function condition_resolve(code: number): string {
   return CONDITIONS[code] ?? `conditions code ${code}`;
 }
 
@@ -175,7 +175,7 @@ export function condition_ofCode(code: number): string {
  * @param degrees - Where the wind comes from, degrees clockwise from north.
  * @returns The compass point.
  */
-export function compass_ofDegrees(degrees: number): string {
+export function compass_convertFromDegrees(degrees: number): string {
   const index: number = Math.round((((degrees % 360) + 360) % 360) / 45) % 8;
   return COMPASS[index];
 }
@@ -316,9 +316,9 @@ export async function report_fetch(
     apparent: number_read(current.apparent_temperature) ?? temperature,
     humidity: number_read(current.relative_humidity_2m) ?? 0,
     code,
-    condition: condition_ofCode(code),
+    condition: condition_resolve(code),
     windSpeed: number_read(current.wind_speed_10m) ?? 0,
-    windDirection: compass_ofDegrees(number_read(current.wind_direction_10m) ?? 0),
+    windDirection: compass_convertFromDegrees(number_read(current.wind_direction_10m) ?? 0),
   };
   const dates: unknown[] = Array.isArray(answer.daily?.time) ? answer.daily.time : [];
   const highs: unknown[] = Array.isArray(answer.daily?.temperature_2m_max) ? answer.daily.temperature_2m_max : [];
@@ -330,7 +330,7 @@ export async function report_fetch(
     const low: number | null = number_read(lows[i]);
     const dayCode: number | null = number_read(codes[i]);
     if (high === null || low === null || dayCode === null) continue;
-    forecast.push({ date: string_read(dates[i]), low, high, code: dayCode, condition: condition_ofCode(dayCode) });
+    forecast.push({ date: string_read(dates[i]), low, high, code: dayCode, condition: condition_resolve(dayCode) });
   }
   return { place, units: celsius ? 'C' : 'F', now, days: forecast };
 }

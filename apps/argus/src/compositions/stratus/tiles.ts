@@ -37,7 +37,7 @@ export interface StratusTileHooks {
 const WRONG_STATES: ReadonlyArray<string> = ['expired', 'failed', 'error'];
 
 /** The model of a kind an answer carries, parsed; null when it carries none. */
-function model_of<T>(answer: ExecuteOutcome, kind: string, parse: (data: unknown) => { success: boolean; data?: T }): T | null {
+function model_extract<T>(answer: ExecuteOutcome, kind: string, parse: (data: unknown) => { success: boolean; data?: T }): T | null {
   for (const envelope of answer.envelopes) {
     if (envelope.model?.kind !== kind) continue;
     const parsed = parse(envelope.model.data);
@@ -53,7 +53,7 @@ function model_of<T>(answer: ExecuteOutcome, kind: string, parse: (data: unknown
  * @param zone - The zone, or null for region-wide.
  * @returns The short form.
  */
-export function zoneShort_of(zone: string | null): string {
+export function zoneShort_format(zone: string | null): string {
   if (zone === null) return 'REGION';
   return zone.includes(':') ? zone.slice(zone.indexOf(':') + 1) : zone;
 }
@@ -65,14 +65,14 @@ export function zoneShort_of(zone: string | null): string {
  * @param row - The capacity row.
  * @returns The short form.
  */
-export function limitShort_of(row: CapacityRow): string {
+export function limitShort_format(row: CapacityRow): string {
   return row.limit.replace(new RegExp(`^(standard-)?${row.family.toLowerCase()}-`), '').replace(/-count$/, '');
 }
 
 /** One capacity row as a tile row's text. */
 function capacityRow_text(row: CapacityRow): string {
   const free: string = row.available === null ? `${row.value} PERMITTED` : `${row.available} / ${row.value} FREE`;
-  return `${row.family.toUpperCase()}  ${zoneShort_of(row.zone)}  ${limitShort_of(row)}  ${free}`;
+  return `${row.family.toUpperCase()}  ${zoneShort_format(row.zone)}  ${limitShort_format(row)}  ${free}`;
 }
 
 /**
@@ -95,7 +95,7 @@ export function money_text(amount: number, currency: string): string {
 export function stratusTiles_make(hooks: StratusTileHooks): () => Promise<TileContribution> {
   return async (): Promise<TileContribution> => {
     const [domainsAnswer, capacityAnswer]: [ExecuteOutcome, ExecuteOutcome] = await Promise.all([hooks.ask('domain status'), hooks.ask('capacity')]);
-    const domainsModel: DomainsModel | null = model_of(domainsAnswer, STRATUS_DOMAINS_MODEL_KIND, (data) => domainsModelSchema.safeParse(data));
+    const domainsModel: DomainsModel | null = model_extract(domainsAnswer, STRATUS_DOMAINS_MODEL_KIND, (data) => domainsModelSchema.safeParse(data));
     const domains: DomainSummary[] = domainsModel?.domains ?? [];
     if (domainsModel !== null) hooks.names_seen?.(domains.map((domain: DomainSummary): string => domain.name));
     const wrong = (domain: DomainSummary): boolean => domain.steps.some((step): boolean => WRONG_STATES.includes(step.state));
@@ -123,7 +123,7 @@ export function stratusTiles_make(hooks: StratusTileHooks): () => Promise<TileCo
       enter: (): void => hooks.domain_open(''),
     };
 
-    const capacity: CapacityModel | null = model_of(capacityAnswer, STRATUS_CAPACITY_MODEL_KIND, (data) => capacityModelSchema.safeParse(data));
+    const capacity: CapacityModel | null = model_extract(capacityAnswer, STRATUS_CAPACITY_MODEL_KIND, (data) => capacityModelSchema.safeParse(data));
     const capacityTile: LauncherTile = {
       key: 'capacity', name: 'CAPACITY', hue: '--honey', numeral: '',
       figures: capacity === null ? [{ text: 'NO FAMILY' }] : [{ text: capacity.region.toUpperCase() }],

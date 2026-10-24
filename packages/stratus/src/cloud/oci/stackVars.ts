@@ -28,7 +28,7 @@ export const OCI_DRIVER_VERSION: string = 'v1.34.0';
  * @returns The shape and its ratio.
  * @throws Error - For a family with no flexible shape known.
  */
-export function familyShape_of(family: string): { shape: string; vcpuPerOcpu: number } {
+export function familyShape_resolve(family: string): { shape: string; vcpuPerOcpu: number } {
   const found = Object.entries(SHAPE_TERMS).find(([, terms]): boolean => terms.family === family);
   if (found === undefined) throw new Error(`${family}: no flexible shape known for this family`);
   return { shape: found[0], vcpuPerOcpu: found[1].vcpuPerOcpu };
@@ -44,7 +44,7 @@ export function familyShape_of(family: string): { shape: string; vcpuPerOcpu: nu
  * @throws Error - When the vCPU is not whole OCPUs, or the tier is unknown.
  */
 function pool_variables(prefix: string, pool: NodePool, family: string): Record<string, string> {
-  const { shape, vcpuPerOcpu } = familyShape_of(family);
+  const { shape, vcpuPerOcpu } = familyShape_resolve(family);
   if (pool.vcpu % vcpuPerOcpu !== 0) throw new Error(`${prefix}: ${pool.vcpu} vCPU is not whole OCPUs on ${family} (${vcpuPerOcpu} vCPU an OCPU)`);
   const vpus: number | undefined = TIER_VPUS[pool.bootTier];
   if (vpus === undefined) throw new Error(`${prefix}: boot tier ${pool.bootTier} is not one of ${Object.keys(TIER_VPUS).join(', ')}`);

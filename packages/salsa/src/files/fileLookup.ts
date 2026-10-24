@@ -30,7 +30,7 @@ interface FileRow {
  * @param filePath - Absolute ChRIS file path.
  * @returns Ok(fileId), or Err (with a message pushed to errorStack) on failure.
  */
-export async function fileId_atPath_resolve(filePath: string): Promise<Result<number>> {
+export async function pathFileId_resolve(filePath: string): Promise<Result<number>> {
   const dir: string = path.posix.dirname(filePath);
   const name: string = path.posix.basename(filePath);
 

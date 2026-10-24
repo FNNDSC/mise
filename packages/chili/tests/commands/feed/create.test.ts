@@ -5,7 +5,7 @@ import * as cumin from '@fnndsc/cumin';
 jest.mock('@fnndsc/salsa');
 jest.mock('@fnndsc/cumin', () => ({
   ...jest.requireActual('@fnndsc/cumin'),
-  dictionary_fromCLI: jest.fn()
+  dictionary_parseFromCLI: jest.fn()
 }));
 
 describe('commands/feed/create', () => {
@@ -16,13 +16,13 @@ describe('commands/feed/create', () => {
   it('should call salsa.feed_create with parsed params and dirs', async () => {
     const mockFeedInfo = { id: 1, name: 'new-feed' };
     const mockParsedParams = { title: 'My Feed' };
-    (cumin.dictionary_fromCLI as jest.Mock).mockReturnValue(mockParsedParams);
+    (cumin.dictionary_parseFromCLI as jest.Mock).mockReturnValue(mockParsedParams);
     (salsa.feed_create as jest.Mock).mockResolvedValue(mockFeedInfo);
 
     const options = { params: 'title:My Feed', dirs: '/path/to/data' };
     const result = await feed_create(options);
 
-    expect(cumin.dictionary_fromCLI).toHaveBeenCalledWith('title:My Feed');
+    expect(cumin.dictionary_parseFromCLI).toHaveBeenCalledWith('title:My Feed');
     expect(salsa.feed_create).toHaveBeenCalledWith(['/path/to/data'], mockParsedParams);
     // The command narrows the raw record to the Feed model, defaulting the
     // date fields the wire record omitted.
@@ -35,7 +35,7 @@ describe('commands/feed/create', () => {
   });
 
   it('should throw error if parsing params fails', async () => {
-    (cumin.dictionary_fromCLI as jest.Mock).mockImplementation(() => {
+    (cumin.dictionary_parseFromCLI as jest.Mock).mockImplementation(() => {
       throw new Error('Parsing failed');
     });
 

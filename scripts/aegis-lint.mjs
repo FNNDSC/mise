@@ -281,7 +281,7 @@ LINT_CHECKS['listing-is-one-abstraction'] = () => {
     [/new ListingHost</, 'builds a ListingHost itself'],
     [/\blistingRow_build\(/, 'builds rows itself (listingRow_build)'],
     [/\bactionCell_build\(/, 'builds action capsules itself (actionCell_build)'],
-    [/\btraitColumns_of\(|\btraitValue_of\(/, 'derives caps or comparators itself (traitColumns_of / traitValue_of)'],
+    [/\btraitColumns_of\(|\btraitValue_of\(/, 'derives caps or comparators itself (traitColumns_map / traitValue_make)'],
     [/from '\.\.\/roster\/(order|host)\.js'/, 'imports the order or the host, which only the façade may'],
   ];
   for (const { path, text } of features) {
@@ -429,7 +429,7 @@ LINT_CHECKS['a-holder-is-a-mark-and-a-line'] = () => {
   const law = 'a-holder-is-a-mark-and-a-line';
   const access = readFileSync('apps/argus/src/app/access.ts', 'utf8');
   if (!/kind: 'confirm', message: `Stop sharing/.test(access)) fail(law, 'app/access.ts withdraws a holder without asking first');
-  if (!/lineVisible_run\(context, holderLine_of\(/.test(access) || !/lineVisible_run\(context, `setfacl -m \$\{shareEntry_of/.test(access)) {
+  if (!/lineVisible_run\(context, holderLine_format\(/.test(access) || !/lineVisible_run\(context, `setfacl -m \$\{shareEntry_derive/.test(access)) {
     fail(law, 'app/access.ts changes access some other way than a visible setfacl line');
   }
   if (/line_execute\([^)]*setfacl|fetch\(/.test(access)) fail(law, 'app/access.ts runs setfacl quietly or reaches a byte route');

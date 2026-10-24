@@ -61,18 +61,18 @@ const LINE_EVENTS: ReadonlyArray<[RegExp, (m: RegExpExecArray) => LineEvent]> = 
   [/^Torpedo track(?:, torpedo number \d+)?:/, (): LineEvent => ({ kind: 'torpedo-head' })],
   [/^\s*(\d+\.\d)\s+(\d+\.\d)\s*$/, (m): LineEvent => ({ kind: 'torpedo-point', at: { x: Number(m[1]), y: Number(m[2]) } })],
   [/^Torpedo missed|^Torpedo disappears into a black hole/, (): LineEvent => ({ kind: 'torpedo-end' })],
-  [/\*\*\* Klingon at (\d+),(\d+) destroyed \*\*\*/, (m): LineEvent => ({ kind: 'kill', at: xy_of(m, 1) })],
-  [/^Starbase at (\d+),(\d+) destroyed/, (m): LineEvent => ({ kind: 'kill', at: xy_of(m, 1) })],
-  [/^Inhabited starsystem .* at (\d+),(\d+) destroyed/, (m): LineEvent => ({ kind: 'kill', at: xy_of(m, 1) })],
-  [/^Unknown object . at (\d+),(\d+) destroyed/, (m): LineEvent => ({ kind: 'kill', at: xy_of(m, 1) })],
-  [/Star at (\d+),(\d+) gone nova/, (m): LineEvent => ({ kind: 'nova', at: xy_of(m, 1) })],
+  [/\*\*\* Klingon at (\d+),(\d+) destroyed \*\*\*/, (m): LineEvent => ({ kind: 'kill', at: xy_extract(m, 1) })],
+  [/^Starbase at (\d+),(\d+) destroyed/, (m): LineEvent => ({ kind: 'kill', at: xy_extract(m, 1) })],
+  [/^Inhabited starsystem .* at (\d+),(\d+) destroyed/, (m): LineEvent => ({ kind: 'kill', at: xy_extract(m, 1) })],
+  [/^Unknown object . at (\d+),(\d+) destroyed/, (m): LineEvent => ({ kind: 'kill', at: xy_extract(m, 1) })],
+  [/Star at (\d+),(\d+) gone nova/, (m): LineEvent => ({ kind: 'nova', at: xy_extract(m, 1) })],
   [/^Photon tubes misfire/, (): LineEvent => ({ kind: 'misfire' })],
-  [/^(\d+) unit hit on Klingon at (\d+),(\d+)/, (m): LineEvent => ({ kind: 'phaser', at: xy_of(m, 2) })],
-  [/^HIT: (\d+) units(?: from (\d+),(\d+))?(?:, shields absorb (\d+)%)?/, (m): LineEvent => ({ kind: 'incoming', hit: Number(m[1]), from: m[2] === undefined ? null : xy_of(m, 2), absorb: m[4] === undefined ? 0 : Number(m[4]) })],
-  [/^Klingon at (\d+),(\d+) moves to (\d+),(\d+)/, (m): LineEvent => ({ kind: 'klingon-move', from: xy_of(m, 1), to: xy_of(m, 3) })],
-  [/^Klingon at (\d+),(\d+) escapes to quadrant (\d+),(\d+)/, (m): LineEvent => ({ kind: 'klingon-escape', from: xy_of(m, 1), quadrant: xy_of(m, 3) })],
-  [/RED ALERT: supernova occurring at (\d+),(\d+)/, (m): LineEvent => ({ kind: 'supernova', at: xy_of(m, 1) })],
-  [/^\s*in quadrant (\d+),(\d+)\.\s+Caution is advised/, (m): LineEvent => ({ kind: 'supernova-report', quadrant: xy_of(m, 1) })],
+  [/^(\d+) unit hit on Klingon at (\d+),(\d+)/, (m): LineEvent => ({ kind: 'phaser', at: xy_extract(m, 2) })],
+  [/^HIT: (\d+) units(?: from (\d+),(\d+))?(?:, shields absorb (\d+)%)?/, (m): LineEvent => ({ kind: 'incoming', hit: Number(m[1]), from: m[2] === undefined ? null : xy_extract(m, 2), absorb: m[4] === undefined ? 0 : Number(m[4]) })],
+  [/^Klingon at (\d+),(\d+) moves to (\d+),(\d+)/, (m): LineEvent => ({ kind: 'klingon-move', from: xy_extract(m, 1), to: xy_extract(m, 3) })],
+  [/^Klingon at (\d+),(\d+) escapes to quadrant (\d+),(\d+)/, (m): LineEvent => ({ kind: 'klingon-escape', from: xy_extract(m, 1), quadrant: xy_extract(m, 3) })],
+  [/RED ALERT: supernova occurring at (\d+),(\d+)/, (m): LineEvent => ({ kind: 'supernova', at: xy_extract(m, 1) })],
+  [/^\s*in quadrant (\d+),(\d+)\.\s+Caution is advised/, (m): LineEvent => ({ kind: 'supernova-report', quadrant: xy_extract(m, 1) })],
 ];
 
 /**
@@ -82,7 +82,7 @@ const LINE_EVENTS: ReadonlyArray<[RegExp, (m: RegExpExecArray) => LineEvent]> = 
  * @param index - The first capture.
  * @returns The point.
  */
-function xy_of(m: RegExpExecArray, index: number): XY {
+function xy_extract(m: RegExpExecArray, index: number): XY {
   return { x: Number(m[index]), y: Number(m[index + 1]) };
 }
 
@@ -94,7 +94,7 @@ function xy_of(m: RegExpExecArray, index: number): XY {
  * @param line - One line of the ship's log.
  * @returns The event, or null for a line the picture does not play.
  */
-export function lineEvent_of(line: string): LineEvent | null {
+export function lineEvent_parse(line: string): LineEvent | null {
   for (const [pattern, make] of LINE_EVENTS) {
     const m: RegExpExecArray | null = pattern.exec(line);
     if (m !== null) return make(m);
@@ -264,7 +264,7 @@ function frame_next(queue: FrameQueue): Promise<void> {
 }
 
 /** The scan's point for a sector: the C's x runs down, y across. */
-export function scanPoint_of(at: { x: number; y: number }): [number, number] {
+export function scanPoint_convert(at: { x: number; y: number }): [number, number] {
   return [at.y + 0.5, at.x + 0.5];
 }
 
@@ -289,7 +289,7 @@ export function course_between(from: { x: number; y: number }, to: { x: number; 
  * @param sectors - Sectors per quadrant side.
  * @returns The exit point in the first quadrant and the entry point in the last, both possibly fractional and just past the edge.
  */
-export function crossing_of(from: { quadrant: XY; sector: XY }, to: { quadrant: XY; sector: XY }, sectors: number = 10): { exit: { x: number; y: number }; entry: { x: number; y: number } } {
+export function crossing_compute(from: { quadrant: XY; sector: XY }, to: { quadrant: XY; sector: XY }, sectors: number = 10): { exit: { x: number; y: number }; entry: { x: number; y: number } } {
   const a = { x: from.quadrant.x * sectors + from.sector.x, y: from.quadrant.y * sectors + from.sector.y };
   const b = { x: to.quadrant.x * sectors + to.sector.x, y: to.quadrant.y * sectors + to.sector.y };
   const d = { x: b.x - a.x, y: b.y - a.y };
@@ -345,8 +345,8 @@ const MARK_SIZE: number = 0.7;
 export async function slide_play(scan: SVGElement, queue: FrameQueue, mark: { kind: MarkKind; variant: string | null }, from: { x: number; y: number }, to: { x: number; y: number }, options: { hostile?: boolean; heading?: number } = {}, instant: boolean = false): Promise<void> {
   if (instant) return;
   const layer: SVGElement = layer_make(scan, 'tb-motion-slide');
-  const [x1, y1] = scanPoint_of(from);
-  const [x2, y2] = scanPoint_of(to);
+  const [x1, y1] = scanPoint_convert(from);
+  const [x2, y2] = scanPoint_convert(to);
   const hostile: string = options.hostile === true ? ' tb-hostile' : '';
   layer.append(svg('line', { class: `tb-track${hostile}`, x1, y1, x2, y2 }));
   const pulseWide: SVGElement = svg('line', { class: `tb-pulse tb-pulse-wide${hostile}`, x1, y1, x2: x1, y2: y1 });
@@ -382,8 +382,8 @@ export async function slide_play(scan: SVGElement, queue: FrameQueue, mark: { ki
 export async function beam_play(scan: SVGElement, queue: FrameQueue, from: XY, to: XY, hostile: boolean, instant: boolean = false): Promise<void> {
   if (instant) return;
   const layer: SVGElement = layer_make(scan, 'tb-motion-beam');
-  const [x1, y1] = scanPoint_of(from);
-  const [x2, y2] = scanPoint_of(to);
+  const [x1, y1] = scanPoint_convert(from);
+  const [x2, y2] = scanPoint_convert(to);
   const cls: string = hostile ? ' tb-hostile' : '';
   layer.append(svg('line', { class: `tb-beam${cls}`, x1, y1, x2, y2 }), svg('line', { class: `tb-beam tb-beam-core${cls}`, x1, y1, x2, y2 }));
   await queue.wait(PACE.beam);
@@ -406,7 +406,7 @@ export type BurstKind = 'kill' | 'nova' | 'misfire' | 'supernova';
 export async function burst_play(scan: SVGElement, queue: FrameQueue, at: XY, kind: BurstKind, instant: boolean = false): Promise<void> {
   if (instant) return;
   const layer: SVGElement = layer_make(scan, `tb-motion-burst tb-burst tb-burst-${kind}`);
-  const [cx, cy] = scanPoint_of(at);
+  const [cx, cy] = scanPoint_convert(at);
   const ms: number = kind === 'misfire' ? PACE.burst * 0.6 : kind === 'supernova' ? PACE.burst * 1.6 : PACE.burst;
   (layer as SVGElement & { style: CSSStyleDeclaration }).style.setProperty('--tb-ms', `${ms}ms`);
   layer.append(svg('circle', { class: 'tb-burst-halo', cx, cy, r: 0.1 }));
@@ -466,7 +466,7 @@ export class Torpedo {
     }
     this.photon.append(pulses, svg('circle', { class: 'tb-photon-core', cx: 0, cy: 0, r: 0.12 }));
     this.layer.append(this.tail, this.photon);
-    const [cx, cy] = scanPoint_of(from);
+    const [cx, cy] = scanPoint_convert(from);
     this.points.push([cx, cy]);
     this.photon.setAttribute('transform', `translate(${cx} ${cy})`);
   }

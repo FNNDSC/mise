@@ -79,17 +79,17 @@ export interface LandedFeed {
  * @returns The plugins in group order with their parent places — the same
  *   for two feeds that ran the same pipeline, whatever their counts.
  */
-export function shape_of(feed: LandedFeed): string {
+export function shape_derive(feed: LandedFeed): string {
   return feed.groups.map((group: LandedGroup): string => `${group.parent ?? 'r'}:${group.plugin}`).join('>');
 }
 
 /** The id of a feed's group node. */
-export function groupId_of(feedId: number, index: number): string {
+export function groupId_format(feedId: number, index: number): string {
   return `feed:${feedId}:${index}`;
 }
 
 /** The id of a shape's unseen anchor. */
-export function anchorId_of(shape: string): string {
+export function anchorId_format(shape: string): string {
   return `shape:${shape}`;
 }
 
@@ -115,7 +115,7 @@ export type UniverseScale = 'jobs' | 'feeds';
  * @param count - The jobs the group stands for.
  * @returns The metric the settle sizes by.
  */
-export function jobsMetric_of(count: number): number {
+export function jobsMetric_compute(count: number): number {
   return Math.log2(Math.max(1, count) + 1);
 }
 
@@ -127,7 +127,7 @@ export function jobsMetric_of(count: number): number {
  * @param group - The group.
  * @returns The share, or undefined for a clean group.
  */
-export function erroredShare_of(group: LandedGroup): number | undefined {
+export function erroredShare_compute(group: LandedGroup): number | undefined {
   if (group.errored <= 0 || group.count <= 0) return undefined;
   return Math.min(1, group.errored / group.count);
 }
@@ -139,29 +139,29 @@ export function universeGraph_build(landed: ReadonlyArray<LandedFeed>, scale: Un
   const perShape: Map<string, number> = new Map();
   for (const feed of feeds) {
     if (feed.groups.length === 0) continue;
-    const shape: string = shape_of(feed);
+    const shape: string = shape_derive(feed);
     perShape.set(shape, (perShape.get(shape) ?? 0) + 1);
   }
   for (const feed of feeds) {
     if (feed.groups.length === 0) continue;
-    const shape: string = shape_of(feed);
-    const anchor: string = anchorId_of(shape);
+    const shape: string = shape_derive(feed);
+    const anchor: string = anchorId_format(shape);
     if (!anchors.has(shape)) {
       anchors.add(shape);
       // No mass: an anchor gathers its feeds without carving room of its
       // own — but it is drawn as a halo, the cluster's handle, sized by
       // how many feeds share the shape.
-      nodes.push({ id: anchor, label: shapeWords_of(shape), parentIds: [], joinParentIds: [], ghost: true, halo: true, metric: 1, count: perShape.get(shape) ?? 1 });
+      nodes.push({ id: anchor, label: shapeWords_format(shape), parentIds: [], joinParentIds: [], ghost: true, halo: true, metric: 1, count: perShape.get(shape) ?? 1 });
     }
     feed.groups.forEach((group: LandedGroup, index: number): void => {
-      const share: number | undefined = erroredShare_of(group);
+      const share: number | undefined = erroredShare_compute(group);
       nodes.push({
-        id: groupId_of(feed.id, index),
+        id: groupId_format(feed.id, index),
         label: group.plugin,
-        parentIds: [group.parent === null ? anchor : groupId_of(feed.id, group.parent)],
+        parentIds: [group.parent === null ? anchor : groupId_format(feed.id, group.parent)],
         joinParentIds: [],
         status: group.status,
-        metric: scale === 'jobs' ? jobsMetric_of(group.count) : 1,
+        metric: scale === 'jobs' ? jobsMetric_compute(group.count) : 1,
         ...(group.count > 1 ? { count: group.count } : {}),
         ...(share !== undefined ? { share } : {}),
       });
@@ -179,7 +179,7 @@ const PLUGIN_STAR_PREFIX: string = 'plugin:';
  * @param plugin - The plugin's name (versions collapse: the name alone).
  * @returns The id.
  */
-export function pluginStarId_of(plugin: string): string {
+export function pluginStarId_format(plugin: string): string {
   return `${PLUGIN_STAR_PREFIX}${plugin}`;
 }
 
@@ -211,14 +211,14 @@ export function constellationsGraph_build(landed: ReadonlyArray<LandedFeed>, sca
     if (feed.groups.length === 0) continue;
     for (const plugin of new Set(feed.groups.map((group: LandedGroup): string => group.plugin))) feedsUsing.set(plugin, (feedsUsing.get(plugin) ?? 0) + 1);
     feed.groups.forEach((group: LandedGroup, index: number): void => {
-      const share: number | undefined = erroredShare_of(group);
+      const share: number | undefined = erroredShare_compute(group);
       nodes.push({
-        id: groupId_of(feed.id, index),
+        id: groupId_format(feed.id, index),
         label: group.plugin,
-        parentIds: group.parent === null ? [] : [groupId_of(feed.id, group.parent)],
+        parentIds: group.parent === null ? [] : [groupId_format(feed.id, group.parent)],
         joinParentIds: [],
         status: group.status,
-        metric: scale === 'jobs' ? jobsMetric_of(group.count) : 1,
+        metric: scale === 'jobs' ? jobsMetric_compute(group.count) : 1,
         attrs: { plugin: group.plugin },
         ...(group.count > 1 ? { count: group.count } : {}),
         ...(share !== undefined ? { share } : {}),
@@ -227,7 +227,7 @@ export function constellationsGraph_build(landed: ReadonlyArray<LandedFeed>, sca
   }
   for (const [plugin, count] of [...feedsUsing].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
     nodes.push({
-      id: pluginStarId_of(plugin),
+      id: pluginStarId_format(plugin),
       label: plugin,
       parentIds: [],
       joinParentIds: [],
@@ -272,7 +272,7 @@ export function accretionGraph_build(landed: ReadonlyArray<LandedFeed>, scale: U
  * @param shape - The shape string (`r:pl-a>0:pl-b>0:pl-b`).
  * @returns `pl-a > pl-b`.
  */
-export function shapeWords_of(shape: string): string {
+export function shapeWords_format(shape: string): string {
   const seen: string[] = [];
   for (const part of shape.split('>')) {
     const plugin: string = part.slice(part.indexOf(':') + 1);
@@ -309,7 +309,7 @@ const FORMAT_WORDS: Readonly<Record<string, string>> = {
  * @param description - A series description.
  * @returns Its words, in order, each once.
  */
-export function descriptionWords_of(description: string): string[] {
+export function descriptionWords_extract(description: string): string[] {
   const words: string[] = description
     .toUpperCase()
     .replace(/[_\-.,/\\()[\]:;+]+/g, ' ')
@@ -330,7 +330,7 @@ export function descriptionWords_of(description: string): string[] {
  * @param b - Words.
  * @returns 0..1.
  */
-export function wordOverlap_of(a: ReadonlyArray<string>, b: ReadonlyArray<string>): number {
+export function wordOverlap_compute(a: ReadonlyArray<string>, b: ReadonlyArray<string>): number {
   if (a.length === 0 || b.length === 0) return 0;
   const set: Set<string> = new Set(a);
   const shared: number = b.filter((word: string): boolean => set.has(word)).length;
@@ -345,15 +345,15 @@ export function wordOverlap_of(a: ReadonlyArray<string>, b: ReadonlyArray<string
  * @param descriptions - Each feed's description (repeats count).
  * @returns Each description's group name.
  */
-export function descriptionGroups_of(descriptions: ReadonlyArray<string>): Map<string, string> {
+export function descriptionGroups_build(descriptions: ReadonlyArray<string>): Map<string, string> {
   const counts: Map<string, number> = new Map();
   for (const description of descriptions) counts.set(description, (counts.get(description) ?? 0) + 1);
   const ordered: string[] = [...counts.keys()].sort((a: string, b: string): number => (counts.get(b) ?? 0) - (counts.get(a) ?? 0) || (a < b ? -1 : 1));
   const groups: Array<{ name: string; words: string[] }> = [];
   const groupOf: Map<string, string> = new Map();
   for (const description of ordered) {
-    const words: string[] = descriptionWords_of(description);
-    const home = words.length === 0 ? undefined : groups.find((group) => wordOverlap_of(group.words, words) >= DESCRIPTION_OVERLAP);
+    const words: string[] = descriptionWords_extract(description);
+    const home = words.length === 0 ? undefined : groups.find((group) => wordOverlap_compute(group.words, words) >= DESCRIPTION_OVERLAP);
     if (home !== undefined) {
       groupOf.set(description, home.name);
       continue;
@@ -372,7 +372,7 @@ export function descriptionGroups_of(descriptions: ReadonlyArray<string>): Map<s
  * @param groupOf - Each description's group name.
  * @returns The path of hubs, format first.
  */
-export function dataPath_of(feed: LandedFeed, groupOf: ReadonlyMap<string, string>): Array<{ key: string; label: string }> {
+export function dataPath_build(feed: LandedFeed, groupOf: ReadonlyMap<string, string>): Array<{ key: string; label: string }> {
   const format: string = feed.data?.format ?? 'unread';
   const path: Array<{ key: string; label: string }> = [{ key: format, label: FORMAT_WORDS[format] ?? format.toUpperCase() }];
   if (format !== 'dicom') return path;
@@ -390,7 +390,7 @@ export function dataPath_of(feed: LandedFeed, groupOf: ReadonlyMap<string, strin
  * @param key - The hub's path key (`dicom`, `dicom/MR`, `dicom/MR/SAG MPRAGE`).
  * @returns The id.
  */
-export function dataHubId_of(key: string): string {
+export function dataHubId_format(key: string): string {
   return `${DATA_HUB_PREFIX}${key}`;
 }
 
@@ -400,7 +400,7 @@ export function dataHubId_of(key: string): string {
  * @param nodeId - A node id.
  * @returns The key, or null when the node is not a data hub.
  */
-export function dataHubKey_of(nodeId: string): string | null {
+export function dataHubKey_parse(nodeId: string): string | null {
   return nodeId.startsWith(DATA_HUB_PREFIX) ? nodeId.slice(DATA_HUB_PREFIX.length) : null;
 }
 
@@ -415,13 +415,13 @@ export function dataHubKey_of(nodeId: string): string | null {
  */
 export function dataGraph_build(landed: ReadonlyArray<LandedFeed>, scale: UniverseScale = 'jobs'): { graph: UniverseGraph; hubs: Map<string, { label: string; feeds: number }> } {
   const feeds: LandedFeed[] = [...landed].filter((feed: LandedFeed): boolean => feed.groups.length > 0).sort((a: LandedFeed, b: LandedFeed): number => a.id - b.id);
-  const groupOf: Map<string, string> = descriptionGroups_of(
+  const groupOf: Map<string, string> = descriptionGroups_build(
     feeds.map((feed: LandedFeed): string | undefined => feed.data?.seriesDescription).filter((d: string | undefined): d is string => d !== undefined),
   );
   const hubs: Map<string, { label: string; feeds: number; parent: string | null }> = new Map();
   const nodes: UniverseNode[] = [];
   for (const feed of feeds) {
-    const path = dataPath_of(feed, groupOf);
+    const path = dataPath_build(feed, groupOf);
     let parent: string | null = null;
     for (const step of path) {
       const known = hubs.get(step.key);
@@ -429,16 +429,16 @@ export function dataGraph_build(landed: ReadonlyArray<LandedFeed>, scale: Univer
       else known.feeds += 1;
       parent = step.key;
     }
-    const leaf: string = dataHubId_of(parent as string);
+    const leaf: string = dataHubId_format(parent as string);
     feed.groups.forEach((group: LandedGroup, index: number): void => {
-      const share: number | undefined = erroredShare_of(group);
+      const share: number | undefined = erroredShare_compute(group);
       nodes.push({
-        id: groupId_of(feed.id, index),
+        id: groupId_format(feed.id, index),
         label: group.plugin,
-        parentIds: [group.parent === null ? leaf : groupId_of(feed.id, group.parent)],
+        parentIds: [group.parent === null ? leaf : groupId_format(feed.id, group.parent)],
         joinParentIds: [],
         status: group.status,
-        metric: scale === 'jobs' ? jobsMetric_of(group.count) : 1,
+        metric: scale === 'jobs' ? jobsMetric_compute(group.count) : 1,
         ...(group.count > 1 ? { count: group.count } : {}),
         ...(share !== undefined ? { share } : {}),
       });
@@ -450,7 +450,7 @@ export function dataGraph_build(landed: ReadonlyArray<LandedFeed>, scale: Univer
   const rootOf: Map<number, string> = new Map();
   for (const feed of feeds) {
     const index: number = feed.groups.findIndex((group: LandedGroup): boolean => group.parent === null);
-    if (index >= 0) rootOf.set(feed.id, groupId_of(feed.id, index));
+    if (index >= 0) rootOf.set(feed.id, groupId_format(feed.id, index));
   }
   const nodeOf: Map<string, UniverseNode> = new Map(nodes.map((n: UniverseNode): [string, UniverseNode] => [n.id, n]));
   for (const feed of feeds) {
@@ -469,9 +469,9 @@ export function dataGraph_build(landed: ReadonlyArray<LandedFeed>, scale: Univer
   const captioned = (key: string, feedsUnder: number): boolean =>
     key.split('/').length < 3 || feedsUnder >= Math.max(CAPTION_FEEDS_MIN, CAPTION_SHARE_MIN * feeds.length);
   const hubNodes: UniverseNode[] = [...hubs].map(([key, hub]): UniverseNode => ({
-    id: dataHubId_of(key),
+    id: dataHubId_format(key),
     label: hub.label,
-    parentIds: hub.parent === null ? [] : [dataHubId_of(hub.parent)],
+    parentIds: hub.parent === null ? [] : [dataHubId_format(hub.parent)],
     joinParentIds: [],
     // An anchor, not a body: as bodies the hubs drew a thread to every feed
     // they hold and still sat at the middle of their own clouds.
@@ -496,8 +496,8 @@ export function dataGraph_build(landed: ReadonlyArray<LandedFeed>, scale: Univer
  * @param hubs - The hubs, from {@link dataGraph_build}.
  * @returns The tip, or null when the node is not a data hub.
  */
-export function dataHubTip_of(nodeId: string, hubs: ReadonlyMap<string, { label: string; feeds: number }>): string | null {
-  const key: string | null = dataHubKey_of(nodeId);
+export function dataHubTip_render(nodeId: string, hubs: ReadonlyMap<string, { label: string; feeds: number }>): string | null {
+  const key: string | null = dataHubKey_parse(nodeId);
   if (key === null) return null;
   const parts: string[] = key.split('/');
   const labels: string[] = parts.map((_part: string, index: number): string => hubs.get(parts.slice(0, index + 1).join('/'))?.label ?? parts[index] ?? '');
@@ -524,7 +524,7 @@ export const UNIVERSE_LAYOUTS: ReadonlyArray<UniverseLayout> = ['galaxy', 'spoke
  * @param nodes - How many nodes the space holds.
  * @returns The reach, or undefined for none.
  */
-export function universeReach_of(nodes: number): number | undefined {
+export function universeReach_derive(nodes: number): number | undefined {
   return nodes <= UNIVERSE_HUG_NODES ? UNIVERSE_REACH : undefined;
 }
 
@@ -535,12 +535,12 @@ export function universeReach_of(nodes: number): number | undefined {
  * @param layout - The layout.
  * @returns The engine's name.
  */
-export function universeEngine_of(layout: UniverseLayout): string {
+export function universeEngine_resolve(layout: UniverseLayout): string {
   return layout === 'data' ? 'hubs' : layout;
 }
 
 /** A folded shape's stage id. */
-export function foldId_of(shape: string, index: number): string {
+export function foldId_format(shape: string, index: number): string {
   return `fold:${shape}:${index}`;
 }
 
@@ -550,7 +550,7 @@ export function foldId_of(shape: string, index: number): string {
  * @param nodeId - A node id.
  * @returns The shape, or null when the node is not a folded stage.
  */
-export function foldShape_of(nodeId: string): string | null {
+export function foldShape_parse(nodeId: string): string | null {
   const match: RegExpMatchArray | null = nodeId.match(/^fold:(.+):\d+$/);
   return match === null ? null : (match[1] as string);
 }
@@ -562,10 +562,10 @@ export function foldShape_of(nodeId: string): string | null {
  * @param nodeId - A node id.
  * @returns The molecule's key, or null.
  */
-export function universeKey_of(nodeId: string): string | null {
+export function universeKey_derive(nodeId: string): string | null {
   const feed: RegExpMatchArray | null = nodeId.match(/^feed:(\d+):/);
   if (feed !== null) return `feed:${feed[1]}`;
-  const folded: string | null = foldShape_of(nodeId);
+  const folded: string | null = foldShape_parse(nodeId);
   return folded === null ? null : `fold:${folded}`;
 }
 

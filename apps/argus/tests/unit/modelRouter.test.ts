@@ -34,9 +34,9 @@ describe('the model router', () => {
     const claim = jest.fn();
     router.claim_add('fs.listing', 'files');
     router.claim_add('feed.dag', 'dag', claim);
-    expect(router.claimKind_of('feed.dag')).toBe('dag');
-    expect(router.claimKind_of('fs.listing')).toBe('files');
-    expect(router.claimKind_of('pacs.query')).toBeUndefined();
+    expect(router.claimKind_find('feed.dag')).toBe('dag');
+    expect(router.claimKind_find('fs.listing')).toBe('files');
+    expect(router.claimKind_find('pacs.query')).toBeUndefined();
     expect(router.claimer_get('dag')).toBe(claim);
     expect(router.claimer_get('files')).toBeUndefined();
   });

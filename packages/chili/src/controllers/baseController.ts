@@ -12,7 +12,7 @@ import {
   ListOptions,
   QueryHits,
   record_extract,
-  listParams_fromOptions,
+  listParams_buildFromOptions,
   ResourcesByFields,
   errorStack
 } from "@fnndsc/cumin";
@@ -46,7 +46,7 @@ export class BaseController {
    */
   async resources_get(options: CLIoptions): Promise<FilteredResourceData | null> {
     try {
-      const params: ListOptions = listParams_fromOptions(options);
+      const params: ListOptions = listParams_buildFromOptions(options);
       const results: FilteredResourceData | null =
         await this.chrisObject.asset.resources_listAndFilterByOptions(params);
       return results;
@@ -83,7 +83,7 @@ export class BaseController {
    * @returns A Promise resolving to an array of IDs or null.
    */
   async resourceIDs_resolve(options: CLIoptions): Promise<number[] | null> {
-    const params: ListOptions = listParams_fromOptions(options);
+    const params: ListOptions = listParams_buildFromOptions(options);
     const searchResults: FilteredResourceData | null =
       await this.chrisObject.asset.resources_listAndFilterByOptions(params);
     

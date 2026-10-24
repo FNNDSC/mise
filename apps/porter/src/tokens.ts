@@ -290,7 +290,7 @@ export class DeviceCodes {
    * @param code - As typed.
    * @returns The host chell runs on, or null when the code is not out.
    */
-  public host_of(code: string): string | null {
+  public host_find(code: string): string | null {
     this.sweep();
     const held: DeviceCode | undefined = this.codes.get(deviceCode_normalise(code));
     return held === undefined || held.grant !== null ? null : held.host;

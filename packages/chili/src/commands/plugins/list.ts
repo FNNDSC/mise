@@ -11,7 +11,7 @@ import {
   plugins_listAll as salsaPlugins_listAll
 } from "@fnndsc/salsa";
 import { FilteredResourceData, ListOptions, listData_get } from "@fnndsc/cumin";
-import { CLIoptions, options_toParams } from "../../utils/cli.js";
+import { CLIoptions, options_convertToParams } from "../../utils/cli.js";
 import { Plugin } from "../../models/plugin.js";
 import { list_applySort } from "../../utils/sort.js";
 
@@ -31,7 +31,7 @@ export interface PluginListResult {
  * @returns A Promise resolving to a `PluginListResult` object.
  */
 export async function plugins_fetchList(options: CLIoptions): Promise<PluginListResult> {
-  const params: ListOptions = options_toParams(options);
+  const params: ListOptions = options_convertToParams(options);
 
   let result: FilteredResourceData | null;
 

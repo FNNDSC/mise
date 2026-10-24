@@ -11,13 +11,13 @@ import { BufferSink, HeadlessSurface, JobRunner, runner_install, sink_set, surfa
 import { FakeDriver, fakeCloud_sample } from '../src/cloud/fake/driver.js';
 import { FakeBuildWorld, FakeCloudBuilder, FakeInstaller } from '../src/cloud/fake/builder.js';
 import type { BuildCall, CloudBuilder, InfraPlan, PreflightCheck } from '../src/cloud/builder.js';
-import { planCounts_alter, planCounts_of, planCounts_words } from '../src/cloud/builder.js';
-import { DomainStore, domainsRoot_of, type DomainRecord } from '../src/domain/state.js';
+import { planCounts_alter, plan_count, planCounts_words } from '../src/cloud/builder.js';
+import { DomainStore, domainsRoot_derive, type DomainRecord } from '../src/domain/state.js';
 import { SPEC_DEFAULT, specOptions_apply, type DomainSpec } from '../src/domain/spec.js';
-import { buildJob_id, buildRun_make, stepNext_of, STEPS_SOURCE, type BuildDeps } from '../src/domain/steps.js';
-import { cost_words, familyShape_find, specCost_of, specFit_read } from '../src/domain/sizing.js';
+import { buildJob_id, buildRun_make, stepNext_find, STEPS_SOURCE, type BuildDeps } from '../src/domain/steps.js';
+import { cost_words, familyShape_find, specCost_compute, specFit_read } from '../src/domain/sizing.js';
 import { builtDomain_read } from '../src/domain/view.js';
-import { condition_of, domainReadout_of, planSummary_of, refusals_of } from '../src/domain/readout.js';
+import { condition_derive, domainReadout_build, planSummary_build, refusals_derive } from '../src/domain/readout.js';
 import type { HarborDomain } from '../src/domains/harborOci.js';
 import { DomainTree } from '../src/vfs/domains.js';
 import { FakeKube, fakeChrisWork, fakeVerifyReach } from '../src/cluster/fakeKube.js';
@@ -78,14 +78,14 @@ describe('building a domain over the fakes', () => {
   afterEach(() => { runner_install(null); surface_set(new HeadlessSurface()); rmSync(root, { recursive: true, force: true }); });
 
   it('keeps a domain on the host: spec, state, secrets, files', () => {
-    expect(domainsRoot_of({ XDG_STATE_HOME: '/s' })).toBe('/s/stratus/domains');
+    expect(domainsRoot_derive({ XDG_STATE_HOME: '/s' })).toBe('/s/stratus/domains');
     record_new('trial');
     expect(store.names_list()).toEqual(['trial']);
     expect(() => record_new('trial')).toThrow('already kept');
     expect(store.spec_read('trial')?.spec).toEqual(SPEC_DEFAULT);
-    expect(statSync(join(store.folder_of('trial'), 'state.json')).mode & 0o777).toBe(0o600);
+    expect(statSync(join(store.folder_derive('trial'), 'state.json')).mode & 0o777).toBe(0o600);
     store.secret_write('trial', 'kubeconfig', 'secret');
-    expect(store.secrets_list('trial')).toEqual([{ name: 'kubeconfig', hostPath: join(store.folder_of('trial'), 'auth', 'kubeconfig') }]);
+    expect(store.secrets_list('trial')).toEqual([{ name: 'kubeconfig', hostPath: join(store.folder_derive('trial'), 'auth', 'kubeconfig') }]);
     store.file_write('trial', 'plan.json', '{}');
     expect(store.file_read('trial', 'plan.json')).toBe('{}');
     expect(store.file_read('trial', 'nope')).toBeNull();
@@ -100,14 +100,14 @@ describe('building a domain over the fakes', () => {
     const first: JobRecord = await runner.job_start(STEPS_SOURCE, buildJob_id('trial'), 'build trial', buildRun_make('trial', undefined, deps)).finished;
     expect(first.state).toBe('done');
     expect(first.data['stoppedBefore']).toBe('infra-apply');
-    expect(stepNext_of(store.record_read('trial') as DomainRecord)).toBe('infra-apply');
+    expect(stepNext_find(store.record_read('trial') as DomainRecord)).toBe('infra-apply');
     const planned: InfraPlan = JSON.parse(store.file_read('trial', 'plan.json') as string) as InfraPlan;
-    expect(planCounts_of(planned)).toEqual({ create: 17, replace: 0, change: 0, drift: 0, destroy: 0, replacedKinds: [] });
+    expect(plan_count(planned)).toEqual({ create: 17, replace: 0, change: 0, drift: 0, destroy: 0, replacedKinds: [] });
     store.record_update('trial', (record: DomainRecord): void => { record.billingAccepted = 'now'; });
     const second: JobRecord = await runner.job_start(STEPS_SOURCE, buildJob_id('trial'), 'build trial', buildRun_make('trial', undefined, deps)).finished;
     expect(second.data['stoppedBefore']).toBeUndefined();
     const record: DomainRecord = store.record_read('trial') as DomainRecord;
-    expect(stepNext_of(record)).toBeNull();
+    expect(stepNext_find(record)).toBeNull();
     expect(record.steps['verify']).toMatchObject({ state: 'done', note: '10 of 10 pass' });
     expect(record.steps['chris-deploy']?.note).toContain('fnndsc/chris 1.0.8 at https://cube.apps.trial.fake.example/api/v1/');
     expect(record.ids['cubeUrl']).toBe('https://cube.apps.trial.fake.example/api/v1/');
@@ -170,8 +170,8 @@ describe('building a domain over the fakes', () => {
     });
     const refused: JobRecord = await runner.job_start(STEPS_SOURCE, 'b', 'b', buildRun_make('trial', undefined, { ...deps, builder: altering })).finished;
     expect(refused.outcome).toBe('infra-plan: the plan touches what exists (0 to create, 1 to change and 1 Oracle-Tags drift, 0 to destroy): refused');
-    expect(planCounts_of({ ref: 'p', rows: [{ action: 'change', kind: 'i', name: 'y', drift: true }, { action: 'destroy', kind: 'i', name: 'z' }] })).toEqual({ create: 0, replace: 0, change: 0, drift: 1, destroy: 1, replacedKinds: [] });
-    const replacing = planCounts_of({ ref: 'p', rows: [{ action: 'destroy', kind: 'loadbalancers', name: 'b' }, { action: 'create', kind: 'loadbalancers', name: 'b' }, { action: 'create', kind: 'instances', name: 'n' }] });
+    expect(plan_count({ ref: 'p', rows: [{ action: 'change', kind: 'i', name: 'y', drift: true }, { action: 'destroy', kind: 'i', name: 'z' }] })).toEqual({ create: 0, replace: 0, change: 0, drift: 1, destroy: 1, replacedKinds: [] });
+    const replacing = plan_count({ ref: 'p', rows: [{ action: 'destroy', kind: 'loadbalancers', name: 'b' }, { action: 'create', kind: 'loadbalancers', name: 'b' }, { action: 'create', kind: 'instances', name: 'n' }] });
     expect(planCounts_words(replacing)).toBe('1 to create, 1 to replace (loadbalancers), 0 to change, 0 to destroy');
     expect(planCounts_alter(replacing)).toBe(true);
   });
@@ -214,11 +214,11 @@ describe('building a domain over the fakes', () => {
     const driver: FakeDriver = new FakeDriver(fakeCloud_sample());
     const spec: DomainSpec = (specOptions_apply(SPEC_DEFAULT, new Map([['--workers', '2x8/32']])) as { spec: DomainSpec }).spec;
     const shape = familyShape_find(await driver.shapes_list('us-ashburn-1'), 'e5');
-    const cost = specCost_of(spec, shape, await driver.prices_list());
+    const cost = specCost_compute(spec, shape, await driver.prices_list());
     expect(cost?.hourly).toBeCloseTo(40 * 0.015 + 136 * 0.002);
     expect(cost_words(cost!)).toBe('$0.87 an hour (compute and memory (40 vCPU, 136 GiB); volumes and load balancers are not priced yet)');
     expect(cost_words({ hourly: 1, currency: 'EUR', covers: 'x' })).toBe('EUR 1.00 an hour (x)');
-    expect(specCost_of(spec, undefined, [])).toBeNull();
+    expect(specCost_compute(spec, undefined, [])).toBeNull();
     const fits = await specFit_read(driver, 'us-ashburn-1', 'trial', spec);
     expect(fits[0]).toMatchObject({ zone: 'Uocm:US-ASHBURN-AD-1', nodes: ['trial-cp-0', 'trial-w-0'], coresNeeded: 8, coresFree: 9238, memoryNeeded: 56 });
   });
@@ -389,37 +389,37 @@ describe('the controller readout', () => {
   const record_of = (extra: Partial<DomainRecord> = {}): DomainRecord => ({ name: 'd', created: '', region: 'r', baseDomain: 'example', steps: {}, ids: {}, ...extra });
 
   it('says where a domain stands in one word', () => {
-    expect(condition_of(domain_with({ run: 'not done' }), record_of(), false, false)).toBe('SIZING');
-    expect(condition_of(domain_with({ run: 'done' }), record_of(), false, false)).toBe('UP');
-    expect(condition_of(domain_with({ 'infra-plan': 'done', run: 'not done' }), record_of(), false, false)).toBe('STOPPED');
-    expect(condition_of(domain_with({ run: 'done', smoke: 'done' }), record_of(), false, false)).toBe('SERVING');
-    expect(condition_of(domain_with({ run: 'failed' }), record_of(), false, false)).toBe('FAILED');
-    expect(condition_of(domain_with({ run: 'running' }), record_of(), false, false)).toBe('BUILDING');
-    expect(condition_of(domain_with({ run: 'failed' }), record_of(), true, false)).toBe('BUILDING');
-    expect(condition_of(domain_with({ run: 'done' }), record_of(), true, true)).toBe('ASKING');
-    expect(condition_of(domain_with({ run: 'done' }), record_of({ gone: 'x' }), false, true)).toBe('GONE');
-    expect(condition_of(domain_with({ run: 'done' }, 'checkout'), null, false, false)).toBe('UP');
+    expect(condition_derive(domain_with({ run: 'not done' }), record_of(), false, false)).toBe('SIZING');
+    expect(condition_derive(domain_with({ run: 'done' }), record_of(), false, false)).toBe('UP');
+    expect(condition_derive(domain_with({ 'infra-plan': 'done', run: 'not done' }), record_of(), false, false)).toBe('STOPPED');
+    expect(condition_derive(domain_with({ run: 'done', smoke: 'done' }), record_of(), false, false)).toBe('SERVING');
+    expect(condition_derive(domain_with({ run: 'failed' }), record_of(), false, false)).toBe('FAILED');
+    expect(condition_derive(domain_with({ run: 'running' }), record_of(), false, false)).toBe('BUILDING');
+    expect(condition_derive(domain_with({ run: 'failed' }), record_of(), true, false)).toBe('BUILDING');
+    expect(condition_derive(domain_with({ run: 'done' }), record_of(), true, true)).toBe('ASKING');
+    expect(condition_derive(domain_with({ run: 'done' }), record_of({ gone: 'x' }), false, true)).toBe('GONE');
+    expect(condition_derive(domain_with({ run: 'done' }, 'checkout'), null, false, false)).toBe('UP');
   });
 
   it('names what is refused on each kind of domain', () => {
-    expect(refusals_of(domain_with({}, 'checkout'), null)).toEqual({ build: 'read from a harbor-oci checkout, not built here', teardown: 'read from a harbor-oci checkout, not built here' });
-    expect(refusals_of(domain_with({}), record_of({ adopted: { from: '~/h', at: '' } }))).toEqual({ build: 'adopted from ~/h', teardown: 'adopted, not built here' });
-    expect(refusals_of(domain_with({}), record_of({ gone: 'x' }))).toEqual({ build: 'torn down', teardown: 'already torn down' });
-    expect(refusals_of(domain_with({}), record_of({ protected: false }))).toEqual({});
+    expect(refusals_derive(domain_with({}, 'checkout'), null)).toEqual({ build: 'read from a harbor-oci checkout, not built here', teardown: 'read from a harbor-oci checkout, not built here' });
+    expect(refusals_derive(domain_with({}), record_of({ adopted: { from: '~/h', at: '' } }))).toEqual({ build: 'adopted from ~/h', teardown: 'adopted, not built here' });
+    expect(refusals_derive(domain_with({}), record_of({ gone: 'x' }))).toEqual({ build: 'torn down', teardown: 'already torn down' });
+    expect(refusals_derive(domain_with({}), record_of({ protected: false }))).toEqual({});
   });
 
   it('names no next step on a domain not built on here', () => {
     const root: string = mkdtempSync(join(tmpdir(), 'stratus-readout-'));
     const store: DomainStore = new DomainStore(root);
     store.create(record_of({ adopted: { from: '~/h', at: '' } }), SPEC_DEFAULT);
-    expect(domainReadout_of(domain_with({ run: 'done' }), store, undefined).next).toBeNull();
+    expect(domainReadout_build(domain_with({ run: 'done' }), store, undefined).next).toBeNull();
     store.record_update('d', (record: DomainRecord): void => { delete record.adopted; });
-    expect(domainReadout_of(domain_with({ run: 'done' }), store, undefined).next).toBe('compartment');
+    expect(domainReadout_build(domain_with({ run: 'done' }), store, undefined).next).toBe('compartment');
     rmSync(root, { recursive: true, force: true });
   });
 
   it('groups a plan by action and kind, a replacement once, drift apart', () => {
-    const summary = planSummary_of({ ref: 'p', rows: [
+    const summary = planSummary_build({ ref: 'p', rows: [
       { action: 'create', kind: 'instances', name: 'a' },
       { action: 'create', kind: 'loadbalancers', name: 'lb' },
       { action: 'destroy', kind: 'loadbalancers', name: 'lb' },

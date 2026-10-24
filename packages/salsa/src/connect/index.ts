@@ -51,5 +51,5 @@ export async function elevation_do<T>(
   credentials: ElevationCredentials,
   operation: () => Promise<T>,
 ): Promise<T> {
-  return await chrisConnection.elevation_withCredentials(credentials, operation);
+  return await chrisConnection.elevation_runWithCredentials(credentials, operation);
 }

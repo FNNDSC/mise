@@ -6,7 +6,7 @@
 import { describe, it, expect } from '@jest/globals';
 import * as THREE from 'three';
 import type { CensusField, StarField } from '../src/draw/index.js';
-import { DrawnNodes, censusNodes_of } from '../src/scene/drawn.js';
+import { DrawnNodes, censusNodes_map } from '../src/scene/drawn.js';
 import type { SpaceNode } from '../src/scene/node.js';
 import type { PlacedNode } from '../src/scene/settle.js';
 import type { Palette } from '../src/draw/index.js';
@@ -46,37 +46,37 @@ describe('DrawnNodes', () => {
 
   it('places a sphere and a star in the world, through the group', () => {
     const { drawn } = scene_make();
-    const sphere = drawn.world_of('sphere');
+    const sphere = drawn.world_find('sphere');
     expect(sphere?.position.x).toBeCloseTo(11);
     expect(sphere?.radius).toBeCloseTo(0.5);
-    const star = drawn.world_of('star');
+    const star = drawn.world_find('star');
     expect(star?.position.x).toBeCloseTo(12);
     expect(star?.radius).toBe(0.25);
-    expect(drawn.world_of('nowhere')).toBeNull();
+    expect(drawn.world_find('nowhere')).toBeNull();
   });
 
   it('dives to a sphere, to a census member, and nowhere else', () => {
     const { drawn } = scene_make();
-    expect(drawn.diveTarget_of('sphere')?.x).toBeCloseTo(11);
-    expect(drawn.diveTarget_of('member')?.x).toBeCloseTo(13);
-    expect(drawn.diveTarget_of('nowhere')).toBeNull();
+    expect(drawn.diveTarget_find('sphere')?.x).toBeCloseTo(11);
+    expect(drawn.diveTarget_find('member')?.x).toBeCloseTo(13);
+    expect(drawn.diveTarget_find('nowhere')).toBeNull();
   });
 
   it('reaches the nodes asked for, or every drawn node', () => {
     const { drawn } = scene_make();
-    expect(drawn.reaches_of([]).length).toBe(2);
-    expect(drawn.reaches_of(['star']).map((reach) => reach.radius)).toEqual([0.25]);
-    expect(drawn.reaches_of(['nowhere']).length).toBe(0);
+    expect(drawn.reaches_list([]).length).toBe(2);
+    expect(drawn.reaches_list(['star']).map((reach) => reach.radius)).toEqual([0.25]);
+    expect(drawn.reaches_list(['nowhere']).length).toBe(0);
   });
 });
 
-describe('censusNodes_of', () => {
+describe('censusNodes_map', () => {
   it('reads a placement as the census does: counts floored at one, ghosts named', () => {
     const placed: PlacedNode[] = [
       { node: node_make('a', { count: 0, ghost: true }), position: new THREE.Vector3(1, 2, 3), radius: 0.4 },
       { node: node_make('b', { count: 7, dim: true, parentIds: ['a'] }), position: new THREE.Vector3(), radius: 0.6 },
     ];
-    const nodes = censusNodes_of(placed, palette_make());
+    const nodes = censusNodes_map(placed, palette_make());
     expect(nodes.map((n) => n.count)).toEqual([1, 7]);
     expect(nodes[0]?.ghost).toBe(true);
     expect(nodes[1]?.ghost).toBe(false);

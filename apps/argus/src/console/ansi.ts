@@ -9,7 +9,7 @@
  */
 import { CONSOLE_PALETTE } from '@fnndsc/menu/ansi';
 
-export { ansi_toHtml, html_escape, CONSOLE_PALETTE, type ConsoleColour } from '@fnndsc/menu/ansi';
+export { ansi_renderHtml, html_escape, CONSOLE_PALETTE, type ConsoleColour } from '@fnndsc/menu/ansi';
 
 /**
  * Publishes the console's palette as `--console-<name>` custom properties,

@@ -23,7 +23,7 @@ export const EDIT_CONFIRM_BYTES: number = 1024 * 1024;
  * @param path - The path.
  * @returns The extension.
  */
-export function editExtension_of(path: string): string {
+export function editExtension_extract(path: string): string {
   const name: string = path.split('/').pop() ?? path;
   const dot: number = name.lastIndexOf('.');
   return dot > 0 ? name.slice(dot).toLowerCase() : '';
@@ -36,5 +36,5 @@ export function editExtension_of(path: string): string {
  * @returns False for a binary extension (a `.nii.gz` volume included).
  */
 export function path_isEditable(path: string): boolean {
-  return !EDIT_BINARY_EXTENSIONS.has(editExtension_of(path));
+  return !EDIT_BINARY_EXTENSIONS.has(editExtension_extract(path));
 }

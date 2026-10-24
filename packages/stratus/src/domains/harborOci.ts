@@ -204,7 +204,7 @@ export function harborDomain_read(source: DomainSource, now: Date = new Date()):
  * @param domain - The domain.
  * @returns The step.
  */
-export function lastDone_of(domain: HarborDomain): StepState | null {
+export function lastDone_find(domain: HarborDomain): StepState | null {
   const done: StepState[] = domain.steps.filter((step: StepState): boolean => step.state === 'done');
   return done.length > 0 ? (done[done.length - 1] as StepState) : null;
 }

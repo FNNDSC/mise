@@ -111,6 +111,8 @@ jobs:
       - run: npm run lint:prompt
       - run: npm run lint:wire
       - run: npm run lint:listings
+      # A function's method is a verb, never a preposition (#1227).
+      - run: npm run lint:rpn
       - run: npm run lint:changesets
       - run: npm run lint:aegis
       - run: npm run lint:orrery

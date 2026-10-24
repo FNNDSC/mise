@@ -8,7 +8,7 @@
  */
 import { files_list as salsaFiles_list, files_delete as salsaFiles_delete } from "@fnndsc/salsa";
 import { FilteredResourceData, ListOptions } from "@fnndsc/cumin";
-import { CLIoptions, options_toParams } from "../../utils/cli.js";
+import { CLIoptions, options_convertToParams } from "../../utils/cli.js";
 
 /**
  * Resolves search terms to a list of file items.
@@ -19,7 +19,7 @@ import { CLIoptions, options_toParams } from "../../utils/cli.js";
  */
 export async function files_searchByTerm(searchable: string, assetName: string): Promise<Record<string, unknown>[]> {
   const options: CLIoptions = { search: searchable };
-  const params: ListOptions = options_toParams(options);
+  const params: ListOptions = options_convertToParams(options);
   const results: FilteredResourceData | null = await salsaFiles_list(params, assetName);
 
   if (!results || !results.tableData) {

@@ -53,7 +53,7 @@ export function editLine_compose(path: string): string {
  * @param threshold - The size that earns the question (EDIT_CONFIRM_BYTES).
  * @returns The question's words, or null to open at once.
  */
-export function editAsk_of(name: string, bytes: number, threshold: number): string | null {
+export function editAsk_render(name: string, bytes: number, threshold: number): string | null {
   if (bytes < threshold) return null;
   return `edit: ${name} is ${(bytes / (1024 * 1024)).toFixed(1)} MB; open it in the editor? `;
 }

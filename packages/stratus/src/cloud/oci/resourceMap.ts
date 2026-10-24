@@ -35,7 +35,7 @@ const GONE_STATES: ReadonlyArray<string> = ['TERMINATED', 'DELETED'];
  * @param region - The region it was asked in.
  * @returns The generic resource.
  */
-export function resource_ofRecord(record: OciResourceRecord, region: string): CloudResource {
+export function resource_convert(record: OciResourceRecord, region: string): CloudResource {
   return {
     name: record.displayName,
     id: record.id,
@@ -54,7 +54,7 @@ export function resource_ofRecord(record: OciResourceRecord, region: string): Cl
  * @param compartmentId - The compartment.
  * @returns The structured query.
  */
-export function searchQuery_of(compartmentId: string): string {
+export function searchQuery_format(compartmentId: string): string {
   const types: string = Object.keys(OCI_SEARCH_KINDS).map((type: string): string => type.toLowerCase()).join(', ');
   return `query ${types} resources where compartmentId = '${compartmentId}'`;
 }
@@ -65,7 +65,7 @@ export function searchQuery_of(compartmentId: string): string {
  * @param hits - The hits.
  * @returns The counts.
  */
-export function searchCounts_of(hits: ReadonlyArray<OciSearchRecord>): ResourceCounts {
+export function searchHits_count(hits: ReadonlyArray<OciSearchRecord>): ResourceCounts {
   const counts: Partial<Record<ResourceKind, number>> = {};
   for (const hit of hits) {
     const kind: ResourceKind | undefined = OCI_SEARCH_KINDS[hit.resourceType];

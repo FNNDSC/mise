@@ -12,7 +12,7 @@
  * @param value - CHELL_TERMINAL as found.
  * @returns The id, or null when this chell is no terminal's.
  */
-export function terminalId_of(value: string | undefined): string | null {
+export function terminalId_parse(value: string | undefined): string | null {
   return value !== undefined && /^[0-9a-f]{8,}$/.test(value) ? value : null;
 }
 

@@ -33,8 +33,8 @@ jest.unstable_mockModule('../../src/features/edit/field.js', () => ({
 }));
 
 const { editor_wire } = await import('../../src/app/editor.js');
-const { saveLine_compose, word_quote, editLine_compose, editAsk_of } = await import('../../src/features/edit/line.js');
-const { editExtension_of: extension_of } = await import('@fnndsc/menu');
+const { saveLine_compose, word_quote, editLine_compose, editAsk_render } = await import('../../src/features/edit/line.js');
+const { editExtension_extract: extension_parse } = await import('@fnndsc/menu');
 const { PanelRoster, paneFactory_register, paneInstance_create, paneInstance_dispose, paneInstances_list } = await import('../../src/app/panes.js');
 import type { EditorModule } from '../../src/app/editor.js';
 import type { HostContext } from '../../src/app/hostContext.js';
@@ -124,14 +124,14 @@ describe('the lines an editor runs', () => {
   });
 
   it('asks before opening a file of a megabyte or more, and not below', () => {
-    expect(editAsk_of('small.txt', 1024 * 1024 - 1, 1024 * 1024)).toBeNull();
-    expect(editAsk_of('big.csv', 3.5 * 1024 * 1024, 1024 * 1024)).toBe('edit: big.csv is 3.5 MB; open it in the editor? ');
+    expect(editAsk_render('small.txt', 1024 * 1024 - 1, 1024 * 1024)).toBeNull();
+    expect(editAsk_render('big.csv', 3.5 * 1024 * 1024, 1024 * 1024)).toBe('edit: big.csv is 3.5 MB; open it in the editor? ');
   });
 
   it('reads an extension, lower case, with its dot', () => {
-    expect(extension_of('/a/b/Config.JSON')).toBe('.json');
-    expect(extension_of('/proc/jobs/feed_12/note')).toBe('');
-    expect(extension_of('/a/.hidden')).toBe('');
+    expect(extension_parse('/a/b/Config.JSON')).toBe('.json');
+    expect(extension_parse('/proc/jobs/feed_12/note')).toBe('');
+    expect(extension_parse('/a/.hidden')).toBe('');
   });
 });
 

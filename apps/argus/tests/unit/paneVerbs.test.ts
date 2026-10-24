@@ -69,7 +69,7 @@ describe('paneVerbs_wire', () => {
 
   it('names the chord keys for a capsule, or nothing', () => {
     const { verbs } = host_make({});
-    expect(verbs.chordKeys_of('.drawer-close', false)).toMatch(/^ \[keys .+\]$/);
-    expect(verbs.chordKeys_of('.no-such-capsule', false)).toBe('');
+    expect(verbs.chordKeys_format('.drawer-close', false)).toMatch(/^ \[keys .+\]$/);
+    expect(verbs.chordKeys_format('.no-such-capsule', false)).toBe('');
   });
 });

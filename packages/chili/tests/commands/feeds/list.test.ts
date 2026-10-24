@@ -8,7 +8,7 @@ jest.mock('../../../src/utils/cli');
 describe('commands/feeds/list', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (cliUtils.options_toParams as jest.Mock).mockImplementation((opts) => opts);
+    (cliUtils.options_convertToParams as jest.Mock).mockImplementation((opts) => opts);
   });
 
   it('should call salsa.feeds_list with params', async () => {
@@ -18,7 +18,7 @@ describe('commands/feeds/list', () => {
     const options = { page: '1' };
     const result = await feeds_fetchList(options);
 
-    expect(cliUtils.options_toParams).toHaveBeenCalledWith(options);
+    expect(cliUtils.options_convertToParams).toHaveBeenCalledWith(options);
     expect(salsa.feeds_list).toHaveBeenCalledWith(options);
     expect(result).toEqual(mockData);
   });

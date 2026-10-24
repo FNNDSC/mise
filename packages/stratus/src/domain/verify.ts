@@ -90,7 +90,7 @@ interface KubePod {
  * @param conditions - Its conditions.
  * @returns Type to status.
  */
-function conditions_of(conditions: Condition[] | undefined): Record<string, string> {
+function conditions_map(conditions: Condition[] | undefined): Record<string, string> {
   return Object.fromEntries((conditions ?? []).map((condition: Condition): [string, string] => [condition.type, condition.status]));
 }
 
@@ -163,7 +163,7 @@ const CHECKS: ReadonlyArray<{ name: string; how: 'reads' | 'writes'; run: (conte
     name: 'cluster version', how: 'reads',
     run: async (context) => {
       const version = await context.kube.json_get('/apis/config.openshift.io/v1/clusterversions/version') as { status?: { desired?: { version?: string }; conditions?: Condition[] } };
-      const conditions: Record<string, string> = conditions_of(version.status?.conditions);
+      const conditions: Record<string, string> = conditions_map(version.status?.conditions);
       return { ok: conditions['Available'] === 'True' && conditions['Failing'] !== 'True', detail: `${version.status?.desired?.version ?? '?'}, Available=${conditions['Available'] ?? '?'}` };
     },
   },
@@ -171,7 +171,7 @@ const CHECKS: ReadonlyArray<{ name: string; how: 'reads' | 'writes'; run: (conte
     name: 'nodes', how: 'reads',
     run: async (context) => {
       const nodes: KubeNode[] = (await context.kube.json_get('/api/v1/nodes') as KubeList<KubeNode>).items ?? [];
-      const ready: number = nodes.filter((node: KubeNode): boolean => conditions_of(node.status?.conditions)['Ready'] === 'True').length;
+      const ready: number = nodes.filter((node: KubeNode): boolean => conditions_map(node.status?.conditions)['Ready'] === 'True').length;
       return { ok: nodes.length === context.expectedNodes && ready === context.expectedNodes, detail: `${ready}/${context.expectedNodes} Ready` };
     },
   },
@@ -195,7 +195,7 @@ const CHECKS: ReadonlyArray<{ name: string; how: 'reads' | 'writes'; run: (conte
     run: async (context) => {
       const operators = (await context.kube.json_get('/apis/config.openshift.io/v1/clusteroperators') as KubeList<{ metadata: { name: string }; status?: { conditions?: Condition[] } }>).items ?? [];
       const unhealthy: string[] = operators.filter((operator): boolean => {
-        const conditions: Record<string, string> = conditions_of(operator.status?.conditions);
+        const conditions: Record<string, string> = conditions_map(operator.status?.conditions);
         return conditions['Available'] !== 'True' || conditions['Progressing'] !== 'False' || conditions['Degraded'] !== 'False';
       }).map((operator): string => operator.metadata.name);
       return { ok: unhealthy.length === 0, detail: `${operators.length} operators, ${unhealthy.length === 0 ? 'all available, none degraded' : `not settled: ${unhealthy.join(', ')}`}` };
@@ -308,7 +308,7 @@ export async function verify_run(context: VerifyContext): Promise<VerifyCheck[]>
  * @param checks - The checks.
  * @returns `9 of 10 pass, 1 fail`.
  */
-export function verifySummary_of(checks: ReadonlyArray<VerifyCheck>): string {
+export function verifySummary_render(checks: ReadonlyArray<VerifyCheck>): string {
   const ran: VerifyCheck[] = checks.filter((check: VerifyCheck): boolean => check.ok !== null);
   const passed: number = ran.filter((check: VerifyCheck): boolean => check.ok === true).length;
   const failed: number = ran.length - passed;
@@ -325,7 +325,7 @@ export function verifySummary_of(checks: ReadonlyArray<VerifyCheck>): string {
  * @returns The summary.
  */
 export function verifyChecks_keep(store: DomainStore, name: string, checks: ReadonlyArray<VerifyCheck>): string {
-  const summary: string = verifySummary_of(checks);
+  const summary: string = verifySummary_render(checks);
   const at: string = new Date().toISOString();
   const failed: boolean = checks.some((check: VerifyCheck): boolean => check.ok === false);
   store.record_update(name, (current: DomainRecord): void => {

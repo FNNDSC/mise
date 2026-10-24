@@ -19,15 +19,15 @@
  */
 import type { TrekState, XY } from 'bsd-trek/host';
 import { el, pill_make } from './controls.js';
-import { answerCue_of, commandCue_of, lineCues_of, pillLabel_of, stateCues_of, type BridgeVoice } from './cues.js';
+import { answerCue_derive, commandCue_find, lineCues_derive, pillLabel_format, stateCues_derive, type BridgeVoice } from './cues.js';
 import { TrekHarness, type OpenQuestion } from './harness.js';
-import { KLINGON_MARKS, KlingonTracker, LEGEND, MARK_GLYPHS, mark_use, markDefs_make, markIcon_make, shieldRing_of, svg, type MarkKind } from './marks.js';
+import { KLINGON_MARKS, KlingonTracker, LEGEND, MARK_GLYPHS, mark_use, markDefs_make, markIcon_make, shieldRing_build, svg, type MarkKind } from './marks.js';
 import {
-  BRIDGE_COMMANDS, bearing_of, question_control, range_of, readout_build, readout_diff, score_of,
+  BRIDGE_COMMANDS, bearing_compute, question_control, range_compute, readout_build, readout_diff, score_compute,
   type BridgeCommand, type BridgeReadout, type ChartCell, type DeviceState, type KlingonSeen, type QuestionControl, type SectorCell, type TrekQuestion,
 } from './model.js';
-import { beam_play, burst_play, course_between, crossing_of, FrameQueue, lineEvent_of, lrsBloom_play, rescan_set, ringFlare_play, slide_play, Torpedo, PACE, type Frame, type LineEvent } from './motion.js';
-import { chartCode_make, chartTitle_of, commandPill_make, commandPills_show, ComputerView, EngineeringView, HelmStation, TacticalStation, type StationHost } from './stations.js';
+import { beam_play, burst_play, course_between, crossing_compute, FrameQueue, lineEvent_parse, lrsBloom_play, rescan_set, ringFlare_play, slide_play, Torpedo, PACE, type Frame, type LineEvent } from './motion.js';
+import { chartCode_make, chartTitle_format, commandPill_make, commandPills_show, ComputerView, EngineeringView, HelmStation, TacticalStation, type StationHost } from './stations.js';
 
 /** The views the gutter offers. */
 export type BridgeView = 'bridge' | 'helm' | 'tactical' | 'engineering' | 'computer';
@@ -428,7 +428,7 @@ export class TrekBridge {
     this.root.dataset['view'] = view;
     this.parts.body.dataset['view'] = view;
     for (const [name, button] of this.parts.views) button.classList.toggle('tb-view-on', name === view);
-    this.hooks.voice.pill(pillLabel_of(view.toUpperCase(), 'view'));
+    this.hooks.voice.pill(pillLabel_format(view.toUpperCase(), 'view'));
   }
 
   /**
@@ -449,8 +449,8 @@ export class TrekBridge {
   private command_send(command: BridgeCommand): boolean {
     this.frames.skip();
     if (!this.harness.command_send(command)) { this.hooks.voice.cue('deny'); return false; }
-    const cue = commandCue_of(command.id);
-    if (cue === null) this.hooks.voice.pill(pillLabel_of(command.label, 'command'));
+    const cue = commandCue_find(command.id);
+    if (cue === null) this.hooks.voice.pill(pillLabel_format(command.label, 'command'));
     else this.hooks.voice.cue(cue);
     this.nextDistance = null;
     this.computerRunning = command.id === 'computer';
@@ -468,7 +468,7 @@ export class TrekBridge {
   private answer_send(line: string, label: string | null): void {
     const open: OpenQuestion | null = this.harness.question_get();
     if (!this.harness.answer(line)) { this.hooks.voice.cue('deny'); return; }
-    const cue = open === null ? null : answerCue_of(open.question, open.command?.id ?? null);
+    const cue = open === null ? null : answerCue_derive(open.question, open.command?.id ?? null);
     if (cue !== null) this.hooks.voice.cue(cue);
     else if (label !== null) this.hooks.voice.pill(label);
     // the log keeps the transcript's shape: the prompt the engine left open, then the answer
@@ -511,7 +511,7 @@ export class TrekBridge {
       || this.previous.position.quadrant.x !== readout.position.quadrant.x || this.previous.position.quadrant.y !== readout.position.quadrant.y;
     // the Klingons' marks: carried by the engine's lines while the short-range sensors print them, by list order when they do not
     this.tracker.reconcile(readout.klingons, { reset: arrived, byOrder: !this.device_isOk(readout, SRSCAN_NAME) });
-    for (const k of readout.klingons) k.mark = this.tracker.mark_of(k);
+    for (const k of readout.klingons) k.mark = this.tracker.mark_find(k);
     if (arrived) this.pressedSector = null;
     // the standing order: a long-range scan at the first prompt and on arriving somewhere, when the long-range sensors work
     if (arrived && this.device_isOk(readout, LRSCAN_NAME)) this.scanDue = true;
@@ -553,7 +553,7 @@ export class TrekBridge {
           this.srs_draw(shown, false);
           await slide_play(scan, this.frames, ship, shown.position.sector, readout.position.sector, { heading: this.heading });
         } else if (moved && !instant && shown !== null && crossed) {
-          const { exit, entry } = crossing_of(shown.position, readout.position);
+          const { exit, entry } = crossing_compute(shown.position, readout.position);
           this.srs_draw(shown, false);
           await slide_play(scan, this.frames, ship, shown.position.sector, exit, { heading: this.heading });
           rescan_set(scan, true);
@@ -569,7 +569,7 @@ export class TrekBridge {
         this.srs_draw(this.shown);
         this.lrs_draw(this.shown, crossed && instant);
         this.chart_draw(this.shown);
-        for (const cue of stateCues_of(previous, readout)) this.hooks.voice.cue(cue);
+        for (const cue of stateCues_derive(previous, readout)) this.hooks.voice.cue(cue);
         this.standingOrder_try();
       },
     };
@@ -606,7 +606,7 @@ export class TrekBridge {
       ['SECTOR', `${readout.position.sector.x},${readout.position.sector.y}`],
       ['CREW', `${readout.ship.crew}`],
       ['LIFE SUPPORT', `${readout.ship.reserves.toFixed(1)} / ${readout.ship.reservesMax.toFixed(1)}`],
-      ['SCORE', `${score_of(readout).total}`],
+      ['SCORE', `${score_compute(readout).total}`],
     ]);
     const since = this.previous === null ? [] : readout_diff(this.previous, readout);
     pairs(parts.since, since.length === 0 ? [['—', 'NOTHING MOVED']] : since.map((line): [string, string, string] => [line.label, line.change, line.bad ? 'tb-bad' : 'tb-good']));
@@ -633,7 +633,7 @@ export class TrekBridge {
       for (const cell of row) scan.append(this.sector_make(cell, readout, here, focusAt, withShip));
     }
     if (withShip) {
-      const ring = shieldRing_of(readout.ship.shield, readout.ship.shieldMax, readout.ship.shieldsUp, readout.condition.name === 'DOCKED');
+      const ring = shieldRing_build(readout.ship.shield, readout.ship.shieldMax, readout.ship.shieldsUp, readout.condition.name === 'DOCKED');
       const ringNode: SVGElement = svg('circle', { class: ring.className, cx: here.y + 0.5, cy: here.x + 0.5, r: 0.46, 'stroke-width': ring.width });
       ringNode.dataset['percent'] = String(Math.round(ring.percent));
       scan.append(ringNode);
@@ -667,8 +667,8 @@ export class TrekBridge {
    * @returns The cell.
    */
   private sector_make(cell: SectorCell, readout: BridgeReadout, here: XY, focusAt: XY, withShip: boolean = true): SVGElement {
-    const bearing: number = bearing_of(here, cell);
-    const range: number = range_of(here, cell);
+    const bearing: number = bearing_compute(here, cell);
+    const range: number = range_compute(here, cell);
     const pressed: boolean = this.pressedSector?.x === cell.x && this.pressedSector.y === cell.y;
     const node: SVGElement = svg('g', { class: `tb-sector tb-sector-${cell.kind}${pressed ? ' tb-pressed' : ''}`, role: 'button', tabindex: focusAt.x === cell.x && focusAt.y === cell.y ? 0 : -1 });
     node.dataset['x'] = String(cell.x);
@@ -681,7 +681,7 @@ export class TrekBridge {
     else {
       const kind: MarkKind = cell.kind;
       const klingon: KlingonSeen | undefined = kind === 'klingon' ? readout.klingons.find((k: KlingonSeen): boolean => k.x === cell.x && k.y === cell.y) : undefined;
-      const turn: number = kind === 'ship' ? this.heading : kind === 'klingon' ? bearing_of(cell, here) : 0;
+      const turn: number = kind === 'ship' ? this.heading : kind === 'klingon' ? bearing_compute(cell, here) : 0;
       const mark: SVGElement = mark_use(kind, { cx: cell.y + 0.5, cy: cell.x + 0.5, size: MARK_SIZE }, klingon?.mark ?? null, turn);
       // stars breathe out of step: each starts its cycle at its own moment
       if (kind === 'star') mark.style.setProperty('--tb-breathe', `-${((cell.x * 7 + cell.y * 3) % 11) * 0.33}s`);
@@ -767,7 +767,7 @@ export class TrekBridge {
         }
         const node: HTMLElement = el('div', `tb-lrs-cell${cell.here ? ' tb-here' : ''}${cell.klingons > 0 ? ' tb-hostile' : ''}${cell.code === null ? ' tb-unscanned' : ''}${cell.supernova ? ' tb-supernova' : ''}`);
         node.append(chartCode_make('tb-lrs-code', cell), el('span', 'tb-lrs-at', `${cell.x},${cell.y}`));
-        node.title = chartTitle_of(cell);
+        node.title = chartTitle_format(cell);
         node.dataset['x'] = String(cell.x);
         node.dataset['y'] = String(cell.y);
         parts.lrs.append(node);
@@ -787,7 +787,7 @@ export class TrekBridge {
     for (const row of readout.chart) {
       for (const cell of row) {
         const node: HTMLElement = chartCode_make(`tb-quadrant${cell.here ? ' tb-here' : ''}${cell.klingons > 0 ? ' tb-hostile' : ''}${cell.bases > 0 ? ' tb-based' : ''}${cell.code === null ? ' tb-unscanned' : ''}${cell.supernova ? ' tb-supernova' : ''}`, cell);
-        node.title = chartTitle_of(cell);
+        node.title = chartTitle_format(cell);
         parts.chart.append(node);
       }
     }
@@ -933,7 +933,7 @@ export class TrekBridge {
    * @param own - True for a line the bridge sent, which is never heard and moves nothing.
    */
   private line_take(line: string, own: boolean): void {
-    const event: LineEvent | null = own ? null : lineEvent_of(line);
+    const event: LineEvent | null = own ? null : lineEvent_parse(line);
     const isPoint: boolean = event?.kind === 'torpedo-point';
     if (!own) this.tracker.line_hear(line);
     if (event?.kind === 'torpedo-head') this.trackPrinting = true;
@@ -944,7 +944,7 @@ export class TrekBridge {
       run: async (instant: boolean): Promise<void> => {
         this.log_append(line, own);
         if (own) return;
-        for (const cue of lineCues_of(line)) this.hooks.voice.cue(cue);
+        for (const cue of lineCues_derive(line)) this.hooks.voice.cue(cue);
         if (played !== null) await this.event_play(played, instant);
       },
     });
@@ -1013,7 +1013,7 @@ export class TrekBridge {
       }
       case 'klingon-move': {
         this.hooks.voice.cue('klingon-pass');
-        const variant: string | null = this.tracker.mark_of(event.to) ?? this.tracker.mark_of(event.from);
+        const variant: string | null = this.tracker.mark_find(event.to) ?? this.tracker.mark_find(event.from);
         this.shown_clear(event.from);
         this.srs_draw(shown);
         await slide_play(scan, this.frames, { kind: 'klingon', variant }, event.from, event.to, { hostile: true }, instant);
@@ -1022,7 +1022,7 @@ export class TrekBridge {
       }
       case 'klingon-escape': {
         this.hooks.voice.cue('klingon-pass');
-        const variant: string | null = this.tracker.mark_of(event.from);
+        const variant: string | null = this.tracker.mark_find(event.from);
         const away = { x: Math.sign(event.quadrant.x - shown.position.quadrant.x), y: Math.sign(event.quadrant.y - shown.position.quadrant.y) };
         const edge = { x: away.x > 0 ? 10.2 : away.x < 0 ? -1.2 : event.from.x, y: away.y > 0 ? 10.2 : away.y < 0 ? -1.2 : event.from.y };
         this.shown_clear(event.from);
@@ -1083,7 +1083,7 @@ export class TrekBridge {
     const cell: SectorCell | undefined = shown.sectors[at.x]?.[at.y];
     if (cell !== undefined) { cell.kind = kind; cell.glyph = MARK_GLYPHS[kind]; }
     const here: XY = shown.position.sector;
-    shown.klingons.push({ x: at.x, y: at.y, bearing: bearing_of(here, at), range: range_of(here, at), power: 0, mark: variant });
+    shown.klingons.push({ x: at.x, y: at.y, bearing: bearing_compute(here, at), range: range_compute(here, at), power: 0, mark: variant });
     this.srs_draw(shown);
   }
 }

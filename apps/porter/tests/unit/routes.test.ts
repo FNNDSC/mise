@@ -8,7 +8,7 @@ import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { AddressInfo } from 'node:net';
 import { createServer, type Server } from 'node:http';
 import { SessionRegistry } from '../../src/registry.js';
-import { porterApp_build, upstreamPath_build, mountUrl_split, berthHttp_of, type PorterApp } from '../../src/app.js';
+import { porterApp_build, upstreamPath_build, mountUrl_split, berthHttp_derive, type PorterApp } from '../../src/app.js';
 import type { Berth, BootListener, BootReport, SessionHost } from '../../src/host/sessionHost.js';
 import type { PorterConfig } from '../../src/config.js';
 import { mkdtemp, writeFile } from 'node:fs/promises';
@@ -251,7 +251,7 @@ describe('the door', () => {
     const door = await built.app.inject({ method: 'GET', url: '/login' });
     expect(door.body).toContain('./greeter/favicon.svg');
     const ansi = await built.app.inject({ method: 'GET', url: '/greeter/ansi.js' });
-    expect(ansi.body).toContain('export function ansi_toHtml');
+    expect(ansi.body).toContain('export function ansi_renderHtml');
     expect((await built.app.inject({ method: 'GET', url: '/greeter/other.js' })).statusCode).toBe(404);
   });
 
@@ -397,7 +397,7 @@ describe('address helpers', () => {
   });
 
   it('names a berth\'s HTTP origin', () => {
-    expect(berthHttp_of({ identity: 'i', url: 'ws://127.0.0.1:4444', token: 't' })).toBe('http://127.0.0.1:4444');
+    expect(berthHttp_derive({ identity: 'i', url: 'ws://127.0.0.1:4444', token: 't' })).toBe('http://127.0.0.1:4444');
   });
 });
 

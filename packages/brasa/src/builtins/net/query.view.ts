@@ -10,8 +10,8 @@
  * @module
  */
 import chalk from 'chalk';
-import { patientAddress_of, type PacsPatient, type PacsQueryModel, type PacsSeries, type PacsStudy } from '@fnndsc/menu';
-import { answerNumbering_of, handleWords_of, numberedFooter_of, type NumberedHandle } from '../../session/answer.js';
+import { patientAddress_format, type PacsPatient, type PacsQueryModel, type PacsSeries, type PacsStudy } from '@fnndsc/menu';
+import { answerNumbering_derive, handleWords_map, numberedFooter_render, type NumberedHandle } from '../../session/answer.js';
 
 /** The model kind a PACS answer travels as. */
 const PACS_KIND: string = 'pacs.query';
@@ -27,7 +27,7 @@ type ViewPatient = Pick<PacsPatient, 'patientId'> & { patientName?: string; serv
  * @param model - The answer.
  * @returns The patients.
  */
-function patients_of(model: PacsQueryModel): ViewPatient[] {
+function patients_derive(model: PacsQueryModel): ViewPatient[] {
   if (Array.isArray(model.patients) && model.patients.length > 0) return model.patients;
   const seen: ViewPatient[] = [];
   for (const study of model.studies) {
@@ -46,19 +46,19 @@ function patients_of(model: PacsQueryModel): ViewPatient[] {
  */
 export function pacsAnswer_render(model: PacsQueryModel): string | null {
   if (model.studies.length === 0) return null;
-  const handles: NumberedHandle[] = answerNumbering_of(PACS_KIND, model) ?? [];
-  const words: Map<string, string> = handleWords_of(handles);
+  const handles: NumberedHandle[] = answerNumbering_derive(PACS_KIND, model) ?? [];
+  const words: Map<string, string> = handleWords_map(handles);
   // Handles align by kind: the widest of each sets its column.
   const widest = (kind: string): number => Math.max(0, ...handles.filter((one: NumberedHandle): boolean => one.kind === kind).map((one: NumberedHandle): number => `@${one.kind}${one.ordinal}`.length));
   const pad = (word: string | undefined, kind: string): string => chalk.cyan((word ?? '').padEnd(widest(kind)));
   const seriesCount: number = model.studies.reduce((sum: number, study: PacsStudy): number => sum + study.series.length, 0);
   const lines: string[] = ['', chalk.gray(`  ${model.studies.length} ${model.studies.length === 1 ? 'study' : 'studies'}, ${seriesCount} series`), ''];
-  for (const patient of patients_of(model)) {
+  for (const patient of patients_derive(model)) {
     const theirs: PacsStudy[] = model.studies.filter((study: PacsStudy): boolean =>
       study.patientId === patient.patientId && (patient.server === undefined || study.server === undefined || study.server === patient.server));
     if (theirs.length === 0) continue;
     const name: string = patient.patientName ?? theirs[0]?.patientName ?? '';
-    lines.push(`  ${pad(words.get(`PAT:${patientAddress_of(patient)}`), 'PAT')}  ${chalk.bold(name || '(no name)')}${patient.patientId ? chalk.gray(` (ID: ${patient.patientId})`) : ''}`);
+    lines.push(`  ${pad(words.get(`PAT:${patientAddress_format(patient)}`), 'PAT')}  ${chalk.bold(name || '(no name)')}${patient.patientId ? chalk.gray(` (ID: ${patient.patientId})`) : ''}`);
     for (const study of theirs) {
       const facts: string = [study.date, study.modalities, study.accession ? `acc ${study.accession}` : ''].filter((one: string): boolean => one !== '').join('   ');
       lines.push(`    ${pad(study.vfsPath === undefined ? undefined : words.get(`STD:${study.vfsPath}`), 'STD')}  ${chalk.bold.cyan(study.description || '(no description)')}${facts ? chalk.gray(`   ${facts}`) : ''}`);
@@ -70,7 +70,7 @@ export function pacsAnswer_render(model: PacsQueryModel): string | null {
     }
     lines.push('');
   }
-  const footer: string = numberedFooter_of(handles);
+  const footer: string = numberedFooter_render(handles);
   if (footer !== '') lines.push(chalk.gray(`  ${footer}`));
   return lines.join('\n');
 }

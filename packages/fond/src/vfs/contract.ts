@@ -67,7 +67,7 @@ function refused<T>(outcome: VfsOutcome<T>, errnos: ReadonlyArray<VfsErrno>, wha
  * @param folder - The folder.
  * @returns Its entries' names and types, as `name:type`.
  */
-async function names_of(mount: VFSProvider, folder: string): Promise<string[]> {
+async function itemNames_list(mount: VFSProvider, folder: string): Promise<string[]> {
   const listed: Result<VFSItem[]> = await mount.list(folder);
   if (!listed.ok) breach(`list ${folder} failed`);
   return listed.value.map((item: VFSItem): string => `${item.name}:${item.type}`).sort();
@@ -86,7 +86,7 @@ export const VFS_CONTRACT: ReadonlyArray<VfsContractCase> = [
     name: 'lists a folder: its files and folders, each with its type',
     run: async (driver: VfsContractDriver): Promise<void> => {
       const mount: VFSProvider = await driver.mount_make(SEED);
-      const names: string[] = await names_of(mount, '/home');
+      const names: string[] = await itemNames_list(mount, '/home');
       for (const expected of ['a.txt:file', 'docs:dir', 'empty:dir']) {
         if (!names.includes(expected)) breach(`list /home lacks ${expected} (got ${names.join(', ')})`);
       }
@@ -131,7 +131,7 @@ export const VFS_CONTRACT: ReadonlyArray<VfsContractCase> = [
       const mount: VFSProvider = await driver.mount_make(SEED);
       if (!mount.mkdir) return;
       done(await mount.mkdir('/home/made'), 'mkdir /home/made');
-      if (!(await names_of(mount, '/home')).includes('made:dir')) breach('mkdir did not make the folder');
+      if (!(await itemNames_list(mount, '/home')).includes('made:dir')) breach('mkdir did not make the folder');
       refused(await mount.mkdir('/home/docs'), ['EEXIST'], 'mkdir of an existing folder');
       refused(await mount.mkdir('/home/nowhere/deeper'), ['ENOENT'], 'mkdir under a missing parent');
       refused(await mount.mkdir('/home/a.txt'), ['EEXIST'], 'mkdir where a file is');
@@ -144,11 +144,11 @@ export const VFS_CONTRACT: ReadonlyArray<VfsContractCase> = [
       const mount: VFSProvider = await driver.mount_make(SEED);
       if (!mount.mkdirTree) return;
       done(await mount.mkdirTree('/home/new/deeper/still'), 'mkdirTree under missing parents');
-      if (!(await names_of(mount, '/home/new/deeper')).includes('still:dir')) breach('mkdirTree did not make the folder');
+      if (!(await itemNames_list(mount, '/home/new/deeper')).includes('still:dir')) breach('mkdirTree did not make the folder');
       refused(await mount.mkdirTree('/home/docs'), ['EEXIST'], 'mkdirTree of an existing folder');
       refused(await mount.mkdirTree('/home/a.txt'), ['EEXIST'], 'mkdirTree where a file is');
       refused(await mount.mkdirTree('/home/a.txt/under/deeper'), ['ENOTDIR'], 'mkdirTree beneath a file');
-      if ((await names_of(mount, '/home')).includes('a.txt:dir')) breach('mkdirTree made a folder over a file');
+      if ((await itemNames_list(mount, '/home')).includes('a.txt:dir')) breach('mkdirTree made a folder over a file');
     },
   },
   {
@@ -157,7 +157,7 @@ export const VFS_CONTRACT: ReadonlyArray<VfsContractCase> = [
       const mount: VFSProvider = await driver.mount_make(SEED);
       if (!mount.rmdir) return;
       done(await mount.rmdir('/home/empty'), 'rmdir of an empty folder');
-      if ((await names_of(mount, '/home')).includes('empty:dir')) breach('rmdir did not remove the folder');
+      if ((await itemNames_list(mount, '/home')).includes('empty:dir')) breach('rmdir did not remove the folder');
       refused(await mount.rmdir('/home/docs'), ['ENOTEMPTY'], 'rmdir of a folder that holds something');
       refused(await mount.rmdir('/home/missing'), ['ENOENT'], 'rmdir of nothing there');
       refused(await mount.rmdir('/home/a.txt'), ['ENOTDIR'], 'rmdir of a file');
@@ -169,8 +169,8 @@ export const VFS_CONTRACT: ReadonlyArray<VfsContractCase> = [
       const mount: VFSProvider = await driver.mount_make(SEED);
       if (!mount.rename) return;
       done(await mount.rename('/home/a.txt', '/home/docs/a.txt'), 'rename into a folder');
-      const home: string[] = await names_of(mount, '/home');
-      const docs: string[] = await names_of(mount, '/home/docs');
+      const home: string[] = await itemNames_list(mount, '/home');
+      const docs: string[] = await itemNames_list(mount, '/home/docs');
       if (home.includes('a.txt:file') || !docs.includes('a.txt:file')) breach('rename did not move the file');
       if (mount.read && done(await mount.read('/home/docs/a.txt'), 'read after rename') !== 'alpha') breach('rename lost the file\'s content');
       refused(await mount.rename('/home/missing.txt', '/home/x.txt'), ['ENOENT'], 'rename of nothing there');
@@ -184,7 +184,7 @@ export const VFS_CONTRACT: ReadonlyArray<VfsContractCase> = [
       const mount: VFSProvider = await driver.mount_make(SEED);
       if (!mount.rm) return;
       done(await mount.rm('/home/a.txt'), 'rm of a file');
-      if ((await names_of(mount, '/home')).includes('a.txt:file')) breach('rm did not remove the file');
+      if ((await itemNames_list(mount, '/home')).includes('a.txt:file')) breach('rm did not remove the file');
       refused(await mount.rm('/home/docs'), ['EISDIR'], 'rm of a folder');
       refused(await mount.rm('/home/missing.txt'), ['ENOENT'], 'rm of nothing there');
     },
@@ -195,7 +195,7 @@ export const VFS_CONTRACT: ReadonlyArray<VfsContractCase> = [
       const mount: VFSProvider = await driver.mount_make(SEED);
       if (!mount.rmTree) return;
       done(await mount.rmTree('/home/docs'), 'rmTree of a folder with a file in it');
-      if ((await names_of(mount, '/home')).includes('docs:dir')) breach('rmTree did not remove the folder');
+      if ((await itemNames_list(mount, '/home')).includes('docs:dir')) breach('rmTree did not remove the folder');
       refused(await mount.rmTree('/home/missing'), ['ENOENT'], 'rmTree of nothing there');
     },
   },

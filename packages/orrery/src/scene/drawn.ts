@@ -41,7 +41,7 @@ export class DrawnNodes {
    * @param id - The node.
    * @returns Its world position and radius, or null when it is not drawn.
    */
-  public world_of(id: string): WorldReach | null {
+  public world_find(id: string): WorldReach | null {
     const mesh: THREE.Mesh | undefined = this.ports.meshes().get(id);
     if (mesh !== undefined) {
       const sphere: THREE.BufferGeometry = mesh.geometry;
@@ -60,7 +60,7 @@ export class DrawnNodes {
    * @param id - The node.
    * @returns The world position, or null.
    */
-  public diveTarget_of(id: string): THREE.Vector3 | null {
+  public diveTarget_find(id: string): THREE.Vector3 | null {
     const mesh: THREE.Mesh | undefined = this.ports.meshes().get(id);
     // In census there is no mesh per node: fly to the group's first member.
     const censusIndex: number = mesh === undefined ? this.ports.census.ids().indexOf(id) : -1;
@@ -78,13 +78,13 @@ export class DrawnNodes {
    * @param ids - The nodes; every drawn node when empty.
    * @returns Each drawn one's world position and radius.
    */
-  public reaches_of(ids: ReadonlyArray<string>): WorldReach[] {
+  public reaches_list(ids: ReadonlyArray<string>): WorldReach[] {
     const wanted: Set<string> = new Set(ids);
     const reaches: WorldReach[] = [];
     this.ports.group.updateMatrixWorld(true);
     for (const id of this.ids()) {
       if (wanted.size > 0 && !wanted.has(id)) continue;
-      const drawn: WorldReach | null = this.world_of(id);
+      const drawn: WorldReach | null = this.world_find(id);
       if (drawn !== null) reaches.push(drawn);
     }
     return reaches;
@@ -100,7 +100,7 @@ export class DrawnNodes {
  * @param palette - The colours.
  * @returns One census node per placed node.
  */
-export function censusNodes_of(placed: ReadonlyArray<PlacedNode>, palette: Palette): CensusNode[] {
+export function censusNodes_map(placed: ReadonlyArray<PlacedNode>, palette: Palette): CensusNode[] {
   return placed.map((item: PlacedNode): CensusNode => {
     const node: SpaceNode = item.node;
     return {
@@ -125,7 +125,7 @@ export function censusNodes_of(placed: ReadonlyArray<PlacedNode>, palette: Palet
  * @param palette - The colours.
  * @returns Where it stands, how large, what hue.
  */
-export function handoffLook_of(placed: PlacedNode, palette: Palette): HandoffLook {
+export function handoffLook_build(placed: PlacedNode, palette: Palette): HandoffLook {
   return { position: placed.position, radius: placed.radius, color: paint_resolve(placed.node.look.paint, palette) };
 }
 
@@ -135,7 +135,7 @@ export function handoffLook_of(placed: PlacedNode, palette: Palette): HandoffLoo
  * @param placed - The node.
  * @returns Where it stands, how large, what it hangs from, its state.
  */
-export function tubeNode_of(placed: PlacedNode): TubeNode {
+export function tubeNode_build(placed: PlacedNode): TubeNode {
   return {
     position: placed.position,
     radius: placed.radius,
@@ -154,7 +154,7 @@ export function tubeNode_of(placed: PlacedNode): TubeNode {
  * @param group - The group every body stands in.
  * @returns The matrix from the group's space into the camera's.
  */
-export function handoffView_of(camera: THREE.Camera, group: THREE.Object3D): THREE.Matrix4 {
+export function handoffView_compute(camera: THREE.Camera, group: THREE.Object3D): THREE.Matrix4 {
   group.updateMatrixWorld(true);
   camera.updateMatrixWorld();
   return new THREE.Matrix4().multiplyMatrices(camera.matrixWorldInverse, group.matrixWorld);
@@ -167,6 +167,6 @@ export function handoffView_of(camera: THREE.Camera, group: THREE.Object3D): THR
  * @param fovDeg - The vertical field of view.
  * @returns Pixels per unit.
  */
-export function perUnit_of(heightPx: number, fovDeg: number): number {
+export function perUnit_compute(heightPx: number, fovDeg: number): number {
   return heightPx / (2 * Math.tan((fovDeg * Math.PI) / 360));
 }

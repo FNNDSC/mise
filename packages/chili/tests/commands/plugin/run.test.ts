@@ -8,7 +8,7 @@ jest.mock('@fnndsc/cumin');
 describe('commands/plugin/run', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (cumin.dictionary_fromCLI as jest.Mock).mockImplementation((paramString) => {
+    (cumin.dictionary_parseFromCLI as jest.Mock).mockImplementation((paramString) => {
       if (paramString === '--param1 value1') {
         return { param1: 'value1' };
       }
@@ -25,7 +25,7 @@ describe('commands/plugin/run', () => {
 
     const result = await plugin_execute('plugin-name', '--param1 value1');
 
-    expect(cumin.dictionary_fromCLI).toHaveBeenCalledWith('--param1 value1');
+    expect(cumin.dictionary_parseFromCLI).toHaveBeenCalledWith('--param1 value1');
     expect(salsa.plugin_run).toHaveBeenCalledWith('plugin-name', { param1: 'value1' });
     // The command narrows the raw record to the PluginInstance model,
     // defaulting the fields the wire record omitted.

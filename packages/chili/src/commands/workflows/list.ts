@@ -4,7 +4,7 @@
  */
 import { workflows_list as salsaWorkflows_list, workflows_listAll as salsaWorkflows_listAll } from '@fnndsc/salsa';
 import { FilteredResourceData } from '@fnndsc/cumin';
-import { CLIoptions, options_toParams } from '../../utils/cli.js';
+import { CLIoptions, options_convertToParams } from '../../utils/cli.js';
 import { list_applySort } from '../../utils/sort.js';
 
 /**
@@ -23,7 +23,7 @@ export interface WorkflowListResult {
  * @returns The workflows list result.
  */
 export async function workflows_fetchList(options: CLIoptions): Promise<WorkflowListResult> {
-  const params = options_toParams(options);
+  const params = options_convertToParams(options);
   const result: FilteredResourceData | null = options.all
     ? await salsaWorkflows_listAll(params)
     : await salsaWorkflows_list(params);

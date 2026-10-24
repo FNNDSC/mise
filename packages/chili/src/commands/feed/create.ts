@@ -6,7 +6,7 @@
  *
  * @module
  */
-import { SimpleRecord, dictionary_fromCLI, ChRISObjectParams } from "@fnndsc/cumin";
+import { SimpleRecord, dictionary_parseFromCLI, ChRISObjectParams } from "@fnndsc/cumin";
 import { feed_create as salsaFeed_create } from "@fnndsc/salsa";
 import { CLIoptions } from "../../utils/cli.js";
 import { Feed } from "../../models/feed.js";
@@ -28,7 +28,7 @@ export async function feed_create(options: CLIoptions): Promise<Feed | null> {
   let feedParams: ChRISObjectParams = {};
   if (params) {
     try {
-      feedParams = dictionary_fromCLI(params);
+      feedParams = dictionary_parseFromCLI(params);
     } catch (e: unknown) {
       // Original error handling without errorStack.push
       throw new Error(`Error parsing feed parameters: ${e}`);

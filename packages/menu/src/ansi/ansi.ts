@@ -156,7 +156,7 @@ function sgr_apply(state: SgrState, params: number[]): void {
  * @param state - The display state.
  * @returns The style string; empty when the state carries no attributes.
  */
-function state_toStyle(state: SgrState): string {
+function state_renderStyle(state: SgrState): string {
   const rules: string[] = [];
   // Inverse swaps the roles; the screen's defaults stand in for unset sides
   // (daybreak text on the black glass).
@@ -223,7 +223,7 @@ const ANSI_PATTERN: RegExp =
  * @param text - The ANSI-decorated text.
  * @returns HTML markup safe to insert into the transcript.
  */
-export function ansi_toHtml(text: string): string {
+export function ansi_renderHtml(text: string): string {
   const state: SgrState = state_initial();
   let html: string = '';
   let lastIndex: number = 0;
@@ -232,7 +232,7 @@ export function ansi_toHtml(text: string): string {
     if (chunk.length === 0) {
       return;
     }
-    const style: string = state_toStyle(state);
+    const style: string = state_renderStyle(state);
     const escaped: string = html_escape(chunk.replace(/\r/g, ''));
     html += style.length > 0 ? `<span style="${style}">${escaped}</span>` : escaped;
   };

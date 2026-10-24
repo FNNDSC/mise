@@ -6,7 +6,7 @@ import type { ProcFeed } from '@fnndsc/cumin';
 
 const FEEDS: ProcFeed[] = [];
 jest.unstable_mockModule('@fnndsc/cumin', () => ({ procCache_get: () => ({ feeds_find: () => FEEDS }) }));
-const { feedTask_of, feedTask_state, chrisJobsSource } = await import('../src/chris/tasks.js');
+const { feedTask_build, feedTask_state, chrisJobsSource } = await import('../src/chris/tasks.js');
 
 /** A feed with these job counts. */
 function feed(counts: Partial<ProcFeed> = {}): ProcFeed {
@@ -28,11 +28,11 @@ describe('a feed as a task', () => {
   });
 
   it('is named as /proc/jobs names it, its jobs counted as progress', () => {
-    expect(feedTask_of(feed({ finishedJobs: 3, erroredJobs: 1, startedJobs: 1, scheduledJobs: 2 }))).toEqual({
+    expect(feedTask_build(feed({ finishedJobs: 3, erroredJobs: 1, startedJobs: 1, scheduledJobs: 2 }))).toEqual({
       id: 'feed_12', label: 'brain run', state: 'running',
       progress: { current: 4, total: 7, unit: 'jobs' }, started: '2026-10-09T10:00:00Z',
     });
-    expect(feedTask_of(feed({ title: '' })).label).toBe('feed_12');
+    expect(feedTask_build(feed({ title: '' })).label).toBe('feed_12');
   });
 
   it('lists every feed the index holds, and keeps /proc/jobs its own mount', async () => {

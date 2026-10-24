@@ -106,7 +106,7 @@ jest.unstable_mockModule('../src/builtins/utils.js', () => ({
 }));
 
 const { builtin_gather } = await import('../src/builtins/res/gather.js');
-const { member_key, members_merge, members_drop, seriesUID_ofPath, cohortFolders_note, cohortFolders_resolve, cohort_read } = await import('../src/builtins/res/gather.store.js');
+const { member_key, members_merge, members_drop, seriesUID_parse, cohortFolders_note, cohortFolders_resolve, cohort_read } = await import('../src/builtins/res/gather.store.js');
 
 /** The cohort as the fake filesystem currently holds it. */
 function cohort_held(): { name: string | null; series: Record<string, unknown>[] } {
@@ -301,10 +301,10 @@ describe('where a gathered series landed', () => {
   const SERIES = '/net/pacs/queries/q/Study_1.9_MRI_BRAIN/Series_1.2.3_SAG_T1';
 
   it('reads the series UID from a query path, in either form', () => {
-    expect(seriesUID_ofPath(SERIES)).toBe('1.2.3');
-    expect(seriesUID_ofPath('/net/pacs/x/1.2.3')).toBe('1.2.3');
-    expect(seriesUID_ofPath('/net/pacs/q/Study_1.9_MRI_BRAIN')).toBeUndefined();
-    expect(seriesUID_ofPath('/home/chris/uploads/brain')).toBeUndefined();
+    expect(seriesUID_parse(SERIES)).toBe('1.2.3');
+    expect(seriesUID_parse('/net/pacs/x/1.2.3')).toBe('1.2.3');
+    expect(seriesUID_parse('/net/pacs/q/Study_1.9_MRI_BRAIN')).toBeUndefined();
+    expect(seriesUID_parse('/home/chris/uploads/brain')).toBeUndefined();
   });
 
   it('notes the folder a pull reports on the member that stands for the series', async () => {

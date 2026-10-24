@@ -284,14 +284,14 @@ describe('ProcCache', () => {
     it('a failed feed load stays named where it stopped for its window, then is forgotten', () => {
       cache.feedLoad_progress(7, 6500, 58760);
       cache.feedLoad_fail(7, 'CUBE 502', 1000);
-      expect(cache.feedLoad_of(7, 1000)).toEqual({ feedID: 7, loaded: 6500, total: 58760, failed: 'CUBE 502' });
+      expect(cache.feedLoad_read(7, 1000)).toEqual({ feedID: 7, loaded: 6500, total: 58760, failed: 'CUBE 502' });
       expect(cache.feedLoad_get(1000 + PROC_FEED_LOAD_FAILURE_TTL_MS)).toEqual({ feedID: 7, loaded: 6500, total: 58760, failed: 'CUBE 502' });
       expect(cache.feedLoad_get(1000 + PROC_FEED_LOAD_FAILURE_TTL_MS + 1)).toBeNull();
-      expect(cache.feedLoad_of(7)).toBeNull();
+      expect(cache.feedLoad_read(7)).toBeNull();
       // A fresh walk clears the failure as it starts.
       cache.feedLoad_fail(7, 'CUBE 502', 5000);
       cache.feedLoad_progress(7, 0, 0);
-      expect(cache.feedLoad_of(7, 5000)).toEqual({ feedID: 7, loaded: 0, total: 0 });
+      expect(cache.feedLoad_read(7, 5000)).toEqual({ feedID: 7, loaded: 0, total: 0 });
     });
 
     it('keeps roster arrivals for their window and forgets them after', () => {
@@ -635,7 +635,7 @@ describe('topology landings', () => {
     cache.feed_add(feed(7));
     cache.instance_add(inst(70, 7, null, 'pl-dircopy', 'finishedSuccessfully'));
     for (let i = 0; i < 300; i++) cache.instance_add(inst(100 + i, 7, 70, 'pl-dcm2niix', i === 42 ? 'finishedWithError' : 'finishedSuccessfully'));
-    expect(cache.pluginGroups_of(7)).toEqual([
+    expect(cache.pluginGroups_build(7)).toEqual([
       { plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null },
       { plugin: 'pl-dcm2niix', count: 300, errored: 1, status: 'finishedWithError', parent: 0 },
     ]);
@@ -648,15 +648,15 @@ describe('topology landings', () => {
     cache.instance_add(inst(93, 9, 92, 'pl-fastsurfer'));
     cache.instance_add(inst(92, 9, 91, 'pl-dcm2niix'));
     expect(cache.instancesForFeed_count(9)).toBe(2);
-    expect(cache.pluginChain_of(9)).toEqual(['pl-dcm2niix', 'pl-fastsurfer']);
-    expect(cache.pluginGroups_of(9)).toEqual([
+    expect(cache.pluginChain_derive(9)).toEqual(['pl-dcm2niix', 'pl-fastsurfer']);
+    expect(cache.pluginGroups_build(9)).toEqual([
       { plugin: 'pl-dcm2niix', count: 1, errored: 0, status: 'scheduled', parent: null },
       { plugin: 'pl-fastsurfer', count: 1, errored: 0, status: 'scheduled', parent: 0 },
     ]);
     // The root lands last, and the shape settles onto it.
     cache.instance_add(inst(91, 9, null, 'pl-dircopy'));
-    expect(cache.pluginChain_of(9)).toEqual(['pl-dircopy', 'pl-dcm2niix', 'pl-fastsurfer']);
-    expect(cache.pluginGroups_of(9)).toEqual([
+    expect(cache.pluginChain_derive(9)).toEqual(['pl-dircopy', 'pl-dcm2niix', 'pl-fastsurfer']);
+    expect(cache.pluginGroups_build(9)).toEqual([
       { plugin: 'pl-dircopy', count: 1, errored: 0, status: 'scheduled', parent: null },
       { plugin: 'pl-dcm2niix', count: 1, errored: 0, status: 'scheduled', parent: 0 },
       { plugin: 'pl-fastsurfer', count: 1, errored: 0, status: 'scheduled', parent: 1 },

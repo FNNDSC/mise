@@ -408,7 +408,17 @@
 <a name='L343'></a><a href='#L343'>343</a>
 <a name='L344'></a><a href='#L344'>344</a>
 <a name='L345'></a><a href='#L345'>345</a>
-<a name='L346'></a><a href='#L346'>346</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L346'></a><a href='#L346'>346</a>
+<a name='L347'></a><a href='#L347'>347</a>
+<a name='L348'></a><a href='#L348'>348</a>
+<a name='L349'></a><a href='#L349'>349</a>
+<a name='L350'></a><a href='#L350'>350</a>
+<a name='L351'></a><a href='#L351'>351</a>
+<a name='L352'></a><a href='#L352'>352</a>
+<a name='L353'></a><a href='#L353'>353</a>
+<a name='L354'></a><a href='#L354'>354</a>
+<a name='L355'></a><a href='#L355'>355</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -475,30 +485,38 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -791,7 +809,8 @@
  * shared out by the computer over the Klingons in the quadrant).
  *
  * Deviation: the C's klingon pointer walking the list is an index here,
- * re-read after each kill, since killk() copies the list down.
+ * re-read after each kill, since killk() copies
+ * the list down.
  *
  * @module
  */
@@ -819,29 +838,6 @@ const OMEGA: number = 10.596;
 &nbsp;
 /* OMEGA ~= 100 * (ALPHA + 1) * (BETA + 1) / (EPSILON + 1) */
 &nbsp;
-/*
-**  Phaser Control
-**
-**	There are up to NBANKS phaser banks which may be fired
-**	simultaneously.  There are two modes, "manual" and
-**	"automatic".  In manual mode, you specify exactly which
-**	direction you want each bank to be aimed, the number
-**	of units to fire, and the spread angle.  In automatic
-**	mode, you give only the total number of units to fire.
-**
-**	The spread is specified as a number between zero and
-**	one, with zero being minimum spread and one being maximum
-**	spread.  You  will normally want zero spread, unless your
-**	short range scanners are out, in which case you probably
-**	don't know exactly where the Klingons are.  In that case,
-**	you really don't have any choice except to specify a
-**	fairly large spread.
-**
-**	Phasers spread slightly, even if you specify zero spread.
-**
-**	Uses trace flag 30
-*/
-&nbsp;
 /** The mode table: value2 carries the C's (cmdfun) 1 / 0. */
 const Matab: ReadonlyArray&lt;Cvntab&gt; = [
   { abbrev: 'm', full: 'anual', value: null, value2: 1 },
@@ -850,12 +846,43 @@ const Matab: ReadonlyArray&lt;Cvntab&gt; = [
 &nbsp;
 /** One phaser bank. */
 interface Banks {
+  /** Units of energy to fire from this bank. */
   units: number;
+  /** The course to fire on, in radians. */
   angle: number;
+  /** The spread, 0 (minimum) to 1 (maximum). */
   spread: number;
 }
 &nbsp;
-/** Phaser control. */
+/**
+ * Fires the phasers, aimed by hand or by the computer.
+ *
+ * Phaser Control
+ *
+ * There are up to NBANKS phaser banks which may be fired
+ * simultaneously.  There are two modes, "manual" and
+ * "automatic".  In manual mode, you specify exactly which
+ * direction you want each bank to be aimed, the number
+ * of units to fire, and the spread angle.  In automatic
+ * mode, you give only the total number of units to fire.
+ *
+ * The spread is specified as a number between zero and
+ * one, with zero being minimum spread and one being maximum
+ * spread.  You  will normally want zero spread, unless your
+ * short range scanners are out, in which case you probably
+ * don't know exactly where the Klingons are.  In that case,
+ * you really don't have any choice except to specify a
+ * fairly large spread.
+ *
+ * Phasers spread slightly, even if you specify zero spread.
+ *
+ * Uses trace flag 30
+ *
+ * C: `phaser()` in phaser.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param _v - The command table's argument, unused.
+ */
 export async function phaser(t: Trek, _v: number): Promise&lt;void&gt; {
   const { Ship, Etc, Move } = t.s;
   let i: number;
@@ -1105,7 +1132,7 @@ export async function phaser(t: Trek, _v: number): Promise&lt;void&gt; {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-10-18T12:52:14.718Z
+                at 2026-10-24T00:12:13.284Z
             </div>
         <script src="prettify.js"></script>
         <script>

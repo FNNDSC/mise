@@ -29,6 +29,8 @@ export function variablesPage_render(backendLines: ReadonlyArray<string>): strin
     '                    pipeline\'s nodes); one record refuses, naming its fields',
     '  ${A.field}        a field of its model, as the model names it; a field',
     '                    that is a list reaches through it, one operand each',
+    '  ${A} | grep x     heading a pipe, hands on its model as the command',
+    '                    that made it would: ${T1} | grep -i sag | gather add',
     '  set   set A       list the variables; show one whole',
     '  unset A           remove one',
     '',

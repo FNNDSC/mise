@@ -33,6 +33,7 @@ const { reference_resolve, unresolvedStands_run, reference_isReserved, reference
   await import('../src/core/expansion.js');
 const { variableScope_run, variable_set, variable_unset, textAnswer_make } = await import('../src/core/variables.js');
 (await import('../src/session/answerAdapters.js')).answerAdapters_register();
+const { listingOperands_of } = await import('../src/core/listing.js');
 const paramScope_run = variableScope_run;
 
 /** Expands a whole line the way the dispatcher does, and returns the operands. */
@@ -252,5 +253,41 @@ describe('a variable holds an answer, and a dot is a field of it', () => {
     });
     expect(await line_words('echo ${C.feedId}')).toEqual({ missing: 'C.feedId' });
     expect(await line_words('echo ${A.feedId}')).toEqual(['echo', '977']);
+  });
+});
+
+describe('a variable holding a listing expands as a pipe hands it on', () => {
+  // A PACS answer a grep kept: two T1 series in two studies, with the
+  // patient and study rows the grep kept beside them as context.
+  const series = (study: string, uid: string, description: string): Record<string, unknown> =>
+    ({ seriesUID: uid, description, modality: 'MR', vfsPath: `/net/pacs/queries/q1/${study}/${uid}` });
+  const ANSWER = {
+    source: 'query PatientID:0001 | grep -i t1', kind: 'pacs.query', rows: [],
+    data: {
+      patients: [{ patientId: '0001' }],
+      studies: [
+        { studyUID: 's1', patientId: '0001', description: 'MRI BRAIN', vfsPath: '/net/pacs/queries/q1/s1', series: [series('s1', '1.1', 'SAG T1')] },
+        { studyUID: 's2', patientId: '0001', description: 'MRI SPINE', vfsPath: '/net/pacs/queries/q1/s2', series: [series('s2', '2.1', 'AX T1')] },
+      ],
+    },
+  };
+
+  beforeEach(() => { variable_unset('Q'); });
+
+  it('gives the series once each, never a study or patient row', async () => {
+    variable_set('Q', ANSWER);
+    expect(await line_words('gather add ${Q}'))
+      .toEqual(['gather', 'add', '/net/pacs/queries/q1/s1/1.1', '/net/pacs/queries/q1/s2/2.1']);
+  });
+
+  it('gives what the same answer piped into a verb gives', async () => {
+    variable_set('Q', ANSWER);
+    const piped: string[] | null = listingOperands_of({ kind: ANSWER.kind, data: ANSWER.data });
+    expect(await line_words('pull ${Q}')).toEqual(['pull', ...(piped ?? [])]);
+  });
+
+  it('still reaches the studies by field', async () => {
+    variable_set('Q', ANSWER);
+    expect(await line_words('ls ${Q.studies.vfsPath}')).toEqual(['ls', '/net/pacs/queries/q1/s1', '/net/pacs/queries/q1/s2']);
   });
 });

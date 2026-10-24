@@ -93,7 +93,9 @@ export const chrisFallback: BackendFallback = {
       );
     }
     if (binMatches.pipeline) {
-      const envelope: CommandEnvelope = await pipelineExecutable_handle(command, args);
+      // By its /bin name, as when it was typed: a pipeline named by its own
+      // name runs as exactly the one /bin lists.
+      const envelope: CommandEnvelope = await pipelineExecutable_handle(binMatches.pipeline.name, args);
       envelope_deliver(envelope);
       return envelope;
     }
@@ -105,6 +107,6 @@ export const chrisFallback: BackendFallback = {
     // A plugin version (`pl-dircopy-v2.1.2`) is its own executable.
     if (/-v[^/]+$/.test(command)) return pluginExecutableHelp_render(command);
     const binMatches: BinExecutableMatches = await binExecutableMatches_get(command);
-    return binMatches.pipeline ? pipelineExecutableHelp_render(command) : null;
+    return binMatches.pipeline ? pipelineExecutableHelp_render(binMatches.pipeline.name) : null;
   },
 };

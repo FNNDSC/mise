@@ -5,7 +5,7 @@
  * Aliases: plugininstance / plugininstances / instance / instances / job / jobs
  */
 import chalk from 'chalk';
-import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_from, resourceListOptions_refusal, resourceSearchTerm_refusal, resourceSearch_args } from '../utils.js';
 import { pluginInstances_fetchList, PluginInstanceListResult } from '@fnndsc/chili/commands/plugininstances/list.js';
 import { pluginInstanceFields_fetch } from '@fnndsc/chili/commands/plugininstances/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
@@ -45,6 +45,17 @@ function instanceRow_project(row: Record<string, unknown>): PluginInstanceRow {
   };
 }
 
+/** What /proc/jobs does for each job verb the tree already answers. */
+const PROC_WAYS: Readonly<Record<string, string>> = {
+  cancel: '`rm <path>` cancels it while it runs',
+  delete: '`rm <path>` removes it once it is done (while it runs, rm cancels it)',
+  rm: '`rm <path>` removes it once it is done (while it runs, rm cancels it)',
+  output: '`<path>/data` is its output folder',
+  parameters: '`cat <path>/params` lists its parameters',
+  params: '`cat <path>/params` lists its parameters',
+  log: '`cat <path>/log` is its log',
+};
+
 /**
  * Builtin handler for the `plugininstance` command.
  *
@@ -55,6 +66,11 @@ export async function builtin_plugininstance(args: string[]): Promise<CommandEnv
   const subcommand: string | undefined = parsed._[0];
 
   if (!subcommand || subcommand === 'list') {
+    const refusal: string | null = resourceListOptions_refusal('plugininstance', parsed);
+    if (refusal !== null) {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
+    }
     try {
       const { pluginInstances, selectedFields, totalCount }: PluginInstanceListResult = await pluginInstances_fetchList(cliOptions_from(parsed));
       // The listing is a model as well as a table: the run history a surface
@@ -69,8 +85,12 @@ export async function builtin_plugininstance(args: string[]): Promise<CommandEnv
   }
 
   if (subcommand === 'search') {
-    const query: string = parsed._[1] ?? '';
-    return builtin_plugininstance([...args.filter((a: string) => a !== subcommand), `--search`, query]);
+    const refusal: string | null = resourceSearchTerm_refusal('plugininstance', parsed);
+    if (refusal !== null) {
+      process.exitCode = 1;
+      return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
+    }
+    return builtin_plugininstance(resourceSearch_args(parsed));
   }
 
   if (subcommand === 'inspect') {
@@ -79,6 +99,15 @@ export async function builtin_plugininstance(args: string[]): Promise<CommandEnv
       return envelope_ok(table_render(fields.map((f: string) => ({ field: f })), ['field'], { title: { title: 'Plugin Instance fields', justification: 'center' } }));
     }
     return envelope_ok(`${chalk.gray('No fields found for plugin instances.')}\n`);
+  }
+
+  // A job is worked where it lives, in /proc/jobs: these verbs name the path
+  // rather than keep a second way to do what the tree already does.
+  const where: string | undefined = PROC_WAYS[subcommand];
+  if (where !== undefined) {
+    const id: string = String(parsed._[1] ?? '<id>');
+    process.exitCode = 1;
+    return envelope_error('', undefined, `${chalk.red(`plugininstance ${subcommand}: a job is worked in /proc/jobs; \`proc find ${id}\` names its path, then ${where}`)}\n`);
   }
 
   process.exitCode = 1;

@@ -1,5 +1,32 @@
 # @fnndsc/stratus
 
+## 0.3.0
+
+### Minor Changes
+
+- b4cd618: Every session can play a manifest and make claims again: each backend registers what can be claimed about its world. `expect` keeps its grammar, `--within` and `path exists|count` in the core; ChRIS registers `gather`, `feed`, `run` and `path … tags`, and stratus registers `domain` (`step <name>`, `verify`, `class`, `cost`), so a tenant's manifest can assert its domain. `play` reads a manifest through the backend's files, then the engine's disk. A play no longer stops at its first line when an earlier command in the session had failed: each line is judged on its own status (#1056, stratus.adoc D14).
+- 9b328dc: A domain gets its own compartment and is born protected. The build's first step, `compartment`, makes `domains/<name>` (and `domains` once) tagged `mise-domain=<name>`, so a second tenant needs nothing made by hand; the shared zone and the `openshift-tags` namespace are found wherever the tenancy keeps them. `domain teardown` refuses a protected domain until `domain protect <name> off`, a line of its own. `domain build` asks for Red Hat's service account when it will need one and none is kept, and keeps it on the host, mode 600 (stratus.adoc D14).
+- 05ec948: A domain now says everything the TD controller draws: where it stands in one word, what it costs, what is refused on it. `domain status` answers each domain with its condition (SIZING, ASKING, BUILDING, UP, SERVING, FAILED, GONE), whether it bills, whether it was built here, adopted or read from a checkout, what is refused on it and why, its spec, each step with its times, the build's running task, the last plan counted with drift apart, and the last verify check by check. `domain build` shows its domain as a `stratus.domain.state` event at its start, on each line it logs, and before each question. `domain size [--family F]` reads what a new domain is sized against: each zone's free cores and memory, the family's shape and price, and the starting spec. `domain verify` keeps its checks beside the plan, and `domain <name>` reads that one domain.
+- dd0b518: A tenant is a manifest: `~/tenant.mise` builds a domain from its written spec through the install and verifies it.
+
+  stratus ships `tenant.mise` and shows it in the session's home beside the domains; `play ~/tenant.mise --param NAME=quay` runs `domain build --through run`, `domain verify` and their claims, answering the domain's status. The session's files can now be read by `play` and a surface. In ARGUS, the TD controller's COMMIT writes the spec and then plays the tenant on BUILD.
+
+### Patch Changes
+
+- a1a7fc5: An adopted domain counts its compartment step as done. It came with a compartment of its own, and one adopted before the step existed reads the same.
+- Updated dependencies [e1d052d]
+- Updated dependencies [b4cd618]
+- Updated dependencies [6a766d2]
+- Updated dependencies [52b9691]
+- Updated dependencies [9c9ec38]
+- Updated dependencies [05ec948]
+- Updated dependencies [d6cdb13]
+- Updated dependencies [caff86a]
+- Updated dependencies [46bc80d]
+  - @fnndsc/brasa@0.47.0
+  - @fnndsc/menu@0.29.0
+  - @fnndsc/calypso@0.26.2
+
 ## 0.2.1
 
 ### Patch Changes

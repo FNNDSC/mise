@@ -1,5 +1,28 @@
 # @fnndsc/porter
 
+## 0.7.0
+
+### Minor Changes
+
+- 682f713: One login reaches your cloud too: `stratus oci` switches a ChRIS session to your stratus one, and `chris` comes back. The porter starts or rejoins it on the OCI key filed under the person's ChRIS identity (`porter --creds <user> --oci <config>`, run on the host), in a home and state of its own, read-only unless `stratus oci --spend` is asked for with `spend` typed; it restarts on the same tier and is adopted after a porter restart. No one reaches another's tenancy through the door (stratus.adoc D14).
+
+### Patch Changes
+
+- 46bc80d: Zod moves to 4.6.7: zod 3 carries a high-severity advisory with no 3.x fix, which failed every build's audit. The advisory is GHSA-mrhx-c7xc-m3w5, memory exhaustion while validating oversized constrained collections. The wire schemas read as before: `.catch` fallbacks, `.default` values, `.passthrough()` and the recursive DICOM tag parse were checked against zod 4. `dicomTagSchema` is typed `z.ZodType<DicomTag, unknown>`; schemas exported from `@fnndsc/menu` are zod 4 schemas, so code that names zod 3's types against them (`ZodTypeDef`, `SafeParseReturnType`) has to move too. A boundary reason now renders a symbol in a path instead of throwing. salsa's nested lockfile, which only the audit reads, overrides zod until a `@fnndsc/menu` built on zod 4 is published, and is back in step with salsa's `package.json`.
+- Updated dependencies [a1a7fc5]
+- Updated dependencies [e1d052d]
+- Updated dependencies [b4cd618]
+- Updated dependencies [52b9691]
+- Updated dependencies [9b328dc]
+- Updated dependencies [05ec948]
+- Updated dependencies [dd0b518]
+- Updated dependencies [46bc80d]
+  - @fnndsc/stratus@0.3.0
+  - @fnndsc/menu@0.29.0
+  - @fnndsc/chell@5.18.1
+  - @fnndsc/calypso@0.26.2
+  - @fnndsc/cumin@3.28.6
+
 ## 0.6.15
 
 ### Patch Changes

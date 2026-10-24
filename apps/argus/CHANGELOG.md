@@ -1,5 +1,28 @@
 # @fnndsc/argus
 
+## 0.38.0
+
+### Minor Changes
+
+- e1d052d: ARGUS shows the kernel's cohort instead of keeping its own copy. Its GATHER, REMOVE, CLEAR, name and CREATE FEED presses send `gather add|remove|clear|name|feed`, and the band and the GATHER pane redraw from the `gather.cohort` model those verbs answer with, including a line typed at any chell on the session. ARGUS no longer writes `~/gather/current.json`.
+
+  The kernel now fills in what the surface used to supply. `gather add` on a PACS path takes the series' description, modality, file count, patient and study from the query answer the path names (from the PACS mount's cache, so at most one CUBE read per query). A gathered folder is imagery when its name or place says it is a series, by the rule ARGUS's viewer uses, which now lives in `@fnndsc/menu` as `seriesFolder_is`. `gather feed [--title T]` makes the cohort's feed: series still at the PACS are pulled first, then one feed is rooted on every member, folders included. `gather name` answers with the cohort, and so does a `pull` that noted landed folders on it.
+
+  `PacsVfsProvider.queryResult_fetch` is public, and `vfsDispatcher.pacs` names the PACS mount. `pacsQueryModel_build` moved to `builtins/net/query.model.ts` and is still exported from `query.ts`.
+
+- 682f713: One login reaches your cloud too: `stratus oci` switches a ChRIS session to your stratus one, and `chris` comes back. The porter starts or rejoins it on the OCI key filed under the person's ChRIS identity (`porter --creds <user> --oci <config>`, run on the host), in a home and state of its own, read-only unless `stratus oci --spend` is asked for with `spend` typed; it restarts on the same tier and is adopted after a porter restart. No one reaches another's tenancy through the door (stratus.adoc D14).
+- a26fbd4: In a stratus session the TD controller takes the screen: every control sends a line, and the engine asks on its strip. `domain` opens it. A pill per domain and NEW; CONDITION, cost, build and what changed since the last command in the header; OVERVIEW, SIZE, BUILD, CLUSTER, CHRIS and TEARDOWN as views; the billing question answered by YES · BILL or NO, teardown's by the name typed back; SIZE's levers redrawing fit and cost from `domain size`, COMMIT sending `domain new`. A DOMAINS row opens it on that domain. Under 1250 px the line runs as text.
+- dd0b518: A tenant is a manifest: `~/tenant.mise` builds a domain from its written spec through the install and verifies it.
+
+  stratus ships `tenant.mise` and shows it in the session's home beside the domains; `play ~/tenant.mise --param NAME=quay` runs `domain build --through run`, `domain verify` and their claims, answering the domain's status. The session's files can now be read by `play` and a surface. In ARGUS, the TD controller's COMMIT writes the spec and then plays the tenant on BUILD.
+
+### Patch Changes
+
+- Updated dependencies [e1d052d]
+- Updated dependencies [05ec948]
+- Updated dependencies [46bc80d]
+  - @fnndsc/menu@0.29.0
+
 ## 0.37.1
 
 ### Patch Changes

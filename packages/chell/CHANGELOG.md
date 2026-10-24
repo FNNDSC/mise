@@ -1,5 +1,31 @@
 # @fnndsc/chell
 
+## 5.18.1
+
+### Patch Changes
+
+- 52b9691: Help and docs now say three things that surprised in use. A fan-out plugin's run ends once its jobs are submitted. A pattern given to grep matches a study's own text too, keeping that whole study. With a default door, `chell -c` and `-f` run in your shared session (#1228).
+- Updated dependencies [e1d052d]
+- Updated dependencies [b4cd618]
+- Updated dependencies [6a766d2]
+- Updated dependencies [52b9691]
+- Updated dependencies [9c9ec38]
+- Updated dependencies [a0fa450]
+- Updated dependencies [682f713]
+- Updated dependencies [a26fbd4]
+- Updated dependencies [05ec948]
+- Updated dependencies [dd0b518]
+- Updated dependencies [d6cdb13]
+- Updated dependencies [caff86a]
+- Updated dependencies [46bc80d]
+  - @fnndsc/brasa@0.47.0
+  - @fnndsc/argus@0.38.0
+  - @fnndsc/menu@0.29.0
+  - @fnndsc/salsa@4.3.0
+  - @fnndsc/calypso@0.26.2
+  - @fnndsc/chili@3.7.16
+  - @fnndsc/cumin@3.28.6
+
 ## 5.18.0
 
 ### Minor Changes

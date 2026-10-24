@@ -1,5 +1,17 @@
 # @fnndsc/chili
 
+## 3.7.16
+
+### Patch Changes
+
+- Updated dependencies [e1d052d]
+- Updated dependencies [a0fa450]
+- Updated dependencies [05ec948]
+- Updated dependencies [46bc80d]
+  - @fnndsc/menu@0.29.0
+  - @fnndsc/salsa@4.3.0
+  - @fnndsc/cumin@3.28.6
+
 ## 3.7.15
 
 ### Patch Changes

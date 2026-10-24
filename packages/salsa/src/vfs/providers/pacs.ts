@@ -286,10 +286,14 @@ export class PacsVfsProvider implements VFSProvider {
   /**
    * Fetches the decoded query result, leveraging a cache to prevent redundant API calls.
    *
+   * Public so a verb that reads one series' facts out of an answer the
+   * operator just listed (`gather add`) takes them from this cache rather
+   * than asking CUBE again.
+   *
    * @param queryId - The ID of the PACS query to decode.
    * @returns Promise resolving to the decoded PACS query result, or null if fetch fails.
    */
-  private async queryResult_fetch(queryId: number): Promise<PACSQueryDecodedResult | null> {
+  public async queryResult_fetch(queryId: number): Promise<PACSQueryDecodedResult | null> {
     const cached: PACSQueryDecodedResult | undefined = this._queryCache.get(queryId);
     if (cached) {
       return cached;

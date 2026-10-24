@@ -19,6 +19,23 @@ const invalidated: string[] = [];
 /** Paths the fake filesystem calls directories. */
 const directories: Set<string> = new Set(['/home/chris/uploads/brain']);
 
+/** Decoded query answers the PACS mount holds, by query id. */
+const answers: Map<number, { raw: string; json: unknown }> = new Map([[7, {
+  raw: '',
+  json: [{
+    StudyInstanceUID: '1.2',
+    StudyDescription: 'MR Brain',
+    PatientID: '4455667',
+    PatientName: 'DOE^JANE',
+    series: [
+      { SeriesInstanceUID: '1.2.3', SeriesDescription: 'SAG T1', Modality: 'MR', NumberOfSeriesRelatedInstances: '176' },
+      { SeriesInstanceUID: '1.2.4', SeriesDescription: 'AX FLAIR', Modality: 'MR', NumberOfSeriesRelatedInstances: '40' },
+    ],
+  }],
+}]]);
+/** Which answers were asked for. */
+const answerReads: number[] = [];
+
 /** Where CUBE says each series landed, by series UID. */
 let storage: Map<string, { fileCount: number; folderPath: string | null }> = new Map();
 
@@ -39,8 +56,19 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
     stored === null ? { ok: false } : { ok: true, value: stored }
   ),
   files_path_isDirectory: async (target: string): Promise<boolean> => directories.has(target),
+  queryId_extractFromFolder: (folder: string): number => {
+    const match: RegExpExecArray | null = /_qid:(\d+)/.exec(folder);
+    return match ? Number(match[1]) : NaN;
+  },
   // A file is gathered only when its parent says it is there.
   vfsDispatcher: {
+    // The PACS mount's decoded answers, by query id.
+    pacs: {
+      queryResult_fetch: async (queryId: number): Promise<unknown> => {
+        answerReads.push(queryId);
+        return answers.get(queryId) ?? null;
+      },
+    },
     list: async (folder: string): Promise<{ ok: boolean; value?: Array<{ name: string }> }> => {
       const held: string[] | undefined = filesByFolder.get(folder);
       return held === undefined ? { ok: false } : { ok: true, value: held.map((name: string) => ({ name })) };
@@ -90,6 +118,7 @@ beforeEach(() => {
   storage = new Map();
   madeDirs.length = 0;
   invalidated.length = 0;
+  answerReads.length = 0;
 });
 
 describe('gather', () => {
@@ -121,6 +150,50 @@ describe('gather', () => {
     expect(held.series[0].kind).toBe('series');
     expect(held.series[0].seriesUID).toBe('1.2.840.113619.2');
     expect(held.series[0].vfsPath).toBe('/net/pacs/queries/qid:1/1.2.840.113619.2');
+  });
+
+  it('fills a series\' facts from the query answer its path names, one read per query', async () => {
+    const study: string = '/net/pacs/queries/MRN_4455667_qid:7/Study_1.2_MR_Brain';
+    await builtin_gather(['add', `${study}/Series_1.2.3_SAG_T1`, `${study}/Series_1.2.4_AX_FLAIR`]);
+    const held = cohort_held();
+    expect(held.series[0]).toEqual(expect.objectContaining({
+      seriesUID: '1.2.3', description: 'SAG T1', modality: 'MR', files: 176, patient: '4455667', study: 'MR Brain',
+    }));
+    expect(held.series[1]).toEqual(expect.objectContaining({ seriesUID: '1.2.4', description: 'AX FLAIR' }));
+    expect(answerReads).toEqual([7]);
+  });
+
+  it('knows a gathered series CUBE already holds by its folder, from the gather on', async () => {
+    storage = new Map([['1.2.3', { fileCount: 176, folderPath: '/SERVICES/PACS/orthanc/p/s/1-SAG_T1-abcdef0' }]]);
+    const study: string = '/net/pacs/queries/MRN_4455667_qid:7/Study_1.2_MR_Brain';
+    const answered = await builtin_gather(['add', `${study}/Series_1.2.3_SAG_T1`, `${study}/Series_1.2.4_AX_FLAIR`]);
+    const held = cohort_held();
+    expect(held.series[0].folderPath).toBe('/SERVICES/PACS/orthanc/p/s/1-SAG_T1-abcdef0');
+    expect(held.series[1].folderPath).toBeUndefined();
+    // The answer a surface redraws from carries it too.
+    expect((answered.model?.data as { series: Array<{ folderPath?: string }> }).series[0].folderPath).toBe('/SERVICES/PACS/orthanc/p/s/1-SAG_T1-abcdef0');
+    storage = new Map();
+  });
+
+  it('gathers a series bare when its answer cannot be read', async () => {
+    const envelope = await builtin_gather(['add', '/net/pacs/queries/X_qid:99/Study_9_a/Series_9.9_b']);
+    expect(envelope.status).toBe('ok');
+    expect(cohort_held().series[0]).toEqual(expect.objectContaining({ seriesUID: '9.9' }));
+    expect(cohort_held().series[0].description).toBeUndefined();
+  });
+
+  it('calls a gathered folder imagery by its name, and a folder of anything else not', async () => {
+    directories.add('/home/chris/uploads/00002-SAG_T1-678f278');
+    filesByFolder.set('/home/chris/uploads', ['notes.txt', 'brain', '00002-SAG_T1-678f278']);
+    await builtin_gather(['add', '/home/chris/uploads/00002-SAG_T1-678f278', '/home/chris/uploads/brain']);
+    const held = cohort_held();
+    expect(held.series[0].imagery).toBe(true);
+    expect(held.series[1].imagery).toBeUndefined();
+  });
+
+  it('answers a name with the cohort, so a surface takes the name from the kernel', async () => {
+    const envelope = await builtin_gather(['name', 'sag', 'cohort']);
+    expect(envelope.model).toEqual(expect.objectContaining({ kind: 'gather.cohort', data: expect.objectContaining({ name: 'sag cohort' }) }));
   });
 
   it('asks the filesystem whether a gathered place is a directory', async () => {

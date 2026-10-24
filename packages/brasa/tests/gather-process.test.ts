@@ -24,10 +24,18 @@ jest.unstable_mockModule('../src/builtins/pluginExecute.js', () => ({ builtin_ex
 const mockPipeline = jest.fn();
 jest.unstable_mockModule('../src/builtins/res/pipeline.js', () => ({ builtin_pipeline: mockPipeline }));
 jest.unstable_mockModule('../src/builtins/feedCreation.js', () => ({ newFeed_cacheAdd: jest.fn(), run_follow: jest.fn() }));
+// A pull lands every series it is asked for: the cohort reads them as home after.
+const mockPull = jest.fn(async (paths: string[]) => {
+  for (const member of cohort.series) {
+    if (paths.includes(member.vfsPath as string)) member.folderPath = `/home/u/SERVICES/PACS/${String(member.vfsPath).split('/').pop()}`;
+  }
+  return { status: 'ok', rendered: '' };
+});
+jest.unstable_mockModule('../src/builtins/fs/pull.js', () => ({ builtin_pull: mockPull }));
 const lines: string[] = [];
 jest.unstable_mockModule('../src/core/sink.js', () => ({ sink_dataLine: (line: string): void => { lines.push(line); } }));
 
-const { gather_process, gatherProcessArgs_parse } = await import('../src/builtins/res/gather.process.js');
+const { gather_process, gatherProcessArgs_parse, cohortFeed_make } = await import('../src/builtins/res/gather.process.js');
 
 const RUN = { kind: 'run.scheduled', data: { pluginName: 'pl-x', instanceId: 9, feedId: 300, newFeed: false, outputPath: '/o', status: 'finishedSuccessfully' } };
 
@@ -46,6 +54,7 @@ beforeEach(() => {
   mockFeedCreate.mockResolvedValue({ id: 300, owner_username: 'u', pluginInstance: { data: { id: 400 } } });
   mockExecutePlugin.mockReset();
   mockExecutePlugin.mockResolvedValue({ status: 'ok', rendered: '', model: RUN });
+  mockPull.mockClear();
   mockPipeline.mockReset();
   mockPipeline.mockResolvedValue({ status: 'ok', rendered: '', model: { kind: 'pipeline.scheduled', data: { feedId: 300, newFeed: false } } });
   process.exitCode = 0;
@@ -114,5 +123,42 @@ describe('gather process', () => {
     bin = { plugin: { name: 'x' }, pipeline: { name: 'x' } };
     expect((await gather_process(['x'])).renderedErr).toContain('names both a plugin and a pipeline');
     expect(mockFeedCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('gather feed', () => {
+  it('roots one feed on every member, titled by the cohort, and notes it on the cohort', async () => {
+    const made = await cohortFeed_make([]);
+    expect(mockFeedCreate).toHaveBeenCalledWith(['/home/u/SERVICES/PACS/s1', '/home/u/uploads/brain'], { title: 'sag cohort' });
+    expect(made).toEqual({ state: expect.objectContaining({ feed: { feedId: 300, rootInstanceId: 400, path: '/home/u/feeds/feed_300/pl-dircopy_400/data' } }), made: true });
+    expect(written).toHaveLength(1);
+    expect(mockPull).not.toHaveBeenCalled();
+  });
+
+  it('pulls the series still at the PACS first, in one pull, then roots the feed on them all', async () => {
+    cohort.series.push({ vfsPath: '/net/pacs/q/S2', kind: 'series' });
+    await cohortFeed_make(['--title', 'T']);
+    expect(mockPull).toHaveBeenCalledWith(['/net/pacs/q/S2']);
+    expect(mockFeedCreate).toHaveBeenCalledWith(['/home/u/SERVICES/PACS/s1', '/home/u/uploads/brain', '/home/u/SERVICES/PACS/S2'], { title: 'T' });
+  });
+
+  it('makes nothing when a series did not land, and says which', async () => {
+    cohort.series.push({ vfsPath: '/net/pacs/q/S2', kind: 'series', description: 'SAG T1' });
+    mockPull.mockImplementationOnce(async () => ({ status: 'error', rendered: '' }));
+    expect(await cohortFeed_make([])).toBe('1 series did not land (SAG T1); no feed was made');
+    expect(mockFeedCreate).not.toHaveBeenCalled();
+  });
+
+  it('answers the feed the cohort has, making none', async () => {
+    cohort.feed = { feedId: 77, rootInstanceId: 78, path: '/p' };
+    expect(await cohortFeed_make([])).toEqual({ state: cohort, made: false });
+    expect(mockFeedCreate).not.toHaveBeenCalled();
+  });
+
+  it('refuses an empty cohort and words it does not take', async () => {
+    expect(await cohortFeed_make(['--title'])).toBe('--title needs a title');
+    expect(await cohortFeed_make(['pl-x'])).toContain('pl-x: not understood');
+    cohort.series = [];
+    expect(await cohortFeed_make([])).toContain('the cohort is empty');
   });
 });

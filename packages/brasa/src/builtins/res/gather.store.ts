@@ -29,6 +29,8 @@ import { files_touch as chefs_touch_cmd } from '@fnndsc/chili/commands/fs/touch.
 import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
 import { path_resolve } from '../utils.js';
 import type { Result } from '@fnndsc/fond';
+import type { EnvelopeModel } from '@fnndsc/menu';
+import { GATHER_MODEL_KIND } from './gather.kind.js';
 
 /** Where the session keeps the cohort it is working on. */
 export const COHORT_FILE: string = '~/gather/current.json';
@@ -96,6 +98,19 @@ export interface GatherState {
 /** An empty cohort: what a session that has gathered nothing holds. */
 export function cohortState_empty(): GatherState {
   return { version: 1, name: null, feed: null, series: [] };
+}
+
+/**
+ * The cohort as the model it travels in.
+ *
+ * Every verb that changes the cohort answers with it, so a surface showing
+ * the cohort redraws from the kernel's copy and never keeps one of its own.
+ *
+ * @param state - The cohort.
+ * @returns The `gather.cohort` model.
+ */
+export function cohortModel_of(state: GatherState): EnvelopeModel {
+  return { kind: GATHER_MODEL_KIND, data: state };
 }
 
 /**

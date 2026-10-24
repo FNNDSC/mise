@@ -42,7 +42,7 @@ import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { repl_confirm } from '../../core/question.js';
 import type { ProgressStatus } from '../../core/progress.js';
 import { newFeed_cacheAdd, run_follow } from '../feedCreation.js';
-import { cohortFolders_note } from '../res/gather.store.js';
+import { cohort_read, cohortFolders_note, cohortModel_of } from '../res/gather.store.js';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 interface PullPathResolution {
@@ -108,13 +108,14 @@ async function pulledFolders_announce(allTasks: RetrieveTask[]): Promise<void> {
  * process`) without a surface to tell it.
  *
  * @param allTasks - Every task this pull covered.
+ * @returns How many members changed.
  */
-async function cohortFolders_noteFromTasks(allTasks: RetrieveTask[]): Promise<void> {
+async function cohortFolders_noteFromTasks(allTasks: RetrieveTask[]): Promise<number> {
   const landed: Map<string, string> = new Map();
   for (const task of allTasks) {
     if (task.status === 'pulled' && task.cubePathDir !== null) landed.set(task.seriesUID, task.cubePathDir);
   }
-  await cohortFolders_note(landed);
+  return await cohortFolders_note(landed);
 }
 
 /**
@@ -483,7 +484,7 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
   // Where each series landed, before the channel closes: a surface can offer
   // the image the moment the pull says it is home.
   await pulledFolders_announce(allTasks);
-  await cohortFolders_noteFromTasks(allTasks);
+  const cohortChanged: number = await cohortFolders_noteFromTasks(allTasks);
   pullSummary_print(allTasks, totalFiringErrors);
 
   // Report CUBE paths via cubepath; --retry handles pacsseries DB lag post-pull
@@ -518,6 +519,10 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
 
   if (newFeedTitle === null) {
     sink_dataLine(chalk.gray('Detached — use `pacsretrieve report <queryId>` to verify.'));
+    // A pull that moved the cohort says so in data: a surface showing the
+    // cohort redraws from the kernel's copy rather than waiting for the
+    // next gather verb to learn its members are home.
+    if (cohortChanged > 0) return envelope_ok('', cohortModel_of(await cohort_read()));
     return envelope_ok('');
   }
   if (created === null) return envelope_ok('');

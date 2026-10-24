@@ -26,9 +26,12 @@ export { VFSDispatcher } from "@fnndsc/fond";
  * files as the fallback.
  */
 export class CubeVfsDispatcher extends VFSDispatcher {
+  /** The PACS mount, whose decoded answers other verbs read from its cache. */
+  public readonly pacs: PacsVfsProvider = new PacsVfsProvider();
+
   constructor() {
     super(new NativeVfsProvider());
-    this.provider_register(new PacsVfsProvider());
+    this.provider_register(this.pacs);
     this.provider_register(new EtcVfsProvider());
     this.provider_register(new ProcVfsProvider());
     // Two relations CUBE owns: the tags a feed can carry, and what is known

@@ -7,30 +7,66 @@
  * set of handlers, parameterised by where the work lands and where a
  * question stands.
  *
+ * The cohort itself is the kernel's. A press here sends the `gather` verb
+ * the operator could have typed, and the verb's answer — the whole cohort,
+ * as `gather.cohort` — is what the views redraw from; so is the answer to a
+ * line typed at any chell on the session. Nothing here writes the cohort.
+ *
  * A module of the host: the host hands in its open verbs, its asks and its
- * stage as hooks; the module keeps the cohort, the band's panel and the
- * session file it is kept in.
+ * stage as hooks; the module keeps the reflection and the band's panel.
  */
 import type { PaneAskRequest } from '../features/ask/paneAsk.js';
 import { question_stand } from './asks.js';
 import { Cohort } from '../features/gather/cohort.js';
 import { GatherPanel, type GatherFeed, type GatherPanelHandlers, type GatherSeries } from '../features/gather/panel.js';
+import { word_quote } from '../features/edit/line.js';
+import type { WireEnvelope } from '@fnndsc/menu';
 import type { ExecuteOutcome } from '../calypso/client.js';
 import type { CatalogueBinding, ReplayPlace } from './desktop.js';
 import type { HostContext } from './hostContext.js';
-import type { FileText } from './nodeOverlay.js';
 import { paneInstance_dispose, type PaneInstance, type PaneKind } from './panes.js';
 
-/**
- * Where the session keeps the cohort it is working on. A cohort belongs to
- * the SESSION, so it outlives the page: a refresh keeps it, and a second
- * surface attached to the same session sees the same one. A working file,
- * not a format — SAVE still writes the named manifest beside it.
- */
-export const COHORT_FILE: string = '~/gather/current.json';
+/** The model kind every `gather` verb answers with: the whole cohort. */
+export const GATHER_MODEL_KIND: string = 'gather.cohort';
 
-/** Writes are debounced: gathering a study is twenty changes, one file. */
-export const COHORT_WRITE_MS: number = 1200;
+/** One member as the kernel's cohort holds it. */
+interface KernelMember {
+  vfsPath: string;
+  kind?: 'series' | 'dir' | 'file';
+  seriesUID?: string;
+  description?: string;
+  modality?: string;
+  patient?: string;
+  study?: string;
+  imagery?: boolean;
+  folderPath?: string;
+  files?: number;
+}
+
+/**
+ * A kernel member as a row reads it.
+ *
+ * The row's key is the series UID, which is how a PACS row asks whether
+ * its series is gathered; a place has none and is keyed by its path.
+ *
+ * @param member - The member as the kernel holds it.
+ * @returns The row's entry.
+ */
+export function member_view(member: KernelMember): GatherSeries {
+  const kind: 'series' | 'dir' | 'file' = member.kind ?? 'series';
+  return {
+    kind,
+    seriesUID: member.seriesUID ?? member.vfsPath,
+    description: member.description ?? member.vfsPath.split('/').filter(Boolean).pop() ?? member.vfsPath,
+    modality: member.modality ?? '—',
+    patient: member.patient ?? '',
+    vfsPath: member.vfsPath,
+    ...(member.study === undefined ? {} : { study: member.study }),
+    ...(member.imagery === undefined ? {} : { imagery: member.imagery }),
+    ...(member.folderPath === undefined ? {} : { folderPath: member.folderPath }),
+    ...(member.files === undefined ? {} : { files: member.files }),
+  };
+}
 
 /** What the cohort asks of the host. */
 export interface CohortHooks {
@@ -48,7 +84,6 @@ export interface CohortHooks {
   stage_relight: () => void;
   home_apply: () => void;
   orphans_dispose: () => void;
-  fileText_fetch: (path: string) => Promise<FileText>;
   template_stamp: (templateId: string) => HTMLElement;
   pane_find: (mount: HTMLElement, selector: string) => HTMLElement;
   element_require: (id: string) => HTMLElement;
@@ -72,6 +107,8 @@ export interface CohortModule {
   annunciate: () => void;
   /** Reads back the cohort the session was working on, at boot. */
   restore: () => Promise<void>;
+  /** Takes an envelope seen on the session: a `gather.cohort` model redraws the cohort. */
+  envelope_observe: (envelope: WireEnvelope) => void;
 }
 
 /**
@@ -88,43 +125,90 @@ export function cohort_wire(context: Pick<HostContext, 'layout' | 'panels' | 'su
   let header: GatherPanel | null = null;
   /** Whether the operator sent the band away since the last gather. */
   let bandDismissed: boolean = false;
-  let write: number | null = null;
 
   /**
-   * The cohort's feed is made by the line the operator could have typed:
-   * echoed, run, its answer written; the kernel's model names the feed and
-   * the root a run appends to.
+   * Shows the kernel's cohort: the views redraw from it, and the band is
+   * built the first time there is something to show.
+   *
+   * @param data - A `gather.cohort` model's data.
    */
-  const feed_create = async (line: string): Promise<GatherFeed | null> => {
+  const adopt = (data: unknown): void => {
+    if (data === null || typeof data !== 'object') return;
+    const held = data as { name?: unknown; feed?: unknown; series?: unknown };
+    const members: GatherSeries[] = Array.isArray(held.series)
+      ? (held.series as KernelMember[]).filter((m: KernelMember): boolean => typeof m?.vfsPath === 'string').map(member_view)
+      : [];
+    const feed = held.feed as GatherFeed | null | undefined;
+    if (header === null && members.length > 0) header = header_build();
+    cohort.state_adopt(members, typeof held.name === 'string' ? held.name : null, feed ?? null);
+    annunciate();
+    hooks.stage_relight();
+  };
+
+  /**
+   * Adopts every cohort an outcome carries.
+   *
+   * @param outcome - A line's result.
+   */
+  const outcome_adopt = (outcome: ExecuteOutcome): void => {
+    for (const envelope of outcome.envelopes) {
+      if (envelope.model?.kind === GATHER_MODEL_KIND) adopt(envelope.model.data);
+    }
+  };
+
+  /**
+   * Sends a `gather` verb as the operator could have typed it: echoed, run
+   * silently, its cohort adopted before the promise settles — so a caller
+   * that awaits it reads the kernel's answer (a name, a feed) straight
+   * after. A refusal is written; the whole answer only when asked for.
+   */
+  const verb_send = async (line: string, answered: boolean = false): Promise<void> => {
     const { terminal, client } = context;
     terminal.line_echo(line);
     let outcome: ExecuteOutcome;
     try {
-      outcome = await client.line_execute(line, { silent: true });
+      // The operator's own act, not a pane's housekeeping: it reaches the
+      // session bus (another surface redraws), may ask (a pull's "keep
+      // waiting?"), and STOP reaches it.
+      outcome = await client.line_execute(line, { silent: true, operator: true });
     } catch (error: unknown) {
       terminal.output_write('err', `\x1b[31m${error instanceof Error ? error.message : String(error)}\x1b[0m\n`);
-      return null;
+      return;
     }
-    terminal.outcome_write(outcome);
-    for (const envelope of outcome.envelopes) {
-      if (envelope.model?.kind !== 'feed.created') continue;
-      const data = envelope.model.data as { feedId?: unknown; rootInstanceId?: unknown; path?: unknown };
-      if (typeof data.feedId === 'number' && typeof data.rootInstanceId === 'number' && typeof data.path === 'string') {
-        return { feedId: data.feedId, rootInstanceId: data.rootInstanceId, path: data.path };
-      }
+    if (answered || outcome.envelopes.some((envelope: WireEnvelope): boolean => envelope.status === 'error')) {
+      terminal.outcome_write(outcome);
     }
-    return null;
+    outcome_adopt(outcome);
+  };
+
+  /** Paths pressed into the cohort since the last send: one `gather add` carries them all. */
+  const pressed: string[] = [];
+
+  /**
+   * Gathers what was pressed: a study's twenty series are twenty presses in
+   * one tick and one verb, not twenty.
+   *
+   * @param entries - What was pressed.
+   */
+  const press_gather = (entries: ReadonlyArray<GatherSeries>): void => {
+    const first: boolean = pressed.length === 0;
+    for (const entry of entries) if (entry.vfsPath !== '' && !pressed.includes(entry.vfsPath)) pressed.push(entry.vfsPath);
+    if (!first || pressed.length === 0) return;
+    queueMicrotask((): void => {
+      const paths: string[] = pressed.splice(0);
+      if (paths.length > 0) void verb_send(`gather add ${paths.map(word_quote).join(' ')}`);
+    });
   };
 
   /**
    * The handlers both reflections share, parameterised by where the work
-   * lands (`hostOf`), how a question is asked, and what DISMISS and a change
-   * mean for that reflection.
+   * lands (`hostOf`), how a question is asked, and what DISMISS means for
+   * that reflection.
    */
   const handlers_make = (
     hostOf: () => string,
     asks: Pick<GatherPanelHandlers, 'name_ask' | 'confirm_ask'>,
-    own: Pick<GatherPanelHandlers, 'changed' | 'dismiss'>,
+    own: Pick<GatherPanelHandlers, 'dismiss'>,
   ): GatherPanelHandlers => ({
     command_run: (line: string): void => { void context.client.line_execute(line, { silent: true }); },
     command_show: (line: string): void => context.terminal.line_run(line),
@@ -135,33 +219,10 @@ export function cohort_wire(context: Pick<HostContext, 'layout' | 'panels' | 'su
     process_open: (folderPath: string): void => hooks.process_open(hostOf(), { input: folderPath, feed: null, node: null }),
     ...asks,
     ...own,
-    feed_create,
+    verb_send,
     cohort_process: (binding: { input: string; feed: number; node: number }): void => hooks.process_open(hostOf(), binding),
     feed_open: (feedId: number): void => hooks.feed_open(hostOf(), feedId),
   });
-
-  /** Holds the cohort as the session's, after the surface changed it. */
-  const keep = (): void => {
-    if (write !== null) window.clearTimeout(write);
-    write = window.setTimeout((): void => {
-      write = null;
-      const held: ReadonlyArray<GatherSeries> = header?.entries_get() ?? [];
-      const kept: string = JSON.stringify({
-        version: 1,
-        name: header?.name_get() ?? null,
-        feed: header?.feed_get() ?? null,
-        series: held,
-      });
-      // Silent: this is the surface keeping its own state, not an act the
-      // operator took, and the transcript is for what they did.
-      // The folder first: touch makes no folders, as on a disk.
-      void context.client.line_execute('mkdir -p ~/gather', { silent: true, observe: false })
-        .then(() => context.client.line_execute(
-          `touch --withContents '${kept.replace(/'/g, "'\\''")}' ${COHORT_FILE}`,
-          { silent: true, observe: false },
-        ));
-    }, COHORT_WRITE_MS);
-  };
 
   /**
    * The block says whether the session is holding anything, and no more. A
@@ -197,11 +258,6 @@ export function cohort_wire(context: Pick<HostContext, 'layout' | 'panels' | 'su
         return answered === 'y' || answered === 'n' ? answered : null;
       },
     }, {
-      changed: (): void => {
-        hooks.stage_relight();
-        annunciate();
-        keep();
-      },
       dismiss: (): void => {
         document.body.dataset['header'] = 'away';
         bandDismissed = true;
@@ -221,7 +277,6 @@ export function cohort_wire(context: Pick<HostContext, 'layout' | 'panels' | 'su
         return answered === 'y' || answered === 'n' ? answered : null;
       },
     }, {
-      changed: (): void => hooks.stage_relight(),
       dismiss: (): void => {
         if (!context.layout.leaf_close(id)) hooks.home_apply();
         hooks.orphans_dispose();
@@ -240,19 +295,12 @@ export function cohort_wire(context: Pick<HostContext, 'layout' | 'panels' | 'su
     };
   };
 
+  /** The cohort the session holds, asked of the kernel at boot. */
   const restore = async (): Promise<void> => {
-    const read: FileText = await hooks.fileText_fetch(COHORT_FILE);
-    if (!read.ok) return;
     try {
-      const held = JSON.parse(read.text) as { series?: unknown };
-      if (!Array.isArray(held.series) || held.series.length === 0) return;
-      if (header === null) header = header_build();
-      for (const entry of held.series as GatherSeries[]) header.series_add(entry);
-      annunciate();
-      hooks.stage_relight();
+      outcome_adopt(await context.client.line_execute('gather', { silent: true, observe: false }));
     } catch {
-      // A working file the operator may have edited: a cohort that cannot
-      // be read is not a reason to refuse the session.
+      // No session to ask is no cohort to show, not a reason to refuse the surface.
     }
   };
 
@@ -289,14 +337,13 @@ export function cohort_wire(context: Pick<HostContext, 'layout' | 'panels' | 'su
    */
   const gather = (entries: ReadonlyArray<GatherSeries>): void => {
     if (header === null) header = header_build();
-    for (const entry of entries) header.series_add(entry);
+    press_gather(entries);
     const away: boolean = document.body.dataset['header'] === 'away';
     if (!bandDismissed || !away) {
       document.body.dataset['header'] = 'gather';
       bandDismissed = false;
     }
     annunciate();
-    keep();
   };
 
   const open = (entries: ReadonlyArray<GatherSeries>, host: string = 'pacs'): string | null => {
@@ -315,20 +362,22 @@ export function cohort_wire(context: Pick<HostContext, 'layout' | 'panels' | 'su
       hooks.birth_record(spawned.id, from, place?.dir ?? 'row', place?.before ?? false);
       id = spawned.id;
     }
-    const panel: GatherPanel | undefined = panels.get('gather', id);
-    if (panel === undefined) return null;
-    for (const entry of entries) panel.series_add(entry);
+    if (panels.get('gather', id) === undefined) return null;
+    press_gather(entries);
     return id;
   };
 
   return {
     cohort,
     instance_build,
-    has: (seriesUID: string): boolean => header?.has(seriesUID) === true,
+    has: (seriesUID: string): boolean => cohort.has(seriesUID),
     gather,
     open,
     stage,
     annunciate,
     restore,
+    envelope_observe: (envelope: WireEnvelope): void => {
+      if (envelope.model?.kind === GATHER_MODEL_KIND) adopt(envelope.model.data);
+    },
   };
 }

@@ -18,7 +18,7 @@ const mockProcFeedAdd = jest.fn();
 const mockProcInstanceAdd = jest.fn();
 const mockStorageResolve = jest.fn();
 cuminMock_install(() => ({
-  envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
+  envelope_ok: (rendered: string, model?: unknown) => (model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   errorStack: { stack_push: jest.fn(), stack_getAll: jest.fn(() => []) },
   procCache_get: () => ({ feed_add: mockProcFeedAdd, instance_add: mockProcInstanceAdd }),
@@ -125,7 +125,12 @@ jest.unstable_mockModule('../src/lib/spinner.js', () => ({
 
 const { sink_set, StdoutSink } = await import('../src/core/sink.js');
 const mockCohortFoldersNote = jest.fn(async (): Promise<number> => 0);
-jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({ cohortFolders_note: mockCohortFoldersNote }));
+const mockCohortRead = jest.fn(async () => ({ version: 1, name: null, feed: null, series: [{ vfsPath: '/q/1.2.3', kind: 'series', folderPath: '/SERVICES/PACS/A/series-1' }] }));
+jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({
+  cohortFolders_note: mockCohortFoldersNote,
+  cohort_read: mockCohortRead,
+  cohortModel_of: (state: unknown) => ({ kind: 'gather.cohort', data: state }),
+}));
 
 const { builtin_pull } = await import('../src/builtins/fs/pull.js');
 
@@ -315,6 +320,17 @@ describe('builtin_pull engine consumption', () => {
   it('notes on the cohort where each landed series was filed', async () => {
     await builtin_pull([QUERY_PATH]);
     expect(mockCohortFoldersNote).toHaveBeenCalledWith(new Map([['1.2.3', '/SERVICES/PACS/A/series-1']]));
+  });
+
+  it('answers with the cohort when it moved it, so a surface redraws from the kernel', async () => {
+    mockCohortFoldersNote.mockResolvedValueOnce(1);
+    const envelope = await builtin_pull([QUERY_PATH]);
+    expect(envelope.model).toEqual(expect.objectContaining({ kind: 'gather.cohort' }));
+  });
+
+  it('answers no model when the cohort did not move', async () => {
+    const envelope = await builtin_pull([QUERY_PATH]);
+    expect(envelope.model).toBeUndefined();
   });
 
   it('leaves a folder CUBE cannot yet name for the next query', async () => {

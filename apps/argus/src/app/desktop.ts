@@ -466,13 +466,14 @@ export function desktop_wire(context: Pick<HostContext, 'layout' | 'panels' | 'p
       return opened;
     }
     if (action.op === 'gather' && action.series !== undefined) {
-      // The cohort returns as it was gathered, named if it was named.
+      // The cohort returns as it was gathered, named if it was named: both
+      // are kernel verbs (`gather add`, `gather name`), so a cohort the
+      // session already holds is confirmed rather than doubled. Its feed is
+      // not replayed: the kernel's cohort holds the feed it was rooted in,
+      // and no surface writes one onto it.
       const series: GatherSeries[] = [...action.series];
       const opened: string | null = placed((): string | null => hooks.gather_open(series, host ?? 'pacs'));
-      if (opened !== null && action.name !== undefined) panels.get('gather', opened)?.name_set(action.name);
-      if (opened !== null && action.feed !== undefined && action.root !== undefined) {
-        panels.get('gather', opened)?.feed_set({ feedId: action.feed, rootInstanceId: action.root.instance, path: action.root.path });
-      }
+      if (opened !== null && action.name !== undefined) void panels.get('gather', opened)?.name_set(action.name);
       return opened;
     }
     if (action.op === 'graph' && action.feed !== undefined) {

@@ -14,6 +14,10 @@ import { cuminMock_install } from './support/cuminMock.js';
 let stored: string | null = null;
 /** Directories the code asked for. */
 const madeDirs: string[] = [];
+/** How many writes of the cohort file were asked for. */
+let touches: number = 0;
+/** How many of the next writes CUBE refuses. */
+let touchFails: number = 0;
 /** Listing paths the code invalidated after writing. */
 const invalidated: string[] = [];
 /** Paths the fake filesystem calls directories. */
@@ -78,6 +82,8 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
 
 jest.unstable_mockModule('@fnndsc/chili/commands/fs/touch.js', () => ({
   files_touch: async (_target: string, options: { withContents?: string }): Promise<boolean> => {
+    touches += 1;
+    if (touchFails > 0) { touchFails -= 1; return false; }
     stored = options.withContents ?? '';
     return true;
   },
@@ -106,7 +112,7 @@ jest.unstable_mockModule('../src/builtins/utils.js', () => ({
 }));
 
 const { builtin_gather } = await import('../src/builtins/res/gather.js');
-const { member_key, members_merge, members_drop, seriesUID_parse, cohortFolders_note, cohortFolders_resolve, cohort_read } = await import('../src/builtins/res/gather.store.js');
+const { member_key, members_merge, members_drop, seriesUID_parse, cohortFolders_note, cohortFolders_resolve, cohort_read, cohortDirs_forget } = await import('../src/builtins/res/gather.store.js');
 
 /** The cohort as the fake filesystem currently holds it. */
 function cohort_held(): { name: string | null; series: Record<string, unknown>[] } {
@@ -117,6 +123,9 @@ beforeEach(() => {
   stored = null;
   storage = new Map();
   madeDirs.length = 0;
+  cohortDirs_forget();
+  touches = 0;
+  touchFails = 0;
   invalidated.length = 0;
   answerReads.length = 0;
 });
@@ -217,6 +226,32 @@ describe('gather', () => {
     await builtin_gather(['add', '/net/pacs/queries/qid:1/1.2.3']);
     expect(madeDirs).toContain('/home/chris/gather');
     expect(invalidated).toContain('/home/chris/gather');
+  });
+
+  it('makes the holding directory once, not on every write', async () => {
+    await builtin_gather(['add', '/net/pacs/queries/qid:1/1.2.3']);
+    await builtin_gather(['add', '/net/pacs/queries/qid:1/4.5.6']);
+    expect(madeDirs).toEqual(['/home/chris/gather']);
+  });
+
+  it('writes the cohort once per gather, with the folders CUBE named in it', async () => {
+    storage.set('1.2.3', { fileCount: 3, folderPath: '/home/chris/PACS/s1' });
+    await builtin_gather(['add', '/net/pacs/queries/qid:1/1.2.3']);
+    expect(touches).toBe(1);
+    expect(cohort_held().series[0]?.folderPath).toBe('/home/chris/PACS/s1');
+  });
+
+  it('makes the directory again when a write finds it gone, and refuses a write CUBE will not take', async () => {
+    await builtin_gather(['add', '/net/pacs/queries/qid:1/1.2.3']);
+    madeDirs.length = 0;
+    touchFails = 1;
+    const again = await builtin_gather(['add', '/net/pacs/queries/qid:1/4.5.6']);
+    expect(again.status).toBe('ok');
+    expect(madeDirs).toEqual(['/home/chris/gather']);
+    touchFails = 2;
+    const refused = await builtin_gather(['add', '/net/pacs/queries/qid:1/7.8.9']);
+    expect(refused.status).toBe('error');
+    expect(refused.renderedErr).toContain('could not write');
   });
 
   it('removes by the index the operator read back', async () => {

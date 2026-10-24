@@ -24,7 +24,7 @@ import {
   cohort_read,
   cohort_write,
   cohortModel_wrap,
-  cohortFolders_resolve,
+  cohortFolders_fill,
   member_key,
   members_drop,
   members_merge,
@@ -150,14 +150,15 @@ async function gather_add(operands: string[]): Promise<CommandEnvelope> {
   }
   await seriesFacts_fill(incoming);
 
-  const read: GatherState = await cohort_read();
-  const { members, added, merged } = members_merge(read.series, incoming);
-  read.series = members;
-  await cohort_write(read);
+  const state: GatherState = await cohort_read();
+  const { members, added, merged } = members_merge(state.series, incoming);
+  state.series = members;
   // A series CUBE already holds is known by its folder from the moment it
   // is gathered: that folder is what a surface opens as an image and what
-  // `gather process` roots on. One CUBE read for every series still unplaced.
-  const state: GatherState = await cohortFolders_resolve(read);
+  // `gather process` roots on. One CUBE read for every series still unplaced,
+  // before the one write, so the band redraws after one round trip, not two.
+  await cohortFolders_fill(state);
+  await cohort_write(state);
 
   const noted: string[] = [];
   if (added > 0) noted.push(`${added} gathered`);

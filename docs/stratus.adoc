@@ -341,7 +341,7 @@ Settled on the mockup, 2026-10-22:
 * *SIZE moves nothing until COMMIT:* fit and cost redraw live from `regions/` and the price list as presentation; COMMIT sends `domain new …`, and the engine checks again.
 * *A re-plan* shows drift apart from real change in its count (<<writes>>).
 * *Heard and titled:* a step ending, the engine asking and a failure are cues in ARGUS's synthesized voice, and the tab title carries the condition (`ASKING · trial`). Nothing leaves the browser.
-* *Entry:* `domain [<name>]` in ARGUS's console, or a row pressed on the DOMAINS tile, which sends that line.
+* *Entry:* `domain [<name>]` in ARGUS's console, or the DOMAINS tile: the tile pressed sends `domain`, a row on it `domain <name>`.
 * *Desktop only, for now:* under about 1250 px the controller does not take the screen and says so; the line runs as text. A narrow design is its own round.
 * *CHRIS* carries SMOKE AGAIN only; a chart upgrade and seeding users are their own grills.
 

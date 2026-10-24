@@ -421,8 +421,16 @@ export async function domainAdopt_run(context: BuildCommandContext, args: Readon
     lines.push(`  kept here: its ids (${Object.keys(checkout.record.ids).join(', ')}), its spec, its settings, its secrets (${checkout.secrets.map((secret) => secret.name).join(', ') || 'none'}) in ${context.store.folder_of(name)}`);
   } else if (kept.adopted === undefined) {
     return envelope_error('', undefined, `domain adopt: ${name}: a domain of that name was built here\n`);
-  } else if (kept.ids['stackRef'] !== undefined) {
-    return envelope_ok(`${name}: already adopted; its stack is ${kept.ids['stackRef']}\n`);
+  } else {
+    // An adopted domain catches up with steps the checkout shows done that this session had no name for when it was adopted.
+    const caught: string[] = Object.keys(checkout.record.steps).filter((step: string): boolean => kept.steps[step] === undefined);
+    if (caught.length > 0) {
+      context.store.record_update(name, (current: DomainRecord): void => {
+        for (const step of caught) current.steps[step] = checkout.record.steps[step] as DomainRecord['steps'][string];
+      });
+      lines.push(`${chalk.bold(name)}: caught up from ${from}: ${caught.join(', ')}`);
+    }
+    if (kept.ids['stackRef'] !== undefined) return envelope_ok(`${[...lines, `${name}: already adopted; its stack is ${kept.ids['stackRef']}`].join('\n')}\n`);
   }
   if (!tasks_granted()) {
     lines.push(chalk.gray(`  its stack and Terraform state go to Resource Manager with the tasks tier: domain adopt ${name} --from ${from} again, under stratus --host-control tasks`));

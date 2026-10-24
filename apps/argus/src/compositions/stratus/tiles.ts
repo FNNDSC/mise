@@ -117,9 +117,10 @@ export function stratusTiles_make(hooks: StratusTileHooks): () => Promise<TileCo
         // A row is that domain's line: the TD controller opens on it (docs/stratus.adoc, D13).
         open: (): void => hooks.domain_open(domain.name),
       })),
-      verb: 'OPEN THE DOMAINS',
+      verb: 'OPEN THE CONTROLLER',
       about: TILE_ABOUT['domains'],
-      enter: (): void => hooks.home_open(),
+      // The tile is the TD controller's door: `domain`, on the domain the controller chooses (docs/stratus.adoc, D13).
+      enter: (): void => hooks.domain_open(''),
     };
 
     const capacity: CapacityModel | null = model_of(capacityAnswer, STRATUS_CAPACITY_MODEL_KIND, (data) => capacityModelSchema.safeParse(data));

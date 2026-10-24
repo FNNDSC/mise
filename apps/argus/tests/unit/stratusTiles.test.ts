@@ -56,7 +56,7 @@ describe('the stratus tiles', () => {
     expect(money_text(1, 'EUR')).toBe('EUR 1.00');
     domains.rows[0]!.open!();
     domains.enter();
-    expect(seen).toEqual(['domain harbor', 'home']);
+    expect(seen).toEqual(['domain harbor', 'domain ']);
     expect(tiles.about?.['files']?.text).toContain('Trusted Domains');
   });
 

@@ -21,6 +21,7 @@ import type { JobContext, JobRun } from '@fnndsc/brasa/core';
 import { envFile_parse, harborDomain_read, type HarborDomain } from '../domains/harborOci.js';
 import type { CloudBuilder } from '../cloud/builder.js';
 import { specYaml_parse, SPEC_DEFAULT, type DomainSpec } from './spec.js';
+import { smokeVerdict_words } from '../cluster/chris.js';
 import { MACHINE_STEPS } from './steps.js';
 import { ADOPTED_COMPARTMENT } from './view.js';
 import type { DomainRecord, DomainStore, StepRecord } from './state.js';
@@ -63,6 +64,27 @@ export function variables_stringify(tfvars: Readonly<Record<string, unknown>>): 
  * @param now - The clock.
  * @returns What it read, or why it cannot be adopted.
  */
+/**
+ * The ChRIS steps a checkout already did, from what `harbor-oci` left in its
+ * state: it keeps no record of them, but the test user's password is made by
+ * its seed (which needs the deploy), and its smoke journey's log ends with
+ * the verdict. Its `postinstall` was a placeholder, and OCI needs none.
+ *
+ * @param root - The checkout.
+ * @returns The steps it shows done.
+ */
+export function chrisSteps_read(root: string): Record<string, StepRecord> {
+  const steps: Record<string, StepRecord> = { postinstall: { state: 'done', note: 'nothing to do after the install on this cloud' } };
+  if (!existsSync(join(root, 'state', 'auth', 'chris-test-user-password'))) return steps;
+  steps['chris-deploy'] = { state: 'done', note: 'done before adoption (harbor-oci: ChRIS seeded, so deployed)' };
+  steps['chris-seed'] = { state: 'done', note: 'done before adoption (harbor-oci: the test user\'s password is kept)' };
+  const smokeLog: string = join(root, 'state', 'smoke.log');
+  const last: string = existsSync(smokeLog) ? readFileSync(smokeLog, 'utf-8').trim().split('\n').pop() ?? '' : '';
+  const words: string = smokeVerdict_words(last);
+  if (words.startsWith('pass')) steps['smoke'] = { state: 'done', note: `done before adoption (harbor-oci: ${words})` };
+  return steps;
+}
+
 export function checkout_read(name: string, root: string, now: Date): CheckoutRead | { error: string } {
   if (!existsSync(join(root, 'config.env'))) return { error: `${root}: not a harbor-oci checkout (no config.env)` };
   const domain: HarborDomain = harborDomain_read({ name, root }, now);
@@ -91,6 +113,7 @@ export function checkout_read(name: string, root: string, now: Date): CheckoutRe
     if (MACHINE_STEPS.includes(step.name)) steps[step.name] = { state: 'done', note: `done before adoption (harbor-oci: ${step.state}, ${step.evidence})` };
   }
   steps['compartment'] = { ...ADOPTED_COMPARTMENT };
+  Object.assign(steps, chrisSteps_read(root));
   const ids: Record<string, string> = {};
   for (const [key, field] of [['clusterId', 'assistedClusterId'], ['infraEnvId', 'assistedInfraEnvId'], ['isoObject', 'isoObjectName']] as const) {
     if (typeof harbor[field] === 'string') ids[key] = harbor[field] as string;

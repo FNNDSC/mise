@@ -154,8 +154,44 @@ describe.each(cases)('builtin_$name', ({ builtin, list, fields, listKey }) => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('handles the search subcommand', async () => {
-    await expect(builtin(['search', 'foo'])).resolves.toBeDefined();
+  it('searches by its term, keeping the line\'s other options (#1237)', async () => {
+    list.mockResolvedValue({ [listKey]: [{ id: 1 }], selectedFields: ['id'], totalCount: 1 });
+    await builtin(['search', 'id:5536', '--fields', 'id']);
+    expect(process.exitCode).toBe(0);
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ search: expect.stringContaining('5536'), fields: 'id' }));
+  });
+
+  it('refuses a search with no term, or more than one', async () => {
+    const none = await builtin(['search']);
+    expect(process.exitCode).toBe(1);
+    expect(none.renderedErr).toContain('give a term');
+    process.exitCode = 0;
+    await builtin(['search', 'a:1', 'b:2']);
+    expect(process.exitCode).toBe(1);
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it('refuses a list option it does not read, by name, pointing at --search', async () => {
+    const envelope = await builtin(['list', '--feed', '5536']);
+    expect(process.exitCode).toBe(1);
+    expect(envelope.renderedErr).toContain("unrecognized option '--feed'");
+    expect(envelope.renderedErr).toContain('--search <field>:<value>');
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it('takes the standard list options', async () => {
+    list.mockResolvedValue({ [listKey]: [{ id: 1 }], selectedFields: ['id'], totalCount: 1 });
+    await builtin(['list', '--all', '--limit', '5', '--fields', 'id', '--sort', 'id', '--reverse', '--search', 'id:1']);
+    expect(process.exitCode).toBe(0);
+    expect(list).toHaveBeenCalled();
+  });
+});
+
+describe('builtin_plugininstance job verbs', () => {
+  it.each(['cancel', 'delete', 'output', 'parameters'])('%s names the /proc/jobs way', async (verb: string) => {
+    const envelope = await builtin_plugininstance([verb, '42']);
+    expect(process.exitCode).toBe(1);
+    expect(envelope.renderedErr).toContain('proc find 42');
   });
 });
 

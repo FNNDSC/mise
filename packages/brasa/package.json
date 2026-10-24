@@ -1,6 +1,6 @@
 {
   "name": "@fnndsc/brasa",
-  "version": "0.48.0",
+  "version": "0.48.1",
   "description": "BRASA Runs Abstracted Shell Actions - the hostable ChRIS shell engine (kernel)",
   "repository": {
     "type": "git",
@@ -50,8 +50,8 @@
   "dependencies": {
     "@fnndsc/chili": "^3.8.0",
     "@fnndsc/fond": "^0.6.0",
-    "@fnndsc/cumin": "^3.29.0",
-    "@fnndsc/salsa": "^4.4.0",
+    "@fnndsc/cumin": "^3.29.1",
+    "@fnndsc/salsa": "^4.4.1",
     "bsd-trek": "^0.4.0",
     "chalk": "^4.1.2",
     "cli-highlight": "^2.1.11",

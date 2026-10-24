@@ -22,6 +22,7 @@ import { ENVELOPE_ORDER, PLAIN_ORDER, HELP_ORDER } from './commandOrder.js';
 
 import { stdin_set } from '../builtins/games/stdin.js';
 import { listingIn_set, type ListingModel } from './listing.js';
+import { pipeHeadVariable_read, type PipeHeadReading } from './pipeHead.js';
 
 import { writeFileSync, appendFileSync } from 'fs';
 import chalk from 'chalk';
@@ -471,7 +472,14 @@ export async function pipe_execute(segments: string[]): Promise<CommandEnvelope>
   // daemon host — a surface without the capability (a browser) fails that
   // segment with a clear message.
   const firstCommand: string = segments[0];
-  const first: CapturedOutput = await chellCommand_executeAndCapture(firstCommand);
+  // A variable heading the pipe hands on what it holds, model and all.
+  const head: PipeHeadReading = pipeHeadVariable_read(firstCommand);
+  if (head !== null && 'refused' in head) {
+    sink_get().err_write(`${chalk.red(head.refused)}\n`);
+    process.exitCode = 1;
+    return { status: 'error', rendered: '' };
+  }
+  const first: CapturedOutput = head !== null ? head.output : await chellCommand_executeAndCapture(firstCommand);
 
   // Between builtins a numbered listing travels beside the text (#1103):
   // `query … | gather add` hands over rows. An operating-system segment

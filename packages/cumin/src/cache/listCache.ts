@@ -37,6 +37,9 @@ export const LIST_CACHE_PLUGIN_INDEX_TTL_MS: number = 24 * 60 * 60 * 1000;
 /** How many path listings the cache retains before evicting the oldest. */
 export const LIST_CACHE_MAX_ENTRIES: number = 500;
 
+/** How many folders' invalidations are remembered for fetches still in flight. */
+export const LIST_CACHE_INVALIDATIONS_KEPT: number = 4096;
+
 /**
  * Cache entry with metadata.
  */
@@ -77,6 +80,13 @@ export interface CacheOptions {
 
   /** Mark as dirty immediately */
   dirty?: boolean;
+
+  /**
+   * The `stamp_take()` taken before the listing was fetched. A listing
+   * fetched before its folder (or a tree above it, or the whole cache) was
+   * invalidated is not kept: it holds what the change took away.
+   */
+  since?: number;
 }
 
 /**
@@ -222,6 +232,20 @@ export class ListCache {
   private folders: Map<string, { promise: Promise<unknown>; timestamp: number; ttl: number; missed?: boolean }> = new Map();
 
   /**
+   * Invalidations so far. A fetch takes the count before it asks CUBE; a
+   * listing it brings back after the count moved past an invalidation of
+   * its folder is the folder as it was before the change (an
+   * `ls` that began before an `rm -r` wrote the removed folder back).
+   */
+  private invalidations: number = 0;
+
+  /** The invalidation count when each folder was invalidated; a tree is keyed by its path and a trailing slash. */
+  private invalidatedAt: Map<string, number> = new Map();
+
+  /** The invalidation count when the whole cache was last cleared. */
+  private clearedAt: number = 0;
+
+  /**
    * Registers a callback for checkpoint-worthy mutations (set, update,
    * dirty, invalidate).
    *
@@ -327,6 +351,7 @@ export class ListCache {
    * @param options - Optional TTL and dirty flag.
    */
   cache_set<T = unknown>(path: string, data: T, options?: CacheOptions): void {
+    if (options?.since !== undefined && this.stamp_isStale(path, options.since)) return;
     // LRU: If exists, delete and re-add (moves to end)
     if (this.cache.has(path)) {
       this.cache.delete(path);
@@ -344,6 +369,54 @@ export class ListCache {
     // LRU eviction if over limit
     this.evict_lru();
     this.change_emit();
+  }
+
+  /**
+   * The invalidation count now, taken before a fetch and handed back to
+   * `cache_set` as `since`.
+   *
+   * @returns A stamp.
+   */
+  stamp_take(): number {
+    return this.invalidations;
+  }
+
+  /**
+   * Records an invalidation, so a fetch that began before it is not kept.
+   *
+   * @param path - The folder, or undefined for the whole cache.
+   * @param tree - Whether everything beneath the folder went too.
+   */
+  private invalidation_note(path: string | undefined, tree: boolean): void {
+    this.invalidations += 1;
+    // Kept bounded: past the cap, every fetch still in flight is treated as
+    // stale, which costs a re-read and never keeps an old listing.
+    if (path === undefined || this.invalidatedAt.size >= LIST_CACHE_INVALIDATIONS_KEPT) {
+      this.invalidatedAt.clear();
+      this.clearedAt = this.invalidations;
+      if (path === undefined) return;
+    }
+    this.invalidatedAt.set(path, this.invalidations);
+    if (tree) this.invalidatedAt.set(path.endsWith('/') ? path : `${path}/`, this.invalidations);
+  }
+
+  /**
+   * Whether a listing fetched at a stamp was overtaken by an invalidation
+   * of its folder, of a tree above it, or of the whole cache.
+   *
+   * @param path - The folder the listing is of.
+   * @param since - The stamp taken before the fetch.
+   * @returns True when the listing must not be kept.
+   */
+  private stamp_isStale(path: string, since: number): boolean {
+    if (this.clearedAt > since) return true;
+    if ((this.invalidatedAt.get(path) ?? 0) > since) return true;
+    for (let at: string = path; ; ) {
+      if ((this.invalidatedAt.get(at.endsWith('/') ? at : `${at}/`) ?? 0) > since) return true;
+      const parent: string = at.slice(0, Math.max(at.lastIndexOf('/'), 0)) || '/';
+      if (parent === at) return false;
+      at = parent;
+    }
   }
 
   /**
@@ -458,6 +531,7 @@ export class ListCache {
    * @param path - Optional specific path to invalidate. If omitted, clears entire cache.
    */
   cache_invalidate(path?: string): void {
+    this.invalidation_note(path, false);
     if (path !== undefined) {
       this.cache.delete(path);
     } else {
@@ -478,6 +552,7 @@ export class ListCache {
    *     itself is removed along with all entries under `path + '/'`.
    */
   cache_invalidateTree(path: string): void {
+    this.invalidation_note(path, true);
     this.folders_drop(path);
     this.cache.delete(path);
     const prefix: string = path.endsWith("/") ? path : `${path}/`;

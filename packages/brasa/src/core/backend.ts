@@ -175,8 +175,10 @@ export interface BackendFallback {
 export interface ListingCache {
   /** A kept listing and whether it is current, or null when none is kept. */
   cache_get<T = unknown>(path: string): { data: T; fresh: boolean } | null;
-  /** Keeps a listing. */
-  cache_set<T = unknown>(path: string, data: T): void;
+  /** Keeps a listing; with `since`, only when nothing invalidated its folder after that stamp. */
+  cache_set<T = unknown>(path: string, data: T, options?: { since?: number }): void;
+  /** A stamp to take before fetching a listing, handed back to `cache_set` as `since`. */
+  stamp_take?(): number;
   /** Forgets one folder's listing: something in it changed. */
   cache_invalidate?(path: string): void;
   /** Forgets a folder's listing and every one beneath it: the folder went. */

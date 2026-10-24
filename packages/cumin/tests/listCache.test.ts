@@ -55,6 +55,39 @@ describe('ListCache Enhanced', () => {
     });
   });
 
+  describe('A fetch overtaken by a change (an ls in flight across an rm -r)', () => {
+    it('does not keep a listing fetched before its folder was invalidated', () => {
+      const since: number = cache.stamp_take();
+      cache.cache_invalidate('/home/u');
+      cache.cache_set('/home/u', ['smoke-place'], { since });
+      expect(cache.cache_get('/home/u')).toBeNull();
+    });
+
+    it('does not keep one fetched before a tree above it went, or before the whole cache was cleared', () => {
+      const tree: number = cache.stamp_take();
+      cache.cache_invalidateTree('/home/u/smoke');
+      cache.cache_set('/home/u/smoke/a/b', ['x'], { since: tree });
+      expect(cache.cache_get('/home/u/smoke/a/b')).toBeNull();
+      const all: number = cache.stamp_take();
+      cache.cache_invalidate();
+      cache.cache_set('/elsewhere', ['y'], { since: all });
+      expect(cache.cache_get('/elsewhere')).toBeNull();
+    });
+
+    it('keeps a listing fetched after the change, one for another folder, and one set without a stamp', () => {
+      cache.cache_invalidate('/home/u');
+      const after: number = cache.stamp_take();
+      cache.cache_set('/home/u', ['fresh'], { since: after });
+      expect(cache.cache_get('/home/u')?.data).toEqual(['fresh']);
+      const before: number = cache.stamp_take();
+      cache.cache_invalidate('/home/v');
+      cache.cache_set('/home/u/sub', ['sub'], { since: before });
+      expect(cache.cache_get('/home/u/sub')?.data).toEqual(['sub']);
+      cache.cache_set('/home/v', ['unstamped']);
+      expect(cache.cache_get('/home/v')?.data).toEqual(['unstamped']);
+    });
+  });
+
   describe('TTL expiration', () => {
     it('should return fresh=true within TTL', () => {
       cache.cache_set('/test', ['data'], { ttl: 1000 });

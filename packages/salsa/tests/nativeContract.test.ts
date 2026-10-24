@@ -67,6 +67,7 @@ class MockCube {
     this.deletes += 1;
     const found: [string, CubeEntry] | undefined = [...this.entries.entries()].find(([, entry]) => entry.id === id);
     if (found === undefined) return false;
+    if (found[1].type === 'dir' && mockState.lingerReads > 0) mockState.ghosts.set(found[0], { id, reads: mockState.lingerReads });
     for (const key of [...this.entries.keys()]) {
       if (key === found[0] || key.startsWith(`${found[0]}/`)) this.entries.delete(key);
     }
@@ -86,7 +87,11 @@ class MockCube {
   }
 }
 
-const mockState: { cube: MockCube } = { cube: new MockCube({}) };
+/**
+ * CUBE accepts a folder's DELETE (202) and removes it after: a ghost is a
+ * removed folder its parent goes on listing for so many more reads.
+ */
+const mockState: { cube: MockCube; ghosts: Map<string, { id: number; reads: number }>; lingerReads: number } = { cube: new MockCube({}), ghosts: new Map(), lingerReads: 0 };
 
 type Listing = { kind: 'listing'; data: { tableData: Array<Record<string, unknown>> } } | { kind: 'empty' } | { kind: 'missing' };
 
@@ -97,6 +102,13 @@ function mockCube_list(asset: string, folder: string): Listing {
   if (asset === 'links') return { kind: 'empty' };
   const rows = mockState.cube.children(folder, asset === 'dirs' ? 'dir' : 'file').map(([key, entry]: [string, CubeEntry]) =>
     asset === 'dirs' ? { id: entry.id, path: key.slice(1) } : { id: entry.id, fname: key.slice(1), fsize: entry.content.length });
+  if (asset === 'dirs') {
+    for (const [key, ghost] of mockState.ghosts) {
+      if (path.posix.dirname(key) !== folder || ghost.reads <= 0) continue;
+      ghost.reads -= 1;
+      rows.push({ id: ghost.id, path: key.slice(1) });
+    }
+  }
   return rows.length === 0 ? { kind: 'empty' } : { kind: 'listing', data: { tableData: rows } };
 }
 
@@ -144,6 +156,8 @@ import { NativeVfsProvider } from '../src/vfs/providers/native';
 const cubeDriver: VfsContractDriver = {
   mount_make: async (seed: MemorySeed) => {
     mockState.cube = new MockCube(seed);
+    mockState.ghosts = new Map();
+    mockState.lingerReads = 0;
     return new NativeVfsProvider();
   },
 };
@@ -180,6 +194,27 @@ describe('what the native mount says beyond an errno', () => {
     expect(mockState.cube.deletes).toBe(0);
     expect(mockState.cube.get('/home/x')?.type).toBe('dir');
     expect(mockState.cube.twin_get('/home/x')?.content.toString()).toBe('rows');
+  });
+
+  it('rm -r returns once CUBE has finished removing the folder, not when it accepted the removal', async () => {
+    const mount = await cubeDriver.mount_make({ '/home/x': null, '/home/x/a.txt': 'alpha' });
+    // The parent goes on naming the folder for two more reads after the DELETE.
+    mockState.lingerReads = 2;
+    expect(await mount.rmTree!('/home/x')).toEqual({ ok: true, value: true });
+    expect(mockState.ghosts.get('/home/x')?.reads).toBe(0);
+  });
+
+  it('says so, in words, when CUBE still lists a folder whose removal it accepted', async () => {
+    jest.useFakeTimers();
+    try {
+      const mount = await cubeDriver.mount_make({ '/home/x': null });
+      mockState.lingerReads = Number.POSITIVE_INFINITY;
+      const removal = mount.rmTree!('/home/x');
+      await jest.advanceTimersByTimeAsync(20_000);
+      expect(await removal).toEqual({ ok: false, errno: 'EIO', reason: 'CUBE accepted the removal of /home/x but still lists it after 15s' });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('makes no folder and writes no file where the other already is', async () => {

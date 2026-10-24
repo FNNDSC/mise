@@ -57,8 +57,7 @@
   "overrides": {
     "glob": "^10.0.0",
     "inflight": "npm:@aashutoshrathi/word-wrap@^1.2.6",
-    "adm-zip": "npm:empty-npm-package@1.0.0",
-    "zod": "^4.6.7"
+    "adm-zip": "npm:empty-npm-package@1.0.0"
   },
   "dependencies": {
     "@fnndsc/fond": "^0.5.0",

@@ -449,6 +449,36 @@ export function seedJob_of(release: ChrisRelease, timeoutSeconds: number): unkno
   };
 }
 
+/** The verdict `chris_smoke` prints last, as far as it is read. */
+interface SmokeVerdict {
+  verdict?: string;
+  failed_step?: string | null;
+  duration_s?: number;
+  steps?: Array<{ name: string; ok: boolean }>;
+}
+
+/**
+ * The journey's last line in a few words: `chris_smoke` ends with its verdict
+ * as JSON (`pass · 7 steps · 17 s`, or the step that failed); any other line
+ * is kept as it is.
+ *
+ * @param line - The last line it printed.
+ * @returns The words.
+ */
+export function smokeVerdict_words(line: string): string {
+  let verdict: SmokeVerdict;
+  try {
+    verdict = JSON.parse(line) as SmokeVerdict;
+  } catch {
+    return line;
+  }
+  if (typeof verdict !== 'object' || verdict === null || typeof verdict.verdict !== 'string') return line;
+  const steps: number = verdict.steps?.length ?? 0;
+  const failed: string = typeof verdict.failed_step === 'string' ? ` · failed at ${verdict.failed_step}` : '';
+  const seconds: string = typeof verdict.duration_s === 'number' ? ` · ${Math.round(verdict.duration_s)} s` : '';
+  return `${verdict.verdict} · ${steps} step${steps === 1 ? '' : 's'}${failed}${seconds}`;
+}
+
 /** ChRIS on a real cluster. */
 export const chrisWork_cluster: ChrisWork = {
   async deploy(call: ChrisCall): Promise<string> {
@@ -539,7 +569,7 @@ export const chrisWork_cluster: ChrisWork = {
         SMOKE_CA_BUNDLE: call.secret_path(ROUTER_CA_FILE),
       },
     });
-    const last: string = result.stdout.trim().split('\n').pop() ?? '';
+    const last: string = smokeVerdict_words(result.stdout.trim().split('\n').pop() ?? '');
     if (result.code === 1) throw new Error(`the smoke journey found ChRIS broken: ${last}`);
     if (result.code !== 0) throw new Error(`the smoke journey could not start (exit ${result.code}): ${(result.stderr.trim().split('\n').pop() ?? last)}`);
     return `the smoke journey passes as ${call.release.testUser}${last !== '' ? ` · ${last}` : ''}`;

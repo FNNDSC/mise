@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { KubeError, type KubeApi } from '../src/cluster/kube.js';
 import { busyWait_of } from '../src/cluster/kubeHttp.js';
-import { CHRIS_RELEASE, CHRIS_VALUES, chrisomaticConfig_render, chrisWork_cluster, helmInstall_args, rollout_done, TEST_PASSWORD_FILE, type ChrisCall, type HostResult, type HostRunOptions } from '../src/cluster/chris.js';
+import { CHRIS_RELEASE, CHRIS_VALUES, chrisomaticConfig_render, smokeVerdict_words, chrisWork_cluster, helmInstall_args, rollout_done, TEST_PASSWORD_FILE, type ChrisCall, type HostResult, type HostRunOptions } from '../src/cluster/chris.js';
 import { SPEC_DEFAULT } from '../src/domain/spec.js';
 
 /** A cluster that answers from a table of paths, keeping what is made and deleted. */
@@ -168,6 +168,12 @@ describe('ChRIS on a cluster', () => {
     await expect(chrisWork_cluster.smoke(call_make(kube))).rejects.toThrow('the smoke journey found ChRIS broken: FAIL: plugin did not finish');
     // The second and third runs found the virtualenv made.
     expect(ran.filter((entry) => entry.command === 'uv')).toHaveLength(2);
+  });
+
+  it('says the journey\'s verdict in a few words', () => {
+    expect(smokeVerdict_words('{"verdict": "pass", "exit_code": 0, "failed_step": null, "duration_s": 17.4, "steps": [{"name": "a", "ok": true}, {"name": "b", "ok": true}]}')).toBe('pass · 2 steps · 17 s');
+    expect(smokeVerdict_words('{"verdict": "fail", "failed_step": "authenticate", "duration_s": 2, "steps": [{"name": "authenticate", "ok": false}]}')).toBe('fail · 1 step · failed at authenticate · 2 s');
+    expect(smokeVerdict_words('PASS')).toBe('PASS');
   });
 
   it('waits as long as a 429 asks, within a second and ten', () => {

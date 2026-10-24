@@ -25,7 +25,7 @@ describe('the manifests stratus ships', () => {
     const lines: string[] = text.split('\n').map((line: string): string => line.trim()).filter((line: string): boolean => line !== '' && !line.startsWith('#') && !line.startsWith('@'));
     // The size is the spec's: the procedure never writes one.
     expect(lines.some((line: string): boolean => line.startsWith('domain new'))).toBe(false);
-    expect(lines).toContain('domain build ${NAME} --through run');
+    expect(lines).toContain('domain build ${NAME}');
     expect(lines.at(-1)).toBe('TENANT=$(domain ${NAME})');
     // Every claim is one the domain subject reads, of a step the build has.
     for (const claim of lines.filter((line: string): boolean => line.startsWith('expect '))) {

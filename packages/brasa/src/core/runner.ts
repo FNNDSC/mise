@@ -25,7 +25,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { envelope_ok, taskState_isOver, type Task, type TaskProgress, type TaskState } from '@fnndsc/menu';
 import { ambient_publish } from './ambient.js';
-import { surface_get } from './surface.js';
+import { aside_await, surface_get } from './surface.js';
 import type { TaskSource } from './backend.js';
 
 /** The model a job's end travels as, on the ambient channel. */
@@ -397,6 +397,39 @@ export class JobRunner {
       this.events.on(`end:${key}`, finish);
       signal?.addEventListener('abort', finish, { once: true });
     });
+  }
+
+  /**
+   * Follows a job as {@link job_follow} does, but out of the session's turn
+   * between its lines: a follow is waiting, not working, so other lines run
+   * while the job is quiet (a pane's reads among them). Each line heard is
+   * given to `onLine` once the follower has its turn again.
+   *
+   * @param source - Its source.
+   * @param id - Its id.
+   * @param onLine - Hears each line, in the follower's turn.
+   * @param signal - Stops following (the job goes on).
+   * @returns Its record at the end, or at the moment following stopped.
+   */
+  async job_followAside(source: string, id: string, onLine: (line: string) => void, signal?: AbortSignal): Promise<JobRecord | undefined> {
+    const heard: string[] = [];
+    let wake: (() => void) | null = null;
+    const nudge = (): void => { const woken: (() => void) | null = wake; wake = null; woken?.(); };
+    let over: boolean = false;
+    let ended: JobRecord | undefined;
+    void this.job_follow(source, id, (line: string): void => { heard.push(line); nudge(); }, signal).then((record: JobRecord | undefined): void => {
+      ended = record;
+      over = true;
+      nudge();
+    });
+    for (;;) {
+      while (heard.length > 0) onLine(heard.shift() as string);
+      if (over) return ended;
+      await aside_await(new Promise<void>((resolve: () => void): void => {
+        wake = resolve;
+        if (heard.length > 0 || over) nudge();
+      }));
+    }
   }
 
   /**

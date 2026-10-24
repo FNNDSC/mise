@@ -26,7 +26,7 @@ const CAPACITY = {
 };
 
 /** The hooks, answering each line with a model or an error, and recording what was asked and opened. */
-function hooks_make(answers: Record<string, unknown>, seen: string[]): StratusTileHooks {
+function hooks_make(answers: Record<string, unknown>, seen: string[], named: string[][] = []): StratusTileHooks {
   return {
     ask: async (line: string): Promise<ExecuteOutcome> => {
       const kind: string = line.startsWith('domain') ? 'stratus.domains' : 'stratus.capacity';
@@ -38,13 +38,17 @@ function hooks_make(answers: Record<string, unknown>, seen: string[]): StratusTi
     domain_open: (name: string): void => { seen.push(`domain ${name}`); },
     home_open: (): void => { seen.push('home'); },
     line_run: (line: string): void => { seen.push(`run ${line}`); },
+    names_seen: (names: string[]): void => { named.push(names); },
   };
 }
 
 describe('the stratus tiles', () => {
   it('lead with DOMAINS: each domain\'s last step and cluster, red where a step went wrong, opening its folder', async () => {
     const seen: string[] = [];
-    const tiles = await stratusTiles_make(hooks_make({ 'domain status': DOMAINS, capacity: CAPACITY }, seen))();
+    const named: string[][] = [];
+    const tiles = await stratusTiles_make(hooks_make({ 'domain status': DOMAINS, capacity: CAPACITY }, seen, named))();
+    // The paint tells the language the domains, so `domain harbor` opens the controller before it has read them.
+    expect(named).toEqual([['harbor', 'lab']]);
     const domains = tiles.lead!.tile;
     expect(tiles.lead!.weight).toBe(2);
     expect(domains.figures.map((f) => [f.text, f.errored ?? false])).toEqual([['2 DOMAINS', false], ['1 NEEDS A LOOK', true], ['$0.62/H', false]]);
@@ -52,7 +56,7 @@ describe('the stratus tiles', () => {
     expect(money_text(1, 'EUR')).toBe('EUR 1.00');
     domains.rows[0]!.open!();
     domains.enter();
-    expect(seen).toEqual(['domain harbor', 'home']);
+    expect(seen).toEqual(['domain harbor', 'domain ']);
     expect(tiles.about?.['files']?.text).toContain('Trusted Domains');
   });
 

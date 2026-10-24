@@ -66,6 +66,13 @@ export interface HostedEngine {
   turn_resume?(state: unknown): void;
 
   /**
+   * Stops a command that stepped aside, from outside its turn.
+   *
+   * @param state - What `turn_leave` returned for it.
+   */
+  turn_abort?(state: unknown): void;
+
+  /**
    * Computes completion candidates for a partial input line.
    *
    * @param linePrefix - The input line up to the cursor.

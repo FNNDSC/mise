@@ -136,6 +136,17 @@ export function surface_set(surface: Surface): Surface {
 }
 
 /**
+ * Waits without holding the session, where the host can step a command out
+ * of its turn (`Surface.aside`); elsewhere it simply waits.
+ *
+ * @param waiting - What the command waits on.
+ * @returns What it resolved with.
+ */
+export function aside_await<T>(waiting: Promise<T>): Promise<T> {
+  return activeSurface.aside !== undefined ? activeSurface.aside(waiting) : waiting;
+}
+
+/**
  * Asserts that the active surface has a capability, throwing a
  * {@link CapabilityError} with a clear message when it does not.
  *

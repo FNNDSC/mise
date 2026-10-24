@@ -4,7 +4,7 @@
  * JSON read with drift counted apart; the OCI builder over recorded answers.
  */
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { appendFileSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BufferSink, HeadlessSurface, JobRunner, runner_install, sink_set, surface_set, type CommandEnvelope } from '@fnndsc/brasa/core';
@@ -182,7 +182,9 @@ describe('adopting a domain', () => {
     if ('error' in read) throw new Error(read.error);
     expect(read.record).toMatchObject({ name: 'harbor', region: 'us-ashburn-1', baseDomain: 'oci.chrisproject.org', compartmentId: 'ocid1.compartment.oc1..harbor', ids: { clusterId: 'cluster-1', infraEnvId: 'infra-1', isoObject: 'harbor-discovery.iso' }, adopted: { from: checkout } });
     expect(read.record.steps['run']?.state).toBe('done');
-    expect(read.record.steps['postinstall']).toBeUndefined();
+    expect(read.record.steps['postinstall']).toEqual({ state: 'done', note: 'nothing to do after the install on this cloud' });
+    // It keeps no record of ChRIS: none of its steps is carried without the evidence.
+    expect(read.record.steps['chris-deploy']).toBeUndefined();
     // It came with its compartment; one adopted before that step existed reads the same.
     expect(read.record.steps['compartment']).toEqual({ state: 'done', note: 'its own compartment, made before adoption' });
     const { compartment: _kept, ...older } = read.record.steps;
@@ -210,6 +212,14 @@ describe('adopting a domain', () => {
     const taken: CommandEnvelope = await domain_run(context, ['adopt', 'harbor', '--from', checkout]);
     expect(plain(taken.rendered)).toMatch(/^harbor: adopted; its stack is fake-stack-\d+/);
     expect(plain((await domain_run(context, ['adopt', 'harbor', '--from', checkout])).rendered)).toContain('already adopted');
+    // Its ChRIS, seeded and smoked by harbor-oci after adoption here, is caught up by adopting again.
+    mkdirSync(join(checkout, 'state', 'auth'), { recursive: true });
+    writeFileSync(join(checkout, 'state', 'auth', 'chris-test-user-password'), 'pw\n');
+    writeFileSync(join(checkout, 'state', 'smoke.log'), 'SMOKE PASS (23s)\n{"verdict": "pass", "duration_s": 22.9, "steps": [{"name": "a", "ok": true}]}\n');
+    const caught: string = plain((await domain_run(context, ['adopt', 'harbor', '--from', checkout])).rendered);
+    expect(caught).toContain(`harbor: caught up from ${checkout}: chris-deploy, chris-seed, smoke`);
+    expect(store.record_read('harbor')?.steps['smoke']).toEqual({ state: 'done', note: 'done before adoption (harbor-oci: pass · 1 step · 23 s)' });
+    expect(plain((await domain_run(context, ['adopt', 'harbor', '--from', checkout])).rendered)).not.toContain('caught up');
     const plan: string = plain((await domain_run(context, ['plan', 'harbor'])).rendered);
     expect(plan).toContain('plan  0 to create, 0 to change and 3 Oracle-Tags drift, 0 to destroy');
     expect(plan).toContain('planned against, never built on');

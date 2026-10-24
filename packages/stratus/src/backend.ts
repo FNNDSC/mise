@@ -27,7 +27,9 @@ import { stratusSegments_build } from './prompt.js';
 import type { CloudBuilder } from './cloud/builder.js';
 import type { Installer } from './installer/installer.js';
 import type { InstallerAccountKeeper } from './installer/account.js';
-import type { VerifyReach } from './commands/verify.js';
+import { verifyReach_default, type VerifyReach } from './commands/verify.js';
+import type { ChrisWork } from './cluster/chris.js';
+import { familyShape_find } from './domain/sizing.js';
 import { DomainStore, domainsRoot_of } from './domain/state.js';
 import { domainExpectSubject_make } from './domain/expect.js';
 import { BUILD_WAITS, buildRun_make, STEPS_SOURCE, type BuildDeps } from './domain/steps.js';
@@ -57,7 +59,9 @@ export interface StratusBackendOptions {
   /** How `domain verify` reaches a cluster; the network when absent. */
   readonly verifyReach?: VerifyReach;
   /** The build's waits, `harbor-oci`'s when absent. */
-  readonly waits?: Pick<BuildDeps, 'pollMs' | 'hostsWaitMs' | 'installWaitMs'>;
+  readonly waits?: Pick<BuildDeps, 'pollMs' | 'hostsWaitMs' | 'installWaitMs' | 'verifyWaitMs' | 'chrisWaits'>;
+  /** ChRIS on a domain's cluster; the real cluster's, with `helm` and `uv` on the host, when absent. */
+  readonly chris?: ChrisWork;
 }
 
 /** The backend and the pieces a host may reach into. */
@@ -94,7 +98,12 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
   const store: DomainStore = options.store ?? new DomainStore(domainsRoot_of());
   // The steps run over the cloud's build half and the installer; a cloud with neither cannot build yet.
   const deps: BuildDeps | null = options.builder !== undefined && options.installer !== undefined
-    ? { store, builder: options.builder, installer: options.installer, zones: 3, version: '4.22', ...(options.waits ?? BUILD_WAITS) }
+    ? {
+      store, builder: options.builder, installer: options.installer, zones: 3, version: '4.22', ...(options.waits ?? BUILD_WAITS),
+      reach: options.verifyReach ?? verifyReach_default(),
+      ...(options.chris !== undefined ? { chris: options.chris } : {}),
+      shape_find: async (region: string, family: string): Promise<string | null> => familyShape_find(await options.driver.shapes_list(region), family)?.name ?? null,
+    }
     : null;
   const domains: DomainTree = new DomainTree({
     store,

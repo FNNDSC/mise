@@ -41,6 +41,7 @@ class RecordedApi implements OciBuildApi {
   tagHome: string | null = 'ocid1.compartment.oc1..harbor-oci';
   children: Map<string, string> = new Map();
   async zoneCompartment_find() { return this.zoneHome; }
+  async zoneNames_list() { return ['oci.chrisproject.org']; }
   async tagNamespaceCompartment_find() { return this.tagHome; }
   async compartmentChild_ensure(parentId: string, name: string, _description: string, tags: Record<string, string>) {
     const key: string = `${parentId}/${name}`;
@@ -109,16 +110,18 @@ describe('the OCI builder\'s build and teardown', () => {
   let builder: OciBuilder;
   let logged: string[];
   const call = (): BuildCall => ({ log: (line: string): void => { logged.push(line); }, signal: new AbortController().signal });
+  const builder_make = (visibleWaitMs?: number): OciBuilder => new OciBuilder({
+    rm: () => rm, api: () => api, driver: new FakeDriver(fakeCloud_sample()), sshPublicKey: () => 'ssh-ed25519 k\n',
+    nameservers_resolve: async () => ['ns2.p68.dns.oraclecloud.net.', 'ns1.p68.dns.oraclecloud.net.'],
+    iso_fetch: async () => ({ body: Readable.from(['iso']), length: 3 }), zip_fetch: async () => Buffer.from('zip'), pollMs: 0,
+    ...(visibleWaitMs !== undefined ? { visibleWaitMs } : {}),
+  });
 
   beforeEach(() => {
     api = new RecordedApi();
     rm = new OkRm();
     logged = [];
-    builder = new OciBuilder({
-      rm: () => rm, api: () => api, driver: new FakeDriver(fakeCloud_sample()), sshPublicKey: () => 'ssh-ed25519 k\n',
-      nameservers_resolve: async () => ['ns2.p68.dns.oraclecloud.net.', 'ns1.p68.dns.oraclecloud.net.'],
-      iso_fetch: async () => ({ body: Readable.from(['iso']), length: 3 }), zip_fetch: async () => Buffer.from('zip'), pollMs: 0,
-    });
+    builder = builder_make();
   });
 
   it("makes the domain's compartment under domains, once, tagged with its name", async () => {
@@ -130,6 +133,28 @@ describe('the OCI builder\'s build and teardown', () => {
     ]);
     expect(await builder.compartment_ensure({ domain: 'quay', region: 'r' }, call())).toEqual({ id: 'ocid1.compartment.oc1..quay', made: false });
     expect(api.calls).toHaveLength(2);
+  });
+
+  it('waits out a parent just made that the identity service does not yet find, and gives up when told', async () => {
+    const ensure = api.compartmentChild_ensure.bind(api);
+    let refusals: number = 2;
+    api.compartmentChild_ensure = async (parentId: string, name: string, description: string, tags: Record<string, string>) => {
+      if (name === 'quay' && refusals-- > 0) throw Object.assign(new Error('Authorization failed or requested resource not found.'), { statusCode: 404 });
+      return await ensure(parentId, name, description, tags);
+    };
+    let unseen: number = 2;
+    const state = api.compartmentState_get.bind(api);
+    api.compartmentState_get = async (id: string) => {
+      if (id === 'ocid1.compartment.oc1..quay' && unseen-- > 0) throw Object.assign(new Error('Authorization failed or requested resource not found.'), { statusCode: 404 });
+      return await state(id);
+    };
+    expect(await builder.compartment_ensure({ domain: 'quay', region: 'r' }, call())).toEqual({ id: 'ocid1.compartment.oc1..quay', made: true });
+    expect(logged.filter((line: string): boolean => line === 'domains is not yet usable; waiting')).toHaveLength(2);
+    expect(logged.filter((line: string): boolean => line === 'ocid1.compartment.oc1..quay is not yet found; waiting')).toHaveLength(2);
+    refusals = Infinity;
+    api.children.clear();
+    const impatient: OciBuilder = builder_make(0);
+    await expect(impatient.compartment_ensure({ domain: 'quay', region: 'r' }, call())).rejects.toThrow('not found');
   });
 
   it('preflight checks what harbor-oci checked, each on its own', async () => {
@@ -146,6 +171,19 @@ describe('the OCI builder\'s build and teardown', () => {
     expect(bad['zone']?.note).toBe('b.org: OCI serves ns9, the world asks ns1.p68.dns.oraclecloud.net ns2.p68.dns.oraclecloud.net');
     const none = Object.fromEntries((await builder.preflight({ domain: 'trial', spec: SPEC_DEFAULT, region: 'us-ashburn-1', baseDomain: 'b.org', compartmentId: '' }, call())).map((check) => [check.name, check]));
     expect(none['compartment']?.note).toBe('none chosen: domain new --compartment <ocid>');
+  });
+
+  it('copies the image again while a bucket just made answers not found', async () => {
+    const put = api.object_put.bind(api);
+    let refusals: number = 1;
+    api.object_put = async (bucket: string, object: string, body: Readable | Buffer, length?: number) => {
+      if (refusals-- > 0) throw Object.assign(new Error("Either the bucket named 'stratus-iso' does not exist"), { statusCode: 404 });
+      await put(bucket, object, body, length);
+    };
+    await builder.iso_store({ domain: 'trial', url: 'https://img', region: 'r', compartmentId: 'c' }, call());
+    expect(api.calls).toEqual(['bucket stratus-iso', 'put stratus-iso/trial-discovery.iso 3', 'link stratus-iso/trial-discovery.iso']);
+    expect(logged.filter((line: string): boolean => line.startsWith('copying the discovery image'))).toHaveLength(2);
+    expect(logged).toContain('stratus-iso is not yet usable; waiting');
   });
 
   it('copies the image into a private bucket and links it, makes a stack from the spec, plans, applies and writes the records', async () => {

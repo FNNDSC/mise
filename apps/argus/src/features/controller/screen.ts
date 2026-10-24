@@ -95,6 +95,8 @@ export class TdController {
   private sizeAsked: boolean = false;
   private levers: DomainSpecModel | null = null;
   private newName: string = '';
+  /** The DNS zone a new domain's names go under: the session's default until another is pressed. */
+  private zone: string | null = null;
   private busy: string | null = null;
   private ask: OpenAsk | null = null;
   private partial: string = '';
@@ -383,7 +385,7 @@ export class TdController {
     header.append(this.condition_make(domain));
     if (domain === null) {
       header.append(
-        this.headSection_make('DOMAIN', [['NAME', this.newName === '' ? '[NAME IT ON SIZE]' : this.newName], ['REGION', this.size?.region ?? '…'], ['ADDRESS', this.size === null ? '…' : this.size.baseDomain === null ? 'NO ZONE SET · --base-domain' : `${this.newName || '<name>'}.${this.size.baseDomain}`]]),
+        this.headSection_make('DOMAIN', [['NAME', this.newName === '' ? '[NAME IT ON SIZE]' : this.newName], ['REGION', this.size?.region ?? '…'], ['ADDRESS', this.size === null ? '…' : this.zone === null ? 'NO ZONE · CHOOSE ONE ON SIZE' : `${this.newName || '<name>'}.${this.zone}`]]),
         this.headSection_make('COST · AS SIZED', this.sizedCost_rows()),
         this.headSection_make('FIT', this.fit_rows()),
         this.headSection_make('SINCE LAST CHANGE', [['', 'NOTHING WRITTEN YET']]),
@@ -742,12 +744,11 @@ export class TdController {
       row.append(head, el('span', 'tdc-prose', look.note === '' ? '—' : look.note));
       steps.append(row);
     }
-    const unwritten: boolean = domain.steps.some((step): boolean => step.name === 'smoke' && (step.evidence ?? '').includes('not a step this session has yet'));
     const commands: HTMLElement = el('div', 'tdc-commands');
-    const smoke: HTMLButtonElement = el('button', 'tdc-pill tdc-pill-plain', unwritten ? 'SMOKE AGAIN · NOT A STEP YET' : 'SMOKE AGAIN');
+    const smoke: HTMLButtonElement = el('button', 'tdc-pill tdc-pill-plain', 'SMOKE AGAIN · LATER');
     smoke.type = 'button';
     smoke.disabled = true;
-    smoke.title = 'smoke is a step of the cluster in the tree; not written yet';
+    smoke.title = 'the build runs the smoke journey once, as its last step; running it again is a line of its own, not written yet';
     commands.append(smoke);
     steps.append(commands);
     const cube: HTMLElement = this.section_make('THE CUBE', 'tdc-col-glance');
@@ -802,9 +803,25 @@ export class TdController {
     const read: DomainSizeModel | null = await this.hooks.size_read(family);
     if (read === null) return;
     this.size = read;
+    if (this.zone === null || !(read.dnsZones ?? [this.zone]).includes(this.zone)) this.zone = read.baseDomain;
     const keep: DomainSpecModel | null = this.levers;
     this.levers = keep === null ? spec_copy(read.start) : { ...keep, family: read.family };
     this.draw();
+  }
+
+  /** The DNS zones a new domain's names may go under: a pill each, the chosen one lit. */
+  private zones_make(size: DomainSizeModel): HTMLElement {
+    const row: HTMLElement = el('div', 'tdc-families tdc-zones');
+    row.append(el('span', 'tdc-pair-label', 'ZONE'));
+    const zones: string[] = size.dnsZones ?? (size.baseDomain === null ? [] : [size.baseDomain]);
+    if (zones.length === 0) row.append(el('span', 'tdc-quiet', 'THE TENANCY HOLDS NO DNS ZONE'));
+    for (const zone of zones) {
+      const pill: HTMLButtonElement = el('button', `tdc-family${zone === this.zone ? ' tdc-family-on' : ''}`, zone);
+      pill.type = 'button';
+      pill.addEventListener('click', (): void => { this.hooks.voice.pill('ZONE'); this.zone = zone; this.draw(); });
+      row.append(pill);
+    }
+    return row;
   }
 
   private size_make(domain: DomainSummary | null): HTMLElement[] {
@@ -843,6 +860,7 @@ export class TdController {
       families.append(pill);
     }
     levers.append(families);
+    if (!existing) levers.append(this.zones_make(size));
     const slider = (id: string, name: string, min: number, max: number, step: number, read: () => number, write: (value: number) => void, note?: string): HTMLElement => {
       const row: HTMLElement = el('div', 'tdc-slider');
       const label: HTMLElement = el('label', 'tdc-slider-label', name);
@@ -941,8 +959,9 @@ export class TdController {
   private commit_fill(commit: HTMLElement): void {
     if (this.size === null || this.levers === null) return;
     commit.replaceChildren();
-    const refusal: string | null = nameRefusal_of(this.newName, this.names_get());
-    const line: string = newLine_of(this.newName || '<name>', this.levers, this.size.start);
+    const refusal: string | null = nameRefusal_of(this.newName, this.names_get()) ?? (this.zone === null ? 'NO ZONE' : null);
+    // The zone goes on the line only when it is not the one the session would take.
+    const line: string = newLine_of(this.newName || '<name>', this.levers, this.size.start, this.zone !== this.size.baseDomain ? this.zone : null);
     const tenant: string = LINES.tenant(this.newName || '<name>');
     commit.append(el('span', 'tdc-section-title', 'THE LINES COMMIT SENDS'), el('div', 'tdc-mono tdc-commit-line', line), el('div', 'tdc-mono tdc-commit-line', tenant),
       el('p', 'tdc-prose tdc-quiet', 'The first writes the spec. The second plays the tenant: the build through the install, which asks before billing, then verify. A NO leaves the spec written and nothing made.'));

@@ -97,7 +97,7 @@ export async function builtin_wait(args: string[]): Promise<CommandEnvelope> {
   for (const name of names) {
     if ('error' in name) { complaints.push(`wait: ${name.word}: ${name.error}`); continue; }
     if (signal?.aborted === true) break;
-    const record: JobRecord | undefined = await runner.job_follow(name.source, name.id, (line: string): void => sink_dataLine(line), signal);
+    const record: JobRecord | undefined = await runner.job_followAside(name.source, name.id, (line: string): void => sink_dataLine(line), signal);
     if (record === undefined) { complaints.push(`wait: ${name.id}: no such task`); continue; }
     if (!taskState_isOver(record.state)) { complaints.push(`wait: stopped following; /proc/${record.source}/${record.id} goes on`); break; }
     ended.push(record);

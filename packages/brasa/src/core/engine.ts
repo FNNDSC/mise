@@ -46,7 +46,7 @@ import {
 } from './dispatch.js';
 import { capability_require, surface_get, surface_set, type Surface } from './surface.js';
 import { commandCancellation_abort, commandCancellation_stopped, commandCancellation_active, commandCancellation_enable, commandCancellation_request, commandCancellation_run, commandCancellation_signalGet } from './cancellation.js';
-import { turn_leave, turn_resume, type TurnState } from './turn.js';
+import { turn_leave, turn_resume, turn_within, type TurnState } from './turn.js';
 import { errorStack } from '@fnndsc/fond';
 import { recorder_note } from '../session/recorder.js';
 import { assignment_parse, type Assignment } from './variables.js';
@@ -116,6 +116,14 @@ export interface BrasaEngine {
    * @param state - What `turn_leave` returned for it.
    */
   turn_resume?(state: TurnState): void;
+
+  /**
+   * Stops a command that stepped aside (the operator's STOP on it), from
+   * outside its turn; it finds itself stopped when it resumes.
+   *
+   * @param state - What `turn_leave` returned for it.
+   */
+  turn_abort?(state: TurnState): void;
 
   /**
    * Computes completion candidates for a partial input line.
@@ -525,6 +533,7 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
     command_stopped: commandCancellation_stopped,
     turn_leave,
     turn_resume,
+    turn_abort: (state: TurnState): void => { turn_within(state, (): void => { line_abort(); }); },
     line_complete,
     file_read,
     file_stream,

@@ -34,7 +34,7 @@ export const TILE_ABOUT: Readonly<Record<string, TileAbout>> = {
   },
   // The stratus composition's (compositions/stratus/tiles.ts); approved by the operator 2026-10-22.
   domains: {
-    text: 'The Trusted Domains built in this tenancy: each one\'s last finished build step, its cluster and what it costs per hour. A domain with a step gone wrong shows in red. Open one to read its spec, state and steps.',
+    text: 'The Trusted Domains built in this tenancy: each one\'s last finished build step, its cluster and what it costs per hour. A domain with a step gone wrong shows in red. Opening the tile, or a domain on it, opens the TD controller: its condition, spec, steps and cost, and the lines that build, verify and tear it down.',
   },
   capacity: {
     text: 'What this region has free for the machine families your domains use, zone by zone: the cores and memory a new domain or a bigger one could take.',

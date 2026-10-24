@@ -70,6 +70,9 @@ describe('the TD controller model', () => {
     expect(conditionWhy_of(domain_make())).toEqual({ text: 'NOTHING BUILT · NOTHING BILLED', billing: false });
     expect(conditionWhy_of(domain_make({ origin: 'adopted', billing: true, condition: 'UP' }))).toEqual({ text: 'BILLING · ADOPTED', billing: true });
     expect(conditionWhy_of(domain_make({ billing: true, condition: 'BUILDING' }))).toEqual({ text: 'BILLING · BUILDING', billing: true });
+    expect(conditionWhy_of(domain_make({ condition: 'STOPPED', next: 'infra-apply', billingStep: 'infra-apply' }))).toEqual({ text: 'PLANNED · NOTHING BILLED', billing: false });
+    expect(conditionWhy_of(domain_make({ condition: 'STOPPED', next: 'iso', billingStep: 'infra-apply' }))).toEqual({ text: 'NOT FINISHED · NOTHING BILLED', billing: false });
+    expect(conditionWhy_of(domain_make({ condition: 'STOPPED', billing: true, next: 'dns', billingStep: 'infra-apply' }))).toEqual({ text: 'BILLING · NOT FINISHED', billing: true });
   });
 
   it('says what changed since the last command, at most three rows', () => {

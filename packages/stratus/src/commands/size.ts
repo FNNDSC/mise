@@ -3,7 +3,8 @@
  * against in the session's region, read and never written (docs/stratus.adoc,
  * D13, SIZE): each availability domain's free cores and memory for the
  * family, the family's flexible shape and price, what storage and load
- * balancing cost, and the spec a new domain starts from.
+ * balancing cost, the spec a new domain starts from, and the DNS zones its
+ * names may live under (the tenancy's only one is the default).
  *
  * The answer carries the `stratus.domain.size` model, so a surface redraws
  * fit and cost as its levers move without a line per move; what it shows is
@@ -17,7 +18,7 @@ import type { CloudPrice, CloudShape, CloudZone, ServicePrices } from '../cloud/
 import { capacityRows_read } from './capacity.js';
 import { familyShape_find } from '../domain/sizing.js';
 import { SPEC_DEFAULT } from '../domain/spec.js';
-import { options_read, spec_line, type BuildCommandContext } from './build.js';
+import { baseDomain_default, dnsZones_read, options_read, spec_line, type BuildCommandContext } from './build.js';
 
 /**
  * What a limit leaves free in a zone, by a word in its name (`core`, `memory`).
@@ -48,12 +49,13 @@ export async function domainSize_run(context: BuildCommandContext, args: Readonl
   const shapes: CloudShape[] = await context.driver.shapes_list(region);
   const shape: CloudShape | undefined = familyShape_find(shapes, family);
   if (shape === undefined) return envelope_error('', undefined, `domain size: ${family}: no such family in ${region} (${[...new Set(shapes.map((each: CloudShape): string => each.family))].sort().join(', ')})\n`);
-  const [zones, prices, services, rows] = await Promise.all([
+  const [zones, prices, services, rows, dnsZones] = await Promise.all([
     context.driver.zones_list(region),
     context.driver.prices_list(),
     context.driver.servicePrices_get(),
     capacityRows_read(context.driver, region, [family]),
-  ]) as [CloudZone[], CloudPrice[], ServicePrices | null, CapacityRow[]];
+    dnsZones_read(context, region),
+  ]) as [CloudZone[], CloudPrice[], ServicePrices | null, CapacityRow[], string[]];
   const price: CloudPrice | undefined = prices.find((entry: CloudPrice): boolean => entry.shape === shape.name);
   const model: DomainSizeModel = {
     region,
@@ -66,13 +68,15 @@ export async function domainSize_run(context: BuildCommandContext, args: Readonl
     price: price === undefined ? null : { vcpuHour: price.vcpuHour, gibHour: price.gibHour, currency: price.currency },
     services: services === null ? null : { volumeGibMonth: services.volumeGibMonth, vpuGibMonth: services.vpuGibMonth, balancerHour: services.balancerHour, balancerMbpsHour: services.balancerMbpsHour },
     start: { ...SPEC_DEFAULT, family: shape.family },
-    baseDomain: context.baseDomain,
+    baseDomain: baseDomain_default(context, dnsZones),
+    dnsZones,
   };
   const free = (value: number | null): string => value === null ? '?' : String(value);
   const lines: string[] = [
     `${chalk.bold(shape.family)}  ${shape.name} in ${region}${price === undefined ? chalk.gray('  not in the price list') : `  ${price.currency} ${price.vcpuHour} a vCPU-hour, ${price.gibHour} a GiB-hour`}`,
     ...model.zones.map((zone) => `  ${zone.zone.padEnd(24)} ${free(zone.coresFree)} cores, ${free(zone.memoryFree)} GiB free`),
     chalk.gray(`starts from: ${spec_line(model.start)}`),
+    model.baseDomain !== null ? chalk.gray(`names under: ${model.baseDomain}`) : chalk.yellow(`names under: none chosen; domain new --base-domain names one (${dnsZones.join(', ') || 'the tenancy holds no DNS zone'})`),
   ];
   return envelope_ok(`${lines.join('\n')}\n`, { kind: STRATUS_DOMAIN_SIZE_MODEL_KIND, data: model });
 }

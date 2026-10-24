@@ -34,12 +34,12 @@ const SIZE: DomainSizeModel = {
 };
 
 /** A controller over hooks that record the lines sent. */
-function controller_make(): { controller: TdController; sent: string[]; cues: string[]; hooks: ControllerHooks } {
+function controller_make(size: DomainSizeModel = SIZE): { controller: TdController; sent: string[]; cues: string[]; hooks: ControllerHooks } {
   const sent: string[] = [];
   const cues: string[] = [];
   const hooks: ControllerHooks = {
     run: async (line: string): Promise<void> => { sent.push(line); },
-    size_read: async (): Promise<DomainSizeModel> => SIZE,
+    size_read: async (): Promise<DomainSizeModel> => size,
     stop: (): void => { sent.push('<stop>'); },
     leave: (): void => { sent.push('<leave>'); },
     voice: { pill: (): void => undefined, cue: (name: string): void => { cues.push(name); } },
@@ -161,6 +161,27 @@ describe('the TD controller screen', () => {
     expect(sent).toEqual(['domain new quay', 'play ~/tenant.mise --param NAME=quay']);
     expect(controller.domain_get()?.name).toBe('quay');
     expect(controller.view_get()).toBe('build');
+    controller.dispose();
+    controller.root.remove();
+  });
+
+  it('holds COMMIT until a zone is chosen when the tenancy holds several, and names the one chosen', async () => {
+    const { controller, sent } = controller_make({ ...SIZE, baseDomain: null, dnsZones: ['lab.example.org', 'oci.example.org'] });
+    controller.domains_take([domain_make('harbor')]);
+    button_named(controller.root, '+ NEW')?.click();
+    await flush();
+    const name: HTMLInputElement = controller.root.querySelector('#tdc-new-name') as HTMLInputElement;
+    name.value = 'quay';
+    name.dispatchEvent(new Event('input'));
+    const commit = (): HTMLButtonElement | undefined => [...controller.root.querySelectorAll('.tdc-commit button')].find((b) => (b.textContent ?? '').startsWith('COMMIT')) as HTMLButtonElement | undefined;
+    expect(commit()?.textContent).toBe('COMMIT · NO ZONE');
+    expect(commit()?.disabled).toBe(true);
+    button_named(controller.root, 'oci.example.org')?.click();
+    expect(controller.root.querySelector('.tdc-commit-line')?.textContent).toBe('domain new quay --base-domain oci.example.org');
+    expect(commit()?.disabled).toBe(false);
+    commit()?.click();
+    await flush();
+    expect(sent[0]).toBe('domain new quay --base-domain oci.example.org');
     controller.dispose();
     controller.root.remove();
   });

@@ -18,14 +18,9 @@ import { lastDone_of, type HarborDomain, type StepState } from '../domains/harbo
 import type { DomainRecord, DomainStore } from './state.js';
 import { buildJob_id, FIRST_BILLING_STEP, stepNext_of, STEPS_SOURCE } from './steps.js';
 
-/** The file `domain verify` keeps its checks in, beside `plan.json`. */
-export const VERIFY_FILE: string = 'verify.json';
+import { VERIFY_FILE, type VerifyKept } from './verify.js';
 
-/** What `verify.json` holds. */
-export interface VerifyKept {
-  at: string;
-  checks: VerifyCheckModel[];
-}
+export { VERIFY_FILE, type VerifyKept };
 
 /** The parts of a summary the controller draws, beyond the tile's glance. */
 export type DomainReadout = Required<Pick<DomainSummary, 'condition' | 'billing' | 'origin' | 'protected' | 'refused' | 'region' | 'compartment' | 'gone' | 'spec' | 'next' | 'billingStep' | 'running' | 'plan' | 'verify' | 'asking'>>;
@@ -57,6 +52,7 @@ export function condition_of(domain: HarborDomain, record: DomainRecord | null, 
   if (domain.steps.some((step: StepState): boolean => step.state === 'failed')) return 'FAILED';
   if (stepState_of(domain, 'smoke') === 'done') return 'SERVING';
   if (stepState_of(domain, 'run') === 'done') return 'UP';
+  if (domain.steps.some((step: StepState): boolean => step.state === 'done')) return 'STOPPED';
   return 'SIZING';
 }
 

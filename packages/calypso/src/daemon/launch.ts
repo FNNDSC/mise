@@ -141,6 +141,8 @@ export function daemonSurface_create(daemon: CalypsoDaemon, policy: HostControlP
       daemon.edit_current(request.content, request.extension, request.path),
     fileDeliver: (request: FileDeliverRequest): Promise<FileDeliverResult> =>
       daemon.deliver_current(request),
+    // A command following a task waits out of the lane, so the session runs other lines meanwhile.
+    aside: <T>(waiting: Promise<T>): Promise<T> => daemon.aside_current(waiting),
   };
 }
 

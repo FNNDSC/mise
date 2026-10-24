@@ -129,3 +129,75 @@ describe('STOP: a command that does not end is abandoned and the session is free
     expect(aborted).toBe(0);
   });
 });
+
+describe('a line whose surface left, and a command waiting aside', () => {
+  let daemon: CalypsoDaemon;
+  let ran: string[];
+  let aborted: number;
+  let asideAborted: unknown[];
+  let release: (() => void) | null;
+  const sockets: WebSocket[] = [];
+
+  beforeEach(async () => {
+    ran = [];
+    aborted = 0;
+    asideAborted = [];
+    release = null;
+    const engine: HostedEngine = {
+      line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+        ran.push(line);
+        if (line === 'hang') return new Promise(() => undefined);
+        // `follow` waits aside on a task until released or stopped, as `domain build` does.
+        if (line === 'follow') {
+          const outcome: string = await daemon.aside_current(new Promise<string>((resolve) => { release = (): void => resolve('ended'); }));
+          return [{ status: 'ok', rendered: `follow: ${outcome}` }];
+        }
+        return [{ status: 'ok', rendered: `engine: ${line}` }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+      line_abort: (): boolean => { aborted++; return true; },
+      turn_leave: (): unknown => ({ turn: 'follow' }),
+      turn_resume: (): void => undefined,
+      turn_abort: (state: unknown): void => { asideAborted.push(state); release?.(); },
+    };
+    daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    await daemon.start();
+  });
+
+  afterEach(async () => {
+    for (const ws of sockets.splice(0)) ws.terminate();
+    await daemon.stop().catch((): void => undefined);
+  });
+
+  const port = (): number => (daemon as unknown as { httpServer: { address: () => { port: number } } }).httpServer.address().port;
+
+  it('a browser\'s line runs on when it leaves, and any surface may stop it then', async () => {
+    const browser = await client_attach(port(), {}); sockets.push(browser.ws);
+    const other = await client_attach(port(), {}); sockets.push(other.ws);
+    browser.ws.send(JSON.stringify({ type: 'execute', id: 'b1', line: 'hang' }));
+    await new Promise((r) => setTimeout(r, 100));
+    browser.ws.terminate();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(aborted).toBe(0);
+    other.ws.send(JSON.stringify({ type: 'stop' }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(aborted).toBe(1);
+  }, 10000);
+
+  it('lets other lines run while a command waits aside, and its surface\'s STOP still reaches it', async () => {
+    const a = await client_attach(port(), {}); sockets.push(a.ws);
+    const b = await client_attach(port(), {}); sockets.push(b.ws);
+    a.ws.send(JSON.stringify({ type: 'execute', id: 'f', line: 'follow' }));
+    await new Promise((r) => setTimeout(r, 100));
+    b.ws.send(JSON.stringify({ type: 'execute', id: 'p', line: 'pwd', instrument: true }));
+    const read = await b.next((m) => m.type === 'result' && m.id === 'p');
+    expect(JSON.stringify(read)).toContain('engine: pwd');
+    // Another surface's STOP does not reach it while its own is attached.
+    b.ws.send(JSON.stringify({ type: 'stop' }));
+    expect((await b.next((m) => m.type === 'error')).reason).toBe('stop: nothing of yours is running');
+    a.ws.send(JSON.stringify({ type: 'stop' }));
+    const ended = await a.next((m) => m.type === 'result' && m.id === 'f');
+    expect(asideAborted).toEqual([{ turn: 'follow' }]);
+    expect(JSON.stringify(ended)).toContain('follow: ended');
+  }, 10000);
+});

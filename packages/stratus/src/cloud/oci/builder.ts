@@ -26,6 +26,7 @@ import type { BuildCall, CloudBuilder, InfraOutputs, InfraPlan, PreflightCheck, 
 import { Readable } from 'node:stream';
 import { planRows_read } from './planRead.js';
 import type { OciBuildApi } from './buildApi.js';
+import { notFound } from './errors.js';
 import { familyShape_of, stackVariables_build } from './stackVars.js';
 import type { CloudDriver } from '../driver.js';
 import { specFit_read } from '../../domain/sizing.js';
@@ -52,6 +53,8 @@ export interface OciBuilderOptions {
   readonly zip_fetch?: () => Promise<Buffer>;
   /** How often a job is asked again, in milliseconds. */
   readonly pollMs?: number;
+  /** How long a call may answer not found for something just made before the step fails; ten minutes when absent. */
+  readonly visibleWaitMs?: number;
   /** The build's other OCI calls in a region; absent, only adoption and re-plans work. */
   readonly api?: (region: string) => OciBuildApi;
   /** The read driver, for the fit per availability domain. */
@@ -243,6 +246,10 @@ export class OciBuilder implements CloudBuilder {
     return this.options.api(region);
   }
 
+  async zones_list(region: string): Promise<string[]> {
+    return await this.api_in(region).zoneNames_list();
+  }
+
   /**
    * The domain's compartment, `domains/<name>` under the tenancy root.
    * Compartments are free; making one is still a change to the tenancy, so
@@ -258,10 +265,34 @@ export class OciBuilder implements CloudBuilder {
     const parent = await api.compartmentChild_ensure(tenancy.id, DOMAINS_COMPARTMENT, 'The Trusted Domains stratus builds, one compartment each', { 'mise-role': 'domains' });
     call.log(parent.made ? `made the compartment ${DOMAINS_COMPARTMENT} under ${tenancy.name}` : `${DOMAINS_COMPARTMENT} is there`);
     await this.compartment_awaitActive(api, parent.id, call);
-    const own = await api.compartmentChild_ensure(parent.id, request.domain, `The Trusted Domain ${request.domain}`, { 'mise-domain': request.domain });
+    // A compartment just made may answer not found for a while, even after it reads ACTIVE.
+    const own = await this.notFound_outwait(() => api.compartmentChild_ensure(parent.id, request.domain, `The Trusted Domain ${request.domain}`, { 'mise-domain': request.domain }), `${DOMAINS_COMPARTMENT} is not yet usable`, call);
     call.log(own.made ? `made the compartment ${DOMAINS_COMPARTMENT}/${request.domain}` : `${DOMAINS_COMPARTMENT}/${request.domain} is there`);
     await this.compartment_awaitActive(api, own.id, call);
     return own;
+  }
+
+  /**
+   * Runs a call again while the cloud answers not found, for a bounded time:
+   * what was just made is not at once visible everywhere.
+   *
+   * @param run - The call.
+   * @param waiting - What the log says while it waits.
+   * @param call - The step's log and stop.
+   * @returns What the call answered.
+   */
+  private async notFound_outwait<T>(run: () => Promise<T>, waiting: string, call: BuildCall): Promise<T> {
+    const pollMs: number = this.options.pollMs ?? 10_000;
+    const until: number = Date.now() + (this.options.visibleWaitMs ?? 600_000);
+    for (;;) {
+      try {
+        return await run();
+      } catch (error: unknown) {
+        if (!notFound(error) || Date.now() >= until || call.signal.aborted) throw error;
+        call.log(`${waiting}; waiting`);
+        await poll_wait(pollMs, call.signal);
+      }
+    }
   }
 
   /**
@@ -273,7 +304,7 @@ export class OciBuilder implements CloudBuilder {
    */
   private async compartment_awaitActive(api: OciBuildApi, id: string, call: BuildCall): Promise<void> {
     for (;;) {
-      const state: string = await api.compartmentState_get(id);
+      const state: string = await this.notFound_outwait(() => api.compartmentState_get(id), `${id} is not yet found`, call);
       if (state === 'ACTIVE') return;
       if (call.signal.aborted) throw new Error(`stopped while ${id} was ${state}`);
       call.log(`compartment ${state.toLowerCase()}; waiting`);
@@ -336,9 +367,12 @@ export class OciBuilder implements CloudBuilder {
     const bucket: string = this.options.bucket ?? ISO_BUCKET;
     const object: string = `${request.domain}-discovery.iso`;
     await api.bucket_ensure(bucket, request.compartmentId);
-    const image = await (this.options.iso_fetch ?? iso_fetch)(request.url);
-    call.log(`copying the discovery image into ${bucket}/${object}${image.length !== undefined ? ` (${Math.round(image.length / 1_048_576)} MiB)` : ''}`);
-    await api.object_put(bucket, object, image.body, image.length);
+    // A bucket just made may refuse an object as not found for a while; the image is a stream, so each try fetches it again.
+    await this.notFound_outwait(async (): Promise<void> => {
+      const image = await (this.options.iso_fetch ?? iso_fetch)(request.url);
+      call.log(`copying the discovery image into ${bucket}/${object}${image.length !== undefined ? ` (${Math.round(image.length / 1_048_576)} MiB)` : ''}`);
+      await api.object_put(bucket, object, image.body, image.length);
+    }, `${bucket} is not yet usable`, call);
     const expires: Date = new Date(Date.now() + (this.options.linkDays ?? 7) * 24 * 3600 * 1000);
     const link = await api.link_create(bucket, object, `${object}-link`, expires);
     call.log(`linked until ${expires.toISOString().slice(0, 10)}`);

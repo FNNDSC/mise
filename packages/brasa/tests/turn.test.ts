@@ -6,10 +6,10 @@
  */
 import { describe, it, expect, afterEach } from '@jest/globals';
 
-const { turn_leave, turn_resume, turnPart_register } = await import('../src/core/turn.js');
+const { turn_leave, turn_resume, turn_within, turnPart_register } = await import('../src/core/turn.js');
 const { stdin_set, stdin_take } = await import('../src/builtins/games/stdin.js');
 const { listingIn_set, listingIn_take } = await import('../src/core/listing.js');
-const { commandCancellation_run, commandCancellation_enable, commandCancellation_request, commandCancellation_active } = await import('../src/core/cancellation.js');
+const { commandCancellation_run, commandCancellation_enable, commandCancellation_request, commandCancellation_active, commandCancellation_abort, commandCancellation_signalGet } = await import('../src/core/cancellation.js');
 
 afterEach(() => {
   process.exitCode = undefined;
@@ -57,6 +57,26 @@ describe('turn', () => {
     expect(commandCancellation_request()).toBe(false);
     resumeAsker();
     expect(await askerRun).toBe(true);
+  });
+
+  it('a STOP reaches a command waiting aside, and the one holding the turn keeps going', async () => {
+    let aside: ReturnType<typeof turn_leave> | undefined;
+    let resumeAside: () => void = (): void => {};
+    const asideRun = commandCancellation_run(async () => {
+      const signal = commandCancellation_signalGet();
+      aside = turn_leave();
+      await new Promise<void>((resolve) => { resumeAside = resolve; });
+      turn_resume(aside as ReturnType<typeof turn_leave>);
+      return signal?.aborted;
+    });
+    const holderRun = commandCancellation_run(async () => {
+      const signal = commandCancellation_signalGet();
+      turn_within(aside as ReturnType<typeof turn_leave>, (): void => { commandCancellation_abort(); });
+      return signal?.aborted;
+    });
+    expect(await holderRun).toBe(false);
+    resumeAside();
+    expect(await asideRun).toBe(true);
   });
 
   it('a part registered again replaces the first, and an unknown saved part is ignored', () => {

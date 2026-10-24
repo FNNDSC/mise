@@ -69,6 +69,29 @@ export function turn_resume(state: TurnState): void {
   }
 }
 
+/**
+ * Acts on a command that stepped aside, from outside its turn: its state is
+ * put in place, the act runs, and the running command's state is put back.
+ * All of it is synchronous, so nothing runs in between (a STOP pressed on a
+ * command that waits aside).
+ *
+ * @param state - What the stepped-aside command left behind.
+ * @param act - What to do with its state in place.
+ * @returns Its state after the act, for its `turn_resume`.
+ */
+export function turn_within(state: TurnState, act: () => void): TurnState {
+  const running: TurnState = turn_leave();
+  turn_resume(state);
+  try {
+    act();
+  } finally {
+    const after: TurnState = turn_leave();
+    turn_resume(running);
+    state.saved = after.saved;
+  }
+  return state;
+}
+
 // The exit code: legacy handlers report failure by setting it, and the
 // engine reads the change across a command. A command that stepped aside
 // must not inherit another's failure, nor lose its own.

@@ -114,6 +114,19 @@ describe('lines in a surface\'s own language', () => {
     expect(((await shell.next((m) => m.type === 'result' && m.id === '2')).envelopes as Array<{ rendered: string }>)[0]?.rendered).toBe('other ran: dag census off\n');
   });
 
+  it('a browser\'s own line never opens on another browser: what it did not claim, the session runs', async () => {
+    const mine = await client_attach(port(), { claims: [{ subject: 'domain', verbs: ['harbor'] }] });
+    const other = await client_attach(port(), { claims: [{ subject: 'domain', verbs: ['harbor', 'quay'] }] });
+    browser_answer(other, 'other');
+    sockets.push(mine.ws, other.ws);
+    // The other browser was the last to do something, and claims `domain quay`; this one does not yet.
+    other.ws.send(JSON.stringify({ type: 'execute', id: 'x', line: 'pwd' }));
+    await other.next((m) => m.type === 'result' && m.id === 'x');
+    mine.ws.send(JSON.stringify({ type: 'execute', id: '1', line: 'domain quay' }));
+    expect(((await mine.next((m) => m.type === 'result' && m.id === '1')).envelopes as Array<{ rendered: string }>)[0]?.rendered).toBe('engine: domain quay');
+    expect(ran).toEqual(['pwd', 'domain quay']);
+  });
+
   it('with no browser attached, a subject claimed whole is refused by name, and a shared one is the session\'s', async () => {
     const browser = await client_attach(port(), { claims: [{ subject: 'dag' }, { subject: 'file', verbs: ['open'] }] });
     browser.ws.close();

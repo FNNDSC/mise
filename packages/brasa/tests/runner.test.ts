@@ -115,6 +115,40 @@ describe('the runner', () => {
     expect(await runner.job_follow('steps', 'nope', () => {})).toBeUndefined();
   });
 
+  it('follows aside: out of the turn while the job is quiet, each line heard in the follower\'s turn', async () => {
+    const runner: JobRunner = new JobRunner(root, [STEPS], () => true);
+    const held = job_held();
+    runner.job_start('steps', 'c', 'C', held.run);
+    // A host that counts how often the follower stepped out, and whether it was out when a line was given.
+    let out: boolean = false;
+    let asides: number = 0;
+    const host = new HeadlessSurface();
+    (host as unknown as { aside: <T>(waiting: Promise<T>) => Promise<T> }).aside = async <T>(waiting: Promise<T>): Promise<T> => {
+      asides++;
+      out = true;
+      try { return await waiting; } finally { out = false; }
+    };
+    surface_set(host);
+    const given: Array<{ line: string; out: boolean }> = [];
+    const following: Promise<JobRecord | undefined> = runner.job_followAside('steps', 'c', (line: string): void => { given.push({ line, out }); });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(asides).toBe(1);
+    held.release();
+    expect((await following)?.state).toBe('done');
+    expect(given.map((entry) => entry.line.replace(/^\S+ /, ''))).toEqual(['waiting']);
+    expect(given.every((entry) => !entry.out)).toBe(true);
+    // Stopped following, it lets go and the job goes on.
+    const next = job_held();
+    runner.job_start('steps', 'd', 'D', next.run);
+    const controller: AbortController = new AbortController();
+    const letGo: Promise<JobRecord | undefined> = runner.job_followAside('steps', 'd', () => {}, controller.signal);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    controller.abort();
+    expect((await letGo)?.state).toBe('running');
+    next.release();
+    surface_set(new HeadlessSurface());
+  });
+
   it('reads its jobs back after a restart, and picks up those its source can resume', async () => {
     const first: JobRunner = new JobRunner(root, [STEPS], () => true);
     const held = job_held();

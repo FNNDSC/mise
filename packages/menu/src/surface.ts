@@ -209,6 +209,18 @@ export interface Surface {
    * @throws {CapabilityError} When the surface lacks `fileDelivery`.
    */
   fileDeliver(request: FileDeliverRequest): Promise<FileDeliverResult>;
+
+  /**
+   * Waits without holding the session: the command steps out of its turn
+   * while the wait lasts, so other lines run (a pane's reads among them),
+   * and takes its turn again before going on. Waiting is not working. A
+   * host that runs one command at a time and nothing else has no need of
+   * it; the command then simply waits.
+   *
+   * @param waiting - What the command waits on (a task's next line).
+   * @returns What it resolved with.
+   */
+  aside?<T>(waiting: Promise<T>): Promise<T>;
 }
 
 /**

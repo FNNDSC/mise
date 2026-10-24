@@ -268,7 +268,7 @@ export async function domainPlan_run(context: BuildCommandContext, args: Readonl
 async function run_follow(runner: JobRunner, id: string, shown?: () => void): Promise<JobRecord | undefined> {
   commandCancellation_enable();
   const signal: AbortSignal | undefined = commandCancellation_signalGet();
-  return runner.job_follow(STEPS_SOURCE, id, (line: string): void => { sink_dataLine(line); shown?.(); }, signal);
+  return runner.job_followAside(STEPS_SOURCE, id, (line: string): void => { sink_dataLine(line); shown?.(); }, signal);
 }
 
 /**

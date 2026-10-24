@@ -174,6 +174,17 @@ interface CommandSlot {
   startedAt: number;
 }
 
+/**
+ * Whether a surface is a browser: it speaks a language of its own (claims)
+ * and runs no shell.
+ *
+ * @param surface - The surface.
+ * @returns True for a browser.
+ */
+function surface_isBrowser(surface: Surface): boolean {
+  return !surface.capabilities.shellCommands && surface.capabilities.claims.length > 0;
+}
+
 /** The slot while nobody holds the lane. */
 const SLOT_EMPTY: CommandSlot = { origin: null, id: null, instrument: false, line: null, startedAt: 0 };
 
@@ -303,6 +314,8 @@ export class CalypsoDaemon {
   private abandonCurrent: (() => void) | null = null;
   /** Surfaces whose STOP found their command still waiting its turn, and when. */
   private readonly stopPending: Map<Surface, number> = new Map();
+  /** Commands waiting aside (a followed task), by the surface whose STOP reaches each, with the state they left. */
+  private readonly asideTurns: Map<Surface, unknown> = new Map();
   // One RequestBroker per surface-delegated request kind. The broker owns the
   // whole correlation lifecycle uniformly: id generation, close-guard,
   // origin-validated settles, listener cleanup. See broker.ts.
@@ -784,7 +797,7 @@ export class CalypsoDaemon {
       const value = message.value;
       const attached: Surface = surface;
       if (value.type === 'execute') {
-        if (!attached.capabilities.shellCommands && attached.capabilities.claims.length > 0) this.browserActive = attached;
+        if (surface_isBrowser(attached)) this.browserActive = attached;
         // A line in a surface's own language is that surface's to run: it never
         // reaches the engine, and needs no turn on the lane (the session is not
         // touched by it).
@@ -912,6 +925,8 @@ export class CalypsoDaemon {
    * terminal typed it, else the browser that last did something, else any
    * that claims the subject. 'absent' when the subject is a surface's but no
    * surface that claims it is attached; null when the session owns the line.
+   * A browser's own line is never another's: what it did not claim itself
+   * the session runs, so a line typed in one browser never opens on another.
    *
    * @param origin - The surface the line came from.
    * @param line - The line.
@@ -922,6 +937,7 @@ export class CalypsoDaemon {
       surface !== null && surface !== undefined && surface !== origin && this.surfaces.has(surface) && claim_match(surface.capabilities.claims, line) !== null;
     const owner: unknown = origin.capabilities.terminal === undefined ? null : this.terminals?.viewer_get(origin.capabilities.terminal)?.owner?.();
     if (claiming(owner as Surface | null)) return owner as Surface;
+    if (surface_isBrowser(origin)) return null;
     if (claiming(this.browserActive)) return this.browserActive;
     const any: Surface | undefined = [...this.surfaces].find((surface: Surface): boolean => claiming(surface));
     if (any !== undefined) return any;
@@ -1011,9 +1027,17 @@ export class CalypsoDaemon {
    */
   private stop_run(origin: Surface, _message: StopMessage): void {
     const running: Surface | null = this.currentOrigin;
-    // A surface's silent housekeeping is not what the operator stops.
-    if (running !== null && !this.currentInstrument && this.stopper_of(running) === origin) {
+    // A surface's silent housekeeping is not what the operator stops. A line
+    // whose surface has gone is anyone's to stop: nobody else can.
+    if (running !== null && !this.currentInstrument && (this.stopper_of(running) === origin || !this.surfaces.has(running))) {
       this.command_stop();
+      return;
+    }
+    // Its command may be waiting aside on a task: stopped where it waits.
+    const aside: Surface | undefined = this.asideTurns.has(origin) ? origin : [...this.asideTurns.keys()].find((surface: Surface): boolean => !this.surfaces.has(surface));
+    if (aside !== undefined) {
+      this.engine.turn_abort?.(this.asideTurns.get(aside));
+      this.asideTurns.delete(aside);
       return;
     }
     // Its command may be waiting its turn behind someone else's: it is
@@ -1353,22 +1377,40 @@ export class CalypsoDaemon {
    *   resolves with the person's answer.
    * @returns The answer.
    */
-  private async person_await<T>(ask: () => Promise<T>): Promise<T> {
+  private async person_await<T>(ask: () => Promise<T>, stoppable: boolean = false): Promise<T> {
     const answered: Promise<T> = ask();
     const mine: CommandSlot = this.slot_take();
     // The engine's per-command state goes with the command (its exit code,
     // a pipe's untaken input, its cancellation), so the next command starts
     // clean and this one finds its own on return.
     const engineTurn: unknown = this.engine.turn_leave?.();
+    // A command waiting aside on a task stays the operator's to stop.
+    const stopper: Surface | null = stoppable && mine.origin !== null && !mine.instrument ? this.stopper_of(mine.origin) : null;
+    if (stopper !== null && engineTurn !== undefined) this.asideTurns.set(stopper, engineTurn);
     this.slot_restore(SLOT_EMPTY);
     this.lane.release();
     try {
       return await answered;
     } finally {
+      if (stopper !== null && this.asideTurns.get(stopper) === engineTurn) this.asideTurns.delete(stopper);
       await this.lane.acquire();
       this.slot_restore(mine);
       if (engineTurn !== undefined) this.engine.turn_resume?.(engineTurn);
     }
+  }
+
+  /**
+   * Waits aside: the running command steps out of the lane while it waits
+   * on something that is not the session's work (a task's next line), so
+   * other lines run meanwhile, and takes its turn again before going on.
+   * Its surface's STOP still reaches it.
+   *
+   * @param waiting - What it waits on.
+   * @returns What that resolved with.
+   */
+  public aside_current<T>(waiting: Promise<T>): Promise<T> {
+    if (this.currentOrigin === null) return waiting;
+    return this.person_await((): Promise<T> => waiting, true);
   }
 
   /**

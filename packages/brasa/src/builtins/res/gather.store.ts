@@ -28,7 +28,7 @@ import { fileContent_get, files_path_isDirectory } from '@fnndsc/salsa';
 import { files_touch as chefs_touch_cmd } from '@fnndsc/chili/commands/fs/touch.js';
 import { files_mkdir as chefs_mkdir_cmd } from '@fnndsc/chili/commands/fs/mkdir.js';
 import { path_resolve } from '../utils.js';
-import type { Result } from '@fnndsc/fond';
+import { errorStack, type Result } from '@fnndsc/fond';
 import type { EnvelopeModel } from '@fnndsc/menu';
 import { GATHER_MODEL_KIND } from './gather.kind.js';
 
@@ -180,19 +180,46 @@ export async function cohort_read(): Promise<GatherState> {
 }
 
 /**
+ * The cohort folders this process has made or written into: asking CUBE to
+ * make one that is there costs a round trip on every gather verb, which an
+ * operator waits through before the band redraws.
+ */
+const cohortDirsKnown: Set<string> = new Set();
+
+/** Forgets which cohort folders were made, so the next write makes its folder again. */
+export function cohortDirs_forget(): void {
+  cohortDirsKnown.clear();
+}
+
+/**
  * Writes the cohort back, and tells the listing cache the folder changed.
  *
  * Without the invalidation an `ls ~/gather` right after a gather serves the
  * listing from before the write and the operator is told their cohort does
  * not exist — the same staleness a CSV export once showed.
  *
+ * The folder is made the first time only; a write that fails because the
+ * folder has gone since makes it again and writes once more. A write that
+ * still fails is refused, never passed over: a cohort the operator was told
+ * they gathered must be the cohort on disk.
+ *
  * @param state - The cohort to keep.
+ * @throws {Error} When CUBE would not take the write.
  */
 export async function cohort_write(state: GatherState): Promise<void> {
   const directory: string = await path_resolve(COHORT_DIR);
-  await chefs_mkdir_cmd(directory);
   const target: string = await path_resolve(COHORT_FILE);
-  await chefs_touch_cmd(target, { withContents: JSON.stringify(state) });
+  const contents: string = JSON.stringify(state);
+  if (!cohortDirsKnown.has(directory)) {
+    await chefs_mkdir_cmd(directory);
+    cohortDirsKnown.add(directory);
+  }
+  if (!await chefs_touch_cmd(target, { withContents: contents })) {
+    const mark: number = errorStack.checkpoint_mark();
+    await chefs_mkdir_cmd(directory);
+    if (!await chefs_touch_cmd(target, { withContents: contents })) throw new Error(`could not write ${target}`);
+    errorStack.checkpoint_drain(mark);
+  }
   const cache: ListCache = listCache_get();
   cache.cache_invalidate(path.posix.dirname(target));
 }
@@ -316,20 +343,32 @@ export async function cohortFolders_note(landed: ReadonlyMap<string, string>): P
  * @returns The cohort, with every folder CUBE could name; written back when it changed.
  */
 export async function cohortFolders_resolve(state: GatherState): Promise<GatherState> {
+  if (await cohortFolders_fill(state) > 0) await cohort_write(state);
+  return state;
+}
+
+/**
+ * Asks CUBE where any series member not yet known to be home landed, and
+ * notes it on the member without writing: a verb that is about to write the
+ * cohort anyway writes it once, with the folders in it.
+ *
+ * @param state - The cohort, changed in place.
+ * @returns How many members CUBE placed.
+ */
+export async function cohortFolders_fill(state: GatherState): Promise<number> {
   const uids: string[] = [...new Set(state.series
     .filter((member: GatherMember): boolean => typeof member.folderPath !== 'string' || member.folderPath.length === 0)
     .map(memberSeriesUID_get)
     .filter((uid: string | undefined): uid is string => uid !== undefined))];
-  if (uids.length === 0) return state;
+  if (uids.length === 0) return 0;
   const filters: SeriesStorageFilter[] = uids.map((uid: string): SeriesStorageFilter => ({ SeriesInstanceUID: uid }));
   const found: Result<Map<string, SeriesStorageState>> = await seriesStorage_resolveMany(filters, { counts: false });
-  if (!found.ok) return state;
+  if (!found.ok) return 0;
   const landed: Map<string, string> = new Map();
   for (const [uid, storage] of found.value) {
     if (storage.folderPath !== null) landed.set(uid, storage.folderPath);
   }
-  if (memberFolders_apply(state, landed) > 0) await cohort_write(state);
-  return state;
+  return memberFolders_apply(state, landed);
 }
 
 /**

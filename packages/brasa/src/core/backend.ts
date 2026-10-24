@@ -78,6 +78,11 @@ export interface ReferenceSource {
    * (the manifest's parameters and the environment are asked next).
    */
   readonly resolve: (name: string) => Promise<ReferenceValue | undefined>;
+  /**
+   * The verbs whose line may change what it answers, so a dry run leaves it
+   * as written past one of them. Unset, any line may.
+   */
+  readonly changedBy?: ReadonlyArray<string>;
 }
 
 /** What a claim's subject answered: the value, or why it could not say. */

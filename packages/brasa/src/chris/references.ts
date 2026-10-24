@@ -43,6 +43,8 @@ export const chrisReferences: ReadonlyArray<ReferenceSource> = [
   {
     name: 'gather',
     resolve: async (name: string): Promise<ReferenceValue | undefined> => await cohort_reference(name),
+    // `pull` notes where members landed; `gather` is the cohort's own verb.
+    changedBy: ['gather', 'pull'],
   },
 ];
 

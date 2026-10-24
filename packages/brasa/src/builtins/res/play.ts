@@ -27,9 +27,11 @@ import { sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
 import { backendInstalled_get } from '../../core/backend.js';
 import { exitCode_read } from '../../core/handlerRun.js';
-import { reference_isReserved, reference_resolve, unresolvedStands_run } from '../../core/expansion.js';
-import { VARIABLE_NAME, variable_get, variableScope_run, type Variable } from '../../core/variables.js';
-import { shellWords_referencesExpand, shellWords_tokenize, type ReferenceExpansion, type ShellWord } from '../../lib/parser.js';
+import { reference_changedBy, reference_isReserved, reference_resolve, unresolvedStands_run, type LinesPassed } from '../../core/expansion.js';
+import { pipes_parse } from '../../core/preprocess.js';
+import { semicolons_parse } from '../../lib/semicolonParser.js';
+import { VARIABLE_NAME, assignment_parse, variable_get, variableScope_run, type Assignment, type Variable } from '../../core/variables.js';
+import { shellWords_referencesExpand, shellWords_tokenize, type ReferenceExpansion, type ReferenceValue, type ShellWord } from '../../lib/parser.js';
 import { errorStack, type Result } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import { turnPart_register } from '../../core/turn.js';
@@ -197,23 +199,73 @@ async function manifestText_read(target: string): Promise<Result<{ text: string;
 
 
 /**
- * Renders a line as the kernel would expand it, without running it.
+ * Renders one command's words as the kernel would expand them.
  *
  * It expands through the SAME resolver the dispatcher uses, so a dry run
- * cannot disagree with a play; it simply stops before acting.
+ * cannot disagree with a play; it simply stops before acting. A reference
+ * an earlier line may have changed stands as written: the session could
+ * answer it, but from the state before the play, which the manifest has
+ * since changed.
  *
- * @param text - The line as the manifest holds it.
- * @returns The line with its references filled in.
+ * @param text - The command as the manifest holds it.
+ * @param passed - What the lines before it could have changed.
+ * @returns The command with its references filled in.
  */
-async function line_preview(text: string): Promise<string> {
+async function words_preview(text: string, passed: LinesPassed): Promise<string> {
   const words: ShellWord[] = shellWords_tokenize(text);
+  const resolve = async (name: string): Promise<ReferenceValue> => (reference_changedBy(name, passed) ? null : await reference_resolve(name));
   const expanded: ReferenceExpansion = await unresolvedStands_run(
-    async (): Promise<ReferenceExpansion> => await shellWords_referencesExpand(words, reference_resolve, true),
+    async (): Promise<ReferenceExpansion> => await shellWords_referencesExpand(words, resolve, true),
   );
   if (!expanded.ok) return text;
   return expanded.words
     .map((word: ShellWord): string => (/\s/.test(word.value) ? `'${word.value}'` : word.value))
     .join(' ');
+}
+
+/**
+ * Renders a line as the kernel would expand it, without running it.
+ *
+ * The line is taken apart as the session takes it: a batch at its `;`, and
+ * a capture `NAME=$(…)` around the command it holds, which plain words
+ * would split through, closing parenthesis and all.
+ *
+ * @param text - The line as the manifest holds it.
+ * @param passed - What the lines before it could have changed.
+ * @returns The line with its references filled in.
+ */
+async function line_preview(text: string, passed: LinesPassed): Promise<string> {
+  const parts: string[] = [];
+  for (const command of semicolons_parse(text.trim())) {
+    const assignment: Assignment | null = assignment_parse(command.trim());
+    parts.push(assignment !== null && 'capture' in assignment
+      ? `${assignment.name}=$(${await words_preview(assignment.capture, passed)})`
+      : await words_preview(command, passed));
+  }
+  return parts.join('; ');
+}
+
+/**
+ * Notes what a line could change, for the lines a dry run previews after
+ * it: the verb of every command it holds (each side of a pipe, each part of
+ * a batch, the command a capture runs) and the variable it assigns.
+ *
+ * @param text - The line as the manifest holds it.
+ * @param verbs - The verbs seen so far, added to.
+ * @param assigned - The variables assigned so far, added to.
+ */
+function linePassed_note(text: string, verbs: Set<string>, assigned: Set<string>): void {
+  for (const command of semicolons_parse(text.trim())) {
+    const assignment: Assignment | null = assignment_parse(command.trim());
+    if (assignment !== null) assigned.add(assignment.name);
+    if (assignment !== null && !('capture' in assignment)) continue;
+    const body: string = assignment !== null && 'capture' in assignment ? assignment.capture : command;
+    for (const piece of pipes_parse(body)) {
+      const words: string[] = shellWords_tokenize(piece).map((word: ShellWord): string => word.value);
+      const verb: string | undefined = words[0] === 'sudo' ? words[1] : words[0];
+      if (verb !== undefined) verbs.add(verb);
+    }
+  }
 }
 
 /** How a play was asked for. */
@@ -365,6 +417,9 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   let stoppedAt: number | null = null;
   // What the manifest answers with, read before its scope ends with it.
   let answered: Variable | undefined;
+  // What the lines a dry run passed over could have changed.
+  const passedVerbs: Set<string> = new Set();
+  const passedAssigned: Set<string> = new Set();
 
   const exitBeforePlay: number = exitCode_read();
   depth += 1;
@@ -377,9 +432,10 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
       // A dry run shows what WOULD run, expanded by the kernel's own
       // expander rather than a second one living here: a reference nothing
       // can answer yet stands as written, since nothing has run to give it
-      // a value.
+      // a value, and so does one an earlier line may have changed (#1241).
       if (parsed.dryRun) {
-        sink_dataLine(chalk.cyan(`▸ ${await line_preview(line.text)}`));
+        sink_dataLine(chalk.cyan(`▸ ${await line_preview(line.text, { count: ran, verbs: passedVerbs, assigned: passedAssigned })}`));
+        linePassed_note(line.text, passedVerbs, passedAssigned);
         ran += 1;
         continue;
       }

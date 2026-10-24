@@ -69,10 +69,21 @@ jest.unstable_mockModule('../src/core/variables.js', () => ({
     return await operation();
   },
   variable_get: (name: string) => variables.get(name),
+  // The session's reading of an assignment line, as far as these lines need.
+  assignment_parse: (line: string) => {
+    const match: RegExpMatchArray | null = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (match === null) return null;
+    const value: string = match[2] as string;
+    return value.startsWith('$(') && value.endsWith(')') ? { name: match[1], capture: value.slice(2, -1).trim() } : { name: match[1], literal: value };
+  },
 }));
 jest.unstable_mockModule('../src/core/expansion.js', () => ({
   reference_isReserved: (name: string): boolean => ['gather', 'feed', 'run', 'query', 'cwd'].includes(name.split('.')[0]),
+  // The cohort the session holds before the play; `gather` and `pull` change it.
+  reference_changedBy: (name: string, passed: { count: number; verbs: ReadonlySet<string>; assigned: ReadonlySet<string> }): boolean =>
+    passed.count > 0 && (name === 'gather' ? passed.verbs.has('gather') || passed.verbs.has('pull') : passed.assigned.has(name)),
   reference_resolve: async (name: string): Promise<{ values: string[] } | null> => {
+    if (name === 'gather') return members.length === 0 ? null : { values: members.map((member: { vfsPath: string }): string => member.vfsPath) };
     const held: string | undefined = scope.get(name);
     return held === undefined ? null : { values: [held] };
   },
@@ -235,6 +246,26 @@ describe('play', () => {
     const envelope = await builtin_play(['f.mise', '--dry-run']);
     expect(envelope.status).toBe('ok');
     expect(output.some((line: string): boolean => line.includes('expect feed ${A.feedId} status'))).toBe(true);
+  });
+
+  it('previews a capture around the command it holds, not through its parenthesis (#1241)', async () => {
+    stored = ['@param LABEL', 'R=$(gather process "FS 8.2.0" --title "${LABEL}")'].join('\n');
+    await builtin_play(['f.mise', '--param', 'LABEL=t1 cohort', '--dry-run']);
+    expect(output).toContainEqual(expect.stringContaining("R=$(gather process 'FS 8.2.0' --title 't1 cohort')"));
+  });
+
+  it('leaves the cohort as written once the manifest has changed it (#1241)', async () => {
+    members = [{ vfsPath: '/home/chris/uploads/old', kind: 'dir' }];
+    stored = ['pull ${gather}', 'gather clear', 'query x | gather add', 'pull ${gather}', 'R=$(pwd)', 'cat ${R}'].join('\n');
+    // R as the session held it before the play: the manifest assigns it anew.
+    await builtin_play(['f.mise', '--param', 'R=/stale', '--dry-run']);
+    const previews: string[] = output.filter((line: string): boolean => line.includes('▸'));
+    // Before any line ran, the session's cohort IS what pull would take.
+    expect(previews[0]).toContain('pull /home/chris/uploads/old');
+    expect(previews[3]).toContain('pull ${gather}');
+    expect(previews[3]).not.toContain('/old');
+    expect(previews[5]).toContain('cat ${R}');
+    expect(previews[5]).not.toContain('/stale');
   });
 
   it('shows a dry run without running anything', async () => {

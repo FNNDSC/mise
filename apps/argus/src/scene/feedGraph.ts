@@ -40,7 +40,7 @@ export interface FeedGraphModes {
   /** How the view draws (spheres or stars); either way every node keeps its tube. Read for the record. */
   draw?: 'spheres' | 'stars';
   /** A node's scene id from the kernel's; the RUNS pane keeps the kernel's, the universe scopes it. */
-  id_of?: (nodeId: string) => string;
+  id_map?: (nodeId: string) => string;
 }
 
 /** A feed read for the scene: its nodes, and the kernel node each stands for. */
@@ -56,7 +56,7 @@ export interface FeedGraph {
  * @param mode - Which metric.
  * @returns The metric, or undefined when the cache does not hold it yet.
  */
-export function feedMetric_of(node: FeedDagNode, mode: MetricMode): number | undefined {
+export function feedMetric_extract(node: FeedDagNode, mode: MetricMode): number | undefined {
   return mode === 'time' ? node.metrics?.computeSeconds : node.metrics?.dataBytes;
 }
 
@@ -87,9 +87,9 @@ export function hueLegend_build(model: FeedDagModel, cycle: ReadonlyArray<string
  * @returns The scene nodes and the kernel node each stands for.
  */
 export function feedGraph_build(model: FeedDagModel, modes: FeedGraphModes): FeedGraph {
-  const id_of: (nodeId: string) => string = modes.id_of ?? ((nodeId: string): string => nodeId);
+  const id_map: (nodeId: string) => string = modes.id_map ?? ((nodeId: string): string => nodeId);
   const known: Set<string> = new Set(model.nodes.map((node: FeedDagNode): string => node.id));
-  const hue_of = (node: FeedDagNode): string | undefined => {
+  const hue_derive = (node: FeedDagNode): string | undefined => {
     if (modes.hue !== 'compute') return undefined;
     if (node.computeResource === undefined) return HUE_UNKNOWN;
     return modes.legend.get(node.computeResource) ?? HUE_UNKNOWN;
@@ -97,19 +97,19 @@ export function feedGraph_build(model: FeedDagModel, modes: FeedGraphModes): Fee
   const nodes: SceneNode[] = [];
   const payloads: Map<string, FeedDagNode> = new Map();
   for (const node of model.nodes) {
-    const id: string = id_of(node.id);
+    const id: string = id_map(node.id);
     const count: number = node.tally?.count ?? 1;
     const errored: number = node.tally?.error ?? (node.status === 'finishedWithError' ? 1 : 0);
     const share: number | undefined = errored > 0 && count > 1 ? Math.min(1, errored / count) : undefined;
-    const colour: string | undefined = hue_of(node);
+    const colour: string | undefined = hue_derive(node);
     nodes.push({
       id,
       label: node.label,
       // A parent the model does not hold (a node beyond the kernel's budget) is no edge.
-      parentIds: node.parentIds.filter((parent: string): boolean => known.has(parent)).map(id_of),
-      joinParentIds: node.joinParentIds.filter((parent: string): boolean => known.has(parent)).map(id_of),
+      parentIds: node.parentIds.filter((parent: string): boolean => known.has(parent)).map(id_map),
+      joinParentIds: node.joinParentIds.filter((parent: string): boolean => known.has(parent)).map(id_map),
       status: node.status,
-      metric: feedMetric_of(node, modes.metric),
+      metric: feedMetric_extract(node, modes.metric),
       // Tubed, never solid: the tube is the feed's path whatever the draw,
       // and solid would hold a node out of the census (orrery shells every
       // job but solid nodes), so CENSUS on a feed showed little more than

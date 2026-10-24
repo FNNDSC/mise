@@ -20,8 +20,8 @@
  */
 import type { DomainSizeModel, DomainSpecModel, DomainSummary, PromptKind } from '@fnndsc/menu';
 import {
-  askForm_of, CHRIS_STEPS, classBadge_of, conditionWhy_of, CONTROLLER_VIEWS, duration_text, HOURS_PER_MONTH, LINES, money_text, nameRefusal_of,
-  newLine_of, planWords_of, since_of, sizeCost_of, spec_copy, sizeFit_of, stepLooks_of, stepsDone_of, summary_merge, verifyWords_of, zoneShort_of,
+  askForm_derive, CHRIS_STEPS, classBadge_render, conditionWhy_derive, CONTROLLER_VIEWS, duration_text, HOURS_PER_MONTH, LINES, money_text, nameRefusal_derive,
+  newLine_build, planWords_render, since_build, sizeCost_compute, spec_copy, sizeFit_compute, stepLooks_build, stepsDone_count, summary_merge, verifyWords_render, zoneShort_format,
   type ControllerView, type SinceRow, type StepLook, type ZoneFitLook,
 } from './model.js';
 
@@ -76,7 +76,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, te
  * @param text - The text.
  * @returns It, plain.
  */
-function plain_of(text: string): string {
+function plain_extract(text: string): string {
   // eslint-disable-next-line no-control-regex
   return text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\r/g, '');
 }
@@ -258,7 +258,7 @@ export class TdController {
    * @param chunk - The text.
    */
   public output_take(chunk: string): void {
-    const text: string = this.partial + plain_of(chunk);
+    const text: string = this.partial + plain_extract(chunk);
     const lines: string[] = text.split('\n');
     this.partial = lines.pop() ?? '';
     for (const one of lines) this.log_add(one, 'out');
@@ -308,7 +308,7 @@ export class TdController {
       if (this.partial !== '') { this.log_add(this.partial, 'out'); this.partial = ''; }
       this.busy = null;
       const now: DomainSummary | null = this.domain_get();
-      if (now !== null) this.since = since_of(this.before, now);
+      if (now !== null) this.since = since_build(this.before, now);
       this.draw();
     }
   }
@@ -318,7 +318,7 @@ export class TdController {
    */
   public since_refresh(): void {
     const now: DomainSummary | null = this.domain_get();
-    if (now !== null) this.since = since_of(this.before?.name === now.name ? this.before : null, now);
+    if (now !== null) this.since = since_build(this.before?.name === now.name ? this.before : null, now);
     this.header_draw();
   }
 
@@ -408,12 +408,12 @@ export class TdController {
     const condition: string = domain?.condition ?? 'SIZING';
     pill.dataset['condition'] = condition;
     pill.append(el('span', 'tdc-condition-label', 'CONDITION'), el('span', 'tdc-condition-name', condition));
-    const why = domain === null ? { text: 'NOTHING BUILT · NOTHING BILLED', billing: false } : conditionWhy_of(domain);
+    const why = domain === null ? { text: 'NOTHING BUILT · NOTHING BILLED', billing: false } : conditionWhy_derive(domain);
     const whyLine: HTMLElement = el('div', `tdc-condition-why${why.billing ? ' tdc-bill' : ''}`, why.text);
     const chips: HTMLElement = el('div', 'tdc-chips');
     if (domain !== null) {
-      const steps = stepsDone_of(domain);
-      chips.append(el('span', 'tdc-chip', `${steps.done} OF ${steps.total} DONE`), el('span', 'tdc-chip tdc-chip-class', classBadge_of(domain)));
+      const steps = stepsDone_count(domain);
+      chips.append(el('span', 'tdc-chip', `${steps.done} OF ${steps.total} DONE`), el('span', 'tdc-chip tdc-chip-class', classBadge_render(domain)));
       chips.append(this.lock_make(domain));
     } else {
       chips.append(el('span', 'tdc-chip', 'NO SPEC YET'));
@@ -480,22 +480,22 @@ export class TdController {
     const last: string = domain.lastDone === null ? 'nothing' : domain.lastDone.replace(/^\d+-/, '');
     const running: string = domain.running === null || domain.running === undefined ? 'nothing'
       : `${domain.running.step ?? 'between steps'}${domain.running.since !== null ? ` · ${duration_text(Date.now() - Date.parse(domain.running.since))}` : ''}`;
-    const plan: string = domain.plan === null || domain.plan === undefined ? 'none kept' : planWords_of(domain.plan);
+    const plan: string = domain.plan === null || domain.plan === undefined ? 'none kept' : planWords_render(domain.plan);
     return [['LAST DONE', last], ['RUNNING', running], ['LAST PLAN', plan]];
   }
 
   private sizedCost_rows(): Array<[string, string]> {
     if (this.size === null || this.levers === null) return [['PER HOUR', '…'], ['A MONTH', '…'], ['SO FAR', '0']];
-    const cost = sizeCost_of(this.size, this.levers);
+    const cost = sizeCost_compute(this.size, this.levers);
     return [['PER HOUR', cost.hourly === null ? 'NOT PRICED' : `${money_text(cost.hourly, cost.currency)} · EST`], ['A MONTH', cost.hourly === null ? '—' : `${money_text(cost.hourly * HOURS_PER_MONTH, cost.currency, 0)} · EST`], ['SO FAR', '0']];
   }
 
   private fit_rows(): Array<[string, string]> {
     if (this.size === null || this.levers === null) return [['ZONES', '…']];
-    const fits: ZoneFitLook[] = sizeFit_of(this.size, this.levers, this.newName || 'new');
+    const fits: ZoneFitLook[] = sizeFit_compute(this.size, this.levers, this.newName || 'new');
     const fitting: number = fits.filter((fit: ZoneFitLook): boolean => fit.fits === true).length;
     const tight: ZoneFitLook | undefined = fits.find((fit: ZoneFitLook): boolean => fit.tightest);
-    return [['ZONES', `${fitting} OF ${fits.length} FIT`], ['TIGHTEST', tight === undefined ? '—' : zoneShort_of(tight.zone)], ['FAMILY', this.levers.family]];
+    return [['ZONES', `${fitting} OF ${fits.length} FIT`], ['TIGHTEST', tight === undefined ? '—' : zoneShort_format(tight.zone)], ['FAMILY', this.levers.family]];
   }
 
   private body_draw(): void {
@@ -576,7 +576,7 @@ export class TdController {
 
   private classNote_make(domain: DomainSummary): HTMLElement {
     const note: HTMLElement = el('div', `tdc-note tdc-note-${domain.origin ?? 'built'}`);
-    const badge: string = classBadge_of(domain);
+    const badge: string = classBadge_render(domain);
     note.append(el('span', 'tdc-note-title', badge));
     if (domain.origin === 'adopted') {
       note.append(el('span', 'tdc-prose', 'Built by harbor-oci. Its installer ids and its Terraform state are kept by stratus; it is planned against, never built on.'));
@@ -597,7 +597,7 @@ export class TdController {
 
     const steps: HTMLElement = this.section_make('STEPS · THE MACHINE, THEN CHRIS', 'tdc-col-steps', 'PRESS A STEP · BUILD OPENS ON IT');
     const grid: HTMLElement = el('div', 'tdc-step-grid');
-    for (const look of stepLooks_of(domain)) {
+    for (const look of stepLooks_build(domain)) {
       const cell: HTMLButtonElement = el('button', `tdc-step tdc-step-${look.tone}${look.billFrom ? ' tdc-step-billfrom' : ''}`);
       cell.type = 'button';
       cell.setAttribute('aria-label', `${look.name}, ${look.word}`);
@@ -617,7 +617,7 @@ export class TdController {
     steps.append(commands);
 
     const cluster: HTMLElement = this.section_make('THE CLUSTER AT A GLANCE', 'tdc-col-glance');
-    const verify: string = domain.verify === null || domain.verify === undefined ? this.verifyUnkept_of(domain) : `${verifyWords_of(domain.verify.checks)} · ${(domain.verify.at ?? '').slice(0, 16).replace('T', ' ')}`;
+    const verify: string = domain.verify === null || domain.verify === undefined ? this.verifyUnkept_render(domain) : `${verifyWords_render(domain.verify.checks)} · ${(domain.verify.at ?? '').slice(0, 16).replace('T', ' ')}`;
     cluster.append(this.pairs_make([['ADDRESS', domain.cluster ?? '?'], ['VERIFY', verify], ['RUNNING', domain.running === null || domain.running === undefined ? 'nothing' : domain.running.step ?? 'between steps']]));
     cluster.append(el('span', 'tdc-section-title tdc-gap', 'IN ITS COMPARTMENT'));
     cluster.append(this.resources_make(domain));
@@ -631,7 +631,7 @@ export class TdController {
    * @param domain - The domain.
    * @returns The words.
    */
-  private verifyUnkept_of(domain: DomainSummary): string {
+  private verifyUnkept_render(domain: DomainSummary): string {
     const step = domain.steps.find((one): boolean => one.name === 'verify');
     return step !== undefined && step.state !== 'not done' ? `${(step.evidence ?? step.state).toUpperCase()} · CHECKS NOT KEPT` : 'NOT RUN';
   }
@@ -644,7 +644,7 @@ export class TdController {
 
   private strip_make(domain: DomainSummary): HTMLElement {
     const strip: HTMLElement = this.section_make('STEPS', 'tdc-col-strip');
-    for (const look of stepLooks_of(domain)) {
+    for (const look of stepLooks_build(domain)) {
       if (look.billFrom) strip.append(el('div', 'tdc-billing-from', 'BILLING FROM HERE'));
       const row: HTMLElement = el('div', `tdc-strip-step tdc-step-${look.tone}`);
       row.setAttribute('aria-label', `${look.name}, ${look.word}`);
@@ -713,7 +713,7 @@ export class TdController {
   private cluster_make(domain: DomainSummary): HTMLElement[] {
     const checks: HTMLElement = this.section_make('VERIFY · TEN CHECKS', 'tdc-col-wide', domain.verify?.at ? `LAST RUN ${domain.verify.at.slice(0, 16).replace('T', ' ')}` : 'NOT RUN HERE');
     if (domain.verify === null || domain.verify === undefined) {
-      checks.append(el('p', 'tdc-prose', `${this.verifyUnkept_of(domain)}. VERIFY runs the checks through the cluster's kubeconfig, which stays on the host, and keeps them.`));
+      checks.append(el('p', 'tdc-prose', `${this.verifyUnkept_render(domain)}. VERIFY runs the checks through the cluster's kubeconfig, which stays on the host, and keeps them.`));
     } else {
       const grid: HTMLElement = el('div', 'tdc-checks');
       for (const check of domain.verify.checks) {
@@ -736,7 +736,7 @@ export class TdController {
     const storage: HTMLElement = this.section_make('STORAGE · THE SPEC\'S CHRIS HALF', 'tdc-col-spec');
     storage.append(this.chrisSpec_make(domain.spec), el('p', 'tdc-prose tdc-bill', 'DATA grows with a new spec and a plan; it never shrinks. DATABASE and QUEUE are fixed from the first deploy.'));
     const steps: HTMLElement = this.section_make('THE APPLICATION\'S STEPS', 'tdc-col-steps');
-    const looks: StepLook[] = stepLooks_of(domain).filter((look: StepLook): boolean => CHRIS_STEPS.includes(look.name));
+    const looks: StepLook[] = stepLooks_build(domain).filter((look: StepLook): boolean => CHRIS_STEPS.includes(look.name));
     for (const look of looks) {
       const row: HTMLElement = el('div', `tdc-chris-step tdc-step-${look.tone}`);
       const head: HTMLElement = el('div', 'tdc-chris-step-head');
@@ -923,10 +923,10 @@ export class TdController {
   private fit_fill(section: HTMLElement): void {
     section.querySelectorAll('.tdc-zone').forEach((node: Element): void => node.remove());
     if (this.size === null || this.levers === null) return;
-    for (const zone of sizeFit_of(this.size, this.levers, this.newName || this.current || 'new')) {
+    for (const zone of sizeFit_compute(this.size, this.levers, this.newName || this.current || 'new')) {
       const box: HTMLElement = el('div', `tdc-zone${zone.fits === false ? ' tdc-zone-bad' : zone.tightest ? ' tdc-zone-tight' : ''}`);
       const head: HTMLElement = el('div', 'tdc-zone-head');
-      head.append(el('span', 'tdc-zone-name', zoneShort_of(zone.zone)), el('span', 'tdc-zone-verdict', zone.fits === null ? 'NOT SAID' : zone.fits ? (zone.tightest ? 'FITS · TIGHTEST' : 'FITS') : 'DOES NOT FIT'));
+      head.append(el('span', 'tdc-zone-name', zoneShort_format(zone.zone)), el('span', 'tdc-zone-verdict', zone.fits === null ? 'NOT SAID' : zone.fits ? (zone.tightest ? 'FITS · TIGHTEST' : 'FITS') : 'DOES NOT FIT'));
       const bar = (needed: number, free: number | null, unit: string): HTMLElement => {
         const row: HTMLElement = el('div', 'tdc-zone-bar');
         const track: HTMLElement = el('div', 'tdc-zone-track');
@@ -944,7 +944,7 @@ export class TdController {
   private cost_fill(section: HTMLElement, committing: boolean): void {
     section.querySelectorAll('.tdc-cost-rows, .tdc-commit').forEach((node: Element): void => node.remove());
     if (this.size === null || this.levers === null) return;
-    const cost = sizeCost_of(this.size, this.levers);
+    const cost = sizeCost_compute(this.size, this.levers);
     const rows: HTMLElement = el('div', 'tdc-cost-rows');
     for (const row of cost.rows) rows.append(el('span', 'tdc-pair-label', row.what), el('span', 'tdc-cost-rate', row.hourly === null ? 'NOT PRICED' : money_text(row.hourly, cost.currency, 3)));
     rows.append(el('span', 'tdc-pair-label tdc-bill', 'TOTAL · EST'), el('span', 'tdc-cost-rate tdc-bill', cost.hourly === null ? '—' : `${money_text(cost.hourly, cost.currency)} · ${money_text(cost.hourly * HOURS_PER_MONTH, cost.currency, 0)} A MONTH`));
@@ -959,9 +959,9 @@ export class TdController {
   private commit_fill(commit: HTMLElement): void {
     if (this.size === null || this.levers === null) return;
     commit.replaceChildren();
-    const refusal: string | null = nameRefusal_of(this.newName, this.names_get()) ?? (this.zone === null ? 'NO ZONE' : null);
+    const refusal: string | null = nameRefusal_derive(this.newName, this.names_get()) ?? (this.zone === null ? 'NO ZONE' : null);
     // The zone goes on the line only when it is not the one the session would take.
-    const line: string = newLine_of(this.newName || '<name>', this.levers, this.size.start, this.zone !== this.size.baseDomain ? this.zone : null);
+    const line: string = newLine_build(this.newName || '<name>', this.levers, this.size.start, this.zone !== this.size.baseDomain ? this.zone : null);
     const tenant: string = LINES.tenant(this.newName || '<name>');
     commit.append(el('span', 'tdc-section-title', 'THE LINES COMMIT SENDS'), el('div', 'tdc-mono tdc-commit-line', line), el('div', 'tdc-mono tdc-commit-line', tenant),
       el('p', 'tdc-prose tdc-quiet', 'The first writes the spec. The second plays the tenant: the build through the install, which asks before billing, then verify. A NO leaves the spec written and nothing made.'));
@@ -1003,7 +1003,7 @@ export class TdController {
     const words: HTMLElement = el('div', 'tdc-strip-words');
     words.append(el('span', 'tdc-strip-title', 'THE ENGINE ASKS'), el('span', 'tdc-strip-text', ask.message));
     strip.append(words);
-    if (askForm_of(ask.message) === 'yes-no') {
+    if (askForm_derive(ask.message) === 'yes-no') {
       const yes: HTMLButtonElement = el('button', `tdc-pill ${billing ? 'tdc-pill-bill' : 'tdc-pill-plain'}`, billing ? 'YES · BILL' : 'YES');
       yes.type = 'button';
       yes.addEventListener('click', (): void => { this.hooks.voice.pill('YES'); this.log_add('y', 'answer'); ask.answer('y'); });
@@ -1075,7 +1075,7 @@ export class TdController {
   private cues_play(was: DomainSummary | null, now: DomainSummary | null): void {
     if (was === null || now === null || was.name !== now.name) return;
     if (was.condition !== 'FAILED' && now.condition === 'FAILED') { this.hooks.voice.cue('redalert'); return; }
-    const doneBefore: number = stepsDone_of(was).done;
-    if (stepsDone_of(now).done > doneBefore) this.hooks.voice.cue('ack');
+    const doneBefore: number = stepsDone_count(was).done;
+    if (stepsDone_count(now).done > doneBefore) this.hooks.voice.cue('ack');
   }
 }

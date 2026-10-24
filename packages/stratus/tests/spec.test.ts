@@ -3,7 +3,7 @@
  * `domain new`'s options, and placed one node per zone.
  */
 import { describe, it, expect } from '@jest/globals';
-import { poolArg_parse, SPEC_DEFAULT, specNodes_of, specOptions_apply, specYaml_parse, specYaml_render, type DomainSpec } from '../src/domain/spec.js';
+import { poolArg_parse, SPEC_DEFAULT, specNodes_build, specOptions_apply, specYaml_parse, specYaml_render, type DomainSpec } from '../src/domain/spec.js';
 
 describe('the spec', () => {
   it('writes harbor-oci\'s shape and reads it back', () => {
@@ -47,7 +47,7 @@ describe('the spec', () => {
 
   it('places the nodes one per zone in turn', () => {
     const spec: DomainSpec = (specOptions_apply(SPEC_DEFAULT, new Map([['--workers', '2x8/32']])) as { spec: DomainSpec }).spec;
-    expect(specNodes_of('trial', spec, 3).map((node) => `${node.name}@${node.zoneIndex}`)).toEqual(['trial-cp-0@0', 'trial-cp-1@1', 'trial-cp-2@2', 'trial-w-0@0', 'trial-w-1@1']);
-    expect(specNodes_of('one', SPEC_DEFAULT, 0).every((node) => node.zoneIndex === 0)).toBe(true);
+    expect(specNodes_build('trial', spec, 3).map((node) => `${node.name}@${node.zoneIndex}`)).toEqual(['trial-cp-0@0', 'trial-cp-1@1', 'trial-cp-2@2', 'trial-w-0@0', 'trial-w-1@1']);
+    expect(specNodes_build('one', SPEC_DEFAULT, 0).every((node) => node.zoneIndex === 0)).toBe(true);
   });
 });

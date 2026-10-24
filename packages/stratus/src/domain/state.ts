@@ -61,7 +61,7 @@ export interface DomainRecord {
  * @param env - The environment.
  * @returns `$XDG_STATE_HOME/stratus/domains`, or `~/.local/state/stratus/domains`.
  */
-export function domainsRoot_of(env: NodeJS.ProcessEnv = process.env): string {
+export function domainsRoot_derive(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(env['XDG_STATE_HOME'] || path.join(os.homedir(), '.local', 'state'), 'stratus', 'domains');
 }
 
@@ -93,7 +93,7 @@ export class DomainStore {
    * @param name - The domain.
    * @returns Its folder.
    */
-  folder_of(name: string): string {
+  folder_derive(name: string): string {
     return path.join(this.root, name);
   }
 
@@ -111,7 +111,7 @@ export class DomainStore {
    * @throws Error - When one of that name is already kept.
    */
   create(record: DomainRecord, spec: DomainSpec): void {
-    const folder: string = this.folder_of(record.name);
+    const folder: string = this.folder_derive(record.name);
     if (fs.existsSync(path.join(folder, 'state.json'))) throw new Error(`${record.name}: a domain of that name is already kept (${folder})`);
     fs.mkdirSync(path.join(folder, 'auth'), { recursive: true, mode: 0o700 });
     file_writeAtomic(path.join(folder, 'spec.yaml'), specYaml_render(spec));
@@ -125,7 +125,7 @@ export class DomainStore {
    * @returns Its record, or null when none is kept.
    */
   record_read(name: string): DomainRecord | null {
-    const file: string = path.join(this.folder_of(name), 'state.json');
+    const file: string = path.join(this.folder_derive(name), 'state.json');
     if (!fs.existsSync(file)) return null;
     return JSON.parse(fs.readFileSync(file, 'utf-8')) as DomainRecord;
   }
@@ -136,7 +136,7 @@ export class DomainStore {
    * @param record - Its record.
    */
   record_write(record: DomainRecord): void {
-    file_writeAtomic(path.join(this.folder_of(record.name), 'state.json'), `${JSON.stringify(record, null, 2)}\n`);
+    file_writeAtomic(path.join(this.folder_derive(record.name), 'state.json'), `${JSON.stringify(record, null, 2)}\n`);
   }
 
   /**
@@ -162,7 +162,7 @@ export class DomainStore {
    * @returns The text and the spec (or why it does not read), or null when there is no file.
    */
   spec_read(name: string): { text: string; spec: DomainSpec | null; error?: string } | null {
-    const file: string = path.join(this.folder_of(name), 'spec.yaml');
+    const file: string = path.join(this.folder_derive(name), 'spec.yaml');
     if (!fs.existsSync(file)) return null;
     const text: string = fs.readFileSync(file, 'utf-8');
     const parsed = specYaml_parse(text);
@@ -177,7 +177,7 @@ export class DomainStore {
    * @param text - Its content.
    */
   file_write(name: string, file: string, text: string): void {
-    file_writeAtomic(path.join(this.folder_of(name), file), text);
+    file_writeAtomic(path.join(this.folder_derive(name), file), text);
   }
 
   /**
@@ -188,7 +188,7 @@ export class DomainStore {
    * @returns Its content, or null when it is not there.
    */
   file_read(name: string, file: string): string | null {
-    const where: string = path.join(this.folder_of(name), file);
+    const where: string = path.join(this.folder_derive(name), file);
     return fs.existsSync(where) ? fs.readFileSync(where, 'utf-8') : null;
   }
 
@@ -200,7 +200,7 @@ export class DomainStore {
    * @param text - Its content.
    */
   secret_write(name: string, file: string, text: string): void {
-    const folder: string = path.join(this.folder_of(name), 'auth');
+    const folder: string = path.join(this.folder_derive(name), 'auth');
     fs.mkdirSync(folder, { recursive: true, mode: 0o700 });
     file_writeAtomic(path.join(folder, file), text);
   }
@@ -213,7 +213,7 @@ export class DomainStore {
    * @returns Its content, or null.
    */
   secret_read(name: string, file: string): string | null {
-    const where: string = path.join(this.folder_of(name), 'auth', file);
+    const where: string = path.join(this.folder_derive(name), 'auth', file);
     return fs.existsSync(where) ? fs.readFileSync(where, 'utf-8') : null;
   }
 
@@ -224,7 +224,7 @@ export class DomainStore {
    * @returns The files.
    */
   secrets_list(name: string): Array<{ name: string; hostPath: string }> {
-    const folder: string = path.join(this.folder_of(name), 'auth');
+    const folder: string = path.join(this.folder_derive(name), 'auth');
     if (!fs.existsSync(folder)) return [];
     return fs.readdirSync(folder).sort().map((file: string): { name: string; hostPath: string } => ({ name: file, hostPath: path.join(folder, file) }));
   }

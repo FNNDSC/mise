@@ -161,12 +161,12 @@ function page_arg(page: string | undefined): { page?: string } {
 }
 
 /** A date as ISO 8601, or empty. */
-function iso_of(value: Date | string | undefined): string {
+function iso_format(value: Date | string | undefined): string {
   return value === undefined ? '' : new Date(value).toISOString();
 }
 
 /** The fields every resource record carries, from an SDK model. */
-function resource_of(model: {
+function resourceRecord_convert(model: {
   id: string; displayName?: string; lifecycleState?: unknown; timeCreated?: Date;
   freeformTags?: Record<string, string>; definedTags?: Record<string, Record<string, unknown>>;
 }): OciResourceRecord {
@@ -174,7 +174,7 @@ function resource_of(model: {
     id: model.id,
     displayName: model.displayName ?? '',
     lifecycleState: String(model.lifecycleState ?? ''),
-    timeCreated: iso_of(model.timeCreated),
+    timeCreated: iso_format(model.timeCreated),
     freeformTags: model.freeformTags ?? {},
     definedTags: model.definedTags ?? {},
     raw: model,
@@ -204,7 +204,7 @@ class Clients {
   constructor(private readonly provider: common.AuthenticationDetailsProvider) {}
 
   /** The client for a service in a region, made on first use. */
-  private client_for<T extends { regionId: string }>(service: string, region: string, make: (provider: common.AuthenticationDetailsProvider) => T): T {
+  private client_resolve<T extends { regionId: string }>(service: string, region: string, make: (provider: common.AuthenticationDetailsProvider) => T): T {
     const key: string = `${service}/${region}`;
     const found: { regionId: string } | undefined = this.made.get(key);
     if (found !== undefined) return found as T;
@@ -215,31 +215,31 @@ class Clients {
   }
 
   compute(region: string): core.ComputeClient {
-    return this.client_for('compute', region, (provider) => new core.ComputeClient({ authenticationDetailsProvider: provider }));
+    return this.client_resolve('compute', region, (provider) => new core.ComputeClient({ authenticationDetailsProvider: provider }));
   }
 
   network(region: string): core.VirtualNetworkClient {
-    return this.client_for('network', region, (provider) => new core.VirtualNetworkClient({ authenticationDetailsProvider: provider }));
+    return this.client_resolve('network', region, (provider) => new core.VirtualNetworkClient({ authenticationDetailsProvider: provider }));
   }
 
   storage(region: string): core.BlockstorageClient {
-    return this.client_for('storage', region, (provider) => new core.BlockstorageClient({ authenticationDetailsProvider: provider }));
+    return this.client_resolve('storage', region, (provider) => new core.BlockstorageClient({ authenticationDetailsProvider: provider }));
   }
 
   balancer(region: string): loadbalancer.LoadBalancerClient {
-    return this.client_for('balancer', region, (provider) => new loadbalancer.LoadBalancerClient({ authenticationDetailsProvider: provider }));
+    return this.client_resolve('balancer', region, (provider) => new loadbalancer.LoadBalancerClient({ authenticationDetailsProvider: provider }));
   }
 
   objects(region: string): objectstorage.ObjectStorageClient {
-    return this.client_for('objects', region, (provider) => new objectstorage.ObjectStorageClient({ authenticationDetailsProvider: provider }));
+    return this.client_resolve('objects', region, (provider) => new objectstorage.ObjectStorageClient({ authenticationDetailsProvider: provider }));
   }
 
   dns(region: string): dns.DnsClient {
-    return this.client_for('dns', region, (provider) => new dns.DnsClient({ authenticationDetailsProvider: provider }));
+    return this.client_resolve('dns', region, (provider) => new dns.DnsClient({ authenticationDetailsProvider: provider }));
   }
 
   search(region: string): resourcesearch.ResourceSearchClient {
-    return this.client_for('search', region, (provider) => new resourcesearch.ResourceSearchClient({ authenticationDetailsProvider: provider }));
+    return this.client_resolve('search', region, (provider) => new resourcesearch.ResourceSearchClient({ authenticationDetailsProvider: provider }));
   }
 }
 
@@ -258,7 +258,7 @@ export function ociResourceApi_make(provider: common.AuthenticationDetailsProvid
         return { items: answer.items, next: answer.opcNextPage };
       });
       return items.map((instance: core.models.Instance): OciInstanceRecord => ({
-        ...resource_of(instance), shape: instance.shape, availabilityDomain: instance.availabilityDomain,
+        ...resourceRecord_convert(instance), shape: instance.shape, availabilityDomain: instance.availabilityDomain,
         ...(instance.shapeConfig?.ocpus !== undefined ? { ocpus: instance.shapeConfig.ocpus } : {}),
         ...(instance.shapeConfig?.memoryInGBs !== undefined ? { memoryInGBs: instance.shapeConfig.memoryInGBs } : {}),
       }));
@@ -281,21 +281,21 @@ export function ociResourceApi_make(provider: common.AuthenticationDetailsProvid
         const answer: core.responses.ListVcnsResponse = await clients.network(region).listVcns({ compartmentId, ...page_arg(page) });
         return { items: answer.items, next: answer.opcNextPage };
       });
-      return items.map(resource_of);
+      return items.map(resourceRecord_convert);
     },
     async subnets_list(region: string, compartmentId: string): Promise<OciVcnMemberRecord[]> {
       const items: core.models.Subnet[] = await pages_drain(async (page) => {
         const answer: core.responses.ListSubnetsResponse = await clients.network(region).listSubnets({ compartmentId, ...page_arg(page) });
         return { items: answer.items, next: answer.opcNextPage };
       });
-      return items.map((subnet: core.models.Subnet): OciVcnMemberRecord => ({ ...resource_of(subnet), vcnId: subnet.vcnId }));
+      return items.map((subnet: core.models.Subnet): OciVcnMemberRecord => ({ ...resourceRecord_convert(subnet), vcnId: subnet.vcnId }));
     },
     async nsgs_list(region: string, compartmentId: string): Promise<OciVcnMemberRecord[]> {
       const items: core.models.NetworkSecurityGroup[] = await pages_drain(async (page) => {
         const answer: core.responses.ListNetworkSecurityGroupsResponse = await clients.network(region).listNetworkSecurityGroups({ compartmentId, ...page_arg(page) });
         return { items: answer.items, next: answer.opcNextPage };
       });
-      return items.map((group: core.models.NetworkSecurityGroup): OciVcnMemberRecord => ({ ...resource_of(group), vcnId: group.vcnId }));
+      return items.map((group: core.models.NetworkSecurityGroup): OciVcnMemberRecord => ({ ...resourceRecord_convert(group), vcnId: group.vcnId }));
     },
     async loadBalancers_list(region: string, compartmentId: string): Promise<OciLoadBalancerRecord[]> {
       const items: loadbalancer.models.LoadBalancer[] = await pages_drain(async (page) => {
@@ -303,7 +303,7 @@ export function ociResourceApi_make(provider: common.AuthenticationDetailsProvid
         return { items: answer.items, next: answer.opcNextPage };
       });
       return items.map((balancer: loadbalancer.models.LoadBalancer): OciLoadBalancerRecord => ({
-        ...resource_of(balancer),
+        ...resourceRecord_convert(balancer),
         ipAddresses: (balancer.ipAddresses ?? []).map((address: loadbalancer.models.IpAddress): string => address.ipAddress),
         shapeName: balancer.shapeName,
         ...(balancer.shapeDetails?.minimumBandwidthInMbps !== undefined ? { minimumMbps: balancer.shapeDetails.minimumBandwidthInMbps } : {}),
@@ -314,14 +314,14 @@ export function ociResourceApi_make(provider: common.AuthenticationDetailsProvid
         const answer: core.responses.ListVolumesResponse = await clients.storage(region).listVolumes({ compartmentId, ...page_arg(page) });
         return { items: answer.items, next: answer.opcNextPage };
       });
-      return items.map((volume: core.models.Volume): OciVolumeRecord => ({ ...resource_of(volume), sizeInGBs: volume.sizeInGBs ?? 0, availabilityDomain: volume.availabilityDomain ?? '', ...(volume.vpusPerGB !== undefined ? { vpusPerGB: volume.vpusPerGB } : {}) }));
+      return items.map((volume: core.models.Volume): OciVolumeRecord => ({ ...resourceRecord_convert(volume), sizeInGBs: volume.sizeInGBs ?? 0, availabilityDomain: volume.availabilityDomain ?? '', ...(volume.vpusPerGB !== undefined ? { vpusPerGB: volume.vpusPerGB } : {}) }));
     },
     async bootVolumes_list(region: string, compartmentId: string, availabilityDomain: string): Promise<OciVolumeRecord[]> {
       const items: core.models.BootVolume[] = await pages_drain(async (page) => {
         const answer: core.responses.ListBootVolumesResponse = await clients.storage(region).listBootVolumes({ compartmentId, availabilityDomain, ...page_arg(page) });
         return { items: answer.items, next: answer.opcNextPage };
       });
-      return items.map((volume: core.models.BootVolume): OciVolumeRecord => ({ ...resource_of(volume), sizeInGBs: volume.sizeInGBs ?? 0, availabilityDomain: volume.availabilityDomain ?? '', ...(volume.vpusPerGB !== undefined ? { vpusPerGB: volume.vpusPerGB } : {}) }));
+      return items.map((volume: core.models.BootVolume): OciVolumeRecord => ({ ...resourceRecord_convert(volume), sizeInGBs: volume.sizeInGBs ?? 0, availabilityDomain: volume.availabilityDomain ?? '', ...(volume.vpusPerGB !== undefined ? { vpusPerGB: volume.vpusPerGB } : {}) }));
     },
     async volumeAttachments_list(region: string, compartmentId: string): Promise<OciAttachmentRecord[]> {
       const items: core.models.VolumeAttachment[] = await pages_drain(async (page) => {
@@ -355,7 +355,7 @@ export function ociResourceApi_make(provider: common.AuthenticationDetailsProvid
       for (const summary of summaries) {
         const answer: objectstorage.responses.GetBucketResponse = await clients.objects(region).getBucket({ namespaceName: namespace, bucketName: summary.name });
         const bucket: objectstorage.models.Bucket = answer.bucket;
-        buckets.push({ ...resource_of({ ...bucket, id: bucket.id ?? `${namespace}/${bucket.name}`, displayName: bucket.name, lifecycleState: 'ACTIVE' }), raw: bucket });
+        buckets.push({ ...resourceRecord_convert({ ...bucket, id: bucket.id ?? `${namespace}/${bucket.name}`, displayName: bucket.name, lifecycleState: 'ACTIVE' }), raw: bucket });
       }
       return buckets;
     },
@@ -366,7 +366,7 @@ export function ociResourceApi_make(provider: common.AuthenticationDetailsProvid
         });
         return { items: answer.listObjects.objects, next: answer.listObjects.nextStartWith };
       });
-      return items.map((object: objectstorage.models.ObjectSummary): OciObjectRecord => ({ name: object.name, size: object.size ?? 0, timeModified: iso_of(object.timeModified) }));
+      return items.map((object: objectstorage.models.ObjectSummary): OciObjectRecord => ({ name: object.name, size: object.size ?? 0, timeModified: iso_format(object.timeModified) }));
     },
     async pars_list(region: string, namespace: string, bucket: string): Promise<OciParRecord[]> {
       const items: objectstorage.models.PreauthenticatedRequestSummary[] = await pages_drain(async (page) => {
@@ -374,7 +374,7 @@ export function ociResourceApi_make(provider: common.AuthenticationDetailsProvid
         return { items: answer.items, next: answer.opcNextPage };
       });
       return items.map((par: objectstorage.models.PreauthenticatedRequestSummary): OciParRecord => ({
-        name: par.name, objectName: par.objectName ?? null, accessType: String(par.accessType), timeExpires: iso_of(par.timeExpires),
+        name: par.name, objectName: par.objectName ?? null, accessType: String(par.accessType), timeExpires: iso_format(par.timeExpires),
       }));
     },
     async object_get(region: string, namespace: string, bucket: string, object: string): Promise<Buffer> {
@@ -388,7 +388,7 @@ export function ociResourceApi_make(provider: common.AuthenticationDetailsProvid
           const answer: dns.responses.ListZonesResponse = await clients.dns(region).listZones({ compartmentId, scope, ...page_arg(page) });
           return { items: answer.items, next: answer.opcNextPage };
         });
-        zones.push(...items.map((zone: dns.models.ZoneSummary): OciResourceRecord => resource_of({ ...zone, displayName: zone.name })));
+        zones.push(...items.map((zone: dns.models.ZoneSummary): OciResourceRecord => resourceRecord_convert({ ...zone, displayName: zone.name })));
       }
       return zones;
     },

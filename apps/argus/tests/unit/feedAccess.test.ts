@@ -6,15 +6,15 @@
  * names, the line each holder's × runs, and the marks themselves.
  */
 import { describe, it, expect, jest } from '@jest/globals';
-import { access_wire, groupsOf_user, holderLine_of, holders_of, shareEntry_of } from '../../src/app/access.js';
+import { access_wire, groupsOf_user, holderLine_format, holders_extract, shareEntry_derive } from '../../src/app/access.js';
 import type { ExecuteOutcome } from '../../src/calypso/client.js';
 
 const outcome = (model: unknown): ExecuteOutcome => ({ envelopes: [{ status: 'ok', rendered: '', model } as never], liveChannels: new Set() });
 
 describe('reading access', () => {
   it('reads users, groups and the public flag from getfacl, and nothing from another model', () => {
-    expect(holders_of(outcome({ kind: 'fs.acl', data: [{ path: 'feed_12', usernames: ['ann'], groups: ['lab'], public: true }] }))).toEqual({ users: ['ann'], groups: ['lab'], public: true });
-    expect(holders_of(outcome({ kind: 'fs.cwd', data: {} }))).toBeNull();
+    expect(holders_extract(outcome({ kind: 'fs.acl', data: [{ path: 'feed_12', usernames: ['ann'], groups: ['lab'], public: true }] }))).toEqual({ users: ['ann'], groups: ['lab'], public: true });
+    expect(holders_extract(outcome({ kind: 'fs.cwd', data: {} }))).toBeNull();
   });
 
   it('reads the groups a user belongs to from /etc/group', () => {
@@ -26,20 +26,20 @@ describe('reading access', () => {
 
 describe('the lines access changes run', () => {
   it('takes a pill entry as it is and a typed name as a user', () => {
-    expect(shareEntry_of('g:lab:r')).toBe('g:lab:r');
-    expect(shareEntry_of('o::r')).toBe('o::r');
-    expect(shareEntry_of('ann')).toBe('u:ann:r');
+    expect(shareEntry_derive('g:lab:r')).toBe('g:lab:r');
+    expect(shareEntry_derive('o::r')).toBe('o::r');
+    expect(shareEntry_derive('ann')).toBe('u:ann:r');
   });
 
   it('withdraws a user or a group by setfacl -x, and PUBLIC by making the feed private', () => {
-    expect(holderLine_of(12, { kind: 'user', name: 'ann' })).toBe("setfacl -x u:'ann' feed_12");
-    expect(holderLine_of(12, { kind: 'group', name: 'lab' })).toBe("setfacl -x g:'lab' feed_12");
-    expect(holderLine_of(12, { kind: 'public' })).toBe('setfacl -m o::- feed_12');
+    expect(holderLine_format(12, { kind: 'user', name: 'ann' })).toBe("setfacl -x u:'ann' feed_12");
+    expect(holderLine_format(12, { kind: 'group', name: 'lab' })).toBe("setfacl -x g:'lab' feed_12");
+    expect(holderLine_format(12, { kind: 'public' })).toBe('setfacl -m o::- feed_12');
   });
 });
 
 describe('the holder marks', () => {
-  const verbs = access_wire({ terminal: {} as never, client: {} as never }, { ask_onPane: jest.fn(async () => null), promptUser: () => 'me', changed: jest.fn() });
+  const verbs = access_wire({ terminal: {} as never, client: {} as never }, { askOnPane_await: jest.fn(async () => null), promptUser: () => 'me', changed: jest.fn() });
 
   it('says nobody when nobody holds it', () => {
     expect(verbs.holders_build('dag', 12, { users: [], groups: [], public: false }).textContent).toBe('SHARED WITH NOBODY');

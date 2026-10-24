@@ -6,7 +6,7 @@
  * Singular/plural aliases: group / groups
  */
 import chalk from 'chalk';
-import { commandArgs_process, ParsedArgs, cliOptions_from, resourceListOptions_refusal, resourceSearchTerm_refusal, resourceSearch_args } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_extract, resourceListOptions_refusal, resourceSearchTerm_refusal, resourceSearch_args } from '../utils.js';
 import { groups_fetchList, GroupListResult } from '@fnndsc/chili/commands/groups/list.js';
 import { groupFields_fetch } from '@fnndsc/chili/commands/groups/fields.js';
 import {
@@ -150,7 +150,7 @@ export async function builtin_group(args: string[]): Promise<CommandEnvelope> {
       return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
     }
     try {
-      const { groups, selectedFields, totalCount }: GroupListResult = await groups_fetchList(cliOptions_from(parsed));
+      const { groups, selectedFields, totalCount }: GroupListResult = await groups_fetchList(cliOptions_extract(parsed));
       if (groups.length === 0) { return envelope_ok(`${chalk.gray('No groups found.')}\n`); }
       return envelope_ok(table_render(groups, selectedFields, { title: { title: 'Groups', justification: 'center' }, pagination: totalCount !== undefined ? { shown: groups.length, total: totalCount } : undefined }));
     } catch (e: unknown) {

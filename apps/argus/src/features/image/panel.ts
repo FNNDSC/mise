@@ -95,7 +95,7 @@ function bytes_format(bytes: number): string {
 }
 
 /** The hue a modality wears on the frame. */
-function modalityHue_of(modality: string): string {
+function modalityHue_derive(modality: string): string {
   const upper: string = modality.toUpperCase();
   if (upper === 'MR' || upper === 'CT' || upper === 'PT') return upper;
   return 'OT';
@@ -238,7 +238,7 @@ export class ImagePanel {
     this.retryPill.hidden = true;
     this.presets_paint(model.modality);
     this.siblings = options.siblings ?? [];
-    this.pane.dataset['modality'] = modalityHue_of(model.modality);
+    this.pane.dataset['modality'] = modalityHue_derive(model.modality);
     // The header keeps one line, so a long description is ellipsised there;
     // the whole of it stays reachable as the element's own title.
     this.title.textContent = `IMAGE ${model.modality.toUpperCase()} ${model.seriesDescription}`.trim();
@@ -276,7 +276,7 @@ export class ImagePanel {
       if (this.engine !== engine) return;
       const name: string = path.split('/').pop() ?? path;
       try {
-        const response: Response = await fetch(this.handlers.source.url_of(path));
+        const response: Response = await fetch(this.handlers.source.url_resolve(path));
         if (!response.ok) {
           this.handlers.note(`image: ${name}: HTTP ${response.status}`);
           continue;
@@ -461,7 +461,7 @@ export class ImagePanel {
 
   /** Cycles the modality's window presets on the PRESET block. */
   private preset_cycle(): void {
-    const presets: WindowLevelPreset[] = this.presets_for(this.series?.modality ?? 'NIFTI');
+    const presets: WindowLevelPreset[] = this.presets_select(this.series?.modality ?? 'NIFTI');
     if (presets.length === 0) return;
     this.presetIndex = (this.presetIndex + 1) % presets.length;
     const preset: WindowLevelPreset | undefined = presets[this.presetIndex];
@@ -469,7 +469,7 @@ export class ImagePanel {
     if (this.wl_set(preset.lower, preset.upper)) this.presetPill.textContent = preset.name.toUpperCase();
   }
 
-  private presets_for(modality: string): WindowLevelPreset[] {
+  private presets_select(modality: string): WindowLevelPreset[] {
     const upper: string = modality.toUpperCase();
     return WINDOW_LEVEL_PRESETS.filter((preset: WindowLevelPreset): boolean => preset.modalities.length === 0 || preset.modalities.includes(upper));
   }
@@ -477,7 +477,7 @@ export class ImagePanel {
   /** The PRESET block shows only where the modality has presets: a block that cannot act is no block. */
   private presets_paint(modality: string): void {
     this.presetIndex = -1;
-    const presets: WindowLevelPreset[] = this.presets_for(modality);
+    const presets: WindowLevelPreset[] = this.presets_select(modality);
     this.presetPill.hidden = presets.length === 0;
     this.presetPill.textContent = 'PRESET';
   }

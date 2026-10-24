@@ -12,9 +12,9 @@ import {
   PULSE_TRIP_MS,
   REPLAY_REST_MS,
   WAVE_STEP_MS,
-  haloRadius_of,
+  haloRadius_compute,
   paint_resolve,
-  tubeMode_of,
+  tubeMode_derive,
   type HandoffField,
   type LabelField,
   type Palette,
@@ -59,7 +59,7 @@ export function bodies_draw(placed: ReadonlyArray<PlacedNode>, palette: Palette,
   for (const item of placed) {
     for (const parentId of item.node.parentIds) childrenOf.set(parentId, [...(childrenOf.get(parentId) ?? []), item]);
   }
-  const heldCentre_of = (id: string): THREE.Vector3 | null => {
+  const heldCentre_compute = (id: string): THREE.Vector3 | null => {
     const children: PlacedNode[] = childrenOf.get(id) ?? [];
     if (children.length === 0) return null;
     const centre: THREE.Vector3 = new THREE.Vector3();
@@ -71,8 +71,8 @@ export function bodies_draw(placed: ReadonlyArray<PlacedNode>, palette: Palette,
     if (node.caption !== undefined) {
       // A ghost's words stand over what it holds: the layout parks the
       // anchor itself wherever its pulls cancel, often between clouds.
-      const held: THREE.Vector3 | null = node.ghost === true ? heldCentre_of(node.id) : null;
-      const reach: number = held !== null ? 0 : node.halo === true ? haloRadius_of(node.count ?? 1) : radius;
+      const held: THREE.Vector3 | null = node.ghost === true ? heldCentre_compute(node.id) : null;
+      const reach: number = held !== null ? 0 : node.halo === true ? haloRadius_compute(node.count ?? 1) : radius;
       ports.labels.caption_add(node.id, node.caption, held ?? position, reach, palette.done, node.dim === true, node.count ?? 1);
     }
     if (node.ghost === true && node.halo !== true) continue;
@@ -80,7 +80,7 @@ export function bodies_draw(placed: ReadonlyArray<PlacedNode>, palette: Palette,
       if (node.halo === true) {
         // A cluster's handle while the scene draws stars: a soft glow at its
         // anchor, facing the camera, sized as its halo would be.
-        ports.stars.nebula_add(node.id, position, haloRadius_of(node.count ?? 1), palette.edge, node.dim === true);
+        ports.stars.nebula_add(node.id, position, haloRadius_compute(node.count ?? 1), palette.edge, node.dim === true);
         continue;
       }
       starred.push({
@@ -95,7 +95,7 @@ export function bodies_draw(placed: ReadonlyArray<PlacedNode>, palette: Palette,
       continue;
     }
     if (node.halo === true) {
-      ports.spheres.halo_add(node.id, position, haloRadius_of(node.count ?? 1), palette.edge, node.dim === true);
+      ports.spheres.halo_add(node.id, position, haloRadius_compute(node.count ?? 1), palette.edge, node.dim === true);
       continue;
     }
     // 2D is drawn flat: discs, not lit spheres — the schematic reading
@@ -125,14 +125,14 @@ export function edges_draw(placed: ReadonlyArray<PlacedNode>, byId: ReadonlyMap<
   const threadStarts: number[] = [];
   let deepest: number = 0;
   const depth: Map<string, number> = new Map();
-  const depth_of = (id: string, seen: Set<string> = new Set()): number => {
+  const depth_compute = (id: string, seen: Set<string> = new Set()): number => {
     const known: number | undefined = depth.get(id);
     if (known !== undefined) return known;
     if (seen.has(id)) return 0;
     seen.add(id);
     const node: SpaceNode | undefined = byId.get(id)?.node;
     const parents: string[] = node === undefined ? [] : [...node.parentIds, ...node.joinParentIds].filter((p: string): boolean => byId.get(p)?.node.ghost !== true && byId.has(p));
-    const d: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((p: string): number => depth_of(p, seen)));
+    const d: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((p: string): number => depth_compute(p, seen)));
     depth.set(id, d);
     return d;
   };
@@ -142,8 +142,8 @@ export function edges_draw(placed: ReadonlyArray<PlacedNode>, byId: ReadonlyMap<
     threads.push(from.x, from.y, from.z, to.x, to.y, to.z);
     threadEnds.push(fromId, owner.id);
     threadColors.push(color.r * k, color.g * k, color.b * k, color.r * k, color.g * k, color.b * k);
-    const mode: number = dim ? 0 : tubeMode_of(owner.look.state);
-    const d: number = mode === 0 ? 0 : depth_of(fromId);
+    const mode: number = dim ? 0 : tubeMode_derive(owner.look.state);
+    const d: number = mode === 0 ? 0 : depth_compute(fromId);
     deepest = Math.max(deepest, d);
     threadModes.push(mode);
     threadStarts.push(d * WAVE_STEP_MS);

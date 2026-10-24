@@ -63,12 +63,12 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
    * The pane of a kind a target stands for: itself, the one in its link
    * group, or the only one on stage.
    */
-  const panel_forTarget = <K extends PanelKind>(kind: K, paneId: string): PanelKinds[K] | undefined => {
+  const panel_findForTarget = <K extends PanelKind>(kind: K, paneId: string): PanelKinds[K] | undefined => {
     const shown: Set<string> = new Set(layout.panes_shown());
-    const group: string = subjects.group_of(paneId);
+    const group: string = subjects.group_resolve(paneId);
     const onStage: Array<[string, PanelKinds[K]]> = panels.entries(kind).filter(([id]: [string, PanelKinds[K]]): boolean => shown.has(id));
     return panels.get(kind, paneId)
-      ?? onStage.find(([id]: [string, PanelKinds[K]]): boolean => subjects.group_of(id) === group)?.[1]
+      ?? onStage.find(([id]: [string, PanelKinds[K]]): boolean => subjects.group_resolve(id) === group)?.[1]
       ?? (onStage.length === 1 ? onStage[0]?.[1] : undefined);
   };
 
@@ -182,7 +182,7 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
     const dress = (paneId: string, ordinal: number): void => {
       const kind: string | null = paneKind_get(paneId);
       if (kind === 'dag' && paneId !== anchorId) lines.push(`pane %${ordinal} claim runs`);
-      if (kind === 'files' && paneId !== anchorId && !(subjects.group_of(paneId) !== paneId)) lines.push(`pane %${ordinal} claim files`);
+      if (kind === 'files' && paneId !== anchorId && !(subjects.group_resolve(paneId) !== paneId)) lines.push(`pane %${ordinal} claim files`);
       // A files pane says the folder it shows (a view never moves the
       // receiver's working directory, so it is listed there, rooted).
       const folder: string | null = kind === 'files' ? panels.get('files', paneId)?.path_current() ?? null : null;
@@ -211,7 +211,7 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
       const secondKind: string | null = paneKind_get(secondAnchor);
       const binding: string = secondKind === 'view'
         ? 'viewer'
-        : secondKind === 'files' && subjects.group_of(secondAnchor) !== secondAnchor ? 'fs' : 'unlinked';
+        : secondKind === 'files' && subjects.group_resolve(secondAnchor) !== secondAnchor ? 'fs' : 'unlinked';
       lines.push(`pane %${ordinal} bind ${binding}`);
       lines.push(`pane %${ordinal} split ${node.dir === 'col' ? 'right' : 'below'}`);
       const newOrdinal: number = ++counter;
@@ -253,7 +253,7 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
     paneRect_get: (id: string): DOMRect | null => document.querySelector<HTMLElement>(`.layout-leaf[data-leaf="${id}"]`)?.getBoundingClientRect() ?? null,
     paneMount_get: (id: string): HTMLElement | null => paneInstance_get(id)?.mount ?? null,
     paneKind_get,
-    paneLinked_get: (id: string): boolean => subjects.group_of(id) !== id,
+    paneLinked_get: (id: string): boolean => subjects.group_resolve(id) !== id,
     feed_enter: hooks.feed_enter,
     consoleZoom_toggle: hooks.consoleZoom_toggle,
     launcher_enter: hooks.launcher_enter,
@@ -268,7 +268,7 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
     dag_jump: (paneId: string, target: string, enter: boolean = false): boolean => {
       const panel = panels.get('dag', paneId) ?? panels.values('dag')[0];
       if (panel === undefined) return false;
-      panel.jump_to(target, enter);
+      panel.target_jumpTo(target, enter);
       return true;
     },
     node_immerse: (paneId: string): boolean => {
@@ -288,7 +288,7 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
     },
     image_open: (paneId: string | null, path: string, options?: { force?: boolean }): Promise<string> => hooks.image_open(paneId, path, options ?? {}),
     image_control: async (paneId: string, verb: string, args: string[]): Promise<string> => {
-      const panel: ImagePanel | undefined = panel_forTarget('image', paneId);
+      const panel: ImagePanel | undefined = panel_findForTarget('image', paneId);
       if (panel === undefined) return `image ${verb}: no image pane on stage for '${paneId}'`;
       return imageVerb_run(panel, verb, args);
     },
@@ -302,7 +302,7 @@ export function argusHost_build(context: Pick<HostContext, 'layout' | 'panels' |
       return panel.control(verb, args);
     },
     tags_control: (paneId: string, verb: string, args: string[]): string => {
-      const panel: TagsPanel | undefined = panel_forTarget('tags', paneId);
+      const panel: TagsPanel | undefined = panel_findForTarget('tags', paneId);
       if (panel === undefined) return `tags ${verb}: no tags pane on stage for '${paneId}'`;
       return tagsVerb_run(panel, verb, args);
     },

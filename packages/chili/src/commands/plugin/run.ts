@@ -6,7 +6,7 @@
  *
  * @module
  */
-import { Dictionary, dictionary_fromCLI } from "@fnndsc/cumin";
+import { Dictionary, dictionary_parseFromCLI } from "@fnndsc/cumin";
 import { plugin_run as salsaPlugin_run } from "@fnndsc/salsa";
 import { PluginInstance } from "../../models/plugin.js";
 
@@ -22,7 +22,7 @@ import { PluginInstance } from "../../models/plugin.js";
 export async function plugin_execute(searchable: string, params: string): Promise<PluginInstance | null> {
   let parsedParams: Dictionary = {};
   try {
-    parsedParams = dictionary_fromCLI(params);
+    parsedParams = dictionary_parseFromCLI(params);
   } catch (e: unknown) {
     throw new Error(`Error parsing plugin parameters: ${e}`);
   }

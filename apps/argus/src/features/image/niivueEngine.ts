@@ -96,14 +96,14 @@ export class NiivueEngine implements ImageEngine {
     try {
       // Absolute, resolved against the page: the source's URL is relative to
       // the page's mount, and glued to the origin it lost its slash.
-      await nv.loadVolumes([{ url: byteUrl_absolute(this.host.source.url_of(this.path), location.href), name }]);
+      await nv.loadVolumes([{ url: byteUrl_absolute(this.host.source.url_resolve(this.path), location.href), name }]);
     } catch (error: unknown) {
       this.refused = 1;
       this.host.progress_set(null);
       this.host.readout_set('REFUSED 1 OF 1');
       this.host.note(`image: ${this.path}: ${error instanceof Error ? error.message : String(error)}`);
       // The route says why; the loader only that it failed.
-      const why: string = await refusal_explain(byteUrl_absolute(this.host.source.url_of(this.path), location.href));
+      const why: string = await refusal_explain(byteUrl_absolute(this.host.source.url_resolve(this.path), location.href));
       this.host.readout_set(`REFUSED 1 OF 1 · ${why}`);
       this.host.note(`image: ${this.path}: ${why.toLowerCase()}`);
       return;

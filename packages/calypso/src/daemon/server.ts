@@ -29,7 +29,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { HostedEngine, CompletionResult } from './engine.js';
-import { staticRequest_handle, contentDisposition_forPath, contentType_forPath } from './static.js';
+import { staticRequest_handle, contentDisposition_format, contentType_derive } from './static.js';
 import { token_matches } from './token.js';
 import { RequestBroker } from './broker.js';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
@@ -38,7 +38,7 @@ import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancel
 import type { z } from 'zod';
 import type { Terminals, TerminalViewer } from './terminals.js';
 import { Lane } from './lane.js';
-import { claim_match, claimCandidates_of, type SurfaceClaim } from './claims.js';
+import { claim_match, claimCandidates_list, type SurfaceClaim } from './claims.js';
 import { DownloadLedger, downloadId_valid, type DownloadReport, type OpenedFile } from './downloads.js';
 
 /**
@@ -595,11 +595,11 @@ export class CalypsoDaemon {
     try {
       const bytes: Buffer = await read(filePath);
       const headers: Record<string, string | number> = {
-        'content-type': contentType_forPath(filePath),
+        'content-type': contentType_derive(filePath),
         'content-length': bytes.length,
       };
       if (query.get('download') === '1') {
-        headers['content-disposition'] = contentDisposition_forPath(filePath);
+        headers['content-disposition'] = contentDisposition_format(filePath);
       }
       response.writeHead(200, headers);
       response.end(request.method === 'HEAD' ? undefined : bytes);
@@ -664,9 +664,9 @@ export class CalypsoDaemon {
         return;
       }
     }
-    const headers: Record<string, string | number> = { 'content-type': contentType_forPath(filePath) };
+    const headers: Record<string, string | number> = { 'content-type': contentType_derive(filePath) };
     if (opened.size !== undefined) headers['content-length'] = opened.size;
-    if (query.get('download') === '1') headers['content-disposition'] = contentDisposition_forPath(filePath);
+    if (query.get('download') === '1') headers['content-disposition'] = contentDisposition_format(filePath);
     if (probe && dl !== null) {
       // The probe's answer is the file's headers; the bytes wait for the save.
       if (!this.downloads.park(dl, opened)) {
@@ -801,7 +801,7 @@ export class CalypsoDaemon {
         // A line in a surface's own language is that surface's to run: it never
         // reaches the engine, and needs no turn on the lane (the session is not
         // touched by it).
-        const claimant: Surface | 'absent' | null = value.instrument === true ? null : this.claimant_for(attached, value.line);
+        const claimant: Surface | 'absent' | null = value.instrument === true ? null : this.claimant_find(attached, value.line);
         if (claimant !== null) {
           void this.surfaceLine_run(attached, value, claimant);
           return;
@@ -932,7 +932,7 @@ export class CalypsoDaemon {
    * @param line - The line.
    * @returns The claimant, 'absent', or null.
    */
-  private claimant_for(origin: Surface, line: string): Surface | 'absent' | null {
+  private claimant_find(origin: Surface, line: string): Surface | 'absent' | null {
     const claiming = (surface: Surface | null | undefined): surface is Surface =>
       surface !== null && surface !== undefined && surface !== origin && this.surfaces.has(surface) && claim_match(surface.capabilities.claims, line) !== null;
     const owner: unknown = origin.capabilities.terminal === undefined ? null : this.terminals?.viewer_get(origin.capabilities.terminal)?.owner?.();
@@ -982,7 +982,7 @@ export class CalypsoDaemon {
    */
   private terminalsOf(surface: Surface): string[] {
     const viewer: TerminalViewer | undefined = this.viewerOf.get(surface);
-    return viewer === undefined ? [] : this.terminals?.ids_of(viewer) ?? [];
+    return viewer === undefined ? [] : this.terminals?.ids_list(viewer) ?? [];
   }
 
   /**
@@ -993,7 +993,7 @@ export class CalypsoDaemon {
    * @param text - The note.
    */
   private note_relay(viewer: TerminalViewer, text: string): void {
-    const owned: string[] = this.terminals?.ids_of(viewer) ?? [];
+    const owned: string[] = this.terminals?.ids_list(viewer) ?? [];
     if (owned.length === 0) return;
     for (const surface of this.surfaces) {
       if (surface.capabilities.terminal !== undefined && owned.includes(surface.capabilities.terminal)) {
@@ -1029,7 +1029,7 @@ export class CalypsoDaemon {
     const running: Surface | null = this.currentOrigin;
     // A surface's silent housekeeping is not what the operator stops. A line
     // whose surface has gone is anyone's to stop: nobody else can.
-    if (running !== null && !this.currentInstrument && (this.stopper_of(running) === origin || !this.surfaces.has(running))) {
+    if (running !== null && !this.currentInstrument && (this.stopper_resolve(running) === origin || !this.surfaces.has(running))) {
       this.command_stop();
       return;
     }
@@ -1056,7 +1056,7 @@ export class CalypsoDaemon {
    * @param surface - The surface that issued the command.
    * @returns The surface whose STOP reaches it.
    */
-  private stopper_of(surface: Surface): Surface {
+  private stopper_resolve(surface: Surface): Surface {
     const owner: unknown = surface.capabilities.terminal === undefined ? null : this.terminals?.viewer_get(surface.capabilities.terminal)?.owner?.();
     return owner !== null && owner !== undefined && this.surfaces.has(owner as Surface) ? owner as Surface : surface;
   }
@@ -1293,7 +1293,7 @@ export class CalypsoDaemon {
     this.currentStartedAt = startedAt;
     try {
       // A STOP pressed while this command waited its turn ends it unrun.
-      const stopper: Surface = this.stopper_of(origin);
+      const stopper: Surface = this.stopper_resolve(origin);
       const pendingAt: number | undefined = message.instrument === true ? undefined : this.stopPending.get(stopper);
       if (pendingAt !== undefined) this.stopPending.delete(stopper);
       if (pendingAt !== undefined && Date.now() - pendingAt < STOP_PENDING_MS) {
@@ -1385,7 +1385,7 @@ export class CalypsoDaemon {
     // clean and this one finds its own on return.
     const engineTurn: unknown = this.engine.turn_leave?.();
     // A command waiting aside on a task stays the operator's to stop.
-    const stopper: Surface | null = stoppable && mine.origin !== null && !mine.instrument ? this.stopper_of(mine.origin) : null;
+    const stopper: Surface | null = stoppable && mine.origin !== null && !mine.instrument ? this.stopper_resolve(mine.origin) : null;
     if (stopper !== null && engineTurn !== undefined) this.asideTurns.set(stopper, engineTurn);
     this.slot_restore(SLOT_EMPTY);
     this.lane.release();
@@ -1676,7 +1676,7 @@ export class CalypsoDaemon {
       const result: CompletionResult = await this.engine.line_complete(message.prefix);
       // The surfaces' own subjects and claimed verbs complete like any command.
       const claims: SurfaceClaim[] = [...this.surfaces].flatMap((each: Surface): SurfaceClaim[] => each.capabilities.claims);
-      const offered: string[] = claimCandidates_of(claims, message.prefix).filter((word: string): boolean => !result.candidates.includes(word));
+      const offered: string[] = claimCandidates_list(claims, message.prefix).filter((word: string): boolean => !result.candidates.includes(word));
       this.send(socket, {
         type: 'complete',
         id: message.id,

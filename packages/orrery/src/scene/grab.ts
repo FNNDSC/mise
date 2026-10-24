@@ -11,7 +11,7 @@ import { NODE_RADIUS } from '../layout/index.js';
 import { PullSimulation, type PullNode } from '../layout/pull.js';
 import { DRAG_THRESHOLD_PX, type Picker } from '../controls/index.js';
 import type { SpaceNode } from './node.js';
-import { moleculeRadii_of } from './settle.js';
+import { moleculeRadii_computeForSpace } from './settle.js';
 
 /** What a grab reads of the scene. */
 export interface GrabPorts {
@@ -196,7 +196,7 @@ export class GrabSession {
    */
   private simulation_begin(nodeId: string): void {
     const nodes: ReadonlyArray<SpaceNode> = this.ports.nodes();
-    const radii: Map<string, number> = moleculeRadii_of(nodes);
+    const radii: Map<string, number> = moleculeRadii_computeForSpace(nodes);
     const bodies: PullNode[] = [...this.ports.meshes()].map(([id, mesh]: [string, THREE.Mesh]): PullNode => ({
       id,
       position: [mesh.position.x, mesh.position.y, mesh.position.z],

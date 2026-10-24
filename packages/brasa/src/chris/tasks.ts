@@ -34,7 +34,7 @@ export function feedTask_state(feed: ProcFeed): TaskState {
  * @param feed - The feed.
  * @returns The task.
  */
-export function feedTask_of(feed: ProcFeed): Task {
+export function feedTask_build(feed: ProcFeed): Task {
   const settled: number = feed.finishedJobs + feed.erroredJobs + feed.cancelledJobs;
   const total: number = settled + feed.startedJobs + feed.scheduledJobs + feed.createdJobs;
   return {
@@ -51,5 +51,5 @@ export const chrisJobsSource: TaskSource = {
   id: 'jobs',
   label: 'ChRIS feeds and their jobs',
   mounted: true,
-  list: async (): Promise<Task[]> => procCache_get().feeds_find('').map(feedTask_of),
+  list: async (): Promise<Task[]> => procCache_get().feeds_find('').map(feedTask_build),
 };

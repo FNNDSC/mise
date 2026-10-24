@@ -18,7 +18,7 @@ export const ADOPTED_COMPARTMENT: StepRecord = { state: 'done', note: 'its own c
  * @param record - Its state.
  * @returns Every step, with its state and what it rests on.
  */
-export function builtSteps_of(record: DomainRecord): StepState[] {
+export function builtSteps_derive(record: DomainRecord): StepState[] {
   return BUILD_STEPS.map((step: string, index: number): StepState => {
     // An adopted domain came with its compartment; one adopted before that step existed keeps no record of it.
     const kept: StepRecord | undefined = record.steps[step] ?? (step === 'compartment' && record.adopted !== undefined ? ADOPTED_COMPARTMENT : undefined);
@@ -39,11 +39,11 @@ export function builtDomain_read(store: DomainStore, name: string): HarborDomain
   if (record === null) return null;
   return {
     name,
-    root: store.folder_of(name),
+    root: store.folder_derive(name),
     spec: store.spec_read(name)?.text ?? null,
     settings: { CLUSTER_NAME: name, BASE_DOMAIN: record.baseDomain, OCI_REGION: record.region, ...(record.compartmentId !== undefined ? { OCI_COMPARTMENT_OCID: record.compartmentId } : {}) },
     state: { ...record },
-    steps: builtSteps_of(record),
+    steps: builtSteps_derive(record),
     secrets: store.secrets_list(name),
     cluster: `${name}.${record.baseDomain}`,
     origin: 'built',

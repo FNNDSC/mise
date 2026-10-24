@@ -18,7 +18,7 @@
  *
  * @module
  */
-import { side_is, side_ofFocusWord, splitSelector_of, type Side } from '../app/sides.js';
+import { side_is, side_findByFocusWord, splitSelector_format, type Side } from '../app/sides.js';
 import { viewScript_compose, viewSheet_ask } from '../app/shareView.js';
 
 /** What the language needs from its host (assembled in main.ts). */
@@ -299,16 +299,16 @@ export interface DrawerChord {
 
 /** The drawer chords: the frame's, and those a composition installs. */
 export const DRAWER_CHORDS: DrawerChord[] = [
-  { key: '%', topic: 'pane', selector: splitSelector_of('right'), does: 'split right (tmux)' },
-  { key: '"', topic: 'pane', selector: splitSelector_of('below'), does: 'split below (tmux)' },
-  { key: 'h', topic: 'pane', selector: splitSelector_of('left'), does: 'split left' },
-  { key: 'j', topic: 'pane', selector: splitSelector_of('below'), does: 'split below' },
-  { key: 'k', topic: 'pane', selector: splitSelector_of('above'), does: 'split above' },
-  { key: 'l', topic: 'pane', selector: splitSelector_of('right'), does: 'split right' },
-  { key: 'H', topic: 'pane', selector: splitSelector_of('left'), does: 'move this pane left', move: true },
-  { key: 'J', topic: 'pane', selector: splitSelector_of('below'), does: 'move this pane below', move: true },
-  { key: 'K', topic: 'pane', selector: splitSelector_of('above'), does: 'move this pane above', move: true },
-  { key: 'L', topic: 'pane', selector: splitSelector_of('right'), does: 'move this pane right', move: true },
+  { key: '%', topic: 'pane', selector: splitSelector_format('right'), does: 'split right (tmux)' },
+  { key: '"', topic: 'pane', selector: splitSelector_format('below'), does: 'split below (tmux)' },
+  { key: 'h', topic: 'pane', selector: splitSelector_format('left'), does: 'split left' },
+  { key: 'j', topic: 'pane', selector: splitSelector_format('below'), does: 'split below' },
+  { key: 'k', topic: 'pane', selector: splitSelector_format('above'), does: 'split above' },
+  { key: 'l', topic: 'pane', selector: splitSelector_format('right'), does: 'split right' },
+  { key: 'H', topic: 'pane', selector: splitSelector_format('left'), does: 'move this pane left', move: true },
+  { key: 'J', topic: 'pane', selector: splitSelector_format('below'), does: 'move this pane below', move: true },
+  { key: 'K', topic: 'pane', selector: splitSelector_format('above'), does: 'move this pane above', move: true },
+  { key: 'L', topic: 'pane', selector: splitSelector_format('right'), does: 'move this pane right', move: true },
   { key: 'm', topic: 'pane', selector: '.drawer-mode[data-mode="move"]', does: 'arm MOVE (then a direction)' },
   { key: 'z', topic: 'pane', selector: '.drawer-zoom', does: 'zoom (tmux), or double-click the pane\'s header' },
   { key: 'x', topic: 'pane', selector: '.drawer-close', does: 'close (tmux)' },
@@ -642,7 +642,7 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     if (verb === 'split') {
       if (!side_is(arg)) return 'pane split left|right|above|below';
       const beforeIds: Set<string> = new Set(host.panes_shown());
-      if (!control_click(host, paneId, splitSelector_of(arg))) {
+      if (!control_click(host, paneId, splitSelector_format(arg))) {
         return `pane split: '${paneId}' has no drawer`;
       }
       const created: string | undefined = host.panes_shown().find((id: string): boolean => !beforeIds.has(id));
@@ -671,7 +671,7 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     }
     if (verb === 'flip') return host.pane_flip(paneId);
     if (verb === 'resize') {
-      const side: Side | null = side_ofFocusWord(arg);
+      const side: Side | null = side_findByFocusWord(arg);
       if (side === null) return 'pane resize left|right|up|down [percent]';
       const percent: number = words[2] !== undefined ? Number(words[2]) : 5;
       if (!Number.isFinite(percent) || percent <= 0 || percent > 70) return 'pane resize: the step is a percent, 1 to 70';

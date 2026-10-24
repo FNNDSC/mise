@@ -67,12 +67,12 @@ interface PrefixMatch {
  * const mapper = PathMapper.instance_get();
  *
  * // First resolution
- * const result1 = await mapper.logical_toPhysical('/home/user/public/feed_4');
+ * const result1 = await mapper.logicalPath_resolve('/home/user/public/feed_4');
  * // → Resolves /home/user/public → /SHARED, then feed_4
  * // → Caches intermediate mappings
  *
  * // Second resolution - prefix reuse
- * const result2 = await mapper.logical_toPhysical('/home/user/public/feed_5');
+ * const result2 = await mapper.logicalPath_resolve('/home/user/public/feed_5');
  * // → Reuses cached '/home/user/public' → '/SHARED'
  * // → Resolves only 'feed_5'
  * ```
@@ -127,18 +127,18 @@ export class PathMapper {
    * const mapper = PathMapper.instance_get();
    *
    * // First call: full resolution
-   * const result1 = await mapper.logical_toPhysical('/home/user/public/feed_4');
+   * const result1 = await mapper.logicalPath_resolve('/home/user/public/feed_4');
    * // → Resolves /home/user/public → /SHARED, then feed_4
    * // → Caches: '/home/user/public' → '/SHARED'
    * // → Caches: '/home/user/public/feed_4' → '/SHARED/feed_4'
    *
    * // Second call: prefix reuse
-   * const result2 = await mapper.logical_toPhysical('/home/user/public/feed_5');
+   * const result2 = await mapper.logicalPath_resolve('/home/user/public/feed_5');
    * // → Reuses cached '/home/user/public' → '/SHARED'
    * // → Resolves only 'feed_5'
    * ```
    */
-  async logical_toPhysical(logicalPath: string): Promise<Result<string>> {
+  async logicalPath_resolve(logicalPath: string): Promise<Result<string>> {
     // 1. Validate input
     if (!logicalPath || typeof logicalPath !== 'string') {
       errorStack.stack_push('error', 'Invalid path: path must be a non-empty string');

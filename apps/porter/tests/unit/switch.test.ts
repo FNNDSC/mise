@@ -76,7 +76,7 @@ describe('POST /switch', () => {
     const cookie: string = await login();
     const reply = await door.app.inject({ method: 'POST', url: '/switch', payload: { to: 'stratus', cloud: 'oci' }, headers: { cookie } });
     expect(reply.json()).toMatchObject({ state: 'starting', greet: expect.stringMatching(/^\/greet\//) });
-    expect(host.begun).toEqual([{ identity: STRATUS, configPath: new CredentialStore(stateDir).ociConfig_of(OWNER), spend: false, replace: false }]);
+    expect(host.begun).toEqual([{ identity: STRATUS, configPath: new CredentialStore(stateDir).ociConfig_find(OWNER), spend: false, replace: false }]);
     expect(String(reply.headers['set-cookie'])).toContain(reply.json().key);
   });
 

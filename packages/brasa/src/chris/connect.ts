@@ -26,7 +26,7 @@ import { SingleContext, Client, chrisContext, Context, type TokenConnectOutcome 
  */
 export type SavedSessionStatus = 'restored' | 'no-context' | 'no-token' | 'no-client' | 'invalid-token' | 'unreachable';
 
-/** The result of {@link sessionConnect_fromSaved}. */
+/** The result of {@link sessionFromSaved_connect}. */
 export interface SavedSessionResult {
   status: SavedSessionStatus;
   context: SingleContext;
@@ -51,7 +51,7 @@ function answer_none(error: unknown): boolean {
  *
  * @returns The restore outcome and the resolved context.
  */
-export async function sessionConnect_fromSaved(): Promise<SavedSessionResult> {
+export async function sessionFromSaved_connect(): Promise<SavedSessionResult> {
   const context: SingleContext = await context_getSingle();
 
   if (!context.user || !context.URL) {
@@ -117,7 +117,7 @@ export interface TokenSessionResult {
  * @param token - The token.
  * @returns Connected, or refused with the server's reason.
  */
-export async function sessionConnect_withToken(user: string, url: string, token: string): Promise<TokenSessionResult> {
+export async function sessionWithToken_connect(user: string, url: string, token: string): Promise<TokenSessionResult> {
   const outcome: TokenConnectOutcome = await session.connection.connection_connectWithToken({ user, url, token });
   if (!outcome.connected) {
     session.offline = true;

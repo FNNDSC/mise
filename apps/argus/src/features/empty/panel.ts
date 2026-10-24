@@ -26,7 +26,7 @@ export interface EmptyPanelHandlers {
   /** A model claimed the pane: become `kind`, seeded with these envelopes. */
   claim: (kind: PaneKind, envelopes: WireEnvelope[]) => void;
   /** The pane kind a model claims this pane as (the frame's router, filled by the session's composition). */
-  claimKind_of: (modelKind: string) => PaneKind | undefined;
+  claimKind_find: (modelKind: string) => PaneKind | undefined;
 }
 
 
@@ -84,7 +84,7 @@ export class EmptyPanel {
     }
     for (const envelope of outcome.envelopes) {
       const kind: PaneKind | undefined =
-        envelope.model?.kind !== undefined ? this.handlers.claimKind_of(envelope.model.kind) : undefined;
+        envelope.model?.kind !== undefined ? this.handlers.claimKind_find(envelope.model.kind) : undefined;
       if (kind !== undefined) {
         this.handlers.claim(kind, outcome.envelopes);
         return;

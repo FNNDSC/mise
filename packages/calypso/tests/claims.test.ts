@@ -6,7 +6,7 @@
  *
  * @module
  */
-import { claim_match, claimCandidates_of, type SurfaceClaim } from '../src/daemon/claims';
+import { claim_match, claimCandidates_list, type SurfaceClaim } from '../src/daemon/claims';
 
 const CLAIMS: SurfaceClaim[] = [
   { subject: 'dag' },
@@ -38,17 +38,17 @@ describe('claim_match', () => {
   });
 });
 
-describe('claimCandidates_of', () => {
+describe('claimCandidates_list', () => {
   it('offers subjects for a first word, and a shared subject\'s claimed verbs for a second', () => {
-    expect(claimCandidates_of(CLAIMS, 'de')).toEqual(['desktop']);
-    expect(claimCandidates_of(CLAIMS, 'd')).toEqual(['dag', 'desktop']);
-    expect(claimCandidates_of(CLAIMS, 'file o')).toEqual(['open']);
-    expect(claimCandidates_of(CLAIMS, 'help ')).toEqual(['keys', 'pane']);
+    expect(claimCandidates_list(CLAIMS, 'de')).toEqual(['desktop']);
+    expect(claimCandidates_list(CLAIMS, 'd')).toEqual(['dag', 'desktop']);
+    expect(claimCandidates_list(CLAIMS, 'file o')).toEqual(['open']);
+    expect(claimCandidates_list(CLAIMS, 'help ')).toEqual(['keys', 'pane']);
   });
 
   it('offers nothing past the second word, for a whole subject\'s verbs, or in a compound line', () => {
-    expect(claimCandidates_of(CLAIMS, 'dag c')).toEqual([]);
-    expect(claimCandidates_of(CLAIMS, 'file open x')).toEqual([]);
-    expect(claimCandidates_of(CLAIMS, 'ls | de')).toEqual([]);
+    expect(claimCandidates_list(CLAIMS, 'dag c')).toEqual([]);
+    expect(claimCandidates_list(CLAIMS, 'file open x')).toEqual([]);
+    expect(claimCandidates_list(CLAIMS, 'ls | de')).toEqual([]);
   });
 });

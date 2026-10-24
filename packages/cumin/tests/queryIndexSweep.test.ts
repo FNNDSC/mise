@@ -22,7 +22,7 @@ jest.mock('../src/pacs/chrisPACS', () => ({
 import {
   queryIndex_sweep,
   queryIndex_note,
-  queryRow_toEntry,
+  queryRow_convertToEntry,
   QUERY_SWEEP_PAGE,
   type QuerySweepResult,
 } from '../src/pacs/queryIndexSweep.js';
@@ -48,9 +48,9 @@ function page_of(rows: Record<string, unknown>[]): PageAnswer {
   return { ok: true, value: { tableData: rows } };
 }
 
-describe('queryRow_toEntry', () => {
+describe('queryRow_convertToEntry', () => {
   it('reads a record into an entry', () => {
-    const entry: QueryIndexEntry | null = queryRow_toEntry(row_make(7, { PatientID: '1' }));
+    const entry: QueryIndexEntry | null = queryRow_convertToEntry(row_make(7, { PatientID: '1' }));
     expect(entry?.queryId).toBe(7);
     expect(entry?.server).toBe('PACSDCM');
     expect(entry?.criteria).toEqual({ PatientID: '1' });
@@ -58,13 +58,13 @@ describe('queryRow_toEntry', () => {
   });
 
   it('marks a record with no stored result as a no-hit rather than dropping it', () => {
-    const entry: QueryIndexEntry | null = queryRow_toEntry(row_make(8, { PatientID: '2' }, { result: '' }));
+    const entry: QueryIndexEntry | null = queryRow_convertToEntry(row_make(8, { PatientID: '2' }, { result: '' }));
     expect(entry?.hasResult).toBe(false);
   });
 
   it('refuses a record whose criteria cannot be read', () => {
-    expect(queryRow_toEntry(row_make(9, {}, { query: 'not json' }))).toBeNull();
-    expect(queryRow_toEntry(row_make(9, {}, { query: '{}' }))).toBeNull();
+    expect(queryRow_convertToEntry(row_make(9, {}, { query: 'not json' }))).toBeNull();
+    expect(queryRow_convertToEntry(row_make(9, {}, { query: '{}' }))).toBeNull();
   });
 });
 

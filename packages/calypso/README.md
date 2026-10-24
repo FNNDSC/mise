@@ -25,9 +25,9 @@ The contract is defined as [zod](https://zod.dev) schemas — the single source 
 - **Versioning** — the contract version (`CONTRACT_VERSION`) is carried in the attach handshake and refused on mismatch; within a major, changes are additive only.
 
 ```ts
-import { clientMessage_fromJson, attach_parse, type ClientMessage } from '@fnndsc/calypso';
+import { clientMessage_parseJson, attach_parse, type ClientMessage } from '@fnndsc/calypso';
 
-const parsed = clientMessage_fromJson(rawSocketText);
+const parsed = clientMessage_parseJson(rawSocketText);
 if (!parsed.ok) socket.send({ type: 'error', reason: parsed.error });
 ```
 

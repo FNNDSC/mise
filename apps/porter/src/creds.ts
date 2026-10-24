@@ -68,7 +68,7 @@ export class CredentialStore {
    * @param backend - The backend (`oci`).
    * @returns The folder; not necessarily there.
    */
-  folder_of(identity: string, backend: string): string {
+  folder_derive(identity: string, backend: string): string {
     return join(this.stateDir, 'creds', berthKey_compute(identity), backend);
   }
 
@@ -78,8 +78,8 @@ export class CredentialStore {
    * @param identity - The person's ChRIS identity.
    * @returns Its path, or null when this person has none.
    */
-  ociConfig_of(identity: string): string | null {
-    const path: string = join(this.folder_of(identity, 'oci'), 'config');
+  ociConfig_find(identity: string): string | null {
+    const path: string = join(this.folder_derive(identity, 'oci'), 'config');
     return existsSync(path) ? path : null;
   }
 
@@ -100,7 +100,7 @@ export class CredentialStore {
     if ('error' in read) return read;
     const keySource: string = home_expand(read.keyFile);
     if (!existsSync(keySource)) return { error: `${keySource}: the profile's key is not there` };
-    const folder: string = this.folder_of(identity, 'oci');
+    const folder: string = this.folder_derive(identity, 'oci');
     mkdirSync(folder, { recursive: true, mode: 0o700 });
     chmodSync(folder, 0o700);
     const key: string = join(folder, 'key.pem');

@@ -18,7 +18,7 @@ import { cliSurface_create, type BytesFetch } from './cliSurface.js';
 import { sink_set, StdoutSink } from '@fnndsc/brasa';
 import { TerminalProgressRenderer } from './progressRenderer.js';
 import { surfaceLine_executeSafely } from './surfaceDispatch.js';
-import { game_play, gameShow_of, gameTerminal_is, type GameShow } from './gamePlayer.js';
+import { game_play, gameShow_find, gameTerminal_is, type GameShow } from './gamePlayer.js';
 import { promptGuard_create, type PromptGuard } from './promptGuard.js';
 import { interrupt_set, lineRedraw_set, question_isOpen, terminalState_mark, typeahead_clear, typeahead_push, typeahead_take } from './lineDiscipline.js';
 import type { BrasaEngine, CompletionResult } from '@fnndsc/brasa';
@@ -233,7 +233,7 @@ export class REPL {
     interrupt_set(false);
     const envelopes = await surfaceLine_executeSafely(this.engine, line);
     // A showpiece or a game the kernel named plays here, on this terminal.
-    const show: GameShow | null = gameShow_of(envelopes);
+    const show: GameShow | null = gameShow_find(envelopes);
     if (show !== null && gameTerminal_is()) await game_play(show);
     // Progress is telemetry about a running command, so nothing may outlive
     // the command. A builtin that throws between announcing work and closing

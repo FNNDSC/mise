@@ -48,7 +48,7 @@ export interface ClIarguments {
  * @param cliString - The CLI argument string.
  * @returns A dictionary of parsed arguments.
  */
-export function dictionary_fromCLI(cliString: string): ClIarguments {
+export function dictionary_parseFromCLI(cliString: string): ClIarguments {
   const result: ClIarguments = {};
   // Split the string by spaces, but keep quoted sections together
   const args: RegExpMatchArray | [] = cliString.match(/('.*?'|".*?"|\S+)/g) || [];
@@ -139,7 +139,7 @@ function options_reduce(options: ChRISElementsGet): ListOptions {
  * @param keyPairField - The field name containing the key-pair string.
  * @returns Formatted ListOptions.
  */
-export function listParams_fromOptions(
+export function listParams_buildFromOptions(
   options: ChRISElementsGet,
   keyPairField: keyof ChRISElementsGet = "search"
 ): ListOptions {

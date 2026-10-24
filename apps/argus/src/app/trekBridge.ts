@@ -38,7 +38,7 @@ export interface TrekBridgeModule {
  * @param line - The line.
  * @returns The seed, or null when the galaxy is random.
  */
-function seed_of(line: string): number | null {
+function seed_parse(line: string): number | null {
   const words: string[] = line.trim().split(/\s+/);
   const at: number = words.indexOf('--seed');
   if (at < 0) return null;
@@ -92,7 +92,7 @@ export function trekBridge_wire(context: Pick<HostContext, 'client'>): TrekBridg
 
   const open = async (line: string): Promise<void> => {
     if (bridge !== null) return;
-    const opened: TrekBridge = new TrekBridge({ voice, leave }, seed_of(line));
+    const opened: TrekBridge = new TrekBridge({ voice, leave }, seed_parse(line));
     bridge = opened;
     document.body.append(opened.root);
     document.body.dataset['takeover'] = 'trek';

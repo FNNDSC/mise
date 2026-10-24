@@ -79,20 +79,20 @@ describe('ConnectionConfig — construction', () => {
   });
 });
 
-describe('ConnectionConfig — uri_toDir / dir_toUri round trip', () => {
+describe('ConnectionConfig — uri_convertToDir / dir_convertToUri round trip', () => {
   it('encodes a URL into a directory-safe string', () => {
-    expect(conn.uri_toDir('http://localhost:8000/api/v1/')).toBe(
+    expect(conn.uri_convertToDir('http://localhost:8000/api/v1/')).toBe(
       'http___localhost===8000_api_v1_'
     );
   });
 
   it('round-trips a simple URL', () => {
     const uri = 'http://example.com/api';
-    expect(conn.dir_toUri(conn.uri_toDir(uri))).toBe(uri);
+    expect(conn.dir_convertToUri(conn.uri_convertToDir(uri))).toBe(uri);
   });
 
   it('throws on a directory name with no protocol separator', () => {
-    expect(() => conn.dir_toUri('not-a-valid-dir')).toThrow('Invalid directory name');
+    expect(() => conn.dir_convertToUri('not-a-valid-dir')).toThrow('Invalid directory name');
   });
 });
 
@@ -101,7 +101,7 @@ describe('ConnectionConfig — init() branches', () => {
     const user = 'chris';
     const url = 'http://localhost:8000/api/v1/';
     const userDir = path.join(CONFIG_DIR, user);
-    const urlDir = path.join(userDir, conn.uri_toDir(url));
+    const urlDir = path.join(userDir, conn.uri_convertToDir(url));
 
     store.files.set(conn.userFilepath, user);
     store.files.set(path.join(userDir, 'chrisurl.txt'), url);
@@ -143,7 +143,7 @@ describe('ConnectionConfig — save/load', () => {
   it('chrisURL_save writes when the URL folder exists', async () => {
     const url = 'http://cube.local/api/v1/';
     conn.chrisURLfilepath = path.join(CONFIG_DIR, 'alice', 'chrisurl.txt');
-    store.dirs.add(path.join(path.dirname(conn.chrisURLfilepath), conn.uri_toDir(url)));
+    store.dirs.add(path.join(path.dirname(conn.chrisURLfilepath), conn.uri_convertToDir(url)));
 
     expect(await conn.chrisURL_save(url)).toBe(true);
     expect(await conn.chrisURL_load()).toBe(url);
@@ -172,7 +172,7 @@ describe('ConnectionConfig — save/load', () => {
 
     await conn.context_set(user, url);
 
-    const urlDir = path.join(CONFIG_DIR, user, conn.uri_toDir(url));
+    const urlDir = path.join(CONFIG_DIR, user, conn.uri_convertToDir(url));
     expect(conn.userChRISContextDir).toBe(urlDir);
     expect(store.dirs.has(urlDir)).toBe(true);
   });

@@ -55,7 +55,7 @@ import { answerAdapters_register } from '../session/answerAdapters.js';
 import { numbering_get, type Numbering } from '../session/answer.js';
 import { sink_get, sink_set, type OutputSink } from './sink.js';
 import { backend_install, backendInstalled_get, type Backend, type FileByteStream, type TaskSource } from './backend.js';
-import { JobRunner, jobsRoot_of, runner_get, runner_install, type JobSource } from './runner.js';
+import { JobRunner, jobsRoot_derive, runner_get, runner_install, type JobSource } from './runner.js';
 import { vfsDispatcher_get } from './filesystem.js';
 import { itemType_isContainer } from './itemKinds.js';
 import type { VFSDispatcher } from '@fnndsc/fond';
@@ -521,7 +521,7 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
   // What each listing's rows are, so `@3` can name one.
   answerAdapters_register();
   const jobs: ReadonlyArray<JobSource> = backendInstalled_get()?.jobs ?? [];
-  runner_install(jobs.length > 0 ? new JobRunner(jobsRoot_of(backendInstalled_get()?.id ?? 'session'), jobs) : null);
+  runner_install(jobs.length > 0 ? new JobRunner(jobsRoot_derive(backendInstalled_get()?.id ?? 'session'), jobs) : null);
   await session.init();
   await vfsProviders_register();
   // A backend's containers are folders to every tool, the dispatcher's read included.

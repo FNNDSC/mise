@@ -46,7 +46,7 @@ jest.unstable_mockModule('@xterm/addon-unicode11', () => ({ Unicode11Addon: clas
 jest.unstable_mockModule('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
 jest.unstable_mockModule('@xterm/xterm/css/xterm.css', () => ({}));
 
-const { TerminalScreen, ctrl_apply, terminalTheme_of, terminalState_parse } = await import('../../src/console/terminalScreen.js');
+const { TerminalScreen, ctrl_apply, terminalTheme_build, terminalState_parse } = await import('../../src/console/terminalScreen.js');
 const { consoleMode_wire } = await import('../../src/app/consoleMode.js');
 
 /** The wire, recording what the screen sends. */
@@ -150,7 +150,7 @@ describe('the terminal screen', () => {
     expect(ctrl_apply('D')).toBe('\u0004');
     expect(ctrl_apply('1')).toBe('1');
     expect(ctrl_apply('\u001b[A')).toBe('\u001b[A');
-    const theme = terminalTheme_of('#ffaa44');
+    const theme = terminalTheme_build('#ffaa44');
     expect(theme.background).toBe('#000000');
     expect(theme.foreground).toBe('#ffaa44');
     expect(theme.red).toBe('#f24444');

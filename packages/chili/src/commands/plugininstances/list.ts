@@ -4,7 +4,7 @@
  */
 import { pluginInstances_list as salsaPluginInstances_list, pluginInstances_listAll as salsaPluginInstances_listAll } from '@fnndsc/salsa';
 import { FilteredResourceData } from '@fnndsc/cumin';
-import { CLIoptions, options_toParams } from '../../utils/cli.js';
+import { CLIoptions, options_convertToParams } from '../../utils/cli.js';
 import { list_applySort } from '../../utils/sort.js';
 
 /**
@@ -23,7 +23,7 @@ export interface PluginInstanceListResult {
  * @returns The plugin-instances list result.
  */
 export async function pluginInstances_fetchList(options: CLIoptions): Promise<PluginInstanceListResult> {
-  const params = options_toParams(options);
+  const params = options_convertToParams(options);
   const result: FilteredResourceData | null = options.all
     ? await salsaPluginInstances_listAll(params)
     : await salsaPluginInstances_list(params);

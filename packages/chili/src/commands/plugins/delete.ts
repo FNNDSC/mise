@@ -8,7 +8,7 @@
  */
 import { plugins_list as salsaPlugins_list, plugin_delete as salsaPlugin_delete } from "@fnndsc/salsa";
 import { FilteredResourceData, ListOptions } from "@fnndsc/cumin";
-import { CLIoptions, options_toParams } from "../../utils/cli.js";
+import { CLIoptions, options_convertToParams } from "../../utils/cli.js";
 
 /**
  * Resolves search terms to a list of plugin items.
@@ -18,7 +18,7 @@ import { CLIoptions, options_toParams } from "../../utils/cli.js";
  */
 export async function plugins_searchByTerm(searchable: string): Promise<Record<string, unknown>[]> {
   const options: CLIoptions = { search: searchable };
-  const params: ListOptions = options_toParams(options);
+  const params: ListOptions = options_convertToParams(options);
   const results: FilteredResourceData | null = await salsaPlugins_list(params);
 
   if (!results || !results.tableData) {

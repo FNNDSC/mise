@@ -56,14 +56,14 @@ describe('feedInstances_ensureStarted', () => {
     await flush();
     // The first page is in flight and the register names the walk.
     expect(gated.pending()).toBe(1);
-    expect(cache.feedLoad_of(21)).toEqual({ feedID: 21, loaded: 0, total: 0 });
+    expect(cache.feedLoad_read(21)).toEqual({ feedID: 21, loaded: 0, total: 0 });
     // Asking again while it runs starts no second walk.
     expect(feedInstances_ensureStarted(21)).toBe('pending');
     await flush();
     expect(gated.client.getPluginInstances).toHaveBeenCalledTimes(1);
 
     gated.release(); await flush();
-    expect(cache.feedLoad_of(21)).toEqual({ feedID: 21, loaded: 100, total: 250 });
+    expect(cache.feedLoad_read(21)).toEqual({ feedID: 21, loaded: 100, total: 250 });
     expect(cache.topologyLoaded_has(21)).toBe(false); // committed only when whole
     // The first page told the total: the remaining two pages fly together.
     expect(gated.pending()).toBe(2);
@@ -72,7 +72,7 @@ describe('feedInstances_ensureStarted', () => {
 
     expect(cache.topologyLoaded_has(21)).toBe(true);
     expect(cache.feedInstanceIDs_get(21)).toHaveLength(250);
-    expect(cache.feedLoad_of(21)).toBeNull();
+    expect(cache.feedLoad_read(21)).toBeNull();
     expect(feedInstances_ensureStarted(21)).toBe('ready');
     expect(cache.loading_get(21)).toBeUndefined();
   });
@@ -93,14 +93,14 @@ describe('feedInstances_ensureStarted', () => {
     expect(feedInstances_ensureStarted(22)).toBe('pending');
     await flush();
     expect(cache.topologyLoaded_has(22)).toBe(false);
-    expect(cache.feedLoad_of(22)).toEqual({ feedID: 22, loaded: 100, total: 150, failed: 'CUBE 502' });
+    expect(cache.feedLoad_read(22)).toEqual({ feedID: 22, loaded: 100, total: 150, failed: 'CUBE 502' });
     expect(cache.loading_get(22)).toBeUndefined();
 
     // The next visit retries from the beginning; this one succeeds.
     expect(feedInstances_ensureStarted(22)).toBe('pending');
     await flush();
     expect(cache.topologyLoaded_has(22)).toBe(true);
-    expect(cache.feedLoad_of(22)).toBeNull();
+    expect(cache.feedLoad_read(22)).toBeNull();
     expect(client.getPluginInstances).toHaveBeenCalledTimes(4);
   });
 

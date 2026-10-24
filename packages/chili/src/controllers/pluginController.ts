@@ -7,7 +7,7 @@
 import {
   ChRISPluginGroup,
   Dictionary,
-  dictionary_fromCLI
+  dictionary_parseFromCLI
 } from "@fnndsc/cumin";
 import { BaseController } from "./baseController.js";
 import { CLIoptions } from "../utils/cli.js";
@@ -72,7 +72,7 @@ export class PluginController extends BaseController {
   async plugin_run(searchable: string, params: string): Promise<Dictionary | null> {
     let parsedParams: Dictionary = {};
     try {
-      parsedParams = dictionary_fromCLI(params);
+      parsedParams = dictionary_parseFromCLI(params);
     } catch (e: unknown) {
       chiliErrLog("Error parsing plugin parameters:", e);
       return null;
@@ -126,7 +126,7 @@ export class PluginController extends BaseController {
    * @param options - CLI options for searching for a plugin.
    * @returns A Promise resolving to the plugin ID as a string, or null if not found/ambiguous.
    */
-  async pluginID_fromSearch(options: CLIoptions): Promise<string | null> {
+  async pluginID_findBySearch(options: CLIoptions): Promise<string | null> {
     return await pluginMeta_pluginIDFromSearch(options as PluginSearchOptions);
   }
 }

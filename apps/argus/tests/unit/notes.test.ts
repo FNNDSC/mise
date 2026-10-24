@@ -5,7 +5,7 @@
 import { describe, it, expect } from '@jest/globals';
 import type { SessionNotes } from '@fnndsc/menu';
 import { notesBlocks_build, release_title } from '../../src/features/notes/panel.js';
-import { notesModel_of } from '../../src/app/notesPane.js';
+import { notesModel_extract } from '../../src/app/notesPane.js';
 
 const MODEL: SessionNotes = {
   source: 'daemon',
@@ -42,8 +42,8 @@ describe('the NOTES pane', () => {
 
   it('reads the session.notes model off an outcome and ignores the rest', () => {
     const outcome = { envelopes: [{ status: 'ok', rendered: '', model: { kind: 'fs.cwd', data: {} } }, { status: 'ok', rendered: '', model: { kind: 'session.notes', data: MODEL } }] } as never;
-    expect(notesModel_of(outcome)?.installed).toEqual({ argus: '0.24.1', brasa: '0.32.1' });
-    expect(notesModel_of({ envelopes: [] } as never)).toBeNull();
-    expect(notesModel_of({ envelopes: [{ status: 'ok', rendered: '', model: { kind: 'session.notes', data: { nonsense: true } } }] } as never)).toBeNull();
+    expect(notesModel_extract(outcome)?.installed).toEqual({ argus: '0.24.1', brasa: '0.32.1' });
+    expect(notesModel_extract({ envelopes: [] } as never)).toBeNull();
+    expect(notesModel_extract({ envelopes: [{ status: 'ok', rendered: '', model: { kind: 'session.notes', data: { nonsense: true } } }] } as never)).toBeNull();
   });
 });

@@ -33,7 +33,7 @@ const { reference_resolve, unresolvedStands_run, reference_isReserved, reference
   await import('../src/core/expansion.js');
 const { variableScope_run, variable_set, variable_unset, textAnswer_make } = await import('../src/core/variables.js');
 (await import('../src/session/answerAdapters.js')).answerAdapters_register();
-const { listingOperands_of } = await import('../src/core/listing.js');
+const { listingOperands_extract } = await import('../src/core/listing.js');
 const paramScope_run = variableScope_run;
 
 /** Expands a whole line the way the dispatcher does, and returns the operands. */
@@ -282,7 +282,7 @@ describe('a variable holding a listing expands as a pipe hands it on', () => {
 
   it('gives what the same answer piped into a verb gives', async () => {
     variable_set('Q', ANSWER);
-    const piped: string[] | null = listingOperands_of({ kind: ANSWER.kind, data: ANSWER.data });
+    const piped: string[] | null = listingOperands_extract({ kind: ANSWER.kind, data: ANSWER.data });
     expect(await line_words('pull ${Q}')).toEqual(['pull', ...(piped ?? [])]);
   });
 

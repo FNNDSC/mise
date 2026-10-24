@@ -8,7 +8,7 @@ import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve }
 import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
 import type { ListingCache } from '../../core/backend.js';
 import { destination_ask, destination_missing, operands_fix } from './destination.js';
-import { entry_at, entry_isFolder } from './entries.js';
+import { pathEntry_find, entry_isFolder } from './entries.js';
 import { mv_render, vfs_fail, vfsRefusal_text, type VFSDispatcher, type VfsOutcome } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
@@ -99,8 +99,8 @@ export async function builtin_mv(args: string[]): Promise<CommandEnvelope> {
  */
 async function entry_move(dispatcher: VFSDispatcher, srcPath: string, destPath: string, intoFolder: boolean): Promise<VfsOutcome> {
   if (dispatcher.path_isVirtual(srcPath) || dispatcher.path_isVirtual(destPath)) return dispatcher.rename(srcPath, destPath);
-  if ((await entry_at(dispatcher, srcPath)) === null) return vfs_fail('ENOENT', `Source not found: ${srcPath}`);
-  const finalDest: string = intoFolder || entry_isFolder(await entry_at(dispatcher, destPath))
+  if ((await pathEntry_find(dispatcher, srcPath)) === null) return vfs_fail('ENOENT', `Source not found: ${srcPath}`);
+  const finalDest: string = intoFolder || entry_isFolder(await pathEntry_find(dispatcher, destPath))
     ? path.posix.join(destPath, path.posix.basename(srcPath))
     : destPath;
   return dispatcher.rename(srcPath, finalDest);

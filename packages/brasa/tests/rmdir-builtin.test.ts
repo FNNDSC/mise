@@ -20,7 +20,7 @@ jest.unstable_mockModule('../src/core/filesystem.js', () => ({
 const { builtin_rmdir, rmdirArgs_parse } = await import('../src/builtins/fs/rmdir.js');
 
 /** What a folder lists, by name. */
-async function names_of(folder: string): Promise<string[]> {
+async function itemNames_list(folder: string): Promise<string[]> {
   const listed = await state.dispatcher.list(folder);
   return listed.ok ? listed.value.map((item) => item.name).sort() : [];
 }
@@ -41,20 +41,20 @@ describe('rmdir', () => {
     const env = await builtin_rmdir(['scratch']);
     expect(env.status).toBe('ok');
     expect(env.rendered).toBe('');
-    expect(await names_of('/home/chris')).not.toContain('scratch');
+    expect(await itemNames_list('/home/chris')).not.toContain('scratch');
   });
 
   it('refuses a folder that holds anything, one that is not there, and a file, by name', async () => {
     expect((await builtin_rmdir(['full'])).renderedErr).toContain("rmdir: failed to remove 'full': Directory not empty");
     expect((await builtin_rmdir(['gone'])).renderedErr).toContain("rmdir: failed to remove 'gone': No such file or directory");
     expect((await builtin_rmdir(['a.txt'])).renderedErr).toContain("rmdir: failed to remove 'a.txt': Not a directory");
-    expect(await names_of('/home/chris')).toEqual(['a.txt', 'full', 'scratch']);
+    expect(await itemNames_list('/home/chris')).toEqual(['a.txt', 'full', 'scratch']);
     expect(process.exitCode).toBe(1);
   });
 
   it("deletes a tag through the projection, and says the projection's refusal in rmdir's words", async () => {
     expect((await builtin_rmdir(['/proc/tags/old'])).status).toBe('ok');
-    expect(await names_of('/proc/tags')).toEqual(['urgent']);
+    expect(await itemNames_list('/proc/tags')).toEqual(['urgent']);
     expect((await builtin_rmdir(['/proc/tags/urgent'])).renderedErr).toContain("rmdir: failed to remove '/proc/tags/urgent': Directory not empty (2 feeds wear it)");
   });
 

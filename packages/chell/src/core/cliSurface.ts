@@ -24,7 +24,7 @@ import * as path from 'path';
 import { join } from 'path';
 import type { Surface, SurfaceCapabilities, PromptRequest, LocalEditRequest, LocalEditResult } from '@fnndsc/brasa';
 import { segment_pipeThrough, file_read } from '@fnndsc/brasa';
-import { promptKind_of, type FileDeliverRequest, type FileDeliverResult, type PromptKind } from '@fnndsc/menu';
+import { promptKind_derive, type FileDeliverRequest, type FileDeliverResult, type PromptKind } from '@fnndsc/menu';
 import { interrupt_pending, question_openSet, terminalState_mark, typeahead_take } from './lineDiscipline.js';
 
 /**
@@ -56,7 +56,7 @@ export function promptAnswer_take(said: string, fallback: string): string {
  * @returns The line to print, and the answer an empty line stands for.
  */
 export function promptLine_render(request: PromptRequest): { message: string; fallback: string } {
-  const kind: PromptKind = promptKind_of(request);
+  const kind: PromptKind = promptKind_derive(request);
   if (kind === 'confirm') {
     return { message: `${request.message}(y/n) `, fallback: '' };
   }

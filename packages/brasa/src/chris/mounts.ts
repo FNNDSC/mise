@@ -5,7 +5,7 @@
  * @module
  */
 import { vfsDispatcher } from '@fnndsc/salsa';
-import { logical_toPhysical } from '@fnndsc/chili/utils';
+import { logicalPath_resolve } from '@fnndsc/chili/utils';
 import type { Result } from '@fnndsc/fond';
 import { session } from '../session/index.js';
 import { BinVfsProvider } from './binMount.js';
@@ -26,7 +26,7 @@ export function chrisMounts_register(): void {
     if (session.physicalMode_get()) {
       return logicalPath;
     }
-    const res: Result<string> = await logical_toPhysical(logicalPath);
+    const res: Result<string> = await logicalPath_resolve(logicalPath);
     if (res.ok) {
       return res.value;
     }

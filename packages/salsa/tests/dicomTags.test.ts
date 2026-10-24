@@ -5,7 +5,7 @@
 import { describe, it, expect } from '@jest/globals';
 import dcmjs from 'dcmjs';
 import { dicomTags_read, dicomTags_summarize, dicomTag_find, type DicomTag, type DicomTagSet } from '../src/dicom/tags';
-import { tagGroup_of, tagValue_decode, DICOM_TAG_GROUPS } from '../src/dicom/dictionary';
+import { tagGroup_derive, tagValue_decode, DICOM_TAG_GROUPS } from '../src/dicom/dictionary';
 import { fixtureInstance_write, fixtureSeries_write, FIXTURE_SERIES_UID, FIXTURE_TRANSFER_SYNTAX } from './dicomFixture';
 
 dcmjs.log.setLevel('silent');
@@ -74,12 +74,12 @@ describe('dicomTags_read', () => {
 
 describe('dictionary', () => {
   it('places tags by name before group number', () => {
-    expect(tagGroup_of(0x0008, 'Modality')).toBe('series');
-    expect(tagGroup_of(0x0008, 'StudyDate')).toBe('study');
-    expect(tagGroup_of(0x0020, 'StudyInstanceUID')).toBe('study');
-    expect(tagGroup_of(0x0028, undefined)).toBe('image');
-    expect(tagGroup_of(0x0009, 'Anything')).toBe('private');
-    expect(tagGroup_of(0x1234, undefined)).toBe('other');
+    expect(tagGroup_derive(0x0008, 'Modality')).toBe('series');
+    expect(tagGroup_derive(0x0008, 'StudyDate')).toBe('study');
+    expect(tagGroup_derive(0x0020, 'StudyInstanceUID')).toBe('study');
+    expect(tagGroup_derive(0x0028, undefined)).toBe('image');
+    expect(tagGroup_derive(0x0009, 'Anything')).toBe('private');
+    expect(tagGroup_derive(0x1234, undefined)).toBe('other');
   });
 
   it('lists groups in display order starting with the patient', () => {

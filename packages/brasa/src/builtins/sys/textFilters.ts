@@ -47,7 +47,7 @@ function count_parse(word: string | undefined): number | null {
 }
 
 /** The lines of a text, without the last line's newline. */
-function lines_of(text: string): string[] {
+function lines_split(text: string): string[] {
   if (text === '') return [];
   return (text.endsWith('\n') ? text.slice(0, -1) : text).split('\n');
 }
@@ -278,13 +278,13 @@ export function endsArgs_parse(command: 'head' | 'tail', args: ReadonlyArray<str
 
 /** The lines `head` keeps of a text. */
 export function head_lines(ask: EndsAsk, text: string): string[] {
-  const lines: string[] = lines_of(text);
+  const lines: string[] = lines_split(text);
   return ask.butLast ? lines.slice(0, Math.max(0, lines.length - ask.count)) : lines.slice(0, ask.count);
 }
 
 /** The lines `tail` keeps of a text. */
 export function tail_lines(ask: EndsAsk, text: string): string[] {
-  const lines: string[] = lines_of(text);
+  const lines: string[] = lines_split(text);
   if (ask.fromLine) return lines.slice(Math.max(0, ask.count - 1));
   return ask.count === 0 ? [] : lines.slice(-ask.count);
 }
@@ -348,7 +348,7 @@ export function sortArgs_parse(args: ReadonlyArray<string>): FilterParse<SortAsk
 }
 
 /** The part of a line a sort compares. */
-function sortKey_of(ask: SortAsk, line: string): string {
+function sortKey_extract(ask: SortAsk, line: string): string {
   if (ask.key === null) return line;
   const fields: string[] = ask.separator === null ? line.trim().split(/\s+/) : line.split(ask.separator);
   const to: number = ask.key.to ?? fields.length;
@@ -358,7 +358,7 @@ function sortKey_of(ask: SortAsk, line: string): string {
 /** The lines in `sort`'s order: stable, by key, numeric or text, then reversed, then unique by key. */
 export function sort_lines(ask: SortAsk, lines: ReadonlyArray<string>): string[] {
   const keyed: Array<{ line: string; key: string; num: number }> = lines.map((line: string) => {
-    const key: string = sortKey_of(ask, line);
+    const key: string = sortKey_extract(ask, line);
     const num: number = Number(/^\s*-?\d+(?:\.\d+)?/.exec(key)?.[0] ?? 0);
     return { line, key: ask.fold ? key.toLowerCase() : key, num };
   });
@@ -380,7 +380,7 @@ export function sort_lines(ask: SortAsk, lines: ReadonlyArray<string>): string[]
 /** `sort [-rnfu] [-k N[,M]] [-t C] [FILE]...` */
 export async function builtin_sort(args: string[]): Promise<CommandEnvelope> {
   return filter_run('sort', args, sortArgs_parse(args), (ask: SortAsk, sources: FilterSource[]): string =>
-    lines_join(sort_lines(ask, sources.flatMap((s: FilterSource): string[] => lines_of(s.text)))));
+    lines_join(sort_lines(ask, sources.flatMap((s: FilterSource): string[] => lines_split(s.text)))));
 }
 
 // ── uniq ─────────────────────────────────────────────────────────────────────
@@ -421,7 +421,7 @@ export function uniq_lines(ask: UniqAsk, lines: ReadonlyArray<string>): string[]
 /** `uniq [-cdui] [FILE]` */
 export async function builtin_uniq(args: string[]): Promise<CommandEnvelope> {
   return filter_run('uniq', args, uniqArgs_parse(args), (ask: UniqAsk, sources: FilterSource[]): string =>
-    lines_join(uniq_lines(ask, sources.flatMap((s: FilterSource): string[] => lines_of(s.text)))));
+    lines_join(uniq_lines(ask, sources.flatMap((s: FilterSource): string[] => lines_split(s.text)))));
 }
 
 // ── cut ──────────────────────────────────────────────────────────────────────
@@ -477,7 +477,7 @@ export function cutArgs_parse(args: ReadonlyArray<string>): FilterParse<CutAsk> 
 }
 
 /** The positions a cut keeps of `n`, in order, each once. */
-function cutPositions_of(ask: CutAsk, n: number): number[] {
+function cutPositions_derive(ask: CutAsk, n: number): number[] {
   const kept: Set<number> = new Set();
   for (const range of ask.ranges) for (let i: number = range.from; i <= Math.min(range.to ?? n, n); i++) kept.add(i);
   return [...kept].sort((a: number, b: number): number => a - b);
@@ -489,12 +489,12 @@ export function cut_lines(ask: CutAsk, lines: ReadonlyArray<string>): string[] {
   for (const line of lines) {
     if (ask.by === 'chars') {
       const chars: string[] = [...line];
-      out.push(cutPositions_of(ask, chars.length).map((i: number): string => chars[i - 1] as string).join(''));
+      out.push(cutPositions_derive(ask, chars.length).map((i: number): string => chars[i - 1] as string).join(''));
       continue;
     }
     if (!line.includes(ask.delimiter)) { if (!ask.onlyDelimited) out.push(line); continue; }
     const fields: string[] = line.split(ask.delimiter);
-    out.push(cutPositions_of(ask, fields.length).map((i: number): string => fields[i - 1] as string).join(ask.delimiter));
+    out.push(cutPositions_derive(ask, fields.length).map((i: number): string => fields[i - 1] as string).join(ask.delimiter));
   }
   return out;
 }
@@ -502,5 +502,5 @@ export function cut_lines(ask: CutAsk, lines: ReadonlyArray<string>): string[] {
 /** `cut -f LIST [-d C] [-s] | -c LIST [FILE]...` */
 export async function builtin_cut(args: string[]): Promise<CommandEnvelope> {
   return filter_run('cut', args, cutArgs_parse(args), (ask: CutAsk, sources: FilterSource[]): string =>
-    lines_join(cut_lines(ask, sources.flatMap((s: FilterSource): string[] => lines_of(s.text)))));
+    lines_join(cut_lines(ask, sources.flatMap((s: FilterSource): string[] => lines_split(s.text)))));
 }

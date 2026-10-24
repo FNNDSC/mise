@@ -16,7 +16,7 @@
  * @param text - What to hash.
  * @returns The hash, an unsigned 32-bit integer.
  */
-export function hash_of(text: string): number {
+export function hash_compute(text: string): number {
   let hash: number = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     hash ^= text.charCodeAt(i);
@@ -46,5 +46,5 @@ export function random_seeded(seed: number): () => number {
  * @returns A source that runs the same way every time for that key.
  */
 export function randomFor_key(key: string): () => number {
-  return random_seeded(hash_of(key));
+  return random_seeded(hash_compute(key));
 }

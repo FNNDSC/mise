@@ -57,7 +57,7 @@ export interface RunSettlement {
  * @param instanceID - The run.
  * @returns Its status.
  */
-export function settlementStatus_of(settlement: RunSettlement, instanceID: number): string {
+export function settlementStatus_derive(settlement: RunSettlement, instanceID: number): string {
   if (settlement.outcome === 'detached') return 'detached';
   return settlement.statuses.get(instanceID) ?? 'unknown';
 }

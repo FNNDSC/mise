@@ -55,7 +55,7 @@ const WATCHED = [
 const SNAPSHOT_SCRIPT = (watched) => `
   const watched = ${JSON.stringify(watched)};
   /** A stable name for an element: its position in the tree, plus what it is. */
-  const key_of = (el) => {
+  const key_derive = (el) => {
     const parts = [];
     for (let node = el; node && node.nodeType === 1; node = node.parentElement) {
       const parent = node.parentElement;
@@ -95,7 +95,7 @@ const SNAPSHOT_SCRIPT = (watched) => `
       const r = el.getBoundingClientRect();
       rec['@box'] = [Math.round(r.width), Math.round(r.height)].join('x');
     }
-    out[key_of(el) + (pseudo ?? '')] = rec;
+    out[key_derive(el) + (pseudo ?? '')] = rec;
   };
   for (const el of document.querySelectorAll('*')) {
     if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;

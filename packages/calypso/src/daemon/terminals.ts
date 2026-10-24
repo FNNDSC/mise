@@ -226,7 +226,7 @@ export class Terminals {
    * @param viewer - The viewer.
    * @returns Their ids.
    */
-  public ids_of(viewer: TerminalViewer): string[] {
+  public ids_list(viewer: TerminalViewer): string[] {
     return [...this.terminals.values()].filter((terminal: Terminal): boolean => terminal.viewer === viewer).map((terminal: Terminal): string => terminal.id);
   }
 

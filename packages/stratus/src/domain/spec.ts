@@ -200,7 +200,7 @@ export interface SpecNode {
  * @param zones - How many zones the region has.
  * @returns The nodes.
  */
-export function specNodes_of(domain: string, spec: DomainSpec, zones: number): SpecNode[] {
+export function specNodes_build(domain: string, spec: DomainSpec, zones: number): SpecNode[] {
   const nodes: SpecNode[] = [];
   const count: number = Math.max(zones, 1);
   for (let i: number = 0; i < spec.controlPlane.count; i++) nodes.push({ name: `${domain}-cp-${i}`, role: 'plane', vcpu: spec.controlPlane.vcpu, ramGib: spec.controlPlane.ramGib, zoneIndex: i % count });

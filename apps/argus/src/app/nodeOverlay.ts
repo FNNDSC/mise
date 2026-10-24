@@ -26,7 +26,7 @@ export interface NodeOverlayHooks {
   /** Shows a listing in a pane's browser, rooted. */
   rootedListing_show: (id: string, panel: FilesPanel, path: string) => void;
   /** The verbs a row is offered, the same roster the browser uses. */
-  rowVerbs_of: (id: string, entry: FsListingEntry, path: string) => ReadonlyArray<ListingAction<FsListingEntry>>;
+  rowVerbs_build: (id: string, entry: FsListingEntry, path: string) => ReadonlyArray<ListingAction<FsListingEntry>>;
   /** Opens imagery beside the pane, joined to its group; answers a line for the console. */
   image_open: (fromId: string, path: string) => Promise<string>;
   /** Whether a path is imagery the viewer opens (a volume, a series). */
@@ -78,7 +78,7 @@ export function nodeOverlay_wire(context: Pick<HostContext, 'panels' | 'paneInst
   const records: Map<string, OverlayRecord> = new Map();
 
   /** The scene a pane flies in: the DAG pane's or the universe's. */
-  const flier_of = (id: string): { flight_back: (onDone: () => void) => void; node_flyTo: (instanceID: number) => boolean } | undefined =>
+  const flier_find = (id: string): { flight_back: (onDone: () => void) => void; node_flyTo: (instanceID: number) => boolean } | undefined =>
     panels.get('dag', id) ?? panels.get('universe', id);
 
   const close = (id: string, onDone?: () => void): void => {
@@ -93,7 +93,7 @@ export function nodeOverlay_wire(context: Pick<HostContext, 'panels' | 'paneInst
       record.element.remove();
       onDone?.();
     };
-    const flier = flier_of(id);
+    const flier = flier_find(id);
     if (flier !== undefined) flier.flight_back(finish);
     else finish();
   };
@@ -118,7 +118,7 @@ export function nodeOverlay_wire(context: Pick<HostContext, 'panels' | 'paneInst
       if (instMatch !== null) {
         const instanceID: number = parseInt(instMatch[1] ?? '', 10);
         close(id, (): void => {
-          if (flier_of(id)?.node_flyTo(instanceID) !== true) {
+          if (flier_find(id)?.node_flyTo(instanceID) !== true) {
             // Not a node of this graph after all: fall back to descent.
             open(id, action.path);
           }
@@ -178,7 +178,7 @@ export function nodeOverlay_wire(context: Pick<HostContext, 'panels' | 'paneInst
       context.terminal.line_note(
         `dag: ${vfsPath}: ${canvas === null ? 'this pane has no scene to fly in' : 'a node is already open here'} — flew back out`,
       );
-      flier_of(id)?.flight_back((): void => undefined);
+      flier_find(id)?.flight_back((): void => undefined);
       return;
     }
     const element: HTMLElement = document.createElement('div');
@@ -214,7 +214,7 @@ export function nodeOverlay_wire(context: Pick<HostContext, 'panels' | 'paneInst
     // are the same ones the browser offers, computed by the same roster, so
     // a node's own `data` is offered PROCESS here exactly as it is outside.
     panel.rowVerbs_declare(
-      (entry: FsListingEntry, path: string) => hooks.rowVerbs_of(id, entry, path),
+      (entry: FsListingEntry, path: string) => hooks.rowVerbs_build(id, entry, path),
       (_entry: FsListingEntry, path: string): void => {
         // Indicating IS the regard, on the DAG pane's own group: the
         // overlay shares its identity, so a slaved viewer follows.

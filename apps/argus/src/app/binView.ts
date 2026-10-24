@@ -20,7 +20,7 @@ import {
   type PluginParameter,
 } from '@fnndsc/menu';
 import type { ExecuteOutcome } from '../calypso/client.js';
-import { ansi_toHtml, html_escape } from '../console/ansi.js';
+import { ansi_renderHtml, html_escape } from '../console/ansi.js';
 import type { FilesPanel } from '../features/files/panel.js';
 import { more_wire } from '../features/roster/more.js';
 import { pipelineNode_selector, runLine_compose, runLine_executable, runLine_flagGet, runLine_flagSet, type RunFlagValue } from '../features/files/runLine.js';
@@ -67,7 +67,7 @@ export interface FactRow {
 /** What the /bin view asks of the host. */
 export interface BinViewHooks {
   /** A catalogue pane's binding, when the pane is one. */
-  catalogue_of: (paneId: string) => CatalogueBinding | undefined;
+  catalogue_find: (paneId: string) => CatalogueBinding | undefined;
   /** RUN on a bound catalogue: the line as it reads, for this executable. */
   run_press: (paneId: string, executable: string, kind: 'plugin' | 'pipeline') => void;
 }
@@ -94,7 +94,7 @@ export interface BinView {
  * @returns HTML.
  */
 export function binText_highlight(text: string): string {
-  if (/\x1b\[/.test(text)) return ansi_toHtml(text);
+  if (/\x1b\[/.test(text)) return ansi_renderHtml(text);
   return html_escape(text)
     .replace(/(&quot;[^&]*&quot;)/g, '<span class="man-str">$1</span>')
     .replace(/(^|\s)(--?[a-zA-Z][\w-]*)/g, '$1<span class="man-flag">$2</span>')
@@ -422,8 +422,8 @@ export function binView_wire(context: Pick<HostContext, 'client'>, hooks: BinVie
    * an input: the strip's line, started afresh for this executable unless
    * it already runs it (a hand edit stands; another entry's line does not).
    */
-  const form_of = (id: string, panel: FilesPanel, path: string, kind: 'plugin' | 'pipeline'): BinForm | null => {
-    const binding: CatalogueBinding | undefined = hooks.catalogue_of(id);
+  const form_build = (id: string, panel: FilesPanel, path: string, kind: 'plugin' | 'pipeline'): BinForm | null => {
+    const binding: CatalogueBinding | undefined = hooks.catalogue_find(id);
     if (binding === undefined) return null;
     const executable: string = path.replace(/^.*\//, '');
     if (runLine_executable(panel.commandLine_get()) !== executable) {
@@ -437,7 +437,7 @@ export function binView_wire(context: Pick<HostContext, 'client'>, hooks: BinVie
   };
 
   const entry_show = (id: string, panel: FilesPanel, path: string, kind: 'plugin' | 'pipeline'): void => {
-    graph_show(panel, path, (): Promise<BinGraph | null> => (kind === 'plugin' ? pluginGraph_fetch(path) : pipelineGraph_fetch(path)), form_of(id, panel, path, kind));
+    graph_show(panel, path, (): Promise<BinGraph | null> => (kind === 'plugin' ? pluginGraph_fetch(path) : pipelineGraph_fetch(path)), form_build(id, panel, path, kind));
   };
 
   const dive_leave = (): boolean => {

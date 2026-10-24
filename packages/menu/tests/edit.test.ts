@@ -3,7 +3,7 @@
  * surface's EDIT both read.
  */
 import { describe, it, expect } from '@jest/globals';
-import { EDIT_CONFIRM_BYTES, editExtension_of, path_isEditable } from '../src/edit.js';
+import { EDIT_CONFIRM_BYTES, editExtension_extract, path_isEditable } from '../src/edit.js';
 
 describe('path_isEditable', () => {
   it('takes text and refuses bytes, by extension', () => {
@@ -15,8 +15,8 @@ describe('path_isEditable', () => {
   });
 
   it('reads an extension lower case, with its dot, and none for a dotfile', () => {
-    expect(editExtension_of('/a/B.YAML')).toBe('.yaml');
-    expect(editExtension_of('/a/.hidden')).toBe('');
+    expect(editExtension_extract('/a/B.YAML')).toBe('.yaml');
+    expect(editExtension_extract('/a/.hidden')).toBe('');
     expect(EDIT_CONFIRM_BYTES).toBe(1048576);
   });
 });

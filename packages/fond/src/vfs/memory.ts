@@ -82,7 +82,7 @@ export class MemoryVfsProvider implements VFSProvider {
    * @param where - The path asked.
    * @returns It, normalised, without a trailing slash.
    */
-  private key_of(where: string): string {
+  private key_derive(where: string): string {
     const at: string = path.posix.normalize(where.startsWith('/') ? where : `/${where}`);
     return at.length > 1 && at.endsWith('/') ? at.slice(0, -1) : at;
   }
@@ -93,7 +93,7 @@ export class MemoryVfsProvider implements VFSProvider {
    * @param folder - The folder's key.
    * @returns Their keys.
    */
-  private children_of(folder: string): string[] {
+  private children_list(folder: string): string[] {
     const prefix: string = folder === '/' ? '/' : `${folder}/`;
     return [...this.nodes.keys()].filter((key: string): boolean =>
       key !== folder && key.startsWith(prefix) && !key.slice(prefix.length).includes('/'));
@@ -113,7 +113,7 @@ export class MemoryVfsProvider implements VFSProvider {
   }
 
   async list(where: string): Promise<Result<VFSItem[]>> {
-    const key: string = this.key_of(where);
+    const key: string = this.key_derive(where);
     const node: MemoryNode | undefined = this.nodes.get(key);
     if (node === undefined) {
       errorStack.stack_push('error', `Cannot list ${key}: No such file or directory`);
@@ -123,7 +123,7 @@ export class MemoryVfsProvider implements VFSProvider {
       errorStack.stack_push('error', `Cannot list ${key}: Not a directory`);
       return Err();
     }
-    return Ok(this.children_of(key).sort().map((child: string): VFSItem => {
+    return Ok(this.children_list(key).sort().map((child: string): VFSItem => {
       const entry: MemoryNode = this.nodes.get(child) as MemoryNode;
       return { name: path.posix.basename(child), type: entry.type, size: entry.content.length, owner: this.owner, date: entry.date };
     }));
@@ -135,14 +135,14 @@ export class MemoryVfsProvider implements VFSProvider {
   }
 
   async readBinary(where: string): Promise<VfsOutcome<Buffer>> {
-    const node: MemoryNode | undefined = this.nodes.get(this.key_of(where));
+    const node: MemoryNode | undefined = this.nodes.get(this.key_derive(where));
     if (node === undefined) return vfs_fail('ENOENT');
     if (node.type === 'dir') return vfs_fail('EISDIR');
     return vfs_ok(Buffer.from(node.content));
   }
 
   async write(where: string, content: string | Buffer): Promise<VfsOutcome> {
-    const key: string = this.key_of(where);
+    const key: string = this.key_derive(where);
     const existing: MemoryNode | undefined = this.nodes.get(key);
     if (existing?.type === 'dir') return vfs_fail('EISDIR');
     const refused: VfsOutcome | null = this.parent_check(key);
@@ -152,7 +152,7 @@ export class MemoryVfsProvider implements VFSProvider {
   }
 
   async mkdir(where: string): Promise<VfsOutcome> {
-    const key: string = this.key_of(where);
+    const key: string = this.key_derive(where);
     if (this.nodes.has(key)) return vfs_fail('EEXIST');
     const refused: VfsOutcome | null = this.parent_check(key);
     if (refused !== null) return refused;
@@ -161,7 +161,7 @@ export class MemoryVfsProvider implements VFSProvider {
   }
 
   async mkdirTree(where: string): Promise<VfsOutcome> {
-    const key: string = this.key_of(where);
+    const key: string = this.key_derive(where);
     if (this.nodes.has(key)) return vfs_fail('EEXIST');
     const parts: string[] = key.split('/').filter((part: string): boolean => part.length > 0);
     let walked: string = '';
@@ -175,19 +175,19 @@ export class MemoryVfsProvider implements VFSProvider {
   }
 
   async rmdir(where: string): Promise<VfsOutcome> {
-    const key: string = this.key_of(where);
+    const key: string = this.key_derive(where);
     const node: MemoryNode | undefined = this.nodes.get(key);
     if (node === undefined) return vfs_fail('ENOENT');
     if (node.type !== 'dir') return vfs_fail('ENOTDIR');
     if (key === this.root_get()) return vfs_fail('EPERM');
-    if (this.children_of(key).length > 0) return vfs_fail('ENOTEMPTY');
+    if (this.children_list(key).length > 0) return vfs_fail('ENOTEMPTY');
     this.nodes.delete(key);
     return vfs_ok(true);
   }
 
   async rename(src: string, dest: string): Promise<VfsOutcome> {
-    const from: string = this.key_of(src);
-    const to: string = this.key_of(dest);
+    const from: string = this.key_derive(src);
+    const to: string = this.key_derive(dest);
     const node: MemoryNode | undefined = this.nodes.get(from);
     if (node === undefined) return vfs_fail('ENOENT');
     if (from === this.root_get()) return vfs_fail('EPERM');
@@ -197,7 +197,7 @@ export class MemoryVfsProvider implements VFSProvider {
     if (target !== undefined && (target.type === 'dir') !== (node.type === 'dir')) {
       return vfs_fail(target.type === 'dir' ? 'EISDIR' : 'ENOTDIR');
     }
-    if (target?.type === 'dir' && this.children_of(to).length > 0) return vfs_fail('ENOTEMPTY');
+    if (target?.type === 'dir' && this.children_list(to).length > 0) return vfs_fail('ENOTEMPTY');
     // The entry and, for a folder, everything under it take the new name.
     for (const key of [...this.nodes.keys()]) {
       if (key === from || key.startsWith(`${from}/`)) {
@@ -210,7 +210,7 @@ export class MemoryVfsProvider implements VFSProvider {
   }
 
   async rm(where: string): Promise<VfsOutcome> {
-    const key: string = this.key_of(where);
+    const key: string = this.key_derive(where);
     const node: MemoryNode | undefined = this.nodes.get(key);
     if (node === undefined) return vfs_fail('ENOENT');
     if (node.type === 'dir') return vfs_fail('EISDIR');
@@ -219,7 +219,7 @@ export class MemoryVfsProvider implements VFSProvider {
   }
 
   async rmTree(where: string): Promise<VfsOutcome> {
-    const key: string = this.key_of(where);
+    const key: string = this.key_derive(where);
     const node: MemoryNode | undefined = this.nodes.get(key);
     if (node === undefined) return vfs_fail('ENOENT');
     if (node.type !== 'dir') return vfs_fail('ENOTDIR');
@@ -231,8 +231,8 @@ export class MemoryVfsProvider implements VFSProvider {
   }
 
   async cp(src: string, dest: string, options: CpOptions): Promise<VfsOutcome> {
-    const from: string = this.key_of(src);
-    const to: string = this.key_of(dest);
+    const from: string = this.key_derive(src);
+    const to: string = this.key_derive(dest);
     const node: MemoryNode | undefined = this.nodes.get(from);
     if (node === undefined) return vfs_fail('ENOENT');
     if (node.type === 'dir' && !options.recursive) return vfs_fail('EISDIR');

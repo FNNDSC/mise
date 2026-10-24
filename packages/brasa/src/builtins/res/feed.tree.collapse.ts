@@ -51,7 +51,7 @@ function status_bucket(status: string | null): keyof Omit<StatusTally, 'total'> 
 }
 
 /** Tallies statuses across a set of nodes. */
-function tally_of(nodes: FeedNode[]): StatusTally {
+function tally_count(nodes: FeedNode[]): StatusTally {
   const t: StatusTally = { done: 0, error: 0, running: 0, other: 0, total: nodes.length };
   for (const n of nodes) t[status_bucket(n.status)]++;
   return t;
@@ -69,7 +69,7 @@ function set_collapse(
 ): CollapsedNode {
   const sorted: number[] = [...memberIds].sort((a: number, b: number): number => a - b);
   const nodes: FeedNode[] = sorted.map((id: number): FeedNode => byId.get(id)!);
-  const tally: StatusTally = tally_of(nodes);
+  const tally: StatusTally = tally_count(nodes);
 
   const anomalies: Array<{ id: number; status: string | null }> = nodes
     .filter((n: FeedNode): boolean => status_bucket(n.status) !== 'done')

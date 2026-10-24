@@ -28,7 +28,7 @@ import { baseDomain_default, dnsZones_read, options_read, spec_line, type BuildC
  * @param word - The word.
  * @returns What is free, or null when the cloud does not say.
  */
-function free_of(rows: ReadonlyArray<CapacityRow>, zone: string, word: string): number | null {
+function free_find(rows: ReadonlyArray<CapacityRow>, zone: string, word: string): number | null {
   return rows.find((row: CapacityRow): boolean => row.zone === zone && row.limit.includes(word))?.available ?? null;
 }
 
@@ -64,7 +64,7 @@ export async function domainSize_run(context: BuildCommandContext, args: Readonl
     vcpuPerCore: shape.vcpuPerCore,
     cores: shape.flexible ? { ...shape.cores } : null,
     memoryGib: shape.flexible ? { ...shape.memoryGib } : null,
-    zones: zones.map((zone: CloudZone) => ({ zone: zone.name, coresFree: free_of(rows, zone.name, 'core'), memoryFree: free_of(rows, zone.name, 'memory') })),
+    zones: zones.map((zone: CloudZone) => ({ zone: zone.name, coresFree: free_find(rows, zone.name, 'core'), memoryFree: free_find(rows, zone.name, 'memory') })),
     price: price === undefined ? null : { vcpuHour: price.vcpuHour, gibHour: price.gibHour, currency: price.currency },
     services: services === null ? null : { volumeGibMonth: services.volumeGibMonth, vpuGibMonth: services.vpuGibMonth, balancerHour: services.balancerHour, balancerMbpsHour: services.balancerMbpsHour },
     start: { ...SPEC_DEFAULT, family: shape.family },

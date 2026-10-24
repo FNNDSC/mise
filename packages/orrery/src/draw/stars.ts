@@ -161,6 +161,6 @@ export function starLayer_make(entries: ReadonlyArray<StarEntry>, ember: boolean
  * @param fovDeg - The camera's vertical field of view, in degrees.
  * @returns The scale the star shader multiplies by.
  */
-export function starScale_of(heightPx: number, fovDeg: number): number {
+export function starScale_compute(heightPx: number, fovDeg: number): number {
   return heightPx / (2 * Math.tan((fovDeg * Math.PI) / 360));
 }

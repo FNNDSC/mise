@@ -21,7 +21,7 @@ jest.unstable_mockModule('../src/core/question.js', () => ({
 }));
 jest.unstable_mockModule('../src/core/sink.js', () => ({ sink_dataLine: (text: string): void => { lines.push(text); } }));
 
-const { still_of, builtin_sl, builtin_tetris, builtin_cmatrix, builtin_rain, builtin_asciiquarium, builtin_snake, STARSHIP } = await import('../src/builtins/games/show.js');
+const { still_render, builtin_sl, builtin_tetris, builtin_cmatrix, builtin_rain, builtin_asciiquarium, builtin_snake, STARSHIP } = await import('../src/builtins/games/show.js');
 const { answer_matches, QUIZ_BANK, QUIZ_ROUND, builtin_quiz, word_mask, builtin_hangman, HANGMAN_WORDS, row_slide, board_move, board_spawn, board_canMove, board_render, builtin_2048 } = await import('../src/builtins/games/play.js');
 
 const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
@@ -31,7 +31,7 @@ beforeEach(() => { answers.length = 0; lines.length = 0; });
 describe('showpieces', () => {
   it('a still for every program, and a games.show model naming it', async () => {
     for (const program of ['sl', 'cmatrix', 'rain', 'aquarium', 'tetris', 'snake'] as const) {
-      expect(still_of(program, () => 0.5).length).toBeGreaterThan(3);
+      expect(still_render(program, () => 0.5).length).toBeGreaterThan(3);
     }
     const sl = await builtin_sl([]);
     expect(sl.model).toEqual({ kind: 'games.show', data: { program: 'sl', args: [], arcade: false, pane: false } });

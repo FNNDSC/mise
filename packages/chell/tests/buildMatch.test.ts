@@ -2,7 +2,7 @@
  * @file A remote chell says when it and its daemon are different builds.
  */
 import { describe, it, expect } from '@jest/globals';
-import { buildMismatch_line, closingLine_of, staleLines_of, surfaceNews_read } from '../src/remote/buildMatch.js';
+import { buildMismatch_line, closingLine_render, staleLines_render, surfaceNews_read } from '../src/remote/buildMatch.js';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,23 +20,23 @@ describe('buildMismatch_line', () => {
   });
 });
 
-describe('closingLine_of', () => {
+describe('closingLine_render', () => {
   it('says why the daemon went, as it told', () => {
-    expect(closingLine_of('restart')).toMatch(/restarting/);
-    expect(closingLine_of('end')).toMatch(/ended by an administrator/);
-    expect(closingLine_of('stop')).toBe('[!] The calypso daemon stopped.');
+    expect(closingLine_render('restart')).toMatch(/restarting/);
+    expect(closingLine_render('end')).toMatch(/ended by an administrator/);
+    expect(closingLine_render('stop')).toBe('[!] The calypso daemon stopped.');
   });
 });
 
-describe('staleLines_of', () => {
+describe('staleLines_render', () => {
   it('names the fact and the cure, and what the newer release brings when the notes are at hand', () => {
-    const bare: string[] = staleLines_of(null);
+    const bare: string[] = staleLines_render(null);
     expect(bare.length).toBe(1);
     expect(bare[0]).toMatch(/out of date.*Restart it.*porter --end/);
-    const told: string[] = staleLines_of({ version: '5.10.3', headline: 'The session can say what the installed releases changed.' });
+    const told: string[] = staleLines_render({ version: '5.10.3', headline: 'The session can say what the installed releases changed.' });
     expect(told.length).toBe(2);
     expect(told[1]).toContain('chell 5.10.3 · The session can say what the installed releases changed.');
-    const long: string[] = staleLines_of({ version: '1.0.0', headline: 'x'.repeat(200) });
+    const long: string[] = staleLines_render({ version: '1.0.0', headline: 'x'.repeat(200) });
     expect(long[1]!.length).toBeLessThan(150);
     expect(long[1]).toContain('…');
   });

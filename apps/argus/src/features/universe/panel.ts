@@ -18,28 +18,28 @@
  * @module
  */
 import { feedGraph_build } from '../../scene/feedGraph.js';
-import { FEED_MODES_DEFAULT, FeedViewFrame, feedHueLegend_of, feedShape_same, feedStatuses_patch, type FeedModes, type FeedVerb } from '../feed/view.js';
+import { FEED_MODES_DEFAULT, FeedViewFrame, feedHueLegend_build, feedShape_same, feedStatuses_patch, type FeedModes, type FeedVerb } from '../feed/view.js';
 import { FeedFrame, type FeedFrameFacts } from '../dag/feedFrame.js';
 import { feedFacts_render } from '../feed/facts.js';
 import { ranked_layout } from '@fnndsc/orrery';
 import type { FeedDagModel, FeedDagNode, PromptContext, WireEnvelope, WatchState } from '@fnndsc/menu';
 import { barState_clear, barState_set, type BarState } from '../roster/bar.js';
-import { PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, UNIVERSE_REACH, procLayoutModelSchema, procUniverseModelSchema, universeKey_of, universeReach_of, type ProcUniverseModel } from '@fnndsc/menu';
+import { PROC_LAYOUT_MODEL_KIND, PROC_UNIVERSE_MODEL_KIND, UNIVERSE_REACH, procLayoutModelSchema, procUniverseModelSchema, universeKey_derive, universeReach_derive, type ProcUniverseModel } from '@fnndsc/menu';
 import { ChrisSpace, PHYSICS_DEFAULT, type DrawMode, type PhysicsTerms, type SceneGraph, type SceneNode, type SettleMode, type ScenePlan } from '../../scene/chrisSpace.js';
 import {
-  LandedFeeds, universeGraph_build, universeTip_of, universeStoreKey_of, storedPositions_parse,
-  instanceId_of, descendedGraph_build, sphereIds_of, clusterTip_of, clusterGraph_build, clusterIds_of, shapeWords_of, shapeWords_brief, shape_of,
-  foldedGraph_build, foldTip_of, foldShape_of, foldIds_of, unfoldedGraph_build,
+  LandedFeeds, universeGraph_build, universeTip_render, universeStoreKey_format, storedPositions_parse,
+  instanceId_format, descendedGraph_build, sphereIds_list, clusterTip_render, clusterGraph_build, clusterIds_list, shapeWords_format, shapeWords_brief, shape_derive,
+  foldedGraph_build, foldTip_render, foldShape_parse, foldIds_list, unfoldedGraph_build,
   type LandedFeed, type UniverseScale, type EnteredFeed,
-  universeSettings_of,
+  universeSettings_build,
   universeSettings_parse,
   accretionGraph_build,
   constellationsGraph_build,
-  pluginTip_of,
+  pluginTip_render,
   pluginOfStar,
   type UniverseSettings,
 } from './space.js';
-import { dataGraph_build, dataHubKey_of, dataHubTip_of, dataPath_of, descriptionGroups_of } from './dataSpace.js';
+import { dataGraph_build, dataHubKey_parse, dataHubTip_render, dataPath_build, descriptionGroups_build } from './dataSpace.js';
 
 /** How the whole space is arranged: round each shape's hub, or round the plugin stars. */
 type Arrangement = UniverseSettings['arrangement'];
@@ -66,7 +66,7 @@ function physics_isDefault(physics: PhysicsTerms): boolean {
  * @param positions - The places.
  * @returns The fingerprint.
  */
-function placesSignature_of(positions: Record<string, [number, number, number]>): string {
+function placesSignature_compute(positions: Record<string, [number, number, number]>): string {
   let sum: number = 0;
   for (const at of Object.values(positions)) sum += at[0] * 1.3 + at[1] * 1.7 + at[2] * 1.9;
   return `${Object.keys(positions).length}:${sum.toFixed(2)}`;
@@ -304,10 +304,10 @@ export class UniversePanel {
       // A feed turns solid as a whole when it is near enough to read; a
       // folded shape's molecule does the same.
       // The molecule a node belongs to, named as the session names it when it lays the space out.
-      handoffKey: (node: SceneNode): string | null => universeKey_of(node.id),
+      handoffKey: (node: SceneNode): string | null => universeKey_derive(node.id),
       // A sphere is a plugin group inside a feed; the tip says both. Inside
       // a feed the nodes are its own and carry their labels.
-      tip: (node: SceneNode): string | null => (this.inside === null ? (dataHubTip_of(node.id, this.dataHubs) ?? pluginTip_of(node.id, this.landed) ?? foldTip_of(node.id, this.landed) ?? universeTip_of(node.id, this.landed) ?? clusterTip_of(node.id, this.landed)) : null),
+      tip: (node: SceneNode): string | null => (this.inside === null ? (dataHubTip_render(node.id, this.dataHubs) ?? pluginTip_render(node.id, this.landed) ?? foldTip_render(node.id, this.landed) ?? universeTip_render(node.id, this.landed) ?? clusterTip_render(node.id, this.landed)) : null),
       // Outside: a click on a sphere descends into its feed. Inside: a
       // click on one of the feed's nodes shows its facts and its verbs.
       select: (node: SceneNode): void => this.node_select(node),
@@ -443,7 +443,7 @@ export class UniversePanel {
     this.title_paint();
     // Where the session keeps this layout, asked first: a browser that has
     // never drawn this space draws it at once from the session's copy.
-    if (!this.shown) this.handlers.command_run(`proc layout ${this.sessionLayoutName_of(this.arrangement)}`);
+    if (!this.shown) this.handlers.command_run(`proc layout ${this.sessionLayoutName_derive(this.arrangement)}`);
     this.handlers.command_run('proc universe');
   }
 
@@ -600,7 +600,7 @@ export class UniversePanel {
         `kept settings: ${kept ?? '(none)'}`,
         `lit: ${this.lit ?? 'none'}`,
         `captions: ${this.captions ? 'on' : 'off'}`,
-        `session layout: ${(() => { const kept = this.sessionPlaces.get(this.sessionLayoutName_of(this.arrangement)); return kept === undefined ? 'not asked' : kept === null ? 'none kept' : `${kept} places kept`; })()}`,
+        `session layout: ${(() => { const kept = this.sessionPlaces.get(this.sessionLayoutName_derive(this.arrangement)); return kept === undefined ? 'not asked' : kept === null ? 'none kept' : `${kept} places kept`; })()}`,
         `replay: ${(() => { const r = this.scene.replay_state(); return r === null ? 'none' : `${r.playing ? 'playing' : 'paused'} at ${new Date(r.at).toISOString().slice(0, 10)} of ${new Date(r.span[0]).toISOString().slice(0, 10)}..${new Date(r.span[1]).toISOString().slice(0, 10)}`; })()}`,
       ].join('\n');
   }
@@ -613,7 +613,7 @@ export class UniversePanel {
       if (name.toLowerCase() === 'off') { this.plugin_light(null); return 'no plugin lit'; }
       if (!this.landed.all().some((feed: LandedFeed): boolean => feed.groups.some((group): boolean => group.plugin === name))) return `universe plugin: no feed here ran ${name}`;
       this.plugin_light(name);
-      return pluginTip_of(`plugin:${name}`, this.landed) ?? name;
+      return pluginTip_render(`plugin:${name}`, this.landed) ?? name;
   }
 
   /** `universe replay`. */
@@ -669,7 +669,7 @@ export class UniversePanel {
       // regrowing forgets the kept places and grows the space afresh.
       if (this.arrangement !== 'accretion' || this.inside !== null || this.cluster !== null) return 'universe regrow: the ACCRETION layout only (universe layout accretion)';
       this.replay_end();
-      const key: string | null = this.positionsKey_of('accretion');
+      const key: string | null = this.positionsKey_derive('accretion');
       try { if (key !== null) this.store?.setItem(key, '{}'); } catch { /* a refused store forgets nothing; the space still regrows */ }
       this.paint(true, 'full');
       return 'the space regrown from its first feed';
@@ -713,8 +713,8 @@ export class UniversePanel {
       const feed: LandedFeed | undefined = Number.isFinite(feedId) ? this.landed.get(feedId) : undefined;
       if (feed === undefined) return 'universe cluster <feed id>: the cluster of a feed that landed here';
       if (this.inside !== null) return `universe cluster: inside feed ${this.inside.feedId}; universe back first`;
-      this.cluster_enter(shape_of(feed));
-      return `viewing the cluster of feed ${feedId}: ${shapeWords_of(shape_of(feed))}`;
+      this.cluster_enter(shape_derive(feed));
+      return `viewing the cluster of feed ${feedId}: ${shapeWords_format(shape_derive(feed))}`;
   }
 
   /** `universe back`. */
@@ -799,7 +799,7 @@ export class UniversePanel {
     if (this.arrangementPill !== null) this.arrangementPill.textContent = arrangement.toUpperCase();
     // Nothing kept here for this layout: the session may keep it, and its
     // answer seeds the settle before it runs (the session answers in order).
-    if (this.positions_recalled(arrangement) === undefined) this.handlers.command_run(`proc layout ${this.sessionLayoutName_of(arrangement)}`);
+    if (this.positions_recalled(arrangement) === undefined) this.handlers.command_run(`proc layout ${this.sessionLayoutName_derive(arrangement)}`);
     if (this.inside === null && this.cluster === null) {
       // Constellations bring their own graph (the plugin stars, no hubs):
       // the arrangement is set without a redraw and the new graph painted.
@@ -826,7 +826,7 @@ export class UniversePanel {
     const key: string | null = this.settingsKey_get();
     if (this.store === undefined || key === null) return;
     try {
-      this.store.setItem(key, JSON.stringify(universeSettings_of(this.drawMode, this.view, this.scale, this.density, this.arrangement, this.captions)));
+      this.store.setItem(key, JSON.stringify(universeSettings_build(this.drawMode, this.view, this.scale, this.density, this.arrangement, this.captions)));
     } catch {
       // A full or refused store forgets; the choices still hold for now.
     }
@@ -1024,7 +1024,7 @@ export class UniversePanel {
     // Hug while small, spread when a crowd: the bound that keeps a lone
     // molecule together would pack seven hundred feeds into one ball.
     // Set only when it changes: physics_set settles the old graph again.
-    const reach: number | undefined = universeReach_of(graph.nodes.length);
+    const reach: number | undefined = universeReach_derive(graph.nodes.length);
     if (reach !== this.reach) {
       this.reach = reach;
       // The graph below settles under the new reach; settling the old one
@@ -1052,7 +1052,7 @@ export class UniversePanel {
     this.facts_clear();
     // The feed is entered in the device's remembered modes, whichever door last turned them.
     this.feedView?.recall();
-    const spheres: string[] = sphereIds_of(feedId, feed);
+    const spheres: string[] = sphereIds_list(feedId, feed);
     // The ask can take seconds on a large feed, and can be refused: the bar
     // says which feed is being entered while it waits, and the console
     // says why when nothing comes. A descent that yields nothing must not
@@ -1072,7 +1072,7 @@ export class UniversePanel {
         this.handlers.note?.(`universe: feed ${feedId}: the session gave no graph for it (feed diagram feed_${feedId} refused or answered nothing after ${Math.round((Date.now() - asked) / 1000)}s)`);
         return null;
       }
-      const plan: ScenePlan = this.insidePlan_of(feedId, feed, model, [spheres, foldIds_of(shape_of(feed), this.landed)], DESCENT_MS);
+      const plan: ScenePlan = this.insidePlan_build(feedId, feed, model, [spheres, foldIds_list(shape_derive(feed), this.landed)], DESCENT_MS);
       return {
         ...plan,
         drawn: (): void => {
@@ -1113,14 +1113,14 @@ export class UniversePanel {
    * @param durationMs - How long the camera takes to frame it.
    * @returns The plan, without its drawn hook.
    */
-  private insidePlan_of(feedId: number, feed: LandedFeed, model: FeedDagModel, from: ReadonlyArray<ReadonlyArray<string>>, durationMs: number): ScenePlan {
+  private insidePlan_build(feedId: number, feed: LandedFeed, model: FeedDagModel, from: ReadonlyArray<ReadonlyArray<string>>, durationMs: number): ScenePlan {
     const modes: FeedModes = this.feedView?.modes_get() ?? { ...FEED_MODES_DEFAULT };
     const entered: EnteredFeed = feedGraph_build(model, {
       metric: modes.metric,
       hue: modes.hue,
-      legend: modes.hue === 'compute' ? feedHueLegend_of(model) : new Map(),
+      legend: modes.hue === 'compute' ? feedHueLegend_build(model) : new Map(),
       draw: modes.draw,
-      id_of: (nodeId: string): string => instanceId_of(feedId, nodeId),
+      id_map: (nodeId: string): string => instanceId_format(feedId, nodeId),
     });
     this.insideEntered = entered;
     // A feed opens as its tree, root on top, as it does from the roster:
@@ -1140,7 +1140,7 @@ export class UniversePanel {
       ? descendedGraph_build(this.landed.all(), feedId, entered, this.scale, this.arrangement === 'constellations', this.arrangement === 'data' ? dataGraph_build(this.landed.all(), this.scale).graph : this.arrangement === 'accretion' ? accretionGraph_build(this.landed.all(), this.scale) : undefined)
       : {
           nodes: [
-            ...unfoldedGraph_build(this.landed.all(), shape_of(feed), this.scale).graph.nodes
+            ...unfoldedGraph_build(this.landed.all(), shape_derive(feed), this.scale).graph.nodes
               .filter((node: SceneNode): boolean => !node.id.startsWith(prefix))
               .map((node: SceneNode): SceneNode => ({ ...node, dim: true })),
             ...entered.nodes,
@@ -1184,7 +1184,7 @@ export class UniversePanel {
     const feed: LandedFeed | undefined = this.landed.get(this.inside.feedId);
     if (feed === undefined || this.insideModel === null || this.scene.moving()) return;
     const inside = this.inside;
-    const plan: ScenePlan = this.insidePlan_of(inside.feedId, feed, this.insideModel, [[...inside.ids]], 400);
+    const plan: ScenePlan = this.insidePlan_build(inside.feedId, feed, this.insideModel, [[...inside.ids]], 400);
     this.scene.unfold({ ...plan, drawn: (): void => { this.inside = { ...inside, entered: this.insideEntered as EnteredFeed }; } });
   }
 
@@ -1245,13 +1245,13 @@ export class UniversePanel {
     const previous: FeedDagModel = this.insideModel;
     this.insideModel = model;
     if (feedShape_same(previous, model)) {
-      feedStatuses_patch(this.scene, model, (nodeId: string): string => instanceId_of(model.feedId, nodeId));
-      for (const node of model.nodes) this.insideEntered?.payloads.set(instanceId_of(model.feedId, node.id), node);
+      feedStatuses_patch(this.scene, model, (nodeId: string): string => instanceId_format(model.feedId, nodeId));
+      for (const node of model.nodes) this.insideEntered?.payloads.set(instanceId_format(model.feedId, node.id), node);
       return;
     }
     const feed: LandedFeed | undefined = this.landed.get(model.feedId);
     if (feed === undefined || this.scene.moving()) return;
-    const plan: ScenePlan = this.insidePlan_of(model.feedId, feed, model, [[...inside.ids]], 400);
+    const plan: ScenePlan = this.insidePlan_build(model.feedId, feed, model, [[...inside.ids]], 400);
     const ids: Set<string> = new Set(plan.unfolding);
     this.scene.unfold({ ...plan, drawn: (): void => { this.inside = { ...inside, entered: this.insideEntered as EnteredFeed, ids }; this.title_paint(); } });
   }
@@ -1316,7 +1316,7 @@ export class UniversePanel {
     if (this.view === 'feeds') {
       // Every feed is already drawn: the cluster is lit where it stands,
       // the rest dimmed, nothing moved, the camera flown to frame it.
-      const ids: string[] = clusterIds_of(shape, this.landed);
+      const ids: string[] = clusterIds_list(shape, this.landed);
       if (ids.length === 0) return;
       this.cluster = { shape, ids };
       this.pane?.classList.add('universe-cluster');
@@ -1334,7 +1334,7 @@ export class UniversePanel {
     this.scene.unfold({
       graph,
       unfolding: graph.nodes.filter((node: SceneNode): boolean => memberSet.has(node.id) || node.ghost === true).map((node: SceneNode): string => node.id),
-      from: [foldIds_of(shape, this.landed)],
+      from: [foldIds_list(shape, this.landed)],
       physics: { reach: UNIVERSE_REACH, gravity: false },
       frame: memberIds,
       durationMs: DESCENT_MS,
@@ -1407,14 +1407,14 @@ export class UniversePanel {
         return;
       }
       // A DATA hub lights the feeds beneath it; pressed again, it goes out.
-      const hub: string | null = dataHubKey_of(node.id);
+      const hub: string | null = dataHubKey_parse(node.id);
       if (hub !== null) {
         this.litHub = this.litHub === hub ? null : hub;
         this.paint(false, 'hold');
         return;
       }
       const match: RegExpMatchArray | null = node.id.match(/^feed:(\d+):\d+$/);
-      const folded: string | null = foldShape_of(node.id);
+      const folded: string | null = foldShape_parse(node.id);
       if (match !== null) this.descend(Number(match[1]), node.id);
       else if (folded !== null) this.cluster_enter(folded);
       else if (node.id.startsWith('shape:')) this.cluster_enter(node.id.slice('shape:'.length));
@@ -1494,7 +1494,7 @@ export class UniversePanel {
       return;
     }
     if (this.cluster !== null) {
-      const count: number = this.landed.all().filter((feed: LandedFeed): boolean => shape_of(feed) === this.cluster?.shape).length;
+      const count: number = this.landed.all().filter((feed: LandedFeed): boolean => shape_derive(feed) === this.cluster?.shape).length;
       // The bar is not the place for eleven plugin names: the first few and
       // the count, the whole shape on the halo's tip.
       this.title.textContent = `UNIVERSE — SHAPE ${shapeWords_brief(this.cluster.shape)} · ${count} FEED${count === 1 ? '' : 'S'}`;
@@ -1587,7 +1587,7 @@ export class UniversePanel {
   private pluginFacts_show(plugin: string): void {
     if (this.facts === null) return;
     this.facts.replaceChildren();
-    const tip: string = pluginTip_of(`plugin:${plugin}`, this.landed) ?? plugin;
+    const tip: string = pluginTip_render(`plugin:${plugin}`, this.landed) ?? plugin;
     const [, feeds = '', errored = ''] = tip.split(' · ');
     for (const [label, value] of [['PLUGIN', plugin], ['FEEDS', feeds.replace(/ feeds?$/, '')], ['ERRORED', errored.replace(/ errored$/, '')]] as Array<[string, string]>) {
       const row: HTMLDivElement = document.createElement('div');
@@ -1623,12 +1623,12 @@ export class UniversePanel {
     this.dataHubs = hubs;
     const lit: string | null = this.litHub;
     if (lit === null) return graph;
-    const groupOf = descriptionGroups_of(this.landed.all().map((feed: LandedFeed): string | undefined => feed.data?.seriesDescription).filter((d: string | undefined): d is string => d !== undefined));
+    const groupOf = descriptionGroups_build(this.landed.all().map((feed: LandedFeed): string | undefined => feed.data?.seriesDescription).filter((d: string | undefined): d is string => d !== undefined));
     const beneath: Set<number> = new Set(this.landed.all()
-      .filter((feed: LandedFeed): boolean => dataPath_of(feed, groupOf).some((step): boolean => step.key === lit))
+      .filter((feed: LandedFeed): boolean => dataPath_build(feed, groupOf).some((step): boolean => step.key === lit))
       .map((feed: LandedFeed): number => feed.id));
     return { nodes: graph.nodes.map((node: SceneNode): SceneNode => {
-      if (dataHubKey_of(node.id) !== null) return node;
+      if (dataHubKey_parse(node.id) !== null) return node;
       const feed: RegExpMatchArray | null = node.id.match(/^feed:(\d+):/);
       return feed !== null && beneath.has(Number(feed[1])) ? node : { ...node, dim: true };
     }) };
@@ -1664,7 +1664,7 @@ export class UniversePanel {
 
   /** Learns whose universe this is, once, and seeds it if a space is already up. */
   private identity_note(user: string, uri: string): void {
-    const key: string = universeStoreKey_of(user, uri);
+    const key: string = universeStoreKey_format(user, uri);
     if (key === this.storeKey) return;
     this.storeKey = key;
     const reshaped: boolean = this.settings_recall();
@@ -1682,7 +1682,7 @@ export class UniversePanel {
    * universe always used, each other arrangement beside it, and the folded
    * shapes of each apart from every feed's.
    */
-  private positionsKey_of(arrangement: Arrangement): string | null {
+  private positionsKey_derive(arrangement: Arrangement): string | null {
     if (this.storeKey === null) return null;
     // The folded shapes are other nodes: kept beside every feed's places, never over them.
     const key: string = arrangement === 'galaxy' ? this.storeKey : `${this.storeKey}.${arrangement}`;
@@ -1691,7 +1691,7 @@ export class UniversePanel {
 
   /** The positions kept for an arrangement, or none. */
   private positions_recalled(arrangement: Arrangement): Record<string, [number, number, number]> | undefined {
-    const key: string | null = this.positionsKey_of(arrangement);
+    const key: string | null = this.positionsKey_derive(arrangement);
     if (this.store === undefined || key === null) return undefined;
     try {
       const positions = storedPositions_parse(this.store.getItem(key));
@@ -1703,7 +1703,7 @@ export class UniversePanel {
 
   /** @returns Whether any positions were remembered and seeded. */
   private seed_recall(): boolean {
-    const key: string | null = this.positionsKey_of(this.arrangement);
+    const key: string | null = this.positionsKey_derive(this.arrangement);
     if (this.store === undefined || key === null) return false;
     const positions = storedPositions_parse(this.store.getItem(key));
     if (Object.keys(positions).length === 0) return false;
@@ -1728,7 +1728,7 @@ export class UniversePanel {
     if (!this.positions_matchView(this.scene.positions_get())) return;
     try {
       // The positions are the panel's arrangement's (DATA settles as the scene's hubs).
-      const key: string | null = this.positionsKey_of(this.arrangement);
+      const key: string | null = this.positionsKey_derive(this.arrangement);
       if (key !== null) this.store.setItem(key, JSON.stringify(this.scene.positions_get()));
     } catch {
       // A full or refused store forgets; the space still draws.
@@ -1754,7 +1754,7 @@ export class UniversePanel {
    * The name the session keeps a layout under: the arrangement, with the
    * folded shapes (other nodes) and spheres alike (other radii) kept apart.
    */
-  private sessionLayoutName_of(arrangement: Arrangement): string {
+  private sessionLayoutName_derive(arrangement: Arrangement): string {
     // Spheres all alike are other radii, so other places: kept apart from JOBS, which the session lays out itself.
     return `${arrangement}${this.view === 'shapes' ? '-shapes' : ''}${this.scale === 'feeds' ? '-alike' : ''}`;
   }
@@ -1782,16 +1782,16 @@ export class UniversePanel {
       return;
     }
     const arrangement: Arrangement | undefined = (['galaxy', 'spokes', 'clumps', 'constellations', 'data', 'accretion'] as const)
-      .find((a: Arrangement): boolean => this.sessionLayoutName_of(a) === name);
+      .find((a: Arrangement): boolean => this.sessionLayoutName_derive(a) === name);
     if (arrangement === undefined || this.positions_recalled(arrangement) !== undefined) return;
-    const key: string | null = this.positionsKey_of(arrangement);
+    const key: string | null = this.positionsKey_derive(arrangement);
     if (key === null) return;
     try {
       this.store.setItem(key, JSON.stringify(positions));
     } catch {
       return;
     }
-    this.putSignatures.set(name, placesSignature_of(positions));
+    this.putSignatures.set(name, placesSignature_compute(positions));
     // Taken for the layout on stage, under a space already drawn (a settle
     // of this browser's own under way): seeded and painted again, holding
     // what the session placed so only what is new since settles. A space
@@ -1811,7 +1811,7 @@ export class UniversePanel {
    * @param laying - How far it has come.
    */
   private sessionWait_hold(name: string, laying: { nodes: number; fraction: number }): void {
-    if (name !== this.sessionLayoutName_of(this.arrangement) || this.positions_recalled(this.arrangement) !== undefined) return;
+    if (name !== this.sessionLayoutName_derive(this.arrangement) || this.positions_recalled(this.arrangement) !== undefined) return;
     const until: number = this.sessionWait?.name === name ? this.sessionWait.until : Date.now() + SESSION_WAIT_MS;
     if (this.sessionWait?.timer !== undefined && this.sessionWait?.timer !== null) window.clearTimeout(this.sessionWait.timer);
     if (Date.now() >= until) {
@@ -1833,7 +1833,7 @@ export class UniversePanel {
 
   /** Whether the pane waits for the session to lay out the layout on stage. */
   private sessionWait_holds(): boolean {
-    return this.sessionWait !== null && this.sessionWait.name === this.sessionLayoutName_of(this.arrangement)
+    return this.sessionWait !== null && this.sessionWait.name === this.sessionLayoutName_derive(this.arrangement)
       && Date.now() < this.sessionWait.until && this.inside === null && this.cluster === null;
   }
 
@@ -1855,8 +1855,8 @@ export class UniversePanel {
       positions[id] = [Math.round(at[0] * 100) / 100, Math.round(at[1] * 100) / 100, Math.round(at[2] * 100) / 100];
     }
     if (Object.keys(positions).length === 0) return;
-    const name: string = this.sessionLayoutName_of(this.arrangement);
-    const signature: string = placesSignature_of(positions);
+    const name: string = this.sessionLayoutName_derive(this.arrangement);
+    const signature: string = placesSignature_compute(positions);
     if (this.putSignatures.get(name) === signature) return;
     this.putSignatures.set(name, signature);
     this.sessionPlaces.set(name, Object.keys(positions).length);

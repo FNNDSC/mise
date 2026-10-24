@@ -25,7 +25,7 @@ cuminMock_install(() => ({
   Err: () => ({ ok: false }),
   // A listing cache that never holds anything: every parent read misses.
   listCache_get: () => ({ cache_get: () => null }),
-  feedTags_byFeed: jest.fn(),
+  feedTags_readByFeed: jest.fn(),
   envelope_ok: (rendered: string, model?: unknown) =>
     model === undefined ? { status: 'ok', rendered } : { status: 'ok', rendered, model },
   envelope_error: (rendered: string, errors?: unknown, renderedErr?: string) => {

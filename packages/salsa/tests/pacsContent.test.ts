@@ -13,7 +13,7 @@ jest.mock('@fnndsc/cumin', () => ({
   pacsFile_getBlob: (...args: unknown[]): Promise<unknown> => mockGetBlob(...args),
 }));
 jest.mock('../src/files/fileLookup', () => ({
-  fileId_atPath_resolve: (...args: unknown[]): Promise<unknown> => mockIdResolve(...args),
+  pathFileId_resolve: (...args: unknown[]): Promise<unknown> => mockIdResolve(...args),
 }));
 
 import { fileContent_getPACS, fileContent_getPACSBinary } from '../src/files/pacs_content';

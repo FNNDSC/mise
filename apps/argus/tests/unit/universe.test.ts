@@ -4,7 +4,7 @@
  */
 import { feedGraph_build } from '../../src/scene/feedGraph.js';
 import { describe, it, expect } from '@jest/globals';
-import { universeGraph_build, LandedFeeds, shape_of, groupId_of, anchorId_of, universeTip_of, universeStoreKey_of, storedPositions_parse, jobsMetric_of, erroredShare_of, descendedGraph_build, sphereIds_of, instanceId_of, shapeWords_of, shapeWords_brief, clusterTip_of, clusterIds_of, clusterGraph_build, foldedGraph_build, foldTip_of, foldId_of, foldShape_of, foldIds_of, unfoldedGraph_build, type LandedFeed } from '../../src/features/universe/space.js';
+import { universeGraph_build, LandedFeeds, shape_derive, groupId_format, anchorId_format, universeTip_render, universeStoreKey_format, storedPositions_parse, jobsMetric_compute, erroredShare_compute, descendedGraph_build, sphereIds_list, instanceId_format, shapeWords_format, shapeWords_brief, clusterTip_render, clusterIds_list, clusterGraph_build, foldedGraph_build, foldTip_render, foldId_format, foldShape_parse, foldIds_list, unfoldedGraph_build, type LandedFeed } from '../../src/features/universe/space.js';
 import type { FeedDagModel } from '@fnndsc/menu';
 
 const chain: LandedFeed = { id: 1, title: 'chain', jobs: 3, status: 'finishedSuccessfully', chain: ['pl-dircopy', 'pl-dcm2niix'], groups: [
@@ -22,22 +22,22 @@ const other: LandedFeed = { id: 3, title: '', jobs: 1, status: 'started', chain:
 describe('universeGraph_build', () => {
   it('draws every feed as its own collapsed DAG, counts as weight, status as hue', () => {
     const graph = universeGraph_build([fan]);
-    const root = graph.nodes.find((n) => n.id === groupId_of(2, 0));
-    const conversions = graph.nodes.find((n) => n.id === groupId_of(2, 1));
-    expect(root).toMatchObject({ label: 'pl-dircopy', metric: jobsMetric_of(1), status: 'finishedSuccessfully' });
+    const root = graph.nodes.find((n) => n.id === groupId_format(2, 0));
+    const conversions = graph.nodes.find((n) => n.id === groupId_format(2, 1));
+    expect(root).toMatchObject({ label: 'pl-dircopy', metric: jobsMetric_compute(1), status: 'finishedSuccessfully' });
     expect(root?.count).toBeUndefined();
     expect(root?.share).toBeUndefined();
-    expect(conversions).toMatchObject({ label: 'pl-dcm2niix', metric: jobsMetric_of(300), count: 300, status: 'finishedWithError', parentIds: [groupId_of(2, 0)], share: 12 / 300 });
+    expect(conversions).toMatchObject({ label: 'pl-dcm2niix', metric: jobsMetric_compute(300), count: 300, status: 'finishedWithError', parentIds: [groupId_format(2, 0)], share: 12 / 300 });
   });
 
   it('hangs feeds of one shape from one unseen anchor, and different shapes apart', () => {
     const graph = universeGraph_build([chain, fan, other]);
     const anchors = graph.nodes.filter((n) => n.ghost === true);
-    expect(anchors.map((n) => n.id).sort()).toEqual([anchorId_of(shape_of(chain)), anchorId_of(shape_of(other))].sort());
-    expect(shape_of(chain)).toBe(shape_of(fan));
-    expect(graph.nodes.find((n) => n.id === groupId_of(1, 0))?.parentIds).toEqual([anchorId_of(shape_of(chain))]);
-    expect(graph.nodes.find((n) => n.id === groupId_of(2, 0))?.parentIds).toEqual([anchorId_of(shape_of(chain))]);
-    expect(graph.nodes.find((n) => n.id === groupId_of(3, 0))?.parentIds).toEqual([anchorId_of(shape_of(other))]);
+    expect(anchors.map((n) => n.id).sort()).toEqual([anchorId_format(shape_derive(chain)), anchorId_format(shape_derive(other))].sort());
+    expect(shape_derive(chain)).toBe(shape_derive(fan));
+    expect(graph.nodes.find((n) => n.id === groupId_format(1, 0))?.parentIds).toEqual([anchorId_format(shape_derive(chain))]);
+    expect(graph.nodes.find((n) => n.id === groupId_format(2, 0))?.parentIds).toEqual([anchorId_format(shape_derive(chain))]);
+    expect(graph.nodes.find((n) => n.id === groupId_format(3, 0))?.parentIds).toEqual([anchorId_format(shape_derive(other))]);
   });
 
   it('draws the same graph whatever order the feeds landed in, and skips a feed with no jobs', () => {
@@ -59,22 +59,22 @@ describe('LandedFeeds', () => {
   });
 });
 
-describe('universeTip_of', () => {
+describe('universeTip_render', () => {
   it('names the group and the feed a sphere stands for, and nothing for an anchor', () => {
     const feeds: LandedFeeds = new LandedFeeds();
     feeds.take([fan, other]);
-    expect(universeTip_of(groupId_of(2, 1), feeds)).toBe('pl-dcm2niix ×300 · 12 errored · feed 2 · shot-cohort');
-    expect(universeTip_of(groupId_of(2, 0), feeds)).toBe('pl-dircopy · finishedSuccessfully · feed 2 · shot-cohort');
+    expect(universeTip_render(groupId_format(2, 1), feeds)).toBe('pl-dcm2niix ×300 · 12 errored · feed 2 · shot-cohort');
+    expect(universeTip_render(groupId_format(2, 0), feeds)).toBe('pl-dircopy · finishedSuccessfully · feed 2 · shot-cohort');
     // A feed without a name is named by its number alone.
-    expect(universeTip_of(groupId_of(3, 0), feeds)).toBe('pl-simplefsapp · started · feed 3');
-    expect(universeTip_of(anchorId_of(shape_of(fan)), feeds)).toBeNull();
-    expect(universeTip_of(groupId_of(99, 0), feeds)).toBeNull();
+    expect(universeTip_render(groupId_format(3, 0), feeds)).toBe('pl-simplefsapp · started · feed 3');
+    expect(universeTip_render(anchorId_format(shape_derive(fan)), feeds)).toBeNull();
+    expect(universeTip_render(groupId_format(99, 0), feeds)).toBeNull();
   });
 });
 
 describe('remembered positions', () => {
   it('keys the memory by identity', () => {
-    expect(universeStoreKey_of('chris', 'https://cube/api/v1/')).toBe('argus.universe.chris@https://cube/api/v1/');
+    expect(universeStoreKey_format('chris', 'https://cube/api/v1/')).toBe('argus.universe.chris@https://cube/api/v1/');
   });
   it('reads what was written and nothing that was not', () => {
     expect(storedPositions_parse(null)).toEqual({});
@@ -88,20 +88,20 @@ describe('remembered positions', () => {
 
 describe('a sphere weighs its jobs honestly', () => {
   it('sizes on a log scale, so a giant is a few times a fan rather than hundreds', () => {
-    expect(jobsMetric_of(1)).toBeCloseTo(1);
-    expect(jobsMetric_of(300) / jobsMetric_of(1)).toBeLessThan(10);
-    expect(jobsMetric_of(80000) / jobsMetric_of(300)).toBeLessThan(2.5);
-    expect(jobsMetric_of(0)).toBe(jobsMetric_of(1));
+    expect(jobsMetric_compute(1)).toBeCloseTo(1);
+    expect(jobsMetric_compute(300) / jobsMetric_compute(1)).toBeLessThan(10);
+    expect(jobsMetric_compute(80000) / jobsMetric_compute(300)).toBeLessThan(2.5);
+    expect(jobsMetric_compute(0)).toBe(jobsMetric_compute(1));
   });
   it('hues by the errored share, and not at all when clean', () => {
-    expect(erroredShare_of({ plugin: 'p', count: 80000, errored: 12, status: 'finishedWithError', parent: null })).toBeCloseTo(12 / 80000);
-    expect(erroredShare_of({ plugin: 'p', count: 3, errored: 3, status: 'finishedWithError', parent: null })).toBe(1);
-    expect(erroredShare_of({ plugin: 'p', count: 3, errored: 0, status: 'finishedSuccessfully', parent: null })).toBeUndefined();
+    expect(erroredShare_compute({ plugin: 'p', count: 80000, errored: 12, status: 'finishedWithError', parent: null })).toBeCloseTo(12 / 80000);
+    expect(erroredShare_compute({ plugin: 'p', count: 3, errored: 3, status: 'finishedWithError', parent: null })).toBe(1);
+    expect(erroredShare_compute({ plugin: 'p', count: 3, errored: 0, status: 'finishedSuccessfully', parent: null })).toBeUndefined();
   });
   it('on the feeds scale every sphere weighs the same', () => {
     const graph = universeGraph_build([fan, chain], 'feeds');
     expect(graph.nodes.filter((n) => n.ghost !== true).every((n) => n.metric === 1)).toBe(true);
-    expect(universeGraph_build([fan], 'jobs').nodes.find((n) => n.id === groupId_of(2, 1))?.metric).toBeCloseTo(jobsMetric_of(300));
+    expect(universeGraph_build([fan], 'jobs').nodes.find((n) => n.id === groupId_format(2, 1))?.metric).toBeCloseTo(jobsMetric_compute(300));
   });
 });
 
@@ -117,15 +117,15 @@ describe('the descent into a feed', () => {
     ],
   };
   // The descent reads a feed with the feed view's own builder (scene/feedGraph.ts), its ids scoped to the space.
-  const entered_of = (m: FeedDagModel) => feedGraph_build(m, { metric: 'time', hue: 'status', legend: new Map(), id_of: (id: string): string => instanceId_of(m.feedId, id) });
+  const entered_of = (m: FeedDagModel) => feedGraph_build(m, { metric: 'time', hue: 'status', legend: new Map(), id_map: (id: string): string => instanceId_format(m.feedId, id) });
   it('turns the kernel graph into scene nodes: ids by feed, the fan kept ×N with its share, roots free of any anchor, every node tubed', () => {
     const entered = entered_of(model);
-    expect(entered.nodes.map((n) => n.id)).toEqual([instanceId_of(2, '10'), instanceId_of(2, '11'), instanceId_of(2, '12')]);
+    expect(entered.nodes.map((n) => n.id)).toEqual([instanceId_format(2, '10'), instanceId_format(2, '11'), instanceId_format(2, '12')]);
     expect(entered.nodes[0]).toMatchObject({ label: 'pl-dircopy', parentIds: [], tubed: true });
-    expect(entered.nodes[1]).toMatchObject({ parentIds: [instanceId_of(2, '10')], count: 300, share: 12 / 300, tubed: true });
+    expect(entered.nodes[1]).toMatchObject({ parentIds: [instanceId_format(2, '10')], count: 300, share: 12 / 300, tubed: true });
     // A parent the model does not carry is dropped, not invented.
-    expect(entered.nodes[2]?.parentIds).toEqual([instanceId_of(2, '11')]);
-    expect(entered.payloads.get(instanceId_of(2, '11'))?.instanceId).toBe(11);
+    expect(entered.nodes[2]?.parentIds).toEqual([instanceId_format(2, '11')]);
+    expect(entered.payloads.get(instanceId_format(2, '11'))?.instanceId).toBe(11);
   });
   it('replaces the entered feed molecule and dims every other feed, halos included', () => {
     const entered = entered_of(model);
@@ -137,74 +137,74 @@ describe('the descent into a feed', () => {
     expect(others.every((n) => n.dim === true)).toBe(true);
     // The halos dim with the feeds they gather: inside a feed, nothing else is lit.
     expect(graph.nodes.filter((n) => n.ghost === true).every((n) => n.dim === true)).toBe(true);
-    expect(sphereIds_of(2, fan)).toEqual([groupId_of(2, 0), groupId_of(2, 1)]);
+    expect(sphereIds_list(2, fan)).toEqual([groupId_format(2, 0), groupId_format(2, 1)]);
   });
 });
 
 describe('a cluster has a handle', () => {
   it('draws every anchor as a halo counting the feeds of its shape', () => {
     const graph = universeGraph_build([chain, fan, other]);
-    const halo = graph.nodes.find((n) => n.id === anchorId_of(shape_of(fan)));
+    const halo = graph.nodes.find((n) => n.id === anchorId_format(shape_derive(fan)));
     expect(halo).toMatchObject({ ghost: true, halo: true, count: 2, label: 'pl-dircopy > pl-dcm2niix' });
-    expect(graph.nodes.find((n) => n.id === anchorId_of(shape_of(other)))).toMatchObject({ halo: true, count: 1 });
+    expect(graph.nodes.find((n) => n.id === anchorId_format(shape_derive(other)))).toMatchObject({ halo: true, count: 1 });
   });
   it('says a shape in words, each plugin once in pipeline order', () => {
-    expect(shapeWords_of(shape_of(fan))).toBe('pl-dircopy > pl-dcm2niix');
-    expect(shapeWords_of('r:pl-a>0:pl-b>0:pl-b>2:pl-c')).toBe('pl-a > pl-b > pl-c');
+    expect(shapeWords_format(shape_derive(fan))).toBe('pl-dircopy > pl-dcm2niix');
+    expect(shapeWords_format('r:pl-a>0:pl-b>0:pl-b>2:pl-c')).toBe('pl-a > pl-b > pl-c');
     expect(shapeWords_brief('r:pl-a>0:pl-b>0:pl-b>2:pl-c')).toBe('pl-a > pl-b > pl-c');
     expect(shapeWords_brief('r:a>0:b>1:c>2:d>3:e')).toBe('a > b > c … +2');
   });
   it('tips a halo with the shape and its count, and nothing else', () => {
     const feeds: LandedFeeds = new LandedFeeds();
     feeds.take([chain, fan, other]);
-    expect(clusterTip_of(anchorId_of(shape_of(fan)), feeds)).toBe('pl-dircopy > pl-dcm2niix · 2 feeds');
-    expect(clusterTip_of(anchorId_of(shape_of(other)), feeds)).toBe('pl-simplefsapp · 1 feed');
-    expect(clusterTip_of(groupId_of(2, 0), feeds)).toBeNull();
+    expect(clusterTip_render(anchorId_format(shape_derive(fan)), feeds)).toBe('pl-dircopy > pl-dcm2niix · 2 feeds');
+    expect(clusterTip_render(anchorId_format(shape_derive(other)), feeds)).toBe('pl-simplefsapp · 1 feed');
+    expect(clusterTip_render(groupId_format(2, 0), feeds)).toBeNull();
   });
   it('gathers the spheres of a shape, and lights only them in the cluster view', () => {
     const feeds: LandedFeeds = new LandedFeeds();
     feeds.take([chain, fan, other]);
-    const ids = clusterIds_of(shape_of(fan), feeds);
-    expect(ids.sort()).toEqual([groupId_of(1, 0), groupId_of(1, 1), groupId_of(2, 0), groupId_of(2, 1)].sort());
-    const graph = clusterGraph_build([chain, fan, other], shape_of(fan));
+    const ids = clusterIds_list(shape_derive(fan), feeds);
+    expect(ids.sort()).toEqual([groupId_format(1, 0), groupId_format(1, 1), groupId_format(2, 0), groupId_format(2, 1)].sort());
+    const graph = clusterGraph_build([chain, fan, other], shape_derive(fan));
     const lit = graph.nodes.filter((n) => n.dim !== true).map((n) => n.id).sort();
-    expect(lit).toEqual([anchorId_of(shape_of(fan)), ...ids].sort());
-    expect(graph.nodes.find((n) => n.id === groupId_of(3, 0))?.dim).toBe(true);
-    expect(graph.nodes.find((n) => n.id === anchorId_of(shape_of(other)))?.dim).toBe(true);
+    expect(lit).toEqual([anchorId_format(shape_derive(fan)), ...ids].sort());
+    expect(graph.nodes.find((n) => n.id === groupId_format(3, 0))?.dim).toBe(true);
+    expect(graph.nodes.find((n) => n.id === anchorId_format(shape_derive(other)))?.dim).toBe(true);
   });
 });
 
 describe('a shape folds its feeds', () => {
   it('folds every feed of a shape into one molecule, sized by the feeds it holds, reddened by how many erred at the stage', () => {
     const graph = foldedGraph_build([chain, fan, other], 'feeds');
-    const shapes = new Set(graph.nodes.map((n) => foldShape_of(n.id)));
-    expect(shapes).toEqual(new Set([shape_of(fan), shape_of(other)]));
-    const root = graph.nodes.find((n) => n.id === foldId_of(shape_of(fan), 0));
-    const stage = graph.nodes.find((n) => n.id === foldId_of(shape_of(fan), 1));
-    expect(root).toMatchObject({ label: 'pl-dircopy', parentIds: [], count: 2, metric: jobsMetric_of(2) });
+    const shapes = new Set(graph.nodes.map((n) => foldShape_parse(n.id)));
+    expect(shapes).toEqual(new Set([shape_derive(fan), shape_derive(other)]));
+    const root = graph.nodes.find((n) => n.id === foldId_format(shape_derive(fan), 0));
+    const stage = graph.nodes.find((n) => n.id === foldId_format(shape_derive(fan), 1));
+    expect(root).toMatchObject({ label: 'pl-dircopy', parentIds: [], count: 2, metric: jobsMetric_compute(2) });
     expect(root?.share).toBeUndefined();
     // Of the two feeds, one erred at dcm2niix: half red.
-    expect(stage).toMatchObject({ label: 'pl-dcm2niix', parentIds: [foldId_of(shape_of(fan), 0)], count: 2, share: 0.5, status: 'finishedSuccessfully' });
-    expect(graph.nodes.find((n) => n.id === foldId_of(shape_of(other), 0))?.count).toBeUndefined();
+    expect(stage).toMatchObject({ label: 'pl-dcm2niix', parentIds: [foldId_format(shape_derive(fan), 0)], count: 2, share: 0.5, status: 'finishedSuccessfully' });
+    expect(graph.nodes.find((n) => n.id === foldId_format(shape_derive(other), 0))?.count).toBeUndefined();
     expect(graph.nodes.some((n) => n.ghost === true)).toBe(false);
   });
   it('on the jobs scale a stage weighs the jobs across its feeds', () => {
     const graph = foldedGraph_build([chain, fan], 'jobs');
-    expect(graph.nodes.find((n) => n.id === foldId_of(shape_of(fan), 1))?.metric).toBeCloseTo(jobsMetric_of(302));
+    expect(graph.nodes.find((n) => n.id === foldId_format(shape_derive(fan), 1))?.metric).toBeCloseTo(jobsMetric_compute(302));
   });
   it('tips a folded stage with the feeds under it and how many erred there', () => {
     const feeds: LandedFeeds = new LandedFeeds();
     feeds.take([chain, fan, other]);
-    expect(foldTip_of(foldId_of(shape_of(fan), 1), feeds)).toBe('pl-dcm2niix · 2 feeds · 1 with errors · pl-dircopy > pl-dcm2niix');
-    expect(foldTip_of(foldId_of(shape_of(other), 0), feeds)).toBe('pl-simplefsapp · 1 feed · pl-simplefsapp');
-    expect(foldTip_of(groupId_of(1, 0), feeds)).toBeNull();
-    expect(foldIds_of(shape_of(fan), feeds)).toEqual([foldId_of(shape_of(fan), 0), foldId_of(shape_of(fan), 1)]);
+    expect(foldTip_render(foldId_format(shape_derive(fan), 1), feeds)).toBe('pl-dcm2niix · 2 feeds · 1 with errors · pl-dircopy > pl-dcm2niix');
+    expect(foldTip_render(foldId_format(shape_derive(other), 0), feeds)).toBe('pl-simplefsapp · 1 feed · pl-simplefsapp');
+    expect(foldTip_render(groupId_format(1, 0), feeds)).toBeNull();
+    expect(foldIds_list(shape_derive(fan), feeds)).toEqual([foldId_format(shape_derive(fan), 0), foldId_format(shape_derive(fan), 1)]);
   });
   it('unfolds one shape into its members and keeps the rest folded and dim', () => {
-    const { graph, memberIds } = unfoldedGraph_build([chain, fan, other], shape_of(fan));
-    expect(memberIds.sort()).toEqual([groupId_of(1, 0), groupId_of(1, 1), groupId_of(2, 0), groupId_of(2, 1)].sort());
+    const { graph, memberIds } = unfoldedGraph_build([chain, fan, other], shape_derive(fan));
+    expect(memberIds.sort()).toEqual([groupId_format(1, 0), groupId_format(1, 1), groupId_format(2, 0), groupId_format(2, 1)].sort());
     expect(graph.nodes.filter((n) => memberIds.includes(n.id)).every((n) => n.dim !== true)).toBe(true);
-    expect(graph.nodes.find((n) => n.id === foldId_of(shape_of(other), 0))?.dim).toBe(true);
-    expect(graph.nodes.some((n) => foldShape_of(n.id) === shape_of(fan))).toBe(false);
+    expect(graph.nodes.find((n) => n.id === foldId_format(shape_derive(other), 0))?.dim).toBe(true);
+    expect(graph.nodes.some((n) => foldShape_parse(n.id) === shape_derive(fan))).toBe(false);
   });
 });

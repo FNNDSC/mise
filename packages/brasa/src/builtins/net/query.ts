@@ -26,7 +26,7 @@ import { sink_get } from '../../core/sink.js';
 import { pacsQueryModel_build } from './query.model.js';
 import { pacsAnswer_render } from './query.view.js';
 import { ignoredKeys_hint } from './query.ignored.js';
-import { csvFile_write, pacsAnswer_toCsv, pacsAnswer_toTable, type CsvWrite, type PacsAnswerLevel } from './query.csv.js';
+import { csvFile_write, pacsAnswer_renderCsv, pacsAnswer_renderTable, type CsvWrite, type PacsAnswerLevel } from './query.csv.js';
 import { series_cubePathGet } from './pacsUtils.js';
 import { screen } from '@fnndsc/chili/screen/screen.js';
 import { spinner } from '../../lib/spinner.js';
@@ -225,7 +225,7 @@ export { pacsQueryModel_build };
  * @param model - The answer.
  * @returns One filter per named study, in the answer's order.
  */
-export function pulledFilters_of(model: PacsQueryModel): SeriesStorageFilter[] {
+export function pulledFilters_build(model: PacsQueryModel): SeriesStorageFilter[] {
   return model.studies
     .filter((study): boolean => typeof study.studyUID === 'string' && study.studyUID !== '')
     .map((study): SeriesStorageFilter => ({ StudyInstanceUID: study.studyUID as string }));
@@ -255,7 +255,7 @@ async function modelPulledState_fill(model: PacsQueryModel): Promise<void> {
   const unnamed = model.studies.filter((study): boolean => !(typeof study.studyUID === 'string' && study.studyUID !== ''));
 
   if (named.length > 0) {
-    const held = await seriesStorage_resolveMany(pulledFilters_of(model));
+    const held = await seriesStorage_resolveMany(pulledFilters_build(model));
     if (held.ok) {
       for (const study of named) {
         for (const series of study.series) {
@@ -480,7 +480,7 @@ interface QueryAnswer {
  * @param criteria - One question's criteria.
  * @returns The `Key:Value,Key:Value` form.
  */
-function criteria_toExpression(criteria: Record<string, string>): string {
+function criteria_format(criteria: Record<string, string>): string {
   return Object.entries(criteria)
     .map(([key, value]: [string, string]): string => `${key}:${value}`)
     .join(',');
@@ -563,7 +563,7 @@ async function ask_run(
     }
   }
   const checkpoint: number = errorStack.checkpoint_mark();
-  const expression: string = criteria_toExpression(ask.criteria);
+  const expression: string = criteria_format(ask.criteria);
   // Each question gets its own title. CUBE refuses a second PACSQuery with
   // a title it already holds for that server — measured live, where a
   // fan-out under one title had every question after the first come back
@@ -683,7 +683,7 @@ function fanoutModel_build(
       queryId: answer.result.queryId,
       vfsPath: answer.result.vfsPath,
       pacsName: answer.ask.server,
-      expression: criteria_toExpression(answer.ask.criteria),
+      expression: criteria_format(answer.ask.criteria),
     }).studies.map((study: PacsStudy): PacsStudy => (
       manyServers ? { ...study, server: answer.ask.identifier } : study
     ));
@@ -741,8 +741,8 @@ function fanoutModel_build(
  * @returns The rendered table.
  */
 function cohort_render(patients: ReadonlyArray<PacsPatient>): string {
-  const server_of = (patient: PacsPatient): string => patient.server ?? '';
-  const manyServers: boolean = new Set(patients.map(server_of)).size > 1;
+  const server_extract = (patient: PacsPatient): string => patient.server ?? '';
+  const manyServers: boolean = new Set(patients.map(server_extract)).size > 1;
   const serverWidth: number = 14;
   const lines: string[] = [''];
   const serverCap: string = manyServers ? chalk.bold.white('SERVER'.padEnd(serverWidth)) : '';
@@ -761,7 +761,7 @@ function cohort_render(patients: ReadonlyArray<PacsPatient>): string {
     const note: string = patient.status === 'unasked'
       ? chalk.red(patient.error ?? 'unasked')
       : chalk.gray(answered ?? 'just now');
-    const server: string = manyServers ? server_of(patient).padEnd(serverWidth) : '';
+    const server: string = manyServers ? server_extract(patient).padEnd(serverWidth) : '';
     lines.push(`  ${hue(patient.patientId.padEnd(18))}${server}${counts[0].padEnd(10)}${counts[1].padEnd(9)}${note}`);
   }
   return `${lines.join('\n')}\n${cohortTally_render(patients)}`;
@@ -808,7 +808,7 @@ async function csv_deliver(
   level: PacsAnswerLevel = 'study',
   table: boolean = false,
 ): Promise<{ ok: true; rendered: string } | { ok: false; message: string }> {
-  const csv: string = pacsAnswer_toCsv(model, level);
+  const csv: string = pacsAnswer_renderCsv(model, level);
   let target: string | null = destination;
   if (target === null && ask) {
     // Asked only once there is something to write: a question raised before
@@ -833,7 +833,7 @@ async function csv_deliver(
     : '';
   // The file went where it was sent; the screen, asked for the table,
   // shows the same rows beside the word that they were written.
-  const shown: string = table ? `\n${pacsAnswer_toTable(model, level)}` : '';
+  const shown: string = table ? `\n${pacsAnswer_renderTable(model, level)}` : '';
   return { ok: true, rendered: `${made}${gone}${chalk.green(`✓ wrote ${written.path}`)}\n${shown}` };
 }
 
@@ -954,7 +954,7 @@ async function cohort_answer(
   // facts (a patient with none, a question unasked) ride them as rows with
   // their STATUS, and the tally still closes it.
   const rendered: string = facts.table
-    ? `\n${pacsAnswer_toTable(model, facts.level)}${cohortTally_render(patients)}`
+    ? `\n${pacsAnswer_renderTable(model, facts.level)}${cohortTally_render(patients)}`
     : patients.length > 0
       ? cohort_render(patients)
       : `${chalk.green(`✓ ${asks.length} queries complete — ${model.studies.length} studies`)}\n`;
@@ -1193,7 +1193,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   // One question, spelled as the create path wants it — which is not
   // necessarily what was typed: `--patients 1234` names a patient without
   // an expression to carry it.
-  const askExpr: string = criteria_toExpression(criteria);
+  const askExpr: string = criteria_format(criteria);
 
   let result: QueryCreateResult | null = null;
   let answeredAt: string | null = null;
@@ -1244,7 +1244,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     result = { ...result, decoded: { ...result.decoded, json: answer_standIn(result.decoded.json) } };
   }
   // What the operator typed, said in the same tokens the rows carry.
-  const shownExpr: string = anon ? criteria_toExpression(criteria_standIn(criteria)) : askExpr;
+  const shownExpr: string = anon ? criteria_format(criteria_standIn(criteria)) : askExpr;
 
   let renderedResult: string | null = null;
 
@@ -1264,7 +1264,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   await modelPulledState_fill(model);
   // The table reads the model, pulled state and all, so it is rendered
   // once the model knows what CUBE already holds.
-  if (tableMode && model.studies.length > 0) renderedResult = `\n${pacsAnswer_toTable(model, level)}`;
+  if (tableMode && model.studies.length > 0) renderedResult = `\n${pacsAnswer_renderTable(model, level)}`;
   // The default view reads the model too, so the handles it prints are the
   // ones an index expands to (#1099).
   if (!tableMode) renderedResult = pacsAnswer_render(model);

@@ -21,7 +21,7 @@
 import { Err, Ok, errorStack, vfs_fail, vfs_ok, type CpOptions, type Result, type VFSItem, type VFSProvider, type VfsOutcome } from '@fnndsc/fond';
 import type { CloudAvailability, CloudContainer, CloudDriver, CloudIdentity, CloudLimit, CloudPrice, CloudShape, CloudZone } from '../cloud/driver.js';
 import { AnswerCache } from '../cache.js';
-import { ambiguity_words, idSuffix_of, segment_resolve, segments_assign, type Segment, type SegmentMatch } from '../names.js';
+import { ambiguity_words, idSuffix_extract, segment_resolve, segments_assign, type Segment, type SegmentMatch } from '../names.js';
 import { KIND_FOLDERS, kindFolder_is, ResourceTree, type ResourceNode } from './resources.js';
 import { DomainTree } from './domains.js';
 
@@ -98,13 +98,13 @@ export class TenancyProvider implements VFSProvider {
   }
 
   /** The region the kind folders list. */
-  private region_of(identity: CloudIdentity): string {
+  private region_resolve(identity: CloudIdentity): string {
     return this.region() ?? identity.homeRegion;
   }
 
   /** A path below a container's kind folder, resolved by the resource tree. */
   private async resourceNode_resolve(identity: CloudIdentity, container: CloudContainer, segments: string[]): Promise<Node> {
-    const node: ResourceNode = await this.resources.node_resolve(container.id, this.region_of(identity), segments, identity.user);
+    const node: ResourceNode = await this.resources.node_resolve(container.id, this.region_resolve(identity), segments, identity.user);
     return node;
   }
 
@@ -159,7 +159,7 @@ export class TenancyProvider implements VFSProvider {
   // ---- paths ----
 
   /** The path's segments under the mount; null when the path is not under it. */
-  private segments_of(pathStr: string): string[] | null {
+  private segments_parse(pathStr: string): string[] | null {
     const absolute: string = pathStr.startsWith('/') ? pathStr : `/${pathStr}`;
     const clean: string = absolute.length > 1 && absolute.endsWith('/') ? absolute.slice(0, -1) : absolute;
     if (clean === this.prefix) return [];
@@ -168,14 +168,14 @@ export class TenancyProvider implements VFSProvider {
   }
 
   /** Containers with their path segments: a reserved name or a duplicate wears the suffix. */
-  private containerSegments_of(children: CloudContainer[], reserved: ReadonlyArray<string>): Segment<CloudContainer>[] {
+  private containerSegments_map(children: CloudContainer[], reserved: ReadonlyArray<string>): Segment<CloudContainer>[] {
     return segments_assign(children).map((entry: Segment<CloudContainer>): Segment<CloudContainer> =>
-      reserved.includes(entry.segment) ? { segment: `${entry.item.name}~${idSuffix_of(entry.item.id)}`, item: entry.item } : entry);
+      reserved.includes(entry.segment) ? { segment: `${entry.item.name}~${idSuffix_extract(entry.item.id)}`, item: entry.item } : entry);
   }
 
   /** The child a segment names among containers, with the reserved rule. */
   private container_resolve(children: CloudContainer[], segment: string, reserved: ReadonlyArray<string>): SegmentMatch<CloudContainer> {
-    const assigned: Segment<CloudContainer>[] = this.containerSegments_of(children, reserved);
+    const assigned: Segment<CloudContainer>[] = this.containerSegments_map(children, reserved);
     const exact: Segment<CloudContainer> | undefined = assigned.find((entry: Segment<CloudContainer>): boolean => entry.segment === segment);
     if (exact !== undefined) return { kind: 'one', item: exact.item };
     if (reserved.includes(segment)) return { kind: 'none' };
@@ -189,7 +189,7 @@ export class TenancyProvider implements VFSProvider {
    * @returns The node, or `missing` with a reason to show.
    */
   private async node_resolve(pathStr: string): Promise<Node> {
-    const segments: string[] | null = this.segments_of(pathStr);
+    const segments: string[] | null = this.segments_parse(pathStr);
     if (segments === null) return { kind: 'missing' };
     if (segments.length === 0) return { kind: 'mount' };
     let identity: CloudIdentity;
@@ -335,8 +335,8 @@ export class TenancyProvider implements VFSProvider {
   /** What a container level lists: its children, its kind folders, the reserved folders, `info.json`. */
   private async containerLevel_list(identity: CloudIdentity, container: CloudContainer, reserved: ReadonlyArray<string>, extraFolders: ReadonlyArray<string>): Promise<VFSItem[]> {
     const children: CloudContainer[] = await this.containers_list(container.id);
-    const items: VFSItem[] = this.containerSegments_of(children, reserved).map((entry: Segment<CloudContainer>): VFSItem => this.container_item(entry, identity.user));
-    items.push(...(await this.resources.kindFolders_items(container.id, this.region_of(identity))));
+    const items: VFSItem[] = this.containerSegments_map(children, reserved).map((entry: Segment<CloudContainer>): VFSItem => this.container_item(entry, identity.user));
+    items.push(...(await this.resources.kindFolders_items(container.id, this.region_resolve(identity))));
     for (const folder of extraFolders) items.push(this.folder_item(folder));
     items.push(this.file_item({ name: 'info.json', text: json_text(container.raw) }));
     return items;

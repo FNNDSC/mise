@@ -26,7 +26,7 @@ const COLS_WANTED: number = 100;
 const ROWS_LEAST: number = 24;
 
 /** The glyph cell for a field: about a hundred columns across, never fewer rows than the arcade needs, within a legible range. */
-export function cell_of(width: number, height: number): { w: number; h: number } {
+export function cell_compute(width: number, height: number): { w: number; h: number } {
   let w: number = Math.floor(width / COLS_WANTED);
   if (height / (w * CELL_ASPECT) < ROWS_LEAST) w = Math.floor(height / ROWS_LEAST / CELL_ASPECT);
   w = Math.max(CELL_MIN, Math.min(CELL_MAX, w));
@@ -134,7 +134,7 @@ export class GamesPanel {
     if (program === null) return;
     this.timer = setInterval((): void => {
       if (this.field.offsetParent === null) return;
-      program.step(this.size_of(), Math.random);
+      program.step(this.size_measure(), Math.random);
       this.draw();
       if (program.over?.() === true) this.clock_stop();
     }, program.tick);
@@ -145,9 +145,9 @@ export class GamesPanel {
     this.timer = null;
   }
 
-  private size_of(): { cols: number; rows: number } {
+  private size_measure(): { cols: number; rows: number } {
     const rect: DOMRect = this.field.getBoundingClientRect();
-    const cell = cell_of(rect.width, rect.height);
+    const cell = cell_compute(rect.width, rect.height);
     return { cols: Math.max(10, Math.floor(rect.width / cell.w)), rows: Math.max(6, Math.floor(rect.height / cell.h)) };
   }
 
@@ -175,10 +175,10 @@ export class GamesPanel {
     }
     context.setTransform(scale, 0, 0, scale, 0, 0);
     context.clearRect(0, 0, rect.width, rect.height);
-    const cell = cell_of(rect.width, rect.height);
+    const cell = cell_compute(rect.width, rect.height);
     context.font = `${cell.h - 2}px 'Share Tech Mono', monospace`;
     context.textBaseline = 'top';
-    const size = this.size_of();
+    const size = this.size_measure();
     const put = (col: number, row: number, glyph: string, hue: string): void => {
       if (col < 0 || row < 0 || col >= size.cols || row >= size.rows) return;
       context.fillStyle = hue;

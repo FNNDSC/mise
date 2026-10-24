@@ -208,7 +208,7 @@ export type SessionStackVersions = Omit<StackVersions, (typeof CHRIS_STACK_PACKA
  * @param backendId - The session's backend (`chris`, `stratus`, `null`).
  * @returns The versions the session's banner and attach answer name.
  */
-export function versionsForBackend_of(versions: StackVersions, backendId: string): SessionStackVersions {
+export function versions_selectForBackend(versions: StackVersions, backendId: string): SessionStackVersions {
   if (backendId === 'chris') return { ...versions };
   const kept: SessionStackVersions = { ...versions };
   for (const pkg of CHRIS_STACK_PACKAGES) delete kept[pkg];

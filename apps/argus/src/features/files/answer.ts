@@ -33,7 +33,7 @@ export function listing_isAnswered(envelope: WireEnvelope): boolean {
  * @param envelope - The refused envelope.
  * @returns The refusal's words, on one line.
  */
-export function refusalWords_of(envelope: WireEnvelope): string {
+export function refusalWords_extract(envelope: WireEnvelope): string {
   const said: string = (envelope.renderedErr ?? envelope.rendered ?? '').replace(/\x1b\[[0-9;]*m/g, '').split('\n')
     .map((line: string): string => line.trim()).filter((line: string): boolean => line.length > 0).join(' · ');
   const drained: string = [...((envelope as { errors?: Array<{ type?: string; message?: string }> }).errors ?? [])]

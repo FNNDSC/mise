@@ -39,13 +39,13 @@ import { type ListingAction } from '../roster/row.js';
 import { FEED_TRAITS } from './roster.js';
 import { feedFacts_render } from '../feed/facts.js';
 import { FeedFrame, type FeedFrameFacts } from './feedFrame.js';
-import { FeedViewFrame, feedHueLegend_of, feedShape_same, feedStatuses_patch, type FeedModes, type FeedVerb } from '../feed/view.js';
+import { FeedViewFrame, feedHueLegend_build, feedShape_same, feedStatuses_patch, type FeedModes, type FeedVerb } from '../feed/view.js';
 import { FollowGuard } from './follow.js';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { refusalReason_strip } from './refusal.js';
 import { paneAsk_open, type PaneAskChoice } from '../ask/paneAsk.js';
 import { linkLine_build, linkLine_set } from '../../app/link.js';
-import { feedGraph_build, feedMetric_of, type HueMode, type MetricMode } from '../../scene/feedGraph.js';
+import { feedGraph_build, feedMetric_extract, type HueMode, type MetricMode } from '../../scene/feedGraph.js';
 
 /** What the pane asks of its host. */
 export interface DagPanelHandlers {
@@ -418,8 +418,8 @@ export class DagPanel {
     });
     this.metricMode = this.feedView.modes_get().metric;
     this.hueMode = this.feedView.modes_get().hue;
-    this.scalePill = this.feedView.pill_of('metric');
-    this.huePill = this.feedView.pill_of('hue');
+    this.scalePill = this.feedView.pill_find('metric');
+    this.huePill = this.feedView.pill_find('hue');
     // What this device last chose stands from the first graph: a feed opens
     // as its tree, root on top, unless the device chose otherwise.
     this.feedModes_recall();
@@ -720,7 +720,7 @@ export class DagPanel {
    * @returns Resource → CSS color.
    */
   private hueLegend_build(model: FeedDagModel): Map<string, string> {
-    return feedHueLegend_of(model);
+    return feedHueLegend_build(model);
   }
 
   /**
@@ -890,7 +890,7 @@ export class DagPanel {
   private graph_show(model: FeedDagModel, wave: boolean = true): void {
     // Honesty on the pill itself: a mode with no data behind it dims and
     // says so, instead of silently rendering an unchanged graph.
-    const hasData: boolean = model.nodes.some((node: FeedDagNode): boolean => feedMetric_of(node, this.metricMode) !== undefined);
+    const hasData: boolean = model.nodes.some((node: FeedDagNode): boolean => feedMetric_extract(node, this.metricMode) !== undefined);
     this.scalePill?.classList.toggle('rail-na', !hasData);
     if (this.scalePill !== null) {
       this.scalePill.title = hasData
@@ -1125,7 +1125,7 @@ export class DagPanel {
    * @param target - A feed or node id, or its `/proc` name.
    * @param enter - Enter the node once it is selected (ENTER NODE).
    */
-  public jump_to(target: string, enter: boolean = false): void {
+  public target_jumpTo(target: string, enter: boolean = false): void {
     this.jumpEnter = enter;
     void this.jump_ask(target);
   }

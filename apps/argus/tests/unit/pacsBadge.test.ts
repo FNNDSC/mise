@@ -4,21 +4,21 @@
  * in CUBE outranks a pull that ended badly.
  */
 import { describe, it, expect } from '@jest/globals';
-import { answer_outranksBadge, badgeFraction_of } from '../../src/features/pacs/panel.js';
+import { answer_outranksBadge, badgeFraction_compute } from '../../src/features/pacs/panel.js';
 
-describe('badgeFraction_of', () => {
+describe('badgeFraction_compute', () => {
   it('paces a fired pull still waiting on its first file, though it knows its total', () => {
-    expect(badgeFraction_of({ status: 'running', current: 0, total: 131 })).toBeNull();
+    expect(badgeFraction_compute({ status: 'running', current: 0, total: 131 })).toBeNull();
   });
 
   it('paces a queued pull and one with no total', () => {
-    expect(badgeFraction_of({ status: 'queued' })).toBeNull();
-    expect(badgeFraction_of({ status: 'running', current: 3 })).toBeNull();
+    expect(badgeFraction_compute({ status: 'queued' })).toBeNull();
+    expect(badgeFraction_compute({ status: 'running', current: 3 })).toBeNull();
   });
 
   it('fills as far as the files have come once they come', () => {
-    expect(badgeFraction_of({ status: 'running', current: 33, total: 132 })).toBeCloseTo(0.25);
-    expect(badgeFraction_of({ status: 'running', current: 200, total: 100 })).toBe(1);
+    expect(badgeFraction_compute({ status: 'running', current: 33, total: 132 })).toBeCloseTo(0.25);
+    expect(badgeFraction_compute({ status: 'running', current: 200, total: 100 })).toBe(1);
   });
 });
 

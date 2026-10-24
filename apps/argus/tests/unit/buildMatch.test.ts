@@ -6,45 +6,45 @@
  * builds, which side is older, and the cure.
  */
 import { describe, it, expect } from '@jest/globals';
-import { buildMatch_wire, buildMismatch_of, buildMismatch_sentence, buildMismatch_tell, type BuildStamp } from '../../src/app/buildMatch.js';
+import { buildMatch_wire, buildMismatch_derive, buildMismatch_sentence, buildMismatch_tell, type BuildStamp } from '../../src/app/buildMatch.js';
 import type { StackInfo } from '../../src/calypso/client.js';
 
 const PAGE: BuildStamp = { git: '7bedda5', built: '2026-10-03 14:20' };
 const stack = (surface?: BuildStamp): StackInfo => ({ chell: '5.9.6', calypso: '0.17.1', build: '7bedda', ...(surface !== undefined ? { surface } : {}) });
 
-describe('buildMismatch_of', () => {
+describe('buildMismatch_derive', () => {
   it('says nothing when the kernel started beside this very page', () => {
-    expect(buildMismatch_of(PAGE, stack({ ...PAGE }))).toBeNull();
+    expect(buildMismatch_derive(PAGE, stack({ ...PAGE }))).toBeNull();
   });
 
   it('knows the kernel is older when the page was built after the one it started beside', () => {
-    expect(buildMismatch_of(PAGE, stack({ git: '4128890', built: '2026-10-01 09:00' }))).toBe('daemon-older');
+    expect(buildMismatch_derive(PAGE, stack({ git: '4128890', built: '2026-10-01 09:00' }))).toBe('daemon-older');
   });
 
   it('knows the page is older when the kernel started beside a later build', () => {
-    expect(buildMismatch_of(PAGE, stack({ git: '9999999', built: '2026-10-04 08:00' }))).toBe('argus-older');
+    expect(buildMismatch_derive(PAGE, stack({ git: '9999999', built: '2026-10-04 08:00' }))).toBe('argus-older');
   });
 
   it('takes a daemon that names no page as one older than the stamp', () => {
-    expect(buildMismatch_of(PAGE, stack())).toBe('daemon-older');
+    expect(buildMismatch_derive(PAGE, stack())).toBe('daemon-older');
   });
 
   it('cannot judge a daemon that reports no stack', () => {
-    expect(buildMismatch_of(PAGE, undefined)).toBeNull();
+    expect(buildMismatch_derive(PAGE, undefined)).toBeNull();
   });
 });
 
-describe('buildMismatch_of, believing a daemon that says whether it is stale', () => {
+describe('buildMismatch_derive, believing a daemon that says whether it is stale', () => {
   it('calls the daemon older when its own code moved, whatever the stamps say', () => {
-    expect(buildMismatch_of(PAGE, stack({ ...PAGE }), true)).toBe('daemon-older');
+    expect(buildMismatch_derive(PAGE, stack({ ...PAGE }), true)).toBe('daemon-older');
   });
 
   it('stays silent for an ARGUS-only release: newer ARGUS, daemon code unchanged', () => {
-    expect(buildMismatch_of(PAGE, stack({ git: '4128890', built: '2026-10-01 09:00' }), false)).toBeNull();
+    expect(buildMismatch_derive(PAGE, stack({ git: '4128890', built: '2026-10-01 09:00' }), false)).toBeNull();
   });
 
   it('still says an older ARGUS should refresh', () => {
-    expect(buildMismatch_of(PAGE, stack({ git: '9999999', built: '2026-10-04 08:00' }), false)).toBe('argus-older');
+    expect(buildMismatch_derive(PAGE, stack({ git: '9999999', built: '2026-10-04 08:00' }), false)).toBe('argus-older');
   });
 });
 

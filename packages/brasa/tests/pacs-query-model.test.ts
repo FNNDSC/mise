@@ -27,7 +27,7 @@ jest.unstable_mockModule('../src/lib/spinner.js', () => ({
   spinner: { start: jest.fn(), stop: jest.fn(), updateMessage: jest.fn() },
 }));
 
-const { pacsQueryModel_build, pulledFilters_of } = await import('../src/builtins/net/query.js');
+const { pacsQueryModel_build, pulledFilters_build } = await import('../src/builtins/net/query.js');
 
 describe('pacsQueryModel_build', () => {
   it('projects studies and series with UIDs and pullable VFS paths', () => {
@@ -86,7 +86,7 @@ describe('pacsQueryModel_build', () => {
  * the asking is one question per study. An answer built the slow way looks
  * identical, so what is pinned here is the question count.
  */
-describe('pulledFilters_of', () => {
+describe('pulledFilters_build', () => {
   /** An answer of `studies` studies, each holding `series` series. */
   const answer_of = (studies: number, series: number, uid: (i: number) => string | undefined) => ({
     studies: Array.from({ length: studies }, (_u: unknown, s: number) => ({
@@ -96,7 +96,7 @@ describe('pulledFilters_of', () => {
   });
 
   it('asks once per study, however many series each holds', () => {
-    const filters = pulledFilters_of(answer_of(20, 15, (s: number) => `9.${s}`) as never);
+    const filters = pulledFilters_build(answer_of(20, 15, (s: number) => `9.${s}`) as never);
     // Twenty studies, 300 series, twenty questions.
     expect(filters).toHaveLength(20);
     expect(filters[0]).toEqual({ StudyInstanceUID: '9.0' });
@@ -104,12 +104,12 @@ describe('pulledFilters_of', () => {
   });
 
   it('leaves out a study the answer does not name, since it cannot be asked about in bulk', () => {
-    const filters = pulledFilters_of(answer_of(3, 2, (s: number) => (s === 1 ? undefined : `9.${s}`)) as never);
+    const filters = pulledFilters_build(answer_of(3, 2, (s: number) => (s === 1 ? undefined : `9.${s}`)) as never);
     expect(filters).toEqual([{ StudyInstanceUID: '9.0' }, { StudyInstanceUID: '9.2' }]);
   });
 
   it('treats an empty UID as no UID, rather than asking CUBE about nothing', () => {
-    const filters = pulledFilters_of(answer_of(2, 1, (s: number) => (s === 0 ? '' : '9.1')) as never);
+    const filters = pulledFilters_build(answer_of(2, 1, (s: number) => (s === 0 ? '' : '9.1')) as never);
     expect(filters).toEqual([{ StudyInstanceUID: '9.1' }]);
   });
 });

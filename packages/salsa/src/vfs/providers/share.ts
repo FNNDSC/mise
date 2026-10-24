@@ -16,7 +16,7 @@
  * @module
  */
 
-import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
+import { vfsOutcome_convertFromBoolean, vfsOutcome_convertFromResult, type VfsOutcome } from '@fnndsc/fond';
 import {
   Err,
   Ok,
@@ -127,7 +127,7 @@ export class ShareVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   public async cp(_src: string, _dest: string, _options: CpOptions): Promise<VfsOutcome> {
-    return vfsOutcome_ofBoolean(await this.copy_run(_src, _dest, _options), 'EROFS');
+    return vfsOutcome_convertFromBoolean(await this.copy_run(_src, _dest, _options), 'EROFS');
   }
 
   /** @inheritdoc */
@@ -207,7 +207,7 @@ export class ShareVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   public async read(path: string): Promise<VfsOutcome<string>> {
-    return vfsOutcome_ofResult(await this.text_read(path), 'ENOENT');
+    return vfsOutcome_convertFromResult(await this.text_read(path), 'ENOENT');
   }
 
   /** @inheritdoc */

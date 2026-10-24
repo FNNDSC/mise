@@ -40,7 +40,7 @@ import { pathMapper_get } from '@fnndsc/chili';
 const mapper = pathMapper_get();
 
 // Resolve logical path to physical location
-const result = await mapper.logical_toPhysical('/home/user/public/feed_4');
+const result = await mapper.logicalPath_resolve('/home/user/public/feed_4');
 if (result.ok) {
   console.log(result.value); // '/SHARED/feed_4'
 }
@@ -94,7 +94,7 @@ Resolving 1000 files in `/home/user/feeds/feed_123/files/`:
 ### Resolution Algorithm
 
 ```
-logical_toPhysical(logicalPath):
+logicalPath_resolve(logicalPath):
   1. Check exact cache hit → return if found
   2. Find longest cached prefix
   3. Resolve only the uncached suffix
@@ -164,13 +164,13 @@ npm test -- pathMapper.test.ts
 
 ### Automatic Usage
 
-The existing `logical_toPhysical()` function now delegates to PathMapper:
+The existing `logicalPath_resolve()` function now delegates to PathMapper:
 
 ```typescript
 // Old code continues to work unchanged
-import { logical_toPhysical } from '@fnndsc/chili';
+import { logicalPath_resolve } from '@fnndsc/chili';
 
-const result = await logical_toPhysical('/home/user/files');
+const result = await logicalPath_resolve('/home/user/files');
 // Automatically uses PathMapper under the hood
 ```
 
@@ -185,7 +185,7 @@ const mapper = pathMapper_get();
 
 // Batch operations with cache awareness
 for (const file of manyFiles) {
-  const result = await mapper.logical_toPhysical(file.logicalPath);
+  const result = await mapper.logicalPath_resolve(file.logicalPath);
   // ...
 }
 
@@ -199,7 +199,7 @@ console.log(`Resolved ${stats.hits + stats.misses} paths with ${stats.hitRate * 
 ### Backward Compatibility
 
 ✅ **Fully backward compatible**
-- Existing `logical_toPhysical()` calls work unchanged
+- Existing `logicalPath_resolve()` calls work unchanged
 - Same function signature and return type
 - No breaking changes
 

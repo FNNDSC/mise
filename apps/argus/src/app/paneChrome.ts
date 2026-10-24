@@ -17,12 +17,12 @@ import { nodeOf_path } from './browser.js';
 import type { CatalogueBinding } from './desktop.js';
 import type { HostContext } from './hostContext.js';
 import type { PaneVerbs } from './paneVerbs.js';
-import { side_ofPlace, splitSelector_of, type Side } from './sides.js';
+import { side_deriveFromPlace, splitSelector_format, type Side } from './sides.js';
 import type { RegardValue } from './subjects.js';
 
 /** What the chrome asks of the host. */
 export interface PaneChromeHooks {
-  verbs: Pick<PaneVerbs, 'move' | 'chordKeys_of'>;
+  verbs: Pick<PaneVerbs, 'move' | 'chordKeys_format'>;
   browser: Pick<Browser, 'follows' | 'follow_set' | 'cwdBind_sync_register' | 'cwdBind_sync' | 'rooted_walk' | 'rooted_back' | 'directory_make' | 'listing_refresh' | 'files_deliver'>;
   /** The drawer SPLIT pill's spawn: a pane of a binding split from a parent. */
   pillPane_spawn: (parentId: string, binding: 'view' | 'fs' | 'empty', dir: 'row' | 'col', before: boolean) => string | null;
@@ -81,7 +81,7 @@ export function paneChrome_wire(context: Pick<HostContext, 'layout' | 'panels' |
     // pane on that side (the one verb that creates a pane; the selected
     // binding says what it IS), MOVE walks this pane there for one press.
     const splitters: HTMLButtonElement[] = [...drawer.querySelectorAll<HTMLButtonElement>('[data-split]')];
-    const sideOf = (splitter: HTMLElement): Side => side_ofPlace(splitter.dataset['split'], splitter.dataset['place']) ?? 'right';
+    const sideOf = (splitter: HTMLElement): Side => side_deriveFromPlace(splitter.dataset['split'], splitter.dataset['place']) ?? 'right';
     const mode_set = (mode: 'split' | 'move'): void => {
       drawer.dataset['mode'] = mode;
       for (const pill of drawer.querySelectorAll<HTMLElement>('.drawer-mode')) {
@@ -91,10 +91,10 @@ export function paneChrome_wire(context: Pick<HostContext, 'layout' | 'panels' |
         const side: Side = sideOf(splitter);
         // A side this pane cannot go dims before the press.
         splitter.disabled = mode === 'move' && !layout.move_possible(id, side);
-        const selector: string = splitSelector_of(side);
+        const selector: string = splitSelector_format(side);
         splitter.title = mode === 'move'
-          ? `this pane moves ${side}${hooks.verbs.chordKeys_of(selector, true)}`
-          : `new pane opens ${side}${hooks.verbs.chordKeys_of(selector, false)}`;
+          ? `this pane moves ${side}${hooks.verbs.chordKeys_format(selector, true)}`
+          : `new pane opens ${side}${hooks.verbs.chordKeys_format(selector, false)}`;
       }
     };
     for (const pill of drawer.querySelectorAll<HTMLElement>('.drawer-mode')) {
@@ -127,7 +127,7 @@ export function paneChrome_wire(context: Pick<HostContext, 'layout' | 'panels' |
     // Every capsule a chord presses names its keys in its title.
     for (const selector of new Set(DRAWER_CHORDS.filter((chord: DrawerChord): boolean => chord.selector !== null && chord.move !== true).map((chord: DrawerChord): string => chord.selector ?? ''))) {
       const capsule: HTMLElement | null = drawer.querySelector<HTMLElement>(selector);
-      if (capsule !== null && !capsule.title.includes('[keys ')) capsule.title = `${capsule.title}${hooks.verbs.chordKeys_of(selector, false)}`;
+      if (capsule !== null && !capsule.title.includes('[keys ')) capsule.title = `${capsule.title}${hooks.verbs.chordKeys_format(selector, false)}`;
     }
     drawer.querySelector<HTMLElement>('.drawer-close')?.addEventListener('click', (): void => {
       if (id === 'dag') {
@@ -223,19 +223,19 @@ export function paneChrome_wire(context: Pick<HostContext, 'layout' | 'panels' |
   /** A graph's children: ENTER NODE, PROCESS NODE, ENTER FEED, BACK, CLEAR DETAIL, REFRESH. */
   const dag_wire = (id: string, child_offer: (label: string, hint: string, act: () => void) => void): void => {
     /** The place a regard points at: a file's directory, a directory itself. */
-    const place_of = (regard: RegardValue): string => (regard.modelKind === 'fs.file' ? regard.address.replace(/\/[^/]*$/, '') || '/' : regard.address);
+    const place_derive = (regard: RegardValue): string => (regard.modelKind === 'fs.file' ? regard.address.replace(/\/[^/]*$/, '') || '/' : regard.address);
     // ENTER always lands in a place; nothing regarded means the feed on stage.
     child_offer('ENTER NODE', 'move the session into the indicated node (its data directory)', (): void => {
       const regard: RegardValue | null = subjects.regard_get(id);
       const feedId: number | null = panels.get('dag', id)?.feed_get() ?? null;
-      const place: string | null = regard === null ? (feedId === null ? null : `/proc/jobs/feed_${feedId}`) : place_of(regard);
+      const place: string | null = regard === null ? (feedId === null ? null : `/proc/jobs/feed_${feedId}`) : place_derive(regard);
       if (place !== null) context.terminal.line_run(`cd "${place}"`);
     });
     child_offer('PROCESS NODE', 'run an executable on the indicated node\'s output (a catalogue opens beside)', (): void => {
       const regard: RegardValue | null = subjects.regard_get(id);
       const feedId: number | null = panels.get('dag', id)?.feed_get() ?? null;
       if (regard === null || feedId === null) return;
-      const place: string = place_of(regard);
+      const place: string = place_derive(regard);
       const node: number | null = nodeOf_path(place) ?? (/_(\d+)\/?$/.exec(place) === null ? null : parseInt(/_(\d+)\/?$/.exec(place)?.[1] ?? '', 10));
       if (node === null) return;
       hooks.process_open(id, { input: place.replace(/\/data\/?$/, '') + '/data', feed: feedId, node });

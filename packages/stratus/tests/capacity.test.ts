@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from '@jest/globals';
 import { FakeDriver, fakeCloud_sample } from '../src/cloud/fake/driver.js';
-import { capacity_run, capacityRows_read, specFamily_of, CAPACITY_HELP } from '../src/commands/capacity.js';
+import { capacity_run, capacityRows_read, specFamily_parse, CAPACITY_HELP } from '../src/commands/capacity.js';
 import { DomainTree } from '../src/vfs/domains.js';
 import { harborCheckout_make } from './support/harborCheckout.js';
 
@@ -17,9 +17,9 @@ const context_make = (roots: Record<string, string>, region: string | null = 'us
 
 describe('capacity', () => {
   it('reads the family a spec names', () => {
-    expect(specFamily_of('# spec\nfamily: E5   # every node\n')).toBe('E5');
-    expect(specFamily_of('controlPlane:\n  count: 3\n')).toBeNull();
-    expect(specFamily_of(null)).toBeNull();
+    expect(specFamily_parse('# spec\nfamily: E5   # every node\n')).toBe('E5');
+    expect(specFamily_parse('controlPlane:\n  count: 3\n')).toBeNull();
+    expect(specFamily_parse(null)).toBeNull();
   });
 
   it('reads each limit a family\'s shapes draw on at every zone, free where the cloud says', async () => {

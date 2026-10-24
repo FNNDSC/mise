@@ -45,7 +45,7 @@ export interface ChrisDicomContext {
 function imageInstance_build(ctx: ChrisDicomContext, id: string): PaneInstance {
   const mount: HTMLElement = template_stamp('tpl-pane-image');
   const panel: ImagePanel = new ImagePanel(mount, {
-    source: { url_of: (path: string): string => ctx.vfsUrl_build(path) },
+    source: { url_resolve: (path: string): string => ctx.vfsUrl_build(path) },
     note: (line: string): void => ctx.terminal().line_note(line),
     regard: (path: string): void => ctx.subjects().regard_write(id, { address: path, modelKind: 'dicom.instance' }),
     file_put: async (path: string, body: Blob): Promise<number> => {
@@ -128,9 +128,9 @@ function tagsPane_follow(ctx: ChrisDicomContext, id: string, path: string): void
  */
 function tagsPane_open(ctx: ChrisDicomContext, imageId: string): string {
   const shown: Set<string> = new Set(ctx.layout().panes_shown());
-  const group: string = ctx.subjects().group_of(imageId);
+  const group: string = ctx.subjects().group_resolve(imageId);
   for (const id of ctx.panels().ids('tags')) {
-    if (shown.has(id) && ctx.subjects().group_of(id) === group) {
+    if (shown.has(id) && ctx.subjects().group_resolve(id) === group) {
       ctx.layout().focus_set(id);
       return 'image tags';
     }
@@ -190,7 +190,7 @@ async function subfolders_ask(ctx: ChrisDicomContext, path: string): Promise<str
  * The image pane that answers for a pane: itself when it is one, else
  * the image pane in its link group, else a new one split beside it.
  */
-function imagePane_for(ctx: ChrisDicomContext, fromId: string | null, anchor?: { address: string; modelKind: string }): ImagePanel | null {
+function imagePane_resolve(ctx: ChrisDicomContext, fromId: string | null, anchor?: { address: string; modelKind: string }): ImagePanel | null {
   // A series is a group anchored on its own address. When an anchor is
   // given (a viewer opened from PACS, which has no host group of its own),
   // the group's regard is set to the series so it IS that series' group,
@@ -204,9 +204,9 @@ function imagePane_for(ctx: ChrisDicomContext, fromId: string | null, anchor?: {
       if (shown.has(id) && ctx.subjects().regard_get(id)?.address === anchor.address) { anchor_set(id); return panel; }
     }
   }
-  const group: string | null = fromId !== null ? ctx.subjects().group_of(fromId) : null;
+  const group: string | null = fromId !== null ? ctx.subjects().group_resolve(fromId) : null;
   for (const [id, panel] of ctx.panels().entries('image')) {
-    if (shown.has(id) && group !== null && ctx.subjects().group_of(id) === group) return panel;
+    if (shown.has(id) && group !== null && ctx.subjects().group_resolve(id) === group) return panel;
   }
   const host: string | null = fromId !== null && shown.has(fromId) ? fromId : ctx.errandHost_find();
   if (host === null) return null;
@@ -243,7 +243,7 @@ async function image_open(ctx: ChrisDicomContext, fromId: string | null, path: s
     : VOLUME_FILE_PATTERN.test(path)
       ? { address: path, modelKind: 'image.volume' }
       : { address: DICOM_FILE_PATTERN.test(path) ? path.slice(0, path.lastIndexOf('/')) : path.replace(/\/$/, ''), modelKind: 'dicom.series' };
-  const panel: ImagePanel | null = imagePane_for(ctx, fromId, anchor);
+  const panel: ImagePanel | null = imagePane_resolve(ctx, fromId, anchor);
   if (panel === null) return 'image: no pane to open beside';
   // Structure-first: the pane exists now (spawned + split synchronously), so
   // hand its id back before the header read over the wire — a replay resolves
@@ -288,7 +288,7 @@ export interface ChrisDicom {
   tagsPane_open(imageId: string): string;
   series_ask(path: string): Promise<DicomSeriesModel | null>;
   subfolders_ask(path: string): Promise<string[]>;
-  imagePane_for(fromId: string | null, anchor?: { address: string; modelKind: string }): ImagePanel | null;
+  imagePane_resolve(fromId: string | null, anchor?: { address: string; modelKind: string }): ImagePanel | null;
   image_open(fromId: string | null, path: string, options?: { force?: boolean }, onOpen?: (id: string) => void): Promise<string>;
 }
 
@@ -307,7 +307,7 @@ export function chrisDicom_make(ctx: ChrisDicomContext): ChrisDicom {
     tagsPane_open: (imageId: string): string => tagsPane_open(ctx, imageId),
     series_ask: (path: string): Promise<DicomSeriesModel | null> => series_ask(ctx, path),
     subfolders_ask: (path: string): Promise<string[]> => subfolders_ask(ctx, path),
-    imagePane_for: (fromId: string | null, anchor?: { address: string; modelKind: string }): ImagePanel | null => imagePane_for(ctx, fromId, anchor),
+    imagePane_resolve: (fromId: string | null, anchor?: { address: string; modelKind: string }): ImagePanel | null => imagePane_resolve(ctx, fromId, anchor),
     image_open: (fromId: string | null, path: string, options: { force?: boolean } = {}, onOpen?: (id: string) => void): Promise<string> =>
       image_open(ctx, fromId, path, options, onOpen),
   };

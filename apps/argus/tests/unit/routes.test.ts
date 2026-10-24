@@ -8,19 +8,19 @@
  * @module
  */
 import { describe, it, expect } from '@jest/globals';
-import { pageMount_of, wireUrl_resolve, vfsUrl_build, downloadUrl_build, door_isPresent, doorUrl_build, type PageLocation, byteUrl_absolute } from '../../src/calypso/routes.js';
+import { pageMount_derive, wireUrl_resolve, vfsUrl_build, downloadUrl_build, door_isPresent, doorUrl_build, type PageLocation, byteUrl_absolute } from '../../src/calypso/routes.js';
 
 const atRoot: PageLocation = { protocol: 'http:', host: '127.0.0.1:41785', pathname: '/', search: '?token=abc' };
 const behindDoor: PageLocation = { protocol: 'https:', host: 'titan.tch.harvard.edu', pathname: '/s/chris@cube/', search: '?door' };
 
-describe('pageMount_of', () => {
+describe('pageMount_derive', () => {
   it('is the root for a root page', () => {
-    expect(pageMount_of('/')).toBe('/');
-    expect(pageMount_of('/index.html')).toBe('/');
+    expect(pageMount_derive('/')).toBe('/');
+    expect(pageMount_derive('/index.html')).toBe('/');
   });
   it('is the prefix directory behind a door, named or not', () => {
-    expect(pageMount_of('/s/chris@cube/')).toBe('/s/chris@cube/');
-    expect(pageMount_of('/s/chris@cube/index.html')).toBe('/s/chris@cube/');
+    expect(pageMount_derive('/s/chris@cube/')).toBe('/s/chris@cube/');
+    expect(pageMount_derive('/s/chris@cube/index.html')).toBe('/s/chris@cube/');
   });
 });
 

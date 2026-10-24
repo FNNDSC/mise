@@ -165,8 +165,8 @@ export class ResourceTree {
 
   /** The node inside one resource. */
   private async resourceNode_resolve(kind: ResourceKind, resource: CloudResource, containerId: string, region: string, segments: ReadonlyArray<string>, owner: string): Promise<ResourceNode> {
-    const fields: Field[] = await this.fields_of(kind, resource, containerId, region);
-    const folders: string[] = this.innerFolders_of(kind);
+    const fields: Field[] = await this.fields_build(kind, resource, containerId, region);
+    const folders: string[] = this.innerFolders_list(kind);
     if (segments.length === 0) {
       return {
         kind: 'listing',
@@ -184,7 +184,7 @@ export class ResourceTree {
   }
 
   /** The folders a resource of a kind holds beside its fields. */
-  private innerFolders_of(kind: ResourceKind): string[] {
+  private innerFolders_list(kind: ResourceKind): string[] {
     if (kind === 'networks') return [...NETWORK_FOLDERS];
     if (kind === 'buckets') return ['objects'];
     if (kind === 'dns') return ['records'];
@@ -199,7 +199,7 @@ export class ResourceTree {
       return items;
     }
     if (kind === 'buckets') return [this.kindFolder_item('objects', (await this.objects_list(resource.name, region)).length)];
-    if (kind === 'dns') return [this.kindFolder_item('records', recordSets_of(await this.records_list(resource.id, region), resource.name).length)];
+    if (kind === 'dns') return [this.kindFolder_item('records', recordSets_build(await this.records_list(resource.id, region), resource.name).length)];
     return [];
   }
 
@@ -261,7 +261,7 @@ export class ResourceTree {
 
   /** A path inside a DNS zone's `records/`. */
   private async recordNode_resolve(zone: CloudResource, region: string, segments: ReadonlyArray<string>, owner: string): Promise<ResourceNode> {
-    const sets: RecordSet[] = recordSets_of(await this.records_list(zone.id, region), zone.name);
+    const sets: RecordSet[] = recordSets_build(await this.records_list(zone.id, region), zone.name);
     if (segments.length === 0) {
       return {
         kind: 'listing',
@@ -281,7 +281,7 @@ export class ResourceTree {
   private resources_items(kind: ResourceKind, resources: ReadonlyArray<CloudResource>, owner: string): VFSItem[] {
     return segments_assign(resources).map((entry: Segment<CloudResource>): VFSItem => {
       const resource: CloudResource = entry.item;
-      const title: string = resourceTitle_of(kind, resource);
+      const title: string = resourceTitle_format(kind, resource);
       return {
         name: entry.segment,
         type: RESOURCE_TYPES[kind],
@@ -300,7 +300,7 @@ export class ResourceTree {
   }
 
   /** Every field a resource of a kind has, in the order a listing shows them. */
-  private async fields_of(kind: ResourceKind, resource: CloudResource, containerId: string, region: string): Promise<Field[]> {
+  private async fields_build(kind: ResourceKind, resource: CloudResource, containerId: string, region: string): Promise<Field[]> {
     const tagLines: string = Object.entries(resource.tags).map(([key, value]: [string, string]): string => `${key}=${value}\n`).join('');
     const fields: Field[] = [
       { name: 'name', text: `${resource.name}\n` },
@@ -312,13 +312,13 @@ export class ResourceTree {
     ];
     if (kind === 'instances') {
       const instance: CloudInstance = resource as CloudInstance;
-      fields.push({ name: 'shape', text: `${instance.shape}\n` }, { name: 'zone', text: `${instance.zone}\n` }, { name: 'ips', text: lines_of(instance.ips) });
+      fields.push({ name: 'shape', text: `${instance.shape}\n` }, { name: 'zone', text: `${instance.zone}\n` }, { name: 'ips', text: lines_format(instance.ips) });
     } else if (kind === 'volumes') {
       const volume: CloudVolume = resource as CloudVolume;
-      fields.push({ name: 'size', text: `${volume.sizeGib} GiB\n` }, { name: 'attached', text: `${await this.attachedName_of(volume, containerId, region)}\n` });
+      fields.push({ name: 'size', text: `${volume.sizeGib} GiB\n` }, { name: 'attached', text: `${await this.attachedName_resolve(volume, containerId, region)}\n` });
     } else if (kind === 'loadbalancers') {
       const balancer: CloudLoadBalancer = resource as CloudLoadBalancer;
-      fields.push({ name: 'ip', text: lines_of(balancer.ips) }, { name: 'shape', text: `${balancer.shape}\n` });
+      fields.push({ name: 'ip', text: lines_format(balancer.ips) }, { name: 'shape', text: `${balancer.shape}\n` });
     } else if (kind === 'buckets') {
       fields.push({ name: 'links', text: links_text(await this.links_list(resource.name, region)) });
     }
@@ -327,7 +327,7 @@ export class ResourceTree {
   }
 
   /** What a volume is attached to: the instance's name when it is in the same container, else its id, else `no`. */
-  private async attachedName_of(volume: CloudVolume, containerId: string, region: string): Promise<string> {
+  private async attachedName_resolve(volume: CloudVolume, containerId: string, region: string): Promise<string> {
     if (volume.attachedTo === null) return 'no';
     const instances: CloudResource[] = await this.kind_list('instances', containerId, region);
     return instances.find((instance: CloudResource): boolean => instance.id === volume.attachedTo)?.name ?? volume.attachedTo;
@@ -349,7 +349,7 @@ interface RecordSet {
  * @param zone - The zone's name.
  * @returns The sets, sorted by name.
  */
-export function recordSets_of(records: ReadonlyArray<CloudRecord>, zone: string): RecordSet[] {
+export function recordSets_build(records: ReadonlyArray<CloudRecord>, zone: string): RecordSet[] {
   const byName: Map<string, CloudRecord[]> = new Map();
   for (const record of records) {
     const domain: string = record.domain.replace(/\.$/, '');
@@ -366,7 +366,7 @@ export function recordSets_of(records: ReadonlyArray<CloudRecord>, zone: string)
 }
 
 /** A list as one value per line. */
-function lines_of(values: ReadonlyArray<string>): string {
+function lines_format(values: ReadonlyArray<string>): string {
   return values.map((value: string): string => `${value}\n`).join('');
 }
 
@@ -376,7 +376,7 @@ function links_text(links: ReadonlyArray<CloudLink>): string {
 }
 
 /** The short title a resource row carries in a long listing. */
-function resourceTitle_of(kind: ResourceKind, resource: CloudResource): string {
+function resourceTitle_format(kind: ResourceKind, resource: CloudResource): string {
   if (kind === 'instances') return (resource as CloudInstance).shape;
   if (kind === 'volumes') return `${(resource as CloudVolume).sizeGib} GiB`;
   if (kind === 'loadbalancers') return (resource as CloudLoadBalancer).ips.join(' ');

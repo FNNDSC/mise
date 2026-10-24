@@ -32,7 +32,7 @@ import { layout_molecule, type PlacedNode } from './settle.js';
  * @param physics - The terms of the settle.
  * @returns The flat positions, by id; a node with no standing position is left out.
  */
-export function flatPositions_of(
+export function flatPositions_compute(
   nodes: ReadonlyArray<SpaceNode>,
   standing: ReadonlyMap<string, THREE.Vector3>,
   normal: THREE.Vector3,
@@ -133,7 +133,7 @@ export class FlatMolecule {
     const toLocal: THREE.Quaternion = eye.world.quaternion.clone().invert();
     const normal: THREE.Vector3 = eye.camera.position.clone().sub(eye.focus).normalize().applyQuaternion(toLocal);
     const up: THREE.Vector3 = new THREE.Vector3(0, 1, 0).applyQuaternion(eye.camera.quaternion).applyQuaternion(toLocal);
-    const flat: Map<string, THREE.Vector3> = flatPositions_of(nodes.filter((node: SpaceNode): boolean => wanted.has(node.id)), positions, normal, up, physics);
+    const flat: Map<string, THREE.Vector3> = flatPositions_compute(nodes.filter((node: SpaceNode): boolean => wanted.has(node.id)), positions, normal, up, physics);
     if (flat.size === 0) return false;
     this.restore = new Map([...flat.keys()].map((id: string): [string, THREE.Vector3] => [id, (positions.get(id) as THREE.Vector3).clone()]));
     for (const [id, at] of flat) positions.set(id, at);

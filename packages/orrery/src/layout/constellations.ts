@@ -47,7 +47,7 @@ type Body = { id: string; x?: number; y?: number; z?: number; fx?: number; fy?: 
  * @param feeds - How many feeds there are.
  * @returns Each plugin's weight.
  */
-export function pluginWeights_of(feedsUsing: ReadonlyMap<string, number>, feeds: number): Map<string, number> {
+export function pluginWeights_compute(feedsUsing: ReadonlyMap<string, number>, feeds: number): Map<string, number> {
   const out: Map<string, number> = new Map();
   for (const [plugin, count] of feedsUsing) {
     out.set(plugin, feeds === 0 || count / feeds > LANDMARK_SHARE ? 0 : Math.log(feeds / Math.max(1, count)));
@@ -87,7 +87,7 @@ export function constellations_layout(
   }
   const feedsUsing: Map<string, number> = new Map();
   for (const plugins of feedPlugins.values()) for (const plugin of plugins) feedsUsing.set(plugin, (feedsUsing.get(plugin) ?? 0) + 1);
-  const weights: Map<string, number> = pluginWeights_of(feedsUsing, feedPlugins.size);
+  const weights: Map<string, number> = pluginWeights_compute(feedsUsing, feedPlugins.size);
   const heaviest: number = Math.max(1e-9, ...weights.values());
 
   // Phase 1: the stars alone, drawn together by how often they ran together.
@@ -101,7 +101,7 @@ export function constellations_layout(
   }
   // Room for every stage round its star: the sky grows with what settles in it.
   const skyRadius: number = Math.max(6, Math.sqrt(stars.length) * 4, Math.sqrt(stages.length) * 1.6);
-  const starBodies: Body[] = stars.map((star: LayoutNode): Body => body_of(star, skyRadius, randomFor_key(`star:${star.id}`)));
+  const starBodies: Body[] = stars.map((star: LayoutNode): Body => body_build(star, skyRadius, randomFor_key(`star:${star.id}`)));
   const starLinks: Array<{ source: string; target: string; share: number }> = [];
   for (const [key, count] of together) {
     const [a, b] = key.split('\u0000') as [string, string];
@@ -132,7 +132,7 @@ export function constellations_layout(
       const plugin: string | null = pluginOf(node);
       const star: LayoutNode | undefined = plugin === null ? undefined : starOf.get(plugin);
       const near: Vec3 | undefined = star === undefined ? undefined : starAt.get(star.id);
-      return body_of(node, 2, randomFor_key(`stage:${node.id}`), near);
+      return body_build(node, 2, randomFor_key(`stage:${node.id}`), near);
     }),
   ];
   const present: Set<string> = new Set(nodes.map((node: LayoutNode): string => node.id));
@@ -182,7 +182,7 @@ export function constellations_layout(
  * A node's body at its start: where it stood, or a seeded place near a
  * centre (the origin, or the star it belongs to). A frozen node holds its seed.
  */
-function body_of(node: LayoutNode, spread: number, random: () => number, near: Vec3 = [0, 0, 0]): Body {
+function body_build(node: LayoutNode, spread: number, random: () => number, near: Vec3 = [0, 0, 0]): Body {
   const body: Body = { id: node.id, r: node.radius };
   const at: Vec3 = node.seed ?? [
     near[0] + (random() - 0.5) * 2 * spread,

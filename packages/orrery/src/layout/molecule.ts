@@ -54,7 +54,7 @@ export interface MoleculeSettle {
  * @param nodes - The molecule's nodes.
  * @returns The metrics, in the nodes' order.
  */
-function metrics_of(nodes: ReadonlyArray<MoleculeNode>): number[] {
+function metrics_compute(nodes: ReadonlyArray<MoleculeNode>): number[] {
   const degree: Map<string, number> = new Map();
   for (const node of nodes) {
     for (const parentId of node.parents) {
@@ -72,8 +72,8 @@ function metrics_of(nodes: ReadonlyArray<MoleculeNode>): number[] {
  * @param nodes - The molecule's nodes.
  * @returns Radius by id.
  */
-export function moleculeRadii_of(nodes: ReadonlyArray<MoleculeNode>): Map<string, number> {
-  const metrics: number[] = metrics_of(nodes);
+export function moleculeRadii_compute(nodes: ReadonlyArray<MoleculeNode>): Map<string, number> {
+  const metrics: number[] = metrics_compute(nodes);
   const peak: number = Math.max(...metrics, 1);
   return new Map(nodes.map((n: MoleculeNode, i: number): [string, number] => [n.id, NODE_RADIUS * (0.5 + ((metrics[i] ?? 1) / peak) * 1.2)]));
 }
@@ -100,7 +100,7 @@ export function molecule_prepare(
   for (const node of nodes) {
     for (const parentId of node.parents) links.push({ source: parentId, target: node.id });
   }
-  const metrics: number[] = metrics_of(nodes);
+  const metrics: number[] = metrics_compute(nodes);
   const metricPeak: number = Math.max(...metrics, 1);
   // Radius is physics, not paint: the metric sets each node's room in the
   // settle, so what is measured reshapes the molecule, not just its size.

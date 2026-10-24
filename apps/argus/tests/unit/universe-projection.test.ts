@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { projection_flip, projectionWord_of, type ProjectionScene } from '../../src/features/universe/projection.js';
+import { projection_flip, projectionWord_derive, type ProjectionScene } from '../../src/features/universe/projection.js';
 
 function scene_make(projection: '3d' | '2d' = '3d'): ProjectionScene & { flat: ReadonlyArray<string> | null; framed: number } {
   const scene = {
@@ -21,7 +21,7 @@ describe('the UNIVERSE 3D / 2D block', () => {
     expect(projection_flip(scene, null)).toBeNull();
     expect(scene.projection_get()).toBe('2d');
     expect(scene.flat).toBeNull();
-    expect(projectionWord_of(scene, false)).toBe('2D');
+    expect(projectionWord_derive(scene, false)).toBe('2D');
   });
 
   it('inside a feed lays only that feed flat, frames it, and stands it back up', () => {
@@ -30,10 +30,10 @@ describe('the UNIVERSE 3D / 2D block', () => {
     expect(scene.projection_get()).toBe('3d');
     expect(scene.flat).toEqual(['feed:1:a', 'feed:1:b']);
     expect(scene.framed).toBe(1);
-    expect(projectionWord_of(scene, true)).toBe('2D');
+    expect(projectionWord_derive(scene, true)).toBe('2D');
     projection_flip(scene, new Set(['feed:1:a', 'feed:1:b']));
     expect(scene.flat).toBeNull();
-    expect(projectionWord_of(scene, true)).toBe('3D');
+    expect(projectionWord_derive(scene, true)).toBe('3D');
   });
 
   it('inside a feed of a flat space says how to stand it up', () => {

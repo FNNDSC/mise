@@ -27,7 +27,7 @@ import { Readable } from 'node:stream';
 import { planRows_read } from './planRead.js';
 import type { OciBuildApi } from './buildApi.js';
 import { notFound } from './errors.js';
-import { familyShape_of, stackVariables_build } from './stackVars.js';
+import { familyShape_resolve, stackVariables_build } from './stackVars.js';
 import type { CloudDriver } from '../driver.js';
 import { specFit_read } from '../../domain/sizing.js';
 import type { RmApi, RmJobRecord, RmOperation } from './rmApi.js';
@@ -241,13 +241,13 @@ export class OciBuilder implements CloudBuilder {
    * @returns The calls.
    * @throws Error - When the builder was made without them.
    */
-  private api_in(region: string): OciBuildApi {
+  private api_resolve(region: string): OciBuildApi {
     if (this.options.api === undefined) throw new Error('this builder adopts and re-plans only');
     return this.options.api(region);
   }
 
   async zones_list(region: string): Promise<string[]> {
-    return await this.api_in(region).zoneNames_list();
+    return await this.api_resolve(region).zoneNames_list();
   }
 
   /**
@@ -260,7 +260,7 @@ export class OciBuilder implements CloudBuilder {
    * @returns The compartment's id, and whether this call made it.
    */
   async compartment_ensure(request: { domain: string; region: string }, call: BuildCall): Promise<{ id: string; made: boolean }> {
-    const api: OciBuildApi = this.api_in(request.region);
+    const api: OciBuildApi = this.api_resolve(request.region);
     const tenancy = await api.tenancy_get();
     const parent = await api.compartmentChild_ensure(tenancy.id, DOMAINS_COMPARTMENT, 'The Trusted Domains stratus builds, one compartment each', { 'mise-role': 'domains' });
     call.log(parent.made ? `made the compartment ${DOMAINS_COMPARTMENT} under ${tenancy.name}` : `${DOMAINS_COMPARTMENT} is there`);
@@ -313,7 +313,7 @@ export class OciBuilder implements CloudBuilder {
   }
 
   async preflight(request: { domain: string; spec: DomainSpec; region: string; baseDomain: string; compartmentId: string }, call: BuildCall): Promise<PreflightCheck[]> {
-    const api: OciBuildApi = this.api_in(request.region);
+    const api: OciBuildApi = this.api_resolve(request.region);
     const checks: PreflightCheck[] = [];
     const check = async (name: string, run: () => Promise<{ ok: boolean; note: string }>): Promise<void> => {
       let result: { ok: boolean; note: string };
@@ -334,7 +334,7 @@ export class OciBuilder implements CloudBuilder {
     });
     await check('spec', async () => {
       if (request.spec.workers.count > 0) return { ok: false, note: 'workers are not proven on OCI yet: a compact cluster (workers 0) only' };
-      familyShape_of(request.spec.family);
+      familyShape_resolve(request.spec.family);
       return { ok: true, note: `${request.spec.family}, compact, ${request.spec.controlPlane.count} nodes` };
     });
     await check('room', async () => {
@@ -363,7 +363,7 @@ export class OciBuilder implements CloudBuilder {
   }
 
   async iso_store(request: { domain: string; url: string; region: string; compartmentId: string }, call: BuildCall): Promise<{ object: string; expires: string; link: string; linkId: string }> {
-    const api: OciBuildApi = this.api_in(request.region);
+    const api: OciBuildApi = this.api_resolve(request.region);
     const bucket: string = this.options.bucket ?? ISO_BUCKET;
     const object: string = `${request.domain}-discovery.iso`;
     await api.bucket_ensure(bucket, request.compartmentId);
@@ -387,7 +387,7 @@ export class OciBuilder implements CloudBuilder {
       if (request.compartmentId === undefined || request.baseDomain === undefined || request.isoLink === undefined || request.isoLink === '') throw new Error('a new stack needs the compartment, the zone and the image\'s link');
       const sshPublicKey: string | null = this.options.sshPublicKey?.() ?? null;
       if (sshPublicKey === null) throw new Error('no SSH public key on the host');
-      const api: OciBuildApi = this.api_in(request.region);
+      const api: OciBuildApi = this.api_resolve(request.region);
       const tenancyId: string = (await api.tenancy_get()).id;
       const tagHome: string | null = await api.tagNamespaceCompartment_find(TAG_NAMESPACE);
       const variables: Record<string, string> = stackVariables_build({
@@ -432,7 +432,7 @@ export class OciBuilder implements CloudBuilder {
   }
 
   async dns_upsert(request: { domain: string; baseDomain: string; outputs: InfraOutputs; compartmentId: string; region: string }, call: BuildCall): Promise<string[]> {
-    const api: OciBuildApi = this.api_in(request.region);
+    const api: OciBuildApi = this.api_resolve(request.region);
     const cluster: string = `${request.domain}.${request.baseDomain}`;
     const records: Array<[string, string]> = [[`api.${cluster}`, request.outputs.apiIp], [`api-int.${cluster}`, request.outputs.apiIntIp], [`*.apps.${cluster}`, request.outputs.appsIp]];
     // The zone is shared and lives where it was made, not in the domain's own compartment.
@@ -449,7 +449,7 @@ export class OciBuilder implements CloudBuilder {
   }
 
   async teardown_run(request: TeardownRequest, call: BuildCall): Promise<string[]> {
-    const api: OciBuildApi = this.api_in(request.region);
+    const api: OciBuildApi = this.api_resolve(request.region);
     const gone: string[] = [];
     if (request.stackRef !== undefined) {
       await this.job_run(this.options.rm(request.region), request.stackRef, { kind: 'destroy' }, `${request.domain}: destroy`, call);

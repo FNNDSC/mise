@@ -75,7 +75,7 @@ const errorStack = { stack_push: jest.fn(), stack_pop: jest.fn(), checkpoint_mar
 
 // Mock chili utils
 jest.unstable_mockModule('@fnndsc/chili/utils', () => ({
-  logical_toPhysical: jest.fn().mockResolvedValue({ ok: true, value: '/resolved/path' }),
+  logicalPath_resolve: jest.fn().mockResolvedValue({ ok: true, value: '/resolved/path' }),
   pathMapper_get: jest.fn()
 }));
 
@@ -98,8 +98,8 @@ jest.unstable_mockModule('@fnndsc/chili/path/pathCommand.js', () => ({
 const dicomPayload = await import('@fnndsc/cumin/dicom-payload');
 const pacsGrammar = await import('@fnndsc/salsa/pacs-grammar');
 cuminMock_install(() => ({
-  feedTags_byFeed: jest.fn(),
-  feedStatus_ofCounts: (): string => 'finishedSuccessfully',
+  feedTags_readByFeed: jest.fn(),
+  feedStatus_deriveFromCounts: (): string => 'finishedSuccessfully',
   feed_share: jest.fn(async () => ({ ok: true, value: true })),
   plugin_find: jest.fn(async () => null),
   pluginParameters_drain: jest.fn(async () => []),
@@ -167,7 +167,7 @@ cuminMock_install(() => ({
     currentContext_update: jest.fn()
   },
   keyPairParams_apply: jest.fn((baseParams, keyPair) => baseParams),
-  logical_toPhysical: jest.fn().mockResolvedValue({ ok: true, value: '/resolved/path' }),
+  logicalPath_resolve: jest.fn().mockResolvedValue({ ok: true, value: '/resolved/path' }),
   pathMapper_get: jest.fn(),
   chrisConnection: {
     client_get: jest.fn(),
@@ -175,7 +175,7 @@ cuminMock_install(() => ({
   },
   computeResourceNames_parse: jest.fn(),
   computeResources_validate: jest.fn(),
-  dictionary_fromCLI: jest.fn().mockReturnValue({}),
+  dictionary_parseFromCLI: jest.fn().mockReturnValue({}),
   StackMessage: {},
   Client: jest.fn(),
   pacsQueries_create: jest.fn(),

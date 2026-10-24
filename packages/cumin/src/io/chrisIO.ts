@@ -70,7 +70,7 @@ interface FileStreamResponse {
  * @param error - The thrown value.
  * @returns The HTTP status, or null when the failure carried none.
  */
-function httpStatus_of(error: unknown): number | null {
+function httpStatus_extract(error: unknown): number | null {
   if (error === null || typeof error !== "object") return null;
   const candidate: { status?: unknown; response?: { status?: unknown } } = error as {
     status?: unknown;
@@ -177,13 +177,13 @@ export class ChrisIO {
       // identity may see listed but not read — the shape a shared feed
       // takes — and reporting that as "not found" sends an operator
       // looking for a missing file that is in fact right there.
-      this.lastFileRefusal = httpStatus_of(error);
+      this.lastFileRefusal = httpStatus_extract(error);
     }
     try {
       const pacsFile: UserFile | null = await resource_call<UserFile | null>(client, 'getPACSFile', fileId);
       if (pacsFile) return pacsFile;
     } catch (error: unknown) {
-      this.lastFileRefusal ??= httpStatus_of(error);
+      this.lastFileRefusal ??= httpStatus_extract(error);
     }
     // A file in a feed shared with this identity: CUBE serves it through
     // the file browser while `/userfiles/` answers 403.
@@ -194,7 +194,7 @@ export class ChrisIO {
         return shared;
       }
     } catch (error: unknown) {
-      this.lastFileRefusal ??= httpStatus_of(error);
+      this.lastFileRefusal ??= httpStatus_extract(error);
     }
     // The client answers a refusal with null as readily as it does an
     // absence, so neither branch above necessarily carries a status. Ask

@@ -103,7 +103,7 @@ describe('chrisContextURL_parse()', () => {
   it('should handle plugin with colon (searchable format)', async () => {
     const result = await chrisContextURL_parse('http://localhost:8000?plugin=name:dircopy');
 
-    // The searchable_toID function should be called and return 123
+    // The searchable_resolveID function should be called and return 123
     expect(result.plugin).toBe('123');
   });
 

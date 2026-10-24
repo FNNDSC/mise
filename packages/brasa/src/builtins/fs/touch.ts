@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
 import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
-import { entry_at, entry_isFolder } from './entries.js';
+import { pathEntry_find, entry_isFolder } from './entries.js';
 import { errno_words, touch_render, vfs_fail, type VFSDispatcher, type VFSItem, type VfsOutcome } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
@@ -60,7 +60,7 @@ async function file_touch(dispatcher: VFSDispatcher, targetPath: string, content
     if (dispatcher.path_isVirtual(targetPath)) {
       return vfs_fail('EROFS', `touch: ${targetPath}: a projected file takes text (--withContents)`);
     }
-    const there: VFSItem | null = await entry_at(dispatcher, targetPath);
+    const there: VFSItem | null = await pathEntry_find(dispatcher, targetPath);
     if (entry_isFolder(there)) return vfs_fail('EISDIR', `Is a directory: a folder already holds ${targetPath}`);
     if (there !== null) return { ok: true, value: true };
   }

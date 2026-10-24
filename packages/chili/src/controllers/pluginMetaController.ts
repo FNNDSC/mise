@@ -61,7 +61,7 @@ export class PluginMetaController extends BaseController {
    * @param options - CLI options for searching for a plugin.
    * @returns A Promise resolving to the plugin ID as a string, or null if not found/ambiguous.
    */
-  async pluginID_fromSearch(options: CLIoptions): Promise<string | null> {
+  async pluginID_findBySearch(options: CLIoptions): Promise<string | null> {
     return await pluginMeta_pluginIDFromSearch(options as PluginSearchOptions);
   }
 }

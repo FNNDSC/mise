@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from '@jest/globals';
 import * as THREE from 'three';
-import { TubeField, tubeMode_of, type TubeNode, type TubeOwner } from '../src/draw/tubeField.js';
+import { TubeField, tubeMode_derive, type TubeNode, type TubeOwner } from '../src/draw/tubeField.js';
 import type { Palette } from '../src/draw/palette.js';
 import { LAMP_DIM } from '../src/draw/lamps.js';
 import type { NodeState } from '../src/types/encoding.js';
@@ -38,10 +38,10 @@ function scene(states: Record<string, NodeState>) {
 
 describe('tube modes', () => {
   it('stream into work, replay what has run, rest otherwise', () => {
-    expect(tubeMode_of('live')).toBe(1);
-    expect(tubeMode_of('done')).toBe(2);
-    expect(tubeMode_of('failed')).toBe(2);
-    expect(tubeMode_of('rest')).toBe(0);
+    expect(tubeMode_derive('live')).toBe(1);
+    expect(tubeMode_derive('done')).toBe(2);
+    expect(tubeMode_derive('failed')).toBe(2);
+    expect(tubeMode_derive('rest')).toBe(0);
   });
 });
 

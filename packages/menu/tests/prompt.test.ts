@@ -14,7 +14,7 @@ import {
   promptMessageSchema,
   promptKindSchema,
   promptPathSchema,
-  promptKind_of,
+  promptKind_derive,
   PROMPT_KINDS,
   type PromptMessage,
 } from '../src/messages.js';
@@ -81,22 +81,22 @@ describe('promptMessageSchema', () => {
   });
 });
 
-describe('promptKind_of', () => {
+describe('promptKind_derive', () => {
   it('takes the kind the prompt states', () => {
-    expect(promptKind_of({ wants: 'path' })).toBe('path');
-    expect(promptKind_of({ wants: 'confirm' })).toBe('confirm');
+    expect(promptKind_derive({ wants: 'path' })).toBe('path');
+    expect(promptKind_derive({ wants: 'confirm' })).toBe('confirm');
   });
 
   // `hidden` predates `wants` and was the older wire's only way to say
   // "secret". Reconciled once, here: two readings of one message is how a
   // terminal and a browser end up masking different things.
   it('reads an older prompt: hidden means secret, plain means text', () => {
-    expect(promptKind_of({ hidden: true })).toBe('secret');
-    expect(promptKind_of({ hidden: false })).toBe('text');
-    expect(promptKind_of({})).toBe('text');
+    expect(promptKind_derive({ hidden: true })).toBe('secret');
+    expect(promptKind_derive({ hidden: false })).toBe('text');
+    expect(promptKind_derive({})).toBe('text');
   });
 
   it('lets a stated kind win over the older flag', () => {
-    expect(promptKind_of({ hidden: true, wants: 'text' })).toBe('text');
+    expect(promptKind_derive({ hidden: true, wants: 'text' })).toBe('text');
   });
 });

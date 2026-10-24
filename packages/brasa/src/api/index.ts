@@ -225,4 +225,4 @@ export async function chellApi_create(): Promise<ChellApi> {
 }
 
 /** The identity's home in the CUBE filesystem, `/home/<user>`; the root with no identity. */
-export { homePath_of } from '../builtins/utils.js';
+export { homePath_derive } from '../builtins/utils.js';

@@ -4,7 +4,7 @@
  */
 import { groups_list as salsaGroups_list, groups_listAll as salsaGroups_listAll } from '@fnndsc/salsa';
 import { FilteredResourceData } from '@fnndsc/cumin';
-import { CLIoptions, options_toParams } from '../../utils/cli.js';
+import { CLIoptions, options_convertToParams } from '../../utils/cli.js';
 import { list_applySort } from '../../utils/sort.js';
 
 /**
@@ -23,7 +23,7 @@ export interface GroupListResult {
  * @returns The groups list result.
  */
 export async function groups_fetchList(options: CLIoptions): Promise<GroupListResult> {
-  const params = options_toParams(options);
+  const params = options_convertToParams(options);
   const result: FilteredResourceData | null = options.all
     ? await salsaGroups_listAll(params)
     : await salsaGroups_list(params);

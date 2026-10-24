@@ -180,7 +180,7 @@ const DIM_WHEN_OFF: ReadonlySet<FeedVerb> = new Set<FeedVerb>(['pulse', 'gravity
  * @param model - The feed on stage.
  * @returns Resource to CSS colour.
  */
-export function feedHueLegend_of(model: FeedDagModel): Map<string, string> {
+export function feedHueLegend_build(model: FeedDagModel): Map<string, string> {
   const style: CSSStyleDeclaration = getComputedStyle(document.documentElement);
   const cycle: string[] = ['--harvestgold', '--daybreak', '--orange', '--honey', '--butter', '--october-sunset']
     .map((name: string): string => style.getPropertyValue(name).trim())
@@ -215,10 +215,10 @@ export function feedShape_same(previous: FeedDagModel, model: FeedDagModel): boo
  *
  * @param scene - What takes a status by node id.
  * @param model - The fresh model, the same shape as the one on stage.
- * @param id_of - A node's scene id from the kernel's (the universe scopes it).
+ * @param id_map - A node's scene id from the kernel's (the universe scopes it).
  */
-export function feedStatuses_patch(scene: { status_update: (id: string, status: string) => void }, model: FeedDagModel, id_of: (nodeId: string) => string = (nodeId: string): string => nodeId): void {
-  for (const node of model.nodes) scene.status_update(id_of(node.id), node.status);
+export function feedStatuses_patch(scene: { status_update: (id: string, status: string) => void }, model: FeedDagModel, id_map: (nodeId: string) => string = (nodeId: string): string => nodeId): void {
+  for (const node of model.nodes) scene.status_update(id_map(node.id), node.status);
 }
 
 /** What the frame does to a pane when a mode changes; the pane decides what each means for its scene. */
@@ -273,7 +273,7 @@ export class FeedViewFrame {
   }
 
   /** @returns The pill a verb is carried by, when the frame has one. */
-  public pill_of(verb: FeedVerb): HTMLElement | null {
+  public pill_find(verb: FeedVerb): HTMLElement | null {
     return this.pills.get(verb) ?? null;
   }
 

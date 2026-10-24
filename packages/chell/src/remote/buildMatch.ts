@@ -33,7 +33,7 @@ export function buildMismatch_line(local: string, daemon: string): string | null
  * @param cause - Why: a door restart, an administrator's end, or a plain stop.
  * @returns The line.
  */
-export function closingLine_of(cause: 'restart' | 'end' | 'stop'): string {
+export function closingLine_render(cause: 'restart' | 'end' | 'stop'): string {
   if (cause === 'restart') return '[!] The calypso daemon is restarting (asked from ARGUS). Attach again in a moment.';
   if (cause === 'end') return '[!] The calypso daemon was ended by an administrator.';
   return '[!] The calypso daemon stopped.';
@@ -75,7 +75,7 @@ const NEWS_LINE_MAX: number = 96;
  * @param news - This surface's own newest release, when its notes are at hand.
  * @returns The lines.
  */
-export function staleLines_of(news: SurfaceNews | null): string[] {
+export function staleLines_render(news: SurfaceNews | null): string[] {
   const lines: string[] = [
     '[!] The calypso daemon is out of date: its code on disk has changed since it started. Restart it — RESTART in ARGUS, or `porter --end <you>` at its porter, then attach again.',
   ];

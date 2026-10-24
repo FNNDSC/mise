@@ -36,7 +36,7 @@ import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { pipelineRunArgs_parse, type PipelineRunOverrides } from './pipeline.args.js';
-import { runs_awaitSettled, settlement_render, settlementStatus_of, type RunSettlement } from './runWait.js';
+import { runs_awaitSettled, settlement_render, settlementStatus_derive, type RunSettlement } from './runWait.js';
 import type { PipelineNode, PipelineScheduled } from '../../api/models.js';
 import { pipelineDiagram_handle, type PipelineDiagramMode } from './pipeline.diagram.js';
 import { pipelineManifest_render, pipelineParameters_render } from './pipeline.manifest.js';
@@ -279,7 +279,7 @@ export function pipelineScheduled_make(
       instanceId,
       pluginName: known?.pluginName ?? 'unknown',
       outputPath: known?.outputPath ?? null,
-      status: settlement === null ? 'detached' : settlementStatus_of(settlement, instanceId),
+      status: settlement === null ? 'detached' : settlementStatus_derive(settlement, instanceId),
     };
   });
   const parents: Set<number> = new Set(instanceIds

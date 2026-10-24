@@ -79,7 +79,7 @@ export function duration_text(ms: number): string {
 }
 
 /** What a domain is, in the badge beside its name. */
-export function classBadge_of(domain: DomainSummary): string {
+export function classBadge_render(domain: DomainSummary): string {
   if (domain.origin === 'adopted') return 'ADOPTED · PLANS ONLY';
   if (domain.origin === 'checkout') return 'CHECKOUT · READ ONLY';
   if (domain.gone !== null && domain.gone !== undefined) return 'TORN DOWN';
@@ -92,7 +92,7 @@ export function classBadge_of(domain: DomainSummary): string {
  * @param domain - The domain.
  * @returns The line, and whether it says billing (drawn orange).
  */
-export function conditionWhy_of(domain: DomainSummary): { text: string; billing: boolean } {
+export function conditionWhy_derive(domain: DomainSummary): { text: string; billing: boolean } {
   const billing: boolean = domain.billing === true;
   const why: string = domain.origin === 'adopted' ? 'ADOPTED' : domain.origin === 'checkout' ? 'READ FROM A CHECKOUT'
     : domain.condition === 'GONE' ? 'TORN DOWN' : domain.condition === 'SIZING' ? 'NOTHING BUILT'
@@ -121,11 +121,11 @@ export interface StepLook {
  * @param domain - The domain.
  * @returns The steps in build order.
  */
-export function stepLooks_of(domain: DomainSummary): StepLook[] {
+export function stepLooks_build(domain: DomainSummary): StepLook[] {
   return domain.steps.map((step, index: number): StepLook => {
     const name: string = step.name ?? step.folder.replace(/^\d+-/, '');
     const n: string = String(index + 1).padStart(2, '0');
-    const note: string = noteShort_of(step.evidence ?? '');
+    const note: string = noteShort_format(step.evidence ?? '');
     const billFrom: boolean = name === domain.billingStep;
     const look = (word: string, tone: StepLook['tone']): StepLook => ({ n, name, word, tone, note, billFrom });
     if (step.state === 'done') return look('DONE', 'done');
@@ -145,14 +145,14 @@ export function stepLooks_of(domain: DomainSummary): StepLook[] {
  * @param evidence - The evidence.
  * @returns The short form.
  */
-export function noteShort_of(evidence: string): string {
+export function noteShort_format(evidence: string): string {
   const adopted: RegExpMatchArray | null = evidence.match(/^done before adoption \(harbor-oci: [a-z ]+, (.*)\)$/);
   const text: string = adopted?.[1] ?? evidence;
   return text.length > 60 ? `${text.slice(0, 59)}…` : text;
 }
 
 /** How many steps are done, of how many. */
-export function stepsDone_of(domain: DomainSummary): { done: number; total: number } {
+export function stepsDone_count(domain: DomainSummary): { done: number; total: number } {
   return { done: domain.steps.filter((step): boolean => step.state === 'done').length, total: domain.steps.length };
 }
 
@@ -169,16 +169,16 @@ export interface SinceRow {
  * @param after - The domain now.
  * @returns At most three rows; one saying nothing changed when nothing did.
  */
-export function since_of(before: DomainSummary | null, after: DomainSummary): SinceRow[] {
+export function since_build(before: DomainSummary | null, after: DomainSummary): SinceRow[] {
   if (before === null) return [{ label: '', text: 'FIRST READ' }];
   const rows: SinceRow[] = [];
   if (before.condition !== after.condition) rows.push({ label: 'CONDITION', text: `${before.condition ?? '?'} → ${after.condition ?? '?'}` });
   const stepsBefore: Map<string, string> = new Map(before.steps.map((step): [string, string] => [step.name ?? step.folder, step.state]));
   const moved = after.steps.filter((step): boolean => stepsBefore.get(step.name ?? step.folder) !== step.state);
   for (const step of moved.slice(-2)) rows.push({ label: (step.name ?? step.folder).toUpperCase(), text: `${(stepsBefore.get(step.name ?? step.folder) ?? 'NONE').toUpperCase()} → ${step.state.toUpperCase()}` });
-  const verify = (domain: DomainSummary): string | null => domain.verify === null || domain.verify === undefined ? null : verifyWords_of(domain.verify.checks);
+  const verify = (domain: DomainSummary): string | null => domain.verify === null || domain.verify === undefined ? null : verifyWords_render(domain.verify.checks);
   if (verify(before) !== verify(after)) rows.push({ label: 'VERIFY', text: verify(after) ?? 'NOT RUN' });
-  const plan = (domain: DomainSummary): string | null => domain.plan === null || domain.plan === undefined ? null : planWords_of(domain.plan);
+  const plan = (domain: DomainSummary): string | null => domain.plan === null || domain.plan === undefined ? null : planWords_render(domain.plan);
   if (plan(before) !== plan(after)) rows.push({ label: 'PLAN', text: plan(after) ?? 'NONE' });
   const hourly = (domain: DomainSummary): string | null => domain.cost === null || domain.cost === undefined ? null : money_text(domain.cost.hourly, domain.cost.currency);
   if (hourly(before) !== hourly(after) && hourly(before) !== null && hourly(after) !== null) rows.push({ label: 'PER HOUR', text: `${hourly(before)} → ${hourly(after)}` });
@@ -192,7 +192,7 @@ export function since_of(before: DomainSummary | null, after: DomainSummary): Si
  * @param checks - The checks.
  * @returns `10 OF 10 PASS`, `9 OF 10 PASS · 1 FAIL`.
  */
-export function verifyWords_of(checks: ReadonlyArray<{ ok: boolean | null }>): string {
+export function verifyWords_render(checks: ReadonlyArray<{ ok: boolean | null }>): string {
   const passed: number = checks.filter((check): boolean => check.ok === true).length;
   const failed: number = checks.filter((check): boolean => check.ok === false).length;
   const skipped: number = checks.length - passed - failed;
@@ -205,7 +205,7 @@ export function verifyWords_of(checks: ReadonlyArray<{ ok: boolean | null }>): s
  * @param plan - The plan.
  * @returns `52 + · 0 ~ · 0 −`, `0 + · 6 ~ TAG DRIFT · 0 −`.
  */
-export function planWords_of(plan: NonNullable<DomainSummary['plan']>): string {
+export function planWords_render(plan: NonNullable<DomainSummary['plan']>): string {
   const real: number = plan.change + plan.replace;
   const change: string = real > 0 || plan.drift === 0 ? `${real} ~` : '';
   const drift: string = plan.drift > 0 ? `${plan.drift} ~ TAG DRIFT` : '';
@@ -218,7 +218,7 @@ export function planWords_of(plan: NonNullable<DomainSummary['plan']>): string {
  * @param zone - The zone.
  * @returns The short form.
  */
-export function zoneShort_of(zone: string): string {
+export function zoneShort_format(zone: string): string {
   const bare: string = zone.includes(':') ? zone.slice(zone.indexOf(':') + 1) : zone;
   const ad: RegExpMatchArray | null = bare.match(/AD-\d+$/i);
   return ad !== null ? ad[0].toUpperCase() : bare;
@@ -249,7 +249,7 @@ export interface ZoneFitLook {
  * @param name - The domain's name, for the machines'.
  * @returns One per zone.
  */
-export function sizeFit_of(size: DomainSizeModel, spec: DomainSpecModel, name: string): ZoneFitLook[] {
+export function sizeFit_compute(size: DomainSizeModel, spec: DomainSpecModel, name: string): ZoneFitLook[] {
   const count: number = Math.max(size.zones.length, 1);
   const placed: Array<{ name: string; vcpu: number; ramGib: number; zone: number }> = [];
   for (let i: number = 0; i < spec.controlPlane.count; i++) placed.push({ name: `${name}-cp-${i}`, vcpu: spec.controlPlane.vcpu, ramGib: spec.controlPlane.ramGib, zone: i % count });
@@ -285,7 +285,7 @@ export interface CostRow {
  * @param spec - The spec as the levers stand.
  * @returns The rows, the total (null when nothing is priced), the currency.
  */
-export function sizeCost_of(size: DomainSizeModel, spec: DomainSpecModel): { rows: CostRow[]; hourly: number | null; currency: string } {
+export function sizeCost_compute(size: DomainSizeModel, spec: DomainSpecModel): { rows: CostRow[]; hourly: number | null; currency: string } {
   const vcpu: number = spec.controlPlane.count * spec.controlPlane.vcpu + spec.workers.count * spec.workers.vcpu;
   const gib: number = spec.controlPlane.count * spec.controlPlane.ramGib + spec.workers.count * spec.workers.ramGib;
   const volumeHour = (sizeGib: number, tier: string): number | null => size.services === null ? null
@@ -315,7 +315,7 @@ export function sizeCost_of(size: DomainSizeModel, spec: DomainSpecModel): { row
  * @param zone - The DNS zone to name, when it is not the session's default.
  * @returns The line.
  */
-export function newLine_of(name: string, spec: DomainSpecModel, start: DomainSpecModel, zone: string | null = null): string {
+export function newLine_build(name: string, spec: DomainSpecModel, start: DomainSpecModel, zone: string | null = null): string {
   const words: string[] = ['domain', 'new', name];
   if (zone !== null) words.push('--base-domain', zone);
   const pool = (one: DomainSpecModel['controlPlane']): string => `${one.count}x${one.vcpu}/${one.ramGib}`;
@@ -348,7 +348,7 @@ export const DOMAIN_NAME: RegExp = /^[a-z]([a-z0-9-]{0,52}[a-z0-9])?$/;
  * @param known - The domains there are.
  * @returns Null when it may; else why not.
  */
-export function nameRefusal_of(name: string, known: ReadonlyArray<string>): string | null {
+export function nameRefusal_derive(name: string, known: ReadonlyArray<string>): string | null {
   if (name === '') return 'NAME IT FIRST';
   if (!DOMAIN_NAME.test(name)) return 'A DNS LABEL: a-z, 0-9 AND -, A LETTER FIRST';
   if (known.includes(name)) return `${name.toUpperCase()} IS TAKEN`;
@@ -376,7 +376,7 @@ export const LINES = {
  * @param message - The question.
  * @returns `yes-no` for a `[y/N]` question, `typed` for anything else.
  */
-export function askForm_of(message: string): 'yes-no' | 'typed' {
+export function askForm_derive(message: string): 'yes-no' | 'typed' {
   return /\[y\/N\]\s*$/i.test(message.trim()) ? 'yes-no' : 'typed';
 }
 
@@ -387,7 +387,7 @@ export function askForm_of(message: string): 'yes-no' | 'typed' {
  * @param names - The domains there are.
  * @returns `''` for bare `domain` (the controller on the first domain, or NEW), a name for `domain <name>`, null for any other line.
  */
-export function controllerLine_of(line: string, names: ReadonlyArray<string>): string | null {
+export function controllerLine_parse(line: string, names: ReadonlyArray<string>): string | null {
   const words: string[] = line.trim().split(/\s+/);
   if (words[0] !== 'domain') return null;
   if (words.length === 1) return '';

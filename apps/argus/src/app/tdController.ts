@@ -51,7 +51,7 @@ export interface TdControllerModule {
  * @param parse - The schema's safe parse.
  * @returns The model.
  */
-function model_of<T>(answer: ExecuteOutcome, kind: string, parse: (data: unknown) => { success: boolean; data?: T }): T | null {
+function model_extract<T>(answer: ExecuteOutcome, kind: string, parse: (data: unknown) => { success: boolean; data?: T }): T | null {
   for (const envelope of answer.envelopes) {
     if (envelope.model?.kind !== kind) continue;
     const parsed = parse(envelope.model.data);
@@ -84,7 +84,7 @@ export function tdController_wire(context: Pick<HostContext, 'client'>, names_se
   const status_read = async (): Promise<void> => {
     try {
       const answer: ExecuteOutcome = await context.client.line_execute('domain status', { silent: true, observe: false });
-      const model = model_of(answer, STRATUS_DOMAINS_MODEL_KIND, (data: unknown) => domainsModelSchema.safeParse(data));
+      const model = model_extract(answer, STRATUS_DOMAINS_MODEL_KIND, (data: unknown) => domainsModelSchema.safeParse(data));
       heard.reads++;
       if (model === null) return;
       names = model.domains.map((domain: DomainSummary): string => domain.name);
@@ -99,7 +99,7 @@ export function tdController_wire(context: Pick<HostContext, 'client'>, names_se
   const size_read = async (family?: string): Promise<DomainSizeModel | null> => {
     try {
       const answer: ExecuteOutcome = await context.client.line_execute(family === undefined ? 'domain size' : `domain size --family ${family}`, { silent: true, observe: false });
-      return model_of(answer, STRATUS_DOMAIN_SIZE_MODEL_KIND, (data: unknown) => domainSizeModelSchema.safeParse(data));
+      return model_extract(answer, STRATUS_DOMAIN_SIZE_MODEL_KIND, (data: unknown) => domainSizeModelSchema.safeParse(data));
     } catch {
       return null;
     }

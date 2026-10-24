@@ -109,7 +109,7 @@ export function watchSubject_parse(subject: string): number | null {
 }
 
 /** The subject address a feed watch is reported under. */
-function subject_of(feedID: number): string {
+function subject_format(feedID: number): string {
   return `/proc/jobs/feed_${feedID}`;
 }
 
@@ -117,7 +117,7 @@ function subject_of(feedID: number): string {
 function state_set(watch: Watch, state: WatchState): void {
   if (watch.state === state) return;
   watch.state = state;
-  ambient_publish({ kind: 'watched', subject: subject_of(watch.feedID), state });
+  ambient_publish({ kind: 'watched', subject: subject_format(watch.feedID), state });
 }
 
 /** Whether a feed can no longer change: every cached node terminal and no work pending. */

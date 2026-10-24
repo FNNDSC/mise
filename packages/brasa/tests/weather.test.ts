@@ -12,7 +12,7 @@ cuminMock_install(() => ({
   envelope_error: (rendered: string) => ({ status: 'error', rendered }),
 }));
 
-const { builtin_weather, compass_ofDegrees, condition_ofCode, report_render, weatherArgs_parse } =
+const { builtin_weather, compass_convertFromDegrees, condition_resolve, report_render, weatherArgs_parse } =
   await import('../src/builtins/sys/weather.js');
 
 /** A geocoder answer for Boston, as Open-Meteo gives it. */
@@ -60,17 +60,17 @@ describe('weatherArgs_parse', () => {
   });
 });
 
-describe('condition_ofCode and compass_ofDegrees', () => {
+describe('condition_resolve and compass_convertFromDegrees', () => {
   it('words the WMO codes and says an unknown one by number', () => {
-    expect(condition_ofCode(0)).toBe('clear sky');
-    expect(condition_ofCode(95)).toBe('thunderstorm');
-    expect(condition_ofCode(42)).toBe('conditions code 42');
+    expect(condition_resolve(0)).toBe('clear sky');
+    expect(condition_resolve(95)).toBe('thunderstorm');
+    expect(condition_resolve(42)).toBe('conditions code 42');
   });
   it('names the eight points', () => {
-    expect(compass_ofDegrees(0)).toBe('N');
-    expect(compass_ofDegrees(310)).toBe('NW');
-    expect(compass_ofDegrees(359)).toBe('N');
-    expect(compass_ofDegrees(-90)).toBe('W');
+    expect(compass_convertFromDegrees(0)).toBe('N');
+    expect(compass_convertFromDegrees(310)).toBe('NW');
+    expect(compass_convertFromDegrees(359)).toBe('N');
+    expect(compass_convertFromDegrees(-90)).toBe('W');
   });
 });
 

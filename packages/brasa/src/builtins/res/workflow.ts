@@ -5,7 +5,7 @@
  * Aliases: workflow / workflows
  */
 import chalk from 'chalk';
-import { commandArgs_process, ParsedArgs, cliOptions_from, resourceListOptions_refusal, resourceSearchTerm_refusal, resourceSearch_args } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_extract, resourceListOptions_refusal, resourceSearchTerm_refusal, resourceSearch_args } from '../utils.js';
 import { workflows_fetchList, WorkflowListResult } from '@fnndsc/chili/commands/workflows/list.js';
 import { workflowFields_fetch } from '@fnndsc/chili/commands/workflows/fields.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
@@ -28,7 +28,7 @@ export async function builtin_workflow(args: string[]): Promise<CommandEnvelope>
       return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
     }
     try {
-      const { workflows, selectedFields, totalCount }: WorkflowListResult = await workflows_fetchList(cliOptions_from(parsed));
+      const { workflows, selectedFields, totalCount }: WorkflowListResult = await workflows_fetchList(cliOptions_extract(parsed));
       if (workflows.length === 0) { return envelope_ok(`${chalk.gray('No workflows found.')}\n`); }
       return envelope_ok(table_render(workflows, selectedFields, { title: { title: 'Workflows', justification: 'center' }, pagination: totalCount !== undefined ? { shown: workflows.length, total: totalCount } : undefined }));
     } catch (e: unknown) {

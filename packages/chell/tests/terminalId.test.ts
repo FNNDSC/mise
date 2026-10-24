@@ -5,15 +5,15 @@
  */
 import { describe, it, expect } from '@jest/globals';
 
-const { terminalId_of } = await import('../src/core/terminalId.js');
+const { terminalId_parse } = await import('../src/core/terminalId.js');
 
-describe('terminalId_of', () => {
+describe('terminalId_parse', () => {
   it('reads a terminal id', () => {
-    expect(terminalId_of('0123456789abcdef01234567')).toBe('0123456789abcdef01234567');
+    expect(terminalId_parse('0123456789abcdef01234567')).toBe('0123456789abcdef01234567');
   });
   it('is no terminal\'s for the old flag, nothing, or anything else', () => {
-    expect(terminalId_of('1')).toBeNull();
-    expect(terminalId_of(undefined)).toBeNull();
-    expect(terminalId_of('; rm -rf ~')).toBeNull();
+    expect(terminalId_parse('1')).toBeNull();
+    expect(terminalId_parse(undefined)).toBeNull();
+    expect(terminalId_parse('; rm -rf ~')).toBeNull();
   });
 });

@@ -12,7 +12,7 @@
  * @module
  */
 import chalk from 'chalk';
-import { commandArgs_process, ParsedArgs, cliOptions_from } from '../utils.js';
+import { commandArgs_process, ParsedArgs, cliOptions_extract } from '../utils.js';
 import { plugins_fetchList } from '@fnndsc/chili/commands/plugins/list.js';
 import { pluginFields_fetch } from '@fnndsc/chili/commands/plugins/fields.js';
 import { plugin_add, PluginAddOutcome } from '@fnndsc/chili/commands/plugins/add.js';
@@ -56,7 +56,7 @@ export async function builtin_plugin(args: string[]): Promise<CommandEnvelope> {
 
   try {
     if (subcommand === 'list') {
-       const { plugins, selectedFields, totalCount } = await plugins_fetchList(cliOptions_from(parsed));
+       const { plugins, selectedFields, totalCount } = await plugins_fetchList(cliOptions_extract(parsed));
        let rendered: string = `${pluginList_render(plugins, selectedFields, { table: !!parsed.table, csv: !!parsed.csv })}\n`;
        if (totalCount !== undefined && plugins.length < totalCount) {
          rendered += `${chalk.dim(`  ↓ showing ${plugins.length} of ${totalCount}  ·  --all to fetch all  ·  --limit <n> for page size`)}\n`;

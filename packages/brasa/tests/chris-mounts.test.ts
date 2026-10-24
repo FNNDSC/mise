@@ -19,7 +19,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   plugins_listAll: pluginsListAll,
   pipelines_getAll: pipelinesGetAll,
 }));
-jest.unstable_mockModule('@fnndsc/chili/utils', () => ({ logical_toPhysical: logicalToPhysical }));
+jest.unstable_mockModule('@fnndsc/chili/utils', () => ({ logicalPath_resolve: logicalToPhysical }));
 jest.unstable_mockModule('../src/session/index.js', () => ({ session: { physicalMode_get: (): boolean => physical } }));
 jest.unstable_mockModule('../src/builtins/res/plugin.info.js', () => ({
   pluginInfo_build: jest.fn(), pluginInfoText_render: jest.fn(), pluginSpecifier_parse: jest.fn(),

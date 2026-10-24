@@ -19,7 +19,7 @@ import { tdMark_linesRender } from '@fnndsc/menu/logo/td';
  * @param colorize - Whether to draw in colour.
  * @returns The lines to print; empty for a backend with no art of its own.
  */
-export function splashLines_of(backend: string | undefined, colorize: boolean): string[] {
+export function splashLines_render(backend: string | undefined, colorize: boolean): string[] {
   if (backend === undefined || backend === 'chris') return colorize ? logo_frameRender(0, true) : logo_linesRender(false);
   if (backend === 'stratus') return tdMark_linesRender(colorize);
   return [];

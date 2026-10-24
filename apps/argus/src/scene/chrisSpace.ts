@@ -29,7 +29,7 @@ import {
   type Approach,
   type UnfoldPlan,
 } from '@fnndsc/orrery';
-import { chrisLook_of } from './chrisLook.js';
+import { chrisLook_build } from './chrisLook.js';
 
 export { PHYSICS_DEFAULT };
 export type { Approach, DrawMode, LayoutStrategy, PhysicsTerms, SettleMode };
@@ -124,7 +124,7 @@ export class ChrisSpace extends Orrery<LookedNode> {
    * @param options - How it settles; see {@link Orrery.graph_set}.
    */
   public override graph_set(graph: SceneGraph, options: Parameters<Orrery<LookedNode>['graph_set']>[1] = {}): void {
-    const nodes: LookedNode[] = graph.nodes.map((node: SceneNode): LookedNode => Object.assign(node, { look: chrisLook_of(node) }));
+    const nodes: LookedNode[] = graph.nodes.map((node: SceneNode): LookedNode => Object.assign(node, { look: chrisLook_build(node) }));
     this.byId = new Map(nodes.map((node: LookedNode): [string, LookedNode] => [node.id, node]));
     super.graph_set({ nodes }, options);
   }
@@ -158,6 +158,6 @@ export class ChrisSpace extends Orrery<LookedNode> {
     const node: LookedNode | undefined = this.byId.get(nodeId);
     if (node === undefined || node.status === status) return;
     node.status = status;
-    this.look_update(nodeId, chrisLook_of(node));
+    this.look_update(nodeId, chrisLook_build(node));
   }
 }

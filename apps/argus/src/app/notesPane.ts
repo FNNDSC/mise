@@ -31,7 +31,7 @@ export interface NotesPaneModule {
 }
 
 /** The `session.notes` model an outcome carries, or null. */
-export function notesModel_of(outcome: ExecuteOutcome): SessionNotes | null {
+export function notesModel_extract(outcome: ExecuteOutcome): SessionNotes | null {
   for (const envelope of outcome.envelopes) {
     if (envelope.model?.kind !== SESSION_NOTES_MODEL_KIND) continue;
     const parsed = sessionNotesSchema.safeParse(envelope.model.data);
@@ -49,7 +49,7 @@ export function notesModel_of(outcome: ExecuteOutcome): SessionNotes | null {
  */
 export function notesPane_wire(context: Pick<HostContext, 'layout' | 'panels' | 'subjects'>, hooks: NotesPaneHooks): NotesPaneModule {
   const { layout, panels, subjects } = context;
-  const ask = async (line: string): Promise<SessionNotes | null> => notesModel_of(await hooks.ask(line));
+  const ask = async (line: string): Promise<SessionNotes | null> => notesModel_extract(await hooks.ask(line));
 
   const instance_build = (id: string): PaneInstance => {
     const mount: HTMLElement = hooks.template_stamp('tpl-pane-notes');

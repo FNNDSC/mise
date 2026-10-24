@@ -25,7 +25,7 @@ jest.mock('@fnndsc/cumin', () => ({
   errorStack: {
     messagesOfType_search: jest.fn(),
   },
-  dictionary_fromCLI: jest.fn(),
+  dictionary_parseFromCLI: jest.fn(),
 }));
 
 describe('plugin run command', () => {
@@ -53,7 +53,7 @@ describe('plugin run command', () => {
 
   it('should call salsa.plugin_run with correct searchable and params', async () => {
     mockSalsaPluginRun.mockResolvedValue({ id: 123, name: 'pl-test' });
-    (cumin.dictionary_fromCLI as jest.Mock).mockReturnValue({ dir: '.', prefix: 'test-' });
+    (cumin.dictionary_parseFromCLI as jest.Mock).mockReturnValue({ dir: '.', prefix: 'test-' });
 
     const searchable = 'pl-test';
     const params = '--dir . --prefix test-';

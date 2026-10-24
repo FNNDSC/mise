@@ -1,7 +1,7 @@
 /**
  * Tests for the chili controllers (thin delegators over cumin + salsa).
  * Mocks @fnndsc/salsa; partial-mocks cumin (real listParams/record_extract/
- * dictionary_fromCLI, stubbed group/feed constructors).
+ * dictionary_parseFromCLI, stubbed group/feed constructors).
  */
 const mockSalsa = {
   files_getGroup: jest.fn(),
@@ -149,7 +149,7 @@ describe('PluginController', () => {
     mockSalsa.pluginMeta_documentationUrlGet.mockResolvedValue('http://d');
     expect(await c.documentationUrl_get('5')).toBe('http://d');
     mockSalsa.pluginMeta_pluginIDFromSearch.mockResolvedValue('7');
-    expect(await c.pluginID_fromSearch({ name: 'pl' })).toBe('7');
+    expect(await c.pluginID_findBySearch({ name: 'pl' })).toBe('7');
     await expect(c.plugins_overview()).resolves.toBeUndefined();
     await expect(c.plugin_infoGet('5')).resolves.toBeUndefined();
   });

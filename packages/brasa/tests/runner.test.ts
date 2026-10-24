@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { AmbientEvent, Task } from '@fnndsc/menu';
-import { JobRefusal, JobRunner, jobsRoot_of, runner_get, runner_install, type JobContext, type JobRecord, type JobRun, type JobSource } from '../src/core/runner.js';
+import { JobRefusal, JobRunner, jobsRoot_derive, runner_get, runner_install, type JobContext, type JobRecord, type JobRun, type JobSource } from '../src/core/runner.js';
 import { ambient_listen } from '../src/core/ambient.js';
 import { surface_set, HeadlessSurface } from '../src/core/surface.js';
 
@@ -31,8 +31,8 @@ describe('the runner', () => {
   afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); runner_install(null); });
 
   it('keeps its jobs under the state folder, per backend', () => {
-    expect(jobsRoot_of('stratus', { XDG_STATE_HOME: '/s' })).toBe('/s/stratus/jobs');
-    expect(jobsRoot_of('stratus', {})).toBe(path.join(os.homedir(), '.local', 'state', 'stratus', 'jobs'));
+    expect(jobsRoot_derive('stratus', { XDG_STATE_HOME: '/s' })).toBe('/s/stratus/jobs');
+    expect(jobsRoot_derive('stratus', {})).toBe(path.join(os.homedir(), '.local', 'state', 'stratus', 'jobs'));
   });
 
   it('refuses to start a job without the tasks tier, as the surface declares it', () => {

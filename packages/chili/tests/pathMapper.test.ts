@@ -57,7 +57,7 @@ describe('PathMapper', () => {
 
   describe('Basic Path Resolution', () => {
     it('should resolve root path', async () => {
-      const result = await mapper.logical_toPhysical('/');
+      const result = await mapper.logicalPath_resolve('/');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toBe('/');
@@ -71,7 +71,7 @@ describe('PathMapper', () => {
         selectedFields: []
       });
 
-      const result = await mapper.logical_toPhysical('/home/user/files');
+      const result = await mapper.logicalPath_resolve('/home/user/files');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toBe('/home/user/files');
@@ -84,7 +84,7 @@ describe('PathMapper', () => {
         selectedFields: []
       });
 
-      const result = await mapper.logical_toPhysical('home/user/files');
+      const result = await mapper.logicalPath_resolve('home/user/files');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toBe('/home/user/files');
@@ -92,13 +92,13 @@ describe('PathMapper', () => {
     });
 
     it('should reject invalid paths', async () => {
-      const result1 = await mapper.logical_toPhysical('');
+      const result1 = await mapper.logicalPath_resolve('');
       expect(result1.ok).toBe(false);
 
-      const result2 = await mapper.logical_toPhysical(null as any);
+      const result2 = await mapper.logicalPath_resolve(null as any);
       expect(result2.ok).toBe(false);
 
-      const result3 = await mapper.logical_toPhysical(undefined as any);
+      const result3 = await mapper.logicalPath_resolve(undefined as any);
       expect(result3.ok).toBe(false);
     });
   });
@@ -141,7 +141,7 @@ describe('PathMapper', () => {
         selectedFields: []
       });
 
-      const result = await mapper.logical_toPhysical('/home/user/public/data');
+      const result = await mapper.logicalPath_resolve('/home/user/public/data');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toBe('/SHARED/data');
@@ -194,7 +194,7 @@ describe('PathMapper', () => {
         selectedFields: []
       });
 
-      const result = await mapper.logical_toPhysical('/home/user/public/data');
+      const result = await mapper.logicalPath_resolve('/home/user/public/data');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toBe('/SHARED/data');
@@ -213,7 +213,7 @@ describe('PathMapper', () => {
         selectedFields: []
       });
 
-      const result = await mapper.logical_toPhysical('/home/user/public');
+      const result = await mapper.logicalPath_resolve('/home/user/public');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toBe('/home/user/public');
@@ -229,11 +229,11 @@ describe('PathMapper', () => {
       });
 
       // First call
-      const result1 = await mapper.logical_toPhysical('/home/user/files');
+      const result1 = await mapper.logicalPath_resolve('/home/user/files');
       expect(result1.ok).toBe(true);
 
       // Second call - should hit cache
-      const result2 = await mapper.logical_toPhysical('/home/user/files');
+      const result2 = await mapper.logicalPath_resolve('/home/user/files');
       expect(result2.ok).toBe(true);
 
       // Should have called API during first resolution only
@@ -247,10 +247,10 @@ describe('PathMapper', () => {
         selectedFields: []
       });
 
-      await mapper.logical_toPhysical('/home/user/files/data.txt');
+      await mapper.logicalPath_resolve('/home/user/files/data.txt');
 
       // Second call with common prefix should reuse cached segments
-      await mapper.logical_toPhysical('/home/user/other/data.txt');
+      await mapper.logicalPath_resolve('/home/user/other/data.txt');
 
       // First call: /home, /home/user, /home/user/files, /home/user/files/data.txt (4 calls)
       // Second call: /home/user/other, /home/user/other/data.txt (2 new calls)
@@ -265,13 +265,13 @@ describe('PathMapper', () => {
       });
 
       // First call - cache miss
-      await mapper.logical_toPhysical('/home/user/files');
+      await mapper.logicalPath_resolve('/home/user/files');
       let stats = mapper.stats_get();
       expect(stats.misses).toBe(1);
       expect(stats.hits).toBe(0);
 
       // Second call - exact cache hit
-      await mapper.logical_toPhysical('/home/user/files');
+      await mapper.logicalPath_resolve('/home/user/files');
       stats = mapper.stats_get();
       expect(stats.hits).toBe(1);
       expect(stats.misses).toBe(1);
@@ -311,7 +311,7 @@ describe('PathMapper', () => {
       });
 
       // First resolution: /home/user/public/feed_4
-      const result1 = await mapper.logical_toPhysical('/home/user/public/feed_4');
+      const result1 = await mapper.logicalPath_resolve('/home/user/public/feed_4');
       expect(result1.ok).toBe(true);
       if (result1.ok) {
         expect(result1.value).toBe('/SHARED/feed_4');
@@ -330,7 +330,7 @@ describe('PathMapper', () => {
 
       // Second resolution: /home/user/public/feed_5
       // Should reuse cached '/home/user/public' -> '/SHARED'
-      const result2 = await mapper.logical_toPhysical('/home/user/public/feed_5');
+      const result2 = await mapper.logicalPath_resolve('/home/user/public/feed_5');
       expect(result2.ok).toBe(true);
       if (result2.ok) {
         expect(result2.value).toBe('/SHARED/feed_5');
@@ -350,7 +350,7 @@ describe('PathMapper', () => {
 
       // Resolve 10 files in same directory
       for (let i: number = 0; i < 10; i++) {
-        const result = await mapper.logical_toPhysical(`${basePath}/file_${i}.dcm`);
+        const result = await mapper.logicalPath_resolve(`${basePath}/file_${i}.dcm`);
         expect(result.ok).toBe(true);
       }
 
@@ -369,7 +369,7 @@ describe('PathMapper', () => {
         selectedFields: []
       });
 
-      await mapper.logical_toPhysical('/home/user/files');
+      await mapper.logicalPath_resolve('/home/user/files');
       mapper.cache_invalidate('/home/user/files');
 
       mockFilesListAll.mockClear();
@@ -379,7 +379,7 @@ describe('PathMapper', () => {
       });
 
       // Should re-resolve (not hit cache)
-      await mapper.logical_toPhysical('/home/user/files');
+      await mapper.logicalPath_resolve('/home/user/files');
       expect(mockFilesListAll).toHaveBeenCalled();
     });
 
@@ -390,9 +390,9 @@ describe('PathMapper', () => {
       });
 
       // Cache multiple paths under /home/user/public
-      await mapper.logical_toPhysical('/home/user/public/feed_4');
-      await mapper.logical_toPhysical('/home/user/public/feed_5');
-      await mapper.logical_toPhysical('/home/user/private/feed_6');
+      await mapper.logicalPath_resolve('/home/user/public/feed_4');
+      await mapper.logicalPath_resolve('/home/user/public/feed_5');
+      await mapper.logicalPath_resolve('/home/user/private/feed_6');
 
       // Invalidate all /home/user/public paths
       mapper.cache_invalidate('/home/user/public');
@@ -408,8 +408,8 @@ describe('PathMapper', () => {
         selectedFields: []
       });
 
-      await mapper.logical_toPhysical('/home/user/files');
-      await mapper.logical_toPhysical('/home/other/files');
+      await mapper.logicalPath_resolve('/home/user/files');
+      await mapper.logicalPath_resolve('/home/other/files');
 
       mapper.cache_clear();
 
@@ -428,7 +428,7 @@ describe('PathMapper', () => {
         selectedFields: []
       });
 
-      await mapper.logical_toPhysical('/home/user/files');
+      await mapper.logicalPath_resolve('/home/user/files');
 
       // Manually expire by advancing time (mock Date.now)
       const realDateNow = Date.now.bind(global.Date);
@@ -441,7 +441,7 @@ describe('PathMapper', () => {
       });
 
       // Should re-resolve (cache expired)
-      await mapper.logical_toPhysical('/home/user/files');
+      await mapper.logicalPath_resolve('/home/user/files');
       expect(mockFilesListAll).toHaveBeenCalled();
 
       // Restore Date.now
@@ -454,7 +454,7 @@ describe('PathMapper', () => {
         selectedFields: []
       });
 
-      await mapper.logical_toPhysical('/home/user/files');
+      await mapper.logicalPath_resolve('/home/user/files');
 
       // Advance time by only 10 seconds (well within 30s TTL)
       const realDateNow = Date.now.bind(global.Date);
@@ -463,7 +463,7 @@ describe('PathMapper', () => {
       mockFilesListAll.mockClear();
 
       // Should hit cache
-      const result = await mapper.logical_toPhysical('/home/user/files');
+      const result = await mapper.logicalPath_resolve('/home/user/files');
       expect(result.ok).toBe(true);
       expect(mockFilesListAll).not.toHaveBeenCalled();
 
@@ -477,7 +477,7 @@ describe('PathMapper', () => {
       // All API calls fail
       mockFilesListAll.mockRejectedValue(new Error('API unavailable'));
 
-      const result = await mapper.logical_toPhysical('/home/user/files');
+      const result = await mapper.logicalPath_resolve('/home/user/files');
 
       // Current implementation treats errors as warnings and continues
       // So the path is returned as-is (no links detected)
@@ -504,7 +504,7 @@ describe('PathMapper', () => {
       });
 
       // Should continue despite intermediate failure
-      const result = await mapper.logical_toPhysical('/home/user/files');
+      const result = await mapper.logicalPath_resolve('/home/user/files');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toBe('/home/user/files');
@@ -523,7 +523,7 @@ describe('PathMapper', () => {
       });
       const before: number = errorStack.checkpoint_mark();
 
-      const result = await mapper.logical_toPhysical('/home/owner/feeds/feed_1');
+      const result = await mapper.logicalPath_resolve('/home/owner/feeds/feed_1');
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -539,10 +539,10 @@ describe('PathMapper', () => {
         if (parent === '/home/owner') throw new Error('403');
         return { tableData: [], selectedFields: [] };
       });
-      await mapper.logical_toPhysical('/home/owner/feeds');
+      await mapper.logicalPath_resolve('/home/owner/feeds');
       mapper.blindParents_take();
 
-      await mapper.logical_toPhysical('/home/owner/feeds');
+      await mapper.logicalPath_resolve('/home/owner/feeds');
 
       expect(mapper.blindParents_take()).toEqual(['/home/owner']);
     });
@@ -550,7 +550,7 @@ describe('PathMapper', () => {
     it('names no parent when every probe could read', async () => {
       mockFilesListAll.mockResolvedValue({ tableData: [], selectedFields: [] });
 
-      await mapper.logical_toPhysical('/home/user/files');
+      await mapper.logicalPath_resolve('/home/user/files');
 
       expect(mapper.blindParents_take()).toEqual([]);
     });
@@ -567,7 +567,7 @@ describe('PathMapper', () => {
       });
 
       // Should handle gracefully and treat invalid entries as non-links
-      const result = await mapper.logical_toPhysical('/home/valid');
+      const result = await mapper.logicalPath_resolve('/home/valid');
       expect(result.ok).toBe(true);
     });
   });
@@ -579,7 +579,7 @@ describe('PathMapper', () => {
         selectedFields: []
       });
 
-      await mapper.logical_toPhysical('/home/user/files');
+      await mapper.logicalPath_resolve('/home/user/files');
 
       const stats = mapper.stats_get();
       expect(stats.size).toBeGreaterThan(0);
@@ -592,10 +592,10 @@ describe('PathMapper', () => {
       });
 
       // 1 miss
-      await mapper.logical_toPhysical('/home/user/files');
+      await mapper.logicalPath_resolve('/home/user/files');
 
       // 1 hit
-      await mapper.logical_toPhysical('/home/user/files');
+      await mapper.logicalPath_resolve('/home/user/files');
 
       const stats = mapper.stats_get();
       expect(stats.hits).toBe(1);
@@ -618,7 +618,7 @@ describe('PathMapper', () => {
         selectedFields: []
       });
 
-      const result = await mapper.logical_toPhysical('//home//user//files');
+      const result = await mapper.logicalPath_resolve('//home//user//files');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toBe('/home/user/files');
@@ -631,7 +631,7 @@ describe('PathMapper', () => {
         selectedFields: []
       });
 
-      const result = await mapper.logical_toPhysical('/home/user/files/');
+      const result = await mapper.logicalPath_resolve('/home/user/files/');
       expect(result.ok).toBe(true);
       if (result.ok) {
         // Trailing slash should be normalized away
@@ -646,7 +646,7 @@ describe('PathMapper', () => {
       });
 
       const deepPath: string = '/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p';
-      const result = await mapper.logical_toPhysical(deepPath);
+      const result = await mapper.logicalPath_resolve(deepPath);
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toBe(deepPath);
@@ -680,7 +680,7 @@ describe('PathMapper', () => {
 
       // Current implementation doesn't encounter circular links in this scenario
       // because we check each path component in sequence, not recursively
-      const result = await mapper.logical_toPhysical('/home/user/a/c');
+      const result = await mapper.logicalPath_resolve('/home/user/a/c');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toBe('/home/user/a/c');
@@ -688,16 +688,16 @@ describe('PathMapper', () => {
     });
   });
 
-  describe('Integration with logical_toPhysical wrapper', () => {
+  describe('Integration with logicalPath_resolve wrapper', () => {
     it('should be callable via wrapper function', async () => {
-      const { logical_toPhysical } = await import('../src/utils/cli');
+      const { logicalPath_resolve } = await import('../src/utils/cli');
 
       mockFilesListAll.mockResolvedValue({
         tableData: [],
         selectedFields: []
       });
 
-      const result = await logical_toPhysical('/home/user/files');
+      const result = await logicalPath_resolve('/home/user/files');
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toBe('/home/user/files');

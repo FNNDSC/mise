@@ -6,7 +6,7 @@
  * @module
  */
 
-import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
+import { vfsOutcome_convertFromBoolean, vfsOutcome_convertFromResult, type VfsOutcome } from '@fnndsc/fond';
 import { Result, Ok, Err, errorStack, chrisConnection, chrisContext, Context, PACSQueryDecodedResult, PACSServer, seriesStorage_resolve, runtimeOutput_data, runtimeOutput_err, queryIndex_get, queryIndex_sweep, type QueryIndex, type QueryIndexEntry, type SeriesStorageState, type Client } from "@fnndsc/cumin";
 import { retrieveTask_make, retrieve_fireAndWatch, retrieveTasks_skipComplete, type RetrieveTask, type RetrieveWatchEvents } from "../../retrieve/watch.js";
 import { VFSProvider, VFSItem, CpOptions } from "../provider.js";
@@ -146,18 +146,18 @@ function seriesToRetrieve_build(
 
   const seriesArray: Record<string, unknown>[] = series_extractFromStudy(studyObj);
   const seriesToRetrieve: { uid: string; description: string; expectedFiles: number }[] = [];
-  const expected_of = (obj: Record<string, unknown> | undefined): number =>
+  const expectedCount_extract = (obj: Record<string, unknown> | undefined): number =>
     Number(tag_extractValue(obj?.NumberOfSeriesRelatedInstances ?? 0)) || 0;
 
   if (seriesUID) {
     const seriesObj: Record<string, unknown> | undefined = series_findByUID(seriesArray, seriesUID);
     const desc: string = seriesObj ? tag_extractValue(seriesObj.SeriesDescription || "Series") : "Series";
-    seriesToRetrieve.push({ uid: seriesUID, description: desc, expectedFiles: expected_of(seriesObj) });
+    seriesToRetrieve.push({ uid: seriesUID, description: desc, expectedFiles: expectedCount_extract(seriesObj) });
   } else {
     for (const s of seriesArray) {
       const sUID: string = tag_extractValue(s.SeriesInstanceUID || s.uid);
       if (sUID) {
-        seriesToRetrieve.push({ uid: sUID, description: tag_extractValue(s.SeriesDescription || "Series"), expectedFiles: expected_of(s) });
+        seriesToRetrieve.push({ uid: sUID, description: tag_extractValue(s.SeriesDescription || "Series"), expectedFiles: expectedCount_extract(s) });
       }
     }
   }
@@ -389,7 +389,7 @@ export class PacsVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async cp(src: string, dest: string, _options: CpOptions): Promise<VfsOutcome> {
-    return vfsOutcome_ofBoolean(await this.copy_run(src, dest, _options), 'EIO');
+    return vfsOutcome_convertFromBoolean(await this.copy_run(src, dest, _options), 'EIO');
   }
 
   /**
@@ -436,7 +436,7 @@ export class PacsVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async read(pathStr: string): Promise<VfsOutcome<string>> {
-    return vfsOutcome_ofResult(await this.text_read(pathStr), 'ENOENT');
+    return vfsOutcome_convertFromResult(await this.text_read(pathStr), 'ENOENT');
   }
 
   /**
@@ -451,7 +451,7 @@ export class PacsVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async readBinary(pathStr: string): Promise<VfsOutcome<Buffer>> {
-    return vfsOutcome_ofResult(await this.bytes_read(pathStr), 'ENOENT');
+    return vfsOutcome_convertFromResult(await this.bytes_read(pathStr), 'ENOENT');
   }
 
   /**

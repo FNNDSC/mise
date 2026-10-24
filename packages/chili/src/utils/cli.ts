@@ -37,7 +37,7 @@ export interface CLIoptions {
  * @param keyPairField - Field treated as the search key-pair.
  * @returns ListOptions suitable for a ChRIS list query.
  */
-export function options_toParams(
+export function options_convertToParams(
   options: CLIoptions,
   keyPairField: keyof CLIoptions = "search"
 ): ListOptions {
@@ -100,7 +100,7 @@ export async function path_resolveChrisFs(
       // No fileIdentifier or name - use current directory as logical path
       logicalPath = baseDir.replace(/\/\//g, '/');
       // Convert to physical and return
-      const physicalResult: Result<string> = await logical_toPhysical(logicalPath);
+      const physicalResult: Result<string> = await logicalPath_resolve(logicalPath);
       if (!physicalResult.ok) {
         errorStack.stack_push('error', 'Failed to resolve current directory to physical location');
         return logicalPath; // Fallback to logical
@@ -112,7 +112,7 @@ export async function path_resolveChrisFs(
   }
 
   // 2. Convert logical path to physical path
-  const physicalResult: Result<string> = await logical_toPhysical(logicalPath);
+  const physicalResult: Result<string> = await logicalPath_resolve(logicalPath);
 
   if (!physicalResult.ok) {
     errorStack.stack_push('error', `Failed to resolve logical path '${logicalPath}' to physical location`);
@@ -136,9 +136,9 @@ export async function path_resolveChrisFs(
  * @param logicalPath - The logical (apparent) path the user sees/navigates
  * @returns A Result containing the physical path, or Err if path is invalid
  */
-export async function logical_toPhysical(logicalPath: string): Promise<Result<string>> {
+export async function logicalPath_resolve(logicalPath: string): Promise<Result<string>> {
   const mapper = pathMapper_get();
-  return mapper.logical_toPhysical(logicalPath);
+  return mapper.logicalPath_resolve(logicalPath);
 }
 
 /**

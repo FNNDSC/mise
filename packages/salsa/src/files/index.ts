@@ -4,7 +4,7 @@
  * @module
  */
 
-import { vfsOutcome_toResult } from '@fnndsc/fond';
+import { vfsOutcome_convertToResult } from '@fnndsc/fond';
 import * as path from 'path';
 import {
   ChRISEmbeddedResourceGroup,
@@ -100,7 +100,7 @@ export async function files_copyRecursively(srcPath: string, destPath: string): 
     // copied onto a folder's name, and a large copy pays one listing per
     // folder rather than one per file.
     const foldersIn: Map<string, Set<string>> = new Map();
-    const folders_of = async (folder: string): Promise<Set<string>> => {
+    const folders_fetch = async (folder: string): Promise<Set<string>> => {
       const known: Set<string> | undefined = foldersIn.get(folder);
       if (known !== undefined) return known;
       const outcome: ListingOutcome = await files_listOutcome({ limit: 1000, offset: 0 }, 'dirs', folder);
@@ -125,12 +125,12 @@ export async function files_copyRecursively(srcPath: string, destPath: string): 
           runtimeOutput_err(`  Warning: Failed to create directory ${targetPath}\n`);
           failCount++;
         } else {
-          (await folders_of(path.posix.dirname(targetPath))).add(path.posix.basename(targetPath));
+          (await folders_fetch(path.posix.dirname(targetPath))).add(path.posix.basename(targetPath));
           successCount++;
         }
       } else if (item.type === 'file') {
         runtimeOutput_data(`  Copying file: ${path.posix.basename(normalizedItemPath)}\n`);
-        if ((await folders_of(path.posix.dirname(targetPath))).has(path.posix.basename(targetPath))) {
+        if ((await folders_fetch(path.posix.dirname(targetPath))).has(path.posix.basename(targetPath))) {
           runtimeOutput_err(`  Warning: a folder already holds ${targetPath}; the file is not copied over it\n`);
           failCount++;
           continue;
@@ -285,7 +285,7 @@ export async function files_touch(
       errorStack.stack_push("error", `touch: ${target}: a projected file takes text (--withContents)`);
       return false;
     }
-    return vfsOutcome_toResult(await vfsDispatcher.write(target, content), 'write', target).ok;
+    return vfsOutcome_convertToResult(await vfsDispatcher.write(target, content), 'write', target).ok;
   }
 
   // CUBE's upload does not replace: uploading over a path that already holds
@@ -818,7 +818,7 @@ export async function files_share(fileId: number, options: FileShareOptions): Pr
 export async function fileContent_get(filePath: string): Promise<Result<string>> {
   const provider = vfsDispatcher.provider_get(filePath);
   if (provider && provider.prefix !== '') {
-    return vfsOutcome_toResult(await vfsDispatcher.read(filePath), 'read', filePath);
+    return vfsOutcome_convertToResult(await vfsDispatcher.read(filePath), 'read', filePath);
   }
   if (filePath.startsWith('/PIPELINES/')) {
     return fileContent_getPipeline(filePath);
@@ -841,7 +841,7 @@ export async function fileContent_get(filePath: string): Promise<Result<string>>
 export async function fileContent_getBinary(filePath: string): Promise<Result<Buffer>> {
   const provider = vfsDispatcher.provider_get(filePath);
   if (provider && provider.prefix !== '') {
-    return vfsOutcome_toResult(await vfsDispatcher.readBinary(filePath), 'readBinary', filePath);
+    return vfsOutcome_convertToResult(await vfsDispatcher.readBinary(filePath), 'readBinary', filePath);
   }
   if (filePath.startsWith('/PIPELINES/')) {
     return fileContent_getPipelineBinary(filePath);
@@ -865,7 +865,7 @@ export async function fileContent_getBinaryStream(
 ): Promise<Result<{ stream: unknown; size?: number; filename?: string }>> {
   const provider = vfsDispatcher.provider_get(filePath);
   if (provider && provider.prefix !== '') {
-    const res: Result<Buffer> = vfsOutcome_toResult(await vfsDispatcher.readBinary(filePath), 'readBinary', filePath);
+    const res: Result<Buffer> = vfsOutcome_convertToResult(await vfsDispatcher.readBinary(filePath), 'readBinary', filePath);
     return res.ok ? Ok({ stream: res.value, size: res.value.length }) : Err();
   }
   if (filePath.startsWith('/PIPELINES/')) {

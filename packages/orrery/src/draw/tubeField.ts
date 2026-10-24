@@ -81,7 +81,7 @@ interface TubeSet {
  * @param state - The stage's state.
  * @returns The tube shader's mode.
  */
-export function tubeMode_of(state: NodeState): number {
+export function tubeMode_derive(state: NodeState): number {
   if (state === 'live') return 1;
   if (state === 'done' || state === 'failed') return 2;
   return 0;
@@ -157,14 +157,14 @@ export class TubeField {
     if (edges.length === 0) return;
     // A stage's depth in its molecule: the wave reaches it that many steps in.
     const depth: Map<string, number> = new Map();
-    const depth_of = (id: string, seen: Set<string> = new Set()): number => {
+    const depth_compute = (id: string, seen: Set<string> = new Set()): number => {
       const known: number | undefined = depth.get(id);
       if (known !== undefined) return known;
       if (seen.has(id)) return 0;
       seen.add(id);
       const node: TubeNode | undefined = this.host.node(id);
       const parents: string[] = node === undefined ? [] : [...node.parents, ...node.joins].filter((p: string): boolean => members.has(p));
-      const d: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((p: string): number => depth_of(p, seen)));
+      const d: number = parents.length === 0 ? 0 : 1 + Math.max(...parents.map((p: string): number => depth_compute(p, seen)));
       depth.set(id, d);
       return d;
     };
@@ -202,8 +202,8 @@ export class TubeField {
       set.push({ from: fromId, to: toId, width });
       const color: THREE.Color = to.state === 'failed' ? palette.error : join ? palette.join : bright;
       colors.set([color.r, color.g, color.b], i * 3);
-      modes[i] = tubeMode_of(to.state);
-      const d: number = depth_of(fromId);
+      modes[i] = tubeMode_derive(to.state);
+      const d: number = depth_compute(fromId);
       deepest = Math.max(deepest, d);
       starts[i] = d * WAVE_STEP_MS;
       if (modes[i] === 1) blinks.add(toId);

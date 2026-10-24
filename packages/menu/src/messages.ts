@@ -683,7 +683,7 @@ export type PromptMessage = z.infer<typeof promptMessageSchema>;
  * @param prompt - The prompt as it arrived.
  * @returns The kind of value that answers it.
  */
-export function promptKind_of(prompt: {
+export function promptKind_derive(prompt: {
   hidden?: boolean;
   wants?: PromptKind;
 }): PromptKind {

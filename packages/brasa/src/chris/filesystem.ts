@@ -6,7 +6,7 @@
  * @module
  */
 import { vfsDispatcher } from '@fnndsc/salsa';
-import { listCache_get, feedTags_byFeed } from '@fnndsc/cumin';
+import { listCache_get, feedTags_readByFeed } from '@fnndsc/cumin';
 import { Result, errorStack } from '@fnndsc/fond';
 import type { ListingItem } from '@fnndsc/menu';
 import type { BackendFilesystem, ListingCache } from '../core/backend.js';
@@ -26,7 +26,7 @@ async function feedTags_annotate(items: ListingItem[]): Promise<ListingItem[]> {
     return match === null ? null : Number(match[1]);
   };
   if (!items.some((item: ListingItem): boolean => feedOf(item.name) !== null)) return items;
-  const map: Result<Map<number, string[]>> = await feedTags_byFeed();
+  const map: Result<Map<number, string[]>> = await feedTags_readByFeed();
   if (!map.ok) {
     errorStack.stack_pop();
     return items;

@@ -98,11 +98,11 @@ describe('DeviceCodes', () => {
     const codes = new DeviceCodes((): number => now);
     const issued = codes.issue('titan');
     expect(issued.code).toMatch(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
-    expect(codes.host_of(issued.code)).toBe('titan');
-    expect(codes.host_of(issued.code.toLowerCase().replace('-', ''))).toBe('titan');
+    expect(codes.host_find(issued.code)).toBe('titan');
+    expect(codes.host_find(issued.code.toLowerCase().replace('-', ''))).toBe('titan');
     expect(codes.take(issued.code)).toEqual({ state: 'pending' });
     expect(codes.authorise(issued.code, { token: 'pdt_x', user: 'chris', name: 'chris@titan', expires: 'later' })).toBe(true);
-    expect(codes.host_of(issued.code)).toBeNull(); // a code authorised is no longer waiting on the page
+    expect(codes.host_find(issued.code)).toBeNull(); // a code authorised is no longer waiting on the page
     expect(codes.authorise(issued.code, { token: 'pdt_y', user: 'kim', name: 'kim@titan', expires: 'later' })).toBe(false);
     expect(codes.take(issued.code)).toEqual({ state: 'authorised', grant: { token: 'pdt_x', user: 'chris', name: 'chris@titan', expires: 'later' } });
     expect(codes.take(issued.code)).toEqual({ state: 'unknown' });
@@ -110,7 +110,7 @@ describe('DeviceCodes', () => {
     const late = codes.issue('pangea');
     now += DEVICE_CODE_LIFE_MS + 1;
     expect(codes.take(late.code)).toEqual({ state: 'unknown' });
-    expect(codes.host_of(late.code)).toBeNull();
+    expect(codes.host_find(late.code)).toBeNull();
   });
 
   it('makes codes without the letters that read as digits, and normalises what a human types', () => {

@@ -6,7 +6,7 @@
  * identifier scrubbed; no network is touched.
  */
 import { describe, it, expect } from '@jest/globals';
-import { OciDriver, ociTags_flatten, shape_ofRecord } from '../src/cloud/oci/driver.js';
+import { OciDriver, ociTags_flatten, shape_convert } from '../src/cloud/oci/driver.js';
 import type { OciApi, OciCompartmentRecord, OciLimitValueRecord, OciShapeRecord, OciTenancyRecord } from '../src/cloud/oci/api.js';
 import { driverContract_describe } from './support/driverContract.js';
 import { HARBOR_ID, RECORDED_ZONES, recordedResourceApi_make } from './support/ociResources.js';
@@ -104,7 +104,7 @@ describe('the OCI driver', () => {
     expect(a1).toMatchObject({ family: 'A1', vcpuPerCore: 1, cores: { min: 1, max: 80 } });
     const gpu = shapes[0];
     expect(gpu).toMatchObject({ family: 'BM.GPU.A10.4', flexible: false, cores: { min: 128, max: 128 }, memoryGib: { min: 1024, max: 1024 }, gpus: 4 });
-    expect(shape_ofRecord({ ...SHAPES[3], ocpus: null, memoryInGBs: null }).cores).toEqual({ min: 0, max: 0 });
+    expect(shape_convert({ ...SHAPES[3], ocpus: null, memoryInGBs: null }).cores).toEqual({ min: 0, max: 0 });
   });
 
   it('prices the shapes whose parts the list holds, per vCPU-hour, from the fetched list', async () => {

@@ -5,7 +5,7 @@
 import { describe, it, expect } from '@jest/globals';
 import {
   HOST_CONTROL_OFF,
-  hostControl_fromInputs,
+  hostControl_build,
   hostControl_parseArgv,
   hostControl_guard,
   hostControl_describe,
@@ -14,30 +14,30 @@ import {
   hostPipe_run,
 } from '../src/daemon/hostControl.js';
 
-describe('hostControl_fromInputs', () => {
+describe('hostControl_build', () => {
   it('is off by default, all tiers when bare, the listed tiers otherwise', () => {
-    expect(hostControl_fromInputs({})).toEqual({ policy: { tiers: new Set(), exposed: false } });
-    const bare = hostControl_fromInputs({ flag: true });
+    expect(hostControl_build({})).toEqual({ policy: { tiers: new Set(), exposed: false } });
+    const bare = hostControl_build({ flag: true });
     expect('policy' in bare && hostControl_tiers(bare.policy)).toEqual(['shell', 'files', 'pipes']);
-    const some = hostControl_fromInputs({ flag: 'files,shell' });
+    const some = hostControl_build({ flag: 'files,shell' });
     expect('policy' in some && hostControl_tiers(some.policy)).toEqual(['shell', 'files']);
   });
   it('grants tasks only when named: never by bare or all', () => {
-    const named = hostControl_fromInputs({ flag: 'tasks' });
+    const named = hostControl_build({ flag: 'tasks' });
     expect('policy' in named && hostControl_tiers(named.policy)).toEqual(['tasks']);
-    const allPlus = hostControl_fromInputs({ flag: 'all,tasks' });
+    const allPlus = hostControl_build({ flag: 'all,tasks' });
     expect('policy' in allPlus && hostControl_tiers(allPlus.policy)).toEqual(['shell', 'files', 'pipes', 'tasks']);
-    const all = hostControl_fromInputs({ flag: 'all' });
+    const all = hostControl_build({ flag: 'all' });
     expect('policy' in all && hostControl_tiers(all.policy)).toEqual(['shell', 'files', 'pipes']);
     const spaced = hostControl_parseArgv(['node', 'stratus', '--host-control', 'tasks', '--fake'], {});
     expect('policy' in spaced && hostControl_describe(spaced.policy)).toBe('tasks');
   });
   it('the flag wins over the env twin; the env alone counts; unknown words refuse', () => {
-    const env = hostControl_fromInputs({ env: 'pipes' });
+    const env = hostControl_build({ env: 'pipes' });
     expect('policy' in env && hostControl_tiers(env.policy)).toEqual(['pipes']);
-    const both = hostControl_fromInputs({ flag: 'shell', env: 'pipes' });
+    const both = hostControl_build({ flag: 'shell', env: 'pipes' });
     expect('policy' in both && hostControl_tiers(both.policy)).toEqual(['shell']);
-    expect(hostControl_fromInputs({ flag: 'shell,root' })).toEqual({ error: "unknown host-control tier 'root' (shell, files, pipes, tasks, or all)" });
+    expect(hostControl_build({ flag: 'shell,root' })).toEqual({ error: "unknown host-control tier 'root' (shell, files, pipes, tasks, or all)" });
   });
   it('parses a raw argv for the standalone binary', () => {
     const bare = hostControl_parseArgv(['node', 'calypso', '--host-control'], {});

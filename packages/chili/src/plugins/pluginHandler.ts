@@ -260,8 +260,8 @@ export class PluginMemberHandler {
    * @param options - CLI options for searching for a plugin.
    * @returns A Promise resolving to the plugin ID as a string, or null if not found.
    */
-  async pluginID_fromSearch(options: CLIoptions): Promise<string | null> {
-    const pluginId: string | null = await this.controller.pluginID_fromSearch(options);
+  async pluginID_findBySearch(options: CLIoptions): Promise<string | null> {
+    const pluginId: string | null = await this.controller.pluginID_findBySearch(options);
     // Warning logic could be here if controller returns array, but controller returns single ID or null.
     // Assuming single hit for simplicity based on previous refactor
     return pluginId;
@@ -327,7 +327,7 @@ export class PluginMemberHandler {
               if (options.search === undefined) {
                 targetId = await chrisContext.current_get(Context.ChRISplugin); // Await and RPN change
               } else {
-                targetId = await this.pluginID_fromSearch(options);
+                targetId = await this.pluginID_findBySearch(options);
               }
             } else {
               targetId = pluginId;

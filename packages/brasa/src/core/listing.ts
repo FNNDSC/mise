@@ -10,7 +10,7 @@
  *
  * @module
  */
-import { answer_get, answerRows_of, type AnswerRow } from '../session/answer.js';
+import { answer_get, answerRows_derive, type AnswerRow } from '../session/answer.js';
 import { answerKinds_get } from './answerKinds.js';
 import { turnPart_register } from './turn.js';
 
@@ -58,7 +58,7 @@ export function listingIn_take(): ListingModel | null {
  * @param rows - The rows.
  * @returns The operands.
  */
-export function rowsOperands_of(rows: ReadonlyArray<AnswerRow>): string[] {
+export function rowOperands_extract(rows: ReadonlyArray<AnswerRow>): string[] {
   const groups: Set<string> = new Set(answerKinds_get().filter((kind): boolean => kind.group === true).map((kind): string => kind.code));
   const seen: Set<string> = new Set();
   const operands: string[] = [];
@@ -79,9 +79,9 @@ export function rowsOperands_of(rows: ReadonlyArray<AnswerRow>): string[] {
  * @param model - The model.
  * @returns The operands.
  */
-export function listingOperands_of(model: ListingModel): string[] | null {
-  const rows: AnswerRow[] | null = answerRows_of(model.kind, model.data);
-  return rows === null ? null : rowsOperands_of(rows);
+export function listingOperands_extract(model: ListingModel): string[] | null {
+  const rows: AnswerRow[] | null = answerRows_derive(model.kind, model.data);
+  return rows === null ? null : rowOperands_extract(rows);
 }
 
 /**
@@ -91,5 +91,5 @@ export function listingOperands_of(model: ListingModel): string[] | null {
  */
 export function heldListingOperands_get(): string[] | null {
   const held = answer_get();
-  return held === null ? null : rowsOperands_of(held.rows);
+  return held === null ? null : rowOperands_extract(held.rows);
 }

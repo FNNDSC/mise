@@ -48,7 +48,7 @@ const CONTENT_TYPES: Record<string, string> = {
  * @param filePath - The path whose extension to inspect.
  * @returns The content type; a binary octet-stream when unrecognized.
  */
-export function contentType_forPath(filePath: string): string {
+export function contentType_derive(filePath: string): string {
   return CONTENT_TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
 }
 
@@ -66,7 +66,7 @@ export function contentType_forPath(filePath: string): string {
  * @param filePath - The ChRIS path whose basename names the download.
  * @returns The header value.
  */
-export function contentDisposition_forPath(filePath: string): string {
+export function contentDisposition_format(filePath: string): string {
   const name: string = path.basename(filePath);
   const ascii: string = name.replace(/[^\x20-\x7e]|["\\]/g, '_');
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
@@ -91,7 +91,7 @@ export function contentDisposition_forPath(filePath: string): string {
  * @param filePath - The file being served.
  * @returns The `cache-control` value for it.
  */
-export function cacheControl_forPath(filePath: string): string {
+export function cacheControl_derive(filePath: string): string {
   const name: string = path.basename(filePath).toLowerCase();
   if (name.endsWith('.html')) return 'no-store';
   // A hashed name is its own validator: a different build is a different
@@ -273,8 +273,8 @@ export function staticRequest_handle(
   }
 
   response.writeHead(200, {
-    'content-type': contentType_forPath(resolvedPath),
-    'cache-control': cacheControl_forPath(resolvedPath),
+    'content-type': contentType_derive(resolvedPath),
+    'cache-control': cacheControl_derive(resolvedPath),
   });
   if (request.method === 'HEAD') {
     response.end();

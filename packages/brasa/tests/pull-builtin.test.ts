@@ -129,7 +129,7 @@ const mockCohortRead = jest.fn(async () => ({ version: 1, name: null, feed: null
 jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({
   cohortFolders_note: mockCohortFoldersNote,
   cohort_read: mockCohortRead,
-  cohortModel_of: (state: unknown) => ({ kind: 'gather.cohort', data: state }),
+  cohortModel_wrap: (state: unknown) => ({ kind: 'gather.cohort', data: state }),
 }));
 
 const { builtin_pull } = await import('../src/builtins/fs/pull.js');

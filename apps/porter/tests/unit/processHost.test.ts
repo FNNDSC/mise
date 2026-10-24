@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { berth_pathIn } from '@fnndsc/calypso/berth';
 import { ProcessHost, BOOT_LINES_KEPT, bootRow_parse, type SpawnedSession, type SessionSpawn } from '../../src/host/processHost.js';
-import { restartLine_of, type BootLine } from '../../src/host/sessionHost.js';
+import { restartLine_render, type BootLine } from '../../src/host/sessionHost.js';
 
 const IDENTITY: string = 'chris@https://cube.example.org/api/v1/';
 
@@ -46,7 +46,7 @@ function host_make(): ProcessHost {
 }
 
 function berth_plant(host: ProcessHost, pid?: number): void {
-  const runtime: string = host.dirs_of(IDENTITY).runtime;
+  const runtime: string = host.dirs_build(IDENTITY).runtime;
   const path: string = berth_pathIn(runtime, IDENTITY);
   mkdirSync(join(runtime, 'calypso'), { recursive: true });
   writeFileSync(path, JSON.stringify({ identity: IDENTITY, url: 'ws://127.0.0.1:4444', token: 'ATTACH', ...(pid !== undefined ? { pid } : {}) }));
@@ -80,7 +80,7 @@ describe('ProcessHost', () => {
     expect(call?.args).toEqual(['/opt/chell/dist/index.js', 'chris@https://cube.example.org/api/v1/', '--daemon', '--auth-token-stdin', '--no-logo']);
     expect(call?.args.join(' ')).not.toContain('MINTED');
     expect(child.stdinText).toBe('MINTED\n');
-    const dirs = host.dirs_of(IDENTITY);
+    const dirs = host.dirs_build(IDENTITY);
     expect(call?.env.XDG_CONFIG_HOME).toBe(dirs.config);
     expect(call?.env.XDG_RUNTIME_DIR).toBe(dirs.runtime);
     expect(call?.env.XDG_CACHE_HOME).toBe(dirs.cache);
@@ -255,7 +255,7 @@ describe('ProcessHost restart', () => {
     expect(followed?.report.lines[0]?.text).toBe('Restarting the calypso daemon, as asked');
     await new Promise((r) => setTimeout(r, 80));
     expect(children[0]?.killed).toBe('SIGTERM');
-    const closing: string = join(host.dirs_of(IDENTITY).runtime, 'calypso', `closing-${(await import('@fnndsc/calypso/berth')).berthKey_compute(IDENTITY)}.json`);
+    const closing: string = join(host.dirs_build(IDENTITY).runtime, 'calypso', `closing-${(await import('@fnndsc/calypso/berth')).berthKey_compute(IDENTITY)}.json`);
     expect(existsSync(closing)).toBe(true);
     expect(calls[1]).toEqual(['/opt/chell/dist/index.js', `chris@${CUBE}`, '--daemon', '--saved-token', '--no-logo']);
     expect(children[1]?.stdinText).toBe('');
@@ -266,10 +266,10 @@ describe('ProcessHost restart', () => {
   });
 
   it('says in plain words why a session restarts: a stale daemon names the packages that moved', () => {
-    expect(restartLine_of({ kind: 'stale', behind: ['brasa 0.31.5 → 0.33.0', 'argus 0.26.3 → 0.26.4'] })).toBe('Restarting a stale calypso daemon (brasa 0.31.5 → 0.33.0, argus 0.26.3 → 0.26.4)');
-    expect(restartLine_of({ kind: 'stale', behind: [] })).toBe('Restarting a stale calypso daemon');
-    expect(restartLine_of({ kind: 'asked' })).toBe('Restarting the calypso daemon, as asked');
-    expect(restartLine_of({ kind: 'saved-login' })).toBe('Starting a calypso daemon on the saved login');
+    expect(restartLine_render({ kind: 'stale', behind: ['brasa 0.31.5 → 0.33.0', 'argus 0.26.3 → 0.26.4'] })).toBe('Restarting a stale calypso daemon (brasa 0.31.5 → 0.33.0, argus 0.26.3 → 0.26.4)');
+    expect(restartLine_render({ kind: 'stale', behind: [] })).toBe('Restarting a stale calypso daemon');
+    expect(restartLine_render({ kind: 'asked' })).toBe('Restarting the calypso daemon, as asked');
+    expect(restartLine_render({ kind: 'saved-login' })).toBe('Starting a calypso daemon on the saved login');
   });
 
   it('ends the boot failed, with the reason, when the saved login is refused', async () => {
@@ -282,7 +282,7 @@ describe('ProcessHost restart', () => {
     const first: Promise<unknown> = host.spawn(IDENTITY, 'chris', CUBE, 'MINTED');
     berth_plant(host);
     await first;
-    rmSync(berth_pathIn(host.dirs_of(IDENTITY).runtime, IDENTITY));
+    rmSync(berth_pathIn(host.dirs_build(IDENTITY).runtime, IDENTITY));
     host.restart_begin(IDENTITY, 'chris', CUBE);
     await new Promise((r) => setTimeout(r, 60));
     children[1]?.exit(1);
@@ -299,7 +299,7 @@ describe('ProcessHost restart', () => {
     await first;
     expect(await host.evict(IDENTITY)).toBe(true);
     const { berthKey_compute } = await import('@fnndsc/calypso/berth');
-    const left = JSON.parse((await import('node:fs')).readFileSync(join(host.dirs_of(IDENTITY).runtime, 'calypso', `closing-${berthKey_compute(IDENTITY)}.json`), 'utf8')) as { cause: string };
+    const left = JSON.parse((await import('node:fs')).readFileSync(join(host.dirs_build(IDENTITY).runtime, 'calypso', `closing-${berthKey_compute(IDENTITY)}.json`), 'utf8')) as { cause: string };
     expect(left.cause).toBe('end');
   });
 });
@@ -311,7 +311,7 @@ describe('a stratus session', () => {
     const host: ProcessHost = new ProcessHost({ stateDir, chellEntry: '/opt/chell/dist/index.js', stratusEntry: '/opt/stratus/dist/stratus.js', spawn, alive: async (): Promise<boolean> => alive, bootTimeoutMs: 2_000, pollMs: 20 });
     host.stratus_begin(STRATUS, '/creds/oci/config', false, false);
     // The daemon names its berth by its cloud identity; the one in the session's directory is the session's.
-    const runtime: string = host.dirs_of(STRATUS).runtime;
+    const runtime: string = host.dirs_build(STRATUS).runtime;
     mkdirSync(join(runtime, 'calypso'), { recursive: true });
     writeFileSync(berth_pathIn(runtime, 'me@fnndsc-bch'), JSON.stringify({ identity: 'me@fnndsc-bch', url: 'ws://127.0.0.1:5555', token: 'T' }));
     for (let i = 0; i < 20 && (await host.find(STRATUS)) === null; i++) await new Promise((r) => setTimeout(r, 20));

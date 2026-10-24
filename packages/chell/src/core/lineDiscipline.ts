@@ -16,7 +16,7 @@
  * @module
  */
 
-import { terminalId_of } from './terminalId.js';
+import { terminalId_parse } from './terminalId.js';
 
 const typedAhead: string[] = [];
 let redraw: (() => void) | null = null;
@@ -116,7 +116,7 @@ export type TerminalState = 'idle' | 'busy' | 'asking' | 'playing';
  * @param write - Where it goes; the terminal by default.
  */
 export function terminalState_mark(state: TerminalState, write: (chunk: string) => void = (chunk: string): void => { process.stdout.write(chunk); }): void {
-  if (terminalId_of(process.env['CHELL_TERMINAL']) === null) return;
+  if (terminalId_parse(process.env['CHELL_TERMINAL']) === null) return;
   write(`\u001b]6677;state=${state}\u0007`);
 }
 

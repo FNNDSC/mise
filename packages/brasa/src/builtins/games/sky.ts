@@ -20,7 +20,7 @@ const NEW_MOON_JD: number = 2451550.1;
 const SYNODIC_DAYS: number = 29.530588853;
 
 /** A date as a Julian day. */
-export function julianDay_of(date: Date): number {
+export function julianDay_compute(date: Date): number {
   return date.getTime() / 86_400_000 + 2440587.5;
 }
 
@@ -39,7 +39,7 @@ export interface MoonPhase {
 
 /** Where the moon stands on a date. */
 export function moon_phase(date: Date): MoonPhase {
-  const cycles: number = (julianDay_of(date) - NEW_MOON_JD) / SYNODIC_DAYS;
+  const cycles: number = (julianDay_compute(date) - NEW_MOON_JD) / SYNODIC_DAYS;
   const phase: number = cycles - Math.floor(cycles);
   const illumination: number = (1 - Math.cos(2 * Math.PI * phase)) / 2;
   const near = (p: number): boolean => Math.abs(phase - p) < 0.034 || Math.abs(phase - p - 1) < 0.034;
@@ -91,7 +91,7 @@ export async function builtin_pom(args: string[]): Promise<CommandEnvelope> {
 /* ----------------------------------------------------------- stardate */
 
 /** Days into the year, 1-based, and the year's length. */
-function yearDay_of(date: Date): { day: number; days: number; fraction: number } {
+function yearDay_compute(date: Date): { day: number; days: number; fraction: number } {
   const start: number = Date.UTC(date.getUTCFullYear(), 0, 1);
   const next: number = Date.UTC(date.getUTCFullYear() + 1, 0, 1);
   const elapsed: number = date.getTime() - start;
@@ -100,8 +100,8 @@ function yearDay_of(date: Date): { day: number; days: number; fraction: number }
 }
 
 /** The stardate two ways: the Kelvin films' `YYYY.DDD`, and TNG's thousand-per-year from 2323. */
-export function stardate_of(date: Date): { kelvin: string; tng: string } {
-  const { day, fraction } = yearDay_of(date);
+export function stardate_derive(date: Date): { kelvin: string; tng: string } {
+  const { day, fraction } = yearDay_compute(date);
   const year: number = date.getUTCFullYear();
   const kelvin: string = `${year}.${String(day).padStart(3, '0')}`;
   const tng: number = (year - 2323) * 1000 + fraction * 1000;
@@ -112,7 +112,7 @@ export function stardate_of(date: Date): { kelvin: string; tng: string } {
 export async function builtin_stardate(args: string[]): Promise<CommandEnvelope> {
   const date: Date = args.length > 0 ? new Date(args.join(' ')) : new Date();
   if (Number.isNaN(date.getTime())) return envelope_error('', undefined, `stardate: '${args.join(' ')}' is not a date\n`);
-  const sd = stardate_of(date);
+  const sd = stardate_derive(date);
   const lines: string[] = [
     `Stardate ${chalk.bold(sd.kelvin)}`,
     chalk.gray(`(Kelvin reckoning: the year and the day of it; by TNG's count it is ${sd.tng} — that era is still ahead of us)`),
@@ -137,7 +137,7 @@ export interface DiscordianDate {
   tibs: boolean;
 }
 
-export function ddate_of(date: Date): DiscordianDate {
+export function ddate_derive(date: Date): DiscordianDate {
   const year: number = date.getFullYear();
   const yold: number = year + 1166;
   const start: Date = new Date(year, 0, 1);
@@ -153,7 +153,7 @@ export function ddate_of(date: Date): DiscordianDate {
 }
 
 /** 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st. */
-export function ordinal_of(n: number): string {
+export function ordinal_format(n: number): string {
   const rest: number = n % 100;
   if (rest >= 11 && rest <= 13) return `${n}th`;
   return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
@@ -163,10 +163,10 @@ export function ordinal_of(n: number): string {
 export async function builtin_ddate(args: string[]): Promise<CommandEnvelope> {
   const date: Date = args.length > 0 ? new Date(args.join(' ')) : new Date();
   if (Number.isNaN(date.getTime())) return envelope_error('', undefined, `ddate: '${args.join(' ')}' is not a date\n`);
-  const d: DiscordianDate = ddate_of(date);
+  const d: DiscordianDate = ddate_derive(date);
   const line: string = d.tibs
     ? `Today is St. Tib's Day in the YOLD ${d.yold}`
-    : `Today is ${d.weekday}, the ${ordinal_of(d.day)} day of ${d.season} in the YOLD ${d.yold}${d.holyday === null ? '' : `\nCelebrate ${d.holyday}!`}`;
+    : `Today is ${d.weekday}, the ${ordinal_format(d.day)} day of ${d.season} in the YOLD ${d.yold}${d.holyday === null ? '' : `\nCelebrate ${d.holyday}!`}`;
   return envelope_ok(`${line}\n`, { kind: 'games.ddate', data: { date: date.toISOString(), ...d } });
 }
 
@@ -199,7 +199,7 @@ export async function sun_fetch(fetchFn: WeatherFetch, place: WeatherPlace): Pro
 }
 
 /** `HH:MM` out of an ISO local time. */
-const clock_of = (iso: string): string => iso.slice(11, 16) || '?';
+const clock_format = (iso: string): string => iso.slice(11, 16) || '?';
 
 /** `sunrise [place]` */
 export async function builtin_sunrise(
@@ -217,7 +217,7 @@ export async function builtin_sunrise(
     for (const [i, day] of days.entries()) {
       const hours: number = Math.floor(day.daylightSeconds / 3600);
       const minutes: number = Math.round((day.daylightSeconds % 3600) / 60);
-      lines.push(`${i === 0 ? 'today   ' : 'tomorrow'} ${day.date}  sunrise ${chalk.yellow(clock_of(day.sunrise))}  sunset ${chalk.yellow(clock_of(day.sunset))}  ${chalk.gray(`${hours}h ${String(minutes).padStart(2, '0')}m of daylight`)}`);
+      lines.push(`${i === 0 ? 'today   ' : 'tomorrow'} ${day.date}  sunrise ${chalk.yellow(clock_format(day.sunrise))}  sunset ${chalk.yellow(clock_format(day.sunset))}  ${chalk.gray(`${hours}h ${String(minutes).padStart(2, '0')}m of daylight`)}`);
     }
     return envelope_ok(`${lines.join('\n')}\n`, { kind: 'games.sunrise', data: { place, days } });
   } catch (error: unknown) {

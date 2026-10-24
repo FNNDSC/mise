@@ -116,7 +116,7 @@ chili is debt with a deletion plan (#214): its data orchestration moves down int
 
 * the neutral layers — fond, brasa's core, calypso — never depend on chili;
 * `ListingItem` moves into menu as the listing's wire model, as `docs/menu.adoc` already says, with an open item type so a backend can list its own kinds;
-* chili's other seams in brasa's core — `ls` rendering, CUBE path mapping (`pathMapper_get`, `logical_toPhysical`), `sudo`'s `elevation_run`, the `chiliCommand_run` fallback — are ChRIS-backend code and land in their #214 homes as they are extracted, never in a temporary one.
+* chili's other seams in brasa's core — `ls` rendering, CUBE path mapping (`pathMapper_get`, `logicalPath_resolve`), `sudo`'s `elevation_run`, the `chiliCommand_run` fallback — are ChRIS-backend code and land in their #214 homes as they are extracted, never in a temporary one.
 
 #977 does not wait for #214. The two converge: both remove brasa's dependency on chili.
 

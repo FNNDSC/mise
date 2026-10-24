@@ -57,7 +57,7 @@ const FORENAMES: ReadonlyArray<string> = [
  * @param chars - How many hex characters to keep.
  * @returns The stand-in, or an empty string for an empty value.
  */
-export function token_of(value: string, chars: number = TOKEN_CHARS): string {
+export function token_derive(value: string, chars: number = TOKEN_CHARS): string {
   if (value === '') return '';
   return crypto.createHash('sha256').update(SALT).update(value).digest('hex').slice(0, chars);
 }
@@ -72,7 +72,7 @@ export function token_of(value: string, chars: number = TOKEN_CHARS): string {
  * @param value - The real name.
  * @returns A name of the same shape, carrying nothing of the original.
  */
-export function nameStandIn_of(value: string): string {
+export function nameStandIn_derive(value: string): string {
   if (value === '') return '';
   const digest: Buffer = crypto.createHash('sha256').update(SALT).update(value).digest();
   const surname: string = SURNAMES[digest[0] % SURNAMES.length] as string;
@@ -86,7 +86,7 @@ export function nameStandIn_of(value: string): string {
  * @param value - A DICOM date, `YYYYMMDD`.
  * @returns The first of that month, or the value unchanged when it is not a date.
  */
-export function date_toMonth(value: string): string {
+export function date_convertToMonth(value: string): string {
   return /^\d{8}$/.test(value) ? `${value.slice(0, 6)}01` : value;
 }
 
@@ -99,31 +99,31 @@ export function date_toMonth(value: string): string {
  * @param value - A DICOM date, `YYYYMMDD`.
  * @returns The first of that year, or the value unchanged when it is not a date.
  */
-export function birthDate_toYear(value: string): string {
+export function birthDate_convertToYear(value: string): string {
   return /^\d{8}$/.test(value) ? `${value.slice(0, 4)}0101` : value;
 }
 
 /** How each identifying field is stood in for. */
 const STAND_INS: Readonly<Record<string, (value: string) => string>> = {
-  PatientID: (value: string): string => token_of(value),
-  PatientName: nameStandIn_of,
-  OtherPatientIDs: (value: string): string => token_of(value),
-  OtherPatientNames: nameStandIn_of,
-  PatientMotherBirthName: nameStandIn_of,
-  AccessionNumber: (value: string): string => token_of(value),
-  PatientBirthDate: birthDate_toYear,
+  PatientID: (value: string): string => token_derive(value),
+  PatientName: nameStandIn_derive,
+  OtherPatientIDs: (value: string): string => token_derive(value),
+  OtherPatientNames: nameStandIn_derive,
+  PatientMotherBirthName: nameStandIn_derive,
+  AccessionNumber: (value: string): string => token_derive(value),
+  PatientBirthDate: birthDate_convertToYear,
   PatientBirthTime: (): string => '',
   PatientAge: (): string => '',
   PatientAddress: (): string => '',
   PatientTelephoneNumbers: (): string => '',
-  StudyDate: date_toMonth,
-  SeriesDate: date_toMonth,
-  ReferringPhysicianName: nameStandIn_of,
-  PerformingPhysicianName: nameStandIn_of,
-  OperatorsName: nameStandIn_of,
-  PhysiciansOfRecord: nameStandIn_of,
-  NameOfPhysiciansReadingStudy: nameStandIn_of,
-  InstitutionName: (value: string): string => (value === '' ? '' : `SITE ${token_of(value, 4)}`),
+  StudyDate: date_convertToMonth,
+  SeriesDate: date_convertToMonth,
+  ReferringPhysicianName: nameStandIn_derive,
+  PerformingPhysicianName: nameStandIn_derive,
+  OperatorsName: nameStandIn_derive,
+  PhysiciansOfRecord: nameStandIn_derive,
+  NameOfPhysiciansReadingStudy: nameStandIn_derive,
+  InstitutionName: (value: string): string => (value === '' ? '' : `SITE ${token_derive(value, 4)}`),
   InstitutionAddress: (): string => '',
 };
 

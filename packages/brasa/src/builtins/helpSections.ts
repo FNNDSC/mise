@@ -158,7 +158,7 @@ function paragraph_wrap(text: string, indent: string, width: number = 78): strin
  * @param lookup - The commands.
  * @returns Its runnable commands.
  */
-export function sectionCommands_of(section: string, lookup: HelpLookup): string[] {
+export function sectionCommands_list(section: string, lookup: HelpLookup): string[] {
   const declared: string[] = lookup.commands().filter((name: string): boolean => lookup.section(name) === section);
   if (section !== 'Games') return declared;
   return [...new Set([...declared, ...lookup.games()])];
@@ -187,7 +187,7 @@ export function helpToc_render(lookup: HelpLookup): string {
     out.push('');
   };
   for (const section of HELP_SECTIONS) {
-    const count: number = sectionCommands_of(section.name, lookup).length;
+    const count: number = sectionCommands_list(section.name, lookup).length;
     if (count > 0) entry(section, count);
   }
   entry(SHELL_SECTION, null);
@@ -225,7 +225,7 @@ export function helpSection_render(section: HelpSection, lookup: HelpLookup): st
   const out: string[] = ['', `${chalk.bold.cyan(section.name)} ${chalk.gray('—')} ${section.blurb}`, ''];
   const rows: Array<{ name: string; line: string }> = section === SHELL_SECTION
     ? SHELL_TOPICS.map((topic: ShellTopic): { name: string; line: string } => ({ name: topic.name, line: topic.summary }))
-    : sectionCommands_of(section.name, lookup).map((name: string): { name: string; line: string } => ({ name, line: lookup.summary(name) ?? '' }));
+    : sectionCommands_list(section.name, lookup).map((name: string): { name: string; line: string } => ({ name, line: lookup.summary(name) ?? '' }));
   const width: number = Math.max(12, ...rows.map((row): number => row.name.length + 2));
   for (const row of rows) out.push(`  ${chalk.cyan(row.name.padEnd(width))}${row.line}`);
   out.push('', chalk.gray(`help <${section === SHELL_SECTION ? 'topic' : 'command'}> for each.`), '');

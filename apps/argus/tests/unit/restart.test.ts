@@ -6,15 +6,15 @@
  * and answers to YES / NO and Enter / Esc without the keys reaching the stage.
  */
 import { describe, it, expect } from '@jest/globals';
-import { closingWords_of, restartCuts_of, restartQuestion_build, RESTART_QUESTION } from '../../src/app/restart.js';
+import { closingWords_render, restartCuts_list, restartQuestion_build, RESTART_QUESTION } from '../../src/app/restart.js';
 
-describe('restartCuts_of', () => {
+describe('restartCuts_list', () => {
   it('names nothing when nothing is live', () => {
-    expect(restartCuts_of({ running: null, unsaved: [], others: [] })).toEqual([]);
+    expect(restartCuts_list({ running: null, unsaved: [], others: [] })).toEqual([]);
   });
 
   it('names the running command, each unsaved edit, and the other surfaces by kind', () => {
-    expect(restartCuts_of({
+    expect(restartCuts_list({
       running: 'pacs pull 22119730',
       unsaved: ['/home/rudolphpienaar/me.txt'],
       others: [{ id: 'a', kind: 'browser' }, { id: 'b', kind: 'chell' }, { id: 'c', kind: 'browser' }],
@@ -26,11 +26,11 @@ describe('restartCuts_of', () => {
   });
 });
 
-describe('closingWords_of', () => {
+describe('closingWords_render', () => {
   it('says why the daemon went, in words for another browser', () => {
-    expect(closingWords_of('restart')).toMatch(/restarting \(asked from another browser or surface\)/);
-    expect(closingWords_of('end')).toMatch(/ended by an administrator/);
-    expect(closingWords_of('stop')).toBe('The calypso daemon stopped.');
+    expect(closingWords_render('restart')).toMatch(/restarting \(asked from another browser or surface\)/);
+    expect(closingWords_render('end')).toMatch(/ended by an administrator/);
+    expect(closingWords_render('stop')).toBe('The calypso daemon stopped.');
   });
 });
 

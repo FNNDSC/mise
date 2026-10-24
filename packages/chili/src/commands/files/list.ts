@@ -9,7 +9,7 @@
  */
 import { files_list as salsaFiles_list } from "@fnndsc/salsa";
 import { FilteredResourceData, ListOptions } from "@fnndsc/cumin";
-import { CLIoptions, options_toParams } from "../../utils/cli.js";
+import { CLIoptions, options_convertToParams } from "../../utils/cli.js";
 
 /**
  * Fetches a list of ChRIS resources (files, links, or dirs) based on options.
@@ -24,6 +24,6 @@ export async function files_fetchList(
   assetName: string = "files", 
   path?: string
 ): Promise<FilteredResourceData | null> {
-  const params: ListOptions = options_toParams(options);
+  const params: ListOptions = options_convertToParams(options);
   return await salsaFiles_list(params, assetName, path);
 }

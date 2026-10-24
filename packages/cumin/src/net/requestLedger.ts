@@ -73,7 +73,7 @@ const open: WeakMap<object, { t0: number; method: string; path: string }> = new 
  * @param path - The request path, query and all.
  * @returns The family, or `root` for the API root.
  */
-export function requestFamily_of(path: string): string {
+export function requestFamily_derive(path: string): string {
   const bare: string = path.split('?')[0] ?? '';
   const below: string = bare.replace(/^.*?\/api\/v1\/?/, '').replace(/\/+$/, '');
   if (below === '') return 'root';
@@ -84,7 +84,7 @@ const path_cap = (path: string): string => (path.length > PATH_KEPT ? `${path.sl
 
 function entry_record(method: string, path: string, status: number, t0: number): void {
   const ms: number = Math.round(performance.now() - t0);
-  const family: string = requestFamily_of(path);
+  const family: string = requestFamily_derive(path);
   total += 1;
   msTotal += ms;
   const tally: LedgerFamily = families.get(family) ?? { family, count: 0, ms: 0 };
@@ -126,11 +126,11 @@ export function ledger_requestEnd(request: object, status: number): void {
 export function requestLedger_start(): void {
   if (started) return;
   started = true;
-  const method_of = (request: { method?: unknown }): string => (typeof request.method === 'string' ? request.method : 'GET');
-  const path_of = (request: { path?: unknown }): string => (typeof request.path === 'string' ? request.path : '');
+  const requestMethod_extract = (request: { method?: unknown }): string => (typeof request.method === 'string' ? request.method : 'GET');
+  const requestPath_extract = (request: { path?: unknown }): string => (typeof request.path === 'string' ? request.path : '');
   subscribe('http.client.request.start', (message: unknown): void => {
     const { request } = message as { request?: { method?: unknown; path?: unknown } };
-    if (request !== undefined && request !== null) ledger_requestStart(request, method_of(request), path_of(request));
+    if (request !== undefined && request !== null) ledger_requestStart(request, requestMethod_extract(request), requestPath_extract(request));
   });
   subscribe('http.client.response.finish', (message: unknown): void => {
     const { request, response } = message as { request?: object; response?: { statusCode?: unknown } };
@@ -142,7 +142,7 @@ export function requestLedger_start(): void {
   });
   subscribe('undici:request:create', (message: unknown): void => {
     const { request } = message as { request?: { method?: unknown; path?: unknown } };
-    if (request !== undefined && request !== null) ledger_requestStart(request, method_of(request), path_of(request));
+    if (request !== undefined && request !== null) ledger_requestStart(request, requestMethod_extract(request), requestPath_extract(request));
   });
   subscribe('undici:request:headers', (message: unknown): void => {
     const { request, response } = message as { request?: object; response?: { statusCode?: unknown } };

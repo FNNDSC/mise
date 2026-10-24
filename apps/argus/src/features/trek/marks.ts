@@ -72,7 +72,7 @@ const SYMBOL_PREFIX: string = 'tm-';
  * @param variant - A Klingon's mark; ignored for other kinds.
  * @returns The id, without `#`.
  */
-export function symbolId_of(kind: MarkKind, variant: string | null = null): string {
+export function symbolId_format(kind: MarkKind, variant: string | null = null): string {
   if (kind === 'klingon') return `${SYMBOL_PREFIX}klingon-${variant !== null && KLINGON_MARKS.includes(variant) ? variant : KLINGON_MARKS[0]}`;
   return `${SYMBOL_PREFIX}${kind}`;
 }
@@ -134,7 +134,7 @@ export function markDefs_make(): SVGElement | null {
  */
 export function mark_use(kind: MarkKind, at: { cx: number; cy: number; size: number }, variant: string | null = null, turn: number = 0): SVGElement {
   const mark: SVGElement = svg('g', { class: `tm-mark tm-mark-${kind}` });
-  mark.append(svg('use', { href: `#${symbolId_of(kind, variant)}`, x: -at.size / 2, y: -at.size / 2, width: at.size, height: at.size, class: 'tm-symbol' }));
+  mark.append(svg('use', { href: `#${symbolId_format(kind, variant)}`, x: -at.size / 2, y: -at.size / 2, width: at.size, height: at.size, class: 'tm-symbol' }));
   mark_place(mark, at.cx, at.cy, turn);
   return mark;
 }
@@ -160,7 +160,7 @@ export function mark_place(mark: SVGElement, cx: number, cy: number, turn: numbe
  */
 export function markIcon_make(kind: MarkKind, variant: string | null = null): SVGElement {
   const icon: SVGElement = svg('svg', { viewBox: '0 0 24 24', class: `tm-icon tm-icon-${kind}`, 'aria-hidden': 'true' });
-  icon.append(svg('use', { href: `#${symbolId_of(kind, variant)}` }));
+  icon.append(svg('use', { href: `#${symbolId_format(kind, variant)}` }));
   return icon;
 }
 
@@ -190,8 +190,8 @@ export class KlingonTracker {
    * @param at - The sector.
    * @returns The mark, or null when no Klingon is known there.
    */
-  public mark_of(at: XY): string | null {
-    return this.marks.get(KlingonTracker.key_of(at)) ?? null;
+  public mark_find(at: XY): string | null {
+    return this.marks.get(KlingonTracker.key_format(at)) ?? null;
   }
 
   /**
@@ -222,10 +222,10 @@ export class KlingonTracker {
    */
   public reconcile(klingons: ReadonlyArray<XY>, options: { reset?: boolean; byOrder?: boolean } = {}): void {
     if (options.reset === true) this.marks.clear();
-    const present: Set<string> = new Set<string>(klingons.map((k: XY): string => KlingonTracker.key_of(k)));
+    const present: Set<string> = new Set<string>(klingons.map((k: XY): string => KlingonTracker.key_format(k)));
     for (const key of [...this.marks.keys()]) if (!present.has(key)) this.marks.delete(key);
     klingons.forEach((k: XY, index: number): void => {
-      const key: string = KlingonTracker.key_of(k);
+      const key: string = KlingonTracker.key_format(k);
       if (options.byOrder === true) { this.marks.set(key, KLINGON_MARKS[index % KLINGON_MARKS.length] as string); return; }
       if (!this.marks.has(key)) this.marks.set(key, this.leastWorn_get());
     });
@@ -246,7 +246,7 @@ export class KlingonTracker {
     return best;
   }
 
-  private static key_of(at: XY): string {
+  private static key_format(at: XY): string {
     return `${at.x},${at.y}`;
   }
 }
@@ -270,7 +270,7 @@ export interface ShieldRing {
  * @param docked - Whether the ship is docked, under the starbase's shields.
  * @returns The ring.
  */
-export function shieldRing_of(shield: number, max: number, up: boolean, docked: boolean): ShieldRing {
+export function shieldRing_build(shield: number, max: number, up: boolean, docked: boolean): ShieldRing {
   const percent: number = Math.max(0, Math.min(100, (100 * shield) / Math.max(1, max)));
   if (docked) return { className: 'tb-ring tb-ring-docked', width: 0.09, percent };
   if (!up) return { className: 'tb-ring tb-ring-down', width: 0.02, percent };

@@ -13,7 +13,7 @@
  *
  * @module
  */
-import { ansi_toHtml, html_escape } from './ansi.js';
+import { ansi_renderHtml, html_escape } from './ansi.js';
 import { type ProcPromptState, type PromptContext, type WireEnvelope } from '@fnndsc/menu';
 import { promptBar_render, type SegmentColor } from './promptBar.js';
 import type { ExecuteOutcome, OutputChannel } from '../calypso/client.js';
@@ -297,7 +297,7 @@ export class ArgusTerminal {
    */
   public banner_write(lines: string[]): void {
     for (const line of lines) {
-      this.block_append('argus-banner-line', ansi_toHtml(line));
+      this.block_append('argus-banner-line', ansi_renderHtml(line));
     }
   }
 
@@ -315,7 +315,7 @@ export class ArgusTerminal {
     splash.className = 'argus-line argus-splash';
     const brain: HTMLPreElement = document.createElement('pre');
     brain.className = 'argus-splash-brain';
-    brain.innerHTML = brainLines.map((line: string): string => ansi_toHtml(line)).join('\n');
+    brain.innerHTML = brainLines.map((line: string): string => ansi_renderHtml(line)).join('\n');
     const greeting: HTMLDivElement = document.createElement('div');
     greeting.className = 'argus-splash-greeting';
     splash.append(brain, greeting);
@@ -334,12 +334,12 @@ export class ArgusTerminal {
   public greeting_write(lines: string[]): void {
     const column: HTMLDivElement | null = this.splashGreeting;
     if (column === null) {
-      for (const line of lines) this.block_append('argus-banner-line argus-greeting-line', ansi_toHtml(line));
+      for (const line of lines) this.block_append('argus-banner-line argus-greeting-line', ansi_renderHtml(line));
     } else {
       for (const line of lines) {
         const block: HTMLDivElement = document.createElement('div');
         block.className = 'argus-greeting-line';
-        block.innerHTML = ansi_toHtml(line);
+        block.innerHTML = ansi_renderHtml(line);
         column.appendChild(block);
       }
     }
@@ -400,14 +400,14 @@ export class ArgusTerminal {
 
   /** Moves the pending line into the committed transcript above it. */
   private pending_commit(): void {
-    this.streamPendingElement?.insertAdjacentHTML('beforebegin', `${this.pending_toHtml()}\n`);
+    this.streamPendingElement?.insertAdjacentHTML('beforebegin', `${this.pending_render()}\n`);
     this.streamPendingText = '';
   }
 
   /** Repaints the pending line in place. */
   private pending_paint(): void {
     if (this.streamPendingElement !== null) {
-      this.streamPendingElement.innerHTML = this.pending_toHtml();
+      this.streamPendingElement.innerHTML = this.pending_render();
     }
   }
 
@@ -416,11 +416,11 @@ export class ArgusTerminal {
    *
    * @returns The pending line's HTML, empty when the line is empty.
    */
-  private pending_toHtml(): string {
+  private pending_render(): string {
     if (this.streamPendingText.length === 0) {
       return '';
     }
-    const html: string = ansi_toHtml(this.streamPendingText);
+    const html: string = ansi_renderHtml(this.streamPendingText);
     return this.streamPendingChannel === 'status' ? `<span class="dim">${html}</span>` : html;
   }
 
@@ -435,12 +435,12 @@ export class ArgusTerminal {
     this.mirror_flush();
     for (const envelope of outcome.envelopes) {
       if (!outcome.liveChannels.has('data') && envelope.rendered.length > 0) {
-        this.block_append('argus-result', ansi_toHtml(envelope.rendered));
+        this.block_append('argus-result', ansi_renderHtml(envelope.rendered));
         this.mirror_emit(envelope.rendered);
       }
       const renderedErr: string = envelope.renderedErr ?? '';
       if (!outcome.liveChannels.has('err') && renderedErr.length > 0) {
-        this.block_append('argus-result error', ansi_toHtml(renderedErr));
+        this.block_append('argus-result error', ansi_renderHtml(renderedErr));
         this.mirror_emit(`\u001b[31m${renderedErr.replace(/\n$/, '')}\u001b[0m\n`);
       }
     }
@@ -458,7 +458,7 @@ export class ArgusTerminal {
       return;
     }
     this.block_append('dim', `[surface ${html_escape(surface.slice(0, 6))}]`);
-    this.block_append('argus-result', ansi_toHtml(envelope.rendered));
+    this.block_append('argus-result', ansi_renderHtml(envelope.rendered));
     this.size_fit();
   }
 

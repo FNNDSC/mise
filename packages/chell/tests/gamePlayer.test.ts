@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from '@jest/globals';
 import { EventEmitter } from 'events';
-import { game_play, gameShow_of, gameTerminal_is, type GameTerminal } from '../src/core/gamePlayer.js';
+import { game_play, gameShow_find, gameTerminal_is, type GameTerminal } from '../src/core/gamePlayer.js';
 
 /** A terminal on paper: what was written, raw mode, keys pressed by hand. */
 function terminal_make(): { terminal: GameTerminal; written: string[]; input: EventEmitter & { isRaw: boolean }; press: (name: string, sequence?: string, ctrl?: boolean) => void } {
@@ -21,10 +21,10 @@ function terminal_make(): { terminal: GameTerminal; written: string[]; input: Ev
 
 describe('the terminal game player', () => {
   it('plays what the kernel named, but not a show marked for the pane', () => {
-    expect(gameShow_of([{ status: 'ok', rendered: '', model: { kind: 'games.show', data: { program: 'cmatrix', args: [], arcade: false, pane: false } } }])).toEqual({ program: 'cmatrix' });
-    expect(gameShow_of([{ status: 'ok', rendered: '', model: { kind: 'games.show', data: { program: 'tetris', args: [], arcade: true, pane: true } } }])).toBeNull();
-    expect(gameShow_of([{ status: 'ok', rendered: '', model: { kind: 'games.show', data: { program: 'starwars' } } }])).toBeNull();
-    expect(gameShow_of([{ status: 'ok', rendered: 'hi' }])).toBeNull();
+    expect(gameShow_find([{ status: 'ok', rendered: '', model: { kind: 'games.show', data: { program: 'cmatrix', args: [], arcade: false, pane: false } } }])).toEqual({ program: 'cmatrix' });
+    expect(gameShow_find([{ status: 'ok', rendered: '', model: { kind: 'games.show', data: { program: 'tetris', args: [], arcade: true, pane: true } } }])).toBeNull();
+    expect(gameShow_find([{ status: 'ok', rendered: '', model: { kind: 'games.show', data: { program: 'starwars' } } }])).toBeNull();
+    expect(gameShow_find([{ status: 'ok', rendered: 'hi' }])).toBeNull();
     expect(gameTerminal_is({ input: { isTTY: false } as NodeJS.ReadStream, output: { isTTY: true } as NodeJS.WriteStream })).toBe(false);
   });
 

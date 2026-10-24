@@ -165,7 +165,7 @@ async function cdVirtual_handle(cleanPath: string, pathArg: string): Promise<Com
  */
 async function cdReal_handle(logicalPath: string, pathArg: string): Promise<CommandEnvelope> {
   const enter: ((at: string, typed: string) => Promise<FolderEntry>) | undefined = backendInstalled_get()?.vfs?.folder_enter;
-  const entry: FolderEntry = enter !== undefined ? await enter(logicalPath, pathArg) : await folderEntry_byListing(logicalPath);
+  const entry: FolderEntry = enter !== undefined ? await enter(logicalPath, pathArg) : await folderEntry_resolveByListing(logicalPath);
   if (entry.cwd === null) {
     return envelope_error(entry.rendered, undefined, entry.renderedErr || `${chalk.red(`cd: ${pathArg}: No such file or directory`)}\n`);
   }
@@ -179,7 +179,7 @@ async function cdReal_handle(logicalPath: string, pathArg: string): Promise<Comm
  * @param logicalPath - The folder.
  * @returns Where to stand, or not a folder.
  */
-async function folderEntry_byListing(logicalPath: string): Promise<FolderEntry> {
+async function folderEntry_resolveByListing(logicalPath: string): Promise<FolderEntry> {
   const { vfs } = await import('../../lib/vfs/vfs.js');
   const listed: Result<{ items: unknown[] }> = await vfs.listing_get(logicalPath);
   if (listed.ok) return { cwd: logicalPath, rendered: '', renderedErr: '' };

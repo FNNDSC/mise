@@ -14,7 +14,7 @@ import { vfs_ok, vfs_failFromStack, errorStack, type Result, type VFSDispatcher,
  * @returns The entry, or null when the parent does not name it or cannot
  *   be listed (what the listing said is drained: not being there is an answer).
  */
-export async function entry_at(dispatcher: VFSDispatcher, targetPath: string): Promise<VFSItem | null> {
+export async function pathEntry_find(dispatcher: VFSDispatcher, targetPath: string): Promise<VFSItem | null> {
   const clean: string = targetPath.length > 1 && targetPath.endsWith('/') ? targetPath.slice(0, -1) : targetPath;
   const slash: number = clean.lastIndexOf('/');
   const name: string = clean.slice(slash + 1);

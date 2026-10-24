@@ -84,7 +84,7 @@ const FOLDER_TYPES: ReadonlySet<string> = new Set(['dir', 'vfs', 'job']);
  * @param ignoreCase - Whether case is ignored.
  * @returns The expression, anchored at both ends.
  */
-export function pattern_toRegExp(pattern: string, ignoreCase: boolean = false): RegExp {
+export function pattern_convertToRegExp(pattern: string, ignoreCase: boolean = false): RegExp {
   let source: string = '';
   for (let i: number = 0; i < pattern.length; i++) {
     const ch: string = pattern[i] as string;
@@ -145,12 +145,12 @@ export function find_parse(args: string[]): FindQuery | string {
     let expr: FindExpr;
     switch (word) {
       case '-name': case '-iname': {
-        const re: RegExp = pattern_toRegExp(argument(word), word === '-iname');
+        const re: RegExp = pattern_convertToRegExp(argument(word), word === '-iname');
         expr = { kind: 'test', test: (node: FindNode): boolean => re.test(node.name) };
         break;
       }
       case '-path': case '-ipath': case '-wholename': {
-        const re: RegExp = pattern_toRegExp(argument(word), word === '-ipath');
+        const re: RegExp = pattern_convertToRegExp(argument(word), word === '-ipath');
         expr = { kind: 'test', test: (node: FindNode): boolean => re.test(node.shown) };
         break;
       }
@@ -161,14 +161,14 @@ export function find_parse(args: string[]): FindQuery | string {
         break;
       }
       case '-pipeline': case '-workflow': {
-        const re: RegExp = pattern_toRegExp(argument(word), true);
+        const re: RegExp = pattern_convertToRegExp(argument(word), true);
         const field: 'pipeline' | 'workflow' = word === '-pipeline' ? 'pipeline' : 'workflow';
         asksRuns = true;
         expr = { kind: 'test', test: (node: FindNode): boolean => node[field] !== undefined && re.test(node[field] as string) };
         break;
       }
       case '-status': case '-plugin': {
-        const re: RegExp = pattern_toRegExp(argument(word), true);
+        const re: RegExp = pattern_convertToRegExp(argument(word), true);
         const field: 'status' | 'plugin' = word === '-status' ? 'status' : 'plugin';
         expr = { kind: 'test', test: (node: FindNode): boolean => node[field] !== undefined && re.test(node[field] as string) };
         break;
@@ -237,14 +237,14 @@ export function find_evaluate(expr: FindExpr, node: FindNode, out: string[]): bo
 }
 
 /** The plugin a `/proc/jobs` job ran, read from its name (`pl-x_10`). */
-function plugin_of(item: ListingItem): string | undefined {
+function pluginName_parse(item: ListingItem): string | undefined {
   if (item.type !== 'job' || /^feed_\d+$/.test(item.name)) return undefined;
   const match: RegExpExecArray | null = /^(.+)_\d+$/.exec(item.name);
   return match === null ? undefined : match[1];
 }
 
 /** An entry's kind, as `-type` names it. */
-function type_of(item: ListingItem): 'f' | 'd' | 'l' {
+function itemType_derive(item: ListingItem): 'f' | 'd' | 'l' {
   if (item.type === 'link') return 'l';
   return FOLDER_TYPES.has(item.type) ? 'd' : 'f';
 }
@@ -296,7 +296,7 @@ export async function builtin_find(args: string[]): Promise<CommandEnvelope> {
         failures += `find: '${start}': No such file or directory\n`;
         continue;
       }
-      const rootType: 'f' | 'd' | 'l' = type_of(entry);
+      const rootType: 'f' | 'd' | 'l' = itemType_derive(entry);
       visit({ shown: shownRoot, name: path.posix.basename(resolved) || resolved, type: rootType, date: entry.date || undefined, depth: 0 });
       if (rootType !== 'd') continue;
       // Depth first, in listing order: an entry, then everything beneath it.
@@ -315,11 +315,11 @@ export async function builtin_find(args: string[]): Promise<CommandEnvelope> {
           const node: FindNode = {
             shown: shown === '/' ? `/${item.name}` : `${shown}/${item.name}`,
             name: item.name,
-            type: type_of(item),
+            type: itemType_derive(item),
             date: item.date || undefined,
             depth: depth + 1,
             status: typeof item.status === 'string' ? item.status : undefined,
-            plugin: plugin_of(item),
+            plugin: pluginName_parse(item),
           };
           visit(node);
           if (node.type === 'd' && !(await walk(path.posix.join(real, item.name), node.shown, node.depth))) return false;
@@ -336,7 +336,7 @@ export async function builtin_find(args: string[]): Promise<CommandEnvelope> {
           visit({
             shown: join(shownRoot, entry.rel),
             name: entry.item.name,
-            type: type_of(entry.item as ListingItem),
+            type: itemType_derive(entry.item as ListingItem),
             date: entry.item.date || undefined,
             depth: entry.depth,
             status: entry.attrs?.['status'] ?? entry.item.status,

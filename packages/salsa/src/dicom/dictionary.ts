@@ -111,7 +111,7 @@ const GROUP_BY_NUMBER: Readonly<Record<number, DicomTagGroup>> = {
  * @param name - The dictionary name, when the tag has one.
  * @returns The listing group.
  */
-export function tagGroup_of(groupNumber: number, name: string | undefined): DicomTagGroup {
+export function tagGroup_derive(groupNumber: number, name: string | undefined): DicomTagGroup {
   if (groupNumber % 2 === 1) return 'private';
   if (name !== undefined && GROUP_BY_NAME[name] !== undefined) return GROUP_BY_NAME[name];
   return GROUP_BY_NUMBER[groupNumber] ?? 'other';

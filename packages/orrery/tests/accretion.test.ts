@@ -3,7 +3,7 @@
  * no two overlapping, each molecule whole, the same coral every time.
  */
 import { describe, it, expect } from '@jest/globals';
-import { accretion_layout, feedLikeness_of } from '../src/layout/accretion.js';
+import { accretion_layout, feedLikeness_compute } from '../src/layout/accretion.js';
 import { layoutEngine_get, layoutNeeds_missing } from '../src/layout/registry.js';
 import { PHYSICS_DEFAULT, type LayoutNode, type Positions, type Vec3 } from '../src/layout/types.js';
 
@@ -30,13 +30,13 @@ const centre = (p: Positions, id: number, size: number): Vec3 => {
 };
 const gap = (a: Vec3, b: Vec3): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
-describe('feedLikeness_of', () => {
+describe('feedLikeness_compute', () => {
   it('weighs what both ran over what either ran', () => {
     const weights = new Map([['a', 1], ['b', 1], ['c', 2], ['landmark', 0]]);
-    expect(feedLikeness_of(new Set(['a', 'b']), new Set(['a', 'b']), weights)).toBe(1);
-    expect(feedLikeness_of(new Set(['a', 'landmark']), new Set(['c', 'landmark']), weights)).toBe(0);
-    expect(feedLikeness_of(new Set(['a', 'c']), new Set(['c']), weights)).toBeCloseTo(2 / 3, 9);
-    expect(feedLikeness_of(new Set(['landmark']), new Set(['landmark']), weights)).toBe(0);
+    expect(feedLikeness_compute(new Set(['a', 'b']), new Set(['a', 'b']), weights)).toBe(1);
+    expect(feedLikeness_compute(new Set(['a', 'landmark']), new Set(['c', 'landmark']), weights)).toBe(0);
+    expect(feedLikeness_compute(new Set(['a', 'c']), new Set(['c']), weights)).toBeCloseTo(2 / 3, 9);
+    expect(feedLikeness_compute(new Set(['landmark']), new Set(['landmark']), weights)).toBe(0);
   });
 });
 

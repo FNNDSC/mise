@@ -13,7 +13,7 @@
  * @param nodes - The lit nodes, each with its parents and its height.
  * @returns True when the roots are on top.
  */
-export function rootsTop_of(nodes: ReadonlyArray<{ id: string; parentIds: ReadonlyArray<string>; y: number }>): boolean {
+export function rootsTop_check(nodes: ReadonlyArray<{ id: string; parentIds: ReadonlyArray<string>; y: number }>): boolean {
   const ids: Set<string> = new Set(nodes.map((node) => node.id));
   const isRoot = (node: { parentIds: ReadonlyArray<string> }): boolean => !node.parentIds.some((parent: string): boolean => ids.has(parent));
   const roots = nodes.filter(isRoot);
@@ -35,7 +35,7 @@ export function rootsTop_of(nodes: ReadonlyArray<{ id: string; parentIds: Readon
  * @param at - Where each stands.
  * @returns The median and the longest edge, or nothing for a graph without edges.
  */
-export function edgeSpan_of(
+export function edgeSpan_measure(
   nodes: ReadonlyArray<{ id: string; parentIds: ReadonlyArray<string>; ghost?: boolean; halo?: boolean }>,
   at: ReadonlyMap<string, { x: number; y: number; z: number }>,
 ): { edgeMedian?: string; edgeLongest?: string } {

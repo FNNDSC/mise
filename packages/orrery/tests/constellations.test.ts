@@ -4,7 +4,7 @@
  * weighs by how little it is used, and the sky is the same run to run.
  */
 import { describe, it, expect } from '@jest/globals';
-import { constellations_layout, pluginWeights_of, LANDMARK_SHARE } from '../src/layout/constellations.js';
+import { constellations_layout, pluginWeights_compute, LANDMARK_SHARE } from '../src/layout/constellations.js';
 import { layoutEngine_get, layoutNeeds_missing } from '../src/layout/registry.js';
 import { PHYSICS_DEFAULT, type LayoutNode, type Positions } from '../src/layout/types.js';
 
@@ -24,9 +24,9 @@ function sky(): LayoutNode[] {
   return nodes;
 }
 
-describe('pluginWeights_of', () => {
+describe('pluginWeights_compute', () => {
   it('weighs a plugin by how few feeds ran it, and gives a landmark nothing', () => {
-    const weights = pluginWeights_of(new Map([['rare', 1], ['common', 5], ['everywhere', 10]]), 10);
+    const weights = pluginWeights_compute(new Map([['rare', 1], ['common', 5], ['everywhere', 10]]), 10);
     expect(weights.get('rare')).toBeCloseTo(Math.log(10), 9);
     expect(weights.get('common')).toBeCloseTo(Math.log(2), 9);
     expect(weights.get('everywhere')).toBe(0);

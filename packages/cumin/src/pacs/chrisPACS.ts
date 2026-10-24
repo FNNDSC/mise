@@ -640,7 +640,7 @@ const seriesByPatient: Map<string, Promise<Map<string, PACSSeriesFacts>>> = new 
  * @param path - A CFS path, with or without its leading slash.
  * @returns The series folder (no leading slash), its PACS and its patient folder; null elsewhere.
  */
-export function pacsSeriesFolder_of(path: string): { folder: string; pacs: string; patient: string } | null {
+export function pacsSeriesFolder_parse(path: string): { folder: string; pacs: string; patient: string } | null {
   const parts: string[] = path.replace(/^\/+/, '').split('/');
   if (parts.length < 6 || parts[0] !== 'SERVICES' || parts[1] !== 'PACS') return null;
   const [, , pacs, patient] = parts as [string, string, string, string];
@@ -658,8 +658,8 @@ export function pacsSeriesFolder_of(path: string): { folder: string; pacs: strin
  * @param path - A CFS path in the PACS store.
  * @returns The series' facts, or null.
  */
-export async function pacsSeriesFacts_ofPath(path: string): Promise<PACSSeriesFacts | null> {
-  const at = pacsSeriesFolder_of(path);
+export async function pacsSeriesFacts_fetch(path: string): Promise<PACSSeriesFacts | null> {
+  const at = pacsSeriesFolder_parse(path);
   if (at === null) return null;
   const patientID: string = at.patient.split('-')[0] ?? '';
   if (patientID.length === 0) return null;

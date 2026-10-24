@@ -6,8 +6,8 @@
 import { describe, it, expect } from '@jest/globals';
 import type { DomainSizeModel, DomainSpecModel, DomainSummary } from '@fnndsc/menu';
 import {
-  askForm_of, classBadge_of, conditionWhy_of, controllerLine_of, duration_text, nameRefusal_of, newLine_of, noteShort_of, planWords_of,
-  since_of, sizeCost_of, sizeFit_of, stepLooks_of, summary_merge, verifyWords_of, zoneShort_of,
+  askForm_derive, classBadge_render, conditionWhy_derive, controllerLine_parse, duration_text, nameRefusal_derive, newLine_build, noteShort_format, planWords_render,
+  since_build, sizeCost_compute, sizeFit_compute, stepLooks_build, summary_merge, verifyWords_render, zoneShort_format,
 } from '../../src/features/controller/model.js';
 
 const SPEC: DomainSpecModel = {
@@ -52,96 +52,96 @@ describe('the TD controller model', () => {
   });
 
   it('draws each step, the next one asking while the engine asks', () => {
-    expect(stepLooks_of(domain_make()).map((look) => `${look.n} ${look.name} ${look.word} ${look.tone}${look.billFrom ? ' $' : ''}`)).toEqual([
+    expect(stepLooks_build(domain_make()).map((look) => `${look.n} ${look.name} ${look.word} ${look.tone}${look.billFrom ? ' $' : ''}`)).toEqual([
       '01 compartment DONE done', '02 infra-plan DONE done', '03 infra-apply NEXT next $', '04 dns NOT DONE later',
     ]);
-    expect(stepLooks_of(domain_make({ asking: 'Continue? [y/N]' }))[2]?.word).toBe('ASKING');
+    expect(stepLooks_build(domain_make({ asking: 'Continue? [y/N]' }))[2]?.word).toBe('ASKING');
     const odd: DomainSummary = domain_make({ steps: [{ folder: '01-a', state: 'running' }, { folder: '02-b', state: 'failed' }, { folder: '03-c', state: 'expired' }, { folder: '04-d', state: 'unknown' }] });
-    expect(stepLooks_of(odd).map((look) => `${look.name} ${look.tone}`)).toEqual(['a running', 'b failed', 'c expired', 'd unknown']);
-    expect(noteShort_of('done before adoption (harbor-oci: done, Terraform state holds 79 resources)')).toBe('Terraform state holds 79 resources');
-    expect(noteShort_of('x'.repeat(80))).toHaveLength(60);
+    expect(stepLooks_build(odd).map((look) => `${look.name} ${look.tone}`)).toEqual(['a running', 'b failed', 'c expired', 'd unknown']);
+    expect(noteShort_format('done before adoption (harbor-oci: done, Terraform state holds 79 resources)')).toBe('Terraform state holds 79 resources');
+    expect(noteShort_format('x'.repeat(80))).toHaveLength(60);
   });
 
   it('says what a domain is and whether money runs', () => {
-    expect(classBadge_of(domain_make({ origin: 'adopted' }))).toBe('ADOPTED · PLANS ONLY');
-    expect(classBadge_of(domain_make({ origin: 'checkout' }))).toBe('CHECKOUT · READ ONLY');
-    expect(classBadge_of(domain_make({ gone: '2026-10-23' }))).toBe('TORN DOWN');
-    expect(classBadge_of(domain_make())).toBe('BUILT HERE');
-    expect(conditionWhy_of(domain_make())).toEqual({ text: 'NOTHING BUILT · NOTHING BILLED', billing: false });
-    expect(conditionWhy_of(domain_make({ origin: 'adopted', billing: true, condition: 'UP' }))).toEqual({ text: 'BILLING · ADOPTED', billing: true });
-    expect(conditionWhy_of(domain_make({ billing: true, condition: 'BUILDING' }))).toEqual({ text: 'BILLING · BUILDING', billing: true });
-    expect(conditionWhy_of(domain_make({ condition: 'STOPPED', next: 'infra-apply', billingStep: 'infra-apply' }))).toEqual({ text: 'PLANNED · NOTHING BILLED', billing: false });
-    expect(conditionWhy_of(domain_make({ condition: 'STOPPED', next: 'iso', billingStep: 'infra-apply' }))).toEqual({ text: 'NOT FINISHED · NOTHING BILLED', billing: false });
-    expect(conditionWhy_of(domain_make({ condition: 'STOPPED', billing: true, next: 'dns', billingStep: 'infra-apply' }))).toEqual({ text: 'BILLING · NOT FINISHED', billing: true });
+    expect(classBadge_render(domain_make({ origin: 'adopted' }))).toBe('ADOPTED · PLANS ONLY');
+    expect(classBadge_render(domain_make({ origin: 'checkout' }))).toBe('CHECKOUT · READ ONLY');
+    expect(classBadge_render(domain_make({ gone: '2026-10-23' }))).toBe('TORN DOWN');
+    expect(classBadge_render(domain_make())).toBe('BUILT HERE');
+    expect(conditionWhy_derive(domain_make())).toEqual({ text: 'NOTHING BUILT · NOTHING BILLED', billing: false });
+    expect(conditionWhy_derive(domain_make({ origin: 'adopted', billing: true, condition: 'UP' }))).toEqual({ text: 'BILLING · ADOPTED', billing: true });
+    expect(conditionWhy_derive(domain_make({ billing: true, condition: 'BUILDING' }))).toEqual({ text: 'BILLING · BUILDING', billing: true });
+    expect(conditionWhy_derive(domain_make({ condition: 'STOPPED', next: 'infra-apply', billingStep: 'infra-apply' }))).toEqual({ text: 'PLANNED · NOTHING BILLED', billing: false });
+    expect(conditionWhy_derive(domain_make({ condition: 'STOPPED', next: 'iso', billingStep: 'infra-apply' }))).toEqual({ text: 'NOT FINISHED · NOTHING BILLED', billing: false });
+    expect(conditionWhy_derive(domain_make({ condition: 'STOPPED', billing: true, next: 'dns', billingStep: 'infra-apply' }))).toEqual({ text: 'BILLING · NOT FINISHED', billing: true });
   });
 
   it('says what changed since the last command, at most three rows', () => {
     const before: DomainSummary = domain_make();
-    expect(since_of(null, before)).toEqual([{ label: '', text: 'FIRST READ' }]);
-    expect(since_of(before, before)).toEqual([{ label: '', text: 'NO CHANGE' }]);
+    expect(since_build(null, before)).toEqual([{ label: '', text: 'FIRST READ' }]);
+    expect(since_build(before, before)).toEqual([{ label: '', text: 'NO CHANGE' }]);
     const after: DomainSummary = domain_make({
       condition: 'BUILDING',
       steps: before.steps.map((step) => step.name === 'infra-apply' ? { ...step, state: 'running' } : step),
       verify: { at: null, checks: [{ name: 'API', ok: true, detail: '', how: 'reads' }] },
     });
-    expect(since_of(before, after)).toEqual([
+    expect(since_build(before, after)).toEqual([
       { label: 'CONDITION', text: 'SIZING → BUILDING' },
       { label: 'INFRA-APPLY', text: 'NOT DONE → RUNNING' },
       { label: 'VERIFY', text: '1 OF 1 PASS' },
     ]);
-    expect(since_of(before, domain_make({ protected: false }))).toEqual([{ label: 'LOCK', text: 'OFF' }]);
-    expect(since_of(before, domain_make({ cost: { hourly: 1.2, soFar: 3, currency: 'USD' } }))).toEqual([{ label: 'PER HOUR', text: '$0.71 → $1.20' }]);
+    expect(since_build(before, domain_make({ protected: false }))).toEqual([{ label: 'LOCK', text: 'OFF' }]);
+    expect(since_build(before, domain_make({ cost: { hourly: 1.2, soFar: 3, currency: 'USD' } }))).toEqual([{ label: 'PER HOUR', text: '$0.71 → $1.20' }]);
   });
 
   it('says verify and a plan in a phrase, drift apart', () => {
-    expect(verifyWords_of([{ ok: true }, { ok: false }, { ok: null }])).toBe('1 OF 3 PASS · 1 FAIL · 1 NOT RUN');
-    expect(planWords_of({ create: 52, replace: 0, change: 0, drift: 0, destroy: 0, groups: [], at: null })).toBe('52 + · 0 ~ · 0 −');
-    expect(planWords_of({ create: 0, replace: 0, change: 0, drift: 6, destroy: 0, groups: [], at: null })).toBe('0 + · 6 ~ TAG DRIFT · 0 −');
-    expect(planWords_of({ create: 0, replace: 21, change: 0, drift: 24, destroy: 0, groups: [], at: null })).toBe('0 + · 21 ~ · 24 ~ TAG DRIFT · 0 −');
+    expect(verifyWords_render([{ ok: true }, { ok: false }, { ok: null }])).toBe('1 OF 3 PASS · 1 FAIL · 1 NOT RUN');
+    expect(planWords_render({ create: 52, replace: 0, change: 0, drift: 0, destroy: 0, groups: [], at: null })).toBe('52 + · 0 ~ · 0 −');
+    expect(planWords_render({ create: 0, replace: 0, change: 0, drift: 6, destroy: 0, groups: [], at: null })).toBe('0 + · 6 ~ TAG DRIFT · 0 −');
+    expect(planWords_render({ create: 0, replace: 21, change: 0, drift: 24, destroy: 0, groups: [], at: null })).toBe('0 + · 21 ~ · 24 ~ TAG DRIFT · 0 −');
   });
 
   it('fits a spec per zone, the tightest marked, unknown where the cloud does not say', () => {
-    const fits = sizeFit_of(SIZE, { ...SPEC, workers: { ...SPEC.workers, count: 2 } }, 'quay');
-    expect(fits.map((fit) => [zoneShort_of(fit.zone), fit.nodes, fit.coresNeeded, fit.fits, fit.tightest])).toEqual([
+    const fits = sizeFit_compute(SIZE, { ...SPEC, workers: { ...SPEC.workers, count: 2 } }, 'quay');
+    expect(fits.map((fit) => [zoneShort_format(fit.zone), fit.nodes, fit.coresNeeded, fit.fits, fit.tightest])).toEqual([
       ['AD-1', ['quay-cp-0', 'quay-w-0'], 8, true, false],
       ['AD-2', ['quay-cp-1', 'quay-w-1'], 8, true, true],
       ['AD-3', ['quay-cp-2'], 4, null, false],
     ]);
-    expect(sizeFit_of(SIZE, { ...SPEC, controlPlane: { ...SPEC.controlPlane, vcpu: 32 } }, 'q')[1]?.fits).toBe(false);
+    expect(sizeFit_compute(SIZE, { ...SPEC, controlPlane: { ...SPEC.controlPlane, vcpu: 32 } }, 'q')[1]?.fits).toBe(false);
   });
 
   it('prices a spec by what bills, and says what is not priced', () => {
-    const cost = sizeCost_of(SIZE, SPEC);
+    const cost = sizeCost_compute(SIZE, SPEC);
     expect(cost.rows.map((row) => row.what)).toEqual(['COMPUTE · 24 vCPU', 'MEMORY · 72 GiB', 'BOOT VOLUMES · 600 GiB', 'CHRIS VOLUMES · 26 GiB', 'LOAD BALANCERS · 3']);
     expect(cost.rows[0]?.hourly).toBeCloseTo(0.36);
     expect(cost.rows[1]?.hourly).toBeCloseTo(0.144);
     expect(cost.rows[2]?.hourly).toBeCloseTo((600 * (0.0255 + 30 * 0.0017)) / 730);
     expect(cost.rows[4]?.hourly).toBeCloseTo(3 * (0.0113 + 10 * 0.0001));
     expect(cost.hourly).toBeCloseTo(cost.rows.reduce((sum, row) => sum + (row.hourly ?? 0), 0));
-    const unpriced = sizeCost_of({ ...SIZE, price: null, services: null }, SPEC);
+    const unpriced = sizeCost_compute({ ...SIZE, price: null, services: null }, SPEC);
     expect(unpriced.hourly).toBeNull();
     expect(unpriced.rows.every((row) => row.hourly === null)).toBe(true);
   });
 
   it('commits a spec as domain new with only what differs from the start', () => {
-    expect(newLine_of('quay', SPEC, SPEC)).toBe('domain new quay');
-    expect(newLine_of('quay', { ...SPEC, family: 'E4', workers: { ...SPEC.workers, count: 2 }, chris: { dataGib: 100, databaseGib: 10, queueGib: 2 } }, SPEC))
+    expect(newLine_build('quay', SPEC, SPEC)).toBe('domain new quay');
+    expect(newLine_build('quay', { ...SPEC, family: 'E4', workers: { ...SPEC.workers, count: 2 }, chris: { dataGib: 100, databaseGib: 10, queueGib: 2 } }, SPEC))
       .toBe('domain new quay --family E4 --workers 2x8/32 --data 100 --database 10 --queue 2');
-    expect(newLine_of('quay', { ...SPEC, controlPlane: { ...SPEC.controlPlane, vcpu: 16 } }, SPEC)).toBe('domain new quay --plane 3x16/24');
-    expect(nameRefusal_of('', [])).toBe('NAME IT FIRST');
-    expect(nameRefusal_of('Quay', [])).toContain('DNS LABEL');
-    expect(nameRefusal_of('harbor', ['harbor'])).toBe('HARBOR IS TAKEN');
-    expect(nameRefusal_of('quay', ['harbor'])).toBeNull();
+    expect(newLine_build('quay', { ...SPEC, controlPlane: { ...SPEC.controlPlane, vcpu: 16 } }, SPEC)).toBe('domain new quay --plane 3x16/24');
+    expect(nameRefusal_derive('', [])).toBe('NAME IT FIRST');
+    expect(nameRefusal_derive('Quay', [])).toContain('DNS LABEL');
+    expect(nameRefusal_derive('harbor', ['harbor'])).toBe('HARBOR IS TAKEN');
+    expect(nameRefusal_derive('quay', ['harbor'])).toBeNull();
   });
 
   it('knows its own lines and its questions', () => {
-    expect(controllerLine_of('domain', [])).toBe('');
-    expect(controllerLine_of('domain quay', ['quay'])).toBe('quay');
-    expect(controllerLine_of('domain status', ['quay'])).toBeNull();
-    expect(controllerLine_of('domain plan quay', ['quay'])).toBeNull();
-    expect(controllerLine_of('ls', ['quay'])).toBeNull();
-    expect(askForm_of('infra-apply creates 17 resources. Continue? [y/N]')).toBe('yes-no');
-    expect(askForm_of("Type the domain's name to go on:")).toBe('typed');
+    expect(controllerLine_parse('domain', [])).toBe('');
+    expect(controllerLine_parse('domain quay', ['quay'])).toBe('quay');
+    expect(controllerLine_parse('domain status', ['quay'])).toBeNull();
+    expect(controllerLine_parse('domain plan quay', ['quay'])).toBeNull();
+    expect(controllerLine_parse('ls', ['quay'])).toBeNull();
+    expect(askForm_derive('infra-apply creates 17 resources. Continue? [y/N]')).toBe('yes-no');
+    expect(askForm_derive("Type the domain's name to go on:")).toBe('typed');
     expect(duration_text(42_000)).toBe('42s');
     expect(duration_text(12 * 60_000)).toBe('12m');
     expect(duration_text(190 * 60_000)).toBe('3h 10m');

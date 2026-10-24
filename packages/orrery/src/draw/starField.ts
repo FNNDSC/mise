@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import { NEBULA_OPACITY, THREAD_OPACITY } from './constants.js';
 import { nebulaTexture_get } from './nebula.js';
-import { starLayer_make, starScale_of, type StarEntry, type StarLayer } from './stars.js';
+import { starLayer_make, starScale_compute, type StarEntry, type StarLayer } from './stars.js';
 import { lineMaterial_make, lineWave_set } from './tubes.js';
 
 /**
@@ -118,7 +118,7 @@ export class StarField {
    */
   public scale_update(heightPx: number, fovDeg: number): void {
     if (this.materials.length === 0) return;
-    const scale: number = starScale_of(heightPx, fovDeg);
+    const scale: number = starScale_compute(heightPx, fovDeg);
     for (const material of this.materials) {
       const uniform = material.uniforms['scale'];
       if (uniform !== undefined) uniform.value = scale;
@@ -262,7 +262,7 @@ export class StarField {
    */
   public presence_set(ids: Iterable<string>, presence: number): void {
     for (const id of ids) {
-      for (const entry of this.stars_of(id)) {
+      for (const entry of this.stars_list(id)) {
         const layer = entry.layer === undefined ? undefined : this.layers[entry.layer];
         if (layer === undefined || entry.slot === undefined) continue;
         layer.alpha.setX(entry.slot, (layer.base[entry.slot] ?? 1) * presence);
@@ -280,7 +280,7 @@ export class StarField {
    * @param strength - 0..1.
    */
   public flash_set(id: string, strength: number): void {
-    for (const entry of this.stars_of(id)) {
+    for (const entry of this.stars_list(id)) {
       const layer = entry.layer === undefined ? undefined : this.layers[entry.layer];
       if (layer === undefined || entry.slot === undefined) continue;
       layer.flash.setX(entry.slot, strength);
@@ -307,7 +307,7 @@ export class StarField {
   }
 
   /** Every star drawn for a node. */
-  private stars_of(id: string): ReadonlyArray<StarEntry> {
+  private stars_list(id: string): ReadonlyArray<StarEntry> {
     if (this.starsById === null) {
       this.starsById = new Map();
       for (const entry of this.stars) this.starsById.set(entry.id, [...(this.starsById.get(entry.id) ?? []), entry]);

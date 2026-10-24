@@ -1,7 +1,7 @@
 import {
   clientMessage_parse,
   serverMessage_parse,
-  clientMessage_fromJson,
+  clientMessage_parseJson,
   attach_parse,
 } from '../src/validate';
 import { CONTRACT_VERSION } from '../src/version';
@@ -208,14 +208,14 @@ describe('serverMessage_parse', () => {
   });
 });
 
-describe('clientMessage_fromJson', () => {
+describe('clientMessage_parseJson', () => {
   it('parses valid JSON into a message', () => {
-    const r = clientMessage_fromJson(JSON.stringify({ type: 'execute', id: '1', line: 'pwd' }));
+    const r = clientMessage_parseJson(JSON.stringify({ type: 'execute', id: '1', line: 'pwd' }));
     expect(r.ok).toBe(true);
   });
 
   it('rejects malformed JSON with a clear reason', () => {
-    const r = clientMessage_fromJson('{ not json');
+    const r = clientMessage_parseJson('{ not json');
     expect(r.ok).toBe(false);
     expect(r.error).toContain('malformed JSON');
   });

@@ -53,7 +53,7 @@ let mockWarmup = { loaded: 0, total: 0, active: false };
 let mockWarmupComplete: boolean = false;
 let mockLifecycle: { state: string; checkpointAt?: string } = { state: 'empty' };
 const mockCache = {
-  feedLoad_of: jest.fn(() => ({ feedID: 5, loaded: 0, total: 0 })),
+  feedLoad_read: jest.fn(() => ({ feedID: 5, loaded: 0, total: 0 })),
   cache_clear: jest.fn((): void => {
     mockWarmup = { loaded: 0, total: 0, active: false };
     mockWarmupComplete = false;
@@ -61,7 +61,7 @@ const mockCache = {
   feed_get: jest.fn((id: number) => mockFeeds.find((feed: TestFeed) => feed.id === id)),
   feeds_find: jest.fn((term: string) => mockFeeds.filter((feed: TestFeed) => feed.title.includes(term) || `feed_${feed.id}`.includes(term))),
   feedIDs_get: jest.fn((): number[] => mockFeeds.map((feed: TestFeed) => feed.id)),
-  dataFacts_of: jest.fn((id: number) => mockDataFacts[id]),
+  dataFacts_read: jest.fn((id: number) => mockDataFacts[id]),
   feedScopeCounts_get: jest.fn(() => ({ user: 40, shared: 14, public: 637, total: 691 })),
   instances_count: jest.fn((): number => 25),
   instancesForFeed_count: jest.fn((): number => 2),
@@ -69,8 +69,8 @@ const mockCache = {
   instance_get: jest.fn(() => undefined),
   outputPath_match: jest.fn(() => undefined),
   topologyLoaded_has: jest.fn((): boolean => true),
-  pluginChain_of: jest.fn((id: number): string[] => (id === 1 ? ['pl-dircopy', 'pl-dcm2niix'] : ['pl-dircopy'])),
-  pluginGroups_of: jest.fn((id: number) => (id === 1
+  pluginChain_derive: jest.fn((id: number): string[] => (id === 1 ? ['pl-dircopy', 'pl-dcm2niix'] : ['pl-dircopy'])),
+  pluginGroups_build: jest.fn((id: number) => (id === 1
     ? [{ plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedSuccessfully', parent: null }, { plugin: 'pl-dcm2niix', count: 2, errored: 0, status: 'finishedSuccessfully', parent: 0 }]
     : [{ plugin: 'pl-dircopy', count: 1, errored: 0, status: 'finishedWithError', parent: null }])),
   feedInstanceIDs_get: jest.fn((): number[] => []),
@@ -93,9 +93,9 @@ const mockLayouts: Map<string, { name: string; positions: Record<string, [number
 // The roster's tags come from the kernel's tags index; one feed wears one here.
 const mockFeedTagsByFeed = jest.fn(async (): Promise<{ ok: boolean; value?: Map<number, string[]> }> => ({ ok: true, value: new Map<number, string[]>([[5, ['urgent']]]) }));
 cuminMock_install(() => ({
-  feedTags_byFeed: mockFeedTagsByFeed,
+  feedTags_readByFeed: mockFeedTagsByFeed,
   errorStack: { checkpoint_mark: (): number => 0, checkpoint_drain: (): void => undefined, stack_pop: (): undefined => undefined, stack_search: (): unknown[] => [] },
-  feedStatus_ofCounts: (feed: { erroredJobs: number }): string => (feed.erroredJobs > 0 ? 'finishedWithError' : 'finishedSuccessfully'),
+  feedStatus_deriveFromCounts: (feed: { erroredJobs: number }): string => (feed.erroredJobs > 0 ? 'finishedWithError' : 'finishedSuccessfully'),
   Context: {},
   SingleContext: class TestSingleContext {},
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string): TestEnvelope => ({

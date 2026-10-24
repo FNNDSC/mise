@@ -20,18 +20,18 @@ jest.mock('../src/vfs/dispatcher', () => ({
 }));
 jest.mock('../src/dicom/series', () => ({ dicomHeaderPrefix_get: (p: string) => mockHeader(p) }));
 const mockSeries = jest.fn();
-jest.mock('@fnndsc/cumin', () => ({ ...jest.requireActual('@fnndsc/cumin'), pacsSeriesFacts_ofPath: (p: string) => mockSeries(p) }));
+jest.mock('@fnndsc/cumin', () => ({ ...jest.requireActual('@fnndsc/cumin'), pacsSeriesFacts_fetch: (p: string) => mockSeries(p) }));
 
-import { dataFactsIO_of } from '../src/dag/feedData';
+import { dataFactsIO_build } from '../src/dag/feedData';
 
-const io = dataFactsIO_of(async () => '/out/1');
+const io = dataFactsIO_build(async () => '/out/1');
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockIsVirtual.mockReturnValue(false);
 });
 
-describe('dataFactsIO_of', () => {
+describe('dataFactsIO_build', () => {
   it('reads a CFS folder to its first page of each kind, links with their targets', async () => {
     mockFilesList.mockImplementation(async (_opts: unknown, kind: string) => ({
       tableData: kind === 'dirs' ? [{ path: 'home/u/out/sub' }] : kind === 'files' ? [{ fname: 'home/u/out/a.dcm', fsize: 9 }] : [{ fname: 'home/u/out/l.chrislink', path: 'home/u/uploads/S' }],

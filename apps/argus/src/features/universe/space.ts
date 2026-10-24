@@ -20,40 +20,40 @@ import type { FeedDagModel, FeedDagNode } from '@fnndsc/menu';
 import {
   type LandedGroup,
   type LandedFeed,
-  shape_of,
-  groupId_of,
-  anchorId_of,
+  shape_derive,
+  groupId_format,
+  anchorId_format,
   type UniverseScale,
-  jobsMetric_of,
-  erroredShare_of,
+  jobsMetric_compute,
+  erroredShare_compute,
   universeGraph_build,
-  pluginStarId_of,
+  pluginStarId_format,
   pluginOfStar,
   constellationsGraph_build,
   accretionGraph_build,
-  shapeWords_of,
-  foldId_of,
-  foldShape_of,
+  shapeWords_format,
+  foldId_format,
+  foldShape_parse,
 } from '@fnndsc/menu';
 
 
 export {
   type LandedGroup,
   type LandedFeed,
-  shape_of,
-  groupId_of,
-  anchorId_of,
+  shape_derive,
+  groupId_format,
+  anchorId_format,
   type UniverseScale,
-  jobsMetric_of,
-  erroredShare_of,
+  jobsMetric_compute,
+  erroredShare_compute,
   universeGraph_build,
-  pluginStarId_of,
+  pluginStarId_format,
   pluginOfStar,
   constellationsGraph_build,
   accretionGraph_build,
-  shapeWords_of,
-  foldId_of,
-  foldShape_of,
+  shapeWords_format,
+  foldId_format,
+  foldShape_parse,
 } from '@fnndsc/menu';
 
 /**
@@ -64,7 +64,7 @@ export {
  * @param feeds - The landed feeds.
  * @returns The tip, or null when the node is not a plugin star.
  */
-export function pluginTip_of(nodeId: string, feeds: LandedFeeds): string | null {
+export function pluginTip_render(nodeId: string, feeds: LandedFeeds): string | null {
   const plugin: string | null = pluginOfStar(nodeId);
   if (plugin === null) return null;
   let ran: number = 0;
@@ -111,7 +111,7 @@ export class LandedFeeds {
 
   /** How many distinct shapes they run. */
   public shapes(): number {
-    return new Set([...this.byId.values()].map(shape_of)).size;
+    return new Set([...this.byId.values()].map(shape_derive)).size;
   }
 
   /** Every landed feed. */
@@ -138,7 +138,7 @@ export class LandedFeeds {
  * @param feeds - What has landed.
  * @returns The tip, or null for a node the universe does not name (an anchor).
  */
-export function universeTip_of(nodeId: string, feeds: LandedFeeds): string | null {
+export function universeTip_render(nodeId: string, feeds: LandedFeeds): string | null {
   const match: RegExpMatchArray | null = nodeId.match(/^feed:(\d+):(\d+)$/);
   if (match === null) return null;
   const feed: LandedFeed | undefined = feeds.get(Number(match[1]));
@@ -154,7 +154,7 @@ export function universeTip_of(nodeId: string, feeds: LandedFeeds): string | nul
 }
 
 /** Where a universe's remembered positions are kept, per identity. */
-export function universeStoreKey_of(user: string, uri: string): string {
+export function universeStoreKey_format(user: string, uri: string): string {
   return `argus.universe.${user}@${uri}`;
 }
 
@@ -177,7 +177,7 @@ export const UNIVERSE_SETTINGS_DEFAULT: UniverseSettings = { draw: 'stars', view
  *
  * @returns The record.
  */
-export function universeSettings_of(draw: UniverseSettings['draw'], view: UniverseSettings['view'], scale: UniverseSettings['scale'], density: UniverseSettings['density'], arrangement: UniverseSettings['arrangement'] = UNIVERSE_SETTINGS_DEFAULT.arrangement, captions: boolean = UNIVERSE_SETTINGS_DEFAULT.captions): UniverseSettings {
+export function universeSettings_build(draw: UniverseSettings['draw'], view: UniverseSettings['view'], scale: UniverseSettings['scale'], density: UniverseSettings['density'], arrangement: UniverseSettings['arrangement'] = UNIVERSE_SETTINGS_DEFAULT.arrangement, captions: boolean = UNIVERSE_SETTINGS_DEFAULT.captions): UniverseSettings {
   return { draw, view, scale, density, arrangement, captions };
 }
 
@@ -236,7 +236,7 @@ export function storedPositions_parse(text: string | null): StoredPositions {
 }
 
 /** The scene id of one instance node inside an entered feed. */
-export function instanceId_of(feedId: number, nodeId: string): string {
+export function instanceId_format(feedId: number, nodeId: string): string {
   return `inst:${feedId}:${nodeId}`;
 }
 
@@ -271,8 +271,8 @@ export function descendedGraph_build(landed: ReadonlyArray<LandedFeed>, feedId: 
  * @param feed - Its landing.
  * @returns The ids, one per group.
  */
-export function sphereIds_of(feedId: number, feed: LandedFeed): string[] {
-  return feed.groups.map((_group: LandedGroup, index: number): string => groupId_of(feedId, index));
+export function sphereIds_list(feedId: number, feed: LandedFeed): string[] {
+  return feed.groups.map((_group: LandedGroup, index: number): string => groupId_format(feedId, index));
 }
 
 
@@ -284,7 +284,7 @@ export function sphereIds_of(feedId: number, feed: LandedFeed): string[] {
  * @returns `pl-a > pl-b > pl-c … +8` or the whole when it is short.
  */
 export function shapeWords_brief(shape: string, keep: number = 3): string {
-  const words: string[] = shapeWords_of(shape).split(' > ');
+  const words: string[] = shapeWords_format(shape).split(' > ');
   if (words.length <= keep) return words.join(' > ');
   return `${words.slice(0, keep).join(' > ')} … +${words.length - keep}`;
 }
@@ -297,11 +297,11 @@ export function shapeWords_brief(shape: string, keep: number = 3): string {
  * @param feeds - What has landed.
  * @returns The tip, or null for a node that is not an anchor.
  */
-export function clusterTip_of(nodeId: string, feeds: LandedFeeds): string | null {
+export function clusterTip_render(nodeId: string, feeds: LandedFeeds): string | null {
   if (!nodeId.startsWith('shape:')) return null;
   const shape: string = nodeId.slice('shape:'.length);
-  const count: number = feeds.all().filter((feed: LandedFeed): boolean => shape_of(feed) === shape).length;
-  return `${shapeWords_of(shape)} · ${count} feed${count === 1 ? '' : 's'}`;
+  const count: number = feeds.all().filter((feed: LandedFeed): boolean => shape_derive(feed) === shape).length;
+  return `${shapeWords_format(shape)} · ${count} feed${count === 1 ? '' : 's'}`;
 }
 
 /**
@@ -311,11 +311,11 @@ export function clusterTip_of(nodeId: string, feeds: LandedFeeds): string | null
  * @param feeds - What has landed.
  * @returns Their scene ids.
  */
-export function clusterIds_of(shape: string, feeds: LandedFeeds): string[] {
+export function clusterIds_list(shape: string, feeds: LandedFeeds): string[] {
   const ids: string[] = [];
   for (const feed of feeds.all()) {
-    if (shape_of(feed) !== shape) continue;
-    ids.push(...sphereIds_of(feed.id, feed));
+    if (shape_derive(feed) !== shape) continue;
+    ids.push(...sphereIds_list(feed.id, feed));
   }
   return ids;
 }
@@ -331,9 +331,9 @@ export function clusterIds_of(shape: string, feeds: LandedFeeds): string[] {
  */
 export function clusterGraph_build(landed: ReadonlyArray<LandedFeed>, shape: string, scale: UniverseScale = 'jobs'): SceneGraph {
   const whole: SceneGraph = universeGraph_build(landed, scale);
-  const inside: Set<number> = new Set(landed.filter((feed: LandedFeed): boolean => shape_of(feed) === shape).map((feed: LandedFeed): number => feed.id));
+  const inside: Set<number> = new Set(landed.filter((feed: LandedFeed): boolean => shape_derive(feed) === shape).map((feed: LandedFeed): number => feed.id));
   const nodes: SceneNode[] = whole.nodes.map((node: SceneNode): SceneNode => {
-    if (node.ghost === true) return node.id === anchorId_of(shape) ? node : { ...node, dim: true };
+    if (node.ghost === true) return node.id === anchorId_format(shape) ? node : { ...node, dim: true };
     const match: RegExpMatchArray | null = node.id.match(/^feed:(\d+):/);
     return match !== null && inside.has(Number(match[1])) ? node : { ...node, dim: true };
   });
@@ -359,7 +359,7 @@ export function foldedGraph_build(landed: ReadonlyArray<LandedFeed>, scale: Univ
   const byShape: Map<string, LandedFeed[]> = new Map();
   for (const feed of [...landed].sort((a: LandedFeed, b: LandedFeed): number => a.id - b.id)) {
     if (feed.groups.length === 0) continue;
-    const shape: string = shape_of(feed);
+    const shape: string = shape_derive(feed);
     const members: LandedFeed[] = byShape.get(shape) ?? [];
     members.push(feed);
     byShape.set(shape, members);
@@ -378,12 +378,12 @@ export function foldedGraph_build(landed: ReadonlyArray<LandedFeed>, scale: Univ
       }
       const share: number | undefined = erred > 0 ? Math.min(1, erred / members.length) : undefined;
       nodes.push({
-        id: foldId_of(shape, index),
+        id: foldId_format(shape, index),
         label: group.plugin,
-        parentIds: group.parent === null ? [] : [foldId_of(shape, group.parent)],
+        parentIds: group.parent === null ? [] : [foldId_format(shape, group.parent)],
         joinParentIds: [],
         status: erred === members.length ? 'finishedWithError' : 'finishedSuccessfully',
-        metric: scale === 'feeds' ? jobsMetric_of(members.length) : jobsMetric_of(jobs),
+        metric: scale === 'feeds' ? jobsMetric_compute(members.length) : jobsMetric_compute(jobs),
         ...(members.length > 1 ? { count: members.length } : {}),
         ...(share !== undefined ? { share } : {}),
       });
@@ -400,12 +400,12 @@ export function foldedGraph_build(landed: ReadonlyArray<LandedFeed>, scale: Univ
  * @param feeds - What has landed.
  * @returns The tip, or null for a node that is not a folded stage.
  */
-export function foldTip_of(nodeId: string, feeds: LandedFeeds): string | null {
+export function foldTip_render(nodeId: string, feeds: LandedFeeds): string | null {
   const match: RegExpMatchArray | null = nodeId.match(/^fold:(.+):(\d+)$/);
   if (match === null) return null;
   const shape: string = match[1] as string;
   const index: number = Number(match[2]);
-  const members: LandedFeed[] = feeds.all().filter((feed: LandedFeed): boolean => shape_of(feed) === shape);
+  const members: LandedFeed[] = feeds.all().filter((feed: LandedFeed): boolean => shape_derive(feed) === shape);
   const plugin: string | undefined = members[0]?.groups[index]?.plugin;
   if (plugin === undefined) return null;
   const erred: number = members.filter((feed: LandedFeed): boolean => (feed.groups[index]?.errored ?? 0) > 0).length;
@@ -416,9 +416,9 @@ export function foldTip_of(nodeId: string, feeds: LandedFeeds): string | null {
 
 
 /** The scene ids of a folded shape's stages, as drawn. */
-export function foldIds_of(shape: string, feeds: LandedFeeds): string[] {
-  const first: LandedFeed | undefined = feeds.all().find((feed: LandedFeed): boolean => shape_of(feed) === shape);
-  return first === undefined ? [] : first.groups.map((_group: LandedGroup, index: number): string => foldId_of(shape, index));
+export function foldIds_list(shape: string, feeds: LandedFeeds): string[] {
+  const first: LandedFeed | undefined = feeds.all().find((feed: LandedFeed): boolean => shape_derive(feed) === shape);
+  return first === undefined ? [] : first.groups.map((_group: LandedGroup, index: number): string => foldId_format(shape, index));
 }
 
 /**
@@ -432,8 +432,8 @@ export function foldIds_of(shape: string, feeds: LandedFeeds): string[] {
  * @returns The scene graph, and the ids of the members' spheres.
  */
 export function unfoldedGraph_build(landed: ReadonlyArray<LandedFeed>, shape: string, scale: UniverseScale = 'jobs'): { graph: SceneGraph; memberIds: string[] } {
-  const members: LandedFeed[] = landed.filter((feed: LandedFeed): boolean => shape_of(feed) === shape);
-  const others: LandedFeed[] = landed.filter((feed: LandedFeed): boolean => shape_of(feed) !== shape);
+  const members: LandedFeed[] = landed.filter((feed: LandedFeed): boolean => shape_derive(feed) === shape);
+  const others: LandedFeed[] = landed.filter((feed: LandedFeed): boolean => shape_derive(feed) !== shape);
   const folded: SceneGraph = foldedGraph_build(others, scale);
   const open: SceneGraph = universeGraph_build(members, scale);
   const memberIds: string[] = open.nodes.filter((node: SceneNode): boolean => node.ghost !== true).map((node: SceneNode): string => node.id);

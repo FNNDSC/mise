@@ -121,7 +121,7 @@ interface JobEntry {
  * @param env - The environment.
  * @returns The folder.
  */
-export function jobsRoot_of(backendId: string, env: NodeJS.ProcessEnv = process.env): string {
+export function jobsRoot_derive(backendId: string, env: NodeJS.ProcessEnv = process.env): string {
   const state: string = env['XDG_STATE_HOME'] || path.join(os.homedir(), '.local', 'state');
   return path.join(state, backendId, 'jobs');
 }
@@ -164,7 +164,7 @@ export class JobRunner {
    * @param id - Its id.
    * @returns The key.
    */
-  private key_of(source: string, id: string): string {
+  private key_format(source: string, id: string): string {
     return `${source}/${id}`;
   }
 
@@ -174,7 +174,7 @@ export class JobRunner {
    * @param source - Its id.
    * @returns The folder.
    */
-  private folder_of(source: string): string {
+  private folder_make(source: string): string {
     const folder: string = path.join(this.root, source);
     fs.mkdirSync(folder, { recursive: true, mode: 0o700 });
     return folder;
@@ -192,7 +192,7 @@ export class JobRunner {
       try {
         const record: JobRecord = JSON.parse(fs.readFileSync(path.join(folder, name), 'utf-8')) as JobRecord;
         const tail: string[] = this.logLines_read(source, record.id).slice(-JOB_LOG_TAIL_LINES);
-        this.entries.set(this.key_of(source, record.id), { record, tail });
+        this.entries.set(this.key_format(source, record.id), { record, tail });
       } catch {
         // A torn record is no job; the next start of that id replaces it.
       }
@@ -218,7 +218,7 @@ export class JobRunner {
    * @param entry - The job.
    */
   private record_save(entry: JobEntry): void {
-    file_writeAtomic(path.join(this.folder_of(entry.record.source), `${entry.record.id}.json`), `${JSON.stringify(entry.record, null, 2)}\n`);
+    file_writeAtomic(path.join(this.folder_make(entry.record.source), `${entry.record.id}.json`), `${JSON.stringify(entry.record, null, 2)}\n`);
   }
 
   /**
@@ -229,10 +229,10 @@ export class JobRunner {
    */
   private log_append(entry: JobEntry, line: string): void {
     const stamped: string = `${new Date().toISOString().slice(11, 19)} ${line}`;
-    fs.appendFileSync(path.join(this.folder_of(entry.record.source), `${entry.record.id}.log`), `${stamped}\n`, { mode: 0o600 });
+    fs.appendFileSync(path.join(this.folder_make(entry.record.source), `${entry.record.id}.log`), `${stamped}\n`, { mode: 0o600 });
     entry.tail.push(stamped);
     if (entry.tail.length > JOB_LOG_TAIL_LINES) entry.tail.shift();
-    this.events.emit(`log:${this.key_of(entry.record.source, entry.record.id)}`, stamped);
+    this.events.emit(`log:${this.key_format(entry.record.source, entry.record.id)}`, stamped);
   }
 
   /**
@@ -264,7 +264,7 @@ export class JobRunner {
     entry.record.ended = new Date().toISOString();
     delete entry.controller;
     this.record_save(entry);
-    this.events.emit(`end:${this.key_of(entry.record.source, entry.record.id)}`, entry.record);
+    this.events.emit(`end:${this.key_format(entry.record.source, entry.record.id)}`, entry.record);
     // Every surface hears a job end, as it hears a chime: a line and its model.
     ambient_publish({
       kind: 'envelope',
@@ -288,12 +288,12 @@ export class JobRunner {
     if (!this.allowed()) throw new JobRefusal(`${id}: Operation not permitted: starting a task needs the tasks tier (calypso --host-control tasks)`);
     if (!this.sources.some((candidate: JobSource): boolean => candidate.id === source)) throw new JobRefusal(`${id}: no task source ${source}`);
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) throw new JobRefusal(`${id}: a task's name is letters, digits, '.', '_' and '-'`);
-    const existing: JobEntry | undefined = this.entries.get(this.key_of(source, id));
+    const existing: JobEntry | undefined = this.entries.get(this.key_format(source, id));
     if (existing !== undefined && !taskState_isOver(existing.record.state)) throw new JobRefusal(`${id}: already running (/proc/${source}/${id})`);
-    const folder: string = this.folder_of(source);
+    const folder: string = this.folder_make(source);
     fs.rmSync(path.join(folder, `${id}.log`), { force: true });
     const entry: JobEntry = { record: { id, source, label, state: 'running', started: new Date().toISOString(), data: { ...data } }, tail: [] };
-    this.entries.set(this.key_of(source, id), entry);
+    this.entries.set(this.key_format(source, id), entry);
     this.record_save(entry);
     entry.done = this.work_run(entry, run);
     return { record: { ...entry.record }, finished: entry.done };
@@ -335,7 +335,7 @@ export class JobRunner {
    * @returns What happened.
    */
   job_stop(source: string, id: string): JobStopResult {
-    const entry: JobEntry | undefined = this.entries.get(this.key_of(source, id));
+    const entry: JobEntry | undefined = this.entries.get(this.key_format(source, id));
     if (entry === undefined) return 'unknown';
     if (entry.controller === undefined) return 'not-running';
     if (entry.controller.signal.aborted) return 'already-stopping';
@@ -352,7 +352,7 @@ export class JobRunner {
    * @returns A copy, or undefined.
    */
   job_get(source: string, id: string): JobRecord | undefined {
-    const entry: JobEntry | undefined = this.entries.get(this.key_of(source, id));
+    const entry: JobEntry | undefined = this.entries.get(this.key_format(source, id));
     return entry === undefined ? undefined : { ...entry.record, data: { ...entry.record.data } };
   }
 
@@ -380,7 +380,7 @@ export class JobRunner {
    * @returns Its record at the end, or at the moment following stopped.
    */
   job_follow(source: string, id: string, onLine: (line: string) => void, signal?: AbortSignal): Promise<JobRecord | undefined> {
-    const key: string = this.key_of(source, id);
+    const key: string = this.key_format(source, id);
     const entry: JobEntry | undefined = this.entries.get(key);
     if (entry === undefined) return Promise.resolve(undefined);
     for (const line of entry.tail) onLine(line);
@@ -441,7 +441,7 @@ export class JobRunner {
    */
   log_read(source: string, id: string): string | null {
     const lines: string[] = this.logLines_read(source, id);
-    return lines.length === 0 && !this.entries.has(this.key_of(source, id)) ? null : lines.map((line: string): string => `${line}\n`).join('');
+    return lines.length === 0 && !this.entries.has(this.key_format(source, id)) ? null : lines.map((line: string): string => `${line}\n`).join('');
   }
 
   /**
@@ -453,7 +453,7 @@ export class JobRunner {
     return this.sources.map((source: JobSource): TaskSource => ({
       id: source.id,
       label: source.label,
-      list: async (): Promise<Task[]> => this.jobs_list(source.id).map((record: JobRecord): Task => this.task_of(record)),
+      list: async (): Promise<Task[]> => this.jobs_list(source.id).map((record: JobRecord): Task => this.task_build(record)),
       log: async (id: string): Promise<string | null> => this.log_read(source.id, id),
     }));
   }
@@ -464,8 +464,8 @@ export class JobRunner {
    * @param record - Its record.
    * @returns The task.
    */
-  private task_of(record: JobRecord): Task {
-    const entry: JobEntry | undefined = this.entries.get(this.key_of(record.source, record.id));
+  private task_build(record: JobRecord): Task {
+    const entry: JobEntry | undefined = this.entries.get(this.key_format(record.source, record.id));
     return {
       id: record.id,
       label: record.label,

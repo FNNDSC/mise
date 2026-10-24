@@ -41,7 +41,7 @@ import {
   type PacsServer,
   type PacsStudy,
   type WireEnvelope,
-  patientAddress_of,
+  patientAddress_format,
 } from '@fnndsc/menu';
 import type { ProgressMessage } from '../../calypso/client.js';
 import { Listing, listingChild_declare, type ListingStateParts } from '../roster/listing.js';
@@ -86,7 +86,7 @@ export interface PacsPanelHandlers {
  * @param series - The series as the model holds it.
  * @returns Its facts.
  */
-export function seriesFacts_of(series: PacsSeries): PacsSeriesFacts {
+export function seriesFacts_derive(series: PacsSeries): PacsSeriesFacts {
   return {
     inCube: series.pulled === true,
     folderKnown: series.folderPath !== undefined,
@@ -118,7 +118,7 @@ export function seriesFacts_of(series: PacsSeries): PacsSeriesFacts {
  * @param study - The study.
  * @returns The folder, or null when any series is not yet home.
  */
-export function studyFolder_of(study: PacsStudy): string | null {
+export function studyFolder_derive(study: PacsStudy): string | null {
   if (study.series.length === 0) return null;
   const parents: string[] = [];
   for (const series of study.series) {
@@ -130,7 +130,7 @@ export function studyFolder_of(study: PacsStudy): string | null {
 }
 
 export function seriesVerbs_offered(series: PacsSeries): { gather: boolean; image: boolean; dir: boolean; pull: boolean } {
-  const facts: PacsSeriesFacts = seriesFacts_of(series);
+  const facts: PacsSeriesFacts = seriesFacts_derive(series);
   const offers = (name: string): boolean => verbRule_get(PACS_SERIES_ROSTER, name).offered(facts);
   return { gather: offers('gather'), image: offers('image'), dir: offers('dir'), pull: offers('pull') };
 }
@@ -399,7 +399,7 @@ function badge_paint(badge: HTMLElement, state: BadgeState): void {
   // honest about knowing no better. (A fired pull says its total at once,
   // so a waiting series drew a still, empty bar that read as stuck.)
   const counted: string = state.total !== undefined ? ` ${state.current ?? 0}/${state.total}` : '';
-  const fraction: number | null = badgeFraction_of(state);
+  const fraction: number | null = badgeFraction_compute(state);
   const track: HTMLSpanElement = document.createElement('span');
   track.className = fraction === null ? 'pacs-bar pacs-bar-pacing' : 'pacs-bar';
   const fill: HTMLSpanElement = document.createElement('span');
@@ -419,7 +419,7 @@ function badge_paint(badge: HTMLElement, state: BadgeState): void {
  * @param state - The series' state.
  * @returns The fraction, 0..1, or null to pace.
  */
-export function badgeFraction_of(state: BadgeState): number | null {
+export function badgeFraction_compute(state: BadgeState): number | null {
   if (state.status === 'queued' || state.total === undefined || state.total === 0 || (state.current ?? 0) === 0) return null;
   return Math.min(1, (state.current ?? 0) / state.total);
 }
@@ -627,7 +627,7 @@ export class PacsPanel {
       // A patient is numbered in its own sequence (`@PAT001`) and hands a
       // verb every series of theirs; one the PACS answered nothing for has
       // nothing to hand and counts itself dim.
-      address: (row: PatientRow): string | undefined => (row.studies.length > 0 ? patientAddress_of(row.patient) : undefined),
+      address: (row: PatientRow): string | undefined => (row.studies.length > 0 ? patientAddress_format(row.patient) : undefined),
       // Navigating is not selecting: the fold cell folds, the row selects.
       control: 'fold',
       row: {
@@ -833,7 +833,7 @@ export class PacsPanel {
           return holder;
         },
         compare: (row: PatientRow): number => {
-          const progress: ListingProgress = this.patientProgress_of(row);
+          const progress: ListingProgress = this.patientProgress_compute(row);
           return progress.total === 0 ? -1 : progress.done / progress.total;
         },
       },
@@ -871,7 +871,7 @@ export class PacsPanel {
   }
 
   /** A patient's progress: every series under it, summed and never averaged. */
-  private patientProgress_of(row: PatientRow): ListingProgress {
+  private patientProgress_compute(row: PatientRow): ListingProgress {
     return progress_aggregate(
       row.studies.flatMap((study: PacsStudy): ListingProgress[] =>
         study.series.map((series: PacsSeries): ListingProgress =>
@@ -1002,7 +1002,7 @@ export class PacsPanel {
           return holder;
         },
         compare: (row: StudyRow): number => {
-          const progress: ListingProgress = this.studyProgress_of(row);
+          const progress: ListingProgress = this.studyProgress_compute(row);
           return progress.total === 0 ? -1 : progress.done / progress.total;
         },
       },
@@ -1096,9 +1096,9 @@ export class PacsPanel {
         // A study whose every series is home can be processed as one folder:
         // the series folders share a parent, and that parent is the input.
         label: verbRule_get(PACS_STUDY_ROSTER, 'process').label({ addressable: true, allInCube: true }),
-        offered: (row: StudyRow): boolean => studyFolder_of(row.study) !== null,
+        offered: (row: StudyRow): boolean => studyFolder_derive(row.study) !== null,
         run: (row: StudyRow): void => {
-          const folder: string | null = studyFolder_of(row.study);
+          const folder: string | null = studyFolder_derive(row.study);
           if (folder !== null) this.handlers.process_open(folder);
         },
       },
@@ -1106,7 +1106,7 @@ export class PacsPanel {
   }
 
   /** A study's progress: its series' summed, never averaged. */
-  private studyProgress_of(row: StudyRow): ListingProgress {
+  private studyProgress_compute(row: StudyRow): ListingProgress {
     return progress_aggregate(
       row.study.series.map(
         (series: PacsSeries): ListingProgress =>
@@ -1600,7 +1600,7 @@ export class PacsPanel {
   private badgeState_set(seriesUID: string, state: BadgeState): void {
     this.badgeStates.set(seriesUID, state);
     badgeStateLast.set(seriesUID, state);
-    this.seriesProgress.set(seriesUID, progress_ofState(state, this.seriesProgress.get(seriesUID)));
+    this.seriesProgress.set(seriesUID, progress_deriveFromState(state, this.seriesProgress.get(seriesUID)));
     // Every badge for this series, in every pane showing it.
     badgeElements_paint(seriesUID, (badge: HTMLElement): void => this.badge_paint(badge, state));
     for (const [key, track] of this.studyTracks) {
@@ -1686,7 +1686,7 @@ export class PacsPanel {
           continue;
         }
         if (sameQuery && held !== undefined) continue;
-        this.seriesProgress.set(series.seriesUID, progress_ofSeries(series));
+        this.seriesProgress.set(series.seriesUID, progress_deriveFromSeries(series));
       }
     }
     this.results_repaint();
@@ -1930,7 +1930,7 @@ function folderKey(path: string): string {
 }
 
 /** What a series' progress is before anything has been asked of it. */
-function progress_ofSeries(series: PacsSeries): ListingProgress {
+function progress_deriveFromSeries(series: PacsSeries): ListingProgress {
   const held: number = series.pulledFiles ?? 0;
   const total: number = Math.max(series.fileCount ?? 0, held);
   if (series.pulled === true) return { done: total, total };
@@ -1949,7 +1949,7 @@ function progress_ofSeries(series: PacsSeries): ListingProgress {
  *   sends none.
  * @returns The series' progress.
  */
-function progress_ofState(state: BadgeState, known: ListingProgress | undefined): ListingProgress {
+function progress_deriveFromState(state: BadgeState, known: ListingProgress | undefined): ListingProgress {
   const total: number = state.total ?? known?.total ?? 0;
   if (state.status === 'error') return { done: state.current ?? known?.done ?? 0, total, failed: true };
   if (state.status === 'done') return { done: total, total };

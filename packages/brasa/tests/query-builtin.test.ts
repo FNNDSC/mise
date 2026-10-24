@@ -57,8 +57,8 @@ jest.unstable_mockModule('../src/session/index.js', () => ({ session: { getCWD: 
 // tests the ASK around them, so the writer is stubbed and the renderer's
 // own behaviour is pinned in query-csv.test.ts.
 jest.unstable_mockModule('../src/builtins/net/query.csv.js', () => ({
-  pacsAnswer_toCsv: (): string => '"MRN"\n"1234"\n',
-  pacsAnswer_toTable: (_model: unknown, level: string = 'study'): string => `TABLE ${level}\n`,
+  pacsAnswer_renderCsv: (): string => '"MRN"\n"1234"\n',
+  pacsAnswer_renderTable: (_model: unknown, level: string = 'study'): string => `TABLE ${level}\n`,
   csvFile_write: (csv: string, destination: string): Promise<{ ok: boolean; path?: string; message?: string }> =>
     mockFilesCreate(csv, destination).then((written: boolean) => (
       written ? { ok: true, path: destination } : { ok: false, message: `could not write ${destination}` })),
@@ -466,7 +466,7 @@ describe('a cohort', () => {
   }
 
   /** The patient rows of the envelope's model. */
-  function patients_of(envelope: unknown): Array<Record<string, unknown>> {
+  function patients_derive(envelope: unknown): Array<Record<string, unknown>> {
     const model = (envelope as { model?: { data?: { patients?: Array<Record<string, unknown>> } } }).model;
     return model?.data?.patients ?? [];
   }
@@ -475,7 +475,7 @@ describe('a cohort', () => {
     const load = pacs_stub();
     const envelope = await builtin_query(['--patients', '1234,4532,6654']);
     expect(load.asked().sort()).toEqual(['1234', '4532', '6654']);
-    const patients = patients_of(envelope);
+    const patients = patients_derive(envelope);
     expect(patients.map((patient) => patient.patientId)).toEqual(['1234', '4532', '6654']);
     expect(patients.every((patient) => patient.status === 'found')).toBe(true);
   });
@@ -501,7 +501,7 @@ describe('a cohort', () => {
   it('distinguishes a miss from a question that could not be asked', async () => {
     pacs_stub({ empty: new Set(['4532']), unreachable: new Set(['6654']) });
     const envelope = await builtin_query(['--patients', '1234,4532,6654']);
-    const byId = new Map(patients_of(envelope).map((patient) => [patient.patientId, patient]));
+    const byId = new Map(patients_derive(envelope).map((patient) => [patient.patientId, patient]));
     expect(byId.get('1234')?.status).toBe('found');
     expect(byId.get('4532')?.status).toBe('none');
     expect(byId.get('4532')?.studyCount).toBe(0);
@@ -532,7 +532,7 @@ describe('a cohort', () => {
     const envelope = await builtin_query(['--patients', '1234,4532']);
     // The replayed MRN never reached the PACS.
     expect(load.asked()).toEqual(['4532']);
-    const byId = new Map(patients_of(envelope).map((patient) => [patient.patientId, patient]));
+    const byId = new Map(patients_derive(envelope).map((patient) => [patient.patientId, patient]));
     expect((byId.get('1234')?.provenance as { replayed?: boolean } | undefined)?.replayed).toBe(true);
     expect((byId.get('4532')?.provenance as { replayed?: boolean } | undefined)?.replayed).toBe(false);
   });
@@ -542,7 +542,7 @@ describe('a cohort', () => {
     const envelope = await builtin_query(['--patients', '1234,4532']);
     expect((envelope as { status: string }).status).toBe('error');
     // The model still crosses: which MRNs went unasked is the useful part.
-    expect(patients_of(envelope)).toHaveLength(2);
+    expect(patients_derive(envelope)).toHaveLength(2);
   });
 
   it('refuses a cross-product that would launch hundreds', async () => {

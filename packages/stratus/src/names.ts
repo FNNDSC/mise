@@ -21,7 +21,7 @@ export interface Segment<T extends Named> {
 }
 
 /** The suffix a duplicate wears: the last six characters of its id. */
-export function idSuffix_of(id: string): string {
+export function idSuffix_extract(id: string): string {
   return id.slice(-6);
 }
 
@@ -36,7 +36,7 @@ export function segments_assign<T extends Named>(items: ReadonlyArray<T>): Segme
   const counts: Map<string, number> = new Map();
   for (const item of items) counts.set(item.name, (counts.get(item.name) ?? 0) + 1);
   return items.map((item: T): Segment<T> => ({
-    segment: (counts.get(item.name) ?? 0) > 1 ? `${item.name}~${idSuffix_of(item.id)}` : item.name,
+    segment: (counts.get(item.name) ?? 0) > 1 ? `${item.name}~${idSuffix_extract(item.id)}` : item.name,
     item,
   }));
 }

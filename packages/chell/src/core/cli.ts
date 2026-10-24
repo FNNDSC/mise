@@ -115,7 +115,7 @@ export interface CliActionOptions {
  * @param fileExists - Predicate testing whether a path exists (for script auto-detect).
  * @returns The resolved configuration.
  */
-export function cliConfig_fromArgs(
+export function cliConfig_parse(
   target: string | undefined,
   options: CliActionOptions,
   fileExists: (path: string) => boolean,
@@ -415,7 +415,7 @@ export function cli_parse(argv: string[], version: string, info: string = ''): P
         const normalised: CliActionOptions = doorRaw === false
           ? { ...options, door: undefined, noDoor: true }
           : doorRaw === true ? { ...options, door: undefined } : options;
-        config = options.info ? { mode: 'info', output: info } : cliConfig_fromArgs(target, normalised, existsSync);
+        config = options.info ? { mode: 'info', output: info } : cliConfig_parse(target, normalised, existsSync);
       });
 
     // Capture help/version output instead of writing to stdout

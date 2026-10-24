@@ -53,7 +53,7 @@ export {
 export {
   clientMessage_parse,
   serverMessage_parse,
-  clientMessage_fromJson,
+  clientMessage_parseJson,
   attach_parse,
   type ParseResult,
 } from '@fnndsc/menu';
@@ -63,7 +63,7 @@ export { CalypsoDaemon, type DaemonOptions, type EditOutcome } from './daemon/se
 export {
   HOST_CONTROL_OFF,
   HOST_CONTROL_TIERS,
-  hostControl_fromInputs,
+  hostControl_build,
   hostControl_parseArgv,
   hostControl_guard,
   hostControl_describe,
@@ -109,7 +109,7 @@ export {
 export { discovery_read, discovery_write, discovery_path, type Discovery } from './daemon/discovery.js';
 export {
   identity_normalise,
-  identity_forSession,
+  identity_deriveForSession,
   DISCONNECTED_IDENTITY,
   berthKey_compute,
   berthDir_path,

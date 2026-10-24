@@ -93,7 +93,7 @@ export class ModelRouter {
    * @param modelKind - The model kind.
    * @returns The pane kind, or undefined when it claims nothing.
    */
-  claimKind_of(modelKind: string): PaneKind | undefined {
+  claimKind_find(modelKind: string): PaneKind | undefined {
     return this.claims.get(modelKind);
   }
 

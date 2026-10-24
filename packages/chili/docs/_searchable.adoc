@@ -122,7 +122,7 @@ const s2 = Searchable.compound("name:foo,version:1.0");
 s2.toNormalizedString();  // "name:foo,version:1.0" (unchanged)
 ----
 
-This normalized string is then passed through `options_toParams()`, merged with pagination options, and sent to the `@fnndsc/chrisapi` client as a standard HTTP Query String:
+This normalized string is then passed through `options_convertToParams()`, merged with pagination options, and sent to the `@fnndsc/chrisapi` client as a standard HTTP Query String:
 
 `GET /api/v1/endpoint/?name=foo&version=1.0`
 

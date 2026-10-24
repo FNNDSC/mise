@@ -19,7 +19,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   procDataFacts_settled: () => new Promise<number>((resolve) => { factsSettled = () => resolve(1); }),
 }));
 
-const { universeLayoutInput_of, universeLayout_lay, universeLayout_underWay, universeLayouts_warm, SESSION_GALAXY_NODES_MIN } = await import('../src/chris/universeLayout.js');
+const { universeLayoutInput_build, universeLayout_lay, universeLayout_underWay, universeLayouts_warm, SESSION_GALAXY_NODES_MIN } = await import('../src/chris/universeLayout.js');
 
 /** A feed: a chain of groups. */
 const feed = (id: number, plugins: string[], created: string = '2026-01-01T00:00:00Z') => ({
@@ -32,13 +32,13 @@ beforeEach(() => { kept.clear(); order.length = 0; });
 
 describe('the engine input', () => {
   it('is the scene\'s: every feed sized by jobs, molecules by feed, anchors in none, gravity on, reach by size', () => {
-    const small = universeLayoutInput_of('galaxy', lab(4));
+    const small = universeLayoutInput_build('galaxy', lab(4));
     expect(small.physics).toMatchObject({ charge: true, link: true, collide: true, gravity: true, reach: 12 });
     expect(small.nodes.find((n) => n.id === 'feed:1:0')?.group).toBe('feed:1');
     expect(small.nodes.find((n) => n.id.startsWith('shape:'))?.group).toBeNull();
-    const crowd = universeLayoutInput_of('galaxy', lab(200));
+    const crowd = universeLayoutInput_build('galaxy', lab(200));
     expect(crowd.physics.reach).toBeUndefined();
-    const stars = universeLayoutInput_of('constellations', lab(4));
+    const stars = universeLayoutInput_build('constellations', lab(4));
     expect(stars.nodes.some((n) => n.attrs?.['kind'] === 'star')).toBe(true);
   });
 });

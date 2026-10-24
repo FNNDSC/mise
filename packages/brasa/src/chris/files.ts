@@ -4,7 +4,7 @@
  *
  * @module
  */
-import { vfsOutcome_toResult } from '@fnndsc/fond';
+import { vfsOutcome_convertToResult } from '@fnndsc/fond';
 import type { Result } from '@fnndsc/fond';
 import type { Backend, FileByteStream } from '../core/backend.js';
 import { FileReadRefusal } from '../core/fileRefusal.js';
@@ -73,8 +73,8 @@ async function projectedPath_physical(projected: string): Promise<string> {
     const { vfsDispatcher } = await import('@fnndsc/salsa');
     const target: Result<string> = await vfsDispatcher.linkTarget_resolve(link[1] as string);
     if (!target.ok) return projected;
-    const { logical_toPhysical } = await import('@fnndsc/chili/utils');
-    const physical: Result<string> = await logical_toPhysical(`${target.value}${link[2] ?? ''}`);
+    const { logicalPath_resolve } = await import('@fnndsc/chili/utils');
+    const physical: Result<string> = await logicalPath_resolve(`${target.value}${link[2] ?? ''}`);
     return physical.ok ? physical.value : projected;
   } catch {
     return projected;
@@ -109,7 +109,7 @@ async function file_read(filePath: string): Promise<Buffer> {
   // route and 404'd: the volume a run had just produced could not be read
   // at the address its own graph gives for it.
   if (vfsDispatcher.path_isVirtual(resolved)) {
-    const projected: Result<Buffer> = vfsOutcome_toResult(await vfsDispatcher.readBinary(resolved), 'readBinary', resolved);
+    const projected: Result<Buffer> = vfsOutcome_convertToResult(await vfsDispatcher.readBinary(resolved), 'readBinary', resolved);
     if (projected.ok) return projected.value;
     // A node's data link can point at a folder that is ITSELF a link — a
     // `pl-dircopy` of a PACS pull stores its DICOM under `/SERVICES/PACS`

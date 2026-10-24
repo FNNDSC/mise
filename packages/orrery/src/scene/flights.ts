@@ -136,7 +136,7 @@ export class Flights<N extends SpaceNode> {
   public unfold(plan: UnfoldPlan<N>, onDone: () => void): void {
     this.busy = true;
     const places: Places = this.ports.positions_get();
-    const centre: [number, number, number] = centre_of(places, plan.from);
+    const centre: [number, number, number] = centre_compute(places, plan.from);
     const random: () => number = this.ports.random ?? ((): number => Math.random() - 0.5);
     for (const id of plan.unfolding) {
       const at: [number, number, number] | undefined = plan.placed?.[id];
@@ -192,7 +192,7 @@ export class Flights<N extends SpaceNode> {
  * @param tiers - Ids to try, tier by tier.
  * @returns The centre; the origin when no tier has a place.
  */
-export function centre_of(places: Places, tiers: ReadonlyArray<ReadonlyArray<string>>): [number, number, number] {
+export function centre_compute(places: Places, tiers: ReadonlyArray<ReadonlyArray<string>>): [number, number, number] {
   for (const tier of tiers) {
     const centre: [number, number, number] = [0, 0, 0];
     let counted: number = 0;

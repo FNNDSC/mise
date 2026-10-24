@@ -40,7 +40,7 @@ import {
 } from '../builtins/help.js';
 import { envelopeHandler_wrap, envelope_deliver, sink_get, PipeCaptureSink, sinkScope_run } from './sink.js';
 import { reference_refusal, reference_resolve, unresolvedStands_get, verbInHand_set } from './expansion.js';
-import { answer_note, answerConsulted_take, answerRows_of, type SessionAnswer } from '../session/answer.js';
+import { answer_note, answerConsulted_take, answerRows_derive, type SessionAnswer } from '../session/answer.js';
 import {
   shellWords_referencesExpand,
   shellWords_tokenize,
@@ -450,7 +450,7 @@ async function chellCommand_executeAndCapture(commandLine: string): Promise<Capt
  * @returns True for a listing.
  */
 function listing_is(model: CommandEnvelope['model']): model is NonNullable<CommandEnvelope['model']> {
-  return model !== undefined && answerRows_of(model.kind, model.data) !== null;
+  return model !== undefined && answerRows_derive(model.kind, model.data) !== null;
 }
 
 /**

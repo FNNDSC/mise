@@ -31,7 +31,7 @@ export interface CapacityCommandContext {
  * @param spec - The spec's text.
  * @returns The family.
  */
-export function specFamily_of(spec: string | null): string | null {
+export function specFamily_parse(spec: string | null): string | null {
   const match: RegExpMatchArray | null = spec?.match(/^family:\s*([A-Za-z0-9.]+)/m) ?? null;
   return match?.[1] ?? null;
 }
@@ -82,7 +82,7 @@ export async function capacity_run(context: CapacityCommandContext, args: Readon
   if (region === null) return envelope_error('', undefined, 'capacity: not connected\n');
   const families: string[] = args.length > 0
     ? [...args]
-    : [...new Set(context.domains.domains_read().map((domain: HarborDomain): string | null => specFamily_of(domain.spec)).filter((family: string | null): family is string => family !== null))];
+    : [...new Set(context.domains.domains_read().map((domain: HarborDomain): string | null => specFamily_parse(domain.spec)).filter((family: string | null): family is string => family !== null))];
   if (families.length === 0) return envelope_error('', undefined, 'capacity: name a shape family (capacity E5); no domain\'s spec names one\n');
   const rows: CapacityRow[] = await capacityRows_read(context.driver, region, families);
   const model: CapacityModel = { region, rows };

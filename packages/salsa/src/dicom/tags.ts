@@ -17,7 +17,7 @@
 import dcmjs from 'dcmjs';
 import type { DcmjsDict, DcmjsDictionaryEntry, DcmjsElement } from 'dcmjs';
 import { Ok, Err, type Result } from '@fnndsc/cumin';
-import { type DicomTagGroup, DICOM_PHI_TAGS, tagGroup_of, tagValue_decode } from './dictionary.js';
+import { type DicomTagGroup, DICOM_PHI_TAGS, tagGroup_derive, tagValue_decode } from './dictionary.js';
 
 /** One element of a DICOM dataset, as every surface sees it. */
 export interface DicomTag {
@@ -111,7 +111,7 @@ function dict_flatten(dict: DcmjsDict): DicomTag[] {
   const keys: string[] = Object.keys(dict)
     .filter((key: string): boolean => /^[0-9A-Fa-f]{8}$/.test(key) && !STRUCTURAL_TAGS.has(key.toUpperCase()))
     .sort();
-  return keys.map((key: string): DicomTag => element_toTag(key, dict[key]));
+  return keys.map((key: string): DicomTag => element_convertToTag(key, dict[key]));
 }
 
 /**
@@ -121,7 +121,7 @@ function dict_flatten(dict: DcmjsDict): DicomTag[] {
  * @param element - The raw element.
  * @returns The tag.
  */
-function element_toTag(key: string, element: DcmjsElement): DicomTag {
+function element_convertToTag(key: string, element: DcmjsElement): DicomTag {
   const upper: string = key.toUpperCase();
   const tag: string = `(${upper.slice(0, 4)},${upper.slice(4)})`;
   const groupNumber: number = parseInt(upper.slice(0, 4), 16);
@@ -136,7 +136,7 @@ function element_toTag(key: string, element: DcmjsElement): DicomTag {
     name,
     vr,
     value: '',
-    group: tagGroup_of(groupNumber, entry?.name),
+    group: tagGroup_derive(groupNumber, entry?.name),
     phi: DICOM_PHI_TAGS.has(name),
   };
 
@@ -151,7 +151,7 @@ function element_toTag(key: string, element: DcmjsElement): DicomTag {
     return result;
   }
   result.value = values.map((value: unknown): string => value_text(value, vr)).join('\\');
-  const decoded: string | undefined = decoded_of(name, result.value);
+  const decoded: string | undefined = decodedValue_resolve(name, result.value);
   if (decoded !== undefined) result.decoded = decoded;
   return result;
 }
@@ -196,7 +196,7 @@ function value_text(value: unknown, vr: string): string {
  * @param value - The tag's text value.
  * @returns Words, or nothing.
  */
-function decoded_of(name: string, value: string): string | undefined {
+function decodedValue_resolve(name: string, value: string): string | undefined {
   if (name === 'SOPClassUID' || name === 'MediaStorageSOPClassUID') {
     return dcmjs.data.DicomMetaDictionary.sopClassNamesByUID[value];
   }

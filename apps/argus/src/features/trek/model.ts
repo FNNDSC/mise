@@ -126,7 +126,7 @@ const CONDITION_NAMES: ReadonlyArray<ConditionName> = ['GREEN', 'DOCKED', 'YELLO
  * @param to - Where it points.
  * @returns The course in degrees, 0 up to 360 exclusive.
  */
-export function bearing_of(from: XY, to: XY): number {
+export function bearing_compute(from: XY, to: XY): number {
   const degrees: number = (Math.atan2(to.y - from.y, -(to.x - from.x)) * 180) / Math.PI;
   return (degrees + 360) % 360;
 }
@@ -138,7 +138,7 @@ export function bearing_of(from: XY, to: XY): number {
  * @param to - The other.
  * @returns The straight-line distance.
  */
-export function range_of(from: XY, to: XY): number {
+export function range_compute(from: XY, to: XY): number {
   return Math.hypot(to.x - from.x, to.y - from.y);
 }
 
@@ -148,7 +148,7 @@ export function range_of(from: XY, to: XY): number {
  * @param glyph - The C's glyph.
  * @returns Its kind.
  */
-export function sectorKind_of(glyph: string): SectorKind {
+export function sectorKind_derive(glyph: string): SectorKind {
   switch (glyph) {
     case ENTERPRISE: case QUEENE: return 'ship';
     case KLINGON: return 'klingon';
@@ -208,17 +208,17 @@ export function readout_build(state: TrekState): BridgeReadout {
     const row: SectorCell[] = [];
     for (let y: number = 0; y < NSECTS; y++) {
       const glyph: string = Sect[x]?.[y] ?? HOLE;
-      row.push({ x, y, kind: sectorKind_of(glyph), glyph });
+      row.push({ x, y, kind: sectorKind_derive(glyph), glyph });
     }
     sectors.push(row);
   }
   const klingons: KlingonSeen[] = Etc.klingon.slice(0, Etc.nkling)
-    .map((k): KlingonSeen => ({ x: k.x, y: k.y, bearing: bearing_of(sectorHere, k), range: range_of(sectorHere, k), power: k.power, mark: null }))
+    .map((k): KlingonSeen => ({ x: k.x, y: k.y, bearing: bearing_compute(sectorHere, k), range: range_compute(sectorHere, k), power: k.power, mark: null }))
     .sort((a: KlingonSeen, b: KlingonSeen): number => a.range - b.range);
   const bases: XY[] = Now.base.slice(0, Now.bases).map((b): XY => ({ x: b.x, y: b.y }));
   let nearestBase: BridgeReadout['nearestBase'] = null;
   for (const base of bases) {
-    const range: number = range_of(here, base);
+    const range: number = range_compute(here, base);
     if (nearestBase === null || range < nearestBase.range) nearestBase = { at: base, range, here: range === 0 };
   }
   const chart: ChartCell[][] = [];
@@ -268,7 +268,7 @@ const SKILL_NAMES: ReadonlyArray<string> = ['novice', 'fair', 'good', 'expert', 
  * @param readout - The readout.
  * @returns The items and their total.
  */
-export function score_of(readout: BridgeReadout): { items: ScoreItem[]; total: number } {
+export function score_compute(readout: BridgeReadout): { items: ScoreItem[]; total: number } {
   const { game, mission, param } = readout;
   const items: ScoreItem[] = [];
   items.push({ label: `${game.killk} Klingons killed`, points: Math.trunc(param.klingpwr / 4) * game.killk });
@@ -320,7 +320,7 @@ export function course_calc(readout: BridgeReadout, to: Place): { course: number
  * @param distance - The distance in quadrants.
  * @returns The place, clamped to the galaxy.
  */
-export function arrival_of(readout: BridgeReadout, course: number, distance: number): Place {
+export function arrival_compute(readout: BridgeReadout, course: number, distance: number): Place {
   const { quadrant, sector } = readout.position;
   const a: number = (course * Math.PI) / 180;
   const x: number = Math.min(NQUADS * NSECTS - 1, Math.max(0, Math.round(quadrant.x * NSECTS + sector.x - Math.cos(a) * distance * NSECTS)));
@@ -336,7 +336,7 @@ export function arrival_of(readout: BridgeReadout, course: number, distance: num
  * @param warptime - The C's warp time parameter.
  * @returns The stardates and the units, and the units with shields up.
  */
-export function warpCost_of(distance: number, warp: number, warptime: number): { stardates: number; units: number; unitsShielded: number } {
+export function warpCost_compute(distance: number, warp: number, warptime: number): { stardates: number; units: number; unitsShielded: number } {
   const units: number = Math.trunc((distance + 0.05) * warp * warp * warp);
   return { stardates: (warptime * distance) / (warp * warp), units, unitsShielded: 2 * units };
 }
@@ -347,7 +347,7 @@ export function warpCost_of(distance: number, warp: number, warptime: number): {
  * @param distance - The distance in quadrants.
  * @returns The stardates and the units.
  */
-export function impulseCost_of(distance: number): { stardates: number; units: number } {
+export function impulseCost_compute(distance: number): { stardates: number; units: number } {
   return { stardates: distance / 0.095, units: Math.trunc(20 + 100 * distance) };
 }
 
@@ -357,7 +357,7 @@ export function impulseCost_of(distance: number): { stardates: number; units: nu
  * @param range - The range in quadrants.
  * @returns The percentage.
  */
-export function phaserEffect_of(range: number): number {
+export function phaserEffect_compute(range: number): number {
   return Math.trunc(Math.pow(0.9, range * 10) * 98 + 0.5);
 }
 
@@ -368,7 +368,7 @@ export function phaserEffect_of(range: number): number {
  * @param readout - The readout, for the date, the condition and the dock factor.
  * @returns The two times in stardates, or null when the device works.
  */
-export function repairTimes_of(device: DeviceState, readout: BridgeReadout): { inFlight: number; docked: number } | null {
+export function repairTimes_compute(device: DeviceState, readout: BridgeReadout): { inFlight: number; docked: number } | null {
   if (device.repairAt === null) return null;
   const left: number = device.repairAt - readout.mission.stardate;
   const docked: boolean = readout.condition.name === 'DOCKED';

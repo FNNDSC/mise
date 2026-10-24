@@ -72,7 +72,7 @@ const LOOK: Extension = EditorView.theme({
  * @param extension - The file's extension, with its dot.
  * @returns The language extension, or none for plain text.
  */
-async function language_of(extension: string): Promise<Extension> {
+async function language_resolve(extension: string): Promise<Extension> {
   switch (extension.toLowerCase()) {
     case '.json': return (await import('@codemirror/lang-json')).json();
     case '.yaml': case '.yml': return (await import('@codemirror/lang-yaml')).yaml();
@@ -99,7 +99,7 @@ export async function editField_create(
   extension: string,
   changed: (text: string) => void,
 ): Promise<EditField> {
-  const language: Extension = await language_of(extension);
+  const language: Extension = await language_resolve(extension);
   const view: EditorView = new EditorView({
     parent: container,
     state: EditorState.create({

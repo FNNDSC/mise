@@ -20,7 +20,7 @@ import { spawn as childSpawn, type ChildProcess } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { berthKey_compute, berth_pathIn, berthUrl_isAlive, closing_write } from '@fnndsc/calypso/berth';
-import { restartLine_of, type Berth, type BootLine, type BootListener, type BootReport, type RestartWhy, type SessionHost, type SessionSighting } from './sessionHost.js';
+import { restartLine_render, type Berth, type BootLine, type BootListener, type BootReport, type RestartWhy, type SessionHost, type SessionSighting } from './sessionHost.js';
 
 /** How many boot lines a session keeps for late followers. */
 export const BOOT_LINES_KEPT: number = 2_000;
@@ -204,7 +204,7 @@ export class ProcessHost implements SessionHost {
    * @param identity - The normalised identity.
    * @returns The directories; not necessarily existing yet.
    */
-  public dirs_of(identity: string): SessionDirs {
+  public dirs_build(identity: string): SessionDirs {
     const root: string = join(this.stateDir, berthKey_compute(identity));
     return {
       config: join(root, 'config'),
@@ -244,7 +244,7 @@ export class ProcessHost implements SessionHost {
    * runtime directory is that session's.
    */
   private berth_read(identity: string): Berth | null {
-    const runtime: string = this.dirs_of(identity).runtime;
+    const runtime: string = this.dirs_build(identity).runtime;
     const exact: Berth | null = this.berthFile_read(berth_pathIn(runtime, identity));
     if (exact !== null) return exact;
     const calypso: string = join(runtime, 'calypso');
@@ -357,7 +357,7 @@ export class ProcessHost implements SessionHost {
    *   rather than come up offline.
    */
   private async boot_run(record: SessionRecord, launch: SessionLaunch): Promise<Berth> {
-    const dirs: SessionDirs = this.dirs_of(record.identity);
+    const dirs: SessionDirs = this.dirs_build(record.identity);
     for (const dir of Object.values(dirs)) mkdirSync(dir, { recursive: true, mode: 0o700 });
     // A stratus session keeps its domains and its home beside its other
     // directories: never porter's own, which every session it starts shares.
@@ -495,7 +495,7 @@ export class ProcessHost implements SessionHost {
       for (const listener of record.listeners) listener.line(line);
     };
     record.starting = (async (): Promise<Berth> => {
-      say(restartLine_of(why));
+      say(restartLine_render(why));
       const ended: SpawnedSession | number | null = await this.process_signal(identity, old, 'restart');
       if (ended !== null && !(await this.gone_wait(identity, ended))) {
         return this.boot_end(record, 'failed', 'the old calypso daemon did not stop');
@@ -556,7 +556,7 @@ export class ProcessHost implements SessionHost {
   /** Leaves the reason beside the berth; a daemon that finds none says it was stopped. */
   private closing_leave(identity: string, cause: 'restart' | 'end'): void {
     try {
-      closing_write(this.dirs_of(identity).runtime, identity, cause);
+      closing_write(this.dirs_build(identity).runtime, identity, cause);
     } catch {
       // Unwritable: the daemon still goes, and says only that it stopped.
     }

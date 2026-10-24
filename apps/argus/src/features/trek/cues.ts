@@ -53,7 +53,7 @@ const LINE_CUES: ReadonlyArray<[RegExp, CueName]> = [
  * @param line - One line of the ship's log.
  * @returns The cues, in order; usually none.
  */
-export function lineCues_of(line: string): CueName[] {
+export function lineCues_derive(line: string): CueName[] {
   const cues: CueName[] = [];
   for (const [pattern, cue] of LINE_CUES) {
     if (pattern.test(line) && !cues.includes(cue)) cues.push(cue);
@@ -70,7 +70,7 @@ export function lineCues_of(line: string): CueName[] {
  * @param after - The readout after it.
  * @returns The cues, in order.
  */
-export function stateCues_of(before: BridgeReadout | null, after: BridgeReadout): CueName[] {
+export function stateCues_derive(before: BridgeReadout | null, after: BridgeReadout): CueName[] {
   const cues: CueName[] = [];
   if (before !== null && before.condition.name !== after.condition.name) {
     switch (after.condition.name) {
@@ -91,7 +91,7 @@ export function stateCues_of(before: BridgeReadout | null, after: BridgeReadout)
  * @param commandId - The command's id.
  * @returns The cue, or null when the command's pill only beeps.
  */
-export function commandCue_of(commandId: string): CueName | null {
+export function commandCue_find(commandId: string): CueName | null {
   switch (commandId) {
     case 'abandon': return 'transporter';
     case 'destruct': return 'destruct';
@@ -107,7 +107,7 @@ export function commandCue_of(commandId: string): CueName | null {
  * @param commandId - The command whose question it is, or null.
  * @returns The cue, or null when the answer only beeps.
  */
-export function answerCue_of(question: TrekQuestion, commandId: string | null): CueName | null {
+export function answerCue_derive(question: TrekQuestion, commandId: string | null): CueName | null {
   if (question !== 'distance') return null;
   if (commandId === 'impulse') return 'impulse';
   if (commandId === 'move' || commandId === 'ram') return 'warp';
@@ -121,7 +121,7 @@ export function answerCue_of(question: TrekQuestion, commandId: string | null): 
  * @param station - Where it was pressed: 'computer' for a request pill, 'commit' for a wheel or slider commit, 'choice' for an answer pill.
  * @returns The label the bank names.
  */
-export function pillLabel_of(label: string, station: 'command' | 'computer' | 'commit' | 'choice' | 'view'): string {
+export function pillLabel_format(label: string, station: 'command' | 'computer' | 'commit' | 'choice' | 'view'): string {
   if (station === 'computer' && label === 'MOVE') return 'MOVE (COMPUTER)';
   if (station === 'commit') return /^SET COURSE/.test(label) ? 'SET COURSE' : 'SLIDER SET';
   if (station === 'choice' && /^\d+°$/.test(label)) return 'BURST ANGLE';

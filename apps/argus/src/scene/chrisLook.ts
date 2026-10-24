@@ -39,7 +39,7 @@ export interface ChrisLookInput {
  * @param node - The node.
  * @returns Its state.
  */
-export function chrisState_of(node: ChrisLookInput): NodeState {
+export function chrisState_derive(node: ChrisLookInput): NodeState {
   if (node.status !== undefined && RUNNING_STATUSES.has(node.status)) return 'live';
   if (node.status === 'finishedWithError' || (node.share !== undefined && node.share >= 1)) return 'failed';
   if (node.status === 'finishedSuccessfully' || (node.share !== undefined && node.status !== undefined)) return 'done';
@@ -53,7 +53,7 @@ export function chrisState_of(node: ChrisLookInput): NodeState {
  * @param node - The node.
  * @returns Its paint.
  */
-export function chrisPaint_of(node: ChrisLookInput): Paint {
+export function chrisPaint_derive(node: ChrisLookInput): Paint {
   if (node.share !== undefined && node.status !== 'cancelled') {
     if (node.share >= 1) return { token: 'error' };
     // Square root, so a small share still shows as a trace of red rather
@@ -77,10 +77,10 @@ export function chrisPaint_of(node: ChrisLookInput): Paint {
  *   finish wave passes through it (a stage finished either way, or never
  *   run; not one at work, cancelled, or in a status no one names).
  */
-export function chrisLook_of(node: ChrisLookInput): NodeLook {
+export function chrisLook_build(node: ChrisLookInput): NodeLook {
   return {
-    state: chrisState_of(node),
-    paint: chrisPaint_of(node),
+    state: chrisState_derive(node),
+    paint: chrisPaint_derive(node),
     ember: (node.share !== undefined && node.share > 0) || node.status === 'finishedWithError',
     waved: node.status === undefined || node.status === 'finishedSuccessfully' || node.status === 'finishedWithError',
   };

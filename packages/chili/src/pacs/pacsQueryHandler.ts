@@ -60,7 +60,7 @@ export class PACSQueryGroupHandler {
     return current;
   }
 
-  private options_withPACSFilter(
+  private options_buildWithPACSFilter(
     options: CLIoptions,
     pacsserver: string | null
   ): CLIoptions {
@@ -106,7 +106,7 @@ export class PACSQueryGroupHandler {
           );
           return;
         }
-        const mergedOptions: CLIoptions = this.options_withPACSFilter(
+        const mergedOptions: CLIoptions = this.options_buildWithPACSFilter(
           options,
           pacsserver
         );

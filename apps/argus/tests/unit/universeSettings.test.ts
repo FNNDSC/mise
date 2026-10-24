@@ -3,7 +3,7 @@
  * record that is missing, old or damaged never leaves the frame half-set.
  */
 import { describe, it, expect } from '@jest/globals';
-import { UNIVERSE_SETTINGS_DEFAULT, universeSettings_of, universeSettings_parse } from '../../src/features/universe/space.js';
+import { UNIVERSE_SETTINGS_DEFAULT, universeSettings_build, universeSettings_parse } from '../../src/features/universe/space.js';
 
 describe('universeSettings_parse', () => {
   it('opens a first visit as stars, every feed, sized by jobs, a sphere per stage', () => {
@@ -12,7 +12,7 @@ describe('universeSettings_parse', () => {
   });
 
   it('keeps what was chosen', () => {
-    const kept: string = JSON.stringify(universeSettings_of('spheres', 'shapes', 'feeds', 'census', 'clumps', false));
+    const kept: string = JSON.stringify(universeSettings_build('spheres', 'shapes', 'feeds', 'census', 'clumps', false));
     expect(universeSettings_parse(kept)).toEqual({ draw: 'spheres', view: 'shapes', scale: 'feeds', density: 'census', arrangement: 'clumps', captions: false });
   });
 

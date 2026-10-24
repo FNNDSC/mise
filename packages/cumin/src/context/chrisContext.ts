@@ -110,7 +110,7 @@ export async function chrisContextURL_parse(
     for (const [key, value] of queryParams.entries()) {
       if (key.includes("plugin")) {
         if (value.includes(":")) {
-          result.plugin = await searchable_toID(value);
+          result.plugin = await searchable_resolveID(value);
         } else {
           result.plugin = value;
         }
@@ -129,7 +129,7 @@ export async function chrisContextURL_parse(
  * @param searchable - The searchable string or object to search for.
  * @returns A Promise resolving to the plugin ID or null.
  */
-async function searchable_toID(searchable: string | Searchable): Promise<string | null> {
+async function searchable_resolveID(searchable: string | Searchable): Promise<string | null> {
   const searchableObj: Searchable = typeof searchable === 'string'
     ? Searchable.from(searchable)
     : searchable;
@@ -226,7 +226,7 @@ export class ChrisContext {
       for (const urlDir of urlDirs) {
         let url: string = (
           sessionConfig.connection as ConnectionConfig
-        ).dir_toUri(urlDir);
+        ).dir_convertToUri(urlDir);
         
         this.fullContext.users[user].urls[url] = {
           folder: await storage.read(path.join(userDir, urlDir, sessionConfig.cwdFile)),

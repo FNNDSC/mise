@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { WebSocket } from 'ws';
 import { CalypsoDaemon } from '../src/daemon/server';
-import { bundledWebRoot_find, packageWebRoot_find, cacheControl_forPath, contentDisposition_forPath, webRoot_resolve, webRootBuild_read, webRootVersion_read } from '../src/daemon/static';
+import { bundledWebRoot_find, packageWebRoot_find, cacheControl_derive, contentDisposition_format, webRoot_resolve, webRootBuild_read, webRootVersion_read } from '../src/daemon/static';
 import type { HostedEngine } from '../src/daemon/engine';
 import { CONTRACT_VERSION } from '@fnndsc/menu';
 import type { CommandEnvelope } from '@fnndsc/cumin';
@@ -277,12 +277,12 @@ describe('CalypsoDaemon static serving', () => {
   });
 });
 
-describe('contentDisposition_forPath', () => {
+describe('contentDisposition_format', () => {
   it('names the attachment after the file, twice', () => {
-    expect(contentDisposition_forPath('/home/demo/a b.csv')).toBe(`attachment; filename="a b.csv"; filename*=UTF-8''a%20b.csv`);
+    expect(contentDisposition_format('/home/demo/a b.csv')).toBe(`attachment; filename="a b.csv"; filename*=UTF-8''a%20b.csv`);
   });
   it('keeps the real name in filename* and a safe one in filename', () => {
-    expect(contentDisposition_forPath('/home/demo/résumé "q".txt')).toBe(
+    expect(contentDisposition_format('/home/demo/résumé "q".txt')).toBe(
       `attachment; filename="r_sum_ _q_.txt"; filename*=UTF-8''r%C3%A9sum%C3%A9%20%22q%22.txt`,
     );
   });
@@ -529,19 +529,19 @@ describe('CalypsoDaemon without a web root', () => {
  * `index.html`, which names the same old hashed assets, so the whole
  * surface stayed the previous build with nothing saying why.
  */
-describe('cacheControl_forPath', () => {
+describe('cacheControl_derive', () => {
   it('never lets a browser keep the page that names the assets', () => {
-    expect(cacheControl_forPath('/web/index.html')).toBe('no-store');
-    expect(cacheControl_forPath('/web/INDEX.HTML')).toBe('no-store');
+    expect(cacheControl_derive('/web/index.html')).toBe('no-store');
+    expect(cacheControl_derive('/web/INDEX.HTML')).toBe('no-store');
   });
 
   it('lets a hashed asset be kept forever, since a new build is a new name', () => {
-    expect(cacheControl_forPath('/web/assets/index-DaupQIyb.js')).toBe('public, max-age=31536000, immutable');
-    expect(cacheControl_forPath('/web/assets/theme-a1b2c3d4e5.css')).toBe('public, max-age=31536000, immutable');
+    expect(cacheControl_derive('/web/assets/index-DaupQIyb.js')).toBe('public, max-age=31536000, immutable');
+    expect(cacheControl_derive('/web/assets/theme-a1b2c3d4e5.css')).toBe('public, max-age=31536000, immutable');
   });
 
   it('makes anything else revalidate, which is the safe answer for a name that can be reused', () => {
-    expect(cacheControl_forPath('/web/favicon.ico')).toBe('no-cache');
-    expect(cacheControl_forPath('/web/fonts/Meslo.woff2')).toBe('no-cache');
+    expect(cacheControl_derive('/web/favicon.ico')).toBe('no-cache');
+    expect(cacheControl_derive('/web/fonts/Meslo.woff2')).toBe('no-cache');
   });
 });

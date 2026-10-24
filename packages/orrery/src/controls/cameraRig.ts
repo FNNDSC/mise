@@ -306,7 +306,7 @@ export class CameraRig {
     this.holding = true;
     this.home = { position: this.camera.position.clone(), quaternion: this.camera.quaternion.clone() };
     const toPos: THREE.Vector3 = target.clone().add(this.camera.position.clone().sub(target).normalize().multiplyScalar(0.4));
-    this.flight_begin(toPos, this.aim_from(this.camera.position, target), FLIGHT_INTO_MS, onArrived);
+    this.flight_begin(toPos, this.aim_compute(this.camera.position, target), FLIGHT_INTO_MS, onArrived);
     return true;
   }
 
@@ -386,7 +386,7 @@ export class CameraRig {
   }
 
   /** The aim a camera at a position would have looking at a target. */
-  private aim_from(position: THREE.Vector3, target: THREE.Vector3): THREE.Quaternion {
+  private aim_compute(position: THREE.Vector3, target: THREE.Vector3): THREE.Quaternion {
     const aim: THREE.Camera = this.camera.clone();
     aim.position.copy(position);
     aim.lookAt(target);
@@ -400,7 +400,7 @@ export class CameraRig {
     heading.normalize();
     const toPos: THREE.Vector3 = center.clone().add(heading.multiplyScalar(distance));
     this.focus.copy(center);
-    this.flight_begin(toPos, this.aim_from(toPos, center), durationMs, onDone);
+    this.flight_begin(toPos, this.aim_compute(toPos, center), durationMs, onDone);
   }
 
   private flight_begin(toPos: THREE.Vector3, toQuat: THREE.Quaternion, durationMs: number, onDone: () => void): void {

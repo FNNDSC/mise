@@ -16,7 +16,7 @@ import type { CloudDriver, ResourceCounts } from '../cloud/driver.js';
 import type { HarborDomain, StepState } from '../domains/harborOci.js';
 import type { DomainTree } from '../vfs/domains.js';
 import { stateTone_paint } from '../vfs/look.js';
-import { lastDone_of } from '../domains/harborOci.js';
+import { lastDone_find } from '../domains/harborOci.js';
 import { capacity_run, CAPACITY_HELP } from './capacity.js';
 import { spend_line, spend_read, type Spend } from '../domain/spend.js';
 import { spend_run, SPEND_HELP } from './spend.js';

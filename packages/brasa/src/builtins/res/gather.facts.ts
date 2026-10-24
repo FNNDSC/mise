@@ -31,7 +31,7 @@ interface AnsweredSeries {
  * @param address - A resolved `/net/pacs/queries/...` path.
  * @returns The query, or null when the path names none.
  */
-function pathQuery_of(address: string): { queryId: number; folder: string } | null {
+function pathQuery_parse(address: string): { queryId: number; folder: string } | null {
   if (!address.startsWith('/net/pacs/')) return null;
   const parts: string[] = address.split('/').filter(Boolean);
   const at: number = parts.findIndex((part: string): boolean => /_qid:\d+/.test(part));
@@ -75,7 +75,7 @@ export async function seriesFacts_fill(members: GatherMember[]): Promise<void> {
   const queries: Map<number, string> = new Map();
   for (const member of members) {
     if (member.kind !== 'series' || member.seriesUID === undefined) continue;
-    const query: { queryId: number; folder: string } | null = pathQuery_of(member.vfsPath);
+    const query: { queryId: number; folder: string } | null = pathQuery_parse(member.vfsPath);
     if (query !== null) queries.set(query.queryId, query.folder);
   }
   const answered: Map<number, Map<string, AnsweredSeries>> = new Map();
@@ -83,7 +83,7 @@ export async function seriesFacts_fill(members: GatherMember[]): Promise<void> {
 
   for (const member of members) {
     if (member.kind !== 'series' || member.seriesUID === undefined) continue;
-    const query: { queryId: number; folder: string } | null = pathQuery_of(member.vfsPath);
+    const query: { queryId: number; folder: string } | null = pathQuery_parse(member.vfsPath);
     if (query === null) continue;
     const found: AnsweredSeries | undefined = answered.get(query.queryId)?.get(member.seriesUID);
     if (found === undefined) continue;

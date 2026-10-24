@@ -15,7 +15,7 @@ import type { DagPanel } from '../features/dag/panel.js';
 import type { FilesPanel } from '../features/files/panel.js';
 import type { HostContext } from './hostContext.js';
 import type { PaneVerbs } from './paneVerbs.js';
-import { SIDES, side_ofArrow, type Side } from './sides.js';
+import { SIDES, side_findByArrow, type Side } from './sides.js';
 
 /** What the keys ask of the host. */
 export interface KeyHooks {
@@ -50,13 +50,13 @@ export interface KeyHooks {
 type Retreat = 'claimed' | 'yielded' | 'passed';
 
 /** The buttons of a pane's mode frame the keys can reach: shown and enabled, top to bottom. */
-export function frameButtons_of(pane: HTMLElement): HTMLButtonElement[] {
+export function frameButtons_list(pane: HTMLElement): HTMLButtonElement[] {
   return [...pane.querySelectorAll<HTMLButtonElement>('.mode-frame button')]
     .filter((button: HTMLButtonElement): boolean => !button.disabled && !button.hidden && button.offsetParent !== null);
 }
 
 /** The rows a pane's listing shows, top to bottom. */
-export function listingRows_of(pane: HTMLElement): HTMLElement[] {
+export function listingRows_list(pane: HTMLElement): HTMLElement[] {
   return [...pane.querySelectorAll<HTMLElement>('.listing-row')].filter((row: HTMLElement): boolean => row.offsetParent !== null);
 }
 
@@ -184,7 +184,7 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
    */
   const chord_handle = (event: KeyboardEvent, drawer: HTMLElement): boolean => {
     const claim = (): void => { event.preventDefault(); event.stopImmediatePropagation(); };
-    const arrowSide: Side | null = side_ofArrow(event.key);
+    const arrowSide: Side | null = side_findByArrow(event.key);
     if (event.ctrlKey && !event.metaKey && !event.altKey && arrowSide !== null) {
       // Ctrl-arrow: the boundary beside this pane moves a step; the drawer stays.
       const focused: string | null = layout.focused_get();
@@ -285,7 +285,7 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
       frames += 1;
       const active: Element | null = document.activeElement;
       const held: boolean = active instanceof HTMLButtonElement && active.closest('.mode-frame') !== null && pane.contains(active);
-      if (!held && (active === null || active === document.body)) frameButtons_of(pane)[0]?.focus();
+      if (!held && (active === null || active === document.body)) frameButtons_list(pane)[0]?.focus();
       if (frames < 30) window.requestAnimationFrame(focus_first);
     };
     focus_first();
@@ -310,7 +310,7 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
     const active: Element | null = document.activeElement;
     // Inside the frame: the arrows walk its verbs, ← gives the keys back.
     if (active instanceof HTMLButtonElement && active.closest('.mode-frame') !== null && pane.contains(active)) {
-      const buttons: HTMLButtonElement[] = frameButtons_of(pane);
+      const buttons: HTMLButtonElement[] = frameButtons_list(pane);
       const at: number = buttons.indexOf(active);
       if (event.key === 'ArrowLeft') { active.blur(); return claim(); }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -322,7 +322,7 @@ export function keys_wire(context: Pick<HostContext, 'layout' | 'panels' | 'pane
     }
     // Over the listing only when nothing else holds the keys.
     if (active !== null && active !== document.body && !active.classList.contains('listing-row')) return false;
-    const rows: HTMLElement[] = listingRows_of(pane);
+    const rows: HTMLElement[] = listingRows_list(pane);
     if (rows.length === 0) return false;
     const cursorAt: number = rows.findIndex((row: HTMLElement): boolean => row.classList.contains('listing-cursor'));
     const at: number = cursorAt >= 0 ? cursorAt : rows.findIndex((row: HTMLElement): boolean => row.classList.contains('listing-indicated'));

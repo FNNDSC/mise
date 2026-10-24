@@ -50,13 +50,13 @@ function filesystem_reset(): MemoryVfsProvider {
 }
 
 /** A file's text, or null. */
-async function text_of(where: string): Promise<string | null> {
+async function text_extract(where: string): Promise<string | null> {
   const read = await state.dispatcher.read(where);
   return read.ok ? read.value : null;
 }
 
 /** What a folder lists, as `name:type`. */
-async function names_of(folder: string): Promise<string[]> {
+async function itemNames_list(folder: string): Promise<string[]> {
   const listed = await state.dispatcher.list(folder);
   return listed.ok ? listed.value.map((item) => `${item.name}:${item.type}`).sort() : [];
 }
@@ -78,27 +78,27 @@ describe('touch', () => {
     expect(envelope.status).toBe('ok');
     expect(envelope.rendered).toContain('Created file: /home/chris/note.txt');
     expect(envelope.model?.kind).toBe('fs.touch');
-    expect(await text_of('/home/chris/note.txt')).toBe('');
+    expect(await text_extract('/home/chris/note.txt')).toBe('');
     expect(mockInvalidate).toHaveBeenCalledWith('/home/chris');
   });
 
   it('leaves a file already there as it is, its content kept', async () => {
     expect((await builtin_touch(['a.txt'])).status).toBe('ok');
-    expect(await text_of('/home/chris/a.txt')).toBe('alpha');
+    expect(await text_extract('/home/chris/a.txt')).toBe('alpha');
   });
 
   it('writes content whole into the first file only, replacing what was there', async () => {
     const envelope: CommandEnvelope = await builtin_touch(['a.txt', 'b.txt', '--withContents', 'hi']);
     expect(envelope.rendered).toContain('Wrote file: /home/chris/a.txt');
-    expect(await text_of('/home/chris/a.txt')).toBe('hi');
-    expect(await text_of('/home/chris/b.txt')).toBe('beta');
+    expect(await text_extract('/home/chris/a.txt')).toBe('hi');
+    expect(await text_extract('/home/chris/b.txt')).toBe('beta');
   });
 
   it('writes a local file\'s text, and says when that file is not there', async () => {
     const local: string = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'touch-')), 'from.txt');
     fs.writeFileSync(local, 'from disk');
     expect((await builtin_touch(['--withContentsFromFile', local, 'c.txt'])).status).toBe('ok');
-    expect(await text_of('/home/chris/c.txt')).toBe('from disk');
+    expect(await text_extract('/home/chris/c.txt')).toBe('from disk');
     const missing: CommandEnvelope = await builtin_touch(['--withContentsFromFile', `${local}.none`, 'd.txt']);
     expect(missing.renderedErr).toContain('Local file not found');
   });
@@ -107,7 +107,7 @@ describe('touch', () => {
     const envelope: CommandEnvelope = await builtin_touch(['--withContents', 'x', 'new/deeper/f.txt']);
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('No such file or directory');
-    expect(await names_of('/home/chris')).not.toContain('new:dir');
+    expect(await itemNames_list('/home/chris')).not.toContain('new:dir');
   });
 
   it('writes no file where a folder is, nor beneath a file', async () => {
@@ -120,8 +120,8 @@ describe('touch', () => {
     const beneath: CommandEnvelope = await builtin_touch(['a.txt/inner']);
     expect(beneath.status).toBe('error');
     expect(beneath.renderedErr).toContain('Not a directory');
-    expect(await names_of('/home/chris')).toContain('docs:dir');
-    expect(await text_of('/home/chris/a.txt')).toBe('alpha');
+    expect(await itemNames_list('/home/chris')).toContain('docs:dir');
+    expect(await text_extract('/home/chris/a.txt')).toBe('alpha');
   });
 
   it('writes a projected file only with text', async () => {
@@ -139,19 +139,19 @@ describe('mv', () => {
   it('asks where a lone source should go, and moves it there; moves nothing when that is abandoned', async () => {
     mockDestination.mockResolvedValueOnce('/home/chris/moved.txt');
     expect((await builtin_mv(['a.txt'])).status).toBe('ok');
-    expect(await text_of('/home/chris/moved.txt')).toBe('alpha');
+    expect(await text_extract('/home/chris/moved.txt')).toBe('alpha');
     mockDestination.mockResolvedValueOnce('   ');
     const abandoned: CommandEnvelope = await builtin_mv(['b.txt']);
     expect(abandoned.renderedErr).toContain('nothing moved');
-    expect(await text_of('/home/chris/b.txt')).toBe('beta');
+    expect(await text_extract('/home/chris/b.txt')).toBe('beta');
   });
 
   it('renames a file and invalidates source and destination', async () => {
     const envelope: CommandEnvelope = await builtin_mv(['a.txt', 'c.txt']);
     expect(envelope.status).toBe('ok');
     expect(envelope.model?.kind).toBe('fs.mv');
-    expect(await text_of('/home/chris/c.txt')).toBe('alpha');
-    expect(await text_of('/home/chris/a.txt')).toBeNull();
+    expect(await text_extract('/home/chris/c.txt')).toBe('alpha');
+    expect(await text_extract('/home/chris/a.txt')).toBeNull();
     expect(mockInvalidate).toHaveBeenCalledWith('/home/chris');
     expect(mockInvalidateTree).toHaveBeenCalledWith('/home/chris/c.txt');
   });
@@ -159,7 +159,7 @@ describe('mv', () => {
   it('moves into a folder the destination names, keeping the name; several sources summarised', async () => {
     const envelope: CommandEnvelope = await builtin_mv(['a.txt', 'b.txt', 'docs']);
     expect(envelope.rendered).toContain('Moved 2 file(s)');
-    expect(await names_of('/home/chris/docs')).toEqual(['a.txt:file', 'b.txt:file']);
+    expect(await itemNames_list('/home/chris/docs')).toEqual(['a.txt:file', 'b.txt:file']);
   });
 
   it('says a missing source by name, and keeps a destination already there', async () => {
@@ -169,7 +169,7 @@ describe('mv', () => {
     const onto: CommandEnvelope = await builtin_mv(['a.txt', 'b.txt']);
     expect(onto.status).toBe('ok');
     // The memory mount replaces, as a disk does; CUBE refuses (its own test says so).
-    expect(await text_of('/home/chris/b.txt')).toBe('alpha');
+    expect(await text_extract('/home/chris/b.txt')).toBe('alpha');
   });
 
   it('says the mount\'s refusal once, never "mv: mv:"', async () => {
@@ -182,7 +182,7 @@ describe('mv', () => {
 
   it('renames inside a projection, and refuses across one with the shell\'s words', async () => {
     expect((await builtin_mv(['/proc/tags/a', '/proc/tags/b'])).status).toBe('ok');
-    expect(await names_of('/proc/tags')).toEqual(['b:dir']);
+    expect(await itemNames_list('/proc/tags')).toEqual(['b:dir']);
     const across: CommandEnvelope = await builtin_mv(['/proc/tags/b', '/home/x']);
     expect(across.renderedErr).toContain("mv: cannot move '/proc/tags/b' to '/home/x': Invalid cross-device link");
     expect(across.renderedErr).not.toContain('mv: mv:');
@@ -198,7 +198,7 @@ describe('cp', () => {
   it('asks where a lone source should go, and copies it there; copies nothing when that is abandoned', async () => {
     mockDestination.mockResolvedValueOnce('/home/chris/copy.txt');
     expect((await builtin_cp(['a.txt'])).status).toBe('ok');
-    expect(await text_of('/home/chris/copy.txt')).toBe('alpha');
+    expect(await text_extract('/home/chris/copy.txt')).toBe('alpha');
     mockDestination.mockResolvedValueOnce('   ');
     const abandoned: CommandEnvelope = await builtin_cp(['b.txt']);
     expect(abandoned.renderedErr).toContain('nothing copied');
@@ -208,15 +208,15 @@ describe('cp', () => {
     const envelope: CommandEnvelope = await builtin_cp(['a.txt', 'c.txt']);
     expect(envelope.status).toBe('ok');
     expect(envelope.model?.kind).toBe('fs.cp');
-    expect(await text_of('/home/chris/c.txt')).toBe('alpha');
-    expect(await text_of('/home/chris/a.txt')).toBe('alpha');
+    expect(await text_extract('/home/chris/c.txt')).toBe('alpha');
+    expect(await text_extract('/home/chris/a.txt')).toBe('alpha');
     expect(mockInvalidateTree).toHaveBeenCalledWith('/home/chris/c.txt');
   });
 
   it('copies into a folder the destination names, keeping the name; several sources summarised', async () => {
     const envelope: CommandEnvelope = await builtin_cp(['a.txt', 'b.txt', 'docs']);
     expect(envelope.rendered).toContain('Copied 2 file(s)');
-    expect(await names_of('/home/chris/docs')).toEqual(['a.txt:file', 'b.txt:file']);
+    expect(await itemNames_list('/home/chris/docs')).toEqual(['a.txt:file', 'b.txt:file']);
   });
 
   it('copies a folder only with -r (--recursive keeps the operand after it)', async () => {
@@ -225,7 +225,7 @@ describe('cp', () => {
     expect(plain.renderedErr).toContain("cp: cannot copy '/home/chris/docs' to '/home/chris/docs2': Is a directory");
     await builtin_touch(['docs/inner.txt']);
     expect((await builtin_cp(['--recursive', 'docs', 'docs2'])).status).toBe('ok');
-    expect(await names_of('/home/chris/docs2')).toEqual(['inner.txt:file']);
+    expect(await itemNames_list('/home/chris/docs2')).toEqual(['inner.txt:file']);
   });
 
   it('says the mount\'s refusal once, never "cp: cp:", and a missing source', async () => {

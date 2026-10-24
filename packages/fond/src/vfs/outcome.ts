@@ -140,7 +140,7 @@ export function vfs_failFromStack<T = never>(errno: VfsErrno): VfsOutcome<T> {
  * @param errno - The errno a failure carries.
  * @returns The outcome.
  */
-export function vfsOutcome_ofResult<T>(result: Result<T>, errno: VfsErrno): VfsOutcome<T> {
+export function vfsOutcome_convertFromResult<T>(result: Result<T>, errno: VfsErrno): VfsOutcome<T> {
   return result.ok ? vfs_ok(result.value) : vfs_failFromStack(errno);
 }
 
@@ -151,7 +151,7 @@ export function vfsOutcome_ofResult<T>(result: Result<T>, errno: VfsErrno): VfsO
  * @param errno - The errno a failure carries.
  * @returns The outcome.
  */
-export function vfsOutcome_ofBoolean(done: boolean, errno: VfsErrno): VfsOutcome {
+export function vfsOutcome_convertFromBoolean(done: boolean, errno: VfsErrno): VfsOutcome {
   return done ? vfs_ok(true) : vfs_failFromStack(errno);
 }
 
@@ -165,7 +165,7 @@ export function vfsOutcome_ofBoolean(done: boolean, errno: VfsErrno): VfsOutcome
  * @param dest - The destination, for a rename or a copy.
  * @returns The value as a Result, or Err with the words on the stack.
  */
-export function vfsOutcome_toResult<T>(outcome: VfsOutcome<T>, operation: VfsOperation, path: string, dest?: string): Result<T> {
+export function vfsOutcome_convertToResult<T>(outcome: VfsOutcome<T>, operation: VfsOperation, path: string, dest?: string): Result<T> {
   if (outcome.ok) return Ok(outcome.value);
   errorStack.stack_push('error', vfsRefusal_text(operation, outcome, path, dest));
   return Err();

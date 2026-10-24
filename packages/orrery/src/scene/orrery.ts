@@ -26,7 +26,7 @@
  *
  * @module
  */
-import { edgeSpan_of, rootsTop_of } from './tree.js';
+import { edgeSpan_measure, rootsTop_check } from './tree.js';
 import * as THREE from 'three';
 import { PHYSICS_DEFAULT, type HierarchyArrangement, type PhysicsTerms } from '../layout/index.js';
 import {
@@ -50,14 +50,14 @@ import {
   SLICE_BUDGET_MS,
   SLICE_MIN_WORK,
   layout_ranked,
-  moleculeRadii_of,
+  moleculeRadii_computeForSpace,
   moleculeScene_prepare,
   type MoleculeSettle,
   type PlacedNode,
 } from './settle.js';
 import { bodies_draw, edges_draw, type DrawnBodies, type DrawPorts } from './bodies.js';
 import { FlatMolecule } from './flat.js';
-import { DrawnNodes, censusNodes_of, handoffLook_of, handoffView_of, perUnit_of, tubeNode_of } from './drawn.js';
+import { DrawnNodes, censusNodes_map, handoffLook_build, handoffView_compute, perUnit_compute, tubeNode_build } from './drawn.js';
 import { Flights, type Approach, type FlightGraph, type UnfoldPlan } from './flights.js';
 import type { CensusNode } from '../draw/index.js';
 import { HierarchySettle } from './hierarchySettle.js';
@@ -211,7 +211,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
   /** Every solid molecule's tubes, and the lamps its stages wear. */
   private readonly tubes: TubeField = new TubeField({
     parent: this.group,
-    node: (id: string): TubeNode | undefined => this.tubeNode_of(id),
+    node: (id: string): TubeNode | undefined => this.tubeNode_find(id),
     sphere: (id: string): THREE.Mesh | undefined => this.meshes.get(id),
     palette: (): Palette => this.palette_read(),
   });
@@ -220,7 +220,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     spheres: this.spheres,
     stars: this.starField,
     tubes: this.tubes,
-    look: (id: string): HandoffLook | undefined => this.handoffLook_of(id),
+    look: (id: string): HandoffLook | undefined => this.handoffLook_find(id),
   });
   /** Every job of every stage, when the scene draws a census. */
   private readonly censusField: CensusField = new CensusField({
@@ -544,7 +544,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
   public flight_into(nodeId: string, onArrived: () => void): void {
     if (this.rig.flying() || this.rig.holding_get()) return;
     // The dive leaves the graph exactly as the operator has it — no reset snap.
-    const target: THREE.Vector3 | null = this.drawn.diveTarget_of(nodeId);
+    const target: THREE.Vector3 | null = this.drawn.diveTarget_find(nodeId);
     if (target !== null) this.rig.flyInto(target, onArrived);
   }
 
@@ -564,7 +564,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
    *   the centre as a starburst of two-pixel spheres nobody could click.
    */
   public camera_flyToFit(ids: ReadonlyArray<string>, durationMs: number, onDone: () => void, bulk: number = 1, margin: number = 1.15): void {
-    this.rig.flyToFit(this.drawn.reaches_of(ids), durationMs, onDone, bulk, margin);
+    this.rig.flyToFit(this.drawn.reaches_list(ids), durationMs, onDone, bulk, margin);
   }
 
   /**
@@ -669,7 +669,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
       handoffSolid: this.handoffField.solidCount(),
       camera: this.rig.eyeDistance().toFixed(1),
       settling: this.slicing,
-      ...edgeSpan_of(this.graph.nodes, this.lastPositions),
+      ...edgeSpan_measure(this.graph.nodes, this.lastPositions),
     };
   }
 
@@ -684,7 +684,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
    * @param onDone - Called on arrival (at once when the node is not drawn).
    */
   public camera_flyToward(id: string, distance: number, durationMs: number, onDone: () => void): void {
-    const drawn: WorldReach | null = this.drawn.world_of(id);
+    const drawn: WorldReach | null = this.drawn.world_find(id);
     if (drawn === null) {
       onDone();
       return;
@@ -925,7 +925,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
    * branched filaments over the shell — the cell-surface reading.
    */
   private censusBuild(placed: PlacedNode[], palette: Palette, fit: boolean = true): void {
-    const nodes: CensusNode[] = censusNodes_of(placed, palette);
+    const nodes: CensusNode[] = censusNodes_map(placed, palette);
     const cloud = this.censusField.build(nodes, this.drawMode === 'stars', palette);
     // How many jobs the census shells, on the canvas: a smoke reads it to
     // prove CENSUS draws every job, not the shape.
@@ -1147,7 +1147,7 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
     }
     // A readout a smoke can read, beside the fit count: whether what is
     // lit stands as a tree with its roots on top (a feed opened as its tree).
-    this.renderer.domElement.dataset['rootsTop'] = rootsTop_of(placed.filter((item: PlacedNode): boolean => item.node.dim !== true && item.node.ghost !== true && item.node.halo !== true).map((item: PlacedNode) => ({ id: item.node.id, parentIds: item.node.parentIds, y: item.position.y }))) ? 'yes' : 'no';
+    this.renderer.domElement.dataset['rootsTop'] = rootsTop_check(placed.filter((item: PlacedNode): boolean => item.node.dim !== true && item.node.ghost !== true && item.node.halo !== true).map((item: PlacedNode) => ({ id: item.node.id, parentIds: item.node.parentIds, y: item.position.y }))) ? 'yes' : 'no';
     // A redraw during a replay keeps what has not arrived hidden.
     if (this.replay.active()) this.replay.paintAll();
   }
@@ -1188,19 +1188,19 @@ export class Orrery<N extends SpaceNode = SpaceNode> {
   private handoff_step(): void {
     if (this.handoffField.size() === 0) return;
     const height: number = this.renderer.domElement.clientHeight || 1;
-    this.handoffField.step(handoffView_of(this.camera, this.group), perUnit_of(height, this.camera.fov), performance.now());
+    this.handoffField.step(handoffView_compute(this.camera, this.group), perUnit_compute(height, this.camera.fov), performance.now());
   }
 
   /** @returns How a placed node's sphere is drawn when its molecule turns solid. */
-  private handoffLook_of(id: string): HandoffLook | undefined {
+  private handoffLook_find(id: string): HandoffLook | undefined {
     const placed: PlacedNode | undefined = this.placedById.get(id);
-    return placed === undefined ? undefined : handoffLook_of(placed, this.palette_read());
+    return placed === undefined ? undefined : handoffLook_build(placed, this.palette_read());
   }
 
   /** @returns A placed node as the tubes read it. */
-  private tubeNode_of(id: string): TubeNode | undefined {
+  private tubeNode_find(id: string): TubeNode | undefined {
     const placed: PlacedNode | undefined = this.placedById.get(id);
-    return placed === undefined ? undefined : tubeNode_of(placed);
+    return placed === undefined ? undefined : tubeNode_build(placed);
   }
 
   /** Copies simulation positions onto meshes and re-anchors every edge. */

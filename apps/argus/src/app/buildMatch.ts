@@ -47,7 +47,7 @@ export type BuildMismatch = 'daemon-older' | 'argus-older';
  * @param stale - Whether the daemon says its own code moved; undefined from older daemons.
  * @returns The older one, or null when they agree or nothing can be said.
  */
-export function buildMismatch_of(page: BuildStamp, stack: StackInfo | undefined, stale?: boolean): BuildMismatch | null {
+export function buildMismatch_derive(page: BuildStamp, stack: StackInfo | undefined, stale?: boolean): BuildMismatch | null {
   if (stale === true) return 'daemon-older';
   if (stack === undefined) return null;
   const served: BuildStamp | undefined = stack.surface;
@@ -236,7 +236,7 @@ export function buildMatch_wire(
   const say = (line: string): void => { if (held !== null) held.push(line); else note(line); };
   const judge = (stale: boolean | undefined): void => {
     if (__ARGUS_DEV__ || stack === undefined) return;
-    const mismatch: BuildMismatch | null = buildMismatch_of(page, stack, stale);
+    const mismatch: BuildMismatch | null = buildMismatch_derive(page, stack, stale);
     if (mismatch === shown) return;
     shown = mismatch;
     if (mismatch === null) {

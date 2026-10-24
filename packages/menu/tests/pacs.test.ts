@@ -246,10 +246,10 @@ describe('pacsServersModelSchema', () => {
   });
 });
 
-describe('patientAddress_of', () => {
+describe('patientAddress_format', () => {
   it('mints a stable address from what names the patient in the answer', async () => {
-    const { patientAddress_of } = await import('../src/pacs');
-    expect(patientAddress_of({ patientId: '1279049', server: 'PACSDCM' })).toBe('pacs:patient:PACSDCM:1279049');
-    expect(patientAddress_of({ patientId: '1279049' })).toBe('pacs:patient:-:1279049');
+    const { patientAddress_format } = await import('../src/pacs');
+    expect(patientAddress_format({ patientId: '1279049', server: 'PACSDCM' })).toBe('pacs:patient:PACSDCM:1279049');
+    expect(patientAddress_format({ patientId: '1279049' })).toBe('pacs:patient:-:1279049');
   });
 });

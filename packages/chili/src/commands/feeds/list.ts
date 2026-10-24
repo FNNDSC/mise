@@ -8,7 +8,7 @@
  */
 import { feeds_list as salsaFeeds_list, feeds_listAll as salsaFeeds_listAll } from "@fnndsc/salsa";
 import { FilteredResourceData, listData_get } from "@fnndsc/cumin";
-import { CLIoptions, options_toParams } from "../../utils/cli.js";
+import { CLIoptions, options_convertToParams } from "../../utils/cli.js";
 import { Feed } from "../../models/feed.js";
 import { list_applySort } from "../../utils/sort.js";
 
@@ -28,7 +28,7 @@ export interface FeedListResult {
  * @returns A Promise resolving to a `FeedListResult` object.
  */
 export async function feeds_fetchList(options: CLIoptions): Promise<FeedListResult> {
-  const params = options_toParams(options);
+  const params = options_convertToParams(options);
   if (options.user) params.owner_username = options.user;
   const result: FilteredResourceData | null = options.all
     ? await salsaFeeds_listAll(params)

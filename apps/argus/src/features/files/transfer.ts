@@ -183,7 +183,7 @@ export function transfer_watch(name: string, downloadUrl: string, id: string, fe
     action.title = 'dismiss this row';
     linger = setTimeout(remove, TRANSFER_LINGER_MS);
   };
-  const rate_of = (bytes: number): number | null => {
+  const rate_measure = (bytes: number): number | null => {
     const now: number = Date.now();
     samples.push({ at: now, bytes });
     while (samples.length > 1 && now - (samples[0]?.at ?? now) > 6000) samples.shift();
@@ -195,7 +195,7 @@ export function transfer_watch(name: string, downloadUrl: string, id: string, fe
   let silent: number = 0;
   const show = (report: TransferReport): void => {
     element.dataset['phase'] = report.phase;
-    const said: string = transfer_words(report, report.phase === 'streaming' ? rate_of(report.bytes) : null);
+    const said: string = transfer_words(report, report.phase === 'streaming' ? rate_measure(report.bytes) : null);
     words.textContent = cancelling && !phase_ended(report.phase) ? `CANCELLING · ${said}` : said;
     const share: number = report.phase === 'done' ? 1 : report.size !== undefined && report.size > 0 ? report.bytes / report.size : 0;
     fill.style.width = `${(100 * share).toFixed(1)}%`;

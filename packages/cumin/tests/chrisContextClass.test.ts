@@ -153,7 +153,7 @@ describe('ChrisContext — current_set switch', () => {
     await ctx.current_set(Context.ChRISuser, 'chris');
     const urlDir = path.join(
       path.dirname(connectionConfig.chrisURLfilepath),
-      connectionConfig.uri_toDir('http://c/api/')
+      connectionConfig.uri_convertToDir('http://c/api/')
     );
     store.dirs.add(urlDir);
     expect(await ctx.current_set(Context.ChRISURL, 'http://c/api/')).toBe(true);
@@ -196,7 +196,7 @@ describe('ChrisContext — init()', () => {
     const user = 'zoe';
     const url = 'http://cube.local/api/v1/';
     const userDir = path.join(CONFIG_DIR, user);
-    const urlDirName = connectionConfig.uri_toDir(url);
+    const urlDirName = connectionConfig.uri_convertToDir(url);
     const urlDir = path.join(userDir, urlDirName);
 
     store.dirs.add(userDir);

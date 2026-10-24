@@ -32,8 +32,8 @@ const { ping_run, ping_summary, builtin_ping, builtin_chrisfetch } = await impor
 // `who` asks the backend for the session's user: here, the context this file mocks.
 (await import('../src/core/backend.js')).backend_install({ id: 'chris', session: { user_get: (): Promise<string | null> => mockUser() } as never });
 const { wtf_lookup, builtin_wtf } = await import('../src/builtins/games/wtf.js');
-const { magic_of, hexdump_render, strings_find, builtin_file, builtin_xxd, builtin_sha256sum } = await import('../src/builtins/games/bytes.js');
-const { rs_remainder, qr_encode, qr_render, penalty_of } = await import('../src/builtins/games/qr.js');
+const { magic_derive, hexdump_render, strings_find, builtin_file, builtin_xxd, builtin_sha256sum } = await import('../src/builtins/games/bytes.js');
+const { rs_remainder, qr_encode, qr_render, penalty_compute } = await import('../src/builtins/games/qr.js');
 
 const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
 
@@ -96,13 +96,13 @@ describe('wtf', () => {
 describe('file, xxd, strings, sha256sum', () => {
   it('names files by their magic', () => {
     const dicom: Buffer = Buffer.alloc(200); dicom.write('DICM', 128, 'latin1');
-    expect(magic_of(dicom)).toMatch(/^DICOM/);
-    expect(magic_of(Buffer.from([0x1f, 0x8b, 0]), 'x.nii.gz')).toMatch(/NIfTI/);
-    expect(magic_of(Buffer.from('%PDF-1.4'))).toBe('PDF document');
-    expect(magic_of(Buffer.from('{"a": 1}'))).toBe('JSON text');
-    expect(magic_of(Buffer.from('plain words\n'))).toBe('ASCII text');
-    expect(magic_of(Buffer.from([0, 1, 2, 3, 250]))).toBe('data');
-    expect(magic_of(Buffer.alloc(0))).toBe('empty');
+    expect(magic_derive(dicom)).toMatch(/^DICOM/);
+    expect(magic_derive(Buffer.from([0x1f, 0x8b, 0]), 'x.nii.gz')).toMatch(/NIfTI/);
+    expect(magic_derive(Buffer.from('%PDF-1.4'))).toBe('PDF document');
+    expect(magic_derive(Buffer.from('{"a": 1}'))).toBe('JSON text');
+    expect(magic_derive(Buffer.from('plain words\n'))).toBe('ASCII text');
+    expect(magic_derive(Buffer.from([0, 1, 2, 3, 250]))).toBe('data');
+    expect(magic_derive(Buffer.alloc(0))).toBe('empty');
   });
 
   it('dumps hex canonically and finds strings', () => {
@@ -151,6 +151,6 @@ describe('qr', () => {
     const lines: string[] = qr_render(dark);
     expect(lines.length).toBe((21 + 4) / 2 + 0.5);
     expect(lines[0]).toBe('█'.repeat(25));
-    expect(penalty_of(dark)).toBeGreaterThan(0);
+    expect(penalty_compute(dark)).toBeGreaterThan(0);
   });
 });

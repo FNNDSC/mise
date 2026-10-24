@@ -13,7 +13,7 @@
 import { chrisConnection, chrisConnection_init, NodeStorageProvider, chrisContext, Context } from '@fnndsc/cumin';
 import type { Backend, SessionIdentity } from '../core/backend.js';
 import { Session } from '../session/index.js';
-import { homePath_of } from '../builtins/utils.js';
+import { homePath_derive } from '../builtins/utils.js';
 import { runtimeOutput_set } from '@fnndsc/cumin/runtime-output';
 import { sink_get } from '../core/sink.js';
 import { procIndex_snapshot, sessionPromptContext_build } from './promptContext.js';
@@ -87,7 +87,7 @@ export const chrisBackend: Backend = {
       return chrisContext.ChRISuser_get();
     },
     async home_get(): Promise<string> {
-      return homePath_of(await chrisContext.current_get(Context.ChRISuser));
+      return homePath_derive(await chrisContext.current_get(Context.ChRISuser));
     },
     async cwd_load(): Promise<string | null> {
       return chrisContext.current_get(Context.ChRISfolder);

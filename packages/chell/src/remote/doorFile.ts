@@ -59,14 +59,14 @@ export function doorsDir_get(env: NodeJS.ProcessEnv = process.env): string {
  * @param door - The door's URL, normalised or not.
  * @returns A name safe for a file.
  */
-export function doorHost_of(door: string): string {
+export function doorHost_derive(door: string): string {
   const parsed: URL = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(door) ? door : `http://${door}`);
   return parsed.port === '' ? parsed.hostname : `${parsed.hostname}_${parsed.port}`;
 }
 
 /** The door file's path for a door. */
 export function doorFile_path(door: string, env: NodeJS.ProcessEnv = process.env): string {
-  return join(doorsDir_get(env), `${doorHost_of(door)}.json`);
+  return join(doorsDir_get(env), `${doorHost_derive(door)}.json`);
 }
 
 /**

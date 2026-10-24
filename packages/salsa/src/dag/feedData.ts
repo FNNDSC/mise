@@ -16,7 +16,7 @@
  *
  * @module
  */
-import { pacsSeriesFacts_ofPath, procCache_get, status_isTerminal, type ProcCache, type ProcFeedDataFacts, type ProcInstance } from '@fnndsc/cumin';
+import { pacsSeriesFacts_fetch, procCache_get, status_isTerminal, type ProcCache, type ProcFeedDataFacts, type ProcInstance } from '@fnndsc/cumin';
 import type { Result } from '@fnndsc/cumin';
 import type { VFSItem } from '../vfs/provider.js';
 import { dicomTag_find, type DicomTagSet } from '../dicom/tags.js';
@@ -99,7 +99,7 @@ export interface DataFactsIO {
  * @param self - The feed.
  * @returns The source feed, or undefined.
  */
-export function sourceFeed_of(path: string, self: number): number | undefined {
+export function sourceFeed_parse(path: string, self: number): number | undefined {
   const found: RegExpMatchArray | null = path.match(/(?:^|\/)feeds\/feed_(\d+)(?:\/|$)/);
   const id: number = found === null ? Number.NaN : Number(found[1]);
   return Number.isInteger(id) && id !== self ? id : undefined;
@@ -111,7 +111,7 @@ export function sourceFeed_of(path: string, self: number): number | undefined {
  * @param outputPath - Reads a job's output folder.
  * @returns The IO.
  */
-export function dataFactsIO_of(outputPath: (instanceID: number) => Promise<string | null>): DataFactsIO {
+export function dataFactsIO_build(outputPath: (instanceID: number) => Promise<string | null>): DataFactsIO {
   // The dispatcher and the DICOM reader are reached at call time: the /proc
   // provider that hands this reader in is itself one of the dispatcher's
   // providers, and a module-level import would close that circle.
@@ -128,7 +128,7 @@ export function dataFactsIO_of(outputPath: (instanceID: number) => Promise<strin
     },
     series: async (path: string): Promise<{ modality?: string; seriesDescription?: string } | null> => {
       try {
-        return await pacsSeriesFacts_ofPath(path);
+        return await pacsSeriesFacts_fetch(path);
       } catch {
         return null;
       }
@@ -152,7 +152,7 @@ export function dataFactsIO_of(outputPath: (instanceID: number) => Promise<strin
  */
 async function cfsFirstPage_list(path: string): Promise<VFSItem[] | null | 'refused'> {
   const { files_list, files_listOutcome } = await import('../files/index.js');
-  const { chrisRow_toItem } = await import('../vfs/providers/native.js');
+  const { chrisRow_convertToItem } = await import('../vfs/providers/native.js');
   const bounded = { limit: DATA_LIST_LIMIT, offset: 0 };
   const kinds: Array<'dirs' | 'files' | 'links'> = ['dirs', 'files', 'links'];
   let pages;
@@ -164,7 +164,7 @@ async function cfsFirstPage_list(path: string): Promise<VFSItem[] | null | 'refu
   const items: VFSItem[] = [];
   pages.forEach((page, index: number): void => {
     const type: 'dir' | 'file' | 'link' = kinds[index] === 'dirs' ? 'dir' : kinds[index] === 'files' ? 'file' : 'link';
-    for (const row of page?.tableData ?? []) items.push(chrisRow_toItem(row as Parameters<typeof chrisRow_toItem>[0], type));
+    for (const row of page?.tableData ?? []) items.push(chrisRow_convertToItem(row as Parameters<typeof chrisRow_convertToItem>[0], type));
   });
   if (items.length > 0) return items;
   const outcome = await files_listOutcome(bounded, 'dirs', path);
@@ -177,7 +177,7 @@ async function cfsFirstPage_list(path: string): Promise<VFSItem[] | null | 'refu
  * @param name - The file's name.
  * @returns The format, or null.
  */
-export function dataFormat_ofName(name: string): Exclude<ProcFeedDataFacts['format'], 'other' | 'unknown'> | null {
+export function dataFormat_deriveFromName(name: string): Exclude<ProcFeedDataFacts['format'], 'other' | 'unknown'> | null {
   const lower: string = name.toLowerCase();
   if (/\.(dcm|dicom|ima)$/.test(lower)) return 'dicom';
   if (/\.nii(\.gz)?$/.test(lower)) return 'nifti';
@@ -218,7 +218,7 @@ async function dataFile_find(folder: string, io: DataFactsIO): Promise<DataCandi
     if (items === 'refused') return { reason: `its data is in ${at}, which this identity may not read`, path: at };
     const data: VFSItem[] = items.filter(isData).sort(byName);
     // A file whose name says its format, plain or linked.
-    const named: VFSItem | undefined = data.find((item: VFSItem): boolean => dataFormat_ofName(item.name) !== null);
+    const named: VFSItem | undefined = data.find((item: VFSItem): boolean => dataFormat_deriveFromName(item.name) !== null);
     if (named !== undefined) return { files: [{ path: pathOf(at, named), name: named.name, linked: named.type === 'link' }] };
     // Plain files whose names say nothing (DICOM named by UID, no extension): a few are tried.
     const plain: VFSItem[] = data.filter((item: VFSItem): boolean => item.type === 'file').slice(0, UNNAMED_TRIES);
@@ -267,13 +267,13 @@ export async function feedDataFacts_read(feedID: number, io: DataFactsIO, cache:
   if (found === null) return null;
   // Where the data lies says whose work it began from.
   const lineage = (path: string | undefined): { sourceFeed?: number } => {
-    const source: number | undefined = path === undefined ? undefined : sourceFeed_of(path, feedID);
+    const source: number | undefined = path === undefined ? undefined : sourceFeed_parse(path, feedID);
     return source === undefined ? {} : { sourceFeed: source };
   };
   if ('reason' in found) return { format: 'unknown', reason: found.reason, ...lineage(found.path) };
   const first = found.files[0] as { path: string; name: string; linked: boolean };
   const from = lineage(first.path);
-  const named = dataFormat_ofName(first.name);
+  const named = dataFormat_deriveFromName(first.name);
   if (named !== null && named !== 'dicom') return { format: named, ...from };
   // A series in CUBE's PACS store is described by CUBE's own record: no file read.
   const recorded = io.series === undefined ? null : await io.series(first.path);
@@ -393,5 +393,5 @@ export async function procDataFacts_feed(feedID: number, io: DataFactsIO, cache:
 
 /** Whether a feed's facts were written by this reader: none, or an older reader's, are read again. */
 function dataFacts_current(cache: ProcCache, feedID: number): boolean {
-  return cache.dataFacts_of(feedID)?.reader === DATA_FACTS_READER;
+  return cache.dataFacts_read(feedID)?.reader === DATA_FACTS_READER;
 }

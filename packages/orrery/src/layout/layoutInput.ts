@@ -11,7 +11,7 @@
  *
  * @module
  */
-import { moleculeRadii_of, type MoleculeNode } from './molecule.js';
+import { moleculeRadii_compute, type MoleculeNode } from './molecule.js';
 import { NODE_RADIUS, type LayoutNode, type Vec3 } from './types.js';
 
 /**
@@ -48,7 +48,7 @@ export function layoutInput_build<N extends LayoutSource>(
   seeds: ReadonlyMap<string, Vec3> = new Map(),
   frozen: ReadonlySet<string> = new Set(),
 ): LayoutNode[] {
-  const radii: Map<string, number> = moleculeRadii_of(nodes.map((node: N): MoleculeNode => {
+  const radii: Map<string, number> = moleculeRadii_compute(nodes.map((node: N): MoleculeNode => {
     const out: MoleculeNode = { id: node.id, parents: [...node.parentIds, ...node.joinParentIds] };
     if (node.metric !== undefined) out.metric = node.metric;
     return out;

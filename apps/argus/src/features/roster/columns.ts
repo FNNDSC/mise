@@ -33,7 +33,7 @@ export function track_isExpanse(width: string): boolean {
  * @param width - The trait's declared track.
  * @returns A CSS length.
  */
-export function floor_of(width: string): string {
+export function floor_parse(width: string): string {
   const minmax: RegExpMatchArray | null = width.trim().match(/^minmax\(\s*([^,]+?)\s*,/);
   if (minmax !== null) return (minmax[1] ?? '3em').trim();
   return '3em';
@@ -107,7 +107,7 @@ export interface BoundarySide {
 }
 
 /** A track's width: the cap's box and its margins (caps keep a hairline margin, so the box alone is short). */
-export function trackWidth_of(cap: HTMLElement): number {
+export function trackWidth_measure(cap: HTMLElement): number {
   const style: CSSStyleDeclaration = getComputedStyle(cap);
   return cap.getBoundingClientRect().width + (Number.parseFloat(style.marginLeft) || 0) + (Number.parseFloat(style.marginRight) || 0);
 }
@@ -170,11 +170,11 @@ export function boundary_drag(left: BoundarySide, right: BoundarySide | null, dx
 /** What the grips need of their listing. */
 export interface GripHooks {
   /** The trait key a cap stands for. */
-  key_of: (cap: HTMLElement) => string | null;
+  key_read: (cap: HTMLElement) => string | null;
   /** Whether a trait's track is the expanse. */
   expanse_is: (key: string) => boolean;
   /** The floor of a column, in px, measured where the cap stands. */
-  floor_of: (key: string) => number;
+  floor_measure: (key: string) => number;
   /** How much the expanse can still give, in px. */
   expanseSlack: () => number;
   /** A column was dragged to a width. */
@@ -203,24 +203,24 @@ export function grips_wire(caps: HTMLElement, hooks: GripHooks): void {
     if (cap === null) continue;
     grip.addEventListener('click', (event: MouseEvent): void => { event.stopPropagation(); });
     /** The cap right of this one that stands for a sizeable trait, or null. */
-    const neighbour_of = (): { cap: HTMLElement; key: string } | null => {
+    const neighbour_find = (): { cap: HTMLElement; key: string } | null => {
       let next: Element | null = cap.nextElementSibling;
       while (next !== null && !next.classList.contains('roster-cap')) next = next.nextElementSibling;
       if (!(next instanceof HTMLElement)) return null;
-      const key: string | null = hooks.key_of(next);
+      const key: string | null = hooks.key_read(next);
       return key === null ? null : { cap: next, key };
     };
     grip.addEventListener('dblclick', (event: MouseEvent): void => {
       event.stopPropagation();
-      const key: string | null = hooks.key_of(cap);
-      const right = neighbour_of();
+      const key: string | null = hooks.key_read(cap);
+      const right = neighbour_find();
       // Both columns beside the boundary go back to their declarations; for
       // the expanse that gives back a minimum the hand moved while it was pinned.
       if (key !== null) hooks.reset(key);
       if (right !== null) hooks.reset(right.key);
     });
     grip.addEventListener('pointerdown', (down: PointerEvent): void => {
-      const key: string | null = hooks.key_of(cap);
+      const key: string | null = hooks.key_read(cap);
       if (key === null || down.button !== 0) return;
       down.preventDefault();
       down.stopPropagation();
@@ -231,14 +231,14 @@ export function grips_wire(caps: HTMLElement, hooks: GripHooks): void {
       const startX: number = down.clientX;
       // An expanse with no spare room is pinned at its minimum and acts as a
       // fixed column; one that is stretching is fluid and is never sized.
-      const side_of = (on: HTMLElement, onKey: string): BoundarySide => {
-        const width: number = trackWidth_of(on);
-        const floor: number = hooks.floor_of(onKey);
+      const side_measure = (on: HTMLElement, onKey: string): BoundarySide => {
+        const width: number = trackWidth_measure(on);
+        const floor: number = hooks.floor_measure(onKey);
         return { width, floor, expanse: hooks.expanse_is(onKey) && width > floor + 1 };
       };
-      const left: BoundarySide = side_of(cap, key);
-      const neighbour = neighbour_of();
-      const right: BoundarySide | null = neighbour === null ? null : side_of(neighbour.cap, neighbour.key);
+      const left: BoundarySide = side_measure(cap, key);
+      const neighbour = neighbour_find();
+      const right: BoundarySide | null = neighbour === null ? null : side_measure(neighbour.cap, neighbour.key);
       // An expanse with no sizeable neighbour has nothing to trade with.
       if (left.expanse && right === null) return;
       const slack: number = hooks.expanseSlack();

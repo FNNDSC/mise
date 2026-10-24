@@ -14,7 +14,7 @@ import type { DesktopAction, DesktopShape, GroupSnapshot } from './dormant.js';
 import type { HostContext } from './hostContext.js';
 import type { LayoutNode } from './layout.js';
 import { pane_isPrimary, paneInstance_dispose, paneInstances_list, type PaneKind } from './panes.js';
-import { place_of } from './sides.js';
+import { place_derive } from './sides.js';
 
 /** What PROCESS was pressed on, and where a run lands: a catalogue pane's binding. */
 export interface CatalogueBinding {
@@ -50,7 +50,7 @@ export interface DesktopHooks {
   /** The PACS query on stage, for a PACS domain's capture; null when none. */
   pacsQuery_get: () => string | null;
   /** A catalogue pane's binding, when the pane is one. */
-  catalogue_of: (paneId: string) => CatalogueBinding | undefined;
+  catalogue_find: (paneId: string) => CatalogueBinding | undefined;
   /** Every catalogue pane's id. */
   catalogueIds: () => string[];
   /** The PACS rows' verbs re-lit after the stage changed. */
@@ -102,7 +102,7 @@ export function desktop_wire(context: Pick<HostContext, 'layout' | 'panels' | 'p
   };
 
   /** A glyph standing in for a pane whose surface is not a raster (a listing, tags). */
-  const kindGlyph_of = (id: string): string => {
+  const kindGlyph_derive = (id: string): string => {
     if (id === 'pacs') return '⊞';
     if (id === 'dag') return '⋔';
     const kind: string | null = paneKind_get(id);
@@ -165,7 +165,7 @@ export function desktop_wire(context: Pick<HostContext, 'layout' | 'panels' | 'p
           ctx.font = `${Math.max(9, Math.min(28, Math.round(Math.min(tw, th) * 0.5)))}px serif`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(kindGlyph_of(rect.id), tx + tw / 2, ty + th / 2 + 1);
+          ctx.fillText(kindGlyph_derive(rect.id), tx + tw / 2, ty + th / 2 + 1);
         }
         ctx.strokeStyle = 'rgba(255,255,255,0.22)';
         ctx.lineWidth = 1;
@@ -182,12 +182,12 @@ export function desktop_wire(context: Pick<HostContext, 'layout' | 'panels' | 'p
    * (a bare primary is the domain; a pane with nothing to show is skipped).
    * Returns the action and, when this pane names the card, its anchor and label.
    */
-  const action_of = (id: string, preset: string, target: number): { action: DesktopAction; anchor?: string; label?: string } | null => {
+  const action_build = (id: string, preset: string, target: number): { action: DesktopAction; anchor?: string; label?: string } | null => {
     const kind: string | null = paneKind_get(id);
     const birth: PaneBirth | undefined = births.get(id);
     // The real split the pane was born with — a stacked or before-split pane
     // carries its own orientation and side, not the column-right default.
-    const place = { dir: birth?.dir ?? 'col', side: place_of(birth?.before ?? false) };
+    const place = { dir: birth?.dir ?? 'col', side: place_derive(birth?.before ?? false) };
     if (pane_isPrimary(id)) {
       const domain = (preset === 'dag' ? 'runs' : preset) as 'pacs' | 'files' | 'runs';
       const query: string | null = preset === 'pacs' ? hooks.pacsQuery_get() : null;
@@ -224,7 +224,7 @@ export function desktop_wire(context: Pick<HostContext, 'layout' | 'panels' | 'p
         ...(parts.length > 0 ? { label: parts.join(' · ') } : {}),
       };
     }
-    const bound: CatalogueBinding | undefined = hooks.catalogue_of(id);
+    const bound: CatalogueBinding | undefined = hooks.catalogue_find(id);
     if (bound !== undefined) {
       // A catalogue is a files pane by kind and a catalogue by its binding:
       // what PROCESS was pressed on, where a run lands, and the line RUN
@@ -296,7 +296,7 @@ export function desktop_wire(context: Pick<HostContext, 'layout' | 'panels' | 'p
     const actions: DesktopAction[] = [];
     for (const id of stageIds) {
       const target: number = actionIndexOf.get(births.get(id)?.parent ?? '') ?? 0;
-      const read = action_of(id, preset, target);
+      const read = action_build(id, preset, target);
       if (read === null) continue;
       actionIndexOf.set(id, actions.length);
       actions.push(read.action);
@@ -316,19 +316,19 @@ export function desktop_wire(context: Pick<HostContext, 'layout' | 'panels' | 'p
     const thumbnail: string | undefined = strip_capture(stageIds);
     // The tiling as it stands, leaves as action indices: a pane moved after
     // its birth stands where it was moved to, which its birth cannot say.
-    const shape_of = (node: LayoutNode): DesktopShape | null => {
+    const shape_build = (node: LayoutNode): DesktopShape | null => {
       if ('pane' in node) {
         const index: number | undefined = actionIndexOf.get(node.pane);
         return index === undefined ? null : { leaf: index };
       }
-      const first: DesktopShape | null = shape_of(node.first);
-      const second: DesktopShape | null = shape_of(node.second);
+      const first: DesktopShape | null = shape_build(node.first);
+      const second: DesktopShape | null = shape_build(node.second);
       if (first === null) return second;
       if (second === null) return first;
       return { dir: node.dir, ratio: node.ratio, first, second };
     };
     const stageTree: LayoutNode | null = layout.tree_get();
-    const shape: DesktopShape | null = stageTree === null ? null : shape_of(stageTree);
+    const shape: DesktopShape | null = stageTree === null ? null : shape_build(stageTree);
     const members: string[] = [...new Set(content.map((action): string => MEMBER_OF[action.op] ?? 'pane'))];
     let id: string;
     let cardLabel: string;
@@ -520,18 +520,18 @@ export function desktop_wire(context: Pick<HostContext, 'layout' | 'panels' | 'p
       // to, a block beside a block. A leaf whose action produced nothing
       // is left out of the shape.
       if (snapshot.shape !== undefined) {
-        const tree_of = (node: DesktopShape): LayoutNode | null => {
+        const tree_build = (node: DesktopShape): LayoutNode | null => {
           if ('leaf' in node) {
             const pane: string | null = produced[node.leaf] ?? null;
             return pane === null ? null : { pane };
           }
-          const first: LayoutNode | null = tree_of(node.first);
-          const second: LayoutNode | null = tree_of(node.second);
+          const first: LayoutNode | null = tree_build(node.first);
+          const second: LayoutNode | null = tree_build(node.second);
           if (first === null) return second;
           if (second === null) return first;
           return { dir: node.dir, ratio: node.ratio, first, second };
         };
-        const tree: LayoutNode | null = tree_of(snapshot.shape);
+        const tree: LayoutNode | null = tree_build(snapshot.shape);
         if (tree !== null && !('pane' in tree)) layout.tree_set(tree);
       }
     } finally {

@@ -4,7 +4,7 @@
  */
 import { pluginMetas_list as salsaPluginMetas_list, pluginMetas_listAll as salsaPluginMetas_listAll } from '@fnndsc/salsa';
 import { FilteredResourceData } from '@fnndsc/cumin';
-import { CLIoptions, options_toParams } from '../../utils/cli.js';
+import { CLIoptions, options_convertToParams } from '../../utils/cli.js';
 import { list_applySort } from '../../utils/sort.js';
 
 /**
@@ -23,7 +23,7 @@ export interface PluginMetaListResult {
  * @returns The plugin-metas list result.
  */
 export async function pluginMetas_fetchList(options: CLIoptions): Promise<PluginMetaListResult> {
-  const params = options_toParams(options);
+  const params = options_convertToParams(options);
   const result: FilteredResourceData | null = options.all
     ? await salsaPluginMetas_listAll(params)
     : await salsaPluginMetas_list(params);

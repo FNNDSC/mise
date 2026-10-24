@@ -28,7 +28,7 @@
  * @module
  */
 
-import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome, type VFSSubtree, type VFSSubtreeEntry } from '@fnndsc/fond';
+import { vfsOutcome_convertFromBoolean, vfsOutcome_convertFromResult, type VfsOutcome, type VFSSubtree, type VFSSubtreeEntry } from '@fnndsc/fond';
 import { type ProcRosterSyncKind,
   chrisConnection,
   errorStack,
@@ -60,7 +60,7 @@ import { type ProcRosterSyncKind,
 import { VFSProvider, VFSItem, CpOptions } from '../provider.js';
 import { job_cancel, job_delete, job_statusFetch, job_logFetch, jobs_statusBatch } from '../../jobs/index.js';
 import { procJoins_sweep } from '../../dag/feedJoins.js';
-import { dataFactsIO_of, procDataFacts_feed, procDataFacts_sweep, type DataFactsIO } from '../../dag/feedData.js';
+import { dataFactsIO_build, procDataFacts_feed, procDataFacts_sweep, type DataFactsIO } from '../../dag/feedData.js';
 import { pipelinePackages_sweep } from '../../pipelines/packages.js';
 
 /** Fetches one page of a paginated feed collection through the wire contract. */
@@ -298,7 +298,7 @@ async function cache_ensure(): Promise<void> {
  * Uses in-flight map to prevent duplicate API calls.
  */
 /** Pulls the execution metrics a CUBE list row carries, defined-only. */
-function instanceMetrics_fromRow(inst: PluginInstanceData): {
+function instanceMetrics_extract(inst: PluginInstanceData): {
   startedAt?: string; finishedAt?: string; outputBytes?: number; computeResource?: string; pipelineName: string | null; workflowID: number | null;
 } {
   // Which pipeline run made the job: null is a direct run. The client drops
@@ -322,7 +322,7 @@ function instanceMetrics_fromRow(inst: PluginInstanceData): {
  * @param inst - One list row.
  * @returns The instance as ProcCache stores it (params unresolved).
  */
-function procInstance_fromRow(inst: PluginInstanceData): ProcInstance {
+function procInstance_buildFromRow(inst: PluginInstanceData): ProcInstance {
   const prevID: number | null = (inst.previous_id !== null && inst.previous_id !== undefined)
     ? Number(inst.previous_id)
     : null;
@@ -335,7 +335,7 @@ function procInstance_fromRow(inst: PluginInstanceData): ProcInstance {
     params: null,
     outputPath: outputPath_normalize(inst.output_path) ?? undefined,
     status: String(inst.status ?? 'unknown'),
-    ...instanceMetrics_fromRow(inst),
+    ...instanceMetrics_extract(inst),
   };
 }
 
@@ -352,10 +352,10 @@ function procInstanceRow_merge(cache: ProcCache, inst: PluginInstanceData): bool
   const id: number = Number(inst.id);
   if (cache.instance_get(id)) {
     cache.status_update(id, String(inst.status ?? 'unknown'));
-    cache.instanceMetrics_set(id, instanceMetrics_fromRow(inst));
+    cache.instanceMetrics_set(id, instanceMetrics_extract(inst));
     return false;
   }
-  cache.instance_add(procInstance_fromRow(inst));
+  cache.instance_add(procInstance_buildFromRow(inst));
   return true;
 }
 
@@ -395,7 +395,7 @@ async function feedInstances_load(feedID: number): Promise<void> {
       for (const instance of step.items) instances.set(Number(instance.id), instance);
       cache.feedLoad_progress(feedID, instances.size, step.total ?? 0);
     }
-    for (const inst of instances.values()) cache.instance_add(procInstance_fromRow(inst));
+    for (const inst of instances.values()) cache.instance_add(procInstance_buildFromRow(inst));
     cache.topologyLoaded_mark(feedID);
     cache.feedLoad_clear(feedID);
     // What the feed's data is: read once, now its root is known.
@@ -634,7 +634,7 @@ async function instanceParams_fetch(handle: PluginInstanceHandle): Promise<Recor
 }
 
 /** Collects all instance IDs for a feed recursively. */
-function getAllInstanceIDs_forFeed(feedID: number, cache: ProcCache): number[] {
+function feedInstanceIDs_list(feedID: number, cache: ProcCache): number[] {
   const result: number[] = [];
   const queue: number[] = [...cache.feedRoots_get(feedID)];
   while (queue.length > 0) {
@@ -871,7 +871,7 @@ export class ProcVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async readBinary(pathStr: string): Promise<VfsOutcome<Buffer>> {
-    return vfsOutcome_ofResult(await this.bytes_read(pathStr), 'ENOENT');
+    return vfsOutcome_convertFromResult(await this.bytes_read(pathStr), 'ENOENT');
   }
 
   /**
@@ -903,7 +903,7 @@ export class ProcVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async read(pathStr: string): Promise<VfsOutcome<string>> {
-    return vfsOutcome_ofResult(await this.text_read(pathStr), 'ENOENT');
+    return vfsOutcome_convertFromResult(await this.text_read(pathStr), 'ENOENT');
   }
 
   private async text_read(pathStr: string): Promise<Result<string>> {
@@ -984,7 +984,7 @@ export class ProcVfsProvider implements VFSProvider {
     const { feedID, instanceID } = procPath_parse(clean);
 
     if (feedID !== null && instanceID === null) {
-      const allIDs: number[] = getAllInstanceIDs_forFeed(feedID, cache);
+      const allIDs: number[] = feedInstanceIDs_list(feedID, cache);
       const statusMap: Map<number, string> = await jobs_statusBatch(allIDs);
       // Every cancel Result is checked: reporting success while jobs kept
       // running would leave the user believing the feed's work was stopped.
@@ -1027,7 +1027,7 @@ export class ProcVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async cp(_src: string, _dst: string, _options?: CpOptions): Promise<VfsOutcome> {
-    return vfsOutcome_ofBoolean(await this.copy_run(_src, _dst, _options), 'EROFS');
+    return vfsOutcome_convertFromBoolean(await this.copy_run(_src, _dst, _options), 'EROFS');
   }
 
   private async copy_run(_src: string, _dst: string, _options?: CpOptions): Promise<boolean> { return false; }
@@ -1036,7 +1036,7 @@ export class ProcVfsProvider implements VFSProvider {
   async upload(_localPath: string, _remotePath: string): Promise<boolean> { return false; }
   /** @inheritdoc */
   async write(pathStr: string, content: string): Promise<VfsOutcome> {
-    return vfsOutcome_ofBoolean(await this.file_write(pathStr, content), 'EROFS');
+    return vfsOutcome_convertFromBoolean(await this.file_write(pathStr, content), 'EROFS');
   }
 
   /**
@@ -1237,7 +1237,7 @@ export async function feedStatus_refresh(feedID: number): Promise<void> {
   )) {
     for (const inst of step.items) {
       cache.status_update(Number(inst.id), String(inst.status ?? 'unknown'));
-      cache.instanceMetrics_set(Number(inst.id), instanceMetrics_fromRow(inst));
+      cache.instanceMetrics_set(Number(inst.id), instanceMetrics_extract(inst));
     }
   }
 }
@@ -1321,7 +1321,7 @@ export function procPipeline_backfillStart(): void {
         )) {
           for (const inst of step.items) {
             const instID: number = Number(inst.id);
-            if (cache.instance_get(instID) !== undefined) cache.instanceMetrics_set(instID, instanceMetrics_fromRow(inst));
+            if (cache.instance_get(instID) !== undefined) cache.instanceMetrics_set(instID, instanceMetrics_extract(inst));
           }
         }
       }
@@ -1897,7 +1897,7 @@ async function procTopology_run(state: ProcTopologySweepState): Promise<void> {
 
       if (!cache.feed_get(feedID)) continue;
 
-      cache.instance_add(procInstance_fromRow(inst));
+      cache.instance_add(procInstance_buildFromRow(inst));
       state.seenInstanceIDs.add(instanceID);
       state.seenFeedIDs.add(feedID);
     }
@@ -1965,7 +1965,7 @@ function procTopology_start(state: ProcTopologySweepState): Promise<void> {
 
 /** The data-facts reader, with this provider's output paths. */
 function dataFactsIO_get(): DataFactsIO {
-  return dataFactsIO_of(instanceOutputPath_ensure);
+  return dataFactsIO_build(instanceOutputPath_ensure);
 }
 
 /**

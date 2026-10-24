@@ -19,10 +19,10 @@ import { procLayout_get, procLayout_set, type ProcLayoutPosition } from '@fnndsc
 import { procDataFacts_settled } from '@fnndsc/salsa';
 import {
   UNIVERSE_LAYOUTS,
-  universeEngine_of,
-  universeKey_of,
+  universeEngine_resolve,
+  universeKey_derive,
   universeLayoutGraph_build,
-  universeReach_of,
+  universeReach_derive,
   type LandedFeed,
   type UniverseGraph,
   type UniverseLayout,
@@ -67,10 +67,10 @@ export function universeLayout_underWay(name: string): LayoutUnderWay | null {
  * @param feeds - Every landed feed.
  * @returns The graph, its engine input, and the terms of the settle.
  */
-export function universeLayoutInput_of(layout: UniverseLayout, feeds: ReadonlyArray<LandedFeed>): { graph: UniverseGraph; nodes: LayoutNode[]; physics: PhysicsTerms } {
+export function universeLayoutInput_build(layout: UniverseLayout, feeds: ReadonlyArray<LandedFeed>): { graph: UniverseGraph; nodes: LayoutNode[]; physics: PhysicsTerms } {
   const graph: UniverseGraph = universeLayoutGraph_build(layout, feeds, 'jobs');
-  const nodes: LayoutNode[] = layoutInput_build(graph.nodes, (node): string | null => universeKey_of(node.id));
-  const reach: number | undefined = universeReach_of(graph.nodes.length);
+  const nodes: LayoutNode[] = layoutInput_build(graph.nodes, (node): string | null => universeKey_derive(node.id));
+  const reach: number | undefined = universeReach_derive(graph.nodes.length);
   const physics: PhysicsTerms = { ...PHYSICS_DEFAULT, gravity: true, ...(reach === undefined ? {} : { reach }) };
   return { graph, nodes, physics };
 }
@@ -111,11 +111,11 @@ export async function universeLayout_lay(
   feeds: ReadonlyArray<LandedFeed>,
   run: typeof layout_runInWorker = layout_runInWorker,
 ): Promise<boolean> {
-  const { nodes, physics } = universeLayoutInput_of(layout, feeds);
+  const { nodes, physics } = universeLayoutInput_build(layout, feeds);
   if (nodes.length === 0 || (layout === 'galaxy' && nodes.length < SESSION_GALAXY_NODES_MIN)) return false;
   underWay.set(layout, { nodes: nodes.length, fraction: 0 });
   try {
-    const positions: Positions = await run(universeEngine_of(layout), nodes, physics, (fraction: number): void => {
+    const positions: Positions = await run(universeEngine_resolve(layout), nodes, physics, (fraction: number): void => {
       underWay.set(layout, { nodes: nodes.length, fraction });
     });
     const kept: Record<string, ProcLayoutPosition> = {};

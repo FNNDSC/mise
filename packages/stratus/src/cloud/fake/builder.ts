@@ -7,7 +7,7 @@
  * @module
  */
 import type { DomainSpec } from '../../domain/spec.js';
-import { specNodes_of, type SpecNode } from '../../domain/spec.js';
+import { specNodes_build, type SpecNode } from '../../domain/spec.js';
 import type { Installer, InstallerCredentials, InstallerHost, InstallerIds, InstallStatus, PlatformManifest } from '../../installer/installer.js';
 import type { BuildCall, CloudBuilder, InfraOutputs, InfraPlan, PlanRow, PreflightCheck, TeardownRequest } from '../builder.js';
 
@@ -59,7 +59,7 @@ export class FakeBuildWorld {
   }
 
   /** A cluster by name, made when first asked for. */
-  cluster_of(name: string): FakeCluster {
+  cluster_resolve(name: string): FakeCluster {
     let cluster: FakeCluster | undefined = this.clusters.get(name);
     if (cluster === undefined) {
       cluster = { name, hosts: [], pending: [] };
@@ -75,7 +75,7 @@ export class FakeBuildWorld {
    * @param nodes - Its machines.
    */
   machines_boot(domain: string, nodes: ReadonlyArray<SpecNode>): void {
-    const cluster: FakeCluster = this.cluster_of(domain);
+    const cluster: FakeCluster = this.cluster_resolve(domain);
     const now: number = Date.now();
     cluster.pending = nodes.map((node: SpecNode, index: number): { host: InstallerHost; at: number } => ({
       host: { id: `host-${node.name}`, name: node.name, zone: FAKE_ZONES[node.zoneIndex] ?? 'AD-1', role: 'auto', registered: '', ready: true },
@@ -90,7 +90,7 @@ export class FakeBuildWorld {
    * @returns The hosts.
    */
   hosts_now(domain: string): InstallerHost[] {
-    const cluster: FakeCluster = this.cluster_of(domain);
+    const cluster: FakeCluster = this.cluster_resolve(domain);
     const now: number = Date.now();
     for (const entry of cluster.pending.filter((p): boolean => p.at <= now)) {
       cluster.hosts.push({ ...entry.host, registered: new Date(entry.at).toISOString() });
@@ -143,11 +143,11 @@ export class FakeCloudBuilder implements CloudBuilder {
     await this.world.tick(3, call.signal);
     if (request.stackRef !== undefined) {
       // A built stack re-planned: nothing to make, OCI's own tags to strip.
-      const drift: PlanRow[] = specNodes_of(request.domain, request.spec, FAKE_ZONES.length).map((node: SpecNode): PlanRow => ({ action: 'change', kind: 'instances', name: node.name, drift: true }));
+      const drift: PlanRow[] = specNodes_build(request.domain, request.spec, FAKE_ZONES.length).map((node: SpecNode): PlanRow => ({ action: 'change', kind: 'instances', name: node.name, drift: true }));
       call.log(`plan job done: 0 to create, ${drift.length} to change, 0 to destroy`);
       return { ref: this.world.id_next('plan'), rows: drift };
     }
-    const nodes: SpecNode[] = specNodes_of(request.domain, request.spec, FAKE_ZONES.length);
+    const nodes: SpecNode[] = specNodes_build(request.domain, request.spec, FAKE_ZONES.length);
     const create = (kind: string, name: string): PlanRow => ({ action: 'create', kind, name });
     const rows: PlanRow[] = [
       ...nodes.map((node: SpecNode): PlanRow => create('instances', node.name)),
@@ -216,7 +216,7 @@ export class FakeInstaller implements Installer {
 
   async cluster_create(request: { name: string; baseDomain: string; version: string; controlPlaneCount: number }): Promise<InstallerIds> {
     await this.world.tick(1);
-    this.world.cluster_of(request.name);
+    this.world.cluster_resolve(request.name);
     return { clusterId: `cluster-${request.name}`, infraEnvId: `infraenv-${request.name}` };
   }
 
@@ -237,11 +237,11 @@ export class FakeInstaller implements Installer {
   }
 
   async install_start(ids: InstallerIds): Promise<void> {
-    this.world.cluster_of(ids.clusterId.replace(/^cluster-/, '')).installStarted = Date.now();
+    this.world.cluster_resolve(ids.clusterId.replace(/^cluster-/, '')).installStarted = Date.now();
   }
 
   async install_status(ids: InstallerIds): Promise<InstallStatus> {
-    const started: number | undefined = this.world.cluster_of(ids.clusterId.replace(/^cluster-/, '')).installStarted;
+    const started: number | undefined = this.world.cluster_resolve(ids.clusterId.replace(/^cluster-/, '')).installStarted;
     if (started === undefined) return { state: 'ready', percent: 0, note: 'ready to install' };
     const span: number = Math.max(this.world.tickMs * this.installTicks, 1);
     const percent: number = this.world.tickMs <= 0 ? 100 : Math.min(100, Math.round(((Date.now() - started) / span) * 100));

@@ -38,7 +38,7 @@ export interface PageLocation {
  * @param pathname - The page's path.
  * @returns The mount, always beginning and ending with `/`.
  */
-export function pageMount_of(pathname: string): string {
+export function pageMount_derive(pathname: string): string {
   const cut: number = pathname.lastIndexOf('/');
   return cut <= 0 ? '/' : pathname.slice(0, cut + 1);
 }
@@ -56,7 +56,7 @@ export function wireUrl_resolve(location: PageLocation): string {
     return override;
   }
   const scheme: string = location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${scheme}://${location.host}${pageMount_of(location.pathname)}`;
+  return `${scheme}://${location.host}${pageMount_derive(location.pathname)}`;
 }
 
 /**
@@ -164,7 +164,7 @@ export function door_isPresent(search: string): boolean {
  * @returns An absolute path on this origin.
  */
 export function doorUrl_build(pathname: string, leaf: 'login' | 'logout' | 'restart' | 'greet' | 'switch'): string {
-  const parts: string[] = pageMount_of(pathname).split('/').filter((part: string): boolean => part.length > 0);
+  const parts: string[] = pageMount_derive(pathname).split('/').filter((part: string): boolean => part.length > 0);
   const above: string[] = parts.slice(0, -2);
   return `/${above.length > 0 ? `${above.join('/')}/` : ''}${leaf}`;
 }

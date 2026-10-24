@@ -7,7 +7,7 @@
  * teaching the line that names a family when there is none.
  */
 import { describe, it, expect } from '@jest/globals';
-import { limitShort_of, money_text, stratusTiles_make, zoneShort_of, type StratusTileHooks } from '../../src/compositions/stratus/tiles.js';
+import { limitShort_format, money_text, stratusTiles_make, zoneShort_format, type StratusTileHooks } from '../../src/compositions/stratus/tiles.js';
 import type { ExecuteOutcome } from '../../src/calypso/client.js';
 
 const DOMAINS = {
@@ -88,10 +88,10 @@ describe('the stratus tiles', () => {
   });
 
   it('shortens zones and limits to what a tile has room for', () => {
-    expect(zoneShort_of('disG:US-ASHBURN-AD-1')).toBe('US-ASHBURN-AD-1');
-    expect(zoneShort_of('us-east-1a')).toBe('us-east-1a');
-    expect(zoneShort_of(null)).toBe('REGION');
-    expect(limitShort_of({ family: 'A1', limit: 'standard-a1-memory-count', zone: null, value: 1, used: null, available: null })).toBe('memory');
-    expect(limitShort_of({ family: 'GPU', limit: 'gpu-a10-count', zone: null, value: 1, used: null, available: null })).toBe('a10');
+    expect(zoneShort_format('disG:US-ASHBURN-AD-1')).toBe('US-ASHBURN-AD-1');
+    expect(zoneShort_format('us-east-1a')).toBe('us-east-1a');
+    expect(zoneShort_format(null)).toBe('REGION');
+    expect(limitShort_format({ family: 'A1', limit: 'standard-a1-memory-count', zone: null, value: 1, used: null, available: null })).toBe('memory');
+    expect(limitShort_format({ family: 'GPU', limit: 'gpu-a10-count', zone: null, value: 1, used: null, available: null })).toBe('a10');
   });
 });

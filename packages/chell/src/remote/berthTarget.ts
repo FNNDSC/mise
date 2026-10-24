@@ -23,7 +23,7 @@ import { identity_normalise } from '@fnndsc/calypso';
  * @returns The candidate identities, most exact first, without repeats; empty
  *   when the target names no user.
  */
-export function berthIdentities_of(target: string): string[] {
+export function berthIdentities_derive(target: string): string[] {
   const split: number = target.lastIndexOf('@');
   if (split <= 0 || split === target.length - 1) {
     return [];

@@ -21,7 +21,7 @@ import { lineVisible_run } from './lines.js';
 /** What the tag verbs ask of the host. */
 export interface TagHooks {
   /** A question on a pane, where the press was. */
-  ask_onPane: (id: string, request: PaneAskRequest) => Promise<string | null>;
+  askOnPane_await: (id: string, request: PaneAskRequest) => Promise<string | null>;
   /** The roster (or a graph's readout) shows the feed's tags again. */
   tags_changed: (feedId: number) => void;
 }
@@ -40,7 +40,7 @@ export interface TagVerbs {
  * @param outcome - The listing's outcome.
  * @returns The names, in the kernel's order.
  */
-export function tagNames_of(outcome: ExecuteOutcome): string[] {
+export function tagNames_extract(outcome: ExecuteOutcome): string[] {
   for (const envelope of outcome.envelopes as ReadonlyArray<WireEnvelope>) {
     if (envelope.model?.kind !== 'fs.listing') continue;
     const listings = envelope.model.data as Array<{ items?: Array<{ name?: unknown }> }>;
@@ -73,7 +73,7 @@ export function tags_wire(context: Pick<HostContext, 'terminal' | 'client'>, hoo
   /** The user's tags, asked of the kernel quietly. */
   const tags_read = async (): Promise<string[]> => {
     try {
-      return tagNames_of(await context.client.line_execute('ls /proc/tags', { silent: true, observe: false }));
+      return tagNames_extract(await context.client.line_execute('ls /proc/tags', { silent: true, observe: false }));
     } catch {
       return [];
     }
@@ -85,7 +85,7 @@ export function tags_wire(context: Pick<HostContext, 'terminal' | 'client'>, hoo
       const known: string[] = await tags_read();
       const choices: PaneAskChoice[] = known.map((name: string): PaneAskChoice => ({ value: name, held: wearing.has(name) }));
       const offered: string = known.filter((name: string): boolean => !wearing.has(name)).join(', ');
-      const answer: string | null = await hooks.ask_onPane(paneId, {
+      const answer: string | null = await hooks.askOnPane_await(paneId, {
         kind: 'choose',
         message: `Tag feed_${feedId}${offered === '' ? '' : ` (${offered})`}, or a new tag: `,
         choices,

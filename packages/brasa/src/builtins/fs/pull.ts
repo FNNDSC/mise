@@ -42,7 +42,7 @@ import { sink_get, sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { repl_confirm } from '../../core/question.js';
 import type { ProgressStatus } from '../../core/progress.js';
 import { newFeed_cacheAdd, run_follow } from '../feedCreation.js';
-import { cohort_read, cohortFolders_note, cohortModel_of } from '../res/gather.store.js';
+import { cohort_read, cohortFolders_note, cohortModel_wrap } from '../res/gather.store.js';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 interface PullPathResolution {
@@ -522,7 +522,7 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
     // A pull that moved the cohort says so in data: a surface showing the
     // cohort redraws from the kernel's copy rather than waiting for the
     // next gather verb to learn its members are home.
-    if (cohortChanged > 0) return envelope_ok('', cohortModel_of(await cohort_read()));
+    if (cohortChanged > 0) return envelope_ok('', cohortModel_wrap(await cohort_read()));
     return envelope_ok('');
   }
   if (created === null) return envelope_ok('');

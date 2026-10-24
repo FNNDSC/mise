@@ -55,7 +55,7 @@ function timezone_offset(date: Date, utc: boolean): string {
 }
 
 /** The 1-based day of the year. */
-function day_ofYear(year: number, month: number, day: number): number {
+function dayOfYear_compute(year: number, month: number, day: number): number {
   const start: number = Date.UTC(year, 0, 1);
   const current: number = Date.UTC(year, month, day);
   return Math.floor((current - start) / 86_400_000) + 1;
@@ -96,7 +96,7 @@ export function date_format(date: Date, format: string, utc: boolean): string {
     B: MONTHS_LONG[month],
     b: MONTHS_SHORT[month],
     h: MONTHS_SHORT[month],
-    j: String(day_ofYear(year, month, day)).padStart(3, '0'),
+    j: String(dayOfYear_compute(year, month, day)).padStart(3, '0'),
     u: String(dow === 0 ? 7 : dow),
     w: String(dow),
     Z: timezone_abbrev(date, utc),

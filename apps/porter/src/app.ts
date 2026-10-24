@@ -58,7 +58,7 @@ import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { identity_normalise } from '@fnndsc/calypso/berth';
 import type { PorterConfig } from './config.js';
-import { identity_isStratus, owner_of, stratusIdentity_of, user_of, type SessionHost, type Berth, type BootLine } from './host/sessionHost.js';
+import { identity_isStratus, owner_extract, stratusIdentity_derive, user_extract, type SessionHost, type Berth, type BootLine } from './host/sessionHost.js';
 import { CredentialStore } from './creds.js';
 import { SessionRegistry, type SessionEntry } from './registry.js';
 import { cubeToken_mint, type TokenMint } from './cube/auth.js';
@@ -114,7 +114,7 @@ const deviceSchema = z.object({
 });
 
 /** The token a request presents as a bearer, or null. */
-export function bearer_ofRequest(request: FastifyRequest): string | null {
+export function bearer_extract(request: FastifyRequest): string | null {
   const header: string = String(request.headers.authorization ?? '');
   const match: RegExpMatchArray | null = /^Bearer\s+(\S+)$/i.exec(header);
   return match === null ? null : (match[1] as string);
@@ -126,7 +126,7 @@ export function bearer_ofRequest(request: FastifyRequest): string | null {
  * @param berth - The berth.
  * @returns The daemon's HTTP origin.
  */
-export function berthHttp_of(berth: Berth): string {
+export function berthHttp_derive(berth: Berth): string {
   return berth.url.replace(/^ws/, 'http');
 }
 
@@ -266,7 +266,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   const adopt = async (): Promise<void> => {
     for (const sighting of await host.sessions_adopt()) {
       if (!sighting.alive) continue;
-      const user: string = user_of(sighting.identity);
+      const user: string = user_extract(sighting.identity);
       registry.note(sighting.identity, user, sighting.berth);
       options.log?.(`adopted ${user}'s session at ${sighting.berth.url}`);
     }
@@ -301,12 +301,12 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   };
 
   /** The key the request's cookie names, or null. */
-  const key_ofRequest = (request: FastifyRequest): string | null => cookieKey_read(request.headers.cookie, config.secret);
+  const requestKey_read = (request: FastifyRequest): string | null => cookieKey_read(request.headers.cookie, config.secret);
 
   app.get('/healthz', async (): Promise<{ ok: true; cube: string; sessions: number }> => ({ ok: true, cube: config.cubeUrl, sessions: registry.all().length }));
 
   app.get('/', async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    const key: string | null = key_ofRequest(request);
+    const key: string | null = requestKey_read(request);
     const entry: SessionEntry | null = key === null ? null : registry.get(key);
     await reply.redirect(entry === null ? '/login' : `/s/${entry.key}/?door`, 302);
   });
@@ -317,7 +317,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     void reply.type('text/html; charset=utf-8');
     if (typeof query.code === 'string' && query.code.length > 0) {
       // The device-code variant: the same door, saying which chell it is for.
-      const host: string | null = codes.host_of(query.code);
+      const host: string | null = codes.host_find(query.code);
       if (host === null) return loginPage_render(config.cubeUrl, `the code ${query.code} is not waiting (ten minutes, once); run chell auth login again`);
       return loginPage_render(config.cubeUrl, reason, { code: query.code, host });
     }
@@ -340,7 +340,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
 
   /** The token a self-service route is called with, checked; or the refusal sent. */
   const bearer_check = async (request: FastifyRequest, reply: FastifyReply): Promise<DoorToken | null> => {
-    const bearer: string | null = bearer_ofRequest(request);
+    const bearer: string | null = bearer_extract(request);
     if (bearer === null || !token_looksLike(bearer)) {
       await reply.code(401).send({ error: 'a door token is required (Authorization: Bearer …)' });
       return null;
@@ -389,7 +389,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
       wantsJson ? reply.code(status).send({ error: reason }) : reply.redirect(`/${fromDevice ? 'device' : 'login'}?reason=${encodeURIComponent(reason)}`, 303);
     // A script's way in: a door token minted for a human login earlier.
     // Checked before any body, so a token never travels beside a password.
-    const bearer: string | null = bearer_ofRequest(request);
+    const bearer: string | null = bearer_extract(request);
     let username: string;
     let cubeToken: string | null;
     let byToken: DoorToken | null = null;
@@ -427,7 +427,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     // session here. The token is minted, handed to the waiting poll, and
     // the browser is told it can go.
     if (wanted.code !== undefined) {
-      const forHost: string | null = codes.host_of(wanted.code);
+      const forHost: string | null = codes.host_find(wanted.code);
       if (forHost === null) return refuse(410, `the code ${wanted.code} is not waiting (ten minutes, once); run chell auth login again`);
       const name: string = `${username}@${forHost}`;
       const made: { token: string; record: DoorToken } = tokens.mint(identity, username, name);
@@ -467,7 +467,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
       return body;
     };
     const found: Berth | null = await host.find(identity);
-    const key: string = registry.key_of(identity);
+    const key: string = registry.key_derive(identity);
     void reply.setCookie(DOOR_COOKIE, key, doorCookie_options(config.cookieHours, request.protocol === 'https'));
     if (byToken !== null) options.log?.(`${username} came through by door token "${byToken.name}"`);
     // A boot already under way is joined, never restarted: two scripts
@@ -523,7 +523,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
 
   app.get('/greet/:key', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const key: string = (request.params as { key: string }).key;
-    if (key_ofRequest(request) !== key) {
+    if (requestKey_read(request) !== key) {
       return reply.redirect('/login', 302);
     }
     void reply.type('text/html; charset=utf-8');
@@ -554,9 +554,9 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   // and the only session it can name is its own.
   app.post('/restart', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const wantsJson: boolean = request_wantsJson(request);
-    const key: string | null = key_ofRequest(request);
+    const key: string | null = requestKey_read(request);
     const entry: SessionEntry | null = key !== null ? registry.get(key) : null;
-    if (key !== null && entry === null && registry.identity_of(key) !== null) {
+    if (key !== null && entry === null && registry.identity_find(key) !== null) {
       // Already restarting (or booting): a second press joins that boot.
       return wantsJson ? { key, greet: `/greet/${key}`, state: 'restarting' } : reply.redirect(`/greet/${key}`, 303);
     }
@@ -568,7 +568,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     registry.pending_note(entry.identity, entry.user);
     if (identity_isStratus(entry.identity)) {
       // A stratus session restarts on its owner's credentials, on the tier it had.
-      const configPath: string | null = creds.ociConfig_of(owner_of(entry.identity));
+      const configPath: string | null = creds.ociConfig_find(owner_extract(entry.identity));
       if (configPath === null) return wantsJson ? reply.code(404).send({ error: 'no OCI credentials are filed for this session any more' }) : reply.redirect('/login', 303);
       host.stratus_begin(entry.identity, configPath, host.stratus_armed(entry.identity) === true, true);
       options.log?.(`restarting ${entry.user}'s stratus session, asked from their browser`);
@@ -586,28 +586,28 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   // lets one person reach another's.
   const switchSchema = z.object({ to: z.enum(['stratus', 'chris']), cloud: z.literal('oci').optional(), spend: z.boolean().optional() });
   app.post('/switch', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
-    const key: string | null = key_ofRequest(request);
-    const identity: string | null = key !== null ? registry.identity_of(key) : null;
+    const key: string | null = requestKey_read(request);
+    const identity: string | null = key !== null ? registry.identity_find(key) : null;
     if (key === null || identity === null) return reply.code(401).send({ error: 'this browser holds no session: log in first' });
     const parsed = switchSchema.safeParse(request.body ?? {});
     if (!parsed.success) return reply.code(400).send({ error: 'switch wants {to: "stratus" | "chris", cloud?: "oci", spend?: boolean}' });
-    const owner: string = owner_of(identity);
-    const user: string = user_of(identity);
+    const owner: string = owner_extract(identity);
+    const user: string = user_extract(identity);
     const cookie = (to: string): void => { void reply.setCookie(DOOR_COOKIE, to, doorCookie_options(config.cookieHours, request.protocol === 'https')); };
     if (parsed.data.to === 'chris') {
       const found: Berth | null = await host.find(owner);
       if (found === null) return reply.code(409).send({ error: `${user}'s ChRIS session is not running: log in again` });
-      const back: string = registry.key_of(owner);
+      const back: string = registry.key_derive(owner);
       registry.note(owner, user, found);
       cookie(back);
       return { key: back, mount: `/s/${back}/`, state: 'attached' };
     }
-    const configPath: string | null = creds.ociConfig_of(owner);
+    const configPath: string | null = creds.ociConfig_find(owner);
     if (configPath === null) {
       return reply.code(404).send({ error: `no OCI credentials are filed for ${user} on this host. The host's operator files an existing key with porter --creds ${user} --oci <config>; connecting a new key from here is not built yet` });
     }
-    const session: string = stratusIdentity_of(owner);
-    const to: string = registry.key_of(session);
+    const session: string = stratusIdentity_derive(owner);
+    const to: string = registry.key_derive(session);
     const spend: boolean = parsed.data.spend === true;
     const found: Berth | null = await host.find(session);
     const armed: boolean | null = host.stratus_armed(session);
@@ -632,11 +632,11 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
 
   app.get('/boot/:key', async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
     const key: string = (request.params as { key: string }).key;
-    if (key_ofRequest(request) !== key) {
+    if (requestKey_read(request) !== key) {
       await reply.code(401).send({ error: 'this browser was not let in to that session' });
       return;
     }
-    const identity: string | null = registry.identity_of(key);
+    const identity: string | null = registry.identity_find(key);
     if (identity === null) {
       await reply.code(404).send({ error: 'no session behind that key' });
       return;
@@ -678,7 +678,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
   // The session itself, over HTTP: the page, its assets, and /vfs.
   app.all('/s/:key/*', async (request: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const split = mountUrl_split(request.url);
-    if (split === null || key_ofRequest(request) !== split.key) {
+    if (split === null || requestKey_read(request) !== split.key) {
       return reply.redirect('/login', 302);
     }
     const entry: SessionEntry | null = registry.get(split.key);
@@ -690,7 +690,7 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     const sound = await soundOverride_read(config.soundsDir, split.rest);
     if (sound !== null) return reply.type(sound.type).header('cache-control', 'private, max-age=3600').send(sound.bytes);
     return reply.from(upstreamPath_build(split.rest, entry.berth.token), {
-      getUpstream: (): string => berthHttp_of(entry.berth),
+      getUpstream: (): string => berthHttp_derive(entry.berth),
       // The daemon behind the entry did not answer: ask the host who is up
       // now instead of handing the browser a bare 500 for a dead port.
       onError: (_failed: unknown, error: { error: Error }): void => {

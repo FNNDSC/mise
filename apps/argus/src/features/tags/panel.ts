@@ -147,8 +147,8 @@ export class TagsPanel {
    */
   public model_show(model: DicomTagsModel): void {
     this.model = model;
-    this.title.textContent = `TAGS ${title_of(model)}`;
-    this.pane.dataset['modality'] = modalityHue_of(model);
+    this.title.textContent = `TAGS ${title_format(model)}`;
+    this.pane.dataset['modality'] = modalityHue_derive(model);
     this.groups = groups_build(model);
     this.listing.rows_set([{ key: model.path, rows: this.groups }], { field: model.path });
     this.listing.open_set(0, this.groups.map((group: GroupRow): string => group.group).filter((group: string): boolean => !FOLDED_AT_FIRST.has(group)));
@@ -378,7 +378,7 @@ function tagRow_build(tag: DicomTag, key: string): TagRow {
  * a folder's last segment, else the file name cut short. The whole path is
  * the row's own business, not the bar's.
  */
-function title_of(model: DicomTagsModel): string {
+function title_format(model: DicomTagsModel): string {
   const name: string = model.path.replace(/\/$/, '').split('/').pop() ?? model.path;
   if (model.subject === 'folder') return name.length > 24 ? `${name.slice(0, 22)}…` : name;
   const instance: string | undefined = /^(\d+)-/.exec(name)?.[1];
@@ -387,7 +387,7 @@ function title_of(model: DicomTagsModel): string {
 }
 
 /** The frame's hue: the file's own modality, so the tags pane matches the image it follows. */
-function modalityHue_of(model: DicomTagsModel): string {
+function modalityHue_derive(model: DicomTagsModel): string {
   const modality: string = (model.constant.find((tag: DicomTag): boolean => tag.name === 'Modality')?.value ?? '').toUpperCase();
   return modality === 'MR' || modality === 'CT' || modality === 'PT' ? modality : 'OT';
 }

@@ -10,7 +10,7 @@
  * @module
  */
 
-import { vfsOutcome_ofBoolean, vfsOutcome_ofResult, type VfsOutcome } from '@fnndsc/fond';
+import { vfsOutcome_convertFromBoolean, vfsOutcome_convertFromResult, type VfsOutcome } from '@fnndsc/fond';
 
 /** How long `/etc`'s compute resources and the user's own record are kept. */
 export const ETC_KEEP_MS: number = 10 * 60 * 1000;
@@ -81,7 +81,7 @@ export class EtcVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async cp(_src: string, _dest: string, _options: CpOptions): Promise<VfsOutcome> {
-    return vfsOutcome_ofBoolean(await this.copy_run(_src, _dest, _options), 'EROFS');
+    return vfsOutcome_convertFromBoolean(await this.copy_run(_src, _dest, _options), 'EROFS');
   }
 
   /**
@@ -94,7 +94,7 @@ export class EtcVfsProvider implements VFSProvider {
 
   /** @inheritdoc */
   async read(path: string): Promise<VfsOutcome<string>> {
-    return vfsOutcome_ofResult(await this.text_read(path), 'ENOENT');
+    return vfsOutcome_convertFromResult(await this.text_read(path), 'ENOENT');
   }
 
   /**

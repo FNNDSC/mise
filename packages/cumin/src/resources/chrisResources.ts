@@ -158,7 +158,7 @@ export class ChRISResource {
    * @param item - The item to convert.
    * @returns A dictionary representation of the item.
    */
-  resourceItem_toDict(item: Item): Dictionary {
+  resourceItem_convertToDict(item: Item): Dictionary {
     return item.data.reduce((acc: Dictionary, { name, value }) => {
       acc[name] = value as string | number | boolean;
       return acc;
@@ -170,8 +170,8 @@ export class ChRISResource {
    * @param items - The list of items to convert.
    * @returns An array of dictionaries.
    */
-  resourceItems_toDicts(items: Item[]): Dictionary[] {
-    return items.map(this.resourceItem_toDict);
+  resourceItems_mapToDicts(items: Item[]): Dictionary[] {
+    return items.map(this.resourceItem_convertToDict);
   }
 
   /**

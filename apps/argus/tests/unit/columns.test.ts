@@ -3,8 +3,8 @@
  * is never sized, the device's memory, and the template that follows.
  */
 import { describe, it, expect } from '@jest/globals';
-import { floor_of, track_isExpanse, columns_read, column_write, boundary_drag, type ColumnStore } from '../../src/features/roster/columns.js';
-import { listingTemplate_of } from '../../src/features/roster/listing.js';
+import { floor_parse, track_isExpanse, columns_read, column_write, boundary_drag, type ColumnStore } from '../../src/features/roster/columns.js';
+import { listingTemplate_build } from '../../src/features/roster/listing.js';
 import type { ListingTrait } from '../../src/features/roster/row.js';
 
 function store_fake(): ColumnStore & { map: Map<string, string> } {
@@ -30,15 +30,15 @@ describe('columns by hand', () => {
     expect(track_isExpanse('minmax(8em, 1fr)')).toBe(true);
     expect(track_isExpanse('1fr')).toBe(true);
     expect(track_isExpanse('24em')).toBe(false);
-    expect(floor_of('minmax(12em, 24em)')).toBe('12em');
-    expect(floor_of('7em')).toBe('3em');
-    expect(floor_of('minmax( 96px ,1fr)')).toBe('96px');
+    expect(floor_parse('minmax(12em, 24em)')).toBe('12em');
+    expect(floor_parse('7em')).toBe('3em');
+    expect(floor_parse('minmax( 96px ,1fr)')).toBe('96px');
   });
 
   it('writes a sized column into the template in px; the expanse keeps its 1fr and only its minimum moves', () => {
-    const plain: string = listingTemplate_of(TRAITS);
+    const plain: string = listingTemplate_build(TRAITS);
     expect(plain).toBe('4em minmax(12em, 24em) minmax(8em, 1fr) 7em');
-    const sized: string = listingTemplate_of(TRAITS, undefined, new Map([['title', 300], ['progress', 500], ['owner', 90]]));
+    const sized: string = listingTemplate_build(TRAITS, undefined, new Map([['title', 300], ['progress', 500], ['owner', 90]]));
     expect(sized).toBe('4em 300px minmax(500px, 1fr) 90px');
   });
 

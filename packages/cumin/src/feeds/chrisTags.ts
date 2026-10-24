@@ -230,7 +230,7 @@ async function tagsIndex_read(now: number): Promise<Result<NonNullable<typeof ta
  * @param now - The clock (a test hands in its own).
  * @returns Feed id to its tag names.
  */
-export async function feedTags_byFeed(now: number = Date.now()): Promise<Result<Map<number, string[]>>> {
+export async function feedTags_readByFeed(now: number = Date.now()): Promise<Result<Map<number, string[]>>> {
   const index = await tagsIndex_read(now);
   return index.ok ? Ok(index.value.byFeed) : Err();
 }

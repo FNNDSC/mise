@@ -12,7 +12,7 @@ import * as THREE from 'three';
  * @param count - The feeds of the shape.
  * @returns The radius in scene units.
  */
-export function haloRadius_of(count: number): number {
+export function haloRadius_compute(count: number): number {
   return 1.6 + 0.45 * Math.sqrt(Math.max(1, count));
 }
 

@@ -48,7 +48,7 @@ export const RESTART_QUESTION: string = 'Restart the calypso daemon? You\'ll sta
  * @param facts - What is live.
  * @returns One line per thing a restart cuts off; none when nothing is live.
  */
-export function restartCuts_of(facts: RestartFacts): string[] {
+export function restartCuts_list(facts: RestartFacts): string[] {
   const cuts: string[] = [];
   if (facts.running !== null) cuts.push(`the running command: ${facts.running}`);
   for (const file of facts.unsaved) cuts.push(`an unsaved edit in ${file}`);
@@ -62,7 +62,7 @@ export function restartCuts_of(facts: RestartFacts): string[] {
 }
 
 /** What another ARGUS says when the daemon goes, by why. */
-export function closingWords_of(cause: ClosingCause): string {
+export function closingWords_render(cause: ClosingCause): string {
   if (cause === 'restart') return 'The calypso daemon is restarting (asked from another browser or surface). Following it…';
   if (cause === 'end') return 'The calypso daemon was ended by an administrator.';
   return 'The calypso daemon stopped.';
@@ -197,7 +197,7 @@ export function restart_wire(hooks: RestartHooks, host: HTMLElement = document.b
       unsaved: hooks.unsaved(),
       others: surfaces.filter((surface: SurfaceSeen): boolean => surface.id !== self),
     };
-    const question: HTMLDivElement = restartQuestion_build(restartCuts_of(facts), (yes: boolean): void => { if (yes) void restart_send(); });
+    const question: HTMLDivElement = restartQuestion_build(restartCuts_list(facts), (yes: boolean): void => { if (yes) void restart_send(); });
     host.querySelector('.build-mismatch')?.remove();
     host.appendChild(question);
     question.querySelector<HTMLButtonElement>('.restart-yes')?.focus();
@@ -219,7 +219,7 @@ export function restart_wire(hooks: RestartHooks, host: HTMLElement = document.b
     closing_take: (cause: ClosingCause): void => {
       // This ARGUS asked: it is already on its way to the greeter.
       if (asked) return;
-      notice_say(closingWords_of(cause));
+      notice_say(closingWords_render(cause));
       if (cause !== 'restart' || !throughDoor) return;
       // Another surface asked: follow to the greeter, which waits for the fresh daemon.
       const key: string | undefined = window.location.pathname.split('/').filter((part: string): boolean => part.length > 0).at(-1);

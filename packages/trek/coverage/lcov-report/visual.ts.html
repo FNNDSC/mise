@@ -162,23 +162,13 @@
 <a name='L97'></a><a href='#L97'>97</a>
 <a name='L98'></a><a href='#L98'>98</a>
 <a name='L99'></a><a href='#L99'>99</a>
-<a name='L100'></a><a href='#L100'>100</a>
-<a name='L101'></a><a href='#L101'>101</a>
-<a name='L102'></a><a href='#L102'>102</a>
-<a name='L103'></a><a href='#L103'>103</a>
-<a name='L104'></a><a href='#L104'>104</a>
-<a name='L105'></a><a href='#L105'>105</a>
-<a name='L106'></a><a href='#L106'>106</a>
-<a name='L107'></a><a href='#L107'>107</a>
-<a name='L108'></a><a href='#L108'>108</a>
-<a name='L109'></a><a href='#L109'>109</a>
-<a name='L110'></a><a href='#L110'>110</a>
-<a name='L111'></a><a href='#L111'>111</a>
-<a name='L112'></a><a href='#L112'>112</a>
-<a name='L113'></a><a href='#L113'>113</a>
-<a name='L114'></a><a href='#L114'>114</a>
-<a name='L115'></a><a href='#L115'>115</a>
-<a name='L116'></a><a href='#L116'>116</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L100'></a><a href='#L100'>100</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -251,32 +241,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-yes">18x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -336,12 +304,18 @@ import type { Trek } from './context.js';
 import { getintpar } from './getpar.js';
 import type { XY } from './state.js';
 &nbsp;
-/**
- * This struct[] has the delta x, delta y for particular directions.
- *
- * As compiled: struct xy holds unsigned chars, so the C's -1 is stored as 255 and those
- * directions look off the edge ('?'). Kept, so the scan reads as the original's does.
- */
+/*
+**  VISUAL SCAN
+**
+**	A visual scan is made in a particular direction of three sectors
+**	in the general direction specified.  This takes time, and
+**	Klingons can attack you, so it should be done only when sensors
+**	are out.
+*/
+&nbsp;
+/* This struct[] has the delta x, delta y for particular directions */
+// As compiled: struct xy holds unsigned chars, so the C's -1 is stored as 255 and those
+// directions look off the edge ('?'). Kept, so the scan reads as the original's does.
 const Visdelta: ReadonlyArray&lt;XY&gt; = [
   { x: 255, y: 255 },
   { x: 255, y: 0 },
@@ -358,52 +332,30 @@ const Visdelta: ReadonlyArray&lt;XY&gt; = [
 &nbsp;
 /** A sector seen by the visual scan: where it is, and what is there. */
 interface SectorSeen {
-  /** The sector row looked at. */
   ix: number;
-  /** The sector column looked at. */
   iy: number;
   /** The sector's character, or '?' off the edge. */
   co: string;
 }
 &nbsp;
-/**
- * Looks at the sector at a delta from the ship: its character, or '?' off the edge.
- *
- * @param t - The game: state, terminal and random numbers.
- * @param v - The delta from the ship's sector.
- * @returns The sector looked at and what is there.
- */
-function sector_look(t: Trek, v: XY): SectorSeen {
+/** The sector at a delta from the ship: its character, or '?' off the edge. */
+function look(t: Trek, v: XY): SectorSeen {
   const ix: number = t.s.Ship.sectx + v.x;
   const iy: number = t.s.Ship.secty + v.y;
   const co: string = ix &lt; 0 || ix &gt;= NSECTS || iy &lt; 0 || iy &gt;= NSECTS ? '?' : t.s.Sect[ix][iy];
   return { ix, iy, co };
 }
 &nbsp;
-/**
- * Makes a visual scan of three sectors in the direction asked.
- *
- * VISUAL SCAN
- *
- * A visual scan is made in a particular direction of three sectors
- * in the general direction specified.  This takes time, and
- * Klingons can attack you, so it should be done only when sensors
- * are out.
- *
- * C: `visual()` in visual.c.
- *
- * @param t - The game: state, terminal and random numbers.
- * @param _z - The command table's argument, unused here.
- */
+/** VISUAL SCAN */
 export async function visual(t: Trek, _z: number): Promise&lt;void&gt; {
   let co: number = await getintpar(t, 'direction');
   <span class="missing-if-branch" title="if path not taken" >I</span>if (co &lt; 0 || co &gt; 360) <span class="cstat-no" title="statement not covered" >return;</span>
   co = Math.trunc((co + 22) / 45);
-  const a: SectorSeen = sector_look(t, Visdelta[co] as XY);
+  const a: SectorSeen = look(t, Visdelta[co] as XY);
   t.io.printf('%d,%d %c ', a.ix, a.iy, a.co);
-  const b: SectorSeen = sector_look(t, Visdelta[co + 1] as XY);
+  const b: SectorSeen = look(t, Visdelta[co + 1] as XY);
   t.io.printf('%c ', b.co);
-  const c: SectorSeen = sector_look(t, Visdelta[co + 2] as XY);
+  const c: SectorSeen = look(t, Visdelta[co + 2] as XY);
   t.io.printf('%c %d,%d\n', c.co, c.ix, c.iy);
   t.s.Move.time = 0.05;
   t.s.Move.free = 0;
@@ -415,7 +367,7 @@ export async function visual(t: Trek, _z: number): Promise&lt;void&gt; {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-10-24T00:12:13.284Z
+                at 2026-10-18T12:52:14.718Z
             </div>
         <script src="prettify.js"></script>
         <script>

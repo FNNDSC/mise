@@ -42,7 +42,8 @@ export interface ParseResult<T> {
 function zodError_format(error: z.ZodError): string {
   return error.issues
     .map((issue: z.ZodIssue): string => {
-      const path: string = issue.path.join('.');
+      // zod 4 paths may hold symbols, which a bare join throws on.
+      const path: string = issue.path.map(String).join('.');
       return path ? `${path}: ${issue.message}` : issue.message;
     })
     .join('; ');
@@ -61,7 +62,7 @@ function zodError_format(error: z.ZodError): string {
  * @returns The parse result.
  */
 function schema_parse<S extends z.ZodTypeAny>(schema: S, raw: unknown): ParseResult<z.output<S>> {
-  const result: z.SafeParseReturnType<unknown, z.output<S>> = schema.safeParse(raw);
+  const result: z.ZodSafeParseResult<z.output<S>> = schema.safeParse(raw);
   if (result.success) {
     return { ok: true, value: result.data };
   }

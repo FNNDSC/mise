@@ -9,6 +9,7 @@ let cohort: { version: number; name: string | null; feed: { feedId: number; root
 const written: unknown[] = [];
 jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({
   cohort_read: async () => cohort,
+  cohortFolders_resolve: async (state: unknown) => state,
   cohort_write: async (state: unknown): Promise<void> => { written.push(state); },
 }));
 

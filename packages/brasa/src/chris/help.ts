@@ -950,6 +950,9 @@ export const chrisHelp: Record<string, CommandHelp> = {
       '                           Answers as the bare run would: R=$(gather process …)',
       '                           <name> is the /bin name or the pipeline\'s own',
       '                           name: gather process "FreeSurfer 8.2.0 mri_convert"',
+      '                           A plugin that starts jobs of its own (pl-dymap)',
+      '                           finishes once they are submitted; watch them in',
+      '                           the feed.',
     ],
     examples: [
       'gather',

@@ -18,6 +18,8 @@ This document is about how `chell` is *invoked*: as a REPL, with one or more lin
 
 A session's working directory, its held listing (the `@` handles) and its variables carry from line to line in every mode.
 
+With a default door set (`chell auth login`, see `login.adoc`), a bare `chell`, `chell -c` and `chell -f` with no target run in the door's daemon session: the operator's live session, shared with ARGUS. A `-c` that runs `query` replaces the held listing ARGUS shows, and a variable one `-c` sets is seen by the next. `--no-door` gives a private local session instead. The cohort is a file in CUBE, so it is shared either way.
+
 == Interactive Mode
 
 [source,bash]

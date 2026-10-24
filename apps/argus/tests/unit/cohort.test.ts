@@ -47,6 +47,8 @@ function cohortEnvelope(series: Array<Record<string, unknown>>, name: string | n
 /** Lines the fake session ran, and what it answers each with. */
 interface Wire {
   lines: string[];
+  /** Lines sent as a pane's housekeeping rather than the operator's act. */
+  housekeeping: string[];
   echoed: string[];
   written: number;
   answer: (line: string) => Array<Record<string, unknown>>;
@@ -79,7 +81,7 @@ beforeEach((): void => {
   ].join('');
 });
 
-function host_make(stage: Stage, place: { dir: 'row' | 'col'; before: boolean } | null = null, wire: Wire = { lines: [], echoed: [], written: 0, answer: () => [] }): { module: CohortModule; panels: PanelRoster; births: Array<[string, string, string, boolean]>; spawned: string[]; wire: Wire } {
+function host_make(stage: Stage, place: { dir: 'row' | 'col'; before: boolean } | null = null, wire: Wire = { lines: [], housekeeping: [], echoed: [], written: 0, answer: () => [] }): { module: CohortModule; panels: PanelRoster; births: Array<[string, string, string, boolean]>; spawned: string[]; wire: Wire } {
   const panels: PanelRoster = new PanelRoster();
   const births: Array<[string, string, string, boolean]> = [];
   const spawned: string[] = [];
@@ -113,8 +115,9 @@ function host_make(stage: Stage, place: { dir: 'row' | 'col'; before: boolean } 
     line_note: (): void => {},
   };
   const client = {
-    line_execute: async (line: string): Promise<{ envelopes: unknown[] }> => {
+    line_execute: async (line: string, options?: { operator?: boolean }): Promise<{ envelopes: unknown[] }> => {
       wire.lines.push(line);
+      if (options?.operator !== true) wire.housekeeping.push(line);
       return { envelopes: wire.answer(line) };
     },
   };
@@ -185,12 +188,14 @@ describe('cohort_wire', () => {
     module.gather([series]);
     await tick();
     expect(wire.lines).toEqual([`gather add '${series.vfsPath}' '/net/pacs/queries/q_qid:7/Study_1.2/Series_1.2.4_FLAIR'`]);
+    // A press is the operator's act, never a pane's housekeeping: other surfaces hear it, and it may ask.
+    expect(wire.housekeeping).toEqual([]);
   });
 
   it('shows what the kernel answered, not what was pressed', async () => {
     const stage: Stage = { shown: [], focused: [], splits: [], splitAnswer: true, removed: [] };
     const answered = [{ vfsPath: series.vfsPath, kind: 'series', seriesUID: '1.2.3', description: 'SAG T1', modality: 'MR', patient: '4455667', study: 'MR Brain' }];
-    const { module } = host_make(stage, null, { lines: [], echoed: [], written: 0, answer: () => [cohortEnvelope(answered, 'sag')] });
+    const { module } = host_make(stage, null, { lines: [], housekeeping: [], echoed: [], written: 0, answer: () => [cohortEnvelope(answered, 'sag')] });
     module.gather([series]);
     // Nothing shows on the press itself.
     expect(module.cohort.size()).toBe(0);
@@ -212,7 +217,7 @@ describe('cohort_wire', () => {
 
   it('writes a refusal, and keeps a quiet press quiet', async () => {
     const stage: Stage = { shown: [], focused: [], splits: [], splitAnswer: true, removed: [] };
-    const wire: Wire = { lines: [], echoed: [], written: 0, answer: () => [] };
+    const wire: Wire = { lines: [], housekeeping: [], echoed: [], written: 0, answer: () => [] };
     const { module } = host_make(stage, null, wire);
     module.gather([series]);
     await tick();
@@ -225,7 +230,7 @@ describe('cohort_wire', () => {
 
   it('asks the kernel for the cohort at boot', async () => {
     const stage: Stage = { shown: [], focused: [], splits: [], splitAnswer: true, removed: [] };
-    const { module, wire } = host_make(stage, null, { lines: [], echoed: [], written: 0, answer: () => [cohortEnvelope([{ vfsPath: series.vfsPath, kind: 'series', seriesUID: '1.2.3' }])] });
+    const { module, wire } = host_make(stage, null, { lines: [], housekeeping: [], echoed: [], written: 0, answer: () => [cohortEnvelope([{ vfsPath: series.vfsPath, kind: 'series', seriesUID: '1.2.3' }])] });
     await module.restore();
     expect(wire.lines).toEqual(['gather']);
     expect(wire.echoed).toEqual([]);

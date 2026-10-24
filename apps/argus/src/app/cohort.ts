@@ -167,7 +167,10 @@ export function cohort_wire(context: Pick<HostContext, 'layout' | 'panels' | 'su
     terminal.line_echo(line);
     let outcome: ExecuteOutcome;
     try {
-      outcome = await client.line_execute(line, { silent: true });
+      // The operator's own act, not a pane's housekeeping: it reaches the
+      // session bus (another surface redraws), may ask (a pull's "keep
+      // waiting?"), and STOP reaches it.
+      outcome = await client.line_execute(line, { silent: true, operator: true });
     } catch (error: unknown) {
       terminal.output_write('err', `\x1b[31m${error instanceof Error ? error.message : String(error)}\x1b[0m\n`);
       return;

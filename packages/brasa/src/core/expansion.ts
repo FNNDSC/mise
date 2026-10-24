@@ -99,6 +99,42 @@ export function unresolvedStands_get(): boolean {
   return standsScope.getStore() === true;
 }
 
+/** The verbs that move the session's directory, which `${cwd}` reads. */
+const CWD_VERBS: ReadonlyArray<string> = ['cd', 'proc', 'jump'];
+
+/** What the lines a dry run has passed over could have changed. */
+export interface LinesPassed {
+  /** How many lines came before. */
+  readonly count: number;
+  /** The verbs those lines ran: each command of a pipe, a batch or a capture. */
+  readonly verbs: ReadonlySet<string>;
+  /** The variables those lines assigned. */
+  readonly assigned: ReadonlySet<string>;
+}
+
+/**
+ * Whether a reference may answer differently after lines a dry run did not
+ * run. The session can answer it from what it held before the play, and
+ * that answer misleads once the manifest itself has changed the state.
+ *
+ * @param name - The reference's name, dots and all, or an `@` index.
+ * @param passed - What came before it in the manifest.
+ * @returns True when an earlier line may have changed what it answers.
+ */
+export function reference_changedBy(name: string, passed: LinesPassed): boolean {
+  if (passed.count === 0) return false;
+  // A nested play may change anything its own lines do.
+  if (passed.verbs.has('play')) return true;
+  // Every answer renumbers the indices and replaces the held listing.
+  if (name.startsWith('@')) return true;
+  const stem: string = name.split('.')[0];
+  if (stem === LISTING_REFERENCE) return true;
+  if (stem === CORE_REFERENCE) return CWD_VERBS.some((verb: string): boolean => passed.verbs.has(verb));
+  const source: ReferenceSource | undefined = referenceSources_get().find((each: ReferenceSource): boolean => each.name === stem);
+  if (source !== undefined) return source.changedBy === undefined || source.changedBy.some((verb: string): boolean => passed.verbs.has(verb));
+  return passed.assigned.has(stem);
+}
+
 /**
  * Whether a name is one the session answers for.
  *

@@ -368,7 +368,8 @@ export async function shellWords_referencesExpand(
       const held: ReferenceValue = await resolve(segment.ref);
       if (held === null) {
         if (!unresolvedStands) return { ok: false, missing: segment.ref };
-        rendered += `\${${segment.ref}}`;
+        // As written: an index is its own sigil, a name its `${…}`.
+        rendered += segment.ref.startsWith('@') ? segment.ref : `\${${segment.ref}}`;
         continue;
       }
       if (lone && held.values.length !== 1) { split = held.values; continue; }

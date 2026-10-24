@@ -29,7 +29,7 @@ const { chrisReferences, chrisAnswerKinds, chrisVerbTakes } = await import('../s
   verbTakes: chrisVerbTakes,
 });
 const { shellWords_tokenize, shellWords_referencesExpand } = await import('../src/lib/parser.js');
-const { reference_resolve, unresolvedStands_run, reference_isReserved, reference_refusal } =
+const { reference_resolve, unresolvedStands_run, reference_isReserved, reference_refusal, reference_changedBy } =
   await import('../src/core/expansion.js');
 const { variableScope_run, variable_set, variable_unset, textAnswer_make } = await import('../src/core/variables.js');
 (await import('../src/session/answerAdapters.js')).answerAdapters_register();
@@ -289,5 +289,40 @@ describe('a variable holding a listing expands as a pipe hands it on', () => {
   it('still reaches the studies by field', async () => {
     variable_set('Q', ANSWER);
     expect(await line_words('ls ${Q.studies.vfsPath}')).toEqual(['ls', '/net/pacs/queries/q1/s1', '/net/pacs/queries/q1/s2']);
+  });
+});
+
+describe('reference_changedBy: what a dry run cannot fill from the state before a play (#1241)', () => {
+  const passed = (count: number, verbs: string[], assigned: string[] = []) => ({ count, verbs: new Set(verbs), assigned: new Set(assigned) });
+
+  it('fills everything before the first line', () => {
+    expect(reference_changedBy('gather', passed(0, []))).toBe(false);
+    expect(reference_changedBy('@SER3', passed(0, []))).toBe(false);
+  });
+
+  it('holds the cohort as written past a gather or a pull, and only those', () => {
+    expect(reference_changedBy('gather', passed(1, ['gather']))).toBe(true);
+    expect(reference_changedBy('gather.series.folderPath', passed(1, ['pull']))).toBe(true);
+    expect(reference_changedBy('gather', passed(2, ['expect', 'pwd']))).toBe(false);
+  });
+
+  it('holds a variable the manifest assigned, the cwd past a cd, and every index past any line', () => {
+    expect(reference_changedBy('R.feedId', passed(1, ['gather'], ['R']))).toBe(true);
+    expect(reference_changedBy('MRN', passed(1, ['gather'], ['R']))).toBe(false);
+    expect(reference_changedBy('cwd', passed(1, ['cd']))).toBe(true);
+    expect(reference_changedBy('cwd', passed(1, ['ls']))).toBe(false);
+    expect(reference_changedBy('@SER3', passed(1, ['ls']))).toBe(true);
+    expect(reference_changedBy('listing', passed(1, ['ls']))).toBe(true);
+  });
+
+  it('holds anything past a nested play', () => {
+    expect(reference_changedBy('MRN', passed(1, ['play']))).toBe(true);
+  });
+});
+
+describe('a reference that stands in a dry run', () => {
+  it('stands as the operator wrote it: an index as its own sigil, a name in ${…}', async () => {
+    const expanded = await shellWords_referencesExpand(shellWords_tokenize('image @SER3 ${nothing_here}'), async () => null, true);
+    expect(expanded.ok && expanded.words.map((word: { value: string }): string => word.value)).toEqual(['image', '@SER3', '${nothing_here}']);
   });
 });

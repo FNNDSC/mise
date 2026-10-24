@@ -28,7 +28,7 @@ import { binExecutableMatches_get, type BinExecutableMatches } from '../../chris
 import { builtin_executePlugin } from '../pluginExecute.js';
 import { builtin_pipeline } from './pipeline.js';
 import { newFeed_cacheAdd, run_follow } from '../feedCreation.js';
-import { cohort_read, cohort_write, type GatherFeed, type GatherMember, type GatherState } from './gather.store.js';
+import { cohort_read, cohort_write, cohortFolders_resolve, type GatherFeed, type GatherMember, type GatherState } from './gather.store.js';
 
 /** How `gather process` was asked for. */
 export interface GatherProcessArgs {
@@ -148,7 +148,9 @@ export async function gather_process(words: ReadonlyArray<string>): Promise<Comm
   if (parsed.error !== null || parsed.name === null) return process_refuse(parsed.error ?? USAGE);
   const name: string = parsed.name;
 
-  const state: GatherState = await cohort_read();
+  // A series pulled but not yet noted on the cohort is found in CUBE, not
+  // refused as never pulled.
+  const state: GatherState = await cohortFolders_resolve(await cohort_read());
   if (state.series.length === 0) return process_refuse('the cohort is empty; gather add something first');
   const waiting: GatherMember[] = state.series.filter((member: GatherMember): boolean => member_place(member) === null);
   if (waiting.length > 0) {
@@ -172,7 +174,9 @@ export async function gather_process(words: ReadonlyArray<string>): Promise<Comm
 
   const detach: string[] = parsed.detach ? ['--detach'] : [];
   const envelope: CommandEnvelope = matches.pipeline !== undefined
-    ? await builtin_pipeline(['run', name, '--previous', String(feed.rootInstanceId), ...detach, ...parsed.forwarded])
+    // By its /bin name, which names the id: a pipeline found by its CUBE
+    // name runs as exactly that one.
+    ? await builtin_pipeline(['run', matches.pipeline.name, '--previous', String(feed.rootInstanceId), ...detach, ...parsed.forwarded])
     : await builtin_executePlugin(name, [...detach, ...parsed.forwarded], feed.path);
   // The run went off a root, so it reads as continuing a feed; when that
   // feed was made by this line, the answer says so, as a bare run's would.

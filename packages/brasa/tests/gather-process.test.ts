@@ -9,13 +9,14 @@ let cohort: { version: number; name: string | null; feed: { feedId: number; root
 const written: unknown[] = [];
 jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({
   cohort_read: async () => cohort,
+  cohortFolders_resolve: async (state: unknown) => state,
   cohort_write: async (state: unknown): Promise<void> => { written.push(state); },
 }));
 
 const mockFeedCreate = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ feed_create: mockFeedCreate }));
 
-let bin: { plugin?: { name: string }; pipeline?: { name: string } } = {};
+let bin: { plugin?: { name: string }; pipeline?: { name: string; title?: string } } = {};
 jest.unstable_mockModule('../src/chris/binExecutables.js', () => ({ binExecutableMatches_get: async () => bin }));
 
 const mockExecutePlugin = jest.fn();
@@ -96,6 +97,12 @@ describe('gather process', () => {
     expect(envelope.status).toBe('error');
     expect(envelope.renderedErr).toContain('1 series is not pulled yet (SAG T1); pull ${gather} first');
     expect(mockFeedCreate).not.toHaveBeenCalled();
+  });
+
+  it('runs a pipeline named by its CUBE name under its /bin name, which names the id', async () => {
+    bin = { pipeline: { name: 'FreeSurfer_8_2_0_mri_convert_id291', title: 'FreeSurfer 8.2.0 mri_convert' } };
+    await gather_process(['FreeSurfer 8.2.0 mri_convert']);
+    expect(mockPipeline).toHaveBeenCalledWith(['run', 'FreeSurfer_8_2_0_mri_convert_id291', '--previous', '400']);
   });
 
   it('refuses an empty cohort, a name /bin lacks, and a name that is both', async () => {

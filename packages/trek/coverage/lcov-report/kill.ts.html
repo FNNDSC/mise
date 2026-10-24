@@ -260,7 +260,35 @@
 <a name='L195'></a><a href='#L195'>195</a>
 <a name='L196'></a><a href='#L196'>196</a>
 <a name='L197'></a><a href='#L197'>197</a>
-<a name='L198'></a><a href='#L198'>198</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L198'></a><a href='#L198'>198</a>
+<a name='L199'></a><a href='#L199'>199</a>
+<a name='L200'></a><a href='#L200'>200</a>
+<a name='L201'></a><a href='#L201'>201</a>
+<a name='L202'></a><a href='#L202'>202</a>
+<a name='L203'></a><a href='#L203'>203</a>
+<a name='L204'></a><a href='#L204'>204</a>
+<a name='L205'></a><a href='#L205'>205</a>
+<a name='L206'></a><a href='#L206'>206</a>
+<a name='L207'></a><a href='#L207'>207</a>
+<a name='L208'></a><a href='#L208'>208</a>
+<a name='L209'></a><a href='#L209'>209</a>
+<a name='L210'></a><a href='#L210'>210</a>
+<a name='L211'></a><a href='#L211'>211</a>
+<a name='L212'></a><a href='#L212'>212</a>
+<a name='L213'></a><a href='#L213'>213</a>
+<a name='L214'></a><a href='#L214'>214</a>
+<a name='L215'></a><a href='#L215'>215</a>
+<a name='L216'></a><a href='#L216'>216</a>
+<a name='L217'></a><a href='#L217'>217</a>
+<a name='L218'></a><a href='#L218'>218</a>
+<a name='L219'></a><a href='#L219'>219</a>
+<a name='L220'></a><a href='#L220'>220</a>
+<a name='L221'></a><a href='#L221'>221</a>
+<a name='L222'></a><a href='#L222'>222</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -359,6 +387,12 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -399,6 +433,13 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -433,10 +474,17 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1259x</span>
-<span class="cline-any cline-yes">1259x</span>
-<span class="cline-any cline-yes">31475x</span>
-<span class="cline-any cline-yes">31475x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1261x</span>
+<span class="cline-any cline-yes">1261x</span>
+<span class="cline-any cline-yes">31525x</span>
+<span class="cline-any cline-yes">31525x</span>
 <span class="cline-any cline-yes">160x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -500,7 +548,7 @@ import type { Trek } from './context.js';
 import { damaged } from './damaged.js';
 import { undock } from './dock.js';
 import { schedule, unschedule } from './schedule.js';
-import type { Quad, TrekEvent, XY } from './state.js';
+import type { Quad, TrekEvent, TrekState, XY } from './state.js';
 import { systemname } from './systemname.js';
 import { win } from './win.js';
 &nbsp;
@@ -510,19 +558,23 @@ import { win } from './win.js';
 **	This file handles the killing off of almost anything.
 */
 &nbsp;
-/*
-**  Handle a Klingon's death
-**
-**	The Klingon at the sector given by the parameters is killed
-**	and removed from the Klingon list.  Notice that it is not
-**	removed from the event list; this is done later, when the
-**	the event is to be caught.  Also, the time left is recomputed,
-**	and the game is won if that was the last klingon.
-*/
-&nbsp;
-/** Handle a Klingon's death. */
+/**
+ * Handle a Klingon's death.
+ *
+ * The Klingon at the sector given by the parameters is killed
+ * and removed from the Klingon list.  Notice that it is not
+ * removed from the event list; this is done later, when the
+ * the event is to be caught.  Also, the time left is recomputed,
+ * and the game is won if that was the last klingon.
+ *
+ * C: `killk()` in kill.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param ix - The sector row of the Klingon.
+ * @param iy - The sector column of the Klingon.
+ */
 export async function killk(t: Trek, ix: number, iy: number): Promise&lt;void&gt; {
-  const { Now, Sect, Quad, Ship, Game, Etc } = t.s;
+  const { Now, Sect, Quad, Ship, Game, Etc }: TrekState = t.s;
   t.io.printf('   *** Klingon at %d,%d destroyed ***\n', ix, iy);
 &nbsp;
   /* remove the scoundrel */
@@ -550,13 +602,19 @@ export async function killk(t: Trek, ix: number, iy: number): Promise&lt;void&gt
   Now.time = Now.resource / Now.klings;
 }
 &nbsp;
-/*
-**  handle a starbase's death
-*/
-&nbsp;
-/** Handle a starbase's death. */
+/**
+ * Handle a starbase's death.
+ *
+ * handle a starbase's death
+ *
+ * C: `killb()` in kill.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param qx - The quadrant row of the starbase.
+ * @param qy - The quadrant column of the starbase.
+ */
 export async function killb(t: Trek, qx: number, qy: number): Promise&lt;void&gt; {
-  const { Now, Sect, Ship, Etc } = t.s;
+  const { Now, Sect, Ship, Etc }: TrekState = t.s;
   const q: Quad = t.s.Quad[qx][qy];
 &nbsp;
   <span class="missing-if-branch" title="if path not taken" >I</span>if (q.bases &lt;= 0) <span class="cstat-no" title="statement not covered" >return;</span>
@@ -588,15 +646,22 @@ export async function killb(t: Trek, qx: number, qy: number): Promise&lt;void&gt
 }
 &nbsp;
 /**
- **	kill an inhabited starsystem
- **
- ** x, y are quad coords if f == 0, else sector coords
- ** f != 0 -- this quad;  f &lt; 0 -- Enterprise's fault
- **/
-&nbsp;
-/** Kill an inhabited starsystem. */
+ * Kill an inhabited starsystem.
+ *
+ * kill an inhabited starsystem
+ *
+ * x, y are quad coords if f == 0, else sector coords
+ * f != 0 -- this quad;  f &lt; 0 -- Enterprise's fault
+ *
+ * C: `kills()` in kill.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param x - The quadrant row (f == 0) or sector row (f != 0).
+ * @param y - The quadrant column (f == 0) or sector column (f != 0).
+ * @param f - 0 for another quadrant; non-zero for this one, negative when it is the Enterprise's fault.
+ */
 export async function kills(t: Trek, x: number, y: number, f: number): Promise&lt;void&gt; {
-  const { Ship, Game } = t.s;
+  const { Ship, Game }: TrekState = t.s;
   let q: Quad;
 &nbsp;
   if (f) {
@@ -622,13 +687,20 @@ export async function kills(t: Trek, x: number, y: number, f: number): Promise&l
 }
 &nbsp;
 /**
- **	"kill" a distress call
- **
- ** x, y are quadrant coordinates
- ** f is set if user is to be informed
- **/
-&nbsp;
-/** "Kill" a distress call. */
+ * "Kill" a distress call.
+ *
+ * "kill" a distress call
+ *
+ * x, y are quadrant coordinates
+ * f is set if user is to be informed
+ *
+ * C: `killd()` in kill.c.
+ *
+ * @param t - The game: state, terminal and random numbers.
+ * @param x - The quadrant row.
+ * @param y - The quadrant column.
+ * @param f - Non-zero when the user is to be informed.
+ */
 export async function killd(t: Trek, x: number, y: number, f: number): Promise&lt;void&gt; {
   const q: Quad = t.s.Quad[x][y];
   for (let i: number = 0; i &lt; MAXEVENTS; i++) {
@@ -661,7 +733,7 @@ export async function killd(t: Trek, x: number, y: number, f: number): Promise&l
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-10-18T12:52:14.718Z
+                at 2026-10-24T00:12:13.284Z
             </div>
         <script src="prettify.js"></script>
         <script>

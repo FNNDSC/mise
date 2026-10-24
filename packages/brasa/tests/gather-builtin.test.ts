@@ -19,7 +19,11 @@ const invalidated: string[] = [];
 /** Paths the fake filesystem calls directories. */
 const directories: Set<string> = new Set(['/home/chris/uploads/brain']);
 
+/** Where CUBE says each series landed, by series UID. */
+let storage: Map<string, { fileCount: number; folderPath: string | null }> = new Map();
+
 cuminMock_install(() => ({
+  seriesStorage_resolveMany: async () => ({ ok: true, value: storage }),
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => ({ status: 'error', rendered, renderedErr }),
   listCache_get: () => ({ cache_invalidate: (p: string): void => { invalidated.push(p); } }),
@@ -74,7 +78,7 @@ jest.unstable_mockModule('../src/builtins/utils.js', () => ({
 }));
 
 const { builtin_gather } = await import('../src/builtins/res/gather.js');
-const { member_key, members_merge, members_drop } = await import('../src/builtins/res/gather.store.js');
+const { member_key, members_merge, members_drop, seriesUID_ofPath, cohortFolders_note, cohortFolders_resolve, cohort_read } = await import('../src/builtins/res/gather.store.js');
 
 /** The cohort as the fake filesystem currently holds it. */
 function cohort_held(): { name: string | null; series: Record<string, unknown>[] } {
@@ -83,6 +87,7 @@ function cohort_held(): { name: string | null; series: Record<string, unknown>[]
 
 beforeEach(() => {
   stored = null;
+  storage = new Map();
   madeDirs.length = 0;
   invalidated.length = 0;
 });
@@ -216,5 +221,39 @@ describe('what is not there', () => {
     expect(envelope.renderedErr).toContain('nope.txt');
     expect(envelope.renderedErr).toContain('nothing is there');
     expect(stored).toBeNull();
+  });
+});
+
+describe('where a gathered series landed', () => {
+  const SERIES = '/net/pacs/queries/q/Study_1.9_MRI_BRAIN/Series_1.2.3_SAG_T1';
+
+  it('reads the series UID from a query path, in either form', () => {
+    expect(seriesUID_ofPath(SERIES)).toBe('1.2.3');
+    expect(seriesUID_ofPath('/net/pacs/x/1.2.3')).toBe('1.2.3');
+    expect(seriesUID_ofPath('/net/pacs/q/Study_1.9_MRI_BRAIN')).toBeUndefined();
+    expect(seriesUID_ofPath('/home/chris/uploads/brain')).toBeUndefined();
+  });
+
+  it('notes the folder a pull reports on the member that stands for the series', async () => {
+    stored = JSON.stringify({ version: 1, name: null, feed: null, series: [{ vfsPath: SERIES, kind: 'series' }, { vfsPath: '/home/chris/uploads/brain', kind: 'dir' }] });
+    expect(await cohortFolders_note(new Map([['1.2.3', '/home/chris/SERVICES/PACS/s']]))).toBe(1);
+    expect(cohort_held().series[0]).toMatchObject({ seriesUID: '1.2.3', folderPath: '/home/chris/SERVICES/PACS/s' });
+    expect(cohort_held().series[1]).toEqual({ vfsPath: '/home/chris/uploads/brain', kind: 'dir' });
+  });
+
+  it('leaves the cohort file alone when a pull reports nothing it holds', async () => {
+    stored = JSON.stringify({ version: 1, name: null, feed: null, series: [{ vfsPath: SERIES, kind: 'series' }] });
+    const before: string | null = stored;
+    expect(await cohortFolders_note(new Map([['9.9.9', '/elsewhere']]))).toBe(0);
+    expect(stored).toBe(before);
+  });
+
+  it('asks CUBE for a member not yet known to be home, and keeps what it says', async () => {
+    stored = JSON.stringify({ version: 1, name: null, feed: null, series: [{ vfsPath: SERIES, kind: 'series' }, { vfsPath: '/net/pacs/q/Study_1.9_X/Series_4.5_AX', kind: 'series' }] });
+    storage = new Map([['1.2.3', { fileCount: 0, folderPath: '/home/chris/SERVICES/PACS/s' }]]);
+    const state = await cohortFolders_resolve(await cohort_read());
+    expect(state.series[0].folderPath).toBe('/home/chris/SERVICES/PACS/s');
+    expect(state.series[1].folderPath).toBeUndefined();
+    expect(cohort_held().series[0]).toMatchObject({ folderPath: '/home/chris/SERVICES/PACS/s' });
   });
 });

@@ -638,7 +638,7 @@ export const helpText: Record<string, CommandHelp> = {
     category: 'General',
     usage: 'echo [WORD]…',
     summary: 'Write words on a line',
-    description: 'Writes its words joined by a space and ends the line. It takes no option and reads no escape, since the System V and BSD echos disagree on both; -n, -e and -E are refused by name rather than written or obeyed. A field of a variable is a word like any other: echo ${R.feedId}. It answers with text, so A=$(echo …) holds what it wrote. To see a variable whole, set NAME.',
+    description: 'Writes its words joined by a space and ends the line. It takes no option and reads no escape, since the System V and BSD echos disagree on both; -n, -e or -E as the first word is refused by name rather than obeyed; later it is a word. A field of a variable is a word like any other: echo ${R.feedId}. It answers with text, so A=$(echo …) holds what it wrote. To see a variable whole, set NAME.',
     examples: ['echo hello', 'echo feed ${R.feedId}', 'X=$(echo t1 cohort)'],
   },
   printf: {

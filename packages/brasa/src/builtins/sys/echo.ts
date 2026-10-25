@@ -9,32 +9,21 @@
  * and the format reused while arguments remain. Anything past that is
  * refused by name rather than half done.
  *
- * Both answer with text, so `A=$(echo …)` holds what was written.
+ * Both answer with text and no model, as the text filters do, so
+ * `A=$(echo …)` holds what was written.
  *
  * @module
  */
 import { envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/menu';
-import { TEXT_KIND } from '../../core/variables.js';
 
-/** The options other echos take, which this one refuses so a word is never silently eaten. */
+/** The options other echos take at the front of the line, which this one refuses so a word is never silently eaten. */
 const ECHO_OPTIONS: ReadonlySet<string> = new Set(['-n', '-e', '-E']);
 
 /** A conversion: `%`, flags, width, precision, then the letter. */
-const CONVERSION: RegExp = /^%([-+ 0#]*)(\d*)(?:\.(\d*))?([a-zA-Z%])/;
+const CONVERSION: RegExp = /^%([-+ 0#]*)(\d*|\*)(?:\.(\d*|\*))?([a-zA-Z%])/;
 
 /** What a format turned into, or why it could not be. */
 type Formatted = { text: string } | { refused: string };
-
-/**
- * Text as a command answers with it: the line, and the text as a model
- * without its closing newline.
- *
- * @param text - What was written, ending in a newline.
- * @returns The envelope.
- */
-function text_answer(text: string): CommandEnvelope {
-  return envelope_ok(text, { kind: TEXT_KIND, data: text.replace(/\n$/, '') });
-}
 
 /**
  * `echo [WORD]…`: the words, joined by a space, on one line.
@@ -43,12 +32,12 @@ function text_answer(text: string): CommandEnvelope {
  * @returns The line.
  */
 export async function builtin_echo(args: string[]): Promise<CommandEnvelope> {
-  const option: string | undefined = args.find((word: string): boolean => ECHO_OPTIONS.has(word));
-  if (option !== undefined) {
+  const option: string | undefined = args[0];
+  if (option !== undefined && ECHO_OPTIONS.has(option)) {
     process.exitCode = 1;
     return envelope_error('', undefined, `echo: ${option}: echo takes no options; printf FORMAT [ARG]… writes anything else\n`);
   }
-  return text_answer(`${args.join(' ')}\n`);
+  return envelope_ok(`${args.join(' ')}\n`);
 }
 
 /**
@@ -88,7 +77,7 @@ function argument_convert(letter: string, flags: string, width: string, precisio
     return { text: value_pad(cut, flags, width, false) };
   }
   // d and i, the only other letters that reach here.
-  const word: string = argument ?? '0';
+  const word: string = argument === undefined || argument === '' ? '0' : argument;
   if (!/^[-+]?\d+$/.test(word)) return { refused: `printf: ${word}: not a whole number, for %${letter}` };
   const number: bigint = BigInt(word);
   let digits: string = (number < 0n ? -number : number).toString();
@@ -122,6 +111,8 @@ function format_apply(format: string, queue: string[]): { text: string; took: nu
     const match: RegExpMatchArray | null = format.slice(at).match(CONVERSION);
     if (match === null) return { refused: `printf: ${format.slice(at)}: a % with no conversion; %% writes one` };
     const flags: string = match[1] ?? '';
+    if (flags.includes('#')) return { refused: 'printf: the # flag is not read here; it reads - 0 + and space' };
+    if (match[2] === '*' || match[3] === '*') return { refused: 'printf: a * width or precision is not read here; write the number in the format' };
     const width: string = match[2] ?? '';
     const precision: string | undefined = match[3];
     const letter: string = match[4] ?? '';
@@ -175,5 +166,5 @@ export async function builtin_printf(args: string[]): Promise<CommandEnvelope> {
     return envelope_error('', undefined, `${formatted.refused}\n`);
   }
   // A session writes whole lines; there is no prompt to hold a line open for.
-  return text_answer(formatted.text.endsWith('\n') ? formatted.text : `${formatted.text}\n`);
+  return envelope_ok(formatted.text.endsWith('\n') ? formatted.text : `${formatted.text}\n`);
 }

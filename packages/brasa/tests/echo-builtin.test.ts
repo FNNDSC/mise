@@ -11,10 +11,10 @@ beforeEach(() => {
 });
 
 describe('echo', () => {
-  it('writes its words joined by a space, on one line, and answers with the text', async () => {
+  it('writes its words joined by a space, on one line, with no model, as text answers', async () => {
     const envelope = await builtin_echo(['feed', '5596']);
     expect(envelope.rendered).toBe('feed 5596\n');
-    expect(envelope.model).toEqual({ kind: 'text', data: 'feed 5596' });
+    expect(envelope.model).toBeUndefined();
   });
 
   it('writes an empty line when given nothing', async () => {
@@ -23,6 +23,10 @@ describe('echo', () => {
 
   it('keeps a backslash and a dash-word as written', async () => {
     expect((await builtin_echo(['a\\nb', '-5'])).rendered).toBe('a\\nb -5\n');
+  });
+
+  it('reads a dash-option only at the front; later it is a word', async () => {
+    expect((await builtin_echo(['use', '-n', 'here'])).rendered).toBe('use -n here\n');
   });
 
   it("refuses other echos' options by name", async () => {
@@ -42,6 +46,10 @@ describe('printf', () => {
     expect(printf_format('[%-5s][%5s][%.2s][%05d][%+d][%.3d]', ['ab', 'cd', 'xyz', '-42', '7', '5'])).toEqual({ text: '[ab   ][   cd][xy][-0042][+7][005]' });
   });
 
+  it('reads an empty argument as 0 for %d, as a missing one', () => {
+    expect(printf_format('[%d][%i]', ['', ''])).toEqual({ text: '[0][0]' });
+  });
+
   it('writes the format again while arguments remain', () => {
     expect(printf_format('%s=%d\\n', ['a', '1', 'b', '2', 'c'])).toEqual({ text: 'a=1\nb=2\nc=0\n' });
   });
@@ -55,12 +63,15 @@ describe('printf', () => {
     expect(printf_format('a\\b', [])).toEqual({ refused: 'printf: \\b: not an escape printf here reads; it reads \\n, \\t and \\\\' });
     expect(printf_format('%d', ['x'])).toEqual({ refused: 'printf: x: not a whole number, for %d' });
     expect(printf_format('50%', [])).toEqual({ refused: 'printf: %: a % with no conversion; %% writes one' });
+    expect(printf_format('%#x', ['1'])).toEqual({ refused: 'printf: the # flag is not read here; it reads - 0 + and space' });
+    expect(printf_format('%*d', ['3', '1'])).toEqual({ refused: 'printf: a * width or precision is not read here; write the number in the format' });
+    expect(printf_format('%.*s', ['2', 'abc'])).toEqual({ refused: 'printf: a * width or precision is not read here; write the number in the format' });
   });
 
-  it('ends the line and answers with the text', async () => {
+  it('ends the line and answers with text alone', async () => {
     const envelope = await builtin_printf(['%s-%03d', 'scan', '7']);
     expect(envelope.rendered).toBe('scan-007\n');
-    expect(envelope.model).toEqual({ kind: 'text', data: 'scan-007' });
+    expect(envelope.model).toBeUndefined();
   });
 
   it('wants a format', async () => {

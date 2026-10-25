@@ -57,6 +57,19 @@ describe('path_extractPluginInstanceID()', () => {
   it('returns null at the filesystem root', () => {
     expect(path_extractPluginInstanceID('/')).toBeNull();
   });
+
+  it('never reads a folder inside a node\'s output as a node, however it is named (#1268)', () => {
+    expect(path_extractPluginInstanceID('/home/chris/feeds/feed_5598/pl-dircopy_734517/data/subject_01')).toBe(734517);
+    expect(path_extractPluginInstanceID('/home/chris/feeds/feed_5598/pl-dircopy_734517/pl-dymap_734518/data/sub_7/run_2')).toBe(734518);
+    expect(path_extractPluginInstanceID('/home/chris/feeds/feed_5598/pl-dircopy_734517')).toBe(734517);
+    expect(path_extractPluginInstanceID('/home/chris/feeds/feed_5598/pl-dircopy_734517/data')).toBe(734517);
+  });
+
+  it('reads nothing outside a feed, and stops at a segment that is not a node', () => {
+    expect(path_extractPluginInstanceID('/home/chris/uploads/scan_3')).toBeNull();
+    expect(path_extractPluginInstanceID('/home/chris/feeds/feed_1/notes/pl-x_9')).toBeNull();
+    expect(path_extractPluginInstanceID('/proc/jobs/feed_7/pl-dircopy_70/pl-x_71')).toBe(71);
+  });
 });
 
 describe('path_extractFeedID()', () => {

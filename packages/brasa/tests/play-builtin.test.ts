@@ -45,8 +45,11 @@ jest.unstable_mockModule('../src/builtins/utils.js', () => ({
   commandArgs_process: (args: string[]) => ({ _: args }),
 }));
 
+/** Where the fake session stands; a manifest's `cd` moves it. */
+let cwd: string = '/home/chris/uploads';
+const mockSetCwd = jest.fn(async (place: string): Promise<void> => { cwd = place; });
 jest.unstable_mockModule('../src/session/index.js', () => ({
-  session: { getCWD: async (): Promise<string> => '/home/chris/uploads' },
+  session: { getCWD: async (): Promise<string> => cwd, setCWD: mockSetCwd },
 }));
 
 const output: string[] = [];
@@ -93,6 +96,9 @@ jest.unstable_mockModule('../src/core/expansion.js', () => ({
 jest.unstable_mockModule('../src/core/engine.js', () => ({
   line_execute: async (line: string): Promise<Array<{ status: string; rendered: string }>> => {
     ran.push(line);
+    const moved: RegExpMatchArray | null = line.match(/^cd (\S+)$/);
+    if (moved !== null) cwd = moved[1] as string;
+    if (line === 'interrupt') throw new Error('interrupted');
     const capture: RegExpMatchArray | null = line.match(/^([A-Z])=\$\((.*)\)$/);
     if (capture !== null) variables.set(capture[1] as string, { answer: { source: capture[2] as string, kind: 'run.scheduled', rows: [], data: { instanceId: 4813 } }, readOnly: false });
     return [{ status: refuseAt !== null && line.includes(refuseAt) ? 'error' : 'ok', rendered: '' }];
@@ -126,7 +132,40 @@ beforeEach(() => {
   scopes.length = 0;
   variables.clear();
   scope = new Map();
+  cwd = '/home/chris/uploads';
+  mockSetCwd.mockClear();
   process.exitCode = 0;
+});
+
+describe('a play gives back the working directory it began in (#1264)', () => {
+  it('when it runs to its end', async () => {
+    stored = ['cd /home/chris/feeds/feed_5/pl-dircopy_6/data', 'pwd'].join('\n');
+    await builtin_play(['f.mise']);
+    expect(cwd).toBe('/home/chris/uploads');
+  });
+
+  it('when a line refuses and the play stops there', async () => {
+    refuseAt = 'boom';
+    stored = ['cd /home/chris/feeds/feed_5', 'boom', 'pwd'].join('\n');
+    await builtin_play(['f.mise']);
+    expect(ran).toEqual(['cd /home/chris/feeds/feed_5', 'boom']);
+    expect(cwd).toBe('/home/chris/uploads');
+  });
+
+  it('when it is interrupted', async () => {
+    stored = ['cd /home/chris/feeds/feed_5', 'interrupt'].join('\n');
+    await expect(builtin_play(['f.mise'])).rejects.toThrow('interrupted');
+    expect(cwd).toBe('/home/chris/uploads');
+  });
+
+  it('touches nothing when nothing moved it, or in a dry run', async () => {
+    stored = ['pwd'].join('\n');
+    await builtin_play(['f.mise']);
+    stored = ['cd /home/chris/feeds/feed_5'].join('\n');
+    await builtin_play(['f.mise', '--dry-run']);
+    expect(mockSetCwd).not.toHaveBeenCalled();
+    expect(cwd).toBe('/home/chris/uploads');
+  });
 });
 
 describe('manifest_parse', () => {

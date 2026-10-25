@@ -23,6 +23,7 @@ import chalk from 'chalk';
 import { path_resolve } from '../utils.js';
 import { duration_parse } from '../../lib/duration.js';
 import { recorder_mute, recorder_unmute } from '../../session/recorder.js';
+import { session } from '../../session/index.js';
 import { sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
 import { backendInstalled_get } from '../../core/backend.js';
@@ -422,6 +423,10 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   const passedAssigned: Set<string> = new Set();
 
   const exitBeforePlay: number = exitCode_read();
+  // Where the play began. A manifest that `cd`s into a feed must not leave a
+  // shared session there: every surface on it stands where the play put
+  // it. The place is given back however the play ends (#1264).
+  const cwdBefore: string = await session.getCWD();
   depth += 1;
   // What a play runs is already written down in the file it is playing: a
   // recording that captured it too would hold every line twice.
@@ -471,6 +476,7 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   } finally {
     recorder_unmute();
     depth -= 1;
+    if (!parsed.dryRun && await session.getCWD() !== cwdBefore) await session.setCWD(cwdBefore);
   }
 
   // A play that ran through leaves the session's status as it found it.

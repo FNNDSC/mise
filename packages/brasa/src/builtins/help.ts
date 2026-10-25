@@ -570,7 +570,7 @@ export const helpText: Record<string, CommandHelp> = {
     category: 'Workflows',
     usage: 'play <manifest> [--param NAME=value]... [--pace <duration>] [--dry-run]',
     summary: 'Run a manifest: the lines an operator could have typed',
-    description: 'Plays a manifest (a script is one): its lines run in order in a scope of their own, each shown as it runs, and the first refused line stops it, non-zero. The manifest is read from the session\'s filesystem first and from the engine\'s disk second. See docs/manifest.adoc.',
+    description: 'Plays a manifest (a script is one): its lines run in order in a scope of their own, each shown as it runs, and the first refused line stops it, non-zero. When it ends, however it ends, the session is back in the directory the play began in, so a manifest that cds into a feed does not leave every surface there. The manifest is read from the session\'s filesystem first and from the engine\'s disk second. See docs/manifest.adoc.',
     options: [
       'OPTIONS:',
       '  --param NAME=value   Supply a parameter the manifest declares (repeatable)',

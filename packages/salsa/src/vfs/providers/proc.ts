@@ -1280,11 +1280,37 @@ function feedCursor_derive(cache: ProcCache, feedID: number): string | null {
   return newest;
 }
 
-/** How many feeds the pipeline backfill reads at once. */
+/** How many pages the pipeline backfill reads at once. */
 const PIPELINE_BACKFILL_LANES: number = 6;
 
 /** The backfill of jobs' pipeline runs, once per session; null until started. */
 let pipelineBackfill: Promise<void> | null = null;
+
+/** How far the backfill has read: pages known so far, pages read, and whether it is reading. */
+const pipelineBackfillProgress: { pages: number; read: number; running: boolean } = { pages: 0, read: 0, running: false };
+
+/**
+ * How far the backfill of jobs' pipeline runs has read, for `proc stat`.
+ *
+ * @returns Pages known so far, pages read, and whether it is reading now.
+ */
+export function procPipelineBackfill_status(): { pages: number; read: number; running: boolean } {
+  return { ...pipelineBackfillProgress };
+}
+
+/**
+ * Runs tasks a few at a time, in the order given.
+ *
+ * @param tasks - The work, each started when a lane is free.
+ * @param lanes - How many run at once.
+ */
+async function tasks_runInLanes(tasks: ReadonlyArray<() => Promise<void>>, lanes: number): Promise<void> {
+  let next: number = 0;
+  const lane = async (): Promise<void> => {
+    for (let at: number = next++; at < tasks.length; at = next++) await (tasks[at] as () => Promise<void>)();
+  };
+  await Promise.all(Array.from({ length: Math.min(lanes, tasks.length) }, lane));
+}
 
 /**
  * Reads every visible job's row once more so the cache learns which
@@ -1292,6 +1318,12 @@ let pipelineBackfill: Promise<void> | null = null;
  * behind the prompt: started the first time a `find` needs it, and never
  * again once every job knows. Off the lane; a failure leaves the jobs as
  * they were.
+ *
+ * Page by page across all lanes, not feed by feed: the unknown jobs sit in
+ * a few feeds of tens of thousands of jobs each (on one account, three
+ * feeds held all 118k), and a feed read one page after another kept every
+ * other lane idle for hours (#1253). Each feed's first page says how long
+ * it is; every page after it goes in one queue the lanes share.
  *
  * @returns Nothing; the walk runs on.
  */
@@ -1309,28 +1341,62 @@ export function procPipeline_backfillStart(): void {
   pipelineBackfill = (async (): Promise<void> => {
     const client = await chrisConnection.client_get();
     if (!client) return;
-    // Feed by feed: CUBE answers a feed's rows at once, and the global list
-    // slows with every page it is asked to skip.
+    pipelineBackfillProgress.running = true;
     const feeds: number[] = cache.feedIDs_get().filter((id: number): boolean =>
       cache.feedInstanceIDs_get(id).some((instID: number): boolean => cache.instance_get(instID)?.pipelineName === undefined));
-    const next = async (): Promise<void> => {
-      for (let id: number | undefined = feeds.shift(); id !== undefined; id = feeds.shift()) {
-        for await (const step of listPages_walk(
-          (offset: number, limit: number): Promise<ListPage<PluginInstanceData>> => pluginInstancesPage_get(client, { feed_id: id, limit, offset }),
-          { pageSize: PAGE },
-        )) {
-          for (const inst of step.items) {
-            const instID: number = Number(inst.id);
-            if (cache.instance_get(instID) !== undefined) cache.instanceMetrics_set(instID, instanceMetrics_extract(inst));
-          }
-        }
+    const merge = (page: ListPage<PluginInstanceData>): void => {
+      for (const inst of page.data) {
+        const instID: number = Number(inst.id);
+        if (cache.instance_get(instID) !== undefined) cache.instanceMetrics_set(instID, instanceMetrics_extract(inst));
       }
+      pipelineBackfillProgress.read += 1;
     };
-    await Promise.all(Array.from({ length: PIPELINE_BACKFILL_LANES }, next));
+    const page_read = async (feedID: number, offset: number): Promise<ListPage<PluginInstanceData>> =>
+      await pluginInstancesPage_get(client, { feed_id: feedID, limit: PAGE, offset });
+    const unknownIn = (feedID: number): number[] => cache.feedInstanceIDs_get(feedID)
+      .filter((instID: number): boolean => cache.instance_get(instID)?.pipelineName === undefined);
+    // Pages from `from` to the feed's end, queued for the lanes.
+    const pages_queue = async (lists: Array<{ feedID: number; from: number; total: number }>): Promise<void> => {
+      const rest: Array<{ feedID: number; offset: number }> = [];
+      for (const { feedID, from, total } of lists) {
+        for (let offset: number = from; offset < total; offset += PAGE) rest.push({ feedID, offset });
+      }
+      pipelineBackfillProgress.pages += rest.length;
+      await tasks_runInLanes(rest.map(({ feedID, offset }) => async (): Promise<void> => {
+        merge(await page_read(feedID, offset));
+      }), PIPELINE_BACKFILL_LANES);
+    };
+    pipelineBackfillProgress.pages = feeds.length;
+    const lists: Array<{ feedID: number; from: number; total: number }> = [];
+    await tasks_runInLanes(feeds.map((feedID: number) => async (): Promise<void> => {
+      const first: ListPage<PluginInstanceData> = await page_read(feedID, 0);
+      merge(first);
+      const total: number = first.totalCount ?? first.data.length;
+      // CUBE lists a feed newest first, and the jobs an older checkpoint
+      // lacks are its older ones: an earlier pass learned the newest, so a
+      // pass after a restart starts where the unknown ones begin rather
+      // than reading the known head again. One page before it, in case the
+      // count drifted; a feed not listed newest first is read whole.
+      const ids: number[] = first.data.map((row: PluginInstanceData): number => Number(row.id));
+      const newestFirst: boolean = ids.every((id: number, at: number): boolean => at === 0 || id < (ids[at - 1] as number));
+      const unknown: number[] = unknownIn(feedID);
+      const newestUnknown: number = unknown.length === 0 ? 0 : Math.max(...unknown);
+      const knownAbove: number = cache.feedInstanceIDs_get(feedID).filter((instID: number): boolean => instID > newestUnknown).length;
+      const from: number = newestFirst ? Math.max(PAGE, Math.floor(knownAbove / PAGE) * PAGE - PAGE) : PAGE;
+      lists.push({ feedID, from, total });
+    }), PIPELINE_BACKFILL_LANES);
+    await pages_queue(lists);
+    // What the skip passed over and should not have: read those feeds whole.
+    const missed: Array<{ feedID: number; from: number; total: number }> = lists
+      .filter(({ feedID, from }: { feedID: number; from: number }): boolean => from > PAGE && unknownIn(feedID).length > 0)
+      .map(({ feedID, from }: { feedID: number; from: number }) => ({ feedID, from: PAGE, total: from }));
+    if (missed.length > 0) await pages_queue(missed);
   })().catch((error: unknown): void => {
     const msg: string = error instanceof Error ? error.message : String(error);
     errorStack.stack_push('warning', `proc: reading jobs' pipeline runs failed (${msg})`);
     pipelineBackfill = null;
+  }).finally((): void => {
+    pipelineBackfillProgress.running = false;
   });
 }
 
@@ -1853,6 +1919,7 @@ export function procVisitState_reset(): void {
   rosterSyncInflightFull = false;
   rosterSyncedAt = 0;
   pipelineBackfill = null;
+  Object.assign(pipelineBackfillProgress, { pages: 0, read: 0, running: false });
   rosterTotals = { owned: null, public: null };
   procTopologyCatchup_reset();
 }

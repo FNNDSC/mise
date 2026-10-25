@@ -118,6 +118,7 @@ cuminMock_install(() => ({
   },
 }));
 
+const mockBackfillStatus = jest.fn(() => ({ pages: 0, read: 0, running: false }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
   context_getSingle: contextGetSingle_mock,
   jobs_find: jobsFind_mock,
@@ -137,6 +138,7 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   procTopology_retry: procTopologyRetry_mock,
   procTopology_status: jest.fn(() => ({ ...mockTopologyStatus })),
   procTopologyCatchup_status: jest.fn(() => ({ queued: 0, running: false })),
+  procPipelineBackfill_status: mockBackfillStatus,
 }));
 
 jest.unstable_mockModule('../src/lib/spinner.js', () => ({
@@ -343,6 +345,14 @@ describe('builtin_proc warm-up policy', () => {
     expect(envelope.renderedErr).toContain('incomplete results');
     expect(envelope.renderedErr).toContain('proc retry');
     expect(process.exitCode).toBe(1);
+  });
+
+  it('says how far the pipeline-run backfill has read while it reads, and nothing once it is done (#1253)', async () => {
+    mockBackfillStatus.mockReturnValueOnce({ pages: 1820, read: 412, running: true });
+    const reading: TestEnvelope = await builtin_proc(['stat']);
+    expect(reading.rendered).toContain('pipeline runs  : reading behind the prompt, 412/1820 pages');
+    const done: TestEnvelope = await builtin_proc(['stat']);
+    expect(done.rendered).not.toContain('pipeline runs');
   });
 
   it('reports initializing and failed topology lifecycle in proc stat', async () => {

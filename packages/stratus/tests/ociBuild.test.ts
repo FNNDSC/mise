@@ -4,7 +4,7 @@
  * variables and plan, the apply's outputs, the records, and the teardown in
  * its order; and the teardown verb.
  */
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -215,6 +215,13 @@ describe('the OCI builder\'s build and teardown', () => {
     expect(gone).toEqual(["the stack's resources (stack-1)", '3 DNS records', 'the image trial-discovery.iso and its link', '1 volumes the cluster made']);
   });
 
+  it('runs no destroy job for a stack an earlier pass emptied, and does the rest again', async () => {
+    const gone = await builder.teardown_run({ domain: 'trial', region: 'r', compartmentId: 'c', baseDomain: 'b.org', stackRef: 'stack-1', volumeIds: [], stackEmpty: true }, call());
+    expect(rm.calls).toEqual([]);
+    expect(api.calls).toEqual(['unrecord api.trial.b.org', 'unrecord api-int.trial.b.org', 'unrecord *.apps.trial.b.org']);
+    expect(gone).toEqual(['3 DNS records']);
+  });
+
   it('reads the cluster\'s own block volumes from its PersistentVolumes', async () => {
     const kube: KubeApi = { ...new FakeKube({ nodes: [] }), json_get: async () => ({ items: [
       { spec: { csi: { driver: 'blockvolume.csi.oraclecloud.com', volumeHandle: 'ocid1.volume.a' } } },
@@ -298,6 +305,15 @@ describe('domain teardown', () => {
     expect((await domain_run(context, ['teardown'])).renderedErr).toBe('domain teardown: usage: domain teardown <name>\n');
     const blind: DomainCommandContext = { ...context, build: { ...context.build!, verifyReach: { ...context.build!.verifyReach!, kube_make: (): KubeApi => ({ ...new FakeKube({ nodes: [] }), json_get: async () => { throw new Error('unreachable'); } }) as KubeApi } } };
     expect((await domain_run(blind, ['teardown', 'trial'])).renderedErr).toBe("domain teardown: trial: cannot read the cluster's volumes (unreachable): refusing, they would be left billing\n");
+    // Once an earlier pass emptied the stack the cluster is gone with it:
+    // the teardown runs again without asking it, and finishes.
+    const builderUsed = context.build!.builder!;
+    const counted = jest.spyOn(builderUsed, 'stackResources_count').mockResolvedValue(0);
+    const resumed = await domain_run(blind, ['teardown', 'trial']);
+    expect(plain(resumed.rendered)).toBe('trial: torn down\n');
+    expect((store.record_read('trial') as DomainRecord).gone).toBeDefined();
+    counted.mockRestore();
+    store.record_update('trial', (current: DomainRecord): void => { delete current.gone; });
     const untiered: HeadlessSurface = new HeadlessSurface();
     surface_set(untiered);
     expect((await domain_run(context, ['teardown', 'trial'])).renderedErr).toContain('tearing down needs the tasks tier');

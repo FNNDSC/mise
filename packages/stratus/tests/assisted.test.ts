@@ -111,8 +111,14 @@ describe('the Assisted Installer', () => {
     expect(await installer.kubeconfig_get(IDS)).toBe('apiVersion: v1\n');
     answers[`GET ${ASSISTED_API}/clusters/c-1/credentials`] = { status: 200, body: { username: 'kubeadmin', password: 'pw', console_url: 'https://console' } };
     expect(await installer.credentials_get(IDS)).toEqual({ username: 'kubeadmin', password: 'pw', consoleUrl: 'https://console' });
+    // Its hosts go first: an infra-env with hosts on it refuses to go (quay's teardown).
+    answers[`GET ${ASSISTED_API}/infra-envs/ie-1/hosts`] = { status: 200, body: [{ id: 'h2' }, { id: 'h1' }] };
+    answers[`DELETE ${ASSISTED_API}/infra-envs/ie-1/hosts/h2`] = { status: 204, body: '' };
+    answers[`DELETE ${ASSISTED_API}/infra-envs/ie-1/hosts/h1`] = { status: 204, body: '' };
     await installer.cluster_delete(IDS);
-    expect(calls.slice(-2).map((call) => `${call.method} ${call.url.replace(ASSISTED_API, '')}`)).toEqual(['DELETE /infra-envs/ie-1', 'DELETE /clusters/c-1']);
+    expect(calls.slice(-5).map((call) => `${call.method} ${call.url.replace(ASSISTED_API, '')}`)).toEqual([
+      'GET /infra-envs/ie-1/hosts', 'DELETE /infra-envs/ie-1/hosts/h2', 'DELETE /infra-envs/ie-1/hosts/h1', 'DELETE /infra-envs/ie-1', 'DELETE /clusters/c-1',
+    ]);
   });
 
   it('says what Red Hat refused, and fails a token it cannot get', async () => {

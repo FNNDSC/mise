@@ -43,13 +43,13 @@ export async function clusterVolumes_read(kube: KubeApi): Promise<string[]> {
  * @param volumeIds - The cluster's own volumes, read before.
  * @returns The job's work.
  */
-export function teardownRun_make(store: DomainStore, builder: CloudBuilder, installer: Installer | null, name: string, volumeIds: ReadonlyArray<string>): JobRun {
+export function teardownRun_make(store: DomainStore, builder: CloudBuilder, installer: Installer | null, name: string, volumeIds: ReadonlyArray<string>, stackEmpty: boolean = false): JobRun {
   return async (context: JobContext): Promise<void> => {
     const record: DomainRecord | null = store.record_read(name);
     if (record === null) throw new Error(`${name}: no such domain`);
     if (builder.teardown_run === undefined) throw new Error(`${builder.id}: this cloud cannot tear a domain down`);
     const gone: string[] = await builder.teardown_run({
-      domain: name, region: record.region, compartmentId: record.compartmentId ?? '', baseDomain: record.baseDomain, volumeIds,
+      domain: name, region: record.region, compartmentId: record.compartmentId ?? '', baseDomain: record.baseDomain, volumeIds, stackEmpty,
       ...(record.ids['stackRef'] !== undefined ? { stackRef: record.ids['stackRef'] } : {}),
       ...(record.ids['isoObject'] !== undefined ? { isoObject: record.ids['isoObject'] } : {}),
       ...(record.ids['isoLinkId'] !== undefined ? { isoLinkId: record.ids['isoLinkId'] } : {}),

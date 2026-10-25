@@ -451,7 +451,7 @@ export class OciBuilder implements CloudBuilder {
   async teardown_run(request: TeardownRequest, call: BuildCall): Promise<string[]> {
     const api: OciBuildApi = this.api_resolve(request.region);
     const gone: string[] = [];
-    if (request.stackRef !== undefined) {
+    if (request.stackRef !== undefined && request.stackEmpty !== true) {
       await this.job_run(this.options.rm(request.region), request.stackRef, { kind: 'destroy' }, `${request.domain}: destroy`, call);
       gone.push(`the stack's resources (${request.stackRef})`);
     }

@@ -31,54 +31,43 @@ export function path_isInFeed(dirPath: string): boolean {
 }
 
 /**
- * Extracts the plugin instance ID from a path by finding the nearest
- * ancestor directory matching the pattern: <plugin-name>_<instanceID>
+ * Extracts the plugin instance ID of the feed node a path is in.
  *
- * Walks up the directory tree from the given path until finding a directory
- * that matches the plugin instance naming pattern.
+ * A feed is a chain of nodes, `feed_N/<plugin>_<ID>/<plugin>_<ID>/…`, and
+ * each node keeps its output under `data`. The node is the last
+ * `<name>_<ID>` of that chain: the walk starts after `feed_N` and stops at
+ * the first `data` folder or at any segment that is not a node's name, so a
+ * folder inside a node's output (`data/subject_01`, `data/sub_7/run_2`) is
+ * never read as a node, however it is named (#1268).
  *
  * @param dirPath - The directory path to analyze.
  * @returns The plugin instance ID as a number, or null if not found.
  *
  * @example
  * ```typescript
- * // From deep subdirectory
- * path_extractPluginInstanceID('/home/chris/feeds/feed_123/pl-dircopy_456/data/sub/dir/')
+ * // From deep inside a node's output
+ * path_extractPluginInstanceID('/home/chris/feeds/feed_123/pl-dircopy_456/data/subject_01/')
  * // Returns: 456
  *
- * // From data directory
- * path_extractPluginInstanceID('/home/chris/feeds/feed_123/pl-dcm2niix_789/data/')
+ * // A child node, from its data directory
+ * path_extractPluginInstanceID('/home/chris/feeds/feed_123/pl-dircopy_456/pl-dcm2niix_789/data/')
  * // Returns: 789
  * ```
  */
 export function path_extractPluginInstanceID(dirPath: string): number | null {
-  // Pattern: <plugin-name>_<digits>
-  const instancePattern: RegExp = /^(.+)_(\d+)$/;
+  const nodePattern: RegExp = /^.+_(\d+)$/;
+  const segments: string[] = path.normalize(dirPath).split('/').filter((segment: string): boolean => segment !== '');
+  const feedAt: number = segments.findIndex((segment: string): boolean => /^feed_\d+$/.test(segment));
+  if (feedAt === -1) return null;
 
-  // Walk up the directory tree
-  let currentPath: string = path.normalize(dirPath);
-  const root: string = path.parse(currentPath).root;
-
-  while (currentPath !== root) {
-    const dirname: string = path.basename(currentPath);
-    const match: RegExpMatchArray | null = dirname.match(instancePattern);
-
-    if (match && !dirname.startsWith('feed_')) {
-      // Found a match: extract the instance ID
-      const instanceID: number = parseInt(match[2], 10);
-      return instanceID;
-    }
-
-    // Move up one directory
-    const parent: string = path.dirname(currentPath);
-    if (parent === currentPath) {
-      // Reached root without finding a match
-      break;
-    }
-    currentPath = parent;
+  let instanceID: number | null = null;
+  for (const segment of segments.slice(feedAt + 1)) {
+    if (segment === 'data') break;
+    const match: RegExpMatchArray | null = segment.match(nodePattern);
+    if (match === null) break;
+    instanceID = parseInt(match[1] as string, 10);
   }
-
-  return null;
+  return instanceID;
 }
 
 /**

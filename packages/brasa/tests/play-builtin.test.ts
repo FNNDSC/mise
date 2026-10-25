@@ -158,6 +158,14 @@ describe('a play gives back the working directory it began in (#1264)', () => {
     expect(cwd).toBe('/home/chris/uploads');
   });
 
+  it('says, and does not throw, when the place it began in cannot be given back', async () => {
+    mockSetCwd.mockRejectedValueOnce(new Error('No such file or directory'));
+    stored = ['cd /home/chris/feeds/feed_5', 'pwd'].join('\n');
+    const envelope = await builtin_play(['f.mise']);
+    expect(envelope.status).toBe('ok');
+    expect(output.some((line: string): boolean => line.includes('could not go back to /home/chris/uploads'))).toBe(true);
+  });
+
   it('touches nothing when nothing moved it, or in a dry run', async () => {
     stored = ['pwd'].join('\n');
     await builtin_play(['f.mise']);

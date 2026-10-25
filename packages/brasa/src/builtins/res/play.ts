@@ -476,7 +476,15 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   } finally {
     recorder_unmute();
     depth -= 1;
-    if (!parsed.dryRun && await session.getCWD() !== cwdBefore) await session.setCWD(cwdBefore);
+    // A place that cannot be given back (removed during the play) is said,
+    // never thrown: the play's own result is what the operator asked for.
+    if (!parsed.dryRun && await session.getCWD() !== cwdBefore) {
+      try {
+        await session.setCWD(cwdBefore);
+      } catch (error: unknown) {
+        sink_errLine(chalk.yellow(`play: could not go back to ${cwdBefore} (${error instanceof Error ? error.message : String(error)}); the session stays in ${await session.getCWD()}`));
+      }
+    }
   }
 
   // A play that ran through leaves the session's status as it found it.

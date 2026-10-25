@@ -1236,10 +1236,14 @@ describe('CalypsoDaemon scrollback bound', () => {
       const notice = (text: string): unknown => ({ kind: 'envelope', origin: origins[0], envelope: { status: 'ok', rendered: text } });
       const sessionTexts = (heard: Record<string, unknown>[]): string[] => heard.filter((m) => m.type === 'session' && m.surface === 'daemon')
         .map((m) => (m.envelope as { rendered: string }).rendered);
+      // A joblet's progress is its surface's alone.
+      publish!({ kind: 'progress', origin: origins[0], id: 'joblet-1', progress: { operation: 'pull', phase: 'watching', itemId: '1.2' } });
       publish!(notice('[1]+ Done  pull\n'));
       await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, 50); });
       expect(sessionTexts(heardA)).toEqual(['[1]+ Done  pull\n']);
       expect(sessionTexts(heardB)).toEqual([]);
+      expect(heardA.filter((m) => m.type === 'progress')).toEqual([{ type: 'progress', id: 'joblet-1', operation: 'pull', phase: 'watching', itemId: '1.2' }]);
+      expect(heardB.filter((m) => m.type === 'progress')).toEqual([]);
       a.terminate();
       await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, 50); });
       publish!(notice('[2]+ Done  pull\n'));

@@ -44,7 +44,7 @@
  *
  * @module
  */
-import { berth_behind, installed_read } from './versions.js';
+import { berth_behind, berthJoblets_read, installed_read, type BerthJoblet } from './versions.js';
 import { FAVICON_SVG } from './favicon.js';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyCookie, { unsign as cookie_unsign } from '@fastify/cookie';
@@ -489,7 +489,12 @@ export async function porterApp_build(options: PorterAppOptions): Promise<Porter
     // afresh on the way in, its saved state kept.
     if (found !== null) {
       const behind: string[] = berth_behind(found, installed);
-      if (behind.length > 0) {
+      // A restart ends the session's joblets: one that runs them is kept on
+      // its older code, and the RESTART pill, which lists them, asks (#1273).
+      const joblets: BerthJoblet[] = behind.length > 0 ? await berthJoblets_read(found) : [];
+      if (joblets.length > 0) {
+        options.log?.(`kept ${username}'s session on its older release (${behind.join(', ')}): ${joblets.length} joblet${joblets.length === 1 ? '' : 's'} running`);
+      } else if (behind.length > 0) {
         // The restart the RESTART pill takes: the old daemon is left the
         // cause and waited out before the new one boots, so the mount never reaches a
         // port that is about to close.

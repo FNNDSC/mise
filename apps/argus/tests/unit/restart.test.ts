@@ -9,6 +9,11 @@ import { describe, it, expect } from '@jest/globals';
 import { closingWords_render, restartCuts_list, restartQuestion_build, RESTART_QUESTION } from '../../src/app/restart.js';
 
 describe('restartCuts_list', () => {
+  it('names each joblet a restart ends (#1273)', () => {
+    expect(restartCuts_list({ running: null, unsaved: [], others: [], joblets: [{ number: 1, line: 'pull x' }] }))
+      .toEqual(['joblet %1: pull x (ended; its log is kept)']);
+  });
+
   it('names nothing when nothing is live', () => {
     expect(restartCuts_list({ running: null, unsaved: [], others: [] })).toEqual([]);
   });

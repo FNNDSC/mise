@@ -28,6 +28,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { EventEmitter } from 'node:events';
 import { envelope_error, envelope_ok, taskState_isOver, type CommandEnvelope } from '@fnndsc/menu';
 import type { OutputSink } from '@fnndsc/menu/surface';
+import type { ProgressEvent, TaskProgress } from '@fnndsc/menu';
 import { ambient_publish } from './ambient.js';
 import { commandCancellation_abort } from './cancellation.js';
 import { lineHolds_get } from './holds.js';
@@ -113,8 +114,8 @@ export function jobletLine_parse(line: string): string | null {
  * @param origin - The surface.
  * @param text - The line.
  */
-function notice_publish(origin: string, text: string): void {
-  ambient_publish({ kind: 'envelope', envelope: envelope_ok(`${text}\n`), origin });
+function notice_publish(origin: string, text: string, model?: { kind: string; data: unknown }): void {
+  ambient_publish({ kind: 'envelope', envelope: envelope_ok(`${text}\n`, model), origin });
 }
 
 /** A sink that writes a joblet's output to its log, a line at a time. */
@@ -123,8 +124,14 @@ class JobletLogSink implements OutputSink {
 
   /**
    * @param write - Writes one line to the log.
+   * @param progress - Says how far the joblet has come, on its task.
+   * @param relay - Hands a progress event to the joblet's surface.
    */
-  constructor(private readonly write: (line: string) => void) {}
+  constructor(
+    private readonly write: (line: string) => void,
+    private readonly progress: (progress: TaskProgress) => void,
+    private readonly relay: (event: ProgressEvent) => void,
+  ) {}
 
   /** @inheritdoc */
   public data_write(chunk: string | Buffer): void {
@@ -142,8 +149,12 @@ class JobletLogSink implements OutputSink {
   }
 
   /** @inheritdoc */
-  public progress_write(): void {
-    // Progress is live by contract.
+  public progress_write(event: ProgressEvent): void {
+    // The surface it came from follows it as it would a line in front.
+    this.relay(event);
+    // A count goes on the joblet's task, where a tile or a watch reads it.
+    if (event.current === undefined) return;
+    this.progress({ current: event.current, total: event.total ?? null, ...(event.unit !== undefined ? { unit: event.unit } : {}) });
   }
 
   /** @inheritdoc */
@@ -236,7 +247,11 @@ async function joblet_run(joblet: Joblet, context: JobContext, cwd: string): Pro
     joblet.question?.refuse(new Error('the joblet was stopped'));
   }, { once: true });
   const standIn: Surface = jobletSurface_make(joblet, context, hold_take, hold_give);
-  const sink: JobletLogSink = new JobletLogSink((text: string): void => context.log_write(text));
+  const sink: JobletLogSink = new JobletLogSink(
+    (text: string): void => context.log_write(text),
+    (progress: TaskProgress): void => context.progress_set(progress),
+    (event: ProgressEvent): void => ambient_publish({ kind: 'progress', origin: joblet.origin, id: key, progress: event }),
+  );
   let exit: number = 0;
   await hold_take();
   let envelopes: CommandEnvelope[];
@@ -247,8 +262,11 @@ async function joblet_run(joblet: Joblet, context: JobContext, cwd: string): Pro
   } finally {
     hold_give();
   }
-  // What the line answered with goes to the log after what it printed.
+  // What the line answered with goes to the log after what it printed, and
+  // a model it answered with (a cohort its pull brought home) to its surface,
+  // whose views take it as they would from a line in front.
   for (const envelope of envelopes) {
+    if (envelope.model !== undefined) ambient_publish({ kind: 'envelope', envelope: { status: envelope.status, rendered: '', model: envelope.model }, origin: joblet.origin });
     if (envelope.rendered !== '') sink.data_write(envelope.rendered.endsWith('\n') ? envelope.rendered : `${envelope.rendered}\n`);
     if (envelope.renderedErr) sink.err_write(envelope.renderedErr.endsWith('\n') ? envelope.renderedErr : `${envelope.renderedErr}\n`);
   }
@@ -275,7 +293,8 @@ function jobletSurface_make(joblet: Joblet, context: JobContext, hold_take: () =
   const question_pause = async (request: PromptRequest): Promise<string> => {
     if (context.signal.aborted) throw new Error('the joblet was stopped');
     hold_give();
-    notice_publish(joblet.origin, `[${joblet.number}]+ Waiting for an answer: ${request.message.trim()} · fg %${joblet.number} to answer`);
+    notice_publish(joblet.origin, `[${joblet.number}]+ Waiting for an answer: ${request.message.trim()} · fg %${joblet.number} to answer`,
+      { kind: 'joblet.waiting', data: { number: joblet.number, line: joblet.line, question: request.message } });
     context.log_write(`waiting for an answer: ${request.message.trim()}`);
     try {
       return await new Promise<string>((resolve: (text: string) => void, reject: (reason: Error) => void): void => {
@@ -328,6 +347,24 @@ export async function jobletQuestion_await(number: number, until: Promise<unknow
   const outcome: 'asked' | 'off' = await Promise.race([asked, until.then((): 'off' => 'off', (): 'off' => 'off')]);
   if (heard !== null) asking.off(`asked:${number}`, heard);
   return outcome === 'asked' ? jobletQuestion_get(number) : null;
+}
+
+/** A joblet still running, as a restart's warning counts it. */
+export interface JobletRunning {
+  number: number;
+  line: string;
+  waiting: boolean;
+}
+
+/**
+ * The joblets running now: what a restart would end.
+ *
+ * @returns Them, by number.
+ */
+export function joblets_running(): JobletRunning[] {
+  return [...running.values()]
+    .sort((a: Joblet, b: Joblet): number => a.number - b.number)
+    .map((joblet: Joblet): JobletRunning => ({ number: joblet.number, line: joblet.line, waiting: joblet.question !== null }));
 }
 
 /**

@@ -55,7 +55,7 @@ import { answerAdapters_register } from '../session/answerAdapters.js';
 import { answerOrigin_forget } from '../session/answer.js';
 import { lineOrigin_run } from './lineOrigin.js';
 import { lineHolds_get, type LineHolds } from './holds.js';
-import { joblet_start, jobletLine_parse, jobletsSource } from './joblets.js';
+import { joblet_start, jobletLine_parse, joblets_running, jobletsSource, type JobletRunning } from './joblets.js';
 import { sink_get, sink_set, type OutputSink } from './sink.js';
 import { backend_install, backendInstalled_get, type Backend, type FileByteStream, type TaskSource } from './backend.js';
 import { JobRunner, jobsRoot_derive, runner_get, runner_install, type JobSource } from './runner.js';
@@ -125,6 +125,13 @@ export interface BrasaEngine {
    * @returns Its pieces, or 'all'.
    */
   line_holds?(line: string): LineHolds;
+
+  /**
+   * The joblets running now, for a host that warns before a restart ends them.
+   *
+   * @returns Them, by number.
+   */
+  joblets_running?(): JobletRunning[];
 
   /**
    * Computes completion candidates for a partial input line.
@@ -564,6 +571,7 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
     line_abort,
     command_stopped: commandCancellation_stopped,
     line_holds: lineHolds_get,
+    joblets_running,
     line_complete,
     file_read,
     file_stream,

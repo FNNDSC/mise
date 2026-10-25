@@ -4285,6 +4285,20 @@ body[data-zoom] #header-restore {
   margin-bottom: 0.3rem;
 }
 
+/* A joblet's STOP sits at the end of its row: `kill %N`, the line a console types. */
+.lane-stop {
+  flex: none;
+  margin-left: auto;
+  padding: 0 0.6rem;
+  border: none;
+  border-radius: 0 999px 999px 0;
+  background: var(--state-error);
+  color: #000;
+  font: inherit;
+  font-size: 0.8em;
+  cursor: pointer;
+}
+
 /* Rows in the ritos idiom: the name lives in a black-on-color capsule with
  * a rounded left cap, the figure sits bright beside it. */
 .telemetry-row {

@@ -967,7 +967,8 @@ async function surface_start(token: string): Promise<void> {
     pacs: (): PacsPanel => pacsPanel,
     runs_show: (filter: string): void => runs_show(filter),
   });
-  const laneInstrument: LaneInstrument = new LaneInstrument(element_require('lane-instrument'));
+  // A joblet's STOP is a line at the console, `kill %N`, as typed there.
+  const laneInstrument: LaneInstrument = new LaneInstrument(element_require('lane-instrument'), undefined, (line: string): void => { void terminal.line_run(line); });
   // The beat's age moves on the surface's own clock, not only on beats.
   window.setInterval((): void => laneInstrument.tick(), 500);
 
@@ -1449,6 +1450,8 @@ async function surface_start(token: string): Promise<void> {
       // incidental probes (`pacs list`, `mkdir -p ~/gather`) are not echoed.
       // The operator's own acts run as theirs, not as instrument traffic: a
       // pull may need to ask (keep waiting on a silent PACS?).
+      // A retrieve comes as a joblet (`pull … &`): the answer is its start
+      // notice, and its badges follow its progress on the bus (#1273).
       const operatorAct: boolean = /^(pacs query|pull )/.test(line);
       if (operatorAct) terminal.line_echo(line);
       void client.line_execute(line, { silent: true, operator: operatorAct }).then((outcome: ExecuteOutcome): void => {
@@ -2465,6 +2468,13 @@ async function surface_start(token: string): Promise<void> {
         if (envelope.model?.kind === 'games.chime') {
           const text: unknown = (envelope.model.data as { text?: unknown } | null)?.text;
           if (typeof text === 'string') { terminal.line_note(`🔔 ${text}`); voice_say({ text }); }
+          return;
+        }
+        // A task's end, or a joblet's (`[1]+ Done  pull …`), or a joblet
+        // waiting on an answer: a line in the console, as a shell prints it.
+        if (envelope.model?.kind === 'tasks.job' || envelope.model?.kind === 'joblet.waiting') {
+          const text: string = envelope.rendered.trim();
+          if (text !== '') terminal.line_note(text);
           return;
         }
         if (envelope.model?.kind === 'fs.listing') {

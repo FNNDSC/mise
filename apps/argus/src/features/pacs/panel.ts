@@ -1061,7 +1061,8 @@ export class PacsPanel {
         run: (row: StudyRow): void => {
           const vfsPath: string | undefined = row.study.vfsPath;
           if (vfsPath === undefined) return;
-          this.handlers.command_run(`pull ${vfsPath}`);
+          // A retrieve runs as a joblet: the session is the operator's meanwhile (#1273).
+          this.handlers.command_run(`pull ${vfsPath} &`);
           // Pulling FETCHES; it does not choose. The series are queued on
           // their badges and nothing enters the cohort — that is GATHER's.
           for (const series of row.study.series) {
@@ -1180,7 +1181,7 @@ export class PacsPanel {
         run: (row: SeriesRow): void => {
           const vfsPath: string | undefined = row.series.vfsPath;
           if (vfsPath === undefined) return;
-          this.handlers.command_run(`pull ${vfsPath}`);
+          this.handlers.command_run(`pull ${vfsPath} &`);
           // A fetch, not a choice: the badge queues, the cohort is untouched.
           this.badgeState_set(row.series.seriesUID, { status: 'queued' });
         },
@@ -1855,7 +1856,7 @@ export class PacsPanel {
     const paths: string = taking
       .map((series: PacsSeries): string => `"${series.vfsPath as string}"`)
       .join(' ');
-    this.handlers.command_show(`pull ${paths}`);
+    this.handlers.command_show(`pull ${paths} &`);
     for (const series of taking) this.badgeState_set(series.seriesUID, { status: 'queued' });
     this.handlers.note(`pull: ${taking.length} series asked for`);
     this.shownPull_render();

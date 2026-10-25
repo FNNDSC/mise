@@ -32,3 +32,37 @@ export function backslash_escapesNext(inSingle: boolean, inDouble: boolean, next
   if (!inDouble) return true;
   return next !== undefined && DOUBLE_QUOTE_ESCAPES.has(next);
 }
+
+/** A quote a line leaves open: which, and the column (from 1) it opened at. */
+export interface OpenQuote {
+  quote: "'" | '"';
+  column: number;
+}
+
+/**
+ * Finds a quote a line opens and never closes, reading quotes by the rule
+ * above, so a refusal names exactly what the word parser would have run
+ * past (#1260).
+ *
+ * @param line - The line.
+ * @returns The open quote, or null when every quote closes.
+ */
+export function quoteOpen_find(line: string): OpenQuote | null {
+  let inSingle: boolean = false;
+  let inDouble: boolean = false;
+  let openedAt: number = 0;
+  for (let at: number = 0; at < line.length; at++) {
+    const char: string = line[at] as string;
+    if (char === '\\' && backslash_escapesNext(inSingle, inDouble, line[at + 1])) { at++; continue; }
+    if (char === "'" && !inDouble) {
+      inSingle = !inSingle;
+      if (inSingle) openedAt = at + 1;
+    } else if (char === '"' && !inSingle) {
+      inDouble = !inDouble;
+      if (inDouble) openedAt = at + 1;
+    }
+  }
+  if (inSingle) return { quote: "'", column: openedAt };
+  if (inDouble) return { quote: '"', column: openedAt };
+  return null;
+}

@@ -291,6 +291,29 @@ describe('line_execute', () => {
     expect(mockChiliRun).not.toHaveBeenCalled();
   });
 
+  it('refuses a line whose quote never closes, by name, and runs none of it (#1260)', async () => {
+    const said: string[] = [];
+    const { sink_set, sink_get } = await import('../src/core/sink.js');
+    const before = sink_get();
+    sink_set({ ...before, err_write: (text: string): void => { said.push(text); } } as typeof before);
+    for (const line of ["whoami 'it\\'s'", 'whoami; ls "a', "whoami | ls 'x; pwd"]) {
+      process.exitCode = 0;
+      const envelopes = await line_execute(line);
+      expect(envelopes).toEqual([{ status: 'error', rendered: '' }]);
+      expect(process.exitCode).toBe(2);
+    }
+    expect(mockWhoami).not.toHaveBeenCalled();
+    expect(mockLs).not.toHaveBeenCalled();
+    sink_set(before);
+    expect(said.join('')).toContain("the ' at column 14 never closes; nothing of the line ran");
+    process.exitCode = 0;
+  });
+
+  it('runs a line whose quotes all close, an apostrophe written the POSIX way included', async () => {
+    await line_execute("whoami 'it'\\''s' \"a\\\"b\" it\\'s");
+    expect(mockWhoami).toHaveBeenCalledTimes(1);
+  });
+
   it('dispatches a plain command end-to-end and returns one envelope', async () => {
     const envelopes = await line_execute('whoami');
     expect(mockWhoami).toHaveBeenCalledWith([]);

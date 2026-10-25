@@ -132,7 +132,7 @@ The final field names ChELL as the projected shell; it is not a host executable 
 
 ChELL implements a deliberately small shell language:
 
-* whitespace-separated arguments with single quotes, double quotes, and backslash escapes, quoted as POSIX quotes: inside single quotes every character is literal, a backslash included (`printf '%s\n' a`, `grep '\.mgz$'`); inside double quotes a backslash escapes only `$`, `` ` ``, `"`, `\` and newline and stays before anything else; outside quotes it escapes the next character. The word parser and the `;`, `|`, `>` and `$( … )` splitters read the same rule, so none of them splits a line its words read otherwise (#1258);
+* whitespace-separated arguments with single quotes, double quotes, and backslash escapes, quoted as POSIX quotes: inside single quotes every character is literal, a backslash included (`printf '%s\n' a`, `grep '\.mgz$'`); inside double quotes a backslash escapes only `$`, `` ` ``, `"`, `\` and newline and stays before anything else; outside quotes it escapes the next character. The word parser and the `;`, `|`, `>` and `$( … )` splitters read the same rule, so none of them splits a line its words read otherwise (#1258). A line that opens a quote and never closes it is refused by name before any of it runs (`chell: the ' at column 5 never closes`, exit 2), as POSIX refuses it; a manifest stops at such a line (#1260);
 * sequential commands separated by unquoted `;`;
 * pipes separated by unquoted `|`;
 * overwrite and append redirection with unquoted `>` and `>>`;

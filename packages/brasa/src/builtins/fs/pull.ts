@@ -43,6 +43,7 @@ import { repl_confirm } from '../../core/question.js';
 import type { ProgressStatus } from '../../core/progress.js';
 import { newFeed_cacheAdd, run_follow } from '../feedCreation.js';
 import { cohort_read, cohortFolders_note, cohortModel_wrap } from '../res/gather.store.js';
+import { ambient_publish } from '../../core/ambient.js';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 
 interface PullPathResolution {
@@ -526,6 +527,12 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
     return envelope_ok('');
   }
   if (created === null) return envelope_ok('');
+  // The cohort's members are home, but this line answers with the feed it
+  // made (what `F=$(pull --new-feed …)` holds): the cohort goes out on the
+  // session bus instead, so a surface showing it redraws (#1252).
+  if (cohortChanged > 0) {
+    ambient_publish({ kind: 'envelope', envelope: { status: 'ok', rendered: '', model: cohortModel_wrap(await cohort_read()) } });
+  }
   // The feed a pull created is a model, so a surface binds to its root
   // (the place a run appended to it takes as input) rather than reading
   // the id and the path out of the text above.

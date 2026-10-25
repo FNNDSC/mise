@@ -1932,6 +1932,7 @@ async function surface_start(token: string): Promise<void> {
         .then((line: string): void => terminal.line_note(line));
     },
     pane_replace: (emptyId: string, kind: 'dag' | 'image' | 'tags'): string => pane_replace(emptyId, kind).id,
+    cohort_adopt: (envelope: WireEnvelope): void => cohortModule.envelope_observe(envelope),
     dag_get: (id: string): DagPanel | undefined => panels.get('dag', id),
     image_get: (id: string): ImagePanel | undefined => panels.get('image', id),
     tags_get: (id: string): TagsPanel | undefined => panels.get('tags', id),

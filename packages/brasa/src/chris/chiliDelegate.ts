@@ -12,6 +12,7 @@
 import chalk from 'chalk';
 import { run_capture, commandNames_get } from '@fnndsc/chili/run.js';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../core/handlerRun.js';
 
 /** chili's top-level command names, resolved once and memoized (see {@link chiliCommand_exists}). */
 let chiliCommandNames: Set<string> | null = null;
@@ -65,7 +66,7 @@ export async function chiliCommand_run(command: string, args: string[]): Promise
     return envelope;
   } catch (e: unknown) {
     const message: string = e instanceof Error ? e.message : String(e);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`chili command '${command}' failed: ${message}`)}\n`);
   }
 }

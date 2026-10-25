@@ -11,6 +11,7 @@ import { destination_ask, destination_missing, operands_fix } from './destinatio
 import { cp_render, vfsRefusal_text, type VFSDispatcher, type VfsOutcome } from '@fnndsc/fond';
 import { pathEntry_find, entry_isFolder } from './entries.js';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** Outcome of one copy source, for the envelope model. */
 export interface CpOutcome {
@@ -56,7 +57,7 @@ export async function builtin_cp(args: string[]): Promise<CommandEnvelope> {
       verb: 'cp', commit: 'COPY HERE', sources, wantsDirectory: true,
     });
     if (chosen === '') {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(destination_missing('cp'))}\n`);
     }
     return cp_run({ sources, dest: chosen });
@@ -72,7 +73,7 @@ export async function builtin_cp(args: string[]): Promise<CommandEnvelope> {
       verb: 'cp', commit: 'COPY HERE', sources,
     });
     if (chosen === '') {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(destination_missing('cp'))}\n`);
     }
     return cp_run({ sources, dest: chosen, recursive });

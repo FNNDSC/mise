@@ -22,6 +22,7 @@ import {
   procEntries_filterBySearch, procCsv_render, feedId_parse,
 } from './proc.helpers.js';
 import { type Result, errorStack } from '@fnndsc/fond';
+import { exitCode_set } from '../core/handlerRun.js';
 
 type ProcCache = ReturnType<typeof procCache_get>;
 
@@ -40,7 +41,7 @@ async function procWarmup_guard(command: string, force: boolean): Promise<Comman
   if (!progress.active && topology.state !== 'running' && topology.state !== 'failed') return null;
 
   if (topology.state === 'failed') {
-    process.exitCode = 1;
+    exitCode_set(1);
     const reason: string = topology.failure ? `: ${topology.failure}` : '';
     return envelope_error('', undefined,
       `${chalk.red(`proc: the visible-job index failed to warm${reason}.`)}\n` +
@@ -62,7 +63,7 @@ async function procWarmup_guard(command: string, force: boolean): Promise<Comman
     } catch (error: unknown) {
       spinner.stop();
       const message: string = error instanceof Error ? error.message : String(error);
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`proc warm-up failed: ${message}`)}\n`);
     }
   }
@@ -73,7 +74,7 @@ async function procWarmup_guard(command: string, force: boolean): Promise<Comman
   const count: string = progress.total > 0
     ? `${progress.loaded}/${progress.total}, ${percent}%`
     : 'initializing';
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error('', undefined,
     `${chalk.yellow(`proc: the visible-job index is still warming (${count}).`)}\n` +
     'This query could return incomplete results.\n\n' +
@@ -223,7 +224,7 @@ async function procRefresh_handle(args: string[]): Promise<CommandEnvelope> {
   if (feedArg) {
     const parsedId: number | null = feedId_parse(feedArg);
     if (parsedId === null) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`proc refresh: invalid feed ID '${feedArg}'`)}\n`);
     }
     feedID = parsedId;
@@ -249,7 +250,7 @@ async function procRefresh_handle(args: string[]): Promise<CommandEnvelope> {
   } catch (error: unknown) {
     spinner.stop();
     const msg: string = error instanceof Error ? error.message : String(error);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`proc refresh failed: ${msg}`)}\n`);
   }
 }
@@ -263,7 +264,7 @@ async function procRefresh_handle(args: string[]): Promise<CommandEnvelope> {
 function procRetry_handle(): CommandEnvelope {
   const topology: ProcTopologyStatus = procTopology_status();
   if (topology.state !== 'failed') {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.yellow('proc retry: no failed topology sweep to retry')}\n`);
   }
 
@@ -276,7 +277,7 @@ function procRetry_handle(): CommandEnvelope {
     );
   } catch (error: unknown) {
     const message: string = error instanceof Error ? error.message : String(error);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`proc retry failed: ${message}`)}\n`);
   }
 }
@@ -292,7 +293,7 @@ async function procFind_handle(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(args.slice(1));
   const query: string | undefined = parsed._[0];
   if (!query) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Usage: proc find <instance_id | plugin_name_substring>')}\n`);
   }
 
@@ -310,14 +311,14 @@ async function procFind_handle(args: string[]): Promise<CommandEnvelope> {
     const result: Result<Array<{ id: number; feedID: number; pluginName: string }>> = await jobs_find(query);
     if (!result.ok) {
       spinner.stop();
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`Search failed.`)}\n`);
     }
 
     const matches: Array<{ id: number; feedID: number; pluginName: string }> = result.value;
     if (matches.length === 0) {
       spinner.stop();
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.yellow(`No instances found matching "${query}".`)}\n`);
     }
 
@@ -334,7 +335,7 @@ async function procFind_handle(args: string[]): Promise<CommandEnvelope> {
   } catch (error: unknown) {
     spinner.stop();
     const msg: string = error instanceof Error ? error.message : String(error);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`proc find failed: ${msg}`)}\n`);
   }
 }
@@ -380,7 +381,7 @@ async function procHere_canonicalPath_get(cwd: string, cache: ProcCache): Promis
  */
 async function procHere_handle(args: string[]): Promise<CommandEnvelope> {
   if (args.length > 1) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Usage: proc here')}\n`);
   }
 
@@ -391,7 +392,7 @@ async function procHere_handle(args: string[]): Promise<CommandEnvelope> {
 
   const source: ProcInstance | undefined = cache.outputPath_match(cwd);
   if (!source) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined,
       `${chalk.yellow('proc here: no matching /proc job is known for this path in the current session.')}\n` +
       'Use a canonical CFS feed path, follow a job\'s `data` link first, or use `cd -` to return to the previous directory.\n'
@@ -400,7 +401,7 @@ async function procHere_handle(args: string[]): Promise<CommandEnvelope> {
 
   const procPath: string | null = cache.path_build(source.id);
   if (!procPath) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('proc here: producing job is no longer available in /proc.')}\n`);
   }
   return builtin_cd([procPath]);
@@ -423,23 +424,23 @@ async function procJump_handle(args: string[]): Promise<CommandEnvelope> {
   const whereOnly: boolean = words.includes('--where');
   const target: string = words.find((word: string): boolean => !word.startsWith('--')) ?? '';
   if (target === '') {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Usage: proc jump [--where] <feed id | node id | feed_N | plugin_N>')}\n`);
   }
   let places: ProcLocation[];
   try {
     places = await procTarget_locate(target);
   } catch (error: unknown) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`proc jump: ${error instanceof Error ? error.message : String(error)}`)}\n`);
   }
   const model: ProcJumpModel = { target, choices: places.map((place: ProcLocation): ProcJumpModel['choices'][number] => ({ ...place })) };
   if (places.length === 0) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.yellow(`proc jump: no feed or node ${target} is visible to you: not shared with you, or shared to a group you are not in.`)}\n`);
   }
   if (places.length > 1) {
-    process.exitCode = 1;
+    exitCode_set(1);
     const lines: string = places.map((place: ProcLocation): string =>
       `  proc jump ${place.name}   ${chalk.dim(place.kind === 'feed' ? `the feed "${place.title}"` : `a node in feed_${place.feedId} "${place.title}"`)}`).join('\n');
     // The choices ride the refusal as its model: a surface asks which.
@@ -467,7 +468,7 @@ async function procJump_handle(args: string[]): Promise<CommandEnvelope> {
 function procSeen_handle(args: string[]): Promise<CommandEnvelope> {
   const words: string[] = args.slice(1);
   if (words.length === 0) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return Promise.resolve(envelope_error('', undefined, `${chalk.red('Usage: proc seen <feed_N | N ...> | all')}\n`));
   }
   const cache: ProcCache = procCache_get();
@@ -476,7 +477,7 @@ function procSeen_handle(args: string[]): Promise<CommandEnvelope> {
     for (const word of words) {
       const match: RegExpExecArray | null = /^(?:feed_)?(\d+)$/.exec(word);
       if (match === null) {
-        process.exitCode = 1;
+        exitCode_set(1);
         return Promise.resolve(envelope_error('', undefined, `${chalk.red(`proc seen: not a feed: ${word}`)}\n`));
       }
       ids.push(Number(match[1]));
@@ -548,7 +549,7 @@ async function procFeeds_handle(args: string[]): Promise<CommandEnvelope> {
     return envelope_ok(`${chalk.dim('Nothing new since your last visit.')}\n`, { kind: FEED_LIST_MODEL_KIND, data: { feeds: [] } });
   }
   if (matches.length === 0) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.yellow(
       query ? `No feed in the roster matches "${query}" (title, feed_N or id).` : 'No feeds in the cache.',
     )}\n`);
@@ -585,13 +586,13 @@ async function procFeedAbsent_ask(feedID: number): Promise<CommandEnvelope | Pro
   try {
     const feed: ProcFeed | null = await procFeed_probe(feedID);
     if (feed !== null) return feed;
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.yellow(
       `CUBE does not list feed_${feedID} for you: not shared with you, or shared to a group you are not in.`,
     )}\n`);
   } catch (error: unknown) {
     const msg: string = error instanceof Error ? error.message : String(error);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`proc feeds: asking CUBE for feed_${feedID} failed (${msg})`)}\n`);
   }
 }
@@ -652,7 +653,7 @@ async function procLayout_handle(args: string[]): Promise<CommandEnvelope> {
   const putting: boolean = args[1] === 'put';
   const name: string = (putting ? args[2] : args[1]) ?? '';
   if (!procLayoutName_check(name)) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`proc layout: not a layout: '${name}'`)}\n`);
   }
   if (putting) {
@@ -663,7 +664,7 @@ async function procLayout_handle(args: string[]): Promise<CommandEnvelope> {
       places = null;
     }
     if (!procLayoutPositions_check(places)) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red('proc layout put: the places must be node ids to [x, y, z]')}\n`);
     }
     const kept: ProcLayoutRecord = await procLayout_set(name, places);
@@ -761,12 +762,12 @@ async function procStat_handle(args: string[]): Promise<CommandEnvelope> {
 
   const feedID: number | null = feedId_parse(feedArg);
   if (feedID === null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`proc stat: invalid feed ID '${feedArg}'`)}\n`);
   }
   const feed: ProcFeed | undefined = cache.feed_get(feedID);
   if (!feed) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.yellow(`proc stat: feed_${feedID} not in cache`)}\n`);
   }
 
@@ -813,7 +814,7 @@ async function procWatch_handle(args: string[]): Promise<CommandEnvelope> {
   }
   const feedID: number | null = watchSubject_parse(subject);
   if (feedID === null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`proc watch: not a feed: '${subject}'`)}\n`);
   }
   const state: string = procWatch_add(feedID, OPERATOR_OWNER);
@@ -830,7 +831,7 @@ async function procUnwatch_handle(args: string[]): Promise<CommandEnvelope> {
   const subject: string | undefined = args[1];
   const feedID: number | null = subject === undefined ? null : watchSubject_parse(subject);
   if (feedID === null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('proc unwatch: a feed is required')}\n`);
   }
   procWatch_remove(feedID, OPERATOR_OWNER);
@@ -888,6 +889,6 @@ export async function builtin_proc(args: string[]): Promise<CommandEnvelope> {
     return procUnwatch_handle(args);
   }
 
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error('', undefined, `${chalk.red(`proc: unknown subcommand '${subcommand}'. Use proc --help.`)}\n`);
 }

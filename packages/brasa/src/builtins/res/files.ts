@@ -10,6 +10,7 @@ import { FilteredResourceData } from '@fnndsc/cumin';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Generic handler for file group commands (files, links, dirs).
@@ -56,11 +57,11 @@ async function builtin_fileGroup(args: string[], assetName: string): Promise<Com
        }
        return envelope_ok(`No resource fields found for ${assetName}.\n`);
     }
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error(`${chalk.yellow(`Unknown subcommand: ${subcommand}. Usage: ${assetName} <list|search|inspect>`)}\n`);
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`${assetName} error: ${msg}`)}\n`);
   }
 }

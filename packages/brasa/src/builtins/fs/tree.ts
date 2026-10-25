@@ -12,6 +12,7 @@ import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
 import { errorStack } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error, type ListingItem } from '@fnndsc/menu';
 import type { Result } from '@fnndsc/fond';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** The options tree reads; any other is refused by name. */
 const TREE_OPTIONS: readonly string[] = ['follow', 'path', 'dirs', 'dirpath'];
@@ -38,7 +39,7 @@ export async function builtin_tree(args: string[]): Promise<CommandEnvelope> {
   // once scanned a folder named `1`, and `tree --bogus x` the whole home.
   const unknown: string | null = optionsUnknown_refusal('tree', parsed, TREE_OPTIONS);
   if (unknown !== null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(unknown)}\n`);
   }
   const pathArgs: string[] = parsed._ as string[];
@@ -55,7 +56,7 @@ export async function builtin_tree(args: string[]): Promise<CommandEnvelope> {
     const entry: Result<ListingItem[]> = await vfs.data_get(targetPath, { directory: true });
     if (!entry.ok) {
       errorStack.stack_pop();
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`tree: ${pathArgs[0]}: No such file or directory`)}\n`);
     }
   }
@@ -81,7 +82,7 @@ export async function builtin_tree(args: string[]): Promise<CommandEnvelope> {
     if (!scanResult) {
       spinner.stop();
       const lastError = errorStack.stack_pop();
-      process.exitCode = 1;
+      exitCode_set(1);
       const message: string = lastError ? error_stripDebugPrefix(lastError.message) : 'Failed to scan directory tree.';
       return envelope_error('', undefined, `${chalk.red(message)}\n`);
     }

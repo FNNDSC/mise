@@ -11,6 +11,7 @@ import { pluginMetaFields_fetch } from '@fnndsc/chili/commands/pluginmetas/field
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Builtin handler for the `pluginmeta` command.
@@ -24,7 +25,7 @@ export async function builtin_pluginmeta(args: string[]): Promise<CommandEnvelop
   if (!subcommand || subcommand === 'list') {
     const refusal: string | null = resourceListOptions_refusal('pluginmeta', parsed);
     if (refusal !== null) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
     }
     try {
@@ -32,7 +33,7 @@ export async function builtin_pluginmeta(args: string[]): Promise<CommandEnvelop
       if (pluginMetas.length === 0) { return envelope_ok(`${chalk.gray('No plugin metas found.')}\n`); }
       return envelope_ok(table_render(pluginMetas, selectedFields, { title: { title: 'Plugin Metas', justification: 'center' }, pagination: totalCount !== undefined ? { shown: pluginMetas.length, total: totalCount } : undefined }));
     } catch (e: unknown) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`pluginmeta error: ${e instanceof Error ? e.message : String(e)}`)}\n`);
     }
   }
@@ -40,7 +41,7 @@ export async function builtin_pluginmeta(args: string[]): Promise<CommandEnvelop
   if (subcommand === 'search') {
     const refusal: string | null = resourceSearchTerm_refusal('pluginmeta', parsed);
     if (refusal !== null) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
     }
     return builtin_pluginmeta(resourceSearch_args(parsed));
@@ -54,6 +55,6 @@ export async function builtin_pluginmeta(args: string[]): Promise<CommandEnvelop
     return envelope_ok(`${chalk.gray('No fields found for plugin metas.')}\n`);
   }
 
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error(`${chalk.red(`Unknown subcommand: ${subcommand}. Usage: pluginmetas <list|search|inspect>`)}\n`);
 }

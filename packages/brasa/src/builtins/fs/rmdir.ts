@@ -14,6 +14,7 @@ import { path_resolve } from '../utils.js';
 import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
 import { vfsRefusal_text, type VfsErrno, type VfsOutcome } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** Outcome of one rmdir target, for the envelope model. */
 export interface RmdirOutcome {
@@ -78,7 +79,7 @@ export async function builtin_rmdir(args: string[]): Promise<CommandEnvelope> {
   }
   const model: { kind: string; data: RmdirOutcome[] } = { kind: 'fs.rmdir', data: outcomes };
   if (renderedErr !== '') {
-    process.exitCode = 1;
+    exitCode_set(1);
     const envelope: CommandEnvelope = envelope_error('', undefined, renderedErr);
     envelope.model = model;
     return envelope;

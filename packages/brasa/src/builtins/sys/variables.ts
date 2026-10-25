@@ -13,6 +13,7 @@ import chalk from 'chalk';
 import { envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/menu';
 import { reference_isReserved } from '../../core/expansion.js';
 import { answer_read, TEXT_KIND, VARIABLE_NAME, variable_get, variable_unset, variables_list, type FieldReading, type Variable } from '../../core/variables.js';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** The model kind `set` lists under. */
 export const VARIABLES_MODEL_KIND: string = 'variables.list';
@@ -53,11 +54,11 @@ function variableSummary_render(name: string, variable: Variable): string {
 export async function builtin_set(args: string[]): Promise<CommandEnvelope> {
   const flag: string | undefined = args.find((word: string): boolean => word.startsWith('-') || word.startsWith('+'));
   if (flag !== undefined) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `set: ${flag}: unknown option; set lists variables, and set NAME shows one\n`);
   }
   if (args.length > 1) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, 'set: one name at a time; set NAME shows it, NAME=… sets it\n');
   }
 
@@ -65,7 +66,7 @@ export async function builtin_set(args: string[]): Promise<CommandEnvelope> {
     const name: string = args[0] as string;
     const variable: Variable | undefined = variable_get(name);
     if (variable === undefined) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `set: ${name}: no such variable\n`);
     }
     const body: string = variable.answer.kind === TEXT_KIND
@@ -98,7 +99,7 @@ export async function builtin_set(args: string[]): Promise<CommandEnvelope> {
  */
 export async function builtin_unset(args: string[]): Promise<CommandEnvelope> {
   if (args.length === 0) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, 'unset: name a variable to remove\n');
   }
   const complaints: string[] = [];
@@ -110,7 +111,7 @@ export async function builtin_unset(args: string[]): Promise<CommandEnvelope> {
     if (refused !== null) complaints.push(`unset: ${refused}`);
   }
   if (complaints.length > 0) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${complaints.join('\n')}\n`);
   }
   return envelope_ok('');

@@ -14,6 +14,7 @@
  *
  * @module
  */
+import { exitCode_read, exitCode_set } from './handlerRun.js';
 
 /** One piece of per-command state, and how to hand it over. */
 export interface TurnPart {
@@ -97,7 +98,7 @@ export function turn_within(state: TurnState, act: () => void): TurnState {
 // must not inherit another's failure, nor lose its own.
 turnPart_register({
   name: 'exitCode',
-  save: (): unknown => process.exitCode,
-  clear: (): void => { process.exitCode = undefined; },
-  restore: (saved: unknown): void => { process.exitCode = typeof saved === 'number' ? saved : undefined; },
+  save: (): unknown => exitCode_read(),
+  clear: (): void => { exitCode_set(undefined); },
+  restore: (saved: unknown): void => { exitCode_set(typeof saved === 'number' ? saved : undefined); },
 });

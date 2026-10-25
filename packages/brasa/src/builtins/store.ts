@@ -18,6 +18,7 @@ import {
   storeConfig_persist,
 } from '../config/storeConfig.js';
 import { errorStack, type Result } from '@fnndsc/fond';
+import { exitCode_set } from '../core/handlerRun.js';
 
 /**
  * Renders a store fetch failure as an error envelope, draining the reason the
@@ -29,7 +30,7 @@ import { errorStack, type Result } from '@fnndsc/fond';
 function storeFailure_envelope(fallback: string): CommandEnvelope {
   const lastError = errorStack.stack_pop();
   const detail: string = lastError ? lastError.message : fallback;
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error('', undefined, `${chalk.red(detail)}\n`);
 }
 
@@ -102,7 +103,7 @@ export async function builtin_store(args: string[]): Promise<CommandEnvelope> {
        spinner.stop();
        const url: string | undefined = parsed._[1];
        if (!url) {
-         process.exitCode = 1;
+         exitCode_set(1);
          return envelope_error('', undefined, `${chalk.red('Usage: store set <url>')}\n`);
        }
        storeUrl_set(url);
@@ -115,12 +116,12 @@ export async function builtin_store(args: string[]): Promise<CommandEnvelope> {
        return envelope_ok(`${chalk.green(`Store URL reset to default: ${chalk.blue(DEFAULT_STORE_URL)}`)}\n`);
     }
     spinner.stop();
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: store <list|search|install|inspect|set|reset>`)}\n`);
   } catch (e: unknown) {
     spinner.stop();
     const msg: string = e instanceof Error ? e.message : String(e);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`Store error: ${msg}`)}\n`);
   }
 }

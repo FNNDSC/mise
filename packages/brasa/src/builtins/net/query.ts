@@ -33,6 +33,7 @@ import { spinner } from '../../lib/spinner.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { pacsRefusal_hint, pacsRefusal_is } from './pacsAccess.js';
 import { errorStack, type Result, type StackMessage } from '@fnndsc/fond';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 const QUERY_POLL_INTERVAL_MS: number = 2_000;
 const QUERY_TIMEOUT_MS: number = 60_000;
@@ -936,7 +937,7 @@ async function cohort_answer(
   if (facts.csv || facts.csvTo !== null || facts.csvToAsk) {
     const delivered = await csv_deliver(model, facts.csvTo, facts.csvToAsk, facts.force, facts.level, facts.table);
     if (!delivered.ok) {
-      process.exitCode = 1;
+      exitCode_set(1);
       // The ANSWER stands: only the writing of it did not happen. An
       // abandoned question, or a refused destination, is no reason to
       // throw away a PACS answer the operator waited for — the model
@@ -962,7 +963,7 @@ async function cohort_answer(
   // Every question failing is a failure of the command; some failing is an
   // answer with holes in it, which the table states and the operator reads.
   if (unasked > 0 && unasked === patients.length) {
-    process.exitCode = 1;
+    exitCode_set(1);
     // The model still crosses. A surface showing which MRNs went unasked,
     // and why, is more use than an empty pane beside a red line.
     const reasons: string[] = answers.flatMap((answer: QueryAnswer): string[] => (answer.error !== undefined ? [answer.error] : []));
@@ -1046,7 +1047,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       // A flag this command does not know is refused by name. Dropped in
       // silence, `--series` on a build without it answered at the study
       // level and looked like it had been heard.
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`query: unknown flag ${args[i]} (see pacs query --help)`)}\n`);
     } else {
       positional.push(args[i]);
@@ -1057,7 +1058,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   // its rows aligned. Asked for both, neither is guessed; writing the CSV
   // to a file (`--csv-to`) leaves the screen free for the table.
   if (csv && tableMode) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('query: --csv and --table are two formats for one screen; pick one (or --csv-to <cfs-path> --table: the file gets the CSV, the screen the table)')}\n`);
   }
   // A level is a property of rows: asked for series with no format named,
@@ -1065,7 +1066,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   if (level === 'series' && !csv) tableMode = true;
 
   if (positional.length === 0 && patientsArg === null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('query: Missing query expression. Usage: query <Key:Value[,...]> [--patients <list|@file>] [--title <title>]')}\n`);
   }
 
@@ -1078,7 +1079,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       ? termsFromJson_read(queryExpr)
       : queryTerms_parse(queryExpr));
   if (terms === null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`query: Invalid expression: "${queryExpr}". Use Key:Value pairs (e.g. PatientID:1234) or JSON.`)}\n`);
   }
 
@@ -1100,7 +1101,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
       if (serversResult.ok && serversResult.value.length > 0) {
         servers = [String(serversResult.value[0].id)];
       } else {
-        process.exitCode = 1;
+        exitCode_set(1);
         return envelope_error('', undefined, `${chalk.red('query: No PACS server available. Set one with: pacs connect <id>')}\n`);
       }
     }
@@ -1127,12 +1128,12 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     const cohort = await patients_read(patientsArg);
     if (!cohort.ok) {
       const problem: StackMessage | undefined = errorStack.stack_pop();
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(problem?.message ?? 'query: --patients could not be read.')}\n`);
     }
     if (!fanout_permit(cohort.value.length, QUERY_COHORT_MAX)) {
       const problem: StackMessage | undefined = errorStack.stack_pop();
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(problem?.message ?? 'query: too many patients.')}\n`);
     }
     const base: Record<string, string> = Object.fromEntries(
@@ -1140,7 +1141,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     );
     if (!fanout_permit(cohort.value.length * servers.length, QUERY_COHORT_MAX)) {
       const problem: StackMessage | undefined = errorStack.stack_pop();
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(problem?.message ?? 'query: too many questions.')}\n`);
     }
     for (const mrn of cohort.value) {
@@ -1157,7 +1158,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     const expanded: Array<Record<string, string>> = queryTerms_expand(terms);
     if (!fanout_permit(expanded.length * servers.length, QUERY_INLINE_FANOUT_MAX)) {
       const problem: StackMessage | undefined = errorStack.stack_pop();
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(problem?.message ?? 'query: too many queries.')}\n`);
     }
     const asksPerServer: number = expanded.length * servers.length;
@@ -1232,7 +1233,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
     // A refusal says what to do about it: PACS is a group CUBE grants.
     const said: string[] = errs.map((err: unknown): string => typeof err === 'string' ? err : ((err as { message?: string }).message ?? String(err)));
     if (pacsRefusal_is(said)) errOut += pacsRefusal_hint();
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, errOut);
   }
 
@@ -1272,7 +1273,7 @@ export async function builtin_query(args: string[]): Promise<CommandEnvelope> {
   if (csv || csvTo !== null || csvToAsk) {
     const delivered = await csv_deliver(model, csvTo, csvToAsk, force, level, tableMode);
     if (!delivered.ok) {
-      process.exitCode = 1;
+      exitCode_set(1);
       // The answer stands; only the writing of it did not happen.
       return {
         ...envelope_error('', undefined, `${chalk.red(delivered.message)}\n`),

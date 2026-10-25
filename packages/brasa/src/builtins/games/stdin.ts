@@ -11,18 +11,46 @@
  *
  * @module
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { turnPart_register } from '../../core/turn.js';
 
-/** The text piped into the segment now running, or null when nothing was. */
-let piped: string | null = null;
+/** A slot holding the text piped into a segment, or null when nothing was piped. */
+interface PipedText {
+  value: string | null;
+}
+
+/** The slot outside any pipe segment's scope (a test, a direct call). */
+const unscoped: PipedText = { value: null };
+
+/**
+ * The slot of the pipe segment running on this async path: two lines that
+ * run at once each read their own pipe's input, never the other's (#1273).
+ */
+const pipedScope: AsyncLocalStorage<PipedText> = new AsyncLocalStorage<PipedText>();
+
+/** The slot for the work running now. */
+function piped_slot(): PipedText {
+  return pipedScope.getStore() ?? unscoped;
+}
+
+/**
+ * Runs a pipe segment with the text piped into it, in a slot of its own.
+ *
+ * @param text - The previous segment's output.
+ * @param operation - The segment.
+ * @returns What the segment returned.
+ */
+export async function stdinScope_run<T>(text: string | null, operation: () => Promise<T>): Promise<T> {
+  return await pipedScope.run({ value: text }, operation);
+}
 
 // A pipe's text not yet taken belongs to its command, not to one that runs
 // while that command waits on a question.
 turnPart_register({
   name: 'stdin',
-  save: (): unknown => piped,
-  clear: (): void => { piped = null; },
-  restore: (saved: unknown): void => { piped = typeof saved === 'string' ? saved : null; },
+  save: (): unknown => piped_slot().value,
+  clear: (): void => { piped_slot().value = null; },
+  restore: (saved: unknown): void => { piped_slot().value = typeof saved === 'string' ? saved : null; },
 });
 
 /**
@@ -32,7 +60,7 @@ turnPart_register({
  * @param text - The previous segment's output, or null for none.
  */
 export function stdin_set(text: string | null): void {
-  piped = text;
+  piped_slot().value = text;
 }
 
 /**
@@ -41,8 +69,9 @@ export function stdin_set(text: string | null): void {
  * @returns The text, or null when the builtin was not piped into.
  */
 export function stdin_take(): string | null {
-  const text: string | null = piped;
-  piped = null;
+  const slot: PipedText = piped_slot();
+  const text: string | null = slot.value;
+  slot.value = null;
   return text;
 }
 

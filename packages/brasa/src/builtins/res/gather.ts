@@ -35,6 +35,7 @@ import { placeImagery_is, seriesFacts_fill } from './gather.facts.js';
 import { CommandEnvelope, envelope_ok, envelope_error, type EnvelopeModel } from '@fnndsc/menu';
 
 import { GATHER_MODEL_KIND } from './gather.kind.js';
+import { exitCode_set } from '../../core/handlerRun.js';
 export { GATHER_MODEL_KIND };
 
 /**
@@ -44,7 +45,7 @@ export { GATHER_MODEL_KIND };
  * @returns An error envelope, with the process marked failed.
  */
 function gather_error(message: string): CommandEnvelope {
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error('', undefined, `${chalk.red(message)}\n`);
 }
 

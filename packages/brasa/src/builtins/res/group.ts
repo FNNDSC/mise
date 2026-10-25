@@ -22,6 +22,7 @@ import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { authorizationFailure_is, sudoHint_build } from '../../core/elevation.js';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Renders an error for a failed group membership operation.
@@ -30,7 +31,7 @@ import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
  * @returns An error command envelope.
  */
 function group_error(message: string): CommandEnvelope {
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error('', undefined, `${chalk.red(message)}\n`);
 }
 
@@ -117,7 +118,7 @@ async function groupMembership_batch(
   if (added > 0) rendered += groupSync_note();
 
   if (failures > 0) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error(rendered, undefined, renderedErr);
   }
   return envelope_ok(rendered);
@@ -146,7 +147,7 @@ export async function builtin_group(args: string[]): Promise<CommandEnvelope> {
   if (!subcommand || subcommand === 'list') {
     const refusal: string | null = resourceListOptions_refusal('group', parsed);
     if (refusal !== null) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
     }
     try {
@@ -154,7 +155,7 @@ export async function builtin_group(args: string[]): Promise<CommandEnvelope> {
       if (groups.length === 0) { return envelope_ok(`${chalk.gray('No groups found.')}\n`); }
       return envelope_ok(table_render(groups, selectedFields, { title: { title: 'Groups', justification: 'center' }, pagination: totalCount !== undefined ? { shown: groups.length, total: totalCount } : undefined }));
     } catch (e: unknown) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`group error: ${e instanceof Error ? e.message : String(e)}`)}\n`);
     }
   }
@@ -162,7 +163,7 @@ export async function builtin_group(args: string[]): Promise<CommandEnvelope> {
   if (subcommand === 'search') {
     const refusal: string | null = resourceSearchTerm_refusal('group', parsed);
     if (refusal !== null) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
     }
     const query: string = String(parsed._[1]);
@@ -222,6 +223,6 @@ export async function builtin_group(args: string[]): Promise<CommandEnvelope> {
     return groupMembership_batch(resolved.value, usernames, subcommand === 'adduser' ? 'add' : 'remove');
   }
 
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error(`${chalk.red(`Unknown subcommand: ${subcommand}. Usage: groups <list|search|inspect|members|adduser|removeuser>`)}\n`);
 }

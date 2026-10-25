@@ -24,6 +24,7 @@ import {
 import { signalflowDoc_build, type SfDoc } from './feed.tree.signalflow.js';
 import { DAG_MODEL_KINDS, type PipelineDiagramModel, type CommandEnvelope, envelope_error, envelope_ok } from '@fnndsc/menu';
 import { errorStack, type Result } from '@fnndsc/fond';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Projects the salsa diagram onto the wire's `pipeline.diagram` model: the
@@ -87,7 +88,7 @@ export async function pipelineDiagram_handle(
   const result: Result<PipelineDiagram> = await pipelineDiagram_get(specifier);
   if (!result.ok) {
     const problem: { message: string } | undefined = errorStack.stack_pop();
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(problem?.message ?? 'Pipeline not found.')}\n`);
   }
 

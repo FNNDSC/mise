@@ -22,6 +22,7 @@ import {
   recorder_stop,
 } from '../../session/recorder.js';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** The model kind under which a finished recording travels. */
 export const RECORD_MODEL_KIND: string = 'manifest.recorded';
@@ -125,12 +126,12 @@ export async function builtin_record(args: string[]): Promise<CommandEnvelope> {
   if (subcommand === 'start') {
     const target: string | undefined = parsed._[1];
     if (target === undefined) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red('Usage: record start <manifest>')}\n`);
     }
     const state: RecorderState = recorder_state();
     if (state.target !== null) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`record: already recording to ${state.target} — stop it first.`)}\n`);
     }
     const resolved: string = await path_resolve(target);
@@ -141,7 +142,7 @@ export async function builtin_record(args: string[]): Promise<CommandEnvelope> {
   if (subcommand === 'stop') {
     const held = recorder_stop();
     if (held === null) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red('record: nothing is recording.')}\n`);
     }
     if (held.lines.length === 0) {
@@ -155,7 +156,7 @@ export async function builtin_record(args: string[]): Promise<CommandEnvelope> {
       withContents: manifest_render(name, lines, params),
     });
     if (!written) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`record: could not write ${held.target}.`)}\n`);
     }
 
@@ -183,6 +184,6 @@ export async function builtin_record(args: string[]): Promise<CommandEnvelope> {
     );
   }
 
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: record <start|stop|status>`)}\n`);
 }

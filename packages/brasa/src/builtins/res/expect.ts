@@ -33,6 +33,7 @@ import type { ListingItem } from '@fnndsc/menu';
 import { backendInstalled_get, type ExpectAsk, type ExpectReading, type ExpectSubject } from '../../core/backend.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
 import type { Result } from '@fnndsc/fond';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** The model kind under which a checked claim travels to a surface. */
 export const EXPECT_MODEL_KIND: string = 'expect.result';
@@ -267,7 +268,7 @@ export async function builtin_expect(args: string[]): Promise<CommandEnvelope> {
   const names: string = [...subjects.keys()].join(', ');
 
   if (subject === undefined) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`Usage: expect <${[...subjects.keys()].join('|')}> [<target>] <property> [<predicate> <value>] [--within <duration>]`)}\n`);
   }
 
@@ -276,7 +277,7 @@ export async function builtin_expect(args: string[]): Promise<CommandEnvelope> {
   // where a comparison goes, which names the wrong fault.
   const entry: SubjectEntry | undefined = subjects.get(subject);
   if (entry === undefined) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`expect knows nothing about "${subject}" in this session — try ${names}.`)}\n`);
   }
 
@@ -287,12 +288,12 @@ export async function builtin_expect(args: string[]): Promise<CommandEnvelope> {
   const properties: string = [...entry.properties.keys()].join(', ');
 
   if (property === undefined) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`expect ${subject}: say what about it — ${properties}.`)}\n`);
   }
   const answering = entry.properties.get(property);
   if (answering === undefined) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`expect: ${subject} has no property "${property}" — try ${properties}.`)}\n`);
   }
   // A property may take words before the comparison (`tags PatientID`).
@@ -302,7 +303,7 @@ export async function builtin_expect(args: string[]): Promise<CommandEnvelope> {
   const predicate: string = rest[0] ?? (property === 'exists' ? 'eq' : '');
   const wanted: string = rest[1] ?? (property === 'exists' ? 'true' : '');
   if (predicate === '' || !PREDICATES.includes(predicate)) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`expect: "${predicate}" is not a comparison — use ${PREDICATES.join(', ')}.`)}\n`);
   }
 
@@ -310,7 +311,7 @@ export async function builtin_expect(args: string[]): Promise<CommandEnvelope> {
   if (typeof parsed.within === 'string') {
     const parsedWait: number | null = duration_parse(parsed.within);
     if (parsedWait === null) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`expect: --within takes a duration such as 30s, 20m or 2h, not "${parsed.within}".`)}\n`);
     }
     deadlineMs = parsedWait;
@@ -369,7 +370,7 @@ export async function builtin_expect(args: string[]): Promise<CommandEnvelope> {
     return envelope_ok(`${chalk.green('✓')} ${claim}${took}\n`, model);
   }
 
-  process.exitCode = 1;
+  exitCode_set(1);
   const lines: string[] = [
     chalk.red(`✗ ${claim}`),
     `    wanted  ${wanted}`,

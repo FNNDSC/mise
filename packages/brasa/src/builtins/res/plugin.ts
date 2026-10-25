@@ -30,6 +30,7 @@ import {
 } from './plugin.info.js';
 import { authorizationFailure_is, sudoHint_build } from '../../core/elevation.js';
 import { errorStack, type Result } from '@fnndsc/fond';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Mutable result populated while Chili output is captured.
@@ -67,7 +68,7 @@ export async function builtin_plugin(args: string[]): Promise<CommandEnvelope> {
        // runs where the session stands, makes or joins the feed, and answers
        // the run as a model. `plugin run` was a thin pass to CUBE that did
        // none of that.
-       process.exitCode = 1;
+       exitCode_set(1);
        return envelope_error('', undefined, `${chalk.red('plugin run is retired: run a plugin by its name, where you stand — pl-dcm2niix-v1.0.2 …, or A=$(pl-dcm2niix-v1.0.2 …) to name the run.')}\n`);
     } else if (subcommand === 'add') {
        return await plugin_addInteractive(parsed);
@@ -83,11 +84,11 @@ export async function builtin_plugin(args: string[]): Promise<CommandEnvelope> {
        const query: string = parsed._[1] ?? '';
        return await builtin_plugin(['list', `--search`, query]);
     }
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.yellow(`Unknown subcommand: ${subcommand}. Usage: plugin <list|add|info|inspect|search>`)}\n`);
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`Plugin error: ${msg}`)}\n`);
   }
 }
@@ -114,14 +115,14 @@ async function pluginInfo_show(words: string[]): Promise<CommandEnvelope> {
     ? pluginSpecifier_parse(entry)
     : { name: entry.replace(/^.*\//, ''), version, command: `${entry.replace(/^.*\//, '')}-v${version}` };
   if (specifier === null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`Not a versioned plugin entry: ${entry}. Spell it '<name>-v<version>'.`)}\n`);
   }
 
   const built: Result<PluginInfoModel> = await pluginInfo_build(specifier);
   if (!built.ok) {
     const problem: { message: string } | undefined = errorStack.stack_pop();
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(problem?.message ?? 'Plugin not found.')}\n`);
   }
   return envelope_ok(pluginInfoText_render(built.value), {
@@ -172,7 +173,7 @@ export async function plugin_addInteractive(parsed: ParsedArgs): Promise<Command
     return envelope_ok(rendered);
   }
 
-  process.exitCode = 1;
+  exitCode_set(1);
   rendered += `${chalk.red('\n[FAILED] Failed to add plugin.\n')}\n`;
 
   const errors: string[] = errorStack.allOfType_get('error');

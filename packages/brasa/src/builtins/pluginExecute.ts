@@ -19,6 +19,7 @@ import { executableArguments_parse } from './argumentTokens.js';
 import { pluginSelector_normalize } from './pluginSelector.js';
 import { sink_dataLine, sink_errLine } from '../core/sink.js';
 import { errorStack, Result, type StackMessage } from '@fnndsc/fond';
+import { exitCode_set } from '../core/handlerRun.js';
 
 /**
  * Executes a plugin in the current directory context.
@@ -178,7 +179,7 @@ export async function builtin_executePlugin(
     if (!detach) {
       const settlement: RunSettlement = await runs_awaitSettled([result.pluginInstanceID], pluginName);
       sink_dataLine(settlement_render(settlement, pluginName));
-      if (settlement.outcome === 'settled' && settlement.failed > 0) process.exitCode = 1;
+      if (settlement.outcome === 'settled' && settlement.failed > 0) exitCode_set(1);
       status = settlementStatus_derive(settlement, result.pluginInstanceID);
     }
     // The run as a model, so a surface can point at what it started — the

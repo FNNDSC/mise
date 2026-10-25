@@ -20,6 +20,7 @@ import { surface_get } from '../../core/surface.js';
 import { authorizationFailure_is, sudoHint_build } from '../../core/elevation.js';
 import { errorStack } from '@fnndsc/fond';
 import { envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Renders a local-account command error and records a failing process status.
@@ -28,7 +29,7 @@ import { envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/menu'
  * @returns Error envelope for the active command surface.
  */
 function user_error(message: string): CommandEnvelope {
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error('', undefined, `${chalk.red(message)}\n`);
 }
 

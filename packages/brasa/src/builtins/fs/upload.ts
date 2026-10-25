@@ -13,6 +13,7 @@ import { surface_get } from '../../core/surface.js';
 import { repl_confirm } from '../../core/question.js';
 import { errorStack, type StackMessage } from '@fnndsc/fond';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Asks the issuing surface to confirm replacement of an existing CFS target.
@@ -46,7 +47,7 @@ export async function builtin_upload(args: string[]): Promise<CommandEnvelope> {
   // operator declared it theirs (--host-control=files). Without that, refuse
   // — as download already refuses to write there.
   if (!surface_get().capabilities.engineFilesystem) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined,
       `${chalk.red("upload: calypso's host disk is nobody's; start calypso with --host-control=files, or upload from a surface that can supply the bytes.")}\n`);
   }
@@ -95,7 +96,7 @@ export async function builtin_upload(args: string[]): Promise<CommandEnvelope> {
     return envelope_ok(rendered);
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`Upload error: ${msg}`)}\n`);
   }
 }

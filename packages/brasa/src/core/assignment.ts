@@ -14,7 +14,7 @@ import chalk from 'chalk';
 import type { CommandEnvelope } from '@fnndsc/menu';
 import { shellWords_referencesExpand, shellWords_tokenize, type ReferenceExpansion, type ShellWord } from '../lib/parser.js';
 import { reference_isReserved, reference_refusal, reference_resolve, unresolvedStands_get } from './expansion.js';
-import { exitCode_read } from './handlerRun.js';
+import { exitCode_read, exitCode_set } from './handlerRun.js';
 import { sink_get, sinkScope_run, TeeSink } from './sink.js';
 import { textAnswer_make, variable_set, type Assignment } from './variables.js';
 import type { SessionAnswer } from '../session/answer.js';
@@ -30,7 +30,7 @@ export type LineRun = (line: string) => Promise<CommandEnvelope[]>;
  */
 function assignment_refuse(message: string): CommandEnvelope[] {
   sink_get().err_write(`${chalk.red(message)}\n`);
-  process.exitCode = 1;
+  exitCode_set(1);
   return [{ status: 'error', rendered: '' }];
 }
 

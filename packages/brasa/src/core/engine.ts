@@ -60,6 +60,7 @@ import { vfsDispatcher_get } from './filesystem.js';
 import { itemType_isContainer } from './itemKinds.js';
 import type { VFSDispatcher } from '@fnndsc/fond';
 import { quoteOpen_find, type OpenQuote } from '../lib/quoting.js';
+import { exitCode_set, exitScope_run } from './handlerRun.js';
 
 /**
  * Result of a completion request: the candidates and the prefix they
@@ -354,8 +355,11 @@ export async function line_execute(line: string): Promise<CommandEnvelope[]> {
   // A top-level line keeps its own error stack: another command running
   // while this one waits on a question cannot pop its messages, nor have
   // its own drained by this one.
+  // ...and its own exit status, so a line running beside it (a read, a
+  // background job) never marks it failed, nor it them (#1273).
   return await commandCancellation_run(
-    (): Promise<CommandEnvelope[]> => errorStack.scope_run((): Promise<CommandEnvelope[]> => line_execute_run(line)),
+    (): Promise<CommandEnvelope[]> => exitScope_run((): Promise<CommandEnvelope[]> =>
+      errorStack.scope_run((): Promise<CommandEnvelope[]> => line_execute_run(line))),
   );
 }
 
@@ -377,7 +381,7 @@ async function line_execute_run(line: string, captured: boolean = false): Promis
   const open: OpenQuote | null = command_shellEscape_detect(trimmedLine) ? null : quoteOpen_find(trimmedLine);
   if (open !== null) {
     sink_get().err_write(`${chalk.red(`chell: the ${open.quote} at column ${open.column} never closes; nothing of the line ran`)}\n`);
-    process.exitCode = 2;
+    exitCode_set(2);
     return [{ status: 'error', rendered: '' }];
   }
 

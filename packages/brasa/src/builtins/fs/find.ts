@@ -28,6 +28,7 @@ import { spinner } from '../../lib/spinner.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
 import { errorStack, type Result, type VFSSubtree } from '@fnndsc/fond';
 import { envelope_error, type CommandEnvelope, type ListingItem } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** One entry the walk visits. */
 export interface FindNode {
@@ -258,7 +259,7 @@ function itemType_derive(item: ListingItem): 'f' | 'd' | 'l' {
 export async function builtin_find(args: string[]): Promise<CommandEnvelope> {
   const query: FindQuery | string = find_parse(args);
   if (typeof query === 'string') {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(query)}\n`);
   }
   commandCancellation_enable();
@@ -366,7 +367,7 @@ export async function builtin_find(args: string[]): Promise<CommandEnvelope> {
   const unjudgedNote: string = unjudged > 0
     ? `find: ${unjudged} job${unjudged === 1 ? '' : 's'} not judged: which pipeline run made ${unjudged === 1 ? 'it' : 'them'} is not known yet (being read now, behind the prompt); asked again, find judges ${unjudged === 1 ? 'it' : 'them'} too\n`
     : '';
-  if (failures !== '') process.exitCode = 1;
+  if (failures !== '') exitCode_set(1);
   failures += unjudgedNote;
   const failed: boolean = failures !== unjudgedNote;
   return { status: failed ? 'error' : 'ok', rendered: out.join(''), renderedErr: failures === '' ? undefined : (failed ? chalk.red(failures) : chalk.yellow(failures)) };

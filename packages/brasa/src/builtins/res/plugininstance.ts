@@ -12,6 +12,7 @@ import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import type { PluginInstanceRow } from '../../api/models.js';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Projects a listed row onto the wire's instance model: the fields the
@@ -68,7 +69,7 @@ export async function builtin_plugininstance(args: string[]): Promise<CommandEnv
   if (!subcommand || subcommand === 'list') {
     const refusal: string | null = resourceListOptions_refusal('plugininstance', parsed);
     if (refusal !== null) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
     }
     try {
@@ -79,7 +80,7 @@ export async function builtin_plugininstance(args: string[]): Promise<CommandEnv
       if (pluginInstances.length === 0) { return envelope_ok(`${chalk.gray('No plugin instances found.')}\n`, model); }
       return envelope_ok(table_render(pluginInstances, selectedFields, { title: { title: 'Plugin Instances', justification: 'center' }, pagination: totalCount !== undefined ? { shown: pluginInstances.length, total: totalCount } : undefined }), model);
     } catch (e: unknown) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`plugininstance error: ${e instanceof Error ? e.message : String(e)}`)}\n`);
     }
   }
@@ -87,7 +88,7 @@ export async function builtin_plugininstance(args: string[]): Promise<CommandEnv
   if (subcommand === 'search') {
     const refusal: string | null = resourceSearchTerm_refusal('plugininstance', parsed);
     if (refusal !== null) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(refusal)}\n`);
     }
     return builtin_plugininstance(resourceSearch_args(parsed));
@@ -106,10 +107,10 @@ export async function builtin_plugininstance(args: string[]): Promise<CommandEnv
   const where: string | undefined = PROC_WAYS[subcommand];
   if (where !== undefined) {
     const id: string = String(parsed._[1] ?? '<id>');
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`plugininstance ${subcommand}: a job is worked in /proc/jobs; \`proc find ${id}\` names its path, then ${where}`)}\n`);
   }
 
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error(`${chalk.red(`Unknown subcommand: ${subcommand}. Usage: plugininstances <list|search|inspect>`)}\n`);
 }

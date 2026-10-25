@@ -13,6 +13,7 @@
 import { answer_get, answerRows_derive, type AnswerRow } from '../session/answer.js';
 import { answerKinds_get } from './answerKinds.js';
 import { turnPart_register } from './turn.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 /** A listing as an envelope's model carries it. */
 export interface ListingModel {
@@ -20,16 +21,43 @@ export interface ListingModel {
   data: unknown;
 }
 
-/** The listing the previous builtin in a pipe produced, for the next to take. */
-let piped: ListingModel | null = null;
+/** A slot holding the listing the previous builtin in a pipe produced, or null when nothing was piped. */
+interface PipedListing {
+  value: ListingModel | null;
+}
+
+/** The slot outside any pipe segment's scope (a test, a direct call). */
+const unscoped: PipedListing = { value: null };
+
+/**
+ * The slot of the pipe segment running on this async path: two lines that
+ * run at once each read their own pipe's input, never the other's (#1273).
+ */
+const pipedScope: AsyncLocalStorage<PipedListing> = new AsyncLocalStorage<PipedListing>();
+
+/** The slot for the work running now. */
+function piped_slot(): PipedListing {
+  return pipedScope.getStore() ?? unscoped;
+}
+
+/**
+ * Runs a pipe segment with the listing piped into it, in a slot of its own.
+ *
+ * @param model - The previous segment's listing, or null.
+ * @param operation - The segment.
+ * @returns What the segment returned.
+ */
+export async function listingInScope_run<T>(model: ListingModel | null, operation: () => Promise<T>): Promise<T> {
+  return await pipedScope.run({ value: model }, operation);
+}
 
 // A pipe's listing not yet taken belongs to its command, not to one that
 // runs while that command waits on a question.
 turnPart_register({
   name: 'listingIn',
-  save: (): unknown => piped,
-  clear: (): void => { piped = null; },
-  restore: (saved: unknown): void => { piped = (saved as ListingModel | null) ?? null; },
+  save: (): unknown => piped_slot().value,
+  clear: (): void => { piped_slot().value = null; },
+  restore: (saved: unknown): void => { piped_slot().value = (saved as ListingModel | null) ?? null; },
 });
 
 /**
@@ -38,7 +66,7 @@ turnPart_register({
  * @param model - The previous segment's model, when it is a listing.
  */
 export function listingIn_set(model: ListingModel | null): void {
-  piped = model;
+  piped_slot().value = model;
 }
 
 /**
@@ -47,8 +75,9 @@ export function listingIn_set(model: ListingModel | null): void {
  * @returns It, or null when nothing was piped in.
  */
 export function listingIn_take(): ListingModel | null {
-  const taken: ListingModel | null = piped;
-  piped = null;
+  const slot: PipedListing = piped_slot();
+  const taken: ListingModel | null = slot.value;
+  slot.value = null;
   return taken;
 }
 

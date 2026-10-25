@@ -9,6 +9,7 @@ import { login_render } from '@fnndsc/chili/views/connect.js';
 import { session } from '../../session/index.js';
 import { chrisContext } from '@fnndsc/cumin';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Connects to a ChRIS CUBE instance using provided credentials.
@@ -33,7 +34,7 @@ export async function builtin_connect(args: string[]): Promise<CommandEnvelope> 
       return envelope_ok(`${login_render(success, url, user)}\n`);
     } catch (error: unknown) {
       const msg: string = error instanceof Error ? error.message : String(error);
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error(`${login_render(false, url, user)}\n`, undefined, `${chalk.red(`Connection failed: ${msg}`)}\n`);
     }
   }

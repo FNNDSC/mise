@@ -14,6 +14,7 @@ import chalk from 'chalk';
 import { CommandEnvelope, envelope_error, envelope_ok } from '@fnndsc/menu';
 import { session } from '../../session/index.js';
 import { path_resolve } from '../utils.js';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** The environment variable naming the door (porter) a link opens through. */
 export const URL_DOOR_ENV: string = 'CHELL_DOOR';
@@ -41,7 +42,7 @@ export function url_compose(door: string, absolutePath: string): string {
 export async function builtin_url(args: string[] = [], env: NodeJS.ProcessEnv = process.env): Promise<CommandEnvelope> {
   const words: string[] = args.filter((word: string): boolean => !word.startsWith('--'));
   if (words.length > 1) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Usage: url [path]')}\n`);
   }
   const absolute: string = words.length === 0 ? await session.getCWD() : await path_resolve(words[0] as string);

@@ -44,6 +44,7 @@ import { pipelineManifest_render, pipelineParameters_render } from './pipeline.m
 import { path_resolve } from '../utils.js';
 import { errorStack, type Result, type StackMessage } from '@fnndsc/fond';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 const PIPELINE_PROGRESS_DELAY_MS: number = 300;
 const PIPELINE_PROGRESS_LABEL: string = 'Reading registered pipeline…';
@@ -85,14 +86,14 @@ async function pipelineInfo_handle(args: string[]): Promise<CommandEnvelope> {
   const nameOrId: string | undefined = args[1];
   if (!nameOrId) {
     sink_errLine(chalk.red('Usage: pipeline info <name|id>'));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
   const result: Result<PipelineRecord> = await pipeline_resolve(nameOrId);
   if (!result.ok) {
     const err: StackMessage | undefined = errorStack.stack_pop();
     sink_errLine(chalk.red(`pipeline info: ${err?.message ?? 'not found'}`));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
   const p: PipelineRecord = result.value;
@@ -106,7 +107,7 @@ async function pipelineInfo_handle(args: string[]): Promise<CommandEnvelope> {
   if (!manifestResult.ok) {
     const err: StackMessage | undefined = errorStack.stack_pop();
     sink_errLine(chalk.red(`pipeline info: ${err?.message ?? 'manifest unavailable'}`));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
   sink_dataLine(pipelineParameters_render(manifestResult.value as PipelineManifest));
@@ -140,7 +141,7 @@ async function pipelineRun_previousInstId(previousOverride: number | undefined):
   const here: number | null = feedNodeInstance_find(cwd);
   if (here === null) {
     sink_errLine(chalk.red(`pipeline run: ${cwd} is not in a feed node; cd into one (…/feeds/feed_N/pl-x_ID), or give --previous <id>`));
-    process.exitCode = 1;
+    exitCode_set(1);
     return null;
   }
   return here;
@@ -156,7 +157,7 @@ async function pipelineRun_handle(args: string[]): Promise<CommandEnvelope> {
   const nameOrId: string | undefined = args[1];
   if (!nameOrId) {
     sink_errLine(chalk.red('Usage: pipeline run <name|id> [--compute <resource>] [--previous <inst_id>]'));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
 
@@ -164,7 +165,7 @@ async function pipelineRun_handle(args: string[]): Promise<CommandEnvelope> {
   const { computeOverride, previousOverride } = parsed;
   if (parsed.parseError !== null) {
     sink_errLine(chalk.red(`pipeline run: ${parsed.parseError}`));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
 
@@ -175,7 +176,7 @@ async function pipelineRun_handle(args: string[]): Promise<CommandEnvelope> {
   if (!pipelineResult.ok) {
     const err: StackMessage | undefined = errorStack.stack_pop();
     sink_errLine(chalk.red(`pipeline run: ${err?.message ?? 'pipeline not found'}`));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
 
@@ -188,14 +189,14 @@ async function pipelineRun_handle(args: string[]): Promise<CommandEnvelope> {
       .find((prefix: string): boolean => resolvedPath === prefix || resolvedPath.startsWith(`${prefix}/`));
     if (virtualPrefix !== undefined) {
       sink_errLine(chalk.red(`pipeline run: --paramFile must name a readable CFS file, not '${resolvedPath}'`));
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('');
     }
     const contentResult: Result<string> = await fileContent_get(resolvedPath);
     if (!contentResult.ok) {
       const err: StackMessage | undefined = errorStack.stack_pop();
       sink_errLine(chalk.red(`pipeline run: ${err?.message ?? `cannot read ${resolvedPath}`}`));
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('');
     }
     try {
@@ -203,7 +204,7 @@ async function pipelineRun_handle(args: string[]): Promise<CommandEnvelope> {
     } catch (error: unknown) {
       const message: string = error instanceof Error ? error.message : String(error);
       sink_errLine(chalk.red(`pipeline run: invalid parameter YAML: ${message}`));
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('');
     }
   }
@@ -217,7 +218,7 @@ async function pipelineRun_handle(args: string[]): Promise<CommandEnvelope> {
   if (!runResult.ok) {
     const err: StackMessage | undefined = errorStack.stack_pop();
     sink_errLine(chalk.red(`pipeline run: ${err?.message ?? 'workflow creation failed'}`));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
 
@@ -240,7 +241,7 @@ async function pipelineRun_handle(args: string[]): Promise<CommandEnvelope> {
   if (!parsed.detach) {
     settlement = await runs_awaitSettled(pluginInstanceIds, pipelineResult.value.name);
     sink_dataLine(settlement_render(settlement, pipelineResult.value.name));
-    if (settlement.outcome === 'settled' && settlement.failed > 0) process.exitCode = 1;
+    if (settlement.outcome === 'settled' && settlement.failed > 0) exitCode_set(1);
     if (feedID !== undefined) {
       try {
         await procCache_refresh(feedID);
@@ -307,14 +308,14 @@ async function pipelineSource_handle(args: string[]): Promise<CommandEnvelope> {
   const nameOrId: string | undefined = args[1];
   if (!nameOrId) {
     sink_errLine(chalk.red('Usage: pipeline source <name|id>'));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
   const sourceResult: Result<string> = await pipeline_sourceGet(nameOrId);
   if (!sourceResult.ok) {
     const err: StackMessage | undefined = errorStack.stack_pop();
     sink_errLine(chalk.red(`pipeline source: ${err?.message ?? 'source not found'}`));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
   sink_dataLine(sourceResult.value);
@@ -330,13 +331,13 @@ async function pipelineSource_handle(args: string[]): Promise<CommandEnvelope> {
 async function pipelineManifestCommand_handle(args: string[]): Promise<CommandEnvelope> {
   const specifier: string = args.slice(1).join(' ').trim();
   if (specifier.length === 0) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Usage: pipeline manifest <name|id|slug>')}\n`);
   }
   const result: Result<PipelineManifest> = await pipelineManifestWithProgress_get(specifier);
   if (!result.ok) {
     const err: StackMessage | undefined = errorStack.stack_pop();
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error(
       '',
       undefined,
@@ -426,11 +427,11 @@ function pipelineDiagramArgs_parse(args: string[]): PipelineDiagramArgs {
 async function pipelineDiagramCommand_handle(args: string[]): Promise<CommandEnvelope> {
   const parsed: PipelineDiagramArgs = pipelineDiagramArgs_parse(args);
   if (!parsed.specifier) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Usage: pipeline diagram [--withargs | --signalflow] <name|id>')}\n`);
   }
   if (parsed.withArguments && parsed.signalflow) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('pipeline diagram: --withargs is only available for shallow rendering')}\n`);
   }
   const mode: PipelineDiagramMode = parsed.signalflow
@@ -482,7 +483,7 @@ export async function builtin_pipeline(args: string[]): Promise<CommandEnvelope>
     default:
       sink_errLine(chalk.red(`pipeline: unknown subcommand '${subcommand}'`));
       sink_dataLine(chalk.gray('  Subcommands: list, search, inspect, info, manifest, run, source, diagram'));
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('');
   }
 }

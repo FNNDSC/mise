@@ -1,5 +1,28 @@
 # @fnndsc/brasa
 
+## 0.49.0
+
+### Minor Changes
+
+- e9ea847: A session can now write words and formatted text: `echo` and `printf`. `echo` writes its words on a line, with no options and no escapes (`-n`, `-e` or `-E` as the first word is refused by name), so `echo feed ${R.feedId}` shows a variable's field. `printf` is POSIX's subset: `%s`, `%d`, `%i`, `%%` with flags, width and precision, the escapes `\n`, `\t` and `\\`, the format reused while arguments remain; anything else is refused by name, and the text always ends its line. Both answer with text, so `A=$(printf …)` holds what was written.
+- f8b07e0: A backslash inside single quotes is now just a backslash, as in any POSIX shell (#1258). `grep '\.mgz$'`, `find … -name '*\.nii'` and `printf '%s\n' a` reach their command with the backslash they were written with; before, the line dropped it, so a pattern meant "any character" where it said a dot.
+
+  Quoting follows POSIX throughout: inside single quotes every character is literal; inside double quotes a backslash escapes only `$`, `` ` ``, `"`, `\` and newline (`"a\"b"` and `"\$HOME"` work as before) and stays before anything else (`"a\b"` keeps it); outside quotes it escapes the next character. The word parser and the `;`, `|`, `>` and `$( … )` splitters read one rule (`lib/quoting.ts`), so none of them splits a line its words read otherwise. A line that relied on `\'` inside single quotes, such as `'it\'s'`, now closes the quote there; write `"it's"` or `'it'\''s'`.
+
+  ARGUS quotes the lines it writes (an EDIT save, a cohort's `gather add`, a tag) the same way: single quotes, with a single quote written `'\''`. Its old quoting doubled every backslash and wrote `\'`, which under these rules doubled a backslash on every save and refused text with an apostrophe.
+
+### Patch Changes
+
+- e12598c: Finding jobs by pipeline run is complete about seven times sooner on a large account (#1253). Which pipeline run made each job is read again, behind the prompt, for jobs an older checkpoint lacked, and that read took hours.
+
+  The jobs it lacks sit in a few big feeds (on one account three feeds held all 118k), and they are each feed's older jobs: CUBE lists a feed newest first, and an earlier pass had already learned the newest. The read now starts each feed where the unknown jobs begin instead of at its head, reads pages in parallel across all its lanes instead of one feed page after page, and reads a feed whole when the skip missed any. Measured on that account: about 5,000 jobs learned a minute, from about 700.
+
+  `proc stat` says how far it has come while it reads: `pipeline runs : reading behind the prompt, 155/1061 pages`.
+
+- 26df4e2: A line whose quote never closes is now refused instead of run (#1260). `ls 'x; pwd` ran `ls` on `x; pwd` as if the quote closed at the end of the line; now chell says `the ' at column 4 never closes; nothing of the line ran` and exits 2, and no part of the line runs, not a batch's first command or a pipe's first segment. A manifest stops at such a line. A `!` line is the host shell's to read and is not checked.
+- Updated dependencies [e12598c]
+  - @fnndsc/salsa@4.4.2
+
 ## 0.48.2
 
 ### Patch Changes

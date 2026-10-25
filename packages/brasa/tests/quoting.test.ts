@@ -7,7 +7,7 @@
  * or a line splits one way and its words read another.
  */
 import { describe, it, expect } from '@jest/globals';
-import { backslash_escapesNext } from '../src/lib/quoting.js';
+import { backslash_escapesNext, quoteOpen_find } from '../src/lib/quoting.js';
 import { args_tokenize } from '../src/lib/parser.js';
 import { semicolons_parse } from '../src/lib/semicolonParser.js';
 import { pipes_parse, redirect_parse } from '../src/core/preprocess.js';
@@ -70,5 +70,19 @@ describe('every splitter agrees with the words', () => {
     expect(substitution_end("$(printf '%s)' x) tail", 0)).toBe("$(printf '%s)' x)".length - 1);
     expect(substitution_end("$(echo 'a\\') tail", 0)).toBe("$(echo 'a\\')".length - 1);
     expect(substitution_end('$(echo "a\\")") tail', 0)).toBe('$(echo "a\\")")'.length - 1);
+  });
+});
+
+describe('quoteOpen_find (#1260)', () => {
+  it('names the quote a line leaves open, and where it opened', () => {
+    expect(quoteOpen_find("rev 'it\\'s'")).toEqual({ quote: "'", column: 11 });
+    expect(quoteOpen_find('echo "a')).toEqual({ quote: '"', column: 6 });
+    expect(quoteOpen_find("ls 'x; pwd")).toEqual({ quote: "'", column: 4 });
+  });
+
+  it('finds none where every quote closes, or a quote is escaped or inside the other kind', () => {
+    for (const line of ["echo 'it'\\''s'", 'echo "a\\"b"', "echo it\\'s", 'echo "it\'s"', "echo 'a\"b'", 'echo a\\', 'echo plain']) {
+      expect(quoteOpen_find(line)).toBeNull();
+    }
   });
 });

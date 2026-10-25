@@ -633,6 +633,22 @@ export const helpText: Record<string, CommandHelp> = {
     description: 'Removes each named variable from the scope the line runs in. Quiet when it removes, as unset is. A manifest\'s parameter and the session\'s own names (cwd, listing, gather) are read-only and refuse by name.',
     examples: ['unset A', 'unset A B'],
   },
+  echo: {
+    posix: { group: 'Text', differs: 'no options and no escapes: the words, joined by a space, on one line; printf writes anything else' },
+    category: 'General',
+    usage: 'echo [WORD]…',
+    summary: 'Write words on a line',
+    description: 'Writes its words joined by a space and ends the line. It takes no option and reads no escape, since the System V and BSD echos disagree on both; -n, -e and -E are refused by name rather than written or obeyed. A field of a variable is a word like any other: echo ${R.feedId}. It answers with text, so A=$(echo …) holds what it wrote. To see a variable whole, set NAME.',
+    examples: ['echo hello', 'echo feed ${R.feedId}', 'X=$(echo t1 cohort)'],
+  },
+  printf: {
+    posix: { group: 'Text', differs: 'POSIX\'s subset: %s, %d, %i, %%, flags, width and precision; the escapes \\n, \\t and \\\\; always ends the line' },
+    category: 'General',
+    usage: 'printf FORMAT [ARG]…',
+    summary: 'Write arguments under a format',
+    description: 'Writes each argument under the format, as POSIX printf does: %s a word, %d and %i a whole number, %% a percent sign, each with the flags - 0 + and space, a width and a precision (%-12s, %05d, %.3s). With more arguments than the format takes, the format is written again until they run out; one missing is empty for %s and 0 for %d. The escapes are \\n, \\t and \\\\; the line itself reads a backslash as an escape, even in quotes, so a newline in the format is written \\\\n. Any other conversion or escape is refused by name. A session writes whole lines, so the text always ends its line. It answers with text, so A=$(printf …) holds what it wrote.',
+    examples: ['printf "feed %s: %s" ${R.feedId} done', 'printf "%-8s %5d\\\\n" a 1 bb 22', 'NAME=$(printf "%s-%03d" scan 7)'],
+  },
   kill: {
     posix: { group: 'System', differs: 'stops a session task (/proc/<source>/<id>), never a process; asks, never forces' },
     category: 'General',

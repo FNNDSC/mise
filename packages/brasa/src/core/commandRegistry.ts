@@ -63,7 +63,20 @@ export interface CommandGroup {
    * completes, in registration order.
    */
   help?: Record<string, CommandHelp>;
+  /**
+   * What each command changes of the session, by name: the pieces it holds
+   * while it runs, so lines that change different pieces (or nothing) run
+   * side by side. A command not named here holds the whole session.
+   */
+  holds?: Record<string, readonly SessionPiece[]>;
 }
+
+/**
+ * A piece of session state a line may change: the working directory, or
+ * the cohort. Variables are not a piece: a store is one step nothing can
+ * come between, so assigning one holds nothing.
+ */
+export type SessionPiece = 'cwd' | 'cohort';
 
 /** Who registers a group: the core, or the session's backend. */
 export type CommandOwner = 'core' | 'backend';
@@ -74,6 +87,7 @@ const coreNames: Set<string> = new Set<string>();
 const envelopeHandlers: Record<string, EnvelopeHandler> = {};
 const plainHandlers: Record<string, CommandHandler> = {};
 const helpEntries: Record<string, CommandHelp> = {};
+const holdsEntries: Map<string, readonly SessionPiece[]> = new Map();
 
 /** The listing order, by kind; empty until set. */
 const listingOrder: { envelope: string[]; plain: string[]; help: string[] } = { envelope: [], plain: [], help: [] };
@@ -139,6 +153,17 @@ export function commands_register(group: CommandGroup, owner: CommandOwner = 'co
   if (group.envelope !== undefined) Object.assign(envelopeHandlers, group.envelope);
   if (group.plain !== undefined) Object.assign(plainHandlers, group.plain);
   if (group.help !== undefined) Object.assign(helpEntries, group.help);
+  for (const [name, pieces] of Object.entries(group.holds ?? {})) holdsEntries.set(name, pieces);
+}
+
+/**
+ * What a command holds of the session while it runs.
+ * @param name - The command name.
+ * @returns The pieces it changes (none for a read), or null when it has
+ *   not said, and so holds the whole session.
+ */
+export function commandHolds_get(name: string): readonly SessionPiece[] | null {
+  return holdsEntries.get(name) ?? null;
 }
 
 /**

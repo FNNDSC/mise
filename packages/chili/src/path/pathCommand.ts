@@ -93,6 +93,8 @@ export interface CLIscan {
   save?: string;
   /** Stops traversal between CUBE listing operations when aborted. */
   signal?: AbortSignal;
+  /** The folder to scan; the context's folder when absent. */
+  folder?: string;
 }
 
 /**
@@ -505,7 +507,9 @@ async function scanResult_render(scanResult: ScanRecord, options: CLIscan): Prom
  */
 export async function scan_do(options: CLIscan): Promise<ScanRecord | null> {
   scanCancellation_throwIfRequested(options.signal);
-  const chrisFolder: string | null = await chrisContext.current_get(
+  // A scan of a named folder never moves the shared context to it: another
+  // line resolving paths meanwhile would stand there (#1273).
+  const chrisFolder: string | null = options.folder ?? await chrisContext.current_get(
     Context.ChRISfolder
   );
   if (!chrisFolder) {

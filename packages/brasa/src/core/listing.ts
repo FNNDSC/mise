@@ -12,7 +12,6 @@
  */
 import { answer_get, answerRows_derive, type AnswerRow } from '../session/answer.js';
 import { answerKinds_get } from './answerKinds.js';
-import { turnPart_register } from './turn.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 /** A listing as an envelope's model carries it. */
@@ -50,15 +49,6 @@ function piped_slot(): PipedListing {
 export async function listingInScope_run<T>(model: ListingModel | null, operation: () => Promise<T>): Promise<T> {
   return await pipedScope.run({ value: model }, operation);
 }
-
-// A pipe's listing not yet taken belongs to its command, not to one that
-// runs while that command waits on a question.
-turnPart_register({
-  name: 'listingIn',
-  save: (): unknown => piped_slot().value,
-  clear: (): void => { piped_slot().value = null; },
-  restore: (saved: unknown): void => { piped_slot().value = (saved as ListingModel | null) ?? null; },
-});
 
 /**
  * Hands a listing to the next builtin in a pipe (null clears it).

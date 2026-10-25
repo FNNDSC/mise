@@ -135,6 +135,7 @@ describe('a line whose surface left, and a command waiting aside', () => {
   let ran: string[];
   let aborted: number;
   let asideAborted: unknown[];
+  let followKey: string | undefined;
   let release: (() => void) | null;
   const sockets: WebSocket[] = [];
 
@@ -144,9 +145,10 @@ describe('a line whose surface left, and a command waiting aside', () => {
     asideAborted = [];
     release = null;
     const engine: HostedEngine = {
-      line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+      line_execute: async (line: string, options?: { id?: string }): Promise<CommandEnvelope[]> => {
         ran.push(line);
         if (line === 'hang') return new Promise(() => undefined);
+        if (line === 'follow') followKey = options?.id;
         // `follow` waits aside on a task until released or stopped, as `domain build` does.
         if (line === 'follow') {
           const outcome: string = await daemon.aside_current(new Promise<string>((resolve) => { release = (): void => resolve('ended'); }));
@@ -155,10 +157,12 @@ describe('a line whose surface left, and a command waiting aside', () => {
         return [{ status: 'ok', rendered: `engine: ${line}` }];
       },
       line_complete: async (prefix: string) => ({ candidates: [], prefix }),
-      line_abort: (): boolean => { aborted++; return true; },
-      turn_leave: (): unknown => ({ turn: 'follow' }),
-      turn_resume: (): void => undefined,
-      turn_abort: (state: unknown): void => { asideAborted.push(state); release?.(); },
+      // A STOP names the line it reaches: one waiting aside ends where it waits.
+      line_abort: (id?: string): boolean => {
+        if (id !== undefined && id === followKey) { asideAborted.push(id); release?.(); return true; }
+        aborted++;
+        return true;
+      },
     };
     daemon = new CalypsoDaemon({ engine, token: TOKEN });
     await daemon.start();
@@ -197,7 +201,54 @@ describe('a line whose surface left, and a command waiting aside', () => {
     expect((await b.next((m) => m.type === 'error')).reason).toBe('stop: nothing of yours is running');
     a.ws.send(JSON.stringify({ type: 'stop' }));
     const ended = await a.next((m) => m.type === 'result' && m.id === 'f');
-    expect(asideAborted).toEqual([{ turn: 'follow' }]);
+    expect(asideAborted).toEqual([followKey]);
     expect(JSON.stringify(ended)).toContain('follow: ended');
   }, 10000);
 });
+
+describe('lines side by side (#1273)', () => {
+  let daemon: CalypsoDaemon;
+  const sockets: WebSocket[] = [];
+  let releaseHang: (() => void) | null = null;
+  const started: string[] = [];
+
+  beforeEach(async () => {
+    started.length = 0;
+    const engine: HostedEngine = {
+      line_execute: async (line: string): Promise<CommandEnvelope[]> => {
+        started.push(line);
+        if (line === 'pull') await new Promise<void>((resolve) => { releaseHang = resolve; });
+        return [{ status: 'ok', rendered: `engine: ${line}` }];
+      },
+      line_complete: async (prefix: string) => ({ candidates: [], prefix }),
+      // A read holds nothing, cd holds the directory, anything else all of it.
+      line_holds: (line: string): string[] | 'all' => line === 'ls' ? [] : line === 'cd' ? ['cwd'] : 'all',
+    };
+    daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    await daemon.start();
+  });
+
+  afterEach(async () => {
+    releaseHang?.();
+    for (const ws of sockets.splice(0)) ws.terminate();
+    await daemon.stop().catch((): void => undefined);
+  });
+
+  const port = (): number => (daemon as unknown as { httpServer: { address: () => { port: number } } }).httpServer.address().port;
+
+  it('a read runs while a line holding the whole session works; a cd waits for it', async () => {
+    const a = await client_attach(port(), {}); sockets.push(a.ws);
+    const b = await client_attach(port(), {}); sockets.push(b.ws);
+    a.ws.send(JSON.stringify({ type: 'execute', id: 'p', line: 'pull' }));
+    await new Promise((r) => setTimeout(r, 50));
+    b.ws.send(JSON.stringify({ type: 'execute', id: 'l', line: 'ls' }));
+    expect(JSON.stringify(await b.next((m) => m.type === 'result' && m.id === 'l'))).toContain('engine: ls');
+    b.ws.send(JSON.stringify({ type: 'execute', id: 'c', line: 'cd' }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(started).toEqual(['pull', 'ls']);
+    releaseHang?.();
+    expect(JSON.stringify(await b.next((m) => m.type === 'result' && m.id === 'c'))).toContain('engine: cd');
+    expect(started).toEqual(['pull', 'ls', 'cd']);
+  }, 10000);
+});
+

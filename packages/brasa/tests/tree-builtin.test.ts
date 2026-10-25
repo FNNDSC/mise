@@ -78,7 +78,7 @@ describe('builtin_tree', () => {
     expect(mockArchy).not.toHaveBeenCalled();
     expect(envelope.rendered).toContain('/data/a');
     expect(envelope.rendered).toContain('/data/a/b');
-    expect(mockSetCWD).toHaveBeenCalledWith('/data');
+    expect(mockScanDo).toHaveBeenCalledWith(expect.objectContaining({ folder: '/data' }));
   });
 
   it('refuses an option it does not have, by name, and scans nothing', async () => {
@@ -105,11 +105,11 @@ describe('builtin_tree', () => {
     expect(mockArchy).not.toHaveBeenCalled();
   });
 
-  it('temporarily changes directory for an explicit path and restores it', async () => {
+  it('scans an explicit path where it stands, never moving the shared directory (#1273)', async () => {
     mockScanDo.mockResolvedValue({ fileInfo: [], totalSize: 0 });
     await builtin_tree(['/data/scans']);
-    expect(mockSetCWD).toHaveBeenCalledWith('/data/scans');
-    expect(mockSetCWD).toHaveBeenLastCalledWith('/home/chris');
+    expect(mockScanDo).toHaveBeenCalledWith(expect.objectContaining({ folder: '/data/scans' }));
+    expect(mockSetCWD).not.toHaveBeenCalled();
   });
 
   it('reports a scan failure from the error stack', async () => {

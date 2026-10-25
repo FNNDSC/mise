@@ -1,16 +1,18 @@
 /**
  * @file Foreground-command cancellation scope.
  *
- * One interactive engine owns one foreground command at a time. This module
- * carries that command's abort signal through asynchronous dispatch without
- * turning cancellation into ambient process state for unrelated work.
+ * Each top-level line owns its abort signal, carried through asynchronous
+ * dispatch without turning cancellation into ambient process state for
+ * unrelated work. Several lines may run at once (a read beside a writer, a
+ * line run while another waits on a question), so a host that runs them
+ * names each one, and a STOP or Ctrl-C reaches the line it names. A host
+ * that names none (a local console) reaches the most recent.
  *
  * @module
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { turnPart_register } from './turn.js';
 
-/** State owned by one top-level foreground command. */
+/** State owned by one top-level line. */
 interface CommandCancellationState {
   controller: AbortController;
   cancellable: boolean;
@@ -18,16 +20,10 @@ interface CommandCancellationState {
 
 const cancellationScope: AsyncLocalStorage<CommandCancellationState> =
   new AsyncLocalStorage<CommandCancellationState>();
+/** The most recent line, for a host that names none. */
 let foreground: CommandCancellationState | undefined;
-
-// Ctrl-C cancels the command holding the turn: one that stepped aside to
-// wait on a question takes its cancellation back when it resumes.
-turnPart_register({
-  name: 'cancellation',
-  save: (): unknown => foreground,
-  clear: (): void => { foreground = undefined; },
-  restore: (saved: unknown): void => { foreground = saved as CommandCancellationState | undefined; },
-});
+/** The running lines a host named, by name. */
+const named: Map<string, CommandCancellationState> = new Map();
 
 /**
  * Runs work inside the foreground-command cancellation scope.
@@ -36,9 +32,10 @@ turnPart_register({
  * one cancellation lifetime rather than one controller per segment.
  *
  * @param operation - Work performed by one command line.
+ * @param id - The host's name for the line, which a STOP names.
  * @returns The operation result.
  */
-export async function commandCancellation_run<T>(operation: () => Promise<T>): Promise<T> {
+export async function commandCancellation_run<T>(operation: () => Promise<T>, id?: string): Promise<T> {
   if (cancellationScope.getStore() !== undefined) {
     return await operation();
   }
@@ -49,10 +46,12 @@ export async function commandCancellation_run<T>(operation: () => Promise<T>): P
   };
   const previous: CommandCancellationState | undefined = foreground;
   foreground = state;
+  if (id !== undefined) named.set(id, state);
   try {
     return await cancellationScope.run(state, operation);
   } finally {
     if (foreground === state) foreground = previous;
+    if (id !== undefined && named.get(id) === state) named.delete(id);
   }
 }
 
@@ -86,29 +85,43 @@ export function commandCancellation_signalGet(): AbortSignal | undefined {
 }
 
 /**
- * Requests cancellation of the currently running cancellable command.
+ * The line a request reaches.
  *
- * @returns True when a cancellable foreground command was signalled.
+ * @param id - The host's name for it, or undefined for the most recent.
+ * @returns Its state, or undefined when no such line runs.
  */
-export function commandCancellation_request(): boolean {
-  if (foreground === undefined || !foreground.cancellable || foreground.controller.signal.aborted) {
+function line_find(id: string | undefined): CommandCancellationState | undefined {
+  return id === undefined ? foreground : named.get(id);
+}
+
+/**
+ * Requests cancellation of a running cancellable command (Ctrl-C).
+ *
+ * @param id - The line, as its host named it; the most recent when omitted.
+ * @returns True when a cancellable command was signalled.
+ */
+export function commandCancellation_request(id?: string): boolean {
+  const line: CommandCancellationState | undefined = line_find(id);
+  if (line === undefined || !line.cancellable || line.controller.signal.aborted) {
     return false;
   }
-  foreground.controller.abort();
+  line.controller.abort();
   return true;
 }
 
 /**
- * Aborts the foreground command whether or not it declared it can honor a
+ * Aborts a running command whether or not it declared it can honor a
  * cancellation: the operator's STOP. A command that checks its signal ends;
  * one that does not is left for the host to abandon, and everything it does
  * afterwards can see that it was stopped ({@link commandCancellation_stopped}).
  *
- * @returns True when there was a foreground command to abort.
+ * @param id - The line, as its host named it; the most recent when omitted.
+ * @returns True when there was such a command to abort.
  */
-export function commandCancellation_abort(): boolean {
-  if (foreground === undefined) return false;
-  if (!foreground.controller.signal.aborted) foreground.controller.abort();
+export function commandCancellation_abort(id?: string): boolean {
+  const line: CommandCancellationState | undefined = line_find(id);
+  if (line === undefined) return false;
+  if (!line.controller.signal.aborted) line.controller.abort();
   return true;
 }
 

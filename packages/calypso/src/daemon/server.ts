@@ -24,6 +24,7 @@
  *
  * @module
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -37,7 +38,7 @@ import { clientMessage_parse, attach_parse } from '@fnndsc/menu';
 import type { ServerMessage, executeMessageSchema, completeRequestSchema, cancelMessageSchema, stopMessageSchema, ProgressEvent, PromptContext, PromptKind, PromptPath, FileDeliverRequest, Regard, WatchState, AmbientEvent, ClosingCause } from '@fnndsc/menu';
 import type { z } from 'zod';
 import type { Terminals, TerminalViewer } from './terminals.js';
-import { Lane } from './lane.js';
+import { Lane, LOCKS_ALL, type Hold, type LockSet } from './lane.js';
 import { claim_match, claimCandidates_list, type SurfaceClaim } from './claims.js';
 import { DownloadLedger, downloadId_valid, type DownloadReport, type OpenedFile } from './downloads.js';
 
@@ -165,13 +166,31 @@ export interface TelemetrySnapshot {
   state?: { running: number; runningFeeds: number; scheduled: number; errored: number; erroredFeeds: number };
 }
 
-/** Who holds the lane, for which command: what output, progress and questions are routed by. */
+/**
+ * One running line: whose it is, what it holds of the session, and how it
+ * is stopped. Output, progress and questions are routed by it.
+ */
 interface CommandSlot {
-  origin: Surface | null;
-  id: string | null;
+  /** The daemon's own name for the line, which the engine's STOP names. */
+  key: string;
+  origin: Surface;
+  id: string;
+  /**
+   * Whether the line is surface-internal. A pane's silent refresh must
+   * never interrupt the operator with a question it invented, so an ask
+   * raised under one is refused rather than shown.
+   */
   instrument: boolean;
-  line: string | null;
+  line: string;
   startedAt: number;
+  /** What it holds of the session while it works. */
+  want: LockSet;
+  /** Its hold, or null while it waits on a person. */
+  hold: Hold | null;
+  /** Whether it waits aside on a task, where its surface's STOP still reaches it. */
+  asideStoppable: boolean;
+  /** Abandons it: the session stops waiting for it. */
+  abandon: (() => void) | null;
 }
 
 /**
@@ -185,8 +204,6 @@ function surface_isBrowser(surface: Surface): boolean {
   return !surface.capabilities.shellCommands && surface.capabilities.claims.length > 0;
 }
 
-/** The slot while nobody holds the lane. */
-const SLOT_EMPTY: CommandSlot = { origin: null, id: null, instrument: false, line: null, startedAt: 0 };
 
 export interface DaemonOptions {
   engine: HostedEngine;
@@ -253,9 +270,6 @@ export class CalypsoDaemon {
   /** The last executed command's measured facts, sticky across pushes. */
   private lastCommand: PromptLastCommand | undefined;
   private readonly telemetryProvider: (() => TelemetrySnapshot) | undefined;
-  /** The line holding the lane, and since when; null while the lane is idle. */
-  private currentLine: string | null = null;
-  private currentStartedAt: number = 0;
   private telemetryTimer: NodeJS.Timeout | null = null;
   /** The index counts at the last heartbeat, to detect movement. */
   private telemetryLastIndex: { jobs: number; feeds: number } | null = null;
@@ -281,7 +295,7 @@ export class CalypsoDaemon {
 
   /** Whether a foreground command is executing right now. */
   public busy_get(): boolean {
-    return this.currentId !== null;
+    return [...this.running].some((slot: CommandSlot): boolean => slot.hold !== null);
   }
 
   private readonly webRoot: string | undefined;
@@ -300,22 +314,33 @@ export class CalypsoDaemon {
   private regard: Regard | null = null;
   /** Unsubscribes from the engine's ambient events; null until started. */
   private ambientStop: (() => void) | null = null;
-  private currentOrigin: Surface | null = null;
-  private currentId: string | null = null;
   /**
-   * Whether the executing command is surface-internal.
-   *
-   * A pane's silent refresh must never interrupt the operator with a
-   * question it invented, so an ask raised under one is refused rather
-   * than shown.
+   * The line the code runs inside: several may run at once, so each keeps
+   * its own slot, and whatever it raises (output, a question, a pipe
+   * segment) goes to its own surface.
    */
-  private currentInstrument: boolean = false;
-  /** Abandons the running command: the session stops waiting for it. */
-  private abandonCurrent: (() => void) | null = null;
+  private readonly slotScope: AsyncLocalStorage<CommandSlot> = new AsyncLocalStorage<CommandSlot>();
+  /** The lines running now, waiting aside or not, in the order they started. */
+  private readonly running: Set<CommandSlot> = new Set();
+  /** Names each line for the engine. */
+  private lineCount: number = 0;
   /** Surfaces whose STOP found their command still waiting its turn, and when. */
   private readonly stopPending: Map<Surface, number> = new Map();
-  /** Commands waiting aside (a followed task), by the surface whose STOP reaches each, with the state they left. */
-  private readonly asideTurns: Map<Surface, unknown> = new Map();
+
+  /** The surface of the line the code runs inside, or null outside any. */
+  private get currentOrigin(): Surface | null {
+    return this.slotScope.getStore()?.origin ?? null;
+  }
+
+  /** The surface's id for the line the code runs inside, or null outside any. */
+  private get currentId(): string | null {
+    return this.slotScope.getStore()?.id ?? null;
+  }
+
+  /** Whether the line the code runs inside is surface-internal. */
+  private get currentInstrument(): boolean {
+    return this.slotScope.getStore()?.instrument === true;
+  }
   // One RequestBroker per surface-delegated request kind. The broker owns the
   // whole correlation lifecycle uniformly: id generation, close-guard,
   // origin-validated settles, listener cleanup. See broker.ts.
@@ -393,9 +418,10 @@ export class CalypsoDaemon {
       const index: { jobs: number; feeds: number } = { jobs: snapshot.jobs, feeds: snapshot.feeds };
       // The lane rides the heartbeat: which command holds it, for how long,
       // and how many wait behind it. A surface reads it as a gauge.
+      const working: CommandSlot | undefined = [...this.running].find((slot: CommandSlot): boolean => slot.hold !== null && !slot.instrument);
       const lane = {
-        running: this.currentLine !== null && !this.currentInstrument
-          ? { line: this.currentLine, sinceMs: Math.round(performance.now() - this.currentStartedAt), surface: this.currentOrigin?.id ?? '' }
+        running: working !== undefined
+          ? { line: working.line, sinceMs: Math.round(performance.now() - working.startedAt), surface: working.origin.id }
           : null,
         waiting: this.lane.waiting,
         // Questions open: each one's command has stepped out of the lane.
@@ -809,7 +835,7 @@ export class CalypsoDaemon {
         // One lane for every surface: commands take turns, and a command
         // waiting on a person stands aside (person_await), so a pane's own
         // reads, or another surface's command, run while a question is open.
-        void this.lane.run((): Promise<void> => this.execute_run(attached, value));
+        void this.line_run(attached, value);
       } else if (value.type === 'cancel') {
         this.cancel_run(attached, value);
       } else if (value.type === 'stop') {
@@ -878,8 +904,8 @@ export class CalypsoDaemon {
       // SIGHUP does: one still running is stopped, or nothing could stop it.
       // A browser is not a shell (it reloads and reattaches), and its
       // command runs on (a chell declares a filesystem; a browser does not).
-      if (surface && this.currentOrigin === surface && (surface.capabilities.localFilesystem || surface.capabilities.terminal !== undefined)) {
-        this.command_stop();
+      if (surface && (surface.capabilities.localFilesystem || surface.capabilities.terminal !== undefined)) {
+        for (const slot of this.running) if (slot.origin === surface && slot.hold !== null) this.command_stop(slot);
       }
       if (surface) {
         this.surfaces.delete(surface);
@@ -1011,12 +1037,13 @@ export class CalypsoDaemon {
    * @returns Nothing. The running command reports its normal final envelope.
    */
   private cancel_run(origin: Surface, message: CancelMessage): void {
-    if (this.currentOrigin !== origin || this.currentId !== message.id) {
+    const slot: CommandSlot | undefined = [...this.running].find((each: CommandSlot): boolean => each.origin === origin && each.id === message.id && each.hold !== null);
+    if (slot === undefined) {
       this.send(origin.socket, { type: 'error', reason: 'cancel: no matching foreground command' });
       return;
     }
     // Ctrl-C is a stop: the command is asked to end, and abandoned if it does not.
-    this.command_stop();
+    this.command_stop(slot);
   }
 
   /**
@@ -1027,18 +1054,21 @@ export class CalypsoDaemon {
    * @param _message - The request.
    */
   private stop_run(origin: Surface, _message: StopMessage): void {
-    const running: Surface | null = this.currentOrigin;
     // A surface's silent housekeeping is not what the operator stops. A line
     // whose surface has gone is anyone's to stop: nobody else can.
-    if (running !== null && !this.currentInstrument && (this.stopper_resolve(running) === origin || !this.surfaces.has(running))) {
-      this.command_stop();
+    const stoppable = (slot: CommandSlot): boolean =>
+      !slot.instrument && (this.stopper_resolve(slot.origin) === origin || !this.surfaces.has(slot.origin));
+    const working: CommandSlot[] = [...this.running].filter((slot: CommandSlot): boolean => slot.hold !== null && stoppable(slot));
+    if (working.length > 0) {
+      for (const slot of working) this.command_stop(slot);
       return;
     }
-    // Its command may be waiting aside on a task: stopped where it waits.
-    const aside: Surface | undefined = this.asideTurns.has(origin) ? origin : [...this.asideTurns.keys()].find((surface: Surface): boolean => !this.surfaces.has(surface));
+    // Its command may be waiting aside on a task: stopped where it waits,
+    // its own surface's first, else one whose surface has gone.
+    const asides: CommandSlot[] = [...this.running].filter((slot: CommandSlot): boolean => slot.hold === null && slot.asideStoppable && stoppable(slot));
+    const aside: CommandSlot | undefined = asides.find((slot: CommandSlot): boolean => this.stopper_resolve(slot.origin) === origin) ?? asides[0];
     if (aside !== undefined) {
-      this.engine.turn_abort?.(this.asideTurns.get(aside));
-      this.asideTurns.delete(aside);
+      this.engine.line_abort?.(aside.key);
       return;
     }
     // Its command may be waiting its turn behind someone else's: it is
@@ -1068,11 +1098,10 @@ export class CalypsoDaemon {
    * after {@link STOP_GRACE_MS} is abandoned, so the session is free again
    * whatever the command was waiting on.
    */
-  private command_stop(): void {
-    const id: string | null = this.currentId;
-    this.engine.line_abort?.() ?? this.engine.line_cancel?.();
+  private command_stop(slot: CommandSlot): void {
+    this.engine.line_abort?.(slot.key) ?? this.engine.line_cancel?.(slot.key);
     const timer: ReturnType<typeof setTimeout> = setTimeout((): void => {
-      if (this.currentId === id && id !== null) this.abandonCurrent?.();
+      if (this.running.has(slot)) slot.abandon?.();
     }, STOP_GRACE_MS);
     timer.unref?.();
   }
@@ -1269,26 +1298,72 @@ export class CalypsoDaemon {
   }
 
   /**
-   * Runs one execute request: replies to the requester with the result, and
-   * publishes each envelope to the session bus.
+   * What a line holds while it runs, as the engine reads it off the line: a
+   * read runs beside anything, and lines changing the same piece of the
+   * session take turns (#1273).
+   *
+   * @param line - The line.
+   * @returns What it holds.
+   */
+  private lineWant_get(line: string): LockSet {
+    let held: string[] | 'all' = 'all';
+    try {
+      held = this.engine.line_holds?.(line) ?? 'all';
+    } catch {
+      // A line the engine cannot read runs alone, as every line once did.
+    }
+    return held === 'all' ? LOCKS_ALL : new Set(held);
+  }
+
+  /**
+   * Runs one line in its turn: it waits until nothing running holds what it
+   * changes, then runs in a slot of its own.
    *
    * @param origin - The surface that submitted the request.
    * @param message - The execute request.
    */
-  private async execute_run(origin: Surface, message: ExecuteMessage): Promise<void> {
-    // The command runs with this surface as the prompt target, so any prompt
-    // the engine raises is asked of the surface that submitted the command.
-    // The slot is the lane holder's: set when the command takes its turn,
-    // put aside while it waits on a person, and cleared when it finishes.
-    this.currentOrigin = origin;
-    this.currentId = message.id;
-    this.currentInstrument = message.instrument === true;
+  private async line_run(origin: Surface, message: ExecuteMessage): Promise<void> {
+    this.lineCount += 1;
+    const slot: CommandSlot = {
+      key: `line-${this.lineCount}`,
+      origin,
+      id: message.id,
+      instrument: message.instrument === true,
+      line: message.line,
+      startedAt: performance.now(),
+      want: this.lineWant_get(message.line),
+      hold: null,
+      asideStoppable: false,
+      abandon: null,
+    };
+    slot.hold = await this.lane.acquire(slot.want);
+    slot.startedAt = performance.now();
+    this.running.add(slot);
+    try {
+      // The command runs inside its own slot, so whatever the engine raises
+      // (a prompt, output, a pipe segment) reaches the surface that
+      // submitted it, whatever else runs meanwhile.
+      await this.slotScope.run(slot, (): Promise<void> => this.execute_run(slot, message));
+    } finally {
+      this.running.delete(slot);
+      if (slot.hold !== null) this.lane.release(slot.hold);
+      slot.hold = null;
+    }
+  }
+
+  /**
+   * Runs one execute request: replies to the requester with the result, and
+   * publishes each envelope to the session bus.
+   *
+   * @param slot - The line's slot, holding its turn.
+   * @param message - The execute request.
+   */
+  private async execute_run(slot: CommandSlot, message: ExecuteMessage): Promise<void> {
+    const origin: Surface = slot.origin;
     let envelopes: CommandEnvelope[] | undefined;
     let failureReason: string | undefined;
-    const startedAt: number = performance.now();
-    this.currentLine = message.line;
-    this.currentStartedAt = startedAt;
-    try {
+    const startedAt: number = slot.startedAt;
+    {
       // A STOP pressed while this command waited its turn ends it unrun.
       const stopper: Surface = this.stopper_resolve(origin);
       const pendingAt: number | undefined = message.instrument === true ? undefined : this.stopPending.get(stopper);
@@ -1299,15 +1374,15 @@ export class CalypsoDaemon {
         // A stopped command that does not end is abandoned: the session
         // stops waiting, and whatever it does later is no one's.
         const abandoned: Promise<CommandEnvelope[]> = new Promise((resolve: (value: CommandEnvelope[]) => void): void => {
-          this.abandonCurrent = (): void => resolve([{ status: 'error', rendered: '', renderedErr: `stopped: \`${message.line}\` did not end when asked and was abandoned\n` }]);
+          slot.abandon = (): void => resolve([{ status: 'error', rendered: '', renderedErr: `stopped: \`${message.line}\` did not end when asked and was abandoned\n` }]);
         });
         // The line counts against its surface's own last answer: a terminal
         // a surface shows is that surface (#1273).
-        envelopes = await Promise.race([this.engine.line_execute(message.line, { origin: stopper.id }), abandoned]);
+        envelopes = await Promise.race([this.engine.line_execute(message.line, { origin: stopper.id, id: slot.key }), abandoned]);
       } catch (err: unknown) {
         failureReason = err instanceof Error ? err.message : String(err);
       } finally {
-        this.abandonCurrent = null;
+        slot.abandon = null;
       }
       this.lastCommand = {
         durationMs: Math.round(performance.now() - startedAt),
@@ -1339,38 +1414,13 @@ export class CalypsoDaemon {
           reason: failureReason ?? 'engine execution failed',
         });
       }
-    } finally {
-      this.slot_restore(SLOT_EMPTY);
     }
   }
 
   /**
-   * The current-command slot, as it stands.
-   *
-   * @returns Who holds the lane, for which command.
-   */
-  private slot_take(): CommandSlot {
-    return { origin: this.currentOrigin, id: this.currentId, instrument: this.currentInstrument, line: this.currentLine, startedAt: this.currentStartedAt };
-  }
-
-  /**
-   * Puts a slot back.
-   *
-   * @param slot - The slot.
-   */
-  private slot_restore(slot: CommandSlot): void {
-    this.currentOrigin = slot.origin;
-    this.currentId = slot.id;
-    this.currentInstrument = slot.instrument;
-    this.currentLine = slot.line;
-    this.currentStartedAt = slot.startedAt;
-  }
-
-  /**
-   * Waits on a person without holding the session: the request is sent, the
-   * lane given up and the slot put aside, so the next command takes its
-   * turn; when the person answers, the command queues for the lane again
-   * and resumes with its own slot.
+   * Waits on a person without holding the session: the request is sent and
+   * what the line holds given up, so other lines run; when the person
+   * answers, the line queues for its turn again.
    *
    * @param ask - Sends the request (under the asking command's slot) and
    *   resolves with the person's answer.
@@ -1378,25 +1428,23 @@ export class CalypsoDaemon {
    */
   private async person_await<T>(ask: () => Promise<T>, stoppable: boolean = false): Promise<T> {
     const answered: Promise<T> = ask();
-    const mine: CommandSlot = this.slot_take();
-    // The engine's per-command state goes with the command (its exit code,
-    // a pipe's untaken input, its cancellation), so the next command starts
-    // clean and this one finds its own on return.
-    const engineTurn: unknown = this.engine.turn_leave?.();
-    // A command waiting aside on a task stays the operator's to stop.
-    const stopper: Surface | null = stoppable && mine.origin !== null && !mine.instrument ? this.stopper_resolve(mine.origin) : null;
-    if (stopper !== null && engineTurn !== undefined) this.asideTurns.set(stopper, engineTurn);
-    this.slot_restore(SLOT_EMPTY);
-    this.lane.release();
+    const mine: CommandSlot | undefined = this.slotScope.getStore();
+    if (mine === undefined || mine.hold === null) return await answered;
+    // What the line holds is given up while it waits, and its slot stays
+    // its own: the engine keeps its per-line state (its exit code, a pipe's
+    // untaken input, its cancellation) per line, so nothing is handed over.
+    // A line waiting aside on a task stays the operator's to stop.
+    mine.asideStoppable = stoppable && !mine.instrument;
+    this.lane.release(mine.hold);
+    mine.hold = null;
     try {
       return await answered;
     } finally {
-      if (stopper !== null && this.asideTurns.get(stopper) === engineTurn) this.asideTurns.delete(stopper);
-      await this.lane.acquire();
-      this.slot_restore(mine);
-      if (engineTurn !== undefined) this.engine.turn_resume?.(engineTurn);
+      mine.asideStoppable = false;
+      mine.hold = await this.lane.acquire(mine.want);
     }
   }
+
 
   /**
    * Waits aside: the running command steps out of the lane while it waits

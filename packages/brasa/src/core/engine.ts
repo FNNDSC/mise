@@ -55,6 +55,7 @@ import { answerAdapters_register } from '../session/answerAdapters.js';
 import { answerOrigin_forget } from '../session/answer.js';
 import { lineOrigin_run } from './lineOrigin.js';
 import { lineHolds_get, type LineHolds } from './holds.js';
+import { joblet_start, jobletLine_parse, jobletsSource } from './joblets.js';
 import { sink_get, sink_set, type OutputSink } from './sink.js';
 import { backend_install, backendInstalled_get, type Backend, type FileByteStream, type TaskSource } from './backend.js';
 import { JobRunner, jobsRoot_derive, runner_get, runner_install, type JobSource } from './runner.js';
@@ -82,6 +83,8 @@ export interface LineOptions {
   origin?: string;
   /** The host's name for the line, which its STOP and Ctrl-C name. */
   id?: string;
+  /** Hears the line's exit status when it ends. */
+  ended?: (code: number) => void;
 }
 
 /**
@@ -348,7 +351,8 @@ export async function line_execute(line: string, options: LineOptions = {}): Pro
   // that surface's answer (#1273).
   if (options.origin !== undefined) {
     const origin: string = options.origin;
-    return await lineOrigin_run(origin, (): Promise<CommandEnvelope[]> => line_execute(line, { ...(options.id !== undefined ? { id: options.id } : {}) }));
+    const { origin: _origin, ...rest } = options;
+    return await lineOrigin_run(origin, (): Promise<CommandEnvelope[]> => line_execute(line, rest));
   }
   // A line inside a command (a manifest's) shares that command's scope.
   if (commandCancellation_active()) return await line_execute_run(line);
@@ -359,7 +363,7 @@ export async function line_execute(line: string, options: LineOptions = {}): Pro
   // background job) never marks it failed, nor it them (#1273).
   return await commandCancellation_run(
     (): Promise<CommandEnvelope[]> => exitScope_run((): Promise<CommandEnvelope[]> =>
-      errorStack.scope_run((): Promise<CommandEnvelope[]> => cwdScope_run((): Promise<CommandEnvelope[]> => line_execute_run(line)))),
+      errorStack.scope_run((): Promise<CommandEnvelope[]> => cwdScope_run((): Promise<CommandEnvelope[]> => line_execute_run(line))), options.ended),
     options.id,
   );
 }
@@ -394,6 +398,14 @@ async function line_execute_run(line: string, captured: boolean = false): Promis
   // Start timing if enabled
   const timingEnabled: boolean = session.timingEnabled_get();
   const startTime: number = timingEnabled ? performance.now() : 0;
+
+  // `line &` runs the line as a joblet: its surface has its prompt back at once.
+  const background: string | null = captured ? null : jobletLine_parse(trimmedLine);
+  if (background !== null) {
+    const started: CommandEnvelope = await joblet_start(background);
+    if (started.status === 'error') exitCode_set(1);
+    return [started];
+  }
 
   if (command_shellEscape_detect(trimmedLine)) {
     return shellEscape_execute(trimmedLine, startTime, timingEnabled);
@@ -539,8 +551,9 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
   if (backend !== undefined) backend_install(backend);
   // What each listing's rows are, so `@3` can name one.
   answerAdapters_register();
-  const jobs: ReadonlyArray<JobSource> = backendInstalled_get()?.jobs ?? [];
-  runner_install(jobs.length > 0 ? new JobRunner(jobsRoot_derive(backendInstalled_get()?.id ?? 'session'), jobs) : null);
+  // Every session runs joblets (`line &`); a backend adds its own jobs.
+  const jobs: ReadonlyArray<JobSource> = [...(backendInstalled_get()?.jobs ?? []), jobletsSource];
+  runner_install(new JobRunner(jobsRoot_derive(backendInstalled_get()?.id ?? 'session'), jobs));
   await session.init();
   await vfsProviders_register();
   // A backend's containers are folders to every tool, the dispatcher's read included.

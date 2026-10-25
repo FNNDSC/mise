@@ -39,6 +39,10 @@ describe('what a line holds', () => {
     expect(lineHolds_get('look $(move /b)')).toBe('all');
   });
 
+  it('a line sent to the background holds nothing: its joblet takes its own hold', () => {
+    expect(lineHolds_get('pull pacs x &')).toEqual([]);
+  });
+
   it('an empty line holds nothing', () => {
     expect(lineHolds_get('')).toEqual([]);
   });

@@ -72,6 +72,8 @@ jest.unstable_mockModule('fs', () => ({
   statSync: mockStatSync,
   writeFileSync: mockWriteFile,
   appendFileSync: mockAppendFile,
+  // Every session's runner looks for joblets kept by an earlier one.
+  existsSync: (): boolean => false,
 }));
 
 // VFS — command dispatch consults /bin for plugin/pipeline names.

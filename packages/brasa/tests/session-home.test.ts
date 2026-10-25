@@ -170,6 +170,14 @@ describe('the directory a line stands in (#1273)', () => {
       await session.setCWD('/mine');
       return [first, await session.getCWD()];
     })).toEqual(['/elsewhere', '/mine']);
+    // A joblet's line stands where it was started, and its cd is its own,
+    // through the lines it runs inside it.
+    const inside: string[] = await cwdScope_run(async (): Promise<string[]> => cwdScope_run(async (): Promise<string[]> => {
+      await session.setCWD('/joblet');
+      return [await session.getCWD()];
+    }), '/started');
+    expect(inside).toEqual(['/joblet']);
+    expect(stored).toBe('/mine');
     backend_install(chrisBackend);
   });
 });

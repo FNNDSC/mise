@@ -1212,6 +1212,66 @@ describe('CalypsoDaemon scrollback bound', () => {
     }
   });
 
+  it('sends an envelope for one surface (a joblet notice) to it alone, and to everyone once it has gone (#1273)', async () => {
+    const engine = stubEngine_create();
+    let publish: ((event: unknown) => void) | null = null;
+    (engine as { ambient_listen?: (l: (event: unknown) => void) => () => void }).ambient_listen =
+      (listener): (() => void) => { publish = listener; return (): void => { publish = null; }; };
+    const origins: string[] = [];
+    engine.line_execute = async (_line: string, options?: { origin?: string }): Promise<CommandEnvelope[]> => {
+      origins.push(options?.origin ?? '');
+      return [{ status: 'ok', rendered: '' } as CommandEnvelope];
+    };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    const port = await daemon.start();
+    try {
+      const a = await client_attach(port);
+      const b = await client_attach(port);
+      const heardA: Record<string, unknown>[] = [];
+      const heardB: Record<string, unknown>[] = [];
+      a.on('message', (data) => heardA.push(JSON.parse(String(data))));
+      b.on('message', (data) => heardB.push(JSON.parse(String(data))));
+      send(a, { type: 'execute', id: '1', line: 'pull &' });
+      await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, 100); });
+      const notice = (text: string): unknown => ({ kind: 'envelope', origin: origins[0], envelope: { status: 'ok', rendered: text } });
+      const sessionTexts = (heard: Record<string, unknown>[]): string[] => heard.filter((m) => m.type === 'session' && m.surface === 'daemon')
+        .map((m) => (m.envelope as { rendered: string }).rendered);
+      publish!(notice('[1]+ Done  pull\n'));
+      await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, 50); });
+      expect(sessionTexts(heardA)).toEqual(['[1]+ Done  pull\n']);
+      expect(sessionTexts(heardB)).toEqual([]);
+      a.terminate();
+      await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, 50); });
+      publish!(notice('[2]+ Done  pull\n'));
+      await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, 50); });
+      expect(sessionTexts(heardB)).toEqual(['[2]+ Done  pull\n']);
+      b.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+
+  it('gives work outside any line (a joblet) a hold in the same lane as the lines', async () => {
+    const engine = stubEngine_create();
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    await daemon.start();
+    try {
+      const release = await daemon.hold_take(['cohort']);
+      let second: boolean = false;
+      const waiting = daemon.hold_take(['cohort']).then((give) => { second = true; return give; });
+      const beside = await daemon.hold_take(['cwd']);
+      await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, 20); });
+      expect(second).toBe(false);
+      release();
+      release();
+      (await waiting)();
+      beside();
+      expect(second).toBe(true);
+    } finally {
+      await daemon.stop();
+    }
+  });
+
   it('retains a regard write, mirrors it into the engine, and rebroadcasts to every surface', async () => {
     const engine = stubEngine_create();
     const noted: unknown[] = [];

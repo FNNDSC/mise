@@ -35,6 +35,7 @@
 // base64 a DICOM series across a channel meant for session state.
 export type { FileDeliverRequest, FileDeliverResult, PromptKind, PromptPath } from '@fnndsc/menu';
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { FileDeliverRequest, FileDeliverResult, PromptKind, PromptPath } from '@fnndsc/menu';
 
 // The interfaces themselves are menu's (`@fnndsc/menu/surface`): the contract
@@ -114,13 +115,37 @@ export class HeadlessSurface implements Surface {
 /** The active surface. Defaults to headless until a host installs one. */
 let activeSurface: Surface = new HeadlessSurface();
 
+/** A surface standing in for the host's on one async path (a joblet's). */
+const surfaceScope: AsyncLocalStorage<Surface> = new AsyncLocalStorage<Surface>();
+
 /**
- * Returns the currently installed surface.
+ * Returns the surface the code runs under: the one standing in on this
+ * async path, else the installed one.
  *
- * @returns The active surface.
+ * @returns The surface.
  */
 export function surface_get(): Surface {
+  return surfaceScope.getStore() ?? activeSurface;
+}
+
+/**
+ * The installed surface, whatever stands in for it on this path.
+ *
+ * @returns The host's surface.
+ */
+export function surfaceInstalled_get(): Surface {
   return activeSurface;
+}
+
+/**
+ * Runs work under a surface standing in for the installed one.
+ *
+ * @param surface - The stand-in.
+ * @param operation - The work.
+ * @returns What the work returns.
+ */
+export async function surfaceScope_run<T>(surface: Surface, operation: () => Promise<T>): Promise<T> {
+  return await surfaceScope.run(surface, operation);
 }
 
 /**
@@ -143,7 +168,8 @@ export function surface_set(surface: Surface): Surface {
  * @returns What it resolved with.
  */
 export function aside_await<T>(waiting: Promise<T>): Promise<T> {
-  return activeSurface.aside !== undefined ? activeSurface.aside(waiting) : waiting;
+  const surface: Surface = surface_get();
+  return surface.aside !== undefined ? surface.aside(waiting) : waiting;
 }
 
 /**

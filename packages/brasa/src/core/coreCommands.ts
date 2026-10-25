@@ -28,6 +28,7 @@ import { builtin_grep } from '../builtins/sys/grep.js';
 import { builtin_cut, builtin_head, builtin_sort, builtin_tail, builtin_uniq, builtin_wc } from '../builtins/sys/textFilters.js';
 import { builtin_command } from '../builtins/sys/command.js';
 import { builtin_kill, builtin_wait } from '../builtins/sys/tasks.js';
+import { builtin_fg, builtin_joblets } from '../builtins/sys/joblets.js';
 import { builtin_set, builtin_unset } from '../builtins/sys/variables.js';
 import { builtin_echo, builtin_printf } from '../builtins/sys/echo.js';
 import { builtin_expect } from '../builtins/res/expect.js';
@@ -113,6 +114,8 @@ const envelope: Record<string, EnvelopeHandler> = {
   timer: builtin_timer,
   kill: builtin_kill,
   wait: builtin_wait,
+  fg: builtin_fg,
+  joblets: builtin_joblets,
   set: builtin_set,
   echo: builtin_echo,
   printf: builtin_printf,
@@ -194,6 +197,8 @@ const plain: Record<string, CommandHandler> = {
   timer: envelopeHandler_wrap(builtin_timer),
   kill: envelopeHandler_wrap(builtin_kill),
   wait: envelopeHandler_wrap(builtin_wait),
+  fg: envelopeHandler_wrap(builtin_fg),
+  joblets: envelopeHandler_wrap(builtin_joblets),
   set: envelopeHandler_wrap(builtin_set),
   echo: envelopeHandler_wrap(builtin_echo),
   printf: envelopeHandler_wrap(builtin_printf),
@@ -232,6 +237,8 @@ const holds: Record<string, readonly SessionPiece[]> = {
     'figlet', 'find', 'fortune', 'grep', 'head', 'help', 'lolcat', 'ls', 'man', 'morse', 'notes', 'pom',
     'primes', 'printf', 'pwd', 'qr', 'rev', 'rot13', 'seq', 'sort', 'stardate', 'tac', 'tail', 'uniq',
     'units', 'uptime', 'version', 'wc', 'who',
+    // Following or stopping a task changes nothing of the session.
+    'fg', 'joblets', 'kill', 'wait',
   ].map((name: string): [string, readonly SessionPiece[]] => [name, []])),
   cd: ['cwd'],
 };

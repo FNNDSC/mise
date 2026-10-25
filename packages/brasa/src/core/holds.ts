@@ -18,6 +18,7 @@ import { commandHolds_get, type SessionPiece } from './commandRegistry.js';
 import { pipes_parse } from './preprocess.js';
 import { semicolons_parse } from '../lib/semicolonParser.js';
 import { assignment_parse, type Assignment } from './variables.js';
+import { jobletLine_parse } from './joblets.js';
 
 /** What a line holds: the pieces it changes, or the whole session. */
 export type LineHolds = SessionPiece[] | 'all';
@@ -29,6 +30,9 @@ export type LineHolds = SessionPiece[] | 'all';
  * @returns The pieces its commands change (none for a read), or 'all'.
  */
 export function lineHolds_get(line: string): LineHolds {
+  // A line sent to the background only starts a joblet, which takes its
+  // own hold when it runs.
+  if (jobletLine_parse(line) !== null) return [];
   const pieces: Set<SessionPiece> = new Set();
   for (const command of semicolons_parse(line)) {
     const held: LineHolds = commandLine_holds(command.trim());

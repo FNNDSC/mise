@@ -131,6 +131,8 @@ export interface TeardownRequest {
   readonly isoLinkId?: string;
   /** Block volumes the cluster made that the stack never knew (its CSI claims). */
   readonly volumeIds: ReadonlyArray<string>;
+  /** The stack holds nothing now (an earlier pass destroyed it): no destroy job is run. */
+  readonly stackEmpty?: boolean;
 }
 
 /** A cloud's build half. */

@@ -197,6 +197,13 @@ export class AssistedInstaller implements Installer {
   }
 
   async cluster_delete(ids: InstallerIds): Promise<void> {
+    // An infra-env refuses to go while hosts are registered to it ("3 hosts
+    // are still associated"), so its hosts are deregistered first; then the
+    // infra-env, then the cluster. Each is gone already when it answers 404,
+    // which is what lets a teardown that stopped part way run again.
+    const listed: string = await this.call('GET', `${ASSISTED_API}/infra-envs/${ids.infraEnvId}/hosts`, [200, 404]);
+    const hosts = (listed.trim().startsWith('[') ? JSON.parse(listed) : []) as Array<{ id: string }>;
+    for (const host of hosts) await this.call('DELETE', `${ASSISTED_API}/infra-envs/${ids.infraEnvId}/hosts/${host.id}`, [204, 404]);
     await this.call('DELETE', `${ASSISTED_API}/infra-envs/${ids.infraEnvId}`, [204, 404]);
     await this.call('DELETE', `${ASSISTED_API}/clusters/${ids.clusterId}`, [204, 404]);
   }

@@ -34,31 +34,35 @@ export async function domainTeardown_run(context: BuildCommandContext, args: Rea
   const builder = context.builder;
   if (builder === null || builder.teardown_run === undefined) return envelope_error('', undefined, 'domain teardown: this cloud cannot tear a domain down yet\n');
   if (surface_get().capabilities.tasks !== true) return envelope_error('', undefined, `domain teardown: ${name}: Operation not permitted: tearing down needs the tasks tier\n`);
+  const stackRef: string | undefined = record.ids['stackRef'];
+  const inStack: number | null = stackRef !== undefined && builder.stackResources_count !== undefined ? await builder.stackResources_count({ region: record.region, stackRef }) : null;
+  // A teardown that stopped part way runs again: an empty stack means an
+  // earlier pass destroyed it, the cluster with it, and removed the
+  // volumes it had read, so there is no destroy job and no cluster to ask.
+  const stackEmpty: boolean = stackRef !== undefined && inStack === 0;
   // The cluster names its own volumes; read before the destroy takes it away.
   let volumeIds: string[] = [];
   const kubeconfig = domain.secrets.find((secret): boolean => secret.name === 'kubeconfig');
-  if (kubeconfig !== undefined) {
+  if (kubeconfig !== undefined && !stackEmpty) {
     try {
       volumeIds = await clusterVolumes_read((context.verifyReach ?? verifyReach_default()).kube_make(readFileSync(kubeconfig.hostPath, 'utf-8')));
     } catch (error: unknown) {
       return envelope_error('', undefined, `domain teardown: ${name}: cannot read the cluster's volumes (${error instanceof Error ? error.message : String(error)}): refusing, they would be left billing\n`);
     }
   }
-  const stackRef: string | undefined = record.ids['stackRef'];
-  const inStack: number | null = stackRef !== undefined && builder.stackResources_count !== undefined ? await builder.stackResources_count({ region: record.region, stackRef }) : null;
   const lines: string[] = [
     `${chalk.bold(name)}  ${name}.${record.baseDomain}  teardown`,
-    `  ${chalk.red('−')} ${stackRef === undefined ? 'no stack: nothing was applied' : `the stack's ${inStack ?? '?'} resources, by a destroy job`}`,
+    `  ${chalk.red('−')} ${stackRef === undefined ? 'no stack: nothing was applied' : stackEmpty ? 'nothing in the stack: an earlier pass destroyed it' : `the stack's ${inStack ?? '?'} resources, by a destroy job`}`,
     `  ${chalk.red('−')} the DNS records api, api-int and *.apps`,
     ...(record.ids['isoObject'] !== undefined ? [`  ${chalk.red('−')} the image ${record.ids['isoObject']} and its link`] : []),
-    `  ${chalk.red('−')} ${volumeIds.length} volume${volumeIds.length === 1 ? '' : 's'} the cluster made for its claims${kubeconfig === undefined ? ' (no cluster to ask)' : ''}`,
+    `  ${chalk.red('−')} ${volumeIds.length} volume${volumeIds.length === 1 ? '' : 's'} the cluster made for its claims${kubeconfig === undefined ? ' (no cluster to ask)' : stackEmpty ? ' (the cluster is gone; an earlier pass removed the ones it named)' : ''}`,
     ...(record.ids['clusterId'] !== undefined ? [`  ${chalk.red('−')} the installer's cluster and infra-env`] : []),
     chalk.gray('  Nothing else in the compartment is touched.'),
   ];
   for (const line of lines) sink_dataLine(line);
   const answer: string = (await repl_question(`Destroy what ${name} built? Its data goes with it; billing stops. Type the domain's name to go on:`)).trim();
   if (answer !== name) return envelope_ok(`${chalk.gray(`not torn down: '${answer}' is not ${name}`)}\n`);
-  const ran = await job_runFollowed(`${name}-teardown`, `teardown ${name}`, teardownRun_make(context.store, builder, context.deps?.installer ?? null, name, volumeIds));
+  const ran = await job_runFollowed(`${name}-teardown`, `teardown ${name}`, teardownRun_make(context.store, builder, context.deps?.installer ?? null, name, volumeIds, stackEmpty));
   if ('error' in ran) return envelope_error('', undefined, `domain teardown: ${ran.error}\n`);
   return envelope_ok(`${name}: torn down\n`);
 }

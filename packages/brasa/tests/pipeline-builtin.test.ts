@@ -5,7 +5,8 @@ chrisHelp_install();
 import { cuminMock_install } from './support/cuminMock.js';
 import type { CommandEnvelope } from '@fnndsc/cumin';
 
-const mockPluginGet = jest.fn(async () => null as string | null);
+/** Where the session stands; a feed node's data folder names its instance. */
+let mockCwd: string = '/home/me';
 const mockStackPop = jest.fn(() => undefined as { message: string } | undefined);
 const mockCheckpointMark = jest.fn(() => 5);
 const mockCheckpointDrain = jest.fn();
@@ -14,7 +15,13 @@ const mockInstanceGet = jest.fn();
 cuminMock_install(() => ({
   envelope_ok: (rendered: string, model?: unknown) => ({ status: 'ok', rendered, model }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
-  chrisContext: { ChRISplugin_get: mockPluginGet },
+  // The real path readers: a pipeline runs from the feed node cwd is in (#1263).
+  path_isInFeed: (place: string): boolean => /\/feeds\/feed_\d+(\/|$)/.test(place),
+  path_extractPluginInstanceID: (place: string): number | null => {
+    const hits: RegExpMatchArray[] = [...place.matchAll(/\/[^/]+_(\d+)(?=\/|$)/g)].filter((m) => !m[0].startsWith('/feed_'));
+    const last: RegExpMatchArray | undefined = hits[hits.length - 1];
+    return last === undefined ? null : Number(last[1]);
+  },
   errorStack: {
     stack_pop: mockStackPop,
     checkpoint_mark: mockCheckpointMark,
@@ -70,7 +77,7 @@ jest.unstable_mockModule('../src/core/sink.js', () => ({
 
 const mockClientGet = jest.fn(async () => null);
 jest.unstable_mockModule('../src/session/index.js', () => ({
-  session: { connection: { client_get: mockClientGet }, getCWD: jest.fn(async () => '/home/me') },
+  session: { connection: { client_get: mockClientGet }, getCWD: jest.fn(async () => mockCwd) },
 }));
 
 const { builtin_pipeline } = await import('../src/builtins/res/pipeline.js');
@@ -83,7 +90,7 @@ const err = () => ({ ok: false as const });
 beforeEach(() => {
   jest.clearAllMocks();
   process.exitCode = 0;
-  mockPluginGet.mockResolvedValue(null);
+  mockCwd = '/home/me';
   mockClientGet.mockResolvedValue(null);
   mockInstanceGet.mockReturnValue(undefined);
   mockFileContentGet.mockResolvedValue(err());
@@ -132,8 +139,8 @@ describe('builtin_pipeline', () => {
     expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining('Usage: pipeline'));
   });
 
-  it('shows the current context node in usage when set', async () => {
-    mockPluginGet.mockResolvedValue('42');
+  it('shows the feed node a run would start from, when cwd is in one', async () => {
+    mockCwd = '/home/me/feeds/feed_1/pl-dircopy_42/data';
     await builtin_pipeline([]);
     expect(mockDataLine).toHaveBeenCalledWith(expect.stringContaining('instance 42'));
   });
@@ -184,8 +191,8 @@ describe('builtin_pipeline', () => {
     expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('Usage: pipeline run'));
   });
 
-  it('runs a pipeline on the context node', async () => {
-    mockPluginGet.mockResolvedValue('5');
+  it('runs a pipeline on the feed node cwd is in', async () => {
+    mockCwd = '/home/me/feeds/feed_1/pl-dircopy_5/data';
     mockResolve.mockResolvedValue(ok({ name: 'MyPipe' }));
     mockRun.mockResolvedValue(ok({ workflowId: 99, pluginInstanceIds: [1, 2] }));
     mockInstanceGet.mockReturnValue({ feedID: 77 });
@@ -196,7 +203,7 @@ describe('builtin_pipeline', () => {
   });
 
   it('answers every node it made, with where each writes and the nodes nothing runs off', async () => {
-    mockPluginGet.mockResolvedValue('5');
+    mockCwd = '/home/me/feeds/feed_1/pl-dircopy_5/data';
     mockResolve.mockResolvedValue(ok({ name: 'MyPipe' }));
     mockRun.mockResolvedValue(ok({ workflowId: 99, pluginInstanceIds: [1, 2, 3] }));
     const nodes: Record<number, unknown> = {
@@ -222,10 +229,12 @@ describe('builtin_pipeline', () => {
     mockInstanceGet.mockReset();
   });
 
-  it('refuses to run without a context node', async () => {
-    mockPluginGet.mockResolvedValue(null);
+  it('refuses to run outside a feed node, naming cwd and --previous (#1263)', async () => {
+    mockCwd = '/home/me/uploads';
     await builtin_pipeline(['run', 'MyPipe']);
-    expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('no plugin instance in context'));
+    expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('/home/me/uploads is not in a feed node'));
+    expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('--previous <id>'));
+    expect(mockRun).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 
@@ -454,15 +463,17 @@ describe('builtin_pipeline', () => {
     expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('api down'));
   });
 
-  it('rejects a non-numeric context node on run', async () => {
-    mockPluginGet.mockResolvedValue('abc');
-    await builtin_pipeline(['run', 'MyPipe']);
-    expect(mockErrLine).toHaveBeenCalledWith(expect.stringContaining('invalid context instance'));
-    expect(process.exitCode).toBe(1);
+  it('takes the deepest node on the path, from the node itself or from inside its data', async () => {
+    for (const place of ['/home/me/feeds/feed_9/pl-dircopy_1/pl-x_77', '/home/me/feeds/feed_9/pl-dircopy_1/pl-x_77/data/sub']) {
+      mockRun.mockClear();
+      mockCwd = place;
+      await builtin_pipeline(['run', 'MyPipe']);
+      expect(mockRun.mock.calls[0]?.slice(0, 2)).toEqual(['MyPipe', 77]);
+    }
   });
 
   it('reports a run resolve failure', async () => {
-    mockPluginGet.mockResolvedValue('5');
+    mockCwd = '/home/me/feeds/feed_1/pl-dircopy_5/data';
     mockResolve.mockResolvedValue(err());
     mockStackPop.mockReturnValue({ message: 'gone' });
     const result = await builtin_pipeline(['run', 'MyPipe']);
@@ -471,7 +482,7 @@ describe('builtin_pipeline', () => {
   });
 
   it('reports a workflow creation failure', async () => {
-    mockPluginGet.mockResolvedValue('5');
+    mockCwd = '/home/me/feeds/feed_1/pl-dircopy_5/data';
     mockResolve.mockResolvedValue(ok({ name: 'MyPipe' }));
     mockRun.mockResolvedValue(err());
     mockStackPop.mockReturnValue({ message: 'queue full' });
@@ -481,7 +492,7 @@ describe('builtin_pipeline', () => {
   });
 
   it('loads a CFS parameter file and forwards its overlay with compound CLI bindings', async () => {
-    mockPluginGet.mockResolvedValue('5');
+    mockCwd = '/home/me/feeds/feed_1/pl-dircopy_5/data';
     mockResolve.mockResolvedValue(ok({ name: 'MyPipe', id: 7 }));
     mockFileContentGet.mockResolvedValue(ok(
       'plugin_tree:\n  tree:\n    - title: root\n      memory_limit: 8Gi\n',

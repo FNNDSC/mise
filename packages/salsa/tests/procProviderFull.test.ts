@@ -48,6 +48,7 @@ import {
   procTopologyCatchup_status,
   procTopologyCatchup_await,
   procVisitState_reset,
+  procPipelineBackfill_status,
   FEED_RECHECK_MS,
   ROSTER_FULL_WALK_MS,
   ROSTER_DELTA_PAGE,
@@ -230,6 +231,86 @@ describe('ProcVfsProvider.list', () => {
     expect(second?.entries.find((e) => e.rel.endsWith('pl-child_11'))?.attrs).toMatchObject({ pipeline: 'FreeSurfer 8.2.0', workflow: '51177' });
     expect(second?.entries.find((e) => e.rel === 'pl-root_10')?.attrs).toMatchObject({ pipeline: '', workflow: '' });
     expect(client.getPluginInstances).toHaveBeenCalledTimes(1);     // read once, not again
+  });
+
+  it('reads a big feed\'s pages in parallel lanes, each page once, and says how far it has come (#1253)', async () => {
+    cache.feed_add(feed({ id: 7 }));
+    const rows = Array.from({ length: 250 }, (_: unknown, n: number) => ({ id: 1000 + n, feed_id: 7, plugin_name: 'pl-x', status: 'finishedSuccessfully', pipeline_name: 'FS', workflow_id: 9 }));
+    for (const row of rows) cache.instance_add({ id: row.id, feedID: 7, parentID: null, pluginName: 'pl-x', params: null, status: 'finishedSuccessfully' });
+    cache.topologyLoaded_mark(7);
+    cache.built_set();
+    let inFlight: number = 0;
+    let most: number = 0;
+    const offsets: number[] = [];
+    const client = pagingClient([], []);
+    client.getPluginInstances.mockImplementation(async (params: { offset: number; limit: number }) => {
+      offsets.push(params.offset);
+      inFlight += 1; most = Math.max(most, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      return { data: rows.slice(params.offset, params.offset + params.limit), totalCount: rows.length };
+    });
+    mockClientGet.mockResolvedValue(client);
+    await provider.subtree('/proc/jobs/feed_7');
+    for (let i = 0; i < 200 && rows.some((row) => cache.instance_get(row.id)?.pipelineName === undefined); i++) await new Promise((r) => setTimeout(r, 5));
+    expect(rows.every((row) => cache.instance_get(row.id)?.pipelineName === 'FS')).toBe(true);
+    expect(offsets.sort((a, b) => a - b)).toEqual([0, 100, 200]);
+    // The first page says the feed's length; the other two are read together.
+    expect(most).toBeGreaterThan(1);
+    for (let i = 0; i < 50 && procPipelineBackfill_status().running; i++) await new Promise((r) => setTimeout(r, 5));
+    expect(procPipelineBackfill_status()).toEqual({ pages: 3, read: 3, running: false });
+  });
+
+  /** A feed CUBE lists newest first, its jobs `known` of them already knowing their pipeline run. */
+  function feedListed_make(feedID: number, jobs: number, known: number) {
+    const rows = Array.from({ length: jobs }, (_: unknown, n: number) => ({ id: 5000 + jobs - n, feed_id: feedID, plugin_name: 'pl-x', status: 'finishedSuccessfully', pipeline_name: 'FS', workflow_id: 9 }));
+    cache.feed_add(feed({ id: feedID }));
+    rows.forEach((row, at: number) => {
+      cache.instance_add({ id: row.id, feedID, parentID: null, pluginName: 'pl-x', params: null, status: 'finishedSuccessfully' });
+      if (at < known) cache.instanceMetrics_set(row.id, { pipelineName: 'FS', workflowID: 9 });
+    });
+    cache.topologyLoaded_mark(feedID);
+    cache.built_set();
+    return rows;
+  }
+
+  it('starts a restarted pass where the unknown jobs begin, not at the known head (#1253)', async () => {
+    const rows = feedListed_make(8, 500, 400);
+    const offsets: number[] = [];
+    const client = pagingClient([], []);
+    client.getPluginInstances.mockImplementation(async (params: { offset: number; limit: number }) => {
+      offsets.push(params.offset);
+      return { data: rows.slice(params.offset, params.offset + params.limit), totalCount: rows.length };
+    });
+    mockClientGet.mockResolvedValue(client);
+    await provider.subtree('/proc/jobs/feed_8');
+    for (let i = 0; i < 200 && procPipelineBackfill_status().running !== false; i++) await new Promise((r) => setTimeout(r, 5));
+    for (let i = 0; i < 200 && rows.some((row) => cache.instance_get(row.id)?.pipelineName === undefined); i++) await new Promise((r) => setTimeout(r, 5));
+    expect(rows.every((row) => cache.instance_get(row.id)?.pipelineName === 'FS')).toBe(true);
+    // The first page, then from a page before the unknown block: 100 and 200 are known and skipped.
+    expect(offsets.sort((a, b) => a - b)).toEqual([0, 300, 400]);
+  });
+
+  it('reads the skipped head after all when the unknown jobs were not where they were expected', async () => {
+    const rows = feedListed_make(9, 500, 400);
+    // The cache still holds 200 newer jobs CUBE no longer lists (removed since):
+    // counted as known above, they push the start past the unknown block.
+    for (let n = 1; n <= 200; n++) {
+      cache.instance_add({ id: 9000 + n, feedID: 9, parentID: null, pluginName: 'pl-x', params: null, status: 'finishedSuccessfully' });
+      cache.instanceMetrics_set(9000 + n, { pipelineName: 'FS', workflowID: 9 });
+    }
+    const offsets: number[] = [];
+    const client = pagingClient([], []);
+    client.getPluginInstances.mockImplementation(async (params: { offset: number; limit: number }) => {
+      offsets.push(params.offset);
+      return { data: rows.slice(params.offset, params.offset + params.limit), totalCount: rows.length };
+    });
+    mockClientGet.mockResolvedValue(client);
+    await provider.subtree('/proc/jobs/feed_9');
+    for (let i = 0; i < 300 && rows.some((row) => cache.instance_get(row.id)?.pipelineName === undefined); i++) await new Promise((r) => setTimeout(r, 5));
+    expect(rows.every((row) => cache.instance_get(row.id)?.pipelineName === 'FS')).toBe(true);
+    // The skip read nothing past the first page; the fallback read the feed from page 100 on.
+    expect(offsets.sort((a, b) => a - b)).toEqual([0, 100, 200, 300, 400]);
   });
 
   it('lists children from cache; terminal status needs no API call', async () => {

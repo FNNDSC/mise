@@ -1,5 +1,18 @@
 # @fnndsc/brasa
 
+## 0.49.1
+
+### Patch Changes
+
+- b53c0cf: A run started from inside a node's output now attaches to that node, not to a folder that merely looks like one (#1268). In `…/pl-dircopy_734517/data/subject_01`, a plugin or pipeline run used to start from instance 1, because the path reader took the deepest folder named `<anything>_<number>`. The node is now the last `<name>_<id>` of the chain right after `feed_N`, and nothing at or below a `data` folder counts. Plugins, pipelines and `proc here` all read it this way.
+
+  A play whose starting folder cannot be given back at its end (removed during the play) now says so in one line instead of throwing over the play's own result.
+
+- b6b0414: A pipeline now runs from the feed node you are in, as a plugin does (#1263). `cd ${FEED.path}` and then a pipeline from `/bin`, or `pipeline run <name>`, with no `--previous`, starts from the deepest `pl-*_ID` on the working directory's path, from the node itself or from inside its `data` folder. It used to read a saved plugin context that `cd` never sets, so the line was refused with "no plugin instance in context". Outside a feed node it is refused by name: cd into a feed node, or give `--previous <id>`.
+- 9cfdf97: A play now hands back the working directory it began in when it ends (#1264). A manifest that does `cd ${FEED.path}` to run a pipeline from that node no longer leaves the shared session, and every surface on it, standing inside the feed. The directory is given back however the play ends: at its last line, at a refused line, at a `--pace` stop, or when interrupted. Inside the play a `cd` holds as usual, and a `--dry-run` moves nothing.
+- Updated dependencies [b53c0cf]
+  - @fnndsc/cumin@3.29.2
+
 ## 0.49.0
 
 ### Minor Changes

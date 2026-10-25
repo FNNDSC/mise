@@ -1,5 +1,15 @@
 # @fnndsc/calypso
 
+## 0.27.1
+
+### Patch Changes
+
+- Updated dependencies [e9ea847]
+- Updated dependencies [e12598c]
+- Updated dependencies [f8b07e0]
+- Updated dependencies [26df4e2]
+  - @fnndsc/brasa@0.49.0
+
 ## 0.27.0
 
 ### Minor Changes

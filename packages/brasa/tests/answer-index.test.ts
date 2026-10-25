@@ -16,8 +16,9 @@ jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({
   cohort_read: async (): Promise<unknown> => ({ version: 1, name: null, feed: null, series: [] }),
 }));
 
-const { answer_note, answer_get, answerRow_get, answerHandles_get, answerConsulted_take, answer_forget } =
+const { answer_note, answer_get, answerRow_get, answerHandles_get, answerConsulted_take, answer_forget, answerOrigin_forget } =
   await import('../src/session/answer.js');
+const { lineOrigin_run } = await import('../src/core/lineOrigin.js');
 const { answerAdapters_register } = await import('../src/session/answerAdapters.js');
 // The ChRIS backend's references and kinds: the session itself is mocked above.
 const { chrisReferences, chrisAnswerKinds, chrisVerbTakes } = await import('../src/chris/references.js');
@@ -244,5 +245,36 @@ describe('a listing handed on whole (#1103)', () => {
     expect(await reference_resolve('listing')).toBeNull();
     answer_note('pacs.query', pacs, 'query x');
     expect(await reference_resolve('listing')).toEqual({ values: ['/q/st1/se1', '/q/st1/se2'] });
+  });
+});
+
+describe('each surface keeps its own last answer (#1273)', () => {
+  const listing = (path: string): unknown => [{ path, items: [{ name: 'one.txt' }] }];
+
+  it('numbers against the answer of the surface the line came from', async () => {
+    await lineOrigin_run('left', async (): Promise<void> => { answer_note('fs.listing', listing('/a'), 'ls /a'); });
+    await lineOrigin_run('right', async (): Promise<void> => { answer_note('fs.listing', listing('/b'), 'ls /b'); });
+    const left = await lineOrigin_run('left', async () => answerRow_get({ kind: 'FIL', ordinal: 1 })?.values);
+    const right = await lineOrigin_run('right', async () => answerRow_get({ kind: 'FIL', ordinal: 1 })?.values);
+    expect(left).toEqual(['/a/one.txt']);
+    expect(right).toEqual(['/b/one.txt']);
+    // A surface that has listed nothing has nothing numbered, whatever others read.
+    expect(answer_get()).toBeNull();
+  });
+
+  it('says which listing a line counted only on the surface that consulted it', async () => {
+    await lineOrigin_run('left', async (): Promise<void> => { answer_note('fs.listing', listing('/a'), 'ls /a'); });
+    await lineOrigin_run('right', async (): Promise<void> => { answer_note('fs.listing', listing('/b'), 'ls /b'); });
+    await lineOrigin_run('left', async (): Promise<void> => { answerRow_get({ kind: 'FIL', ordinal: 1 }); });
+    expect(await lineOrigin_run('right', async () => answerConsulted_take())).toBeNull();
+    expect((await lineOrigin_run('left', async () => answerConsulted_take()))?.source).toBe('ls /a');
+  });
+
+  it('forgets a surface that has gone, and only it', async () => {
+    await lineOrigin_run('left', async (): Promise<void> => { answer_note('fs.listing', listing('/a'), 'ls /a'); });
+    await lineOrigin_run('right', async (): Promise<void> => { answer_note('fs.listing', listing('/b'), 'ls /b'); });
+    answerOrigin_forget('left');
+    expect(await lineOrigin_run('left', async () => answer_get())).toBeNull();
+    expect((await lineOrigin_run('right', async () => answer_get()))?.source).toBe('ls /b');
   });
 });

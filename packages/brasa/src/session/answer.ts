@@ -10,7 +10,11 @@
  * against the most recent one. The numbering belongs to the MODEL rather
  * than to any rendering of it: a console table and a graphical pane show the
  * same answer differently, and an index that meant different rows on
- * different surfaces would be worse than no index at all.
+ * different renderings would be worse than no index at all.
+ *
+ * Each surface keeps its own last answer: a listing read on one surface
+ * does not renumber the rows another is about to act on (#1273). A line
+ * counts against the answer of the surface it came from.
  *
  * What a row IS differs by listing, and each one says: a path for files and
  * PACS series, a feed id for feeds, an instance id for jobs. A verb then
@@ -20,6 +24,7 @@
  */
 
 import { ambient_publish } from '../core/ambient.js';
+import { lineOrigin_get } from '../core/lineOrigin.js';
 
 /**
  * What kind of thing a row is, as a three-letter code.
@@ -72,14 +77,6 @@ export interface NumberedHandle {
   address: string;
 }
 
-/** What a surface is told about the numbering. */
-export interface Numbering {
-  id: number;
-  source: string;
-  rows: number;
-  handles: NumberedHandle[];
-}
-
 /** The answer a session most recently gave, with the line that asked. */
 export interface SessionAnswer {
   /** The line that produced it, for the readout that says what was numbered. */
@@ -98,11 +95,25 @@ export type AnswerAdapter = (data: unknown) => AnswerRow[] | null;
 /** Model kind to the rows it holds. */
 const adapters: Map<string, AnswerAdapter> = new Map();
 
-/** The session's last answer, or null before anything has listed. */
-let held: SessionAnswer | null = null;
+/** What one surface holds: its last answer, and whether a line consulted it. */
+interface OriginAnswer {
+  held: SessionAnswer;
+  /** Whether an index has been resolved against it since the last take. */
+  consulted: boolean;
+}
 
-/** Whether an index has been resolved against the held answer this line. */
-let consulted: boolean = false;
+/** Each surface's last answer, by the origin its lines carry. */
+const answers: Map<string, OriginAnswer> = new Map();
+
+/** The running line's surface's answer, or undefined before it has listed. */
+function origin_answer(): OriginAnswer | undefined {
+  return answers.get(lineOrigin_get());
+}
+
+/** The running line's surface's last answer, or null before it has listed. */
+function held_get(): SessionAnswer | null {
+  return origin_answer()?.held ?? null;
+}
 
 /** Rises with each answer, so a surface can tell newer from older. */
 let sequence: number = 0;
@@ -135,11 +146,14 @@ export function answer_note(kind: string, data: unknown, source: string): void {
   // empty folder should not silently un-number the listing just read.
   if (rows === null || rows.length === 0) return;
   sequence += 1;
-  held = { source, rows, kind, data };
+  const origin: string = lineOrigin_get();
+  answers.set(origin, { held: { source, rows, kind, data }, consulted: false });
   // A surface cannot light the index pills on the right listing unless it is
   // told which one the numbers now count. Pills that lie are worse than none.
+  // Only the surface whose line listed is told: the others' numbers stand.
   ambient_publish({
     kind: 'numbered',
+    origin,
     id: sequence,
     source,
     rows: rows.length,
@@ -158,13 +172,15 @@ export function answer_note(kind: string, data: unknown, source: string): void {
  *   from the answer, or the ordinal is past that kind's end.
  */
 export function answerRow_get(handle: AnswerHandle): AnswerRow | null {
-  if (held === null) return null;
+  const mine: OriginAnswer | undefined = origin_answer();
+  if (mine === undefined) return null;
+  const held: SessionAnswer = mine.held;
   // By the number the row wears, which a filtered listing keeps (#1100).
   const numbered: NumberedHandle[] = rows_number(held.rows, held.data);
   const at: number = numbered.findIndex((one: NumberedHandle): boolean => one.kind === handle.kind && one.ordinal === handle.ordinal);
   const row: AnswerRow | undefined = at < 0 ? undefined : held.rows[at];
   if (row === undefined) return null;
-  consulted = true;
+  mine.consulted = true;
   return row;
 }
 
@@ -175,6 +191,7 @@ export function answerRow_get(handle: AnswerHandle): AnswerRow | null {
  * @returns The count, zero when nothing is numbered.
  */
 export function answerKind_count(kind: AnswerKind): number {
+  const held: SessionAnswer | null = held_get();
   if (held === null) return 0;
   return held.rows.filter((row: AnswerRow): boolean => row.kind === kind).length;
 }
@@ -188,6 +205,7 @@ export function answerKind_count(kind: AnswerKind): number {
  * @returns The handles.
  */
 export function answerHandles_get(): NumberedHandle[] {
+  const held: SessionAnswer | null = held_get();
   return held === null ? [] : rows_number(held.rows, held.data);
 }
 
@@ -335,7 +353,7 @@ export function numberedFooter_render(handles: ReadonlyArray<{ kind: AnswerKind;
  * @returns The held answer, or null when nothing has listed.
  */
 export function answer_get(): SessionAnswer | null {
-  return held;
+  return held_get();
 }
 
 /**
@@ -347,29 +365,23 @@ export function answer_get(): SessionAnswer | null {
  * @returns What was consulted, or null when this line used no index.
  */
 export function answerConsulted_take(): SessionAnswer | null {
-  if (!consulted || held === null) return null;
-  consulted = false;
-  return held;
+  const mine: OriginAnswer | undefined = origin_answer();
+  if (mine === undefined || !mine.consulted) return null;
+  mine.consulted = false;
+  return mine.held;
 }
 
 /** Forgets the answer, for a test that needs a session that has listed nothing. */
 export function answer_forget(): void {
-  held = null;
-  consulted = false;
+  answers.clear();
   sequence = 0;
 }
 
 /**
- * Which answer is numbered, for a surface attaching late.
+ * Forgets one surface's answer, when the surface has gone.
  *
- * @returns The current numbering, or null when nothing has listed.
+ * @param origin - The surface's origin.
  */
-export function numbering_get(): Numbering | null {
-  if (held === null) return null;
-  return {
-    id: sequence,
-    source: held.source,
-    rows: held.rows.length,
-    handles: held.rows.length <= VALUES_ON_THE_WIRE_MAX ? answerHandles_get() : [],
-  };
+export function answerOrigin_forget(origin: string): void {
+  answers.delete(origin);
 }

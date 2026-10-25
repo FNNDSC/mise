@@ -52,7 +52,8 @@ import { recorder_note } from '../session/recorder.js';
 import { assignment_parse, type Assignment } from './variables.js';
 import { assignment_execute } from './assignment.js';
 import { answerAdapters_register } from '../session/answerAdapters.js';
-import { numbering_get, type Numbering } from '../session/answer.js';
+import { answerOrigin_forget } from '../session/answer.js';
+import { lineOrigin_run } from './lineOrigin.js';
 import { sink_get, sink_set, type OutputSink } from './sink.js';
 import { backend_install, backendInstalled_get, type Backend, type FileByteStream, type TaskSource } from './backend.js';
 import { JobRunner, jobsRoot_derive, runner_get, runner_install, type JobSource } from './runner.js';
@@ -74,6 +75,12 @@ export interface CompletionResult {
   prefix: string;
 }
 
+/** How a host hands the kernel a line. */
+export interface LineOptions {
+  /** The surface the line came from: what it lists is that surface's answer. */
+  origin?: string;
+}
+
 /**
  * The hostable shell engine.
  *
@@ -89,7 +96,7 @@ export interface BrasaEngine {
    * @param line - The raw input line (may contain `;`, `|`, `>`, `!`).
    * @returns The envelopes of the executed commands, in execution order.
    */
-  line_execute(line: string): Promise<CommandEnvelope[]>;
+  line_execute(line: string, options?: LineOptions): Promise<CommandEnvelope[]>;
 
   /**
    * Requests cancellation of the foreground command when it supports it.
@@ -186,16 +193,6 @@ export interface BrasaEngine {
   regard_get?(): Regard | null;
 
   /**
-   * Which listing the session's numbers currently count.
-   *
-   * A surface attaching late lights its index pills from this rather than
-   * waiting for the next listing to be made.
-   *
-   * @returns The numbering, or null when nothing has listed.
-   */
-  numbering_get?(): Numbering | null;
-
-  /**
    * Opens or closes a liveness watch on a subject for one owner (a surface
    * id, or the operator at a console). While any owner watches a subject,
    * the engine samples it and publishes refreshed models as ambient events.
@@ -213,6 +210,13 @@ export interface BrasaEngine {
    * @param owner - The owner whose watches end.
    */
   watch_release?(owner: string): void;
+
+  /**
+   * Forgets what a surface left behind (its last answer), when it has gone.
+   *
+   * @param origin - The surface's origin.
+   */
+  origin_forget?(origin: string): void;
 
   /**
    * Subscribes to events the engine originates on its own: a sampler's
@@ -347,9 +351,16 @@ async function batch_execute(
  * active sink as each command completes.
  *
  * @param line - The raw input line.
+ * @param options - The surface the line came from, when a host names it.
  * @returns The envelopes of the executed commands, in execution order.
  */
-export async function line_execute(line: string): Promise<CommandEnvelope[]> {
+export async function line_execute(line: string, options: LineOptions = {}): Promise<CommandEnvelope[]> {
+  // A host that names the line's surface scopes it there: what it lists is
+  // that surface's answer (#1273).
+  if (options.origin !== undefined) {
+    const origin: string = options.origin;
+    return await lineOrigin_run(origin, (): Promise<CommandEnvelope[]> => line_execute(line));
+  }
   // A line inside a command (a manifest's) shares that command's scope.
   if (commandCancellation_active()) return await line_execute_run(line);
   // A top-level line keeps its own error stack: another command running
@@ -556,7 +567,7 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
     file_write,
     regard_note: (regard: Regard): void => session.regard_set(regard),
     regard_get: (): Regard | null => session.regard_get(),
-    numbering_get: (): Numbering | null => numbering_get(),
+    origin_forget: (origin: string): void => answerOrigin_forget(origin),
     // The backend answers for its own subjects (ChRIS: feeds); a task it
     // leaves to the core is watched by the core.
     watch_set: (subject: string, owner: string, on: boolean): WatchState | null =>

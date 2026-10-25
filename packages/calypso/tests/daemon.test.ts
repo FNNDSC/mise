@@ -1172,6 +1172,46 @@ describe('CalypsoDaemon scrollback bound', () => {
     expect(publish).toBeNull();
   });
 
+  it('hands each line its surface as origin, and tells only that surface what its listing numbered (#1273)', async () => {
+    const engine = stubEngine_create();
+    let publish: ((event: unknown) => void) | null = null;
+    (engine as { ambient_listen?: (l: (event: unknown) => void) => () => void }).ambient_listen =
+      (listener): (() => void) => { publish = listener; return (): void => { publish = null; }; };
+    const origins: Array<string | undefined> = [];
+    engine.line_execute = async (line: string, options?: { origin?: string }): Promise<CommandEnvelope[]> => {
+      origins.push(options?.origin);
+      publish!({ kind: 'numbered', origin: options?.origin, id: origins.length, source: line, rows: 1, handles: [] });
+      return [{ status: 'ok', rendered: '' } as CommandEnvelope];
+    };
+    const forgotten: string[] = [];
+    (engine as { origin_forget?: (origin: string) => void }).origin_forget = (origin: string): void => { forgotten.push(origin); };
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    const port = await daemon.start();
+    try {
+      const a = await client_attach(port);
+      const b = await client_attach(port);
+      const heardA: Record<string, unknown>[] = [];
+      const heardB: Record<string, unknown>[] = [];
+      a.on('message', (data) => heardA.push(JSON.parse(String(data))));
+      b.on('message', (data) => heardB.push(JSON.parse(String(data))));
+      send(a, { type: 'execute', id: '1', line: 'ls /a' });
+      await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, 100); });
+      send(b, { type: 'execute', id: '2', line: 'ls /b' });
+      await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, 100); });
+      const numbered = (heard: Record<string, unknown>[]): unknown[] => heard.filter((m) => m.type === 'numbered').map((m) => m.source);
+      expect(origins).toHaveLength(2);
+      expect(origins[0]).not.toBe(origins[1]);
+      expect(numbered(heardA)).toEqual(['ls /a']);
+      expect(numbered(heardB)).toEqual(['ls /b']);
+      a.terminate();
+      await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, 50); });
+      expect(forgotten).toEqual([origins[0]]);
+      b.terminate();
+    } finally {
+      await daemon.stop();
+    }
+  });
+
   it('retains a regard write, mirrors it into the engine, and rebroadcasts to every surface', async () => {
     const engine = stubEngine_create();
     const noted: unknown[] = [];

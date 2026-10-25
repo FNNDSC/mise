@@ -59,6 +59,7 @@ import { JobRunner, jobsRoot_derive, runner_get, runner_install, type JobSource 
 import { vfsDispatcher_get } from './filesystem.js';
 import { itemType_isContainer } from './itemKinds.js';
 import type { VFSDispatcher } from '@fnndsc/fond';
+import { quoteOpen_find, type OpenQuote } from '../lib/quoting.js';
 
 /**
  * Result of a completion request: the candidates and the prefix they
@@ -368,6 +369,17 @@ export async function line_execute(line: string): Promise<CommandEnvelope[]> {
 async function line_execute_run(line: string, captured: boolean = false): Promise<CommandEnvelope[]> {
   const trimmedLine: string = line.trim();
   if (!trimmedLine) return [];
+
+  // A quote that never closes is a line the operator has not finished, not
+  // one to run as if it closed at the end: refused by name before any of it
+  // runs or is recorded, as POSIX refuses it (#1260). A `!` line is the host
+  // shell's to read.
+  const open: OpenQuote | null = command_shellEscape_detect(trimmedLine) ? null : quoteOpen_find(trimmedLine);
+  if (open !== null) {
+    sink_get().err_write(`${chalk.red(`chell: the ${open.quote} at column ${open.column} never closes; nothing of the line ran`)}\n`);
+    process.exitCode = 2;
+    return [{ status: 'error', rendered: '' }];
+  }
 
   // A press on a surface and a line at a console arrive here alike, which is
   // what makes recording a session cost nothing: the lowering is the law. A

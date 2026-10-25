@@ -9,6 +9,7 @@ import { statSync } from 'fs';
 import { catArgument_isOption } from '../builtins/fs/cat.args.js';
 import { args_tokenize } from '../lib/parser.js';
 import { Result, Ok, Err, errorStack } from '@fnndsc/fond';
+import { backslash_escapesNext } from '../lib/quoting.js';
 
 /**
  * Determines whether an argument belongs to the CFS/VFS shell namespace.
@@ -70,7 +71,7 @@ export function pipes_parse(line: string): string[] {
     if (escapeNext) {
       currentSegment += char;
       escapeNext = false;
-    } else if (char === '\\') {
+    } else if (char === '\\' && backslash_escapesNext(inSingleQuote, inDoubleQuote, line[i + 1])) {
       currentSegment += char;
       escapeNext = true;
     } else if (char === "'" && !inDoubleQuote) {
@@ -118,7 +119,7 @@ export function redirect_parse(line: string): RedirectInfo | null {
 
     if (escapeNext) {
       escapeNext = false;
-    } else if (char === '\\') {
+    } else if (char === '\\' && backslash_escapesNext(inSingleQuote, inDoubleQuote, line[i + 1])) {
       escapeNext = true;
     } else if (char === "'" && !inDoubleQuote) {
       inSingleQuote = !inSingleQuote;

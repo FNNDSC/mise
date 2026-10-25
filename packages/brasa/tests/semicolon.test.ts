@@ -72,11 +72,16 @@ describe('semicolons_parse', () => {
     ]);
   });
 
-  it('reads an escaped quote as text, so a later semicolon inside the quotes does not split', () => {
-    expect(semicolons_parse("touch --withContents 'it\\'s a\\\\b; x | y > z' f.txt; cat f.txt")).toEqual([
-      "touch --withContents 'it\\'s a\\\\b; x | y > z' f.txt",
+  it('reads an escaped quote in double quotes as text, so a later semicolon inside them does not split', () => {
+    expect(semicolons_parse('touch --withContents "it\\"s a\\\\b; x | y > z" f.txt; cat f.txt')).toEqual([
+      'touch --withContents "it\\"s a\\\\b; x | y > z" f.txt',
       'cat f.txt',
     ]);
+  });
+
+  it('reads a backslash in single quotes as a character, as POSIX does (#1258)', () => {
+    // The quote after the backslash closes the quoted text: the semicolon splits.
+    expect(semicolons_parse("echo 'a\\'; pwd")).toEqual(["echo 'a\\'", 'pwd']);
   });
 
   it('reads an escaped semicolon outside quotes as text', () => {

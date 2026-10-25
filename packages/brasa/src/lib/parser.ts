@@ -5,6 +5,7 @@
  * backslash escapes. Quotes are stripped from rendered values, but their
  * pathname-expansion meaning is retained.
  */
+import { backslash_escapesNext } from './quoting.js';
 
 /**
  * One piece of a word: literal text, or a reference the line asked for.
@@ -252,7 +253,9 @@ export function shellWords_tokenize(line: string): ShellWord[] {
       continue;
     }
 
-    if (char === '\\') {
+    // POSIX quoting (lib/quoting.ts): in single quotes a backslash is a
+    // character; in double quotes it escapes only $ ` " \ and newline.
+    if (char === '\\' && backslash_escapesNext(inSingle, inDouble, line[i + 1])) {
       escapeNext = true;
       wordStarted = true;
       continue;

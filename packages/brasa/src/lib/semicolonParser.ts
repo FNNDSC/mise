@@ -5,6 +5,7 @@
  *
  * @module
  */
+import { backslash_escapesNext } from './quoting.js';
 
 /**
  * Parses a command line for semicolon separators and returns individual commands.
@@ -31,13 +32,14 @@ export function semicolons_parse(line: string): string[] {
   for (let i: number = 0; i < line.length; i++) {
     const char: string = line[i];
 
-    // A backslash escapes the next character, inside quotes or out, as the
-    // word tokenizer and the pipe and redirect parsers read it: an escaped
-    // quote neither opens nor closes a quote, so `'it\'s; x'` is one command.
+    // A backslash escapes as POSIX quoting says (lib/quoting.ts), the rule
+    // the word tokenizer and the pipe and redirect parsers read: an escaped
+    // quote neither opens nor closes a quote, so `"it\"s; x"` is one command,
+    // and in single quotes a backslash is a character, so `'a\'; b` is two.
     if (escapeNext) {
       currentCommand += char;
       escapeNext = false;
-    } else if (char === '\\') {
+    } else if (char === '\\' && backslash_escapesNext(inSingleQuote, inDoubleQuote, line[i + 1])) {
       currentCommand += char;
       escapeNext = true;
     } else if (char === "'" && !inDoubleQuote) {

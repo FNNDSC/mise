@@ -25,6 +25,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { answerRows_derive, type AnswerRow, type SessionAnswer } from '../session/answer.js';
 import { rowOperands_extract } from './listing.js';
+import { backslash_escapesNext } from '../lib/quoting.js';
 
 /** The kind a variable holding text has: a literal, a parameter, or a command with no model. */
 export const TEXT_KIND: string = 'text';
@@ -287,7 +288,7 @@ export function substitution_end(text: string, open: number): number {
   for (let at: number = open + 1; at < text.length; at++) {
     const char: string = text[at] as string;
     if (quote !== null) {
-      if (char === '\\' && quote === '"') { at++; continue; }
+      if (char === '\\' && backslash_escapesNext(quote === "'", quote === '"', text[at + 1])) { at++; continue; }
       if (char === quote) quote = null;
       continue;
     }

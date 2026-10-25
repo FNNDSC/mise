@@ -116,8 +116,8 @@ beforeEach((): void => {
 describe('the lines an editor runs', () => {
   it('quotes a text so the kernel reads every character back: newlines, $, @, quotes, backslashes, ; | >', () => {
     expect(word_quote('plain')).toBe("'plain'");
-    expect(word_quote("it's")).toBe("'it\\'s'");
-    expect(word_quote('a\\b')).toBe("'a\\\\b'");
+    expect(word_quote("it's")).toBe("'it'\\''s'");
+    expect(word_quote('a\\b')).toBe("'a\\b'");
     expect(word_quote('l1; a | b > c\nl2 $HOME @1')).toBe("'l1; a | b > c\nl2 $HOME @1'");
     expect(saveLine_compose('/home/u/my notes.txt', 'x')).toBe("touch --withContents='x' '/home/u/my notes.txt'");
     expect(editLine_compose('/proc/jobs/feed_12/note')).toBe("edit '/proc/jobs/feed_12/note'");

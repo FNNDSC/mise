@@ -15,6 +15,7 @@ import { listingCache_get, vfsDispatcher_get } from '../../core/filesystem.js';
 import * as path from 'path';
 import { builtinCommands_list } from '../../builtins/help.js';
 import { args_tokenize } from '../parser.js';
+import { backslash_escapesNext } from '../quoting.js';
 
 /**
  * Callback function type for autocomplete results.
@@ -40,7 +41,7 @@ function completionWord_get(line: string): CompletionWord {
       escapeNext = false;
       continue;
     }
-    if (char === '\\' && quote !== "'") {
+    if (char === '\\' && backslash_escapesNext(quote === "'", quote === '"', line[index + 1])) {
       escapeNext = true;
       continue;
     }

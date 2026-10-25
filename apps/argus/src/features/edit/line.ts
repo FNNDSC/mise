@@ -11,14 +11,15 @@
 
 /**
  * Quotes a word for the kernel's line: single quotes keep every character,
- * newlines included, and `$` or `@` stay text; a backslash escapes in any
- * quote there, so a backslash and a single quote are escaped.
+ * newlines, backslashes, `$` and `@` included, as POSIX quotes (#1258). A
+ * single quote cannot stand inside them, so it closes the quote, stands
+ * escaped, and opens it again: `it's` is written `'it'\''s'`.
  *
  * @param word - Any text.
  * @returns The word, quoted for the line.
  */
 export function word_quote(word: string): string {
-  return `'${word.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+  return `'${word.replace(/'/g, "'\\''")}'`;
 }
 
 /**

@@ -20,7 +20,7 @@ const feed = (id: number, title: string, tags?: string[]): FeedListEntry => ({ i
 describe('the lines a tag is hung by', () => {
   it('sets a known tag, and makes a new one first', () => {
     expect(tagLines_compose(12, 'urgent', ['urgent'])).toEqual(["setfattr -n tag -v 'urgent' feed_12"]);
-    expect(tagLines_compose(12, "it's new", ['urgent'])).toEqual(["mkdir '/proc/tags/it\\'s new'", "setfattr -n tag -v 'it\\'s new' feed_12"]);
+    expect(tagLines_compose(12, "it's new", ['urgent'])).toEqual(["mkdir '/proc/tags/it'\\''s new'", "setfattr -n tag -v 'it'\\''s new' feed_12"]);
   });
 
   it('reads the tag names from ls /proc/tags and a feed\'s tags from getfattr', () => {

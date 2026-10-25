@@ -11,7 +11,11 @@ jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({
   cohort_read: async () => cohort,
   cohortFolders_resolve: async (state: unknown) => state,
   cohort_write: async (state: unknown): Promise<void> => { written.push(state); },
+  cohortModel_wrap: (state: unknown) => ({ kind: 'gather.cohort', data: state }),
 }));
+/** What went out on the session bus. */
+const published: Array<{ kind: string; envelope?: { model?: { kind: string; data: unknown } } }> = [];
+jest.unstable_mockModule('../src/core/ambient.js', () => ({ ambient_publish: (event: (typeof published)[number]): void => { published.push(event); } }));
 
 const mockFeedCreate = jest.fn();
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ feed_create: mockFeedCreate }));
@@ -48,6 +52,7 @@ beforeEach(() => {
     ],
   };
   written.length = 0;
+  published.length = 0;
   lines.length = 0;
   bin = { plugin: { name: 'pl-x' } };
   mockFeedCreate.mockReset();
@@ -82,6 +87,17 @@ describe('gather process', () => {
     expect(mockExecutePlugin).toHaveBeenCalledWith('pl-x', ['--threshold', '0.5'], '/home/u/feeds/feed_300/pl-dircopy_400/data');
     // The feed was made by this line, so the answer says so.
     expect(envelope.model).toEqual({ ...RUN, data: { ...RUN.data, newFeed: true } });
+  });
+
+  it('sends the cohort with its new feed on the session bus, and keeps the run as the line\'s answer (#1252)', async () => {
+    const envelope = await gather_process(['pl-x']);
+    // R=$(gather process …) holds the line's last model: the run, never the cohort.
+    expect(envelope.model?.kind).toBe('run.scheduled');
+    expect(published).toHaveLength(1);
+    expect(published[0]?.envelope?.model).toEqual({
+      kind: 'gather.cohort',
+      data: { ...cohort, feed: { feedId: 300, rootInstanceId: 400, path: '/home/u/feeds/feed_300/pl-dircopy_400/data' } },
+    });
   });
 
   it("runs off the cohort's own feed when it has one, copying nothing", async () => {

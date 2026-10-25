@@ -131,6 +131,9 @@ jest.unstable_mockModule('../src/builtins/res/gather.store.js', () => ({
   cohort_read: mockCohortRead,
   cohortModel_wrap: (state: unknown) => ({ kind: 'gather.cohort', data: state }),
 }));
+/** What went out on the session bus. */
+const published: Array<{ kind: string; envelope?: { model?: { kind: string } } }> = [];
+jest.unstable_mockModule('../src/core/ambient.js', () => ({ ambient_publish: (event: (typeof published)[number]): void => { published.push(event); } }));
 
 const { builtin_pull } = await import('../src/builtins/fs/pull.js');
 
@@ -434,6 +437,18 @@ describe('builtin_pull engine consumption', () => {
     expect(mockProcFeedAdd).toHaveBeenCalledWith(expect.objectContaining({ id: 300, title: 'Brain MRI' }));
     expect(mockProcInstanceAdd).toHaveBeenCalledWith(expect.objectContaining({ id: 400, feedID: 300 }));
     expect(process.exitCode).toBe(0);
+  });
+
+  it('answers --new-feed with the feed it made, and sends the moved cohort on the session bus (#1252)', async () => {
+    mockCollect.mockResolvedValue([info('1.2.3')]);
+    fireOutcome_set('pulled', true, null);
+    mockStorageResolve.mockResolvedValueOnce({ ok: true, value: { fileCount: 2, folderPath: '/SERVICES/PACS/A/series-1' } });
+    mockCohortFoldersNote.mockResolvedValueOnce(1);
+    published.length = 0;
+    const envelope = await builtin_pull([QUERY_PATH, '--new-feed', 'Brain MRI']);
+    // F=$(pull --new-feed …) holds the feed; the cohort rides the bus.
+    expect(envelope.model?.kind).toBe('feed.created');
+    expect(published.map((event) => event.envelope?.model?.kind)).toEqual(['gather.cohort']);
   });
 
   it('prefers the engine-resolved cube path over a fresh storage lookup', async () => {

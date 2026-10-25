@@ -28,7 +28,8 @@ import { binExecutableMatches_get, type BinExecutableMatches } from '../../chris
 import { builtin_executePlugin } from '../pluginExecute.js';
 import { builtin_pipeline } from './pipeline.js';
 import { newFeed_cacheAdd, run_follow } from '../feedCreation.js';
-import { cohort_read, cohort_write, cohortFolders_resolve, type GatherFeed, type GatherMember, type GatherState } from './gather.store.js';
+import { cohort_read, cohort_write, cohortFolders_resolve, cohortModel_wrap, type GatherFeed, type GatherMember, type GatherState } from './gather.store.js';
+import { ambient_publish } from '../../core/ambient.js';
 
 /** How `gather process` was asked for. */
 export interface GatherProcessArgs {
@@ -220,6 +221,10 @@ export async function gather_process(words: ReadonlyArray<string>): Promise<Comm
   const ensured: { feed: GatherFeed; made: boolean } | string = await cohortFeed_ensure(state, places, title);
   if (typeof ensured === 'string') return process_refuse(ensured);
   const { feed, made } = ensured;
+  // The cohort now has its folders and its feed. It goes out on the session
+  // bus, not as this line's answer: `R=$(gather process …)` holds the line's
+  // last model, which is the run's, as a bare run's would be (#1252).
+  ambient_publish({ kind: 'envelope', envelope: { status: 'ok', rendered: '', model: cohortModel_wrap({ ...state, feed }) } });
 
   const detach: string[] = parsed.detach ? ['--detach'] : [];
   const envelope: CommandEnvelope = matches.pipeline !== undefined

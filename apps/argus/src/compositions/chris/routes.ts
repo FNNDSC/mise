@@ -45,6 +45,8 @@ export interface ChrisRouteContext {
   dag_get(id: string): DagPanel | undefined;
   image_get(id: string): ImagePanel | undefined;
   tags_get(id: string): TagsPanel | undefined;
+  /** Shows a cohort the kernel sent: the band and every GATHER pane redraw from it. */
+  cohort_adopt(envelope: WireEnvelope): void;
 }
 
 /**
@@ -76,6 +78,13 @@ export function chrisRoutes_install(router: ModelRouter, context: ChrisRouteCont
     if (!parsed.success) return true;
     for (const dag of context.dags()) dag.model_refresh(parsed.data);
     for (const universe of context.universes()) universe.model_refresh(parsed.data);
+    return true;
+  });
+  // A cohort a verb sent on the session bus rather than as its line's answer
+  // (`gather process`, `pull --new-feed`: their lines answer with the run and
+  // the feed, which a capture holds): the cohort redraws all the same (#1252).
+  router.route_add('ambient', ['gather.cohort'], (envelope: WireEnvelope): boolean => {
+    context.cohort_adopt(envelope);
     return true;
   });
   router.watcher_add((subject: string, state: WatchState): void => {

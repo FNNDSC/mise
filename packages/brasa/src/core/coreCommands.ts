@@ -29,6 +29,7 @@ import { builtin_cut, builtin_head, builtin_sort, builtin_tail, builtin_uniq, bu
 import { builtin_command } from '../builtins/sys/command.js';
 import { builtin_kill, builtin_wait } from '../builtins/sys/tasks.js';
 import { builtin_set, builtin_unset } from '../builtins/sys/variables.js';
+import { builtin_echo, builtin_printf } from '../builtins/sys/echo.js';
 import { builtin_expect } from '../builtins/res/expect.js';
 import { builtin_play } from '../builtins/res/play.js';
 import { builtin_apropos, builtin_man } from '../builtins/sys/apropos.js';
@@ -113,6 +114,8 @@ const envelope: Record<string, EnvelopeHandler> = {
   kill: builtin_kill,
   wait: builtin_wait,
   set: builtin_set,
+  echo: builtin_echo,
+  printf: builtin_printf,
   expect: builtin_expect,
   play: builtin_play,
   unset: builtin_unset,
@@ -192,6 +195,8 @@ const plain: Record<string, CommandHandler> = {
   kill: envelopeHandler_wrap(builtin_kill),
   wait: envelopeHandler_wrap(builtin_wait),
   set: envelopeHandler_wrap(builtin_set),
+  echo: envelopeHandler_wrap(builtin_echo),
+  printf: envelopeHandler_wrap(builtin_printf),
   expect: envelopeHandler_wrap(builtin_expect),
   play: envelopeHandler_wrap(builtin_play),
   unset: envelopeHandler_wrap(builtin_unset),

@@ -5,7 +5,7 @@
  * - `list`   — list all registered pipelines
  * - `info`   — show a pipeline's nodes and default parameters
  * - `manifest` — emit the complete registered invocation YAML
- * - `run`    — instantiate a pipeline as a workflow on the current context node
+ * - `run`    — instantiate a pipeline as a workflow from the feed node cwd is in
  * - `source` — display the pipeline's YAML source file
  * - `diagram` — render the registered pipeline as a shallow tree or SignalFlow YAML
  *
@@ -17,7 +17,8 @@
  */
 
 import chalk from 'chalk';
-import { chrisContext, pipeline_resolve, procCache_get, type PipelineRecord } from '@fnndsc/cumin';
+import { path_extractPluginInstanceID, path_isInFeed, pipeline_resolve, procCache_get, type PipelineRecord } from '@fnndsc/cumin';
+import { session } from '../../session/index.js';
 import {
   pipelines_list,
   pipeline_run,
@@ -113,29 +114,36 @@ async function pipelineInfo_handle(args: string[]): Promise<CommandEnvelope> {
 }
 
 /**
- * Resolves the "previous" plugin-instance id for `pipeline run`, from the
- * explicit override or the current plugin context.
+ * The plugin instance of the feed node a path is in: the deepest
+ * `pl-*_ID` on it, so a node and its `data` folder name the same one.
+ *
+ * @param place - A path.
+ * @returns The instance id, or null outside a feed node.
+ */
+function feedNodeInstance_find(place: string): number | null {
+  return path_isInFeed(place) ? path_extractPluginInstanceID(place) : null;
+}
+
+/**
+ * Resolves the "previous" plugin-instance id for `pipeline run`: the
+ * explicit override, else the feed node the working directory is in, as a
+ * plugin run from `/bin` finds it (#1263). A saved context `cd` never sets
+ * is not read, so a manifest's `cd ${FEED.path}; ${PIPELINE}` runs where it
+ * stands.
  *
  * @param previousOverride - Explicit `--previous` value, if any.
  * @returns The instance id, or null if it could not be resolved (error printed).
  */
 async function pipelineRun_previousInstId(previousOverride: number | undefined): Promise<number | null> {
   if (previousOverride !== undefined) return previousOverride;
-
-  const contextStr: string | null = await chrisContext.ChRISplugin_get();
-  if (!contextStr) {
-    sink_errLine(chalk.red('pipeline run: no plugin instance in context.'));
-    sink_errLine(chalk.gray('  Navigate to a feed node first, or use --previous <id>'));
+  const cwd: string = await session.getCWD();
+  const here: number | null = feedNodeInstance_find(cwd);
+  if (here === null) {
+    sink_errLine(chalk.red(`pipeline run: ${cwd} is not in a feed node; cd into one (…/feeds/feed_N/pl-x_ID), or give --previous <id>`));
     process.exitCode = 1;
     return null;
   }
-  const previousInstId: number = parseInt(contextStr, 10);
-  if (isNaN(previousInstId)) {
-    sink_errLine(chalk.red(`pipeline run: invalid context instance '${contextStr}'`));
-    process.exitCode = 1;
-    return null;
-  }
-  return previousInstId;
+  return here;
 }
 
 /**
@@ -444,10 +452,10 @@ export async function builtin_pipeline(args: string[]): Promise<CommandEnvelope>
   const subcommand: string | undefined = args[0];
 
   if (!subcommand) {
-    const current: string | null = await chrisContext.ChRISplugin_get();
+    const current: number | null = feedNodeInstance_find(await session.getCWD());
     sink_dataLine(chalk.gray('Usage: pipeline <list|info|manifest|run|source|diagram> [args]'));
-    if (current) {
-      sink_dataLine(chalk.gray(`  Current context node: instance ${current}`));
+    if (current !== null) {
+      sink_dataLine(chalk.gray(`  A run here starts from instance ${current}, the feed node you are in`));
     }
     return envelope_ok('');
   }

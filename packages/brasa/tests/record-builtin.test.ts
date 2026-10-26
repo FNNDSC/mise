@@ -32,7 +32,7 @@ jest.unstable_mockModule('../src/builtins/utils.js', () => ({
 }));
 
 const { builtin_record, identifiers_offer, manifest_render } = await import('../src/builtins/res/record.js');
-const { recorder_note, recorder_mute, recorder_unmute, recorder_state, recorder_stop } =
+const { recorder_note, recorderMuted_run, recorder_state, recorder_stop } =
   await import('../src/session/recorder.js');
 
 beforeEach(() => {
@@ -65,9 +65,7 @@ describe('record', () => {
   it('does not capture the lines a played manifest runs', async () => {
     await builtin_record(['start', '~/f.mise']);
     recorder_note('pwd');
-    recorder_mute();
-    recorder_note('expect gather size eq 14');
-    recorder_unmute();
+    await recorderMuted_run(async (): Promise<void> => { recorder_note('expect gather size eq 14'); });
     recorder_note('ls');
     await builtin_record(['stop']);
     const manifest: string = written.get('/home/chris/f.mise') ?? '';

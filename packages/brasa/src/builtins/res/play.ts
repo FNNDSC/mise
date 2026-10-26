@@ -22,7 +22,7 @@
 import chalk from 'chalk';
 import { path_resolve } from '../utils.js';
 import { duration_parse } from '../../lib/duration.js';
-import { recorder_mute, recorder_unmute } from '../../session/recorder.js';
+import { recorderMuted_run } from '../../session/recorder.js';
 import { session } from '../../session/index.js';
 import { sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
@@ -35,7 +35,7 @@ import { VARIABLE_NAME, assignment_parse, variable_get, variableScope_run, type 
 import { shellWords_referencesExpand, shellWords_tokenize, type ReferenceExpansion, type ReferenceValue, type ShellWord } from '../../lib/parser.js';
 import { errorStack, type Result } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
-import { turnPart_register } from '../../core/turn.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 /** The model kind under which a played manifest's outcome travels. */
 export const PLAY_MODEL_KIND: string = 'manifest.played';
@@ -43,17 +43,13 @@ export const PLAY_MODEL_KIND: string = 'manifest.played';
 /** A manifest may play a manifest; a manifest may not play itself forever. */
 const NESTING_MAX: number = 2;
 
-/** How deep the current play is. */
-let depth: number = 0;
+/** How deep the running play is: a line outside any play stands at the top. */
+const depthScope: AsyncLocalStorage<number> = new AsyncLocalStorage<number>();
 
-// The depth is the running manifest's: a command run while it waits on a
-// question starts at the top, not nested inside it.
-turnPart_register({
-  name: 'playDepth',
-  save: (): unknown => depth,
-  clear: (): void => { depth = 0; },
-  restore: (saved: unknown): void => { depth = typeof saved === 'number' ? saved : 0; },
-});
+/** The running line's play depth. */
+function depth_get(): number {
+  return depthScope.getStore() ?? 0;
+}
 
 /** One parameter a manifest declares. */
 export interface ManifestParam {
@@ -355,7 +351,7 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
     exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Usage: play <manifest> [--param NAME=value]... [--pace <duration>] [--dry-run]')}\n`);
   }
-  if (depth >= NESTING_MAX) {
+  if (depth_get() >= NESTING_MAX) {
     exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`play: ${parsed.manifest} is nested too deep — a manifest may play a manifest, not a chain of them.`)}\n`);
   }
@@ -427,12 +423,12 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   // shared session there: every surface on it stands where the play put
   // it. The place is given back however the play ends (#1264).
   const cwdBefore: string = await session.getCWD();
-  depth += 1;
   // What a play runs is already written down in the file it is playing: a
   // recording that captured it too would hold every line twice.
-  recorder_mute();
+  // The depth and the mute are this play's and its lines': a line another
+  // surface runs meanwhile is neither nested nor muted.
   try {
-    await variableScope_run(values, async (): Promise<void> => {
+    await depthScope.run(depth_get() + 1, (): Promise<void> => recorderMuted_run((): Promise<void> => variableScope_run(values, async (): Promise<void> => {
     for (const line of manifest.lines) {
       // A dry run shows what WOULD run, expanded by the kernel's own
       // expander rather than a second one living here: a reference nothing
@@ -472,10 +468,8 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
       }
     }
     if (manifest.answers !== null) answered = variable_get(manifest.answers);
-    });
+    })));
   } finally {
-    recorder_unmute();
-    depth -= 1;
     // A place that cannot be given back (removed during the play) is said,
     // never thrown: the play's own result is what the operator asked for.
     if (!parsed.dryRun && await session.getCWD() !== cwdBefore) {

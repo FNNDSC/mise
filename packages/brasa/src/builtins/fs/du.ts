@@ -5,7 +5,6 @@
 import chalk from 'chalk';
 import path from 'path';
 import { ParsedArgs, commandArgs_process, optionsUnknown_refusal, path_resolve } from '../utils.js';
-import { session } from '../../session/index.js';
 import { vfs } from '../../lib/vfs/vfs.js';
 import { spinner } from '../../lib/spinner.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
@@ -237,7 +236,6 @@ export async function builtin_du(args: string[]): Promise<CommandEnvelope> {
   commandCancellation_enable();
   const signal: AbortSignal | undefined = commandCancellation_signalGet();
 
-  const originalFolder: string = await session.getCWD();
   const rawTargets: string[] = pathArgs.length > 0 ? pathArgs : ['.'];
 
   const resolvedTargets: string[] = [];
@@ -271,16 +269,16 @@ export async function builtin_du(args: string[]): Promise<CommandEnvelope> {
         continue;
       }
 
-      await session.setCWD(targetPath);
+      // Scanned where it stands: the shared directory stays put.
       const scanOptions: CLIscan = {
         silent: true,
         tree: false,
         follow: false,
         dirsOnly: false,
         signal,
+        folder: targetPath,
       };
       const scanResult: ScanRecord | null = await scan_do(scanOptions);
-      await session.setCWD(originalFolder);
 
       if (signal?.aborted) {
         return { status: 'error', rendered: '', renderedErr: 'du: cancelled\n' };
@@ -308,6 +306,5 @@ export async function builtin_du(args: string[]): Promise<CommandEnvelope> {
     return envelope;
   } finally {
     spinner.stop();
-    await session.setCWD(originalFolder);
   }
 }

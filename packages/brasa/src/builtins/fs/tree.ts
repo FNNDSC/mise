@@ -67,51 +67,40 @@ export async function builtin_tree(args: string[]): Promise<CommandEnvelope> {
     tree: false,  // We'll format it ourselves
     follow: !!parsed['follow'],
     dirsOnly,
+    // A named folder is scanned where it stands: the shared directory stays put.
+    ...(targetPath ? { folder: targetPath } : {}),
   };
-
-  // If path specified, temporarily set context
   const originalFolder: string = await session.getCWD();
-  if (targetPath) {
-    await session.setCWD(targetPath);
-  }
 
-  try {
-    spinner.start(`Scanning ${targetPath || 'current directory'}...`);
-    const scanResult: ScanRecord | null = await scan_do(scanOptions);
+  spinner.start(`Scanning ${targetPath || 'current directory'}...`);
+  const scanResult: ScanRecord | null = await scan_do(scanOptions);
 
-    if (!scanResult) {
-      spinner.stop();
-      const lastError = errorStack.stack_pop();
-      exitCode_set(1);
-      const message: string = lastError ? error_stripDebugPrefix(lastError.message) : 'Failed to scan directory tree.';
-      return envelope_error('', undefined, `${chalk.red(message)}\n`);
-    }
-
+  if (!scanResult) {
     spinner.stop();
-
-    let rendered: string = '';
-    if (pathMode) {
-      // --path: emit one full chrisPath per entry — grep-friendly
-      for (const item of scanResult.fileInfo) {
-        rendered += `${item.chrisPath}\n`;
-      }
-    } else if (scanResult.fileInfo.length === 0) {
-      // An empty folder is its own tree: its name, and nothing under it.
-      rendered += `${targetPath ?? originalFolder}\n`;
-    } else {
-      // Default: ASCII tree
-      rendered += `${archyTree_create(scanResult.fileInfo)}\n`;
-    }
-
-    // Display summary
-    rendered += `${chalk.green(`Total size: ${bytes_format(scanResult.totalSize)}`)}\n`;
-    rendered += `${chalk.gray(`${scanResult.fileInfo.length} items`)}\n`;
-    return envelope_ok(rendered);
-
-  } finally {
-    // Restore original path
-    if (targetPath) {
-      await session.setCWD(originalFolder);
-    }
+    const lastError = errorStack.stack_pop();
+    exitCode_set(1);
+    const message: string = lastError ? error_stripDebugPrefix(lastError.message) : 'Failed to scan directory tree.';
+    return envelope_error('', undefined, `${chalk.red(message)}\n`);
   }
+
+  spinner.stop();
+
+  let rendered: string = '';
+  if (pathMode) {
+    // --path: emit one full chrisPath per entry — grep-friendly
+    for (const item of scanResult.fileInfo) {
+      rendered += `${item.chrisPath}\n`;
+    }
+  } else if (scanResult.fileInfo.length === 0) {
+    // An empty folder is its own tree: its name, and nothing under it.
+    rendered += `${targetPath ?? originalFolder}\n`;
+  } else {
+    // Default: ASCII tree
+    rendered += `${archyTree_create(scanResult.fileInfo)}\n`;
+  }
+
+  // Display summary
+  rendered += `${chalk.green(`Total size: ${bytes_format(scanResult.totalSize)}`)}\n`;
+  rendered += `${chalk.gray(`${scanResult.fileInfo.length} items`)}\n`;
+  return envelope_ok(rendered);
 }

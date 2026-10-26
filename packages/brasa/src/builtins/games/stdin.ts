@@ -12,7 +12,6 @@
  * @module
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { turnPart_register } from '../../core/turn.js';
 
 /** A slot holding the text piped into a segment, or null when nothing was piped. */
 interface PipedText {
@@ -43,15 +42,6 @@ function piped_slot(): PipedText {
 export async function stdinScope_run<T>(text: string | null, operation: () => Promise<T>): Promise<T> {
   return await pipedScope.run({ value: text }, operation);
 }
-
-// A pipe's text not yet taken belongs to its command, not to one that runs
-// while that command waits on a question.
-turnPart_register({
-  name: 'stdin',
-  save: (): unknown => piped_slot().value,
-  clear: (): void => { piped_slot().value = null; },
-  restore: (saved: unknown): void => { piped_slot().value = typeof saved === 'string' ? saved : null; },
-});
 
 /**
  * Sets what the next builtin may read; the pipe calls this before a segment

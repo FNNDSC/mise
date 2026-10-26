@@ -139,6 +139,41 @@ describe('the backend under it', () => {
   });
 });
 
+describe('the directory a line stands in (#1273)', () => {
+  it('is read once and kept: a cd beside it does not move it; its own cd does', async () => {
+    const { backend_install } = await import('../src/core/backend.js');
+    const { cwdScope_run } = await import('../src/session/cwdScope.js');
+    let stored: string = '/home/test';
+    backend_install({
+      id: 'test',
+      session: {
+        init: async (): Promise<void> => undefined,
+        identity_get: async () => ({ user: 'disconnected', where: 'no-test', connected: false }),
+        home_get: async (): Promise<string> => '/home/test',
+        cwd_load: async (): Promise<string | null> => stored,
+        cwd_save: async (path: string): Promise<void> => { stored = path; },
+      },
+    });
+    let release: () => void = (): void => undefined;
+    const held: Promise<void> = new Promise<void>((resolve: () => void): void => { release = resolve; });
+    const read = cwdScope_run(async (): Promise<string[]> => {
+      const before: string = await session.getCWD();
+      await held;
+      return [before, await session.getCWD()];
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await cwdScope_run(async (): Promise<void> => { await session.setCWD('/elsewhere'); });
+    release();
+    expect(await read).toEqual(['/home/test', '/home/test']);
+    expect(await cwdScope_run(async (): Promise<string[]> => {
+      const first: string = await session.getCWD();
+      await session.setCWD('/mine');
+      return [first, await session.getCWD()];
+    })).toEqual(['/elsewhere', '/mine']);
+    backend_install(chrisBackend);
+  });
+});
+
 describe('what a ChRIS prompt and heartbeat read', () => {
   it('is the session prompt context and the /proc index snapshot', async () => {
     const promptContext = await import('../src/chris/promptContext.js');

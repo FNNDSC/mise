@@ -31,6 +31,7 @@ import type { Regard, WatchState, AmbientEvent, CommandEnvelope } from '@fnndsc/
 import { taskWatch_set, taskWatch_release } from './taskWatch.js';
 import { ambient_listen } from './ambient.js';
 import { session } from '../session/index.js';
+import { cwdScope_run } from '../session/cwdScope.js';
 import { semicolons_parse } from '../lib/semicolonParser.js';
 import {
   pipes_parse,
@@ -46,7 +47,6 @@ import {
 } from './dispatch.js';
 import { capability_require, surface_get, surface_set, type Surface } from './surface.js';
 import { commandCancellation_abort, commandCancellation_stopped, commandCancellation_active, commandCancellation_enable, commandCancellation_request, commandCancellation_run, commandCancellation_signalGet } from './cancellation.js';
-import { turn_leave, turn_resume, turn_within, type TurnState } from './turn.js';
 import { errorStack } from '@fnndsc/fond';
 import { recorder_note } from '../session/recorder.js';
 import { assignment_parse, type Assignment } from './variables.js';
@@ -54,6 +54,7 @@ import { assignment_execute } from './assignment.js';
 import { answerAdapters_register } from '../session/answerAdapters.js';
 import { answerOrigin_forget } from '../session/answer.js';
 import { lineOrigin_run } from './lineOrigin.js';
+import { lineHolds_get, type LineHolds } from './holds.js';
 import { sink_get, sink_set, type OutputSink } from './sink.js';
 import { backend_install, backendInstalled_get, type Backend, type FileByteStream, type TaskSource } from './backend.js';
 import { JobRunner, jobsRoot_derive, runner_get, runner_install, type JobSource } from './runner.js';
@@ -79,6 +80,8 @@ export interface CompletionResult {
 export interface LineOptions {
   /** The surface the line came from: what it lists is that surface's answer. */
   origin?: string;
+  /** The host's name for the line, which its STOP and Ctrl-C name. */
+  id?: string;
 }
 
 /**
@@ -99,40 +102,26 @@ export interface BrasaEngine {
   line_execute(line: string, options?: LineOptions): Promise<CommandEnvelope[]>;
 
   /**
-   * Requests cancellation of the foreground command when it supports it.
+   * Requests cancellation of a running command when it supports it (Ctrl-C).
    *
-   * @returns True when the active command accepted the request.
+   * @param id - The line, as its host named it; the most recent when omitted.
+   * @returns True when the command accepted the request.
    */
-  line_cancel?(): boolean;
-  /** Aborts the foreground command, cancellable or not; the host abandons one that does not end. */
-  line_abort?(): boolean;
+  line_cancel?(id?: string): boolean;
+  /** Aborts a running command, cancellable or not; the host abandons one that does not end. */
+  line_abort?(id?: string): boolean;
   /** Whether the command the caller runs inside was stopped (its output and questions are no one's). */
   command_stopped?(): boolean;
 
   /**
-   * The running command steps aside to wait on a person (its host gives the
-   * turn to the next command): its per-command state is saved and cleared
-   * (turn.ts).
+   * What a line holds of the session while it runs, for a host that runs
+   * lines side by side: the pieces its commands change, none for a read,
+   * or 'all' when the line cannot say.
    *
-   * @returns What it left behind, for `turn_resume`.
+   * @param line - The line.
+   * @returns Its pieces, or 'all'.
    */
-  turn_leave?(): TurnState;
-
-  /**
-   * A command that stepped aside resumes: its per-command state is put
-   * back over whatever ran in between.
-   *
-   * @param state - What `turn_leave` returned for it.
-   */
-  turn_resume?(state: TurnState): void;
-
-  /**
-   * Stops a command that stepped aside (the operator's STOP on it), from
-   * outside its turn; it finds itself stopped when it resumes.
-   *
-   * @param state - What `turn_leave` returned for it.
-   */
-  turn_abort?(state: TurnState): void;
+  line_holds?(line: string): LineHolds;
 
   /**
    * Computes completion candidates for a partial input line.
@@ -359,7 +348,7 @@ export async function line_execute(line: string, options: LineOptions = {}): Pro
   // that surface's answer (#1273).
   if (options.origin !== undefined) {
     const origin: string = options.origin;
-    return await lineOrigin_run(origin, (): Promise<CommandEnvelope[]> => line_execute(line));
+    return await lineOrigin_run(origin, (): Promise<CommandEnvelope[]> => line_execute(line, { ...(options.id !== undefined ? { id: options.id } : {}) }));
   }
   // A line inside a command (a manifest's) shares that command's scope.
   if (commandCancellation_active()) return await line_execute_run(line);
@@ -370,7 +359,8 @@ export async function line_execute(line: string, options: LineOptions = {}): Pro
   // background job) never marks it failed, nor it them (#1273).
   return await commandCancellation_run(
     (): Promise<CommandEnvelope[]> => exitScope_run((): Promise<CommandEnvelope[]> =>
-      errorStack.scope_run((): Promise<CommandEnvelope[]> => line_execute_run(line))),
+      errorStack.scope_run((): Promise<CommandEnvelope[]> => cwdScope_run((): Promise<CommandEnvelope[]> => line_execute_run(line)))),
+    options.id,
   );
 }
 
@@ -448,21 +438,23 @@ async function line_execute_run(line: string, captured: boolean = false): Promis
 }
 
 /**
- * Requests cancellation of the active foreground command.
+ * Requests cancellation of a running command (Ctrl-C).
  *
- * @returns True when a command can honor the request.
+ * @param id - The line, as its host named it; the most recent when omitted.
+ * @returns True when the command can honor the request.
  */
-export function line_cancel(): boolean {
-  return commandCancellation_request();
+export function line_cancel(id?: string): boolean {
+  return commandCancellation_request(id);
 }
 
 /**
- * Aborts the active foreground command, cancellable or not (the operator's STOP).
+ * Aborts a running command, cancellable or not (the operator's STOP).
  *
- * @returns True when a command was running.
+ * @param id - The line, as its host named it; the most recent when omitted.
+ * @returns True when such a command was running.
  */
-export function line_abort(): boolean {
-  return commandCancellation_abort();
+export function line_abort(id?: string): boolean {
+  return commandCancellation_abort(id);
 }
 
 /**
@@ -558,9 +550,7 @@ export async function engine_create(backend?: Backend): Promise<BrasaEngine> {
     line_cancel,
     line_abort,
     command_stopped: commandCancellation_stopped,
-    turn_leave,
-    turn_resume,
-    turn_abort: (state: TurnState): void => { turn_within(state, (): void => { line_abort(); }); },
+    line_holds: lineHolds_get,
     line_complete,
     file_read,
     file_stream,

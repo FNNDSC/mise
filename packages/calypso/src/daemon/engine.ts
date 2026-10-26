@@ -35,43 +35,34 @@ export interface HostedEngine {
    * Executes one input line, yielding one envelope per executed command.
    *
    * @param line - The raw input line.
-   * @param options - The surface the line came from: what it lists is that surface's answer.
+   * @param options - The surface the line came from (what it lists is that
+   *   surface's answer), and the daemon's name for the line, which its STOP
+   *   names.
    * @returns The envelopes of the executed commands, in order.
    */
-  line_execute(line: string, options?: { origin?: string }): Promise<CommandEnvelope[]>;
+  line_execute(line: string, options?: { origin?: string; id?: string }): Promise<CommandEnvelope[]>;
 
   /**
-   * Requests cancellation of the foreground command when it supports it.
+   * Requests cancellation of a running command when it supports it.
    *
-   * @returns True when the active command accepted the request.
+   * @param id - The line, as the daemon named it.
+   * @returns True when the command accepted the request.
    */
-  line_cancel?(): boolean;
-  /** Aborts the foreground command, cancellable or not (STOP). */
-  line_abort?(): boolean;
+  line_cancel?(id?: string): boolean;
+  /** Aborts a running command, cancellable or not (STOP). */
+  line_abort?(id?: string): boolean;
   /** Whether the caller runs inside a stopped command. */
   command_stopped?(): boolean;
 
   /**
-   * The running command steps aside to wait on a person: the engine saves
-   * and clears its per-command state, so the next command starts clean.
+   * What a line holds of the session while it runs: the pieces it changes
+   * (none for a read), or 'all'. Lines holding nothing in common run side
+   * by side; an engine that cannot say runs every line alone.
    *
-   * @returns What it left behind, handed back to `turn_resume`.
+   * @param line - The line.
+   * @returns Its pieces, or 'all'.
    */
-  turn_leave?(): unknown;
-
-  /**
-   * A command that stepped aside resumes: the engine puts its state back.
-   *
-   * @param state - What `turn_leave` returned for it.
-   */
-  turn_resume?(state: unknown): void;
-
-  /**
-   * Stops a command that stepped aside, from outside its turn.
-   *
-   * @param state - What `turn_leave` returned for it.
-   */
-  turn_abort?(state: unknown): void;
+  line_holds?(line: string): string[] | 'all';
 
   /**
    * Computes completion candidates for a partial input line.

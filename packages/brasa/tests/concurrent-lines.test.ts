@@ -1,6 +1,6 @@
 /**
- * @file Two lines that run at once keep their own exit status and their
- * own pipe input (#1273, slice 1).
+ * @file Two lines that run at once keep their own exit status, pipe input,
+ * cancellation and recorder mute (#1273).
  *
  * A session will run a read beside a writer and background jobs beside
  * both. What a line's commands leave behind for it (whether it failed,
@@ -10,6 +10,8 @@ import { describe, it, expect, afterEach } from '@jest/globals';
 import { exitCode_read, exitCode_set, exitScope_run } from '../src/core/handlerRun.js';
 import { stdin_set, stdin_take, stdinScope_run } from '../src/builtins/games/stdin.js';
 import { listingIn_set, listingIn_take, listingInScope_run } from '../src/core/listing.js';
+import { commandCancellation_abort, commandCancellation_enable, commandCancellation_request, commandCancellation_signalGet, commandCancellation_run } from '../src/core/cancellation.js';
+import { recorder_note, recorder_start, recorder_stop, recorderMuted_run } from '../src/session/recorder.js';
 
 /** Lets the other line run before this one goes on. */
 const turn = (): Promise<void> => new Promise((resolve: () => void): void => { setTimeout(resolve, 5); });
@@ -57,3 +59,43 @@ describe('a pipe segment\'s input', () => {
     expect(listingIn_take()).toBeNull();
   });
 });
+
+describe('a line\'s cancellation', () => {
+  it('a STOP that names a line reaches it, and only it', async () => {
+    let release: () => void = (): void => undefined;
+    const held: Promise<void> = new Promise<void>((resolve: () => void): void => { release = resolve; });
+    const signals: Record<string, AbortSignal | undefined> = {};
+    const a = commandCancellation_run(async (): Promise<void> => { signals.a = commandCancellation_signalGet(); await held; }, 'line-a');
+    const b = commandCancellation_run(async (): Promise<void> => { signals.b = commandCancellation_signalGet(); await held; }, 'line-b');
+    await turn();
+    expect(commandCancellation_abort('line-a')).toBe(true);
+    expect(signals.a?.aborted).toBe(true);
+    expect(signals.b?.aborted).toBe(false);
+    release();
+    await Promise.all([a, b]);
+    expect(commandCancellation_abort('line-a')).toBe(false);
+  });
+
+  it('a Ctrl-C that names a line reaches it only when it can honor one', async () => {
+    let release: () => void = (): void => undefined;
+    const held: Promise<void> = new Promise<void>((resolve: () => void): void => { release = resolve; });
+    const a = commandCancellation_run(async (): Promise<void> => { await held; }, 'deaf');
+    const b = commandCancellation_run(async (): Promise<void> => { commandCancellation_enable(); await held; }, 'hears');
+    await turn();
+    expect(commandCancellation_request('deaf')).toBe(false);
+    expect(commandCancellation_request('hears')).toBe(true);
+    release();
+    await Promise.all([a, b]);
+  });
+});
+
+describe('a played manifest\'s mute', () => {
+  it('is the play\'s: a line running beside it is recorded', async () => {
+    recorder_start('/tmp/f.mise');
+    const play = recorderMuted_run(async (): Promise<void> => { await turn(); recorder_note('ls inside'); });
+    recorder_note('pwd beside');
+    await play;
+    expect(recorder_stop()?.lines).toEqual(['pwd beside']);
+  });
+});
+

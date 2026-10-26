@@ -9,7 +9,7 @@
  *
  * @module
  */
-import { type CommandGroup, type CommandHandler, type EnvelopeHandler } from '../core/commandRegistry.js';
+import { type CommandGroup, type CommandHandler, type EnvelopeHandler, type SessionPiece } from '../core/commandRegistry.js';
 import { builtin_chrisfetch, builtin_ping } from '../builtins/games/chrislab.js';
 import { builtin_chmod, builtin_compute, builtin_config, builtin_connect, builtin_context, builtin_cubepath, builtin_dcm, builtin_dirs, builtin_download, builtin_feed, builtin_files, builtin_gather, builtin_getfacl, builtin_getfattr, builtin_group, builtin_id, builtin_image, builtin_links, builtin_logout, builtin_pacs, builtin_parametersofplugin, builtin_physicalmode, builtin_pipeline, builtin_plugin, builtin_plugininstance, builtin_pluginmeta, builtin_pull, builtin_query, builtin_setfacl, builtin_setfattr, builtin_store, builtin_tag, builtin_upload, builtin_user, builtin_whereami, builtin_whoami, builtin_workflow } from '../builtins/index.js';
 import { builtin_netstat } from '../builtins/net/netstat.js';
@@ -171,8 +171,22 @@ const plain: Record<string, CommandHandler> = {
 
 
 /** The ChRIS backend commands: their handlers. Their help is registered from `builtins/help.ts`, which holds it. */
+/**
+ * What the ChRIS commands hold of the session: a read holds nothing and
+ * runs beside anything; `gather` holds the cohort. A command not named
+ * holds the whole session.
+ */
+const holds: Record<string, readonly SessionPiece[]> = {
+  ...Object.fromEntries([
+    'du', 'feeds', 'file', 'getfacl', 'getfattr', 'groups', 'id', 'md5sum', 'motd', 'pacsservers',
+    'pipelines', 'plugininstances', 'plugins', 'sha256sum', 'strings', 'tree', 'whereami', 'whoami', 'xxd',
+  ].map((name: string): [string, readonly SessionPiece[]] => [name, []])),
+  gather: ['cohort'],
+};
+
 export const chrisCommands: CommandGroup = {
   envelope,
   plain,
   help: chrisHelp,
+  holds,
 };

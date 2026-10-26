@@ -8,6 +8,7 @@
  */
 import type { Regard } from '@fnndsc/menu';
 import { backend_get } from '../core/backend.js';
+import { lineCwd_get, type LineCwd } from './cwdScope.js';
 
 /**
  * Manages the shell session state (Connection, Context).
@@ -52,9 +53,12 @@ export class Session {
    * always honoured, `/` included, since the operator put it there.
    */
   async getCWD(): Promise<string> {
+    const line: LineCwd | undefined = lineCwd_get();
+    if (line?.cwd) return line.cwd;
     const stored: string | null = await backend_get().session.cwd_load();
-    if (stored) return stored;
-    return backend_get().session.home_get();
+    const cwd: string = stored ? stored : await backend_get().session.home_get();
+    if (line !== undefined) line.cwd = cwd;
+    return cwd;
   }
 
   /**
@@ -62,6 +66,8 @@ export class Session {
    */
   async setCWD(path: string): Promise<void> {
     await backend_get().session.cwd_save(path);
+    const line: LineCwd | undefined = lineCwd_get();
+    if (line !== undefined) line.cwd = path;
   }
 
   /**

@@ -13,7 +13,7 @@
  *
  * @module
  */
-import { turnPart_register } from '../core/turn.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 /** Where the recording will be written, or null when nothing is recording. */
 let target: string | null = null;
@@ -21,17 +21,12 @@ let target: string | null = null;
 let captured: string[] = [];
 /** When the recording started. */
 let startedAt: number = 0;
-/** Depth of work that must not be captured: a played manifest's own lines. */
-let muted: number = 0;
-
-// A mute is the running manifest's: a command run while it waits on a
-// question is recorded as the operator's own.
-turnPart_register({
-  name: 'recorderMute',
-  save: (): unknown => muted,
-  clear: (): void => { muted = 0; },
-  restore: (saved: unknown): void => { muted = typeof saved === 'number' ? saved : 0; },
-});
+/**
+ * Work that must not be captured: a played manifest's own lines. The mute
+ * is the manifest's and its lines', so a line another surface runs while it
+ * plays is recorded as the operator's own.
+ */
+const muteScope: AsyncLocalStorage<true> = new AsyncLocalStorage<true>();
 
 /** What a recording is doing. */
 export interface RecorderState {
@@ -52,7 +47,6 @@ export function recorder_start(path: string): void {
   target = path;
   captured = [];
   startedAt = Date.now();
-  muted = 0;
 }
 
 /**
@@ -66,7 +60,7 @@ export function recorder_start(path: string): void {
  * @param line - The line, as it was run.
  */
 export function recorder_note(line: string): void {
-  if (target === null || muted > 0) return;
+  if (target === null || muteScope.getStore() === true) return;
   const trimmed: string = line.trim();
   if (trimmed.length === 0) return;
   const verb: string = trimmed.split(/\s+/)[0];
@@ -74,14 +68,14 @@ export function recorder_note(line: string): void {
   captured.push(trimmed);
 }
 
-/** Stops capturing while a manifest plays its own lines. */
-export function recorder_mute(): void {
-  muted += 1;
-}
-
-/** Resumes capturing after a played manifest finishes. */
-export function recorder_unmute(): void {
-  if (muted > 0) muted -= 1;
+/**
+ * Runs a manifest's own lines uncaptured.
+ *
+ * @param operation - The play.
+ * @returns What the play returns.
+ */
+export async function recorderMuted_run<T>(operation: () => Promise<T>): Promise<T> {
+  return await muteScope.run(true, operation);
 }
 
 /**

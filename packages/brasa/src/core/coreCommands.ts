@@ -11,7 +11,7 @@
  *
  * @module
  */
-import { type CommandGroup, type CommandHandler, type EnvelopeHandler } from './commandRegistry.js';
+import { type CommandGroup, type CommandHandler, type EnvelopeHandler, type SessionPiece } from './commandRegistry.js';
 import { builtin_leave, builtin_stopwatch, builtin_timer } from '../builtins/games/chimes.js';
 import { builtin_cowsay, builtin_cowthink } from '../builtins/games/cowsay.js';
 import { builtin_banner, builtin_figlet } from '../builtins/games/figlet.js';
@@ -221,7 +221,23 @@ const plain: Record<string, CommandHandler> = {
 
 
 /** The core commands: their handlers. Their help is registered from `builtins/help.ts`, which holds it. */
+/**
+ * What the core's commands hold of the session: a read holds nothing and
+ * runs beside anything; `cd` holds the working directory. A command not
+ * named holds the whole session (a game, a play, anything that asks).
+ */
+const holds: Record<string, readonly SessionPiece[]> = {
+  ...Object.fromEntries([
+    'apropos', 'banner', 'cal', 'calc', 'cat', 'cowsay', 'cowthink', 'cut', 'date', 'ddate', 'echo', 'factor',
+    'figlet', 'find', 'fortune', 'grep', 'head', 'help', 'lolcat', 'ls', 'man', 'morse', 'notes', 'pom',
+    'primes', 'printf', 'pwd', 'qr', 'rev', 'rot13', 'seq', 'sort', 'stardate', 'tac', 'tail', 'uniq',
+    'units', 'uptime', 'version', 'wc', 'who',
+  ].map((name: string): [string, readonly SessionPiece[]] => [name, []])),
+  cd: ['cwd'],
+};
+
 export const coreCommands: CommandGroup = {
   envelope,
   plain,
+  holds,
 };

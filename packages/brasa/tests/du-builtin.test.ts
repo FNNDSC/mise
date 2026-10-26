@@ -57,7 +57,9 @@ describe('builtin_du', () => {
     });
     const envelope = await builtin_du(['data']);
     expect(mockScanDo).toHaveBeenCalled();
-    expect(mockSetCWD).toHaveBeenCalledWith('/home/chris/data');
+    // Scanned where it stands: the shared directory never moves (#1273).
+    expect(mockScanDo).toHaveBeenCalledWith(expect.objectContaining({ folder: '/home/chris/data' }));
+    expect(mockSetCWD).not.toHaveBeenCalled();
     expect(envelope.rendered.length).toBeGreaterThan(0);
   });
 
@@ -71,7 +73,7 @@ describe('builtin_du', () => {
     await builtin_du(['--human-readable', 'test-upload']);
 
     expect(mockDataGet).toHaveBeenCalledWith('/home/chris/test-upload', { directory: true });
-    expect(mockSetCWD).toHaveBeenCalledWith('/home/chris/test-upload');
+    expect(mockScanDo).toHaveBeenCalledWith(expect.objectContaining({ folder: '/home/chris/test-upload' }));
   });
 
   it('stops a recursive scan when its foreground command is cancelled', async () => {
@@ -94,7 +96,7 @@ describe('builtin_du', () => {
     await expect(running).resolves.toEqual({
       status: 'error', rendered: '', renderedErr: 'du: cancelled\n',
     });
-    expect(mockSetCWD).toHaveBeenLastCalledWith('/home/chris');
+    expect(mockSetCWD).not.toHaveBeenCalled();
   });
 
   it('reports a target that cannot be accessed', async () => {
@@ -113,6 +115,6 @@ describe('builtin_du', () => {
     mockDataGet.mockResolvedValue(ok([{ type: 'dir' }]));
     mockScanDo.mockResolvedValue(null);
     await builtin_du(['data']);
-    expect(mockSetCWD).toHaveBeenLastCalledWith('/home/chris');
+    expect(mockSetCWD).not.toHaveBeenCalled();
   });
 });

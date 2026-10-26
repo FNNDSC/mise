@@ -58,6 +58,8 @@ import {
   procTarget_locate,
 } from '../src/vfs/providers/proc';
 
+// Feed-list pages wait as long as CUBE's feed list takes (#1280).
+const FEED_LIST_TIMEOUT_MS: number = 120_000;
 const cache = procCache_get();
 const provider = new ProcVfsProvider();
 const { errorStack } = jest.requireActual<typeof import('@fnndsc/cumin')>('@fnndsc/cumin');
@@ -169,7 +171,7 @@ describe('ProcVfsProvider.list', () => {
 
     const r = await provider.list('/proc/jobs/feed_5');
     const items = r.ok ? r.value : [];
-    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ id: 5 }));
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ id: 5 }), FEED_LIST_TIMEOUT_MS);
     // No cursor yet (no row carried a timestamp): the delta is one unfiltered
     // walk, then the active sweep.
     expect(client.getPluginInstances).toHaveBeenCalledTimes(2);
@@ -675,6 +677,32 @@ describe('cache build / warmup / refresh', () => {
     expect(client.getPublicFeeds).toHaveBeenCalledTimes(2);
   });
 
+  it('a /proc read that arrives during the feed-index walk joins it instead of walking again', async () => {
+    let releasePage: ((page: { data: unknown[]; totalCount: number }) => void) | undefined;
+    const page: Promise<{ data: unknown[]; totalCount: number }> = new Promise((resolve) => {
+      releasePage = resolve;
+    });
+    const client = {
+      getFeeds: jest.fn().mockReturnValueOnce(page).mockResolvedValue({ data: [], totalCount: 1 }),
+      getPublicFeeds: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+      getPluginInstances: jest.fn().mockResolvedValue({ data: [], totalCount: 0 }),
+    };
+    mockClientGet.mockResolvedValue(client);
+
+    const walk: Promise<number[]> = procCache_refresh();
+    const read = provider.list('/proc/jobs');
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(client.getFeeds).toHaveBeenCalledTimes(1);
+
+    releasePage?.({ data: [{ id: 4, name: 'four', owner_username: 'chris' }], totalCount: 1 });
+    await walk;
+    const listed = await read;
+    expect(listed.ok).toBe(true);
+    expect(cache.feedIDs_get()).toEqual([4]);
+    // One walk: the first page fetched once, never a second walk from the read.
+    expect(client.getFeeds.mock.calls.filter((call: unknown[]) => (call[0] as { offset: number }).offset === 0)).toHaveLength(1);
+  });
+
   it('joins the active topology sweep without starting another', async () => {
     cache.built_set();
     let releasePage: ((page: { data: unknown[]; totalCount: number }) => void) | undefined;
@@ -1126,8 +1154,8 @@ describe('visit-driven freshness', () => {
     const names: string[] = (r.ok ? r.value : []).map((i) => i.name).sort();
     expect(names).toEqual(['feed_3', 'feed_8', 'feed_9']);
     expect(client.getFeeds).toHaveBeenCalledTimes(1);
-    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ limit: ROSTER_DELTA_PAGE, offset: 0 }));
-    expect(client.getFeeds).toHaveBeenCalledWith(expect.not.objectContaining({ min_id: expect.anything() }));
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ limit: ROSTER_DELTA_PAGE, offset: 0 }), FEED_LIST_TIMEOUT_MS);
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.not.objectContaining({ min_id: expect.anything() }), FEED_LIST_TIMEOUT_MS);
     jest.restoreAllMocks();
   });
 
@@ -1235,7 +1263,7 @@ describe('visit-driven freshness', () => {
 
     const added: number[] = await procRoster_sync();
     expect(added.length).toBe(burst.length);
-    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ min_id: 8 }));
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ min_id: 8 }), FEED_LIST_TIMEOUT_MS);
     expect(cache.feedIDs_get().length).toBe(burst.length + 1);
     jest.restoreAllMocks();
   });
@@ -1256,7 +1284,7 @@ describe('visit-driven freshness', () => {
 
     await procRoster_sync();
     expect(cache.feedIDs_get()).toEqual([4]);
-    expect(client.getFeeds).toHaveBeenCalledWith(expect.not.objectContaining({ min_id: expect.anything() }));
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.not.objectContaining({ min_id: expect.anything() }), FEED_LIST_TIMEOUT_MS);
     jest.restoreAllMocks();
   });
 
@@ -1287,7 +1315,7 @@ describe('roster boot sync', () => {
     expect(cache.feedIDs_get().sort()).toEqual([3, 9]);
     // One newest-page read per collection; a restored roster has no yardstick, so nothing is promoted.
     expect(client.getFeeds).toHaveBeenCalledTimes(1);
-    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ limit: ROSTER_DELTA_PAGE, offset: 0 }));
+    expect(client.getFeeds).toHaveBeenCalledWith(expect.objectContaining({ limit: ROSTER_DELTA_PAGE, offset: 0 }), FEED_LIST_TIMEOUT_MS);
   });
 
   it('refuses when nothing was restored, so the host falls back to the full build', async () => {
@@ -1406,7 +1434,7 @@ describe('a feed the roster lacks', () => {
     mockClientGet.mockResolvedValue(client);
     expect(await procFeed_probe(4389)).toBeNull();
     expect(cache.feed_get(4389)).toBeUndefined();
-    expect(client.getPublicFeeds).toHaveBeenCalledWith(expect.objectContaining({ id: 4389 }));
+    expect(client.getPublicFeeds).toHaveBeenCalledWith(expect.objectContaining({ id: 4389 }), FEED_LIST_TIMEOUT_MS);
   });
 
   it('procFeed_probe finds a public feed through the public collection', async () => {

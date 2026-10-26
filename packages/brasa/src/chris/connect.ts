@@ -70,15 +70,18 @@ export async function sessionFromSaved_connect(): Promise<SavedSessionResult> {
       session.offline = true;
       return { status: 'no-client', context };
     }
+    // The check reads `users/`, not the API root: the root is the feed
+    // list, which can outlast the check for an identity that sees
+    // thousands of feeds (#1280).
+    const url: string = context.URL;
     try {
-      await client.getUser();
+      await session.connection.token_check(url, token);
     } catch (first: unknown) {
-      // No answer at all is not a refusal: CUBE's first byte can be slow
-      // (its root, which the check reads first, is the feed list). Asked
-      // once more before the session gives up on it.
+      // No answer at all is not a refusal: asked once more before the
+      // session gives up on it.
       if (!answer_none(first)) throw first;
       await new Promise((resolve: (value: unknown) => void): unknown => setTimeout(resolve, SAVED_TOKEN_RETRY_MS));
-      await client.getUser();
+      await session.connection.token_check(url, token);
     }
     return { status: 'restored', context };
   } catch (error: unknown) {

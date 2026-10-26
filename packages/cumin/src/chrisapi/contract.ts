@@ -26,6 +26,7 @@
 
 import {
   Client,
+  FEED_LIST_TIMEOUT_MS,
   itemData_get,
   items_get,
   listData_get,
@@ -398,7 +399,7 @@ export async function feedsPage_get(
   client: Client,
   params: Record<string, unknown>,
 ): Promise<ListPage<FeedData>> {
-  return listPage_wrap<FeedData>(await resource_call<WirePage>(client, 'getFeeds', params));
+  return listPage_wrap<FeedData>(await resource_call<WirePage>(client, 'getFeeds', params, FEED_LIST_TIMEOUT_MS));
 }
 
 /**
@@ -415,7 +416,7 @@ export async function publicFeedsPage_get(
   params: Record<string, unknown>,
 ): Promise<ListPage<FeedData> | null> {
   if (!method_exists(client, 'getPublicFeeds')) return null;
-  return listPage_wrap<FeedData>(await resource_call<WirePage>(client, 'getPublicFeeds', params));
+  return listPage_wrap<FeedData>(await resource_call<WirePage>(client, 'getPublicFeeds', params, FEED_LIST_TIMEOUT_MS));
 }
 
 /**

@@ -9,6 +9,7 @@ jest.mock('../src/chrisapi/adapter', () => ({
   ...jest.requireActual('../src/chrisapi/adapter'),
   authToken_get: jest.fn(),
   client_create: jest.fn(),
+  token_verify: jest.fn(),
 }));
 jest.mock('../src/config/config', () => ({
   config_init: jest.fn(),
@@ -32,7 +33,7 @@ jest.mock('../src/io/chrisIO', () => ({
   chrisIO: { storageProvider_set: jest.fn() },
 }));
 
-import { authToken_get, client_create } from '../src/chrisapi/adapter';
+import { authToken_get, client_create, token_verify } from '../src/chrisapi/adapter';
 import { chrisContextURL_parse, chrisContext } from '../src/context/chrisContext';
 import { ChRISConnection, chrisConnection_init } from '../src/connect/chrisConnection';
 import { errorStack } from '../src/error/errorStack';
@@ -41,6 +42,7 @@ import { IStorageProvider } from '../src/io/io';
 
 const mockAuthToken: jest.Mock = authToken_get as unknown as jest.Mock;
 const mockClientCreate: jest.Mock = client_create as unknown as jest.Mock;
+const mockTokenVerify: jest.Mock = token_verify as unknown as jest.Mock;
 const mockParse: jest.Mock = chrisContextURL_parse as unknown as jest.Mock;
 const mockContextSet: jest.Mock = chrisContext.current_set as unknown as jest.Mock;
 
@@ -168,7 +170,8 @@ describe('a failed login says what failed (#965)', () => {
   });
 
   it('a token login that meets a certificate problem says so instead of "refused the token"', async () => {
-    mockClientCreate.mockReturnValue({ getUser: jest.fn(async () => { throw noResponse(); }) });
+    mockClientCreate.mockReturnValue({});
+    mockTokenVerify.mockRejectedValue(noResponse());
     const outcome = await connection_make({ files: {} }, 'CERT_HAS_EXPIRED').connection_connectWithToken({ user: 'chris', url: 'https://cube.example.org/api/v1/', token: 'T' });
     expect(outcome.connected).toBe(false);
     expect((outcome as { reason: string }).reason).toMatch(/not trusted \(CERT_HAS_EXPIRED\)/);
@@ -181,11 +184,11 @@ describe('connection_connectWithToken', () => {
   it('proves the token, then saves it and takes the identity', async () => {
     const store: FakeStore = { files: {} };
     const conn: ChRISConnection = connection_make(store);
-    const getUser: jest.Mock = jest.fn(async () => ({ username: 'chris' }));
-    mockClientCreate.mockReturnValue({ getUser });
+    mockClientCreate.mockReturnValue({});
+    mockTokenVerify.mockResolvedValue(undefined);
     await expect(conn.connection_connectWithToken(options)).resolves.toEqual({ connected: true });
     expect(mockClientCreate).toHaveBeenCalledWith('https://cube/api/v1/', 'MINTED');
-    expect(getUser).toHaveBeenCalled();
+    expect(mockTokenVerify).toHaveBeenCalledWith('https://cube/api/v1/', 'MINTED');
     expect(store.files['/cfg/token']).toBe('MINTED');
     expect(conn.connection_isConnected()).toBe(true);
     expect(mockAuthToken).not.toHaveBeenCalled();
@@ -193,7 +196,8 @@ describe('connection_connectWithToken', () => {
 
   it('keeps the folder lookups memoised on the client it takes, as client_get makes them', async () => {
     const lookup: jest.Mock = jest.fn(async (path: string) => ({ data: { path } }));
-    mockClientCreate.mockReturnValue({ getUser: jest.fn(async () => ({ username: 'chris' })), getFileBrowserFolderByPath: lookup });
+    mockClientCreate.mockReturnValue({ getFileBrowserFolderByPath: lookup });
+    mockTokenVerify.mockResolvedValue(undefined);
     const conn: ChRISConnection = connection_make({ files: {} });
     await conn.connection_connectWithToken(options);
     const client = (await conn.client_get()) as unknown as { getFileBrowserFolderByPath: (p: string) => Promise<unknown> };
@@ -205,7 +209,8 @@ describe('connection_connectWithToken', () => {
   it('refuses in the outcome, writes nothing, and leaves the error stack clean', async () => {
     const store: FakeStore = { files: {} };
     const conn: ChRISConnection = connection_make(store);
-    mockClientCreate.mockReturnValue({ getUser: jest.fn(async () => { throw new Error('401 Unauthorized'); }) });
+    mockClientCreate.mockReturnValue({});
+    mockTokenVerify.mockRejectedValue(Object.assign(new Error('401 Unauthorized'), { response: { status: 401 } }));
     const outcome = await conn.connection_connectWithToken(options);
     expect(outcome.connected).toBe(false);
     expect(outcome.reason).toContain('refused the token for chris');
@@ -213,6 +218,17 @@ describe('connection_connectWithToken', () => {
     expect(store.files).toEqual({});
     expect(conn.connection_isConnected()).toBe(false);
     expect(errorStack.messagesOfType_has('error')).toBe(false);
+  });
+
+  it('a CUBE that does not answer the check is said to be silent, never to have refused the token', async () => {
+    const store: FakeStore = { files: {} };
+    const conn: ChRISConnection = connection_make(store, null);
+    mockClientCreate.mockReturnValue({});
+    mockTokenVerify.mockRejectedValue(new Error('No server response!'));
+    const outcome = await conn.connection_connectWithToken(options);
+    expect(outcome.connected).toBe(false);
+    expect(outcome.reason).toBe('https://cube/api/v1/ did not answer the token check for chris within 30 s; CUBE may be busy, try again');
+    expect(store.files).toEqual({});
   });
 });
 

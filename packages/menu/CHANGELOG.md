@@ -1,5 +1,21 @@
 # @fnndsc/menu
 
+## 0.31.0
+
+### Minor Changes
+
+- 0efbb7c: A PULL in ARGUS runs in the background: the console and every other press stay yours while a retrieve goes on. The press sends `pull … &`; the badges follow it as before, each running joblet is a row on the LANE instrument with a STOP that types `kill %N`, the console prints when one starts, ends or waits for an answer, and RESTART names the joblets it would end (#1273).
+
+  A joblet relays its progress, and any model it answers with, to the surface it came from; its task carries its progress. The heartbeat's lane lists the running joblets, calypso answers `GET /joblets` (token-gated), and a porter login that finds a session on older code keeps it, rather than restart it, while joblets run.
+
+- b8bc519: A line ended with `&` runs in the background as a joblet, so a long pull no longer holds the console it was typed in. It is kept at `/proc/joblets/<N>` with its output in its log; its surface hears `[1] … &` when it starts and `[1]+ Done`, `Failed (exit N): …` or `Stopped` when it ends. `joblets` lists them, `fg %1` answers what one waits on and follows it, `kill %1` and `wait %1` stop and follow one. A joblet stands where its line was typed with that line's variables, its own `cd`s and assignments staying inside it, and holds what its line changes in the same lane as every line; one that needs an answer pauses until someone brings it forward (#1273).
+
+  Every session's runner now carries the core's `joblets` source (a runner source may be `ungated`, needing no tier, and words its own end `notice`, sent to the surface in `data.origin`). An ambient `envelope` event may name its `origin`; calypso sends it to that surface while it is attached. A `Surface` may offer `hold(holds)`, which calypso answers from its lane (`hold_take`). `cwdScope_run` takes a start folder, and a `cd` under one stays in it.
+
+### Patch Changes
+
+- 41769da: Each surface keeps its own last answer, so `@3` counts the listing that surface read. A listing read in a browser no longer renumbers the rows a console is about to act on: calypso hands every line its surface as origin, the kernel keeps one answer per origin, and a numbering goes only to the surface whose line listed. A surface that leaves takes its answer with it; one that attaches has listed nothing yet (#1273).
+
 ## 0.30.0
 
 ### Minor Changes

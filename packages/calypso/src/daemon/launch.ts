@@ -143,6 +143,8 @@ export function daemonSurface_create(daemon: CalypsoDaemon, policy: HostControlP
       daemon.deliver_current(request),
     // A command following a task waits out of the lane, so the session runs other lines meanwhile.
     aside: <T>(waiting: Promise<T>): Promise<T> => daemon.aside_current(waiting),
+    // A joblet holds what its line changes, in the same lane as every line.
+    hold: (holds: string[] | 'all'): Promise<() => void> => daemon.hold_take(holds),
   };
 }
 

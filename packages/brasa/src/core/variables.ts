@@ -96,6 +96,16 @@ export async function variableScope_run<T>(params: Map<string, string>, operatio
 }
 
 /**
+ * Runs work in a copy of the current scope: what it assigns stays in it,
+ * as a subshell's assignments do (a joblet).
+ * @param operation - The work to run.
+ * @returns The operation's result.
+ */
+export async function variableScope_fork<T>(operation: () => Promise<T>): Promise<T> {
+  return await playScope.run(new Map(scope_current()), operation);
+}
+
+/**
  * The variable a name holds in the current scope.
  *
  * @param name - The variable's name.

@@ -393,7 +393,9 @@ export type NumberedMessage = z.infer<typeof numberedMessageSchema>;
  * never enters scrollback.
  */
 export type AmbientEvent =
-  | { kind: 'envelope'; envelope: z.infer<typeof commandEnvelopeSchema> }
+  // `origin` names the surface a line came from, when the envelope is for it
+  // (a joblet's notice): an absent origin, or one no longer attached, is everyone's.
+  | { kind: 'envelope'; envelope: z.infer<typeof commandEnvelopeSchema>; origin?: string }
   | { kind: 'watched'; subject: string; state: WatchState }
   // `origin` names the surface whose line listed: only it is told.
   | { kind: 'numbered'; origin: string; id: number; source: string; rows: number; handles: Array<{ kind: string; ordinal: number; address: string }> };

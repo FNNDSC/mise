@@ -16,6 +16,7 @@ import { envelope_error, envelope_ok, taskState_isOver, type CommandEnvelope } f
 import { runner_get, type JobRecord, type JobRunner, type JobStopResult } from '../../core/runner.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
 import { sink_dataLine } from '../../core/sink.js';
+import { JOBLETS_SOURCE_ID, jobletWord_parse } from '../../core/joblets.js';
 
 /** A job a word names. */
 interface JobName {
@@ -27,10 +28,15 @@ interface JobName {
  * The job a word names.
  *
  * @param runner - The session's runner.
- * @param word - `/proc/<source>/<id>`, `<source>/<id>`, or `<id>`.
+ * @param word - `/proc/<source>/<id>`, `<source>/<id>`, `<id>`, or a joblet's `%N`.
  * @returns The job, or a reason it names none.
  */
 export function jobName_resolve(runner: JobRunner, word: string): JobName | { error: string } {
+  // `%3` (and `%%`) name a joblet, as a shell names its jobs.
+  if (word.startsWith('%')) {
+    const number: number | null = jobletWord_parse(word);
+    return number === null ? { error: 'no such joblet' } : { source: JOBLETS_SOURCE_ID, id: String(number) };
+  }
   const parts: string[] = word.replace(/^\/proc\//, '').split('/').filter(Boolean);
   if (parts.length === 2) return { source: parts[0] as string, id: parts[1] as string };
   if (parts.length !== 1) return { error: 'no such task' };

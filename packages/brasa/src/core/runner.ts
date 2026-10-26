@@ -84,11 +84,19 @@ export type JobRun = (context: JobContext) => Promise<void>;
  * @property resume - Picks a job that was running when the session ended up
  *   again, from its record: the work to go on with, or null when it cannot
  *   go on (it is then marked failed, saying so).
+ * @property ungated - Starting one needs no tier: its work is the session's
+ *   own lines, which the operator may run anyway (a joblet).
+ * @property interrupted - What a job that cannot go on after a restart says.
+ * @property notice - The line every surface (or the job's own, `data.origin`)
+ *   hears when a job ends; the job's path and state when absent.
  */
 export interface JobSource {
   readonly id: string;
   readonly label: string;
   readonly resume?: (record: JobRecord) => JobRun | null;
+  readonly ungated?: boolean;
+  readonly interrupted?: string;
+  readonly notice?: (record: JobRecord) => string;
 }
 
 /** Why a job did not start. */
@@ -155,6 +163,16 @@ export class JobRunner {
   ) {
     this.events.setMaxListeners(0);
     for (const source of sources) this.records_load(source.id);
+  }
+
+  /**
+   * A job source by id.
+   *
+   * @param id - Its id.
+   * @returns It, or undefined.
+   */
+  private source_find(id: string): JobSource | undefined {
+    return this.sources.find((candidate: JobSource): boolean => candidate.id === id);
   }
 
   /**
@@ -265,10 +283,16 @@ export class JobRunner {
     delete entry.controller;
     this.record_save(entry);
     this.events.emit(`end:${this.key_format(entry.record.source, entry.record.id)}`, entry.record);
-    // Every surface hears a job end, as it hears a chime: a line and its model.
+    // Every surface hears a job end, as it hears a chime: a line and its
+    // model. A job that names the surface it was started on tells it alone.
+    const source: JobSource | undefined = this.source_find(entry.record.source);
+    const notice: string = source?.notice?.(entry.record)
+      ?? `/proc/${entry.record.source}/${entry.record.id}: ${entry.record.state}${entry.record.state === 'done' ? '' : ` (${entry.record.outcome ?? ''})`}`;
+    const origin: unknown = entry.record.data.origin;
     ambient_publish({
       kind: 'envelope',
-      envelope: envelope_ok(`/proc/${entry.record.source}/${entry.record.id}: ${entry.record.state}${entry.record.state === 'done' ? '' : ` (${entry.record.outcome ?? ''})`}\n`, { kind: JOB_MODEL_KIND, data: { ...entry.record } }),
+      envelope: envelope_ok(`${notice}\n`, { kind: JOB_MODEL_KIND, data: { ...entry.record } }),
+      ...(typeof origin === 'string' ? { origin } : {}),
     });
     return entry.record;
   }
@@ -285,8 +309,9 @@ export class JobRunner {
    * @throws JobRefusal - Without the `tasks` tier, for an unknown source, or while that id still runs.
    */
   job_start(source: string, id: string, label: string, run: JobRun, data: Record<string, unknown> = {}): { record: JobRecord; finished: Promise<JobRecord> } {
-    if (!this.allowed()) throw new JobRefusal(`${id}: Operation not permitted: starting a task needs the tasks tier (calypso --host-control tasks)`);
-    if (!this.sources.some((candidate: JobSource): boolean => candidate.id === source)) throw new JobRefusal(`${id}: no task source ${source}`);
+    const kind: JobSource | undefined = this.source_find(source);
+    if (kind === undefined) throw new JobRefusal(`${id}: no task source ${source}`);
+    if (kind.ungated !== true && !this.allowed()) throw new JobRefusal(`${id}: Operation not permitted: starting a task needs the tasks tier (calypso --host-control tasks)`);
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) throw new JobRefusal(`${id}: a task's name is letters, digits, '.', '_' and '-'`);
     const existing: JobEntry | undefined = this.entries.get(this.key_format(source, id));
     if (existing !== undefined && !taskState_isOver(existing.record.state)) throw new JobRefusal(`${id}: already running (/proc/${source}/${id})`);
@@ -312,10 +337,12 @@ export class JobRunner {
       if (taskState_isOver(entry.record.state) || entry.controller !== undefined) continue;
       const source: JobSource | undefined = this.sources.find((candidate: JobSource): boolean => candidate.id === entry.record.source);
       const run: JobRun | null = source?.resume?.(entry.record) ?? null;
-      if (run === null || !this.allowed()) {
+      if (run === null || (source?.ungated !== true && !this.allowed())) {
         entry.record.state = 'failed';
         entry.record.ended = new Date().toISOString();
-        entry.record.outcome = run === null ? 'interrupted: the session ended while it ran, and it cannot be picked up again' : 'interrupted: the session restarted without the tasks tier';
+        entry.record.outcome = run === null
+          ? source?.interrupted ?? 'interrupted: the session ended while it ran, and it cannot be picked up again'
+          : 'interrupted: the session restarted without the tasks tier';
         this.log_append(entry, `failed: ${entry.record.outcome}`);
         this.record_save(entry);
         continue;

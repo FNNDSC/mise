@@ -50,12 +50,13 @@ export function exitCode_set(code: number | undefined): void {
  * @param operation - The line's work.
  * @returns What the work returned.
  */
-export async function exitScope_run<T>(operation: () => Promise<T>): Promise<T> {
+export async function exitScope_run<T>(operation: () => Promise<T>, ended?: (code: number) => void): Promise<T> {
   const line: ExitStatus = { code: undefined };
   try {
     return await exitScope.run(line, operation);
   } finally {
     process.exitCode = line.code;
+    ended?.(typeof line.code === 'number' ? line.code : 0);
   }
 }
 

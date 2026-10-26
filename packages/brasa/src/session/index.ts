@@ -65,8 +65,9 @@ export class Session {
    * Set Current Working Directory: the backend stores it for the identity.
    */
   async setCWD(path: string): Promise<void> {
-    await backend_get().session.cwd_save(path);
     const line: LineCwd | undefined = lineCwd_get();
+    // A joblet's `cd` is its own: the session stays where it was.
+    if (line?.own !== true) await backend_get().session.cwd_save(path);
     if (line !== undefined) line.cwd = path;
   }
 

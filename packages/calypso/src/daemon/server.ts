@@ -1211,7 +1211,12 @@ export class CalypsoDaemon {
   private ambient_relay(event: AmbientEvent): void {
     for (const surface of this.surfaces) {
       if (event.kind === 'envelope') {
-        this.send(surface.socket, { type: 'session', surface: DAEMON_SURFACE, envelope: event.envelope });
+        // An envelope for one surface (a joblet's notice) goes to it while it
+        // is attached, and to everyone once it has gone.
+        const mine: boolean = event.origin === undefined
+          || ![...this.surfaces].some((each: Surface): boolean => this.stopper_resolve(each).id === event.origin)
+          || this.stopper_resolve(surface).id === event.origin;
+        if (mine) this.send(surface.socket, { type: 'session', surface: DAEMON_SURFACE, envelope: event.envelope });
       } else if (event.kind === 'watched') {
         this.send(surface.socket, { type: 'watched', subject: event.subject, state: event.state });
       } else if (this.stopper_resolve(surface).id === event.origin) {
@@ -1415,6 +1420,24 @@ export class CalypsoDaemon {
         });
       }
     }
+  }
+
+  /**
+   * Takes a hold for work no line of a surface runs (a joblet): it waits in
+   * the same lane as every line, and runs beside the lines it shares
+   * nothing with (#1273).
+   *
+   * @param holds - What the work changes, or 'all'.
+   * @returns Gives the hold back; a second call does nothing.
+   */
+  public async hold_take(holds: string[] | 'all'): Promise<() => void> {
+    const hold: Hold = await this.lane.acquire(holds === 'all' ? LOCKS_ALL : new Set(holds));
+    let given: boolean = false;
+    return (): void => {
+      if (given) return;
+      given = true;
+      this.lane.release(hold);
+    };
   }
 
   /**

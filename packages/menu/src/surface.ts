@@ -221,6 +221,17 @@ export interface Surface {
    * @returns What it resolved with.
    */
   aside?<T>(waiting: Promise<T>): Promise<T>;
+
+  /**
+   * Takes a hold on the session for work outside any line the host ran (a
+   * joblet): it waits until nothing running holds what the work changes,
+   * as a line does, and gives it back when released. A host that runs one
+   * line at a time and nothing else has no need of it.
+   *
+   * @param holds - The pieces the work changes, or 'all'.
+   * @returns Gives the hold back.
+   */
+  hold?(holds: string[] | 'all'): Promise<() => void>;
 }
 
 /**

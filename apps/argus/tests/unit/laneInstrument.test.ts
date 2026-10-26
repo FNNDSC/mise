@@ -69,4 +69,20 @@ describe('LaneInstrument', () => {
     expect(rows_text(mount)[0]).toBe('LANEIDLE');
     expect(rows_text(mount)[1]).toBe('ASKING2 · Another game: · 12 S');
   });
+
+  it('a running joblet gets a row beside the lane, with a STOP that sends kill %N (#1273)', () => {
+    const mount: HTMLElement = mount_make();
+    const sent: string[] = [];
+    const instrument: LaneInstrument = new LaneInstrument(mount, (): number => 0, (line: string): void => { sent.push(line); });
+    instrument.telemetry_show({ lane: { running: null, waiting: 0, joblets: [
+      { number: 1, line: 'pull /net/pacs/q/Study_1', waiting: false },
+      { number: 2, line: 'domain teardown quay', waiting: true },
+    ] } });
+    expect(rows_text(mount).slice(1, 3)).toEqual([
+      '%1pull /net/pacs/q/Study_1 · RUNNINGSTOP',
+      '%2domain teardown quay · WAITING · FG %2 TO ANSWERSTOP',
+    ]);
+    (mount.querySelectorAll('.lane-stop')[1] as HTMLButtonElement).click();
+    expect(sent).toEqual(['kill %2']);
+  });
 });

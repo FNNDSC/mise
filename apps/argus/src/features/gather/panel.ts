@@ -317,7 +317,8 @@ export class GatherPanel {
     const taking: ReadonlyArray<GatherSeries> = this.away();
     if (taking.length === 0) return;
     const paths: string = taking.map((entry: GatherSeries): string => `"${entry.vfsPath}"`).join(' ');
-    this.handlers.command_show(`pull ${paths}`);
+    // A retrieve runs as a joblet: its badges follow it, the console is free (#1273).
+    this.handlers.command_show(`pull ${paths} &`);
   }
 
   /** Paints now, for a view that has just joined the stage. */
@@ -554,7 +555,7 @@ export class GatherPanel {
     });
     const runs: Record<string, (row: SeriesRow) => void> = {
       remove: (row: SeriesRow): void => this.member_remove(row.entry),
-      pull: (row: SeriesRow): void => this.handlers.command_show(`pull "${row.entry.vfsPath}"`),
+      pull: (row: SeriesRow): void => this.handlers.command_show(`pull "${row.entry.vfsPath}" &`),
       image: (row: SeriesRow): void => {
         const place: string | undefined = row.entry.folderPath ?? placeOf_member(row.entry);
         if (place !== undefined) this.handlers.image_open(place);

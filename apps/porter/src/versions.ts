@@ -58,6 +58,40 @@ export function berth_behind(berth: Berth, installed: Record<string, string>): s
   return behind;
 }
 
+/** A joblet a session runs (`line &`), as its daemon says. */
+export interface BerthJoblet {
+  number: number;
+  line: string;
+  waiting: boolean;
+}
+
+/** How long a door waits for a daemon to say what joblets it runs. */
+const JOBLETS_ASK_MS: number = 2000;
+
+/**
+ * The joblets a berth's daemon runs now (`GET /joblets`): a restart ends
+ * them, so a door asks before restarting a session for a new release
+ * (#1273). A daemon that does not answer (an older one, or one gone) runs
+ * none the door can know of.
+ *
+ * @param berth - The session's berth.
+ * @param fetcher - The HTTP client (the platform's by default).
+ * @returns The joblets, empty when none or unknown.
+ */
+export async function berthJoblets_read(berth: Berth, fetcher: typeof fetch = fetch): Promise<BerthJoblet[]> {
+  try {
+    const url: URL = new URL('/joblets', berth.url.replace(/^ws/, 'http'));
+    url.searchParams.set('token', berth.token);
+    const response: Response = await fetcher(url, { signal: AbortSignal.timeout(JOBLETS_ASK_MS) });
+    if (!response.ok) return [];
+    const body: unknown = await response.json();
+    const joblets: unknown = (body as { joblets?: unknown } | null)?.joblets;
+    return Array.isArray(joblets) ? joblets as BerthJoblet[] : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * What `porter --version` says: the door's own version, then the session
  * code it serves (brasa, calypso, chell) — the code a login would put a

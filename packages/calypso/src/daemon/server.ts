@@ -426,6 +426,8 @@ export class CalypsoDaemon {
         waiting: this.lane.waiting,
         // Questions open: each one's command has stepped out of the lane.
         questions: [...this.questionsOpen].map(([surface, open]) => ({ surface: surface.id, message: open.message, sinceMs: Math.round(performance.now() - open.at) })),
+        // The joblets running: a restart asked from any surface says it ends them.
+        joblets: this.engine.joblets_running?.() ?? [],
       };
       // Who else is here: a restart asked from one surface names the rest.
       // A surface that runs host shells is a terminal; one that does not, a browser.
@@ -485,6 +487,10 @@ export class CalypsoDaemon {
           }
           if (requestPath === '/backend') {
             this.backend_serve(request, response);
+            return;
+          }
+          if (requestPath === '/joblets') {
+            this.joblets_serve(request, response);
             return;
           }
           if (this.webRoot !== undefined) {
@@ -559,6 +565,26 @@ export class CalypsoDaemon {
     }
     response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
     response.end(JSON.stringify({ backend: this.backend ?? null }));
+  }
+
+  /**
+   * Says which joblets run now (`line &`): `{"joblets": [{number, line,
+   * waiting}]}`. A host about to restart the session (porter, for a new
+   * release) asks first, since a restart ends them (#1273). Gated by the
+   * attach token, as `/backend` is.
+   *
+   * @param request - The incoming HTTP request.
+   * @param response - The response to write.
+   */
+  private joblets_serve(request: IncomingMessage, response: ServerResponse): void {
+    const query: URLSearchParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
+    if (!token_matches(this.token, query.get('token') ?? '')) {
+      response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+      response.end('not found');
+      return;
+    }
+    response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+    response.end(JSON.stringify({ joblets: this.engine.joblets_running?.() ?? [] }));
   }
 
   /**
@@ -1217,6 +1243,9 @@ export class CalypsoDaemon {
           || ![...this.surfaces].some((each: Surface): boolean => this.stopper_resolve(each).id === event.origin)
           || this.stopper_resolve(surface).id === event.origin;
         if (mine) this.send(surface.socket, { type: 'session', surface: DAEMON_SURFACE, envelope: event.envelope });
+      } else if (event.kind === 'progress') {
+        // A joblet's progress is its own surface's, live: nobody else's views follow it.
+        if (this.stopper_resolve(surface).id === event.origin) this.send(surface.socket, { type: 'progress', id: event.id, ...event.progress });
       } else if (event.kind === 'watched') {
         this.send(surface.socket, { type: 'watched', subject: event.subject, state: event.state });
       } else if (this.stopper_resolve(surface).id === event.origin) {

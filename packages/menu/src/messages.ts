@@ -397,6 +397,9 @@ export type AmbientEvent =
   // (a joblet's notice): an absent origin, or one no longer attached, is everyone's.
   | { kind: 'envelope'; envelope: z.infer<typeof commandEnvelopeSchema>; origin?: string }
   | { kind: 'watched'; subject: string; state: WatchState }
+  // A joblet's progress, for the surface it came from: its views follow it
+  // as they follow a line in front (a pull's badges).
+  | { kind: 'progress'; origin: string; id: string; progress: ProgressEvent }
   // `origin` names the surface whose line listed: only it is told.
   | { kind: 'numbered'; origin: string; id: number; source: string; rows: number; handles: Array<{ kind: string; ordinal: number; address: string }> };
 
@@ -882,6 +885,8 @@ export const telemetryMessageSchema = z.object({
      * command waiting on one has stepped out of the lane. Absent on older daemons.
      */
     questions: z.array(z.object({ surface: z.string(), message: z.string(), sinceMs: z.number() })).optional(),
+    /** The joblets running (`line &`): what a restart would end. Absent on older daemons. */
+    joblets: z.array(z.object({ number: z.number(), line: z.string(), waiting: z.boolean() })).optional(),
   }).optional(),
   /** Every surface attached now, by id: a terminal (`chell`) or a `browser`. Absent on older daemons. */
   surfaces: z.array(z.object({ id: z.string(), kind: z.enum(['chell', 'browser']) })).optional(),

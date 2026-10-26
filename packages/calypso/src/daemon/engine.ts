@@ -65,6 +65,14 @@ export interface HostedEngine {
   line_holds?(line: string): string[] | 'all';
 
   /**
+   * The joblets running now (`line &`), for the heartbeat: what a restart
+   * would end.
+   *
+   * @returns Them, by number.
+   */
+  joblets_running?(): Array<{ number: number; line: string; waiting: boolean }>;
+
+  /**
    * Computes completion candidates for a partial input line.
    *
    * @param linePrefix - The input line up to the cursor.

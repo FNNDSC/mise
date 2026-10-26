@@ -24,12 +24,15 @@ interface LaneRow {
   value: string;
   title: string;
   degraded: boolean;
+  /** A joblet's row carries its STOP: the line `kill %N`. */
+  stop?: string;
 }
 
 /** The lane, beat and pace rows. */
 export class LaneInstrument {
   private readonly mount: HTMLElement;
   private readonly clock: () => number;
+  private readonly line_send: ((line: string) => void) | undefined;
   private lane: LaneTelemetry | undefined = undefined;
   private cube: CubeTelemetry | undefined = undefined;
   private beatAt: number | null = null;
@@ -37,10 +40,12 @@ export class LaneInstrument {
   /**
    * @param mount - The element the rows are drawn into (`#lane-instrument`).
    * @param clock - The clock the beat's age is measured against (default `Date.now`).
+   * @param line_send - Runs a line the operator could have typed (a joblet's STOP, `kill %N`).
    */
-  constructor(mount: HTMLElement, clock: () => number = (): number => Date.now()) {
+  constructor(mount: HTMLElement, clock: () => number = (): number => Date.now(), line_send?: (line: string) => void) {
     this.mount = mount;
     this.clock = clock;
+    this.line_send = line_send;
     this.render();
   }
 
@@ -64,7 +69,7 @@ export class LaneInstrument {
   /**
    * The rows the current facts call for.
    *
-   * @returns LANE, ASKING (when a question is open), BEAT, CUBE, in that order.
+   * @returns LANE, ASKING (when a question is open), one row per joblet, BEAT, CUBE, in that order.
    */
   public rows_compose(): LaneRow[] {
     const rows: LaneRow[] = [];
@@ -97,6 +102,18 @@ export class LaneInstrument {
         value: `${questions.length} · ${oldest.message.trim()} · ${(oldest.sinceMs / 1000).toFixed(0)} S`,
         title: 'Questions open in the session. A command waiting on one has stepped out of the lane; it resumes when answered on the surface that asked.',
         degraded: false,
+      });
+    }
+
+    // The joblets running (`line &`): beside the lane, not in it. Each STOP
+    // is `kill %N`, the line a console would type.
+    for (const joblet of lane?.joblets ?? []) {
+      rows.push({
+        label: `%${joblet.number}`,
+        value: `${joblet.line} · ${joblet.waiting ? `WAITING · FG %${joblet.number} TO ANSWER` : 'RUNNING'}`,
+        title: `Joblet %${joblet.number}, run in the background: its log is /proc/joblets/${joblet.number}/log.`,
+        degraded: joblet.waiting,
+        stop: `kill %${joblet.number}`,
       });
     }
 
@@ -143,6 +160,17 @@ export class LaneInstrument {
       value.className = 'telemetry-value';
       value.textContent = row.value;
       line.append(label, value);
+      if (row.stop !== undefined && this.line_send !== undefined) {
+        const stop: HTMLButtonElement = document.createElement('button');
+        stop.type = 'button';
+        stop.className = 'lane-stop';
+        stop.textContent = 'STOP';
+        stop.title = row.stop;
+        const send: (line: string) => void = this.line_send;
+        const words: string = row.stop;
+        stop.addEventListener('click', (): void => send(words));
+        line.appendChild(stop);
+      }
       this.mount.appendChild(line);
     }
   }

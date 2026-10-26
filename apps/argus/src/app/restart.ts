@@ -37,6 +37,8 @@ export interface RestartFacts {
   unsaved: string[];
   /** The other surfaces attached (this one left out). */
   others: SurfaceSeen[];
+  /** The joblets running (`line &`), by number: a restart ends them (#1273). */
+  joblets?: Array<{ number: number; line: string }>;
 }
 
 /** The question's words. */
@@ -51,6 +53,8 @@ export const RESTART_QUESTION: string = 'Restart the calypso daemon? You\'ll sta
 export function restartCuts_list(facts: RestartFacts): string[] {
   const cuts: string[] = [];
   if (facts.running !== null) cuts.push(`the running command: ${facts.running}`);
+  // A joblet ends with its session; its log is kept, and it lists as ended by restart.
+  for (const joblet of facts.joblets ?? []) cuts.push(`joblet %${joblet.number}: ${joblet.line} (ended; its log is kept)`);
   for (const file of facts.unsaved) cuts.push(`an unsaved edit in ${file}`);
   const browsers: number = facts.others.filter((other: SurfaceSeen): boolean => other.kind === 'browser').length;
   const chells: number = facts.others.length - browsers;
@@ -80,8 +84,8 @@ export interface RestartControl {
   ask: () => void;
   /** The attach ack: this surface's own id. */
   attach_take: (attach: { surface?: string }) => void;
-  /** The heartbeat: who holds the lane, who else is here. */
-  telemetry_take: (extra?: { lane?: { running: { line: string } | null }; surfaces?: SurfaceSeen[] }) => void;
+  /** The heartbeat: who holds the lane, which joblets run, who else is here. */
+  telemetry_take: (extra?: { lane?: { running: { line: string } | null; joblets?: Array<{ number: number; line: string }> }; surfaces?: SurfaceSeen[] }) => void;
   /** The daemon says it is going, and why. */
   closing_take: (cause: ClosingCause) => void;
 }
@@ -160,6 +164,7 @@ export function restart_wire(hooks: RestartHooks, host: HTMLElement = document.b
   const throughDoor: boolean = door_isPresent(window.location.search);
   let self: string | null = null;
   let running: string | null = null;
+  let joblets: Array<{ number: number; line: string }> = [];
   let surfaces: SurfaceSeen[] = [];
   let asked: boolean = false;
 
@@ -196,6 +201,7 @@ export function restart_wire(hooks: RestartHooks, host: HTMLElement = document.b
       running,
       unsaved: hooks.unsaved(),
       others: surfaces.filter((surface: SurfaceSeen): boolean => surface.id !== self),
+      joblets,
     };
     const question: HTMLDivElement = restartQuestion_build(restartCuts_list(facts), (yes: boolean): void => { if (yes) void restart_send(); });
     host.querySelector('.build-mismatch')?.remove();
@@ -214,6 +220,7 @@ export function restart_wire(hooks: RestartHooks, host: HTMLElement = document.b
     attach_take: (attach): void => { self = attach.surface ?? null; },
     telemetry_take: (extra): void => {
       if (extra?.lane !== undefined) running = extra.lane.running?.line ?? null;
+      if (extra?.lane?.joblets !== undefined) joblets = extra.lane.joblets;
       if (extra?.surfaces !== undefined) surfaces = extra.surfaces;
     },
     closing_take: (cause: ClosingCause): void => {

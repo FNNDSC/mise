@@ -188,6 +188,21 @@ describe('packageWebRoot_find', () => {
 });
 
 describe('the daemon names its backend before a surface builds', () => {
+  it('answers /joblets with the joblets running, for the attach token only (#1273)', async () => {
+    const engine = stubEngine_create();
+    (engine as { joblets_running?: () => unknown[] }).joblets_running = () => [{ number: 1, line: 'pull pacs x', waiting: false }];
+    const daemon = new CalypsoDaemon({ engine, token: TOKEN });
+    const port: number = await daemon.start();
+    try {
+      const named = await http_get(`http://127.0.0.1:${port}/joblets?token=${TOKEN}`);
+      expect(named.status).toBe(200);
+      expect(JSON.parse(named.body)).toEqual({ joblets: [{ number: 1, line: 'pull pacs x', waiting: false }] });
+      expect((await http_get(`http://127.0.0.1:${port}/joblets?token=wrong`)).status).toBe(404);
+    } finally {
+      await daemon.stop();
+    }
+  });
+
   it('answers /backend with the backend for the attach token, and nothing for any other', async () => {
     const daemon = new CalypsoDaemon({ engine: stubEngine_create(), token: TOKEN, backend: 'null' });
     const port: number = await daemon.start();

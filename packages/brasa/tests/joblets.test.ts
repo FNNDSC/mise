@@ -89,6 +89,20 @@ describe('a joblet', () => {
     expect(holds).toEqual(['take []', 'give']);
   });
 
+  it('hands a model it answered with to its surface, and its progress too', async () => {
+    fake = async (): Promise<CommandEnvelope[]> => {
+      (await import('../src/core/sink.js')).sink_get().progress_write({ operation: 'pull', phase: 'watching', itemId: '1.2', status: 'done', current: 3, total: 3 } as never);
+      return [{ status: 'ok', rendered: '', model: { kind: 'gather.cohort', data: { series: [] } } }];
+    };
+    await lineOrigin_run('surface-a', () => joblet_start('look pull'));
+    expect((await ended(1)).state).toBe('done');
+    const model = heard.find((event: AmbientEvent): boolean => event.kind === 'envelope' && (event as { envelope: CommandEnvelope }).envelope.model?.kind === 'gather.cohort') as { origin?: string } | undefined;
+    expect(model?.origin).toBe('surface-a');
+    const progress = heard.find((event: AmbientEvent): boolean => event.kind === 'progress') as { origin: string; id: string; progress: { itemId?: string } } | undefined;
+    expect(progress).toMatchObject({ origin: 'surface-a', id: 'joblet-1', progress: { itemId: '1.2' } });
+    expect(runner_get()!.job_get(JOBLETS_SOURCE_ID, '1')?.progress).toEqual({ current: 3, total: 3 });
+  });
+
   it('fails with its exit status and its last error line', async () => {
     fake = async (_line: string, options: { ended?: (code: number) => void }): Promise<CommandEnvelope[]> => {
       options.ended?.(2);

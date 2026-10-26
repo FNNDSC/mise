@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from '@jest/globals';
 import { readFileSync } from 'node:fs';
-import { berth_behind, installed_read, porterVersion_read, versionReport_build, DOOR_PACKAGES } from '../../src/versions.js';
+import { berth_behind, berthJoblets_read, installed_read, porterVersion_read, versionReport_build, DOOR_PACKAGES } from '../../src/versions.js';
 
 const berth = (versions?: Record<string, string>) => ({ identity: 'chris@https://cube/api/v1/', url: 'ws://127.0.0.1:1', token: 't', ...(versions === undefined ? {} : { versions }) });
 
@@ -44,3 +44,25 @@ describe('porter --version', () => {
     expect(porterVersion_read()).toBe(manifest.version);
   });
 });
+
+describe('berthJoblets_read', () => {
+  const berth = { identity: 'chris@http://cube', url: 'ws://127.0.0.1:4100', token: 'tok' };
+
+  it('asks the daemon over http with its token, and says what it runs', async () => {
+    const asked: string[] = [];
+    const fetcher = (async (url: URL): Promise<Response> => {
+      asked.push(String(url));
+      return new Response(JSON.stringify({ joblets: [{ number: 1, line: 'pull x', waiting: false }] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    expect(await berthJoblets_read(berth, fetcher)).toEqual([{ number: 1, line: 'pull x', waiting: false }]);
+    expect(asked).toEqual(['http://127.0.0.1:4100/joblets?token=tok']);
+  });
+
+  it('knows of none from a daemon that does not answer, or answers otherwise', async () => {
+    const refusing = (async (): Promise<Response> => new Response('not found', { status: 404 })) as unknown as typeof fetch;
+    const gone = (async (): Promise<Response> => { throw new Error('ECONNREFUSED'); }) as unknown as typeof fetch;
+    expect(await berthJoblets_read(berth, refusing)).toEqual([]);
+    expect(await berthJoblets_read(berth, gone)).toEqual([]);
+  });
+});
+

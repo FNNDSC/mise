@@ -22,6 +22,7 @@ import { feedDag_handle, feedDiagram_handle } from './feed.diagram.js';
 import { session } from '../../session/index.js';
 import { Err, Ok, Result, errorStack } from '@fnndsc/fond';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Resolves an explicit feed specifier or, when omitted, the `feed_N` segment of
@@ -56,7 +57,7 @@ function feedSpecifier_join(words: string[]): string | undefined {
 /** Returns a command error for a failed feed resolution. */
 function feedResolution_error(usage: string): CommandEnvelope {
   const problem: { message: string } | undefined = errorStack.stack_pop();
-  process.exitCode = 1;
+  exitCode_set(1);
   const detail: string = problem?.message ?? 'Feed not found.';
   return envelope_error('', undefined, `${chalk.red(detail)}\n${chalk.gray(usage)}\n`);
 }
@@ -143,12 +144,12 @@ async function feedNote_handle(parsed: ParsedArgs): Promise<CommandEnvelope> {
       content: parsed.content as string | undefined,
     });
     if (result.ok) return envelope_ok(`${chalk.green(`Note updated on feed ${feedId}.`)}\n`);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Failed to update note.')}\n`);
   }
   const result: Result<FeedNote> = await feed_noteGet(feedId);
   if (result.ok) return envelope_ok(`${feedNote_render(result.value, feedId)}\n`);
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error('', undefined, `${chalk.red(`Failed to get note for feed ${feedId}.`)}\n`);
 }
 
@@ -170,14 +171,14 @@ async function feedComment_handle(parsed: ParsedArgs): Promise<CommandEnvelope> 
       content: parsed.content as string | undefined,
     });
     if (result.ok) return envelope_ok(`${chalk.green(`Comment added (id: ${result.value.id}) on feed ${feedId}.`)}\n`);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Failed to add comment.')}\n`);
   } else if (op === 'delete') {
     const commentId: number = parseInt(String(parsed._[3]), 10);
     if (isNaN(commentId)) { return envelope_error('', undefined, `${chalk.red('Usage: feed comment delete <feedId> <commentId>')}\n`); }
     const result: Result<boolean> = await feed_commentDelete(feedId, commentId);
     if (result.ok) return envelope_ok(`${chalk.green(`Comment ${commentId} deleted.`)}\n`);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Failed to delete comment.')}\n`);
   } else if (op === 'edit') {
     const commentId: number = parseInt(String(parsed._[3]), 10);
@@ -187,10 +188,10 @@ async function feedComment_handle(parsed: ParsedArgs): Promise<CommandEnvelope> 
       content: parsed.content as string | undefined,
     });
     if (result.ok) return envelope_ok(`${chalk.green(`Comment ${commentId} updated.`)}\n`);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Failed to update comment.')}\n`);
   }
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error('', undefined, `${chalk.red(`Unknown comment op: ${op}. Use add, delete, or edit.`)}\n`);
 }
 
@@ -227,7 +228,7 @@ async function feedRemove_handle(parsed: ParsedArgs): Promise<CommandEnvelope> {
   const { feed_delete } = await import('@fnndsc/cumin');
   const removed: Result<boolean> = await feed_delete(feedID);
   if (!removed.ok || !removed.value) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`feed rm: feed ${feedID} could not be removed`)}\n`);
   }
   return envelope_ok(`removed feed ${feedID}\n`, { kind: 'feed.rm', data: { feed: feedID } });
@@ -265,7 +266,7 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
       if (isNaN(feedId)) { return envelope_error('', undefined, `${chalk.red('Usage: feed comments <feedId>')}\n`); }
       const result: Result<FeedComment[]> = await feed_commentsList(feedId);
       if (result.ok) return envelope_ok(`${feedComments_render(result.value, feedId)}\n`);
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`Failed to list comments for feed ${feedId}.`)}\n`);
     } else if (subcommand === 'rm') {
       return await feedRemove_handle(parsed);
@@ -290,14 +291,14 @@ export async function builtin_feed(args: string[]): Promise<CommandEnvelope> {
     }
     if (subcommand === 'share') {
       // Retired: sharing is an access entry, and a shell has the verbs.
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red('feeds share is retired: setfacl -m o::r <feed> (or chmod o+r <feed>) makes a feed public; setfacl -m u:<user>:r or g:<group>:r shares it')}\n`);
     }
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`Unknown subcommand: ${subcommand}. Usage: feed <list|create|inspect|search|note|comments|comment|rm|tree|diagram>`)}\n`);
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`Feed error: ${msg}`)}\n`);
   }
 }

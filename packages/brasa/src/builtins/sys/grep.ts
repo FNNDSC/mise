@@ -27,6 +27,7 @@ import {
   answer_get, answerFilter_apply, answerNumbering_derive, answerOrdinals_attach, answerRow_key, answerRows_derive,
   handle_word, numberedFooter_render, type AnswerRow, type NumberedHandle,
 } from '../../session/answer.js';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** What a grep line asks. */
 export interface GrepAsk {
@@ -244,7 +245,7 @@ function listing_grep(listing: ListingModel & { source: string }, ask: GrepAsk, 
   const footer: string = numberedFooter_render(keptHandles);
   const rendered: string = `${lines.join('\n')}${lines.length > 0 ? '\n' : ''}${chalk.gray(`  ${tally}`)}\n${footer !== '' ? `${chalk.gray(`  ${footer}`)}\n` : ''}`;
   // grep's own status: no match is exit 1, and an empty listing replaces nothing.
-  if (leaves(kept).length === 0) process.exitCode = 1;
+  if (leaves(kept).length === 0) exitCode_set(1);
 
   const filtered: unknown = answerFilter_apply(listing.kind, listing.data, keptKeys);
   if (filtered === null || typeof filtered !== 'object') return envelope_ok(rendered);
@@ -272,7 +273,7 @@ async function text_grep(text: string, ask: GrepAsk, args: ReadonlyArray<string>
   const built = grepMatcher_build(ask);
   if (typeof built !== 'function') return envelope_error('', undefined, `${built.refused}\n`);
   const lines: string[] = text.replace(/\n$/, '').split('\n').filter((line: string): boolean => built(line) !== ask.invert);
-  if (lines.length === 0) process.exitCode = 1;
+  if (lines.length === 0) exitCode_set(1);
   return envelope_ok(ask.count ? `${lines.length}\n` : lines.length > 0 ? `${lines.join('\n')}\n` : '');
 }
 

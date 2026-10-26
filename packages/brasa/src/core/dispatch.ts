@@ -20,14 +20,14 @@ import { ENVELOPE_ORDER, PLAIN_ORDER, HELP_ORDER } from './commandOrder.js';
 
 
 
-import { stdin_set } from '../builtins/games/stdin.js';
-import { listingIn_set, type ListingModel } from './listing.js';
+import { stdinScope_run } from '../builtins/games/stdin.js';
+import { listingInScope_run, type ListingModel } from './listing.js';
 import { pipeHeadVariable_read, type PipeHeadReading } from './pipeHead.js';
 
 import { writeFileSync, appendFileSync } from 'fs';
 import chalk from 'chalk';
 import { error_stripDebugPrefix } from './errorText.js';
-import { exitCode_read, handler_runDirect } from './handlerRun.js';
+import { exitCode_read, handler_runDirect, exitCode_set } from './handlerRun.js';
 import { backendInstalled_get } from './backend.js';
 
 import { shellWords_expand } from '../lib/wildcard.js';
@@ -476,7 +476,7 @@ export async function pipe_execute(segments: string[]): Promise<CommandEnvelope>
   const head: PipeHeadReading = pipeHeadVariable_read(firstCommand);
   if (head !== null && 'refused' in head) {
     sink_get().err_write(`${chalk.red(head.refused)}\n`);
-    process.exitCode = 1;
+    exitCode_set(1);
     return { status: 'error', rendered: '' };
   }
   const first: CapturedOutput = head !== null ? head.output : await chellCommand_executeAndCapture(firstCommand);
@@ -493,17 +493,14 @@ export async function pipe_execute(segments: string[]): Promise<CommandEnvelope>
     const segment: string = segments[i];
     const word: string = segment.trim().split(/\s+/)[0] ?? '';
     if (word !== '' && builtinCommand_has(word)) {
-      stdin_set(currentInput.toString('utf-8'));
-      listingIn_set(listing_is(currentModel) ? currentModel as ListingModel : null);
-      try {
-        const captured: CapturedOutput = await chellCommand_executeAndCapture(segment);
-        currentInput = captured.buffer;
-        currentModel = captured.model;
-        if (listing_is(captured.model)) lastListing = captured.model;
-      } finally {
-        stdin_set(null);
-        listingIn_set(null);
-      }
+      // The segment reads its input from slots of its own, so a line that
+      // runs beside this one never takes this pipe's text or listing (#1273).
+      const captured: CapturedOutput = await stdinScope_run(currentInput.toString('utf-8'), async (): Promise<CapturedOutput> =>
+        await listingInScope_run(listing_is(currentModel) ? currentModel as ListingModel : null, async (): Promise<CapturedOutput> =>
+          await chellCommand_executeAndCapture(segment)));
+      currentInput = captured.buffer;
+      currentModel = captured.model;
+      if (listing_is(captured.model)) lastListing = captured.model;
       continue;
     }
     capability_require('pipeSegments', 'this surface cannot run pipeline segments');
@@ -548,7 +545,7 @@ export async function command_executeToEnvelope(
     // The refusal is the operator's to read, not the stack's: the debug
     // prefix names the function that pushed it, which tells them nothing.
     if (lastError) sink_get().err_write(`${chalk.red(error_stripDebugPrefix(lastError.message))}\n`);
-    process.exitCode = 1;
+    exitCode_set(1);
     return { status: 'error', rendered: '' };
   }
   const words: ShellWord[] = referenced.value;

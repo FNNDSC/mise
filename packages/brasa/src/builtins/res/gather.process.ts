@@ -30,6 +30,7 @@ import { builtin_pipeline } from './pipeline.js';
 import { newFeed_cacheAdd, run_follow } from '../feedCreation.js';
 import { cohort_read, cohort_write, cohortFolders_resolve, cohortModel_wrap, type GatherFeed, type GatherMember, type GatherState } from './gather.store.js';
 import { ambient_publish } from '../../core/ambient.js';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** How `gather process` was asked for. */
 export interface GatherProcessArgs {
@@ -84,7 +85,7 @@ export function gatherProcessArgs_parse(words: ReadonlyArray<string>): GatherPro
  * @returns The error envelope.
  */
 function process_refuse(message: string): CommandEnvelope {
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error('', undefined, `${chalk.red(`gather process: ${message}`)}\n`);
 }
 

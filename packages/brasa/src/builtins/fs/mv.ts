@@ -11,6 +11,7 @@ import { destination_ask, destination_missing, operands_fix } from './destinatio
 import { pathEntry_find, entry_isFolder } from './entries.js';
 import { mv_render, vfs_fail, vfsRefusal_text, type VFSDispatcher, type VfsOutcome } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** Outcome of one move source, for the envelope model. */
 export interface MvOutcome {
@@ -56,7 +57,7 @@ export async function builtin_mv(args: string[]): Promise<CommandEnvelope> {
       verb: 'mv', commit: 'MOVE HERE', sources, wantsDirectory: true,
     });
     if (chosen === '') {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(destination_missing('mv'))}\n`);
     }
     return mv_run({ sources, dest: chosen });
@@ -72,7 +73,7 @@ export async function builtin_mv(args: string[]): Promise<CommandEnvelope> {
       verb: 'mv', commit: 'MOVE HERE', sources,
     });
     if (chosen === '') {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(destination_missing('mv'))}\n`);
     }
     return mv_run({ sources, dest: chosen });

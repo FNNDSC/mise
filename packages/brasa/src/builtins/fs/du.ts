@@ -13,6 +13,7 @@ import { scan_do, type CLIscan, type ScanRecord } from '@fnndsc/chili/path/pathC
 import { bytes_format } from '@fnndsc/chili/commands/fs/upload.js';
 import { envelope_error, type ListingItem, type CommandEnvelope } from '@fnndsc/menu';
 import type { Result } from '@fnndsc/fond';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Parsed flags controlling `du` output.
@@ -228,7 +229,7 @@ export async function builtin_du(args: string[]): Promise<CommandEnvelope> {
   const parsed: ParsedArgs = commandArgs_process(depthOption_normalize(args), { booleanLongOptions: DU_BOOLEAN_LONG_OPTIONS });
   const unknown: string | null = optionsUnknown_refusal('du', parsed, DU_OPTIONS);
   if (unknown !== null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(unknown)}\n`);
   }
   const opts: DuOptions = duOptions_parse(parsed);

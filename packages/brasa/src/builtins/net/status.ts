@@ -24,6 +24,7 @@ import { pacsQuery_createAndWait, queryExpr_parse } from './query.js';
 import { queryId_extractFromFolder } from '@fnndsc/salsa';
 import { pacsServer_resolve } from './pacsUtils.js';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** Width of the per-series fill bar, in characters. */
 const BAR_WIDTH: number = 20;
@@ -203,19 +204,19 @@ export async function builtin_pacsStatus(args: string[]): Promise<CommandEnvelop
 
   const target: string | undefined = args.find((a: string) => !a.startsWith('--'));
   if (!target) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('pacs status: Missing target. Usage: pacs status <expression | path | queryId>')}\n`);
   }
 
   const pacsserver: string | null = await pacsServer_resolve(null);
   if (!pacsserver) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('pacs status: No PACS server available. Set one with: pacs connect <id>')}\n`);
   }
 
   const { queryId, reason } = await statusTarget_resolve(target, pacsserver);
   if (queryId === null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`pacs status: ${reason}`)}\n`);
   }
 
@@ -223,7 +224,7 @@ export async function builtin_pacsStatus(args: string[]): Promise<CommandEnvelop
   const reportResult = await pacsRetrieve_statusForQuery(queryId);
   spinner.stop();
   if (!reportResult.ok) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`pacs status: Failed to build status report for query ${queryId}.`)}\n`);
   }
 

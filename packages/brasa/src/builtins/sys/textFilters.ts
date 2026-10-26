@@ -22,6 +22,7 @@ import { stdin_take } from '../games/stdin.js';
 import { surface_get } from '../../core/surface.js';
 import { vfsDispatcher_get } from '../../core/filesystem.js';
 import { path_resolve } from '../utils.js';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** One text a filter reads: the pipe's, or a file's under its name. */
 export interface FilterSource {
@@ -105,16 +106,16 @@ async function filter_run<T>(
   answer: (ask: T, sources: FilterSource[]) => string,
 ): Promise<CommandEnvelope> {
   if (parsed.refused !== null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${parsed.refused}\n`);
   }
   if (parsed.foreign !== null) return foreign_run(command, args, parsed.foreign, parsed.operands);
   const read = await sources_read(command, parsed.operands);
   if ('refusal' in read) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${read.refusal}\n`);
   }
-  if (read.errors !== '') process.exitCode = 1;
+  if (read.errors !== '') exitCode_set(1);
   const out: string = read.sources.length > 0 || read.errors === '' ? answer(parsed.ask, read.sources) : '';
   return read.errors === '' ? envelope_ok(out) : { ...envelope_ok(out), status: out === '' ? 'error' : 'ok', renderedErr: chalk.red(read.errors) };
 }
@@ -133,7 +134,7 @@ async function foreign_run(command: string, args: ReadonlyArray<string>, flag: s
   const surface = surface_get();
   const text: string | null = stdin_take();
   if (!surface.capabilities.pipeSegments || operands.length > 0 || text === null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     const why: string = operands.length > 0 || text === null
       ? `the builtin does not take it, and a system ${command} cannot read the session's files`
       : `the builtin does not take it, and this surface runs no system ${command} (command ${command} asks for one)`;

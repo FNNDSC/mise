@@ -23,6 +23,7 @@ import { files_path_isDirectory, files_listRecursive, type FsItem } from '@fnnds
 import { directory_archive, type ArchiveResult } from './archive.js';
 import { type FileDeliverResult, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import { errorStack } from '@fnndsc/fond';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Asks the issuing surface to confirm a local download overwrite or merge.
@@ -61,7 +62,7 @@ async function surfaceDownload_run(
   destination: string,
 ): Promise<CommandEnvelope> {
   if (!surface.capabilities.fileDelivery) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined,
       `${chalk.red('download: this surface cannot receive a file, and the engine will not write to its own host.')}\n`);
   }
@@ -101,7 +102,7 @@ async function surfaceDownload_run(
 
     const archived: ArchiveResult | null = await directory_archive(source);
     if (!archived) {
-      process.exitCode = 1;
+      exitCode_set(1);
       const reasons: string = errorStack.stack_getAll?.()
         .map((entry: unknown): string =>
           typeof entry === 'string' ? entry : ((entry as { message?: string }).message ?? String(entry)))
@@ -136,7 +137,7 @@ async function surfaceDownload_run(
     rendered += `${chalk.green(`✓ Delivered ${delivered.length} file(s)`)}\n`;
   } else {
     rendered += `${chalk.yellow(`⚠ Delivered ${delivered.length} file(s), ${failed.length} failed`)}\n`;
-    process.exitCode = 1;
+    exitCode_set(1);
   }
   rendered += [...delivered, ...failed].join('\n');
   if (delivered.length > 0 || failed.length > 0) rendered += '\n';
@@ -212,7 +213,7 @@ export async function builtin_download(args: string[]): Promise<CommandEnvelope>
     return envelope_ok(rendered);
   } catch (e: unknown) {
     const msg: string = e instanceof Error ? e.message : String(e);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`Download error: ${msg}`)}\n`);
   }
 }

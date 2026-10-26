@@ -17,6 +17,7 @@ import { computeList_render } from '@fnndsc/chili/views/compute.js';
 import { table_render } from '@fnndsc/chili/screen/screen.js';
 import { errorStack, type Result } from '@fnndsc/fond';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Handles compute commands.
@@ -33,13 +34,13 @@ export async function builtin_compute(args: string[]): Promise<CommandEnvelope> 
       const listResult: Result<ComputeListResult> = await computeResources_fetchList();
       if (!listResult.ok) {
         const lastError = errorStack.stack_pop();
-        process.exitCode = 1;
+        exitCode_set(1);
         return envelope_error('', undefined, `${chalk.red(lastError ? lastError.message : 'compute list failed')}\n`);
       }
       return envelope_ok(`${computeList_render(listResult.value.resources, { table: !!parsed.table, csv: !!parsed.csv })}\n`);
     } catch (e: unknown) {
       const msg: string = e instanceof Error ? e.message : String(e);
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`compute error: ${msg}`)}\n`);
     }
   }
@@ -56,6 +57,6 @@ export async function builtin_compute(args: string[]): Promise<CommandEnvelope> 
     return builtin_compute(['list', '--search', parsed._[1] ?? '']);
   }
 
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error(`${chalk.red(`Unknown subcommand: ${subcommand}. Usage: compute <list|search|inspect>`)}\n`);
 }

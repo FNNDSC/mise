@@ -12,6 +12,7 @@ import type { ListingCache } from '../../core/backend.js';
 import { session } from '../../session/index.js';
 import { vfs, type VfsListing } from '../../lib/vfs/vfs.js';
 import { envelope_error, type ListingItem, type CommandEnvelope } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** Valid sort fields for ls. */
 type LsSortField = 'name' | 'size' | 'date' | 'owner';
@@ -247,7 +248,7 @@ export async function ls_run(runOptions: LsOptions): Promise<CommandEnvelope> {
   // A failed listing is a failed command: aggregating error envelopes into an
   // ok status would let `ls missing-dir` exit 0.
   if (anyFailed) {
-    process.exitCode = 1;
+    exitCode_set(1);
   }
   // The long form is a table: each entry wears the handle an index expands
   // to (#1099), and a footer says what is numbered. The short grid stays the

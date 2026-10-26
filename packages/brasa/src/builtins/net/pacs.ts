@@ -18,6 +18,7 @@ import { builtin_pull } from '../fs/pull.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import { sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { errorStack } from '@fnndsc/fond';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Streams the list of registered PACS servers, marking the active one.
@@ -133,7 +134,7 @@ export async function builtin_pacs(args: string[]): Promise<CommandEnvelope> {
       if (!target) {
         const active: string | null = await chrisContext.PACSserver_get();
         if (!(await servers_print(active))) {
-          process.exitCode = 1;
+          exitCode_set(1);
           return envelope_error('');
         }
         return envelope_ok('');
@@ -144,7 +145,7 @@ export async function builtin_pacs(args: string[]): Promise<CommandEnvelope> {
         return envelope_ok('');
       }
       sink_errLine(chalk.red(`pacs connect: Failed to set server '${target}'`));
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('');
     }
 
@@ -155,14 +156,14 @@ export async function builtin_pacs(args: string[]): Promise<CommandEnvelope> {
         return envelope_ok('');
       }
       sink_errLine(chalk.red('pacs disconnect: Failed to clear PACS server context.'));
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('');
     }
 
     case 'list': {
       const active: string | null = await chrisContext.PACSserver_get();
       if (!(await servers_print(active))) {
-        process.exitCode = 1;
+        exitCode_set(1);
         return envelope_error('');
       }
       // The same question, answered twice in one breath: a terminal reads
@@ -188,7 +189,7 @@ export async function builtin_pacs(args: string[]): Promise<CommandEnvelope> {
       sink_errLine(chalk.red(`pacs: Unknown subcommand '${subcommand}'`));
       sink_dataLine(chalk.gray('  Subcommands: connect, disconnect, list, query, pull, status'));
       sink_dataLine(chalk.gray('  Try: help pacs'));
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('');
   }
 }

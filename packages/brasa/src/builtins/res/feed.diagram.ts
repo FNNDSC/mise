@@ -23,6 +23,7 @@ import { signalflowDoc_build } from './feed.tree.signalflow.js';
 import { DAG_MODEL_KINDS, dagNodeStatusSchema, type FeedDagModel, type FeedIndexingModel, type DagNodeStatus, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import type { FeedNode } from '@fnndsc/salsa';
 import { collapse_build, type CollapsedNode } from './feed.tree.collapse.js';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** Supported emit dialects. */
 export type DiagramDialect = 'signalflow';
@@ -39,7 +40,7 @@ export async function feedDiagram_handle(feedId: number, dialect: DiagramDialect
   if ((await feedGraphData_ensure(feedId)) === 'pending') return feedIndexing_envelope(feedId);
   const graph: FeedGraph | null = feedGraph_build(feedId);
   if (!graph) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`Feed ${feedId} not found.`)}\n`);
   }
 
@@ -213,12 +214,12 @@ export async function feedDag_handle(
   if ((await feedGraphData_ensure(feedId)) === 'pending') return feedIndexing_envelope(feedId);
   const graph: FeedGraph | null = feedGraph_build(feedId);
   if (!graph) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`Feed ${feedId} not found.`)}\n`);
   }
   const rendered: FeedTreeRender = feedTree_render(graph, focusId, maxNodes, flat);
   if (rendered.error) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(rendered.error)}\n`);
   }
   return envelope_ok(rendered.rendered, { kind: DAG_MODEL_KINDS.feedDag, data: feedDagModel_build(graph) });

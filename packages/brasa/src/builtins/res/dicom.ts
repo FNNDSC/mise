@@ -38,6 +38,7 @@ import { DICOM_MODEL_KINDS, DICOM_TAG_GROUPS, type DicomSeriesModel, type DicomT
 import { commandArgs_process, path_resolve, type ParsedArgs } from '../utils.js';
 import { args_checkHasHelpFlag, help_render } from '../help.js';
 import type { Result } from '@fnndsc/fond';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** The most files a folder's tags are read from before sampling evenly. */
 export const DCM_TAGS_FILE_CAP: number = 512;
@@ -77,7 +78,7 @@ export async function builtin_dcm(args: string[]): Promise<CommandEnvelope> {
  * An error envelope carrying the usage line.
  */
 function usage_error(reason: string): CommandEnvelope {
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error('', undefined, `${chalk.red(reason)}\n${chalk.gray('Usage: dcm series <folder> | dcm tags <file|folder> [--all] [--filter <text>]')}\n`);
 }
 
@@ -136,7 +137,7 @@ async function dcmSeries_handle(args: string[]): Promise<CommandEnvelope> {
   const annotationRoot: string | undefined = await annotationRoot_get();
   const summary: Result<DicomSeriesSummary> = await dicomSeries_summarize(folder, annotationRoot !== undefined ? { annotationRoot } : {});
   if (!summary.ok) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`dcm series: ${folder}: not a readable DICOM folder`)}\n`);
   }
   const model: DicomSeriesModel = summary.value;
@@ -165,7 +166,7 @@ async function dcmTags_handle(args: string[]): Promise<CommandEnvelope> {
   const resolved: string = await path_physical(await path_resolve(target));
   const model: Result<DicomTagsModel> = await tagsModel_read(resolved);
   if (!model.ok) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`dcm tags: ${resolved}: not a readable DICOM file or folder`)}\n`);
   }
   return envelope_ok(tags_render(model.value, options), { kind: DICOM_MODEL_KINDS.tags, data: model.value });

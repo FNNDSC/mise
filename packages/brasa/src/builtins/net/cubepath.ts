@@ -21,6 +21,7 @@ import {
   series_cubePathGet,
 } from './pacsUtils.js';
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Resolves CUBE FS paths and file counts for all series under one or more PACS VFS paths.
@@ -50,13 +51,13 @@ export async function builtin_cubepath(args: string[]): Promise<CommandEnvelope>
   }
 
   if (positional.length === 0) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('cubepath: Missing path. Usage: cubepath <vfs-path> [...]')}\n`);
   }
 
   const pacsIdentifier: string | null = await pacsServer_resolve(pacsserverOverride);
   if (!pacsIdentifier) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('cubepath: No PACS server available. Set one with: pacs connect <id>')}\n`);
   }
 
@@ -76,13 +77,13 @@ export async function builtin_cubepath(args: string[]): Promise<CommandEnvelope>
   }
 
   if (allSeries.length === 0) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${errOut}${chalk.yellow('cubepath: No series found under that path.')}\n`);
   }
 
   const client: Client | null = await session.connection.client_get();
   if (!client) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${errOut}${chalk.red('cubepath: Not connected to ChRIS.')}\n`);
   }
 

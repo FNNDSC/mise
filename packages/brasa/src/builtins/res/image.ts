@@ -26,6 +26,7 @@ import { surface_get } from '../../core/surface.js';
 import { series_render } from './dicom.js';
 import { thumbnail_render } from './thumbnail.js';
 import type { Result } from '@fnndsc/fond';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** Path endings a volume renderer answers to. */
 const VOLUME_PATTERN: RegExp = /\.(nii|nii\.gz|mgz|mgh)$/i;
@@ -61,7 +62,7 @@ export async function builtin_image(args: string[]): Promise<CommandEnvelope> {
   const annotationRoot: string | undefined = await annotationRoot_get();
   const summary: Result<DicomSeriesSummary> = await dicomSeries_summarize(folder, annotationRoot !== undefined ? { annotationRoot } : {});
   if (!summary.ok) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`image: ${target}: not a readable DICOM series, study, or volume`)}\n`);
   }
   const series: DicomSeriesModel = summary.value;

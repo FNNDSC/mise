@@ -9,6 +9,7 @@ import { CLIoptions } from '@fnndsc/chili/utils/cli.js';
 import { commandArgs_process } from './utils.js';
 import { PluginContextGroupHandler } from '@fnndsc/chili/plugins/pluginGroupHandler.js';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../core/handlerRun.js';
 
 /**
  * Handles the 'parametersofplugin' builtin command.
@@ -43,7 +44,7 @@ export async function builtin_parametersofplugin(args: string[]): Promise<Comman
 
     } catch (error: unknown) {
         const msg: string = error instanceof Error ? error.message : String(error);
-        process.exitCode = 1;
+        exitCode_set(1);
         return envelope_error('', undefined, `${chalk.red(`Error in parametersofplugin: ${msg}`)}\n`);
     }
 }

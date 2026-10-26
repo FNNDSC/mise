@@ -61,6 +61,7 @@ async function bytes_read(target: string): Promise<Result<Buffer>> {
   return read_said(await vfsDispatcher_get().readBinary(target), 'readBinary', target);
 }
 import { envelope_ok, envelope_error, type CommandEnvelope } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** Delay before a slow group projection becomes visible as progress. */
 const GROUP_PROGRESS_DELAY_MS: number = 300;
@@ -361,7 +362,7 @@ export async function cat_run(parsed: CatArguments): Promise<CommandEnvelope> {
       renderedErr += `${chalk.red(`cat: ${pathArg}: ${error_stripDebugPrefix(message)}`)}\n`;
       outcomes.push({ path: pathArg, ok: false, binary: false });
       anyFailed = true;
-      process.exitCode = 1;
+      exitCode_set(1);
     }
   }
   const hasTextTarget: boolean = !parsed.binaryMode
@@ -403,7 +404,7 @@ export async function cat_run(parsed: CatArguments): Promise<CommandEnvelope> {
         renderedErr += `${chalk.red(`cat: ${pathArg}: ${error_stripDebugPrefix(message)}`)}\n`;
         outcomes.push({ path: pathArg, ok: false, binary: true });
         anyFailed = true;
-        process.exitCode = 1;
+        exitCode_set(1);
         continue;
       }
 
@@ -412,7 +413,7 @@ export async function cat_run(parsed: CatArguments): Promise<CommandEnvelope> {
         renderedErr += `${chalk.red(`cat: ${pathArg}: ${error ? error_stripDebugPrefix(error.message) : 'Unknown error'}`)}\n`;
         outcomes.push({ path: pathArg, ok: false, binary: true });
         anyFailed = true;
-        process.exitCode = 1;
+        exitCode_set(1);
         continue;
       }
 
@@ -429,7 +430,7 @@ export async function cat_run(parsed: CatArguments): Promise<CommandEnvelope> {
         renderedErr += `${chalk.red(`cat: ${pathArg}: ${error_stripDebugPrefix(message)}`)}\n`;
         outcomes.push({ path: pathArg, ok: false, binary: false });
         anyFailed = true;
-        process.exitCode = 1;
+        exitCode_set(1);
         continue;
       }
 
@@ -438,7 +439,7 @@ export async function cat_run(parsed: CatArguments): Promise<CommandEnvelope> {
         renderedErr += `${chalk.red(`cat: ${pathArg}: ${error ? error_stripDebugPrefix(error.message) : 'Unknown error'}`)}\n`;
         outcomes.push({ path: pathArg, ok: false, binary: false });
         anyFailed = true;
-        process.exitCode = 1;
+        exitCode_set(1);
         continue;
       }
 

@@ -45,6 +45,7 @@ import { newFeed_cacheAdd, run_follow } from '../feedCreation.js';
 import { cohort_read, cohortFolders_note, cohortModel_wrap } from '../res/gather.store.js';
 import { ambient_publish } from '../../core/ambient.js';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 interface PullPathResolution {
   paths: string[];
@@ -286,13 +287,13 @@ function pullSummary_print(allTasks: RetrieveTask[], totalFiringErrors: number):
     }
     // Only a real failure fails the command.
     if (failures.length > 0) {
-      process.exitCode = 1;
+      exitCode_set(1);
     }
   }
 
   if (totalFiringErrors > 0) {
     sink_dataLine(chalk.red(`  ${totalFiringErrors} retrieve(s) were never fired — re-run pull to fetch them.`));
-    process.exitCode = 1;
+    exitCode_set(1);
   }
 
   pullProgress_complete(allTasks, failures.length > 0 || totalFiringErrors > 0, unconfirmed.length);
@@ -400,13 +401,13 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
 
   if (parseError !== null) {
     sink_errLine(chalk.red(`pull: ${parseError}.`));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
 
   if (nowait && newFeedTitle !== null) {
     sink_errLine(chalk.red('pull: --new-feed cannot be combined with --detach.'));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
 
@@ -414,14 +415,14 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
     sink_errLine(chalk.red(
       'pull: No paths specified. Usage: pull [--detach] [--retry N] [--new-feed <title>] <vfs-path> [...]',
     ));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
 
   const pacsIdentifier: string | null = await pacsServer_resolve();
   if (!pacsIdentifier) {
     sink_errLine(chalk.red('pull: No PACS server available. Set one with: pacs connect <id>'));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
   const pacsserver: string = pacsIdentifier;
@@ -442,14 +443,14 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
 
   if (allTasks.length === 0) {
     sink_errLine(chalk.red('pull: No series to retrieve.'));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
 
   const client: Client | null = await session.connection.client_get();
   if (!client) {
     sink_errLine(chalk.red('pull: Not connected to ChRIS.'));
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('');
   }
 
@@ -470,7 +471,7 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
         sink_dataLine(`${t.seriesUID} ${t.retrieveId}`);
       } else {
         sink_dataLine(`${t.seriesUID} ERROR`);
-        process.exitCode = 1;
+        exitCode_set(1);
       }
     }
     return envelope_ok('');
@@ -499,7 +500,7 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
       sink_errLine(chalk.red(
         'pull: New feed not created because the requested selection was incomplete.',
       ));
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('');
     }
     const incomplete: boolean = totalFiringErrors > 0 || allTasks.some(
@@ -507,12 +508,12 @@ export async function builtin_pull(args: string[]): Promise<CommandEnvelope> {
     );
     if (incomplete) {
       sink_errLine(chalk.red('pull: New feed not created because retrieval was incomplete.'));
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('');
     }
     const feedResult: PulledFeedResult | null = await pulledFeed_create(newFeedTitle, allTasks, client);
     if (feedResult === null) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('');
     }
     created = feedResult;

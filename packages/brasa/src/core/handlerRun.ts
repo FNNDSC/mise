@@ -3,16 +3,60 @@
  *
  * @module
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { CommandEnvelope } from '@fnndsc/menu';
 import type { CommandHandler } from './commandRegistry.js';
 
+/** A line's own exit status: what its commands set, and only they read. */
+interface ExitStatus {
+  code: number | undefined;
+}
+
 /**
- * Reads the current process exit code as a number.
+ * The exit status of the line running on this async path. Lines that run
+ * at once (a read beside a writer, a background job) each have their own,
+ * so one's failure never marks another's (#1273). Outside a line (a test
+ * calling a handler, chell's own boot) the process's exit code is used.
+ */
+const exitScope: AsyncLocalStorage<ExitStatus> = new AsyncLocalStorage<ExitStatus>();
+
+/**
+ * Reads the exit status as a number: the running line's own, else the
+ * process's.
  *
  * @returns The exit code, treating an unset code as zero.
  */
 export function exitCode_read(): number {
-  return typeof process.exitCode === 'number' ? process.exitCode : 0;
+  const line: ExitStatus | undefined = exitScope.getStore();
+  const code: number | string | null | undefined = line !== undefined ? line.code : process.exitCode;
+  return typeof code === 'number' ? code : 0;
+}
+
+/**
+ * Sets the exit status: the running line's own, else the process's.
+ *
+ * @param code - The status, or undefined to clear it.
+ */
+export function exitCode_set(code: number | undefined): void {
+  const line: ExitStatus | undefined = exitScope.getStore();
+  if (line !== undefined) line.code = code;
+  else process.exitCode = code;
+}
+
+/**
+ * Runs a line with an exit status of its own, then leaves that status as
+ * the process's, so a one-shot `chell -c` still exits with its line's code.
+ *
+ * @param operation - The line's work.
+ * @returns What the work returned.
+ */
+export async function exitScope_run<T>(operation: () => Promise<T>): Promise<T> {
+  const line: ExitStatus = { code: undefined };
+  try {
+    return await exitScope.run(line, operation);
+  } finally {
+    process.exitCode = line.code;
+  }
 }
 
 /**

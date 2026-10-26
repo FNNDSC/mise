@@ -12,6 +12,7 @@ import { feedGraphData_ensure, feedGraph_build, FeedGraph } from '@fnndsc/salsa'
 import { feedTree_render, FeedTreeRender } from './feed.tree.render.js';
 import { feedIndexing_envelope } from './feed.diagram.js';
 import { type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * Handles `feed tree <feedId> [--focus <id>] [--max-nodes <n>] [--flat]`. Prepares the
@@ -34,13 +35,13 @@ export async function feedTree_handle(
 
   const graph: FeedGraph | null = feedGraph_build(feedId);
   if (!graph) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`Feed ${feedId} not found.`)}\n`);
   }
 
   const result: FeedTreeRender = feedTree_render(graph, focusId, maxNodes, flat);
   if (result.error) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(result.error)}\n`);
   }
 

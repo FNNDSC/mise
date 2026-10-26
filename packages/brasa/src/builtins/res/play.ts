@@ -27,7 +27,7 @@ import { session } from '../../session/index.js';
 import { sink_dataLine, sink_errLine } from '../../core/sink.js';
 import { commandCancellation_enable, commandCancellation_signalGet } from '../../core/cancellation.js';
 import { backendInstalled_get } from '../../core/backend.js';
-import { exitCode_read } from '../../core/handlerRun.js';
+import { exitCode_read, exitCode_set } from '../../core/handlerRun.js';
 import { reference_changedBy, reference_isReserved, reference_resolve, unresolvedStands_run, type LinesPassed } from '../../core/expansion.js';
 import { pipes_parse } from '../../core/preprocess.js';
 import { semicolons_parse } from '../../lib/semicolonParser.js';
@@ -348,21 +348,21 @@ export function playArgs_parse(args: string[]): PlayArgs {
 export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   const parsed: PlayArgs = playArgs_parse(args);
   if (parsed.parseError !== null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`play: ${parsed.parseError}`)}\n`);
   }
   if (parsed.manifest === null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Usage: play <manifest> [--param NAME=value]... [--pace <duration>] [--dry-run]')}\n`);
   }
   if (depth >= NESTING_MAX) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`play: ${parsed.manifest} is nested too deep — a manifest may play a manifest, not a chain of them.`)}\n`);
   }
 
   const source: Result<{ text: string; from: string }> = await manifestText_read(parsed.manifest);
   if (!source.ok) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`play: cannot read ${parsed.manifest} — no such manifest in the session's filesystem, and none beside the engine.`)}\n`);
   }
 
@@ -375,7 +375,7 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
     (param: ManifestParam): boolean => reference_isReserved(param.name),
   );
   if (shadowed.length > 0) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(
       `play: ${parsed.manifest} declares ${shadowed.map((param: ManifestParam): string => `@param ${param.name}`).join(', ')}, which the session already answers for.`,
     )}\n`);
@@ -395,12 +395,12 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   for (const [key, value] of parsed.params) values.set(key, value);
 
   if (manifest.answers !== null && !VARIABLE_NAME.test(manifest.answers)) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`play: ${parsed.manifest} answers '${manifest.answers}', which is not a variable's name.`)}\n`);
   }
 
   if (missing.length > 0) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(
       `play: ${manifest.name ?? parsed.manifest} needs ${missing.map((name: string): string => `--param ${name}=…`).join(' ')}`,
     )}\n`);
@@ -452,7 +452,7 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
       // A line failed when it refused or set the exit status. The status is
       // cleared before each line, so one an earlier command left set (before
       // the play, or by a line that passed) is never this line's.
-      process.exitCode = 0;
+      exitCode_set(0);
       const envelopes: CommandEnvelope[] = await line_execute(line.text);
       ran += 1;
       const refused: boolean = envelopes.some((envelope: CommandEnvelope): boolean => envelope.status === 'error')
@@ -488,7 +488,7 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   }
 
   // A play that ran through leaves the session's status as it found it.
-  if (stoppedAt === null) process.exitCode = exitBeforePlay;
+  if (stoppedAt === null) exitCode_set(exitBeforePlay);
 
   const outcome: PlayOutcome = {
     manifest: parsed.manifest,
@@ -501,7 +501,7 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   const took: string = `${Math.round(outcome.elapsedMs / 1000)}s`;
 
   if (stoppedAt !== null) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`play: ${parsed.manifest} stopped at line ${stoppedAt} after ${ran} of ${manifest.lines.length} lines (${took})`)}\n`);
   }
 
@@ -511,7 +511,7 @@ export async function builtin_play(args: string[]): Promise<CommandEnvelope> {
   // so `X=$(play f)` holds what the flow made, as a verb's capture would.
   if (!parsed.dryRun && manifest.answers !== null) {
     if (answered === undefined) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red(`play: ${parsed.manifest} answers ${manifest.answers}, and ${manifest.answers} was never set`)}\n`);
     }
     return envelope_ok(

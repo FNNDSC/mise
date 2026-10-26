@@ -15,6 +15,7 @@
  * @module
  */
 import { envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** The options other echos take at the front of the line, which this one refuses so a word is never silently eaten. */
 const ECHO_OPTIONS: ReadonlySet<string> = new Set(['-n', '-e', '-E']);
@@ -34,7 +35,7 @@ type Formatted = { text: string } | { refused: string };
 export async function builtin_echo(args: string[]): Promise<CommandEnvelope> {
   const option: string | undefined = args[0];
   if (option !== undefined && ECHO_OPTIONS.has(option)) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `echo: ${option}: echo takes no options; printf FORMAT [ARG]… writes anything else\n`);
   }
   return envelope_ok(`${args.join(' ')}\n`);
@@ -157,12 +158,12 @@ export function printf_format(format: string, args: string[]): Formatted {
 export async function builtin_printf(args: string[]): Promise<CommandEnvelope> {
   const [format, ...rest] = args;
   if (format === undefined) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, 'printf: give a format: printf FORMAT [ARG]…\n');
   }
   const formatted: Formatted = printf_format(format, rest);
   if ('refused' in formatted) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${formatted.refused}\n`);
   }
   // A session writes whole lines; there is no prompt to hold a line open for.

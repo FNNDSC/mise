@@ -7,6 +7,7 @@
 import { CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import { apropos_search } from '../helpSections.js';
 import { builtin_help, helpLookup_make } from '../help.js';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /**
  * `apropos <word>`: every command, section and Shell topic whose name,
@@ -20,7 +21,7 @@ export async function builtin_apropos(args: string[]): Promise<CommandEnvelope> 
   if (word === '') return envelope_error('', undefined, 'apropos: a word to look for: apropos <word>\n');
   const hits: string[] = apropos_search(word, helpLookup_make());
   if (hits.length === 0) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_ok(`${word}: nothing appropriate.\n`);
   }
   return envelope_ok(`${hits.join('\n')}\n`);

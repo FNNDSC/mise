@@ -7,6 +7,7 @@ import { context_getSingle } from '@fnndsc/salsa';
 import { currentIdentity_get, type ChrisGroup, type ChrisIdentity, type SingleContext } from '@fnndsc/cumin';
 import type { Result } from '@fnndsc/fond';
 import { envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/menu';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 /** A Unix-style group entry projected from CUBE identity data. */
 interface PosixGroupIdentity {
@@ -28,7 +29,7 @@ interface PosixGroupIdentity {
 export async function builtin_id(_args: string[]): Promise<CommandEnvelope> {
   const result: Result<ChrisIdentity> = await currentIdentity_get();
   if (!result.ok) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error(`${chalk.gray('(identity unavailable)')}\n`);
   }
 
@@ -82,7 +83,7 @@ export async function builtin_whoami(_args: string[]): Promise<CommandEnvelope> 
       data: { user: context.user },
     });
   }
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error(`${chalk.gray('(not connected)')}\n`);
 }
 
@@ -101,6 +102,6 @@ export async function builtin_whereami(_args: string[]): Promise<CommandEnvelope
       data: { url: context.URL },
     });
   }
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error(`${chalk.gray('(not connected)')}\n`);
 }

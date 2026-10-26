@@ -17,6 +17,7 @@ import { file_replaceContent, EditResult } from '@fnndsc/chili/commands/fs/edit.
 import { listCache_get } from '@fnndsc/cumin';
 import { path_isEditable, type CommandEnvelope, envelope_ok, envelope_error } from '@fnndsc/menu';
 import { errorStack, Result, StackMessage } from '@fnndsc/fond';
+import { exitCode_set } from '../../core/handlerRun.js';
 
 
 /** What `edit` says when the surface opened an editor that stays open. */
@@ -31,7 +32,7 @@ export const EDIT_OPENED_LINE: string = '(opened in the editor)';
  */
 export async function builtin_edit(args: string[]): Promise<CommandEnvelope> {
   if (args.length === 0) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Usage: edit <file>')}\n`);
   }
 
@@ -42,7 +43,7 @@ export async function builtin_edit(args: string[]): Promise<CommandEnvelope> {
     capability_require('localEdit', 'edit: this surface cannot open a local editor.');
   } catch (err: unknown) {
     const message: string = err instanceof CapabilityError ? err.message : String(err);
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(message)}\n`);
   }
 
@@ -50,7 +51,7 @@ export async function builtin_edit(args: string[]): Promise<CommandEnvelope> {
   const ext: string = extname(target).toLowerCase();
 
   if (!path_isEditable(target)) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`edit: ${args[0]}: binary file (${ext}), cannot edit as text`)}\n`);
   }
 
@@ -67,7 +68,7 @@ export async function builtin_edit(args: string[]): Promise<CommandEnvelope> {
   const catResult: Result<string> = await files_cat(target);
   if (!catResult.ok) {
     const err: StackMessage | undefined = errorStack.stack_pop();
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`edit: ${err ? error_stripDebugPrefix(err.message) : 'Failed to read file'}`)}\n`);
   }
 
@@ -76,7 +77,7 @@ export async function builtin_edit(args: string[]): Promise<CommandEnvelope> {
   try {
     edit = await surface_get().localEdit({ content: catResult.value, extension: ext || '.txt', path: target });
   } catch (err: unknown) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`edit: ${err instanceof Error ? err.message : String(err)}`)}\n`);
   }
 
@@ -105,7 +106,7 @@ export async function builtin_edit(args: string[]): Promise<CommandEnvelope> {
     if (apiErr) renderedErr += `${chalk.red(`  API error: ${error_stripDebugPrefix(apiErr.message)}`)}\n`;
     renderedErr += `${chalk.yellow(`Your edits are preserved at: ${tmpPath}`)}\n`;
     keepTmp = true;
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, renderedErr);
   } finally {
     if (!keepTmp && existsSync(tmpPath)) {
@@ -135,20 +136,20 @@ async function projectedFile_edit(
   const read: Result<string> = await dispatcher.read(target);
   if (!read.ok) {
     const err: StackMessage | undefined = errorStack.stack_pop();
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`edit: ${err ? error_stripDebugPrefix(err.message) : `${named}: could not read`}`)}\n`);
   }
   let edit: LocalEditResult;
   try {
     edit = await surface_get().localEdit({ content: read.value, extension: ext || '.txt', path: target });
   } catch (err: unknown) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red(`edit: ${err instanceof Error ? err.message : String(err)}`)}\n`);
   }
   if (edit.opened) return envelope_ok(`${chalk.gray(EDIT_OPENED_LINE)}\n`);
   if (!edit.changed) return envelope_ok(`${chalk.gray('(no changes)')}\n`);
   if (await dispatcher.write(target, edit.content)) return envelope_ok(`${chalk.green(`Saved: ${named}`)}\n`);
   const err: StackMessage | undefined = errorStack.stack_pop();
-  process.exitCode = 1;
+  exitCode_set(1);
   return envelope_error('', undefined, `${chalk.red(`edit: ${err ? error_stripDebugPrefix(err.message) : `${named}: could not save`}`)}\n`);
 }

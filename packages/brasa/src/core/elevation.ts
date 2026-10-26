@@ -13,6 +13,7 @@ import { backendInstalled_get, type Backend } from './backend.js';
 import { shellArguments_slice } from '../lib/parser.js';
 import { surface_get } from './surface.js';
 import { envelope_error, type CommandEnvelope } from '@fnndsc/menu';
+import { exitCode_set } from './handlerRun.js';
 
 /** Execution seam used by `sudo` to run its nested command. */
 export type ElevatedCommandRunner = (command: string, args: string[]) => Promise<CommandEnvelope>;
@@ -52,23 +53,23 @@ export async function sudoCommand_run(
   const command: string | undefined = args[0];
   const commandArgs: string[] = shellArguments_slice(args, 1);
   if (!command) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('Usage: sudo <command> [arguments...]')}\n`);
   }
   if (command === 'sudo') {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('sudo: nested elevation is not supported.')}\n`);
   }
 
   const elevate: Backend['elevate'] = backendInstalled_get()?.elevate;
   if (elevate === undefined) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('sudo: this session has no administrator to become.')}\n`);
   }
 
   const surface = surface_get();
   if (!surface.capabilities.hiddenInput) {
-    process.exitCode = 1;
+    exitCode_set(1);
     return envelope_error('', undefined, `${chalk.red('sudo: this surface cannot securely collect administrator credentials.')}\n`);
   }
 
@@ -76,14 +77,14 @@ export async function sudoCommand_run(
     const username: string = await surface.prompt({ message: 'Administrator username: ' });
     const password: string = await surface.prompt({ message: 'Administrator password: ', hidden: true });
     if (!username || !password) {
-      process.exitCode = 1;
+      exitCode_set(1);
       return envelope_error('', undefined, `${chalk.red('sudo: administrator credentials cannot be empty.')}\n`);
     }
     return await elevate({ username, password }, async (): Promise<CommandEnvelope> => {
       return await run(command, commandArgs);
     });
   } catch (error: unknown) {
-    process.exitCode = 1;
+    exitCode_set(1);
     const message: string = error instanceof Error ? error.message : String(error);
     if (message.includes('cannot securely collect hidden input')) {
       return envelope_error('', undefined, `${chalk.red(`sudo: ${message}`)}\n`);

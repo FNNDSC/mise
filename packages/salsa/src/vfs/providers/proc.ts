@@ -223,11 +223,31 @@ async function procFeeds_index(page_fetch: FeedPageFetch, indexed: Map<number, P
 
 // ── Cache build ────────────────────────────────────────────────────────────
 
+/** The feed-index walk in flight, which every caller that needs one joins. */
+let procCacheBuildPromise: Promise<number[]> | null = null;
+
+/**
+ * Builds the feed index, joining a walk already in flight. A cold boot
+ * walks it behind the listening daemon (#1280), so a `/proc` read can
+ * arrive before it lands: the read waits on that walk instead of starting
+ * a second one.
+ *
+ * @returns IDs whose topology is new, changed, or currently active.
+ */
+function procCache_build(): Promise<number[]> {
+  if (procCacheBuildPromise) return procCacheBuildPromise;
+  const build: Promise<number[]> = procCache_buildRun().finally((): void => {
+    if (procCacheBuildPromise === build) procCacheBuildPromise = null;
+  });
+  procCacheBuildPromise = build;
+  return build;
+}
+
 /**
  * Builds the feed index (fast). Fetches owned/shared and public feeds with job counters.
  * Instance topology is loaded separately via procTopology_warmup().
  */
-async function procCache_build(): Promise<number[]> {
+async function procCache_buildRun(): Promise<number[]> {
   const cache: ProcCache = procCache_get();
 
   const client = await chrisConnection.client_get();

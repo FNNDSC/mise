@@ -246,7 +246,8 @@ describe('daemonSession_run', () => {
     expect(report).toHaveBeenCalledWith('pending', 'Feeds', 'Warming /home/rudolph/feeds behind the prompt');
     expect(report).toHaveBeenCalledWith('pending', 'Public', 'Warming /PUBLIC behind the prompt');
     expect(report).toHaveBeenCalledWith('pending', 'Shared', 'Warming /SHARED behind the prompt');
-    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Indexed 3 feeds — topology reconciling in background');
+    // A cold boot walks the feed index behind the listening daemon (#1280).
+    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Indexing the feed list in background — /proc/jobs fills in as it lands');
     expect(report).toHaveBeenCalledWith('ok', 'Engine', 'Ready');
     expect(report).toHaveBeenCalledWith('ok', 'Topology', 'Ready — 12/12 jobs indexed');
     expect(mockTopologyWarmup).toHaveBeenCalledTimes(1);
@@ -284,7 +285,7 @@ describe('daemonSession_run', () => {
 
     await daemonSession_run(engine, 'rudolph', { plugins: false, feeds: false, publicFeeds: false, jobs: true }, false, { log: report });
 
-    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Checkpoint refused (incompatible checkpoint); indexed 3 feeds — topology reconciling in background');
+    expect(report).toHaveBeenCalledWith('ok', 'Jobs', 'Checkpoint refused (incompatible checkpoint); indexing the feed list in background — /proc/jobs fills in as it lands');
     expect(mockProcCacheRefresh).toHaveBeenCalled();
   });
 
@@ -382,14 +383,36 @@ describe('daemonSession_run', () => {
     // A deferred step's failure is not a boot row: it left the gate, and is
     // annunciated afterwards instead.
     expect(report).toHaveBeenCalledWith('pending', 'Feeds', expect.stringContaining('behind the prompt'));
-    expect(report).toHaveBeenCalledWith('fail', 'Jobs', 'jobs failed');
     expect(report).toHaveBeenCalledWith(
       'fail',
       'Engine',
-      'Starting with incomplete warm-up: Plugins, Jobs',
+      'Starting with incomplete warm-up: Plugins',
     );
-    expect(mockTopologyWarmup).not.toHaveBeenCalled();
     expect(mockDaemonListen).toHaveBeenCalledTimes(1);
+  });
+
+  it('listens before a cold feed-index walk ends, and says when the walk fails behind it', async () => {
+    let failWalk: ((error: Error) => void) | undefined;
+    mockProcCacheRefresh.mockReturnValueOnce(new Promise<number[]>((_resolve, reject) => { failWalk = reject; }));
+    const report = jest.fn();
+    const engine: BrasaEngine = {
+      line_execute: jest.fn(async () => []),
+      line_complete: jest.fn(async (prefix: string) => ({ candidates: [], prefix })),
+      sink_install: jest.fn(),
+      surface_install: jest.fn(),
+    };
+
+    // The walk never ends on its own: a boot that waited on it would hang here.
+    await daemonSession_run(engine, 'rudolph', { plugins: false, feeds: false, publicFeeds: false, jobs: true }, false, { log: report });
+
+    expect(mockDaemonListen).toHaveBeenCalledTimes(1);
+    expect(report).toHaveBeenCalledWith('ok', 'Engine', 'Ready');
+    expect(mockTopologyWarmup).not.toHaveBeenCalled();
+
+    failWalk?.(new Error('feed list timed out'));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(report).toHaveBeenCalledWith('fail', 'Topology', 'Warm-up failed: feed list timed out');
+    expect(mockTopologyWarmup).not.toHaveBeenCalled();
   });
 
   it('starts only after the operator elects to continue an exhausted warm-up', async () => {

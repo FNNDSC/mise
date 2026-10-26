@@ -10,6 +10,8 @@ const mockGetAuthToken = jest.fn();
 const mockRetrieveDelete = jest.fn();
 const clientConstructorArgs: Array<[string, { token: string }]> = [];
 const retrieveConstructorArgs: Array<[string, Record<string, unknown>]> = [];
+const mockRequestGet = jest.fn();
+const requestConstructorArgs: Array<[Record<string, unknown>, string, number]> = [];
 
 jest.mock('@fnndsc/chrisapi', () => {
   class MockClient {
@@ -29,11 +31,18 @@ jest.mock('@fnndsc/chrisapi', () => {
       retrieveConstructorArgs.push([url, auth]);
     }
   }
+  class MockRequest {
+    get = mockRequestGet;
+    constructor(auth: Record<string, unknown>, contentType: string, timeout: number) {
+      requestConstructorArgs.push([auth, contentType, timeout]);
+    }
+  }
   return {
     __esModule: true,
     default: MockClient,
     ListResource: MockListResource,
     PACSRetrieve: MockPACSRetrieve,
+    Request: MockRequest,
   };
 });
 
@@ -52,12 +61,17 @@ import {
   collectionItems_get,
   resource_call,
   pacsRetrieve_deleteByUrl,
+  rootLinks_share,
+  token_verify,
+  FEED_LIST_TIMEOUT_MS,
+  TOKEN_CHECK_TIMEOUT_MS,
 } from '../src/chrisapi/adapter';
 
 beforeEach(() => {
   jest.clearAllMocks();
   clientConstructorArgs.length = 0;
   retrieveConstructorArgs.length = 0;
+  requestConstructorArgs.length = 0;
 });
 
 describe('lifecycle', () => {
@@ -189,5 +203,55 @@ describe('pacsRetrieve_deleteByUrl', () => {
     await pacsRetrieve_deleteByUrl('https://cube/api/v1/pacsfiles/retrieves/7/', auth);
     expect(retrieveConstructorArgs).toEqual([['https://cube/api/v1/pacsfiles/retrieves/7/', auth]]);
     expect(mockRetrieveDelete).toHaveBeenCalled();
+  });
+});
+
+describe('rootLinks_share', () => {
+  const client_with = (setUrls: jest.Mock): { setUrls: (timeout?: number) => Promise<unknown> } =>
+    rootLinks_share({ setUrls } as unknown as Client) as unknown as { setUrls: (timeout?: number) => Promise<unknown> };
+
+  it('reads the root once for callers that arrive together, at the feed list timeout', async () => {
+    const setUrls: jest.Mock = jest.fn(async () => 'root');
+    const client = client_with(setUrls);
+    await Promise.all([client.setUrls(), client.setUrls(), client.setUrls(30000)]);
+    expect(setUrls).toHaveBeenCalledTimes(1);
+    expect(setUrls).toHaveBeenCalledWith(FEED_LIST_TIMEOUT_MS);
+    await client.setUrls();
+    expect(setUrls).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps no failed read: the next caller asks again', async () => {
+    const setUrls: jest.Mock = jest.fn()
+      .mockRejectedValueOnce(new Error('No server response!'))
+      .mockResolvedValueOnce('root');
+    const client = client_with(setUrls);
+    await expect(client.setUrls()).rejects.toThrow('No server response!');
+    await expect(client.setUrls()).resolves.toBe('root');
+    expect(setUrls).toHaveBeenCalledTimes(2);
+  });
+
+  it('wraps a client once, and leaves one without setUrls as it is', () => {
+    const setUrls: jest.Mock = jest.fn(async () => 'root');
+    const target = { setUrls } as unknown as Client;
+    const wrapped = rootLinks_share(target) as unknown as { setUrls: unknown };
+    const shared: unknown = wrapped.setUrls;
+    rootLinks_share(target);
+    expect(wrapped.setUrls).toBe(shared);
+    const bare = {} as Client;
+    expect(rootLinks_share(bare)).toBe(bare);
+  });
+});
+
+describe('token_verify', () => {
+  it('asks users/ with the token, not the API root', async () => {
+    mockRequestGet.mockResolvedValue({ data: {} });
+    await token_verify('https://cube/api/v1/', 'TOKEN');
+    expect(requestConstructorArgs).toEqual([[{ token: 'TOKEN' }, 'application/vnd.collection+json', TOKEN_CHECK_TIMEOUT_MS]]);
+    expect(mockRequestGet).toHaveBeenCalledWith('https://cube/api/v1/users/');
+  });
+
+  it('passes CUBE\'s refusal through', async () => {
+    mockRequestGet.mockRejectedValue(Object.assign(new Error('Invalid token.'), { response: { status: 401 } }));
+    await expect(token_verify('https://cube/api/v1/', 'BAD')).rejects.toThrow('Invalid token.');
   });
 });

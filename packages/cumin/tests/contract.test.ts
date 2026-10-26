@@ -27,7 +27,7 @@ import {
   DownloadToken,
   PluginInstanceHandle,
 } from '../src/chrisapi/contract';
-import type { Client } from '../src/chrisapi/adapter';
+import { FEED_LIST_TIMEOUT_MS, type Client } from '../src/chrisapi/adapter';
 
 /** Builds a fake client exposing the given methods. */
 function client_fake(methods: Record<string, unknown>): Client {
@@ -46,6 +46,16 @@ describe('page reads', () => {
     const page: ListPage<FeedData> = await feedsPage_get(client, { limit: 10, offset: 0 });
     expect(page.data).toEqual([{ id: 7, name: 'brainy' }]);
     expect(page.totalCount).toBe(42);
+  });
+
+  test('feed list pages wait as long as the feed list takes, not chrisapi\'s 30 s', async () => {
+    const getFeeds: jest.Mock = jest.fn(async () => ({ data: [], totalCount: 0 }));
+    const getPublicFeeds: jest.Mock = jest.fn(async () => ({ data: [], totalCount: 0 }));
+    const client: Client = client_fake({ getFeeds, getPublicFeeds });
+    await feedsPage_get(client, { limit: 100, offset: 0 });
+    await publicFeedsPage_get(client, { limit: 100, offset: 0 });
+    expect(getFeeds).toHaveBeenCalledWith({ limit: 100, offset: 0 }, FEED_LIST_TIMEOUT_MS);
+    expect(getPublicFeeds).toHaveBeenCalledWith({ limit: 100, offset: 0 }, FEED_LIST_TIMEOUT_MS);
   });
 
   test('feedsPage_get normalizes missing data and totalCount', async () => {

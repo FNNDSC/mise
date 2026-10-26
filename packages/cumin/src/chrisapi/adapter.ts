@@ -98,7 +98,71 @@ export async function authToken_get(
  * @returns A connected Client instance.
  */
 export function client_create(url: string, token: string): Client {
-  return new Client(url, { token });
+  return rootLinks_share(new Client(url, { token }));
+}
+
+/**
+ * How long a client waits for a page of the feed list. The API root is the
+ * feed list, and CUBE counts every visible feed's jobs before it answers a
+ * page: for an identity that sees thousands of feeds that can take longer
+ * than chrisapi's 30 s default (#1280, FNNDSC/ChRIS_ultron_backEnd#746).
+ */
+export const FEED_LIST_TIMEOUT_MS: number = 120_000;
+
+/** How long a token check waits: it reads one small page. */
+export const TOKEN_CHECK_TIMEOUT_MS: number = 30_000;
+
+/** How a client whose root read is shared is marked, so it is wrapped once. */
+const ROOT_SHARED: unique symbol = Symbol('rootLinks_shared');
+
+/** The one method the share wraps, and the mark it leaves. */
+interface RootLinksClient {
+  setUrls?: (timeout?: number) => Promise<unknown>;
+  [ROOT_SHARED]?: boolean;
+}
+
+/**
+ * Makes a client read its API root once, for every caller, at the feed
+ * list's timeout. chrisapi reads the root to learn its links the first
+ * time any call lacks one, at its 30 s default, and calls that arrive
+ * together each start their own read. A read that fails is not kept: the
+ * next caller asks again. Idempotent.
+ *
+ * @param client - A chrisapi Client.
+ * @returns The same client, its `setUrls` shared.
+ */
+export function rootLinks_share(client: Client): Client {
+  const wrapped: RootLinksClient = client as RootLinksClient;
+  if (wrapped[ROOT_SHARED] === true || typeof wrapped.setUrls !== 'function') return client;
+  wrapped[ROOT_SHARED] = true;
+  const read: (timeout?: number) => Promise<unknown> = wrapped.setUrls.bind(client);
+  let pending: Promise<unknown> | null = null;
+  wrapped.setUrls = (): Promise<unknown> => {
+    if (pending === null) {
+      pending = read(FEED_LIST_TIMEOUT_MS).catch((error: unknown): never => {
+        pending = null;
+        throw error;
+      });
+    }
+    return pending;
+  };
+  return client;
+}
+
+/**
+ * Proves a token against CUBE without reading its root. chrisapi's own
+ * check (`getUser`) reads the root first to learn the user's link, and the
+ * root is the feed list (#1280); `users/` answers at once, and CUBE refuses
+ * a token it does not know there with a 401.
+ *
+ * @param url - Base URL of the CUBE API, ending in `/`.
+ * @param token - The token to prove.
+ * @param timeout - How long to wait for the answer.
+ * @throws {Error} chrisapi's error: carrying CUBE's response when it
+ *   refused, "No server response!" when nothing came back.
+ */
+export async function token_verify(url: string, token: string, timeout: number = TOKEN_CHECK_TIMEOUT_MS): Promise<void> {
+  await new Request({ token }, 'application/vnd.collection+json', timeout).get(`${url}users/`);
 }
 
 /**

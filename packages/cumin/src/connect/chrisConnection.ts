@@ -11,7 +11,7 @@
 
 import { folderLookup_memoize } from '../filebrowser/folderMemo';
 import { requestLedger_start } from '../net/requestLedger';
-import { Client, authToken_get as adapterAuthToken_get, client_create } from "../chrisapi/adapter.js";
+import { Client, authToken_get as adapterAuthToken_get, client_create, token_verify, TOKEN_CHECK_TIMEOUT_MS } from "../chrisapi/adapter.js";
 import { loginFailure_diagnose, loginFailure_lines, url_probe, type LoginFailure } from "./loginFailure.js";
 import { ConnectionConfig, config_init, connectionConfig } from "../config/config.js";
 import {
@@ -73,6 +73,17 @@ function contextString_check(context: string): string {
     return context;
   }
   return "?" + context;
+}
+
+/**
+ * Whether a failed request got an answer from CUBE (chrisapi keeps the
+ * response on its error when one came back).
+ *
+ * @param error - What the request threw.
+ * @returns True when CUBE answered.
+ */
+function response_has(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { response?: unknown }).response !== undefined;
 }
 
 /**
@@ -174,6 +185,20 @@ export class ChRISConnection {
   }
 
   /**
+   * Proves a token against a CUBE without reading its root, which is the
+   * feed list and can outlast the check for an identity that sees thousands
+   * of feeds (#1280).
+   *
+   * @param url - Base URL of the CUBE API, ending in `/`.
+   * @param token - The token to prove.
+   * @throws {Error} chrisapi's error: carrying CUBE's response when it
+   *   refused, "No server response!" when nothing came back.
+   */
+  async token_check(url: string, token: string): Promise<void> {
+    await token_verify(url, token);
+  }
+
+  /**
    * Establishes a connection from a CUBE token somebody else already minted.
    *
    * The password path exchanges a password for a token and saves it. A front
@@ -196,11 +221,16 @@ export class ChRISConnection {
     }
     const client: Client = client_create(url, token);
     try {
-      await client.getUser();
+      await token_verify(url, token);
     } catch (error: unknown) {
       const failure: LoginFailure = await loginFailure_diagnose(error, url, this.loginProbe);
       if (failure.kind === 'tls' || failure.kind === 'network') {
         return { connected: false, reason: loginFailure_lines(failure, url).join(' ') };
+      }
+      // Nothing back is not a refusal: a busy CUBE that outlasted the
+      // check said nothing about the token (#1280).
+      if (!response_has(error)) {
+        return { connected: false, reason: `${url} did not answer the token check for ${user} within ${TOKEN_CHECK_TIMEOUT_MS / 1000} s; CUBE may be busy, try again` };
       }
       const reason: string = error instanceof Error ? error.message : String(error);
       return { connected: false, reason: `${url} refused the token for ${user}: ${reason}` };

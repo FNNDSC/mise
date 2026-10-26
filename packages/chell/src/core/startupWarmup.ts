@@ -566,6 +566,12 @@ export async function startupWarmup_run(
         procCheckpoint_watch(identity);
       }
     }
+    // A cold boot's walk of the whole feed index (a page per hundred feeds,
+    // each page CUBE's slowest list) runs behind the listening daemon, as a
+    // restored roster's full walk does: in front of it, an identity that
+    // sees thousands of feeds outlasted the door's wait and never booted
+    // (#1280). A /proc read that arrives first joins the walk.
+    let coldIndex: Promise<number[]> | null = null;
     const jobsResult: PrefetchResult = await startupPrefetch_retry(
       'Jobs',
       'Indexing /proc/jobs (feed list)...',
@@ -575,12 +581,13 @@ export async function startupWarmup_run(
         try {
           if (checkpoint?.restored) {
             // A restored roster goes into service on a delta (feeds newer
-            // than the highest restored id); the full index walk, which
-            // costs a page per hundred feeds, runs behind the listening
-            // daemon rather than in front of it.
+            // than the highest restored id).
             rosterAdded = await procRoster_bootSync();
           } else {
-            await procCache_refresh();
+            coldIndex = procCache_refresh();
+            coldIndex.catch((): void => {
+              if (procCache_get().lifecycle_get().checkpointAt) procCache_get().cache_clear();
+            });
           }
           return { ok: true, count: procCache_get().feedIDs_get().length };
         } catch (error: unknown) {
@@ -597,7 +604,7 @@ export async function startupWarmup_run(
       const refused: boolean = checkpoint !== null && !checkpoint.restored && checkpoint.reason !== undefined && checkpoint.reason !== 'no checkpoint';
       const jobsMessage: string = checkpoint?.restored
         ? `Restored ${count_noun(checkpoint.count, 'job')}${checkpoint.migrated ? ' (checkpoint migrated to per-feed shards)' : ''}; ${count_noun(jobsResult.count ?? 0, 'feed')}, ${rosterAdded.length} new — full roster refresh in background${torn > 0 ? `; ${count_noun(torn, 'feed')} with a torn shard walks again` : ''}`
-        : `${refused ? `Checkpoint refused (${checkpoint?.reason}); indexed` : 'Indexed'} ${count_noun(jobsResult.count ?? 0, 'feed')} — topology reconciling in background`;
+        : `${refused ? `Checkpoint refused (${checkpoint?.reason}); indexing` : 'Indexing'} the feed list in background — /proc/jobs fills in as it lands`;
       reporter?.log('ok', 'Jobs', jobsMessage);
       errorStack.scope_run((): void => {
         let topologySweep: Promise<void>;
@@ -616,7 +623,8 @@ export async function startupWarmup_run(
             void procDataFacts_start();
           });
         } else {
-          topologySweep = procTopology_warmup();
+          const index: Promise<number[]> = coldIndex ?? Promise.resolve([]);
+          topologySweep = index.then((): Promise<void> => procTopology_warmup());
         }
         // The index whole, the session lays the universe out once for every
         // surface (in a worker thread, off the lane); a layout it already

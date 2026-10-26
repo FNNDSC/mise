@@ -357,8 +357,8 @@ export type WatchedMessage = z.infer<typeof watchedMessageSchema>;
  * numbers belong to the session's most recent ANSWER. A surface has to know
  * WHICH listing that is, or it would light the index pills on a pane whose
  * rows are no longer the ones `@2` would reach — and pills that lie are
- * worse than no pills. Pushed whenever the answer changes, and to a late
- * attacher, the way regard is.
+ * worse than no pills. Pushed to the surface whose line listed whenever its
+ * answer changes: each surface keeps its own last answer.
  */
 export const numberedMessageSchema = z.object({
   type: z.literal('numbered'),
@@ -395,7 +395,8 @@ export type NumberedMessage = z.infer<typeof numberedMessageSchema>;
 export type AmbientEvent =
   | { kind: 'envelope'; envelope: z.infer<typeof commandEnvelopeSchema> }
   | { kind: 'watched'; subject: string; state: WatchState }
-  | { kind: 'numbered'; id: number; source: string; rows: number; handles: Array<{ kind: string; ordinal: number; address: string }> };
+  // `origin` names the surface whose line listed: only it is told.
+  | { kind: 'numbered'; origin: string; id: number; source: string; rows: number; handles: Array<{ kind: string; ordinal: number; address: string }> };
 
 /** Any message a surface may send to the daemon. */
 export const clientMessageSchema = z.discriminatedUnion('type', [

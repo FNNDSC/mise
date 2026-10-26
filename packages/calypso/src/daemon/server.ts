@@ -888,6 +888,7 @@ export class CalypsoDaemon {
         // A detached surface holds no watches: whatever it kept live is
         // released, and a subject nobody else watches stops being sampled.
         this.engine.watch_release?.(surface.id);
+        this.engine.origin_forget?.(surface.id);
       }
     });
   }
@@ -1140,13 +1141,6 @@ export class CalypsoDaemon {
     void this.promptline_push(surface);
     // Regard is a retained cell: a late attacher receives the current value
     // rather than waiting for the operator's next indication.
-    // The numbering is retained the same way: a surface that attaches after
-    // a listing still knows which rows `@2` would reach, so its index pills
-    // light on the right pane rather than nowhere.
-    const numbering = this.engine.numbering_get?.() ?? null;
-    if (numbering !== null) {
-      this.send(socket, { type: 'numbered', id: numbering.id, source: numbering.source, rows: numbering.rows, handles: numbering.handles });
-    }
     const retained: Regard | null = this.regard ?? this.engine.regard_get?.() ?? null;
     if (retained !== null) {
       this.send(socket, { type: 'regard', regard: retained });
@@ -1179,8 +1173,9 @@ export class CalypsoDaemon {
   /**
    * Relays an engine-originated event to every surface: a sampler's refreshed
    * model rides the session bus tagged with the daemon as its surface (off
-   * the scrollback — it is state, not something the operator did), and a
-   * watch state change goes out as its own message.
+   * the scrollback — it is state, not something the operator did), a
+   * watch state change goes out as its own message, and a numbering goes
+   * only to the surface whose line listed.
    *
    * @param event - The ambient event.
    */
@@ -1190,7 +1185,9 @@ export class CalypsoDaemon {
         this.send(surface.socket, { type: 'session', surface: DAEMON_SURFACE, envelope: event.envelope });
       } else if (event.kind === 'watched') {
         this.send(surface.socket, { type: 'watched', subject: event.subject, state: event.state });
-      } else {
+      } else if (this.stopper_resolve(surface).id === event.origin) {
+        // A numbering is the listing surface's own: another surface's `@3`
+        // still counts the rows it read (#1273).
         this.send(surface.socket, { type: 'numbered', id: event.id, source: event.source, rows: event.rows, handles: event.handles });
       }
     }
@@ -1304,7 +1301,9 @@ export class CalypsoDaemon {
         const abandoned: Promise<CommandEnvelope[]> = new Promise((resolve: (value: CommandEnvelope[]) => void): void => {
           this.abandonCurrent = (): void => resolve([{ status: 'error', rendered: '', renderedErr: `stopped: \`${message.line}\` did not end when asked and was abandoned\n` }]);
         });
-        envelopes = await Promise.race([this.engine.line_execute(message.line), abandoned]);
+        // The line counts against its surface's own last answer: a terminal
+        // a surface shows is that surface (#1273).
+        envelopes = await Promise.race([this.engine.line_execute(message.line, { origin: stopper.id }), abandoned]);
       } catch (err: unknown) {
         failureReason = err instanceof Error ? err.message : String(err);
       } finally {
@@ -1609,7 +1608,7 @@ export class CalypsoDaemon {
    *
    * @returns The surfaces, in attach order.
    */
-  public surfaces_list(): Array<{ id: string; kind: 'chell' | 'browser'; you: boolean }> {
+  public surfaces_list(): Array<{ id: string; kind: 'chell' | 'browser'; you: boolean; asking?: string }> {
     return [...this.surfaces].map((each: Surface) => ({
       id: each.id,
       kind: each.capabilities.shellCommands ? 'chell' as const : 'browser' as const,

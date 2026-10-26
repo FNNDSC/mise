@@ -35,9 +35,10 @@ export interface HostedEngine {
    * Executes one input line, yielding one envelope per executed command.
    *
    * @param line - The raw input line.
+   * @param options - The surface the line came from: what it lists is that surface's answer.
    * @returns The envelopes of the executed commands, in order.
    */
-  line_execute(line: string): Promise<CommandEnvelope[]>;
+  line_execute(line: string, options?: { origin?: string }): Promise<CommandEnvelope[]>;
 
   /**
    * Requests cancellation of the foreground command when it supports it.
@@ -130,12 +131,11 @@ export interface HostedEngine {
   regard_get?(): Regard | null;
 
   /**
-   * Which listing the session's numbers currently count, for a surface that
-   * attaches after the listing was made.
+   * Forgets what a surface left behind (its last answer), when it has gone.
    *
-   * @returns The numbering, or null when nothing has listed.
+   * @param origin - The surface's id.
    */
-  numbering_get?(): { id: number; source: string; rows: number; handles: Array<{ kind: string; ordinal: number; address: string }> } | null;
+  origin_forget?(origin: string): void;
 
   /**
    * Opens or closes a liveness watch on a subject for one owner. Optional:

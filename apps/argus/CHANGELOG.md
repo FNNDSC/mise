@@ -1,5 +1,11 @@
 # @fnndsc/argus
 
+## 0.41.1
+
+### Patch Changes
+
+- 90c17b3: The stratus dashboard paints DOMAINS without waiting on `capacity`. A paint waits a moment, shows CAPACITY as READING, and paints again when the answer lands; one `capacity` is on its way at a time.
+
 ## 0.41.0
 
 ### Minor Changes

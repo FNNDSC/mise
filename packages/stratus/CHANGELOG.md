@@ -1,5 +1,11 @@
 # @fnndsc/stratus
 
+## 0.5.1
+
+### Patch Changes
+
+- 90c17b3: Reading capacity or spend no longer holds the session, so a console attaching mid-read gets its prompt at once. The limits `capacity` reads are kept for ten minutes and read four at a time, so a repaint or the CAPACITY pane answers from what was read.
+
 ## 0.5.0
 
 ### Minor Changes

@@ -390,7 +390,7 @@ Two decisions recorded as open at the time of writing are now resolved: the enve
 * [[[chris]]] The ChRIS Project. Boston Children's Hospital / FNNDSC. https://chrisproject.org
 * [[[cjson]]] M. Amundsen. Collection+JSON media type. http://amundsen.com/media-types/collection/
 * [[[chrisapi]]] `@fnndsc/chrisapi`: JavaScript client for the ChRIS API. https://github.com/FNNDSC/fnndsc
-* [[[mise]]] MISE: monorepo for the ChELL stack (cumin, salsa, chili, chell). https://github.com/FNNDSC/mise
+* [[[mise]]] MISE: monorepo for the ChELL stack (cumin, salsa, chili, chell). https://github.com/HARBOR-Medical-AI/mise
 * [[[argus]]] ARGUS: ATLAS Resource Guided User System. Design study, FNNDSC, 2025-2026. Frozen repository; see in particular its architectural principles, agentic safety foundations, and oracle testing methodology documents.
 * [[[ias]]] ChRIS Intent-Action Service proposal. https://github.com/FNNDSC/intent-server
 * [[[jupyter]]] Messaging in Jupyter: the Jupyter kernel wire protocol. https://jupyter-client.readthedocs.io/en/latest/messaging.html

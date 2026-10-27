@@ -44,13 +44,13 @@ Designed for developers and power-users who want to script and control a ChRIS i
 
 ## Development
 
-`chili` lives in the [`mise` monorepo](https://github.com/FNNDSC/mise) alongside
+`chili` lives in the [`mise` monorepo](https://github.com/HARBOR-Medical-AI/mise) alongside
 `cumin`, `salsa`, and `chell`. Build the whole stack from the repository root —
 npm workspaces links the four packages together, so there is nothing to clone or
 hand-link:
 
 ```bash
-git clone https://github.com/FNNDSC/mise
+git clone https://github.com/HARBOR-Medical-AI/mise
 cd mise
 make taco            # scrub → prep → cook → taste → serve (the full course)
 ```

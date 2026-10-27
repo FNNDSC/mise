@@ -34,7 +34,7 @@ Each release publishes a single self-contained executable per platform, plus a
 [source,bash]
 ----
 # linux-x64 shown; also: linux-arm64, macos-x64, macos-arm64
-curl -L https://github.com/FNNDSC/mise/releases/latest/download/chell-linux-x64 -o chell
+curl -L https://github.com/HARBOR-Medical-AI/mise/releases/latest/download/chell-linux-x64 -o chell
 chmod +x chell
 ./chell
 ----
@@ -43,7 +43,7 @@ Verify the download against the published checksums (optional but recommended):
 
 [source,bash]
 ----
-curl -LO https://github.com/FNNDSC/mise/releases/latest/download/SHA256SUMS
+curl -LO https://github.com/HARBOR-Medical-AI/mise/releases/latest/download/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
 ----
 
@@ -69,7 +69,7 @@ workflow is a cooking metaphor; the one command that does everything is
 
 [source,bash]
 ----
-git clone https://github.com/FNNDSC/mise
+git clone https://github.com/HARBOR-Medical-AI/mise
 cd mise
 make taco            # scrub -> prep -> cook -> taste -> serve (the full course)
 ----

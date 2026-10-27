@@ -19,6 +19,7 @@
  */
 import type { TrekState, XY } from 'bsd-trek/host';
 import { el, pill_make } from './controls.js';
+import { takeoverFrame_build, type TakeoverFrame } from '../takeover/frame.js';
 import { answerCue_derive, commandCue_find, lineCues_derive, pillLabel_format, stateCues_derive, type BridgeVoice } from './cues.js';
 import { TrekHarness, type OpenQuestion } from './harness.js';
 import { KLINGON_MARKS, KlingonTracker, LEGEND, MARK_GLYPHS, mark_use, markDefs_make, markIcon_make, shieldRing_build, svg, type MarkKind } from './marks.js';
@@ -71,6 +72,8 @@ const STRIP_QUESTIONS: ReadonlyArray<TrekQuestion> = ['length', 'skill', 'reques
 export class TrekBridge {
   /** The screen's root, appended to the body by the host and shown while a game runs. */
   public readonly root: HTMLElement;
+  /** The ARGUS frame the bridge is drawn in. */
+  private readonly frame: TakeoverFrame;
   private readonly harness: TrekHarness;
   private readout: BridgeReadout | null = null;
   private previous: BridgeReadout | null = null;
@@ -125,21 +128,39 @@ export class TrekBridge {
       state_shown: (state: TrekState): void => this.state_show(state),
       ended: (): void => { if (!this.leaving) this.hooks.voice.cue('gameover'); },
     });
-    this.root = el('section', 'trek-bridge');
-    this.root.id = 'trek-bridge';
+    // The frame is ARGUS's own (features/takeover/frame.ts): the bridge fills
+    // its seat with the seed, its face with the readouts, its stage with the
+    // stations and its log with the ship's.
+    this.frame = takeoverFrame_build({
+      id: 'trek-bridge',
+      className: 'trek-bridge',
+      brand: { name: 'TREK', sub: 'ARGUS · BSD TREK', mark: false },
+      banner: 'TREK • THE BRIDGE',
+      views: VIEWS.map((view: BridgeView) => ({ key: view, label: view.toUpperCase() })),
+      leave: { label: 'LEAVE BRIDGE', destroy: true },
+      stage: { title: 'THE BRIDGE', note: 'BRIDGE' },
+      log: { title: 'SHIP\'S LOG', note: 'READ ONLY' },
+      labels: { views: 'views', log: 'ship\'s log' },
+    }, (key: string): void => {
+      const view: BridgeView | undefined = VIEWS.find((each: BridgeView): boolean => each === key);
+      if (view !== undefined) this.view_set(view);
+    }, (): void => this.leave_ask());
+    this.frame.leave.classList.add('tb-leave');
+    this.root = this.frame.root;
     this.root.dataset['view'] = 'bridge';
+    this.frame.view_mark('bridge');
     this.root.setAttribute('aria-label', 'trek: the bridge');
     const parts: BridgeParts = {};
     const defs: SVGElement | null = markDefs_make();
     if (defs !== null) this.root.append(defs);
-    const gutter: HTMLElement = this.gutter_build(parts, seed);
-    const [barTop, barBody] = this.frame_build();
-    const header: HTMLElement = this.header_build(parts);
-    const body: HTMLElement = this.body_build(parts);
+    this.gutter_build(parts, seed);
+    this.frame.face.append(this.header_build(parts));
+    this.frame.body.append(this.body_build(parts));
     this.strip_build(parts);
-    const footer: HTMLElement = this.log_build(parts);
+    this.frame.aside.append(parts.ask as HTMLElement);
+    this.frame.log.append(this.log_build(parts));
     this.leaveAsk_build(parts);
-    this.root.append(gutter, barTop, header, barBody, body, parts.ask as HTMLElement, footer, parts.leaveAsk as HTMLElement);
+    this.root.append(parts.leaveAsk as HTMLElement);
     this.parts = parts as TrekBridge['parts'];
     this.question_show(null);
   }
@@ -160,48 +181,21 @@ export class TrekBridge {
   }
 
   /**
-   * Builds the gutter: the block, the seed, the views, LEAVE BRIDGE.
+   * Fills the frame's gutter: the seed in the seat, the views as its seats.
    *
    * @param parts - Where the live elements are registered.
    * @param seed - The game's seed, or null.
-   * @returns The gutter.
    */
-  private gutter_build(parts: BridgeParts, seed: number | null): HTMLElement {
-    const gutter: HTMLElement = el('aside', 'tb-gutter');
-    const block: HTMLElement = el('div', 'tb-block');
-    block.append(el('span', 'tb-block-name', 'TREK'), el('span', 'tb-block-sub', 'ARGUS · BSD TREK'));
+  private gutter_build(parts: BridgeParts, seed: number | null): void {
     parts.seed = el('div', 'tb-seed', seed === null ? 'RANDOM GALAXY' : `SEED ${seed}`);
-    const views: HTMLElement = el('nav', 'tb-views');
-    views.setAttribute('aria-label', 'views');
+    this.frame.seat.append(parts.seed);
     parts.views = new Map<BridgeView, HTMLButtonElement>();
     for (const view of VIEWS) {
-      const button: HTMLButtonElement = pill_make(`tb-view tb-view-${view}`, view.toUpperCase(), (): void => this.view_set(view));
-      button.classList.remove('tb-pill');
-      button.dataset['view'] = view;
+      const button: HTMLButtonElement | undefined = this.frame.views.get(view);
+      if (button === undefined) continue;
+      button.classList.add('tb-view', `tb-view-${view}`);
       parts.views.set(view, button);
-      views.append(button);
     }
-    const leave: HTMLButtonElement = pill_make('tb-leave', 'LEAVE BRIDGE', (): void => this.leave_ask());
-    leave.classList.remove('tb-pill');
-    const gutterTop: HTMLElement = el('div', 'tb-gutter-top');
-    gutterTop.append(block, parts.seed, el('div', 'tb-gutter-fill'));
-    const gutterBody: HTMLElement = el('div', 'tb-gutter-body');
-    gutterBody.append(el('div', 'tb-gutter-cap'), views, el('div', 'tb-gutter-fill'), leave);
-    gutter.append(gutterTop, gutterBody);
-    return gutter;
-  }
-
-  /**
-   * Builds the frame's two bars, each the arm of an elbow.
-   *
-   * @returns The header's bar and the body's.
-   */
-  private frame_build(): [HTMLElement, HTMLElement] {
-    const barTop: HTMLElement = el('div', 'tb-bar tb-bar-top');
-    for (const span of ['tb-bar-a', 'tb-bar-b', 'tb-bar-c', 'tb-bar-d']) barTop.append(el('span', span));
-    const barBody: HTMLElement = el('div', 'tb-bar tb-bar-body');
-    for (const span of ['tb-bar-a', 'tb-bar-b', 'tb-bar-c']) barBody.append(el('span', span));
-    return [barTop, barBody];
   }
 
   /**
@@ -333,11 +327,9 @@ export class TrekBridge {
    */
   private log_build(parts: BridgeParts): HTMLElement {
     const footer: HTMLElement = el('footer', 'tb-log-section');
-    const logHead: HTMLElement = el('div', 'tb-log-head');
-    logHead.append(el('span', 'tb-title', "SHIP'S LOG"), el('span', 'tb-note', 'READ ONLY'));
     parts.log = el('div', 'tb-log');
     parts.log.setAttribute('aria-live', 'polite');
-    footer.append(logHead, parts.log);
+    footer.append(parts.log);
     return footer;
   }
 
@@ -427,7 +419,9 @@ export class TrekBridge {
     this.view = view;
     this.root.dataset['view'] = view;
     this.parts.body.dataset['view'] = view;
+    this.frame.view_mark(view);
     for (const [name, button] of this.parts.views) button.classList.toggle('tb-view-on', name === view);
+    this.frame.stageNote.textContent = view.toUpperCase();
     this.hooks.voice.pill(pillLabel_format(view.toUpperCase(), 'view'));
   }
 

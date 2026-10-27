@@ -19,6 +19,7 @@
  * @module
  */
 import type { DomainSizeModel, DomainSpecModel, DomainSummary, PromptKind } from '@fnndsc/menu';
+import { takeoverFrame_build, type TakeoverFrame, type TakeoverView } from '../takeover/frame.js';
 import {
   askForm_derive, CHRIS_STEPS, classBadge_render, conditionWhy_derive, CONTROLLER_VIEWS, duration_text, HOURS_PER_MONTH, LINES, money_text, nameRefusal_derive,
   newLine_build, planWords_render, since_build, sizeCost_compute, spec_copy, sizeFit_compute, stepLooks_build, stepsDone_count, summary_merge, verifyWords_render, zoneShort_format,
@@ -85,6 +86,8 @@ function plain_extract(text: string): string {
 export class TdController {
   /** The screen's root, appended to the body by the host while the controller is up. */
   public readonly root: HTMLElement;
+  /** The ARGUS frame the controller is drawn in. */
+  private readonly frame: TakeoverFrame;
   private readonly domains: Map<string, DomainSummary> = new Map();
   private current: string = NEW_KEY;
   private view: ControllerView = 'overview';
@@ -115,53 +118,50 @@ export class TdController {
    * @param hooks - The host's verbs.
    */
   constructor(private readonly hooks: ControllerHooks) {
-    this.root = el('div', 'td-controller');
-    this.root.id = 'td-controller';
+    // The frame is ARGUS's own (features/takeover/frame.ts): the controller
+    // fills its seat with the domains' pills, its face with the readouts, its
+    // stage with the views and its log with the session's lines.
+    this.frame = takeoverFrame_build({
+      id: 'td-controller',
+      className: 'td-controller',
+      brand: { name: 'STRATUS', sub: 'TD CONTROLLER · OCI', mark: true },
+      banner: 'STRATUS • TD CONTROLLER',
+      views: CONTROLLER_VIEWS.map((view: ControllerView): TakeoverView => ({ key: view, label: VIEW_LABELS[view], destroy: view === 'teardown' })),
+      leave: { label: 'LEAVE' },
+      stage: { title: 'NEW DOMAIN', note: VIEW_LABELS['size'] },
+      log: { title: 'DOMAIN LOG', note: 'THE SESSION\'S LINES · TYPE BELOW' },
+      labels: { views: 'Views', log: 'Domain log' },
+    }, (key: string): void => {
+      const view: ControllerView | undefined = CONTROLLER_VIEWS.find((each: ControllerView): boolean => each === key);
+      if (view === undefined) return;
+      this.hooks.voice.pill(VIEW_LABELS[view]);
+      this.view_show(view);
+    }, (): void => { this.hooks.voice.pill('LEAVE'); this.hooks.leave(); });
+    this.frame.leave.classList.add('tdc-leave');
+    this.root = this.frame.root;
     this.root.setAttribute('role', 'application');
     this.root.setAttribute('aria-label', 'TD controller');
 
-    const top: HTMLElement = el('div', 'tdc-gutter-top');
-    const block: HTMLElement = el('div', 'tdc-block');
-    const mark: HTMLElement = el('span', 'tdc-mark');
-    mark.setAttribute('aria-hidden', 'true');
-    const words: HTMLElement = el('div', 'tdc-block-words');
-    words.append(el('span', 'tdc-block-name', 'STRATUS'), el('span', 'tdc-block-sub', 'TD CONTROLLER · OCI'));
-    block.append(mark, words);
-    const pills: HTMLElement = el('div', 'tdc-domains');
+    const pills: HTMLElement = this.frame.seat;
     pills.setAttribute('aria-label', 'Domains');
-    top.append(block, pills, el('div', 'tdc-gutter-fill'));
-
     const header: HTMLElement = el('header', 'tdc-header');
-    const barTop: HTMLElement = el('div', 'tdc-bar tdc-bar-top');
-    barTop.append(el('span', 'tdc-bar-a'), el('span', 'tdc-bar-b'), el('span', 'tdc-bar-c'), el('span', 'tdc-bar-d'));
-    const barBody: HTMLElement = el('div', 'tdc-bar tdc-bar-body');
-    barBody.append(el('span', 'tdc-bar-a'), el('span', 'tdc-bar-b'), el('span', 'tdc-bar-c'));
-
-    const lower: HTMLElement = el('nav', 'tdc-gutter-body');
-    lower.setAttribute('aria-label', 'Views');
+    this.frame.face.append(header);
     const views: Map<ControllerView, HTMLButtonElement> = new Map();
-    lower.append(el('div', 'tdc-gutter-cap'));
     for (const view of CONTROLLER_VIEWS) {
-      const button: HTMLButtonElement = el('button', `tdc-view tdc-view-${view}`, VIEW_LABELS[view]);
-      button.type = 'button';
-      button.addEventListener('click', (): void => { this.hooks.voice.pill(VIEW_LABELS[view]); this.view_show(view); });
+      const button: HTMLButtonElement | undefined = this.frame.views.get(view);
+      if (button === undefined) continue;
+      button.classList.add('tdc-view', `tdc-view-${view}`);
       views.set(view, button);
-      lower.append(button);
     }
-    const leave: HTMLButtonElement = el('button', 'tdc-leave', 'LEAVE');
-    leave.type = 'button';
-    leave.addEventListener('click', (): void => { this.hooks.voice.pill('LEAVE'); this.hooks.leave(); });
-    lower.append(el('div', 'tdc-gutter-fill'), leave);
 
-    const body: HTMLElement = el('main', 'tdc-body');
+    const body: HTMLElement = el('div', 'tdc-body');
+    this.frame.body.append(body);
     const strip: HTMLElement = el('section', 'tdc-strip');
     strip.setAttribute('aria-label', 'The engine asks');
     strip.hidden = true;
+    this.frame.aside.append(strip);
 
     const foot: HTMLElement = el('section', 'tdc-foot');
-    foot.setAttribute('aria-label', 'Domain log');
-    const footHead: HTMLElement = el('div', 'tdc-foot-head');
-    footHead.append(el('span', 'tdc-foot-title', 'DOMAIN LOG'), el('span', 'tdc-foot-sub', 'THE SESSION\'S LINES · TYPE BELOW'));
     const log: HTMLElement = el('div', 'tdc-log');
     log.setAttribute('aria-live', 'polite');
     const line: HTMLElement = el('div', 'tdc-prompt');
@@ -182,9 +182,8 @@ export class TdController {
     line.append(promptLabel, input);
     const logColumn: HTMLElement = el('div', 'tdc-log-column');
     logColumn.append(log, line);
-    foot.append(footHead, logColumn);
-
-    this.root.append(top, header, barTop, barBody, lower, body, strip, foot);
+    foot.append(logColumn);
+    this.frame.log.append(foot);
     this.parts = { pills, header, views, body, strip, log, input, promptLabel };
     // The header's clock: time in the running step, and the cost so far, move between reads.
     this.ticker = setInterval((): void => { if (this.domain_get()?.running) this.header_draw(); }, 15_000);
@@ -344,10 +343,10 @@ export class TdController {
   private draw(): void {
     this.pills_draw();
     this.header_draw();
-    for (const [view, button] of this.parts.views) {
-      button.classList.toggle('tdc-view-on', view === this.view);
-      button.setAttribute('aria-current', view === this.view ? 'page' : 'false');
-    }
+    this.frame.view_mark(this.view);
+    for (const [view, button] of this.parts.views) button.classList.toggle('tdc-view-on', view === this.view);
+    this.frame.stageTitle.textContent = this.current === NEW_KEY ? 'NEW DOMAIN' : this.current.toUpperCase();
+    this.frame.stageNote.textContent = VIEW_LABELS[this.view];
     this.body_draw();
     this.strip_draw();
     this.parts.promptLabel.textContent = this.current === NEW_KEY ? 'stratus ›' : `stratus ~/${this.current} ›`;
@@ -361,7 +360,7 @@ export class TdController {
     pills.replaceChildren();
     for (const name of [...this.domains.keys(), NEW_KEY]) {
       const domain: DomainSummary | undefined = this.domains.get(name);
-      const pill: HTMLButtonElement = el('button', 'tdc-domain', name === NEW_KEY ? '+ NEW' : name.toUpperCase());
+      const pill: HTMLButtonElement = el('button', 'tdc-domain takeover-seat-pill', name === NEW_KEY ? '+ NEW' : name.toUpperCase());
       pill.type = 'button';
       pill.dataset['condition'] = domain?.condition ?? 'SIZING';
       if (domain?.billing === true) pill.classList.add('tdc-billing');

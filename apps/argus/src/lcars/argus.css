@@ -100,7 +100,8 @@ body {
   width: 100%;
 }
 
-.wrap {
+.wrap,
+.takeover-wrap {
   display: flex;
   flex: 1 1 auto;
   width: 100%;
@@ -109,7 +110,8 @@ body {
 }
 
 /* The page's own column stands off the band that closes the head. */
-#gap.wrap {
+#gap.wrap,
+.takeover-wrap {
   margin-top: var(--left-frame-padding);
 }
 
@@ -133,7 +135,8 @@ main {
  * sits hard right, bold, tight, and on the block's own dark ground.
  */
 
-.left-frame {
+.left-frame,
+.takeover-gutter {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -147,7 +150,8 @@ main {
   line-height: 1.2;
 }
 
-.left-frame-top {
+.left-frame-top,
+.takeover-gutter-head {
   display: flex;
   flex-direction: column;
   flex: none;
@@ -278,7 +282,8 @@ h1 {
  * is a stagger that sums to the whole and therefore scales with any width.
  */
 
-.right-frame {
+.right-frame,
+.takeover-main {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -289,7 +294,8 @@ h1 {
   min-width: 0;
 }
 
-.right-frame-top {
+.right-frame-top,
+.takeover-head {
   position: relative;
   /* A column whose middle grows: the band that closes the head sits at the
    * foot of the row, level with the foot of the gutter's elbow, whatever
@@ -1236,7 +1242,8 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
  * the buttons share the available height in the theme's own visual
  * proportions, with floors that keep every label legible. Every given is
  * always on stage — a preset hidden behind a scroll is not a given. */
-.left-frame > div:first-child {
+.left-frame > div:first-child,
+.takeover-gutter > div:first-child {
   position: relative;
   flex: 1 1 0;
   min-height: 0;
@@ -1254,7 +1261,8 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
  * what lies behind them — they would darken with it. The imported template
  * masked 340px, a height measured from a FILES-01 that could not stretch;
  * ours can, so the mask is sized to the radius it hides. */
-.left-frame > div:first-child::before {
+.left-frame > div:first-child::before,
+.takeover-gutter > div:first-child::before {
   content: '';
   position: absolute;
   top: 0;
@@ -1282,7 +1290,11 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 .right-frame-top::before,
 .right-frame-top::after,
 .right-frame::before,
-.right-frame::after {
+.right-frame::after,
+.takeover-head::before,
+.takeover-head::after,
+.takeover-main::before,
+.takeover-main::after {
   content: '';
   position: absolute;
   left: 0;
@@ -1293,29 +1305,37 @@ body[data-zoom='console'] #drawer .lcars-bar-zoom {
 
 /* The turn happens where the bar is, so the bar's height is the offset. */
 .right-frame-top::before,
-.right-frame-top::after {
+.right-frame-top::after,
+.takeover-head::before,
+.takeover-head::after {
   bottom: var(--bar-height);
 }
 
 .right-frame::before,
-.right-frame::after {
+.right-frame::after,
+.takeover-main::before,
+.takeover-main::after {
   top: var(--bar-height);
 }
 
-.right-frame-top::before {
+.right-frame-top::before,
+.takeover-head::before {
   background-image: linear-gradient(to right top, var(--october-sunset) 50%, #000 50%);
 }
 
-.right-frame-top::after {
+.right-frame-top::after,
+.takeover-head::after {
   background-color: #000;
   border-bottom-left-radius: var(--elbow-inner-radius);
 }
 
-.right-frame::before {
+.right-frame::before,
+.takeover-main::before {
   background-image: linear-gradient(to right bottom, var(--october-sunset) 50%, #000 50%);
 }
 
-.right-frame::after {
+.right-frame::after,
+.takeover-main::after {
   background-color: #000;
   border-top-left-radius: var(--elbow-inner-radius);
 }
@@ -1340,42 +1360,50 @@ body[data-gutter='away'] .right-frame-top::after {
 /* Every segment is positioned so that it paints above the mask; unpositioned
  * buttons fall under it, and RUNS-02 vanished that way once. */
 .left-frame button[class^='panel-'],
-.left-frame .panel-spacer {
+.left-frame .panel-spacer,
+.takeover-gutter button[class^='panel-'],
+.takeover-gutter .panel-spacer {
   position: relative;
 }
 
-.left-frame .panel-3 {
+.left-frame .panel-3,
+.takeover-gutter .panel-3 {
   height: auto;
   max-height: none;
   flex: 3 1 0;
   min-height: 3.5rem;
 }
 
-.left-frame .panel-4 {
+.left-frame .panel-4,
+.takeover-gutter .panel-4 {
   height: auto;
   min-height: 3rem;
   flex: 2 1 0;
 }
 
-.left-frame .panel-5 {
+.left-frame .panel-5,
+.takeover-gutter .panel-5 {
   height: auto;
   flex: 4 1 0;
   min-height: 3rem;
 }
 
-.left-frame .panel-6 {
+.left-frame .panel-6,
+.takeover-gutter .panel-6 {
   height: auto;
   flex: 2 1 0;
   min-height: 3rem;
 }
 
-.left-frame .panel-spacer {
+.left-frame .panel-spacer,
+.takeover-gutter .panel-spacer {
   height: auto;
   flex: 1 1 0;
   min-height: 0.8rem;
 }
 
-.left-frame .panel-7 {
+.left-frame .panel-7,
+.takeover-gutter .panel-7 {
   height: clamp(3.5rem, 12vh, 30vh);
 }
 

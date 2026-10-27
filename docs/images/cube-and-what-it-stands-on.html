@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CUBE and what it stands on</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f8f7f4; --ink: #1f2228; --muted: #6b6f78; --rule: #c9c6bf; --card: #fff;
+    --dark: #2b2f3a; --dark-2: #3a3f4c;
+    --mise: #2a4ea8; --chris: #c9c6bf; --redhat: #d9281f; --redhat-tint: #fbeae6;
+    --oci: #e8720c; --oci-tint: #fdf0e4; --pacs: #6b3fa0; --pacs-tint: #efe8f7;
+    --region: #eeece6; --region-edge: #d9d6cf; --cred: #f1ead2; --cred-edge: #c9a227;
+    --wire: #8a8f9a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); }
+  body { font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 12.5px; line-height: 1.4; width: 1680px; }
+  code { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.95em; }
+  .page { position: relative; width: 1680px; height: 1270px; }
+  h1 { position: absolute; left: 40px; top: 30px; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.01em; }
+  h1 code { font-size: 0.9em; font-weight: 600; }
+  .lead { position: absolute; left: 40px; top: 72px; width: 1600px; color: #3e424b; font-size: 13px; margin: 0; }
+  .abs { position: absolute; }
+  .region { background: var(--region); border: 1px solid var(--region-edge); border-radius: 10px; }
+  .region.pacs { background: var(--pacs-tint); border-color: #d3c3ea; }
+  .region.floor { background: var(--redhat-tint); border-color: #ecc9bd; }
+  .region.oci { background: var(--oci-tint); border-color: #f1cfae; }
+  .rhead { position: absolute; left: 14px; top: 10px; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .rhead code { text-transform: none; letter-spacing: 0; }
+  .host { background: var(--dark); color: #e6e8ee; border-radius: 10px; }
+  .host .hhead { position: absolute; left: 16px; top: 12px; right: 16px; font-size: 12px; color: #c9ccd6; }
+  .host .hhead b { color: #fff; letter-spacing: 0.04em; }
+  .host .hfoot { position: absolute; left: 16px; bottom: 12px; right: 16px; font-size: 11.5px; color: #b9bdc9; }
+  .card { background: var(--card); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 10px 7px 12px; position: absolute; }
+  .card::before { content: ''; position: absolute; left: 0; top: 7px; bottom: 7px; width: 4px; border-radius: 0 3px 3px 0; background: var(--chris); }
+  .card.mise::before { background: var(--mise); }
+  .card.redhat::before { background: var(--redhat); }
+  .card.oci::before { background: var(--oci); }
+  .card.pacs::before { background: var(--pacs); }
+  .card.none::before { display: none; }
+  .card.grey { background: var(--dark-2); color: #e6e8ee; border-color: var(--dark-2); }
+  .card.grey::before { display: none; }
+  .card.cred { background: var(--cred); border-color: var(--cred-edge); }
+  .card.cred::before { background: var(--cred-edge); }
+  .card b { font-weight: 600; }
+  .card .dim { color: var(--muted); }
+  .card.grey .dim { color: #b9bdc9; }
+  .note { position: absolute; color: var(--muted); font-size: 11.5px; }
+  .note.dashed { border: 1px dashed var(--rule); border-radius: 6px; padding: 7px 10px; }
+  svg.wires { position: absolute; left: 0; top: 0; width: 1680px; height: 1270px; pointer-events: none; }
+  svg text { font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; fill: var(--muted); }
+  svg text.pacs { fill: var(--pacs); }
+  svg text.redhat { fill: var(--redhat); }
+  svg text.mise { fill: var(--mise); }
+  svg text.ondark { fill: #c3c7d1; }
+  svg text.ondark.pacs { fill: #c9b3e8; }
+  svg .w { fill: none; stroke: var(--wire); stroke-width: 2; }
+  svg .w.pacs { stroke: var(--pacs); }
+  svg .w.redhat { stroke: var(--redhat); }
+  svg .w.mise { stroke: var(--mise); }
+  svg .w.dash { stroke-dasharray: 6 4; }
+  svg .step { fill: var(--ink); font-weight: 600; }
+  svg .stepc { fill: #fff; stroke: var(--ink); stroke-width: 1.5; }
+  .legend { position: absolute; left: 40px; top: 1178px; display: flex; gap: 20px; color: var(--muted); font-size: 11.5px; align-items: center; }
+  .legend .sw { display: inline-block; width: 18px; height: 12px; border: 1px solid var(--rule); border-left-width: 4px; border-radius: 3px; vertical-align: -2px; margin-right: 5px; background: #fff; }
+  .foot { position: absolute; left: 40px; top: 1205px; width: 1600px; color: #3e424b; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="page">
+<h1>CUBE and what it stands on</h1>
+<p class="lead">The ChRIS backend as blocks: who talks to whom, over what, and where each block sits. CUBE is one deployment on an OpenShift cluster; every block in its box is a pod from the Helm chart. A compute resource is a separate <code>pfcon</code>, in-network when it shares CUBE's storage on the same cluster, out-of-network when it does not. The PACS is another machine across another network. Callers above the picture are the <code>mise</code> bastion and the web UI (docs/linux-metaphor.adoc); both arrive as <code>chrisapi</code>. Numbers follow one plugin instance from the call to its outputs.</p>
+
+<!-- callers -->
+<div class="abs region" style="left:40px; top:160px; width:260px; height:300px"><div class="rhead">Who calls</div></div>
+<div class="card mise" style="left:54px; top:196px; width:232px"><b>the <code>mise</code> bastion</b><br><code>chris</code> backend: <code>cumin</code> over <code>chrisapi</code>. CFS mounted at <code>/</code>, jobs at <code>/proc/jobs</code>, PACS at <code>/net/pacs</code>.</div>
+<div class="card" style="left:54px; top:296px; width:232px"><b>ChRIS_ui</b> in a browser<br><code>chrisapi</code> is the whole stack; the PACS tab listens on the LONK WebSocket.</div>
+<div class="note" style="left:54px; top:384px; width:232px">Neither holds a credential CUBE did not issue: a token from <code>auth-token/</code>, nothing else.</div>
+
+<!-- PACS -->
+<div class="abs region pacs" style="left:40px; top:600px; width:260px; height:270px"><div class="rhead">The PACS: another machine</div></div>
+<div class="card pacs" style="left:54px; top:636px; width:232px; height:150px"><b>PACS server</b><br>the hospital's archive; studies by patient, study and series. Speaks DICOM on its own network: answers finds, honours moves, pushes images.</div>
+<div class="note" style="left:54px; top:800px; width:232px">Never written to. It sees two DICOM peers, <code>pfdcm</code> and an AE called <code>ChRIS</code>; it never sees CUBE's API.</div>
+
+<!-- CUBE deployment -->
+<div class="abs host" style="left:330px; top:160px; width:690px; height:710px">
+  <div class="hhead"><b>THE CUBE DEPLOYMENT</b>: one Helm release on the cluster below. Every block is a pod; the API and the DICOM listener reach the outside through a Route and a Service, everything else is cluster-internal.</div>
+  <div class="hfoot">Secrets: the database password, the storage keys, one token per <code>pfcon</code>, <code>pfdcm</code>'s address. Patient data lives in the file storage and nowhere else in this box.</div>
+</div>
+<div class="card" style="left:346px; top:212px; width:220px; height:112px"><b>API server</b> <span class="dim">· Django on uvicorn</span><br>Collection+JSON over HTTP; the LONK WebSocket for PACS progress. Validates, records, enqueues. Runs nothing itself.</div>
+<div class="card" style="left:586px; top:212px; width:170px; height:112px"><b>DragonflyDB</b> <span class="dim">· the broker</span><br>Celery's queue: <code>main1</code>, <code>main2</code>, <code>periodic</code>. RabbitMQ until 2026-03.</div>
+<div class="card" style="left:776px; top:212px; width:228px; height:112px"><b>workers</b> <span class="dim">· Celery</span><br><code>main1</code> starts a job at its <code>pfcon</code>; <code>main2</code> polls it, cancels it, cleans up. One token per compute resource.</div>
+
+<div class="card" style="left:586px; top:346px; width:170px; height:84px"><b>beat</b> <span class="dim">· the clock</span><br>a schedule kept in the database; its tasks run on a worker of their own.</div>
+<div class="card" style="left:776px; top:346px; width:228px; height:84px"><b>nats</b> <span class="dim">· the notice board</span><br>receive progress from the listener; the API relays it to browsers as LONK.</div>
+
+<div class="card" style="left:346px; top:452px; width:220px; height:110px"><b>PostgreSQL</b> <span class="dim">· the metadata</span><br>users, feeds, plugin instances, pipelines, PACS studies and series, the register of apps.</div>
+<div class="card" style="left:586px; top:452px; width:418px; height:110px"><b>file storage</b> <span class="dim">· CFS, the ChRIS File System</span><br>Swift, S3 or a POSIX filesystem: <code>home/&lt;user&gt;/</code> and its feeds, <code>SERVICES/PACS/</code>, <code>PIPELINES/</code>. Written by the API (uploads), by the listener (studies), and by in-network <code>pfcon</code> (outputs); read by everyone.</div>
+
+<div class="card pacs" style="left:346px; top:594px; width:300px; height:118px"><b>oxidicom</b> <span class="dim">· the DICOM listener</span><br>a C-STORE receiver, AE title <code>ChRIS</code>, port 11111 through a Service: writes what the PACS sends into the file storage, registers each series through the broker, reports progress to <code>nats</code>.</div>
+<div class="card pacs" style="left:666px; top:594px; width:338px; height:118px"><b>pfdcm</b> <span class="dim">· the DICOM client</span><br>finds studies (C-FIND) and asks the PACS to send them (C-MOVE) on CUBE's behalf; the API calls it over HTTP for <code>pacs query</code> and <code>pacs retrieve</code>. Holds the list of PACS services.</div>
+
+<!-- compute resources -->
+<div class="abs region" style="left:1050px; top:160px; width:290px; height:710px"><div class="rhead">Compute, in-network</div></div>
+<div class="card" style="left:1064px; top:196px; width:262px; height:150px"><b><code>pfcon</code></b> <span class="dim">· the scheduler</span><br>a Flask API under gunicorn, one per compute resource; <code>pman</code> is folded into it since 2025-09. Takes a job over HTTP with its token, turns it into work on its engine, answers status and logs.</div>
+<div class="card" style="left:1064px; top:366px; width:262px; height:150px"><b>op containers</b> <span class="dim">· the staging</span><br><code>copyjobs</code>: pull the inputs from the shared storage into the job's <code>incoming/</code>, resolving <code>.chrislink</code>; <code>uploadjobs</code>: push <code>outgoing/</code> back (a no-op on a shared filesystem); <code>deletejobs</code>: clear the job's directory.</div>
+<div class="card" style="left:1064px; top:536px; width:262px; height:120px"><b>the plugin's container</b> <span class="dim">· the process</span><br>a Kubernetes Job, one pod, the image from the register of apps, <code>incoming/</code> and <code>outgoing/</code> mounted from the storeBase PVC.</div>
+<div class="note dashed" style="left:1064px; top:676px; width:262px">Shares CUBE's storage, so inputs and outputs are copies within one filesystem or object store, never a transfer.</div>
+<div class="note" style="left:1064px; top:778px; width:262px">Engines: Kubernetes (OpenShift is the same driver), Docker Swarm, Docker or Podman on one host. SLURM through Cromwell was removed in 2025-10.</div>
+
+<div class="abs region" style="left:1370px; top:160px; width:270px; height:710px"><div class="rhead">Compute, out-of-network</div></div>
+<div class="card" style="left:1384px; top:196px; width:242px; height:150px"><b><code>pfcon</code></b>, the same program<br>on another host or cluster, reached over HTTP with its own token; a different engine, often a plain Docker host.</div>
+<div class="card" style="left:1384px; top:366px; width:242px; height:150px"><b>zip in, zip out</b><br>no shared storage: a worker sends the inputs as a zip in the request and downloads the outputs as a zip when the job ends. Slower; needs nothing of CUBE's cluster.</div>
+<div class="card" style="left:1384px; top:536px; width:242px; height:120px"><b>the plugin's container</b><br>the same image, run by whatever engine is there.</div>
+<div class="note" style="left:1384px; top:676px; width:242px">A site can attach several compute resources at once; the plugin instance names the one it runs on.</div>
+
+<!-- floor: OpenShift -->
+<div class="abs region floor" style="left:330px; top:900px; width:1010px; height:150px"><div class="rhead">The cluster: Red Hat OpenShift on Kubernetes</div></div>
+<div class="card redhat" style="left:346px; top:936px; width:230px; height:98px"><b>Helm, the kubeconfig</b><br>installs the CUBE release: Deployments for every block above, their Services, the Secrets. <span class="dim">· the package manager</span></div>
+<div class="card redhat" style="left:592px; top:936px; width:200px; height:98px"><b>Routes and Services</b><br>the API's HTTPS route, the DICOM port for the listener. <span class="dim">· the firewall and NAT</span></div>
+<div class="card redhat" style="left:808px; top:936px; width:200px; height:98px"><b>storage classes</b><br>PVCs for the database and the storeBase; the object store beside the cluster. <span class="dim">· the disks</span></div>
+<div class="card redhat" style="left:1064px; top:936px; width:262px; height:98px"><b>the Kubernetes API</b><br>in-network <code>pfcon</code> asks it for a Job per plugin instance and per op; the scheduler puts each pod on a node. <span class="dim">· the kernel</span></div>
+
+<!-- floor: substrate -->
+<div class="abs region oci" style="left:330px; top:1065px; width:1010px; height:104px"><div class="rhead">The substrate</div></div>
+<div class="card oci" style="left:346px; top:1098px; width:480px; height:62px"><b>a cloud tenancy</b>: Oracle Cloud Infrastructure first. Nodes, VCN, load balancers, volumes, the object store; laid down by the Hub bastion's <code>stratus</code> session (<code>domain build</code>).</div>
+<div class="card" style="left:846px; top:1098px; width:480px; height:62px"><b>on-prem</b>: a hospital's own machines, set up by hand; the same cluster above.</div>
+
+<!-- out-of-network floor -->
+<div class="abs region" style="left:1370px; top:900px; width:270px; height:257px"><div class="rhead">Elsewhere</div></div>
+<div class="card grey" style="left:1384px; top:936px; width:242px; height:98px"><b>another host or cluster</b><br>its own engine and disks; nothing of CUBE's cluster reaches it, only the HTTP calls from the workers.</div>
+<div class="note" style="left:1384px; top:1050px; width:242px">A GPU box in a lab, a partner's cluster, a cloud elsewhere.</div>
+
+<!-- wires -->
+<svg class="wires" viewBox="0 0 1680 1270">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8a8f9a"/></marker>
+    <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6b3fa0"/></marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d9281f"/></marker>
+    <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2a4ea8"/></marker>
+  </defs>
+
+  <!-- callers -> API -->
+  <path class="w mise" d="M286,246 L314,246 L314,262 L344,262" marker-end="url(#am)"/>
+  <path class="w" d="M286,330 L314,330 L314,262" />
+  <text x="302" y="212" text-anchor="middle" class="mise">HTTP</text>
+  <text x="302" y="226" text-anchor="middle">+ LONK</text>
+
+  <!-- API -> broker -> workers -->
+  <path class="w" d="M566,250 L584,250" marker-end="url(#a)"/>
+  <path class="w" d="M756,250 L774,250" marker-end="url(#a)"/>
+  <path class="w" d="M671,346 L671,326" marker-end="url(#a)"/>
+  <text x="680" y="340" text-anchor="start" class="ondark">periodic</text>
+
+  <!-- API -> Postgres ; workers -> storage ; listener -> storage -->
+  <path class="w" d="M456,324 L456,450" marker-end="url(#a)"/>
+  <text x="464" y="392" text-anchor="start" class="ondark">records</text>
+  <path class="w" d="M890,432 L890,450" marker-end="url(#a)"/>
+  <path class="w" d="M496,594 L496,564" marker-end="url(#a)"/>
+  <text x="504" y="584" text-anchor="start" class="ondark">studies in</text>
+  <path class="w" d="M646,640 L664,640" marker-start="url(#a)"/>
+  <!-- listener -> nats (behind cards: short) -->
+  <path class="w" d="M646,606 L656,606 L656,580 L1012,580 L1012,388 L1006,388" marker-end="url(#a)"/>
+  <text x="700" y="576" text-anchor="start" class="ondark">progress → nats</text>
+
+  <!-- API -> pfdcm (down the left of the box then under) -->
+    <path class="w dash" d="M346,300 L338,300 L338,740 L835,740 L835,712" marker-end="url(#a)"/>
+  <text x="590" y="756" text-anchor="middle" class="ondark">pacs query, pacs retrieve: the API calls pfdcm over HTTP</text>
+
+  <!-- pfdcm -> PACS ; PACS -> listener -->
+  <path class="w pacs" d="M666,686 L656,686 L656,800 L320,800 L320,770 L288,770" marker-end="url(#ap)"/>
+  <text x="500" y="814" text-anchor="middle" class="pacs ondark">DICOM: C-FIND, C-MOVE</text>
+  <path class="w pacs" d="M286,690 L310,690 L310,660 L344,660" marker-end="url(#ap)"/>
+  <text x="300" y="625" text-anchor="middle" class="pacs">C-STORE</text>
+  <text x="300" y="638" text-anchor="middle" class="pacs">port 11111</text>
+
+  <!-- workers -> in-network pfcon ; workers -> out-of-network pfcon -->
+  <path class="w" d="M1004,246 L1062,246" marker-end="url(#a)"/>
+  <text x="1033" y="228" text-anchor="middle">HTTP</text>
+  <path class="w" d="M1004,300 L1036,300 L1036,146 L1505,146 L1505,194" marker-end="url(#a)"/>
+  <text x="1270" y="140" text-anchor="middle">the same call, to a pfcon elsewhere, zips in the request</text>
+
+  <!-- pfcon -> op containers -> plugin container -->
+  <path class="w" d="M1195,346 L1195,364" marker-end="url(#a)"/>
+  <path class="w" d="M1195,516 L1195,534" marker-end="url(#a)"/>
+  <path class="w" d="M1505,346 L1505,364" marker-end="url(#a)"/>
+  <path class="w" d="M1505,516 L1505,534" marker-end="url(#a)"/>
+
+  <!-- in-network storage sharing: storage <-> ops -->
+  <path class="w dash" d="M1004,520 L1030,520 L1030,441 L1062,441" marker-end="url(#a)" marker-start="url(#a)"/>
+  <text x="1030" y="470" text-anchor="middle" transform="rotate(-90 1030 470)">shared</text>
+
+  <!-- cluster: pfcon -> Kubernetes API ; CUBE box -> Helm ; storage -> storage classes ; API -> Routes -->
+  <path class="w redhat" d="M1300,656 L1300,676 L1346,676 L1346,985 L1328,985" marker-end="url(#ar)"/>
+  <text x="1352" y="900" text-anchor="start" class="redhat" transform="rotate(90 1352 900)">a Job per plugin instance</text>
+  <path class="w redhat dash" d="M461,870 L461,934" marker-end="url(#ar)"/>
+  <text x="470" y="892" text-anchor="start" class="redhat">every block is a pod of this release</text>
+  <path class="w redhat dash" d="M692,870 L692,934" marker-end="url(#ar)"/>
+  <text x="700" y="892" text-anchor="start" class="redhat">the API's route, the DICOM port</text>
+  <path class="w redhat dash" d="M908,870 L908,934" marker-end="url(#ar)"/>
+  <text x="916" y="892" text-anchor="start" class="redhat">the storeBase and the database</text>
+  <!-- cluster stands on substrate -->
+  <path class="w redhat dash" d="M835,1050 L835,1063" marker-end="url(#ar)"/>
+
+  <!-- step numbers -->
+  <g>
+    <circle class="stepc" cx="328" cy="246" r="9"/><text class="step" x="328" y="250" text-anchor="middle">1</text>
+    <circle class="stepc" cx="575" cy="236" r="9"/><text class="step" x="575" y="240" text-anchor="middle">2</text>
+    <circle class="stepc" cx="1033" cy="260" r="9"/><text class="step" x="1033" y="264" text-anchor="middle">3</text>
+    <circle class="stepc" cx="1210" cy="356" r="9"/><text class="step" x="1210" y="360" text-anchor="middle">4</text>
+    <circle class="stepc" cx="1210" cy="526" r="9"/><text class="step" x="1210" y="530" text-anchor="middle">5</text>
+    <circle class="stepc" cx="1346" cy="800" r="9"/><text class="step" x="1346" y="804" text-anchor="middle">6</text>
+    <circle class="stepc" cx="1030" cy="500" r="9"/><text class="step" x="1030" y="504" text-anchor="middle">7</text>
+  </g>
+</svg>
+
+<div class="legend">
+  <span><span class="sw" style="border-left-color:var(--mise)"></span>mise</span>
+  <span><span class="sw"></span>ChRIS: CUBE and its compute</span>
+  <span><span class="sw" style="border-left-color:var(--redhat)"></span>Red Hat</span>
+  <span><span class="sw" style="border-left-color:var(--oci)"></span>Oracle Cloud Infrastructure</span>
+  <span><span class="sw" style="border-left-color:var(--pacs)"></span>PACS</span>
+  <span>— solid: a call · - - dashed: shared storage, or the cluster providing something · red: where CUBE touches OpenShift</span>
+</div>
+<p class="foot">One plugin instance: 1 a caller posts it to the API, which records it; 2 the API enqueues it and a worker picks it up; 3 the worker hands it to the compute resource's <code>pfcon</code> with that resource's token; 4 <code>pfcon</code> stages the inputs with a copy op, out of the shared storage in-network or out of the request's zip; 5 it runs the plugin's container, a Kubernetes Job on the cluster when the engine is Kubernetes, 6 which the cluster's scheduler places on a node; 7 the outputs land back in CFS, a copy op in-network or a zip the worker fetches, and the worker, polling on <code>main2</code>, marks the instance finished. A PACS pull is the other loop: the API asks <code>pfdcm</code>, <code>pfdcm</code> asks the PACS, the PACS sends to the listener, the listener writes CFS and registers the series, and the browser watches it arrive over LONK.</p>
+</div>
+</body>
+</html>

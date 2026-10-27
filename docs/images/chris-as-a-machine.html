@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ChRIS architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f8f7f4;
+    --ink: #1f2228;
+    --muted: #6b6f78;
+    --rule: #c9c6bf;
+    --card: #ffffff;
+    --dark: #2b2f3a;
+    --dark-2: #3a3f4c;
+    --mise: #2a4ea8;
+    --mise-tint: #e9edf7;
+    --chris: #c9c6bf;
+    --chris-tint: #edecea;
+    --redhat: #d9281f;
+    --redhat-tint: #fbeae6;
+    --oci: #e8720c;
+    --oci-tint: #fdf0e4;
+    --pacs: #6b3fa0;
+    --pacs-tint: #efe8f7;
+    --linux: #2f7d3b;
+    --server-tint: #fbefe9;
+    --cred: #f1ead2;
+    --cred-edge: #c9a227;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); }
+  body { font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.42; width: 1680px; padding: 36px 40px 30px; }
+  code, .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.95em; }
+  h1 { font-size: 30px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  h1 code { font-size: 0.9em; font-weight: 600; }
+  .lead { max-width: 1120px; color: #3e424b; margin: 0 0 22px; font-size: 13.5px; }
+  .refs { position: absolute; right: 40px; top: 44px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; }
+
+  .fig { display: grid; grid-template-columns: 190px 1fr 440px 250px; column-gap: 18px; row-gap: 12px; position: relative; }
+  .colhead { font-weight: 700; font-size: 14.5px; }
+  .colhead small { font-weight: 400; color: var(--muted); margin-left: 8px; font-size: 12px; }
+  .colhead.mise { color: var(--mise); }
+  .colhead.pacs { color: var(--pacs); }
+  .layer { padding-top: 6px; }
+  .layer b { display: block; font-size: 13.5px; }
+  .layer span { color: var(--muted); font-size: 12px; display: block; }
+  .layer span i { color: var(--linux); font-style: normal; }
+
+  .card { background: var(--card); border: 1px solid var(--rule); border-radius: 6px; padding: 9px 12px; position: relative; }
+  .card::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 4px; border-radius: 0 3px 3px 0; background: var(--chris); }
+  .card.mise::before { background: var(--mise); }
+  .card.redhat::before { background: var(--redhat); }
+  .card.oci::before { background: var(--oci); }
+  .card.pacs::before { background: var(--pacs); }
+  .card.none::before { display: none; }
+  .card b { font-weight: 600; }
+  .card .dim { color: var(--muted); }
+  .card.dark { background: var(--dark-2); color: #e6e8ee; border-color: var(--dark-2); }
+  .card.dark::before { display: none; }
+  .card.cred { background: var(--cred); border-color: var(--cred-edge); }
+  .card.cred::before { background: var(--cred-edge); }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .box { border-radius: 10px; padding: 10px 12px; position: relative; }
+  .box .boxhead { font-size: 12.5px; color: var(--ink); margin: 0 0 8px; }
+  .box .boxhead b { font-weight: 700; letter-spacing: 0.02em; }
+  .box.bastion { background: var(--mise-tint); border: 1px solid #c7d0e8; }
+  .box.server { background: var(--server-tint); border: 1px solid #ecc9bd; }
+  .box.pacsbox { background: var(--pacs-tint); border: 1px solid #d3c3ea; }
+  .stack { display: grid; gap: 10px; }
+
+  .step { color: var(--muted); font-size: 12px; text-align: left; padding-left: 50%; margin: -4px 0 -4px; }
+  .step::before { content: '↓ '; color: var(--mise); }
+  .step.chris::before { color: #8a8f9a; }
+
+  .wire { background: var(--card); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 12px; text-align: center; width: 70%; margin: 0 auto; }
+  .wire b { font-weight: 600; }
+
+  .divider { grid-column: 2 / 4; color: var(--muted); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; display: flex; align-items: center; gap: 10px; margin: -2px 0; }
+  .divider::after { content: ''; flex: 1; border-top: 1px solid var(--rule); }
+
+  .note { color: var(--muted); font-size: 12px; }
+  .note.dashed { border: 1px dashed var(--rule); border-radius: 6px; padding: 8px 12px; }
+
+  /* CUBE internals */
+  .cube { display: grid; grid-template-columns: 1.1fr 1fr 1fr 1.25fr; gap: 10px; }
+  .cube .card { padding: 8px 11px; }
+  .cube .title { font-weight: 600; }
+  .flow { color: var(--muted); font-size: 11.5px; margin-top: 8px; }
+  .flow code { color: var(--ink); }
+  .arrowline { color: var(--muted); font-size: 11.5px; }
+
+  .pacswire { position: relative; min-height: 40px; }
+  .pacswire::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; border-left: 2px dashed #b79bd9; }
+  .pacswire::after { content: ''; position: absolute; left: 50%; bottom: 0; margin-left: -6px; border: 6px solid transparent; border-top: 9px solid #b79bd9; border-bottom: 0; }
+  .uiwire { position: relative; }
+  .uiwire::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; border-left: 2px solid #b9bcc4; }
+  .uiwire::after { content: ''; position: absolute; left: 50%; bottom: 0; margin-left: -6px; border: 6px solid transparent; border-top: 9px solid #b9bcc4; border-bottom: 0; }
+
+  .legend { display: flex; gap: 22px; align-items: center; color: var(--muted); font-size: 12px; margin-top: 18px; flex-wrap: wrap; }
+  .legend .sw { display: inline-block; width: 20px; height: 13px; border: 1px solid var(--rule); border-radius: 3px; border-left-width: 4px; vertical-align: -2px; margin-right: 6px; background: #fff; }
+  .legend .sw.mise { border-left-color: var(--mise); }
+  .legend .sw.redhat { border-left-color: var(--redhat); }
+  .legend .sw.oci { border-left-color: var(--oci); }
+  .legend .sw.pacs { border-left-color: var(--pacs); }
+  .legend .sw.chris { border-left-color: var(--chris); }
+  .legend .tint { display: inline-block; width: 20px; height: 13px; border-radius: 3px; vertical-align: -2px; margin-right: 2px; }
+  .foot { color: #3e424b; font-size: 12.5px; max-width: 1600px; margin-top: 14px; }
+</style>
+</head>
+<body>
+<h1>ChRIS: the architecture</h1>
+<div class="refs">docs/linux-metaphor.adoc · docs/bastion.adoc · docs/stratus.adoc · chrisproject.org/docs/guide</div>
+<p class="lead">ChRIS read as a machine. Rows are layers, each running inside the one beneath; surfaces are not layers, they attach from above over a wire. Two ways in: the <code>mise</code> stack on a bastion, which presents CUBE as a filesystem with processes, and the original web UI, which speaks CUBE's REST API from a browser tab. Below the network line is the server's machine: CUBE and its services, the compute it schedules onto, the cluster, and the substrate the cluster stands on. A PACS is another machine across another network, reached through CUBE's own gateway.</p>
+
+<div class="fig">
+  <!-- column heads -->
+  <div class="layer"><span style="text-transform:uppercase;letter-spacing:.08em;font-size:11.5px">Layer</span></div>
+  <div class="colhead mise">ChRIS through <code>mise</code><small>ARGUS is the desktop, chell the terminal</small></div>
+  <div class="colhead">ChRIS through the original UI<small>one browser application</small></div>
+  <div class="colhead pacs">A hospital's PACS<small>another machine</small></div>
+
+  <!-- row: person -->
+  <div class="layer"><b>Where the person is</b><span>surfaces attach to a session; they are not layers of it</span></div>
+  <div class="pair">
+    <div class="card mise"><b>ARGUS</b> desktop<br>frame and panes: files, feeds, PACS, the editor; its console is a chell on a pty</div>
+    <div class="card mise"><b>chell</b> terminal<br>attaches to the same session; complete on its own, scriptable, <code>-c</code> under cron</div>
+  </div>
+  <div class="card"><b>ChRIS_ui</b>: one React application, one surface<br>a login page, then every view is code against CUBE's REST API; no terminal</div>
+  <div class="note">a radiologist's workstation, the scanners; nothing of ChRIS runs there</div>
+
+  <!-- row: wire -->
+  <div class="layer"><b>The wire</b><span>what a surface speaks to reach its host</span></div>
+  <div class="wire"><b>menu</b>, the wire<br>envelope, typed results, prompt, progress, events, over a WebSocket</div>
+  <div class="wire"><b>REST + JSON</b><br>Collection+JSON over HTTP, through <code>chrisapi</code></div>
+  <div></div>
+
+  <!-- row: host / bastion -->
+  <div class="layer"><b>Host</b><span>the machine the stack's processes run on <i>· your machine</i></span></div>
+  <div class="box bastion">
+    <p class="boxhead"><b>THE BASTION</b>: a container, a VM or a real machine running the <code>mise</code> stack. Its entrypoint starts <code>porter</code>; everything in this box is a process on it, and its own kernel is below the picture. In HARBOR it is the spoke bastion beside a cohort, or the cloud controller at the Hub running a <code>stratus</code> session instead of this one.</p>
+    <div class="stack">
+      <div class="card mise"><b>porter</b> <span class="dim">· the login manager</span><br>the door, and the only way in: device-code login, one daemon per identity, restart</div>
+      <div class="step">starts</div>
+      <div class="card mise"><b>calypso</b> <span class="dim">· the login session</span><br>hosts one engine; surfaces attach and detach, a step survives a closed browser; <code>!</code> under the <code>tasks</code> tier is the one door to the host shell</div>
+      <div class="step">spawns a pty per console</div>
+      <div class="card mise"><b>brasa</b> core <span class="dim">· bash and coreutils</span><br>parser, pipes, <code>&gt;</code>, <code>@3</code>, variables, history, the command registry, the core file tools; work on any filesystem because they ask only for the syscalls</div>
+      <div class="card mise"><b>fond</b> <span class="dim">· the kernel's filesystem interface</span><br>defines the VFS: the provider contract, the dispatcher (longest mount prefix owns a path), <code>Result</code> and the error stack, how a listing is drawn. Knows no backend.</div>
+      <div class="card mise"><b>chris</b>, the backend <span class="dim">· the filesystem driver and its programs</span><br><b>salsa</b> keeps the mount table: CFS at <code>/</code>, <code>/proc/jobs</code> for CUBE's jobs, <code>/net/pacs</code> for the PACS gateway; brasa adds <code>/bin</code> (plugins and pipelines as executables) and <code>.chrislink</code>. <b>cumin</b> over <b>chrisapi</b>: the connection, the credentials, the caches. The ChRIS programs: <code>feed plugin pacs gather upload</code>.</div>
+      <div class="card cred"><b>credential files</b>: this identity's CUBE token and saved context, nothing else. No patient data lives on the bastion; files are read from CUBE on demand.</div>
+    </div>
+  </div>
+  <div class="stack">
+    <div class="note" style="padding:4px 12px 0">a laptop with a browser tab; nothing of ChRIS runs on it, and there is no box to draw</div>
+    <div class="uiwire" style="height:140px"></div>
+    <div class="card"><b>chrisapi</b><br>the same client; here it is the whole stack: no session, no shell, no mount table. The tab talks to the server, and a terminal's work is invisible to it.</div>
+    <div class="uiwire" style="flex:1;min-height:220px"></div>
+  </div>
+  <div class="stack" style="grid-template-rows: auto auto 1fr">
+    <div class="card pacs"><b>PACS server</b> <span class="dim">· the hospital's archive</span><br>studies by patient, study and series; DICOM over its own network. Queried and pulled, never written.</div>
+    <div class="note" style="padding:0 12px"><code>pacs query</code>, <code>pacs pull</code> in chell; the PACS pane in ARGUS; the PACS tab in ChRIS_ui: all three reach it only through CUBE's gateway below.</div>
+    <div class="pacswire"></div>
+  </div>
+
+  <div class="divider">The bastion ends here · across the network below</div>
+  <div></div>
+
+  <!-- row: CUBE -->
+  <div class="layer"><b>The server</b><span>file server and batch system together <i>· NFS server + a batch scheduler</i></span></div>
+  <div class="box server" style="grid-column: 2 / 4">
+    <p class="boxhead"><b>CUBE</b>: the ChRIS backend, one server under both columns. It exports a filesystem and runs programs on it, keeps the register of apps, and is itself a set of processes on the cluster below.</p>
+    <div class="cube">
+      <div class="card"><div class="title">API server</div>the Django application on <code>uvicorn</code>: Collection+JSON over HTTP, and a WebSocket for PACS progress (LONK). Every surface, <code>chrisapi</code> in both columns, speaks to this and nothing else. <span class="dim">· the NFS daemon and the job queue's front</span></div>
+      <div class="card"><div class="title">workers</div>Celery over DragonflyDB (RabbitMQ until 2026-03): queues <code>main1</code> (start a job), <code>main2</code> (poll, cancel, clean up). <span class="dim">· the batch queue</span></div>
+      <div class="card"><div class="title">periodic tasks</div><code>celery beat</code> on a database schedule, its own worker and queue: status sweeps, cleanups, PACS bookkeeping. <span class="dim">· cron</span></div>
+      <div class="card pacs"><div class="title">PACS gateway: <code>pfdcm</code> and <code>oxidicom</code></div><code>pfdcm</code> asks the PACS (query, retrieve); the PACS sends the studies to <code>oxidicom</code>, a DICOM receiver that writes them into storage, registers them, and reports progress over <code>nats</code>. Both columns reach the PACS only through CUBE's own endpoints. <span class="dim">· an import daemon and its listener</span></div>
+    </div>
+    <div class="cube" style="margin-top:10px; grid-template-columns: 1fr 1fr 1.1fr 1.25fr">
+      <div class="card"><div class="title">PostgreSQL</div>the metadata: users, feeds, plugin instances, PACS studies and series, the register of apps (plugins by name, version, parameters, help). <span class="dim">· the inode table and the package database</span></div>
+      <div class="card"><div class="title">file storage</div>the files: <b>CFS</b>, the ChRIS File System, <code>home/&lt;user&gt;/</code>, feeds, <code>SERVICES/</code>, <code>PIPELINES/</code>; Swift, S3 or a POSIX filesystem. <code>chris</code> mounts it at <code>/</code>, the UI reads it over REST. <span class="dim">· the disks</span></div>
+      <div class="card none"><div class="title">what CUBE presents</div>feeds are process trees, plugin instances are processes, a pipeline is a script that starts several; under <code>mise</code> they are <code>/proc/jobs</code> and <code>/bin</code>, under the UI the feed and plugin tabs.</div>
+      <div class="card none"><div class="title">one job, from the top</div>a plugin's name typed in chell or clicked in the UI → the API makes an instance → a worker hands it to <code>pfcon</code> → <code>pfcon</code> stages the inputs, runs the container on its engine, stages the outputs back → the worker polls it to its end → the outputs are a node of the feed in CFS.</div>
+    </div>
+  </div>
+  <div class="note dashed" style="align-self:start">DICOM both ways: <code>pfdcm</code> queries and asks for a retrieve, the PACS pushes the images to <code>oxidicom</code>. The PACS never sees ChRIS's API; nothing is ever written back to it.</div>
+
+  <!-- row: compute -->
+  <div class="layer"><b>The compute resource</b><span>where a job's process runs <i>· the batch scheduler and its staging area</i></span></div>
+  <div class="box server" style="grid-column: 2 / 4; padding-top: 10px">
+    <div class="cube" style="grid-template-columns: 1.3fr 1fr 1.1fr">
+      <div class="card"><div class="title"><code>pfcon</code></div>one per compute resource, the whole of it since 2025-09 (<code>pman</code> was merged into it and is gone). A Flask API under <code>gunicorn</code>: <code>pluginjobs</code>, and <code>copyjobs</code>, <code>uploadjobs</code>, <code>deletejobs</code> that run as small containers of their own on the same engine. <span class="dim">· the scheduler and the staging area in one daemon</span></div>
+      <div class="card"><div class="title">the storage it stages from</div>in-network: the same Swift, S3 or shared filesystem CUBE writes (<code>fslink</code> resolves <code>.chrislink</code>); out-of-network: inputs arrive as a zip and outputs go back as one. <span class="dim">· the NFS mount, or a copy</span></div>
+      <div class="card none"><div class="title">the engines</div>Kubernetes (OpenShift is the same driver), Docker Swarm, Docker or Podman on one host. SLURM through Cromwell was removed in 2025-10. CUBE may be attached to several compute resources at once, chosen per plugin instance.</div>
+    </div>
+  </div>
+  <div></div>
+
+  <!-- row: cluster -->
+  <div class="layer"><b>Distribution and kernel</b><span>what runs where; the machine's state <i>· a Linux distribution on its kernel</i></span></div>
+  <div class="card redhat" style="grid-column: 2 / 4"><b>OpenShift</b> on <b>Kubernetes</b><br>the control plane is the kernel: a pod is a process, a node a CPU, a namespace a user and cgroup, a persistent volume a mounted disk, a Service a port that stays put, an Operator a systemd unit. OpenShift is the distribution: projects, Routes, security context constraints, OLM and the image registry, builds, the web console, <code>oc</code>. CUBE and its services are pods here, installed by Helm through the kubeconfig; a plugin instance is a pod on a node. OpenShift itself lands on the nodes from Red Hat's Assisted Installer. In HARBOR, a Trusted Domain is one such cluster with ChRIS on it and a spoke bastion beside it.</div>
+  <div></div>
+
+  <!-- row: hardware -->
+  <div class="layer"><b>Hardware</b><span>what the machine is made of <i>· CPUs, memory, disks, network</i></span></div>
+  <div class="pair" style="grid-column: 2 / 4">
+    <div class="card oci"><b>the substrate</b>: a cloud tenancy<br>Oracle Cloud Infrastructure first; MOC, CHPC later. Nodes, VCN, subnets, load balancers, volumes, the object store. Laid down by the Hub bastion's <code>stratus</code> session through the tenancy's API key: <code>domain plan</code>, <code>domain build</code>.</div>
+    <div class="card"><b>on-prem</b><br>a hospital's own machines: instances, volumes, networks, load balancers; set up by hand, the same cluster above.</div>
+  </div>
+  <div></div>
+</div>
+
+<div class="legend">
+  <span><span class="sw mise"></span>mise</span>
+  <span><span class="sw chris"></span>ChRIS: CUBE and its UI</span>
+  <span><span class="sw redhat"></span>Red Hat</span>
+  <span><span class="sw oci"></span>Oracle Cloud Infrastructure</span>
+  <span><span class="sw pacs"></span>PACS</span>
+  <span><span class="tint" style="background:var(--mise-tint);border:1px solid #c7d0e8"></span><span class="tint" style="background:var(--server-tint);border:1px solid #ecc9bd"></span> a machine: the bastion's, the server's</span>
+  <span><i style="color:var(--linux);font-style:normal">green</i> in the layer column: the Linux reading</span>
+</div>
+<p class="foot">What the older wiring diagram drew (ChRIS_ui, CUBE's API server, workers and periodic tasks, the database and object storage, pfdcm and the PACS, pfcon and the compute cluster) is here, inside the server's box and the compute row, brought up to date: pman is folded into pfcon, RabbitMQ is DragonflyDB, oxidicom receives what the PACS sends, S3 stands beside Swift. What it could not draw is above the line: a door, a session, a shell and a filesystem on a bastion, from which the same server is a machine one types at. One backend per session; the comparison explains, it does not bind.</p>
+</body>
+</html>

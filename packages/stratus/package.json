@@ -4,12 +4,12 @@
   "description": "STRATUS: a mise session over the cloud substrate a Trusted Domain runs on — one backend, clouds as drivers, OCI first",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FNNDSC/mise.git",
+    "url": "git+https://github.com/HARBOR-Medical-AI/mise.git",
     "directory": "packages/stratus"
   },
-  "homepage": "https://github.com/FNNDSC/mise/tree/main/packages/stratus#readme",
+  "homepage": "https://github.com/HARBOR-Medical-AI/mise/tree/main/packages/stratus#readme",
   "bugs": {
-    "url": "https://github.com/FNNDSC/mise/issues"
+    "url": "https://github.com/HARBOR-Medical-AI/mise/issues"
   },
   "main": "dist/index.js",
   "module": "dist/index.js",

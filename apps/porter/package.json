@@ -41,7 +41,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FNNDSC/mise.git",
+    "url": "git+https://github.com/HARBOR-Medical-AI/mise.git",
     "directory": "apps/porter"
   },
   "keywords": [

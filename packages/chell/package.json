@@ -4,12 +4,12 @@
   "description": "ChELL Executes Layered Logic - Interactive ChRIS REPL Shell",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FNNDSC/mise.git",
+    "url": "git+https://github.com/HARBOR-Medical-AI/mise.git",
     "directory": "packages/chell"
   },
-  "homepage": "https://github.com/FNNDSC/mise/tree/main/packages/chell#readme",
+  "homepage": "https://github.com/HARBOR-Medical-AI/mise/tree/main/packages/chell#readme",
   "bugs": {
-    "url": "https://github.com/FNNDSC/mise/issues"
+    "url": "https://github.com/HARBOR-Medical-AI/mise/issues"
   },
   "main": "dist/index.js",
   "type": "module",

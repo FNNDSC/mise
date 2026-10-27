@@ -9,8 +9,19 @@
  */
 import type {
   CloudAvailability, CloudBucket, CloudContainer, CloudDnsZone, CloudDriver, CloudIdentity, CloudInstance, CloudLimit, CloudLink, CloudLoadBalancer,
-  CloudNetwork, CloudObject, CloudPrice, ServicePrices, CloudRecord, CloudResource, CloudSecurityGroup, CloudShape, CloudSubnet, CloudVolume, CloudZone, ResourceCounts, ResourceKind,
+  CloudNetwork, CloudObject, CloudPrice, ServicePrices, CloudRecord, CloudResource, CloudSecurityGroup, CloudShape, CloudSubnet, CloudVolume, CloudZone, FoundDomain, ResourceCounts, ResourceKind,
 } from '../driver.js';
+
+/** A Resource Manager stack in the fake cloud, as far as finding a domain by its tag needs it. */
+export interface FakeStack {
+  readonly id: string;
+  readonly displayName: string;
+  readonly compartmentId: string;
+  /** Its lifecycle state, lower case. */
+  readonly state: string;
+  readonly region: string;
+  readonly tags: Readonly<Record<string, string>>;
+}
 
 /** A resource in the fake cloud: its kind, the container holding it, and its record. */
 export type FakeResource =
@@ -45,6 +56,8 @@ export interface FakeCloud {
   readonly servicePrices?: ServicePrices | null;
   /** Every resource, in any container and region. */
   readonly resources: ReadonlyArray<FakeResource>;
+  /** The stacks, in any container and region; absent, none. */
+  readonly stacks?: ReadonlyArray<FakeStack>;
   /** Objects by bucket name. */
   readonly objects: Readonly<Record<string, ReadonlyArray<CloudObject>>>;
   /** Object bytes by `bucket/object`. */
@@ -197,6 +210,24 @@ export class FakeDriver implements CloudDriver {
   async records_list(zoneId: string): Promise<CloudRecord[]> {
     this.call_count('records_list');
     return [...(this.cloudData.records[zoneId] ?? [])];
+  }
+
+  async domains_find(tagKey: string, region: string): Promise<FoundDomain[]> {
+    this.call_count('domains_find');
+    const byName: Map<string, { stack: FoundDomain['stack']; compartmentId: string | null }> = new Map();
+    for (const container of this.cloudData.containers) {
+      const name: string | undefined = container.tags[tagKey];
+      if (name === undefined || container.state !== 'active') continue;
+      byName.set(name, { ...(byName.get(name) ?? { stack: null, compartmentId: null }), compartmentId: container.id });
+    }
+    for (const stack of this.cloudData.stacks ?? []) {
+      const name: string | undefined = stack.tags[tagKey];
+      if (name === undefined || stack.region !== region || GONE_STATES.includes(stack.state)) continue;
+      byName.set(name, { ...(byName.get(name) ?? { stack: null, compartmentId: null }), stack: { id: stack.id, state: stack.state, compartmentId: stack.compartmentId } });
+    }
+    return [...byName.entries()]
+      .sort(([a]: [string, unknown], [b]: [string, unknown]): number => a.localeCompare(b))
+      .map(([name, entry]): FoundDomain => ({ name, stack: entry.stack, compartmentId: entry.compartmentId, region }));
   }
 
   async resources_search(containerId: string, region: string): Promise<ResourceCounts> {

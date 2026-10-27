@@ -63,6 +63,7 @@ describe('the TD controller model', () => {
   });
 
   it('says what a domain is and whether money runs', () => {
+    expect(classBadge_render(domain_make({ origin: 'found' }))).toBe('FOUND · NOT ADOPTED');
     expect(classBadge_render(domain_make({ origin: 'adopted' }))).toBe('ADOPTED · PLANS ONLY');
     expect(classBadge_render(domain_make({ origin: 'checkout' }))).toBe('CHECKOUT · READ ONLY');
     expect(classBadge_render(domain_make({ gone: '2026-10-23' }))).toBe('TORN DOWN');

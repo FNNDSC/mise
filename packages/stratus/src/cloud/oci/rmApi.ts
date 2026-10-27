@@ -31,6 +31,8 @@ export interface RmStackRecord {
   readonly displayName: string;
   readonly state: string;
   readonly compartmentId: string;
+  /** Its variables, as set; a summary carries none. */
+  readonly variables: Readonly<Record<string, string>>;
 }
 
 /** What a job is asked to do. */
@@ -110,6 +112,7 @@ export function rmApi_make(options: RmApiOptions): RmApi {
   });
   const stack_convert = (stack: resourcemanager.models.Stack | resourcemanager.models.StackSummary): RmStackRecord => ({
     id: stack.id ?? '', displayName: stack.displayName ?? '', state: String(stack.lifecycleState ?? 'UNKNOWN'), compartmentId: stack.compartmentId ?? '',
+    variables: 'variables' in stack ? { ...(stack.variables ?? {}) } : {},
   });
   return {
     async stack_create(request) {

@@ -112,6 +112,12 @@ export interface OciDnsRecord {
 export interface OciSearchRecord {
   readonly resourceType: string;
   readonly lifecycleState: string;
+  /** Its OCID. */
+  readonly identifier: string;
+  readonly displayName: string;
+  /** The compartment holding it; for a compartment, its parent. */
+  readonly compartmentId: string;
+  readonly freeformTags: Readonly<Record<string, string>>;
 }
 
 /** The resource calls the driver makes; every list is in one compartment and region. */
@@ -406,7 +412,7 @@ export function ociResourceApi_make(provider: common.AuthenticationDetailsProvid
         });
         return { items: answer.resourceSummaryCollection.items ?? [], next: answer.opcNextPage };
       });
-      return items.map((item: resourcesearch.models.ResourceSummary): OciSearchRecord => ({ resourceType: item.resourceType, lifecycleState: item.lifecycleState ?? '' }));
+      return items.map((item: resourcesearch.models.ResourceSummary): OciSearchRecord => ({ resourceType: item.resourceType, lifecycleState: item.lifecycleState ?? '', identifier: item.identifier, displayName: item.displayName ?? '', compartmentId: item.compartmentId, freeformTags: { ...(item.freeformTags ?? {}) } }));
     },
   };
 }

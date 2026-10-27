@@ -112,7 +112,7 @@ export function stratusTiles_make(hooks: StratusTileHooks): () => Promise<TileCo
       ],
       rows: domains.slice(0, 6).map((domain: DomainSummary): LauncherRow => ({
         // The rate before the cluster's long name, so a narrow tile cuts the name, not the money.
-        text: `${domain.name}  ${domain.lastDone ?? 'NOTHING DONE'}${domain.cost !== undefined && domain.cost !== null ? `  ${money_text(domain.cost.hourly, domain.cost.currency)}/h` : ''}  ${domain.cluster ?? ''}`.trimEnd(),
+        text: `${domain.name}  ${domain.origin === 'found' ? 'FOUND · NOT ADOPTED' : domain.lastDone ?? 'NOTHING DONE'}${domain.cost !== undefined && domain.cost !== null ? `  ${money_text(domain.cost.hourly, domain.cost.currency)}/h` : ''}  ${domain.cluster ?? ''}`.trimEnd(),
         errored: wrong(domain),
         // A row is that domain's line: the TD controller opens on it (docs/stratus.adoc, D13).
         open: (): void => hooks.domain_open(domain.name),

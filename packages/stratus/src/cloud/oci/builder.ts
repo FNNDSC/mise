@@ -27,10 +27,11 @@ import { Readable } from 'node:stream';
 import { planRows_read } from './planRead.js';
 import type { OciBuildApi } from './buildApi.js';
 import { notFound } from './errors.js';
-import { familyShape_resolve, stackVariables_build } from './stackVars.js';
+import { familyShape_resolve, stackSpec_derive, stackVariables_build } from './stackVars.js';
+import { DOMAIN_TAG } from '../../domain/state.js';
 import type { CloudDriver } from '../driver.js';
 import { specFit_read } from '../../domain/sizing.js';
-import type { RmApi, RmJobRecord, RmOperation } from './rmApi.js';
+import type { RmApi, RmJobRecord, RmOperation, RmStackRecord } from './rmApi.js';
 
 /** The stack release stratus builds with: Oracle's zip of `create-cluster`, pinned. */
 export const STACK_RELEASE = {
@@ -40,7 +41,7 @@ export const STACK_RELEASE = {
 } as const;
 
 /** The freeform tag a domain's stack carries, so a fresh bastion finds it (D4). */
-export const DOMAIN_TAG: string = 'mise-domain';
+export { DOMAIN_TAG };
 
 /** The job states that will not change again. */
 const JOB_OVER: ReadonlyArray<string> = ['SUCCEEDED', 'FAILED', 'CANCELED'];
@@ -209,6 +210,12 @@ export class OciBuilder implements CloudBuilder {
    * @param call - The step's log and stop.
    * @returns The stack's id.
    */
+  async stack_describe(stackId: string, region: string): Promise<{ state: string; compartmentId: string; baseDomain: string | null; spec: DomainSpec | null }> {
+    const stack: RmStackRecord = await this.options.rm(region).stack_get(stackId);
+    const read = stackSpec_derive(stack.variables);
+    return { state: stack.state.toLowerCase(), compartmentId: stack.compartmentId, baseDomain: read.baseDomain, spec: read.spec };
+  }
+
   async stack_adopt(request: { domain: string; region: string; compartmentId: string; variables: Record<string, string>; state: Buffer; stackVersion: string }, call: BuildCall): Promise<string> {
     // The state was written by that release's Terraform; another release would plan changes that are not there.
     if (request.stackVersion !== STACK_RELEASE.version) throw new Error(`the domain was built with oci-openshift ${request.stackVersion || '(unpinned)'}; stratus builds with ${STACK_RELEASE.version}`);

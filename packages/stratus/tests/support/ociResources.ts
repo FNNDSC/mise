@@ -64,19 +64,22 @@ const RECORDS: Record<string, OciDnsRecord[]> = {
   ],
   [PRIVATE_ZONE.id]: [{ domain: 'harbor-cp-1.privateocp.openshiftvcn.oraclevcn.com', rtype: 'A', ttl: 300, rdata: '10.0.16.11' }],
 };
+/** One search hit, in the compartment every fixture stands in. */
+const hit = (resourceType: string, lifecycleState: string): OciSearchRecord => ({ resourceType, lifecycleState, identifier: `ocid1.${resourceType.toLowerCase()}.oc1..x`, displayName: resourceType, compartmentId: HARBOR_ID, freeformTags: {} });
+
 const SEARCH: OciSearchRecord[] = [
-  ...[1, 2, 3].map((): OciSearchRecord => ({ resourceType: 'Instance', lifecycleState: 'RUNNING' })),
-  { resourceType: 'Vcn', lifecycleState: 'AVAILABLE' },
-  ...[1, 2, 3].map((): OciSearchRecord => ({ resourceType: 'Subnet', lifecycleState: 'AVAILABLE' })),
-  ...[1, 2, 3].map((): OciSearchRecord => ({ resourceType: 'NetworkSecurityGroup', lifecycleState: 'AVAILABLE' })),
-  ...[1, 2, 3].map((): OciSearchRecord => ({ resourceType: 'LoadBalancer', lifecycleState: 'ACTIVE' })),
-  { resourceType: 'Volume', lifecycleState: 'AVAILABLE' },
-  { resourceType: 'Volume', lifecycleState: 'TERMINATED' },
-  ...[1, 2, 3].map((): OciSearchRecord => ({ resourceType: 'BootVolume', lifecycleState: 'AVAILABLE' })),
-  { resourceType: 'Bucket', lifecycleState: 'ACTIVE' },
-  { resourceType: 'CustomerDnsZone', lifecycleState: 'ACTIVE' },
-  { resourceType: 'CustomerDnsZone', lifecycleState: 'ACTIVE' },
-  { resourceType: 'PrivateIp', lifecycleState: 'AVAILABLE' },
+  ...[1, 2, 3].map((): OciSearchRecord => (hit('Instance', 'RUNNING'))),
+  hit('Vcn', 'AVAILABLE'),
+  ...[1, 2, 3].map((): OciSearchRecord => (hit('Subnet', 'AVAILABLE'))),
+  ...[1, 2, 3].map((): OciSearchRecord => (hit('NetworkSecurityGroup', 'AVAILABLE'))),
+  ...[1, 2, 3].map((): OciSearchRecord => (hit('LoadBalancer', 'ACTIVE'))),
+  hit('Volume', 'AVAILABLE'),
+  hit('Volume', 'TERMINATED'),
+  ...[1, 2, 3].map((): OciSearchRecord => (hit('BootVolume', 'AVAILABLE'))),
+  hit('Bucket', 'ACTIVE'),
+  hit('CustomerDnsZone', 'ACTIVE'),
+  hit('CustomerDnsZone', 'ACTIVE'),
+  hit('PrivateIp', 'AVAILABLE'),
 ];
 
 /**

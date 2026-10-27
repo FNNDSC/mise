@@ -248,6 +248,21 @@ export interface CloudRecord {
 export type ResourceCounts = Readonly<Partial<Record<ResourceKind, number>>>;
 
 /**
+ * A Trusted Domain the tenancy holds, found by the tag its build or its
+ * adoption put on its stack and its compartment (`mise-domain=<name>`): what
+ * a session lists before it keeps anything of the domain itself.
+ */
+export interface FoundDomain {
+  /** The tag's value: the domain's name. */
+  readonly name: string;
+  /** The stack carrying the tag, or null when only a compartment does. */
+  readonly stack: { readonly id: string; readonly state: string; readonly compartmentId: string } | null;
+  /** The compartment carrying the tag, or null when only a stack does. */
+  readonly compartmentId: string | null;
+  readonly region: string;
+}
+
+/**
  * A cloud, as stratus sees it. Every method answers for the region it is
  * given: the region is the session's, not the driver's (docs/stratus.adoc,
  * D4), so a driver holds no current region.
@@ -303,4 +318,6 @@ export interface CloudDriver {
   records_list(zoneId: string, region: string): Promise<CloudRecord[]>;
   /** How many of each kind a container holds in a region, in one search; live resources only. */
   resources_search(containerId: string, region: string): Promise<ResourceCounts>;
+  /** The domains the tenancy holds, by the tag on their stacks and compartments, in one search across every container: one per name, sorted; a deleted carrier is left out. */
+  domains_find(tagKey: string, region: string): Promise<FoundDomain[]>;
 }

@@ -69,6 +69,7 @@ body[data-takeover='controller'] > *:not(#td-controller) { visibility: hidden; }
 .tdc-note-refused { border-color: var(--tdc-destroy); background: color-mix(in srgb, var(--tdc-destroy) 10%, transparent); }
 .tdc-note-refused .tdc-note-title { color: var(--tdc-destroy); }
 .tdc-note-locked { border-color: var(--butter); }
+.tdc-note-found { border-color: var(--honey); }
 .tdc-section > .tdc-pill { align-self: flex-start; }
 
 /* pills that send lines */

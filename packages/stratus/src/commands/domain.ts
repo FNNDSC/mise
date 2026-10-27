@@ -12,7 +12,8 @@
 import chalk from 'chalk';
 import { envelope_error, envelope_ok, STRATUS_DOMAINS_MODEL_KIND, type CommandEnvelope, type DomainSummary, type DomainsModel } from '@fnndsc/menu';
 import type { CommandGroup, CommandHelp } from '@fnndsc/brasa/core';
-import type { CloudDriver, ResourceCounts } from '../cloud/driver.js';
+import type { CloudDriver, FoundDomain, ResourceCounts } from '../cloud/driver.js';
+import { DOMAIN_TAG } from '../domain/state.js';
 import type { HarborDomain, StepState } from '../domains/harborOci.js';
 import type { DomainTree } from '../vfs/domains.js';
 import { stateTone_paint } from '../vfs/look.js';
@@ -84,6 +85,51 @@ async function domainCost_read(context: DomainCommandContext, domain: HarborDoma
 
 
 /**
+ * A domain found in the tenancy by its tag and not kept here, as the verbs
+ * read one: no spec, no steps, no secrets; its compartment the tagged one,
+ * else the stack's.
+ *
+ * @param found - What the search found.
+ * @returns The domain.
+ */
+export function foundDomain_make(found: FoundDomain): HarborDomain {
+  const compartmentId: string | null = found.compartmentId ?? found.stack?.compartmentId ?? null;
+  return {
+    name: found.name,
+    root: found.stack?.id ?? compartmentId ?? '',
+    spec: null,
+    settings: { CLUSTER_NAME: found.name, OCI_REGION: found.region, ...(compartmentId !== null ? { OCI_COMPARTMENT_OCID: compartmentId } : {}) },
+    state: null,
+    steps: [],
+    secrets: [],
+    cluster: null,
+    origin: 'found',
+    found: { stack: found.stack, compartmentId: found.compartmentId },
+  };
+}
+
+/**
+ * The domains the tenancy holds that this session keeps nothing of: found by
+ * the tag on their stacks and compartments (docs/stratus.adoc, D15). The
+ * tenancy is the truth about its domains; the folder is what this host
+ * knows of each.
+ *
+ * @param context - The session.
+ * @param kept - The domains read from checkouts and the folder.
+ * @returns The found domains, and why the tenancy was not searched when it was not.
+ */
+async function foundDomains_read(context: DomainCommandContext, kept: ReadonlyArray<HarborDomain>): Promise<{ domains: HarborDomain[]; unsearched: string | null }> {
+  const region: string | null = context.region();
+  if (region === null) return { domains: [], unsearched: 'not connected' };
+  try {
+    const found: FoundDomain[] = await context.driver.domains_find(DOMAIN_TAG, region);
+    return { domains: found.filter((entry: FoundDomain): boolean => !kept.some((domain: HarborDomain): boolean => domain.name === entry.name)).map(foundDomain_make), unsearched: null };
+  } catch (error: unknown) {
+    return { domains: [], unsearched: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
  * One domain's status: its lines, and its summary for the model.
  *
  * @param context - The session.
@@ -91,19 +137,24 @@ async function domainCost_read(context: DomainCommandContext, domain: HarborDoma
  * @returns The lines and the summary.
  */
 export async function domainStatus_read(context: DomainCommandContext, domain: HarborDomain): Promise<{ lines: string[]; summary: DomainSummary }> {
-  const width: number = Math.max(...domain.steps.map((step: StepState): number => step.folder.length));
+  const width: number = Math.max(0, ...domain.steps.map((step: StepState): number => step.folder.length));
   const [compartment, cost] = await Promise.all([compartment_count(context, domain.settings['OCI_COMPARTMENT_OCID']), domainCost_read(context, domain)]);
   const lines: string[] = [
     `${chalk.bold(domain.name)}  ${domain.cluster ?? '(no cluster name in its settings)'}`,
-    `${domain.origin !== 'built' ? 'checkout   ' : (domain.state as { adopted?: unknown } | null)?.adopted !== undefined ? 'adopted    ' : (domain.state as { gone?: unknown } | null)?.gone !== undefined ? 'torn down  ' : 'built here '}  ${domain.root}`,
+    domain.origin === 'found'
+      ? `found        ${domain.found?.stack !== null && domain.found?.stack !== undefined ? `stack ${domain.found.stack.id} (${domain.found.stack.state})` : 'no stack'}${domain.found?.compartmentId !== null && domain.found?.compartmentId !== undefined ? `, compartment ${domain.found.compartmentId}` : ''}; not adopted: domain adopt ${domain.name} keeps it here`
+      : `${domain.origin !== 'built' ? 'checkout   ' : (domain.state as { adopted?: unknown } | null)?.adopted !== undefined ? 'adopted    ' : (domain.state as { gone?: unknown } | null)?.gone !== undefined ? 'torn down  ' : 'built here '}  ${domain.root}`,
     ...domain.steps.map((step: StepState): string => `  ${step.folder.padEnd(width)}  ${stateTone_paint(step.state, step.state.padEnd(8))}  ${chalk.gray(step.evidence)}`),
     compartment.line,
     cost.line,
   ];
+  // A found domain keeps no steps here: what lives in its compartment says whether it is up.
+  const live: boolean = (compartment.counts?.instances ?? 0) > 0;
   const summary: DomainSummary = {
     ...domainSummary_read(context.build?.store ?? null, context.domainsPath(), domain),
     resources: compartment.counts === null ? null : { ...compartment.counts },
     cost: cost.spend === null ? null : { hourly: cost.spend.hourly, soFar: cost.spend.soFar, currency: cost.spend.currency },
+    ...(domain.origin === 'found' ? { condition: live ? 'UP' as const : 'STOPPED' as const, billing: live } : {}),
   };
   return { lines, summary };
 }
@@ -119,12 +170,23 @@ export async function domain_run(context: DomainCommandContext, args: ReadonlyAr
   const [verb = 'status', ...rest] = args;
   const builds: Readonly<Record<string, (context: BuildCommandContext, args: ReadonlyArray<string>) => Promise<CommandEnvelope>>> = { new: domainNew_run, plan: domainPlan_run, build: domainBuild_run, adopt: domainAdopt_run, teardown: domainTeardown_run, protect: domainProtect_run, size: domainSize_run, verify: (build: BuildCommandContext, words: ReadonlyArray<string>) => domainVerify_run(build, build.verifyReach ?? verifyReach_default(), words) };
   const build = builds[verb];
-  if (build !== undefined) return context.build === undefined ? envelope_error('', undefined, `domain: ${verb}: this session builds no domains\n`) : build(context.build, rest);
-  const all: HarborDomain[] = context.domains.domains_read();
+  const kept: HarborDomain[] = context.domains.domains_read();
+  if (build !== undefined) {
+    if (context.build === undefined) return envelope_error('', undefined, `domain: ${verb}: this session builds no domains\n`);
+    // A domain found in the tenancy and not adopted answers reads and `adopt` only.
+    const named: string | undefined = rest.find((word: string): boolean => !word.startsWith('--'));
+    if (verb !== 'adopt' && named !== undefined && !kept.some((domain: HarborDomain): boolean => domain.name === named)) {
+      const found = await foundDomains_read(context, kept);
+      if (found.domains.some((domain: HarborDomain): boolean => domain.name === named)) return envelope_error('', undefined, `domain ${verb}: ${named}: found in the tenancy, not adopted: domain adopt ${named} first\n`);
+    }
+    return build(context.build, rest);
+  }
+  const found = await foundDomains_read(context, kept);
+  const all: HarborDomain[] = [...kept, ...found.domains];
   // `domain <name>` is that domain's status: the line the TD controller opens on, and the same line as text in chell.
   if (verb !== 'status' && rest.length === 0 && all.some((domain: HarborDomain): boolean => domain.name === verb)) return domain_run(context, ['status', verb]);
   if (verb !== 'status') return envelope_error('', undefined, `domain: ${verb}: not a verb this session has yet (domain status, new, size, plan, build, adopt, verify, protect, teardown)\n`);
-  if (all.length === 0) return envelope_ok('no domains: domain new <name> makes one; stratus --domain <name>=<harbor-oci checkout> reads one\n', { kind: STRATUS_DOMAINS_MODEL_KIND, data: { domains: [] } });
+  if (all.length === 0) return envelope_ok(`no domains${found.unsearched === null ? ' here or in the tenancy' : ` here (the tenancy was not searched: ${found.unsearched})`}: domain new <name> makes one; stratus --domain <name>=<harbor-oci checkout> reads one\n`, { kind: STRATUS_DOMAINS_MODEL_KIND, data: { domains: [] } });
   const chosen: HarborDomain[] = rest.length === 0 ? all : all.filter((domain: HarborDomain): boolean => rest.includes(domain.name));
   const missing: string[] = rest.filter((name: string): boolean => !all.some((domain: HarborDomain): boolean => domain.name === name));
   if (missing.length > 0) return envelope_error('', undefined, `domain: ${missing.join(', ')}: no such domain (${all.map((domain: HarborDomain): string => domain.name).join(', ')})\n`);
@@ -135,6 +197,7 @@ export async function domain_run(context: DomainCommandContext, args: ReadonlyAr
     blocks.push(read.lines.join('\n'));
     model.domains.push(read.summary);
   }
+  if (found.unsearched !== null && rest.length === 0) blocks.push(chalk.gray(`the tenancy was not searched for domains: ${found.unsearched}`));
   return envelope_ok(`${blocks.join('\n\n')}\n`, { kind: STRATUS_DOMAINS_MODEL_KIND, data: model });
 }
 

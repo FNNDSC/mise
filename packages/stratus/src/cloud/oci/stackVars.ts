@@ -12,7 +12,7 @@
  *
  * @module
  */
-import type { DomainSpec, NodePool } from '../../domain/spec.js';
+import { SPEC_DEFAULT, type DomainSpec, type NodePool } from '../../domain/spec.js';
 import { SHAPE_TERMS } from './prices.js';
 
 /** Volume performance units per GB for each tier, as `harbor-oci` sets them. */
@@ -97,5 +97,51 @@ export function stackVariables_build(request: StackVarsRequest): Record<string, 
     enable_public_api_lb: 'true',
     enable_public_apps_lb: 'true',
     oci_driver_version: OCI_DRIVER_VERSION,
+  };
+}
+
+/**
+ * One pool read back from a stack's `<prefix>_*` variables: the inverse of
+ * {@link stackVariables_build}'s pool, for a stack found in the tenancy.
+ *
+ * @param variables - The stack's variables.
+ * @param prefix - `control_plane` or `compute`.
+ * @returns The pool and its family, or null when the variables do not say.
+ */
+function pool_derive(variables: Readonly<Record<string, string>>, prefix: string): { pool: NodePool; family: string } | null {
+  const shape: string | undefined = variables[`${prefix}_shape`];
+  const terms = shape === undefined ? undefined : SHAPE_TERMS[shape];
+  const count: number = Number(variables[`${prefix}_count`]);
+  const ocpu: number = Number(variables[`${prefix}_ocpu`]);
+  const memory: number = Number(variables[`${prefix}_memory`]);
+  const boot: number = Number(variables[`${prefix}_boot_size`]);
+  const vpus: number = Number(variables[`${prefix}_boot_volume_vpus_per_gb`]);
+  if (terms === undefined || ![count, ocpu, memory, boot].every((n: number): boolean => Number.isFinite(n))) return null;
+  const tier: string = Object.entries(TIER_VPUS).find(([, value]: [string, number]): boolean => value === vpus)?.[0] ?? 'balanced';
+  return { family: terms.family, pool: { count, vcpu: ocpu * terms.vcpuPerOcpu, ramGib: memory, bootGib: boot, bootTier: tier } };
+}
+
+/**
+ * What a stack's variables say of the domain they build: the zone its names
+ * live under and the spec, as far as the variables carry it (ChRIS's sizes
+ * are not in the stack; they start from the default).
+ *
+ * @param variables - The stack's variables, as Resource Manager holds them.
+ * @returns The zone and the spec, each null when the variables do not say.
+ */
+export function stackSpec_derive(variables: Readonly<Record<string, string>>): { spec: DomainSpec | null; baseDomain: string | null } {
+  const baseDomain: string | null = variables['zone_dns'] ?? null;
+  const plane = pool_derive(variables, 'control_plane');
+  if (plane === null) return { spec: null, baseDomain };
+  const workers = pool_derive(variables, 'compute');
+  const workerCount: number = Number(variables['compute_count'] ?? '0');
+  return {
+    spec: {
+      family: plane.family,
+      controlPlane: plane.pool,
+      workers: workers?.pool ?? { ...SPEC_DEFAULT.workers, count: Number.isFinite(workerCount) ? workerCount : 0 },
+      chris: { ...SPEC_DEFAULT.chris },
+    },
+    baseDomain,
   };
 }

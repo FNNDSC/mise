@@ -34,6 +34,8 @@ export class FakeBuildWorld {
   readonly compartments: Map<string, string> = new Map();
   /** The DNS zones the tenancy holds. */
   readonly zones: string[] = ['fake.example'];
+  /** The stacks the tenancy holds, by id, as `stack_describe` reads them back; a test seeds them. */
+  readonly stacks: Map<string, { state: string; compartmentId: string; baseDomain: string | null; spec: DomainSpec | null }> = new Map();
   private serial: number = 0;
 
   constructor(readonly tickMs: number = 0) {}
@@ -197,6 +199,12 @@ export class FakeCloudBuilder implements CloudBuilder {
     if (request.volumeIds.length > 0) gone.push(`${request.volumeIds.length} volumes the cluster made`);
     for (const line of gone) call.log(`removed ${line}`);
     return gone;
+  }
+
+  async stack_describe(stackId: string, _region: string): Promise<{ state: string; compartmentId: string; baseDomain: string | null; spec: DomainSpec | null }> {
+    const kept = this.world.stacks.get(stackId);
+    if (kept === undefined) throw new Error(`${stackId}: no such stack`);
+    return { ...kept };
   }
 
   async stack_adopt(request: { domain: string; region: string; compartmentId: string; variables: Record<string, string>; state: Buffer; stackVersion: string }, call: BuildCall): Promise<string> {

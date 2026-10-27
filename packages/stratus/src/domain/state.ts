@@ -65,6 +65,9 @@ export function domainsRoot_derive(env: NodeJS.ProcessEnv = process.env): string
   return path.join(env['XDG_STATE_HOME'] || path.join(os.homedir(), '.local', 'state'), 'stratus', 'domains');
 }
 
+/** The freeform tag a build or an adoption puts on a domain's stack and its compartment, `mise-domain=<name>`: how a session finds the tenancy's domains. */
+export const DOMAIN_TAG: string = 'mise-domain';
+
 /** A domain name is a DNS label: lower-case letters, digits and hyphens, at most 54. */
 export const DOMAIN_NAME: RegExp = /^[a-z]([a-z0-9-]{0,52}[a-z0-9])?$/;
 

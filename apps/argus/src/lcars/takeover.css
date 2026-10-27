@@ -98,14 +98,13 @@
 .takeover-view-destroy, .takeover-view-destroy.domain-inert { background-color: var(--mars); --inert-ground: var(--mars); }
 .takeover-gutter button[class^='panel-'] { align-items: flex-end; }
 
-/* The stage: a titled strip over the body, the band, a titled strip over the
- * log; the body takes what the log leaves. */
-/* The stage stands on the page's ground, as the console does: the body elbow's
- * inner fillet (argus.css, .takeover-main::before) lies under it, as it lies
- * under the console on the page, so the strip meets the gutter's corner flush. */
-.takeover-stage { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: #000; }
+/* The stage is the page's own main under the body's band (argus.css: `main`
+ * keeps its padding, which is what holds the elbow's inner fillet clear), a
+ * column of panes: a titled strip over the body, the engine's question, a
+ * titled strip over the log; the body takes what the log leaves. */
+.takeover-main > .bar-panel { flex: none; }
+.takeover-stage { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .takeover-body { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .takeover-body > * { flex: 1 1 0; min-height: 0; }
 .takeover-aside { flex: none; }
 .takeover-log { flex: 0 0 var(--takeover-log); min-height: 0; display: flex; flex-direction: column; padding: 0.4rem 0.6rem 0 1.6rem; }
-.takeover-stage > .bar-panel { flex: none; }

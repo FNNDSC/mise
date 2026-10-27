@@ -106,15 +106,15 @@ function band_make(first: number, className: string): HTMLElement {
 }
 
 /**
- * A titled strip, as every pane's: the title at the left, a note at the right,
- * the rounded end.
+ * A titled strip, as every pane's (the files bar's spacing): the title at the
+ * left, a note at the right, the rounded end.
  *
  * @param title - The title.
  * @param note - The note.
  * @returns The strip and its two texts.
  */
 function strip_make(title: string, note: string): { strip: HTMLElement; title: HTMLElement; note: HTMLElement } {
-  const strip: HTMLElement = el('div', 'lcars-terminal-header-bar');
+  const strip: HTMLElement = el('div', 'lcars-terminal-header-bar files-header-bar');
   const bar: HTMLElement = el('div', 'lcars-bar-horizontal');
   const titleNode: HTMLElement = el('span', 'lcars-title', title);
   const noteNode: HTMLElement = el('span', 'lcars-terminal-status', note);
@@ -179,18 +179,21 @@ export function takeoverFrame_build(spec: TakeoverSpec, onView: (key: string) =>
   leaveSeat.append(leave);
   gutter.append(seats, leaveSeat);
 
+  // The body's elbow is the page's with the console closed: the band at the
+  // head of the column, flush beside the gutter's first seat, its inner
+  // fillet under the band's left end, and the page's own <main> below it
+  // (its padding is what keeps the fillet clear), holding the screen's
+  // fields as panes, each under its strip.
   const main: HTMLElement = el('div', 'takeover-main');
-  // A div, not <main>: the page's own main carries its padding (argus.css), and the stage sits flush under the elbow as the console does.
-  const stage: HTMLElement = el('div', 'takeover-stage');
-  stage.setAttribute('role', 'main');
+  const stage: HTMLElement = el('main', 'takeover-stage');
   const over: { strip: HTMLElement; title: HTMLElement; note: HTMLElement } = strip_make(spec.stage.title, spec.stage.note);
   const body: HTMLElement = el('div', 'takeover-body');
   const aside: HTMLElement = el('div', 'takeover-aside');
   const logStrip: { strip: HTMLElement; title: HTMLElement; note: HTMLElement } = strip_make(spec.log.title, spec.log.note);
   const log: HTMLElement = el('section', 'takeover-log');
   log.setAttribute('aria-label', spec.labels.log);
-  stage.append(over.strip, body, aside, band_make(6, ''), logStrip.strip, log);
-  main.append(stage);
+  stage.append(over.strip, body, aside, logStrip.strip, log);
+  main.append(band_make(6, ''), stage);
   const wrap: HTMLElement = el('div', 'takeover-wrap');
   wrap.append(gutter, main);
   root.append(top, wrap);

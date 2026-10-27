@@ -19,14 +19,14 @@ import {
   commandCancellation_enable, commandCancellation_signalGet, JobRefusal, repl_confirm, repl_question, repl_questionHidden, runner_get, sink_dataLine, sink_get, surface_get,
   type JobRecord, type JobRunner,
 } from '@fnndsc/brasa/core';
-import type { CloudDriver, CloudPrice, CloudShape } from '../cloud/driver.js';
+import type { CloudDriver, CloudPrice, CloudShape, FoundDomain } from '../cloud/driver.js';
 import { planCounts_alter, plan_count, planCounts_words, type CloudBuilder, type InfraPlan } from '../cloud/builder.js';
 import { adoption_keep, adoptRun_make, checkout_read, type CheckoutRead } from '../domain/adopt.js';
 import type { InstallerAccountKeeper } from '../installer/account.js';
 import type { VerifyReach } from './verify.js';
 import type { HarborDomain } from '../domains/harborOci.js';
 import type { DomainTree } from '../vfs/domains.js';
-import { DOMAIN_NAME, type DomainRecord, type DomainStore } from '../domain/state.js';
+import { DOMAIN_NAME, DOMAIN_TAG, type DomainRecord, type DomainStore } from '../domain/state.js';
 import { SPEC_DEFAULT, specOptions_apply, type DomainSpec } from '../domain/spec.js';
 import { cost_words, familyShape_find, specCost_compute, specFit_read, type SpecCost, type ZoneFit } from '../domain/sizing.js';
 import { domainSummary_read } from '../domain/readout.js';
@@ -404,13 +404,69 @@ async function account_askWhenMissing(context: BuildCommandContext, record: Doma
  * @param args - The words after `adopt`.
  * @returns The envelope.
  */
+/**
+ * Adopts a domain found in the tenancy by its tag (docs/stratus.adoc, D15):
+ * writes its folder from what the cloud says — its stack and compartment,
+ * the zone and spec read back from the stack's variables — and no secrets,
+ * which no cloud read recovers. Reads only, so no tier is needed; from then
+ * on the domain is adopted, planned against and never built on.
+ *
+ * @param context - The session's build half.
+ * @param name - The domain.
+ * @returns The envelope.
+ */
+async function tenancyAdopt_run(context: BuildCommandContext, name: string): Promise<CommandEnvelope> {
+  const region: string | null = context.region();
+  if (region === null) return envelope_error('', undefined, 'domain adopt: not connected: the tenancy cannot be searched\n');
+  const kept: DomainRecord | null = context.store.record_read(name);
+  if (kept !== null) return kept.adopted === undefined ? envelope_error('', undefined, `domain adopt: ${name}: a domain of that name was built here\n`) : envelope_ok(`${name}: already adopted${kept.ids['stackRef'] !== undefined ? `; its stack is ${kept.ids['stackRef']}` : ''}\n`);
+  let found: FoundDomain | undefined;
+  try {
+    found = (await context.driver.domains_find(DOMAIN_TAG, region)).find((entry: FoundDomain): boolean => entry.name === name);
+  } catch (error: unknown) {
+    return envelope_error('', undefined, `domain adopt: the tenancy was not searched: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+  if (found === undefined) return envelope_error('', undefined, `domain adopt: ${name}: nothing in the tenancy is tagged ${DOMAIN_TAG}=${name}; a harbor-oci checkout adopts with --from\n`);
+  const now: string = new Date().toISOString();
+  let described: { state: string; compartmentId: string; baseDomain: string | null; spec: DomainSpec | null } | null = null;
+  if (found.stack !== null && context.builder?.stack_describe !== undefined) {
+    try {
+      described = await context.builder.stack_describe(found.stack.id, region);
+    } catch (error: unknown) {
+      return envelope_error('', undefined, `domain adopt: ${name}: its stack ${found.stack.id} could not be read: ${error instanceof Error ? error.message : String(error)}\n`);
+    }
+  }
+  const compartmentId: string | undefined = found.compartmentId ?? found.stack?.compartmentId;
+  let instances: number = 0;
+  if (compartmentId !== undefined) {
+    try { instances = (await context.driver.resources_search(compartmentId, region)).instances ?? 0; } catch { instances = 0; }
+  }
+  const steps: DomainRecord['steps'] = { compartment: { state: 'done', ended: now, note: compartmentId === undefined ? 'no compartment tagged' : `found ${compartmentId}` } };
+  if (instances > 0) steps[FIRST_BILLING_STEP] = { state: 'done', ended: now, note: `${instances} instance${instances === 1 ? '' : 's'} live in its compartment` };
+  const record: DomainRecord = {
+    name, created: now, region, baseDomain: described?.baseDomain ?? '', steps,
+    ids: found.stack !== null ? { stackRef: found.stack.id } : {},
+    ...(compartmentId !== undefined ? { compartmentId } : {}),
+    adopted: { from: 'the tenancy', at: now },
+    protected: true,
+  };
+  context.store.create(record, described?.spec ?? SPEC_DEFAULT);
+  const lines: string[] = [
+    `${chalk.bold(name)}  adopted from the tenancy: ${found.stack !== null ? `stack ${found.stack.id} (${found.stack.state})` : 'no stack'}${compartmentId !== undefined ? `, compartment ${compartmentId}` : ''}`,
+    `  kept here: its record${described?.spec !== null && described?.spec !== undefined ? ' and the spec its stack says' : ' and the default spec (its stack said no sizes)'} in ${context.store.folder_derive(name)}; ${instances > 0 ? `${instances} instances live, so it bills` : 'nothing live'}`,
+    chalk.gray(`  its kubeconfig and CUBE token are not in the cloud: copy them into ${context.store.folder_derive(name)}/auth/ before domain verify or attach`),
+  ];
+  return envelope_ok(`${lines.join('\n')}\n`);
+}
+
 export async function domainAdopt_run(context: BuildCommandContext, args: ReadonlyArray<string>): Promise<CommandEnvelope> {
   const read = options_read(args, ['--from', '--stack-compartment']);
   if ('error' in read) return envelope_error('', undefined, `domain adopt: ${read.error} (--from, --stack-compartment)\n`);
   const [name, ...extra] = read.rest;
   const from: string | undefined = read.options.get('--from');
-  if (name === undefined || from === undefined || extra.length > 0) return envelope_error('', undefined, 'domain adopt: usage: domain adopt <name> --from <harbor-oci checkout> [--stack-compartment <ocid>]\n');
+  if (name === undefined || extra.length > 0) return envelope_error('', undefined, 'domain adopt: usage: domain adopt <name> [--from <harbor-oci checkout>] [--stack-compartment <ocid>]\n');
   if (!DOMAIN_NAME.test(name)) return envelope_error('', undefined, `domain adopt: ${name}: a domain's name is a DNS label\n`);
+  if (from === undefined) return tenancyAdopt_run(context, name);
   const checkout: CheckoutRead | { error: string } = checkout_read(name, from, new Date());
   if ('error' in checkout) return envelope_error('', undefined, `domain adopt: ${checkout.error}\n`);
   const kept: DomainRecord | null = context.store.record_read(name);

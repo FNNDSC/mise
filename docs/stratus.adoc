@@ -259,7 +259,7 @@ Core commands (`ls`, `cd`, `cat`, `cp`, `find`, `grep`, `wc`, `head`, `sort`, �
 | `domain build [<name>] [--through <step>]` | Runs the build's steps in order as tasks, from the first not done; stops after `--through`.
 | `domain status` | Where each step stands, and the evidence.
 | `domain verify [<name>]` | The live checks, ported from `harbor-oci`'s ten. With `tasks`, all ten; without it, the nine that only read, saying by name that the block-volume probe (a claim and a pod) needs the tier.
-| `domain adopt <name> --from <checkout> [--stack-compartment <ocid>]` | Keeps a domain `harbor-oci` built: its ids, spec, step evidence and secrets here; with `tasks`, a Resource Manager stack of the pinned release with its variables and its Terraform state imported. Planned against, never built on.
+| `domain adopt <name> [--from <checkout>] [--stack-compartment <ocid>]` | Without `--from`, keeps a domain found in the tenancy by its tag (<<found>>): its stack and compartment, the zone and spec read back from the stack's variables, no secrets; reads only, no tier. With `--from`, keeps a domain `harbor-oci` built: its ids, spec, step evidence and secrets here; with `tasks`, a Resource Manager stack of the pinned release with its variables and its Terraform state imported. Planned against, never built on.
 | `domain teardown <name>` | Plans removal of what the domain built (<<writes>>), shows it, asks for the domain's name.
 | `domain attach <name>` | Opens the domain session against the domain's CUBE (<<handoff>>).
 | `domain [<name>]` | In ARGUS, opens the TD controller (<<controller>>); in chell, `domain status`.
@@ -375,6 +375,17 @@ Settled with the operator 2026-10-22. 4d was first an end-to-end test: build in 
 | A tenant as a manifest | A shared `tenant.mise` (`@param NAME`) is the procedure: `domain build` through `smoke`, `expect` claims on its steps and its verify, and `@answers` with the domain's status. It starts from a written spec and never writes one (settled 2026-10-23): `spec.yaml` stays the only truth of what a domain is, so the size reaches the build through `domain new` and never through the manifest's parameters, which are single words. It ships with the engine and stands in the session's home beside the domains (`~/tenant.mise`), as a ChRIS manifest stands in its home. NEW DOMAIN's COMMIT sends `domain new <name> …`, then `play ~/tenant.mise --param NAME=<name>`; headless, the same two lines build a tenant.
 | Claims | `expect` and `play` come back to core in a backend-neutral form: core keeps `expect`'s grammar, `--within`, the verdict model and `path exists|count`; each backend registers its subjects (ChRIS `gather`, `feed`, `run`, `path … tags`; stratus `domain`: `verify`, `step`, `cost`); `play` reads a manifest through the backend's files or the engine's disk. Today both are in the ChRIS group (#1001), so a stratus session has neither.
 |===
+
+[[found]]
+=== D15. The tenancy is the truth about its domains (settled 2026-10-26)
+
+A session lists every Trusted Domain the tenancy holds, not only those its own folder keeps. Found live on pangea: the operator's first stratus session through porter read DOMAINS · NONE while the tenancy held `harbor`, built by harbor-oci, adopted on 2026-10-22 and costing $0.71 an hour; the tag the build and the adoption put on its stack and compartment, `mise-domain=<name>`, was there for rediscovery and nothing read it. Every new user of a tenancy with a domain in it would have seen the same empty tile.
+
+* *The tenancy is the truth.* `domain status` and the DOMAINS tile list every stack and compartment tagged `mise-domain`, found by one Resource Search across every compartment the key can see (`domains_find` on the driver), one domain per tag value, from its stack when one exists, else its compartment. No stack and no compartment: not listed. A domain this host keeps nothing of reads FOUND · NOT ADOPTED, its condition (UP or STOPPED), region and cost per hour read from the cloud.
+* *Finding does not adopt.* `domain adopt <name>` with no checkout writes the folder from the stack: its id, its compartment, the zone and the spec its variables say, `infra-apply` done when machines live in its compartment, and no `auth/`: no cloud read recovers a kubeconfig or a CUBE token, so those are copied by hand before `domain verify` or `attach`. It is then ADOPTED · PLANS ONLY, as harbor is. Reads only, so the `tasks` tier is not needed.
+* *Porter keeps each stratus session's private state folder*, on both doors; with the two points above an empty folder costs one `domain adopt`.
+* *A found domain answers reads and `domain adopt` only.* `plan`, `verify`, `build`, `teardown` and `protect` are refused by name with "adopt <name> first": adoption is where the session takes responsibility for a domain, and the name-typed confirmation of a teardown was designed for a domain the session knows.
+* *The tree lists what the host keeps.* `domains/<name>/` under the tenancy still stands for the folders on the host; a found domain has no folder until it is adopted. Listing found domains in the tree is a later slice.
 
 [[order]]
 == Order of work

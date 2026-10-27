@@ -580,6 +580,10 @@ export class TdController {
     if (domain.origin === 'adopted') {
       note.append(el('span', 'tdc-prose', 'Built by harbor-oci. Its installer ids and its Terraform state are kept by stratus; it is planned against, never built on.'));
       note.append(el('span', 'tdc-prose tdc-quiet', `build refused: ${domain.refused?.['build'] ?? 'adopted'}`));
+    } else if (domain.origin === 'found') {
+      // Found in the tenancy by its tag: read, never acted on, until adopted (docs/stratus.adoc, D15).
+      note.append(el('span', 'tdc-prose', 'Found in the tenancy by its tag, and not adopted: it is read here, never planned against, verified, built on or torn down. ADOPT keeps its stack and compartment here, with the spec its stack says; its kubeconfig and CUBE token are copied by hand.'));
+      note.append(this.linePill_make('ADOPT', LINES.adopt(domain.name)));
     } else if (domain.origin === 'checkout') {
       note.append(el('span', 'tdc-prose', 'Read from a harbor-oci checkout. Adopting it keeps it here: domain adopt <name> --from <checkout>.'));
     } else if (domain.gone !== null && domain.gone !== undefined) {

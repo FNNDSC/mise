@@ -80,6 +80,7 @@ export function duration_text(ms: number): string {
 
 /** What a domain is, in the badge beside its name. */
 export function classBadge_render(domain: DomainSummary): string {
+  if (domain.origin === 'found') return 'FOUND · NOT ADOPTED';
   if (domain.origin === 'adopted') return 'ADOPTED · PLANS ONLY';
   if (domain.origin === 'checkout') return 'CHECKOUT · READ ONLY';
   if (domain.gone !== null && domain.gone !== undefined) return 'TORN DOWN';
@@ -358,6 +359,7 @@ export function nameRefusal_derive(name: string, known: ReadonlyArray<string>): 
 /** The lines each control sends, by what it does. */
 export const LINES = {
   status: (name: string): string => `domain ${name}`,
+  adopt: (name: string): string => `domain adopt ${name}`,
   plan: (name: string): string => `domain plan ${name}`,
   verify: (name: string): string => `domain verify ${name}`,
   spend: (name: string): string => `spend ${name}`,

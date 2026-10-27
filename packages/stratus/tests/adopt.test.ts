@@ -69,11 +69,12 @@ class RecordedRm implements RmApi {
   plan: unknown = { resource_changes: [] };
   async stack_create(request: { compartmentId: string; displayName: string; zipBase64: string; variables: Record<string, string>; tags: Record<string, string> }) {
     this.calls.push(`stack_create ${request.compartmentId} ${JSON.stringify(request.tags)} ${Object.keys(request.variables).length}`);
-    return { id: 'ocid1.ormstack.1', displayName: request.displayName, state: 'ACTIVE', compartmentId: request.compartmentId };
+    return { id: 'ocid1.ormstack.1', displayName: request.displayName, state: 'ACTIVE', compartmentId: request.compartmentId, variables: request.variables };
   }
   async stack_update(): Promise<void> { this.calls.push('stack_update'); }
-  async stack_get(stackId: string) { return { id: stackId, displayName: 's', state: 'ACTIVE', compartmentId: 'c' }; }
-  tagged: Array<{ id: string; displayName: string; state: string; compartmentId: string; tagValue: string }> = [];
+  variables: Record<string, string> = {};
+  async stack_get(stackId: string) { return { id: stackId, displayName: 's', state: 'ACTIVE', compartmentId: 'c', variables: this.variables }; }
+  tagged: Array<{ id: string; displayName: string; state: string; compartmentId: string; variables: Record<string, string>; tagValue: string }> = [];
   async stacks_tagged() { return this.tagged; }
   async job_create(stackId: string, operation: RmOperation): Promise<RmJobRecord> {
     this.calls.push(`job_create ${stackId} ${operation.kind}`);
@@ -115,11 +116,11 @@ describe('the OCI builder over Resource Manager', () => {
   });
 
   it('takes a stack already tagged with the domain as its own, and refuses two', async () => {
-    rm.tagged = [{ id: 'ocid1.ormstack.old', displayName: 'h', state: 'ACTIVE', compartmentId: 'c', tagValue: 'harbor' }, { id: 'ocid1.ormstack.other', displayName: 'o', state: 'ACTIVE', compartmentId: 'c', tagValue: 'other' }];
+    rm.tagged = [{ id: 'ocid1.ormstack.old', displayName: 'h', state: 'ACTIVE', compartmentId: 'c', variables: {}, tagValue: 'harbor' }, { id: 'ocid1.ormstack.other', displayName: 'o', state: 'ACTIVE', compartmentId: 'c', variables: {}, tagValue: 'other' }];
     const request = { domain: 'harbor', region: 'r', compartmentId: 'c', variables: {}, state: Buffer.from('{}'), stackVersion: 'v1.6.1' };
     expect(await builder.stack_adopt(request, call())).toBe('ocid1.ormstack.old');
     expect(rm.calls).toEqual([]);
-    rm.tagged.push({ id: 'ocid1.ormstack.twin', displayName: 'h', state: 'ACTIVE', compartmentId: 'c', tagValue: 'harbor' });
+    rm.tagged.push({ id: 'ocid1.ormstack.twin', displayName: 'h', state: 'ACTIVE', compartmentId: 'c', variables: {}, tagValue: 'harbor' });
     await expect(builder.stack_adopt(request, call())).rejects.toThrow('2 stacks in c are tagged mise-domain=harbor');
   });
 
@@ -228,7 +229,8 @@ describe('adopting a domain', () => {
   });
 
   it('refuses what it cannot adopt', async () => {
-    expect((await domain_run(context, ['adopt', 'harbor'])).renderedErr).toContain('usage: domain adopt');
+    expect((await domain_run(context, ['adopt', 'harbor'])).renderedErr).toContain('nothing in the tenancy is tagged mise-domain=harbor; a harbor-oci checkout adopts with --from');
+    expect((await domain_run(context, ['adopt'])).renderedErr).toContain('usage: domain adopt');
     expect((await domain_run(context, ['adopt', 'Harbor', '--from', checkout])).renderedErr).toContain('DNS label');
     expect((await domain_run(context, ['adopt', 'harbor', '--from', root])).renderedErr).toContain('not a harbor-oci checkout');
     expect((await domain_run(context, ['adopt', 'harbor', '--colour', 'x'])).renderedErr).toContain('--colour: unknown option');

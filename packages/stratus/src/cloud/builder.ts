@@ -164,4 +164,6 @@ export interface CloudBuilder {
   /** Removes what a domain built: the stack's resources (a destroy job), then its records, image, link and volumes. Returns what went, a line each. */
   teardown_run?(request: TeardownRequest, call: BuildCall): Promise<string[]>;
   stack_adopt?(request: { domain: string; region: string; compartmentId: string; variables: Record<string, string>; state: Buffer; stackVersion: string }, call: BuildCall): Promise<string>;
+  /** A stack found in the tenancy, read back: its state, its compartment, and the zone and spec its variables say; absent, a found domain adopts without a spec. */
+  stack_describe?(stackId: string, region: string): Promise<{ state: string; compartmentId: string; baseDomain: string | null; spec: DomainSpec | null }>;
 }

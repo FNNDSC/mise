@@ -100,8 +100,8 @@ export const domainSummarySchema = z.object({
   condition: z.enum(DOMAIN_CONDITIONS).optional(),
   /** Whether money runs: its machines are made and not torn down. */
   billing: z.boolean().optional(),
-  /** `built` here, `adopted` (built elsewhere, planned against only), or `checkout` (read from a harbor-oci checkout). */
-  origin: z.enum(['built', 'adopted', 'checkout']).optional(),
+  /** `built` here, `adopted` (built elsewhere, planned against only), `checkout` (read from a harbor-oci checkout), or `found` (in the tenancy by its tag, not adopted: reads only). */
+  origin: z.enum(['built', 'adopted', 'checkout', 'found']).optional(),
   /** Whether teardown is refused until `domain protect <name> off`. */
   protected: z.boolean().optional(),
   /** The verbs refused for this domain, by name, with why. */

@@ -15,11 +15,11 @@
  */
 import type {
   CloudAvailability, CloudBucket, CloudContainer, CloudDnsZone, CloudDriver, CloudIdentity, CloudInstance, CloudLimit, CloudLink, CloudLoadBalancer,
-  CloudNetwork, CloudObject, CloudPrice, ServicePrices, CloudRecord, CloudSecurityGroup, CloudShape, CloudSubnet, CloudVolume, CloudZone, ResourceCounts,
+  CloudNetwork, CloudObject, CloudPrice, ServicePrices, CloudRecord, CloudSecurityGroup, CloudShape, CloudSubnet, CloudVolume, CloudZone, FoundDomain, ResourceCounts,
 } from '../driver.js';
 import type { OciApi, OciCompartmentRecord, OciLimitValueRecord, OciShapeRecord, OciTenancyRecord } from './api.js';
 import type { OciAttachmentRecord, OciInstanceRecord, OciResourceRecord, OciVnicAttachmentRecord, OciVnicRecord, OciVolumeRecord } from './resourceApi.js';
-import { byName_sort, resource_convert, searchHits_count, searchQuery_format } from './resourceMap.js';
+import { byName_sort, foundDomains_fold, resource_convert, searchHits_count, searchQuery_format, tagQuery_format } from './resourceMap.js';
 import { ociPrices_read, ociServicePrices_read, shapeTerms_get, type JsonFetch } from './prices.js';
 
 /** How the driver is made. */
@@ -286,5 +286,9 @@ export class OciDriver implements CloudDriver {
 
   async resources_search(containerId: string, region: string): Promise<ResourceCounts> {
     return searchHits_count(await this.api.search_list(region, searchQuery_format(containerId)));
+  }
+
+  async domains_find(tagKey: string, region: string): Promise<FoundDomain[]> {
+    return foundDomains_fold(await this.api.search_list(region, tagQuery_format(tagKey)), tagKey, region);
   }
 }

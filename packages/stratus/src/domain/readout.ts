@@ -47,6 +47,8 @@ function stepState_read(domain: HarborDomain, name: string): string {
  */
 export function condition_derive(domain: HarborDomain, record: DomainRecord | null, running: boolean, asking: boolean): DomainCondition {
   if (record?.gone !== undefined) return 'GONE';
+  // A found domain keeps no steps here; `domain status` says UP or STOPPED from what lives in its compartment.
+  if (domain.origin === 'found') return 'STOPPED';
   if (asking) return 'ASKING';
   if (running || domain.steps.some((step: StepState): boolean => step.state === 'running')) return 'BUILDING';
   if (domain.steps.some((step: StepState): boolean => step.state === 'failed')) return 'FAILED';
@@ -64,6 +66,10 @@ export function condition_derive(domain: HarborDomain, record: DomainRecord | nu
  * @returns By verb.
  */
 export function refusals_derive(domain: HarborDomain, record: DomainRecord | null): Record<string, string> {
+  if (domain.origin === 'found') {
+    const why: string = `found in the tenancy, not adopted: domain adopt ${domain.name} first`;
+    return { plan: why, verify: why, build: why, teardown: why };
+  }
   if (domain.origin !== 'built' || record === null) return { build: 'read from a harbor-oci checkout, not built here', teardown: 'read from a harbor-oci checkout, not built here' };
   if (record.adopted !== undefined) return { build: `adopted from ${record.adopted.from}`, teardown: 'adopted, not built here' };
   if (record.gone !== undefined) return { build: 'torn down', teardown: 'already torn down' };
@@ -131,7 +137,7 @@ export function domainReadout_build(domain: HarborDomain, store: DomainStore | n
   return {
     condition: condition_derive(domain, record, running, asking !== null),
     billing: record?.gone === undefined && applied,
-    origin: domain.origin !== 'built' || record === null ? 'checkout' : record.adopted !== undefined ? 'adopted' : 'built',
+    origin: domain.origin === 'found' ? 'found' : domain.origin !== 'built' || record === null ? 'checkout' : record.adopted !== undefined ? 'adopted' : 'built',
     protected: record?.protected !== false,
     refused: refusals_derive(domain, record),
     region: record?.region ?? domain.settings['OCI_REGION'] ?? null,

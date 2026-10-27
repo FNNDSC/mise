@@ -8,7 +8,7 @@
  *
  * @module
  */
-import type { CloudResource, ResourceCounts, ResourceKind } from '../driver.js';
+import type { CloudResource, FoundDomain, ResourceCounts, ResourceKind } from '../driver.js';
 import type { OciResourceRecord, OciSearchRecord } from './resourceApi.js';
 import { ociTags_flatten } from './driver.js';
 
@@ -57,6 +57,46 @@ export function resource_convert(record: OciResourceRecord, region: string): Clo
 export function searchQuery_format(compartmentId: string): string {
   const types: string = Object.keys(OCI_SEARCH_KINDS).map((type: string): string => type.toLowerCase()).join(', ');
   return `query ${types} resources where compartmentId = '${compartmentId}'`;
+}
+
+/**
+ * The search for every carrier of a tag across the tenancy: the stacks and
+ * the compartments, which are what a build or an adoption tags with the
+ * domain's name.
+ *
+ * @param tagKey - The freeform tag's key (`mise-domain`).
+ * @returns The structured query.
+ */
+export function tagQuery_format(tagKey: string): string {
+  return `query ormstack, compartment resources where freeformTags.key = '${tagKey}'`;
+}
+
+/** A carrier's state that means it is gone or going. */
+const GONE_CARRIER: RegExp = /^(deleted|deleting|terminated|terminating)$/i;
+
+/**
+ * The tag's carriers folded into domains: one per tag value, its stack and
+ * its compartment when each carries the tag, sorted by name; a carrier that
+ * is gone is left out, and a name with no carrier left is not a domain.
+ *
+ * @param hits - The search's hits.
+ * @param tagKey - The tag's key.
+ * @param region - The region searched.
+ * @returns The domains found.
+ */
+export function foundDomains_fold(hits: ReadonlyArray<OciSearchRecord>, tagKey: string, region: string): FoundDomain[] {
+  const byName: Map<string, { stack: FoundDomain['stack']; compartmentId: string | null }> = new Map();
+  for (const hit of hits) {
+    const name: string | undefined = hit.freeformTags[tagKey];
+    if (name === undefined || name === '' || GONE_CARRIER.test(hit.lifecycleState)) continue;
+    const entry = byName.get(name) ?? { stack: null, compartmentId: null };
+    if (hit.resourceType.toLowerCase() === 'ormstack') entry.stack = { id: hit.identifier, state: hit.lifecycleState.toLowerCase(), compartmentId: hit.compartmentId };
+    else if (hit.resourceType.toLowerCase() === 'compartment') entry.compartmentId = hit.identifier;
+    byName.set(name, entry);
+  }
+  return [...byName.entries()]
+    .sort(([a], [b]): number => a.localeCompare(b))
+    .map(([name, entry]): FoundDomain => ({ name, stack: entry.stack, compartmentId: entry.compartmentId, region }));
 }
 
 /**

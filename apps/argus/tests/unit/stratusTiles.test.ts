@@ -43,6 +43,12 @@ function hooks_make(answers: Record<string, unknown>, seen: string[], named: str
 }
 
 describe('the stratus tiles', () => {
+  it('a domain found in the tenancy and not adopted reads so in place of a last step', async () => {
+    const found = { domains: [{ name: 'quay', path: '/net/oci/t/domains/quay', cluster: null, lastDone: null, steps: [], resources: null, origin: 'found' }] };
+    const tiles = await stratusTiles_make(hooks_make({ 'domain status': found, capacity: CAPACITY }, [], []))();
+    expect(tiles.lead!.tile.rows.map((r) => r.text)).toEqual(['quay  FOUND · NOT ADOPTED']);
+  });
+
   it('lead with DOMAINS: each domain\'s last step and cluster, red where a step went wrong, opening its folder', async () => {
     const seen: string[] = [];
     const named: string[][] = [];

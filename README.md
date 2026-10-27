@@ -24,18 +24,50 @@
 
 `mise` is the stack a shell runs on, with ChRIS as the disk. Read it as a Linux machine and every package has a job you already know.
 
-![mise as a machine: rows are layers, surfaces attach from above over a wire, the server's machine sits below the network line](docs/images/mise-as-a-machine.png)
+```text
+                                            you
+                                             │
+                                ┌────────────┴────────────┐
+                                │                         │
+                         ┌──────┴──────┐           ┌──────┴──────┐
+                         │    chell    │           │    ARGUS    │   surfaces: a terminal, a browser
+                         │  terminal   │           │   browser   │   two views of one session
+                         └──────┬──────┘           └──────┬──────┘
+                                │ ws                      │ https, then ws
+                                └────────────┬────────────┘
+                                             │  menu: the wire
+                               ┌─────────────┴─────────────┐
+                               │           porter          │   the login page             (gdm)
+a program of your own, at      ├───────────────────────────┤
+one layer: its own engine;     │          calypso          │   your session, long-lived   (tmux + sshd)
+a session needs the wire ┌─────┴───────────────────────────┤
+┌──────────┐             │                                 │
+│ a client ├─────────────┤              brasa              │   the shell engine           (bash + coreutils)
+└──────────┘             │                                 │
+                   ┌─────┴─────────────────────────────────┤
+┌──────────┐       │                                       │
+│ a client ├───────┤                  fond                 │   the filesystem interface   (the VFS)
+└──────────┘       │                                       │
+             ┌─────┴───────────────────────────────────────┤
+┌──────────┐ │                                             │
+│ a client ├─┤                 chris driver                │   CUBE mounted as a tree     (a filesystem driver)
+└──────────┘ │   salsa   the tree, and the logic behind it │
+             │   cumin   speaks CUBE's REST, via chrisapi  │
+             └───────────────────────────────┬─────────────┘   the bastion: one host
+                                             │  HTTPS, Collection+JSON
+     ────────────────────────────────────────┼──────────────────────────────  network
+                                             │
+                                       ┌───────────┐
+                                      ╱           ╱│
+                                     ╱   CUBE    ╱ │
+                                    ┌───────────┐  │                  ChRIS: users, data, plugins,
+                                    │           │  ┘                  compute, and the record of
+                                    │  what is  │ ╱                   every run
+                                    │   true    │╱
+                                    └───────────┘
+```
 
-| layer | plays | does |
-|---|---|---|
-| `porter` | `gdm` | the login manager: a login page that starts, or rejoins, your session on its host |
-| `calypso` | the login session | holds one engine under one identity, long-lived, and serves it over a WebSocket |
-| `brasa` | `bash` and coreutils | the shell engine: parses a line, runs the verb, hands back a typed envelope |
-| `fond` | the VFS | what every layer needs whatever the backend: paths, listings, the mount table's shape |
-| `chris`, `stratus` | filesystem drivers | a backend mounts its world as a tree: ChRIS as `/home`, `/bin`, `/proc`, `/net/pacs`; a cloud tenancy as `/net/oci` |
-| `chell`, `argus` | terminal, desktop | surfaces: not layers, they attach from above over the wire, `menu`, and see one session |
-
-Two surfaces, one session. Type `cd` in the terminal and the browser has already moved. The whole set of figures, with the server's machine below the network line (CUBE on OpenShift on a cloud substrate), is in **[docs/architecture/overview.adoc](docs/architecture/overview.adoc)**; the reading above is argued in **[docs/linux-metaphor.adoc](docs/linux-metaphor.adoc)**.
+Two surfaces, one session: type `cd` in the terminal and the browser has already moved. A program of your own links in at one layer and gets an engine of its own: brasa for typed commands and their envelopes, fond for the tree alone, the driver for CUBE's own objects. To act in a session it attaches over the wire, as `chell --remote` does. The figures with the server opened (CUBE on OpenShift on a cloud substrate) are in **[docs/architecture/overview.adoc](docs/architecture/overview.adoc)**; the Linux reading is argued in **[docs/linux-metaphor.adoc](docs/linux-metaphor.adoc)**.
 
 ### Why it exists
 
@@ -139,7 +171,7 @@ The web surface: a console with the terminal indwelling and panes for files, fee
 
 Three doors into the kernel, none of them Collection+JSON.
 
-- **In-process.** `@fnndsc/brasa` as a library: hand it a line, get a `CommandEnvelope` back, a typed model with the rendered text as one view of it. **[docs/intent-kernel.adoc](docs/intent-kernel.adoc)**, **[docs/envelope-model.adoc](docs/envelope-model.adoc)**.
+- **In-process.** One layer as a library, with an engine of your own. `@fnndsc/brasa`: hand it a line, get a `CommandEnvelope` back, a typed model with the rendered text as one view of it. `@fnndsc/fond` with the driver's mounts: the tree alone, list, read, copy, no verbs. `@fnndsc/salsa` or `@fnndsc/cumin`: CUBE's own objects, typed or raw. **[docs/intent-kernel.adoc](docs/intent-kernel.adoc)**, **[docs/envelope-model.adoc](docs/envelope-model.adoc)**.
 - **Over the wire.** A `calypso` session speaks the contract in `@fnndsc/menu`: zod schemas for the envelope, the session protocol and every result model. A surface in any language attaches with a WebSocket and those schemas. **[docs/calypso.adoc](docs/calypso.adoc)**.
 - **From the shell.** `chell -c` runs a line and exits; a script plays as a manifest. **[packages/chell/docs/script-reference.adoc](packages/chell/docs/script-reference.adoc)**.
 

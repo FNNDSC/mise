@@ -1,5 +1,11 @@
 # @fnndsc/menu
 
+## 0.31.1
+
+### Patch Changes
+
+- 4568c64: A domain summary's origin may be `found`: in the tenancy by its tag, not adopted (#1286).
+
 ## 0.31.0
 
 ### Minor Changes

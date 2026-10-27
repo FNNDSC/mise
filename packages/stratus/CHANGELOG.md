@@ -1,5 +1,19 @@
 # @fnndsc/stratus
 
+## 0.5.0
+
+### Minor Changes
+
+- 4568c64: A stratus session lists every domain its tenancy holds, found by the `mise-domain` tag, not only its folder's (#1286). One the host keeps nothing of reads FOUND · NOT ADOPTED and answers reads only; `domain adopt <name>` with no checkout keeps it here from what its stack says, and the build verbs refuse it by name until then. The driver gains `domains_find`; the builder `stack_describe`.
+
+### Patch Changes
+
+- 6323634: Reading capacity with no family named lists every family the region offers, instead of refusing (#1284). Before, a session whose domains' specs named no family was told to name one.
+- Updated dependencies [f086bc6]
+- Updated dependencies [4568c64]
+  - @fnndsc/calypso@0.28.1
+  - @fnndsc/menu@0.31.1
+
 ## 0.4.3
 
 ### Patch Changes

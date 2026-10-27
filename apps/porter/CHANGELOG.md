@@ -1,5 +1,18 @@
 # @fnndsc/porter
 
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [6323634]
+- Updated dependencies [f086bc6]
+- Updated dependencies [4568c64]
+- Updated dependencies [4568c64]
+  - @fnndsc/stratus@0.5.0
+  - @fnndsc/calypso@0.28.1
+  - @fnndsc/menu@0.31.1
+  - @fnndsc/chell@5.19.4
+
 ## 0.9.0
 
 ### Minor Changes

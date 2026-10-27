@@ -1,0 +1,60 @@
+= The architecture in figures
+:toc: left
+:toclevels: 2
+:sectnums:
+:sectanchors:
+:icons: font
+
+== Abstract
+
+Every architecture figure of the mise stack and of ChRIS under it, in one place, in reading order: the stack as a Linux machine, ChRIS as a machine with the server opened, CUBE as blocks, the Hub bastion, the spoke bastion. Each figure's home document carries the argument; this page carries the pictures and a paragraph on how to read each. All five are drawn in one language: cards with a coloured left bar (blue mise, white ChRIS, red Red Hat, orange Oracle Cloud Infrastructure, purple PACS, green the Linux reading), tinted regions for a machine, a dark box for a host and the processes on it.
+
+[[machine]]
+== mise as a Linux machine
+
+Home: <<../linux-metaphor.adoc#,linux-metaphor.adoc>>.
+
+image::../images/mise-as-a-machine.png[The stack a Linux shell runs on, read three ways: a Linux machine, ChRIS with mise, the original ChRIS with its web UI; rows are layers, surfaces attach over a wire, the bastion's box ends at its backend and the server's machine sits below a network line]
+
+Rows are layers, each running inside the one beneath: the host holds the login manager, which opens the session, which runs the shell, which calls the kernel's filesystem interface, which mounts a backend. A row reads left to right as "this plays the part of that": `porter` is `gdm`, `calypso` the login session, `brasa` bash and coreutils, `fond` the VFS, a backend the filesystem driver. Surfaces (a desktop, a terminal; ARGUS, chell) are not layers and sit above the boxes, joined by the one wire each speaks. The bastion's box ends at its backend; below the network line is the server's machine, CUBE on OpenShift on Kubernetes on the substrate, one box under both ChRIS columns. The original ChRIS UI column has no box: a login page and one application, a wire straight down.
+
+[[chris]]
+== ChRIS as a machine
+
+Home: <<chris-as-a-machine.adoc#,chris-as-a-machine.adoc>>.
+
+image::../images/chris-as-a-machine.png[ChRIS as a machine: ChRIS through mise, ChRIS through the original UI, and a hospital's PACS; the server's machine below the network line with CUBE opened into its services, the compute resource, the cluster and the substrate]
+
+The same stack with the CUBE card opened and the PACS given a column. Above the line nothing changes. Below it, CUBE is its API server, workers, scheduler, database, file storage and PACS gateway; the compute resource is `pfcon` with its op containers and engines; then OpenShift on Kubernetes, then the substrate. The figure is the replacement for the 2023 wiring diagram on chrisproject.org, with the facts brought up to date: `pman` folded into `pfcon`, DragonflyDB for RabbitMQ, `oxidicom` receiving what the PACS sends, S3 beside Swift.
+
+[[cube]]
+== CUBE and what it stands on
+
+Home: <<cube.adoc#,cube.adoc>>.
+
+image::../images/cube-and-what-it-stands-on.png[CUBE and what it stands on: the CUBE deployment, the callers and the PACS, two compute resources, and the OpenShift cluster on its substrate; red wires mark where CUBE touches OpenShift]
+
+The server as blocks rather than layers, because its facts are mostly about who talks to whom. The CUBE deployment is a dark box of pods: API, broker, workers, `beat`, `nats`, PostgreSQL, file storage, `oxidicom` and `pfdcm`. Callers and the PACS are at the left; an in-network and an out-of-network compute resource at the right; the OpenShift cluster and the substrate are the floor. Solid wires are calls, dashed are shared storage or something the cluster provides, red are the four places CUBE touches OpenShift: Helm, Routes and Services, storage classes, the Kubernetes API. Numbers follow one plugin instance from the call to its outputs.
+
+[[hub]]
+== The Hub bastion
+
+Home: <<../bastion.adoc#figure,bastion.adoc>>.
+
+image::../images/bastion-hub.png[The Hub bastion: a person's surfaces on the left, the host with the mise stack in the centre, Red Hat and a spoke Trusted Domain on the right, with three lines from the session to three doors]
+
+The mise stack as the Trusted Domain builder. The host in the centre is the machine of the first figure with `stratus` as its backend: `porter` the door, `calypso` the session with the `tasks` tier on, chell on a pty, the host shell reached only through `!`, the credential files read by both floors. Three lines leave the session, one per layer of the spoke, each through its own credential: the API key to Oracle Cloud Infrastructure, the Red Hat account to the Assisted Installer, the kubeconfig to the cluster just built. The spoke reads bottom up as a machine: Oracle lays the nodes, OpenShift is the cluster on them, ChRIS the application on the cluster. The bastion is outside every tenancy it builds.
+
+[[spoke]]
+== The spoke bastion
+
+Home: <<../bastion.adoc#spoke,bastion.adoc>>, and <<../dev-bastion.adoc#,dev-bastion.adoc>> for the policy.
+
+image::../images/bastion-spoke.png[The spoke bastion. Top row: the developer at the Hub, the Hub dev bastion where code is written, the spoke bastion where it runs. Below: the logical view, a project directory over a cohort with the policy on its two mounts, and /outgoing returning to the developer]
+
+Code comes to the cohort. The top row is three hosts of one shape: the developer's surfaces, the Hub dev bastion where code is written (door tokens, no cloud key, no CUBE token), and the spoke bastion where it runs beside the cohort (this Trusted Domain's CUBE token and nothing else). An edit at the Hub is shipped as source over the wire and run unattended under the spoke's policy; only `/outgoing` comes back. The bottom row is the logical view inside the spoke bastion: `~/project/` with `incoming/`, `outgoing/`, `src/` and `run`, the open and sealed policies on the two mounts, the edit-run-look loop, and `/outgoing` returning to ChRIS as a node of the cohort's feed and to the developer.
+
+[[sources]]
+== Sources
+
+The three mise figures have no source in the repository; the two ChRIS figures are rendered from the HTML beside their PNGs in `docs/images/` (headless Chromium at 1680 CSS pixels, device scale 2, IBM Plex from Google Fonts).

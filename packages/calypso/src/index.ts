@@ -98,6 +98,7 @@ export {
   enter_await,
   consoleDeps_live,
   CHELL_ON_PATH,
+  chellLaunch_find,
   type DaemonConsoleTarget,
   type DaemonConsoleDeps,
   type ConsoleChild,

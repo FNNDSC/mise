@@ -1,5 +1,18 @@
 # @fnndsc/argus
 
+## 0.41.0
+
+### Minor Changes
+
+- 6323634: The CAPACITY tile opens a pane: what the region has free, one block per family, a row per limit and zone (#1284). `capacity pane [<family>]` types the same, and the TD controller's SIZE now asks for its sizing when NEW opens on it instead of waiting forever.
+
+### Patch Changes
+
+- 4568c64: The DOMAINS tile and the TD controller show every domain the tenancy holds, not only the session's folder (#1286). One not adopted reads FOUND · NOT ADOPTED, its OVERVIEW note carries ADOPT, and PLAN, VERIFY, BUILD and TEAR DOWN read REFUSED on it until it is adopted.
+- 24c7433: The TD controller and trek's bridge are drawn in the ARGUS frame: the same gutter, elbows, bands and strips as the page. Each had drawn a frame of its own, a hundred pixels wider in the gutter, with its head and body elbows touching and its body opening on bare text; now one frame (`features/takeover/frame.ts`) serves every screen that takes over, built on argus.css's own rules so the two cannot drift again (#1285).
+- Updated dependencies [4568c64]
+  - @fnndsc/menu@0.31.1
+
 ## 0.40.0
 
 ### Minor Changes

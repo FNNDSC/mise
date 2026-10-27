@@ -1710,6 +1710,7 @@ async function surface_start(token: string): Promise<void> {
       line_run: (line: string): void => { element_require('gutter-console').click(); terminal.line_run(line); },
       capacity_open: (family: string): void => { capacityPane.open(family); },
       names_seen: (names: string[]): void => domainNames_seen(names),
+      repaint: (): void => launcherPanel.render(),
     }) }),
   });
 

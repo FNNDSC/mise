@@ -27,6 +27,7 @@ import { domainTeardown_run } from './teardown.js';
 import { domainProtect_run } from './protect.js';
 import { domainSize_run } from './size.js';
 import { domainSummary_read } from '../domain/readout.js';
+import type { AnswerCache } from '../cache.js';
 
 /** What `domain` reads from the session. */
 export interface DomainCommandContext {
@@ -38,6 +39,8 @@ export interface DomainCommandContext {
   readonly domainsPath: () => string;
   /** What the build verbs run over; absent, `new`, `plan` and `build` refuse. */
   readonly build?: BuildCommandContext;
+  /** Where `capacity` keeps the limits it read; absent, every ask reads the cloud. */
+  readonly cache?: AnswerCache;
 }
 
 /** The order the counted kinds are said in. */
@@ -224,5 +227,9 @@ export function stratusCommands_make(context: DomainCommandContext): CommandGrou
       spend: (args: string[]): Promise<CommandEnvelope> => spend_run(context, args),
     },
     help: { domain: DOMAIN_HELP, capacity: CAPACITY_HELP, spend: SPEND_HELP },
+    // `capacity` and `spend` read the cloud and change nothing of the session,
+    // so they run beside any other line; `domain` writes a domain's folder
+    // and so, unnamed here, holds the whole session.
+    holds: { capacity: [], spend: [] },
   };
 }

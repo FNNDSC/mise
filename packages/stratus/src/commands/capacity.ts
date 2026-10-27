@@ -9,12 +9,18 @@
  * with what is used and left when the cloud says. The answer carries the
  * `stratus.capacity` model the CAPACITY tile draws.
  *
+ * Every family of a region is hundreds of reads, one per limit and zone,
+ * against a Limits API that throttles; so the reads go a few at a time,
+ * and what they read is kept for a while, so the next `capacity`, a
+ * repaint of the dashboard or the CAPACITY pane opening, answers at once.
+ *
  * @module
  */
 import chalk from 'chalk';
 import { envelope_error, envelope_ok, STRATUS_CAPACITY_MODEL_KIND, type CapacityModel, type CapacityRow, type CommandEnvelope } from '@fnndsc/menu';
 import type { CommandHelp } from '@fnndsc/brasa/core';
 import type { CloudAvailability, CloudDriver, CloudLimit, CloudShape } from '../cloud/driver.js';
+import { AnswerCache } from '../cache.js';
 import type { HarborDomain } from '../domains/harborOci.js';
 import type { DomainTree } from '../vfs/domains.js';
 
@@ -24,6 +30,30 @@ export interface CapacityCommandContext {
   readonly driver: CloudDriver;
   /** The session's region, or null when not connected. */
   readonly region: () => string | null;
+  /** Where the limits read are kept between asks; absent, every ask reads the cloud. */
+  readonly cache?: AnswerCache;
+}
+
+/** How long a limit read stays current: limits move slowly, and a repaint should not walk the region again. */
+export const CAPACITY_CACHE_LIFE_MS: number = 10 * 60_000;
+
+/** How many availability reads go to the cloud at once: the Limits API throttles, and one at a time took minutes. */
+export const CAPACITY_READS_AT_ONCE: number = 4;
+
+/**
+ * Runs a read over each item, a few at a time, keeping the items' order.
+ *
+ * @param items - What to read.
+ * @param atOnce - How many reads run together.
+ * @param read - The read.
+ * @returns The answers, in the items' order.
+ */
+async function fewAtOnce_read<T, R>(items: ReadonlyArray<T>, atOnce: number, read: (item: T) => Promise<R>): Promise<R[]> {
+  const answers: R[] = [];
+  for (let start = 0; start < items.length; start += atOnce) {
+    answers.push(...await Promise.all(items.slice(start, start + atOnce).map(read)));
+  }
+  return answers;
 }
 
 /**
@@ -43,24 +73,28 @@ export function specFamily_parse(spec: string | null): string | null {
  * @param driver - The cloud.
  * @param region - The region.
  * @param families - The families.
+ * @param cache - Where the reads are kept; absent, nothing is kept.
  * @returns One row per limit and zone, family by family.
  */
-export async function capacityRows_read(driver: CloudDriver, region: string, families: ReadonlyArray<string>): Promise<CapacityRow[]> {
-  const shapes: CloudShape[] = await driver.shapes_list(region);
+export async function capacityRows_read(driver: CloudDriver, region: string, families: ReadonlyArray<string>, cache: AnswerCache = new AnswerCache(0)): Promise<CapacityRow[]> {
+  const shapes: CloudShape[] = await cache.answer_get(`capacity/${region}/shapes`, (): Promise<CloudShape[]> => driver.shapes_list(region));
   const rows: CapacityRow[] = [];
   for (const family of families) {
     const ofFamily: CloudShape[] = shapes.filter((shape: CloudShape): boolean => shape.family.toLowerCase() === family.toLowerCase());
     const quotas: Map<string, string> = new Map();
     for (const shape of ofFamily) for (const name of shape.quotaNames) quotas.set(name, shape.limitService);
     const byService: Map<string, CloudLimit[]> = new Map();
+    const wanted: CloudLimit[] = [];
     for (const [name, service] of quotas) {
-      if (!byService.has(service)) byService.set(service, await driver.limits_list(region, service));
-      const limits: CloudLimit[] = (byService.get(service) ?? []).filter((limit: CloudLimit): boolean => limit.name === name);
-      for (const limit of limits) {
-        const availability: CloudAvailability | null = await driver.limitAvailability_get(region, limit.service, limit.name, limit.zone);
-        rows.push({ family, limit: limit.name, zone: limit.zone ?? null, value: limit.value, used: availability?.used ?? null, available: availability?.available ?? null });
-      }
+      if (!byService.has(service)) byService.set(service, await cache.answer_get(`capacity/${region}/limits/${service}`, (): Promise<CloudLimit[]> => driver.limits_list(region, service)));
+      wanted.push(...(byService.get(service) ?? []).filter((limit: CloudLimit): boolean => limit.name === name));
     }
+    const availabilities: Array<CloudAvailability | null> = await fewAtOnce_read(wanted, CAPACITY_READS_AT_ONCE, (limit: CloudLimit): Promise<CloudAvailability | null> =>
+      cache.answer_get(`capacity/${region}/free/${limit.service}/${limit.name}/${limit.zone ?? 'region'}`, (): Promise<CloudAvailability | null> => driver.limitAvailability_get(region, limit.service, limit.name, limit.zone)));
+    wanted.forEach((limit: CloudLimit, index: number): void => {
+      const availability: CloudAvailability | null = availabilities[index] ?? null;
+      rows.push({ family, limit: limit.name, zone: limit.zone ?? null, value: limit.value, used: availability?.used ?? null, available: availability?.available ?? null });
+    });
   }
   return rows;
 }
@@ -85,9 +119,10 @@ export async function capacity_run(context: CapacityCommandContext, args: Readon
     ? [...args]
     : [...new Set(context.domains.domains_read().map((domain: HarborDomain): string | null => specFamily_parse(domain.spec)).filter((family: string | null): family is string => family !== null))];
   // No family named and no spec naming one: every family the region offers, so a session with no domains still reads its room.
-  const families: string[] = named.length > 0 ? named : [...new Set((await context.driver.shapes_list(region)).map((shape: CloudShape): string => shape.family))].sort();
+  const cache: AnswerCache = context.cache ?? new AnswerCache(0);
+  const families: string[] = named.length > 0 ? named : [...new Set((await cache.answer_get(`capacity/${region}/shapes`, (): Promise<CloudShape[]> => context.driver.shapes_list(region))).map((shape: CloudShape): string => shape.family))].sort();
   if (families.length === 0) return envelope_error('', undefined, `capacity: ${region} offers no shape family\n`);
-  const rows: CapacityRow[] = await capacityRows_read(context.driver, region, families);
+  const rows: CapacityRow[] = await capacityRows_read(context.driver, region, families, cache);
   const model: CapacityModel = { region, rows };
   if (rows.length === 0) return envelope_ok(`capacity in ${region}: no limits for ${families.join(', ')}\n`, { kind: STRATUS_CAPACITY_MODEL_KIND, data: model });
   const limitWidth: number = Math.max(...rows.map((row: CapacityRow): number => row.limit.length));

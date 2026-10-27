@@ -6,7 +6,10 @@
  * (docs/stratus.adoc, D11).
  *
  * Each is asked of the session at paint time, from the commands a terminal
- * runs too: `domain status` and `capacity`, through their models.
+ * runs too: `domain status` and `capacity`, through their models. `capacity`
+ * walks the region limit by limit the first time, so a paint waits for it
+ * only a moment: DOMAINS is painted with CAPACITY reading, and the dashboard
+ * is painted again when the answer lands.
  *
  * @module
  */
@@ -33,6 +36,30 @@ export interface StratusTileHooks {
   capacity_open: (family: string) => void;
   /** Told the domains each paint finds, so the language claims `domain <name>` before the controller has read them. */
   names_seen?: (names: string[]) => void;
+  /** Paints the dashboard again: called once a `capacity` a paint did not wait for has answered. */
+  repaint?: () => void;
+  /** How long a paint waits for `capacity`; {@link CAPACITY_GRACE_MS} when absent. */
+  capacityGraceMs?: number;
+}
+
+/** How long a paint waits for `capacity` before painting without it. */
+export const CAPACITY_GRACE_MS: number = 1500;
+
+/**
+ * An answer, or null when it has not come within the grace.
+ *
+ * @param pending - The answer on its way.
+ * @param graceMs - How long to wait.
+ * @returns The answer, or null.
+ */
+function answer_awaitFor(pending: Promise<ExecuteOutcome>, graceMs: number): Promise<ExecuteOutcome | null> {
+  return new Promise<ExecuteOutcome | null>((resolve: (answer: ExecuteOutcome | null) => void): void => {
+    const timer: ReturnType<typeof setTimeout> = setTimeout((): void => resolve(null), graceMs);
+    pending.then(
+      (answer: ExecuteOutcome): void => { clearTimeout(timer); resolve(answer); },
+      (): void => { clearTimeout(timer); resolve(null); },
+    );
+  });
 }
 
 /** The step states a tile draws as gone wrong. */
@@ -95,8 +122,30 @@ export function money_text(amount: number, currency: string): string {
  * @returns The source.
  */
 export function stratusTiles_make(hooks: StratusTileHooks): () => Promise<TileContribution> {
+  // One `capacity` at a time: a paint that comes while one is on its way
+  // waits on that one, and a paint that went without it is owed a repaint.
+  let capacityPending: Promise<ExecuteOutcome> | null = null;
+  let repaintOwed: boolean = false;
+  const capacity_ask = (): Promise<ExecuteOutcome> => {
+    if (capacityPending !== null) return capacityPending;
+    const asked: Promise<ExecuteOutcome> = hooks.ask('capacity');
+    capacityPending = asked;
+    const settled = (): void => {
+      if (capacityPending === asked) capacityPending = null;
+      if (!repaintOwed) return;
+      repaintOwed = false;
+      hooks.repaint?.();
+    };
+    asked.then(settled, settled);
+    return asked;
+  };
   return async (): Promise<TileContribution> => {
-    const [domainsAnswer, capacityAnswer]: [ExecuteOutcome, ExecuteOutcome] = await Promise.all([hooks.ask('domain status'), hooks.ask('capacity')]);
+    const [domainsAnswer, capacityAnswer]: [ExecuteOutcome, ExecuteOutcome | null] = await Promise.all([
+      hooks.ask('domain status'),
+      answer_awaitFor(capacity_ask(), hooks.capacityGraceMs ?? CAPACITY_GRACE_MS),
+    ]);
+    const capacityReading: boolean = capacityAnswer === null;
+    if (capacityReading) repaintOwed = true;
     const domainsModel: DomainsModel | null = model_extract(domainsAnswer, STRATUS_DOMAINS_MODEL_KIND, (data) => domainsModelSchema.safeParse(data));
     const domains: DomainSummary[] = domainsModel?.domains ?? [];
     if (domainsModel !== null) hooks.names_seen?.(domains.map((domain: DomainSummary): string => domain.name));
@@ -125,10 +174,11 @@ export function stratusTiles_make(hooks: StratusTileHooks): () => Promise<TileCo
       enter: (): void => hooks.domain_open(''),
     };
 
-    const capacity: CapacityModel | null = model_extract(capacityAnswer, STRATUS_CAPACITY_MODEL_KIND, (data) => capacityModelSchema.safeParse(data));
+    const capacity: CapacityModel | null = capacityAnswer === null ? null : model_extract(capacityAnswer, STRATUS_CAPACITY_MODEL_KIND, (data) => capacityModelSchema.safeParse(data));
     const capacityTile: LauncherTile = {
       key: 'capacity', name: 'CAPACITY', hue: '--honey', numeral: '',
-      figures: capacity === null ? [{ text: 'NOT READ' }] : [{ text: capacity.region.toUpperCase() }],
+      // Still reading: the region is walked limit by limit, and this paint did not wait; the next one shows it.
+      figures: capacity === null ? [{ text: capacityReading ? 'READING' : 'NOT READ' }] : [{ text: capacity.region.toUpperCase() }],
       // With nothing read, the block still opens the pane, which asks again.
       rows: capacity === null
         ? [{ text: 'capacity', open: (): void => hooks.capacity_open('') }]

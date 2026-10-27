@@ -22,6 +22,7 @@ import { DomainTree } from './vfs/domains.js';
 import { shippedManifests_read } from './domain/manifests.js';
 import type { DomainSource } from './domains/harborOci.js';
 import { stratusCommands_make } from './commands/domain.js';
+import { CAPACITY_CACHE_LIFE_MS } from './commands/capacity.js';
 import { stratusListingLook } from './vfs/look.js';
 import { stratusSegments_build } from './prompt.js';
 import type { CloudBuilder } from './cloud/builder.js';
@@ -116,6 +117,7 @@ export function stratusBackend_make(options: StratusBackendOptions): StratusBack
   const region = (): string | null => session.region;
   commands_register(stratusCommands_make({
     domains, driver: options.driver, region, domainsPath: (): string => `${session.tenancyPath}/domains`,
+    cache: new AnswerCache(CAPACITY_CACHE_LIFE_MS),
     build: { domains, store, driver: options.driver, region, deps, domainsPath: (): string => `${session.tenancyPath}/domains`, builder: options.builder ?? null, baseDomain: options.baseDomain ?? null, ...(options.account !== undefined ? { account: options.account } : {}), ...(options.verifyReach !== undefined ? { verifyReach: options.verifyReach } : {}) },
   }), 'backend');
   const dispatcher: VFSDispatcher = new VFSDispatcher();

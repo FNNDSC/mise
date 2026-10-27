@@ -1,0 +1,111 @@
+/* A view that takes the screen (trek's bridge, the TD controller) keeps the
+ * ARGUS frame: the gutter at --lfw, the head's elbow and the band that closes
+ * it, the gap, the body's elbow and its band, the titled strip over every
+ * field. The frame's measurements live in argus.css, where each takeover-*
+ * class is listed beside the page's own (.left-frame-top, .right-frame-top,
+ * .wrap, .left-frame, .right-frame), so one rule serves both and a change to
+ * the frame moves every screen drawn in it. This file holds only what a
+ * takeover adds: the root that stands over the page, the seats its gutter
+ * fills, and the stage its content stands on (features/takeover/frame.ts;
+ * aegis.adoc: a-takeover-keeps-the-frame). */
+.takeover {
+  --takeover-log: 9.5rem;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  /* The page's own offsets: body padding, then the wrap's. */
+  padding: 10px 0 0 5px;
+  box-sizing: border-box;
+  background: #000;
+  color: var(--honey);
+  font-family: var(--face-label);
+  overflow: hidden;
+}
+.takeover [hidden] { display: none !important; }
+.takeover button { font-family: var(--face-label); cursor: pointer; }
+.takeover button:disabled { cursor: default; }
+.takeover :focus-visible { outline: 2px solid var(--butter); outline-offset: 2px; }
+
+/* The head row is the page's first wrap: the gutter's head beside the frame's. */
+.takeover-top {
+  display: flex;
+  flex: none;
+  width: 100%;
+  padding: 0 15px 0 5px;
+  box-sizing: border-box;
+}
+.takeover-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+/* The brand block is the page's first seat: the mark over the name. */
+.takeover-brand { gap: 0.3rem; }
+.takeover-brand-words { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; }
+.takeover-brand-name { font-size: 1.5rem; letter-spacing: 0.1em; line-height: 1; }
+.takeover-brand-sub { font-size: 0.6rem; letter-spacing: 0.08em; opacity: 0.85; }
+
+/* The second seat carries the elbow and what the screen chooses between: a
+ * domain's pill, a game's seed. Its ground runs on into the gutter below. */
+.takeover-seat {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  padding: var(--left-frame-padding);
+  border-bottom-left-radius: var(--elbow-radius);
+  overflow: hidden;
+}
+.takeover-seat-pill {
+  border: none;
+  border-radius: 0.8rem;
+  padding: 0.15rem 0.7rem;
+  background: var(--harvestgold);
+  color: #000;
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.takeover-seat-pill[aria-current='true'] { background: var(--butter); opacity: 1; }
+.takeover-seat-pill[data-condition='FAILED'] { background: var(--mars); }
+
+/* The frame's head holds the banner, the screen's face and the band. */
+.takeover-face {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  padding: 0.2rem 0.5rem var(--left-frame-padding) 0.5rem;
+}
+
+/* The gutter's seats beyond the page's six take the next hue in the cycle;
+ * one that destroys wears red by meaning (a program's LEAVE, TEARDOWN). The
+ * chosen view is live, the rest inert, as the page's domains are. */
+.takeover-gutter .panel-view { height: auto; flex: 2 1 0; min-height: 3rem; }
+.panel-view { background-color: var(--orange); }
+.panel-view.domain-inert { --inert-ground: var(--orange); }
+.takeover-view-destroy, .takeover-view-destroy.domain-inert { background-color: var(--mars); --inert-ground: var(--mars); }
+.takeover-gutter button[class^='panel-'] { align-items: flex-end; }
+
+/* The stage: a titled strip over the body, the band, a titled strip over the
+ * log; the body takes what the log leaves. */
+/* The stage stands on the page's ground, as the console does: the body elbow's
+ * inner fillet (argus.css, .takeover-main::before) lies under it, as it lies
+ * under the console on the page, so the strip meets the gutter's corner flush. */
+.takeover-stage { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: #000; }
+.takeover-body { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.takeover-body > * { flex: 1 1 0; min-height: 0; }
+.takeover-aside { flex: none; }
+.takeover-log { flex: 0 0 var(--takeover-log); min-height: 0; display: flex; flex-direction: column; padding: 0.4rem 0.6rem 0 1.6rem; }
+.takeover-stage > .bar-panel { flex: none; }

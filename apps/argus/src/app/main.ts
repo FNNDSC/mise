@@ -126,6 +126,7 @@ import { greeting_ask } from './greeting.js';
 // has put their own LCARS-26.zip where the build can find it; where they have
 // not, the type falls back and the frame is unchanged.
 import '../lcars/argus.css';
+import '../lcars/takeover.css';
 import '../features/trek/trek.css';
 import '../features/controller/controller.css';
 import { consoleMode_wire, type ConsoleModeControl } from './consoleMode.js';

@@ -1,68 +1,20 @@
-/* The trek bridge: the screen the game takes over (features/trek/bridge.ts).
- * Palette from the theme tokens; the frame (two elbows) is the bridge's own
- * because the takeover removes ARGUS's. Grid: gutter | content; rows: header,
- * body elbow bar, body, ask strip, log. The body's own grid changes with the
- * view: BRIDGE shows everything, a station view enlarges one station. */
+/* The trek bridge: the screen the game takes over (features/trek/bridge.ts),
+ * drawn in the ARGUS frame (features/takeover/frame.ts, lcars/takeover.css):
+ * the gutter, the elbows, the bands and the strips are the page's own; this
+ * sheet is the bridge's content. The body's own grid changes with the view:
+ * BRIDGE shows everything, a station view enlarges one station. */
 .trek-bridge {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: grid;
-  grid-template-columns: 11rem minmax(0, 1fr);
-  grid-template-rows: auto 1rem 0.5rem 1rem minmax(0, 1fr) auto 7rem;
-  column-gap: 0;
-  padding: 0.5rem;
-  box-sizing: border-box;
-  background: #000;
+  --takeover-log: 7rem;
   color: var(--butter);
-  font-family: var(--face-label);
-  overflow: hidden;
 }
-.trek-bridge [hidden] { display: none !important; }
 body[data-takeover='trek'] { overflow: hidden; }
 body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 
-/* the gutter */
-.tb-gutter { display: contents; }
-.tb-gutter-top { grid-column: 1; grid-row: 1 / 3; display: flex; flex-direction: column; gap: 0.35rem; min-height: 0; }
-.tb-gutter-body { grid-column: 1; grid-row: 4 / -1; display: flex; flex-direction: column; gap: 0.35rem; min-height: 0; }
-.tb-block { background: var(--october-sunset); color: #000; min-height: 5.5rem; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; padding: 0 0.8rem 0.5rem 0; }
-.tb-block-name { font-size: 2.4rem; font-weight: 700; letter-spacing: 0.1em; line-height: 1; }
-.tb-block-sub { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; }
-.tb-seed { background: var(--harvestgold); color: #000; font-size: 0.8rem; font-weight: 700; text-align: right; padding: 0.35rem 0.8rem; letter-spacing: 0.06em; }
-.tb-gutter-fill { flex: 1 1 0; background: var(--orange); min-height: 1rem; }
-.tb-gutter-top .tb-gutter-fill { border-bottom-left-radius: 3rem; min-height: 2.5rem; }
-.tb-gutter-cap { flex: 0 0 2.5rem; background: var(--orange); border-top-left-radius: 3rem; }
-.tb-views { display: flex; flex-direction: column; gap: 0.35rem; }
-.tb-view { border: none; background: var(--harvestgold); color: #000; font-family: var(--face-label); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.08em; text-align: right; padding: 1.3rem 0.8rem 0.4rem; opacity: 0.55; cursor: pointer; }
-.tb-view.tb-view-tactical { background: var(--mars); }
-.tb-view.tb-view-computer { background: var(--butter); }
-.tb-view.tb-view-on { background: var(--butter); opacity: 1; }
-.tb-leave { border: none; background: var(--mars); color: #000; font-family: var(--face-label); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.08em; text-align: right; padding: 1rem 0.8rem; border-bottom-left-radius: 2.5rem; cursor: pointer; }
-
-/* the frame: the header's bar is the arm of the elbow whose column is the upper gutter (the fill above it sweeps down
- * into it), the body's bar the arm of the elbow whose column is the cap above the views; each bar's first segment
- * touches the gutter and carries the inner notch, a black quarter round on the arm's own colour */
-.tb-bar { grid-column: 2; display: flex; gap: 0.35rem; align-items: stretch; }
-.tb-bar-top { grid-row: 2; }
-.tb-bar-body { grid-row: 3 / 5; align-items: flex-end; }
-.tb-bar-body > span { height: 1rem; }
-.tb-bar > span { display: block; }
-.tb-bar .tb-bar-a { flex: 0 0 14rem; position: relative; background: var(--orange); }
-.tb-bar .tb-bar-a::after { content: ''; position: absolute; left: 0; width: 1.6rem; height: 1.6rem; background: inherit; }
-.tb-bar .tb-bar-a::before { content: ''; position: absolute; left: 0; width: 1.6rem; height: 1.6rem; background: #000; z-index: 1; }
-.tb-bar-top .tb-bar-a::after { bottom: 100%; }
-.tb-bar-top .tb-bar-a::before { bottom: 100%; border-bottom-left-radius: 1.6rem; }
-.tb-bar-body .tb-bar-a::after { top: 100%; }
-.tb-bar-body .tb-bar-a::before { top: 100%; border-top-left-radius: 1.6rem; }
-.tb-bar .tb-bar-b { flex: 0 0 18rem; background: var(--harvestgold); }
-.tb-bar .tb-bar-c { flex: 1 1 0; background: var(--butter); }
-.tb-bar .tb-bar-d { flex: 0 0 7rem; background: var(--october-sunset); border-radius: 0 0.35rem 0.35rem 0; }
-.tb-bar-body .tb-bar-b { flex: 1 1 0; }
-.tb-bar-body .tb-bar-c { flex: 0 0 9rem; background: var(--october-sunset); border-radius: 0 0.35rem 0.35rem 0; }
+/* the seed, in the gutter's seat */
+.tb-seed { background: var(--harvestgold); color: #000; font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.7rem; border-radius: 0.8rem; letter-spacing: 0.06em; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* the header */
-.tb-header { grid-column: 2; grid-row: 1; display: grid; grid-template-columns: 12rem repeat(3, minmax(0, 1fr)); gap: 1.2rem; padding: 0.4rem 0.6rem 0.6rem 1.6rem; align-items: start; }
+.tb-header { display: grid; grid-template-columns: 12rem repeat(3, minmax(0, 1fr)); gap: 1.2rem; padding: 0.2rem 0 0.4rem; align-items: start; }
 .tb-head-condition { display: flex; flex-direction: column; gap: 0.4rem; }
 .tb-condition { border-radius: 2rem; padding: 0.4rem 0; display: flex; flex-direction: column; align-items: center; color: #000; background: var(--harvestgold); }
 .tb-condition[data-condition='red'] { background: var(--mars); }
@@ -81,7 +33,7 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-head-value.tb-good, .tb-good { color: var(--daybreak); }
 
 /* the body: one grid per view */
-.tb-body { grid-column: 2; grid-row: 5; display: grid; gap: 1.2rem; padding: 0.6rem 0.6rem 0.3rem 1.6rem; min-height: 0; overflow: hidden; }
+.tb-body { display: grid; gap: 1.2rem; padding: 0.6rem 0.6rem 0.3rem 1.6rem; min-height: 0; overflow: hidden; }
 .tb-body[data-view='bridge'] { grid-template-columns: 17rem minmax(0, 1fr) minmax(0, 1.2fr); }
 .tb-body[data-view='bridge'] > .tb-view-body { display: none; }
 .tb-body:not([data-view='bridge']) > .tb-scans, .tb-body:not([data-view='bridge']) > .tb-stations { display: none; }
@@ -315,15 +267,14 @@ body[data-takeover='trek'] > *:not(#trek-bridge) { visibility: hidden; }
 .tb-score-total { font-weight: 700; color: var(--face-data-ink, #fec); border-top: 1px solid rgba(255, 204, 153, 0.3); padding-top: 0.2rem; }
 
 /* the strip for the engine's own questions */
-.tb-ask { grid-column: 2; grid-row: 6; display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; padding: 0.4rem 0.6rem 0.4rem 1.6rem; border-top: 3px solid var(--october-sunset); }
+.tb-ask { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin: 0.4rem 0.6rem 0.4rem 1.6rem; padding: 0.6rem 1rem; border-radius: 1.6rem; border: 2px solid var(--mars); background: color-mix(in srgb, var(--mars) 12%, #000); }
 .tb-ask-label { font-size: 0.7rem; letter-spacing: 0.2em; color: var(--mars); }
 .tb-ask-text { font-size: 0.95rem; color: var(--face-data-ink, #fec); }
 .tb-ask-input { background: #0a0804; color: var(--butter); border: 1px solid rgba(255, 204, 153, 0.3); border-radius: 0.5rem; padding: 0.25rem 0.5rem; font-family: var(--face-data); min-width: 12rem; }
 
 /* the ship's log */
-.tb-log-section { grid-column: 2; grid-row: 7; display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: 0.8rem; border-top: 3px solid var(--october-sunset); padding: 0.4rem 0.6rem 0 1.6rem; min-height: 0; }
-.tb-log-head { display: flex; flex-direction: column; gap: 0.2rem; }
-.tb-log { overflow-y: auto; font-size: 0.9rem; letter-spacing: 0.03em; color: var(--butter); min-height: 0; }
+.tb-log-section { flex: 1 1 0; display: flex; flex-direction: column; min-height: 0; }
+.tb-log { flex: 1 1 0; overflow-y: auto; font-size: 0.9rem; letter-spacing: 0.03em; color: var(--butter); min-height: 0; }
 .tb-log-line { white-space: pre-wrap; line-height: 1.3; }
 .tb-log-line:empty { min-height: 0.4rem; }
 .tb-log-line.tb-log-own { color: var(--october-sunset); font-size: 0.75rem; letter-spacing: 0.06em; }

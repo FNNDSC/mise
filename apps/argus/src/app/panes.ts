@@ -18,7 +18,7 @@
  */
 export type PaneKind =
   | 'files' | 'catalogue' | 'dag' | 'pacs' | 'image' | 'tags' | 'gather' | 'view' | 'empty'
-  | 'universe' | 'help' | 'panes' | 'launcher' | 'edit' | 'games' | 'notes';
+  | 'universe' | 'help' | 'panes' | 'launcher' | 'edit' | 'games' | 'notes' | 'capacity';
 
 /**
  * The primaries: the domain panes that never go dormant and are not cards in
@@ -144,6 +144,7 @@ export interface PanelKinds {
   edit: import('../features/edit/panel.js').EditPanel;
   games: import('../features/games/panel.js').GamesPanel;
   notes: import('../features/notes/panel.js').NotesPanel;
+  capacity: import('../features/capacity/panel.js').CapacityPanel;
 }
 
 /** A roster key: which controller type a panel is. */

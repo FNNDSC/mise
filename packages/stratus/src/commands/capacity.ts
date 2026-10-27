@@ -3,7 +3,8 @@
  * per zone, in the session's region (docs/stratus.adoc, D7).
  *
  * The families are the ones named, else the ones the daemon's domains'
- * specs name (`family:`). For each, the region's shapes of that family say
+ * specs name (`family:`), else every family the region offers, so a session
+ * with no domains still reads its room. For each, the region's shapes of that family say
  * which limits they draw on; each limit is read at every zone it is kept in,
  * with what is used and left when the cloud says. The answer carries the
  * `stratus.capacity` model the CAPACITY tile draws.
@@ -80,10 +81,12 @@ function row_line(row: CapacityRow, limitWidth: number, zoneWidth: number): stri
 export async function capacity_run(context: CapacityCommandContext, args: ReadonlyArray<string>): Promise<CommandEnvelope> {
   const region: string | null = context.region();
   if (region === null) return envelope_error('', undefined, 'capacity: not connected\n');
-  const families: string[] = args.length > 0
+  const named: string[] = args.length > 0
     ? [...args]
     : [...new Set(context.domains.domains_read().map((domain: HarborDomain): string | null => specFamily_parse(domain.spec)).filter((family: string | null): family is string => family !== null))];
-  if (families.length === 0) return envelope_error('', undefined, 'capacity: name a shape family (capacity E5); no domain\'s spec names one\n');
+  // No family named and no spec naming one: every family the region offers, so a session with no domains still reads its room.
+  const families: string[] = named.length > 0 ? named : [...new Set((await context.driver.shapes_list(region)).map((shape: CloudShape): string => shape.family))].sort();
+  if (families.length === 0) return envelope_error('', undefined, `capacity: ${region} offers no shape family\n`);
   const rows: CapacityRow[] = await capacityRows_read(context.driver, region, families);
   const model: CapacityModel = { region, rows };
   if (rows.length === 0) return envelope_ok(`capacity in ${region}: no limits for ${families.join(', ')}\n`, { kind: STRATUS_CAPACITY_MODEL_KIND, data: model });

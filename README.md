@@ -36,6 +36,8 @@
                                 │ ws                      │ https, then ws
                                 └────────────┬────────────┘
                                              │  menu: the wire
+     ────────────────────────────────────────┼──────────────────────────────  network: your machine to the bastion
+                                             │
                                ┌─────────────┴─────────────┐
                                │           porter          │   the login page             (gdm)
 a program of your own, at      ├───────────────────────────┤
@@ -55,7 +57,7 @@ a session needs the wire ┌─────┴───────────�
              │   cumin   speaks CUBE's REST, via chrisapi  │
              └───────────────────────────────┬─────────────┘   the bastion: one host
                                              │  HTTPS, Collection+JSON
-     ────────────────────────────────────────┼──────────────────────────────  network
+     ────────────────────────────────────────┼──────────────────────────────  network: the bastion to CUBE
                                              │
                                        ┌───────────┐
                                       ╱           ╱│
@@ -67,7 +69,7 @@ a session needs the wire ┌─────┴───────────�
                                     └───────────┘
 ```
 
-Two surfaces, one session: type `cd` in the terminal and the browser has already moved. A program of your own links in at one layer and gets an engine of its own: brasa for typed commands and their envelopes, fond for the tree alone, the driver for CUBE's own objects. To act in a session it attaches over the wire, as `chell --remote` does. The figures with the server opened (CUBE on OpenShift on a cloud substrate) are in **[docs/architecture/overview.adoc](docs/architecture/overview.adoc)**; the Linux reading is argued in **[docs/linux-metaphor.adoc](docs/linux-metaphor.adoc)**.
+Two surfaces, one session: type `cd` in the terminal and the browser has already moved. A program of your own links in at one layer and gets an engine of its own: brasa for typed commands and their envelopes, fond for the tree alone, the driver for CUBE's own objects. To act in a session it attaches over the wire, as `chell --remote` does. The one thing with no wire is `chell` run on the bastion itself, engine in-process. The figures with the server opened (CUBE on OpenShift on a cloud substrate) are in **[docs/architecture/overview.adoc](docs/architecture/overview.adoc)**; the Linux reading is argued in **[docs/linux-metaphor.adoc](docs/linux-metaphor.adoc)**.
 
 ### Why it exists
 

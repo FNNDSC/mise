@@ -91,12 +91,19 @@
 
 /* The gutter's seats beyond the page's six take the next hue in the cycle;
  * one that destroys wears red by meaning (a program's LEAVE, TEARDOWN). The
- * chosen view is live, the rest inert, as the page's domains are. */
+ * chosen view's seat is lit, as LANG is when it is live. */
 .takeover-gutter .panel-view { height: auto; flex: 2 1 0; min-height: 3rem; }
 .panel-view { background-color: var(--orange); }
-.panel-view.domain-inert { --inert-ground: var(--orange); }
-.takeover-view-destroy, .takeover-view-destroy.domain-inert { background-color: var(--mars); --inert-ground: var(--mars); }
+.takeover-view-destroy { background-color: var(--mars); }
 .takeover-gutter button[class^='panel-'] { align-items: flex-end; }
+.takeover-gutter .takeover-view-on:not(.takeover-view-destroy) { background-color: var(--butter); }
+
+/* The body's elbow is one piece with the first seat: the band's first block
+ * and the inner fillet wear that seat's colour, lit or not. */
+.takeover { --takeover-elbow: var(--october-sunset); }
+.takeover[data-first-lit='true'] { --takeover-elbow: var(--butter); }
+.takeover-main > .bar-panel > .bar-6 { background-color: var(--takeover-elbow); }
+.takeover-main::before { background-image: linear-gradient(to right bottom, var(--takeover-elbow) 50%, #000 50%); }
 
 /* The stage is the page's own main under the body's band (argus.css: `main`
  * keeps its padding, which is what holds the elbow's inner fillet clear), a

@@ -148,6 +148,7 @@ export class TrekBridge {
     this.frame.leave.classList.add('tb-leave');
     this.root = this.frame.root;
     this.root.dataset['view'] = 'bridge';
+    this.frame.view_mark('bridge');
     this.root.setAttribute('aria-label', 'trek: the bridge');
     const parts: BridgeParts = {};
     const defs: SVGElement | null = markDefs_make();

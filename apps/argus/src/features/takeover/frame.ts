@@ -6,8 +6,8 @@
  * brings the page's: the gutter at the page's width with a brand block and a
  * seat at its head, the banner and a face beside them closed by the band, the
  * gap, then the views as seats on the gutter with LEAVE closing the column,
- * and the stage beside them — a titled strip over the body, the band, a
- * titled strip over the log. The measurements are argus.css's (each
+ * and beside them the body's band flush with the first seat, its fillet
+ * under it, and the page's main holding the body and the log as panes. The measurements are argus.css's (each
  * takeover-* class is listed beside the page's own) and the seats are the
  * page's panel-N classes, so the two cannot drift apart (aegis.adoc:
  * a-takeover-keeps-the-frame). What a screen draws inside the frame is its
@@ -69,7 +69,7 @@ export interface TakeoverFrame {
   logNote: HTMLElement;
   /** Where the log goes. */
   log: HTMLElement;
-  /** Lights one view's seat and dims the rest. */
+  /** Lights one view's seat; the elbow follows the first seat's colour. */
   view_mark: (key: string) => void;
 }
 
@@ -164,7 +164,7 @@ export function takeoverFrame_build(spec: TakeoverSpec, onView: (key: string) =>
   const views: Map<string, HTMLButtonElement> = new Map();
   spec.views.forEach((view: TakeoverView, index: number): void => {
     const seatClass: string = SEATS[index] ?? 'panel-view';
-    const button: HTMLButtonElement = el('button', `${seatClass}${view.destroy === true ? ' takeover-view-destroy' : ''} domain-inert`, view.label);
+    const button: HTMLButtonElement = el('button', `${seatClass}${view.destroy === true ? ' takeover-view-destroy' : ''}`, view.label);
     button.type = 'button';
     button.dataset['view'] = view.key;
     button.addEventListener('click', (): void => onView(view.key));
@@ -173,7 +173,7 @@ export function takeoverFrame_build(spec: TakeoverSpec, onView: (key: string) =>
   });
   seats.append(el('div', 'panel-spacer'));
   const leaveSeat: HTMLElement = el('div', '');
-  const leave: HTMLButtonElement = el('button', `panel-7${spec.leave.destroy === true ? ' takeover-view-destroy' : ''} domain-live`, spec.leave.label);
+  const leave: HTMLButtonElement = el('button', `panel-7${spec.leave.destroy === true ? ' takeover-view-destroy' : ''}`, spec.leave.label);
   leave.type = 'button';
   leave.addEventListener('click', onLeave);
   leaveSeat.append(leave);
@@ -198,13 +198,16 @@ export function takeoverFrame_build(spec: TakeoverSpec, onView: (key: string) =>
   wrap.append(gutter, main);
   root.append(top, wrap);
 
+  // The chosen view's seat is lit, as LANG is when it is live. The first seat
+  // carries the body's elbow, so the band's first block and the fillet take
+  // its colour, lit or not: an elbow is one piece with the seat it joins.
   const view_mark = (key: string): void => {
     for (const [name, button] of views) {
       const on: boolean = name === key;
-      button.classList.toggle('domain-live', on);
-      button.classList.toggle('domain-inert', !on);
+      button.classList.toggle('takeover-view-on', on);
       button.setAttribute('aria-current', on ? 'page' : 'false');
     }
+    root.dataset['firstLit'] = key === spec.views[0]?.key ? 'true' : 'false';
   };
 
   return { root, seat, face, views, leave, stageTitle: over.title, stageNote: over.note, body, aside, logTitle: logStrip.title, logNote: logStrip.note, log, view_mark };

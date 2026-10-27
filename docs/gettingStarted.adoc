@@ -95,6 +95,28 @@ and links `chell` globally so you can run it from anywhere. The individual steps
 
 Standard aliases work too: `make install` / `build` / `test` / `clean` / `link`.
 
+**Front of house.** Every git and GitHub operation goes through `make` as well, never raw `git` or `gh`:
+
+[cols="1,3",options="header"]
+|===
+|`make` |does
+
+|`branch BR=name` |start a new branch off the current HEAD
+|`save MSG=".."`  |commit tracked changes (new files need `git add` first)
+|`push`           |push the current branch to origin, setting upstream
+|`pr`             |push, then open a PR against `main` (body drawn from commits)
+|`ci-watch`       |wait for this branch's PR checks (audit, Node 22/24)
+|`merge`          |`ci-watch`, then merge this branch's PR
+|`publish`        |green-wait + merge the Version Packages PR (releases to npm)
+|`verify-npm`     |local package versions vs what the registry serves
+|`lockfile`       |regenerate `package-lock.json` with CI's pinned npm
+|`ci-dispatch` / `release-dispatch` |fire a workflow when events lag
+|`sync`           |back to `main`, fast-forwarded, stale remotes pruned
+|`tidy BR=name`   |delete a merged branch, locally and on origin
+|===
+
+`make publish` is deliberately its own step, never chained onto `make merge`: merging the Version Packages PR is the irreversible, outward-facing act that puts new versions on npm.
+
 **The dev loop.** One `make prep` links every workspace to the others, so editing
 a layer and rebuilding just that layer is enough — the layers above pick it up
 through the workspace symlink, no republish:

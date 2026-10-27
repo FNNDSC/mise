@@ -79,4 +79,4 @@ Star Trek is a trademark of Paramount. This is an unaffiliated port of a 1976 pu
 
 ## Part of mise
 
-bsd-trek is part of [mise](https://github.com/FNNDSC/mise), a web shell over a backend. The same engine plays as `trek` in mise's shell, chell, and in its browser surface, ARGUS.
+bsd-trek is part of [mise](https://github.com/HARBOR-Medical-AI/mise), a web shell over a backend. The same engine plays as `trek` in mise's shell, chell, and in its browser surface, ARGUS.

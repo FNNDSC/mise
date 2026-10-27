@@ -10,7 +10,7 @@ npm install @fnndsc/fond
 
 ## Why it exists
 
-A backend such as ChRIS (CUBE) brings its own client and its own world. The pieces every layer needs, whatever the backend, live here rather than in a backend's package, so a layer that is not about CUBE can use them without loading CUBE (see [docs/backend-neutral.adoc](https://github.com/FNNDSC/mise/blob/main/docs/backend-neutral.adoc)).
+A backend such as ChRIS (CUBE) brings its own client and its own world. The pieces every layer needs, whatever the backend, live here rather than in a backend's package, so a layer that is not about CUBE can use them without loading CUBE (see [docs/backend-neutral.adoc](https://github.com/HARBOR-Medical-AI/mise/blob/main/docs/backend-neutral.adoc)).
 
 fond's one rule: **it depends on nothing in `@fnndsc`**. CI holds it to that (`npm run lint:fond`). Its one dependency is `chalk`, for the listing views.
 
@@ -120,4 +120,4 @@ The error stack only works if the whole process shares one. fond is built as Com
 
 ## License
 
-MIT. Part of [mise](https://github.com/FNNDSC/mise).
+MIT. Part of [mise](https://github.com/HARBOR-Medical-AI/mise).

@@ -32,7 +32,7 @@ export const TREK_CREDITS: string = [
   '  A web shell over a backend: a kernel of commands, a terminal shell',
   '  (chell) and a browser surface (ARGUS), built first for ChRIS. The',
   '  same engine plays as `trek` in both.',
-  '  https://github.com/FNNDSC/mise',
+  '  https://github.com/HARBOR-Medical-AI/mise',
   '',
   'ChRIS',
   '  An open-source platform for medical image computing, from the',

@@ -16,12 +16,12 @@
   "author": "Rudolph Pienaar",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FNNDSC/mise.git",
+    "url": "git+https://github.com/HARBOR-Medical-AI/mise.git",
     "directory": "packages/trek"
   },
-  "homepage": "https://github.com/FNNDSC/mise/tree/main/packages/trek#readme",
+  "homepage": "https://github.com/HARBOR-Medical-AI/mise/tree/main/packages/trek#readme",
   "bugs": {
-    "url": "https://github.com/FNNDSC/mise/issues"
+    "url": "https://github.com/HARBOR-Medical-AI/mise/issues"
   },
   "type": "module",
   "main": "dist/index.js",

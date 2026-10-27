@@ -17,7 +17,7 @@ jobs:
       pull-requests: write
       # npm OIDC trusted publishing (tokenless publish with provenance).
       # Each @fnndsc package is configured on npmjs.com under Settings ->
-      # Trusted Publisher as GitHub Actions, repository FNNDSC/mise,
+      # Trusted Publisher as GitHub Actions, repository HARBOR-Medical-AI/mise,
       # workflow release.yml. npm >= 11.5 exchanges this OIDC token
       # automatically at publish time; no NPM_TOKEN secret exists to expire
       # mid-release.

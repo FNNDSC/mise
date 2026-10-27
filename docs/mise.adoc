@@ -809,7 +809,7 @@ declarative and procedural halves of one scientific-computing architecture.
 
 * [[[cube-source]]] FNNDSC. _ChRIS_ultron_backEnd: the ChRIS CUBE backend_. Official source repository and API documentation. https://github.com/FNNDSC/ChRIS_ultron_backEnd (accessed 2026-07-18).
 
-* [[[mise-source]]] FNNDSC. _mise: MISE Integrates the Sandwich Ecosystem_. Source repository, revision `0cc48e09a8fc1ba30dfc9aa2a4ce69c7d9518b9c`. https://github.com/FNNDSC/mise (accessed 2026-07-18).
+* [[[mise-source]]] FNNDSC. _mise: MISE Integrates the Sandwich Ecosystem_. Source repository, revision `0cc48e09a8fc1ba30dfc9aa2a4ce69c7d9518b9c`. https://github.com/HARBOR-Medical-AI/mise (accessed 2026-07-18).
 
 * [[[intent-action-service]]] R. Pienaar. _Completing the ChRIS Architecture: An Intent-Action Service for Bridging Declarative Resources and Procedural Workflows_. ChRIS Intent-Action Service design study. https://github.com/FNNDSC/intent-server (accessed 2026-07-18).
 

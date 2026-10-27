@@ -16,7 +16,7 @@
 ![packages](https://img.shields.io/badge/packages-7-blue)
 ![source](https://img.shields.io/badge/source-42k_LOC-blue)
 ![tests](https://img.shields.io/badge/tests-~2k-brightgreen)
-[![codecov](https://codecov.io/gh/FNNDSC/mise/branch/main/graph/badge.svg)](https://codecov.io/gh/FNNDSC/mise)
+[![codecov](https://codecov.io/gh/HARBOR-Medical-AI/mise/branch/main/graph/badge.svg)](https://codecov.io/gh/HARBOR-Medical-AI/mise)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
 `menu` · `cumin` · `salsa` · `chili` · `brasa` · `chell` · `calypso` · `argus` · `porter`
@@ -128,7 +128,7 @@ serves a browser console as well as the wire.
 ### From a release binary — no Node.js
 
 ```bash
-curl -L https://github.com/FNNDSC/mise/releases/latest/download/chell-linux-x64 -o chell
+curl -L https://github.com/HARBOR-Medical-AI/mise/releases/latest/download/chell-linux-x64 -o chell
 chmod +x chell
 ./chell
 ```
@@ -141,7 +141,7 @@ Published for `linux-x64`, `linux-arm64`, `macos-x64` and `macos-arm64`, with a
 The way to develop, and to run an unreleased `argus`:
 
 ```bash
-git clone https://github.com/FNNDSC/mise && cd mise
+git clone https://github.com/HARBOR-Medical-AI/mise && cd mise
 make prep     # install dependencies (npm workspaces)
 make cook     # build every package in dependency order (argus and porter included)
 make serve    # link `chell` and `porter` globally, so they run from anywhere

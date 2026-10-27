@@ -130,7 +130,7 @@ describe('the command\'s words', () => {
     expect(credits.code).toBe(0);
     expect(credits.out).toContain('Eric P. Allman');
     expect(credits.out).toContain('Rudolph Pienaar');
-    expect(credits.out).toContain('https://github.com/FNNDSC/mise');
+    expect(credits.out).toContain('https://github.com/HARBOR-Medical-AI/mise');
   });
 
   it('refuses an unknown flag by name, with status 2', async () => {

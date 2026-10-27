@@ -19,6 +19,7 @@ import {
   surface_spawn,
   enter_await,
   CHELL_ON_PATH,
+  chellLaunch_find,
   type DaemonConsoleDeps,
 } from '../src/daemon/consoleSession';
 
@@ -134,5 +135,19 @@ describe('enter_await', () => {
     const waiting: Promise<boolean> = enter_await(input);
     input.emit('end');
     expect(await waiting).toBe(false);
+  });
+});
+
+describe('chellLaunch_find', () => {
+  it('launches the chell installed beside this calypso under this very node', () => {
+    const found = chellLaunch_find();
+    expect(found).not.toBeNull();
+    expect(found?.exec).toBe(process.execPath);
+    expect(found?.prefixArgs).toHaveLength(1);
+    expect(found?.prefixArgs[0]).toMatch(/[\\/]chell[\\/]dist[\\/]index\.js$/);
+  });
+
+  it('is null where no chell is installed, leaving the path to decide', () => {
+    expect(chellLaunch_find('file:///nowhere/at/all/calypso.js')).toBeNull();
   });
 });

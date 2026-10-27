@@ -27,7 +27,7 @@ import { stackBanner_rows, stackBannerRow_paint, versions_get, versions_selectFo
 import { identity_normalise, berth_write, berthOwn_read, berth_path, berthUrl_isAlive, closing_take, type Berth } from './berth.js';
 import type { ClosingCause } from '@fnndsc/menu';
 import { attachFile_write, attachFile_remove } from './attachFile.js';
-import { CHELL_ON_PATH, type SurfaceLaunch } from './consoleSession.js';
+import { CHELL_ON_PATH, chellLaunch_find, type SurfaceLaunch } from './consoleSession.js';
 import { Terminals, ptySpawn_load, type PtySpawn } from './terminals.js';
 import { HOST_CONTROL_OFF, hostControl_describe, hostControl_guard, hostControl_tiers, hostPipe_run, hostShell_run, type HostControlPolicy } from './hostControl.js';
 
@@ -319,7 +319,7 @@ export async function daemon_launch(
     const terminalHost: string = bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost;
     daemon.terminals_set(new Terminals({
       spawn: ptySpawn,
-      launch: options.surfaceLaunch ?? CHELL_ON_PATH,
+      launch: options.surfaceLaunch ?? chellLaunch_find() ?? CHELL_ON_PATH,
       target: { identity, url: `ws://${terminalHost}:${port}`, token },
     }));
   }

@@ -31,6 +31,9 @@
  */
 import { spawn as childSpawn, type ChildProcess } from 'node:child_process';
 import type { EventEmitter } from 'node:events';
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import chalk from 'chalk';
 import { consoleCage_start, consoleCage_stop } from './console.js';
 
@@ -51,6 +54,25 @@ export interface SurfaceLaunch {
 
 /** The default: the `chell` a user would run, found on the path. */
 export const CHELL_ON_PATH: SurfaceLaunch = { exec: 'chell', prefixArgs: [] };
+
+/**
+ * The chell installed beside this calypso, as a launch: the same install's
+ * entry under this very node, so a daemon that passes no launch of its own
+ * (stratus, the calypso binary) spawns a console of its own build rather
+ * than whichever `chell` the path finds first.
+ *
+ * @param from - Where to resolve from; this module by default.
+ * @returns The launch, or null when no chell is installed beside this calypso.
+ */
+export function chellLaunch_find(from: string = import.meta.url): SurfaceLaunch | null {
+  try {
+    const manifest: string = createRequire(from).resolve('@fnndsc/chell/package.json');
+    const entry: string = join(dirname(manifest), 'dist', 'index.js');
+    return existsSync(entry) ? { exec: process.execPath, prefixArgs: [entry] } : null;
+  } catch {
+    return null;
+  }
+}
 
 /** The running attached surface: settles with its exit code. */
 export interface ConsoleChild {

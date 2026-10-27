@@ -560,8 +560,8 @@ export class TdController {
     return pill;
   }
 
-  private spec_make(spec: DomainSpecModel | null | undefined): HTMLElement[] {
-    if (spec === null || spec === undefined) return [el('p', 'tdc-prose', 'No spec kept: a domain read from a checkout says its spec in its own files (cat spec.yaml).')];
+  private spec_make(spec: DomainSpecModel | null | undefined, found: boolean = false): HTMLElement[] {
+    if (spec === null || spec === undefined) return [el('p', 'tdc-prose', found ? 'No spec here: ADOPT reads the spec its stack says.' : 'No spec kept: a domain read from a checkout says its spec in its own files (cat spec.yaml).')];
     const pool = (one: DomainSpecModel['controlPlane']): string => `${one.count} × ${one.vcpu} vCPU · ${one.ramGib} GiB · ${one.bootGib} GiB ${one.bootTier.toUpperCase()}`;
     return [
       this.pairs_make([['FAMILY', spec.family], ['CONTROL PLANE', pool(spec.controlPlane)], ['WORKERS', spec.workers.count === 0 ? '0 · COMPACT, PLANE SCHEDULABLE' : pool(spec.workers)]]),
@@ -596,7 +596,7 @@ export class TdController {
 
   private overview_make(domain: DomainSummary): HTMLElement[] {
     const spec: HTMLElement = this.section_make('SPEC · THE CLUSTER', 'tdc-col-spec');
-    spec.append(...this.spec_make(domain.spec), el('span', 'tdc-section-title tdc-gap', 'SPEC · CHRIS ON IT'), this.chrisSpec_make(domain.spec), this.classNote_make(domain));
+    spec.append(...this.spec_make(domain.spec, domain.origin === 'found'), el('span', 'tdc-section-title tdc-gap', 'SPEC · CHRIS ON IT'), this.chrisSpec_make(domain.spec), this.classNote_make(domain));
 
     const steps: HTMLElement = this.section_make('STEPS · THE MACHINE, THEN CHRIS', 'tdc-col-steps', 'PRESS A STEP · BUILD OPENS ON IT');
     const grid: HTMLElement = el('div', 'tdc-step-grid');
@@ -612,8 +612,8 @@ export class TdController {
     steps.append(grid, el('div', 'tdc-billing-line', `BILLING STARTS AT ${(domain.billingStep ?? 'infra-apply').toUpperCase()} · EVERY STEP AFTER IT RUNS ON PAID MACHINES`));
     const commands: HTMLElement = el('div', 'tdc-commands');
     commands.append(el('span', 'tdc-commands-label', 'DOMAIN'),
-      this.linePill_make('PLAN', LINES.plan(domain.name)),
-      this.linePill_make('VERIFY', LINES.verify(domain.name)),
+      this.linePill_make('PLAN', LINES.plan(domain.name), 'plain', domain.refused?.['plan']),
+      this.linePill_make('VERIFY', LINES.verify(domain.name), 'plain', domain.refused?.['verify']),
       this.linePill_make('SPEND', LINES.spend(domain.name)),
       el('span', 'tdc-flex'),
       this.linePill_make('BUILD', LINES.build(domain.name), 'bill', domain.refused?.['build']));
@@ -700,7 +700,7 @@ export class TdController {
       plan.append(counts, rows);
     }
     const commands: HTMLElement = el('div', 'tdc-commands');
-    commands.append(this.linePill_make('PLAN', LINES.plan(domain.name)), el('span', 'tdc-flex'), this.linePill_make('BUILD · THROUGH RUN', LINES.build(domain.name), 'bill', domain.refused?.['build']));
+    commands.append(this.linePill_make('PLAN', LINES.plan(domain.name), 'plain', domain.refused?.['plan']), el('span', 'tdc-flex'), this.linePill_make('BUILD · THROUGH RUN', LINES.build(domain.name), 'bill', domain.refused?.['build']));
     plan.append(commands);
     middle.append(plan);
 
@@ -728,7 +728,7 @@ export class TdController {
     const note: HTMLElement = el('div', 'tdc-note tdc-note-bill');
     note.append(el('span', 'tdc-note-title', 'ONE CHECK WRITES'), el('span', 'tdc-prose', 'The block-volume probe makes a claim and a pod, writes, reads back and removes both: it runs only under the tasks tier; without it verify says so and runs the other nine.'));
     const commands: HTMLElement = el('div', 'tdc-commands');
-    commands.append(this.linePill_make('VERIFY', LINES.verify(domain.name)));
+    commands.append(this.linePill_make('VERIFY', LINES.verify(domain.name), 'plain', domain.refused?.['verify']));
     checks.append(note, commands);
     const side: HTMLElement = this.section_make('IN ITS COMPARTMENT', 'tdc-col-side');
     side.append(this.resources_make(domain), el('span', 'tdc-section-title tdc-gap', 'ACCESS'), this.pairs_make([['KUBECONFIG', 'ON THE HOST · NEVER SHOWN HERE'], ['KUBEADMIN', 'ON THE HOST · NEVER SHOWN HERE']]), el('p', 'tdc-prose tdc-quiet', 'Nodes per zone and the cluster\'s projects come with the cluster in the tree (cluster/).'));
@@ -792,7 +792,7 @@ export class TdController {
       : 'The lock is off. TEAR DOWN sends the line; the engine lists what goes and asks for the name typed back.'));
     const commands: HTMLElement = el('div', 'tdc-commands');
     if (domain.protected !== false) commands.append(this.linePill_make('LIFT THE LOCK', LINES.protect(domain.name, false), 'quiet'));
-    else commands.append(this.linePill_make('LOCK AGAIN', LINES.protect(domain.name, true), 'quiet'), el('span', 'tdc-flex'), this.linePill_make('TEAR DOWN', LINES.teardown(domain.name), 'destroy'));
+    else commands.append(this.linePill_make('LOCK AGAIN', LINES.protect(domain.name, true), 'quiet'), el('span', 'tdc-flex'), this.linePill_make('TEAR DOWN', LINES.teardown(domain.name), 'destroy', domain.refused?.['teardown']));
     lock.append(commands);
     guard.append(lock);
     return [goes, guard];

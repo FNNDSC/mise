@@ -45,7 +45,11 @@ describe('capacity', () => {
     expect(plain(named.rendered).split('\n')).toHaveLength(8);
     const none = await capacity_run(context_make({}), ['Z9']);
     expect(none.rendered).toBe('capacity in us-ashburn-1: no limits for Z9\n');
-    expect((await capacity_run(context_make({}), [])).renderedErr).toBe('capacity: name a shape family (capacity E5); no domain\'s spec names one\n');
+    // No family named and no spec naming one: every family the region offers.
+    const every = await capacity_run(context_make({}), []);
+    expect(every.renderedErr ?? '').toBe('');
+    expect(plain(every.rendered)).toContain('capacity in us-ashburn-1');
+    expect((every.model?.data as { rows: Array<{ family: string }> }).rows.some((row) => row.family === 'E5')).toBe(true);
     expect((await capacity_run(context_make({}, null), ['E5'])).renderedErr).toBe('capacity: not connected\n');
     expect(CAPACITY_HELP.category).toBe('Resources');
   });

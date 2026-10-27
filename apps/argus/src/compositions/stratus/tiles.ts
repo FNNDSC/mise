@@ -29,6 +29,8 @@ export interface StratusTileHooks {
   home_open: () => void;
   /** Runs a line in the console, where its answer is read whole. */
   line_run: (line: string) => void;
+  /** Opens the CAPACITY pane on a family, or on every family the region offers when none is named. */
+  capacity_open: (family: string) => void;
   /** Told the domains each paint finds, so the language claims `domain <name>` before the controller has read them. */
   names_seen?: (names: string[]) => void;
 }
@@ -126,18 +128,19 @@ export function stratusTiles_make(hooks: StratusTileHooks): () => Promise<TileCo
     const capacity: CapacityModel | null = model_extract(capacityAnswer, STRATUS_CAPACITY_MODEL_KIND, (data) => capacityModelSchema.safeParse(data));
     const capacityTile: LauncherTile = {
       key: 'capacity', name: 'CAPACITY', hue: '--honey', numeral: '',
-      figures: capacity === null ? [{ text: 'NO FAMILY' }] : [{ text: capacity.region.toUpperCase() }],
-      // With no family to read, the block teaches the line that names one.
+      figures: capacity === null ? [{ text: 'NOT READ' }] : [{ text: capacity.region.toUpperCase() }],
+      // With nothing read, the block still opens the pane, which asks again.
       rows: capacity === null
-        ? [{ text: 'capacity E5', open: (): void => hooks.line_run('capacity E5') }]
+        ? [{ text: 'capacity', open: (): void => hooks.capacity_open('') }]
         : capacity.rows.slice(0, 6).map((row: CapacityRow): LauncherRow => ({
           text: capacityRow_text(row),
           errored: row.available === 0,
-          open: (): void => hooks.line_run(`capacity ${row.family}`),
+          // A row is its family's line: the CAPACITY pane opens on it (#1284).
+          open: (): void => hooks.capacity_open(row.family),
         })),
-      verb: 'READ CAPACITY',
+      verb: 'OPEN CAPACITY',
       about: TILE_ABOUT['capacity'],
-      enter: (): void => hooks.line_run('capacity'),
+      enter: (): void => hooks.capacity_open(''),
     };
     return {
       lead: { tile: domainsTile, weight: domains.length },

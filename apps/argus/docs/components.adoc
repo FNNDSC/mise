@@ -409,6 +409,75 @@ listing.rows_set([{ key: 'keys', header, rows: chords }, { key: 'verbs', header,
 * Do not make a row act: the pane is a reference, and the drawer's capsules are where a chord is pressed.
 * Do not take bare `help` from the session: the kernel's `help` answers it.
 
+
+== Capacity pane
+
+Source: `apps/argus/src/features/capacity/panel.ts` (the pane), `apps/argus/src/app/capacityPane.ts` (its wiring), over the session's `capacity` (`packages/stratus/src/commands/capacity.ts`: the `stratus.capacity` model).
+
+Status: on stage since 2026-10-26 (#1284). Opens from the dashboard's CAPACITY tile (alone on the stage) on every family the region offers, from a family's row on it on that family, and from the typed `capacity pane [<family>]` (beside the focused pane). Under the stratus composition only.
+
+=== Purpose
+
+What the region has free for a shape family, where the panes are. The session's `capacity` reads each limit a family's shapes draw on at every zone, with what is used and left; this pane is that answer's projection on the stage — rows under caps, filterable, folding into N MORE like every listing, a drawer like any pane — so a press on the tile opens something rather than printing text.
+
+=== Anatomy
+
+image::images/capacity-pane-anatomy.svg[Capacity pane anatomy,1180]
+
+[cols="1,2,3",options="header"]
+|===
+| Part | Selector | What it is
+
+| bar | `.pane-handle` | `.pane-title` `CAPACITY`; `.pane-state` the region and the families read (`US-ASHBURN-1 · E5 · A1`), or the listing's state line when filtered.
+| frame | `.mode-frame` | `.capacity-filter`, the façade's filter pill; `.capacity-columns`, the façade's column grips.
+| field | `.capacity-panel` (the mount) › `.listing-field` | One block per family, led by a `.capacity-block-head` line (`E5 · us-ashburn-1`); each row `.capacity-row` (`.capacity-row-full` when nothing is left): `.capacity-family`, `.capacity-limit`, `.capacity-zone` (the expanse; `REGION` for a region-wide limit), and three `.capacity-num` figures USED, FREE, OF, a dash where the cloud did not say.
+|===
+
+=== Declaration
+
+[source,ts]
+----
+new Listing<CapacityPaneRow>({
+  mount: panel,                                   // .capacity-panel
+  traits: [FAMILY, LIMIT, ZONE, USED, FREE, OF],  // six columns; ZONE takes the expanse; the figures compare as numbers
+  key: (row) => row.key,                          // <family>:<limit>:<zone|region>
+  chrome: { root: mount, prefix: 'capacity' },    // binds .pane-state, .capacity-filter, .capacity-columns
+  caps: 'root',
+  activatable: () => false,                       // a readout
+  row: { className: (row) => `capacity-row${row.available === 0 ? ' capacity-row-full' : ''}` },
+});
+listing.rows_set(capacityBlocks_build(model).map(block => ({ key, header, rows })), { field: 'capacity' });
+----
+
+=== States
+
+[cols="1,2,3",options="header"]
+|===
+| State | Where | Meaning
+
+| listed | the field | Every family's block, every row; the bar names the region and the families.
+| full | a row | `.capacity-row-full`: FREE is 0; the figures are drawn as full.
+| not said | a figure | A dash: the cloud keeps no availability for that limit.
+| filtered | `.capacity-filter`, the bar | The filter pill lit and the bar reading `FILTERED n/m`.
+| on stage already | the bar | A second press (or `capacity pane`) focuses the pane that is there and asks the session again, on the family named; the console answers `capacity: on stage, reading …`.
+|===
+
+=== Laws
+
+* `a-field-says-it-holds-more` — the field wears the chip.
+* `the-expanse-is-never-sized-by-hand` — ZONE is the one `1fr` track.
+* `surface-never-shadows-the-session` — bare `capacity` is the session's text; the surface claims `pane`.
+* `a-readout-names-the-release-it-reads`, in its own terms — the bar names the region the rows were read in.
+
+=== Stylesheet
+
+`.capacity-body` (the notes body's shape), `.capacity-panel`, `.capacity-family`, `.capacity-limit`, `.capacity-zone`, `.capacity-num` (mono, right-aligned), `.capacity-row-full`, `.capacity-block-head`.
+
+=== Do not
+
+* Do not print the table into the pane: the rows are the model's, through the façade.
+* Do not open the controller's SIZE instead: capacity is a reading of the tenancy, not a step in sizing one domain; SIZE draws the fit from `domain size`.
+
 == Games pane
 
 Source: `apps/argus/src/features/games/panel.ts` (the pane), over `program.ts` (what a program is), `shows.ts` (sl, cmatrix, rain, the aquarium) and `arcade.ts` (tetris, snake).

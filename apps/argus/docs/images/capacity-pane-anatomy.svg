@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="520" viewBox="0 0 1180 520" font-family="Antonio, 'Share Tech Mono', monospace">
+  <title>Capacity pane anatomy</title>
+  <rect width="1180" height="520" fill="#000"/>
+  <!-- the bar -->
+  <rect x="20" y="20" width="1140" height="34" rx="17" fill="#55aaff"/>
+  <text x="44" y="43" font-size="18" fill="#000" font-weight="bold">CAPACITY</text>
+  <text x="940" y="43" font-size="13" fill="#000" font-style="italic">US-ASHBURN-1 · E5 · A1</text>
+  <text x="44" y="78" font-size="12" fill="#ffcc99">.pane-handle · .pane-title · .pane-state (the region and the families read; the listing's state line when filtered)</text>
+  <!-- the frame -->
+  <rect x="20" y="92" width="1140" height="30" rx="4" fill="none" stroke="#ffcc99" stroke-dasharray="4 3"/>
+  <rect x="34" y="97" width="92" height="20" rx="10" fill="#ff9966"/>
+  <text x="46" y="111" font-size="11" fill="#000">FILTER OFF</text>
+  <rect x="134" y="97" width="84" height="20" rx="10" fill="#996666"/>
+  <text x="150" y="111" font-size="11" fill="#000">COLUMNS</text>
+  <text x="232" y="111" font-size="12" fill="#ffcc99">.mode-frame · .capacity-filter · .capacity-columns (the façade's)</text>
+  <!-- caps -->
+  <rect x="20" y="134" width="1140" height="22" fill="#cc99cc"/>
+  <text x="34" y="150" font-size="12" fill="#000" font-weight="bold">FAMILY</text>
+  <text x="120" y="150" font-size="12" fill="#000" font-weight="bold">LIMIT</text>
+  <text x="400" y="150" font-size="12" fill="#000" font-weight="bold">ZONE</text>
+  <text x="860" y="150" font-size="12" fill="#000" font-weight="bold">USED</text>
+  <text x="960" y="150" font-size="12" fill="#000" font-weight="bold">FREE</text>
+  <text x="1060" y="150" font-size="12" fill="#000" font-weight="bold">OF</text>
+  <text x="620" y="150" font-size="11" fill="#000">.listing-caps (sortable; ZONE takes the expanse)</text>
+  <!-- block head: E5 -->
+  <text x="34" y="182" font-size="12" fill="#ffcc99">E5 · us-ashburn-1</text>
+  <text x="700" y="182" font-size="11" fill="#ffcc99">.capacity-block-head (one per family)</text>
+  <!-- rows -->
+  <rect x="20" y="192" width="1140" height="26" fill="#111"/>
+  <text x="34" y="210" font-size="13" fill="#ffcc99">E5</text>
+  <text x="120" y="210" font-size="13" fill="#ffaa44">standard-e5-core-count</text>
+  <text x="400" y="210" font-size="13" fill="#ffcc99">US-ASHBURN-AD-1</text>
+  <text x="900" y="210" font-size="13" fill="#ffcc99" text-anchor="end">4</text>
+  <text x="1000" y="210" font-size="13" fill="#ffcc99" text-anchor="end">4625</text>
+  <text x="1100" y="210" font-size="13" fill="#ffcc99" text-anchor="end">4629</text>
+  <rect x="20" y="222" width="1140" height="26" fill="#000"/>
+  <text x="34" y="240" font-size="13" fill="#ffcc99">E5</text>
+  <text x="120" y="240" font-size="13" fill="#ffaa44">standard-e5-memory-count</text>
+  <text x="400" y="240" font-size="13" fill="#ffcc99">REGION</text>
+  <text x="900" y="240" font-size="13" fill="#ffcc99" text-anchor="end">—</text>
+  <text x="1000" y="240" font-size="13" fill="#ffcc99" text-anchor="end">—</text>
+  <text x="1100" y="240" font-size="13" fill="#ffcc99" text-anchor="end">100</text>
+  <text x="34" y="272" font-size="12" fill="#ffcc99">.capacity-row · .capacity-family · .capacity-limit · .capacity-zone (REGION for a region-wide limit) · .capacity-num ×3 (a dash where the cloud did not say)</text>
+  <!-- block head: A1 -->
+  <text x="34" y="306" font-size="12" fill="#ffcc99">A1 · us-ashburn-1</text>
+  <rect x="20" y="316" width="1140" height="26" fill="#111"/>
+  <text x="34" y="334" font-size="13" fill="#ffcc99">A1</text>
+  <text x="120" y="334" font-size="13" fill="#ffaa44">standard-a1-core-count</text>
+  <text x="400" y="334" font-size="13" fill="#ffcc99">US-ASHBURN-AD-1</text>
+  <text x="900" y="334" font-size="13" fill="#f2402a" text-anchor="end">10</text>
+  <text x="1000" y="334" font-size="13" fill="#f2402a" text-anchor="end">0</text>
+  <text x="1100" y="334" font-size="13" fill="#f2402a" text-anchor="end">10</text>
+  <text x="34" y="366" font-size="12" fill="#ffcc99">.capacity-row.capacity-row-full — FREE is 0: the figures read as full</text>
+  <!-- the chip -->
+  <rect x="520" y="400" width="140" height="24" rx="12" fill="#ffcc99"/>
+  <text x="590" y="417" font-size="12" fill="#000" text-anchor="middle" font-weight="bold">▼ 12 MORE</text>
+  <text x="34" y="452" font-size="12" fill="#ffcc99">.listing-field — the field wears the chip (a-field-says-it-holds-more); the wheel scrolls, the press moves a page</text>
+  <text x="34" y="490" font-size="12" fill="#ffcc99">Opened by the CAPACITY tile (every family the region offers), a family's row on it (that family), or `capacity pane [&lt;family&gt;]`; bare `capacity` stays the session's text.</text>
+</svg>

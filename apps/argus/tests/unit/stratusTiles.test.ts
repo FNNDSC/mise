@@ -38,6 +38,7 @@ function hooks_make(answers: Record<string, unknown>, seen: string[], named: str
     domain_open: (name: string): void => { seen.push(`domain ${name}`); },
     home_open: (): void => { seen.push('home'); },
     line_run: (line: string): void => { seen.push(`run ${line}`); },
+    capacity_open: (family: string): void => { seen.push(`capacity:${family}`); },
     names_seen: (names: string[]): void => { named.push(names); },
   };
 }
@@ -76,19 +77,20 @@ describe('the stratus tiles', () => {
       ['E5  REGION  memory  100 PERMITTED', false],
       ['E5  US-ASHBURN-AD-2  core  0 / 10 FREE', true],
     ]);
+    // A row opens the CAPACITY pane on its family; the tile on every family (#1284).
     capacity.rows[0]!.open!();
     capacity.enter();
-    expect(seen).toEqual(['run capacity E5', 'run capacity']);
+    expect(seen).toEqual(['capacity:E5', 'capacity:']);
   });
 
-  it('say NONE with no domains, and teach the capacity line with no family', async () => {
+  it('say NONE with no domains, and open the pane with nothing read', async () => {
     const seen: string[] = [];
     const tiles = await stratusTiles_make(hooks_make({ 'domain status': { domains: [] } }, seen))();
     expect(tiles.lead!.tile.figures).toEqual([{ text: 'NONE' }]);
     const capacity = tiles.afterFiles[0]!;
-    expect(capacity.figures).toEqual([{ text: 'NO FAMILY' }]);
+    expect(capacity.figures).toEqual([{ text: 'NOT READ' }]);
     capacity.rows[0]!.open!();
-    expect(seen).toEqual(['run capacity E5']);
+    expect(seen).toEqual(['capacity:']);
     const refused = await stratusTiles_make(hooks_make({}, []))();
     expect(refused.lead!.weight).toBe(0);
   });

@@ -107,6 +107,7 @@ import { trekBridge_wire, type TrekBridgeModule } from './trekBridge.js';
 import { tdController_wire, type TdControllerModule } from './tdController.js';
 import { synthVoice } from '../lcars/synth.js';
 import { notesPane_wire, type NotesPaneModule } from './notesPane.js';
+import { capacityPane_wire, type CapacityPaneModule } from './capacityPane.js';
 import { asks_wire, type Asks } from './asks.js';
 import { keys_wire } from './keys.js';
 import { paneChrome_wire } from './paneChrome.js';
@@ -1707,6 +1708,7 @@ async function surface_start(token: string): Promise<void> {
       domain_open: (name: string): void => { void tdController.open(name); },
       home_open: (): void => { dagShown = false; home_apply(); layout.focus_set('files'); },
       line_run: (line: string): void => { element_require('gutter-console').click(); terminal.line_run(line); },
+      capacity_open: (family: string): void => { capacityPane.open(family); },
       names_seen: (names: string[]): void => domainNames_seen(names),
     }) }),
   });
@@ -1969,6 +1971,8 @@ async function surface_start(token: string): Promise<void> {
   }
   const tdController: TdControllerModule = tdController_wire(context, (names: string[]): void => domainNames_seen(names));
   const notesPane: NotesPaneModule = notesPane_wire(context, { ...paneHooks, ask: (line: string): Promise<ExecuteOutcome> => client.line_execute(line, { silent: true }) });
+  // CAPACITY: what the region has free, as a pane (app/capacityPane.ts, #1284).
+  const capacityPane: CapacityPaneModule = capacityPane_wire(context, { ...paneHooks, ask: (line: string): Promise<ExecuteOutcome> => client.line_execute(line, { silent: true }) });
   const editorModule: EditorModule = editor_wire(context, { ...paneHooks, replayPlace_get: desktop.replayPlace_get, errandHost_find, saved: (): void => { for (const dag of panels.values('dag')) dag.marks_refresh(); } });
   paneFactory_register('files', (id: string): PaneInstance => filesInstance_build(id, false));
   paneFactory_register('catalogue', (id: string): PaneInstance => filesInstance_build(id, false, true));
@@ -1976,6 +1980,7 @@ async function surface_start(token: string): Promise<void> {
   paneFactory_register('help', helpPane.instance_build);
   paneFactory_register('games', gamesPane.instance_build);
   paneFactory_register('notes', notesPane.instance_build);
+  paneFactory_register('capacity', capacityPane.instance_build);
   paneFactory_register('edit', editorModule.instance_build);
   for (const [kind, build] of staged.factories) paneFactory_register(kind, build);
   paneFactory_register('empty', (id: string): PaneInstance => {
@@ -2110,6 +2115,7 @@ async function surface_start(token: string): Promise<void> {
     verbs: { move: pane_move, flip: pane_flip, resize: pane_resize },
     help_open,
     notes_open: notesPane.open,
+    capacity_open: capacityPane.open,
     launcher_enter,
     // `trek` on the command line (either console): the bridge takes the screen and gives it back when the game ends.
     trek_open: (line: string): string => {
@@ -2162,13 +2168,14 @@ async function surface_start(token: string): Promise<void> {
     else palette_close();
   });
   const LANG_SUBJECT_WORDS: string[] = [
-    'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'header', 'console', 'back', 'desktop', 'argus', 'help', 'notes',
+    'pane', 'view', 'runs', 'node', 'dag', 'file', 'pacs', 'header', 'console', 'back', 'desktop', 'argus', 'help', 'notes', 'capacity',
   ];
   const LANG_FOLLOWERS: Record<string, string[]> = {
     pane: ['split', 'zoom', 'close', 'bind', 'claim', 'focus', 'flip', 'resize'],
     resize: ['left', 'right', 'up', 'down'],
     help: ['keys', 'verbs'],
     notes: ['pane'],
+    capacity: ['pane'],
     focus: ['left', 'right', 'up', 'down', 'last'],
     view: ['files', 'runs', 'pacs'],
     runs: ['enter', 'sort', 'filter'],

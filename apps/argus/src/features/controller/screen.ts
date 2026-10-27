@@ -232,7 +232,8 @@ export class TdController {
    */
   public domain_choose(name: string): void {
     this.current = name !== '' && this.domains.has(name) ? name : this.domains.keys().next().value ?? NEW_KEY;
-    if (this.current === NEW_KEY) this.view = 'size';
+    // NEW opens on SIZE, which needs what a domain is sized against: ask for it here, as a press on SIZE does.
+    if (this.current === NEW_KEY) { this.view = 'size'; void this.size_need(); }
     this.draw();
   }
 

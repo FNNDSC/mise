@@ -41,6 +41,8 @@ export interface ArgusHost {
   help_open(): string;
   /** Opens the NOTES pane (what the installed releases changed); answers what happened. */
   notes_open(): string;
+  /** Opens the CAPACITY pane (what the region has free) on a family, or on every one when none is named; answers what happened. */
+  capacity_open(family: string): string;
   /** A shown pane's bounding rect (for spatial focus), or null. */
   paneRect_get(id: string): DOMRect | null;
   /** A pane's mount element (drawer, mode frame, chooser live inside), or null. */
@@ -87,7 +89,7 @@ interface Sentence {
 /** Subjects this language owns; all other lines belong to the session. */
 const SUBJECTS: Set<string> = new Set([
   'pane', 'view', 'file', 'header', 'console', 'back', 'desktop', 'dashboard', 'help', 'notes', 'launcher', 'attach', 'argus', 'trek',
-  'stratus', 'chris',
+  'stratus', 'chris', 'capacity',
 ]);
 
 /** The frame's own subjects, which no composition answers for. */
@@ -108,6 +110,9 @@ const SHARED_SUBJECTS: Record<string, ReadonlySet<string>> = {
   // `notes` is the kernel's (what the installed releases changed); the surface
   // claims only the pane that lists it.
   notes: new Set(['pane']),
+  // `capacity` is the session's (what the region has free, as text); the
+  // surface claims only the pane that lists it.
+  capacity: new Set(['pane']),
   // `file` is the kernel's too (what a file is, by its bytes — games shelf);
   // the surface claims only its files-pane verbs.
   file: new Set(['home', 'back', 'download', 'delete', 'follow', 'root', 'open', 'list', 'cards', 'preview', 'sort', 'filter']),
@@ -386,6 +391,7 @@ const FRAME_TAIL_LINES: ReadonlyArray<string> = [
   'argus keys                  (the prefix chords: one key, one drawer verb)',
   'help pane|keys|verbs        (the KEYS pane on the stage; keys and verbs print the tables here; bare help is the session\'s)',
   'notes pane                  (what the installed releases changed, as a pane; bare notes prints it here)',
+  'capacity pane [<family>]    (what the region has free for a family, as a pane; bare capacity prints it here)',
   'trek [--seed <n>]           (the bridge takes the screen: BSD trek played from its controls; --credits, --help and --version are the session\'s)',
 ];
 
@@ -628,6 +634,7 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
   }
 
   if (subject === 'help' || subject === 'notes') return pages_handle(host, subject, verb);
+  if (subject === 'capacity') return verb === 'pane' ? host.capacity_open(words[1] ?? '') : 'capacity pane [<family>]';
   if (subject === 'desktop') {
     return desktop_handle(host, verb, words[1]);
   }

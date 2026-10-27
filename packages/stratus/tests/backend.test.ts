@@ -9,7 +9,7 @@ import { FakeDriver, fakeCloud_sample } from '../src/cloud/fake/driver.js';
 import { stratusBackend_make } from '../src/backend.js';
 import { DomainStore } from '../src/domain/state.js';
 import { STRATUS_ITEM_KINDS, stratusName_colorize, CONTAINER_TYPES, stateTone_paint } from '../src/vfs/look.js';
-import { envelopeHandler_get } from '@fnndsc/brasa/core';
+import { commandHolds_get, envelopeHandler_get } from '@fnndsc/brasa/core';
 import { harborCheckout_make } from './support/harborCheckout.js';
 
 describe('stratusBackend_make', () => {
@@ -69,6 +69,10 @@ describe('the backend\'s domains', () => {
     expect(made.domains.domain_read('harbor')?.cluster).toBe('harbor.oci.chrisproject.org');
     const answer = await envelopeHandler_get('domain')!(['status']);
     expect(answer.rendered).toContain('harbor.oci.chrisproject.org');
+    // The reads run beside any other line; `domain` writes and holds the session.
+    expect(commandHolds_get('capacity')).toEqual([]);
+    expect(commandHolds_get('spend')).toEqual([]);
+    expect(commandHolds_get('domain')).toBeNull();
   });
 });
 

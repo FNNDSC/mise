@@ -7,6 +7,7 @@ import { FakeDriver, fakeCloud_sample } from '../src/cloud/fake/driver.js';
 import { capacity_run, capacityRows_read, specFamily_parse, CAPACITY_HELP } from '../src/commands/capacity.js';
 import { DomainTree } from '../src/vfs/domains.js';
 import { harborCheckout_make } from './support/harborCheckout.js';
+import { AnswerCache } from '../src/cache.js';
 
 const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
 const context_make = (roots: Record<string, string>, region: string | null = 'us-ashburn-1') => ({
@@ -28,6 +29,25 @@ describe('capacity', () => {
     expect(rows[0]).toEqual({ family: 'e5', limit: 'standard-e5-core-count', zone: 'Uocm:US-ASHBURN-AD-1', value: 9250, used: 12, available: 9238 });
     expect(rows[1]).toEqual({ family: 'e5', limit: 'standard-e5-core-count', zone: 'Uocm:US-ASHBURN-AD-2', value: 9250, used: null, available: null });
     expect(await capacityRows_read(new FakeDriver(fakeCloud_sample()), 'us-ashburn-1', ['Z9'])).toEqual([]);
+  });
+
+  it('keeps what it read: the second ask reads the cloud nothing, and the rows are the same', async () => {
+    const driver = new FakeDriver(fakeCloud_sample());
+    const cache = new AnswerCache(60_000);
+    const first = await capacityRows_read(driver, 'us-ashburn-1', ['e5'], cache);
+    const asked = { ...driver.calls };
+    expect(asked['limitAvailability_get']).toBe(6);
+    const second = await capacityRows_read(driver, 'us-ashburn-1', ['e5'], cache);
+    expect(second).toEqual(first);
+    expect(driver.calls).toEqual(asked);
+    // Without a cache every ask reads the cloud again.
+    await capacityRows_read(driver, 'us-ashburn-1', ['e5']);
+    expect(driver.calls['limitAvailability_get']).toBe(12);
+    // A line's ask keeps through the session's cache too.
+    const context = { ...context_make({}), driver, cache };
+    await capacity_run(context, ['E5']);
+    await capacity_run(context, ['E5']);
+    expect(driver.calls['limitAvailability_get']).toBe(12);
   });
 
   it('takes the families the domains\' specs name, and answers lines with the model', async () => {

@@ -95,6 +95,35 @@ describe('the stratus tiles', () => {
     expect(refused.lead!.weight).toBe(0);
   });
 
+  it('paints DOMAINS without waiting on a slow capacity, and paints again when it lands', async () => {
+    const seen: string[] = [];
+    let capacity_answer: (answer: ExecuteOutcome) => void = (): void => {};
+    const slow: Promise<ExecuteOutcome> = new Promise<ExecuteOutcome>((resolve: (answer: ExecuteOutcome) => void): void => { capacity_answer = resolve; });
+    const asked: string[] = [];
+    const base: StratusTileHooks = hooks_make({ 'domain status': DOMAINS, capacity: CAPACITY }, seen);
+    const hooks: StratusTileHooks = {
+      ...base,
+      ask: (line: string): Promise<ExecuteOutcome> => { asked.push(line); return line === 'capacity' ? slow : base.ask(line); },
+      repaint: (): void => { seen.push('repaint'); },
+      capacityGraceMs: 20,
+    };
+    const source = stratusTiles_make(hooks);
+    const first = await source();
+    expect(first.lead!.tile.figures[0]).toEqual({ text: '2 DOMAINS' });
+    expect(first.afterFiles[0]!.figures).toEqual([{ text: 'READING' }]);
+    expect(seen).toEqual([]);
+    // A second paint while the first capacity is on its way asks for no second one.
+    await source();
+    expect(asked.filter((line: string): boolean => line === 'capacity')).toHaveLength(1);
+    capacity_answer(await base.ask('capacity'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(seen).toEqual(['repaint']);
+    // The repaint's ask answers at once, and the tile reads the region.
+    const painted = await source();
+    expect(asked.filter((line: string): boolean => line === 'capacity')).toHaveLength(2);
+    expect(painted.afterFiles[0]!.figures).toEqual([{ text: 'US-ASHBURN-1' }]);
+  });
+
   it('shortens zones and limits to what a tile has room for', () => {
     expect(zoneShort_format('disG:US-ASHBURN-AD-1')).toBe('US-ASHBURN-AD-1');
     expect(zoneShort_format('us-east-1a')).toBe('us-east-1a');

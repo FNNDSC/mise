@@ -22,54 +22,67 @@
 
 ## What `mise` is
 
-`mise` is the stack a shell runs on, with ChRIS as the disk. Read it as a Linux machine and every package has a job you already know.
+`mise` puts a shell between you and ChRIS. ChRIS is a platform for running analyses on medical data; its backend, CUBE, is a REST API. `mise` mounts that API as a filesystem (your data as directories, plugins as executables, running jobs as files you can read), runs a shell over it, and keeps the shell alive as a session on a server you log in to. You reach the session from a terminal or a browser, and both see the same state.
+
+The figure is the whole of it: three machines, two networks. Your machine holds the surfaces. The bastion holds your session and the stack it stands on. CUBE is the only source of truth; everything above it is a view of it.
 
 ```text
-                                            you
-                                             │
-                                ┌────────────┴────────────┐
-                                │                         │
-                         ┌──────┴──────┐           ┌──────┴──────┐
-                         │    chell    │           │    ARGUS    │   surfaces: a terminal, a browser
-                         │  terminal   │           │   browser   │   two views of one session
-                         └──────┬──────┘           └──────┬──────┘
-                                │ ws                      │ https, then ws
-                                └────────────┬────────────┘
-                                             │  menu: the wire
-     ────────────────────────────────────────┼──────────────────────────────  network: your machine to the bastion
-                                             │
-                               ┌─────────────┴─────────────┐
-                               │           porter          │   the login page             (gdm)
-a program of your own, at      ├───────────────────────────┤
-one layer: its own engine;     │          calypso          │   your session, long-lived   (tmux + sshd)
-a session needs the wire ┌─────┴───────────────────────────┤
-┌──────────┐             │                                 │
-│ a client ├─────────────┤              brasa              │   the shell engine           (bash + coreutils)
-└──────────┘             │                                 │
-                   ┌─────┴─────────────────────────────────┤
-┌──────────┐       │                                       │
-│ a client ├───────┤                  fond                 │   the filesystem interface   (the VFS)
-└──────────┘       │                                       │
-             ┌─────┴───────────────────────────────────────┤
-┌──────────┐ │                                             │
-│ a client ├─┤                 chris driver                │   CUBE mounted as a tree     (a filesystem driver)
-└──────────┘ │   salsa   the tree, and the logic behind it │
-             │   cumin   speaks CUBE's REST, via chrisapi  │
-             └───────────────────────────────┬─────────────┘   the bastion: one host
-                                             │  HTTPS, Collection+JSON
-     ────────────────────────────────────────┼──────────────────────────────  network: the bastion to CUBE
-                                             │
-                                       ┌───────────┐
-                                      ╱           ╱│
-                                     ╱   CUBE    ╱ │
-                                    ┌───────────┐  │                  ChRIS: users, data, plugins,
-                                    │           │  ┘                  compute, and the record of
-                                    │  what is  │ ╱                   every run
-                                    │   true    │╱
-                                    └───────────┘
+┌─ your machine ───────────────────────────────────────────────────────────────────┐   a terminal, a browser,
+│ ┌──────────┐                           you                                       │   and programs of your own
+│ │ a program│                            │                                        │
+│ └─┬────────┘                   ┌────────┴────────┐                               │
+│   ┆ ┌──────────┐               │                 │                               │
+│   ┆ │ a program│         ┌─────┴─────┐     ┌─────┴─────┐                         │
+│   ┆ └─┬────────┘         │   chell   │     │   ARGUS   │                         │   surfaces: two views of one session
+│   ┆   ┆ ┌──────────┐     │ terminal  │     │  browser  │                         │
+│   ┆   ┆ │ a program│     └─────┬─────┘     └─────┬─────┘                         │
+│   ┆   ┆ └─┬────────┘        ws │                 │ https, then ws                │
+│   ┆   ┆   ┆                    └────────┬────────┘                               │
+│   ┆   ┆   ┆                             └───┐                                    │
+└───┼───┼───┼─────────────────────────────────┼────────────────────────────────────┘
+    ┆   ┆   ┆                                 │  menu: the wire, across a network
+╔═══╪═══╪═══╪═════════════════════════════════╪══ the bastion ═════════════════════╗   one Linux host: VM, container or metal
+║   ┆   ┆   ┆                                 │                                    ║
+║   ┆   ┆   ┆                     ┌───────────┴───────────┐                        ║
+║   ┆   ┆   ┆                     │         porter        │                        ║   the login page (gdm)
+║   ┆   ┆   ┆                     ├───────────────────────┤    ┌───────────────┐   ║   the console's own terminal, on a pty
+║   ┆   ┆   ┆                     │        calypso        ├──┬─┤  chell (pty)  │   ║   your session, long-lived (tmux + sshd)
+║   ┆   ┆   ┆               ┌─────┴───────────────────────┤  │ └───────────────┘   ║
+║   ┆   ┆   ┆               │                             │  │                     ║
+║   ┆   ┆   └┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┤            brasa            │  │ ┌───────────────┐   ║   the shell engine (bash + coreutils)
+║   ┆   ┆                   │                             │  └─┤    the host   │   ║
+║   ┆   ┆             ┌─────┴─────────────────────────────┤    │ a shell       │   ║   reached by `!`, under host control
+║   ┆   ┆             │                                   │    │ ~/project     │   ║   the dev environment: edit, build, run
+║   ┆   └┄┄┄┄┄┄┄┄┄┄┄┄┄┤                fond               │    └───────────────┘   ║   the filesystem interface (the VFS)
+║   ┆                 │                                   │                        ║
+║   ┆           ┌─────┴───────────────────────────────────┤                        ║
+║   ┆           │                                         │                        ║
+║   └┄┄┄┄┄┄┄┄┄┄┄┤               chris driver              │                        ║   a filesystem driver: CUBE as a tree
+║               │   salsa   the tree, and its logic       │                        ║
+║               │   cumin   CUBE's REST, via chrisapi     │                        ║
+║               └─────────────────────────────┬───────────┘                        ║
+║                                             │                                    ║
+╚═════════════════════════════════════════════╪════════════════════════════════════╝
+                                              │  HTTPS, Collection+JSON, across a network
+                                   ┌─────────────────────┐
+                                  ╱                     ╱│
+                                 ╱         CUBE        ╱ │
+                                ╱                     ╱  │
+                               ┌─────────────────────┐   │
+                               │                     │   │                            ChRIS: users, data, plugins, compute,
+                               │                     │   ┘                            and the record of every run
+                               │       what is       │  ╱
+                               │         true        │ ╱
+                               │                     │╱
+                               └─────────────────────┘
+
+────  a call, over a network
+┄┄┄┄  the same package, linked into a program of your own: its own engine, its own process
 ```
 
-Two surfaces, one session: type `cd` in the terminal and the browser has already moved. A program of your own links in at one layer and gets an engine of its own: brasa for typed commands and their envelopes, fond for the tree alone, the driver for CUBE's own objects. To act in a session it attaches over the wire, as `chell --remote` does. The one thing with no wire is `chell` run on the bastion itself, engine in-process. The figures with the server opened (CUBE on OpenShift on a cloud substrate) are in **[docs/architecture/overview.adoc](docs/architecture/overview.adoc)**; the Linux reading is argued in **[docs/linux-metaphor.adoc](docs/linux-metaphor.adoc)**.
+Three facts the figure carries. A terminal and a browser are two views of one session: `cd` in one and the other has moved. A program of your own does not call the bastion; it links one layer into its own process and gets its own engine, and only a surface on the wire shares a session. The bastion is a real Linux host: `!` in the console runs on it, under the host-control tier the session was started with, which is what makes it a place to develop. In a Trusted Domain that host is a container on the cluster, one per cohort.
+
+The names in parentheses (gdm, tmux, bash) are the comparison and nothing more; the full Linux reading is **[docs/linux-metaphor.adoc](docs/linux-metaphor.adoc)**, and the figures with the server opened (CUBE on OpenShift on a cloud substrate) are **[docs/architecture/overview.adoc](docs/architecture/overview.adoc)**.
 
 ### Why it exists
 
@@ -134,6 +147,8 @@ Three ways in, each a command. All three drive the same engine against one CUBE.
 | a session others attach to | `calypso`, then `chell --remote` or the printed URL | a daemon on loopback, a terminal and a browser on one session |
 | a login page | `make porter CUBE_URL=https://cube.example.org/api/v1/` | a browser at `http://127.0.0.1:4180/`, log in, land in `argus` |
 
+The first row collapses the figure: your machine is the bastion, and there is no wire. The other two are the figure as drawn.
+
 **The terminal.** `chell` asks for the password, logs in, and remembers the session for next time (`chell` alone reconnects).
 
 ```bash
@@ -148,7 +163,7 @@ chell you@https://cube.example.org/api/v1/
 [+] ARGUS web surface at http://127.0.0.1:35739/?token=4c9d98c3…
 ```
 
-The token is in that URL, so the link is the whole credential; treat it as a password. `--host-control` lets the session act on the daemon's machine (`!` escapes, pipes, `upload`, `download`) and is off unless asked for. Modes, attaching from elsewhere, host-control tiers and the exposure rules are in **[docs/chell.adoc](docs/chell.adoc)**.
+The token is in that URL, so the link is the whole credential; treat it as a password. `--host-control` lets the session act on the bastion itself (`!` escapes, pipes, `upload`, `download`), the line into the host block of the figure, and is off unless asked for. Modes, attaching from elsewhere, host-control tiers and the exposure rules are in **[docs/chell.adoc](docs/chell.adoc)**.
 
 **The login page.** `make porter` builds, then starts `porter` on `127.0.0.1:4180` for the one CUBE you name. Open it, give your CUBE name and password, and watch the greeter: the first login of an identity on a host is a cold boot (the engine indexes your feeds and PACS, a minute or more on a large CUBE); every later login is warm, and a session still running is rejoined. The porter holds the attach token, the browser holds a cookie, nothing sensitive is in the URL bar. From an install rather than the checkout:
 
@@ -159,13 +174,13 @@ chell --remote --door http://127.0.0.1:4180/     # a terminal through the same d
 
 The porter listens on loopback. To serve other machines put TLS in front of it: the cookie is the credential. Settings, the systemd unit and the Caddyfile, and the reasoning are in **[apps/porter/docs/porter.adoc](apps/porter/docs/porter.adoc)**.
 
-**The cloud.** The same login reaches the second backend: `:stratus oci` at the `argus` console switches to a `stratus` session over an Oracle Cloud tenancy, where a Trusted Domain is a folder under `/net/oci` and `domain` verbs build it. **[docs/stratus.adoc](docs/stratus.adoc)**.
+**The cloud.** The same login reaches the second backend: `:stratus oci` at the `argus` console switches to a `stratus` session over an Oracle Cloud tenancy, where a Trusted Domain is a folder under `/net/oci` and `domain` verbs build it. In the figure the driver block is then the cloud's and the cube is a tenancy; nothing else changes. **[docs/stratus.adoc](docs/stratus.adoc)**.
 
 ---
 
 ## `argus`
 
-The web surface: a console with the terminal indwelling and panes for files, feeds, the job graph, PACS query and retrieve, and a DICOM viewer. It ships with the stack. The chrome is LCARS, borrowed fiction and credited as such; the design under it is not. **AEGIS** (**[apps/argus/docs/aegis.adoc](apps/argus/docs/aegis.adoc)**) is the interface standard every pane answers to, machine-checked, and a canon of the frame's computed style under `apps/argus/tests/smoke/canon/` holds the look to it. Themes, the canon and the attribution are in **[apps/argus/README.md](apps/argus/README.md)**.
+The web surface: a console with the terminal indwelling and panes for files, feeds, the job graph, PACS query and retrieve, and a DICOM viewer. The terminal in the page is a `chell` the session runs on the bastion under a pty; the browser shows it. It ships with the stack. The chrome is LCARS, borrowed fiction and credited as such; the design under it is not. **AEGIS** (**[apps/argus/docs/aegis.adoc](apps/argus/docs/aegis.adoc)**) is the interface standard every pane answers to, machine-checked, and a canon of the frame's computed style under `apps/argus/tests/smoke/canon/` holds the look to it. Themes, the canon and the attribution are in **[apps/argus/README.md](apps/argus/README.md)**.
 
 ---
 
@@ -173,7 +188,7 @@ The web surface: a console with the terminal indwelling and panes for files, fee
 
 Three doors into the kernel, none of them Collection+JSON.
 
-- **In-process.** One layer as a library, with an engine of your own. `@fnndsc/brasa`: hand it a line, get a `CommandEnvelope` back, a typed model with the rendered text as one view of it. `@fnndsc/fond` with the driver's mounts: the tree alone, list, read, copy, no verbs. `@fnndsc/salsa` or `@fnndsc/cumin`: CUBE's own objects, typed or raw. **[docs/intent-kernel.adoc](docs/intent-kernel.adoc)**, **[docs/envelope-model.adoc](docs/envelope-model.adoc)**.
+- **In-process.** The dashed lines of the figure: one layer as a library, with an engine of your own, in your own process; `!` in such a program runs on that program's host, not on a bastion. `@fnndsc/brasa`: hand it a line, get a `CommandEnvelope` back, a typed model with the rendered text as one view of it. `@fnndsc/fond` with the driver's mounts: the tree alone, list, read, copy, no verbs. `@fnndsc/salsa` or `@fnndsc/cumin`: CUBE's own objects, typed or raw. **[docs/intent-kernel.adoc](docs/intent-kernel.adoc)**, **[docs/envelope-model.adoc](docs/envelope-model.adoc)**.
 - **Over the wire.** A `calypso` session speaks the contract in `@fnndsc/menu`: zod schemas for the envelope, the session protocol and every result model. A surface in any language attaches with a WebSocket and those schemas. **[docs/calypso.adoc](docs/calypso.adoc)**.
 - **From the shell.** `chell -c` runs a line and exits; a script plays as a manifest. **[packages/chell/docs/script-reference.adoc](packages/chell/docs/script-reference.adoc)**.
 
@@ -192,7 +207,7 @@ mise/
 │   ├── menu/     @fnndsc/menu     the wire contract: envelope, session protocol, result models
 │   ├── cumin/    @fnndsc/cumin    the only layer that speaks CUBE's REST
 │   ├── salsa/    @fnndsc/salsa    the logic, and the filesystem CUBE never had
-│   ├── chili/    @fnndsc/chili    typed commands and the views that render them
+│   ├── chili/    @fnndsc/chili    typed commands and views from before the driver, being folded into it
 │   ├── brasa/    @fnndsc/brasa    the engine: a typed line in, a validated action out
 │   ├── stratus/  @fnndsc/stratus  the cloud backend: a tenancy under /net, clouds as drivers, OCI first
 │   ├── calypso/  @fnndsc/calypso  the session daemon

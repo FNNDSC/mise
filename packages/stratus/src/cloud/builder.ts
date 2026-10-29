@@ -161,7 +161,13 @@ export interface CloudBuilder {
   /** Takes in infrastructure built elsewhere: a stack with its variables and its Terraform state; returns the stack's handle. */
   /** How many resources a stack's state holds: what a destroy job removes. */
   stackResources_count?(request: { region: string; stackRef: string }): Promise<number>;
-  /** Removes what a domain built: the stack's resources (a destroy job), then its records, image, link and volumes. Returns what went, a line each. */
+  /**
+   * Removes what a domain built: the stack's resources (a destroy job), then
+   * its records, image, link and volumes; then the stack itself, any block
+   * volume still in its compartment carrying the attribution tag, and the
+   * compartment with its image bucket when stratus made it (`domains/<name>`),
+   * else the domain's tag off the compartment. Returns what went, a line each.
+   */
   teardown_run?(request: TeardownRequest, call: BuildCall): Promise<string[]>;
   stack_adopt?(request: { domain: string; region: string; compartmentId: string; variables: Record<string, string>; state: Buffer; stackVersion: string }, call: BuildCall): Promise<string>;
   /** A stack found in the tenancy, read back: its state, its compartment, and the zone and spec its variables say; absent, a found domain adopts without a spec. */

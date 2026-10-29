@@ -14,6 +14,7 @@ import * as dns from 'oci-dns';
 import * as identity from 'oci-identity';
 import * as limits from 'oci-limits';
 import * as objectstorage from 'oci-objectstorage';
+import { ociTags_flatten } from './driver.js';
 import { notFound } from './errors.js';
 
 /** A pre-authenticated link to an object. */
@@ -59,6 +60,16 @@ export interface OciBuildApi {
   record_delete(zone: string, name: string, compartmentId: string): Promise<void>;
   /** Removes a block volume; one already gone is no error. */
   volume_delete(volumeId: string): Promise<void>;
+  /** The block volumes a compartment holds that are not gone: id, name and flattened tags. */
+  volumes_list(compartmentId: string): Promise<Array<{ id: string; name: string; tags: Record<string, string> }>>;
+  /** A compartment's name, its parent's name (null under the tenancy root) and its freeform tags. */
+  compartment_describe(compartmentId: string): Promise<{ name: string; parentName: string | null; tags: Record<string, string> }>;
+  /** Takes one freeform tag off a compartment; one not carried is no error. */
+  compartment_tagRemove(compartmentId: string, key: string): Promise<void>;
+  /** Removes a compartment, which must hold nothing; the cloud refuses one that does. */
+  compartment_delete(compartmentId: string): Promise<void>;
+  /** Removes a bucket of a name and what it holds (objects, links), when it is in the compartment given; answers whether it was there. */
+  bucket_remove(bucket: string, compartmentId: string): Promise<boolean>;
 }
 
 /** How the calls authenticate, and where. */
@@ -202,6 +213,58 @@ export function ociBuildApi_make(options: OciBuildApiOptions): OciBuildApi {
       } catch (error: unknown) {
         if (!notFound(error)) throw error;
       }
+    },
+    async volumes_list(compartmentId) {
+      const volumes: Array<{ id: string; name: string; tags: Record<string, string> }> = [];
+      for await (const volume of blocks.listAllVolumes({ compartmentId })) {
+        const state: string = String(volume.lifecycleState ?? '').toLowerCase();
+        if (state === 'terminated' || state === 'terminating' || typeof volume.id !== 'string') continue;
+        volumes.push({ id: volume.id, name: volume.displayName ?? volume.id, tags: ociTags_flatten(volume.freeformTags ?? {}, (volume.definedTags ?? {}) as Record<string, Record<string, unknown>>) });
+      }
+      return volumes;
+    },
+    async compartment_describe(compartmentId) {
+      const compartment = (await ident.getCompartment({ compartmentId })).compartment;
+      const parentId: string | undefined = compartment.compartmentId;
+      const parentName: string | null = parentId === undefined || parentId === tenancyId ? null : (await ident.getCompartment({ compartmentId: parentId })).compartment.name ?? null;
+      return { name: compartment.name ?? '', parentName, tags: { ...(compartment.freeformTags ?? {}) } };
+    },
+    async compartment_tagRemove(compartmentId, key) {
+      const compartment = (await ident.getCompartment({ compartmentId })).compartment;
+      const tags: Record<string, string> = { ...(compartment.freeformTags ?? {}) };
+      if (!(key in tags)) return;
+      delete tags[key];
+      await ident.updateCompartment({ compartmentId, updateCompartmentDetails: { freeformTags: tags } });
+    },
+    async compartment_delete(compartmentId) {
+      try {
+        await ident.deleteCompartment({ compartmentId });
+      } catch (error: unknown) {
+        if (!notFound(error)) throw error;
+      }
+    },
+    async bucket_remove(bucket, compartmentId) {
+      const namespaceName: string = await namespace_get();
+      let kept: objectstorage.models.Bucket;
+      try {
+        kept = (await store.getBucket({ namespaceName, bucketName: bucket })).bucket;
+      } catch (error: unknown) {
+        if (notFound(error)) return false;
+        throw error;
+      }
+      if (kept.compartmentId !== compartmentId) return false;
+      // Every object, then every link, then the bucket: the cloud refuses a bucket holding either.
+      let start: string | undefined;
+      do {
+        const page = (await store.listObjects({ namespaceName, bucketName: bucket, fields: 'name', ...(start !== undefined ? { start } : {}) })).listObjects;
+        for (const object of page.objects ?? []) if (typeof object.name === 'string') await store.deleteObject({ namespaceName, bucketName: bucket, objectName: object.name });
+        start = page.nextStartWith || undefined;
+      } while (start !== undefined);
+      for (const link of (await store.listPreauthenticatedRequests({ namespaceName, bucketName: bucket })).items ?? []) {
+        if (typeof link.id === 'string') await store.deletePreauthenticatedRequest({ namespaceName, bucketName: bucket, parId: link.id });
+      }
+      await store.deleteBucket({ namespaceName, bucketName: bucket });
+      return true;
     },
   };
 }

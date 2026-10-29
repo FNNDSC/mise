@@ -38,7 +38,9 @@ These are enforced by the operator in review and most by lint. Read the pointed 
 
 | Piece | State | Where |
 |---|---|---|
-| `@fnndsc/stratus` 0.2.1 | published through OIDC with provenance; trusted publisher configured; on pangea at `~/.local/share/porter-published/node_modules/.bin/stratus` | `packages/stratus`; npm page `@fnndsc/stratus` |
+| `@fnndsc/stratus` 0.5.1 | published through OIDC with provenance; trusted publisher configured; on pangea at `~/.local/share/porter-published/node_modules/.bin/stratus`, and started by porter on `stratus oci [--spend]` (D14) | `packages/stratus`; npm page `@fnndsc/stratus` |
+| Step 5, the second tenant: quay built live 2026-10-23 and torn down 2026-10-25; D15 found domains (#1290); the capacity pane (#1291, #1293) | on `main` | `packages/stratus/src/domain/`, `apps/argus/src/features/controller/` |
+| Found domains seen from the cloud, adopted domains torn down, teardown of what carried the tag (2026-10-29) | branch `stratus/trusted-domains-seen`: a found domain's address, spec, condition (UP, STOPPED, GONE) and attested steps without adoption; `domain teardown` on a GONE found domain without adoption and on an adopted one once unlocked; teardown removes the stack itself, tagged volumes left in the compartment, and `domains/<name>` with its bucket (another's compartment loses the tag); TRUSTED DOMAINS on every ARGUS surface | `packages/stratus/src/domain/found.ts`, `commands/{domain,teardown,build}.ts`, `cloud/oci/{builder,buildApi,rmApi}.ts`, `apps/argus/src/features/controller/screen.ts`, `compositions/stratus/tiles.ts` |
 | Step 1a: read the tenancy | on `main` (#1181): descriptor, `CloudDriver`, fake driver and contract suite, OCI identity and compartments, `/net/oci/<tenancy>/` and `regions/`, launcher, stratus boot, `lint:stratus-deps` | `packages/stratus/src/{backend,session,cache,names,args,stratus}.ts`, `cloud/{driver.ts,fake/,oci/}`, `vfs/{tenancy,look}.ts`, `tests/` |
 | Step 1b: prompt segments and the ARGUS composition | on `main` (#1187) | `packages/menu/src/messages.ts` (`promptSegmentSchema`, `segments`), `packages/menu/src/logo/tdMark.ts`, `packages/stratus/src/prompt.ts`, `packages/chell/src/core/prompt/`, `apps/argus/src/console/promptBar.ts`, `apps/argus/src/app/main.ts`, `assets/brand/td-oci.svg`, `scripts/prompt-parity.mjs` |
 | Follow-ups 1 to 3 | on `main`: `chell --remote <berth>` by the exact identity, two-@ too (#1190, `packages/chell/src/remote/berthTarget.ts`); a frame-alone session boots unzoomed (#1191); the attach splash follows the backend, the TD mark for stratus (#1192, `packages/chell/src/remote/splash.ts`) | |
@@ -52,6 +54,8 @@ These are enforced by the operator in review and most by lint. Read the pointed 
 What the wire carries now: `promptline.context.segments?: Array<{key, label, value, tone}>`, tones `leader | place | identity | path | work | note | alert`. Keys stratus uses: `cloud tenancy region user domain cwd`. A surface maps tone to palette; glyphs by key in chell's `theme_p10k.ts` and ARGUS's `terminal.ts` (`lint:prompt` holds them equal).
 
 ## Recipes
+
+**Porter's stratus session keeps its own state folder** (`<porter state>/<berth key>/state/stratus/domains/`, with `HOME` beside it), not the operator's `~/.local/state/stratus/domains/`. Every domain is seen there from the cloud; acting on one needs `domain adopt <name>` in that session, and its `auth/` (the kubeconfig, the CUBE token) copied in by hand. `stratus oci --spend` at the ARGUS console restarts the session with the tasks tier.
 
 **A private stratus daemon over the fake cloud** (never the operator's daemon):
 

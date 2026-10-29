@@ -115,6 +115,35 @@ describe('the TD controller screen', () => {
     controller.root.remove();
   });
 
+  it('shows a found domain as the cloud says it, with ADOPT; one with nothing left offers REMOVE WHAT IS LEFT and no lock', async () => {
+    const { controller, sent } = controller_make();
+    const why: string = 'found in the tenancy, not adopted: domain adopt harbor first';
+    controller.domains_take([
+      domain_make('harbor', { origin: 'found', condition: 'UP', billing: true, protected: true, refused: { plan: why, verify: why, build: why, teardown: why }, steps: [{ folder: '01-compartment', state: 'done', name: 'compartment', evidence: 'found ocid1.compartment.oc1..h' }, { folder: '06-infra-apply', state: 'done', name: 'infra-apply', evidence: '3 instances live in its compartment' }, { folder: '10-run', state: 'unknown', name: 'run', evidence: 'the cloud does not say; adopt it and verify to know' }] }),
+      domain_make('quay', { origin: 'found', condition: 'GONE', billing: false, cluster: null, compartment: 'ocid1.compartment.oc1..q', resources: { buckets: 1 }, refused: { plan: 'gone', verify: 'gone', build: 'gone' } }),
+    ]);
+    controller.domain_choose('harbor');
+    expect(controller.root.querySelector('.tdc-chip-class')?.textContent).toBe('FOUND · NOT ADOPTED');
+    expect([...controller.root.querySelectorAll('.tdc-chip')].map((chip) => chip.textContent)).toContain('2 OF 3 DONE · FROM THE CLOUD');
+    expect([...controller.root.querySelectorAll('.tdc-head-value')].map((value) => value.textContent)).toContain('harbor.oci.example.org');
+    button_named(controller.root, 'ADOPT')?.click();
+    await flush();
+    expect(sent).toEqual(['domain adopt harbor']);
+    controller.domain_choose('quay');
+    expect(controller.root.querySelector('.tdc-chip-class')?.textContent).toBe('FOUND · NOTHING LEFT');
+    expect(controller.root.querySelector('.tdc-lock')).toBeNull();
+    expect(controller.root.querySelector('.tdc-condition-why')?.textContent).toBe('TORN DOWN · NOTHING BILLED');
+    expect(controller.root.querySelector('.tdc-note-found')?.textContent).toContain('its compartment (holding 1 buckets)');
+    expect(button_named(controller.root, 'ADOPT')).toBeUndefined();
+    controller.view_show('teardown');
+    expect(controller.root.querySelector('.tdc-lock')).toBeNull();
+    button_named(controller.root, 'REMOVE WHAT IS LEFT')?.click();
+    await flush();
+    expect(sent.at(-1)).toBe('domain teardown quay');
+    controller.dispose();
+    controller.root.remove();
+  });
+
   it('shows the lock, and lifting it is a line of its own', async () => {
     const { controller, sent } = controller_make();
     controller.domains_take([domain_make('quay')]);

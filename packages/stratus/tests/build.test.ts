@@ -403,7 +403,9 @@ describe('the controller readout', () => {
 
   it('names what is refused on each kind of domain', () => {
     expect(refusals_derive(domain_with({}, 'checkout'), null)).toEqual({ build: 'read from a harbor-oci checkout, not built here', teardown: 'read from a harbor-oci checkout, not built here' });
-    expect(refusals_derive(domain_with({}), record_of({ adopted: { from: '~/h', at: '' } }))).toEqual({ build: 'adopted from ~/h', teardown: 'adopted, not built here' });
+    // An adopted domain is torn down as a built one is: the lock is its only guard.
+    expect(refusals_derive(domain_with({}), record_of({ adopted: { from: '~/h', at: '' } }))).toEqual({ build: 'adopted from ~/h', teardown: 'protected (domain protect d off lifts it)' });
+    expect(refusals_derive(domain_with({}), record_of({ adopted: { from: '~/h', at: '' }, protected: false }))).toEqual({ build: 'adopted from ~/h' });
     expect(refusals_derive(domain_with({}), record_of({ gone: 'x' }))).toEqual({ build: 'torn down', teardown: 'already torn down' });
     expect(refusals_derive(domain_with({}), record_of({ protected: false }))).toEqual({});
   });

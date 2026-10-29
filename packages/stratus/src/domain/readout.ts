@@ -47,8 +47,8 @@ function stepState_read(domain: HarborDomain, name: string): string {
  */
 export function condition_derive(domain: HarborDomain, record: DomainRecord | null, running: boolean, asking: boolean): DomainCondition {
   if (record?.gone !== undefined) return 'GONE';
-  // A found domain keeps no steps here; `domain status` says UP or STOPPED from what lives in its compartment.
-  if (domain.origin === 'found') return 'STOPPED';
+  // A found domain keeps no steps here: the cloud said whether its machines live, its stack stands, or nothing is left.
+  if (domain.origin === 'found') return domain.found?.condition ?? 'STOPPED';
   if (asking) return 'ASKING';
   if (running || domain.steps.some((step: StepState): boolean => step.state === 'running')) return 'BUILDING';
   if (domain.steps.some((step: StepState): boolean => step.state === 'failed')) return 'FAILED';
@@ -67,13 +67,19 @@ export function condition_derive(domain: HarborDomain, record: DomainRecord | nu
  */
 export function refusals_derive(domain: HarborDomain, record: DomainRecord | null): Record<string, string> {
   if (domain.origin === 'found') {
+    // Nothing left but its tag: there is nothing to plan, verify or build on, and teardown removes the tag's carriers.
+    if (domain.found?.condition === 'GONE') {
+      const why: string = `nothing of it is left in the tenancy but its tag: domain teardown ${domain.name} removes that`;
+      return { plan: why, verify: why, build: why };
+    }
     const why: string = `found in the tenancy, not adopted: domain adopt ${domain.name} first`;
     return { plan: why, verify: why, build: why, teardown: why };
   }
   if (domain.origin !== 'built' || record === null) return { build: 'read from a harbor-oci checkout, not built here', teardown: 'read from a harbor-oci checkout, not built here' };
-  if (record.adopted !== undefined) return { build: `adopted from ${record.adopted.from}`, teardown: 'adopted, not built here' };
   if (record.gone !== undefined) return { build: 'torn down', teardown: 'already torn down' };
-  return record.protected !== false ? { teardown: `protected (domain protect ${domain.name} off lifts it)` } : {};
+  // An adopted domain is never built on; it is torn down as a built one is, once its lock is lifted.
+  const build: Record<string, string> = record.adopted !== undefined ? { build: `adopted from ${record.adopted.from}` } : {};
+  return record.protected !== false ? { ...build, teardown: `protected (domain protect ${domain.name} off lifts it)` } : build;
 }
 
 /**
@@ -136,14 +142,15 @@ export function domainReadout_build(domain: HarborDomain, store: DomainStore | n
   const applied: boolean = stepState_read(domain, FIRST_BILLING_STEP) === 'done' || lastDone_find(domain) !== null && (record === null || record.adopted !== undefined);
   return {
     condition: condition_derive(domain, record, running, asking !== null),
-    billing: record?.gone === undefined && applied,
+    // A found domain bills when its machines live; the host attests nothing else of it.
+    billing: domain.origin === 'found' ? domain.found?.condition === 'UP' : record?.gone === undefined && applied,
     origin: domain.origin === 'found' ? 'found' : domain.origin !== 'built' || record === null ? 'checkout' : record.adopted !== undefined ? 'adopted' : 'built',
     protected: record?.protected !== false,
     refused: refusals_derive(domain, record),
     region: record?.region ?? domain.settings['OCI_REGION'] ?? null,
     compartment: record?.compartmentId ?? domain.settings['OCI_COMPARTMENT_OCID'] ?? null,
     gone: record?.gone ?? null,
-    spec: store?.spec_read(domain.name)?.spec ?? null,
+    spec: store?.spec_read(domain.name)?.spec ?? domain.found?.spec ?? null,
     next: record === null || record.adopted !== undefined || record.gone !== undefined ? null : stepNext_find(record),
     billingStep: FIRST_BILLING_STEP,
     running: running ? { job: (job as JobRecord).id, step: runningStep, since: record?.steps[runningStep ?? '']?.started ?? (job as JobRecord).started } : null,

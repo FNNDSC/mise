@@ -80,7 +80,7 @@ export function duration_text(ms: number): string {
 
 /** What a domain is, in the badge beside its name. */
 export function classBadge_render(domain: DomainSummary): string {
-  if (domain.origin === 'found') return 'FOUND · NOT ADOPTED';
+  if (domain.origin === 'found') return domain.condition === 'GONE' ? 'FOUND · NOTHING LEFT' : 'FOUND · NOT ADOPTED';
   if (domain.origin === 'adopted') return 'ADOPTED · PLANS ONLY';
   if (domain.origin === 'checkout') return 'CHECKOUT · READ ONLY';
   if (domain.gone !== null && domain.gone !== undefined) return 'TORN DOWN';

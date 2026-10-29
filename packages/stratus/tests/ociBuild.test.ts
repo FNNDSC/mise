@@ -63,6 +63,19 @@ class RecordedApi implements OciBuildApi {
   async record_upsert(zone: string, name: string, address: string, compartmentId: string) { this.calls.push(`A ${name} ${address} in ${zone} (${compartmentId})`); }
   async record_delete(_zone: string, name: string) { this.calls.push(`unrecord ${name}`); }
   async volume_delete(id: string) { this.calls.push(`volume ${id}`); }
+  /** Block volumes left in a compartment, by compartment. */
+  volumes: Record<string, Array<{ id: string; name: string; tags: Record<string, string> }>> = {};
+  async volumes_list(compartmentId: string) { return this.volumes[compartmentId] ?? []; }
+  /** What `compartment_describe` answers, by compartment. */
+  described: Record<string, { name: string; parentName: string | null; tags: Record<string, string> }> = {};
+  async compartment_describe(compartmentId: string) { return this.described[compartmentId] ?? { name: 'other', parentName: null, tags: {} }; }
+  async compartment_tagRemove(compartmentId: string, key: string) { this.calls.push(`untag ${compartmentId} ${key}`); }
+  /** Whether `compartment_delete` refuses (the compartment is not empty). */
+  compartmentFull: boolean = false;
+  async compartment_delete(compartmentId: string) { if (this.compartmentFull) throw new Error('CompartmentNotEmpty'); this.calls.push(`delete compartment ${compartmentId}`); }
+  /** The buckets by compartment, for `bucket_remove`. */
+  buckets: Record<string, string> = {};
+  async bucket_remove(bucket: string, compartmentId: string) { if (this.buckets[bucket] !== compartmentId) return false; this.calls.push(`delete bucket ${bucket}`); return true; }
 }
 
 /** Resource Manager, answering every job with success. */
@@ -85,6 +98,7 @@ class OkRm implements RmApi {
   outputs: Record<string, string> = { open_shift_api_lb_addr: '129.0.0.1', open_shift_api_int_lb_addr: '10.0.0.2', open_shift_apps_lb_addr: '129.0.0.3', dynamic_custom_manifest: 'kind: List\n' };
   async jobOutputs_read() { return this.outputs; }
   async stackResources_count() { return 79; }
+  async stack_delete(stackId: string) { this.calls.push(`delete ${stackId}`); }
 }
 
 describe('a new stack\'s variables', () => {
@@ -207,19 +221,35 @@ describe('the OCI builder\'s build and teardown', () => {
     await expect(builder.infra_apply({ domain: 'trial', plan: { ref: 'p', rows: [] }, region: 'r' }, call())).rejects.toThrow('no stack to apply in');
   });
 
-  it('tears down in its order: the stack, the records, the image, the cluster\'s volumes', async () => {
+  it('tears down in its order: the stack, the records, the image, the cluster\'s volumes, then the stack itself and the domain\'s own compartment with its bucket', async () => {
     expect(await builder.stackResources_count({ region: 'r', stackRef: 'stack-1' })).toBe(79);
+    api.described['c'] = { name: 'trial', parentName: 'domains', tags: { 'mise-domain': 'trial' } };
+    api.buckets['stratus-iso'] = 'c';
+    // A volume the cluster never named, left in the compartment with the attribution tag; one without the tag is not the cluster's.
+    api.volumes['c'] = [{ id: 'vol-2', name: 'csi-left', tags: { 'openshift-tags.openshift-resource': 'openshift-resource-infra' } }, { id: 'vol-3', name: 'someone-elses', tags: {} }];
     const gone = await builder.teardown_run({ domain: 'trial', region: 'r', compartmentId: 'c', baseDomain: 'b.org', stackRef: 'stack-1', isoObject: 'trial-discovery.iso', isoLinkId: 'par-1', volumeIds: ['vol-1'] }, call());
-    expect(rm.calls).toEqual(['destroy stack-1']);
-    expect(api.calls).toEqual(['unrecord api.trial.b.org', 'unrecord api-int.trial.b.org', 'unrecord *.apps.trial.b.org', 'unlink par-1', 'delete stratus-iso/trial-discovery.iso', 'volume vol-1']);
-    expect(gone).toEqual(["the stack's resources (stack-1)", '3 DNS records', 'the image trial-discovery.iso and its link', '1 volumes the cluster made']);
+    expect(rm.calls).toEqual(['destroy stack-1', 'delete stack-1']);
+    expect(api.calls).toEqual(['unrecord api.trial.b.org', 'unrecord api-int.trial.b.org', 'unrecord *.apps.trial.b.org', 'unlink par-1', 'delete stratus-iso/trial-discovery.iso', 'volume vol-1', 'volume vol-2', 'delete bucket stratus-iso', 'delete compartment c']);
+    expect(gone).toEqual(["the stack's resources (stack-1)", '3 DNS records', 'the image trial-discovery.iso and its link', '1 volumes the cluster made', '1 volumes left in the compartment with the attribution tag', 'the stack itself', 'the image bucket stratus-iso', 'the compartment domains/trial']);
   });
 
-  it('runs no destroy job for a stack an earlier pass emptied, and does the rest again', async () => {
+  it('runs no destroy job for a stack an earlier pass emptied, does the rest again, and leaves a compartment that is not its own with only the tag gone', async () => {
+    // harbor-oci's compartment: the zone and the tag namespace live there, so it keeps itself.
+    api.described['c'] = { name: 'harbor-oci', parentName: null, tags: { 'mise-domain': 'trial', 'other': 'x' } };
     const gone = await builder.teardown_run({ domain: 'trial', region: 'r', compartmentId: 'c', baseDomain: 'b.org', stackRef: 'stack-1', volumeIds: [], stackEmpty: true }, call());
-    expect(rm.calls).toEqual([]);
-    expect(api.calls).toEqual(['unrecord api.trial.b.org', 'unrecord api-int.trial.b.org', 'unrecord *.apps.trial.b.org']);
-    expect(gone).toEqual(['3 DNS records']);
+    expect(rm.calls).toEqual(['delete stack-1']);
+    expect(api.calls).toEqual(['unrecord api.trial.b.org', 'unrecord api-int.trial.b.org', 'unrecord *.apps.trial.b.org', 'untag c mise-domain']);
+    expect(gone).toEqual(['3 DNS records', 'the stack itself', 'the tag mise-domain=trial off the compartment harbor-oci']);
+  });
+
+  it('leaves a compartment of its own that still holds something, saying so, and looks for no records without a zone', async () => {
+    api.described['c'] = { name: 'trial', parentName: 'domains', tags: { 'mise-domain': 'trial' } };
+    api.compartmentFull = true;
+    const logged: string[] = [];
+    const gone = await builder.teardown_run({ domain: 'trial', region: 'r', compartmentId: 'c', baseDomain: '', volumeIds: [] }, { log: (line: string): void => { logged.push(line); }, signal: new AbortController().signal });
+    expect(api.calls).toEqual([]);
+    expect(gone).toEqual([]);
+    expect(logged).toEqual(['no zone known for it: no records looked for', 'the compartment domains/trial stays: CompartmentNotEmpty']);
   });
 
   it('reads the cluster\'s own block volumes from its PersistentVolumes', async () => {
@@ -299,8 +329,14 @@ describe('domain teardown', () => {
   });
 
   it('refuses what it must not tear down, and when it cannot read the cluster\'s volumes', async () => {
+    // An adopted domain is guarded by its lock alone, as a built one is; lifted, it is torn down.
     store.create({ name: 'harbor', created: 'now', region: 'r', baseDomain: 'b', steps: {}, ids: {}, adopted: { from: '/x', at: 'now' } }, SPEC_DEFAULT);
-    expect((await domain_run(context, ['teardown', 'harbor'])).renderedErr).toBe('domain teardown: harbor: Operation not permitted: adopted, not built here\n');
+    expect((await domain_run(context, ['teardown', 'harbor'])).renderedErr).toBe('domain teardown: harbor: Operation not permitted: protected (domain protect harbor off lifts it, as its own line)\n');
+    await domain_run(context, ['protect', 'harbor', 'off']);
+    surface.answer = 'harbor';
+    expect(plain((await domain_run(context, ['teardown', 'harbor'])).rendered)).toBe('harbor: torn down\n');
+    expect(store.record_read('harbor')?.gone).toBeDefined();
+    surface.answer = 'trial';
     expect((await domain_run(context, ['teardown', 'nope'])).renderedErr).toBe('domain teardown: nope: no such domain\n');
     expect((await domain_run(context, ['teardown'])).renderedErr).toBe('domain teardown: usage: domain teardown <name>\n');
     const blind: DomainCommandContext = { ...context, build: { ...context.build!, verifyReach: { ...context.build!.verifyReach!, kube_make: (): KubeApi => ({ ...new FakeKube({ nodes: [] }), json_get: async () => { throw new Error('unreachable'); } }) as KubeApi } } };

@@ -18,6 +18,9 @@ import { DomainStore, DOMAIN_TAG, type DomainRecord } from '../src/domain/state.
 import { SPEC_DEFAULT, type DomainSpec } from '../src/domain/spec.js';
 import type { BuildDeps } from '../src/domain/steps.js';
 import { DomainTree } from '../src/vfs/domains.js';
+import { BufferSink, HeadlessSurface, JobRunner, runner_install, sink_set, surface_set } from '@fnndsc/brasa/core';
+import { STEPS_SOURCE } from '../src/domain/steps.js';
+import { foundDomain_describe } from '../src/domain/found.js';
 import { domain_run, foundDomain_make, type DomainCommandContext } from '../src/commands/domain.js';
 
 const REGION: string = 'us-ashburn-1';
@@ -69,12 +72,45 @@ describe('finding domains by their tag', () => {
     ]);
   });
 
-  it('a found domain reads as one: no spec, no steps, its compartment the tagged one else the stack\'s', () => {
+  it('a found domain reads as one before the cloud is asked more: no spec, no steps, its compartment the tagged one else the stack\'s', () => {
     const domain = foundDomain_make({ name: 'quay', stack: { id: QUAY_STACK, state: 'active', compartmentId: 'ocid1.compartment.oc1..other' }, compartmentId: null, region: REGION });
     expect(domain.origin).toBe('found');
     expect(domain.steps).toEqual([]);
     expect(domain.settings['OCI_COMPARTMENT_OCID']).toBe('ocid1.compartment.oc1..other');
     expect(domain.root).toBe(QUAY_STACK);
+    expect(domain.found?.condition).toBe('STOPPED');
+  });
+
+  it('described from the cloud, a found domain has its address and spec from its stack, and its condition from what lives and what the stack holds', async () => {
+    const world: FakeBuildWorld = new FakeBuildWorld(0);
+    const builder: FakeCloudBuilder = new FakeCloudBuilder(world);
+    const spec: DomainSpec = { ...SPEC_DEFAULT, workers: { count: 2, vcpu: 8, ramGib: 32, bootGib: 120, bootTier: 'balanced' } };
+    world.stacks.set(QUAY_STACK, { state: 'active', compartmentId: QUAY_COMPARTMENT, baseDomain: 'oci.example.org', spec });
+    const found: FoundDomain = { name: 'quay', stack: { id: QUAY_STACK, state: 'active', compartmentId: QUAY_COMPARTMENT }, compartmentId: QUAY_COMPARTMENT, region: REGION };
+    // Nothing lives, the stack still holds 17 resources: STOPPED, half built.
+    const stopped = await foundDomain_describe(found, new FakeDriver(cloud_make()), builder);
+    expect(stopped.cluster).toBe('quay.oci.example.org');
+    expect(stopped.settings['BASE_DOMAIN']).toBe('oci.example.org');
+    expect(stopped.found).toMatchObject({ baseDomain: 'oci.example.org', spec, stackResources: 17, condition: 'STOPPED' });
+    expect(stopped.steps.map((step) => [step.name, step.state])).toEqual([['compartment', 'done'], ...['preflight', 'cluster', 'iso', 'infra-plan', 'infra-apply', 'dns', 'manifests', 'hosts', 'run', 'postinstall', 'verify', 'chris-deploy', 'chris-seed', 'smoke'].map((name) => [name, 'unknown'])]);
+    // The stack emptied by an earlier teardown: GONE, every step not done.
+    world.stackResources.set(QUAY_STACK, 0);
+    const gone = await foundDomain_describe(found, new FakeDriver(cloud_make()), builder);
+    expect(gone.found?.condition).toBe('GONE');
+    expect(gone.steps.every((step) => step.state === (step.name === 'compartment' ? 'done' : 'not done'))).toBe(true);
+    // Machines live: UP, the apply attested by them.
+    const live = new FakeDriver(cloud_make({ resources: [...fakeCloud_sample().resources, { kind: 'instances', containerId: QUAY_COMPARTMENT, record: { name: 'quay-cp-0', id: 'ocid1.instance.1', state: 'running', region: REGION, created: '', tags: {}, raw: {}, shape: 'VM.Standard.E5.Flex', zone: 'AD-1', ips: [] } } as never] }));
+    const up = await foundDomain_describe(found, live, builder);
+    expect(up.found?.condition).toBe('UP');
+    expect(up.steps.find((step) => step.name === 'infra-apply')).toMatchObject({ state: 'done', evidence: '1 instance live in its compartment' });
+    // No stack, only a compartment: the tenancy's one zone names it; nothing live and no stack is GONE.
+    const alone = await foundDomain_describe({ name: 'alpha', stack: null, compartmentId: 'ocid1.compartment.oc1..alpha', region: REGION }, new FakeDriver(cloud_make()), builder);
+    expect(alone.cluster).toBe('alpha.fake.example');
+    expect(alone.found?.condition).toBe('GONE');
+    // A stack that cannot be read, or no builder at all, still shows the domain.
+    const unread = await foundDomain_describe(found, new FakeDriver(cloud_make()), null);
+    expect(unread.cluster).toBeNull();
+    expect(unread.found?.condition).toBe('STOPPED');
   });
 
   it('a stack\'s variables read back into the spec and zone they were built from', () => {
@@ -108,13 +144,18 @@ describe('a session over a tenancy holding a domain it keeps nothing of', () => 
   });
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 
-  it('domain status lists it as found, not adopted, STOPPED while nothing lives in its compartment, and the model says so', async () => {
+  it('domain status lists it as found, not adopted, STOPPED while nothing lives in its compartment and its stack holds something, with what the cloud says of it', async () => {
+    world.stacks.set(QUAY_STACK, { state: 'active', compartmentId: QUAY_COMPARTMENT, baseDomain: 'oci.example.org', spec: SPEC_DEFAULT });
     const answer = await domain_run(context, []);
     const text: string = answer.rendered.replace(ANSI, '');
-    expect(text).toContain('quay');
+    expect(text).toContain('quay  quay.oci.example.org');
     expect(text).toContain(`found        stack ${QUAY_STACK} (active), compartment ${QUAY_COMPARTMENT}; not adopted: domain adopt quay keeps it here`);
-    const model = answer.model?.data as { domains: Array<{ name: string; origin?: string; condition?: string; refused?: Record<string, string> }> };
-    expect(model.domains.map((domain) => [domain.name, domain.origin, domain.condition])).toEqual([['quay', 'found', 'STOPPED']]);
+    expect(text).toMatch(/01-compartment\s+done\s+found ocid1\.compartment\.oc1\.\.quay/);
+    expect(text).toContain('the cloud does not say; adopt it and verify to know');
+    const model = answer.model?.data as { domains: Array<{ name: string; origin?: string; condition?: string; cluster?: string | null; spec?: unknown; refused?: Record<string, string>; steps: unknown[] }> };
+    expect(model.domains.map((domain) => [domain.name, domain.origin, domain.condition, domain.cluster])).toEqual([['quay', 'found', 'STOPPED', 'quay.oci.example.org']]);
+    expect(model.domains[0]?.spec).toEqual(SPEC_DEFAULT);
+    expect(model.domains[0]?.steps).toHaveLength(15);
     expect(model.domains[0]?.refused?.['build']).toBe('found in the tenancy, not adopted: domain adopt quay first');
     expect((await domain_run(context, ['quay'])).rendered).toBe(answer.rendered);
   });
@@ -126,6 +167,35 @@ describe('a session over a tenancy holding a domain it keeps nothing of', () => 
     failing.domains_find = async (): Promise<FoundDomain[]> => { throw new Error('search refused'); };
     const unsearched = await domain_run(context_make(failing), []);
     expect(unsearched.rendered.replace(ANSI, '')).toContain('no domains here (the tenancy was not searched: search refused)');
+  });
+
+  it('a found domain with nothing left but its tag reads GONE, refuses the build verbs, and domain teardown removes the tag\'s carriers without an adoption', async () => {
+    world.stacks.set(QUAY_STACK, { state: 'active', compartmentId: QUAY_COMPARTMENT, baseDomain: 'oci.example.org', spec: null });
+    world.stackResources.set(QUAY_STACK, 0);
+    world.compartments.set('quay', QUAY_COMPARTMENT);
+    const status = await domain_run(context, ['quay']);
+    expect(status.rendered.replace(ANSI, '')).toContain('nothing of it is left but its tag: domain teardown quay removes that');
+    const model = status.model?.data as { domains: Array<{ condition?: string; billing?: boolean; refused?: Record<string, string> }> };
+    expect(model.domains[0]?.condition).toBe('GONE');
+    expect(model.domains[0]?.billing).toBe(false);
+    expect(model.domains[0]?.refused).toEqual({ plan: 'nothing of it is left in the tenancy but its tag: domain teardown quay removes that', verify: 'nothing of it is left in the tenancy but its tag: domain teardown quay removes that', build: 'nothing of it is left in the tenancy but its tag: domain teardown quay removes that' });
+    expect((await domain_run(context, ['plan', 'quay'])).renderedErr).toBe('domain plan: quay: nothing of it is left in the tenancy but its tag: domain teardown quay removes that\n');
+    // Without the tasks tier nothing changes.
+    const surface: HeadlessSurface & { answer: string } = Object.assign(new HeadlessSurface(), { answer: 'quay' });
+    surface.prompt = async (): Promise<string> => surface.answer;
+    surface_set(surface);
+    sink_set(new BufferSink());
+    expect((await domain_run(context, ['teardown', 'quay'])).renderedErr).toBe('domain teardown: quay: Operation not permitted: tearing down needs the tasks tier\n');
+    expect(store.record_read('quay')).toBeNull();
+    (surface.capabilities as { tasks?: boolean }).tasks = true;
+    runner_install(new JobRunner(join(root, 'jobs'), [{ id: STEPS_SOURCE, label: 'steps' }]));
+    expect((await domain_run(context, ['teardown', 'quay'])).rendered.replace(ANSI, '')).toBe('quay: torn down\n');
+    expect(world.removed).toEqual(['3 DNS records', 'the stack itself', 'the compartment domains/quay']);
+    const record: DomainRecord | null = store.record_read('quay');
+    expect(record?.adopted?.from).toBe('the tenancy');
+    expect(record?.protected).toBe(false);
+    expect(record?.gone).toBeDefined();
+    expect(world.stacks.has(QUAY_STACK)).toBe(false);
   });
 
   it('domain adopt <name> with no checkout keeps the found domain here from what its stack says, and the build verbs then answer', async () => {

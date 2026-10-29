@@ -22,6 +22,7 @@ import {
 import type { CloudDriver, CloudPrice, CloudShape, FoundDomain } from '../cloud/driver.js';
 import { planCounts_alter, plan_count, planCounts_words, type CloudBuilder, type InfraPlan } from '../cloud/builder.js';
 import { adoption_keep, adoptRun_make, checkout_read, type CheckoutRead } from '../domain/adopt.js';
+import { foundDomain_describe, foundRecord_make } from '../domain/found.js';
 import type { InstallerAccountKeeper } from '../installer/account.js';
 import type { VerifyReach } from './verify.js';
 import type { HarborDomain } from '../domains/harborOci.js';
@@ -427,33 +428,23 @@ async function tenancyAdopt_run(context: BuildCommandContext, name: string): Pro
     return envelope_error('', undefined, `domain adopt: the tenancy was not searched: ${error instanceof Error ? error.message : String(error)}\n`);
   }
   if (found === undefined) return envelope_error('', undefined, `domain adopt: ${name}: nothing in the tenancy is tagged ${DOMAIN_TAG}=${name}; a harbor-oci checkout adopts with --from\n`);
-  const now: string = new Date().toISOString();
-  let described: { state: string; compartmentId: string; baseDomain: string | null; spec: DomainSpec | null } | null = null;
   if (found.stack !== null && context.builder?.stack_describe !== undefined) {
+    // The stack's variables are the spec and the zone; a stack that cannot be read is not adopted blind.
     try {
-      described = await context.builder.stack_describe(found.stack.id, region);
+      await context.builder.stack_describe(found.stack.id, region);
     } catch (error: unknown) {
       return envelope_error('', undefined, `domain adopt: ${name}: its stack ${found.stack.id} could not be read: ${error instanceof Error ? error.message : String(error)}\n`);
     }
   }
-  const compartmentId: string | undefined = found.compartmentId ?? found.stack?.compartmentId;
-  let instances: number = 0;
-  if (compartmentId !== undefined) {
-    try { instances = (await context.driver.resources_search(compartmentId, region)).instances ?? 0; } catch { instances = 0; }
-  }
-  const steps: DomainRecord['steps'] = { compartment: { state: 'done', ended: now, note: compartmentId === undefined ? 'no compartment tagged' : `found ${compartmentId}` } };
-  if (instances > 0) steps[FIRST_BILLING_STEP] = { state: 'done', ended: now, note: `${instances} instance${instances === 1 ? '' : 's'} live in its compartment` };
-  const record: DomainRecord = {
-    name, created: now, region, baseDomain: described?.baseDomain ?? '', steps,
-    ids: found.stack !== null ? { stackRef: found.stack.id } : {},
-    ...(compartmentId !== undefined ? { compartmentId } : {}),
-    adopted: { from: 'the tenancy', at: now },
-    protected: true,
-  };
-  context.store.create(record, described?.spec ?? SPEC_DEFAULT);
+  const described: HarborDomain = await foundDomain_describe(found, context.driver, context.builder);
+  const now: string = new Date().toISOString();
+  const record: DomainRecord = foundRecord_make(described, now, true);
+  const compartmentId: string | undefined = record.compartmentId;
+  const instances: number = described.found?.resources?.instances ?? 0;
+  context.store.create(record, described.found?.spec ?? SPEC_DEFAULT);
   const lines: string[] = [
     `${chalk.bold(name)}  adopted from the tenancy: ${found.stack !== null ? `stack ${found.stack.id} (${found.stack.state})` : 'no stack'}${compartmentId !== undefined ? `, compartment ${compartmentId}` : ''}`,
-    `  kept here: its record${described?.spec !== null && described?.spec !== undefined ? ' and the spec its stack says' : ' and the default spec (its stack said no sizes)'} in ${context.store.folder_derive(name)}; ${instances > 0 ? `${instances} instances live, so it bills` : 'nothing live'}`,
+    `  kept here: its record${described.found?.spec !== null && described.found?.spec !== undefined ? ' and the spec its stack says' : ' and the default spec (its stack said no sizes)'} in ${context.store.folder_derive(name)}; ${instances > 0 ? `${instances} instances live, so it bills` : 'nothing live'}`,
     chalk.gray(`  its kubeconfig and CUBE token are not in the cloud: copy them into ${context.store.folder_derive(name)}/auth/ before domain verify or attach`),
   ];
   return envelope_ok(`${lines.join('\n')}\n`);

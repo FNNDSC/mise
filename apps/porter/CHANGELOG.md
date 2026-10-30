@@ -1,5 +1,13 @@
 # @fnndsc/porter
 
+## 0.9.2
+
+### Patch Changes
+
+- Updated dependencies [9a58e99]
+  - @fnndsc/stratus@0.6.0
+  - @fnndsc/chell@5.19.5
+
 ## 0.9.1
 
 ### Patch Changes

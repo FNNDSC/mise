@@ -1,5 +1,11 @@
 # bsd-trek
 
+## 0.4.1
+
+### Patch Changes
+
+- 4cda616: The credits screen names the repository at its new home, HARBOR-Medical-AI/mise.
+
 ## 0.4.0
 
 ### Minor Changes

@@ -7,7 +7,7 @@
  * @module
  */
 
-import { plugin_executeInPlace, PluginExecutionResult } from '@fnndsc/salsa';
+import { plugin_executeInPlace, plugins_list, PluginExecutionResult } from '@fnndsc/salsa';
 import { Dictionary, procCache_get } from '@fnndsc/cumin';
 import { type ListingItem, envelope_error, envelope_ok, type CommandEnvelope } from '@fnndsc/menu';
 import chalk from 'chalk';
@@ -20,6 +20,23 @@ import { pluginSelector_normalize } from './pluginSelector.js';
 import { sink_dataLine, sink_errLine } from '../core/sink.js';
 import { errorStack, Result, type StackMessage } from '@fnndsc/fond';
 import { exitCode_set } from '../core/handlerRun.js';
+import { path_resolve } from '../core/paths.js';
+import { OperandRefusal, operands_read, stage_lines, stage_make, stageMade_lines, type BinOperands, type Stage } from './operands.js';
+
+/**
+ * Reads a plugin's kind from CUBE: `fs`, `ds` or `ts`.
+ *
+ * @param pluginName - The `/bin` name, `<name>-v<version>`.
+ * @returns The kind, or null when CUBE did not say.
+ */
+async function pluginKind_read(pluginName: string): Promise<string | null> {
+  const match: RegExpMatchArray | null = pluginName.match(/^(.+)-v(.+)$/);
+  if (match === null) return null;
+  const listed: unknown = await plugins_list({ search: { name_exact: match[1] as string, version: match[2] as string } });
+  const row: Record<string, unknown> | undefined = (listed as { tableData?: Array<Record<string, unknown>> } | null)?.tableData?.[0];
+  const kind: unknown = row?.['type'];
+  return typeof kind === 'string' ? kind : null;
+}
 
 /**
  * Executes a plugin in the current directory context.
@@ -55,6 +72,51 @@ export async function builtin_executePlugin(
     const detach: boolean = args.includes('--detach');
     args = args.filter((arg: string): boolean => arg !== '--detach');
 
+    // 0b. The input operand (operands.ts): a directory replaces cwd; files
+    //     are shaped into a stage the run roots the feed with; to an fs
+    //     plugin an operand is its `dir`, untranslated.
+    let operandPlace: string | null = null;
+    let stage: Stage | null = null;
+    let operandDir: string | null = null;
+    if (place === undefined) {
+      let operands: BinOperands;
+      try {
+        operands = await operands_read(args);
+      } catch (error: unknown) {
+        if (!(error instanceof OperandRefusal)) throw error;
+        sink_errLine(chalk.red(`${pluginName}: ${error.message}`));
+        return envelope_error('');
+      }
+      args = operands.rest;
+      if (operands.directory !== null || operands.subjects.length > 0) {
+        const kind: string | null = await pluginKind_read(pluginName);
+        if (kind === null) {
+          sink_errLine(chalk.red(`${pluginName}: could not read the plugin's kind from CUBE, so the operand cannot be placed`));
+          return envelope_error('');
+        }
+        if (kind === 'fs') {
+          const named = operands.subjects.find((subject): boolean => subject.named);
+          if (named !== undefined) {
+            sink_errLine(chalk.red(`${pluginName}: as ${named.name}: an fs plugin takes paths as its dir, not subjects`));
+            return envelope_error('');
+          }
+          operandDir = [...(operands.directory !== null ? [operands.directory] : []), ...operands.subjects.flatMap((subject): string[] => subject.files)].join(',');
+        } else if (operands.directory !== null) {
+          operandPlace = operands.directory;
+        } else {
+          try {
+            stage = await stage_make(operands.subjects, await path_resolve('~'));
+          } catch (error: unknown) {
+            if (!(error instanceof OperandRefusal)) throw error;
+            sink_errLine(chalk.red(`${pluginName}: ${error.message}`));
+            return envelope_error('');
+          }
+          for (const line of stage_lines(stage)) sink_dataLine(chalk.cyan(line));
+          operandPlace = stage.path;
+        }
+      }
+    }
+
     // 1. Split the already-tokenized arguments on the context delimiter.
     const delimiterIndex: number = args.indexOf('--');
     const pluginArgTokens: string[] = delimiterIndex === -1 ? args : args.slice(0, delimiterIndex);
@@ -74,6 +136,8 @@ export async function builtin_executePlugin(
       }
     }
 
+    if (operandDir !== null) pluginParams['dir'] = operandDir;
+
     if (contextArgTokens.length > 0) {
       try {
         contextParams = executableArguments_parse(contextArgTokens);
@@ -85,12 +149,13 @@ export async function builtin_executePlugin(
     }
 
     // 3. Set default context params if not provided
-    const cwd: string = place ?? await session.getCWD();
+    const cwd: string = place ?? operandPlace ?? await session.getCWD();
     const isInFeed: boolean = cwd.includes('/feeds/feed_');
 
-    // If no context params provided and not in a feed, use directory name as feed title
+    // If no context params provided and not in a feed, use directory name as
+    // feed title; a stage is named by its subjects, not its id.
     if (contextArgTokens.length === 0 && !isInFeed) {
-      const defaultTitle: string = cwd.split('/').pop() || 'Untitled';
+      const defaultTitle: string = stage !== null ? stage.subjects.map((subject): string => subject.name).join(', ') : cwd.split('/').pop() || 'Untitled';
       contextParams.feed_title = defaultTitle;
       sink_dataLine(chalk.cyan(`Using feed title: "${defaultTitle}" (customize with -- feed_title="Custom Title")`));
     }
@@ -164,6 +229,11 @@ export async function builtin_executePlugin(
     // 8. Render output
     if (result.feedID) {
       sink_dataLine(chalk.green(`Feed created: ${result.feedID}`));
+    }
+    // What CUBE made of the stage: the real paths, since the data moved.
+    if (stage !== null && result.feedID !== undefined && result.dircopyInstanceID !== undefined) {
+      const rootOutput: string = `/home/${cwd.split('/')[2] ?? ''}/feeds/feed_${result.feedID}/pl-dircopy_${result.dircopyInstanceID}/data`;
+      for (const line of stageMade_lines(stage, rootOutput)) sink_dataLine(chalk.cyan(line));
     }
     const feedIDOfRun: number | null = result.feedID !== undefined
       ? result.feedID

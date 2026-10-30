@@ -296,6 +296,7 @@ Once connected, drive ChRIS as a filesystem:
 > ls /bin                  # every plugin and Pipeline, as a virtual executable
 > plugin search dircopy    # find an analysis
 > pl-dircopy /home/<you>/uploads    # run one by name: the bare name runs its highest version, and says which
+> pl-freesurfer ~/uploads/subjects  # on that tree; a file operand is one subject (t1.nii as sub-01 names it)
 > ls /proc/jobs           # watch running jobs, live
 > feed tree 1669           # a feed's plugin-instance DAG, collapsed and status-coloured
 > feed diagram 1669        # the same shallow view under the diagram command

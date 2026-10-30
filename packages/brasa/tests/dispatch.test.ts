@@ -9,6 +9,8 @@ const Err = (): { ok: false } => ({ ok: false });
 const mockCheckpointDrain = jest.fn((): { type: string; message: string }[] => []);
 cuminMock_install(() => ({
   feedStatus_deriveFromCounts: (): string => 'finishedSuccessfully',
+  path_isInFeed: (p: string): boolean => p.includes('/feeds/feed_'),
+  path_extractPluginInstanceID: (p: string): number | null => { const m = p.match(/_(\d+)$/); return m ? Number(m[1]) : null; },
   envelope_ok: (rendered: string) => ({ status: 'ok', rendered }),
   envelope_error: (rendered: string, _errors?: unknown, renderedErr?: string) => (renderedErr !== undefined ? { status: 'error', rendered, renderedErr } : { status: 'error', rendered }),
   Ok,
@@ -20,7 +22,7 @@ cuminMock_install(() => ({
     checkpoint_drain: mockCheckpointDrain,
     scope_run: (fn: () => unknown) => fn(),
   },
-  procCache_get: () => ({ feeds_find: () => [], feedScopeCounts_get: () => ({ user: 0, public: 0, shared: 0, total: 0 }), warmupProgress_get: () => ({ active: false, loaded: 0, total: 0 }), lifecycle_get: () => ({ state: 'cold' }) }),
+  procCache_get: () => ({ feed_add: () => undefined, instance_add: () => undefined, feeds_find: () => [], feedScopeCounts_get: () => ({ user: 0, public: 0, shared: 0, total: 0 }), warmupProgress_get: () => ({ active: false, loaded: 0, total: 0 }), lifecycle_get: () => ({ state: 'cold' }) }),
   requestLedger_snapshot: () => ({ since: '', total: 0, ms: 0, families: [], last: [] }),
   chrisContext: { ChRISURL_get: async () => null, ChRISuser_get: async () => null },
   listCache_get: jest.fn(),
@@ -46,6 +48,20 @@ jest.unstable_mockModule('../src/session/index.js', () => ({
 // VFS — command_dispatch consults /bin for plugin/pipeline names.
 const mockDataGet = jest.fn();
 jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({ vfs: { data_get: mockDataGet } }));
+// The operand of a /bin run looks at CFS through the dispatcher (#1303); a
+// small world stands in, and the paths resolve as given.
+const world: Record<string, 'dir' | 'file'> = {};
+jest.unstable_mockModule('../src/core/filesystem.js', () => ({
+  vfsDispatcher_get: () => ({
+    list: async (parent: string) => ({ ok: true, value: Object.entries(world).filter(([path]) => path.slice(0, path.lastIndexOf('/')) === parent).map(([path, type]) => ({ name: path.slice(path.lastIndexOf('/') + 1), type })) }),
+    mkdir: async (path: string) => { world[path] = 'dir'; return { ok: true, value: true }; },
+    cp: async (_source: string, destination: string) => { world[destination] = 'file'; return { ok: true, value: true }; },
+    path_isVirtual: () => false,
+  }),
+}));
+jest.unstable_mockModule('../src/core/paths.js', () => ({ path_resolve: async (input: string) => (input === '~' ? '/home/u' : input), path_resolveFrom: (input: string) => input }));
+const mockFeedCreate = jest.fn();
+jest.unstable_mockModule('@fnndsc/salsa', () => ({ feed_create: mockFeedCreate }));
 
 // Built-in command table. Every name is a jest.fn() so COMMAND_HANDLERS is
 // fully populated; the ones asserted on are captured by reference.
@@ -267,6 +283,33 @@ describe('command_dispatch', () => {
     const { chrisFallback } = await import('../src/chris/commandFallback.js');
     await chrisFallback.unknown!('pl-freesurfer', [], true);
     expect(mockExecutePlugin).not.toHaveBeenCalled();
+  });
+
+  it('runs a /bin pipeline on a directory operand: a feed node by --previous, elsewhere a new feed pl-dircopy roots', async () => {
+    mockDataGet.mockResolvedValue(Ok([{ name: 'myPipe', type: 'pipeline' }]));
+    mockPipeline.mockResolvedValue({ status: 'ok', rendered: '' });
+    world['/home/u/feeds/feed_3/pl-dircopy_12'] = 'dir';
+    world['/home/u/uploads/subjects'] = 'dir';
+    await command_dispatch('myPipe', ['/home/u/feeds/feed_3/pl-dircopy_12', '--compute', 'host']);
+    expect(mockPipeline).toHaveBeenLastCalledWith(['run', 'myPipe', '--previous', '12', '--compute', 'host']);
+    mockFeedCreate.mockResolvedValue({ id: 9, name: 'subjects', owner_username: 'u', pluginInstance: { data: { id: 40 } } });
+    await command_dispatch('myPipe', ['/home/u/uploads/subjects']);
+    expect(mockFeedCreate).toHaveBeenCalledWith(['/home/u/uploads/subjects'], { title: 'subjects' });
+    expect(mockPipeline).toHaveBeenLastCalledWith(['run', 'myPipe', '--previous', '40']);
+  });
+
+  it('refuses a /bin pipeline operand beside --previous, and a missing path, running nothing', async () => {
+    mockDataGet.mockResolvedValue(Ok([{ name: 'myPipe', type: 'pipeline' }]));
+    world['/home/u/uploads/subjects'] = 'dir';
+    const { sink_get } = await import('../src/core/sink.js');
+    const errWrite = jest.spyOn(sink_get(), 'err_write').mockImplementation(() => undefined);
+    const twice = await command_dispatchEnvelope('myPipe', ['/home/u/uploads/subjects', '--previous', '5']);
+    expect(twice.status).toBe('error');
+    const missing = await command_dispatchEnvelope('myPipe', ['/home/u/uploads/none']);
+    expect(missing.status).toBe('error');
+    expect(errWrite.mock.calls.map((call) => String(call[0])).join('')).toContain('no such file or directory');
+    expect(mockPipeline).not.toHaveBeenCalled();
+    errWrite.mockRestore();
   });
 
   it('preserves a direct plugin failure envelope', async () => {

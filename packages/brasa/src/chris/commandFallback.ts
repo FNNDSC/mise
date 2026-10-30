@@ -22,6 +22,73 @@ import { builtin_executePlugin } from '../builtins/pluginExecute.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
 import { pipelineExecutableHelp_render, pluginExecutableHelp_render } from '../builtins/help.js';
 import { chiliCommand_run, chiliCommand_exists, chiliDelegationNotice_build } from './chiliDelegate.js';
+import { feed_create, type FeedCreationResult } from '@fnndsc/salsa';
+import { path_extractPluginInstanceID, path_isInFeed } from '@fnndsc/cumin';
+import path from 'path';
+import { path_resolve } from '../core/paths.js';
+import { newFeed_cacheAdd } from '../builtins/feedCreation.js';
+import { OperandRefusal, operands_read, stage_lines, stage_make, stageMade_lines, type BinOperands, type Stage } from '../builtins/operands.js';
+
+/**
+ * The node a pipeline run starts from, read from its operand (#1303): a
+ * directory inside a feed is that node; outside one, or a set of files
+ * shaped into a stage, pl-dircopy roots a new feed first, the directory's
+ * name (or the subjects') as its title, and the run goes on from that root.
+ *
+ * @param name - The pipeline's `/bin` name, for the refusal lines.
+ * @param args - The words after it.
+ * @returns The words to run with (`--previous` set), or null after a refusal was said.
+ */
+async function pipelineOperand_place(name: string, args: string[]): Promise<string[] | null> {
+  let operands: BinOperands;
+  try {
+    operands = await operands_read(args);
+  } catch (error: unknown) {
+    if (!(error instanceof OperandRefusal)) throw error;
+    sink_get().err_write(chalk.red(`${name}: ${error.message}\n`));
+    return null;
+  }
+  if (operands.directory === null && operands.subjects.length === 0) return args;
+  if (operands.rest.includes('--previous')) {
+    sink_get().err_write(chalk.red(`${name}: the operand and --previous say the input twice\n`));
+    return null;
+  }
+  if (operands.directory !== null && path_isInFeed(operands.directory)) {
+    const here: number | null = path_extractPluginInstanceID(operands.directory);
+    if (here === null) {
+      sink_get().err_write(chalk.red(`${name}: ${operands.typed[0]} is in a feed but not at a node (…/feeds/feed_N/pl-x_ID)\n`));
+      return null;
+    }
+    return ['--previous', String(here), ...operands.rest];
+  }
+  let stage: Stage | null = null;
+  let root: string = operands.directory ?? '';
+  let title: string = path.posix.basename(root);
+  if (operands.directory === null) {
+    try {
+      stage = await stage_make(operands.subjects, await path_resolve('~'));
+    } catch (error: unknown) {
+      if (!(error instanceof OperandRefusal)) throw error;
+      sink_get().err_write(chalk.red(`${name}: ${error.message}\n`));
+      return null;
+    }
+    for (const line of stage_lines(stage)) sink_get().data_write(chalk.cyan(`${line}\n`));
+    root = stage.path;
+    title = stage.subjects.map((subject): string => subject.name).join(', ');
+  }
+  const feed: FeedCreationResult | null = await feed_create([root], { title });
+  if (feed === null) {
+    sink_get().err_write(chalk.red(`${name}: could not root a feed with pl-dircopy of ${operands.typed.join(' ')}\n`));
+    return null;
+  }
+  const rootInstanceID: number = feed.pluginInstance.data.id;
+  newFeed_cacheAdd({ feedID: feed.id, title, ownerUsername: feed.owner_username, rootInstanceID });
+  sink_get().data_write(chalk.green(`Feed created: ${feed.id}\n`));
+  if (stage !== null) {
+    for (const line of stageMade_lines(stage, `/home/${feed.owner_username}/feeds/feed_${feed.id}/pl-dircopy_${rootInstanceID}/data`)) sink_get().data_write(chalk.cyan(`${line}\n`));
+  }
+  return ['--previous', String(rootInstanceID), ...operands.rest];
+}
 
 /**
  * Handles a pipeline name invoked directly as an executable from /bin.
@@ -55,7 +122,9 @@ async function pipelineExecutable_handle(name: string, args: string[]): Promise<
   } else if (args.includes('--source') || args.includes('--readme')) {
     envelope = await builtin_pipeline(['source', name]);
   } else {
-    envelope = await builtin_pipeline(['run', name, ...args]);
+    // The operand says where the run starts (#1303); refused, nothing runs.
+    const placed: string[] | null = await pipelineOperand_place(name, args);
+    envelope = placed === null ? { status: 'error', rendered: '' } : await builtin_pipeline(['run', name, ...placed]);
   }
   const result: CommandEnvelope = envelope ?? { status: 'ok', rendered: '' };
   const exitCodeAfter: number = exitCode_read();

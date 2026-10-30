@@ -38,7 +38,7 @@ These are enforced by the operator in review and most by lint. Read the pointed 
 
 | Piece | State | Where |
 |---|---|---|
-| `@fnndsc/stratus` 0.5.1 | published through OIDC with provenance; trusted publisher configured; on pangea at `~/.local/share/porter-published/node_modules/.bin/stratus`, and started by porter on `stratus oci [--spend]` (D14) | `packages/stratus`; npm page `@fnndsc/stratus` |
+| `@fnndsc/stratus` 0.5.1 | published through OIDC with provenance; trusted publisher configured; on pangea at `~/.local/share/porter-published/node_modules/.bin/stratus`, and started by porter on `stratus oci`, which asks READ or MANAGE at the door (D14) | `packages/stratus`; npm page `@fnndsc/stratus` |
 | Step 5, the second tenant: quay built live 2026-10-23 and torn down 2026-10-25; D15 found domains (#1290); the capacity pane (#1291, #1293) | on `main` | `packages/stratus/src/domain/`, `apps/argus/src/features/controller/` |
 | Found domains seen from the cloud, adopted domains torn down, teardown of what carried the tag (2026-10-29) | branch `stratus/trusted-domains-seen`: a found domain's address, spec, condition (UP, STOPPED, GONE) and attested steps without adoption; `domain teardown` on a GONE found domain without adoption and on an adopted one once unlocked; teardown removes the stack itself, tagged volumes left in the compartment, and `domains/<name>` with its bucket (another's compartment loses the tag); TRUSTED DOMAINS on every ARGUS surface | `packages/stratus/src/domain/found.ts`, `commands/{domain,teardown,build}.ts`, `cloud/oci/{builder,buildApi,rmApi}.ts`, `apps/argus/src/features/controller/screen.ts`, `compositions/stratus/tiles.ts` |
 | Step 1a: read the tenancy | on `main` (#1181): descriptor, `CloudDriver`, fake driver and contract suite, OCI identity and compartments, `/net/oci/<tenancy>/` and `regions/`, launcher, stratus boot, `lint:stratus-deps` | `packages/stratus/src/{backend,session,cache,names,args,stratus}.ts`, `cloud/{driver.ts,fake/,oci/}`, `vfs/{tenancy,look}.ts`, `tests/` |
@@ -55,7 +55,7 @@ What the wire carries now: `promptline.context.segments?: Array<{key, label, val
 
 ## Recipes
 
-**Porter's stratus session keeps its own state folder** (`<porter state>/<berth key>/state/stratus/domains/`, with `HOME` beside it), not the operator's `~/.local/state/stratus/domains/`. Every domain is seen there from the cloud; acting on one needs `domain adopt <name>` in that session, and its `auth/` (the kubeconfig, the CUBE token) copied in by hand. `stratus oci --spend` at the ARGUS console restarts the session with the tasks tier.
+**Porter's stratus session keeps its own state folder** (`<porter state>/<berth key>/state/stratus/domains/`, with `HOME` beside it), not the operator's `~/.local/state/stratus/domains/`. Every domain is seen there from the cloud; acting on one needs `domain adopt <name>` in that session, and its `auth/` (the kubeconfig, the CUBE token) copied in by hand. `stratus oci` at the ARGUS console (or the ChRIS dashboard's CLOUD tile) asks READ or MANAGE at the door; `stratus oci manage` answers in words; a session already up on the other answer is restarted on the new one.
 
 **A private stratus daemon over the fake cloud** (never the operator's daemon):
 

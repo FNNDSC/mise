@@ -1701,6 +1701,8 @@ async function surface_start(token: string): Promise<void> {
       line_offer: (line: string): void => terminal.line_offer(line),
       pacs_query: (): string => pacsPanel.query_get() ?? '',
       pacs_open: (): void => { domain_enter('pacs'); layout.focus_set('pacs'); },
+      // CLOUD runs the console's own line, so the door asks the same question pressed or typed.
+      cloud_enter: door_isPresent(window.location.search) ? (): void => { element_require('gutter-console').click(); terminal.line_run('stratus oci'); } : null,
     }) }),
     // DOMAINS and CAPACITY: the stratus composition's tiles (compositions/stratus/tiles.ts).
     ...(backend !== 'stratus' ? {} : { contribution: stratusTiles_make({

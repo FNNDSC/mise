@@ -1,6 +1,7 @@
 /**
  * @file The ChRIS composition's dashboard tiles: ANALYSES (the roster of
- * feeds), PACS, and the UNIVERSE.
+ * feeds), PACS, the UNIVERSE, and through a porter, CLOUD (the door into
+ * the person's cloud session, docs/stratus.adoc D14).
  *
  * @module
  */
@@ -24,6 +25,8 @@ export interface ChrisTileHooks {
   /** What the PACS pane last asked, or empty. */
   pacs_query: () => string;
   pacs_open: () => void;
+  /** Enters cloud management through the porter this page came by (it runs `stratus oci`, which asks READ or MANAGE); null when it came by none. */
+  cloud_enter: (() => void) | null;
 }
 
 /**
@@ -90,10 +93,24 @@ export function chrisTiles_make(hooks: ChrisTileHooks): () => Promise<TileContri
       about: TILE_ABOUT['pacs'],
       enter: (): void => hooks.pacs_open(),
     };
+    // The door into the person's cloud session, where there is a porter to
+    // ask: the tile runs the console's own line, so the question it asks
+    // (READ or MANAGE) is the same one, pressed or typed.
+    const cloud: LauncherTile | null = hooks.cloud_enter === null ? null : {
+      key: 'cloud', name: 'CLOUD', hue: '--daybreak', numeral: '',
+      figures: [{ text: 'OCI' }],
+      rows: [
+        { text: 'read     look only', open: hooks.cloud_enter },
+        { text: 'manage   build, tear down, spend', open: hooks.cloud_enter },
+      ],
+      verb: 'ENTER CLOUD MANAGEMENT',
+      about: TILE_ABOUT['cloud'],
+      enter: hooks.cloud_enter,
+    };
     return {
       lead: { tile: analyses, weight: feeds.length },
       afterFiles: [pacs],
-      afterPanes: [universe],
+      afterPanes: cloud === null ? [universe] : [universe, cloud],
       about: { files: { text: 'Your ChRIS home: uploads, results and what others shared with you.' } },
     };
   };

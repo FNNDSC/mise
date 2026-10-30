@@ -3,7 +3,8 @@
  */
 /**
  * @file The switch between a person's sessions through the porter: the
- * `stratus` and `chris` verbs, and what the page asks the porter.
+ * `stratus` and `chris` verbs, the question at the cloud door, and what the
+ * page asks the porter.
  */
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { argusLine_run, type ArgusHost } from '../../src/console/argusLang.js';
@@ -14,25 +15,62 @@ function host_make(asked: Array<{ to: string; spend: boolean }>): ArgusHost {
   return { session_switch: async (to: 'stratus' | 'chris', spend: boolean): Promise<string> => { asked.push({ to, spend }); return `to ${to}`; } } as unknown as ArgusHost;
 }
 
+/** The sheet standing, if one is. */
+const sheet = (): HTMLElement | null => document.querySelector('.cloud-ask');
+
+/** Presses the sheet's pill by label. */
+function pill_press(label: string): void {
+  const button: HTMLButtonElement | undefined = [...document.querySelectorAll<HTMLButtonElement>('.cloud-ask button')].find((one: HTMLButtonElement): boolean => one.textContent === label);
+  if (button === undefined) throw new Error(`no ${label} pill`);
+  button.click();
+}
+
 describe('the stratus and chris verbs', () => {
-  it('asks for the stratus session read-only, or armed once the word is typed', async () => {
+  it('answers the door in words: read, or manage', async () => {
     const asked: Array<{ to: string; spend: boolean }> = [];
-    expect(await argusLine_run(host_make(asked), 'stratus oci')).toBe('to stratus');
-    window.prompt = (): string => 'spend';
-    expect(await argusLine_run(host_make(asked), 'stratus oci --spend')).toBe('to stratus');
-    window.prompt = (): string => 'no';
-    expect(await argusLine_run(host_make(asked), 'stratus oci --spend')).toBe('stratus oci: not armed; nothing changed');
+    expect(await argusLine_run(host_make(asked), 'stratus oci read')).toBe('to stratus');
+    expect(await argusLine_run(host_make(asked), 'stratus oci manage')).toBe('to stratus');
     expect(await argusLine_run(host_make(asked), 'chris')).toBe('to chris');
     expect(asked).toEqual([{ to: 'stratus', spend: false }, { to: 'stratus', spend: true }, { to: 'chris', spend: false }]);
+    expect(sheet()).toBeNull();
   });
 
-  it('refuses another cloud, an unknown option, and words after chris, by name', async () => {
+  it('asks at the door when nothing is said, and follows the pill pressed', async () => {
+    const asked: Array<{ to: string; spend: boolean }> = [];
+    const first: Promise<string> = argusLine_run(host_make(asked), 'stratus oci');
+    expect(sheet()?.textContent).toContain('CLOUD MANAGEMENT · OCI');
+    expect(sheet()?.textContent).toContain('manage   act as well');
+    pill_press('MANAGE');
+    expect(await first).toBe('to stratus');
+    expect(sheet()).toBeNull();
+    const second: Promise<string> = argusLine_run(host_make(asked), 'stratus oci');
+    pill_press('READ');
+    expect(await second).toBe('to stratus');
+    const third: Promise<string> = argusLine_run(host_make(asked), 'stratus oci');
+    pill_press('NOT NOW');
+    expect(await third).toBe('stratus oci: not now; nothing changed');
+    expect(asked).toEqual([{ to: 'stratus', spend: true }, { to: 'stratus', spend: false }]);
+  });
+
+  it('takes the answer from the keyboard: its first letter, or Escape for not now', async () => {
+    const asked: Array<{ to: string; spend: boolean }> = [];
+    const first: Promise<string> = argusLine_run(host_make(asked), 'stratus oci');
+    sheet()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', bubbles: true }));
+    expect(await first).toBe('to stratus');
+    const second: Promise<string> = argusLine_run(host_make(asked), 'stratus oci');
+    sheet()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(await second).toContain('not now');
+    expect(asked).toEqual([{ to: 'stratus', spend: true }]);
+  });
+
+  it('refuses another cloud, an unknown word, two words, and words after chris, by name', async () => {
     const asked: Array<{ to: string; spend: boolean }> = [];
     expect(await argusLine_run(host_make(asked), 'stratus aws')).toBe('stratus: aws: the only cloud is oci');
-    expect(await argusLine_run(host_make(asked), 'stratus oci --now')).toContain('--now: unknown option');
-    expect(await argusLine_run(host_make(asked), 'stratus oci --spend --read')).toContain('opposite');
+    expect(await argusLine_run(host_make(asked), 'stratus oci --spend')).toContain('--spend: unknown word');
+    expect(await argusLine_run(host_make(asked), 'stratus oci read manage')).toContain('one word');
     expect(await argusLine_run(host_make(asked), 'chris now')).toContain('takes no words');
     expect(asked).toEqual([]);
+    expect(sheet()).toBeNull();
   });
 });
 

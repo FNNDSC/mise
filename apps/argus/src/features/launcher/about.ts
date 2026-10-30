@@ -49,6 +49,15 @@ export const TILE_ABOUT: Readonly<Record<string, TileAbout>> = {
   pacs: {
     text: 'Find studies in the hospital PACS and pull the series you need into ChRIS.',
   },
+  // The ChRIS composition's door into the person's cloud session (compositions/chris/tiles.ts); the question it asks is the one `stratus oci` asks.
+  cloud: {
+    text: 'Your cloud session: the tenancy and its Trusted Domains. Entering asks which way in:',
+    list: [
+      'READ: look only; nothing outside this host changes',
+      'MANAGE: build, tear down and spend, each after its own lock and the name typed back',
+    ],
+    tail: 'Which it is stays fixed for that session; enter again to change it.',
+  },
   panes: {
     text: 'Saved workspaces: return to a piece of work as you left it.',
   },

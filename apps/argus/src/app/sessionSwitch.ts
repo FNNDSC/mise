@@ -25,7 +25,7 @@ interface SwitchAnswer {
  * and goes there.
  *
  * @param to - `stratus` (their cloud session) or `chris`.
- * @param spend - For `stratus`: true asks for the tasks tier, false for read-only.
+ * @param spend - For `stratus`: true enters to manage (the tasks tier), false to read.
  * @returns What happened, or why it could not.
  */
 export async function session_switch(to: 'stratus' | 'chris', spend: boolean): Promise<string> {
@@ -45,5 +45,5 @@ export async function session_switch(to: 'stratus' | 'chris', spend: boolean): P
   if (answer.error !== undefined || answer.key === undefined) return `${to}: ${answer.error ?? 'the porter refused'}`;
   const base: string = url.slice(0, -'switch'.length);
   window.location.assign(answer.state === 'starting' ? `${base}greet/${answer.key}` : `${base}s/${answer.key}/?door`);
-  return to === 'stratus' ? `switching to your stratus session${spend ? ' (may spend)' : ' (read-only)'}…` : 'switching to your ChRIS session…';
+  return to === 'stratus' ? `switching to your stratus session${spend ? ' (to manage: build, tear down, spend)' : ' (to read)'}…` : 'switching to your ChRIS session…';
 }

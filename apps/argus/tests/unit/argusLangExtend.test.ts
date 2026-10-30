@@ -41,7 +41,7 @@ const LINES: string[] = [
   "back                        (contextual back — exactly Esc)",
   "desktop save|load|show|list|delete [name] · load <ChRIS file> · clear · share",
   "attach [--reveal]           (how to reach THIS session from a terminal or another browser)",
-  'stratus oci [--spend|--read] (through a porter: your cloud session, on your filed credentials)',
+  'stratus oci [read|manage]   (through a porter: your cloud session, on your filed credentials; bare, it asks which)',
   'chris                       (through a porter: back to your ChRIS session)',
   "argus verbs                 (this table; the long form is docs/argus-lang.adoc)",
   "argus keys                  (the prefix chords: one key, one drawer verb)",

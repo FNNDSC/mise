@@ -20,6 +20,7 @@
  */
 import { side_is, side_findByFocusWord, splitSelector_format, type Side } from '../app/sides.js';
 import { viewScript_compose, viewSheet_ask } from '../app/shareView.js';
+import { cloudEntry_ask, type CloudEntry } from '../app/cloudDoor.js';
 
 /** What the language needs from its host (assembled in main.ts). */
 export interface ArgusHost {
@@ -67,7 +68,7 @@ export interface ArgusHost {
   launcher_enter(): void;
   /** Opens the trek bridge over the surface with a `trek` line; answers what happened, for the console. */
   trek_open(line: string): string;
-  /** Asks the door to switch this page to another of the person's sessions, and goes there. */
+  /** Asks the door to switch this page to another of the person's sessions, and goes there; `spend` is the cloud session entered to manage. */
   session_switch(to: 'stratus' | 'chris', spend: boolean): Promise<string>;
   /** Who this session belongs to, as the prompt names them; null before the first prompt. */
   identity_get(): string | null;
@@ -385,7 +386,7 @@ const FRAME_TAIL_LINES: ReadonlyArray<string> = [
   'back                        (contextual back — exactly Esc)',
   'desktop save|load|show|list|delete [name] · load <ChRIS file> · clear · share',
   'attach [--reveal]           (how to reach THIS session from a terminal or another browser)',
-  'stratus oci [--spend|--read] (through a porter: your cloud session, on your filed credentials)',
+  'stratus oci [read|manage]   (through a porter: your cloud session, on your filed credentials; bare, it asks which)',
   'chris                       (through a porter: back to your ChRIS session)',
   'argus verbs                 (this table; the long form is docs/argus-lang.adoc)',
   'argus keys                  (the prefix chords: one key, one drawer verb)',
@@ -525,13 +526,16 @@ export async function argusLine_run(host: ArgusHost, line: string): Promise<stri
     if (subject === 'chris') return words.length === 0 ? await host.session_switch('chris', false) : 'chris: takes no words (it returns to your ChRIS session)';
     const cloud: string = (words[0] ?? 'oci').toLowerCase();
     if (cloud !== 'oci') return `stratus: ${cloud}: the only cloud is oci`;
-    const flags: string[] = words.slice(1).map((word: string): string => word.toLowerCase());
-    const unknown: string | undefined = flags.find((flag: string): boolean => flag !== '--spend' && flag !== '--read');
-    if (unknown !== undefined) return `stratus oci: ${unknown}: unknown option (--spend asks for the tasks tier, --read for read-only)`;
-    if (flags.includes('--spend') && flags.includes('--read')) return 'stratus oci: --spend and --read ask opposite things';
-    // Arming is typed, never clicked through: a session that may spend is asked for in words.
-    if (flags.includes('--spend') && (window.prompt('This stratus session may change the cloud and bill. Type spend to arm it:') ?? '').trim() !== 'spend') return 'stratus oci: not armed; nothing changed';
-    return await host.session_switch('stratus', flags.includes('--spend'));
+    const rest: string[] = words.slice(1).map((word: string): string => word.toLowerCase());
+    if (rest.length > 1) return 'stratus oci: takes one word, read or manage';
+    const said: string | undefined = rest[0];
+    if (said !== undefined && said !== 'read' && said !== 'manage') return `stratus oci: ${said}: unknown word (read looks only; manage may build, tear down and spend; bare, it asks which)`;
+    // The question stands at the door, as trek's settings do: asked unless
+    // answered in words. Which it is gets fixed when porter starts the
+    // session, so this is the one place it is chosen (app/cloudDoor.ts).
+    const entry: CloudEntry | null = said !== undefined ? said : await cloudEntry_ask(cloud);
+    if (entry === null) return 'stratus oci: not now; nothing changed';
+    return await host.session_switch('stratus', entry === 'manage');
   }
 
   if (subject === 'attach') {

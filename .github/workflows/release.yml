@@ -45,3 +45,6 @@ jobs:
           publish: npm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # npm says why an OIDC exchange failed only at verbose: without it
+          # every refusal reads ENEEDAUTH (2026-10-30, every package).
+          NPM_CONFIG_LOGLEVEL: verbose

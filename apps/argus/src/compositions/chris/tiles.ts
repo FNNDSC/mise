@@ -100,8 +100,8 @@ export function chrisTiles_make(hooks: ChrisTileHooks): () => Promise<TileContri
       key: 'cloud', name: 'CLOUD', hue: '--daybreak', numeral: '',
       figures: [{ text: 'OCI' }],
       rows: [
-        { text: 'read     look only', open: hooks.cloud_enter },
-        { text: 'manage   build, tear down, spend', open: hooks.cloud_enter },
+        { text: 'READ · look only', open: hooks.cloud_enter },
+        { text: 'MANAGE · build, tear down, spend', open: hooks.cloud_enter },
       ],
       verb: 'ENTER CLOUD MANAGEMENT',
       about: TILE_ABOUT['cloud'],

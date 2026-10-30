@@ -10,7 +10,7 @@ jest.unstable_mockModule('../src/lib/vfs/vfs.js', () => ({
   vfs: { data_get: async () => (listing === null ? { ok: false } : { ok: true, value: listing }) },
 }));
 
-const { binExecutableMatches_get } = await import('../src/chris/binExecutables.js');
+const { binExecutableMatches_get, binPluginHighest_find, pluginVersions_compare } = await import('../src/chris/binExecutables.js');
 
 const PLUGIN = { name: 'pl-dymap-v2.1.2', type: 'plugin' };
 const PIPELINE = { name: 'FreeSurfer_8_2_0_mri_convert_per_series_DICOM_id291', type: 'pipeline', title: 'FreeSurfer 8.2.0 mri_convert per series, DICOM', id: 291 };
@@ -39,5 +39,33 @@ describe('binExecutableMatches_get', () => {
     expect(await binExecutableMatches_get('nothing here')).toEqual({ plugin: undefined, pipeline: undefined });
     listing = null;
     expect(await binExecutableMatches_get(PIPELINE.name)).toEqual({ plugin: undefined, pipeline: undefined });
+  });
+});
+
+describe('pluginVersions_compare', () => {
+  it('orders dotted versions as numbers, a missing segment as 0, a pre-release word below the bare version', () => {
+    const sorted: string[] = ['1.9.9', '1.10.0', '1.0.4-rc1', '1.0.4', '1.0', '0.9', '1.0.1'].sort(pluginVersions_compare);
+    expect(sorted).toEqual(['0.9', '1.0', '1.0.1', '1.0.4-rc1', '1.0.4', '1.9.9', '1.10.0']);
+    expect(pluginVersions_compare('2.1.2', '2.1.2')).toBe(0);
+  });
+});
+
+describe('binPluginHighest_find', () => {
+  it('resolves a bare plugin name to the highest version /bin lists, with every version lowest first', async () => {
+    listing = [
+      { name: 'pl-freesurfer-v1.0.1', type: 'plugin' },
+      { name: 'pl-freesurfer-v1.0.4', type: 'plugin' },
+      { name: 'pl-freesurfer-v1.0.10', type: 'plugin' },
+      { name: 'pl-freesurfer-extra-v9.0.0', type: 'plugin' },
+      PIPELINE,
+    ];
+    expect(await binPluginHighest_find('pl-freesurfer')).toEqual({ executable: 'pl-freesurfer-v1.0.10', version: '1.0.10', versions: ['1.0.1', '1.0.4', '1.0.10'] });
+  });
+
+  it('finds nothing for a name /bin lists no version of, for a full name, or when /bin cannot be read', async () => {
+    expect(await binPluginHighest_find('pl-nothing')).toBeNull();
+    expect(await binPluginHighest_find('pl-dymap-v2.1.2')).toBeNull();
+    listing = null;
+    expect(await binPluginHighest_find('pl-dymap')).toBeNull();
   });
 });

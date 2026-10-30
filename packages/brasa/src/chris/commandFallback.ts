@@ -8,6 +8,7 @@
  *
  * @module
  */
+import chalk from 'chalk';
 import { CHRIS_BUILTIN_LINES } from './help.js';
 import { variablesPage_render } from '../builtins/variablesPage.js';
 import type { ListingItem, CommandEnvelope } from '@fnndsc/menu';
@@ -15,7 +16,7 @@ import type { Result } from '@fnndsc/fond';
 import type { BackendFallback } from '../core/backend.js';
 import { envelope_deliver, sink_get } from '../core/sink.js';
 import { exitCode_read, handler_runDirect } from '../core/handlerRun.js';
-import { binExecutableMatches_get, type BinExecutableMatches } from './binExecutables.js';
+import { binExecutableMatches_get, binPluginHighest_find, type BinExecutableMatches, type BinPluginHighest } from './binExecutables.js';
 import { builtin_pipeline } from '../builtins/res/pipeline.js';
 import { builtin_executePlugin } from '../builtins/pluginExecute.js';
 import { pluginExecutable_handle } from '../builtins/executable.js';
@@ -99,6 +100,18 @@ export const chrisFallback: BackendFallback = {
       envelope_deliver(envelope);
       return envelope;
     }
+    // A bare plugin name runs the highest version /bin lists for it, and
+    // says which, so the line read back names exactly what ran (#1303).
+    // The same job rule as above: typed at the prompt it starts one, in a
+    // pipe or a redirect it does not.
+    const highest: BinPluginHighest | null = captured ? null : await binPluginHighest_find(command);
+    if (highest !== null) {
+      sink_get().data_write(chalk.gray(`running ${highest.executable} (highest of ${highest.versions.join(', ')})\n`));
+      return handler_runDirect(
+        (pluginArgs: string[]): Promise<CommandEnvelope> => builtin_executePlugin(highest.executable, pluginArgs),
+        args,
+      );
+    }
     return chili_delegate(command, args);
   },
   help: async (command: string): Promise<string | null> => {
@@ -107,6 +120,9 @@ export const chrisFallback: BackendFallback = {
     // A plugin version (`pl-dircopy-v2.1.2`) is its own executable.
     if (/-v[^/]+$/.test(command)) return pluginExecutableHelp_render(command);
     const binMatches: BinExecutableMatches = await binExecutableMatches_get(command);
-    return binMatches.pipeline ? pipelineExecutableHelp_render(binMatches.pipeline.name) : null;
+    if (binMatches.pipeline) return pipelineExecutableHelp_render(binMatches.pipeline.name);
+    // A bare plugin name's help is its highest version's.
+    const highest: BinPluginHighest | null = await binPluginHighest_find(command);
+    return highest === null ? null : pluginExecutableHelp_render(highest.executable);
   },
 };

@@ -252,6 +252,23 @@ describe('command_dispatch', () => {
     expect(mockExecutePlugin).toHaveBeenCalledWith('pl-dircopy', ['--dir', '/a']);
   });
 
+  it('runs a bare plugin name as the highest version /bin lists, and says which', async () => {
+    mockDataGet.mockResolvedValue(Ok([{ name: 'pl-freesurfer-v1.0.1', type: 'plugin' }, { name: 'pl-freesurfer-v1.0.4', type: 'plugin' }]));
+    const { sink_get } = await import('../src/core/sink.js');
+    const dataWrite = jest.spyOn(sink_get(), 'data_write').mockImplementation(() => undefined);
+    await command_dispatch('pl-freesurfer', ['--threads', '2']);
+    expect(mockExecutePlugin).toHaveBeenCalledWith('pl-freesurfer-v1.0.4', ['--threads', '2']);
+    expect(dataWrite.mock.calls.map((call) => String(call[0]))).toContainEqual(expect.stringContaining('running pl-freesurfer-v1.0.4 (highest of 1.0.1, 1.0.4)'));
+    dataWrite.mockRestore();
+  });
+
+  it('does not start a job for a bare plugin name inside a pipe', async () => {
+    mockDataGet.mockResolvedValue(Ok([{ name: 'pl-freesurfer-v1.0.4', type: 'plugin' }]));
+    const { chrisFallback } = await import('../src/chris/commandFallback.js');
+    await chrisFallback.unknown!('pl-freesurfer', [], true);
+    expect(mockExecutePlugin).not.toHaveBeenCalled();
+  });
+
   it('preserves a direct plugin failure envelope', async () => {
     mockDataGet.mockResolvedValue(Ok([{ name: 'pl-dircopy', type: 'plugin' }]));
     mockExecutePlugin.mockResolvedValue({ status: 'error', rendered: '' });

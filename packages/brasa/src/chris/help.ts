@@ -243,6 +243,7 @@ export const chrisHelp: Record<string, CommandHelp> = {
       '',
       'RUNNING A PLUGIN:',
       '  pl-dcm2niix-v1.0.2 --param value -- feed_title="T"   run where you stand',
+      '  pl-dcm2niix …                 the bare name runs the highest version, and says which',
       '  A=$(pl-dcm2niix-v1.0.2 …)                         and name the run',
       '',
       '  Run "parametersofplugin <name>" to see available parameters for a plugin.',

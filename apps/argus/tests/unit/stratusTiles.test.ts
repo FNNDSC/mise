@@ -44,10 +44,14 @@ function hooks_make(answers: Record<string, unknown>, seen: string[], named: str
 }
 
 describe('the stratus tiles', () => {
-  it('a domain found in the tenancy and not adopted reads so in place of a last step', async () => {
-    const found = { domains: [{ name: 'quay', path: '/net/oci/t/domains/quay', cluster: null, lastDone: null, steps: [], resources: null, origin: 'found' }] };
+  it('a domain found in the tenancy and not adopted reads its condition in place of a last step, and one with nothing left reads GONE and is counted apart', async () => {
+    const found = { domains: [
+      { name: 'harbor', path: '/net/oci/t/domains/harbor', cluster: 'harbor.oci.example.org', lastDone: null, steps: [], resources: null, origin: 'found', condition: 'UP' },
+      { name: 'quay', path: '/net/oci/t/domains/quay', cluster: null, lastDone: null, steps: [], resources: null, origin: 'found', condition: 'GONE' },
+    ] };
     const tiles = await stratusTiles_make(hooks_make({ 'domain status': found, capacity: CAPACITY }, [], []))();
-    expect(tiles.lead!.tile.rows.map((r) => r.text)).toEqual(['quay  FOUND · NOT ADOPTED']);
+    expect(tiles.lead!.tile.rows.map((r) => r.text)).toEqual(['harbor  UP · NOT ADOPTED  harbor.oci.example.org', 'quay  GONE']);
+    expect(tiles.lead!.tile.figures.map((f) => f.text)).toEqual(['1 TRUSTED DOMAIN', '1 GONE']);
   });
 
   it('lead with DOMAINS: each domain\'s last step and cluster, red where a step went wrong, opening its folder', async () => {
@@ -58,7 +62,8 @@ describe('the stratus tiles', () => {
     expect(named).toEqual([['harbor', 'lab']]);
     const domains = tiles.lead!.tile;
     expect(tiles.lead!.weight).toBe(2);
-    expect(domains.figures.map((f) => [f.text, f.errored ?? false])).toEqual([['2 DOMAINS', false], ['1 NEEDS A LOOK', true], ['$0.62/H', false]]);
+    expect(domains.name).toBe('TRUSTED DOMAINS');
+    expect(domains.figures.map((f) => [f.text, f.errored ?? false])).toEqual([['2 TRUSTED DOMAINS', false], ['1 NEEDS A LOOK', true], ['$0.62/H', false]]);
     expect(domains.rows.map((r) => [r.text, r.errored])).toEqual([['harbor  09-run  $0.62/h  harbor.oci.example.org', true], ['lab  NOTHING DONE', false]]);
     expect(money_text(1, 'EUR')).toBe('EUR 1.00');
     domains.rows[0]!.open!();
@@ -109,7 +114,7 @@ describe('the stratus tiles', () => {
     };
     const source = stratusTiles_make(hooks);
     const first = await source();
-    expect(first.lead!.tile.figures[0]).toEqual({ text: '2 DOMAINS' });
+    expect(first.lead!.tile.figures[0]).toEqual({ text: '2 TRUSTED DOMAINS' });
     expect(first.afterFiles[0]!.figures).toEqual([{ text: 'READING' }]);
     expect(seen).toEqual([]);
     // A second paint while the first capacity is on its way asks for no second one.

@@ -88,6 +88,8 @@ class RecordedRm implements RmApi {
   async jobLog_read(): Promise<string[]> { return ['Terraform init', 'Terraform plan']; }
   async jobPlan_read(): Promise<unknown> { return this.plan; }
   async jobOutputs_read(): Promise<Record<string, string>> { return {}; }
+  async stackResources_count(): Promise<number> { return 0; }
+  async stack_delete(stackId: string): Promise<void> { this.calls.push(`stack_delete ${stackId}`); }
 }
 
 describe('the OCI builder over Resource Manager', () => {

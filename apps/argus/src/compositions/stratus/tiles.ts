@@ -154,16 +154,20 @@ export function stratusTiles_make(hooks: StratusTileHooks): () => Promise<TileCo
     // What the domains cost an hour together, at list price, when the daemon priced them.
     const priced: DomainSummary[] = domains.filter((domain: DomainSummary): boolean => domain.cost !== undefined && domain.cost !== null);
     const hourly: number = priced.reduce((sum: number, domain: DomainSummary): number => sum + (domain.cost?.hourly ?? 0), 0);
+    // One with nothing left of it but its tag is counted apart: it is not a Trusted Domain anyone can use.
+    const goneCount: number = domains.filter((domain: DomainSummary): boolean => domain.condition === 'GONE').length;
+    const standing: number = domains.length - goneCount;
     const domainsTile: LauncherTile = {
-      key: 'domains', name: 'DOMAINS', hue: '--october-sunset', numeral: '',
+      key: 'domains', name: 'TRUSTED DOMAINS', hue: '--october-sunset', numeral: '',
       figures: [
-        { text: domains.length === 0 ? 'NONE' : `${domains.length} DOMAIN${domains.length === 1 ? '' : 'S'}` },
+        { text: standing === 0 ? 'NONE' : `${standing} TRUSTED DOMAIN${standing === 1 ? '' : 'S'}` },
+        ...(goneCount > 0 ? [{ text: `${goneCount} GONE` }] : []),
         ...(wrongCount > 0 ? [{ text: `${wrongCount} NEED${wrongCount === 1 ? 'S' : ''} A LOOK`, errored: true }] : []),
         ...(priced.length > 0 ? [{ text: `${money_text(hourly, priced[0]?.cost?.currency ?? 'USD')}/H` }] : []),
       ],
       rows: domains.slice(0, 6).map((domain: DomainSummary): LauncherRow => ({
         // The rate before the cluster's long name, so a narrow tile cuts the name, not the money.
-        text: `${domain.name}  ${domain.origin === 'found' ? 'FOUND · NOT ADOPTED' : domain.lastDone ?? 'NOTHING DONE'}${domain.cost !== undefined && domain.cost !== null ? `  ${money_text(domain.cost.hourly, domain.cost.currency)}/h` : ''}  ${domain.cluster ?? ''}`.trimEnd(),
+        text: `${domain.name}  ${domain.condition === 'GONE' ? 'GONE' : domain.origin === 'found' ? `${domain.condition ?? 'FOUND'} · NOT ADOPTED` : domain.lastDone ?? 'NOTHING DONE'}${domain.cost !== undefined && domain.cost !== null ? `  ${money_text(domain.cost.hourly, domain.cost.currency)}/h` : ''}  ${domain.cluster ?? ''}`.trimEnd(),
         errored: wrong(domain),
         // A row is that domain's line: the TD controller opens on it (docs/stratus.adoc, D13).
         open: (): void => hooks.domain_open(domain.name),

@@ -19,6 +19,7 @@
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import type { DomainSpec } from '../domain/spec.js';
 
 /** The build's steps, in the order `just install` runs them. */
 export const HARBOR_STEPS: ReadonlyArray<string> = ['preflight', 'cluster', 'iso', 'infra-plan', 'infra-apply', 'dns', 'manifests', 'hosts', 'run', 'postinstall', 'verify'];
@@ -66,8 +67,17 @@ export interface HarborDomain {
   readonly cluster: string | null;
   /** Where it comes from: a `harbor-oci` checkout read, built by this daemon, or found in the tenancy by its tag and not adopted (absent: a checkout). */
   readonly origin?: 'checkout' | 'built' | 'found';
-  /** For one found in the tenancy: what carries its tag. */
-  readonly found?: { readonly stack: { readonly id: string; readonly state: string; readonly compartmentId: string } | null; readonly compartmentId: string | null };
+  /** For one found in the tenancy: what carries its tag, and what the cloud says of it (`domain/found.ts`). */
+  readonly found?: {
+    readonly stack: { readonly id: string; readonly state: string; readonly compartmentId: string } | null;
+    readonly compartmentId: string | null;
+    readonly baseDomain: string | null;
+    readonly spec: DomainSpec | null;
+    readonly resources: Readonly<Record<string, number>> | null;
+    readonly stackResources: number | null;
+    /** Machines live (UP), something of its stack stands (STOPPED), or nothing is left but its tag (GONE). */
+    readonly condition: 'UP' | 'STOPPED' | 'GONE';
+  };
 }
 
 /** Where a domain is read from: its name and its checkout. */

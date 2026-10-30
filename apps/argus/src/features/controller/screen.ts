@@ -128,9 +128,9 @@ export class TdController {
       banner: 'STRATUS • TD CONTROLLER',
       views: CONTROLLER_VIEWS.map((view: ControllerView): TakeoverView => ({ key: view, label: VIEW_LABELS[view], destroy: view === 'teardown' })),
       leave: { label: 'LEAVE' },
-      stage: { title: 'NEW DOMAIN', note: VIEW_LABELS['size'] },
-      log: { title: 'DOMAIN LOG', note: 'THE SESSION\'S LINES · TYPE BELOW' },
-      labels: { views: 'Views', log: 'Domain log' },
+      stage: { title: 'NEW TRUSTED DOMAIN', note: VIEW_LABELS['size'] },
+      log: { title: 'TRUSTED DOMAIN LOG', note: 'THE SESSION\'S LINES · TYPE BELOW' },
+      labels: { views: 'Views', log: 'Trusted Domain log' },
     }, (key: string): void => {
       const view: ControllerView | undefined = CONTROLLER_VIEWS.find((each: ControllerView): boolean => each === key);
       if (view === undefined) return;
@@ -143,7 +143,7 @@ export class TdController {
     this.root.setAttribute('aria-label', 'TD controller');
 
     const pills: HTMLElement = this.frame.seat;
-    pills.setAttribute('aria-label', 'Domains');
+    pills.setAttribute('aria-label', 'Trusted Domains');
     const header: HTMLElement = el('header', 'tdc-header');
     this.frame.face.append(header);
     const views: Map<ControllerView, HTMLButtonElement> = new Map();
@@ -325,7 +325,7 @@ export class TdController {
   /** The tab title while the controller is up: the condition and the domain (`ASKING · quay`). */
   public title_get(): string {
     const domain: DomainSummary | null = this.domain_get();
-    return domain === null ? 'SIZING · NEW DOMAIN' : `${domain.condition ?? 'READING'} · ${domain.name}`;
+    return domain === null ? 'SIZING · NEW TRUSTED DOMAIN' : `${domain.condition ?? 'READING'} · ${domain.name}`;
   }
 
   /**
@@ -346,7 +346,7 @@ export class TdController {
     this.header_draw();
     this.frame.view_mark(this.view);
     for (const [view, button] of this.parts.views) button.classList.toggle('tdc-view-on', view === this.view);
-    this.frame.stageTitle.textContent = this.current === NEW_KEY ? 'NEW DOMAIN' : this.current.toUpperCase();
+    this.frame.stageTitle.textContent = this.current === NEW_KEY ? 'NEW TRUSTED DOMAIN' : this.current.toUpperCase();
     this.frame.stageNote.textContent = VIEW_LABELS[this.view];
     this.body_draw();
     this.strip_draw();
@@ -385,7 +385,7 @@ export class TdController {
     header.append(this.condition_make(domain));
     if (domain === null) {
       header.append(
-        this.headSection_make('DOMAIN', [['NAME', this.newName === '' ? '[NAME IT ON SIZE]' : this.newName], ['REGION', this.size?.region ?? '…'], ['ADDRESS', this.size === null ? '…' : this.zone === null ? 'NO ZONE · CHOOSE ONE ON SIZE' : `${this.newName || '<name>'}.${this.zone}`]]),
+        this.headSection_make('TRUSTED DOMAIN', [['NAME', this.newName === '' ? '[NAME IT ON SIZE]' : this.newName], ['REGION', this.size?.region ?? '…'], ['ADDRESS', this.size === null ? '…' : this.zone === null ? 'NO ZONE · CHOOSE ONE ON SIZE' : `${this.newName || '<name>'}.${this.zone}`]]),
         this.headSection_make('COST · AS SIZED', this.sizedCost_rows()),
         this.headSection_make('FIT', this.fit_rows()),
         this.headSection_make('SINCE LAST CHANGE', [['', 'NOTHING WRITTEN YET']]),
@@ -394,7 +394,7 @@ export class TdController {
     }
     const tenancy: string = domain.path.match(/^\/net\/[^/]+\/([^/]+)\//)?.[1] ?? '?';
     header.append(
-      this.headSection_make('DOMAIN', [['TENANCY', tenancy], ['REGION', domain.region ?? '?'], ['ADDRESS', domain.cluster ?? '?']]),
+      this.headSection_make('TRUSTED DOMAIN', [['TENANCY', tenancy], ['REGION', domain.region ?? '?'], ['ADDRESS', domain.cluster ?? (domain.origin === 'found' ? 'NO ZONE KNOWN' : '?')]]),
       this.headSection_make('COST', this.cost_rows(domain), domain.billing === true ? 0 : -1),
       this.headSection_make('BUILD', this.build_rows(domain)),
       this.since_make(),
@@ -413,8 +413,9 @@ export class TdController {
     const chips: HTMLElement = el('div', 'tdc-chips');
     if (domain !== null) {
       const steps = stepsDone_count(domain);
-      chips.append(el('span', 'tdc-chip', `${steps.done} OF ${steps.total} DONE`), el('span', 'tdc-chip tdc-chip-class', classBadge_render(domain)));
-      chips.append(this.lock_make(domain));
+      chips.append(el('span', 'tdc-chip', `${steps.done} OF ${steps.total} DONE${domain.origin === 'found' ? ' · FROM THE CLOUD' : ''}`), el('span', 'tdc-chip tdc-chip-class', classBadge_render(domain)));
+      // A found domain with nothing left of it has nothing a lock would keep.
+      if (!(domain.origin === 'found' && domain.condition === 'GONE')) chips.append(this.lock_make(domain));
     } else {
       chips.append(el('span', 'tdc-chip', 'NO SPEC YET'));
     }
@@ -505,7 +506,7 @@ export class TdController {
     const domain: DomainSummary | null = this.domain_get();
     if (this.view === 'size') { body.append(...this.size_make(domain)); return; }
     if (domain === null) {
-      body.append(this.empty_make('NO DOMAIN CHOSEN', 'Press + NEW and size one on SIZE, or a domain\'s pill above.'));
+      body.append(this.empty_make('NO TRUSTED DOMAIN CHOSEN', 'Press + NEW and size one on SIZE, or a Trusted Domain\'s pill above.'));
       return;
     }
     const views: Record<Exclude<ControllerView, 'size'>, () => HTMLElement[]> = {
@@ -581,9 +582,13 @@ export class TdController {
     if (domain.origin === 'adopted') {
       note.append(el('span', 'tdc-prose', 'Built by harbor-oci. Its installer ids and its Terraform state are kept by stratus; it is planned against, never built on.'));
       note.append(el('span', 'tdc-prose tdc-quiet', `build refused: ${domain.refused?.['build'] ?? 'adopted'}`));
+    } else if (domain.origin === 'found' && domain.condition === 'GONE') {
+      // Nothing of it is left in the tenancy but what carries its tag: its stack and its compartment (docs/stratus.adoc, D15).
+      note.append(el('span', 'tdc-prose', `Torn down, or never built: nothing of it lives, and its stack holds nothing. What is left carries its tag: ${this.leftovers_words(domain)}. REMOVE WHAT IS LEFT takes those away, after the name typed back; no adoption first.`));
+      note.append(this.linePill_make('REMOVE WHAT IS LEFT', LINES.teardown(domain.name), 'destroy', domain.refused?.['teardown']));
     } else if (domain.origin === 'found') {
-      // Found in the tenancy by its tag: read, never acted on, until adopted (docs/stratus.adoc, D15).
-      note.append(el('span', 'tdc-prose', 'Found in the tenancy by its tag, and not adopted: it is read here, never planned against, verified, built on or torn down. ADOPT keeps its stack and compartment here, with the spec its stack says; its kubeconfig and CUBE token are copied by hand.'));
+      // Found in the tenancy by its tag and read from the cloud: address, spec and condition shown; acting on it waits on ADOPT (docs/stratus.adoc, D15).
+      note.append(el('span', 'tdc-prose', 'Found in the tenancy by its tag. What is shown is what the cloud says of it: its address and spec from its stack, its condition from what lives in its compartment. ADOPT keeps it here, which is what PLAN, VERIFY, BUILD and TEAR DOWN wait on; its kubeconfig and CUBE token are then copied by hand.'));
       note.append(this.linePill_make('ADOPT', LINES.adopt(domain.name)));
     } else if (domain.origin === 'checkout') {
       note.append(el('span', 'tdc-prose', 'Read from a harbor-oci checkout. Adopting it keeps it here: domain adopt <name> --from <checkout>.'));
@@ -597,9 +602,10 @@ export class TdController {
 
   private overview_make(domain: DomainSummary): HTMLElement[] {
     const spec: HTMLElement = this.section_make('SPEC · THE CLUSTER', 'tdc-col-spec');
-    spec.append(...this.spec_make(domain.spec, domain.origin === 'found'), el('span', 'tdc-section-title tdc-gap', 'SPEC · CHRIS ON IT'), this.chrisSpec_make(domain.spec), this.classNote_make(domain));
+    // What the domain is comes first; for one found in the tenancy, that is what the cloud said of it.
+    spec.append(this.classNote_make(domain), ...this.spec_make(domain.spec, domain.origin === 'found'), el('span', 'tdc-section-title tdc-gap', 'SPEC · CHRIS ON IT'), this.chrisSpec_make(domain.spec));
 
-    const steps: HTMLElement = this.section_make('STEPS · THE MACHINE, THEN CHRIS', 'tdc-col-steps', 'PRESS A STEP · BUILD OPENS ON IT');
+    const steps: HTMLElement = this.section_make(domain.origin === 'found' ? 'STEPS · AS FAR AS THE CLOUD ATTESTS THEM' : 'STEPS · THE MACHINE, THEN CHRIS', 'tdc-col-steps', 'PRESS A STEP · BUILD OPENS ON IT');
     const grid: HTMLElement = el('div', 'tdc-step-grid');
     for (const look of stepLooks_build(domain)) {
       const cell: HTMLButtonElement = el('button', `tdc-step tdc-step-${look.tone}${look.billFrom ? ' tdc-step-billfrom' : ''}`);
@@ -612,7 +618,7 @@ export class TdController {
     }
     steps.append(grid, el('div', 'tdc-billing-line', `BILLING STARTS AT ${(domain.billingStep ?? 'infra-apply').toUpperCase()} · EVERY STEP AFTER IT RUNS ON PAID MACHINES`));
     const commands: HTMLElement = el('div', 'tdc-commands');
-    commands.append(el('span', 'tdc-commands-label', 'DOMAIN'),
+    commands.append(el('span', 'tdc-commands-label', 'TRUSTED DOMAIN'),
       this.linePill_make('PLAN', LINES.plan(domain.name), 'plain', domain.refused?.['plan']),
       this.linePill_make('VERIFY', LINES.verify(domain.name), 'plain', domain.refused?.['verify']),
       this.linePill_make('SPEND', LINES.spend(domain.name)),
@@ -760,23 +766,38 @@ export class TdController {
     attach.type = 'button';
     attach.disabled = true;
     attach.title = 'domain attach starts the domain session; it comes after the ChRIS steps';
-    cube.append(this.pairs_make([['SIGN-IN', 'THE DOMAIN\'S OWN'], ['CUBE', domain.steps.some((step): boolean => step.name === 'chris-deploy' && step.state === 'done') ? `cube.apps.${domain.cluster ?? ''}` : 'NOT DEPLOYED']]),
+    cube.append(this.pairs_make([['SIGN-IN', 'THE TRUSTED DOMAIN\'S OWN'], ['CUBE', domain.steps.some((step): boolean => step.name === 'chris-deploy' && step.state === 'done') ? `cube.apps.${domain.cluster ?? ''}` : 'NOT DEPLOYED']]),
       el('p', 'tdc-prose', 'ATTACH starts the domain session: a second daemon on the ChRIS backend, signed in through the domain\'s own sign-in. This session never holds the CUBE token; that one never holds a cloud key.'), attach);
     return [storage, steps, cube];
   }
 
+  /** What a found domain with nothing left still carries: its stack, its compartment, what the compartment holds. */
+  private leftovers_words(domain: DomainSummary): string {
+    const held: string[] = Object.entries(domain.resources ?? {}).filter(([, count]): boolean => count > 0).map(([kind, count]): string => `${count} ${kind}`);
+    const parts: string[] = [];
+    if (domain.compartment !== null && domain.compartment !== undefined) parts.push(`its compartment${held.length > 0 ? ` (holding ${held.join(', ')})` : ' (empty)'}`);
+    parts.push('its stack, when one stands');
+    return parts.join(' and ');
+  }
+
   private teardown_make(domain: DomainSummary): HTMLElement[] {
-    const goes: HTMLElement = this.section_make('WHAT GOES · IN THIS ORDER', 'tdc-col-wide', 'ONLY WHAT THIS DOMAIN MADE');
-    const rows: Array<[string, string]> = [
+    const gone: boolean = domain.origin === 'found' && domain.condition === 'GONE';
+    const goes: HTMLElement = this.section_make(gone ? 'WHAT IS LEFT · AND GOES' : 'WHAT GOES · IN THIS ORDER', 'tdc-col-wide', 'ONLY WHAT THIS TRUSTED DOMAIN MADE');
+    const rows: Array<[string, string]> = gone ? [
+      ['the stack itself', 'emptied by an earlier teardown; it carried the tag, so the domain was found again'],
+      ['its compartment and the image bucket', 'when stratus made them (domains/<name>); another\'s keeps itself and loses the tag'],
+    ] : [
       ['the stack\'s resources', 'a destroy job on the domain\'s Resource Manager stack'],
       ['the DNS records', 'api, api-int and *.apps in the zone'],
       ['the image and its link', 'the discovery ISO and its pre-authenticated request'],
-      ['the cluster\'s volumes', 'the block volumes the CSI driver made for its claims, found through the cluster'],
+      ['the cluster\'s volumes', 'the block volumes the CSI driver made for its claims, found through the cluster, and any left in the compartment with the attribution tag'],
       ['the installer\'s records', 'the cluster and the infra-env at Red Hat'],
+      ['the stack itself', 'it carried the tag; left, the domain would be found again'],
+      ['its compartment and the image bucket', 'when stratus made them (domains/<name>); another\'s keeps itself and loses the tag'],
     ];
     const list: HTMLElement = el('div', 'tdc-teardown-rows');
     for (const [what, how] of rows) list.append(el('span', 'tdc-destroy-mark', '−'), el('span', 'tdc-teardown-what', what), el('span', 'tdc-teardown-how', how));
-    goes.append(list, el('p', 'tdc-prose tdc-quiet', 'Nothing else in the compartment is touched. The engine counts the stack and the volumes when the line runs, and asks for the domain\'s name typed back.'));
+    goes.append(list, el('p', 'tdc-prose tdc-quiet', 'Nothing else is touched: the zone, the tag namespace and what other Trusted Domains made stay. The engine counts the stack and the volumes when the line runs, and asks for the name typed back.'));
 
     const guard: HTMLElement = this.section_make('THE GUARD', 'tdc-col-side');
     const refused: string | undefined = domain.refused?.['teardown'];
@@ -784,6 +805,16 @@ export class TdController {
     if (refused !== undefined && !protectedOnly) {
       const box: HTMLElement = el('div', 'tdc-note tdc-note-refused');
       box.append(el('span', 'tdc-note-title', 'REFUSED BY NAME'), el('span', 'tdc-mono', `domain teardown: ${domain.name}: Operation not permitted: ${refused}`));
+      guard.append(box);
+      return [goes, guard];
+    }
+    if (gone) {
+      // Nothing a lock would keep: the line goes straight to the name typed back.
+      const box: HTMLElement = el('div', 'tdc-note tdc-note-found');
+      box.append(el('span', 'tdc-note-title', 'NOTHING TO PROTECT'), el('span', 'tdc-prose', `Nothing of ${domain.name} lives and its stack holds nothing, so there is no lock. The engine still asks for the name typed back.`));
+      const commands: HTMLElement = el('div', 'tdc-commands');
+      commands.append(el('span', 'tdc-flex'), this.linePill_make('REMOVE WHAT IS LEFT', LINES.teardown(domain.name), 'destroy'));
+      box.append(commands);
       guard.append(box);
       return [goes, guard];
     }
@@ -831,7 +862,7 @@ export class TdController {
   private size_make(domain: DomainSummary | null): HTMLElement[] {
     const existing: boolean = domain !== null;
     if (existing && domain?.spec !== null && domain?.spec !== undefined && (this.levers === null || this.current !== NEW_KEY)) this.levers = spec_copy(domain.spec);
-    const levers: HTMLElement = this.section_make(existing ? `THE SPEC OF ${domain?.name.toUpperCase()}` : 'A NEW DOMAIN', 'tdc-col-levers');
+    const levers: HTMLElement = this.section_make(existing ? `THE SPEC OF ${domain?.name.toUpperCase()}` : 'A NEW TRUSTED DOMAIN', 'tdc-col-levers');
     if (this.size === null || this.levers === null) {
       levers.append(el('p', 'tdc-prose tdc-quiet', 'reading what a domain is sized against: domain size'));
       return [levers];

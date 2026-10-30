@@ -12,6 +12,7 @@
  */
 import * as common from 'oci-common';
 import * as resourcemanager from 'oci-resourcemanager';
+import { notFound } from './errors.js';
 
 /** The Terraform the stacks run: the newest Resource Manager offers. */
 export const RM_TERRAFORM_VERSION: string = '1.5.x';
@@ -61,6 +62,8 @@ export interface RmApi {
   jobOutputs_read(jobId: string): Promise<Record<string, string>>;
   /** How many resources a stack's Terraform state holds. */
   stackResources_count(stackId: string): Promise<number>;
+  /** Removes a stack; one already gone is no error. Its resources must be destroyed first. */
+  stack_delete(stackId: string): Promise<void>;
 }
 
 /** How the calls authenticate: an API-key profile, as the read driver does. */
@@ -176,6 +179,13 @@ export function rmApi_make(options: RmApiOptions): RmApi {
     async stackResources_count(stackId) {
       const state = JSON.parse(await stream_text((await client.getStackTfState({ stackId })).value)) as { resources?: Array<{ mode?: string; instances?: unknown[] }> };
       return (state.resources ?? []).filter((resource): boolean => resource.mode !== 'data').reduce((sum: number, resource): number => sum + (resource.instances?.length ?? 1), 0);
+    },
+    async stack_delete(stackId) {
+      try {
+        await client.deleteStack({ stackId });
+      } catch (error: unknown) {
+        if (!notFound(error)) throw error;
+      }
     },
     async jobOutputs_read(jobId) {
       const outputs: Record<string, string> = {};

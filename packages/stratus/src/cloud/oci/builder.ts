@@ -463,12 +463,16 @@ export class OciBuilder implements CloudBuilder {
       gone.push(`the stack's resources (${request.stackRef})`);
     }
     const cluster: string = `${request.domain}.${request.baseDomain}`;
-    const zoneHome: string = (await api.zoneCompartment_find(request.baseDomain)) ?? request.compartmentId;
-    for (const name of [`api.${cluster}`, `api-int.${cluster}`, `*.apps.${cluster}`]) {
-      await api.record_delete(request.baseDomain, name, zoneHome);
-      call.log(`record ${name} removed`);
+    if (request.baseDomain === '') {
+      call.log('no zone known for it: no records looked for');
+    } else {
+      const zoneHome: string = (await api.zoneCompartment_find(request.baseDomain)) ?? request.compartmentId;
+      for (const name of [`api.${cluster}`, `api-int.${cluster}`, `*.apps.${cluster}`]) {
+        await api.record_delete(request.baseDomain, name, zoneHome);
+        call.log(`record ${name} removed`);
+      }
+      gone.push('3 DNS records');
     }
-    gone.push('3 DNS records');
     const bucket: string = this.options.bucket ?? ISO_BUCKET;
     if (request.isoLinkId !== undefined) await api.link_delete(bucket, request.isoLinkId);
     if (request.isoObject !== undefined) {
@@ -480,6 +484,37 @@ export class OciBuilder implements CloudBuilder {
       call.log(`volume ${volumeId} removed`);
     }
     if (request.volumeIds.length > 0) gone.push(`${request.volumeIds.length} volumes the cluster made`);
+    // Block volumes the cluster could not name (no kubeconfig here, or made
+    // after it was read): what is left in the domain's compartment carrying
+    // the attribution tag namespace is the cluster's, the compartment being
+    // the domain's own.
+    const left = (await api.volumes_list(request.compartmentId)).filter((volume): boolean => !request.volumeIds.includes(volume.id) && Object.keys(volume.tags).some((key: string): boolean => key.startsWith(`${TAG_NAMESPACE}.`)));
+    for (const volume of left) {
+      await api.volume_delete(volume.id);
+      call.log(`volume ${volume.name} (${volume.id}) removed: left in the compartment with the attribution tag`);
+    }
+    if (left.length > 0) gone.push(`${left.length} volumes left in the compartment with the attribution tag`);
+    // The stack carried the domain's tag: left, the domain would be found again.
+    if (request.stackRef !== undefined) {
+      await this.options.rm(request.region).stack_delete(request.stackRef);
+      gone.push('the stack itself');
+    }
+    // The compartment: `domains/<name>` is stratus's own, and the image bucket
+    // in it went with the domain; another's (harbor-oci's) keeps itself and
+    // everything in it, and only loses the tag.
+    const compartment = await api.compartment_describe(request.compartmentId);
+    if (compartment.name === request.domain && compartment.parentName === DOMAINS_COMPARTMENT) {
+      if (await api.bucket_remove(bucket, request.compartmentId)) gone.push(`the image bucket ${bucket}`);
+      try {
+        await api.compartment_delete(request.compartmentId);
+        gone.push(`the compartment ${DOMAINS_COMPARTMENT}/${request.domain}`);
+      } catch (error: unknown) {
+        call.log(`the compartment ${DOMAINS_COMPARTMENT}/${request.domain} stays: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    } else if (compartment.tags[DOMAIN_TAG] === request.domain) {
+      await api.compartment_tagRemove(request.compartmentId, DOMAIN_TAG);
+      gone.push(`the tag ${DOMAIN_TAG}=${request.domain} off the compartment ${compartment.name}`);
+    }
     return gone;
   }
 }

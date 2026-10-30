@@ -12,8 +12,8 @@
 import chalk from 'chalk';
 import { envelope_error, envelope_ok, STRATUS_DOMAINS_MODEL_KIND, type CommandEnvelope, type DomainSummary, type DomainsModel } from '@fnndsc/menu';
 import type { CommandGroup, CommandHelp } from '@fnndsc/brasa/core';
-import type { CloudDriver, FoundDomain, ResourceCounts } from '../cloud/driver.js';
-import { DOMAIN_TAG } from '../domain/state.js';
+import type { CloudDriver, ResourceCounts } from '../cloud/driver.js';
+import { foundDomain_make, foundDomains_describe } from '../domain/found.js';
 import type { HarborDomain, StepState } from '../domains/harborOci.js';
 import type { DomainTree } from '../vfs/domains.js';
 import { stateTone_paint } from '../vfs/look.js';
@@ -52,14 +52,15 @@ const COUNT_ORDER: ReadonlyArray<keyof ResourceCounts> = ['instances', 'networks
  *
  * @param context - The session.
  * @param compartmentId - The compartment, from the domain's settings.
+ * @param known - Counts already read (a found domain's), so the cloud is not asked twice.
  * @returns The counts (null when not counted) and the line.
  */
-async function compartment_count(context: DomainCommandContext, compartmentId: string | undefined): Promise<{ counts: ResourceCounts | null; line: string }> {
+async function compartment_count(context: DomainCommandContext, compartmentId: string | undefined, known: ResourceCounts | null = null): Promise<{ counts: ResourceCounts | null; line: string }> {
   const region: string | null = context.region();
   if (compartmentId === undefined) return { counts: null, line: 'compartment  not in the domain\'s settings' };
   if (region === null) return { counts: null, line: 'compartment  not counted: not connected' };
   try {
-    const counts: ResourceCounts = await context.driver.resources_search(compartmentId, region);
+    const counts: ResourceCounts = known ?? await context.driver.resources_search(compartmentId, region);
     const said: string[] = COUNT_ORDER.filter((kind): boolean => (counts[kind] ?? 0) > 0).map((kind): string => `${counts[kind]} ${kind}`);
     return { counts, line: `compartment  ${said.length > 0 ? said.join(', ') : 'nothing live'} (${region})` };
   } catch (error: unknown) {
@@ -87,35 +88,13 @@ async function domainCost_read(context: DomainCommandContext, domain: HarborDoma
 }
 
 
-/**
- * A domain found in the tenancy by its tag and not kept here, as the verbs
- * read one: no spec, no steps, no secrets; its compartment the tagged one,
- * else the stack's.
- *
- * @param found - What the search found.
- * @returns The domain.
- */
-export function foundDomain_make(found: FoundDomain): HarborDomain {
-  const compartmentId: string | null = found.compartmentId ?? found.stack?.compartmentId ?? null;
-  return {
-    name: found.name,
-    root: found.stack?.id ?? compartmentId ?? '',
-    spec: null,
-    settings: { CLUSTER_NAME: found.name, OCI_REGION: found.region, ...(compartmentId !== null ? { OCI_COMPARTMENT_OCID: compartmentId } : {}) },
-    state: null,
-    steps: [],
-    secrets: [],
-    cluster: null,
-    origin: 'found',
-    found: { stack: found.stack, compartmentId: found.compartmentId },
-  };
-}
+export { foundDomain_make };
 
 /**
  * The domains the tenancy holds that this session keeps nothing of: found by
- * the tag on their stacks and compartments (docs/stratus.adoc, D15). The
- * tenancy is the truth about its domains; the folder is what this host
- * knows of each.
+ * the tag on their stacks and compartments and read from the cloud
+ * (docs/stratus.adoc, D15). The tenancy is the truth about its domains; the
+ * folder is what this host knows of each.
  *
  * @param context - The session.
  * @param kept - The domains read from checkouts and the folder.
@@ -125,8 +104,7 @@ async function foundDomains_read(context: DomainCommandContext, kept: ReadonlyAr
   const region: string | null = context.region();
   if (region === null) return { domains: [], unsearched: 'not connected' };
   try {
-    const found: FoundDomain[] = await context.driver.domains_find(DOMAIN_TAG, region);
-    return { domains: found.filter((entry: FoundDomain): boolean => !kept.some((domain: HarborDomain): boolean => domain.name === entry.name)).map(foundDomain_make), unsearched: null };
+    return { domains: await foundDomains_describe(context.driver, context.build?.builder ?? null, region, kept.map((domain: HarborDomain): string => domain.name)), unsearched: null };
   } catch (error: unknown) {
     return { domains: [], unsearched: error instanceof Error ? error.message : String(error) };
   }
@@ -141,23 +119,27 @@ async function foundDomains_read(context: DomainCommandContext, kept: ReadonlyAr
  */
 export async function domainStatus_read(context: DomainCommandContext, domain: HarborDomain): Promise<{ lines: string[]; summary: DomainSummary }> {
   const width: number = Math.max(0, ...domain.steps.map((step: StepState): number => step.folder.length));
-  const [compartment, cost] = await Promise.all([compartment_count(context, domain.settings['OCI_COMPARTMENT_OCID']), domainCost_read(context, domain)]);
+  const found = domain.found;
+  const [compartment, cost] = await Promise.all([compartment_count(context, domain.settings['OCI_COMPARTMENT_OCID'], found?.resources ?? null), domainCost_read(context, domain)]);
+  // A found domain's line: what carries its tag, what the cloud makes of it, and the one line that moves it on.
+  const foundLine = (): string => {
+    const carried: string = `${found?.stack !== null && found?.stack !== undefined ? `stack ${found.stack.id} (${found.stack.state})` : 'no stack'}${found?.compartmentId !== null && found?.compartmentId !== undefined ? `, compartment ${found.compartmentId}` : ''}`;
+    const onward: string = found?.condition === 'GONE' ? `nothing of it is left but its tag: domain teardown ${domain.name} removes that` : `not adopted: domain adopt ${domain.name} keeps it here`;
+    return `found        ${carried}; ${onward}`;
+  };
   const lines: string[] = [
     `${chalk.bold(domain.name)}  ${domain.cluster ?? '(no cluster name in its settings)'}`,
     domain.origin === 'found'
-      ? `found        ${domain.found?.stack !== null && domain.found?.stack !== undefined ? `stack ${domain.found.stack.id} (${domain.found.stack.state})` : 'no stack'}${domain.found?.compartmentId !== null && domain.found?.compartmentId !== undefined ? `, compartment ${domain.found.compartmentId}` : ''}; not adopted: domain adopt ${domain.name} keeps it here`
+      ? foundLine()
       : `${domain.origin !== 'built' ? 'checkout   ' : (domain.state as { adopted?: unknown } | null)?.adopted !== undefined ? 'adopted    ' : (domain.state as { gone?: unknown } | null)?.gone !== undefined ? 'torn down  ' : 'built here '}  ${domain.root}`,
     ...domain.steps.map((step: StepState): string => `  ${step.folder.padEnd(width)}  ${stateTone_paint(step.state, step.state.padEnd(8))}  ${chalk.gray(step.evidence)}`),
     compartment.line,
     cost.line,
   ];
-  // A found domain keeps no steps here: what lives in its compartment says whether it is up.
-  const live: boolean = (compartment.counts?.instances ?? 0) > 0;
   const summary: DomainSummary = {
     ...domainSummary_read(context.build?.store ?? null, context.domainsPath(), domain),
     resources: compartment.counts === null ? null : { ...compartment.counts },
     cost: cost.spend === null ? null : { hourly: cost.spend.hourly, soFar: cost.spend.soFar, currency: cost.spend.currency },
-    ...(domain.origin === 'found' ? { condition: live ? 'UP' as const : 'STOPPED' as const, billing: live } : {}),
   };
   return { lines, summary };
 }
@@ -176,11 +158,16 @@ export async function domain_run(context: DomainCommandContext, args: ReadonlyAr
   const kept: HarborDomain[] = context.domains.domains_read();
   if (build !== undefined) {
     if (context.build === undefined) return envelope_error('', undefined, `domain: ${verb}: this session builds no domains\n`);
-    // A domain found in the tenancy and not adopted answers reads and `adopt` only.
+    // A domain found in the tenancy and not adopted answers reads and `adopt`
+    // only; one with nothing left of it but its tag takes `teardown` too, which
+    // removes that (docs/stratus.adoc, D15).
     const named: string | undefined = rest.find((word: string): boolean => !word.startsWith('--'));
     if (verb !== 'adopt' && named !== undefined && !kept.some((domain: HarborDomain): boolean => domain.name === named)) {
       const found = await foundDomains_read(context, kept);
-      if (found.domains.some((domain: HarborDomain): boolean => domain.name === named)) return envelope_error('', undefined, `domain ${verb}: ${named}: found in the tenancy, not adopted: domain adopt ${named} first\n`);
+      const match: HarborDomain | undefined = found.domains.find((domain: HarborDomain): boolean => domain.name === named);
+      if (match !== undefined && !(verb === 'teardown' && match.found?.condition === 'GONE')) {
+        return envelope_error('', undefined, `domain ${verb}: ${named}: ${match.found?.condition === 'GONE' ? 'nothing of it is left in the tenancy but its tag: domain teardown ' + named + ' removes that' : `found in the tenancy, not adopted: domain adopt ${named} first`}\n`);
+      }
     }
     return build(context.build, rest);
   }

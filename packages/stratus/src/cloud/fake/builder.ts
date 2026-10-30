@@ -36,6 +36,10 @@ export class FakeBuildWorld {
   readonly zones: string[] = ['fake.example'];
   /** The stacks the tenancy holds, by id, as `stack_describe` reads them back; a test seeds them. */
   readonly stacks: Map<string, { state: string; compartmentId: string; baseDomain: string | null; spec: DomainSpec | null }> = new Map();
+  /** How many resources each stack's state holds; a stack not named holds 17. */
+  readonly stackResources: Map<string, number> = new Map();
+  /** What the teardowns removed, a line each, for a test to read. */
+  readonly removed: string[] = [];
   private serial: number = 0;
 
   constructor(readonly tickMs: number = 0) {}
@@ -186,18 +190,28 @@ export class FakeCloudBuilder implements CloudBuilder {
     return names;
   }
 
-  async stackResources_count(_request: { region: string; stackRef: string }): Promise<number> {
-    return 17;
+  async stackResources_count(request: { region: string; stackRef: string }): Promise<number> {
+    return this.world.stackResources.get(request.stackRef) ?? 17;
   }
 
   async teardown_run(request: TeardownRequest, call: BuildCall): Promise<string[]> {
     await this.world.tick(4, call.signal);
     const gone: string[] = [];
-    if (request.stackRef !== undefined) gone.push(`the stack's resources (${request.stackRef})`);
-    gone.push('3 DNS records');
+    if (request.stackRef !== undefined && request.stackEmpty !== true) gone.push(`the stack's resources (${request.stackRef})`);
+    if (request.baseDomain !== '') gone.push('3 DNS records');
     if (request.isoObject !== undefined) gone.push(`the image ${request.isoObject} and its link`);
     if (request.volumeIds.length > 0) gone.push(`${request.volumeIds.length} volumes the cluster made`);
+    if (request.stackRef !== undefined) {
+      this.world.stacks.delete(request.stackRef);
+      this.world.stackResources.set(request.stackRef, 0);
+      gone.push('the stack itself');
+    }
+    if (this.world.compartments.get(request.domain) === request.compartmentId) {
+      this.world.compartments.delete(request.domain);
+      gone.push(`the compartment domains/${request.domain}`);
+    }
     for (const line of gone) call.log(`removed ${line}`);
+    this.world.removed.push(...gone);
     return gone;
   }
 

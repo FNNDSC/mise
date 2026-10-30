@@ -1,5 +1,12 @@
 # @fnndsc/chell
 
+## 5.19.5
+
+### Patch Changes
+
+- Updated dependencies [9a58e99]
+  - @fnndsc/argus@0.42.0
+
 ## 5.19.4
 
 ### Patch Changes

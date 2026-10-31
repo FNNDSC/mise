@@ -8,6 +8,8 @@ import { plugins_listAll, pipelineManifest_get, type PipelineManifest, type Pipe
 import { listCache_get } from '@fnndsc/cumin';
 import type { ListingItem } from '@fnndsc/menu';
 import type { BackendCompletion } from '../core/backend.js';
+import { pluginInfo_build, pluginSpecifier_parse, type PluginSpecifier } from '../builtins/res/plugin.info.js';
+import { pluginVersions_compare } from './binExecutables.js';
 import { vfs } from '../lib/vfs/vfs.js';
 
 /**
@@ -102,6 +104,69 @@ async function pipelineOptions_get(args: string[], word: string): Promise<string
   return options.filter((option: string): boolean => option.startsWith(word));
 }
 
+/** A plugin's option words, by its `/bin` name, kept once read. */
+const pluginOptions_cache: Map<string, string[]> = new Map();
+
+/**
+ * The `/bin` name a line's first word runs as a plugin: itself when it is a
+ * full `name-vVersion` /bin lists, the highest version when it is a bare
+ * name (#1303), or null when /bin lists no such plugin.
+ *
+ * @param word - The line's first word.
+ * @returns The full `/bin` name, or null.
+ */
+async function pluginExecutable_resolve(word: string): Promise<string | null> {
+  const names: string[] = await plugins_getNames();
+  if (names.includes(word)) return word;
+  const versions: string[] = names
+    .filter((name: string): boolean => name.startsWith(`${word}-v`))
+    .map((name: string): string => name.slice(word.length + 2))
+    .sort(pluginVersions_compare);
+  const highest: string | undefined = versions[versions.length - 1];
+  return highest === undefined ? null : `${word}-v${highest}`;
+}
+
+/**
+ * The `--flag` options of the plugin a line runs, starting with the word
+ * typed: its parameters as CUBE declares them, the list `--parameters`
+ * prints, read once per plugin (#1306). A boolean parameter is its flag
+ * alone.
+ *
+ * @param args - The line's words.
+ * @param word - The option word typed so far.
+ * @returns The options, none when the plugin cannot be read, or null for a
+ *   line naming no plugin.
+ */
+async function pluginOptions_get(args: string[], word: string): Promise<string[] | null> {
+  const first: string | undefined = args[0];
+  if (first === undefined) return null;
+  const executable: string | null = await pluginExecutable_resolve(first);
+  if (executable === null) return null;
+  let options: string[] | undefined = pluginOptions_cache.get(executable);
+  if (options === undefined) {
+    const specifier: PluginSpecifier | null = pluginSpecifier_parse(executable);
+    if (specifier === null) return [];
+    const info = await pluginInfo_build(specifier);
+    if (!info.ok) return [];
+    options = info.value.parameters.map((parameter): string => parameter.flag);
+    pluginOptions_cache.set(executable, options);
+  }
+  return options.filter((option: string): boolean => option.startsWith(word));
+}
+
+/**
+ * The option words for a line: a plugin's parameters when its first word
+ * runs a plugin, else a pipeline's `--node.field` options.
+ *
+ * @param args - The line's words.
+ * @param word - The option word typed so far.
+ * @returns The options, or null for a line the session does not complete.
+ */
+async function lineOptions_get(args: string[], word: string): Promise<string[] | null> {
+  const plugin: string[] | null = await pluginOptions_get(args, word);
+  return plugin !== null ? plugin : pipelineOptions_get(args, word);
+}
+
 /**
  * Whether a word names a `/bin` entry, whose arguments are paths (#1305):
  * a plugin `name-vVersion`, a bare plugin name (any version listed, #1303),
@@ -124,7 +189,7 @@ async function binPathArguments(command: string): Promise<boolean> {
 /** What the ChRIS session adds to completion. */
 export const chrisCompletion: BackendCompletion = {
   commandWords: plugins_getNames,
-  options: pipelineOptions_get,
+  options: lineOptions_get,
   pathArguments: binPathArguments,
   rootWords: ['bin', 'usr'],
 };

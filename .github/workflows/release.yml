@@ -15,13 +15,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      # npm OIDC trusted publishing (tokenless publish with provenance).
-      # Each @fnndsc package is configured on npmjs.com under Settings ->
-      # Trusted Publisher as GitHub Actions, repository HARBOR-Medical-AI/mise,
-      # workflow release.yml. npm >= 11.5 exchanges this OIDC token
-      # automatically at publish time; no NPM_TOKEN secret exists to expire
-      # mid-release.
-      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,14 +30,16 @@ jobs:
       - run: npm install -g npm@11.19.0
       - run: npm ci
       - run: npm run build
-      # Opens/updates a "Version Packages" PR; when that PR is merged,
-      # publishes the changed packages to npm in dependency order.
+      # Opens/updates the "Version Packages" PR. It does not publish: this
+      # repository's OIDC tokens carry GitHub's immutable subject since its
+      # transfer to HARBOR-Medical-AI, which npm's trusted-publishing exchange
+      # rejects (npm/cli#9969). The packages are published by
+      # FNNDSC/chrisproject.org's publish-mise.yml, which `make publish` starts
+      # after the merge and which every package names as its trusted publisher.
+      # When npm accepts the immutable subject: rebind the packages here, give
+      # this job `id-token: write` and `publish: npm run release` again.
       - uses: changesets/action@v1
         with:
           version: npm run version-packages
-          publish: npm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # npm says why an OIDC exchange failed only at verbose: without it
-          # every refusal reads ENEEDAUTH (2026-10-30, every package).
-          NPM_CONFIG_LOGLEVEL: verbose

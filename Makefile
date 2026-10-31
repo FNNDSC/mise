@@ -37,7 +37,7 @@
 #   make verify-npm    - Compare local package versions against the registry
 #   make lockfile      - Regenerate package-lock.json with CI's pinned npm
 #   make ci-dispatch   - Manually fire the CI workflow (Actions event lag)
-#   make release-dispatch - Manually fire the Release workflow on main
+#   make release-dispatch - Publish main to npm by hand (the publisher run)
 #   make sync          - Return to main and fast-forward it
 #   make tidy BR=name  - Delete a merged branch locally and on origin
 #
@@ -103,15 +103,15 @@ help:
 	@echo "  make ci-watch      - Wait for this branch's PR checks (audit, node 22/24)"
 	@echo "  make merge         - ci-watch, then merge this branch's PR (merge commit)"
 	@echo "  make publish       - The release step: approve the Version Packages PR's"
-	@echo "                       bot CI runs, wait for green, merge. Merging it makes"
-	@echo "                       the Release workflow publish to npm (IRREVERSIBLE)."
+	@echo "                       bot CI runs, wait for green, merge, then run the"
+	@echo "                       publisher and watch it push to npm (IRREVERSIBLE)."
 	@echo "  make verify-npm    - Local package.json versions vs the npm registry"
 	@echo "  make lockfile      - Regenerate package-lock.json with npm@$(CI_NPM)"
 	@echo "                       (CI's pin) and prove it with a dry-run 'npm ci'"
 	@echo "  make ci-dispatch   - Fire CI by hand on this branch (when GitHub's"
 	@echo "                       push/PR events lag and no run appears)"
-	@echo "  make release-dispatch - Fire Release by hand on main (same lag, or to"
-	@echo "                       retry a publish; publishing is idempotent)"
+	@echo "  make release-dispatch - Run the publisher on main by hand (to retry a"
+	@echo "                       publish; publishing is idempotent)"
 	@echo "  make sync          - Checkout main, fast-forward, prune stale remotes"
 	@echo "  make tidy BR=name  - Delete a merged branch locally and on origin"
 	@echo ""
@@ -338,9 +338,9 @@ publish: vp-approve
 	until gh pr checks $$pr --required 2>/dev/null | grep -q .; do $(MAKE) --no-print-directory vp-approve; sleep 15; done; \
 	gh pr checks $$pr --watch --interval 30 --required && \
 	gh pr merge $$pr --merge
-	@echo "Publish merge done; the Release workflow on main now pushes to npm."
-	@echo "If no Release run appears (Actions event lag): make release-dispatch"
-	@echo "Then confirm with: make verify-npm"
+	@echo "Version Packages merged; publishing main to npm from $(PUBLISHER_REPO)."
+	@$(MAKE) --no-print-directory release-dispatch
+	@echo "Confirm with: make verify-npm"
 
 # Publishes what main holds and puts it on the hosts, in the order that cannot
 # leave a host empty (scripts/deploy.sh): every bumped version proven on npm
@@ -382,8 +382,21 @@ ci-dispatch:
 	gh workflow run ci.yml --ref $(BRANCH)
 	@echo "CI dispatched on $(BRANCH); follow with 'make ci-watch'."
 
+# The publisher: npm rejects this repository's OIDC tokens since its transfer
+# (immutable subject, npm/cli#9969), so the packages are published by a
+# workflow in a repository that keeps the name-based subject, and every
+# package names it as its trusted publisher. It checks out main and runs
+# `changeset publish`; versions already on npm are skipped.
+PUBLISHER_REPO ?= FNNDSC/chrisproject.org
+PUBLISHER_WORKFLOW ?= publish-mise.yml
+
 release-dispatch:
-	gh workflow run release.yml --ref main
+	@before=$$(gh run list -R $(PUBLISHER_REPO) --workflow $(PUBLISHER_WORKFLOW) --limit 1 --json databaseId --jq '.[0].databaseId // 0'); \
+	gh workflow run $(PUBLISHER_WORKFLOW) -R $(PUBLISHER_REPO) --ref master -f ref=main || exit 1; \
+	run=""; for i in $$(seq 1 20); do sleep 3; run=$$(gh run list -R $(PUBLISHER_REPO) --workflow $(PUBLISHER_WORKFLOW) --limit 1 --json databaseId --jq '.[0].databaseId // 0'); [ "$$run" != "$$before" ] && break; done; \
+	[ "$$run" != "$$before" ] || { echo "No publisher run appeared in $(PUBLISHER_REPO)"; exit 1; }; \
+	echo "Publisher run $$run in $(PUBLISHER_REPO): watching"; \
+	gh run watch $$run -R $(PUBLISHER_REPO) --exit-status --interval 15 >/dev/null && echo "Published (run $$run)." || { echo "Publisher run $$run failed: gh run view $$run -R $(PUBLISHER_REPO) --log-failed"; exit 1; }
 
 sync:
 	git checkout main

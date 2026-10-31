@@ -305,6 +305,10 @@ describe('command_dispatch', () => {
     const errWrite = jest.spyOn(sink_get(), 'err_write').mockImplementation(() => undefined);
     const twice = await command_dispatchEnvelope('myPipe', ['/home/u/uploads/subjects', '--previous', '5']);
     expect(twice.status).toBe('error');
+    const twiceAssigned = await command_dispatchEnvelope('myPipe', ['/home/u/uploads/subjects', '--previous=5']);
+    expect(twiceAssigned.status).toBe('error');
+    const twiceBefore = await command_dispatchEnvelope('myPipe', ['--previous=5', '/home/u/uploads/subjects']);
+    expect(twiceBefore.status).toBe('error');
     const missing = await command_dispatchEnvelope('myPipe', ['/home/u/uploads/none']);
     expect(missing.status).toBe('error');
     expect(errWrite.mock.calls.map((call) => String(call[0])).join('')).toContain('no such file or directory');

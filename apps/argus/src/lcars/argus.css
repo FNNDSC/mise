@@ -4071,6 +4071,104 @@ button.files-crumb:focus-visible {
   text-shadow: 0 0 5px rgb(255 238 204 / 30%);
 }
 
+/* A Markdown or AsciiDoc document read as its page: prose in the label
+ * face, code in the data face, the theme's own hues for headings, links
+ * and rules. In the files pane it also wears files-content for the field's
+ * sizing, so the prose rules here outrank that block's mono and pre-wrap. */
+.doc-rendered,
+.files-content.doc-rendered {
+  padding: 0.4rem 0.6rem 1rem 0.2rem;
+  font-family: var(--face-label);
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  line-height: 1.45;
+  color: var(--butter);
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  text-shadow: none;
+}
+.doc-rendered h1, .doc-rendered h2, .doc-rendered h3,
+.doc-rendered h4, .doc-rendered h5, .doc-rendered h6 {
+  margin: 1.1em 0 0.4em;
+  color: var(--harvestgold);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  /* The page's own h1 is set large and hard right; a document's is not. */
+  text-align: left;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+.doc-rendered h1 { font-size: 1.6rem; border-bottom: 3px solid var(--orange); padding-bottom: 0.2em; }
+.doc-rendered h2 { font-size: 1.3rem; color: var(--orange); }
+.doc-rendered h3 { font-size: 1.1rem; }
+.doc-rendered h4, .doc-rendered h5, .doc-rendered h6 { font-size: 1rem; color: var(--honey); }
+.doc-rendered > :first-child { margin-top: 0.2em; }
+.doc-rendered p, .doc-rendered ul, .doc-rendered ol, .doc-rendered dl,
+.doc-rendered table, .doc-rendered blockquote, .doc-rendered pre { margin: 0 0 0.7em; }
+.doc-rendered ul, .doc-rendered ol { padding-left: 1.4em; }
+.doc-rendered li::marker { color: var(--orange); }
+.doc-rendered dt { color: var(--honey); }
+.doc-rendered dd { margin-left: 1.4em; }
+.doc-rendered strong { color: var(--honey); }
+.doc-rendered a[href] { color: var(--harvestgold); text-decoration: underline; }
+.doc-rendered .doc-link-local { color: var(--daybreak); }
+.doc-rendered .doc-image { color: var(--pumpkin-pie); font-style: italic; }
+.doc-rendered hr { border: none; border-top: 2px solid var(--orange); margin: 1em 0; }
+.doc-rendered code, .doc-rendered pre {
+  font-family: 'MesloLGS NF', 'Inconsolata', 'Courier New', monospace;
+  font-size: 0.8em;
+  letter-spacing: 0;
+  color: var(--honey);
+}
+.doc-rendered pre {
+  padding: 0.5em 0.7em;
+  border-left: 4px solid var(--orange);
+  background: color-mix(in srgb, var(--orange) 7%, transparent);
+  white-space: pre-wrap;
+}
+.doc-rendered blockquote, .doc-rendered .quoteblock {
+  margin-left: 0;
+  padding-left: 0.8em;
+  border-left: 4px solid var(--daybreak);
+  color: var(--daybreak);
+}
+.doc-rendered table { border-collapse: collapse; }
+.doc-rendered th, .doc-rendered td {
+  padding: 0.2em 0.6em;
+  border: 1px solid color-mix(in srgb, var(--orange) 45%, transparent);
+  text-align: left;
+  vertical-align: top;
+}
+.doc-rendered th, .doc-rendered thead td { color: var(--harvestgold); }
+.doc-rendered td > p:last-child, .doc-rendered td .paragraph:last-child p { margin-bottom: 0; }
+/* AsciiDoc's admonitions: the label in its own column, the hue by kind. */
+.doc-rendered .admonitionblock > table { border: none; }
+.doc-rendered .admonitionblock td { border: none; }
+.doc-rendered .admonitionblock td.icon {
+  padding-right: 0.8em;
+  border-right: 4px solid var(--honey);
+  color: var(--honey);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.doc-rendered .admonitionblock.warning td.icon,
+.doc-rendered .admonitionblock.caution td.icon { border-right-color: var(--state-error); color: var(--state-error); }
+.doc-rendered .admonitionblock.tip td.icon { border-right-color: var(--daybreak); color: var(--daybreak); }
+.doc-rendered #doc-toc, .doc-rendered .toc {
+  margin-bottom: 1em;
+  padding: 0.4em 0.8em;
+  border-left: 4px solid var(--harvestgold);
+}
+.doc-rendered #doc-toctitle, .doc-rendered .title {
+  color: var(--pumpkin-pie);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.85em;
+}
+.doc-rendered .sectlevel1, .doc-rendered .sectlevel2 { list-style: none; padding-left: 0.8em; }
+
 /* The cascade column sweep: a brief butter-bright highlight, driven from
  * the flicker loop. */
 .data-column {

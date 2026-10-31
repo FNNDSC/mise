@@ -73,6 +73,22 @@ function check(name, condition, detail = '') {
  * Each scenario reports its own wall time, so the expensive ones are
  * visible rather than merely felt.
  */
+/** The files-document stage's Markdown fixture: a heading, a list, code, a table, a link, a script that must not run. */
+const DOC_MARKDOWN = [
+  '# Smoke document', '', 'A *Markdown* file with **strong** words and `code`.', '',
+  '## A list', '', '- one', '- two', '', '```sh', 'make deploy', '```', '',
+  '| key | value |', '| --- | --- |', '| a | 1 |', '| b | 2 |', '',
+  '[the project](https://chrisproject.org) and [a neighbour](guide.adoc)', '',
+  '<script>window.smokeDocRan = true</script>', '',
+].join('\n');
+
+/** The files-document stage's AsciiDoc fixture: a title, an attribute, an admonition, a listing, a table. */
+const DOC_ASCIIDOC = [
+  '= Smoke guide', ':toc:', '', '== Setup', '', 'NOTE: An *admonition* with `mono`.', '',
+  '[source,sh]', '----', 'make deploy', '----', '', '|===', '|key |value', '', '|a |1', '|b |2', '|===', '',
+  '* an item', '* https://chrisproject.org[a link]', '',
+].join('\n');
+
 const only = (process.env.SMOKE_ONLY ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 const skip = (process.env.SMOKE_SKIP ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 const timings = [];
@@ -494,6 +510,11 @@ try {
       try {
         for (const slice of slices) await put(slice, `${fixtureFolder}/${SERIES_FOLDER}/${basename(slice)}`);
         await put(nifti, `${fixtureFolder}/sphere.nii.gz`);
+        const { writeFileSync } = await import('node:fs');
+        writeFileSync(join(local, 'README.md'), DOC_MARKDOWN);
+        writeFileSync(join(local, 'guide.adoc'), DOC_ASCIIDOC);
+        await put(join(local, 'README.md'), `${fixtureFolder}/docs/README.md`);
+        await put(join(local, 'guide.adoc'), `${fixtureFolder}/docs/guide.adoc`);
         dicomSeries = `${fixtureFolder}/${SERIES_FOLDER}`;
         niftiPath = `${fixtureFolder}/sphere.nii.gz`;
         console.log(`  fixtures: ${slices.length} slices and a NIfTI put under ${fixtureFolder}`);
@@ -5422,6 +5443,84 @@ try {
   check('RAW shows the bytes as written and offers PRETTY, which returns to the structure',
     json.error === undefined && !json.raw.json && json.raw.lines < json.pretty.lines && json.raw.pills.join(',') === 'DOWNLOAD,PRETTY,CLOSE' && json.back === true,
     JSON.stringify(json.error ?? json.raw));
+  }
+  if (await stage('files-document')) {
+  // A Markdown or AsciiDoc file opened to read shows its source in colour,
+  // with RENDERED for the page it describes and SOURCE back; a Viewer pane
+  // beside the browser shows it rendered. The fixture folder holds one of
+  // each. SMOKE_SHOTS=<dir> keeps a screenshot of each view.
+  const shot = async (name) => { if (process.env.SMOKE_SHOTS) await page.shot(`${process.env.SMOKE_SHOTS}/document-${name}.png`); };
+  const prelude = `
+    const input = console_input();
+    const say = async (line) => { await console_idle(); input.value = line; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(120); await console_settled(); await console_idle(); };
+    const fp = () => [...document.querySelectorAll('.pane-files')].find((p) => p.offsetParent !== null);
+    const rowOf = (word) => [...fp().querySelectorAll('.listing-row')].find((r) => r.textContent.includes(word));
+    const pills = () => [...fp().querySelectorAll('.files-content-header button')].map((b) => b.textContent.trim());
+    const pill = (w) => [...fp().querySelectorAll('.files-content-header button')].find((b) => b.textContent.trim() === w);`;
+  const open = (name) => evalIn(`${prelude}
+    if (!fp()) { document.getElementById('gutter-files').click(); for (let i = 0; i < 40; i++) { await sleep(250); if (fp()) break; } }
+    if (!fp()) return { error: 'no files pane' };
+    await say('cd ${fixtureFolder}/docs');
+    for (let i = 0; i < 40; i++) { await sleep(250); if (rowOf('${name}')) break; }
+    const row = rowOf('${name}'); if (!row) return { error: 'no ${name} row' };
+    (row.querySelector('.listing-control') ?? row).click();
+    let body = null;
+    for (let i = 0; i < 40; i++) { await sleep(250); body = fp().querySelector('.files-content.files-source'); if (body) break; }
+    return { coloured: body?.querySelectorAll('span[class]').length ?? 0, text: (body?.textContent ?? '').slice(0, 20), pills: pills() };`);
+  const render = () => evalIn(`${prelude}
+    pill('RENDERED')?.click();
+    let page = null;
+    for (let i = 0; i < 60; i++) { await sleep(250); page = fp().querySelector('.doc-rendered'); if (page) break; }
+    if (page === null) return { error: 'no rendered page', pills: pills() };
+    await sleep(300);
+    return { h1: page.querySelector('h1')?.textContent ?? null, ran: window.smokeDocRan === true, script: page.querySelector('script') !== null, admonition: page.querySelector('.admonitionblock') !== null, table: page.querySelector('table') !== null, pills: pills(), inside: Math.round(page.getBoundingClientRect().bottom) <= Math.round(fp().querySelector('.files-panel').getBoundingClientRect().bottom) + 1, scrolls: getComputedStyle(page).overflowY };`);
+  const leave = () => evalIn(`${prelude}
+    pill('SOURCE')?.click(); await sleep(400);
+    const back = fp().querySelector('.doc-rendered') === null && fp().querySelector('.files-content') !== null;
+    pill('CLOSE')?.click(); await sleep(400);
+    return back;`);
+  const doc = {};
+  if (fixtureFolder === null) doc.error = 'no fixture folder';
+  else {
+    for (const [key, name] of [['md', 'README.md'], ['adoc', 'guide.adoc']]) {
+      const source = await open(name); await shot(`${key}-source`);
+      const rendered = await render(); await shot(`${key}-rendered`);
+      doc[key] = { source, rendered, back: await leave() };
+    }
+    // The Viewer pane: bound to the browser's group, it renders what is indicated.
+    doc.viewed = await evalIn(`${prelude}
+      const leaves = () => [...document.querySelectorAll('.layout-leaf')].map((l) => l.dataset.leaf);
+      const before = new Set(leaves());
+      await say('pane bind viewer');
+      await say('pane split right');
+      const born = leaves().find((id) => !before.has(id));
+      const viewer = born === undefined ? null : document.querySelector('.layout-leaf[data-leaf="' + born + '"]');
+      if (viewer === null) return { error: 'no viewer pane' };
+      const row = rowOf('guide.adoc');
+      (row?.querySelector('.listing-control') ?? row)?.click();
+      let page = null;
+      for (let i = 0; i < 60; i++) { await sleep(250); page = viewer.querySelector('.doc-rendered'); if (page) break; }
+      await sleep(300);
+      return { born, h1: page?.querySelector('h1')?.textContent ?? null, browserStill: fp().querySelector('.files-content') === null };`);
+    await shot('viewer');
+    await evalIn(`${prelude}
+      ${doc.viewed.born ? `document.querySelector('.layout-leaf[data-leaf="${doc.viewed.born}"]')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); await say('pane close');` : ''}
+      await say('cd ~');
+      await home_return();
+      return true;`).catch(() => undefined);
+  }
+  check('a Markdown file opens as its source in colour, DOWNLOAD / RENDERED / CLOSE on its header',
+    doc.error === undefined && doc.md.source.coloured >= 3 && doc.md.source.text.startsWith('# ') && doc.md.source.pills.join(',') === 'DOWNLOAD,RENDERED,CLOSE',
+    JSON.stringify(doc.error ?? doc.md?.source));
+  check('RENDERED shows the Markdown as its page, its script not run, inside the pane; SOURCE returns',
+    doc.error === undefined && doc.md.rendered.h1 === 'Smoke document' && doc.md.rendered.ran === false && doc.md.rendered.script === false && doc.md.rendered.table && doc.md.rendered.inside && doc.md.rendered.scrolls === 'auto' && doc.md.rendered.pills.join(',') === 'DOWNLOAD,SOURCE,CLOSE' && doc.md.back,
+    JSON.stringify(doc.error ?? doc.md?.rendered));
+  check('an AsciiDoc file opens in colour and renders with its admonition and table',
+    doc.error === undefined && doc.adoc.source.coloured >= 3 && doc.adoc.rendered.h1 === 'Smoke guide' && doc.adoc.rendered.admonition && doc.adoc.rendered.table && doc.adoc.back,
+    JSON.stringify(doc.error ?? doc.adoc));
+  check('a Viewer pane beside the browser renders the indicated document',
+    doc.error === undefined && doc.viewed.h1 === 'Smoke guide' && doc.viewed.browserStill === true,
+    JSON.stringify(doc.error ?? doc.viewed));
   }
   if (await stage('dag-back-facts')) {
   // The way out of a graph is a press: BACK heads the graph's frame and

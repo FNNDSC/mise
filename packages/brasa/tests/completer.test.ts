@@ -21,6 +21,13 @@ jest.unstable_mockModule('@fnndsc/salsa', () => ({
   pipelineManifest_get: mockPipelineManifestGet,
 }));
 
+// A plugin's parameters, as plugin info reads them from CUBE (#1306).
+const mockPluginInfoBuild = jest.fn();
+jest.unstable_mockModule('../src/builtins/res/plugin.info.js', () => ({
+  pluginInfo_build: mockPluginInfoBuild,
+  pluginSpecifier_parse: (entry: string) => { const m = entry.match(/^(.+)-v(.+)$/); return m ? { name: m[1], version: m[2], command: entry } : null; },
+}));
+
 // Mock session
 jest.unstable_mockModule('../src/session/index.js', () => ({
   session: {
@@ -202,6 +209,22 @@ describe('Tab Completion', () => {
   });
 
   describe('Pipeline Parameter Completion', () => {
+    it('completes a plugin\'s parameters after --, by its full name or its bare name, reading them once (#1306)', (done) => {
+      mockPlugins_listAll.mockResolvedValue({ tableData: [{ name: 'pl-dircopy', version: '1.0.0' }, { name: 'pl-dircopy', version: '2.0.0' }] });
+      mockPluginInfoBuild.mockResolvedValue({ ok: true, value: { name: 'pl-dircopy', version: '2.0.0', type: 'fs', parameters: [{ name: 'dir', type: 'path', optional: false, flag: '--dir' }, { name: 'verbose', type: 'boolean', optional: true, flag: '--verbose' }] } });
+      input_complete('pl-dircopy-v2.0.0 --d', (err, full) => {
+        expect(err).toBeNull();
+        expect(full).toEqual([['--dir'], '--d']);
+        input_complete('pl-dircopy --', (bareErr, bare) => {
+          expect(bareErr).toBeNull();
+          expect(bare).toEqual([['--dir', '--verbose'], '--']);
+          expect(mockPluginInfoBuild).toHaveBeenCalledTimes(1);
+          expect(mockPluginInfoBuild).toHaveBeenCalledWith({ name: 'pl-dircopy', version: '2.0.0', command: 'pl-dircopy-v2.0.0' });
+          done();
+        });
+      });
+    });
+
     it('completes hosted parameters and execution controls from the registered manifest', (done) => {
       mockPipelineManifestGet.mockResolvedValue({
         ok: true,

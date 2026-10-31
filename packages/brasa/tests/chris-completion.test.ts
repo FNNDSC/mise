@@ -7,6 +7,7 @@ import { jest, describe, it, expect } from '@jest/globals';
 
 jest.unstable_mockModule('@fnndsc/salsa', () => ({ plugins_listAll: jest.fn(), pipelineManifest_get: jest.fn() }));
 jest.unstable_mockModule('@fnndsc/cumin', () => ({ listCache_get: jest.fn() }));
+jest.unstable_mockModule('../src/builtins/res/plugin.info.js', () => ({ pluginInfo_build: jest.fn(), pluginSpecifier_parse: jest.fn() }));
 
 const { chrisCompletion } = await import('../src/chris/completion.js');
 

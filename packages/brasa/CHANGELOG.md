@@ -1,5 +1,13 @@
 # @fnndsc/brasa
 
+## 0.51.1
+
+### Patch Changes
+
+- 0ee1344: A `/bin` pipeline refuses an operand beside `--previous=N` as it does beside `--previous N`.
+
+  The check matched only the bare word, so the `=` form, before or after the operand, slipped past and the input was said twice (#1313).
+
 ## 0.51.0
 
 ### Minor Changes

@@ -63,7 +63,7 @@ npm's trusted publishing cannot create a package name, so the first version is p
 
 . The PR that adds the package is built; it is not merged yet.
 . The operator publishes `0.1.0` by hand from pannotia (npm user `debio`), from the branch with `dist` built.
-. The operator configures the trusted publisher on npmjs: FNNDSC / mise / `release.yml` / no environment / "Allow npm publish" ticked.
+. The operator configures the trusted publisher on npmjs: FNNDSC / chrisproject.org / `publish-mise.yml` / no environment / "Allow npm publish" ticked (since 2026-10-31: mise's own tokens carry GitHub's immutable subject after its transfer, which npm rejects; see the Makefile's `release-dispatch`).
 . The release is verified with a clean `npx bsd-trek` in an empty directory, not `npm view`: a version record proves nothing about installing.
 . The PR merges, and brasa releases depending on `bsd-trek`. Later versions release through changesets with their siblings.
 

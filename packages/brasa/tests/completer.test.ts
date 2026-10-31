@@ -297,6 +297,38 @@ describe('Tab Completion', () => {
       });
     });
 
+    it('completes a path after a /bin plugin name, full or bare, and after a pipeline (#1305)', (done) => {
+      mockPlugins_listAll.mockResolvedValue({ tableData: [{ name: 'pl-dircopy', version: '1.0.0' }] });
+      mockVfsDispatcherList.mockResolvedValue({ ok: true, value: [{ name: 'data', type: 'dir', size: 0, owner: 'testuser', date: '' }] });
+      input_complete('pl-dircopy-v1.0.0 da', (err, full) => {
+        expect(err).toBeNull();
+        expect(full).toEqual([['data/'], 'da']);
+        input_complete('pl-dircopy da', (bareErr, bare) => {
+          expect(bareErr).toBeNull();
+          expect(bare).toEqual([['data/'], 'da']);
+          done();
+        });
+      });
+    });
+
+    it('completes nothing after a /bin name for an option word, after as, or for a word /bin does not list', (done) => {
+      mockPlugins_listAll.mockResolvedValue({ tableData: [{ name: 'pl-dircopy', version: '1.0.0' }] });
+      mockVfsDispatcherList.mockResolvedValue({ ok: true, value: [{ name: 'data', type: 'dir', size: 0, owner: 'testuser', date: '' }] });
+      input_complete('pl-dircopy-v1.0.0 --d', (err, option) => {
+        expect(err).toBeNull();
+        expect(option[0]).toEqual([]);
+        input_complete('pl-dircopy-v1.0.0 t1.nii as da', (asErr, named) => {
+          expect(asErr).toBeNull();
+          expect(named[0]).toEqual([]);
+          input_complete('frobnicate da', (otherErr, other) => {
+            expect(otherErr).toBeNull();
+            expect(other).toEqual([[], 'frobnicate da']);
+            done();
+          });
+        });
+      });
+    });
+
     it('should provide path completion for cp command', (done) => {
       mockPlugins_listAll.mockResolvedValue({ tableData: [] });
 

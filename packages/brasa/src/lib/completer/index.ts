@@ -133,21 +133,39 @@ export function input_complete(line: string, callback: CompleterCallback): void 
 function argumentCompletion_run(line: string, args: string[], callback: CompleterCallback): void {
   // Case 2: Path Completion (Argument to specific commands)
   const cmd: string = args[0];
-  if (['cd', 'ls', 'mkdir', 'rmdir', 'chmod', 'touch', 'cat', 'edit', 'cp', 'mv', 'rm', 'upload', 'download', 'du', 'find', 'tree', 'wc', 'head', 'tail', 'sort', 'uniq', 'cut', 'pull', 'cubepath', 'query', 'image', 'dcm'].includes(cmd)) {
+  const pathWord_complete = (): void => {
     const word: CompletionWord = completionWord_get(line);
-    
+
     path_complete(word.value).then((matches) => {
         callback(null, [matches.map((match: string) => completion_format(match, word)), word.raw]);
     }).catch((err) => {
         // On error, return no matches, don't crash REPL
         callback(null, [[], word.raw]);
     });
+  };
+  // A /bin entry's operand is a path (#1303, #1305): a directory or files,
+  // first on the line. An option word is not one, and the word after `as`
+  // is a subject's name, so neither completes.
+  const pathArguments: ((command: string) => Promise<boolean>) | undefined = backendInstalled_get()?.completion?.pathArguments;
+  if (PATH_COMMANDS.includes(cmd)) {
+    pathWord_complete();
     return;
   }
-  
-  // Default: no completion
+  if (pathArguments !== undefined) {
+    const word: CompletionWord = completionWord_get(line);
+    const previous: string | undefined = line.endsWith(' ') ? args[args.length - 1] : args[args.length - 2];
+    const operandPosition: boolean = !word.value.startsWith('-') && previous !== 'as';
+    pathArguments(cmd).then((takesPaths: boolean): void => {
+      if (takesPaths && operandPosition) pathWord_complete();
+      else callback(null, [[], operandPosition ? line : word.raw]);
+    }).catch(() => callback(null, [[], line]));
+    return;
+  }
   callback(null, [[], line]);
 }
+
+/** The commands whose arguments are paths. */
+const PATH_COMMANDS: ReadonlyArray<string> = ['cd', 'ls', 'mkdir', 'rmdir', 'chmod', 'touch', 'cat', 'edit', 'cp', 'mv', 'rm', 'upload', 'download', 'du', 'find', 'tree', 'wc', 'head', 'tail', 'sort', 'uniq', 'cut', 'pull', 'cubepath', 'query', 'image', 'dcm'];
 
 /**
  * Resolves directory contents for completion.

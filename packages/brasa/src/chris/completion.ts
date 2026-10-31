@@ -8,6 +8,7 @@ import { plugins_listAll, pipelineManifest_get, type PipelineManifest, type Pipe
 import { listCache_get } from '@fnndsc/cumin';
 import type { ListingItem } from '@fnndsc/menu';
 import type { BackendCompletion } from '../core/backend.js';
+import { vfs } from '../lib/vfs/vfs.js';
 
 /**
  * Fetches available plugin names from /bin in the format: name-vVersion.
@@ -101,9 +102,29 @@ async function pipelineOptions_get(args: string[], word: string): Promise<string
   return options.filter((option: string): boolean => option.startsWith(word));
 }
 
+/**
+ * Whether a word names a `/bin` entry, whose arguments are paths (#1305):
+ * a plugin `name-vVersion`, a bare plugin name (any version listed, #1303),
+ * or a pipeline by its `/bin` name or its own name.
+ *
+ * @param command - The line's first word.
+ * @returns True for a `/bin` entry.
+ */
+async function binPathArguments(command: string): Promise<boolean> {
+  const names: string[] = await plugins_getNames();
+  if (names.includes(command) || names.some((name: string): boolean => name.startsWith(`${command}-v`))) return true;
+  try {
+    const bin = await vfs.data_get('/bin');
+    return bin.ok && bin.value.some((item: ListingItem): boolean => item.type === 'pipeline' && (item.name === command || item.title === command));
+  } catch {
+    return false;
+  }
+}
+
 /** What the ChRIS session adds to completion. */
 export const chrisCompletion: BackendCompletion = {
   commandWords: plugins_getNames,
   options: pipelineOptions_get,
+  pathArguments: binPathArguments,
   rootWords: ['bin', 'usr'],
 };

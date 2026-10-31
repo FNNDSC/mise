@@ -11,6 +11,8 @@ import { cuminMock_install } from './support/cuminMock.js';
 const Ok = <T>(value: T): { ok: true; value: T } => ({ ok: true, value });
 const Err = (): { ok: false } => ({ ok: false });
 cuminMock_install(() => ({
+  path_isInFeed: (): boolean => false,
+  path_extractPluginInstanceID: (): number | null => null,
   feedTags_readByFeed: jest.fn(),
   listCache_get: jest.fn(() => ({ cache_get: (): null => null, cache_set: jest.fn() })),
   feedStatus_deriveFromCounts: (): string => 'finishedSuccessfully',
@@ -147,6 +149,7 @@ const mockIsVirtual = jest.fn((path: string): boolean => path.startsWith('/proc/
 const mockReadBinary = jest.fn(async (_path: string): Promise<{ ok: boolean; value?: Buffer }> => ({ ok: false }));
 const mockLinkTarget = jest.fn(async (_path: string): Promise<{ ok: boolean; value?: string }> => ({ ok: false }));
 jest.unstable_mockModule('@fnndsc/salsa', () => ({
+  feed_create: jest.fn(),
   dicomSeries_summarize: jest.fn(),
   dicomFolder_list: jest.fn(),
   dicomHeader_get: jest.fn(),

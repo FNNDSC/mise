@@ -1027,6 +1027,8 @@ export function pipelineExecutableHelp_render(name: string): string {
       '  --manifest              Emit complete registered invocation YAML',
       '',
       'EXECUTION:',
+      '  <dir>                   The input: in a feed, that node; outside one, pl-dircopy roots a new feed of it',
+      '  <file> [as <subject>]…  Files shaped into subjects and rooted as a new feed (operands first on the line)',
       '  --compute <resource>    Override the compute resource',
       '  --previous <inst_id>    Attach to an explicit plugin instance',
       '  --paramFile <cfs-file>  Apply one sparse YAML invocation overlay',
@@ -1040,6 +1042,7 @@ export function pipelineExecutableHelp_render(name: string): string {
       `${name} --source`,
       `${name} --manifest`,
       `${name} --previous 123`,
+      `${name} ~/uploads/subjects`,
     ],
   };
   return `${commandHelp_render(name, help)}\n`;
@@ -1053,14 +1056,24 @@ export function pipelineExecutableHelp_render(name: string): string {
  */
 export function pluginExecutableHelp_render(name: string): string {
   const help: CommandHelp = {
-    usage: `${name} <operation>`,
-    description: 'Inspect this registered CUBE plugin version.',
+    usage: `${name} [<dir> | <file> [as <subject>]…] [plugin options]`,
+    description: 'Run this registered CUBE plugin version on an input, or inspect it.',
     options: [
+      'INPUT (the operand, first on the line; a flag before it is written with =):',
+      '  <dir>              That tree is the input: in a feed, that node; outside one, pl-dircopy roots a new feed of it',
+      '  <file>             One subject named by the stem, the file in it; several files are several subjects',
+      '  <file>… as <name>  The files since the last as, as one subject called <name>',
+      '  (nothing)          The working directory, as before',
+      '  To an fs plugin (pl-dircopy) an operand is its dir, untranslated.',
+      '',
+      'INSPECTION:',
       '  --parameters   Show parameter definitions for this plugin version',
       '  --readme       Show the rendered plugin README',
       '  --readme --raw Output raw README markdown for piping',
     ],
     examples: [
+      `${name} ~/uploads/subjects`,
+      `${name} ~/uploads/t1.nii as sub-01 --threads 2`,
       `${name} --parameters`,
       `${name} --readme`,
       `${name} --readme --raw | glow -`,

@@ -1,5 +1,16 @@
 # @fnndsc/chell
 
+## 5.19.7
+
+### Patch Changes
+
+- Updated dependencies [8fd7226]
+- Updated dependencies [ec2d610]
+- Updated dependencies [68d09fc]
+- Updated dependencies [71f3c63]
+  - @fnndsc/brasa@0.51.0
+  - @fnndsc/calypso@0.28.2
+
 ## 5.19.6
 
 ### Patch Changes

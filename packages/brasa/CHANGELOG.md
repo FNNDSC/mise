@@ -1,5 +1,25 @@
 # @fnndsc/brasa
 
+## 0.51.0
+
+### Minor Changes
+
+- 8fd7226: A bare plugin name at the prompt runs the highest version `/bin` lists for it, and says which.
+
+  `/bin` lists a plugin per version, `pl-freesurfer-v1.0.4`, and a bare `pl-freesurfer` matched nothing there, so it fell through to chili and was refused. Now the bare name resolves to the highest registered version on the connected CUBE and prints the resolution as it dispatches, `running pl-freesurfer-v1.0.4 (highest of 1.0.1, 1.0.4)`, so the line read back names exactly what ran. The full name keeps working and pins the version; `help pl-freesurfer` answers with the highest version's help; `/bin` itself is unchanged, since the answer is derived from CUBE's state rather than kept as shell state (#1303). Versions order as dotted numbers, so 1.10.0 stands above 1.9.9 and 1.0.4 above 1.0.4-rc1. Inside a pipe or a redirect a bare name still starts no job.
+
+- ec2d610: A plugin's parameters tab-complete after `--` on its `/bin` line, full name or bare.
+
+  `pl-freesurfer-v1.0.4 --<tab>` offered nothing: only a pipeline's line completed its `--node.field` options. Now the first word is read as a plugin, by its full name or its bare name (the highest version, as the run resolves it), its parameters are fetched once from CUBE as `--parameters` reads them, and `--ex<tab>` gives `--exec`; a boolean parameter completes as its flag alone. A pipeline's line completes as before (#1306).
+
+- 68d09fc: A path tab-completes after a `/bin` plugin or pipeline name, where its operand goes.
+
+  With #1303 a `/bin` run takes an input operand, and `pl-freesurfer ~/up<tab>` offered nothing: a path completed only after a fixed list of file commands. Now the first word is asked of the session: a plugin `name-vVersion`, a bare plugin name, or a pipeline by its `/bin` name or its own name takes paths, and its operand completes as `ls` and `cp` do. Only operand positions complete: an option word does not, and the word after `as` is a subject's name (#1305).
+
+- 71f3c63: A plugin or pipeline run from `/bin` takes its input as an operand: a directory, or files shaped into subjects.
+
+  A `/bin` run used to take the working directory only. Now `pl-freesurfer-v1.0.4 ~/uploads/subjects` runs on that tree: inside a feed, that node is the input and the run continues the feed; outside one, pl-dircopy roots a new feed of it first, as it did for cwd. A file operand is one subject: chell copies it to `~/.mise/stage/<id>/<subject>/<file>`, named by the file's stem (`t1.nii.gz` is `t1`) or by `as <name>`, roots a new feed of the stage, and prints the subject and the path CUBE made of it. Several files are several subjects; `t1.nii t2.nii as sub-01` is one subject holding both. Operands come first on the line and the plugin's flags after; a flag before an operand is written with `=`. A path is read as given, a directory when one stands there, a file otherwise, and a missing path refuses. To an fs plugin an operand is its `dir`, untranslated. Pipelines take the same operand, and one outside a feed now roots a new feed rather than refusing (#1303).
+
 ## 0.50.1
 
 ### Patch Changes

@@ -49,7 +49,7 @@ async function pipelineOperand_place(name: string, args: string[]): Promise<stri
     return null;
   }
   if (operands.directory === null && operands.subjects.length === 0) return args;
-  if (operands.rest.includes('--previous')) {
+  if (operands.rest.some((word: string): boolean => word.split('=')[0] === '--previous')) {
     sink_get().err_write(chalk.red(`${name}: the operand and --previous say the input twice\n`));
     return null;
   }

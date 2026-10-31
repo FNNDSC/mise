@@ -14,9 +14,9 @@
 import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, drawSelection, highlightActiveLine, highlightActiveLineGutter } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { bracketMatching, indentOnInput, syntaxHighlighting, HighlightStyle } from '@codemirror/language';
+import { bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language';
 import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
-import { tags } from '@lezer/highlight';
+import { HIGHLIGHT, language_resolve } from './syntax.js';
 
 /** What the panel holds of a field. */
 export interface EditField {
@@ -34,22 +34,6 @@ export interface EditField {
   destroy: () => void;
 }
 
-/**
- * The syntax colours, from the theme's own tokens, so every scheme (and
- * PHAROS) paints code in its palette and never in the library's.
- */
-const HIGHLIGHT: HighlightStyle = HighlightStyle.define([
-  { tag: [tags.keyword, tags.operatorKeyword, tags.modifier], color: 'var(--harvestgold)' },
-  { tag: [tags.string, tags.special(tags.string)], color: 'var(--honey)' },
-  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: 'var(--daybreak)' },
-  { tag: [tags.propertyName, tags.attributeName, tags.definition(tags.variableName)], color: 'var(--orange)' },
-  { tag: [tags.comment, tags.lineComment, tags.blockComment], color: 'var(--pumpkin-pie)', fontStyle: 'italic' },
-  { tag: [tags.heading, tags.strong], color: 'var(--butter)', fontWeight: 'bold' },
-  { tag: tags.emphasis, fontStyle: 'italic' },
-  { tag: tags.link, color: 'var(--harvestgold)', textDecoration: 'underline' },
-  { tag: tags.invalid, color: 'var(--state-error)' },
-]);
-
 /** The field's chrome-free look: the pane's black, the house's mono face. */
 const LOOK: Extension = EditorView.theme({
   '&': { height: '100%', color: 'var(--butter)', backgroundColor: 'transparent', fontSize: '0.95rem' },
@@ -65,24 +49,6 @@ const LOOK: Extension = EditorView.theme({
   '.cm-panels': { backgroundColor: '#000', color: 'var(--butter)' },
   '.cm-panels.cm-panels-bottom': { borderTop: '2px solid var(--orange)' },
 }, { dark: true });
-
-/**
- * The language a file's extension names, loaded only when one is asked for.
- *
- * @param extension - The file's extension, with its dot.
- * @returns The language extension, or none for plain text.
- */
-async function language_resolve(extension: string): Promise<Extension> {
-  switch (extension.toLowerCase()) {
-    case '.json': return (await import('@codemirror/lang-json')).json();
-    case '.yaml': case '.yml': return (await import('@codemirror/lang-yaml')).yaml();
-    case '.md': case '.markdown': return (await import('@codemirror/lang-markdown')).markdown();
-    case '.py': return (await import('@codemirror/lang-python')).python();
-    case '.js': case '.mjs': case '.cjs': return (await import('@codemirror/lang-javascript')).javascript();
-    case '.ts': case '.mts': return (await import('@codemirror/lang-javascript')).javascript({ typescript: true });
-    default: return [];
-  }
-}
 
 /**
  * Builds a field over a container.

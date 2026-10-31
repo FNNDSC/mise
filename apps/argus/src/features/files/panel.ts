@@ -24,11 +24,12 @@
  * @module
  */
 import { DICOM_FILE_PATTERN, SERIES_FOLDER_PATTERN } from '../image/engine.js';
-import type { WireEnvelope } from '@fnndsc/menu';
+import { editExtension_extract, type WireEnvelope } from '@fnndsc/menu';
 import { rankedLayout_compute, type RankedLayout } from '@fnndsc/orrery/layout';
 import { Listing, type ListingBlock, type ListingStateParts } from '../roster/listing.js';
 import { csvTable_read, type CsvTable } from './csv.js';
 import { JSON_FILE_PATTERN, jsonPretty_build } from './json.js';
+import { document_is, document_render } from '../view/document.js';
 import { listing_isAnswered, refusalWords_extract } from './answer.js';
 import { more_wire } from '../roster/more.js';
 import type { ListingAction, ListingTrait } from '../roster/row.js';
@@ -831,13 +832,17 @@ export class FilesPanel {
    * pretty-printed, its keys, strings, numbers and literals in their own
    * hues — with RAW for the bytes as written; one minified line of a
    * cohort manifest was unreadable as anything. A file that does not
-   * parse, or is too large to lay out, is shown as it is.
+   * parse, or is too large to lay out, is shown as it is. Source in a
+   * language the editor knows is shown in its colours. A Markdown or
+   * AsciiDoc document opens as its source, and RENDERED shows it as the
+   * page it describes (SOURCE goes back).
    *
    * @param path - The file's path, shown as the view's header.
    * @param content - The file's text.
    * @param raw - Show the bytes as written even where a structure is known.
+   * @param rendered - Show a document as its rendered page.
    */
-  public content_show(path: string, content: string, raw: boolean = false): void {
+  public content_show(path: string, content: string, raw: boolean = false, rendered: boolean = false): void {
     this.diagram_declare(false);
     this.contentShown = true;
     this.container.parentElement?.classList.add('content-view');
@@ -862,6 +867,15 @@ export class FilesPanel {
       toggle.addEventListener('click', (): void => this.content_show(path, content, structured !== null));
       pills.push(toggle);
     }
+    const documentShown: boolean = document_is(path);
+    if (documentShown) {
+      const toggle: HTMLButtonElement = document.createElement('button');
+      toggle.className = 'files-close-pill files-render-pill';
+      toggle.textContent = rendered ? 'SOURCE' : 'RENDERED';
+      toggle.title = rendered ? 'the document as written' : 'the document as its page';
+      toggle.addEventListener('click', (): void => this.content_show(path, content, false, !rendered));
+      pills.push(toggle);
+    }
     header.append(title, ...downloadPill_build(this.preview, path), ...pills, closePill);
     if (structured !== null) {
       body.classList.add('files-json');
@@ -873,6 +887,28 @@ export class FilesPanel {
     this.container.append(header, body);
     // The view scrolls without a scrollbar and says how many lines lie below.
     more_wire(body);
+    if (structured !== null) return;
+    // Colour and render land when their engines have loaded; the plain text
+    // holds the view until then, and stays if this view has moved on.
+    if (documentShown && rendered) {
+      void document_render(path, content).then((article: HTMLElement | null): void => {
+        if (article === null || !body.isConnected) return;
+        article.classList.add('files-content');
+        body.replaceWith(article);
+        more_wire(article);
+      }).catch((): void => undefined);
+      return;
+    }
+    void import('../edit/syntax.js')
+      .then(({ sourceSpans_build }) => sourceSpans_build(content, editExtension_extract(path)))
+      .then((coloured: DocumentFragment | null): void => {
+        if (coloured === null || !body.isConnected) return;
+        const chip: Element | null = body.querySelector(':scope > .more-chip');
+        body.replaceChildren(coloured);
+        if (chip !== null) body.append(chip);
+        body.classList.add('files-source');
+      })
+      .catch((): void => undefined);
   }
 
   /**

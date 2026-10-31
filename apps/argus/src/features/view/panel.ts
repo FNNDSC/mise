@@ -3,14 +3,16 @@
  *
  * The viewer holds no state of its own and issues no gestures: it renders
  * whatever address its link group's regard names — an image through the
- * daemon's `/vfs` route, anything else as text — and retargets on every
- * write. Before the first indication it shows a defined awaiting-state:
+ * daemon's `/vfs` route, a Markdown or AsciiDoc document as its rendered
+ * page, anything else as text — and retargets on every write. Before the
+ * first indication it shows a defined awaiting-state:
  * "no regard yet" is schema-legal, not an error. Design record:
  * docs/aegis.adoc.
  *
  * @module
  */
 import type { RegardValue } from '../../app/subjects.js';
+import { document_is, document_render } from './document.js';
 
 /** What the viewer asks of its host. */
 export interface ViewerHandlers {
@@ -79,6 +81,13 @@ export class ViewerPanel {
       body.className = 'files-content';
       body.textContent = content;
       this.container.appendChild(body);
+      // A document is read as its page: the source holds the pane until the
+      // render lands, and stays if the render cannot be made.
+      if (!document_is(value.address)) return;
+      void document_render(value.address, content).then((article: HTMLElement | null): void => {
+        if (article === null || this.currentAddress !== value.address || !body.isConnected) return;
+        body.replaceWith(article);
+      }).catch((): void => undefined);
     });
   }
 

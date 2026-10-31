@@ -241,6 +241,8 @@ export interface BackendCompletion {
   readonly commandWords?: () => Promise<string[]>;
   /** The `--option` words for a line, or null when the line is not one the backend completes. */
   readonly options?: (args: string[], word: string) => Promise<string[] | null>;
+  /** Whether a command word of the backend's takes paths as its arguments (ChRIS: a `/bin` entry, whose operand is a path, #1305). */
+  readonly pathArguments?: (command: string) => Promise<boolean>;
   /** Names completed at `/` even when the root's listing lacks them; absent, the core's `usr`. */
   readonly rootWords?: ReadonlyArray<string>;
 }

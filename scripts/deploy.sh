@@ -20,6 +20,8 @@ HOSTS=${HOSTS:-"pangea titan"}
 SKIP_PUBLISH=${SKIP_PUBLISH:-}
 PANGEA_PREFIX=${PANGEA_PREFIX:-$HOME/.local/share/porter-published}
 TITAN=${TITAN:-titan}
+# Where the packages are published from (the Makefile's PUBLISHER_REPO).
+PUBLISHER_REPO=${PUBLISHER_REPO:-FNNDSC/chrisproject.org}
 
 say() { printf '[deploy] %s\n' "$*"; }
 die() { printf '[deploy] FAIL: %s\n' "$*" >&2; exit 1; }
@@ -29,22 +31,20 @@ if [ -z "$SKIP_PUBLISH" ]; then
   [ -n "$pr" ] || die "no open Version Packages PR: nothing to publish (merge the change first, or SKIP_PUBLISH=1 to install what npm has)"
   say "Version Packages PR #$pr: nudging its CI, then publishing"
   gh pr close "$pr" >/dev/null 2>&1 || true; sleep 5; gh pr reopen "$pr" >/dev/null 2>&1 || true; sleep 30
-  make --no-print-directory publish 2>&1 | grep -vE '^\s*$|Waiting|^All checks' | tail -2
-  sleep 60
-  run=$(gh run list --workflow release.yml --limit 1 --json databaseId --jq '.[0].databaseId')
-  gh run watch "$run" --exit-status >/dev/null 2>&1 || die "release run $run did not succeed"
-  say "release run $run: success"
+  # `make publish` merges, then runs the publisher (FNNDSC/chrisproject.org's
+  # publish-mise.yml, see the Makefile) and waits for it: it fails if npm did.
+  make --no-print-directory publish 2>&1 | grep -vE '^\s*$|Waiting|^All checks' | tail -3
+  [ "${PIPESTATUS[0]}" -eq 0 ] || die "make publish did not succeed"
+  say "publisher run: success"
 else
-  # Published elsewhere (make publish a moment ago), its release run may still
+  # Published elsewhere (make publish a moment ago), a publisher run may still
   # be pushing to npm: wait it out rather than give up on the registry first
   # (2026-10-07: the npm wait timed out under a release run still in flight).
-  git fetch -q origin
-  head=$(git rev-parse origin/main)
-  run=$(gh run list --workflow release.yml --limit 10 --json databaseId,headSha --jq "[.[] | select(.headSha == \"$head\")][0].databaseId // empty" 2>/dev/null || true)
+  run=$(gh run list -R "$PUBLISHER_REPO" --workflow publish-mise.yml --limit 1 --json databaseId,status --jq '[.[] | select(.status != "completed")][0].databaseId // empty' 2>/dev/null || true)
   if [ -n "$run" ]; then
-    say "release run $run for main's head: waiting for it to finish"
-    gh run watch "$run" --exit-status >/dev/null 2>&1 || die "release run $run did not succeed"
-    say "release run $run: success"
+    say "publisher run $run: waiting for it to finish"
+    gh run watch "$run" -R "$PUBLISHER_REPO" --exit-status >/dev/null 2>&1 || die "publisher run $run did not succeed"
+    say "publisher run $run: success"
   fi
 fi
 
